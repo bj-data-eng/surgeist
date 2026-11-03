@@ -1,13 +1,20 @@
 use crate::html::support::known_text_attribute as raw;
 use surgeist_html::{
-    Attribute, DocumentString, HtmlAttributeApplicability, HtmlAttributeAuthorState,
-    HtmlAttributeContextAuthorState, HtmlAttributeContextConformanceError,
-    HtmlAttributeObservation, HtmlAttributeRecognition, HtmlButtonSubmitterContext,
-    HtmlFormEnctype, HtmlFormMethod, HtmlInputType, HtmlInteger, HtmlNonNegativeInteger,
-    HtmlNumericAttributeAuthorState, HtmlNumericAttributeConformanceError,
-    HtmlNumericAttributeReport, HtmlNumericAttributeValueOrigin, HtmlTabindexValue,
-    HtmlValueAdmissionError, HtmlValueAuthorState, HtmlValueInterpreter, HtmlValueRecoveryState,
-    KnownHtmlAttribute, KnownHtmlElement, Namespace, QualifiedName,
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeAuthorState, HtmlAttributeContextAuthorState,
+        HtmlAttributeContextConformanceError, HtmlAttributeObservation, HtmlAttributeRecognition,
+        HtmlButtonSubmitterContext, HtmlFormEnctype, HtmlFormMethod, HtmlInputType,
+        scalar::{
+            HtmlNumericAttributeAuthorState, HtmlNumericAttributeConformanceError,
+            HtmlNumericAttributeReport, HtmlNumericAttributeValueOrigin, HtmlTabindexValue,
+        },
+    },
+    microsyntax::numeric::{HtmlInteger, HtmlNonNegativeInteger},
+    values::{
+        Attribute, DocumentString, HtmlValueAdmissionError, HtmlValueAuthorState,
+        HtmlValueInterpreter, HtmlValueRecoveryState, Namespace, QualifiedName,
+    },
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 
 type NonnegativeOperation = fn(
@@ -284,7 +291,7 @@ fn tabindex_missing_and_failure_are_source_null_not_idl_element_defaults() {
         QualifiedName::new(Namespace::html(), None, "custom-name"),
     ] {
         let missing = interpreter
-            .tabindex(&element, None::<&surgeist_html::Attribute>)
+            .tabindex(&element, None::<&surgeist_html::values::Attribute>)
             .unwrap();
         assert_eq!(missing.intrinsic(), Some(&HtmlTabindexValue::Null));
         assert_eq!(missing.author(), HtmlNumericAttributeAuthorState::Missing);

@@ -2,6 +2,7 @@
 //! live. Their charge ends only at discard or canonical ownership transfer.
 use super::*;
 use std::cell::{Cell, RefCell};
+use surgeist_html::values::DocumentString;
 
 #[cfg(test)]
 mod custody_tests;

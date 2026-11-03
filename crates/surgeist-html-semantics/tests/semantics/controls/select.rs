@@ -3,7 +3,9 @@ use crate::semantics::support::{
     compact_builder_without_registries as builder, result_record_bytes,
     session_without_raw_values as session,
 };
-use surgeist_html::*;
+use surgeist_html::values::{
+    Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName,
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlControlFacts,

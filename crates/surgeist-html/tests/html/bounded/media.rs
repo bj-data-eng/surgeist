@@ -1,7 +1,16 @@
 //! Actual media operands, phased observations and guarded report publication.
 #![forbid(unsafe_code)]
 use crate::html::support::unqualified_text_attribute as attr;
-use surgeist_html::{bounded::*, *};
+use surgeist_html::{
+    attributes::media::HtmlMediaPlacementObservation,
+    bounded::media::{
+        HtmlMediaActionError, HtmlMediaField, HtmlMediaFieldMatch, HtmlMediaInterpretation,
+        HtmlMediaNameSupply, match_media_field,
+    },
+    elements::media::{HtmlMediaCursorAction, HtmlMediaValueClass, HtmlMetaMediaPlacement},
+    values::{Attribute, HtmlValueInterpreter, Namespace, QualifiedName},
+    vocabulary::KnownHtmlElement,
+};
 fn matched<'a>(a: &'a Attribute, field: HtmlMediaField) -> HtmlMediaFieldMatch<'a, Attribute> {
     match_media_field(a, field, |_| Ok::<_, ()>(()))
         .unwrap()

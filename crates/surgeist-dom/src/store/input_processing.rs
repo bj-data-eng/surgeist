@@ -4,9 +4,9 @@
 //! admission. Both work domains remain cumulative across reached operations.
 use super::source::{checkpoint::Charge, formation::Formation, storage::Payload};
 use super::{DomError, DomResource, check_cancel};
-use crate::DocumentString;
 use std::{mem::size_of, sync::atomic::AtomicBool};
-use surgeist_html::HtmlInputColorSpace;
+use surgeist_html::attributes::input_colorspace::HtmlInputColorSpace;
+use surgeist_html::values::DocumentString;
 mod color;
 mod range;
 pub(super) struct RangeInput<'a> {
@@ -409,7 +409,7 @@ fn extent(count: usize, width: usize) -> Result<usize, DomError> {
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Commit {
-    RangeCell,
+    HtmlRangeCell,
     ColorSlot,
     ColorDigit,
     OutputUnit,
@@ -435,7 +435,7 @@ fn committed(point: Commit, cancelled: &AtomicBool) {
 mod tests {
     use super::*;
     use std::sync::atomic::Ordering;
-    use surgeist_html::HtmlInputColorSpace;
+    use surgeist_html::attributes::input_colorspace::HtmlInputColorSpace;
 
     // Explicit caller-selected fixture allowances; production chooses neither.
     pub(super) fn fixture() -> InputProcessing {
@@ -577,7 +577,7 @@ mod tests {
     #[test]
     fn cancellation_after_real_protocol_commits_cleans_storage_and_stays_first() {
         for point in [
-            Commit::RangeCell,
+            Commit::HtmlRangeCell,
             Commit::ColorSlot,
             Commit::ColorDigit,
             Commit::OutputUnit,
@@ -585,7 +585,7 @@ mod tests {
             let cancel = AtomicBool::new(false);
             let mut meter = fixture();
             CANCEL_AT.with(|target| target.set(Some(point)));
-            let result = if point == Commit::RangeCell {
+            let result = if point == Commit::HtmlRangeCell {
                 meter
                     .range(
                         RangeInput {
@@ -704,8 +704,9 @@ pub(super) mod source_observation {
 mod source_tests {
     use super::*;
     use crate::store::{BatchIdentity, Draft};
-    use crate::{Dom, DomBatch, DomLimits, DomSourceLimits, Namespace};
+    use crate::{Dom, DomBatch, DomLimits, DomSourceLimits};
     use std::sync::{Arc, atomic::Ordering};
+    use surgeist_html::values::Namespace;
 
     // A real Source always keeps its canonical owner alive. Its owner-held
     // ledger allocations must remain present after the baseline is measured.
@@ -913,7 +914,7 @@ mod source_tests {
     #[test]
     fn source_cancellation_cleans_each_reached_kernel_and_preserves_first_stop() {
         for point in [
-            Commit::RangeCell,
+            Commit::HtmlRangeCell,
             Commit::ColorSlot,
             Commit::ColorDigit,
             Commit::OutputUnit,
@@ -925,7 +926,7 @@ mod source_tests {
             let mut meter = super::tests::fixture();
             let _observation = observe_output(&draft);
             CANCEL_AT.set(Some(point));
-            let result = if point == Commit::RangeCell {
+            let result = if point == Commit::HtmlRangeCell {
                 meter.range(
                     RangeInput {
                         current: &DocumentString::from("0.1"),

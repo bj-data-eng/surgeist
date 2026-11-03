@@ -19,8 +19,9 @@
 //! Without the environment variable no artifact is written.
 use super::super::{Kind, Name, Projection};
 use super::{Phases, literals, scalar_feed};
-use crate::*;
+
 use std::{io::Write, time::Instant};
+use surgeist_html::construction::HtmlDocumentMode;
 
 fn number(out: &mut Vec<u8>, n: usize) {
     out.extend_from_slice(&u64::try_from(n).unwrap().to_le_bytes());

@@ -294,9 +294,11 @@ impl Families {
     }
 }
 
-fn tag(kind: KindRead<'_>) -> Option<surgeist_html::KnownHtmlElement> {
+fn tag(kind: KindRead<'_>) -> Option<surgeist_html::vocabulary::KnownHtmlElement> {
     match kind {
-        KindRead::Element(element) => surgeist_html::KnownHtmlElement::from_name(element.name()),
+        KindRead::Element(element) => {
+            surgeist_html::vocabulary::KnownHtmlElement::from_name(element.name())
+        }
         _ => None,
     }
 }
@@ -314,10 +316,10 @@ fn fact(
     name: Name<'_>,
     step: &mut dyn FnMut() -> Result<(), DomError>,
 ) -> Result<Option<Fact>, DomError> {
-    use surgeist_html::KnownHtmlElement as Tag;
-    use surgeist_html::bounded::{
+    use surgeist_html::bounded::select::{
         HtmlOptionSelectAncestorAction as Action, HtmlOptionSelectAncestors,
     };
+    use surgeist_html::vocabulary::KnownHtmlElement as Tag;
     let key = order.normalize(key);
     let node = order.node(key)?;
     let KindRead::Element(element) = node.kind() else {
@@ -689,7 +691,7 @@ impl Version {
                 let mut next = order.parent(fact.key, Mode::Ordinary, &mut *edit.step)?;
                 while let Some(parent) = next {
                     if tag(order.node(parent.parent)?.kind())
-                        == Some(surgeist_html::KnownHtmlElement::Select)
+                        == Some(surgeist_html::vocabulary::KnownHtmlElement::Select)
                     {
                         self.selected_group(parent.parent, fact.key, present, true, order, edit)?;
                     }
@@ -808,8 +810,8 @@ impl Families {
             (Some(before), Some(after)) => match (before.kind(), after.kind()) {
                 (KindRead::Element(before), KindRead::Element(after)) => {
                     before.language().same_attribute_storage(after.language())
-                        && surgeist_html::KnownHtmlElement::from_name(before.name())
-                            == surgeist_html::KnownHtmlElement::from_name(after.name())
+                        && surgeist_html::vocabulary::KnownHtmlElement::from_name(before.name())
+                            == surgeist_html::vocabulary::KnownHtmlElement::from_name(after.name())
                 }
                 _ => false,
             },

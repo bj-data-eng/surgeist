@@ -608,6 +608,7 @@ impl Draft {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     fn key(owner: DomOwnerId, slot: usize, generation: u64) -> Key {
         Key::Existing(NodeId {
             owner,

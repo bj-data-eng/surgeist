@@ -1,4 +1,5 @@
 use super::*;
+use surgeist_html::{construction::HtmlNodeKind, values::Namespace};
 
 #[test]
 fn newly_latched_work_or_cancellation_disposes_all_retained_attribute_fields() {

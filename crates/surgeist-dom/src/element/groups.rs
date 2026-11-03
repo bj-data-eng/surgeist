@@ -8,8 +8,9 @@ use crate::store::{
     payload,
     source::{formation::Formation, storage},
 };
-use crate::{DocumentString, DomError, DomQualifiedName, DomRegistryBinding};
+use crate::{DomError, DomQualifiedName, DomRegistryBinding};
 use std::{sync::Arc, sync::atomic::AtomicBool};
+use surgeist_html::values::DocumentString;
 #[cfg(test)]
 mod tests;
 

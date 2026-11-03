@@ -1,4 +1,20 @@
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::HtmlInputType,
+    construction::HtmlNodeKind,
+    elements::{
+        form::HtmlTextControlValueSetterFinish,
+        input::{
+            HtmlInputCheckedAttributeChange, HtmlInputEmailMode, HtmlInputEmptySelectionSupport,
+            HtmlInputFlags, HtmlInputNoneDirectionSupport, HtmlInputReset, HtmlInputResetEffect,
+            HtmlInputRuleWork, HtmlInputSanitization, HtmlInputSanitizationCursor,
+            HtmlInputSelection, HtmlInputSelectionDirection, HtmlInputTypeChange,
+            HtmlInputTypeCursor, HtmlInputTypeEffect, HtmlInputValueAttributeEffect,
+            HtmlInputValueComparison, HtmlInputValueComparisonCursor, HtmlInputValueMode,
+            HtmlInputValueSanitization, HtmlInputValueSetterStart, input_value_setter_finish,
+        },
+    },
+    values::DocumentString,
+};
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlParseAssociationRelation, HtmlParseHistoryFrame,
     HtmlParseHistoryStep, HtmlParseMetadataStep, HtmlParseRangeBranch, HtmlParseRangeOperandKind,

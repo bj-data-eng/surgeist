@@ -4,7 +4,6 @@ use super::{
     BankKind, DomError, Formation, InputProcessing, InputValue, OutputBuffer, Payload, extent,
     metadata, output_payload, source_cleanup, source_marker, sum,
 };
-use crate::DocumentString;
 use std::{mem::size_of, sync::atomic::AtomicBool};
 use surgeist_color::{
     ActionLayout, Color, ColorSpace, DigitSlot, OperationOwner, PredefinedColorSpace,
@@ -20,7 +19,11 @@ use surgeist_css::color::{
     CssColorError, CssColorFactIdentity, CssColorFacts, CssColorGrammarRequest, CssColorInputKind,
     CssColorPropertyFacts, CssColorSchemeFact, CssDeviceColorFact,
 };
-use surgeist_html::{HtmlInputColorEffect, HtmlInputColorSerialization, HtmlInputColorSpace};
+use surgeist_html::values::DocumentString;
+use surgeist_html::{
+    attributes::input_colorspace::HtmlInputColorSpace,
+    elements::input::{HtmlInputColorEffect, HtmlInputColorSerialization},
+};
 
 fn error(error: CssColorError) -> DomError {
     if let Some(value) = error.unavailable() {
@@ -238,7 +241,8 @@ fn parse<'facts>(
             CssColorParseOutcome::Used(value) => value,
             CssColorParseOutcome::StandardFailure(failure) => {
                 let [red, green, blue] =
-                    surgeist_html::input_color_standard_failure_fallback().channels();
+                    surgeist_html::elements::input::input_color_standard_failure_fallback()
+                        .channels();
                 failure.fallback(Color::from_srgba8([red, green, blue, 255]))
             }
         })

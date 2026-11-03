@@ -2,7 +2,7 @@
 //! editorial interpretations. This adapter owns finite example chains and
 //! operand identities, not a native focus/renderer/Window implementation.
 use std::collections::{BTreeMap, BTreeSet};
-use surgeist_html::{
+use surgeist_html::focus::{
     HtmlFocusEventAction as EA, HtmlFocusEventCursor as EC, HtmlFocusEventInterface as Interface,
     HtmlFocusEventName as Name, HtmlFocusEventReply as ER,
     HtmlFocusEventTargetKind as EventTargetKind, HtmlFocusEventView as View,

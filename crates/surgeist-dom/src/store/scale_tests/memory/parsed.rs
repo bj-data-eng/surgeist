@@ -8,11 +8,12 @@ use std::{
 };
 
 use crate::{
-    DocumentId, DocumentString, Dom, DomBatch, DomChange, DomElement, DomLimits, DomNameLimits,
+    DocumentId, Dom, DomBatch, DomChange, DomElement, DomLimits, DomNameLimits,
     DomNativeInputPlatform, DomNodeKind, DomParsedDocumentEnvironment, DomParsedHtmlInstallLimits,
-    DomSnapshot, Namespace, NodeId,
+    DomSnapshot, NodeId,
 };
-use surgeist_html::{HtmlDocument, HtmlDocumentMode, HtmlNodeId, HtmlNodeKind};
+use surgeist_html::construction::{HtmlDocument, HtmlDocumentMode, HtmlNodeId, HtmlNodeKind};
+use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlParseLimits, HtmlParseReport, HtmlSource,
 };

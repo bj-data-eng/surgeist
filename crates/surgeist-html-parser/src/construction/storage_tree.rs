@@ -1,6 +1,7 @@
 //! Tree navigation over the arena: containers, ordinary roots, connectivity and effect walks.
 
 use super::*;
+use surgeist_html::construction::{HtmlFragmentOwner, HtmlNodeKind};
 
 impl SessionStorage {
     #[cfg(test)]
@@ -69,7 +70,7 @@ impl SessionStorage {
     pub(super) fn associated_document_parent_in(
         &mut self,
         control: &mut ParseControl,
-        storage: &bounded::HtmlConstructionStorage,
+        storage: &surgeist_html::bounded::construction::HtmlConstructionStorage,
         index: usize,
     ) -> Result<bool, SessionError> {
         let root = self.payloads.tree_root(control, storage, index)?;
@@ -81,7 +82,7 @@ impl SessionStorage {
     pub(super) fn associated_root_in(
         &self,
         control: &mut ParseControl,
-        storage: &bounded::HtmlConstructionStorage,
+        storage: &surgeist_html::bounded::construction::HtmlConstructionStorage,
         root: usize,
     ) -> Result<bool, SessionError> {
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -151,7 +152,7 @@ impl SessionStorage {
     }
     pub(super) fn html_local_in(
         control: &mut ParseControl,
-        storage: &bounded::HtmlConstructionStorage,
+        storage: &surgeist_html::bounded::construction::HtmlConstructionStorage,
         node: usize,
         local: &str,
     ) -> Result<bool, SessionError> {

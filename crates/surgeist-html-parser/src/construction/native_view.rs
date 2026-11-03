@@ -3,6 +3,12 @@
 //! expose individual admitted UTF-16 reads, not an unmetered backing slice.
 
 use super::*;
+use surgeist_html::{
+    construction::{
+        HtmlDocumentMode, HtmlFragmentOwner, HtmlNodeId, HtmlNodeKind, HtmlShadowRootProperties,
+    },
+    values::{Attribute, DocumentString, QualifiedName},
+};
 
 #[derive(Clone, Copy)]
 pub(crate) struct NativeString<'a> {

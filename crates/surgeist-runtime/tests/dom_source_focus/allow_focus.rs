@@ -1,6 +1,7 @@
 //! Negative allow-focus uses the current Document's retained original Window.
 use super::*;
-use surgeist_html::HtmlDialogState;
+use surgeist_html::elements::dialog::HtmlDialogState;
+use surgeist_html::values::Namespace;
 
 #[test]
 fn callback_adoption_into_retired_document_completes_show_after_negative_allow_focus() {
@@ -226,7 +227,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
     assert!(current_environment.has_ever_had_navigable());
     assert_eq!(
         current_environment.browsing_context(),
-        surgeist_html::HtmlBrowsingContextPresence::Absent
+        surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent
     );
     assert_eq!(
         after

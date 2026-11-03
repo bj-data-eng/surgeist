@@ -1,5 +1,9 @@
 use super::*;
 use std::sync::Arc;
+use surgeist_html::{
+    construction::HtmlDocumentMode,
+    values::{Attribute, DocumentString, Namespace, QualifiedName},
+};
 
 fn generous() -> HtmlOptionValueEnvelope {
     HtmlOptionValueEnvelope::new(16_000_000, 1_000_000, 1_000_000)
@@ -196,7 +200,7 @@ fn borrowed_duplicate_refusal_drops_the_destination_and_can_retry_on_original_ow
     assert_eq!(
         failure.kind(),
         &HtmlControlledOptionValueError::ElementValues(HtmlCaptureElementError::Attributes(
-            surgeist_html::bounded::HtmlAttributeValidationError::Duplicate {
+            surgeist_html::bounded::values::HtmlAttributeValidationError::Duplicate {
                 first: 0,
                 duplicate: 1
             }

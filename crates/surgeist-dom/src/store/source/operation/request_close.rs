@@ -1,6 +1,6 @@
 //! One original requestClose continuation; Runtime owns effects and custody only.
 use super::*;
-use surgeist_html::{
+use surgeist_html::elements::dialog::{
     HtmlCloseWatcherRequestAction as A, HtmlCloseWatcherRequestCursor,
     HtmlCloseWatcherRequestReply as R, HtmlDialogAction as D, HtmlDialogReply,
 };
@@ -198,11 +198,13 @@ impl DomSourceLease<'_> {
         let key = op.draft.resolve(request.watcher.subject().into())?;
         let state = op.draft.dialog_state(key)?;
         if state.force_watcher_enabled {
-            return Ok(surgeist_html::dialog_close_watcher_enabled(
-                true,
-                surgeist_html::HtmlClosedByState::Auto,
-                state.is_modal(),
-            ));
+            return Ok(
+                surgeist_html::elements::dialog::dialog_close_watcher_enabled(
+                    true,
+                    surgeist_html::attributes::HtmlClosedByState::Auto,
+                    state.is_modal(),
+                ),
+            );
         }
         let element = op.draft.element(key)?;
         let mut raw = None;
@@ -211,7 +213,7 @@ impl DomSourceLease<'_> {
             if attr.name().namespace_uri().is_none()
                 && op.draft.source_ascii(
                     attr.name().local_name(),
-                    surgeist_html::KnownHtmlAttribute::Closedby.local_name(),
+                    surgeist_html::vocabulary::KnownHtmlAttribute::Closedby.local_name(),
                     cancel,
                 )?
             {
@@ -242,7 +244,7 @@ impl DomSourceLease<'_> {
                     budget.step(cancel)?;
                 }
             }
-            for known in surgeist_html::KnownHtmlElement::ALL {
+            for known in surgeist_html::vocabulary::KnownHtmlElement::ALL {
                 for _ in 0..=known.local_name().len() {
                     budget.step(cancel)?;
                 }
@@ -261,15 +263,17 @@ impl DomSourceLease<'_> {
                 }
             }
         }
-        let report = surgeist_html::HtmlValueInterpreter::new(bound)
+        let report = surgeist_html::values::HtmlValueInterpreter::new(bound)
             .closedby(element.name(), raw)
             .map_err(|_| DomError::InvalidSourceOperation)?;
         let closedby = *report.intrinsic().ok_or(DomError::DialogInapplicable)?;
-        Ok(surgeist_html::dialog_close_watcher_enabled(
-            state.force_watcher_enabled,
-            closedby,
-            state.is_modal(),
-        ))
+        Ok(
+            surgeist_html::elements::dialog::dialog_close_watcher_enabled(
+                state.force_watcher_enabled,
+                closedby,
+                state.is_modal(),
+            ),
+        )
     }
     /// Fresh activity of the retained original Window's actual associated Document.
     pub fn close_watcher_window_fully_active(
@@ -469,8 +473,8 @@ impl DomSourceLease<'_> {
                             Some(crate::store::method::Frame::Dialog(
                                 crate::store::dialog::MethodFrame {
                                     subject: key,
-                                    cursor: surgeist_html::HtmlDialogCursor::new(
-                                        surgeist_html::HtmlDialogOperation::Close {
+                                    cursor: surgeist_html::elements::dialog::HtmlDialogCursor::new(
+                                        surgeist_html::elements::dialog::HtmlDialogOperation::Close {
                                             result_present: op.request_close_result.is_some(),
                                         },
                                     ),

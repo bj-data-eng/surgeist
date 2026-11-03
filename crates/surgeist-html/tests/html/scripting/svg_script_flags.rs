@@ -1,5 +1,5 @@
 //! SVG Tiny processed state and the separately selected actual-bit clone rule.
-use surgeist_html::{HtmlScriptFlags, SvgScriptFlags};
+use surgeist_html::elements::script::{HtmlScriptFlags, SvgScriptFlags};
 
 #[test]
 fn fresh_svg_script_has_not_been_processed() {

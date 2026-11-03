@@ -49,7 +49,7 @@ pub enum DomStyleSheetAvailability {
 /// initializes this state afresh before copied attributes and children run.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DomStyleState {
-    pub(crate) creation: surgeist_html::HtmlStyleState,
+    pub(crate) creation: surgeist_html::elements::style::HtmlStyleState,
     pub(crate) sheet: Option<DomStyleSheet>,
     pub(crate) next_association: u64,
     pub(crate) availability: DomStyleSheetAvailability,
@@ -57,7 +57,7 @@ pub struct DomStyleState {
 impl DomStyleState {
     pub(crate) fn fresh() -> Self {
         Self {
-            creation: surgeist_html::HtmlStyleState::fresh(),
+            creation: surgeist_html::elements::style::HtmlStyleState::fresh(),
             sheet: None,
             next_association: 0,
             availability: DomStyleSheetAvailability::Established,
@@ -67,7 +67,7 @@ impl DomStyleState {
     /// association qualification. Only a proved no-effect history is established
     /// without downstream CSSOM processing.
     pub(crate) fn from_parsed(
-        creation: surgeist_html::HtmlStyleState,
+        creation: surgeist_html::elements::style::HtmlStyleState,
         availability: DomStyleSheetAvailability,
     ) -> Self {
         Self {
@@ -80,7 +80,7 @@ impl DomStyleState {
     pub fn association_availability(&self) -> DomStyleSheetAvailability {
         self.availability
     }
-    pub fn creation_state(&self) -> surgeist_html::HtmlStyleState {
+    pub fn creation_state(&self) -> surgeist_html::elements::style::HtmlStyleState {
         self.creation
     }
 }
@@ -155,14 +155,14 @@ pub struct DomStyleSource {
     pub(crate) document: crate::DocumentId,
     pub(crate) root: NodeId,
     pub(crate) text: std::sync::Arc<Vec<u16>>,
-    pub(crate) base_url: crate::DocumentString,
-    pub(crate) media: Option<crate::DocumentString>,
-    pub(crate) title: Option<crate::DocumentString>,
-    pub(crate) blocking: Option<crate::DocumentString>,
-    pub(crate) nonce: crate::DocumentString,
+    pub(crate) base_url: surgeist_html::values::DocumentString,
+    pub(crate) media: Option<surgeist_html::values::DocumentString>,
+    pub(crate) title: Option<surgeist_html::values::DocumentString>,
+    pub(crate) blocking: Option<surgeist_html::values::DocumentString>,
+    pub(crate) nonce: surgeist_html::values::DocumentString,
 }
 impl DomStyleSource {
-    fn retained_strings(&self) -> impl Iterator<Item = &crate::DocumentString> {
+    fn retained_strings(&self) -> impl Iterator<Item = &surgeist_html::values::DocumentString> {
         [
             Some(&self.base_url),
             self.media.as_ref(),
@@ -238,29 +238,29 @@ impl DomStyleSource {
     pub fn root(&self) -> NodeId {
         self.root
     }
-    pub fn base_url(&self) -> &crate::DocumentString {
+    pub fn base_url(&self) -> &surgeist_html::values::DocumentString {
         &self.base_url
     }
     pub fn text(&self) -> &std::sync::Arc<Vec<u16>> {
         &self.text
     }
-    pub fn media(&self) -> Option<&crate::DocumentString> {
+    pub fn media(&self) -> Option<&surgeist_html::values::DocumentString> {
         self.media.as_ref()
     }
-    pub fn title(&self) -> Option<&crate::DocumentString> {
+    pub fn title(&self) -> Option<&surgeist_html::values::DocumentString> {
         self.title.as_ref()
     }
-    pub fn blocking(&self) -> Option<&crate::DocumentString> {
+    pub fn blocking(&self) -> Option<&surgeist_html::values::DocumentString> {
         self.blocking.as_ref()
     }
-    pub fn nonce(&self) -> &crate::DocumentString {
+    pub fn nonce(&self) -> &surgeist_html::values::DocumentString {
         &self.nonce
     }
 }
 /// The actual source algorithm requiring composition with an external owner.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomStyleAction {
-    Update(surgeist_html::HtmlStyleUpdateAction),
+    Update(surgeist_html::elements::style::HtmlStyleUpdateAction),
     OwnerAttributes,
     /// Set the existing sheet flag without replacing its association.
     SetDisabled(bool),
@@ -297,10 +297,12 @@ impl DomStyleRequest {
     }
     pub fn cssom_root(&self) -> Option<NodeId> {
         match self.action {
-            DomStyleAction::Update(surgeist_html::HtmlStyleUpdateAction::CreateSheet) => {
-                Some(self.source.root)
-            }
-            DomStyleAction::Update(surgeist_html::HtmlStyleUpdateAction::RemoveAssociatedSheet)
+            DomStyleAction::Update(
+                surgeist_html::elements::style::HtmlStyleUpdateAction::CreateSheet,
+            ) => Some(self.source.root),
+            DomStyleAction::Update(
+                surgeist_html::elements::style::HtmlStyleUpdateAction::RemoveAssociatedSheet,
+            )
             | DomStyleAction::OwnerAttributes
             | DomStyleAction::SetDisabled(_) => self.sheet.as_ref().map(|s| s.root),
             _ => None,
@@ -320,7 +322,7 @@ impl DomStyleRequest {
 #[derive(Clone, Debug)]
 pub struct DomStyleInlineCspObservation {
     pub(crate) source: DomStyleSource,
-    pub(crate) policies: crate::store::SharedVec<crate::DocumentString>,
+    pub(crate) policies: crate::store::SharedVec<surgeist_html::values::DocumentString>,
     pub(crate) policy_revision: u64,
     pub(crate) allowed: bool,
 }
@@ -336,7 +338,9 @@ impl DomStyleInlineCspObservation {
         };
         #[cfg(test)]
         if crate::store::scale_metrics::ENABLED && result.policies.has_backing() {
-            crate::store::empty_sequence_observation::allocated::<crate::DocumentString>(
+            crate::store::empty_sequence_observation::allocated::<
+                surgeist_html::values::DocumentString,
+            >(
                 crate::store::empty_sequence_observation::Kind::StylePolicies,
                 result.policies.capacity(),
             );
@@ -361,7 +365,7 @@ impl DomStyleInlineCspObservation {
     /// list. This adapter does not parse or reinterpret CSP.
     pub fn evaluated(
         source: &DomStyleSource,
-        policies: std::sync::Arc<Vec<crate::DocumentString>>,
+        policies: std::sync::Arc<Vec<surgeist_html::values::DocumentString>>,
         policy_revision: u64,
         allowed: bool,
     ) -> Self {
@@ -375,7 +379,7 @@ impl DomStyleInlineCspObservation {
     pub fn policy_revision(&self) -> u64 {
         self.policy_revision
     }
-    pub fn policies(&self) -> &[crate::DocumentString] {
+    pub fn policies(&self) -> &[surgeist_html::values::DocumentString] {
         &self.policies
     }
     pub fn allowed(&self) -> bool {
@@ -402,8 +406,9 @@ impl DomStyleCssomOwnerBinding {
     ) -> Result<Self, crate::DomError> {
         if !matches!(
             request.action,
-            DomStyleAction::Update(surgeist_html::HtmlStyleUpdateAction::CreateSheet)
-                | DomStyleAction::OwnerAttributes
+            DomStyleAction::Update(
+                surgeist_html::elements::style::HtmlStyleUpdateAction::CreateSheet
+            ) | DomStyleAction::OwnerAttributes
         ) || version.role != surgeist_cssom::CssomInputRole::Owner
             || owner.is_empty()
         {

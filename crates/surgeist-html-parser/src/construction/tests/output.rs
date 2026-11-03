@@ -1,4 +1,8 @@
 use super::*;
+use surgeist_html::{
+    construction::HtmlDocumentMode, elements::form::HtmlNativeFormAssociationKind,
+    values::Namespace,
+};
 
 #[test]
 fn output_reads_actual_descendants_after_merge_move_and_freeze_without_raw_cache() {

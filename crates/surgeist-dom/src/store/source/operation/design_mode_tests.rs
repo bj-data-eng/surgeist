@@ -77,7 +77,7 @@ fn completed_local_design_mode_frame_and_range_result_survive_final_output_refus
         };
         assert_eq!(
             frame.cursor.action(),
-            surgeist_html::HtmlDesignModeAction::Complete
+            surgeist_html::elements::native::HtmlDesignModeAction::Complete
         );
         assert_eq!(frame.range, Some(expected));
         assert!(frame.focusing.is_none());
@@ -175,7 +175,9 @@ fn design_mode_reserves_only_actual_prefix_and_final_revisions_before_real_focus
             };
             assert_eq!(
                 request.step(),
-                Step::Focusing(surgeist_html::HtmlFocusingAction::ReadInitialTargetFocusableArea)
+                Step::Focusing(
+                    surgeist_html::focus::HtmlFocusingAction::ReadInitialTargetFocusableArea
+                )
             );
             assert_eq!(
                 request.range_disposition(),

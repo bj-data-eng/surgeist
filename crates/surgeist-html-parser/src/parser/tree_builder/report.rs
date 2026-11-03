@@ -241,10 +241,10 @@ impl HtmlParseReport {
             ReportContext::Fragment(request) => request.limits(),
         }
     }
-    pub fn document(&self) -> Option<&crate::HtmlDocument> {
+    pub fn document(&self) -> Option<&surgeist_html::construction::HtmlDocument> {
         self.storage.history().document()
     }
-    pub fn fragment(&self) -> Option<&crate::HtmlFragment> {
+    pub fn fragment(&self) -> Option<&surgeist_html::construction::HtmlFragment> {
         self.storage.history().fragment()
     }
     pub fn context(&self) -> Option<&crate::HtmlFragmentContext> {
@@ -276,15 +276,19 @@ impl HtmlParseReport {
             _ => None,
         }
     }
-    pub fn requested_scripting_mode(&self) -> crate::HtmlParserScriptingMode {
+    pub fn requested_scripting_mode(&self) -> surgeist_html::parsing::HtmlParserScriptingMode {
         match &self.context {
-            ReportContext::Document { .. } => crate::HtmlParserScriptingMode::Disabled,
+            ReportContext::Document { .. } => {
+                surgeist_html::parsing::HtmlParserScriptingMode::Disabled
+            }
             ReportContext::Fragment(request) => request.requested_scripting_mode(),
         }
     }
-    pub fn effective_scripting_mode(&self) -> crate::HtmlParserScriptingMode {
+    pub fn effective_scripting_mode(&self) -> surgeist_html::parsing::HtmlParserScriptingMode {
         match &self.context {
-            ReportContext::Document { .. } => crate::HtmlParserScriptingMode::Disabled,
+            ReportContext::Document { .. } => {
+                surgeist_html::parsing::HtmlParserScriptingMode::Disabled
+            }
             ReportContext::Fragment(request) => request.effective_scripting_mode(),
         }
     }
@@ -394,8 +398,8 @@ mod tests {
 
     #[test]
     fn details_publication_keeps_native_attributes_and_skips_private_eligibility() {
-        use crate::HtmlNodeKind;
         use crate::construction::report::{HtmlParseMetadataDocument, HtmlParseMetadataStep};
+        use surgeist_html::construction::HtmlNodeKind;
         let literal =
             "<!doctype html><details name=g open>A</details><details name=g open>B</details>";
         let mut sealed = Some(ordinary(literal, true));
@@ -458,7 +462,7 @@ mod tests {
                                 nonce_counts[index] += 1;
                             } else {
                                 let creation = record.creation().unwrap();
-                                assert_eq!(creation.0, crate::HtmlCustomElementState::Uncustomized);
+                                assert_eq!(creation.0, surgeist_html::elements::native::HtmlCustomElementState::Uncustomized);
                                 assert!(creation.1.is_none());
                             }
                         }
@@ -486,6 +490,11 @@ mod tests {
             ContextFragmentDriver, ownership::FragmentInitializationOwner,
         };
         use crate::*;
+        use surgeist_html::{
+            construction::HtmlDocumentMode,
+            parsing::HtmlParserScriptingMode,
+            values::{Namespace, OrderedAttributes, QualifiedName},
+        };
         let mut capture = HtmlCaptureBuilder::new(
             HtmlCaptureLimits::new(100, 1000, 100, 100_000, 1000, 100, 1000, 16_777_216),
             HtmlHostFactsRevision::fresh(),
@@ -550,6 +559,10 @@ mod tests {
     fn complete_fragment_report_keeps_capture_effects_source_and_options_after_cancel() {
         use crate::construction::context::{HtmlParseEffect, HtmlParseEffectHost};
         use crate::*;
+        use surgeist_html::{
+            construction::{HtmlNodeKind, HtmlShadowRootMode},
+            parsing::HtmlParserScriptingMode,
+        };
         let literal = "<template shadowrootmode=closed shadowrootclonable><p>A</p></template><template shadowrootmode=open><p>B</p></template><p>Z</p>";
         let mut input = Some(fragment(literal, true));
         let cancel = input.as_ref().unwrap().request.cancellation().clone();
@@ -665,7 +678,7 @@ mod tests {
         assert!(report.effects().unwrap().is_none());
         assert_eq!(
             report.document().unwrap().mode(),
-            crate::HtmlDocumentMode::NoQuirks
+            surgeist_html::construction::HtmlDocumentMode::NoQuirks
         );
         assert_eq!(
             super::super::tests::outline(report.document().unwrap()),
@@ -690,7 +703,10 @@ mod tests {
                 HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
                 HtmlParseMetadataStep::Record(record) => {
                     if let Some((state, raw)) = record.input() {
-                        assert_eq!(state.flags.input_type(), surgeist_html::HtmlInputType::Text);
+                        assert_eq!(
+                            state.flags.input_type(),
+                            surgeist_html::attributes::HtmlInputType::Text
+                        );
                         assert!(!state.flags.dirty_value());
                         assert_eq!(raw.code_units(), &[65, 66]);
                         values.push(record.node().id());
@@ -831,7 +847,7 @@ mod tests {
         assert!(report.document_state().is_some());
         assert_eq!(
             report.requested_scripting_mode(),
-            crate::HtmlParserScriptingMode::Disabled
+            surgeist_html::parsing::HtmlParserScriptingMode::Disabled
         );
         assert!(!report.allow_declarative_shadow_roots());
         let mut cursor = report.metadata();
@@ -852,7 +868,7 @@ mod tests {
                     if let Some((form, owner)) = record.form() {
                         assert!(form.parser_inserted);
                         assert!(
-                            matches!(owner.unwrap().kind(), crate::HtmlNodeKind::Element(e) if e.name().local_name().code_units() == [102,111,114,109])
+                            matches!(owner.unwrap().kind(), surgeist_html::construction::HtmlNodeKind::Element(e) if e.name().local_name().code_units() == [102,111,114,109])
                         );
                         counts[1] += 1;
                     }
@@ -860,10 +876,10 @@ mod tests {
                         assert!(script.flags.already_started() && !script.flags.force_async());
                         let (parser, preparation) = record.script_documents().unwrap();
                         assert!(
-                            matches!(parser.unwrap(), HtmlParseMetadataDocument::Owned(n) if matches!(n.kind(), crate::HtmlNodeKind::Document(_)))
+                            matches!(parser.unwrap(), HtmlParseMetadataDocument::Owned(n) if matches!(n.kind(), surgeist_html::construction::HtmlNodeKind::Document(_)))
                         );
                         assert!(
-                            matches!(preparation.unwrap(), HtmlParseMetadataDocument::Owned(n) if matches!(n.kind(), crate::HtmlNodeKind::Document(_)))
+                            matches!(preparation.unwrap(), HtmlParseMetadataDocument::Owned(n) if matches!(n.kind(), surgeist_html::construction::HtmlNodeKind::Document(_)))
                         );
                         counts[2] += 1;
                     }
@@ -895,16 +911,22 @@ mod tests {
                     }
                     if let Some((state, saved)) = record.creation() {
                         if let Some(saved) = saved {
-                            assert_eq!(state, crate::HtmlCustomElementState::Undefined);
+                            assert_eq!(
+                                state,
+                                surgeist_html::elements::native::HtmlCustomElementState::Undefined
+                            );
                             assert_eq!(saved.code_units(), &[115, 97, 118, 101, 100]);
                             saved_creation = true;
                         } else {
-                            assert_eq!(state, crate::HtmlCustomElementState::Uncustomized);
+                            assert_eq!(state, surgeist_html::elements::native::HtmlCustomElementState::Uncustomized);
                         }
                     }
                     if let Some(HtmlParseMetadataDocument::Owned(document)) = record.node_document()
                     {
-                        assert!(matches!(document.kind(), crate::HtmlNodeKind::Document(_)));
+                        assert!(matches!(
+                            document.kind(),
+                            surgeist_html::construction::HtmlNodeKind::Document(_)
+                        ));
                     }
                 }
                 HtmlParseMetadataStep::Skipped => {}
@@ -930,7 +952,10 @@ mod tests {
                 HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
                 HtmlParseMetadataStep::Record(record) => {
                     if let Some((state, Some(value))) = record.creation() {
-                        assert_eq!(state, crate::HtmlCustomElementState::Undefined);
+                        assert_eq!(
+                            state,
+                            surgeist_html::elements::native::HtmlCustomElementState::Undefined
+                        );
                         assert_eq!(value.code_units(), &[115, 97, 118, 101, 100]);
                         saved = true;
                     }
@@ -943,7 +968,10 @@ mod tests {
                         for document in [parser, preparation].into_iter().flatten() {
                             match document {
                                 HtmlParseMetadataDocument::Owned(node) => {
-                                    assert!(matches!(node.kind(), crate::HtmlNodeKind::Document(_)))
+                                    assert!(matches!(
+                                        node.kind(),
+                                        surgeist_html::construction::HtmlNodeKind::Document(_)
+                                    ))
                                 }
                                 HtmlParseMetadataDocument::Captured(node) => assert!(matches!(
                                     node.kind(),
@@ -961,21 +989,25 @@ mod tests {
         assert!(saved && script);
     }
 
-    fn first_text(document: &crate::HtmlDocument) -> &crate::DocumentString {
+    fn first_text(
+        document: &surgeist_html::construction::HtmlDocument,
+    ) -> &surgeist_html::values::DocumentString {
         let html = document
             .root()
             .children()
             .find(|node| {
                 matches!(
                     document.node(node).unwrap().kind(),
-                    crate::HtmlNodeKind::Element(_)
+                    surgeist_html::construction::HtmlNodeKind::Element(_)
                 )
             })
             .unwrap();
         let body = document.node(&html).unwrap().children().nth(1).unwrap();
         let p = document.node(&body).unwrap().children().next().unwrap();
         let text = document.node(&p).unwrap().children().next().unwrap();
-        let crate::HtmlNodeKind::Text(value) = document.node(&text).unwrap().kind() else {
+        let surgeist_html::construction::HtmlNodeKind::Text(value) =
+            document.node(&text).unwrap().kind()
+        else {
             panic!("literal text");
         };
         value
@@ -1155,7 +1187,8 @@ mod tests {
             assert!(observed.earlier_promoted);
             assert!(
                 observed.selected_bank_bytes
-                    >= size_of::<Vec<crate::Attribute>>() + 2 * size_of::<crate::Attribute>()
+                    >= size_of::<Vec<surgeist_html::values::Attribute>>()
+                        + 2 * size_of::<surgeist_html::values::Attribute>()
             );
             // Each of the two actual attributes has one local-name and one
             // value output receipt; absent namespace/prefix adds no fake row.
@@ -1243,7 +1276,7 @@ mod tests {
         let report = HtmlParseReport::take_fragment(&mut input).unwrap();
         assert_eq!(
             report.effective_scripting_mode(),
-            crate::HtmlParserScriptingMode::Inert
+            surgeist_html::parsing::HtmlParserScriptingMode::Inert
         );
         cancel.cancel();
         assert!(!report.diagnostics().is_empty());
@@ -1258,7 +1291,7 @@ mod tests {
                         assert!(script.script_type.is_none());
                         let (parser, preparation) = record.script_documents().unwrap();
                         assert!(
-                            matches!(parser.unwrap(), HtmlParseMetadataDocument::Owned(node) if matches!(node.kind(), crate::HtmlNodeKind::Document(_)))
+                            matches!(parser.unwrap(), HtmlParseMetadataDocument::Owned(node) if matches!(node.kind(), surgeist_html::construction::HtmlNodeKind::Document(_)))
                         );
                         assert!(preparation.is_none());
                         found = true;
@@ -1497,7 +1530,7 @@ mod tests {
                         assert_eq!(count, 1);
                         assert!(matches!(
                             record.node().kind(),
-                            crate::HtmlNodeKind::ProcessingInstruction(_)
+                            surgeist_html::construction::HtmlNodeKind::ProcessingInstruction(_)
                         ));
                         let (name, value) = record.pi_attribute(0).unwrap();
                         assert_eq!(name.code_units(), &[110, 97, 109, 101]);
@@ -1513,7 +1546,7 @@ mod tests {
                         assert!(!keep_null && declarative && available);
                         assert!(matches!(
                             record.node().kind(),
-                            crate::HtmlNodeKind::Fragment
+                            surgeist_html::construction::HtmlNodeKind::Fragment
                         ));
                         assert_eq!(record.node().children().len(), 1);
                         shadow = true;
@@ -1522,7 +1555,7 @@ mod tests {
                         assert_eq!(class, crate::HtmlDocumentClass::Html);
                         assert!(matches!(
                             record.node().kind(),
-                            crate::HtmlNodeKind::Document(_)
+                            surgeist_html::construction::HtmlNodeKind::Document(_)
                         ));
                         if is_inert {
                             assert!(cache.is_none());
@@ -1578,8 +1611,10 @@ mod tests {
                         let owner = record.option_nearest_select().expect("applicable option");
                         if let Some(owner) = owner {
                             cached = Some(owner.id());
-                            assert!(matches!(owner.kind(), crate::HtmlNodeKind::Element(e)
-                                if e.name().local_name().code_units() == [115,101,108,101,99,116]));
+                            assert!(
+                                matches!(owner.kind(), surgeist_html::construction::HtmlNodeKind::Element(e)
+                                if e.name().local_name().code_units() == [115,101,108,101,99,116])
+                            );
                         }
                         options.push((record.node().id(), owner.is_some()));
                     } else {
@@ -1687,11 +1722,13 @@ mod tests {
         let frozen = report.fragment().unwrap();
         let option = frozen.root().children().next().unwrap();
         let node = frozen.node(&option).unwrap();
-        assert!(matches!(node.kind(), crate::HtmlNodeKind::Element(e)
-            if e.name().local_name().code_units() == [111,112,116,105,111,110]));
+        assert!(
+            matches!(node.kind(), surgeist_html::construction::HtmlNodeKind::Element(e)
+            if e.name().local_name().code_units() == [111,112,116,105,111,110])
+        );
         let text = node.children().next().unwrap();
         assert!(matches!(frozen.node(&text).unwrap().kind(),
-            crate::HtmlNodeKind::Text(value) if value.code_units() == [66]));
+            surgeist_html::construction::HtmlNodeKind::Text(value) if value.code_units() == [66]));
         let usage = report.usage().clone();
         cancel.cancel();
         let mut cursor = report.metadata();

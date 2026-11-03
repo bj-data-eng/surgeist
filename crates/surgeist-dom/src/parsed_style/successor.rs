@@ -36,8 +36,10 @@ impl From<DomError> for DomParsedHtmlStyleSuccessorError {
         Self::Style(value.into())
     }
 }
-impl From<surgeist_html::HtmlStyleProtocolError> for DomParsedHtmlStyleSuccessorError {
-    fn from(value: surgeist_html::HtmlStyleProtocolError) -> Self {
+impl From<surgeist_html::elements::style::HtmlStyleProtocolError>
+    for DomParsedHtmlStyleSuccessorError
+{
+    fn from(value: surgeist_html::elements::style::HtmlStyleProtocolError) -> Self {
         Self::Style(value.into())
     }
 }

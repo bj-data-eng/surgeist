@@ -17,8 +17,6 @@
     )
 )]
 
-use surgeist_html::bounded;
-use surgeist_html::*;
 use surgeist_html_semantics::*;
 mod construction;
 mod keyed;

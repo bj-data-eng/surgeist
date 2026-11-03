@@ -14,7 +14,7 @@ pub struct DomParsedHtmlStyleCreateSheetRequest {
     pub(crate) media: Option<DocumentString>,
     pub(crate) title: Option<DocumentString>,
     pub(crate) parser_document: Option<DocumentId>,
-    pub(crate) mode: surgeist_html::HtmlDocumentMode,
+    pub(crate) mode: surgeist_html::construction::HtmlDocumentMode,
 }
 impl DomParsedHtmlStyleCreateSheetRequest {
     pub fn qualification(&self) -> &DomParsedHtmlStyleQualification {
@@ -38,7 +38,7 @@ impl DomParsedHtmlStyleCreateSheetRequest {
     pub fn parser_document(&self) -> Option<DocumentId> {
         self.parser_document
     }
-    pub fn document_mode(&self) -> surgeist_html::HtmlDocumentMode {
+    pub fn document_mode(&self) -> surgeist_html::construction::HtmlDocumentMode {
         self.mode
     }
 }

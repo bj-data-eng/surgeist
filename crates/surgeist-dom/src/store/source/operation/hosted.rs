@@ -1,5 +1,6 @@
 //! Hosted effects retain this exact original Source root and its Draft keys.
 use super::*;
+
 #[cfg(test)]
 mod tests;
 #[derive(Clone, Copy)]
@@ -23,7 +24,7 @@ impl ChildHook {
 use crate::hosted::*;
 use crate::store::hosted as canonical;
 use crate::{DomDocumentStamp, DomOpaqueOrigin};
-use surgeist_html::{HtmlSandboxFlag, KnownHtmlAttribute};
+use surgeist_html::{attributes::sandbox::HtmlSandboxFlag, vocabulary::KnownHtmlAttribute};
 use surgeist_html_semantics::{HtmlBaseFactsRevision, HtmlBaseParseOutcome};
 
 pub(in crate::store) struct Child {
@@ -246,12 +247,12 @@ impl DomSourceLease<'_> {
             .iframe_initial_state()
             .is_some();
         if iframe
-            && surgeist_html::iframe_attribute_branch(
+            && surgeist_html::elements::frame::iframe_attribute_branch(
                 operation
                     .draft
                     .control_attribute(key, KnownHtmlAttribute::Srcdoc, cancel)?
                     .is_some(),
-            ) == surgeist_html::HtmlIframeAttributeBranch::Srcdoc
+            ) == surgeist_html::elements::frame::HtmlIframeAttributeBranch::Srcdoc
         {
             // The actual srcdoc navigation branch requires its own execution
             // owner. It is not the shared-src initial ancestor-return path.
@@ -274,11 +275,11 @@ impl DomSourceLease<'_> {
         let raw = operation
             .draft
             .control_attribute(key, KnownHtmlAttribute::Src, cancel)?;
-        let candidate = match surgeist_html::bounded::frame_iframe_src_with(raw, || {
+        let candidate = match surgeist_html::bounded::frame::frame_iframe_src_with(raw, || {
             operation.draft.source_step(cancel)
         })? {
-            surgeist_html::HtmlFrameIframeSrcDecision::AboutBlank => None,
-            surgeist_html::HtmlFrameIframeSrcDecision::ParseSrc(_) => {
+            surgeist_html::elements::frame::HtmlFrameIframeSrcDecision::AboutBlank => None,
+            surgeist_html::elements::frame::HtmlFrameIframeSrcDecision::ParseSrc(_) => {
                 let Some(response) = child.observation.as_ref().filter(|value| {
                     value.value.request().stage() == crate::DomSourceUrlStage::FrameIframeSrc
                 }) else {
@@ -341,13 +342,16 @@ impl DomSourceLease<'_> {
             }
             current = nav.parent;
         }
-        let action =
-            surgeist_html::bounded::frame_iframe_after_ancestors_with(matched, true, || {
+        let action = surgeist_html::bounded::frame::frame_iframe_after_ancestors_with(
+            matched,
+            true,
+            || {
                 operation.draft.source_step(cancel)?;
                 Ok::<_, DomError>(candidate.matches_about_blank())
-            })?;
+            },
+        )?;
         match action {
-            surgeist_html::HtmlFrameIframeAfterAncestors::ReturnNull => {
+            surgeist_html::elements::frame::HtmlFrameIframeAfterAncestors::ReturnNull => {
                 // No URL/history update, initial load, lazy step or navigation
                 // runs after the actual inclusive-ancestor early return.
                 let child = operation.child.as_mut().expect("validated original child");
@@ -359,8 +363,8 @@ impl DomSourceLease<'_> {
             }
             // This bounded initial profile has no navigation execution owner;
             // retain the actual reached tail and its original response/Work.
-            surgeist_html::HtmlFrameIframeAfterAncestors::UpdateUrlAndHistory
-            | surgeist_html::HtmlFrameIframeAfterAncestors::ReturnUrl => {
+            surgeist_html::elements::frame::HtmlFrameIframeAfterAncestors::UpdateUrlAndHistory
+            | surgeist_html::elements::frame::HtmlFrameIframeAfterAncestors::ReturnUrl => {
                 Err(DomHostedError::UnsupportedProfile)
             }
         }
@@ -473,7 +477,7 @@ impl DomSourceLease<'_> {
             DomHostedEmbedderKind::Frame
         };
         let own_sandbox = if kind == DomHostedEmbedderKind::Frame {
-            surgeist_html::HtmlSandboxFlags::empty()
+            surgeist_html::attributes::sandbox::HtmlSandboxFlags::empty()
         } else {
             op.draft
                 .element(key)?
@@ -969,7 +973,7 @@ impl DomSourceLease<'_> {
 impl Draft {
     fn inherit_child_policy(
         &self,
-        issuer: &custody::Held<std::cell::RefCell<surgeist_html::HtmlCspOwner>>,
+        issuer: &custody::Held<std::cell::RefCell<surgeist_html::security::csp::HtmlCspOwner>>,
         source: &DomHostedSource,
         inner: &canonical::Operation,
         cancel: &AtomicBool,
@@ -1019,7 +1023,7 @@ impl Draft {
             let association = owner
                 .associate_document_with(
                     original,
-                    surgeist_html::HtmlCspAssociationCause::Inheritance,
+                    surgeist_html::security::csp::HtmlCspAssociationCause::Inheritance,
                     &mut |action| {
                         // A new callback starts only after the previous native
                         // action returned, so its temporary frame is retired.
@@ -1053,10 +1057,10 @@ impl Draft {
                     },
                 )
                 .map_err(|error| match error {
-                    surgeist_html::HtmlCspError::Protocol(error) => {
+                    surgeist_html::security::csp::HtmlCspError::Protocol(error) => {
                         DomHostedError::CspProtocol(error)
                     }
-                    surgeist_html::HtmlCspError::Interrupted(error) => error,
+                    surgeist_html::security::csp::HtmlCspError::Interrupted(error) => error,
                 })?;
             csp = crate::meta::CspState::Associated(crate::meta::SelectedCsp::new(
                 association,

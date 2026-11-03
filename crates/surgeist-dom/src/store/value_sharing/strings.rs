@@ -1,6 +1,6 @@
 //! Direct controlled consumption of HTML's optional immutable string producer.
 use super::*;
-use surgeist_html::bounded::{
+use surgeist_html::bounded::values::{
     HtmlStringPoolOperation, HtmlStringPoolResult, HtmlValuePoolActionKind, HtmlValuePoolProgress,
 };
 

@@ -4,7 +4,10 @@ use crate::semantics::support::{
 };
 // Text getters do not consume raw attributes; zero is intentional.
 use crate::semantics::support::session_without_raw_values as session;
-use surgeist_html::*;
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,

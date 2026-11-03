@@ -1,9 +1,16 @@
 use surgeist_html::{
-    Attribute, DocumentString, HtmlBrowsingContextPresence, HtmlChildNavigableAccessDecision,
-    HtmlChildNavigableLoadDelayDecision, HtmlChildNavigablePresence, HtmlIframeInitialState,
-    HtmlIframePostConnectionDecision, HtmlLoading, HtmlSandboxDirectiveState, HtmlSandboxFlag,
-    HtmlValueInterpreter, KnownHtmlAttribute, KnownHtmlElement, iframe_loading_became_eager,
-    iframe_post_connection,
+    attributes::{
+        HtmlLoading,
+        sandbox::{HtmlSandboxDirectiveState, HtmlSandboxFlag},
+    },
+    elements::frame::{
+        HtmlChildNavigableAccessDecision, HtmlChildNavigableLoadDelayDecision,
+        HtmlChildNavigablePresence, HtmlIframeInitialState, HtmlIframePostConnectionDecision,
+        iframe_loading_became_eager, iframe_post_connection,
+    },
+    security::nonce::HtmlBrowsingContextPresence,
+    values::{Attribute, DocumentString, HtmlValueInterpreter},
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 
 #[test]
@@ -129,7 +136,7 @@ fn absent_empty_and_raw_token_sandbox_reports_are_separate_from_unprocessed_nati
     let content = HtmlChildNavigablePresence::Null;
     assert_eq!(
         interpreter
-            .iframe_sandbox(&iframe, None::<&surgeist_html::Attribute>)
+            .iframe_sandbox(&iframe, None::<&surgeist_html::values::Attribute>)
             .unwrap()
             .intrinsic(),
         Some(&HtmlSandboxDirectiveState::Absent)

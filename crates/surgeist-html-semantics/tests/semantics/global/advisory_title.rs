@@ -1,5 +1,11 @@
 use crate::semantics::support::{builder_without_registries as builder, context, session};
-use surgeist_html::*;
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+};
 use surgeist_html_semantics::{
     HtmlAdvisoryInformation, HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject,
     HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlCapturedNodeKind,

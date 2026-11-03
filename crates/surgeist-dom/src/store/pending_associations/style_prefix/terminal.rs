@@ -1,6 +1,7 @@
 //! The actual readiness publication and pending-bank removal share one fence.
 use super::*;
 use crate::DomParsedHtmlTerminalError as Error;
+
 #[cfg(test)]
 thread_local! { pub(super) static PREPARED_ACK: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
 struct Output {

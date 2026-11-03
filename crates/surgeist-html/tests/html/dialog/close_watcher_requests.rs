@@ -1,6 +1,6 @@
 //! Literal source traces from HTML877d raw62026–62069 and selected cancel correction.
 use std::num::NonZeroUsize;
-use surgeist_html::{
+use surgeist_html::elements::dialog::{
     HtmlCloseWatcherRequestAction as A, HtmlCloseWatcherRequestCursor as C,
     HtmlCloseWatcherRequestReply as R, HtmlCloseWatcherState,
 };

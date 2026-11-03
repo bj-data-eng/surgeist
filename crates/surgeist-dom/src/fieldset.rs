@@ -1,6 +1,7 @@
 //! Native Fieldset state in the canonical owner, independent of current markup.
-use crate::{DocumentString, DomNode, NodeId};
-use surgeist_html::HtmlNativeFormAssociationKind;
+use crate::{DomNode, NodeId};
+use surgeist_html::elements::form::HtmlNativeFormAssociationKind;
+use surgeist_html::values::DocumentString;
 
 /// Actual native Fieldset parser flag and custom-error state.
 ///

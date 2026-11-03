@@ -1,5 +1,13 @@
 use super::*;
 use std::{cell::Cell, convert::Infallible};
+use surgeist_html::{
+    bounded::values::HtmlAttributeValidationError,
+    construction::HtmlDocumentMode,
+    values::{
+        Attribute, DocumentString, HtmlAttributesInput, HtmlNameInput, Namespace,
+        OrderedAttributes, QualifiedName,
+    },
+};
 
 fn limits(bytes: usize) -> HtmlCaptureLimits {
     HtmlCaptureLimits::new(20, 100, 100, 10_000, 20, 0, 0, bytes)

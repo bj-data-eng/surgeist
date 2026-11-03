@@ -6,7 +6,8 @@ use surgeist_dom::{
     HtmlCustomElementState, Namespace,
 };
 use surgeist_html::{
-    HtmlBrowsingContextPresence, HtmlElementClass as Requirement, KnownHtmlElement,
+    elements::native::HtmlElementClass as Requirement,
+    security::nonce::HtmlBrowsingContextPresence, vocabulary::KnownHtmlElement,
 };
 
 const HTML: &str = "http://www.w3.org/1999/xhtml";
@@ -194,7 +195,9 @@ fn unmet_builtin_profiles_reject_the_whole_batch_with_the_actual_requirement() {
         (
             HTML,
             "object",
-            Requirement::FormAssociated(surgeist_html::HtmlNativeFormAssociationKind::Object),
+            Requirement::FormAssociated(
+                surgeist_html::elements::form::HtmlNativeFormAssociationKind::Object,
+            ),
         ),
     ] {
         let before = dom.snapshot();

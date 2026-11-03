@@ -7,10 +7,16 @@ use super::support::{HostedFixture, cancel};
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 use surgeist_html::{
-    HtmlDialogAction, HtmlImageUpdateFlags, HtmlImgFreshRequestState,
-    HtmlInputEmptySelectionSupport as Empty, HtmlInputImageHistory,
-    HtmlInputNoneDirectionSupport as NoneDirection, HtmlInputSelectionDirection as Direction,
-    HtmlInputType,
+    attributes::HtmlInputType,
+    elements::{
+        dialog::HtmlDialogAction,
+        image::{HtmlImageUpdateFlags, HtmlImgFreshRequestState},
+        input::{
+            HtmlInputEmptySelectionSupport as Empty, HtmlInputImageHistory,
+            HtmlInputNoneDirectionSupport as NoneDirection,
+            HtmlInputSelectionDirection as Direction,
+        },
+    },
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -292,7 +298,7 @@ fn input_image_disabled_history_observes_absent_empty_and_changed_reentry_after_
                 .metadata()
                 .document_environment()
                 .input_images(),
-            surgeist_html::HtmlInputImagesDisabled::ExplicitlyDisabled
+            surgeist_html::elements::input::HtmlInputImagesDisabled::ExplicitlyDisabled
         );
         assert_eq!(current.incomplete_source_operation(), None);
         assert_eq!(

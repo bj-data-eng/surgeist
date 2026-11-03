@@ -4,6 +4,7 @@
 //! only by the algorithms that require them.
 
 use super::*;
+use surgeist_html::{bounded::select::select_display_size_default, vocabulary::KnownHtmlElement};
 
 /// An option form getter observation with the selecting evidence retained.
 /// A null nearest select differs from a select with an established null form
@@ -214,7 +215,8 @@ impl<'a> HtmlSemanticSession<'a> {
                 .and_then(|n| n.checked_add(8))
                 .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
             self.charge(work)?;
-            let value = crate::bounded::parse_nonnegative_integer_capped(size.value(), 2);
+            let value =
+                surgeist_html::bounded::numeric::parse_nonnegative_integer_capped(size.value(), 2);
             self.poll()?;
             value.ok()
         } else {

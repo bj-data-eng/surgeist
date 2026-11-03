@@ -91,7 +91,11 @@ pub(super) fn report(
         parsed.is_some(),
         snapshots.len()
     );
-    html.report("html_report", stage, size_of::<surgeist_html::Attribute>());
+    html.report(
+        "html_report",
+        stage,
+        size_of::<surgeist_html::values::Attribute>(),
+    );
     dom.report(
         "dom_snapshot_union",
         stage,

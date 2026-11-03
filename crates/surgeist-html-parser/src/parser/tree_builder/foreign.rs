@@ -18,10 +18,6 @@ use super::{
     tag_sets, write,
 };
 use crate::{
-    DocumentString,
-    bounded::{
-        self, HtmlIntegrationPointComparison, HtmlIntegrationPointRule, HtmlMathmlTextPointTest,
-    },
     construction::{BodyTextKind, BodyTextRuns, ForeignNamespace, ParserNode, partition_body_text},
     parser::{
         control::{HtmlParseUnsupportedState, HtmlParseWorkCategory, ParseControl},
@@ -29,6 +25,13 @@ use crate::{
     },
 };
 use std::mem::size_of;
+use surgeist_html::{
+    bounded,
+    bounded::parsing::{
+        HtmlIntegrationPointComparison, HtmlIntegrationPointRule, HtmlMathmlTextPointTest,
+    },
+    values::DocumentString,
+};
 
 const HTML: &str = "http://www.w3.org/1999/xhtml";
 const MATHML: &str = "http://www.w3.org/1998/Math/MathML";
@@ -49,12 +52,12 @@ fn integration_comparison(
 }
 
 fn integration_rule(
-    name: &crate::QualifiedName,
+    name: &surgeist_html::values::QualifiedName,
     c: &mut ParseControl,
 ) -> Result<HtmlIntegrationPointRule, HeadError> {
     // Borrow the namespace, its URI and the local name before comparisons.
     c.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
-    bounded::html_integration_point_rule(
+    bounded::parsing::html_integration_point_rule(
         name.namespace().uri(),
         name.local_name(),
         |value, literal, comparison| integration_comparison(value, literal, comparison, c),
@@ -62,7 +65,7 @@ fn integration_rule(
 }
 
 fn integration_encoding(
-    attributes: &crate::OrderedAttributes,
+    attributes: &surgeist_html::values::OrderedAttributes,
     c: &mut ParseControl,
 ) -> Result<bool, HeadError> {
     for attribute in attributes.as_slice() {
@@ -70,7 +73,7 @@ fn integration_encoding(
         // and value. Variable UTF-16 inspections remain comparison-owned.
         c.charge(HtmlParseWorkCategory::RecordVisit, 6)?;
         let name = attribute.name();
-        if let Some(result) = bounded::html_integration_point_encoding_attribute(
+        if let Some(result) = bounded::parsing::html_integration_point_encoding_attribute(
             name.namespace().uri(),
             name.local_name(),
             attribute.value(),
@@ -82,18 +85,23 @@ fn integration_encoding(
     Ok(false)
 }
 
-fn mathml_text_point(name: &crate::QualifiedName, c: &mut ParseControl) -> Result<bool, HeadError> {
-    Ok(bounded::mathml_text_integration_point(|test| match test {
-        HtmlMathmlTextPointTest::Namespace(expected) => tag_sets::namespace(name, expected, c),
-        HtmlMathmlTextPointTest::Local(choices) => tag_sets::local_in(name, choices, c),
-    })?)
+fn mathml_text_point(
+    name: &surgeist_html::values::QualifiedName,
+    c: &mut ParseControl,
+) -> Result<bool, HeadError> {
+    Ok(bounded::parsing::mathml_text_integration_point(
+        |test| match test {
+            HtmlMathmlTextPointTest::Namespace(expected) => tag_sets::namespace(name, expected, c),
+            HtmlMathmlTextPointTest::Local(choices) => tag_sets::local_in(name, choices, c),
+        },
+    )?)
 }
 
 impl HeadState<'_> {
     pub(super) fn adjusted_current_name<'a>(
         &'a self,
         c: &mut ParseControl,
-    ) -> Result<&'a crate::QualifiedName, HeadError> {
+    ) -> Result<&'a surgeist_html::values::QualifiedName, HeadError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self.before.kernel.stack()?.len() == 1
             && let Some(context) = self.before.kernel.session.fragment_context(c)?
@@ -118,7 +126,7 @@ impl HeadState<'_> {
     fn adjusted_current_attributes<'a>(
         &'a self,
         c: &mut ParseControl,
-    ) -> Result<&'a crate::OrderedAttributes, HeadError> {
+    ) -> Result<&'a surgeist_html::values::OrderedAttributes, HeadError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self.before.kernel.stack()?.len() == 1
             && let Some(context) = self.before.kernel.session.fragment_context(c)?
@@ -705,7 +713,7 @@ impl HeadState<'_> {
         // The lengths are equal, so the pairs are exactly the shared indices.
         for (&unit, &expected) in name.code_units().iter().zip(token.code_units()) {
             c.charge(HtmlParseWorkCategory::InspectByte, 4)?;
-            if surgeist_html::bounded::ascii_lowercase(unit) != expected {
+            if surgeist_html::bounded::lexical::ascii_lowercase(unit) != expected {
                 return Ok(false);
             }
         }
@@ -716,10 +724,8 @@ impl HeadState<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        Attribute, HtmlParseCancellation, HtmlParseResource, Namespace, OrderedAttributes,
-        QualifiedName,
-    };
+    use crate::{HtmlParseCancellation, HtmlParseResource};
+    use surgeist_html::values::{Attribute, Namespace, OrderedAttributes, QualifiedName};
 
     fn encoding(value: &str) -> Attribute {
         Attribute::new(

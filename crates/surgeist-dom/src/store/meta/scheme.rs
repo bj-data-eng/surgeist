@@ -4,6 +4,7 @@ use std::cell::Cell;
 use surgeist_css::source::{CssRetainedPayloadError, CssUtf16InputError, CssUtf16ValueAdmission};
 use surgeist_css::values::color_adjust::CssColorScheme;
 use surgeist_css::{CssParser, CssParserContext, CssParserMode};
+use surgeist_html::values::DocumentString;
 
 pub(super) struct Candidate {
     pub selected: crate::meta::SelectedColorScheme,
@@ -44,7 +45,7 @@ pub(super) fn parse(
     let formation = source::formation::Formation::new(draft, cancel)?;
     let live = Cell::new(source::storage::Payload::default());
     let context = CssParserContext::new(match draft.document_metadata(document)?.mode() {
-        surgeist_html::HtmlDocumentMode::Quirks => CssParserMode::Quirks,
+        surgeist_html::construction::HtmlDocumentMode::Quirks => CssParserMode::Quirks,
         _ => CssParserMode::Standards,
     });
     let report = CssColorScheme::parse_utf16(

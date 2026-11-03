@@ -1,5 +1,9 @@
 //! HTML877d Details source-ordered hooks over the canonical ordinary tree.
 use super::*;
+use surgeist_html::{
+    bounded::construction::HtmlConstructionAttributeEditMode, construction::HtmlNodeKind,
+    values::OrderedAttributes,
+};
 
 #[derive(Clone, Copy)]
 pub(super) enum NotificationDomain {
@@ -76,15 +80,15 @@ impl SessionStorage {
             return Ok(());
         }
         let attribute = if exact_ascii(c, Some(attr.name().local_name()), "open")? {
-            crate::HtmlDetailsAttribute::Open
+            surgeist_html::elements::details::HtmlDetailsAttribute::Open
         } else if exact_ascii(c, Some(attr.name().local_name()), "name")? {
-            crate::HtmlDetailsAttribute::Name
+            surgeist_html::elements::details::HtmlDetailsAttribute::Name
         } else {
-            crate::HtmlDetailsAttribute::Other
+            surgeist_html::elements::details::HtmlDetailsAttribute::Other
         };
         c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-        payload_write::<crate::HtmlDetailsAttributeEffect>(c, 1)?;
-        let effect = crate::details_attribute_effect(
+        payload_write::<surgeist_html::elements::details::HtmlDetailsAttributeEffect>(c, 1)?;
+        let effect = surgeist_html::elements::details::details_attribute_effect(
             attr.name().namespace(),
             attribute,
             None,
@@ -96,17 +100,27 @@ impl SessionStorage {
         &mut self,
         c: &mut ParseControl,
         node: usize,
-        effect: crate::HtmlDetailsAttributeEffect,
+        effect: surgeist_html::elements::details::HtmlDetailsAttributeEffect,
     ) -> Result<(), SessionError> {
         match effect {
-            crate::HtmlDetailsAttributeEffect::None => Ok(()),
-            crate::HtmlDetailsAttributeEffect::CloseGiven => {
-                self.start_details(c, node, crate::HtmlDetailsExclusivity::CloseGiven)
-            }
-            crate::HtmlDetailsAttributeEffect::Notify { close_other, .. } => {
+            surgeist_html::elements::details::HtmlDetailsAttributeEffect::None => Ok(()),
+            surgeist_html::elements::details::HtmlDetailsAttributeEffect::CloseGiven => self
+                .start_details(
+                    c,
+                    node,
+                    surgeist_html::elements::details::HtmlDetailsExclusivity::CloseGiven,
+                ),
+            surgeist_html::elements::details::HtmlDetailsAttributeEffect::Notify {
+                close_other,
+                ..
+            } => {
                 self.require_details_notification(c, node)?;
                 if close_other {
-                    self.start_details(c, node, crate::HtmlDetailsExclusivity::CloseOther)?;
+                    self.start_details(
+                        c,
+                        node,
+                        surgeist_html::elements::details::HtmlDetailsExclusivity::CloseOther,
+                    )?;
                 }
                 Ok(())
             }
@@ -116,7 +130,7 @@ impl SessionStorage {
         &mut self,
         c: &mut ParseControl,
         node: usize,
-        close: crate::HtmlDetailsExclusivity,
+        close: surgeist_html::elements::details::HtmlDetailsExclusivity,
     ) -> Result<(), SessionError> {
         if self.form_attribute(c, node, "open")?.is_none() {
             return Ok(());
@@ -154,7 +168,7 @@ impl SessionStorage {
         &mut self,
         c: &mut ParseControl,
         node: usize,
-        close: crate::HtmlDetailsExclusivity,
+        close: surgeist_html::elements::details::HtmlDetailsExclusivity,
         root: usize,
         next: Option<usize>,
     ) -> Result<(), SessionError> {
@@ -175,8 +189,8 @@ impl SessionStorage {
         };
         if matches && self.form_attribute(c, other, "open")?.is_some() {
             let target = match close {
-                crate::HtmlDetailsExclusivity::CloseGiven => node,
-                crate::HtmlDetailsExclusivity::CloseOther => other,
+                surgeist_html::elements::details::HtmlDetailsExclusivity::CloseGiven => node,
+                surgeist_html::elements::details::HtmlDetailsExclusivity::CloseOther => other,
             };
             self.require_details_notification(c, target)?;
             self.remove_details_open(c, target)?;
@@ -206,9 +220,9 @@ impl SessionStorage {
         self.details_change(
             c,
             node,
-            crate::HtmlDetailsAttributeEffect::Notify {
-                old: crate::HtmlDetailsState::Open,
-                new: crate::HtmlDetailsState::Closed,
+            surgeist_html::elements::details::HtmlDetailsAttributeEffect::Notify {
+                old: surgeist_html::elements::details::HtmlDetailsState::Open,
+                new: surgeist_html::elements::details::HtmlDetailsState::Closed,
                 close_other: false,
             },
         )
@@ -356,11 +370,11 @@ impl ParserArenaSession {
         &mut self,
         c: &mut ParseControl,
         node: &ParserNode,
-        attribute: crate::HtmlDetailsAttribute,
+        attribute: surgeist_html::elements::details::HtmlDetailsAttribute,
     ) -> Result<(), SessionError> {
         let local = match attribute {
-            crate::HtmlDetailsAttribute::Open => "open",
-            crate::HtmlDetailsAttribute::Name => "name",
+            surgeist_html::elements::details::HtmlDetailsAttribute::Open => "open",
+            surgeist_html::elements::details::HtmlDetailsAttribute::Name => "name",
             _ => return Err(SessionError::WrongToken),
         };
         self.remove_managed_attribute(c, node, local, mutation::ManagedFamily::Details)
@@ -371,6 +385,7 @@ impl ParserArenaSession {
 mod tests {
     use super::*;
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
+    use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
 
     fn request(source: &str) -> crate::HtmlDocumentParseRequest {
         crate::HtmlDocumentParseRequest::offline(
@@ -479,7 +494,11 @@ mod tests {
             vec![(vec![110, 97, 109, 101], vec![103])]
         );
         session
-            .remove_details_attribute(&mut c, &first, crate::HtmlDetailsAttribute::Open)
+            .remove_details_attribute(
+                &mut c,
+                &first,
+                surgeist_html::elements::details::HtmlDetailsAttribute::Open,
+            )
             .unwrap();
         assert_eq!(
             attributes(&session, &first),
@@ -603,7 +622,11 @@ mod tests {
             .resource(HtmlParseResource::WorkCredits)
             .current;
         session
-            .remove_details_attribute(&mut baseline, &node, crate::HtmlDetailsAttribute::Open)
+            .remove_details_attribute(
+                &mut baseline,
+                &node,
+                surgeist_html::elements::details::HtmlDetailsAttribute::Open,
+            )
             .unwrap();
         let cost = baseline
             .usage()
@@ -625,8 +648,11 @@ mod tests {
                 - c.usage().resource(HtmlParseResource::WorkCredits).current;
             c.charge(HtmlParseWorkCategory::StateStep, remaining - admitted)
                 .unwrap();
-            let result =
-                session.remove_details_attribute(&mut c, &node, crate::HtmlDetailsAttribute::Open);
+            let result = session.remove_details_attribute(
+                &mut c,
+                &node,
+                surgeist_html::elements::details::HtmlDetailsAttribute::Open,
+            );
             if admitted == cost {
                 assert_eq!(result, Ok(()));
             } else {
@@ -662,7 +688,11 @@ mod tests {
         session.active_mut().unwrap().cancel_after_details_shift =
             Some(request.cancellation().clone());
         assert_eq!(
-            session.remove_details_attribute(&mut c, &node, crate::HtmlDetailsAttribute::Open),
+            session.remove_details_attribute(
+                &mut c,
+                &node,
+                surgeist_html::elements::details::HtmlDetailsAttribute::Open
+            ),
             Err(SessionError::Stop(HtmlParseStop::Cancelled))
         );
         assert!(
@@ -833,7 +863,11 @@ mod tests {
             LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
         session
-            .remove_details_attribute(&mut c, &node, crate::HtmlDetailsAttribute::Open)
+            .remove_details_attribute(
+                &mut c,
+                &node,
+                surgeist_html::elements::details::HtmlDetailsAttribute::Open,
+            )
             .unwrap();
         // The original open/v allocations and sources are immutable history;
         // removing their current destination must not retire a surviving b/2.

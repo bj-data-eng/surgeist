@@ -1,4 +1,5 @@
 use super::*;
+use surgeist_html::construction::{HtmlConstructionLimits, HtmlDocument, HtmlDocumentMode};
 
 #[test]
 fn image_creation_uses_actual_same_tree_and_preserves_nonancestor_parser_owner() {

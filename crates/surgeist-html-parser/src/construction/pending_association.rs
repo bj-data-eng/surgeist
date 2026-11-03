@@ -1,6 +1,7 @@
 //! Bounded original occurrences and immutable inputs; no CSSOM execution.
 use super::*;
 use history::{FrozenHistory, HtmlParseOriginGroup};
+use surgeist_html::construction::{HtmlDocumentMode, HtmlNode, HtmlNodeId, HtmlNodeKind};
 
 /// An original occurrence, qualified by its immutable construction result.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -64,7 +65,7 @@ pub enum HtmlParseAssociationCaptureDisposition {
 pub enum HtmlParseAssociationOccurrenceKind {
     StyleCreated,
     StyleParserCreated,
-    StyleUpdate(surgeist_html::HtmlStyleTrigger),
+    StyleUpdate(surgeist_html::elements::style::HtmlStyleTrigger),
     StyleOwnerAttributes,
     StyleDocumentChanged,
     ChangePreferred,
@@ -86,7 +87,7 @@ pub(super) struct CapturedContext {
     usage: associated::AssociatedStorageUsage,
 }
 pub(super) struct Inputs {
-    state: surgeist_html::HtmlStyleState,
+    state: surgeist_html::elements::style::HtmlStyleState,
     parser_document: Option<DocumentRef>,
     connected: bool,
     type_eligible: bool,
@@ -342,7 +343,7 @@ impl SessionStorage {
         }
         let (state, parser_document) = state.ok_or(SessionError::WrongToken)?;
         let connected = self.shadow_including_connected(c, node, detached)?;
-        let type_eligible = surgeist_html::style_type_allows_css_with(
+        let type_eligible = surgeist_html::elements::style::style_type_allows_css_with(
             self.form_attribute(c, node, "type")?,
             || c.charge(HtmlParseWorkCategory::RecordVisit, 1),
         )?;
@@ -720,9 +721,10 @@ impl SessionStorage {
                         continue;
                     }
                     if let HtmlNodeKind::Element(element) = node.kind() {
-                        if surgeist_html::document_body_role_with(element.name(), |_| {
-                            c.charge(HtmlParseWorkCategory::RecordVisit, 1)
-                        })? == surgeist_html::HtmlDocumentBodyRole::Html
+                        if surgeist_html::elements::style::document_body_role_with(
+                            element.name(),
+                            |_| c.charge(HtmlParseWorkCategory::RecordVisit, 1),
+                        )? == surgeist_html::elements::style::HtmlDocumentBodyRole::Html
                         {
                             let mut body = node.child_at(0).map(|n| n.position());
                             while let Some(index) = body {
@@ -736,10 +738,10 @@ impl SessionStorage {
                                     continue;
                                 }
                                 if let HtmlNodeKind::Element(element) = node.kind()
-                                    && surgeist_html::document_body_role_with(
+                                    && surgeist_html::elements::style::document_body_role_with(
                                         element.name(),
                                         |_| c.charge(HtmlParseWorkCategory::RecordVisit, 1),
-                                    )? == surgeist_html::HtmlDocumentBodyRole::Body
+                                    )? == surgeist_html::elements::style::HtmlDocumentBodyRole::Body
                                 {
                                     context.body = true;
                                     break;
@@ -993,10 +995,12 @@ impl SessionStorage {
         &mut self,
         c: &mut ParseControl,
         node: usize,
-        trigger: surgeist_html::HtmlStyleTrigger,
+        trigger: surgeist_html::elements::style::HtmlStyleTrigger,
         detached: Option<usize>,
     ) -> Result<(), SessionError> {
-        if self.html_local(c, node, "style")? && surgeist_html::style_update_is_required(trigger) {
+        if self.html_local(c, node, "style")?
+            && surgeist_html::elements::style::style_update_is_required(trigger)
+        {
             self.record_association(
                 c,
                 node,
@@ -1032,12 +1036,12 @@ impl SessionStorage {
                 None => false,
             };
             let trigger = if removal {
-                surgeist_html::HtmlStyleTrigger::Removal {
+                surgeist_html::elements::style::HtmlStyleTrigger::Removal {
                     disconnected: old_connected && !connected,
                     on_parser_stack,
                 }
             } else {
-                surgeist_html::HtmlStyleTrigger::Insertion {
+                surgeist_html::elements::style::HtmlStyleTrigger::Insertion {
                     connected,
                     on_parser_stack,
                 }
@@ -1064,7 +1068,7 @@ impl SessionStorage {
         self.association_style_trigger(
             c,
             parent,
-            surgeist_html::HtmlStyleTrigger::ChildrenChanged {
+            surgeist_html::elements::style::HtmlStyleTrigger::ChildrenChanged {
                 on_parser_stack: state.state.on_parser_stack(),
             },
             detached,
@@ -1092,9 +1096,14 @@ impl SessionStorage {
             .as_slice()
             .get(position)
             .ok_or(SessionError::WrongToken)?;
-        let effect = surgeist_html::KnownHtmlAttribute::from_name(attr.name())
-            .map(|name| surgeist_html::style_attribute_effect(attr.name().namespace(), name));
-        if effect == Some(surgeist_html::HtmlStyleAttributeEffect::OwnerAttributes)
+        let effect =
+            surgeist_html::vocabulary::KnownHtmlAttribute::from_name(attr.name()).map(|name| {
+                surgeist_html::elements::style::style_attribute_effect(
+                    attr.name().namespace(),
+                    name,
+                )
+            });
+        if effect == Some(surgeist_html::elements::style::HtmlStyleAttributeEffect::OwnerAttributes)
             && self.html_local(c, node, "style")?
         {
             self.record_association(
@@ -1172,22 +1181,23 @@ impl SessionStorage {
         let Some(rel) = self.form_attribute(c, node, "rel")? else {
             return Ok(());
         };
-        let mut cursor = bounded::HtmlSpaceTokenCursor::new(rel.code_units());
+        let mut cursor =
+            surgeist_html::bounded::lexical::HtmlSpaceTokenCursor::new(rel.code_units());
         let mut stylesheet = false;
         let mut extension = false;
         loop {
             c.charge(
                 HtmlParseWorkCategory::RecordVisit,
-                bounded::HtmlSpaceTokenCursor::STEP_WORK as u64,
+                surgeist_html::bounded::lexical::HtmlSpaceTokenCursor::STEP_WORK as u64,
             )?;
             match cursor.step() {
-                bounded::HtmlSpaceTokenStep::Continue => {}
-                bounded::HtmlSpaceTokenStep::Done => break,
-                bounded::HtmlSpaceTokenStep::Token { start, end } => {
+                surgeist_html::bounded::lexical::HtmlSpaceTokenStep::Continue => {}
+                surgeist_html::bounded::lexical::HtmlSpaceTokenStep::Done => break,
+                surgeist_html::bounded::lexical::HtmlSpaceTokenStep::Token { start, end } => {
                     #[cfg(test)]
                     let end = end.saturating_add(c.take_space_token_overshoot());
                     struct Meter<'a>(&'a mut ParseControl);
-                    impl bounded::HtmlRelMeter for Meter<'_> {
+                    impl surgeist_html::bounded::rel::HtmlRelMeter for Meter<'_> {
                         type Error = SessionError;
                         fn work(&mut self, units: usize) -> Result<(), Self::Error> {
                             self.0
@@ -1196,7 +1206,7 @@ impl SessionStorage {
                         }
                         fn reserve(
                             &mut self,
-                            _: &mut bounded::HtmlRelReservation<'_>,
+                            _: &mut surgeist_html::bounded::rel::HtmlRelReservation<'_>,
                         ) -> Result<(), Self::Error> {
                             Err(SessionError::WrongToken)
                         }
@@ -1204,13 +1214,18 @@ impl SessionStorage {
                     let Some(token) = rel.code_units().get(start..end) else {
                         return Err(latch_registry_row(c));
                     };
-                    let (keyword, _) = bounded::classify_rel(token, &mut Meter(c)).map_err(
-                        |error| match error {
-                            bounded::HtmlRelActionError::Admission(error) => error,
-                            bounded::HtmlRelActionError::Protocol(_) => SessionError::WrongToken,
-                        },
-                    )?;
-                    stylesheet |= keyword == Some(surgeist_html::HtmlRelKeyword::Stylesheet);
+                    let (keyword, _) = surgeist_html::bounded::rel::classify_rel(
+                        token,
+                        &mut Meter(c),
+                    )
+                    .map_err(|error| match error {
+                        surgeist_html::bounded::rel::HtmlRelActionError::Admission(error) => error,
+                        surgeist_html::bounded::rel::HtmlRelActionError::Protocol(_) => {
+                            SessionError::WrongToken
+                        }
+                    })?;
+                    stylesheet |=
+                        keyword == Some(surgeist_html::elements::link::HtmlRelKeyword::Stylesheet);
                     extension |= keyword.is_none();
                 }
             }
@@ -1590,7 +1605,7 @@ impl<'a> HtmlParseAssociationStyleInputs<'a> {
             attributes,
         })
     }
-    pub fn state(&self) -> surgeist_html::HtmlStyleState {
+    pub fn state(&self) -> surgeist_html::elements::style::HtmlStyleState {
         self.value.state
     }
     pub fn creating_parser_document(&self) -> Option<report::HtmlParseMetadataDocument<'a>> {
@@ -1636,15 +1651,15 @@ impl<'a> HtmlParseAssociationStyleInputs<'a> {
     }
     pub fn attribute(
         &self,
-        attribute: surgeist_html::KnownHtmlAttribute,
+        attribute: surgeist_html::vocabulary::KnownHtmlAttribute,
     ) -> Option<HtmlParseOriginGroup<'a>> {
         let [kind, media, title, blocking, nonce] = self.attributes;
         match attribute {
-            surgeist_html::KnownHtmlAttribute::Type => kind,
-            surgeist_html::KnownHtmlAttribute::Media => media,
-            surgeist_html::KnownHtmlAttribute::Title => title,
-            surgeist_html::KnownHtmlAttribute::Blocking => blocking,
-            surgeist_html::KnownHtmlAttribute::Nonce => nonce,
+            surgeist_html::vocabulary::KnownHtmlAttribute::Type => kind,
+            surgeist_html::vocabulary::KnownHtmlAttribute::Media => media,
+            surgeist_html::vocabulary::KnownHtmlAttribute::Title => title,
+            surgeist_html::vocabulary::KnownHtmlAttribute::Blocking => blocking,
+            surgeist_html::vocabulary::KnownHtmlAttribute::Nonce => nonce,
             _ => None,
         }
     }
@@ -1657,7 +1672,7 @@ pub struct HtmlParseAssociationContext<'a> {
     slot: usize,
     document: &'a DocumentRef,
     value: &'a Context,
-    csp: Option<&'a surgeist_html::HtmlCspAssociation>,
+    csp: Option<&'a surgeist_html::security::csp::HtmlCspAssociation>,
     base_facts: Option<&'a crate::HtmlParseBaseFacts>,
     captured_context: Option<&'a surgeist_html_semantics::HtmlDocumentEncodingUrlContext>,
     first_base: Option<HtmlNode<'a>>,
@@ -1747,7 +1762,7 @@ impl<'a> HtmlParseAssociationContext<'a> {
     }
     /// The exact association applicable at this occurrence, never final policy.
     /// `None` means the occurrence has no association.
-    pub fn csp_association(&self) -> Option<&'a surgeist_html::HtmlCspAssociation> {
+    pub fn csp_association(&self) -> Option<&'a surgeist_html::security::csp::HtmlCspAssociation> {
         self.csp
     }
     pub fn epoch(&self) -> HtmlParseAssociationContextEpochId {
@@ -2151,6 +2166,10 @@ pub(super) fn captured_usage(value: &CapturedContext) -> associated::AssociatedS
 mod tests {
     use super::*;
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
+    use surgeist_html::{
+        construction::{HtmlDocumentMode, HtmlElement},
+        values::{Namespace, OrderedAttributes, QualifiedName},
+    };
 
     fn lexical_node(
         session: &mut ParserArenaSession,
@@ -2259,7 +2278,7 @@ mod tests {
                 matches!(
                     row.kind,
                     HtmlParseAssociationOccurrenceKind::StyleUpdate(
-                        surgeist_html::HtmlStyleTrigger::ChildrenChanged { .. }
+                        surgeist_html::elements::style::HtmlStyleTrigger::ChildrenChanged { .. }
                     )
                 )
             })
@@ -2500,7 +2519,7 @@ mod tests {
         let mut text = OwnedVec::new(HtmlParseResource::AuxiliaryEntries).unwrap();
         assert!(text.try_pop(&mut foreign).unwrap().is_none());
         let inputs = Inputs {
-            state: surgeist_html::HtmlStyleState::default(),
+            state: surgeist_html::elements::style::HtmlStyleState::default(),
             parser_document: None,
             connected: false,
             type_eligible: false,

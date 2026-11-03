@@ -4,6 +4,7 @@ use crate::{
     DomHostedDestructionQueued, DomHostedRuntimeError, DomHostedTaskProgress, HostedRuntime,
 };
 use surgeist_dom::{DocumentString, DomHostedError, DomMetaAtomicLimits, DomStyleSheet};
+use surgeist_html::values::Namespace;
 
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)

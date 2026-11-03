@@ -45,10 +45,9 @@ impl SessionStorage {
         let Some((_, state)) = self.radio_input(c, node)? else {
             return Ok(());
         };
-        if !state
-            .flags
-            .radio_normalization_required(crate::HtmlRadioTrigger::Checkedness)
-        {
+        if !state.flags.radio_normalization_required(
+            surgeist_html::elements::input::HtmlRadioTrigger::Checkedness,
+        ) {
             return Ok(());
         }
         let Some(name) = self.form_attribute(c, node, "name")? else {
@@ -103,7 +102,8 @@ impl SessionStorage {
                 if peer != progress.subject && self.html_local(c, peer, "input")? {
                     let actual = self.radio_input(c, peer)?;
                     if let Some((slot, mut state)) = actual {
-                        if state.flags.input_type() == crate::HtmlInputType::Radio
+                        if state.flags.input_type()
+                            == surgeist_html::attributes::HtmlInputType::Radio
                             && let Some(peer_name) = self.form_attribute(c, peer, "name")?
                         {
                             let subject_name = self
@@ -137,11 +137,13 @@ impl SessionStorage {
                         let value = self.form_attribute(c, peer, "type")?;
                         let kind = match value {
                             Some(value) => input_type_state(c, value)?,
-                            None => crate::HtmlInputType::missing_value_default(),
+                            None => {
+                                surgeist_html::attributes::HtmlInputType::missing_value_default()
+                            }
                         };
                         // Imported native Radio is not a canonical mutable input.
                         // Only a potentially matching peer requires unavailable state.
-                        if kind == crate::HtmlInputType::Radio
+                        if kind == surgeist_html::attributes::HtmlInputType::Radio
                             && let Some(peer_name) = self.form_attribute(c, peer, "name")?
                         {
                             let subject_name = self
@@ -187,10 +189,9 @@ impl SessionStorage {
         let Some((_, state)) = self.radio_input(c, node)? else {
             return Ok(());
         };
-        if state
-            .flags
-            .radio_normalization_required(crate::HtmlRadioTrigger::Connected)
-            && self.shadow_including_connected(c, node, None)?
+        if state.flags.radio_normalization_required(
+            surgeist_html::elements::input::HtmlRadioTrigger::Connected,
+        ) && self.shadow_including_connected(c, node, None)?
         {
             self.normalize_radio(c, node, None)?;
         }
@@ -217,10 +218,9 @@ impl ParserArenaSession {
         let result: Result<(), SessionError> = (|| {
             state.flags = state.flags.checked_setter(checked);
             storage.write_input_state(c, slot, state)?;
-            if state
-                .flags
-                .radio_normalization_required(crate::HtmlRadioTrigger::Checkedness)
-            {
+            if state.flags.radio_normalization_required(
+                surgeist_html::elements::input::HtmlRadioTrigger::Checkedness,
+            ) {
                 storage.normalize_radio(c, node, None)?;
             }
             Ok(())

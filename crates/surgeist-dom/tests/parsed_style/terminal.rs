@@ -1,7 +1,8 @@
 //! Explicit whole settlement uses genuine execution and affine lower authority.
 use super::*;
 use surgeist_cssom::CssomEditGuard;
-use surgeist_html::HtmlStyleExecutionProfile;
+use surgeist_html::elements::style::HtmlStyleExecutionProfile;
+
 #[test]
 fn blocked_invocations_require_actual_end_and_publish_only_real_style_readiness() {
     let (mut dom, document, id, q, _) =

@@ -62,9 +62,9 @@ impl<'a> DomRegistry<'a> {
     /// this real complete registry. A known miss retains its non-null identity.
     pub fn lookup_definition(
         self,
-        namespace: &crate::Namespace,
-        local_name: &crate::DocumentString,
-        is_value: Option<&crate::DocumentString>,
+        namespace: &surgeist_html::values::Namespace,
+        local_name: &surgeist_html::values::DocumentString,
+        is_value: Option<&surgeist_html::values::DocumentString>,
     ) -> Result<
         Option<&'a surgeist_html_semantics::HtmlCustomElementDefinition>,
         surgeist_html_semantics::HtmlCaptureError,

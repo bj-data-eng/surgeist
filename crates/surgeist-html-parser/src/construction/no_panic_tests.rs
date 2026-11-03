@@ -7,6 +7,7 @@ use super::effects::tests::{graph, named, request};
 use super::tests::{body_lexical_value, control, fresh_script_owner, lexical_kind, storage_zero};
 use super::*;
 use crate::parser::control::HtmlParseInvariant;
+use surgeist_html::construction::HtmlNodeKind;
 
 fn registry_row() -> HtmlParseStop {
     HtmlParseStop::InternalInvariant(HtmlParseInvariant::RegistryRow)
@@ -97,7 +98,7 @@ fn changing_an_input_type_on_a_record_that_is_not_an_element_reports_the_registr
         slot,
         container,
         state,
-        crate::HtmlInputType::Hidden,
+        surgeist_html::attributes::HtmlInputType::Hidden,
     );
     assert_registry_row(result, &c);
     session.release(&mut c).unwrap();

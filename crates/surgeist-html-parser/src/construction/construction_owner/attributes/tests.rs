@@ -1,5 +1,10 @@
 use super::*;
 use crate::parser::control::{HtmlParseInvariant, HtmlParseStop};
+use surgeist_html::{
+    bounded::construction::{HtmlConstructionAttributeEditMode, HtmlConstructionCommand},
+    construction::{HtmlElement, HtmlNodeKind},
+    values::{Attribute, Namespace, QualifiedName},
+};
 fn control() -> ParseControl {
     ParseControl::new(
         crate::construction::tests::limits(),

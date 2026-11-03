@@ -1,7 +1,8 @@
 //! Genuine original creation/rendering then guarded queue permission, no dispatch witness.
 use super::rendering::{Ready, ready};
 use super::*;
-use surgeist_html::HtmlStyleTrigger;
+use surgeist_html::elements::style::HtmlStyleTrigger;
+
 use surgeist_html_parser::HtmlParseAssociationOccurrenceKind;
 
 fn rendered(outputs: usize) -> Ready {

@@ -1,6 +1,7 @@
 //! Actual canonical link change and clone paths, independent literal expectations.
 use super::*;
 use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
+use surgeist_html::construction::HtmlNodeKind;
 
 fn next_tag(lexer: &mut LexerFixture<'_>, c: &mut ParseControl) -> Tag {
     loop {
@@ -17,7 +18,10 @@ fn next_tag(lexer: &mut LexerFixture<'_>, c: &mut ParseControl) -> Tag {
         }
     }
 }
-fn flags(session: &ParserArenaSession, node: &ParserNode) -> crate::HtmlLinkFlags {
+fn flags(
+    session: &ParserArenaSession,
+    node: &ParserNode,
+) -> surgeist_html::elements::link::HtmlLinkFlags {
     let HtmlNodeKind::Element(e) = &session
         .active()
         .unwrap()

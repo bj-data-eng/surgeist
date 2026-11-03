@@ -9,6 +9,10 @@ use provenance::{
     AssociationView, ConstructionCause, GroupBody, HistoryData, LeafValue, NativeAssociation,
     OriginGroup,
 };
+use surgeist_html::{
+    bounded::construction::HtmlConstructionResult,
+    construction::{HtmlDocument, HtmlFragment, HtmlNode},
+};
 
 /// Only the metered history qualification paths construct this owner. Generic native freeze does not
 /// establish the complete D1/lexical and history-payload qualification.
@@ -773,6 +777,7 @@ mod tests {
     use super::*;
     use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
     use crate::{HtmlParseCancellation, HtmlParseLimits};
+    use surgeist_html::construction::{HtmlDocumentMode, HtmlNodeKind};
 
     fn limits() -> HtmlParseLimits {
         super::super::tests::limits()
@@ -1796,6 +1801,10 @@ mod tests {
     #[test]
     fn immutable_history_captured_namespace_keeps_context_qualification_without_lexical_origins() {
         use crate::*;
+        use surgeist_html::{
+            construction::HtmlDocumentMode,
+            values::{Namespace, OrderedAttributes, QualifiedName},
+        };
         let mut builder = HtmlCaptureBuilder::new(
             HtmlCaptureLimits::new(10, 10, 10, 1000, 10, 10, 10, 16_777_216),
             HtmlHostFactsRevision::fresh(),

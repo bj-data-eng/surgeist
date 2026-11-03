@@ -971,9 +971,10 @@ fn dormant_close_and_suspended_empty_mark_preserve_distinct_authority() {
 fn optional_bank_exhaustion_does_not_break_real_style_preflight_or_acknowledged_tail() {
     use crate::{
         Dom, DomBatch, DomChange, DomLimits, DomSourceEdit, DomSourceProgress, DomSourceRequest,
-        DomStyleAction, DomStyleInlineCspObservation, Namespace,
+        DomStyleAction, DomStyleInlineCspObservation,
     };
-    use surgeist_html::HtmlStyleUpdateAction;
+    use surgeist_html::elements::style::HtmlStyleUpdateAction;
+    use surgeist_html::values::Namespace;
     let cancel = AtomicBool::new(false);
     let mut dom = Dom::new(
         DomLimits::new(

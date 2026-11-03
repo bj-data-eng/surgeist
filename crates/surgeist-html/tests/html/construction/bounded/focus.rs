@@ -1,7 +1,7 @@
 //! Constructor facts survive the actual original controlled owner and recovery.
 use super::*;
 use crate::html::support::{cause, has_cause};
-use surgeist_html::{
+use surgeist_html::construction::{
     HtmlConstructionLimits, HtmlDocument, HtmlFocusedAreaDesignation, HtmlFragment,
 };
 

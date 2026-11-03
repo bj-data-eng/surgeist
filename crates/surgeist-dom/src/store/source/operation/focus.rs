@@ -4,7 +4,8 @@ use crate::{
     DomFocusPreparation, DomFocusPublication, DomFocusRequest, DomHostedSource,
     DomSourceExecutionEntryScope, source::FocusQualification,
 };
-use surgeist_html::{HtmlDialogAction, HtmlDialogReply};
+use surgeist_html::elements::dialog::{HtmlDialogAction, HtmlDialogReply};
+
 enum FocusFrame {
     Dialog(Key),
     Insertion(crate::store::autofocus::Frame),
@@ -18,7 +19,8 @@ impl Operation {
                 .ok_or(DomError::InvalidSourceOperation)?;
             if request.operation() != self.id
                 || self.draft.published_id(frame.subject) != Some(request.subject())
-                || request.action() != surgeist_html::HtmlAutofocusInsertionAction::ReadAllowFocus
+                || request.action()
+                    != surgeist_html::focus::HtmlAutofocusInsertionAction::ReadAllowFocus
                 || frame.cursor.action() != request.action()
                 || request.occurrence.command != self.index
                 || !matches!(frame.invocation,Invocation::Exposed(actual) if actual==request.occurrence.ordinal)
@@ -54,7 +56,8 @@ impl Operation {
                     .focusing
                     .as_ref()
                     .ok_or(DomError::InvalidSourceOperation)?;
-                if request.action() != surgeist_html::HtmlDialogFocusingAction::ReadAllowFocus
+                if request.action()
+                    != surgeist_html::elements::dialog::HtmlDialogFocusingAction::ReadAllowFocus
                     || frame.cursor.action() != HtmlDialogAction::RunDialogFocusingSteps
                     || child.cursor.action() != request.action()
                     || request.occurrence.command != self.index
@@ -151,9 +154,7 @@ impl Operation {
         if let FocusFrame::Insertion(mut frame) = frame {
             frame
                 .cursor
-                .reply(surgeist_html::HtmlAutofocusInsertionReply::AllowFocus(
-                    false,
-                ))
+                .reply(surgeist_html::focus::HtmlAutofocusInsertionReply::AllowFocus(false))
                 .map_err(DomError::AutofocusInsertionProtocol)?;
             frame.invocation = Invocation::Unissued;
             return self.draft.source_set_autofocus_frame(frame, cancel);
@@ -187,7 +188,7 @@ impl Operation {
                 .ok_or(DomError::InvalidSourceOperation)?;
             called
                 .cursor
-                .reply(surgeist_html::HtmlDialogFocusingReply::AllowFocus(false))
+                .reply(surgeist_html::elements::dialog::HtmlDialogFocusingReply::AllowFocus(false))
                 .map_err(DomError::DialogFocusingProtocol)?;
             called.invocation = Invocation::Unissued;
         }

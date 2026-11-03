@@ -8,6 +8,7 @@ use crate::hosted::{
     DomHostedError, DomHostedResource, DomHostedSource, RegistryQuota, Retained, Work,
 };
 use crate::registry::{DomRegistry, DomRegistryId};
+
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureRegistryId, HtmlEmptyGlobalRegistryError, HtmlHostFactsRevision,
 };

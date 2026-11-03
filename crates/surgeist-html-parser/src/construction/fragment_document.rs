@@ -1,6 +1,7 @@
 //! Completed §13.4 parser-Document qualification from the original constructor.
 use super::*;
 use history::FrozenHistory;
+use surgeist_html::construction::{HtmlDocumentMode, HtmlNode, HtmlNodeKind};
 
 /// The actual auxiliary Document created by HTML877d §13.4, issued only by a
 /// completed contextual report. This is a distinct source construction cause;
@@ -136,6 +137,10 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
 #[cfg(test)]
 pub(super) mod tests {
     use crate::*;
+    use surgeist_html::{
+        construction::HtmlDocumentMode,
+        values::{Namespace, OrderedAttributes, QualifiedName},
+    };
 
     /// A complete fragment report whose context element is a `div`.
     pub(in crate::construction) fn fragment_report(literal: &str) -> HtmlParseReport {

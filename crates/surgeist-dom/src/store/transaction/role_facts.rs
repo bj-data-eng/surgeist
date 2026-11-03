@@ -366,8 +366,8 @@ fn body_child(
         return Ok(false);
     };
     Ok(
-        surgeist_html::document_body_role_with(element.name(), |_| step())?
-            == surgeist_html::HtmlDocumentBodyRole::Body,
+        surgeist_html::elements::style::document_body_role_with(element.name(), |_| step())?
+            == surgeist_html::elements::style::HtmlDocumentBodyRole::Body,
     )
 }
 fn role_list<'a>(node: NodeRead<'a>, role: Role) -> Option<SequenceView<'a, NodeId, Key>> {

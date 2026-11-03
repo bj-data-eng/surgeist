@@ -1,6 +1,7 @@
 //! Validation and release of lexical token payloads handed to the arena.
 
 use super::*;
+use surgeist_html::values::DocumentString;
 
 pub(super) fn release_token_attributes(
     mut attributes: OwnedVec<crate::parser::tokenizer::token::Attribute>,

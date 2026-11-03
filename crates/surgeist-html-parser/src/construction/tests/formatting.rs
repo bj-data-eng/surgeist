@@ -1,4 +1,8 @@
 use super::*;
+use surgeist_html::{
+    construction::{HtmlDocumentMode, HtmlNodeKind},
+    values::{DocumentString, Namespace},
+};
 
 fn formatting_lexical_tag(
     tokenizer: &mut crate::parser::tokenizer::tests::LexerFixture<'_>,

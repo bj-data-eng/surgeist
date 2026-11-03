@@ -3,11 +3,15 @@
 //! intention; DOM's assignment/query algorithms are not faked here.
 use std::convert::Infallible;
 use surgeist_html::bounded::{
-    HtmlSlotAssignAction as Action, HtmlSlotAssignCursor, HtmlSlotAssignReply as Reply,
-    native_element_initialization_with,
+    native::native_element_initialization_with,
+    template::{
+        HtmlSlotAssignAction as Action, HtmlSlotAssignCursor, HtmlSlotAssignReply as Reply,
+    },
 };
 use surgeist_html::{
-    HtmlElementClass, HtmlNativeFreshSlot, KnownHtmlElement, Namespace, QualifiedName,
+    elements::native::{HtmlElementClass, HtmlNativeFreshSlot},
+    values::{Namespace, QualifiedName},
+    vocabulary::KnownHtmlElement,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

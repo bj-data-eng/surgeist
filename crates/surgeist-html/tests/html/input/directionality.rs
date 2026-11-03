@@ -1,4 +1,4 @@
-use surgeist_html::HtmlInputType;
+use surgeist_html::attributes::HtmlInputType;
 
 // HTML877d #auto-directionality-form-associated-elements lists these ten states.
 #[test]

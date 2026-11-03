@@ -2,7 +2,9 @@
 //! These operations do not perform setters, selection resets or rendering.
 
 use super::*;
-use crate::bounded::is_ascii_whitespace;
+use surgeist_html::{
+    bounded::lexical::is_ascii_whitespace, values::DocumentString, vocabulary::KnownHtmlElement,
+};
 
 /// The source selected by an option string getter.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

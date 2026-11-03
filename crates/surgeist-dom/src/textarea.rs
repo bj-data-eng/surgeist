@@ -1,7 +1,11 @@
 //! Native Textarea raw state and bounded API/default-value reads.
-use crate::{DocumentString, DomError, DomNode, DomNodeKind, DomResource, NodeId};
+use crate::{DomError, DomNode, DomNodeKind, DomResource, NodeId};
 use std::sync::atomic::AtomicBool;
-use surgeist_html::{HtmlInputSelection, HtmlNewlineNormalizer, HtmlTextareaFlags};
+use surgeist_html::values::DocumentString;
+use surgeist_html::{
+    elements::{form::HtmlTextareaFlags, input::HtmlInputSelection},
+    values::HtmlNewlineNormalizer,
+};
 
 /// Intrinsic current state; defaultValue remains actual immediate child Text.
 #[derive(Clone, Debug, Eq, PartialEq)]

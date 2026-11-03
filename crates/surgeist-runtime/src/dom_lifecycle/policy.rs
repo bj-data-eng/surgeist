@@ -2,7 +2,7 @@
 //! Runtime owns the Permissions Policy algorithm; HTML owns sandbox values and
 //! canonical DOM owns every origin and retained request input.
 use super::*;
-use surgeist_html::DocumentString;
+use surgeist_html::values::DocumentString;
 
 /// The only allowlist parts that can match the selected opaque child origin.
 /// URL expressions cannot match it: allowlist matching returns false for opaque
@@ -215,7 +215,7 @@ pub(super) fn inherited(
         DomHostedEmbedderKind, DomInitialPermissionsPolicy as Policy,
         DomPermissionsPolicyValue as Value,
     };
-    use surgeist_html::HtmlSandboxFlag;
+    use surgeist_html::attributes::sandbox::HtmlSandboxFlag;
     spend(work, limit, cancel)?;
     let Some(inputs) = request.embedder_policy() else {
         if request.parent_document().is_some() || request.embedder().is_some() {
@@ -265,9 +265,10 @@ pub(super) fn inherited(
             // it can differ after an attribute change while content is null.
             spend(work, limit, cancel)?;
             if let Some(raw) = inputs.sandbox() {
-                let flags = surgeist_html::HtmlSandboxFlags::parse_with(raw, || {
-                    spend(work, limit, cancel)
-                })?;
+                let flags =
+                    surgeist_html::attributes::sandbox::HtmlSandboxFlags::parse_with(raw, || {
+                        spend(work, limit, cancel)
+                    })?;
                 if flags.contains(HtmlSandboxFlag::Origin) {
                     return Ok(Decision::SandboxOrigin);
                 }

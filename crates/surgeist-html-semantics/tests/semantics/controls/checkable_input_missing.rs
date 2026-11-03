@@ -3,7 +3,10 @@ use crate::semantics::support::{
     cap_resources, result_record_bytes, semantic_limits_with_integer_digits as limits,
     semantic_limits_without_nested_output, session,
 };
-use surgeist_html::*;
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue, HtmlCapturedShadowProperties,

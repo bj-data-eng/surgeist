@@ -494,7 +494,7 @@ fn actual_observation_capacity_and_cache_extent_have_exact_atomic_admission() {
 }
 #[test]
 fn native_authoring_installation_parses_real_copied_href_and_captures_nullable_history() {
-    use surgeist_html::{HtmlConstructionLimits, HtmlFragment};
+    use surgeist_html::construction::{HtmlConstructionLimits, HtmlFragment};
     let (mut dom, doc, root, a, _) = fixture();
     let r = revision();
     let encoding = HtmlBaseEncoding::fresh();

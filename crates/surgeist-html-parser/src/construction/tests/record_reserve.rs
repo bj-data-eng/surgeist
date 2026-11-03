@@ -1,4 +1,5 @@
 use super::*;
+use surgeist_html::construction::HtmlDocumentMode;
 
 #[test]
 fn combined_template_record_reserve_one_short_precedes_inert_document_and_cache_creation() {

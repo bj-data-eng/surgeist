@@ -1,5 +1,6 @@
 //! Literal outcomes through the original Source command interpreter.
 use super::*;
+use surgeist_html::values::DocumentString;
 
 fn fixture() -> (Dom, NodeId, Draft) {
     let cancel = AtomicBool::new(false);
@@ -115,7 +116,11 @@ fn original_dialog_interpreter_mark_restores_an_unstarted_method_after_its_event
     .unwrap();
     let mut setup = DomBatch::new();
     let document = setup.create_document();
-    let dialog = setup.create_element_ns(&document, crate::Namespace::html(), "dialog");
+    let dialog = setup.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "dialog",
+    );
     let done = dom.apply(setup, &cancel).unwrap();
     let dialog = done.created(&dialog).unwrap().unwrap();
     let mut edit = DomBatch::new();

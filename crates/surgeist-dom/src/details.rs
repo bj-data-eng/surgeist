@@ -1,6 +1,6 @@
 //! Native Details views and source-ordered raw toggle-intention transfer.
 use crate::{DomChanges, DomNode, DomOwnerId, DomSnapshot, NodeId};
-use surgeist_html::HtmlDetailsState;
+use surgeist_html::elements::details::HtmlDetailsState;
 
 #[derive(Clone, Copy, Debug)]
 pub struct DomDetails<'a> {

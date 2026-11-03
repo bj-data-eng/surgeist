@@ -2,7 +2,7 @@
 //! references/xml-pseudo-attribute-grammar--REC-xml-20081126--f58a4b9e1e5b.md.
 #![forbid(unsafe_code)]
 
-use surgeist_html::bounded::{is_xml_name_code_point, is_xml_name_start_code_point};
+use surgeist_html::bounded::lexical::{is_xml_name_code_point, is_xml_name_start_code_point};
 
 #[test]
 fn xml_name_start_includes_selected_range_edges_and_excludes_the_gaps() {

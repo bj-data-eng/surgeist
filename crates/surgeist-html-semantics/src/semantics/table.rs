@@ -6,10 +6,17 @@ pub use collections::*;
 
 use super::*;
 use crate::HtmlCapturedChildIds;
-use surgeist_html::bounded::{
-    HtmlTableSpanRule, is_ascii_whitespace, th_scope_state, th_scope_work_bound,
+use surgeist_html::attributes::table_header_scope::{
+    HtmlTableHeaderScope, HtmlTableHeaderScopeState,
 };
-use surgeist_html::{HtmlTableHeaderScope, HtmlTableHeaderScopeState};
+use surgeist_html::bounded::{
+    attributes::{HtmlTableSpanRule, th_scope_state, th_scope_work_bound},
+    lexical::is_ascii_whitespace,
+};
+use surgeist_html::{
+    values::{Attribute, DocumentString},
+    vocabulary::KnownHtmlElement,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlTableCellKind {

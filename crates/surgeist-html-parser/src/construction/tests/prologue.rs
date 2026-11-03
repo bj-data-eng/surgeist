@@ -1,4 +1,11 @@
 use super::*;
+use surgeist_html::{
+    construction::{
+        HtmlAuthoredProcessingInstruction, HtmlDocumentMode, HtmlNodeKind,
+        HtmlProcessingInstructionError,
+    },
+    values::{DocumentString, Namespace},
+};
 
 #[test]
 fn actual_comment_recovered_pi_and_doctype_keep_exact_managed_native_payloads() {

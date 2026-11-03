@@ -1,6 +1,16 @@
 //! Authentic original CSP artifacts transfer; DOM never invokes the processor.
 use super::*;
-use surgeist_html::*;
+use surgeist_html::{
+    elements::style::HtmlStyleUpdateAction,
+    security::csp::{
+        HtmlCspArtifactLayout, HtmlCspAssociation, HtmlCspAssociationCause, HtmlCspDisposalWork,
+        HtmlCspError, HtmlCspLayout, HtmlCspNativePolicy, HtmlCspOwner, HtmlCspPolicyArtifact,
+        HtmlCspProcessorAuthority, HtmlCspProcessorProfile, HtmlCspStorage, HtmlMetaCspOutcome,
+        HtmlMetaCspProcessor, HtmlMetaCspRequest,
+    },
+    values::DocumentString,
+};
+
 use surgeist_html_parser::HtmlParseMetadataStep;
 
 #[derive(Debug)]

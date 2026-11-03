@@ -1,6 +1,9 @@
 //! Script element type and language attribute classification.
 
 use super::*;
+use surgeist_html::{
+    construction::HtmlElement, elements::script::HtmlScriptKind, values::DocumentString,
+};
 
 pub(super) fn script_attribute<'a>(
     control: &mut ParseControl,
@@ -21,13 +24,13 @@ pub(super) fn script_attribute<'a>(
 
 pub(super) fn script_type_charge(
     control: &mut ParseControl,
-    work: crate::bounded::HtmlScriptTypeWork,
+    work: surgeist_html::bounded::script::HtmlScriptTypeWork,
 ) -> Result<(), SessionError> {
     match work {
-        crate::bounded::HtmlScriptTypeWork::RecordVisit(units) => {
+        surgeist_html::bounded::script::HtmlScriptTypeWork::RecordVisit(units) => {
             control.charge(HtmlParseWorkCategory::RecordVisit, units)?
         }
-        crate::bounded::HtmlScriptTypeWork::InspectByte(units) => {
+        surgeist_html::bounded::script::HtmlScriptTypeWork::InspectByte(units) => {
             control.charge(HtmlParseWorkCategory::InspectByte, units)?
         }
     }
@@ -40,7 +43,8 @@ pub(super) fn classify_script(
 ) -> Result<Option<HtmlScriptKind>, SessionError> {
     let explicit = script_attribute(control, element, "type")?;
     let language = script_attribute(control, element, "language")?;
-    let mut cursor = crate::bounded::HtmlScriptTypeCursor::preparation(explicit, language);
+    let mut cursor =
+        surgeist_html::bounded::script::HtmlScriptTypeCursor::preparation(explicit, language);
     while let Some(work) = cursor.required_work() {
         script_type_charge(control, work)?;
         cursor.advance();

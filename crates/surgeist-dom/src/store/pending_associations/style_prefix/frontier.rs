@@ -210,7 +210,8 @@ pub(super) fn scan<'a>(
                 && s.readiness() == surgeist_html_parser::HtmlParseReadiness::Complete
                 && s.ready_for_post_load_tasks()
         })
-        && report.effective_scripting_mode() == surgeist_html::HtmlParserScriptingMode::Disabled;
+        && report.effective_scripting_mode()
+            == surgeist_html::parsing::HtmlParserScriptingMode::Disabled;
     let mut cursor = report.pending_associations();
     loop {
         meter.step(cancel)?;

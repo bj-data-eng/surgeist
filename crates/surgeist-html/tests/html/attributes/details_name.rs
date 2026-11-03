@@ -1,9 +1,12 @@
 use crate::html::support::name_attribute as raw;
 use surgeist_html::{
-    Attribute, DocumentString, HtmlAttributeApplicability, HtmlAttributeAuthorState,
-    HtmlAttributeConformanceError, HtmlAttributeContextAuthorState, HtmlAttributeObservation,
-    HtmlAttributeRecognition, HtmlAttributeReport, HtmlBooleanAttribute, HtmlDetailsName,
-    HtmlValueInterpreter, KnownHtmlAttribute, KnownHtmlElement, Namespace, QualifiedName,
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeAuthorState, HtmlAttributeConformanceError,
+        HtmlAttributeContextAuthorState, HtmlAttributeObservation, HtmlAttributeRecognition,
+        HtmlAttributeReport, HtmlBooleanAttribute, details_name::HtmlDetailsName,
+    },
+    values::{Attribute, DocumentString, HtmlValueInterpreter, Namespace, QualifiedName},
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 
 fn read(raw: Option<&Attribute>) -> HtmlAttributeReport<HtmlDetailsName> {
@@ -268,7 +271,7 @@ fn wrong_element_namespace_case_and_attribute_keep_exact_unapplied_evidence() {
     let absent = HtmlValueInterpreter::new(0)
         .details_name(
             &KnownHtmlElement::Div.qualified_name(),
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
         )
         .unwrap();
     assert_eq!(absent.observation(), HtmlAttributeObservation::Missing);
@@ -315,7 +318,7 @@ fn original_utf16_cap_precedes_applicability_and_counts_units_without_loss() {
     let interpreter = HtmlValueInterpreter::new(0);
     assert_eq!(
         interpreter
-            .details_name(&details, None::<&surgeist_html::Attribute>)
+            .details_name(&details, None::<&surgeist_html::values::Attribute>)
             .unwrap()
             .author(),
         HtmlAttributeAuthorState::Missing
@@ -408,7 +411,7 @@ fn checked_name_does_not_replace_details_open_boolean_spelling_or_presence() {
         .boolean_attribute(
             HtmlBooleanAttribute::DetailsOpen,
             &details,
-            None::<&surgeist_html::Attribute>,
+            None::<&surgeist_html::values::Attribute>,
         )
         .unwrap();
     assert_eq!(absent.intrinsic(), Some(&false));

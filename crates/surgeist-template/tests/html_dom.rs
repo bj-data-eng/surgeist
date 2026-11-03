@@ -6,7 +6,7 @@ use surgeist_dom::{
     DocumentId, DocumentString, Dom, DomBatch, DomDocumentClass, DomError, DomLimits, DomResource,
     DomSnapshot, Namespace, NodeId,
 };
-use surgeist_html::{HtmlElementClass, HtmlNativeFormAssociationKind};
+use surgeist_html::elements::{form::HtmlNativeFormAssociationKind, native::HtmlElementClass};
 use surgeist_template::{
     AttributeKind, AttributeRule, ComponentRegistry, ComponentSpec, NativeElementRegistry,
     SourcePos, SourceSpan, TemplateDomError, TemplateDomUnresolvedKind as Unresolved,

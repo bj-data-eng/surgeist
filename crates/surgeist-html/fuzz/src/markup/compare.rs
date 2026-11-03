@@ -2,7 +2,10 @@
 use super::tree::{Exp, ExpKind};
 use crate::observe::NativeNode;
 use std::collections::HashMap;
-use surgeist_html::*;
+use surgeist_html::{
+    construction::{HtmlNodeId, HtmlNodeKind},
+    values::{DocumentString, QualifiedName},
+};
 
 struct Tree<'a> {
     nodes: HashMap<&'a HtmlNodeId, &'a NativeNode>,

@@ -1,5 +1,6 @@
 //! Native Output state; derived text readbacks use the HTML semantic queries.
-use crate::{DocumentString, DomNode, NodeId};
+use crate::{DomNode, NodeId};
+use surgeist_html::values::DocumentString;
 
 /// Actual nullable default-value override, independent of descendant Text.
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -1,12 +1,20 @@
 use crate::html::support::known_attribute as raw;
 use surgeist_html::{
-    Attribute, DocumentString, HtmlAttributeApplicability, HtmlAttributeAuthorState,
-    HtmlAttributeConformanceError, HtmlAttributeContextAuthorState,
-    HtmlAttributeContextConformanceError, HtmlAttributeObservation, HtmlAttributeRecognition,
-    HtmlAttributeReport, HtmlNumericAttributeAuthorState, HtmlNumericAttributeConformanceError,
-    HtmlNumericAttributeValueOrigin, HtmlTextareaWrap as Wrap, HtmlValueAuthorState,
-    HtmlValueInterpreter, KnownHtmlAttribute as Attr, KnownHtmlElement as Element, Namespace,
-    OrderedAttributes, QualifiedName,
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeAuthorState, HtmlAttributeConformanceError,
+        HtmlAttributeContextAuthorState, HtmlAttributeContextConformanceError,
+        HtmlAttributeObservation, HtmlAttributeRecognition, HtmlAttributeReport,
+        scalar::{
+            HtmlNumericAttributeAuthorState, HtmlNumericAttributeConformanceError,
+            HtmlNumericAttributeValueOrigin,
+        },
+        textarea_wrap::HtmlTextareaWrap as Wrap,
+    },
+    values::{
+        Attribute, DocumentString, HtmlValueAuthorState, HtmlValueInterpreter, Namespace,
+        OrderedAttributes, QualifiedName,
+    },
+    vocabulary::{KnownHtmlAttribute as Attr, KnownHtmlElement as Element},
 };
 
 const SOURCE: &str = "https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-textarea-wrap";

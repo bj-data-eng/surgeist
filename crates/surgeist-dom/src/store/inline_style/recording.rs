@@ -2,6 +2,7 @@
 use super::*;
 use crate::{DomInlineStyleBatchContext, DomInlineStyleCommit, DomInlineStyleProfile};
 use std::sync::atomic::AtomicU64;
+use surgeist_html::values::DocumentString;
 
 pub(in crate::store) type Resolver<'a> = dyn FnMut(
         &[CssomDeclarationCandidate],
@@ -166,7 +167,7 @@ fn facts<'a>(view: OrderView<'a>, key: Key, p: &Processing<'_>) -> Result<FactsR
         root,
         host,
         class: metadata.class(),
-        mode: if metadata.mode() == crate::HtmlDocumentMode::Quirks {
+        mode: if metadata.mode() == surgeist_html::construction::HtmlDocumentMode::Quirks {
             CssParserMode::Quirks
         } else {
             CssParserMode::Standards
@@ -1283,9 +1284,9 @@ mod tests {
         let mut batch = DomBatch::new();
         let a = batch.create_document();
         let b = batch.create_document();
-        let root = batch.create_element_ns(&a, crate::Namespace::html(), "main");
-        let first = batch.create_element_ns(&a, crate::Namespace::html(), "div");
-        let second = batch.create_element_ns(&a, crate::Namespace::html(), "aside");
+        let root = batch.create_element_ns(&a, surgeist_html::values::Namespace::html(), "main");
+        let first = batch.create_element_ns(&a, surgeist_html::values::Namespace::html(), "div");
+        let second = batch.create_element_ns(&a, surgeist_html::values::Namespace::html(), "aside");
         batch.insert_before(&root, &a, None);
         batch.insert_before(&first, &root, None);
         batch.insert_before(&second, &root, None);

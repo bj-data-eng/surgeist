@@ -1,8 +1,12 @@
 use crate::html::support::non_negative_integer as integer;
 use surgeist_html::{
-    Attribute, HtmlCanvasBitmapDimension, HtmlCanvasNoneState, HtmlMarqueeState,
-    HtmlNonNegativeInteger, HtmlValueInterpreter, HtmlValueRecoveryState, KnownHtmlAttribute,
-    KnownHtmlElement,
+    elements::{
+        marquee::HtmlMarqueeState,
+        media::{HtmlCanvasBitmapDimension, HtmlCanvasNoneState},
+    },
+    microsyntax::numeric::HtmlNonNegativeInteger,
+    values::{Attribute, HtmlValueInterpreter, HtmlValueRecoveryState},
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 
 fn dimensions(state: &HtmlCanvasNoneState) -> (String, String) {

@@ -12,7 +12,7 @@ pub enum DomDesignModeRangeDisposition {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomSourceDesignModeStep {
     ReadActiveRange,
-    Focusing(surgeist_html::HtmlFocusingAction),
+    Focusing(surgeist_html::focus::HtmlFocusingAction),
 }
 /// One source-issued requirement of the original designMode invocation. It
 /// grants no mutation/acknowledgment authority and cannot complete a focus call.

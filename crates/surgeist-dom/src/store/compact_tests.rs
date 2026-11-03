@@ -3,6 +3,7 @@
 //! Arc control blocks and allocator metadata remain opaque and excluded.
 use super::*;
 use std::collections::BTreeMap;
+
 mod empty_sequence_tests;
 pub(in crate::store) mod typed_graph;
 
@@ -493,13 +494,13 @@ fn native_node_graphs_retain_real_banks_payloads_and_snapshot_union() {
     report("Document", &dom, &document_graph);
     let mut batch = DomBatch::new();
     let plain = batch.create_element(document, "plain");
-    batch.create_element_ns(document, crate::Namespace::html(), "div");
+    batch.create_element_ns(document, surgeist_html::values::Namespace::html(), "div");
     let text = batch.create_text(document, "shared text");
     batch.create_comment(document, "comment");
     batch.create_processing_instruction(document, "proc", "x='value'");
     batch.create_document_type(document, "root", "public", "system");
-    let form = batch.create_element_ns(document, crate::Namespace::html(), "form");
-    batch.create_element_ns(document, crate::Namespace::html(), "canvas");
+    let form = batch.create_element_ns(document, surgeist_html::values::Namespace::html(), "form");
+    batch.create_element_ns(document, surgeist_html::values::Namespace::html(), "canvas");
     let done = dom.apply(batch, &cancel).unwrap();
     let plain = done.created(&plain).unwrap().unwrap();
     let text = done.created(&text).unwrap().unwrap();
@@ -593,7 +594,7 @@ fn native_known_empty_form_history_has_no_target_allocation() {
     let document = document(&mut dom);
     let observation = Observation::begin();
     let mut batch = DomBatch::new();
-    let form = batch.create_element_ns(document, crate::Namespace::html(), "form");
+    let form = batch.create_element_ns(document, surgeist_html::values::Namespace::html(), "form");
     let done = dom.apply(batch, &AtomicBool::new(false)).unwrap();
     let form = done.created(&form).unwrap().unwrap();
     let before_clones = observation.counts();
@@ -785,7 +786,7 @@ fn known_empty_form_snapshot_and_source_rollback_keep_original_root() {
     let mut dom = Dom::new(limits()).unwrap();
     let document = document(&mut dom);
     let mut batch = DomBatch::new();
-    let form = batch.create_element_ns(document, crate::Namespace::html(), "form");
+    let form = batch.create_element_ns(document, surgeist_html::values::Namespace::html(), "form");
     let text = batch.create_text(document, "child");
     let done = dom.apply(batch, &cancel).unwrap();
     let form = done.created(&form).unwrap().unwrap();

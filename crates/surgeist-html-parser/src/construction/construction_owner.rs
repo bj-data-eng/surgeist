@@ -1,7 +1,14 @@
 //! Drives HTML's sole record owner through this session's original controller.
 use super::*;
-use crate::bounded::*;
 use crate::parser::control::ConstructionAllocation;
+use surgeist_html::bounded::construction::{
+    HtmlConstructionAbort, HtmlConstructionAction, HtmlConstructionActionDescription,
+    HtmlConstructionAllocationRole, HtmlConstructionAttributeEdit, HtmlConstructionCommand,
+    HtmlConstructionCommit, HtmlConstructionGrowth, HtmlConstructionLease, HtmlConstructionNode,
+    HtmlConstructionOperation, HtmlConstructionReadyOperation, HtmlConstructionRecovery,
+    HtmlConstructionResult, HtmlConstructionRetirementDescription, HtmlConstructionStorage,
+};
+use surgeist_html::construction::{HtmlBuilderNode, HtmlConstructionError, HtmlConstructionUsage};
 mod attributes;
 #[cfg(test)]
 mod tests;

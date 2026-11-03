@@ -89,7 +89,7 @@ impl<'a> DomHostedEntry<'a> {
     }
     /// Source constructor operand: absent child name is null; supplied empty is
     /// a real string and remains distinct through queued initialization.
-    pub fn target_name(self) -> Option<&'a crate::DocumentString> {
+    pub fn target_name(self) -> Option<&'a surgeist_html::values::DocumentString> {
         self.record.target_name.as_ref()
     }
     pub fn initiator_origin(self) -> Option<&'a DomOpaqueOrigin> {

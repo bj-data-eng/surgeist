@@ -1,4 +1,5 @@
 use super::*;
+use surgeist_html::values::Namespace;
 
 fn start_test_insert(
     c: &mut ParseControl,
@@ -15,7 +16,7 @@ fn start_test_insert(
     owner
         .start(
             c,
-            bounded::HtmlConstructionCommand::Insert {
+            surgeist_html::bounded::construction::HtmlConstructionCommand::Insert {
                 node: node.handle.clone(),
                 parent: parent.handle.clone(),
                 before: before.map(|value| value.handle.clone()),
@@ -426,8 +427,10 @@ fn work_limit_stop_before_an_insert_before_commit_leaves_the_order_and_the_stop_
     let copied = loop {
         let edges = pending.before_edges();
         let action = pending.action(&mut c).unwrap().unwrap();
-        if let bounded::HtmlConstructionActionDescription::Commit { copied_bytes, .. } =
-            action.description()
+        if let surgeist_html::bounded::construction::HtmlConstructionActionDescription::Commit {
+            copied_bytes,
+            ..
+        } = action.description()
         {
             // Leave one credit too few for the commit's described writes.
             let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
@@ -458,7 +461,7 @@ fn work_limit_stop_before_an_insert_before_commit_leaves_the_order_and_the_stop_
             .node_at(root.index)
             .unwrap()
             .children()
-            .map(bounded::HtmlConstructionNode::position)
+            .map(surgeist_html::bounded::construction::HtmlConstructionNode::position)
             .collect::<Vec<_>>(),
         [b.index]
     );

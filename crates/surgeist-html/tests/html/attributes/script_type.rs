@@ -1,4 +1,18 @@
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeContextAuthorState, HtmlAttributeObservation,
+        script_type::{
+            HtmlScriptTypeAuthorAdvice, HtmlScriptTypeAuthorState, HtmlScriptTypeClassification,
+            HtmlScriptTypeKeyword, HtmlScriptTypeMeaning,
+        },
+    },
+    elements::script::HtmlScriptKind,
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+};
 
 fn script() -> QualifiedName {
     KnownHtmlElement::Script.qualified_name()
@@ -55,7 +69,7 @@ fn native_keywords_emit_only_the_three_canonical_authored_keywords() {
 fn missing_and_empty_are_distinct_nominal_classic_observations_and_advice() {
     let i = interpreter();
     let missing = i
-        .script_type(&script(), None::<&surgeist_html::Attribute>)
+        .script_type(&script(), None::<&surgeist_html::values::Attribute>)
         .unwrap();
     let empty_raw = raw("");
     let empty = i.script_type(&script(), Some(&empty_raw)).unwrap();

@@ -1,4 +1,5 @@
 use super::*;
+use surgeist_html::construction::HtmlNodeKind;
 
 #[test]
 fn text_append_spare_capacity_copy_work_depends_on_incoming_not_prefix() {

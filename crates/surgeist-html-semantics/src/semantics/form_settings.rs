@@ -4,9 +4,12 @@
 //! separate from IDL reflection, successful submission and execution effects.
 
 use super::*;
-use crate::{
+use surgeist_html::attributes::{
     HtmlAttributeReport, HtmlButtonSubmitterContext, HtmlButtonType, HtmlButtonTypeState,
     HtmlFormEnctype, HtmlFormMethod, HtmlInputType,
+};
+use surgeist_html::{
+    attributes::HtmlBooleanAttribute, values::Attribute, vocabulary::KnownHtmlElement,
 };
 
 /// The actual type interpretation consulted only for a present override.

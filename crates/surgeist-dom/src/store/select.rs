@@ -1,5 +1,16 @@
 //! Source-ordered Select-family adaptation over the canonical staged tree.
 use super::*;
+use surgeist_html::bounded::{
+    numeric::HtmlIntegerPrefixScanner,
+    select::{
+        HtmlOptionDisabledAncestor, HtmlOptionSelectAncestorAction, HtmlOptionSelectAncestors,
+        HtmlSelectAction, HtmlSelectCursor, HtmlSelectFirstSelectedAction,
+        HtmlSelectFirstSelectedCursor, HtmlSelectOperation, HtmlSelectReply,
+        HtmlSelectSetterAction, HtmlSelectSetterCursor, HtmlSelectSetterReply,
+        HtmlSelectedcontentAncestorAction, HtmlSelectedcontentAncestors, HtmlSelectedcontentUpdate,
+        option_disabled_ancestor, select_display_size_default, selectedcontent_update,
+    },
+};
 #[cfg(test)]
 #[path = "select/discovery_observation.rs"]
 mod discovery_observation;
@@ -7,8 +18,11 @@ mod discovery_observation;
 #[path = "select/discovery_tests.rs"]
 mod discovery_tests;
 mod value;
-use surgeist_html::bounded::*;
-use surgeist_html::{KnownHtmlAttribute as Attr, KnownHtmlElement as Tag, *};
+
+use surgeist_html::{
+    values::DocumentString,
+    vocabulary::{KnownHtmlAttribute as Attr, KnownHtmlElement as Tag},
+};
 
 pub(in crate::store) use source::scratch::ScratchVec;
 
@@ -547,7 +561,7 @@ impl Draft {
             }
         }
         let recovered = if let Some(raw) = raw {
-            let mut scanner = IntegerPrefixScanner::new(true);
+            let mut scanner = HtmlIntegerPrefixScanner::new(true);
             for unit in raw.code_units() {
                 self.source_step(cancel)?;
                 if !scanner.feed(*unit) {
@@ -1778,6 +1792,7 @@ impl Draft {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use surgeist_html_semantics::{HtmlCaptureLimits, HtmlSemanticLimits};
 
     #[test]
@@ -1820,7 +1835,11 @@ mod tests {
             .unwrap();
             let mut batch = DomBatch::new();
             let document = batch.create_document();
-            let select = batch.create_element_ns(&document, crate::Namespace::html(), "select");
+            let select = batch.create_element_ns(
+                &document,
+                surgeist_html::values::Namespace::html(),
+                "select",
+            );
             if let Some(raw) = raw {
                 batch.set_attribute(&select, "size", raw);
             }
@@ -1864,11 +1883,15 @@ mod tests {
             .unwrap();
             let mut batch = DomBatch::new();
             let document = batch.create_document();
-            let select = batch.create_element_ns(&document, crate::Namespace::html(), "select");
+            let select = batch.create_element_ns(
+                &document,
+                surgeist_html::values::Namespace::html(),
+                "select",
+            );
             if wrong_namespace {
                 batch.set_attribute_ns(
                     &select,
-                    crate::Namespace::from_uri("urn:other"),
+                    surgeist_html::values::Namespace::from_uri("urn:other"),
                     "size",
                     raw,
                 );
@@ -1911,8 +1934,8 @@ mod tests {
         let mut dom = Dom::new(policy(100000, 100000)).unwrap();
         let mut b = DomBatch::new();
         let d = b.create_document();
-        let s = b.create_element_ns(&d, crate::Namespace::html(), "select");
-        let o = b.create_element_ns(&d, crate::Namespace::html(), "option");
+        let s = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "select");
+        let o = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "option");
         b.set_attribute(&o, "value", "value");
         b.insert_before(&o, &s, None);
         let c = dom.apply(b, &cancel).unwrap();
@@ -2100,13 +2123,41 @@ mod tests {
         let mut dom = Dom::new(policy(100000, 100000)).unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let ancestor = setup.create_element_ns(&document, crate::Namespace::html(), "section");
-        let select = setup.create_element_ns(&document, crate::Namespace::html(), "select");
-        let a = setup.create_element_ns(&document, crate::Namespace::html(), "option");
-        let b = setup.create_element_ns(&document, crate::Namespace::html(), "option");
-        let survivor = setup.create_element_ns(&document, crate::Namespace::html(), "select");
-        let x = setup.create_element_ns(&document, crate::Namespace::html(), "option");
-        let y = setup.create_element_ns(&document, crate::Namespace::html(), "option");
+        let ancestor = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "section",
+        );
+        let select = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "select",
+        );
+        let a = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "option",
+        );
+        let b = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "option",
+        );
+        let survivor = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "select",
+        );
+        let x = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "option",
+        );
+        let y = setup.create_element_ns(
+            &document,
+            surgeist_html::values::Namespace::html(),
+            "option",
+        );
         setup.insert_before(&select, &ancestor, None);
         setup.insert_before(&a, &select, None);
         setup.insert_before(&b, &select, None);
@@ -2346,6 +2397,7 @@ mod tests {
 #[cfg(test)]
 mod effect_scope_tests {
     use super::*;
+
     fn fixture() -> (Dom, Draft, Key, Key, Key, Key) {
         let cancel = AtomicBool::new(false);
         let mut dom = Dom::new(

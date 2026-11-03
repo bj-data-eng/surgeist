@@ -2,7 +2,18 @@
 //! HTML 877d6146487f: appropriate template contents owner, creation and adoption.
 
 use super::*;
-use surgeist_html::HtmlTemplateFreshInsertionState;
+#[cfg(test)]
+use surgeist_html::construction::HtmlNodeId;
+use surgeist_html::{
+    construction::{
+        HtmlDocumentMode, HtmlNodeKind, HtmlShadowRootProperties, HtmlTemplateContentsKind,
+    },
+    elements::template::{
+        HtmlTemplateContentsOwnerDocument, HtmlTemplateFreshInsertionState,
+        template_contents_owner_document,
+    },
+    values::DocumentString,
+};
 
 /// A real Document node qualified by the issuing arena. The index is private.
 #[cfg(test)]
@@ -216,7 +227,7 @@ impl SessionStorage {
         scope: usize,
         name: &DocumentString,
     ) -> Result<(Option<usize>, Option<usize>), SessionError> {
-        use surgeist_html::bounded::{
+        use surgeist_html::bounded::template::{
             HtmlTemplateMarkerFirst as First, HtmlTemplateMarkerSiblings as Siblings,
             HtmlTemplateMarkerTarget as Target, template_marker_first,
         };
@@ -348,7 +359,7 @@ impl SessionStorage {
     pub(super) fn template_slot_in(
         &self,
         c: &mut ParseControl,
-        storage: &bounded::HtmlConstructionStorage,
+        storage: &surgeist_html::bounded::construction::HtmlConstructionStorage,
         node: usize,
     ) -> Result<(usize, TemplateMetadata), SessionError> {
         if !Self::html_local_in(c, storage, node, "template")? {
@@ -636,7 +647,7 @@ impl SessionStorage {
     pub(super) fn allocate_prepared_owned(
         &mut self,
         c: &mut ParseControl,
-        command: bounded::HtmlConstructionCommand,
+        command: surgeist_html::bounded::construction::HtmlConstructionCommand,
         template: bool,
         attributes: usize,
         units: usize,
@@ -653,7 +664,9 @@ impl SessionStorage {
         let prepared = self.prepare_document_allocation(c, Some(document), false)?;
         self.allocate_prepared_record_owned(
             c,
-            bounded::HtmlConstructionCommand::CreateShadowContents { properties },
+            surgeist_html::bounded::construction::HtmlConstructionCommand::CreateShadowContents {
+                properties,
+            },
             false,
             0,
             0,
@@ -663,7 +676,7 @@ impl SessionStorage {
     fn allocate_prepared_record_owned(
         &mut self,
         c: &mut ParseControl,
-        command: bounded::HtmlConstructionCommand,
+        command: surgeist_html::bounded::construction::HtmlConstructionCommand,
         template: bool,
         attributes: usize,
         units: usize,

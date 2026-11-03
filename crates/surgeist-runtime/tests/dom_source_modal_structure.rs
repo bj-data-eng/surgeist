@@ -10,7 +10,7 @@
 ))]
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::{HtmlDialogFocusingAction, HtmlDialogState};
+use surgeist_html::elements::dialog::{HtmlDialogFocusingAction, HtmlDialogState};
 use surgeist_runtime::*;
 
 fn cancel() -> AtomicBool {
@@ -260,7 +260,7 @@ fn active_show_modal_publishes_modal_after_real_watcher_before_focusing_wait() {
             request: DomSourceRequest::DialogFocusing(pending),
             reason:
                 DomSourceUnavailable::DialogFocusing(HtmlDialogFocusingAction::RunFocusingSteps {
-                    control: surgeist_html::HtmlDialogFocusControl::Subject,
+                    control: surgeist_html::elements::dialog::HtmlDialogFocusControl::Subject,
                 }),
         } => {
             assert_eq!(pending.operation(), request.operation());
@@ -268,7 +268,7 @@ fn active_show_modal_publishes_modal_after_real_watcher_before_focusing_wait() {
             assert_eq!(
                 pending.action(),
                 HtmlDialogFocusingAction::RunFocusingSteps {
-                    control: surgeist_html::HtmlDialogFocusControl::Subject
+                    control: surgeist_html::elements::dialog::HtmlDialogFocusControl::Subject
                 }
             );
         }

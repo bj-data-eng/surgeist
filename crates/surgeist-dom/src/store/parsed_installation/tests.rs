@@ -1,4 +1,5 @@
 use super::*;
+use surgeist_html::values::DocumentString;
 use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlParseLimits, HtmlSource};
 
 fn report() -> Arc<HtmlParseReport> {
@@ -223,7 +224,9 @@ fn scratch_growth_peak_refuses_public_installation_atomically_and_exact_peak_suc
 
 #[test]
 fn fragment_parser_constructor_preserves_one_source_origin_and_selects_only_destination_platform() {
-    use surgeist_html::{HtmlInputEmptySelectionSupport, HtmlInputNoneDirectionSupport};
+    use surgeist_html::elements::input::{
+        HtmlInputEmptySelectionSupport, HtmlInputNoneDirectionSupport,
+    };
     use surgeist_html_parser::HtmlFragmentParseRequest;
     use surgeist_html_semantics::{HtmlCaptureLimits, HtmlFragmentContext};
     let cancel = AtomicBool::new(false);
@@ -243,7 +246,7 @@ fn fragment_parser_constructor_preserves_one_source_origin_and_selects_only_dest
     .unwrap();
     let mut batch = DomBatch::new();
     let doc = batch.create_document();
-    let host = batch.create_element_ns(&doc, crate::Namespace::html(), "div");
+    let host = batch.create_element_ns(&doc, surgeist_html::values::Namespace::html(), "div");
     let commit = dom.apply(batch, &cancel).unwrap();
     let document = commit.document(&doc).unwrap();
     let host = commit.created(&host).unwrap().unwrap();
@@ -541,7 +544,7 @@ fn actual_staged_meta_history_is_not_published_when_final_cancellation_wins() {
     );
     assert_eq!(
         metadata.policy_container().referrer_policy(),
-        Some(surgeist_html::HtmlReferrerPolicy::NoReferrer)
+        Some(surgeist_html::attributes::HtmlReferrerPolicy::NoReferrer)
     );
     cancel.store(true, Ordering::Release);
     assert!(matches!(
@@ -663,7 +666,7 @@ fn contextual_prepared_effects_and_complete_admission_never_publish_on_final_sto
     .unwrap();
     let mut batch = DomBatch::new();
     let doc = batch.create_document();
-    let host = batch.create_element_ns(&doc, crate::Namespace::html(), "div");
+    let host = batch.create_element_ns(&doc, surgeist_html::values::Namespace::html(), "div");
     batch.insert_before(&host, &doc, None);
     let commit = dom.apply(batch, &cancel).unwrap();
     let document = commit.document(&doc).unwrap();
@@ -688,7 +691,7 @@ fn contextual_prepared_effects_and_complete_admission_never_publish_on_final_sto
             ),
             context,
             parser_limits(),
-            surgeist_html::HtmlParserScriptingMode::Inert,
+            surgeist_html::parsing::HtmlParserScriptingMode::Inert,
             true,
         )
         .unwrap()
@@ -790,7 +793,7 @@ fn captured_url_join_preserves_first_work_stop_at_every_read_and_exact_lookup_un
     .unwrap();
     let mut batch = DomBatch::new();
     let doc = batch.create_document();
-    let host = batch.create_element_ns(&doc, crate::Namespace::html(), "div");
+    let host = batch.create_element_ns(&doc, surgeist_html::values::Namespace::html(), "div");
     let commit = dom.apply(batch, &cancel).unwrap();
     let document = commit.document(&doc).unwrap();
     let host = commit.created(&host).unwrap().unwrap();
@@ -860,7 +863,7 @@ fn captured_url_join_preserves_first_work_stop_at_every_read_and_exact_lookup_un
                 capture.subject(document.node()).unwrap(),
                 HtmlSemanticQuery::DocumentEncodingUrlContext,
             )],
-            surgeist_html::HtmlValueInterpreter::new(65536),
+            surgeist_html::values::HtmlValueInterpreter::new(65536),
             HtmlSemanticLimits::new(10_000_000, 16, 4096, 0, 10_000_000, 0),
             HtmlSemanticCancellation::new(),
         )
@@ -1076,7 +1079,9 @@ fn parsed_dialog_owned_history_is_prepared_before_publication_and_late_stop_is_a
 
 #[test]
 fn csp_transfer_prices_real_graph_overlap_and_closing_without_retaining_atomic_scratch() {
-    use surgeist_html::*;
+    use surgeist_html::security::csp::{
+        HtmlCspAssociation, HtmlCspAssociationCause, HtmlCspError, HtmlCspLayout, HtmlCspOwner,
+    };
     let mut allow = |_: HtmlCspLayout| Ok::<_, ()>(());
     let mut source = HtmlCspOwner::new_with(&mut allow).unwrap();
     let original = source.initial_document_with(&mut allow).unwrap();
@@ -1137,7 +1142,11 @@ fn csp_transfer_prices_real_graph_overlap_and_closing_without_retaining_atomic_s
 
 #[test]
 fn csp_destination_authority_is_prepared_atomically_and_abandoned_ids_are_not_reissued() {
-    use surgeist_html::*;
+    use surgeist_html::security::csp::{
+        HtmlCspError, HtmlCspLayout, HtmlCspProcessorAuthority, HtmlCspProcessorProfile,
+        HtmlCspStorage, HtmlCspUnavailable, HtmlMetaCspOutcome, HtmlMetaCspProcessor,
+        HtmlMetaCspRequest,
+    };
     struct NoReachedMeta {
         profile: HtmlCspProcessorProfile,
     }

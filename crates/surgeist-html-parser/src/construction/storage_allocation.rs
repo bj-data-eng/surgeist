@@ -1,6 +1,12 @@
 //! Allocation of nodes, payload rows and prepared slots in the active session storage.
 
 use super::*;
+#[cfg(test)]
+use surgeist_html::construction::HtmlElement;
+use surgeist_html::{
+    construction::HtmlNodeKind,
+    values::{Attribute, Namespace, OrderedAttributes, QualifiedName},
+};
 
 impl SessionStorage {
     /// Consumes preexisting immutable payloads, not tokenizer-created backing.
@@ -94,7 +100,7 @@ impl SessionStorage {
     pub(super) fn allocate_native_record(
         &mut self,
         control: &mut ParseControl,
-        command: bounded::HtmlConstructionCommand,
+        command: surgeist_html::bounded::construction::HtmlConstructionCommand,
         template: bool,
         attributes: usize,
         units: usize,
@@ -117,10 +123,13 @@ impl SessionStorage {
         // any new nonce backing; successful elements still bind the slot
         // before their native record can be published.
         let element_name = match &command {
-            bounded::HtmlConstructionCommand::Create {
+            surgeist_html::bounded::construction::HtmlConstructionCommand::Create {
                 kind: HtmlNodeKind::Element(element),
             } => Some(element.name()),
-            bounded::HtmlConstructionCommand::CreateElement { name, .. } => Some(name),
+            surgeist_html::bounded::construction::HtmlConstructionCommand::CreateElement {
+                name,
+                ..
+            } => Some(name),
             _ => None,
         };
         let nonce_slot = self.prepare_nonce(control, element_name)?;
@@ -813,12 +822,12 @@ impl SessionStorage {
             };
             let attributes = values.clone();
             let template = exact_ascii(control, Some(&name), "template")?;
-            let link_flags =
-                exact_ascii(control, Some(&name), "link")?.then(crate::HtmlLinkFlags::fresh);
+            let link_flags = exact_ascii(control, Some(&name), "link")?
+                .then(surgeist_html::elements::link::HtmlLinkFlags::fresh);
             control.charge(HtmlParseWorkCategory::RecordWrite, 6)?;
             let node = self.allocate_prepared_owned(
                 control,
-                bounded::HtmlConstructionCommand::CreateElement {
+                surgeist_html::bounded::construction::HtmlConstructionCommand::CreateElement {
                     link_flags,
                     name: QualifiedName::new(Namespace::from_uri(namespace), None, name),
                     attributes,

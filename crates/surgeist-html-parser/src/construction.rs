@@ -21,7 +21,7 @@
 //! Script facts are retained for a sealed fresh ordinary Disabled execution;
 //! preparation ends at step18 and never fabricates a loaded or executed result.
 
-use crate::bounded::{HtmlAttributeStorage, HtmlAttributeValidation, HtmlAttributeValidationError};
+use crate::HtmlParseResource;
 use crate::keyed::{Table, slots};
 #[cfg(test)]
 use crate::parser::control::WalkSite;
@@ -34,23 +34,20 @@ use crate::parser::{
     buffer::{FrozenUtf16, Utf16Buffer},
     tokenizer::token::{Doctype, HtmlParseTextOrigin, Tag, TagKind, Text, TokenKind},
 };
-use crate::{Attribute, HtmlParseResource, HtmlTextareaFlags, HtmlTextareaRawValueAction};
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::{mem, sync::Weak};
-use surgeist_html::bounded;
-use surgeist_html::bounded::HtmlScriptPreparationResult as DisabledScriptPreparation;
-use surgeist_html::bounded::{
-    HtmlFormOwnerResetDecision, HtmlFormOwnerResetTrigger, form_owner_reset_trigger,
-};
-use surgeist_html::*;
+
+use surgeist_html::bounded::script::HtmlScriptPreparationResult as DisabledScriptPreparation;
+
+use surgeist_html::{construction::HtmlBuilderNode, values::DocumentString};
 
 mod activity;
 mod attribute_writer;
 mod construction_owner;
 mod dialog;
-use crate::bounded::HtmlConstructionAttributeEditMode;
 use construction_owner::{ConstructionOwner, ConstructionView, prepare_attribute_slot};
+
 pub(crate) mod associated;
 mod base;
 mod clone;
@@ -230,8 +227,6 @@ pub(crate) struct ParserNode {
     // Immutable dense parser-metadata join; only the checked handle authorizes a node.
     index: usize,
 }
-
-use crate::bounded::HtmlConstructionResult;
 
 fn lowercase_token_name(
     control: &mut ParseControl,

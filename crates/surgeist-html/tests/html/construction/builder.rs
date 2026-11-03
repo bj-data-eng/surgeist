@@ -1,10 +1,12 @@
 use crate::html::support::{cause, construction_limits as limits, is_limit};
 use surgeist_html::{
-    Attribute, DocumentString, ForeignHtmlResult, HtmlAuthoredProcessingInstruction,
-    HtmlConstructionLimits, HtmlConstructionResource, HtmlDoctype, HtmlDocument, HtmlDocumentMode,
-    HtmlFragment, HtmlFragmentOwner, HtmlNodeKind, HtmlProcessingInstruction,
-    HtmlProcessingInstructionError, HtmlShadowRootMode, HtmlShadowRootProperties,
-    HtmlSlotAssignment, Namespace, OrderedAttributes, QualifiedName,
+    construction::{
+        ForeignHtmlResult, HtmlAuthoredProcessingInstruction, HtmlConstructionLimits,
+        HtmlConstructionResource, HtmlDoctype, HtmlDocument, HtmlDocumentMode, HtmlFragment,
+        HtmlFragmentOwner, HtmlNodeKind, HtmlProcessingInstruction, HtmlProcessingInstructionError,
+        HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+    },
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 
 fn name(namespace: Namespace, local: &str) -> QualifiedName {

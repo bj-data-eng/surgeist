@@ -4,6 +4,7 @@
 //! identities never change in this profile; successful Document cleanup removes
 //! its complete selected group. Ordinal keys retain the original first match.
 use super::*;
+
 use transaction::auxiliary::index::{self, Generations, Producer, U64Bank};
 
 pub(in crate::store) struct Member {

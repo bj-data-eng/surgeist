@@ -12,8 +12,16 @@
 //! follows from that contract, not from running the adapter.
 use std::collections::HashMap;
 use surgeist_fuzz::{FuzzError, FuzzErrorKind, Result};
-use surgeist_html::bounded::HtmlConstructionResult;
-use surgeist_html::*;
+use surgeist_html::bounded::construction::HtmlConstructionResult;
+use surgeist_html::{
+    construction::{
+        HtmlConstructionLimits, HtmlDocumentMode, HtmlFragment, HtmlFragmentOwner, HtmlNodeId,
+        HtmlNodeKind, HtmlShadowRootProperties,
+    },
+    values::DocumentString,
+};
+#[cfg(test)]
+use surgeist_html::{values::OrderedAttributes, vocabulary::KnownHtmlElement};
 use surgeist_html_semantics::*;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

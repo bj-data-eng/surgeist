@@ -3,11 +3,20 @@ use crate::html::support::{
     known_text_attribute as attr,
 };
 use surgeist_html::{
-    Attribute, DocumentString, HtmlAttributeApplicability, HtmlAttributeObservation,
-    HtmlNonNegativeInteger, HtmlNumericAttributeAuthorState, HtmlNumericAttributeConformanceError,
-    HtmlNumericAttributeValueOrigin, HtmlValueAdmissionError, HtmlValueAuthorState,
-    HtmlValueFailure, HtmlValueInterpreter, HtmlValueRecoveryState, HtmlValueSyntax,
-    HtmlValueSyntaxError, KnownHtmlAttribute, KnownHtmlElement, Namespace, QualifiedName,
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeObservation,
+        scalar::{
+            HtmlNumericAttributeAuthorState, HtmlNumericAttributeConformanceError,
+            HtmlNumericAttributeValueOrigin,
+        },
+    },
+    microsyntax::numeric::HtmlNonNegativeInteger,
+    values::{
+        Attribute, DocumentString, HtmlValueAdmissionError, HtmlValueAuthorState, HtmlValueFailure,
+        HtmlValueInterpreter, HtmlValueRecoveryState, HtmlValueSyntax, HtmlValueSyntaxError,
+        Namespace, QualifiedName,
+    },
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 
 type SpanOperation = fn(

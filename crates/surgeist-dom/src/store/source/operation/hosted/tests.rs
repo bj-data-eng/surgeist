@@ -66,7 +66,8 @@ fn child_history_publication_cancellation_restores_graph_and_retries_the_origina
     // initializer. Moving the Frame into the active tree then starts the real
     // child-construction protocol.
     let closed = batch.create_html_document(document, None);
-    let iframe = batch.create_element_ns(&closed, crate::Namespace::html(), "frame");
+    let iframe =
+        batch.create_element_ns(&closed, surgeist_html::values::Namespace::html(), "frame");
     let iframe = dom
         .apply(batch, &cancel)
         .unwrap()
@@ -228,7 +229,13 @@ fn child_history_publication_cancellation_restores_graph_and_retries_the_origina
 
 #[test]
 fn inherited_csp_association_is_parked_across_original_work_refusal_and_raised_retry() {
-    use surgeist_html::*;
+    use surgeist_html::{
+        security::csp::{
+            HtmlCspArtifactLayout, HtmlCspAssociationCause, HtmlCspDisposalWork, HtmlCspLayout,
+            HtmlCspNativePolicy, HtmlCspPolicyArtifact, HtmlCspProcessorAuthority, HtmlCspStorage,
+        },
+        values::DocumentString,
+    };
     let cancel = AtomicBool::new(false);
     let (mut dom, mut source, parent_document, _) = super::super::fullscreen::native_fixture(
         DomLimits::new(
@@ -321,7 +328,7 @@ fn inherited_csp_association_is_parked_across_original_work_refusal_and_raised_r
         .unwrap();
     let mut batch = DomBatch::new();
     let closed = batch.create_html_document(parent_document, None);
-    let frame = batch.create_element_ns(&closed, crate::Namespace::html(), "frame");
+    let frame = batch.create_element_ns(&closed, surgeist_html::values::Namespace::html(), "frame");
     let frame = dom
         .apply(batch, &cancel)
         .unwrap()

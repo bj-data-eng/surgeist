@@ -31,7 +31,8 @@ fn acknowledged_cssom_receipt_survives_pending_identity_refusal_and_same_source_
     let html = snapshot.node(document.node()).unwrap().children()[1];
     let head = snapshot.node(html).unwrap().children()[0];
     let mut setup = DomBatch::new();
-    let style = setup.create_element_ns(document, crate::Namespace::html(), "style");
+    let style =
+        setup.create_element_ns(document, surgeist_html::values::Namespace::html(), "style");
     let text = setup.create_text(document, "a { color: red }");
     setup.insert_before(&text, &style, None);
     let created = dom.apply(setup, &cancel).unwrap();

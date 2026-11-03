@@ -1,5 +1,6 @@
 //! Current native Style associations apply CSSOM's add-sheet selection steps.
 use super::*;
+use surgeist_html::values::Namespace;
 
 fn append_named_style(session: &mut DomSession, document: NodeId, title: &str) -> NodeId {
     let cancel = AtomicBool::new(false);
@@ -655,7 +656,9 @@ fn document_adoption_keeps_each_preference_and_shadow_lists_have_no_document_his
     let host = batch.create_element_ns(first, Namespace::html(), "div");
     let shadow = batch.attach_shadow(
         &host,
-        surgeist_dom::DomShadowRootInit::new(surgeist_html::HtmlShadowRootMode::Closed),
+        surgeist_dom::DomShadowRootInit::new(
+            surgeist_html::construction::HtmlShadowRootMode::Closed,
+        ),
     );
     batch.insert_before(
         &host,
@@ -866,7 +869,9 @@ fn retired_shadow_generation_releases_its_root_without_changing_document_prefere
     let host = batch.create_element_ns(document, Namespace::html(), "div");
     let shadow = batch.attach_shadow(
         &host,
-        surgeist_dom::DomShadowRootInit::new(surgeist_html::HtmlShadowRootMode::Closed),
+        surgeist_dom::DomShadowRootInit::new(
+            surgeist_html::construction::HtmlShadowRootMode::Closed,
+        ),
     );
     batch.insert_before(
         &host,
@@ -898,7 +903,9 @@ fn retired_shadow_generation_releases_its_root_without_changing_document_prefere
     let host = batch.create_element_ns(document, Namespace::html(), "div");
     let replacement = batch.attach_shadow(
         &host,
-        surgeist_dom::DomShadowRootInit::new(surgeist_html::HtmlShadowRootMode::Closed),
+        surgeist_dom::DomShadowRootInit::new(
+            surgeist_html::construction::HtmlShadowRootMode::Closed,
+        ),
     );
     let made = session.dom().apply(batch, &flag()).unwrap();
     let replacement = made.created(&replacement).unwrap().unwrap();

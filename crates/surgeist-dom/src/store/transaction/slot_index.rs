@@ -813,6 +813,7 @@ impl Draft {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     fn assert_unchanged_index(actual: &SlotIndex, before: &SlotIndex) {
         assert_eq!(actual.positions, before.positions);
         assert_eq!(actual.members, before.members);
@@ -856,11 +857,11 @@ mod tests {
         let mut dom = Dom::new(limits()).unwrap();
         let mut b = DomBatch::new();
         let d = b.create_document();
-        let root = b.create_element_ns(&d, crate::Namespace::html(), "slot");
-        let a = b.create_element_ns(&d, crate::Namespace::html(), "slot");
+        let root = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "slot");
+        let a = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "slot");
         let wrapper = b.create_element(&d, "wrapper");
-        let nested = b.create_element_ns(&d, crate::Namespace::html(), "slot");
-        let z = b.create_element_ns(&d, crate::Namespace::html(), "slot");
+        let nested = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "slot");
+        let z = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "slot");
         let comment = b.create_comment(&d, "gap");
         b.insert_before(&nested, &wrapper, None);
         b.insert_before(&a, &root, None);
@@ -1271,7 +1272,11 @@ mod tests {
                 let mut shape = Vec::new();
                 for index in 0..comments {
                     if slots != 0 && index % (comments / slots) == 0 {
-                        let slot = b.create_element_ns(&d, crate::Namespace::html(), "slot");
+                        let slot = b.create_element_ns(
+                            &d,
+                            surgeist_html::values::Namespace::html(),
+                            "slot",
+                        );
                         b.set_attribute(&slot, "name", "same");
                         b.insert_before(&slot, &root, None);
                         shape.push(true);

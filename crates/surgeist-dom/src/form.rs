@@ -1,5 +1,6 @@
 //! Form scalar readback and the canonical identity-bearing past names map.
-use crate::{DocumentString, DomNode, NodeId};
+use crate::{DomNode, NodeId};
+use surgeist_html::values::DocumentString;
 #[cfg(test)]
 pub(crate) mod allocation_observation;
 
@@ -12,7 +13,7 @@ impl<'a> DomForm<'a> {
     pub fn id(self) -> NodeId {
         self.node.id()
     }
-    pub fn state(self) -> surgeist_html::HtmlFormNativeState {
+    pub fn state(self) -> surgeist_html::elements::form::HtmlFormNativeState {
         self.node
             .as_element()
             .expect("checked Form")

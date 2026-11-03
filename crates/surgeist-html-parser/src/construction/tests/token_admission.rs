@@ -1,4 +1,5 @@
 use super::*;
+use surgeist_html::construction::HtmlNodeKind;
 
 #[test]
 fn wrong_case_and_duplicate_token_attributes_do_not_bypass_expanded_name_validation() {

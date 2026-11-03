@@ -1,5 +1,5 @@
 use crate::parser::support::{bank, environment, limits, record};
-use surgeist_html::{DocumentString, HtmlNodeKind};
+use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
 use surgeist_html_parser::*;
 use surgeist_html_semantics::*;
 fn has_source(cause: &HtmlParseCause<'_>) -> bool {
@@ -275,7 +275,7 @@ fn standalone_img_starts_before_disabled_guard_and_keeps_only_latest_inactive_wa
                     let state = image.state();
                     assert_eq!(
                         state.current_request().state(),
-                        surgeist_html::HtmlImgFreshRequestState::Unavailable
+                        surgeist_html::elements::image::HtmlImgFreshRequestState::Unavailable
                     );
                     assert!(state.current_request().current_url().is_empty());
                     assert_eq!(state.current_request().current_pixel_density(), 1);
@@ -505,9 +505,9 @@ fn ordinary_common_state_is_subject_qualified_and_nonce_is_independent() {
                             assert_eq!(
                                 common.scope(),
                                 if html {
-                                    surgeist_html::HtmlCommonScope::Html
+                                    surgeist_html::elements::native::HtmlCommonScope::Html
                                 } else {
-                                    surgeist_html::HtmlCommonScope::Element
+                                    surgeist_html::elements::native::HtmlCommonScope::Element
                                 }
                             );
                             assert_eq!(common.html().is_some(), html);

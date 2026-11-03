@@ -1,6 +1,7 @@
 //! Textarea raw value state and its reset from child text.
 
 use super::*;
+use surgeist_html::{construction::HtmlNodeKind, elements::form::HtmlTextareaRawValueAction};
 
 impl SessionStorage {
     pub(super) fn textarea_slot(

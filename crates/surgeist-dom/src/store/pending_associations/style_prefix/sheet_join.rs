@@ -368,7 +368,7 @@ fn form_request(
         .root()
         .kind()
     {
-        surgeist_html::HtmlNodeKind::Document(mode) => *mode,
+        surgeist_html::construction::HtmlNodeKind::Document(mode) => *mode,
         _ => return Err(DomParsedHtmlStyleError::WrongRequest),
     };
     let mut cursor = report.pending_associations();
@@ -425,8 +425,8 @@ fn form_request(
                     meter.retain(size_of::<Vec<u16>>(), 0, 0, cancel)?;
                     Ok(Some(DocumentString::from_utf16(units)))
                 };
-                let media = attribute(surgeist_html::KnownHtmlAttribute::Media)?;
-                let title = attribute(surgeist_html::KnownHtmlAttribute::Title)?;
+                let media = attribute(surgeist_html::vocabulary::KnownHtmlAttribute::Media)?;
+                let title = attribute(surgeist_html::vocabulary::KnownHtmlAttribute::Title)?;
                 return Ok(DomParsedHtmlStyleCreateSheetRequest {
                     qualification: original.qualification.clone(),
                     element,
@@ -584,14 +584,16 @@ impl DomParsedHtmlStyleSheetPreparation<'_, '_, '_> {
 fn validate_source(
     source: Option<&surgeist_css::source::CssParseSource>,
     expected: &[u16],
-    mode: surgeist_html::HtmlDocumentMode,
+    mode: surgeist_html::construction::HtmlDocumentMode,
     meter: &Meter,
     cancel: &AtomicBool,
 ) -> Result<(), DomParsedHtmlStyleError> {
     meter.step(cancel)?;
     let source = source.ok_or(DomParsedHtmlStyleError::InvalidSheetInput)?;
     let selected = match mode {
-        surgeist_html::HtmlDocumentMode::Quirks => surgeist_css::CssParserMode::Quirks,
+        surgeist_html::construction::HtmlDocumentMode::Quirks => {
+            surgeist_css::CssParserMode::Quirks
+        }
         _ => surgeist_css::CssParserMode::Standards,
     };
     if source.context().mode() != selected {

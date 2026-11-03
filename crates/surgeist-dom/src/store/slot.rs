@@ -1,5 +1,6 @@
 use super::*;
 use crate::slot::{self, Tree};
+
 use transaction::RelationField;
 
 impl<'a> From<transaction::KindRead<'a>> for slot::TreeKind<'a> {
@@ -326,7 +327,7 @@ impl Draft {
         cancel: &AtomicBool,
         admit_action: &mut impl FnMut() -> Result<(), DomError>,
     ) -> Result<(), DomError> {
-        use surgeist_html::bounded::{
+        use surgeist_html::bounded::template::{
             HtmlSlotAssignAction as A, HtmlSlotAssignCursor, HtmlSlotAssignReply as R,
         };
         self.source_step(cancel)?;
@@ -436,7 +437,7 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
         if let Some(root) = self.node(parent)?.shadow_root()
-            && matches!(self.node(root)?.kind(),transaction::KindRead::ShadowRoot(state) if state.slot_assignment()==crate::HtmlSlotAssignment::Named)
+            && matches!(self.node(root)?.kind(),transaction::KindRead::ShadowRoot(state) if state.slot_assignment()==surgeist_html::construction::HtmlSlotAssignment::Named)
             && slot::is_slottable(self.node(node)?.kind().into())
         {
             self.assign_a_slot(node, limits, cancel)?;
@@ -616,6 +617,7 @@ impl Dom {
 mod tests {
     use super::*;
     use std::sync::atomic::Ordering;
+
     fn fixture() -> (Dom, NodeId, NodeId) {
         let mut dom = Dom::new(
             DomLimits::new(
@@ -633,7 +635,7 @@ mod tests {
         .unwrap();
         let mut b = DomBatch::new();
         let d = b.create_document();
-        let s = b.create_element_ns(&d, crate::Namespace::html(), "slot");
+        let s = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "slot");
         let x = b.create_text(&d, "X");
         let c = dom.apply(b, &AtomicBool::new(false)).unwrap();
         let s = c.created(&s).unwrap().unwrap();

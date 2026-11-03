@@ -1,6 +1,6 @@
 //! Independent literal traces from HTML877d raw60083–60110. Selection actions
 //! carry real adapter obligations; these pure tests do not supply geometry.
-use surgeist_html::{
+use surgeist_html::focus::{
     HtmlCurrentlyFocusedAreaOutcome as CurrentOutcome, HtmlGetFocusableAreaAction as A,
     HtmlGetFocusableAreaCursor as C, HtmlGetFocusableAreaOutcome as O,
     HtmlGetFocusableAreaReply as R,
@@ -244,7 +244,7 @@ fn current_anchor_outside_ancestry_runs_delegate_and_keeps_delegate_result_role(
 }
 #[test]
 fn genuine_existing_children_complete_before_parent_accepts_their_nullable_returns() {
-    use surgeist_html::{
+    use surgeist_html::focus::{
         HtmlAutofocusDelegateAction as AA, HtmlAutofocusDelegateCursor as AC,
         HtmlAutofocusDelegateOutcome as AO, HtmlAutofocusDelegateReply as AR,
         HtmlCurrentlyFocusedAreaAction as CA, HtmlCurrentlyFocusedAreaCursor as CC,
@@ -305,7 +305,7 @@ fn genuine_existing_children_complete_before_parent_accepts_their_nullable_retur
 
 #[test]
 fn candidate_document_from_real_current_area_does_not_enter_area_anchor_projection() {
-    use surgeist_html::{
+    use surgeist_html::focus::{
         HtmlCurrentlyFocusedAreaAction as CA, HtmlCurrentlyFocusedAreaCursor as CC,
         HtmlCurrentlyFocusedAreaOutcome as CO, HtmlCurrentlyFocusedAreaReply as CR,
         HtmlFocusedAreaKind,
@@ -339,7 +339,7 @@ fn candidate_document_from_real_current_area_does_not_enter_area_anchor_projecti
 }
 
 fn actual_current_result(has_designated_area: bool) -> CurrentOutcome {
-    use surgeist_html::{
+    use surgeist_html::focus::{
         HtmlCurrentlyFocusedAreaAction as CA, HtmlCurrentlyFocusedAreaCursor as CC,
         HtmlCurrentlyFocusedAreaReply as CR, HtmlFocusedAreaKind,
     };
@@ -366,7 +366,7 @@ fn actual_current_result(has_designated_area: bool) -> CurrentOutcome {
 }
 
 fn actual_delegate_result(autofocus_descendant: bool) -> bool {
-    use surgeist_html::{
+    use surgeist_html::focus::{
         HtmlAutofocusDelegateAction as AA, HtmlAutofocusDelegateCursor as AC,
         HtmlAutofocusDelegateOutcome as AO, HtmlAutofocusDelegateReply as AR,
         HtmlFocusDelegateAction as DA, HtmlFocusDelegateCandidate as Candidate,
@@ -491,7 +491,7 @@ fn actual_area_and_viewport_with_document_anchor_still_project_their_real_anchor
 
 #[test]
 fn unavailable_current_child_is_not_a_null_or_document_reply_and_wrong_stage_preserves_wait() {
-    use surgeist_html::{
+    use surgeist_html::focus::{
         HtmlCurrentlyFocusedAreaAction as CA, HtmlCurrentlyFocusedAreaCursor as CC,
         HtmlCurrentlyFocusedAreaReply as CR,
     };

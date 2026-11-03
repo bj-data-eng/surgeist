@@ -3,7 +3,13 @@ use crate::semantics::support::{
     compact_builder_without_registries as builder, moderate_semantic_limits_with_scratch as limits,
     result_record_bytes,
 };
-use surgeist_html::*;
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureError,
     HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedChildIds, HtmlCapturedIsValue,

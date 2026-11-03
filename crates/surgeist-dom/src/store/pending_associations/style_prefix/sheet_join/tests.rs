@@ -6,7 +6,7 @@ use surgeist_css::query::media::CssMediaQueryList;
 use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_css::{CssParser, CssParserContext};
 use surgeist_cssom::*;
-use surgeist_html::{HtmlCspLayout, HtmlCspOwner};
+use surgeist_html::security::csp::{HtmlCspLayout, HtmlCspOwner};
 fn ready() -> (Dom, DocumentId, DomParsedHtmlAssociationId) {
     ready_with("<!doctype html><style title=A media=screen nonce=n>p{color:red}</style>")
 }

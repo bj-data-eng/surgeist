@@ -7,7 +7,7 @@ use surgeist_dom::{
     DomHtmlCaptureLimits, DomHtmlCaptureResource, DomLimits, DomSnapshot, Namespace, NodeId,
     Observed,
 };
-use surgeist_html::HtmlValueInterpreter;
+use surgeist_html::values::HtmlValueInterpreter;
 use surgeist_html_semantics::{
     HtmlCaptureError, HtmlCaptureLimits, HtmlSemanticCancellation, HtmlSemanticDependencies,
     HtmlSemanticFact, HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticQuery,

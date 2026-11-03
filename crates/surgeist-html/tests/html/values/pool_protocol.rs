@@ -1,13 +1,15 @@
 //! Public consumer regressions for root authority and bounded rollback.
 //! The driver sees only exported actions, layouts, progress and final results.
 use std::{cell::Cell, mem::size_of, rc::Rc, sync::Arc};
-use surgeist_html::bounded::{
+use surgeist_html::bounded::values::{
     HtmlAttributePool, HtmlAttributePoolOperation, HtmlAttributePoolResult, HtmlStringPool,
     HtmlStringPoolOperation, HtmlStringPoolResult, HtmlValuePoolActionKind, HtmlValuePoolError,
     HtmlValuePoolMark, HtmlValuePoolProgress, HtmlValuePoolRoot, HtmlValuePoolSeal,
     HtmlValuePoolSealRefusal, HtmlValuePoolUsage, HtmlValuePoolWork,
 };
-use surgeist_html::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName};
+use surgeist_html::values::{
+    Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName,
+};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 struct Storage {

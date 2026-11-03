@@ -159,9 +159,11 @@ impl HeadState<'_> {
             {
                 return self.set_mode(HtmlInsertionMode::InCell, c);
             }
-            if let Some(mode) = crate::bounded::stack_reset_insertion_mode(|local| {
-                super::tag_sets::html_named(name, local, c)
-            })? {
+            if let Some(mode) =
+                surgeist_html::bounded::parsing::stack_reset_insertion_mode(|local| {
+                    super::tag_sets::html_named(name, local, c)
+                })?
+            {
                 return self.set_mode(super::context::parser_insertion_mode(mode), c);
             }
             if index != 0 && super::tag_sets::html_named(name, "head", c)? {

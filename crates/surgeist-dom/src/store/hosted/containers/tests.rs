@@ -1,5 +1,6 @@
 //! Independent raw participants and owning candidate rollback.
 use super::*;
+
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }
@@ -21,18 +22,30 @@ fn actual_null_containers_keep_shadow_order_and_raw_payloads_across_snapshot_mov
     let mut dom = Dom::new(limits()).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
-    let root = batch.create_element_ns(&document, crate::Namespace::html(), "div");
-    let first = batch.create_element_ns(&document, crate::Namespace::html(), "iframe");
+    let root = batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
+    let first = batch.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "iframe",
+    );
     batch.insert_before(&first, &root, None);
-    let host = batch.create_element_ns(&document, crate::Namespace::html(), "div");
+    let host = batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
     batch.insert_before(&host, &root, None);
     let shadow = batch.attach_shadow(
         &host,
-        crate::DomShadowRootInit::new(crate::HtmlShadowRootMode::Closed),
+        crate::DomShadowRootInit::new(surgeist_html::construction::HtmlShadowRootMode::Closed),
     );
-    let in_shadow = batch.create_element_ns(&document, crate::Namespace::html(), "iframe");
+    let in_shadow = batch.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "iframe",
+    );
     batch.insert_before(&in_shadow, &shadow, None);
-    let light = batch.create_element_ns(&document, crate::Namespace::html(), "iframe");
+    let light = batch.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "iframe",
+    );
     batch.insert_before(&light, &host, None);
     let commit = dom.apply(batch, &cancel()).unwrap();
     let key = |ticket: &CreatedNode| Key::Existing(commit.created(ticket).unwrap().unwrap());
@@ -71,9 +84,17 @@ fn source_checkpoint_restores_ordered_pair_and_disconnected_selected_container()
     let mut dom = Dom::new(limits()).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();
-    let root = batch.create_element_ns(&document, crate::Namespace::html(), "div");
-    let first = batch.create_element_ns(&document, crate::Namespace::html(), "iframe");
-    let second = batch.create_element_ns(&document, crate::Namespace::html(), "iframe");
+    let root = batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
+    let first = batch.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "iframe",
+    );
+    let second = batch.create_element_ns(
+        &document,
+        surgeist_html::values::Namespace::html(),
+        "iframe",
+    );
     batch.insert_before(&first, &root, None);
     batch.insert_before(&second, &root, None);
     let commit = dom.apply(batch, &cancel()).unwrap();

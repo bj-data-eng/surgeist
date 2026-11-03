@@ -1,5 +1,8 @@
 use crate::parser::support::{limits, revision};
-use surgeist_html::*;
+use surgeist_html::{
+    construction::{HtmlDocumentMode, HtmlNodeKind},
+    values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_parser::HtmlParseBaseState;
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseFailureReason,

@@ -269,6 +269,7 @@ impl Names {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::values::DocumentString;
 
     fn owner(source: bool) -> (Dom, Draft) {
         let dom = Dom::new(

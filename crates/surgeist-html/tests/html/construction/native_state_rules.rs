@@ -1,9 +1,9 @@
 //! Literal outcomes from HTML877d's appropriate-template-contents-owner-document
 //! and the selected DOM create-element algorithm's no-definition branch.
 
-use surgeist_html::{
-    HtmlCustomElementState, HtmlTemplateContentsOwnerDocument,
-    custom_element_state_without_definition, template_contents_owner_document,
+use surgeist_html::elements::{
+    native::{HtmlCustomElementState, custom_element_state_without_definition},
+    template::{HtmlTemplateContentsOwnerDocument, template_contents_owner_document},
 };
 
 #[test]

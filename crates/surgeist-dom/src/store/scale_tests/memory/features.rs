@@ -7,10 +7,10 @@ use std::sync::{Arc, atomic::AtomicBool};
 use std::time::{Duration, Instant};
 
 use crate::{
-    DocumentId, DocumentString, Dom, DomBatch, DomChange, DomLimits, DomNameLimits,
-    DomNativeInputPlatform, DomSnapshot, DomSourceEdit, DomSourceLimits, DomSourceOutput,
-    DomSourceProgress, DomSourceRequest, DomStyleAction, DomStyleCssomOwnerBinding,
-    DomStyleCssomRoot, DomStyleInlineCspObservation, Namespace, NodeId,
+    DocumentId, Dom, DomBatch, DomChange, DomLimits, DomNameLimits, DomNativeInputPlatform,
+    DomSnapshot, DomSourceEdit, DomSourceLimits, DomSourceOutput, DomSourceProgress,
+    DomSourceRequest, DomStyleAction, DomStyleCssomOwnerBinding, DomStyleCssomRoot,
+    DomStyleInlineCspObservation, NodeId,
 };
 use surgeist_css::query::media::CssMediaQueryList;
 use surgeist_css::source::CssUtf16InputLimits;
@@ -18,10 +18,13 @@ use surgeist_css::{CssParser, CssParserContext};
 use surgeist_cssom::{
     CssomEditGuard, CssomInputRole, CssomInputVersion, CssomSheetInputs, CssomStore,
 };
-use surgeist_html::{
-    HtmlInputEmptySelectionSupport, HtmlInputNoneDirectionSupport, HtmlInputSelectionDirection,
-    HtmlStyleUpdateAction,
+use surgeist_html::elements::{
+    input::{
+        HtmlInputEmptySelectionSupport, HtmlInputNoneDirectionSupport, HtmlInputSelectionDirection,
+    },
+    style::HtmlStyleUpdateAction,
 };
+use surgeist_html::values::{DocumentString, Namespace};
 
 mod selected;
 

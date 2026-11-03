@@ -1,6 +1,14 @@
 //! The payload registry: actual retained backing and exact record-qualified ownership.
 
 use super::*;
+use surgeist_html::{
+    construction::{HtmlElement, HtmlNodeKind},
+    elements::{
+        form::{HtmlNativeFormAssociationKind, HtmlTextareaFlags},
+        script::{HtmlScriptFlags, HtmlScriptKind, HtmlScriptReadySteps, HtmlScriptResult},
+    },
+    values::{Attribute, DocumentString},
+};
 
 /// Actual backing and exact record-qualified ownership, not allocation proxies.
 pub(super) struct PayloadStorage {
@@ -245,7 +253,7 @@ pub(crate) struct OutputState {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct InputState {
-    pub(crate) flags: crate::HtmlInputFlags,
+    pub(crate) flags: surgeist_html::elements::input::HtmlInputFlags,
     pub(crate) cursor: usize,
     pub(crate) selected_files_empty: bool,
     pub(crate) value_rewritten_during_creation: bool,

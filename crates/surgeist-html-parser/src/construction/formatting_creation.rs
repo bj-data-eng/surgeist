@@ -1,6 +1,7 @@
 //! Original lexical creation records retained for active-formatting replay.
 
 use super::*;
+use surgeist_html::construction::HtmlBuilderNode;
 
 /// Original lexical creation record, not an alias of installed arena backing.
 /// Only this arena can issue it; every replay copies into independent tickets.
@@ -467,7 +468,7 @@ impl ParserArenaSession {
             .handle();
         self.active_mut()?.construction.apply(
             control,
-            bounded::HtmlConstructionCommand::CheckChildTransfer {
+            surgeist_html::bounded::construction::HtmlConstructionCommand::CheckChildTransfer {
                 from: source_handle,
                 to: destination_handle,
             },

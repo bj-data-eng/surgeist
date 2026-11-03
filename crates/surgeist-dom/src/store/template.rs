@@ -17,15 +17,15 @@ impl Draft {
             .template_document()
             .ok_or(DomError::WrongDocument)?;
         Ok(
-            match surgeist_html::template_contents_owner_document(
+            match surgeist_html::elements::template::template_contents_owner_document(
                 matches!(state, TemplateDocument::InertTemplate),
                 state.inert().is_some(),
             ) {
-                surgeist_html::HtmlTemplateContentsOwnerDocument::CurrentDocument => Some(document),
-                surgeist_html::HtmlTemplateContentsOwnerDocument::AssociatedInertDocument => {
+                surgeist_html::elements::template::HtmlTemplateContentsOwnerDocument::CurrentDocument => Some(document),
+                surgeist_html::elements::template::HtmlTemplateContentsOwnerDocument::AssociatedInertDocument => {
                     state.inert()
                 }
-                surgeist_html::HtmlTemplateContentsOwnerDocument::CreateAssociatedInertDocument => {
+                surgeist_html::elements::template::HtmlTemplateContentsOwnerDocument::CreateAssociatedInertDocument => {
                     None
                 }
             },
@@ -80,15 +80,15 @@ impl Draft {
             .node(document)?
             .template_document()
             .expect("Document role");
-        match surgeist_html::template_contents_owner_document(
+        match surgeist_html::elements::template::template_contents_owner_document(
             matches!(state, TemplateDocument::InertTemplate),
             state.inert().is_some(),
         ) {
-            surgeist_html::HtmlTemplateContentsOwnerDocument::CurrentDocument => Ok(document),
-            surgeist_html::HtmlTemplateContentsOwnerDocument::AssociatedInertDocument => {
+            surgeist_html::elements::template::HtmlTemplateContentsOwnerDocument::CurrentDocument => Ok(document),
+            surgeist_html::elements::template::HtmlTemplateContentsOwnerDocument::AssociatedInertDocument => {
                 Ok(state.inert().expect("actual cached Document"))
             }
-            surgeist_html::HtmlTemplateContentsOwnerDocument::CreateAssociatedInertDocument => {
+            surgeist_html::elements::template::HtmlTemplateContentsOwnerDocument::CreateAssociatedInertDocument => {
                 let KindRead::Document(source) = self.node(document)?.kind() else {
                     unreachable!("Document role requires Document")
                 };
@@ -198,6 +198,7 @@ mod patch_retirement_tests;
 mod tests {
     use super::*;
     use std::sync::atomic::Ordering;
+
     fn limits() -> DomLimits {
         DomLimits::new(
             512,
@@ -223,7 +224,7 @@ mod tests {
         let before = dom.snapshot();
         let usage = dom.usage();
         let mut b = DomBatch::new();
-        b.create_element_ns(d, crate::Namespace::html(), "template");
+        b.create_element_ns(d, surgeist_html::values::Namespace::html(), "template");
         let mut draft = Draft::new(&dom, b.owner.clone(), &cancel).unwrap();
         for command in b.commands {
             draft.apply(&command, limits(), &cancel).unwrap();
@@ -250,7 +251,7 @@ mod tests {
         dom.revision = DomRevision(u64::MAX);
         let before = dom.snapshot();
         let mut b = DomBatch::new();
-        b.create_element_ns(d, crate::Namespace::html(), "template");
+        b.create_element_ns(d, surgeist_html::values::Namespace::html(), "template");
         let prepared = dom.prepare(b, &cancel).unwrap();
         assert_eq!(
             dom.publish(prepared, &cancel).unwrap_err(),
@@ -266,7 +267,7 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let mut b = DomBatch::new();
         let d = b.create_document();
-        let t = b.create_element_ns(&d, crate::Namespace::html(), "template");
+        let t = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "template");
         let c = dom.apply(b, &cancel).unwrap();
         let d = c.document(&d).unwrap();
         let t = c.created(&t).unwrap().unwrap();
@@ -286,7 +287,8 @@ mod tests {
             .unwrap();
         for _ in 0..64 {
             let mut b = DomBatch::new();
-            let child = b.create_element_ns(inert, crate::Namespace::html(), "template");
+            let child =
+                b.create_element_ns(inert, surgeist_html::values::Namespace::html(), "template");
             b.insert_before(&child, parent, None);
             let c = dom.apply(b, &cancel).unwrap();
             parent = dom

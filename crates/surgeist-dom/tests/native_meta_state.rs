@@ -1,7 +1,7 @@
 //! Actual source triggers and Document history; no CSS, policy or UI stand-ins.
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
-use surgeist_html::HtmlReferrerPolicy;
+use surgeist_html::attributes::HtmlReferrerPolicy;
 use surgeist_html_semantics::*;
 
 fn cancel() -> AtomicBool {
@@ -433,7 +433,7 @@ fn ordinary_and_slot_semantics_consume_retained_language_after_meta_removal() {
                     capture.subject(root).unwrap(),
                     HtmlSemanticQuery::Language,
                 )],
-                surgeist_html::HtmlValueInterpreter::new(32768),
+                surgeist_html::values::HtmlValueInterpreter::new(32768),
                 HtmlSemanticLimits::new(1_000_000, 16, 1024, 256, 1_000_000, 1024),
                 HtmlSemanticCancellation::new(),
             )
@@ -482,8 +482,8 @@ fn clone_and_native_install_process_copied_attributes_in_actual_destination() {
     apply(&mut dom, batch);
     assert_eq!(language(&dom.snapshot(), second), Some(&"copied".into()));
 
-    let mut builder = surgeist_html::HtmlFragment::builder(
-        surgeist_html::HtmlConstructionLimits::new(16, 16, 16, 1024, 8),
+    let mut builder = surgeist_html::construction::HtmlFragment::builder(
+        surgeist_html::construction::HtmlConstructionLimits::new(16, 16, 16, 1024, 8),
     )
     .unwrap();
     builder

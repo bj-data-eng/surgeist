@@ -91,7 +91,7 @@ fn next_allow(lease: &mut DomSourceLease<'_>) -> Result<DomFocusRequest, Failure
     };
     assert_eq!(
         request.action(),
-        surgeist_html::HtmlDialogFocusingAction::ReadAllowFocus
+        surgeist_html::elements::dialog::HtmlDialogFocusingAction::ReadAllowFocus
     );
     Ok(DomFocusRequest::AllowDialog(request))
 }

@@ -1175,7 +1175,9 @@ impl<'source> InputCursor<'source> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{DocumentString, HtmlSourceCoordinates};
+    use surgeist_html::values::DocumentString;
+
+    use crate::HtmlSourceCoordinates;
 
     fn limits() -> HtmlParseLimits {
         HtmlParseLimits::builder()

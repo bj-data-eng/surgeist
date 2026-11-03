@@ -1,7 +1,9 @@
 //! Actual queue publication for the original Dialog Source cursor.
 use super::*;
 use crate::{DomElementTaskAssociation, DomElementTaskId, DomElementTaskSource};
-use surgeist_html::{HtmlDialogAction, HtmlDialogState, HtmlDialogToggleDecision};
+use surgeist_html::elements::dialog::{
+    HtmlDialogAction, HtmlDialogState, HtmlDialogToggleDecision,
+};
 
 /// Immutable payload of one real queued Dialog toggle task.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -287,8 +289,8 @@ impl<'dom> DomSourceLease<'dom> {
                 old,
                 new,
                 source:
-                    surgeist_html::HtmlDialogEventSource::Null
-                    | surgeist_html::HtmlDialogEventSource::OperationSource,
+                    surgeist_html::elements::dialog::HtmlDialogEventSource::Null
+                    | surgeist_html::elements::dialog::HtmlDialogEventSource::OperationSource,
             } => {
                 let tracker = op.draft.dialog_state(subject)?.toggle_tracker;
                 let decision =
@@ -622,7 +624,7 @@ impl<'dom> DomSourceLease<'dom> {
         };
         frame
             .cursor
-            .reply(surgeist_html::HtmlDialogReply::Applied)
+            .reply(surgeist_html::elements::dialog::HtmlDialogReply::Applied)
             .map_err(DomError::DialogProtocol)?;
         op.dialog_queue = None;
         publication.take();

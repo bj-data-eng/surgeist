@@ -2,6 +2,7 @@
 //! held leaves stay installed but inactive; permanent retirement prunes empty paths.
 use super::*;
 use bank::owned::{ChunkBank, EmptyPath};
+
 const MAX_WORDS: usize = 96;
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(super) struct KeyWords {

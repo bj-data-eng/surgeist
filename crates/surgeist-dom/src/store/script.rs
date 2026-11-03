@@ -1,11 +1,15 @@
 //! Native Script hooks over actual staged topology, attributes and documents.
 use super::*;
-use surgeist_html::bounded::{
+use surgeist_html::bounded::script::{
     HtmlScriptPreparationAction as Action, HtmlScriptPreparationCursor,
     HtmlScriptPreparationReply as Reply, HtmlScriptPreparationResult, HtmlScriptTypeCursor,
     HtmlScriptTypeWork,
 };
-use surgeist_html::{HtmlScriptKind, HtmlScriptResult, KnownHtmlAttribute};
+
+use surgeist_html::{
+    elements::script::{HtmlScriptKind, HtmlScriptResult},
+    vocabulary::KnownHtmlAttribute,
+};
 
 fn attribute_name_is(name: &crate::DomQualifiedName, selected: &str) -> bool {
     name.namespace_uri().is_none()
@@ -267,7 +271,7 @@ mod tests {
             let cancel = AtomicBool::new(false);
             let mut b = DomBatch::new();
             let d = b.create_document();
-            let root = b.create_element_ns(&d, crate::Namespace::html(), "div");
+            let root = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "div");
             b.insert_before(&root, &d, None);
             let c = dom.apply(b, &cancel).unwrap();
             let root = c.created(&root).unwrap().unwrap();
@@ -279,7 +283,11 @@ mod tests {
             let usage = dom.usage();
             let mut b = DomBatch::new();
             let new_document = b.create_document();
-            let script = b.create_element_ns(&new_document, crate::Namespace::html(), "script");
+            let script = b.create_element_ns(
+                &new_document,
+                surgeist_html::values::Namespace::html(),
+                "script",
+            );
             b.set_attribute(&script, "src", "");
             b.insert_before(&script, &new_document, None);
             b.adopt(&script, d);

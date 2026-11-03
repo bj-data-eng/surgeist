@@ -1,6 +1,7 @@
 //! Actual Source entry constructors and affine pre-advance binding.
 use super::*;
 use crate::*;
+use surgeist_html::values::{Namespace, OrderedAttributes, QualifiedName};
 fn limits() -> DomSourceLimits {
     DomSourceLimits::new(32_000_000, 2_000_000, 10_000_000, 128, 8192, 8192, 4)
 }
@@ -108,8 +109,8 @@ fn original_edit_binding_is_once_only_and_first_advance_seals_the_native_entry()
 fn installation_binds_its_actual_target_parent_before_creations_or_publication() {
     let (mut dom, source, host, document, parent) = fixture();
     let cancel = AtomicBool::new(false);
-    let mut builder = surgeist_html::HtmlFragment::builder(
-        surgeist_html::HtmlConstructionLimits::new(8, 8, 8, 1024, 8),
+    let mut builder = surgeist_html::construction::HtmlFragment::builder(
+        surgeist_html::construction::HtmlConstructionLimits::new(8, 8, 8, 1024, 8),
     )
     .unwrap();
     builder

@@ -1,5 +1,25 @@
 use crate::html::support::{html_element as element, unqualified_attribute as attr};
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::{
+        HtmlAttributeApplicability, HtmlAttributeObservation,
+        srcset::{
+            HtmlParsedSrcsetDescriptor, HtmlSrcsetAuthorDiagnostic, HtmlSrcsetAuthorState,
+            HtmlSrcsetAuthorViolation, HtmlSrcsetCandidate, HtmlSrcsetContext,
+            HtmlSrcsetContextAuthorState, HtmlSrcsetContextViolation, HtmlSrcsetDensity,
+            HtmlSrcsetDensityError, HtmlSrcsetDensityProjectionError, HtmlSrcsetDescriptor,
+            HtmlSrcsetExternalConformance, HtmlSrcsetFollowingImageObservation,
+            HtmlSrcsetInterpretationError, HtmlSrcsetParentObservation, HtmlSrcsetParseDiagnostic,
+            HtmlSrcsetParseError, HtmlSrcsetProcessingState, HtmlSrcsetReport, HtmlSrcsetUrlToken,
+            HtmlSrcsetUrlTokenError, HtmlSrcsetValue, HtmlSrcsetWidth, HtmlSrcsetWidthError,
+        },
+    },
+    microsyntax::numeric::{HtmlFloatingPointNumber, HtmlNonNegativeInteger},
+    values::{
+        Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
+        QualifiedName,
+    },
+    vocabulary::KnownHtmlAttribute,
+};
 
 fn attributes(values: &[(&str, &str)]) -> OrderedAttributes {
     OrderedAttributes::new(values.iter().map(|&(name, value)| attr(name, value))).unwrap()
@@ -407,7 +427,7 @@ fn raw_utf16_names_and_ranges_survive_all_observations_without_lossy_conversion(
 fn missing_empty_whitespace_and_unapplied_roles_have_distinct_outcomes() {
     let interpreter = HtmlValueInterpreter::new(20);
     let missing = interpreter
-        .img_srcset(&element("img"), None::<&surgeist_html::Attribute>)
+        .img_srcset(&element("img"), None::<&surgeist_html::values::Attribute>)
         .unwrap();
     assert_eq!(missing.observation(), HtmlAttributeObservation::Missing);
     assert_eq!(

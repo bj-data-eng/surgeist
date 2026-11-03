@@ -3,8 +3,9 @@
 //! report assembly and frozen-result transfer are separate consumers.
 use super::{StandaloneDocumentDriver, StandaloneError, prologue, write};
 use crate::parser::control::{HtmlParseStop, HtmlParseUsage, ParseControl};
-use crate::{HtmlDocumentParseRequest, HtmlParseResource, HtmlParserScriptingMode, HtmlSource};
+use crate::{HtmlDocumentParseRequest, HtmlParseResource, HtmlSource};
 use std::mem::size_of;
+use surgeist_html::parsing::HtmlParserScriptingMode;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum EntryRejection {
@@ -485,7 +486,9 @@ pub(crate) fn initialized_driver(
 mod tests {
     use super::*;
     use crate::parser::control::HtmlParseWorkCategory;
-    use crate::{DocumentString, HtmlSourceCoordinates};
+    use surgeist_html::values::DocumentString;
+
+    use crate::HtmlSourceCoordinates;
 
     fn limits() -> crate::HtmlParseLimits {
         super::super::tests::limits(100)

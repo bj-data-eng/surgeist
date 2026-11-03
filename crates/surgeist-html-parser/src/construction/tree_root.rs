@@ -65,7 +65,7 @@ impl PayloadStorage {
     fn climb_to_root(
         &self,
         control: &mut ParseControl,
-        storage: &bounded::HtmlConstructionStorage,
+        storage: &surgeist_html::bounded::construction::HtmlConstructionStorage,
         node: usize,
     ) -> Result<(usize, usize), SessionError> {
         let mut at = node;
@@ -102,7 +102,10 @@ impl PayloadStorage {
     /// The root found by following parent edges all the way, uncharged: the
     /// oracle every cached answer is compared with in test builds.
     #[cfg(test)]
-    fn full_climb_root(storage: &bounded::HtmlConstructionStorage, node: usize) -> Option<usize> {
+    fn full_climb_root(
+        storage: &surgeist_html::bounded::construction::HtmlConstructionStorage,
+        node: usize,
+    ) -> Option<usize> {
         let mut at = node;
         for _ in 0..=storage.len() {
             match storage.node_at(at)?.parent() {
@@ -117,7 +120,7 @@ impl PayloadStorage {
     pub(super) fn tree_root_uncached(
         &self,
         control: &mut ParseControl,
-        storage: &bounded::HtmlConstructionStorage,
+        storage: &surgeist_html::bounded::construction::HtmlConstructionStorage,
         node: usize,
     ) -> Result<usize, SessionError> {
         Ok(self.climb_to_root(control, storage, node)?.0)
@@ -127,7 +130,7 @@ impl PayloadStorage {
     pub(super) fn tree_root(
         &mut self,
         control: &mut ParseControl,
-        storage: &bounded::HtmlConstructionStorage,
+        storage: &surgeist_html::bounded::construction::HtmlConstructionStorage,
         node: usize,
     ) -> Result<usize, SessionError> {
         let (root, stop) = self.climb_to_root(control, storage, node)?;

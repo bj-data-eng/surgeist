@@ -1,5 +1,6 @@
 //! HTML877d46727–46: an executing Toggle's cleanup clears the current tracker.
 use super::*;
+use surgeist_html::values::DocumentString;
 
 fn show(session: &mut DomSession, subject: NodeId) {
     let event = match apply(session, DomSourceEdit::show_dialog(subject)) {

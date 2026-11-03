@@ -11,7 +11,7 @@ use surgeist_css::color::controlled::{
     CssUsedColorCheckpoint,
 };
 use surgeist_dom::{DocumentString, DomError};
-use surgeist_html::HtmlInputColorSerialization;
+use surgeist_html::elements::input::HtmlInputColorSerialization;
 
 fn extent(count: usize, width: usize) -> Result<usize, &'static str> {
     count

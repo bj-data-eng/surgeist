@@ -1,6 +1,13 @@
 //! Literal source-framing oracles shared by native execution and static reports.
 use std::{convert::Infallible, ops::Range};
-use surgeist_html::{DocumentString, HtmlReferrerPolicy, bounded::*};
+use surgeist_html::{
+    attributes::HtmlReferrerPolicy,
+    bounded::attributes::{
+        HtmlMetaRefreshAction, HtmlMetaRefreshSyntaxTarget, meta_language_token_with,
+        meta_referrer_policy_with, meta_refresh_syntax_with,
+    },
+    values::DocumentString,
+};
 
 #[test]
 fn language_rejects_any_comma_and_preserves_exact_first_token_units() {

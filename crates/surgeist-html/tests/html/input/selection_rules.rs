@@ -1,5 +1,5 @@
 //! HTML877d generic relevant-value clamping preserves independent direction.
-use surgeist_html::{
+use surgeist_html::elements::input::{
     HtmlInputEmptySelectionSupport, HtmlInputSelection, HtmlInputSelectionDirection,
 };
 
@@ -19,8 +19,8 @@ fn range_collapse_keeps_opposite_directions_distinct_at_the_cursor() {
 #[test]
 fn all_four_platform_combinations_keep_empty_and_none_support_independent() {
     use HtmlInputSelectionDirection::{Backward, Forward, None};
-    use surgeist_html::HtmlInputEmptySelectionSupport as Empty;
-    use surgeist_html::HtmlInputNoneDirectionSupport as NoneSupport;
+    use surgeist_html::elements::input::HtmlInputEmptySelectionSupport as Empty;
+    use surgeist_html::elements::input::HtmlInputNoneDirectionSupport as NoneSupport;
     // Literal independent source outcomes. No product profile is selected here.
     for (empty, none, initial_direction, keeps_range) in [
         (Empty::Supported, NoneSupport::Supported, None, true),
@@ -60,7 +60,7 @@ fn all_four_platform_combinations_keep_empty_and_none_support_independent() {
 #[test]
 fn cursor_clamp_retains_actual_direction_until_a_source_direction_write() {
     use HtmlInputSelectionDirection::{Backward, Forward, None};
-    use surgeist_html::{
+    use surgeist_html::elements::input::{
         HtmlInputEmptySelectionSupport as Empty, HtmlInputNoneDirectionSupport as Support,
     };
     let retained = HtmlInputSelection::cursor(9, None);
@@ -97,7 +97,7 @@ fn cursor_clamp_retains_actual_direction_until_a_source_direction_write() {
 #[test]
 fn range_validation_and_nonempty_clamping_preserve_bounds_and_direction() {
     use HtmlInputSelectionDirection::Backward;
-    use surgeist_html::HtmlInputEmptySelectionSupport as Empty;
+    use surgeist_html::elements::input::HtmlInputEmptySelectionSupport as Empty;
     let invalid = HtmlInputSelection::selection(4, 3, Backward).unwrap_err();
     assert_eq!((invalid.start(), invalid.end()), (4, 3));
     for support in [Empty::Supported, Empty::Unsupported] {

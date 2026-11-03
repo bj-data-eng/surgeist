@@ -1,5 +1,6 @@
 //! Owning empty-storage/affine-credit proofs; no external service completion.
 use super::*;
+
 fn cancel() -> AtomicBool {
     AtomicBool::new(false)
 }

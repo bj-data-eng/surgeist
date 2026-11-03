@@ -1,6 +1,21 @@
 //! Independent literal expectations from HTML §4.5.14 and its §2.3.5 grammars.
 use crate::html::support::year;
-use surgeist_html::*;
+use surgeist_html::{
+    attributes::modification::{HtmlModificationTimestamp, HtmlModificationTimestampAbsence},
+    microsyntax::{
+        numeric::HtmlInteger,
+        temporal::{
+            HtmlDate, HtmlDateOrTime, HtmlDuration, HtmlGlobalDateTime, HtmlLocalDateTime,
+            HtmlMachineReadableTime, HtmlMonth, HtmlTemporalError, HtmlTime, HtmlTimeElementValue,
+            HtmlTimeZoneOffset, HtmlWeek, HtmlYear, HtmlYearlessDate,
+        },
+    },
+    values::{
+        Attribute, DocumentString, HtmlValueAuthorState, HtmlValueFailure, HtmlValueInterpreter,
+        HtmlValueRecoveryState, HtmlValueReport, HtmlValueSyntax, HtmlValueSyntaxError,
+    },
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
+};
 
 fn read(text: &str) -> HtmlValueReport<HtmlTimeElementValue, HtmlMachineReadableTime> {
     let raw = DocumentString::from(text);

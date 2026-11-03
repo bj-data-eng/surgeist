@@ -2,7 +2,25 @@
 
 use crate::html::support::non_negative_integer as integer;
 use std::{cmp::Ordering, num::NonZeroU32};
-use surgeist_html::{DocumentString, HtmlInteger, HtmlNonNegativeRational, bounded::*};
+use surgeist_html::{
+    bounded::{
+        input::HtmlInputRangeNumber,
+        numeric::{
+            HtmlBestFiniteNumberCursor, HtmlFiniteDecimalIngressCursor,
+            HtmlFloatingPointAllocationError, HtmlFloatingPointGrammarCursor,
+            HtmlFloatingPointParseMode, HtmlIntegerPrefixScanner, HtmlIntegerRecoveryError,
+            HtmlIntegerUnitStep, HtmlIntegerUnitStepError, HtmlNaturalArithmeticError,
+            HtmlNaturalComparison, HtmlNaturalDifference, HtmlNaturalDigits, HtmlNaturalProduct,
+            HtmlNumericMaterializationError, HtmlNumericParseError, HtmlRangeBufferHeader,
+            HtmlRangeLatticeCursor, HtmlRangeMidpointCursor, HtmlRangeNumericError,
+            HtmlRangeNumericHeaders, HtmlRangeNumericReply, HtmlRangeNumericRequest,
+            parse_integer_long, parse_nonnegative_integer_capped, try_floating_point_number,
+            try_parse_integer,
+        },
+    },
+    microsyntax::numeric::{HtmlInteger, HtmlNonNegativeRational},
+    values::DocumentString,
+};
 
 #[test]
 fn recovery_and_unit_steps_preserve_arbitrary_digits_and_report_capacity() {
@@ -13,25 +31,27 @@ fn recovery_and_unit_steps_preserve_arbitrary_digits_and_report_capacity() {
     let (value, capacity) = result.into_parts();
     assert!(capacity >= 3);
     let next = value
-        .try_unit_step(IntegerUnitStep::Decrement, 4, 4)
+        .try_unit_step(HtmlIntegerUnitStep::Decrement, 4, 4)
         .unwrap();
     assert_eq!(next.value().magnitude().decimal_digits(), "1000");
     assert!(next.value().is_negative());
     assert_eq!(
         value
-            .try_unit_step(IntegerUnitStep::Decrement, 3, 4)
+            .try_unit_step(HtmlIntegerUnitStep::Decrement, 3, 4)
             .unwrap_err(),
-        IntegerUnitStepError::DigitLimitExceeded {
+        HtmlIntegerUnitStepError::DigitLimitExceeded {
             limit: 3,
             required: 4
         }
     );
     assert_eq!(
         try_parse_integer(&DocumentString::from("12"), 2, 1).unwrap_err(),
-        IntegerRecoveryError::Allocation(IntegerUnitStepError::RequestedCapacityLimitExceeded {
-            limit: 1,
-            required: 2,
-        })
+        HtmlIntegerRecoveryError::Allocation(
+            HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded {
+                limit: 1,
+                required: 2,
+            }
+        )
     );
     assert_eq!(
         parse_integer_long(&DocumentString::from("2147483648")).unwrap(),
@@ -44,7 +64,7 @@ fn recovery_and_unit_steps_preserve_arbitrary_digits_and_report_capacity() {
     );
     assert_eq!(
         parse_nonnegative_integer_capped(&DocumentString::from("-1"), 0),
-        Err(NumericParseError::Negative)
+        Err(HtmlNumericParseError::Negative)
     );
 }
 
@@ -55,8 +75,8 @@ fn materialization_failure_retains_prior_numerator_allocation() {
     assert_eq!(failure.capacity_bytes(), 5);
     assert_eq!(
         failure.kind(),
-        NumericMaterializationError::Boundary(
-            IntegerUnitStepError::RequestedCapacityLimitExceeded {
+        HtmlNumericMaterializationError::Boundary(
+            HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded {
                 limit: 5,
                 required: 7
             }
@@ -78,28 +98,28 @@ fn materialization_failure_retains_prior_numerator_allocation() {
 fn floating_rejection_after_conversion_keeps_temporary_capacity() {
     let result = try_floating_point_number(
         &DocumentString::from("1e999"),
-        FloatingPointParseMode::Author,
+        HtmlFloatingPointParseMode::Author,
         5,
     )
     .unwrap();
     assert_eq!(
         result.value(),
-        &Err(NumericParseError::FloatingPointOverflow)
+        &Err(HtmlNumericParseError::FloatingPointOverflow)
     );
     assert!(result.capacity_bytes() >= 5);
     let syntax = try_floating_point_number(
         &DocumentString::from("x"),
-        FloatingPointParseMode::Author,
+        HtmlFloatingPointParseMode::Author,
         0,
     )
     .unwrap();
     assert_eq!(
         syntax.into_parts(),
-        (Err(NumericParseError::InvalidSyntax), 0)
+        (Err(HtmlNumericParseError::InvalidSyntax), 0)
     );
     let recovered = try_floating_point_number(
         &DocumentString::from(" +.5tail"),
-        FloatingPointParseMode::Recovery,
+        HtmlFloatingPointParseMode::Recovery,
         3,
     )
     .unwrap();
@@ -107,11 +127,11 @@ fn floating_rejection_after_conversion_keeps_temporary_capacity() {
     assert_eq!(
         try_floating_point_number(
             &DocumentString::from("12"),
-            FloatingPointParseMode::Author,
+            HtmlFloatingPointParseMode::Author,
             1
         )
         .unwrap_err(),
-        FloatingPointAllocationError::RequestedCapacityLimitExceeded {
+        HtmlFloatingPointAllocationError::RequestedCapacityLimitExceeded {
             limit: 1,
             required: 2
         }
@@ -121,7 +141,7 @@ fn floating_rejection_after_conversion_keeps_temporary_capacity() {
 #[test]
 fn scanner_readback_is_checked_against_separately_supplied_units() {
     let source: Vec<_> = " -000tail".encode_utf16().collect();
-    let mut scanner = IntegerPrefixScanner::new(true);
+    let mut scanner = HtmlIntegerPrefixScanner::new(true);
     for &unit in &source {
         if !scanner.feed(unit) {
             break;
@@ -136,37 +156,40 @@ fn scanner_readback_is_checked_against_separately_supplied_units() {
     );
     assert_eq!(
         prefix.try_nonnegative_digits(&[]),
-        Err(NumericParseError::InvalidSyntax)
+        Err(HtmlNumericParseError::InvalidSyntax)
     );
     assert_eq!(
         prefix.try_nonnegative_digits(&[0, 0, 48, 120, 48]),
-        Err(NumericParseError::InvalidSyntax)
+        Err(HtmlNumericParseError::InvalidSyntax)
     );
 }
 
 #[test]
 fn exclusive_scratch_products_lend_checked_operands_without_revalidation() {
     let a = integer("9999999999");
-    let left = NaturalDigits::integer(&a);
-    let mut scratch = Vec::with_capacity(NaturalProduct::required_capacity(left, left).unwrap());
+    let left = HtmlNaturalDigits::integer(&a);
+    let mut scratch =
+        Vec::with_capacity(HtmlNaturalProduct::required_capacity(left, left).unwrap());
     let capacity = scratch.capacity();
-    let mut product = NaturalProduct::new(left, left, &mut scratch).unwrap();
+    let mut product = HtmlNaturalProduct::new(left, left, &mut scratch).unwrap();
     let mut steps = 0;
     while !product.step() {
         steps += 1;
         assert!(steps < 1000);
     }
-    let squared = NaturalProduct::take(&mut Some(product)).unwrap();
+    let squared = HtmlNaturalProduct::take(&mut Some(product)).unwrap();
     let expected = integer("99999999980000000001");
-    let mut compare = NaturalComparison::new(squared, NaturalDigits::integer(&expected));
+    let mut compare = HtmlNaturalComparison::new(squared, HtmlNaturalDigits::integer(&expected));
     while compare.step().is_none() {}
     assert_eq!(compare.result(), Some(Ordering::Equal));
     let mut difference_scratch = Vec::with_capacity(compare.difference_capacity());
     let mut difference =
-        NaturalComparison::take_difference(&mut Some(compare), &mut difference_scratch).unwrap();
+        HtmlNaturalComparison::take_difference(&mut Some(compare), &mut difference_scratch)
+            .unwrap();
     while !difference.step() {}
-    let zero = NaturalDifference::take(&mut Some(difference)).unwrap();
-    let mut compare = NaturalComparison::new(zero, NaturalDigits::try_little(&[0]).unwrap());
+    let zero = HtmlNaturalDifference::take(&mut Some(difference)).unwrap();
+    let mut compare =
+        HtmlNaturalComparison::new(zero, HtmlNaturalDigits::try_little(&[0]).unwrap());
     while compare.step().is_none() {}
     assert_eq!(compare.result(), Some(Ordering::Equal));
     assert_eq!(scratch.capacity(), capacity);
@@ -175,35 +198,35 @@ fn exclusive_scratch_products_lend_checked_operands_without_revalidation() {
 #[test]
 fn external_digits_and_unreserved_scratch_cannot_enter_arithmetic() {
     assert!(matches!(
-        NaturalDigits::try_little(&[]),
-        Err(NaturalArithmeticError::NonCanonical)
+        HtmlNaturalDigits::try_little(&[]),
+        Err(HtmlNaturalArithmeticError::NonCanonical)
     ));
     assert!(matches!(
-        NaturalDigits::try_little(&[1, 0]),
-        Err(NaturalArithmeticError::NonCanonical)
+        HtmlNaturalDigits::try_little(&[1, 0]),
+        Err(HtmlNaturalArithmeticError::NonCanonical)
     ));
     assert!(matches!(
-        NaturalDigits::try_little(&[10]),
-        Err(NaturalArithmeticError::InvalidDigit {
+        HtmlNaturalDigits::try_little(&[10]),
+        Err(HtmlNaturalArithmeticError::InvalidDigit {
             index: 0,
             value: 10
         })
     ));
-    assert_eq!(NaturalDigits::validation_work_bound(2), Some(10));
-    let digits = NaturalDigits::try_little(&[9]).unwrap();
+    assert_eq!(HtmlNaturalDigits::validation_work_bound(2), Some(10));
+    let digits = HtmlNaturalDigits::try_little(&[9]).unwrap();
     let mut out = Vec::new();
     assert!(matches!(
-        NaturalProduct::new(digits, digits, &mut out),
-        Err(NaturalArithmeticError::ScratchCapacity {
+        HtmlNaturalProduct::new(digits, digits, &mut out),
+        Err(HtmlNaturalArithmeticError::ScratchCapacity {
             required: 2,
             capacity: 0
         })
     ));
     assert!(out.is_empty());
-    let comparison = NaturalComparison::new(digits, digits);
+    let comparison = HtmlNaturalComparison::new(digits, digits);
     assert!(matches!(
-        NaturalComparison::take_difference(&mut Some(comparison), &mut out),
-        Err(NaturalArithmeticError::NotReady)
+        HtmlNaturalComparison::take_difference(&mut Some(comparison), &mut out),
+        Err(HtmlNaturalArithmeticError::NotReady)
     ));
     assert!(out.is_empty());
 }
@@ -213,24 +236,26 @@ fn completed_comparison_orders_absolute_difference_without_an_unchecked_claim() 
     let one = integer("1");
     let thousand = integer("1000");
     for (left, right) in [(&one, &thousand), (&thousand, &one)] {
-        let mut comparison =
-            NaturalComparison::new(NaturalDigits::integer(left), NaturalDigits::integer(right));
+        let mut comparison = HtmlNaturalComparison::new(
+            HtmlNaturalDigits::integer(left),
+            HtmlNaturalDigits::integer(right),
+        );
         while comparison.step().is_none() {}
         let mut scratch = Vec::with_capacity(comparison.difference_capacity());
         let mut difference =
-            NaturalComparison::take_difference(&mut Some(comparison), &mut scratch).unwrap();
+            HtmlNaturalComparison::take_difference(&mut Some(comparison), &mut scratch).unwrap();
         while !difference.step() {}
-        let result = NaturalDifference::take(&mut Some(difference)).unwrap();
+        let result = HtmlNaturalDifference::take(&mut Some(difference)).unwrap();
         let expected = integer("999");
-        let mut check = NaturalComparison::new(result, NaturalDigits::integer(&expected));
+        let mut check = HtmlNaturalComparison::new(result, HtmlNaturalDigits::integer(&expected));
         while check.step().is_none() {}
         assert_eq!(check.result(), Some(Ordering::Equal));
     }
-    let digits = NaturalDigits::integer(&one);
+    let digits = HtmlNaturalDigits::integer(&one);
     let mut occupied = vec![7];
     assert!(matches!(
-        NaturalProduct::new(digits, digits, &mut occupied),
-        Err(NaturalArithmeticError::ScratchNotEmpty)
+        HtmlNaturalProduct::new(digits, digits, &mut occupied),
+        Err(HtmlNaturalArithmeticError::ScratchNotEmpty)
     ));
     assert_eq!(occupied, [7]);
 }
@@ -239,70 +264,71 @@ fn completed_comparison_orders_absolute_difference_without_an_unchecked_claim() 
 fn refused_takes_preserve_actual_product_and_difference_progress_for_retry() {
     let left = integer("1000");
     let right = integer("1");
-    let a = NaturalDigits::integer(&left);
-    let b = NaturalDigits::integer(&right);
-    let mut product_scratch = Vec::with_capacity(NaturalProduct::required_capacity(a, b).unwrap());
-    let mut product = Some(NaturalProduct::new(a, b, &mut product_scratch).unwrap());
+    let a = HtmlNaturalDigits::integer(&left);
+    let b = HtmlNaturalDigits::integer(&right);
+    let mut product_scratch =
+        Vec::with_capacity(HtmlNaturalProduct::required_capacity(a, b).unwrap());
+    let mut product = Some(HtmlNaturalProduct::new(a, b, &mut product_scratch).unwrap());
     assert!(!product.as_mut().unwrap().step());
     let before = product.as_ref().unwrap().scratch().to_vec();
     assert!(matches!(
-        NaturalProduct::take(&mut product),
-        Err(NaturalArithmeticError::NotReady)
+        HtmlNaturalProduct::take(&mut product),
+        Err(HtmlNaturalArithmeticError::NotReady)
     ));
     assert_eq!(product.as_ref().unwrap().scratch(), before);
     while !product.as_mut().unwrap().step() {}
-    let result = NaturalProduct::take(&mut product).unwrap();
+    let result = HtmlNaturalProduct::take(&mut product).unwrap();
     assert!(product.is_none());
     assert!(matches!(
-        NaturalProduct::take(&mut product),
-        Err(NaturalArithmeticError::EmptySlot)
+        HtmlNaturalProduct::take(&mut product),
+        Err(HtmlNaturalArithmeticError::EmptySlot)
     ));
-    let mut check = NaturalComparison::new(result, a);
+    let mut check = HtmlNaturalComparison::new(result, a);
     while check.step().is_none() {}
     assert_eq!(check.result(), Some(Ordering::Equal));
 
-    let mut comparison = Some(NaturalComparison::new(a, b));
+    let mut comparison = Some(HtmlNaturalComparison::new(a, b));
     let mut scratch = Vec::new();
     assert!(matches!(
-        NaturalComparison::take_difference(&mut comparison, &mut scratch),
-        Err(NaturalArithmeticError::NotReady)
+        HtmlNaturalComparison::take_difference(&mut comparison, &mut scratch),
+        Err(HtmlNaturalArithmeticError::NotReady)
     ));
     assert_eq!(comparison.as_ref().unwrap().result(), None);
     while comparison.as_mut().unwrap().step().is_none() {}
     let ordering = comparison.as_ref().unwrap().result();
     assert!(matches!(
-        NaturalComparison::take_difference(&mut comparison, &mut scratch),
-        Err(NaturalArithmeticError::ScratchCapacity { .. })
+        HtmlNaturalComparison::take_difference(&mut comparison, &mut scratch),
+        Err(HtmlNaturalArithmeticError::ScratchCapacity { .. })
     ));
     assert_eq!(comparison.as_ref().unwrap().result(), ordering);
     scratch.reserve_exact(comparison.as_ref().unwrap().difference_capacity());
     scratch.push(7);
     assert!(matches!(
-        NaturalComparison::take_difference(&mut comparison, &mut scratch),
-        Err(NaturalArithmeticError::ScratchNotEmpty)
+        HtmlNaturalComparison::take_difference(&mut comparison, &mut scratch),
+        Err(HtmlNaturalArithmeticError::ScratchNotEmpty)
     ));
     assert_eq!(comparison.as_ref().unwrap().result(), ordering);
     assert_eq!(scratch, [7]);
     scratch.clear();
     let mut difference =
-        Some(NaturalComparison::take_difference(&mut comparison, &mut scratch).unwrap());
+        Some(HtmlNaturalComparison::take_difference(&mut comparison, &mut scratch).unwrap());
     assert!(comparison.is_none());
     assert!(!difference.as_mut().unwrap().step());
     let before = difference.as_ref().unwrap().scratch().to_vec();
     assert!(matches!(
-        NaturalDifference::take(&mut difference),
-        Err(NaturalArithmeticError::NotReady)
+        HtmlNaturalDifference::take(&mut difference),
+        Err(HtmlNaturalArithmeticError::NotReady)
     ));
     assert_eq!(difference.as_ref().unwrap().scratch(), before);
     while !difference.as_mut().unwrap().step() {}
-    let result = NaturalDifference::take(&mut difference).unwrap();
+    let result = HtmlNaturalDifference::take(&mut difference).unwrap();
     assert!(difference.is_none());
     assert!(matches!(
-        NaturalDifference::take(&mut difference),
-        Err(NaturalArithmeticError::EmptySlot)
+        HtmlNaturalDifference::take(&mut difference),
+        Err(HtmlNaturalArithmeticError::EmptySlot)
     ));
     let expected = integer("999");
-    let mut check = NaturalComparison::new(result, NaturalDigits::integer(&expected));
+    let mut check = HtmlNaturalComparison::new(result, HtmlNaturalDigits::integer(&expected));
     while check.step().is_none() {}
     assert_eq!(check.result(), Some(Ordering::Equal));
 }
@@ -323,8 +349,8 @@ fn rational_allocation_refusal_returns_original_numerator_backing_for_retry() {
     assert_eq!(failure.capacity_bytes(), 0);
     assert_eq!(
         failure.kind(),
-        NumericMaterializationError::Boundary(
-            IntegerUnitStepError::RequestedCapacityLimitExceeded {
+        HtmlNumericMaterializationError::Boundary(
+            HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded {
                 limit: 0,
                 required: 1
             }
@@ -342,50 +368,50 @@ fn rational_allocation_refusal_returns_original_numerator_backing_for_retry() {
 }
 
 fn service(
-    request: RangeNumericRequest,
+    request: HtmlRangeNumericRequest,
     source: &[u16],
     buffers: &mut [Vec<u8>; 8],
     output: &mut Vec<u16>,
-) -> RangeNumericReply {
+) -> HtmlRangeNumericReply {
     match request {
-        RangeNumericRequest::SourceUnit { index } => RangeNumericReply::Unit(source[index]),
-        RangeNumericRequest::ReadCells { cells } => RangeNumericReply::Cells(
+        HtmlRangeNumericRequest::SourceUnit { index } => HtmlRangeNumericReply::Unit(source[index]),
+        HtmlRangeNumericRequest::ReadCells { cells } => HtmlRangeNumericReply::Cells(
             cells.map(|cell| cell.map(|c| buffers[c.role().index()][c.index()])),
         ),
-        RangeNumericRequest::Reserve { role, required_len } => {
+        HtmlRangeNumericRequest::Reserve { role, required_len } => {
             let buffer = &mut buffers[role.index()];
             buffer.reserve_exact(required_len - buffer.len());
-            RangeNumericReply::Reserved {
+            HtmlRangeNumericReply::Reserved {
                 actual_capacity: buffer.capacity(),
                 actual_len: buffer.len(),
             }
         }
-        RangeNumericRequest::AppendCell { role, value } => {
+        HtmlRangeNumericRequest::AppendCell { role, value } => {
             let buffer = &mut buffers[role.index()];
             assert!(buffer.len() < buffer.capacity());
             buffer.push(value);
-            RangeNumericReply::Ack
+            HtmlRangeNumericReply::Ack
         }
-        RangeNumericRequest::WriteCell { cell, value } => {
+        HtmlRangeNumericRequest::WriteCell { cell, value } => {
             buffers[cell.role().index()][cell.index()] = value;
-            RangeNumericReply::Ack
+            HtmlRangeNumericReply::Ack
         }
-        RangeNumericRequest::PopCell { role } => {
+        HtmlRangeNumericRequest::PopCell { role } => {
             buffers[role.index()].pop().unwrap();
-            RangeNumericReply::Ack
+            HtmlRangeNumericReply::Ack
         }
-        RangeNumericRequest::ScalarStep => RangeNumericReply::Ack,
-        RangeNumericRequest::ReserveOutput { required_len } => {
+        HtmlRangeNumericRequest::ScalarStep => HtmlRangeNumericReply::Ack,
+        HtmlRangeNumericRequest::ReserveOutput { required_len } => {
             output.reserve_exact(required_len - output.len());
-            RangeNumericReply::OutputReserved {
+            HtmlRangeNumericReply::OutputReserved {
                 actual_capacity: output.capacity(),
                 actual_len: output.len(),
             }
         }
-        RangeNumericRequest::EmitUnit { unit } => {
+        HtmlRangeNumericRequest::EmitUnit { unit } => {
             assert!(output.len() < output.capacity());
             output.push(unit);
-            RangeNumericReply::Ack
+            HtmlRangeNumericReply::Ack
         }
     }
 }
@@ -409,15 +435,19 @@ fn range_ingress_converts_every_zero_spelling_to_the_unsigned_zero() {
         ("-5e-324", (-5e-324_f64).to_bits()),
     ] {
         let source: Vec<_> = spelling.encode_utf16().collect();
-        let mut grammar = FloatingPointGrammarCursor::new(&source, FloatingPointParseMode::Author);
+        let mut grammar =
+            HtmlFloatingPointGrammarCursor::new(&source, HtmlFloatingPointParseMode::Author);
         while !grammar.is_finished() {
             grammar.advance();
         }
         // Each spelling is a valid floating-point number, so grammar succeeds.
         let parts = grammar.range_decimal_parts().unwrap();
-        let mut ingress =
-            FiniteDecimalIngressCursor::new(parts, source.len(), RangeNumericHeaders::default())
-                .unwrap();
+        let mut ingress = HtmlFiniteDecimalIngressCursor::new(
+            parts,
+            source.len(),
+            HtmlRangeNumericHeaders::default(),
+        )
+        .unwrap();
         let mut buffers = std::array::from_fn(|_| Vec::new());
         let mut output = Vec::new();
         while let Some(request) = ingress.request() {
@@ -435,20 +465,21 @@ fn range_ingress_converts_every_zero_spelling_to_the_unsigned_zero() {
 #[test]
 fn range_ingress_and_shortest_output_use_only_caller_scratch() {
     let source: Vec<_> = "12.5".encode_utf16().collect();
-    let mut grammar = FloatingPointGrammarCursor::new(&source, FloatingPointParseMode::Author);
+    let mut grammar =
+        HtmlFloatingPointGrammarCursor::new(&source, HtmlFloatingPointParseMode::Author);
     while !grammar.is_finished() {
         grammar.advance();
     }
-    let mut ingress = FiniteDecimalIngressCursor::new(
+    let mut ingress = HtmlFiniteDecimalIngressCursor::new(
         grammar.range_decimal_parts().unwrap(),
         source.len(),
-        RangeNumericHeaders::default(),
+        HtmlRangeNumericHeaders::default(),
     )
     .unwrap();
     let pending = ingress.request();
     assert_eq!(
-        ingress.reply(RangeNumericReply::Unit(0)),
-        Err(RangeNumericError::Integrity)
+        ingress.reply(HtmlRangeNumericReply::Unit(0)),
+        Err(HtmlRangeNumericError::Integrity)
     );
     assert_eq!(ingress.request(), pending);
     let mut buffers = std::array::from_fn(|_| Vec::new());
@@ -456,16 +487,16 @@ fn range_ingress_and_shortest_output_use_only_caller_scratch() {
     let mut steps = 0;
     let mut refused_scratch_capacity = false;
     while let Some(request) = ingress.request() {
-        if let RangeNumericRequest::Reserve { role, .. } = request
+        if let HtmlRangeNumericRequest::Reserve { role, .. } = request
             && !refused_scratch_capacity
         {
             let headers = ingress.headers();
             assert_eq!(
-                ingress.reply(RangeNumericReply::Reserved {
+                ingress.reply(HtmlRangeNumericReply::Reserved {
                     actual_capacity: usize::MAX,
                     actual_len: headers.buffer(role).len(),
                 }),
-                Err(RangeNumericError::Integrity)
+                Err(HtmlRangeNumericError::Integrity)
             );
             assert_eq!(ingress.request(), Some(request));
             assert_eq!(ingress.headers(), headers);
@@ -477,24 +508,25 @@ fn range_ingress_and_shortest_output_use_only_caller_scratch() {
         assert!(steps < 1_000_000);
     }
     assert_eq!(ingress.result(), Some(Ok(12.5_f64.to_bits())));
-    let headers = RangeNumericHeaders::new(
+    let headers = HtmlRangeNumericHeaders::new(
         std::array::from_fn(|i| {
-            RangeBufferHeader::new(buffers[i].len(), buffers[i].capacity()).unwrap()
+            HtmlRangeBufferHeader::new(buffers[i].len(), buffers[i].capacity()).unwrap()
         }),
-        RangeBufferHeader::default(),
+        HtmlRangeBufferHeader::default(),
     );
-    let mut best = BestFiniteNumberCursor::new(12.5, headers).unwrap();
+    let mut best = HtmlBestFiniteNumberCursor::new(12.5, headers).unwrap();
     let mut refused_output_capacity = false;
     while let Some(request) = best.request() {
-        if matches!(request, RangeNumericRequest::ReserveOutput { .. }) && !refused_output_capacity
+        if matches!(request, HtmlRangeNumericRequest::ReserveOutput { .. })
+            && !refused_output_capacity
         {
             let headers = best.headers();
             assert_eq!(
-                best.reply(RangeNumericReply::OutputReserved {
+                best.reply(HtmlRangeNumericReply::OutputReserved {
                     actual_capacity: usize::MAX,
                     actual_len: headers.output().len(),
                 }),
-                Err(RangeNumericError::Integrity)
+                Err(HtmlRangeNumericError::Integrity)
             );
             assert_eq!(best.request(), Some(request));
             assert_eq!(best.headers(), headers);
@@ -509,13 +541,13 @@ fn range_ingress_and_shortest_output_use_only_caller_scratch() {
     assert_eq!(best.result(), Some(4));
     assert!(refused_scratch_capacity && refused_output_capacity);
     assert_eq!(best.headers().output().len(), 4);
-    let layout = FiniteDecimalIngressCursor::layout();
+    let layout = HtmlFiniteDecimalIngressCursor::layout();
     assert_eq!(
         layout.register_bytes(),
-        size_of::<FiniteDecimalIngressCursor>()
+        size_of::<HtmlFiniteDecimalIngressCursor>()
     );
-    assert_eq!(layout.request_bytes(), size_of::<RangeNumericRequest>());
-    assert_eq!(layout.reply_bytes(), size_of::<RangeNumericReply>());
+    assert_eq!(layout.request_bytes(), size_of::<HtmlRangeNumericRequest>());
+    assert_eq!(layout.reply_bytes(), size_of::<HtmlRangeNumericReply>());
     assert_eq!(
         (layout.scratch_cell_bytes(), layout.output_unit_bytes()),
         (1, 2)
@@ -524,21 +556,21 @@ fn range_ingress_and_shortest_output_use_only_caller_scratch() {
 
 #[test]
 fn range_midpoint_and_lattice_preserve_exact_rounding_and_reply_atomicity() {
-    let mut midpoint = RangeMidpointCursor::new(0.0_f64.to_bits(), 10.0_f64.to_bits()).unwrap();
+    let mut midpoint = HtmlRangeMidpointCursor::new(0.0_f64.to_bits(), 10.0_f64.to_bits()).unwrap();
     let request = midpoint.request();
     assert_eq!(
-        midpoint.reply(RangeNumericReply::Unit(0)),
-        Err(RangeNumericError::Integrity)
+        midpoint.reply(HtmlRangeNumericReply::Unit(0)),
+        Err(HtmlRangeNumericError::Integrity)
     );
     assert_eq!(midpoint.request(), request);
     for _ in 0..3000 {
         if midpoint.request().is_none() {
             break;
         }
-        midpoint.reply(RangeNumericReply::Ack).unwrap();
+        midpoint.reply(HtmlRangeNumericReply::Ack).unwrap();
     }
     assert_eq!(midpoint.result(), Some(5.0_f64.to_bits()));
-    let mut lattice = RangeLatticeCursor::new(
+    let mut lattice = HtmlRangeLatticeCursor::new(
         3.0_f64.to_bits(),
         0.0_f64.to_bits(),
         Some(10.0_f64.to_bits()),
@@ -550,7 +582,7 @@ fn range_midpoint_and_lattice_preserve_exact_rounding_and_reply_atomicity() {
         if lattice.request().is_none() {
             break;
         }
-        lattice.reply(RangeNumericReply::Ack).unwrap();
+        lattice.reply(HtmlRangeNumericReply::Ack).unwrap();
     }
     // HTML resolves an exact step-distance tie toward positive infinity.
     assert_eq!(lattice.result(), Some(Some(4.0_f64.to_bits())));

@@ -6,7 +6,8 @@ use crate::{
     DomParsedHtmlInstallLimits as Limits, DomParsedHtmlInstallResource as Resource,
     DomParsedHtmlInstallation,
 };
-use surgeist_html::{HtmlDocument, HtmlFragment, HtmlNode, HtmlNodeId, HtmlNodeKind};
+use surgeist_html::construction::{HtmlDocument, HtmlFragment, HtmlNode, HtmlNodeId, HtmlNodeKind};
+
 use surgeist_html_parser::{
     HtmlParseAssociationCaptureDisposition, HtmlParseBaseState, HtmlParseCompletion,
     HtmlParseDestination, HtmlParseMetadata, HtmlParseMetadataDocument, HtmlParseMetadataStep,
@@ -74,7 +75,7 @@ impl Control<'_> {
         Ok(())
     }
     /// Prepay transitive closing work before acquiring any new protocol graph.
-    fn csp(&mut self, layout: surgeist_html::HtmlCspLayout) -> Result<(), Error> {
+    fn csp(&mut self, layout: surgeist_html::security::csp::HtmlCspLayout) -> Result<(), Error> {
         let work = layout
             .work_credits()
             .checked_add(layout.closing_work().work_credits())
@@ -180,7 +181,7 @@ impl Control<'_> {
     fn string(&mut self, value: &DocumentString) -> Result<(), Error> {
         self.step(value.len())
     }
-    fn name(&mut self, value: &crate::QualifiedName) -> Result<(), Error> {
+    fn name(&mut self, value: &surgeist_html::values::QualifiedName) -> Result<(), Error> {
         self.step(crate::names::name_units(value).ok_or(Error::RepresentationExhausted)?)
     }
 }
@@ -274,7 +275,10 @@ impl<'a> Arena<'a> {
             Self::Fragment(value) => value.root(),
         }
     }
-    fn node(&self, id: &HtmlNodeId) -> Result<HtmlNode<'a>, surgeist_html::ForeignHtmlResult> {
+    fn node(
+        &self,
+        id: &HtmlNodeId,
+    ) -> Result<HtmlNode<'a>, surgeist_html::construction::ForeignHtmlResult> {
         match self {
             Self::Document(value) => value.node(id),
             Self::Fragment(value) => value.node(id),
@@ -293,7 +297,7 @@ struct Source<'a> {
 }
 struct ParsedShadow {
     subject: HtmlNodeId,
-    properties: crate::HtmlShadowRootProperties,
+    properties: surgeist_html::construction::HtmlShadowRootProperties,
     keep_registry_null: bool,
     declarative: bool,
     available_to_internals: bool,
@@ -550,7 +554,8 @@ fn collect<'a>(report: &'a HtmlParseReport, c: &mut Control<'_>) -> Result<Sourc
         || report.context().is_some()
         || report.effects()?.is_some()
         || report.allow_declarative_shadow_roots()
-        || report.effective_scripting_mode() != surgeist_html::HtmlParserScriptingMode::Disabled
+        || report.effective_scripting_mode()
+            != surgeist_html::parsing::HtmlParserScriptingMode::Disabled
         || report.image_support() != surgeist_html_semantics::HtmlImageSupport::Disabled
     {
         return Err(Error::NotCompletedOrdinaryReport);
@@ -596,7 +601,8 @@ fn collect_fragment<'a>(
     }
     // The unused captured Base bank remains charged historical request input.
     // Actual influencing URL snapshots are validated against canonical owners.
-    if report.effective_scripting_mode() != surgeist_html::HtmlParserScriptingMode::Disabled
+    if report.effective_scripting_mode()
+        != surgeist_html::parsing::HtmlParserScriptingMode::Disabled
         || !matches!(
             context.root_registry(),
             surgeist_html_semantics::HtmlCapturedRegistry::Null
@@ -970,7 +976,7 @@ fn apply_fragment_effects(
                 let template_key = source.key(&template.id(), c)?;
                 let contents_key = source.key(&contents.id(), c)?;
                 if template.template_contents_kind()
-                    != Some(surgeist_html::HtmlTemplateContentsKind::ShadowReference)
+                    != Some(surgeist_html::construction::HtmlTemplateContentsKind::ShadowReference)
                     || draft.node(template_key)?.template_contents() != Some(contents_key)
                 {
                     return Err(Error::UnsupportedState {
@@ -987,7 +993,8 @@ fn apply_fragment_effects(
 fn qualify_svg_destination(metadata: &DomDocumentMetadata) -> Result<(), Error> {
     let environment = metadata.document_environment();
     if metadata.custom_element_registry() != crate::DomRegistryBinding::Null
-        || environment.browsing_context() != surgeist_html::HtmlBrowsingContextPresence::Absent
+        || environment.browsing_context()
+            != surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent
         || environment.has_ever_had_navigable()
     {
         return Err(Error::CurrentPolicyUnavailable);
@@ -1125,10 +1132,10 @@ impl Dom {
                 .document_focused_area_designation()
                 .ok_or_else(|| Error::MissingMetadata { subject: node.id() })?
             {
-                surgeist_html::HtmlFocusedAreaDesignation::KnownNull => {
+                surgeist_html::construction::HtmlFocusedAreaDesignation::KnownNull => {
                     crate::DomFocusedAreaDesignation::KnownNull
                 }
-                surgeist_html::HtmlFocusedAreaDesignation::Unavailable => {
+                surgeist_html::construction::HtmlFocusedAreaDesignation::Unavailable => {
                     crate::DomFocusedAreaDesignation::Unavailable
                 }
             };
@@ -1149,7 +1156,7 @@ impl Dom {
                     }
                     DomDocumentMetadata::from_parsed(class, *mode, environment, design_mode_enabled)
                 } else {
-                    if !inert || *mode != surgeist_html::HtmlDocumentMode::NoQuirks {
+                    if !inert || *mode != surgeist_html::construction::HtmlDocumentMode::NoQuirks {
                         return Err(Error::UnsupportedState { subject: node.id() });
                     }
                     DomDocumentMetadata::parsed_template_owner(
@@ -1168,7 +1175,7 @@ impl Dom {
                     design_mode_enabled,
                 )
             } else {
-                if !inert || *mode != surgeist_html::HtmlDocumentMode::NoQuirks {
+                if !inert || *mode != surgeist_html::construction::HtmlDocumentMode::NoQuirks {
                     return Err(Error::UnsupportedState { subject: node.id() });
                 }
                 DomDocumentMetadata::parsed_template_owner(

@@ -3,6 +3,7 @@
 //! does not rank/render suggestions, expose a live collection or set values.
 
 use super::*;
+use surgeist_html::vocabulary::KnownHtmlElement;
 
 #[derive(Clone, Copy)]
 enum DatalistFilter {

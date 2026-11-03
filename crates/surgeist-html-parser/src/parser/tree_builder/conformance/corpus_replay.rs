@@ -22,7 +22,12 @@ use super::comment_diagnostic_corpus::template_corpus::{
     check_fragment_observation, fragment_request, mode as template_mode,
 };
 use super::*;
-use crate::{DocumentString, HtmlDocumentParseRequest, HtmlFragment, HtmlNode, HtmlSource};
+use crate::{HtmlDocumentParseRequest, HtmlSource};
+use surgeist_html::construction::{HtmlFragment, HtmlNode};
+use surgeist_html::{
+    construction::{HtmlDocument, HtmlDocumentMode, HtmlNodeId, HtmlNodeKind},
+    values::{DocumentString, QualifiedName},
+};
 
 /// Why one retained case is not asserted to match.
 #[derive(Clone, Copy, Debug)]

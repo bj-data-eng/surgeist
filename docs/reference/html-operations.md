@@ -83,7 +83,7 @@ identifies the exact edition, upstream license and source adaptations.
 
 <a id="checked-custom-element-names"></a>
 
-[HtmlCustomElementName](../../crates/surgeist-html/src/custom_names.rs) checks the pinned
+[HtmlCustomElementName](../../crates/surgeist-html/src/internal/values/custom_names.rs) checks the pinned
 [valid-custom-element-name predicate](../../references/html-language-elements-interactive-scripting--877d6146487f--05bb1d85cc89.md#valid-custom-element-name).
 Its private value retains exact UTF-16 without trimming, case folding or
 normalization. The name must begin with a lowercase ASCII letter, contain a
@@ -96,7 +96,7 @@ serialized HTML syntax.
 
 Moving `into_qualified_name` emits an unprefixed HTML name;
 `into_is_attribute` emits a lowercase no-namespace `is` attribute. Both preserve
-the checked value. [HtmlValueInterpreter::is_attribute](../../crates/surgeist-html/src/attributes/custom_name.rs)
+the checked value. [HtmlValueInterpreter::is_attribute](../../crates/surgeist-html/src/internal/attributes/custom_name.rs)
 admits the original raw value's UTF-16 length before expanded-name applicability
 and checks this same predicate. An applicable absent attribute remains Missing;
 empty or invalid content remains raw and locally Nonconforming with a typed
@@ -216,7 +216,7 @@ preload and modulepreload author requirements independently when both tokens
 occur. Missing preload `as` fails required presence; modulepreload `as` is
 optional. Content-only interpretation leaves those context checks Unchecked.
 
-The [link-destination report](../../crates/surgeist-html/src/attributes/link_destination.rs) also gives
+The [link-destination report](../../crates/surgeist-html/src/internal/attributes/link_destination.rs) also gives
 symbolic destination decisions. Modulepreload projects script from no state,
 including invalid values, while retaining the author failure. A recognized
 image remains an out-of-domain image state. This projection does not assert that
@@ -296,7 +296,7 @@ external grammar and required contextual facts.
 
 `HtmlScriptTypeKeyword` emits the three canonical authored `type` keywords:
 module, importmap and speculationrules. The
-[script type reports](../../crates/surgeist-html/src/attributes/script_type.rs) keep current content meaning
+[script type reports](../../crates/surgeist-html/src/internal/attributes/script_type.rs) keep current content meaning
 separate from type/language preparation classification. `script_type` observes
 the exact HTML script/type role: missing, empty and any of the sixteen
 [pinned JavaScript MIME essences](../../references/mimesniff-javascript-essence--39aa53511b13.md)
@@ -322,7 +322,7 @@ the whole script element.
 These standalone reports admit each complete selected raw UTF-16 value before
 applicability or override, including language overridden by type. They use
 ordinary allocation and the per-value cap, with no aggregate physical-memory,
-controlled-work or cancellation promise. The [shared borrowed cursor](../../crates/surgeist-html/src/script_type.rs)
+controlled-work or cancellation promise. The [shared borrowed cursor](../../crates/surgeist-html/src/internal/elements/script_type.rs)
 also drives the actual private classifier through its existing controller;
 each comparison/trim read follows admission, without allocating a synthetic
 language string. Public `HtmlScriptKind` describes current classification and
@@ -385,8 +385,8 @@ anchoring Unchecked; the existing TableModel continues to own header
 associations. These local reports use ordinary allocation and admit the entire
 original UTF-16 value before applicability through the per-value cap.
 
-`bounded::th_scope_state` returns the same scope state without a report, and
-`bounded::th_scope_work_bound(n)` publishes its worst-case work for an n-unit raw
+`bounded::attributes::th_scope_state` returns the same scope state without a report, and
+`bounded::attributes::th_scope_work_bound(n)` publishes its worst-case work for an n-unit raw
 value, computed from the keyword table. Every value costs five admitted reads
 (the value header and four keyword headers); unit comparisons occur only against
 a keyword of the value's own length. That adds at most four reads at length 3
@@ -468,7 +468,7 @@ ignores the group's own span. The [column clauses](../../references/html-languag
 and existing captured table kernel own those contextual distinctions. These
 standalone reports provide neither a resolved group width nor an IDL getter.
 
-`bounded::HtmlTableSpanRule` is the allocation-free entry point for the four span
+`bounded::attributes::HtmlTableSpanRule` is the allocation-free entry point for the four span
 rules (cell colspan and rowspan, col span, colgroup span). `content_value` returns
 the same content value the matching report reader selects, from the same cap and
 zero declarations, without a report or any clone of the raw value.
@@ -649,7 +649,7 @@ and exact nonnegative-integer prefix recovery on img/iframe/embed/object/video.
 or a source element's actual parent: input requires Image, and source requires
 an HTML picture parent. Unavailable parent evidence remains distinct from an
 established other parent or no parent. Missing and failed dimensions receive no
-canvas defaults. These [local image values](../../crates/surgeist-html/src/attributes/image_values.rs) use
+canvas defaults. These [local image values](../../crates/surgeist-html/src/internal/attributes/image_values.rs) use
 ordinary allocation and per-original-value UTF-16 admission.
 
 The semantic query `EmbeddedDimensionAuthorConformance` checks resource-dependent
@@ -901,7 +901,7 @@ limits, and reports retain its exact producer/configuration revision.
 
 <a id="shared-intrinsic-control-rules"></a>
 
-The [shared input rules](../../crates/surgeist-html/src/input.rs) use `HtmlInputType` as the canonical
+The [shared input rules](../../crates/surgeist-html/src/internal/elements/input.rs) use `HtmlInputType` as the canonical
 22-state identity for attribute interpretation, `HtmlInputFlags::input_type()`
 and parser metadata. They expose fixed state and source-ordered requirements
 for Hidden, Text, Search, Telephone, Password, Checkbox, Radio, Email, URL,
@@ -981,7 +981,7 @@ The native Value setter's final cursor action requires a changed sanitized
 value and an actual cursor after generic clamping; a retained selection does
 not imply that action. These rules own no controller, tree or event queue.
 
-[Textarea, select and option flags](../../crates/surgeist-html/src/control_values.rs) similarly own fixed
+[Textarea, select and option flags](../../crates/surgeist-html/src/internal/elements/control_values.rs) similarly own fixed
 local state and transitions. Textarea child changes consult its dirty flag;
 reset clears dirty/user-validity before replacing raw text; cloning transfers
 dirty state with a separately copied raw value. Option selected-attribute
@@ -1374,10 +1374,10 @@ whole meta conformance. Closed Query/Fact additions are intentionally breaking.
 `HtmlValueInterpreter::media` preserves original media content and distinguishes
 absence, specified empty, the five ASCII whitespace characters and other UTF-16
 content. `media_for_meta` adds the actual name field for theme-color placement.
-These [local reports](../../crates/surgeist-html/src/attributes/media.rs) leave CSS grammar unchecked.
+These [local reports](../../crates/surgeist-html/src/internal/attributes/media.rs) leave CSS grammar unchecked.
 The [pinned media clause](../../references/html-language-foundations--877d6146487f--b55e73c31978.md#mq)
 defines the HTML match branch separately from CSS parsing.
-The shared [borrowed cursor](../../crates/surgeist-html/src/media.rs) performs no allocation or normalization.
+The shared [borrowed cursor](../../crates/surgeist-html/src/internal/elements/media.rs) performs no allocation or normalization.
 
 Captured `HtmlSemanticQuery::MediaAttributeRules` separates CSS grammar evidence
 from the HTML processing condition. Empty and ASCII-whitespace-only content
@@ -1409,7 +1409,7 @@ Rust matches.
 
 <a id="captured-meta-pragma-content"></a>
 
-[HtmlValueInterpreter::meta_http_equiv](../../crates/surgeist-html/src/attributes/meta_pragma.rs) recognizes
+[HtmlValueInterpreter::meta_http_equiv](../../crates/surgeist-html/src/internal/attributes/meta_pragma.rs) recognizes
 the seven source-defined pragma states with whole ASCII-insensitive keyword
 matching, without trimming or Unicode folding. Missing, empty and unrecognized
 values select no state. The report preserves exact raw UTF-16 and keeps
@@ -1479,7 +1479,7 @@ intentionally breaking for exhaustive matches.
 
 [Form names](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#attr-form-name)
 are optional, but a specified value must be nonempty. The local
-[HtmlFormName and form_name report](../../crates/surgeist-html/src/attributes/form_name.rs) preserve exact
+[HtmlFormName and form_name report](../../crates/surgeist-html/src/internal/attributes/form_name.rs) preserve exact
 UTF-16, including whitespace, NULL and isolated surrogates, without trimming,
 tokenization or case folding. Native emission moves the checked value into
 canonical no-namespace lowercase `name`; it does not certify uniqueness.
@@ -1526,7 +1526,7 @@ remain separate.
 
 [Map names](../../references/html-language-elements-embedded--877d6146487f--48a1a13e5cfe.md#attr-map-name)
 must be specified, nonempty and free of ASCII whitespace. The local
-[HtmlValueInterpreter::map_name report](../../crates/surgeist-html/src/attributes/map_name.rs) admits the
+[HtmlValueInterpreter::map_name report](../../crates/surgeist-html/src/internal/attributes/map_name.rs) admits the
 original raw value before expanded-name applicability and preserves Missing,
 Empty, invalid and Unapplied states without a default. The existing
 `HtmlSpaceToken` validator owns the syntax; `into_map_name_attribute` emits
@@ -2509,7 +2509,7 @@ ordinary InBody and trailing body modes. It handles block, heading, list, ruby,
 void and generic-name recovery, first-token LF suppression and raw-text entry.
 Repeated body attributes and character runs use the same controlled native
 storage, preserving order and exact origins. Text insertion uses the shared
-[controlled append owner](../../crates/surgeist-html/src/construction/bounded/text_append.rs):
+[controlled append owner](../../crates/surgeist-html/src/internal/construction/bounded/text_append.rs):
 immutable history leaves remain unchanged, while a uniquely held aggregate reuses
 its admitted geometric capacity. A derived current-ticket/textarea index avoids
 registry walks; source/provenance, immediate native readers and stopped cleanup
@@ -2786,7 +2786,7 @@ owners, refuse publication and perform no reset during cleanup. Repeated scans
 and copies may be quadratic and remain charged and polled. Other input families,
 hosted initialization and complete live setter integration remain separate work.
 
-Private Details construction applies the [shared attribute-effect rules](../../crates/surgeist-html/src/details_rules.rs)
+Private Details construction applies the [shared attribute-effect rules](../../crates/surgeist-html/src/internal/elements/details_rules.rs)
 during source-ordered attribute creation, cloning and insertion. A nonempty,
 exact UTF-16 name groups members in the same ordinary tree. Name changes and
 insertion close the given open member when a peer is open; adding open closes
@@ -2893,7 +2893,7 @@ record the consumed boundary.
 
 `HtmlValueInterpreter::rel_with_attributes` interprets the pinned standard link
 types for the distinct `link`, `a`, `area` and `form` roles. Its
-[local report](../../crates/surgeist-html/src/rel.rs) retains exact `rel`/`rev` fields, token occurrence
+[local report](../../crates/surgeist-html/src/internal/elements/rel.rs) retains exact `rel`/`rev` fields, token occurrence
 ranges and duplicate relationships. It separates recognized keywords, role
 applicability, actual relationship effects and author constraints. Token
 recognition does not establish supported browser capabilities or URL grammar.
@@ -2979,7 +2979,7 @@ controlled semantic operations use the existing session's work and storage owner
 Target selection preserves an explicit override or an own target, including
 empty, before consulting the first target-bearing base. Form submission uses the
 qualified submitter and form-owner precedence. The shared
-[target recovery](../../crates/surgeist-html/src/attributes/navigable_target.rs) maps a value to `_blank` when
+[target recovery](../../crates/surgeist-html/src/internal/attributes/navigable_target.rs) maps a value to `_blank` when
 it contains both `<` and a TAB, LF or CR. It preserves other exact UTF-16 values
 and the raw spelling. It selects a target name; navigation remains with consumers.
 
@@ -3004,7 +3004,7 @@ cleanup boundaries.
 Nonce content attributes and the cryptographic nonce slot are independent.
 The [pinned nonce clauses](../../references/html-nonce--877d6146487f.md#attr-nonce)
 apply to HTML, SVG and MathML elements, including custom or unknown local names.
-The shared [nonce decisions](../../crates/surgeist-html/src/nonce.rs) preserve exact UTF-16 without trimming
+The shared [nonce decisions](../../crates/surgeist-html/src/internal/security/nonce.rs) preserve exact UTF-16 without trimming
 or base64 validation. An actual null-namespace nonce attribute change copies its
 new value into the slot; removal clears it. A slot setter changes only the slot,
 and clone completion copies that slot independently of copied content attributes.
@@ -3044,7 +3044,7 @@ The captured `MicrodataItem`, `MicrodataProperty`, `MicrodataAuthor` and
 `MicrodataDocumentAuthor` queries interpret the
 [pinned microdata rules](../../references/html-microdata--877d6146487f.md#encoding-microdata)
 over actual ordinary tree relations. Local
-[`microdata_tokens`](../../crates/surgeist-html/src/attributes/microdata.rs) observations retain exact UTF-16
+[`microdata_tokens`](../../crates/surgeist-html/src/internal/attributes/microdata.rs) observations retain exact UTF-16
 backing, occurrence ranges and duplicate positions. Processing deduplicates
 itemprop names but retains itemref occurrences; author uniqueness is reported
 separately. Typed `HtmlMicrodataTokenList` authoring enforces local nonempty and
@@ -3112,8 +3112,8 @@ and [marker algorithm](../../references/html-language-elements-interactive-scrip
 define these separate author and processing results.
 
 Native and captured readers share one allocation-free
-[XML pseudo-attribute cursor](../../crates/surgeist-html/src/pi_pseudo_attributes.rs) and
-[marker rules](../../crates/surgeist-html/src/template_markers.rs). The cursor validates the complete map:
+[XML pseudo-attribute cursor](../../crates/surgeist-html/src/internal/microsyntax/pi_pseudo_attributes.rs) and
+[marker rules](../../crates/surgeist-html/src/internal/elements/template_markers.rs). The cursor validates the complete map:
 duplicate names or malformed unrelated fields invalidate it, including suffixes
 after a provisional matching name. XML scalar/name rules and numeric/predefined
 references apply; HTML entity recovery supplies no substitute. Original raw for

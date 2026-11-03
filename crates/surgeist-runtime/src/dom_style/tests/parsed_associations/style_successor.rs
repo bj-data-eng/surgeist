@@ -5,7 +5,7 @@ use super::consumption::{envelope, report};
 use super::style_decision::{empty_policy, installed, observe, request_ready};
 use super::style_sheet::{bind, create, pending};
 use surgeist_dom::*;
-use surgeist_html::HtmlStyleTrigger;
+use surgeist_html::elements::style::HtmlStyleTrigger;
 use surgeist_html_parser::{
     HtmlParseAssociationOccurrenceKind as Kind, HtmlParsePendingAssociationStep as Step,
 };

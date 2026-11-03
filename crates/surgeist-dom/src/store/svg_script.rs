@@ -86,24 +86,24 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let mut b = DomBatch::new();
         let d = b.create_document();
-        let parent = b.create_element_ns(&d, crate::Namespace::html(), "div");
+        let parent = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "div");
         b.insert_before(&parent, &d, None);
         let fragment = b.create_fragment(&d);
-        let host = b.create_element_ns(&d, crate::Namespace::html(), "span");
+        let host = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "span");
         let root = b.attach_shadow(
             &host,
-            crate::DomShadowRootInit::new(crate::HtmlShadowRootMode::Open),
+            crate::DomShadowRootInit::new(surgeist_html::construction::HtmlShadowRootMode::Open),
         );
-        let first = b.create_element_ns(&d, crate::Namespace::svg(), "script");
-        let nested = b.create_element_ns(&d, crate::Namespace::html(), "span");
+        let first = b.create_element_ns(&d, surgeist_html::values::Namespace::svg(), "script");
+        let nested = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "span");
         let inner = b.attach_shadow(
             &nested,
-            crate::DomShadowRootInit::new(crate::HtmlShadowRootMode::Closed),
+            crate::DomShadowRootInit::new(surgeist_html::construction::HtmlShadowRootMode::Closed),
         );
-        let second = b.create_element_ns(&d, crate::Namespace::svg(), "script");
-        let third = b.create_element_ns(&d, crate::Namespace::svg(), "script");
-        let fourth = b.create_element_ns(&d, crate::Namespace::svg(), "script");
-        let fifth = b.create_element_ns(&d, crate::Namespace::svg(), "script");
+        let second = b.create_element_ns(&d, surgeist_html::values::Namespace::svg(), "script");
+        let third = b.create_element_ns(&d, surgeist_html::values::Namespace::svg(), "script");
+        let fourth = b.create_element_ns(&d, surgeist_html::values::Namespace::svg(), "script");
+        let fifth = b.create_element_ns(&d, surgeist_html::values::Namespace::svg(), "script");
         b.insert_before(&first, &root, None);
         b.insert_before(&nested, &root, None);
         b.insert_before(&second, &inner, None);
@@ -189,11 +189,11 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let mut b = DomBatch::new();
         let d1 = b.create_document();
-        let host = b.create_element_ns(&d1, crate::Namespace::html(), "div");
+        let host = b.create_element_ns(&d1, surgeist_html::values::Namespace::html(), "div");
         b.insert_before(&host, &d1, None);
         let root = b.attach_shadow(
             &host,
-            crate::DomShadowRootInit::new(crate::HtmlShadowRootMode::Open),
+            crate::DomShadowRootInit::new(surgeist_html::construction::HtmlShadowRootMode::Open),
         );
         let d2 = b.create_document();
         let fragment = b.create_fragment(&d2);
@@ -207,7 +207,7 @@ mod tests {
         let old = c.created(&old).unwrap().unwrap();
         let mut b = DomBatch::new();
         b.replace_child(root, fragment, old);
-        let script = b.create_element_ns(d2, crate::Namespace::svg(), "script");
+        let script = b.create_element_ns(d2, surgeist_html::values::Namespace::svg(), "script");
         let c = dom.apply(b, &cancel).unwrap();
         let script = c.created(&script).unwrap().unwrap();
         let mut draft = Draft::new(&dom, Arc::new(BatchIdentity), &cancel).unwrap();
@@ -258,9 +258,9 @@ mod tests {
             let cancel = AtomicBool::new(false);
             let mut b = DomBatch::new();
             let d = b.create_document();
-            let root = b.create_element_ns(&d, crate::Namespace::html(), "div");
+            let root = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "div");
             b.insert_before(&root, &d, None);
-            let script = b.create_element_ns(&d, crate::Namespace::svg(), "script");
+            let script = b.create_element_ns(&d, surgeist_html::values::Namespace::svg(), "script");
             let c = dom.apply(b, &cancel).unwrap();
             let root = c.created(&root).unwrap().unwrap();
             let script = c.created(&script).unwrap().unwrap();

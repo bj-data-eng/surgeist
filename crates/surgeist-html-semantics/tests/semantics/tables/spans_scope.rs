@@ -6,7 +6,9 @@
 //! the semantics implementation's own output.
 
 use crate::semantics::support::{context, wide_builder_without_registries as builder};
-use surgeist_html::*;
+use surgeist_html::values::{
+    Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes, QualifiedName,
+};
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCapturedIsValue, HtmlSemanticCancellation, HtmlSemanticFact, HtmlSemanticLimits,

@@ -2,7 +2,7 @@
 //! This continuation crosses no event/rebase boundary in the admitted Dialog
 //! path. Publication retains its Draft keys and checks their mapped generations.
 use super::*;
-use surgeist_html::{
+use surgeist_html::focus::{
     HtmlAutofocusDelegateAction as AA, HtmlAutofocusDelegateCursor, HtmlAutofocusDelegateOutcome,
     HtmlAutofocusDelegateReply as AR, HtmlFocusDelegateAction as FA, HtmlFocusDelegateCursor,
     HtmlFocusDelegateOutcome, HtmlFocusDelegateReply as FR, HtmlFocusDelegateShadowRoot as Shadow,

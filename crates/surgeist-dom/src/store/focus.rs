@@ -1,7 +1,8 @@
 //! Canonical Document permission, top-Document and intrinsic focus observations.
 use super::*;
 use crate::source::FocusQualification;
-use surgeist_html::KnownHtmlAttribute;
+
+use surgeist_html::vocabulary::KnownHtmlAttribute;
 pub(in crate::store) enum AllowFocusPermission {
     Allowed,
     NeedsWindow(FocusQualification),
@@ -22,7 +23,9 @@ impl Draft {
             association.phase,
             crate::hosted::DocumentPhase::Retired { .. }
         );
-        if environment.browsing_context() == surgeist_html::HtmlBrowsingContextPresence::Present {
+        if environment.browsing_context()
+            == surgeist_html::security::nonce::HtmlBrowsingContextPresence::Present
+        {
             if !matches!(
                 association.phase,
                 crate::hosted::DocumentPhase::InitialEntry { .. }
@@ -61,7 +64,7 @@ impl Draft {
     pub(in crate::store) fn focus_boolean(
         &self,
         subject: Key,
-        selected: surgeist_html::HtmlBooleanAttribute,
+        selected: surgeist_html::attributes::HtmlBooleanAttribute,
         attribute: KnownHtmlAttribute,
         cancel: &AtomicBool,
     ) -> Result<bool, DomError> {
@@ -99,7 +102,7 @@ impl Draft {
             {
                 self.source_step(cancel)?;
             }
-            for known in surgeist_html::KnownHtmlElement::ALL {
+            for known in surgeist_html::vocabulary::KnownHtmlElement::ALL {
                 self.source_step(cancel)?;
                 for _ in 0..=known.local_name().len() {
                     self.source_step(cancel)?;
@@ -114,9 +117,10 @@ impl Draft {
                 self.source_step(cancel)?;
             }
         }
-        let report = surgeist_html::HtmlValueInterpreter::new(raw.map_or(0, |a| a.value().len()))
-            .boolean_attribute(selected, element.name(), raw)
-            .expect("actual admitted Boolean raw extent");
+        let report =
+            surgeist_html::values::HtmlValueInterpreter::new(raw.map_or(0, |a| a.value().len()))
+                .boolean_attribute(selected, element.name(), raw)
+                .expect("actual admitted Boolean raw extent");
         let value = report
             .intrinsic()
             .copied()

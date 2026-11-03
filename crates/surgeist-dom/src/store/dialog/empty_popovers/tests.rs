@@ -22,7 +22,8 @@ fn fixture() -> (Dom, DocumentId, DocumentId, NodeId) {
     let mut batch = DomBatch::new();
     let first = batch.create_document();
     let second = batch.create_document();
-    let dialog = batch.create_element_ns(&first, crate::Namespace::html(), "dialog");
+    let dialog =
+        batch.create_element_ns(&first, surgeist_html::values::Namespace::html(), "dialog");
     batch.insert_before(&dialog, &first, None);
     let done = dom.apply(batch, &AtomicBool::new(false)).unwrap();
     (

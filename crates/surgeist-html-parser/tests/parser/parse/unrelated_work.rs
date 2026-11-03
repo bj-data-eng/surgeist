@@ -11,9 +11,12 @@
 //! exactly equal for most elements; `POOL_PROBE_SLACK` explains the rest.
 
 use surgeist_html::{
-    HtmlBrowsingContextPresence, HtmlDocumentMode, HtmlHeaderDeliveredCsp,
-    HtmlNonceDocumentEnvironment, HtmlParserScriptingMode, Namespace, OrderedAttributes,
-    QualifiedName,
+    construction::HtmlDocumentMode,
+    parsing::HtmlParserScriptingMode,
+    security::nonce::{
+        HtmlBrowsingContextPresence, HtmlHeaderDeliveredCsp, HtmlNonceDocumentEnvironment,
+    },
+    values::{Namespace, OrderedAttributes, QualifiedName},
 };
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseWorkCategory, HtmlSource,

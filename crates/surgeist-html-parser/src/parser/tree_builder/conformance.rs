@@ -4,14 +4,18 @@
 //! Expected/native-literal setup allocations are outside the parser ledger;
 //! actual completed projection and comparison use its sole control.
 
-use crate::{
-    HtmlDocument, HtmlDocumentMode, HtmlFragmentOwner, HtmlNodeId, HtmlNodeKind,
-    HtmlShadowRootProperties, QualifiedName,
+use surgeist_html::{
+    construction::{
+        HtmlDocument, HtmlDocumentMode, HtmlFragmentOwner, HtmlNodeId, HtmlNodeKind,
+        HtmlShadowRootProperties,
+    },
+    values::QualifiedName,
 };
 
 mod pi_recovery {
     use super::reference_recovery::{offset, report};
     use crate::*;
+    use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
 
     #[derive(Clone, Copy)]
     enum Native {
@@ -2217,9 +2221,13 @@ const DATA: &[(&str, &str)] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        Attribute, DocumentString, HtmlAuthoredProcessingInstruction, HtmlConstructionLimits,
-        HtmlDoctype, Namespace, OrderedAttributes,
+    use surgeist_html::{
+        construction::{HtmlAuthoredProcessingInstruction, HtmlConstructionLimits, HtmlDoctype},
+        values::{Attribute, DocumentString, Namespace, OrderedAttributes},
+    };
+    use surgeist_html::{
+        construction::{HtmlDocument, HtmlDocumentMode},
+        values::QualifiedName,
     };
     fn limits() -> HtmlConstructionLimits {
         HtmlConstructionLimits::new(100, 100, 100, 100_000, 100)
@@ -2456,9 +2464,9 @@ mod tests {
                 OrderedAttributes::default(),
             )
             .unwrap();
-        let props = crate::HtmlShadowRootProperties::new(
-            crate::HtmlShadowRootMode::Closed,
-            crate::HtmlSlotAssignment::Manual,
+        let props = surgeist_html::construction::HtmlShadowRootProperties::new(
+            surgeist_html::construction::HtmlShadowRootMode::Closed,
+            surgeist_html::construction::HtmlSlotAssignment::Manual,
             true,
             false,
             true,
@@ -2788,6 +2796,10 @@ mod reference_recovery {
     use super::comment_diagnostic_corpus::{completed, completed_at_cuts, completed_driver};
     use crate::parser::tree_builder::{report::HtmlParseReport, seal::SealedOrdinaryConstruction};
     use crate::*;
+    use surgeist_html::{
+        construction::{HtmlDocumentMode, HtmlNodeKind},
+        values::DocumentString,
+    };
 
     type Atom = (usize, usize, usize, usize, HtmlParseOriginKind);
     struct Reference {
@@ -3693,7 +3705,12 @@ mod whole_source_comparisons {
             seal::{OrdinaryInitializationOwner, SealedOrdinaryConstruction},
         },
     };
-    use crate::{DocumentString, HtmlDocumentParseRequest, HtmlParseLimits, HtmlSource};
+    use surgeist_html::{
+        construction::{HtmlDocumentMode, HtmlNodeKind},
+        values::DocumentString,
+    };
+
+    use crate::{HtmlDocumentParseRequest, HtmlParseLimits, HtmlSource};
     use std::time::{Duration, Instant};
 
     const PREFIX: &str = "<!doctype html><html><head></head><body>";
@@ -4382,7 +4399,10 @@ mod whole_source_comparisons {
                     // These fixed ordinary fixtures contain known elements with
                     // no `is`: their actual creation state remains independent.
                     if let Some(creation) = record.creation() {
-                        assert_eq!(creation.0, crate::HtmlCustomElementState::Uncustomized);
+                        assert_eq!(
+                            creation.0,
+                            surgeist_html::elements::native::HtmlCustomElementState::Uncustomized
+                        );
                         assert!(creation.1.is_none());
                     }
                     if let Some(crate::construction::report::HtmlParseMetadataDocument::Owned(
@@ -4607,11 +4627,11 @@ mod whole_source_comparisons {
         assert!(report.effects().unwrap().is_none());
         assert_eq!(
             report.requested_scripting_mode(),
-            crate::HtmlParserScriptingMode::Disabled
+            surgeist_html::parsing::HtmlParserScriptingMode::Disabled
         );
         assert_eq!(
             report.effective_scripting_mode(),
-            crate::HtmlParserScriptingMode::Disabled
+            surgeist_html::parsing::HtmlParserScriptingMode::Disabled
         );
         assert!(!report.allow_declarative_shadow_roots());
         let state = report.document_state().unwrap();
@@ -5412,6 +5432,7 @@ mod comment_diagnostic_corpus {
         terminal::CompletedStandaloneDocument,
     };
     use crate::{HtmlDocumentParseRequest, HtmlSource};
+    use surgeist_html::construction::HtmlDocumentMode;
 
     #[derive(Clone, Copy)]
     struct ExpectedDiagnostic {
@@ -6049,7 +6070,9 @@ mod comment_diagnostic_corpus {
             for utf16 in [false, true] {
                 let make_request = || {
                     let source = if utf16 {
-                        HtmlSource::utf16(crate::DocumentString::from(fixture.input))
+                        HtmlSource::utf16(surgeist_html::values::DocumentString::from(
+                            fixture.input,
+                        ))
                     } else {
                         HtmlSource::utf8(fixture.input)
                     };
@@ -6100,7 +6123,7 @@ mod comment_diagnostic_corpus {
         raw.extend("--!>".encode_utf16());
         assert_eq!(raw.len(), 29);
         HtmlDocumentParseRequest::offline(
-            HtmlSource::utf16(crate::DocumentString::from_utf16(raw)),
+            HtmlSource::utf16(surgeist_html::values::DocumentString::from_utf16(raw)),
             super::super::tests::limits(1_000),
         )
     }
@@ -6276,6 +6299,8 @@ mod comment_diagnostic_corpus {
     pub(super) mod template_corpus {
         use super::*;
         use crate::*;
+        use surgeist_html::construction::HtmlDocumentMode;
+        use surgeist_html::values::{DocumentString, Namespace, OrderedAttributes, QualifiedName};
 
         fn fixtures() -> Vec<Fixture<'static>> {
             let (_, raw) = DATA
@@ -6941,6 +6966,7 @@ mod comment_diagnostic_corpus {
     mod table_recovery_diagnostics {
         use super::*;
         use crate::parser::tree_builder::head::{HtmlInsertionMode, HtmlTreeDiagnostic};
+        use surgeist_html::construction::HtmlDocumentMode;
 
         // HTML877d Initial 96374–79; InBody EOF 96880–95; InTable
         // 97595–97702; InTableText 97720–47; InColumnGroup 97788–97836;
@@ -7112,7 +7138,9 @@ mod comment_diagnostic_corpus {
                     let make_request = || {
                         HtmlDocumentParseRequest::offline(
                             if utf16 {
-                                HtmlSource::utf16(crate::DocumentString::from(input))
+                                HtmlSource::utf16(surgeist_html::values::DocumentString::from(
+                                    input,
+                                ))
                             } else {
                                 HtmlSource::utf8(input)
                             },

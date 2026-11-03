@@ -2,6 +2,9 @@
 
 use super::*;
 use crate::keyed::{Table, slots};
+#[cfg(test)]
+use surgeist_html::values::Attribute;
+use surgeist_html::values::DocumentString;
 #[path = "lexical.rs"]
 mod lexical;
 #[path = "reverse.rs"]
@@ -138,10 +141,13 @@ pub(crate) struct RangeComputation {
     pub(crate) branch: HtmlParseRangeBranch,
     pub(crate) original: RangeOriginal,
     pub(crate) operands: RangeOperandTable<RangeOperand>,
-    pub(crate) minimum: Option<crate::HtmlInputNumericBoundOrigin>,
-    pub(crate) maximum: Option<crate::HtmlInputNumericBoundOrigin>,
-    pub(crate) step: Option<crate::HtmlInputNumericStepOrigin>,
-    pub(crate) base: Option<crate::HtmlInputNumericStepBaseOrigin>,
+    pub(crate) minimum:
+        Option<surgeist_html::attributes::input_bounds::HtmlInputNumericBoundOrigin>,
+    pub(crate) maximum:
+        Option<surgeist_html::attributes::input_bounds::HtmlInputNumericBoundOrigin>,
+    pub(crate) step: Option<surgeist_html::attributes::input_bounds::HtmlInputNumericStepOrigin>,
+    pub(crate) base:
+        Option<surgeist_html::attributes::input_bounds::HtmlInputNumericStepBaseOrigin>,
 }
 impl RangeComputation {
     pub(crate) fn edges(self) -> [Option<RangeEdge>; 5] {
@@ -190,7 +196,7 @@ pub(crate) struct ColorComputation {
     pub(crate) source: HtmlParseColorValueSource,
     pub(crate) original: Option<RangeEdge>,
     pub(crate) operands: ColorOperandTable<Option<RangeEdge>>,
-    pub(crate) space: crate::HtmlInputColorSpace,
+    pub(crate) space: surgeist_html::attributes::input_colorspace::HtmlInputColorSpace,
     pub(crate) standard_failure: Option<surgeist_css::color::CssColorStandardFailure>,
     pub(crate) environment: surgeist_css::color::CssColorFactIdentity,
     pub(crate) value: surgeist_color::Color,
@@ -901,7 +907,7 @@ impl ParseEvidence {
                         let mut compare = |unit: u16| -> Result<(), SessionError> {
                             c.charge_unit_inspection()?;
                             let expected = if origin.kind == HtmlParseOriginKind::AsciiLowercase {
-                                surgeist_html::bounded::ascii_lowercase(unit)
+                                surgeist_html::bounded::lexical::ascii_lowercase(unit)
                             } else {
                                 unit
                             };
@@ -3243,9 +3249,14 @@ impl SessionStorage {
 #[cfg(test)]
 mod captured_tests {
     use super::*;
+    use surgeist_html::{
+        construction::HtmlDocumentMode,
+        values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
+    };
+
     use crate::{
         HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlCapturedIsValue,
-        HtmlDocumentMode, HtmlFragmentContext, HtmlHostFactsRevision, HtmlScriptingStatus,
+        HtmlFragmentContext, HtmlHostFactsRevision, HtmlScriptingStatus,
     };
     #[test]
     fn cause_handle_copy_keeps_issuer_index_and_rejects_foreign_cancelled_and_short_work() {

@@ -7,11 +7,11 @@ use super::{
     },
     input::CodePoint,
 };
-use crate::DocumentString;
 use crate::HtmlParseResource;
 #[cfg(test)]
 use crate::{HtmlParseCancellation, HtmlParseLimits};
 use std::mem::size_of;
+use surgeist_html::values::DocumentString;
 
 pub(crate) struct Utf16Buffer {
     units: OwnedVec<u16>,

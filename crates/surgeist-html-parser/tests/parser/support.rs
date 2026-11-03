@@ -6,7 +6,10 @@
 //! difference stays visible. Limits unique to one module's measurement (a cap
 //! table, a linear-work budget) stay local.
 
-use surgeist_html::*;
+use surgeist_html::{
+    construction::HtmlDocumentMode,
+    values::{Namespace, OrderedAttributes, QualifiedName},
+};
 use surgeist_html_parser::*;
 use surgeist_html_semantics::*;
 

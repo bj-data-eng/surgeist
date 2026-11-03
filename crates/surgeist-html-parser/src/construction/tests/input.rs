@@ -1,4 +1,9 @@
 use super::*;
+use surgeist_html::{
+    construction::{HtmlDocumentMode, HtmlNodeKind},
+    elements::form::HtmlNativeFormAssociationKind,
+    values::DocumentString,
+};
 
 #[test]
 fn hidden_input_ordered_initialization_reset_and_frozen_values_are_independent() {
@@ -270,7 +275,7 @@ fn checkbox_reset_cancellation_retains_completed_value_before_association_and_cl
         .unwrap();
     assert_eq!(
         state.flags.input_type(),
-        surgeist_html::HtmlInputType::Checkbox
+        surgeist_html::attributes::HtmlInputType::Checkbox
     );
     assert_eq!(state.cursor, 0);
     assert!(state.flags.checkedness());
@@ -389,7 +394,7 @@ fn checkbox_original_sources_reject_foreign_or_incomplete_token_before_take() {
         let wrong = if case == 1 {
             crate::HtmlSource::utf8("different").range(0, 9).unwrap()
         } else if case == 2 {
-            crate::HtmlSource::utf16(crate::DocumentString::from("different"))
+            crate::HtmlSource::utf16(surgeist_html::values::DocumentString::from("different"))
                 .range(0, 9)
                 .unwrap()
         } else {
@@ -903,7 +908,10 @@ fn checkbox_ordered_creation_and_native_readbacks_keep_absence_distinct_from_emp
             )
             .unwrap();
         let state = session.input_state(&mut c, &node).unwrap();
-        assert_eq!(state.flags.input_type(), crate::HtmlInputType::Checkbox);
+        assert_eq!(
+            state.flags.input_type(),
+            surgeist_html::attributes::HtmlInputType::Checkbox
+        );
         assert_eq!(state.flags.checkedness(), checked);
         assert!(
             !state.flags.dirty_value()
@@ -1027,8 +1035,8 @@ fn checkbox_clone_copies_actual_dirty_current_and_four_flags_but_not_user_validi
         .unwrap()
         .read_input_state(&mut c, slot)
         .unwrap();
-    state.flags = crate::HtmlInputFlags::from_retained(
-        crate::HtmlInputType::Checkbox,
+    state.flags = surgeist_html::elements::input::HtmlInputFlags::from_retained(
+        surgeist_html::attributes::HtmlInputType::Checkbox,
         true,
         true,
         false,
@@ -1050,7 +1058,7 @@ fn checkbox_clone_copies_actual_dirty_current_and_four_flags_but_not_user_validi
         storage.evidence.as_ref(),
         &mut c,
         current_source,
-        crate::HtmlInputSanitization::Preserve,
+        surgeist_html::elements::input::HtmlInputSanitization::Preserve,
     )
     .unwrap();
     session
@@ -1078,7 +1086,10 @@ fn checkbox_clone_copies_actual_dirty_current_and_four_flags_but_not_user_validi
             .parser_inserted
     );
     let cloned = session.input_state(&mut c, &copy).unwrap();
-    assert_eq!(cloned.flags.input_type(), crate::HtmlInputType::Checkbox);
+    assert_eq!(
+        cloned.flags.input_type(),
+        surgeist_html::attributes::HtmlInputType::Checkbox
+    );
     assert!(
         cloned.flags.dirty_value()
             && cloned.flags.dirty_checkedness()
@@ -1201,7 +1212,7 @@ fn checkbox_native_getter_foreign_destination_is_first_stop_and_preserves_foreig
 
 #[test]
 fn text_input_types_reset_exact_defaults_internal_values_and_selection_in_one_owner() {
-    use surgeist_html::HtmlInputType;
+    use surgeist_html::attributes::HtmlInputType;
     for (attrs, kind) in [
         ("value='A&#13;B&#10;C' checked", HtmlInputType::Text),
         ("type=TeXt value='A&#13;B&#10;C'", HtmlInputType::Text),
@@ -1292,9 +1303,9 @@ fn text_input_types_reset_exact_defaults_internal_values_and_selection_in_one_ow
 #[test]
 fn default_button_input_clone_retains_exact_native_default_raw_and_fresh_flags() {
     for (keyword, kind) in [
-        ("button", crate::HtmlInputType::Button),
-        ("reset", crate::HtmlInputType::Reset),
-        ("submit", crate::HtmlInputType::Submit),
+        ("button", surgeist_html::attributes::HtmlInputType::Button),
+        ("reset", surgeist_html::attributes::HtmlInputType::Reset),
+        ("submit", surgeist_html::attributes::HtmlInputType::Submit),
     ] {
         let request = crate::HtmlDocumentParseRequest::offline(
             crate::HtmlSource::utf8(format!(
@@ -1670,7 +1681,10 @@ fn color_invalid_authored_value_installs_black_and_preserves_native_default() {
         .unwrap();
     assert!(input.is_none());
     let state = session.input_state(&mut c, &node).unwrap();
-    assert_eq!(state.flags.input_type(), crate::HtmlInputType::Color);
+    assert_eq!(
+        state.flags.input_type(),
+        surgeist_html::attributes::HtmlInputType::Color
+    );
     assert!(!state.flags.dirty_value());
     assert!(!state.value_rewritten_during_creation);
     let mut output = Utf16Buffer::new(&mut c).unwrap();
@@ -1886,7 +1900,7 @@ fn text_input_reset_cancellation_retains_completed_value_before_association_and_
         .unwrap();
     assert_eq!(
         state.flags.input_type(),
-        surgeist_html::HtmlInputType::Telephone
+        surgeist_html::attributes::HtmlInputType::Telephone
     );
     assert_eq!(state.cursor, 0);
     assert!(state.flags.checkedness());
@@ -2117,7 +2131,7 @@ fn text_input_source_unit_coexistence_exact_and_one_short_own_every_raw_copy() {
 }
 #[test]
 fn text_input_same_state_type_installation_skips_type_change_only_effects() {
-    use surgeist_html::HtmlInputType;
+    use surgeist_html::attributes::HtmlInputType;
     for (keyword, kind, units) in [
         ("text", HtmlInputType::Text, 89),
         ("bogus", HtmlInputType::Text, 90),
@@ -2419,7 +2433,10 @@ fn hidden_input_foreign_proof_alias_and_generic_keep_independent_color_admission
         .unwrap();
     assert!(input.is_none());
     let state = session.input_state(&mut c, &node).unwrap();
-    assert_eq!(state.flags.input_type(), crate::HtmlInputType::Color);
+    assert_eq!(
+        state.flags.input_type(),
+        surgeist_html::attributes::HtmlInputType::Color
+    );
     assert!(!state.flags.dirty_value());
     assert!(!state.value_rewritten_during_creation);
     assert!(
@@ -2771,7 +2788,7 @@ fn hidden_input_original_sources_reject_foreign_or_incomplete_token_before_take(
         let wrong = if case == 1 {
             crate::HtmlSource::utf8("different").range(0, 9).unwrap()
         } else if case == 2 {
-            crate::HtmlSource::utf16(crate::DocumentString::from("different"))
+            crate::HtmlSource::utf16(surgeist_html::values::DocumentString::from("different"))
                 .range(0, 9)
                 .unwrap()
         } else {

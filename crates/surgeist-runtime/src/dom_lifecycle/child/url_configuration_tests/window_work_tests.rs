@@ -2,6 +2,7 @@
 use super::*;
 use crate::dom_lifecycle::watcher::NativeWindow;
 use surgeist_dom::{DomSourceLease, DomSourceProgress, NodeId};
+use surgeist_html::values::Namespace;
 
 fn frame_fixture() -> (DomSession, HostedRuntime, NodeId, NodeId) {
     let cancel = AtomicBool::new(false);

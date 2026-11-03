@@ -1,5 +1,6 @@
 //! Exclusive inline owner and sparse exact-generation operational membership.
 use super::*;
+
 pub(crate) mod feedback;
 pub(in crate::store) mod recording;
 mod retirement;
@@ -762,7 +763,7 @@ impl Dom {
         let crate::DomNodeKind::Document(metadata) = document.kind() else {
             return Err(DomError::WrongDocument.into());
         };
-        let mode = if metadata.mode() == crate::HtmlDocumentMode::Quirks {
+        let mode = if metadata.mode() == surgeist_html::construction::HtmlDocumentMode::Quirks {
             CssParserMode::Quirks
         } else {
             CssParserMode::Standards

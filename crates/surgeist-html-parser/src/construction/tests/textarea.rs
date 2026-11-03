@@ -1,4 +1,8 @@
 use super::*;
+use surgeist_html::{
+    construction::{HtmlDocumentMode, HtmlNodeKind},
+    elements::form::HtmlNativeFormAssociationKind,
+};
 
 fn textarea_owner<'a>(
     source: &'a crate::HtmlSource,

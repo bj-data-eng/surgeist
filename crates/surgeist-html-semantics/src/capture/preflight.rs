@@ -251,6 +251,8 @@ pub(super) fn depths<E>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::{construction::HtmlDocumentMode, values::DocumentString};
+
     use crate::*;
 
     #[test]

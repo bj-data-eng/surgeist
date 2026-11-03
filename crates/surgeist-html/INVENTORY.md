@@ -391,12 +391,12 @@ are selected only by the defining attribute/element consumer.
 
 ## Raw and construction
 
-[Shared values](src/values.rs) provide `DocumentString` exact UTF-16 (including
+[Shared values](src/internal/values.rs) provide `DocumentString` exact UTF-16 (including
 NULL, isolated surrogates and whitespace), `Namespace`, `QualifiedName`,
 `Attribute` and `OrderedAttributes`. [Vocabulary](src/vocabulary.rs) supplies
 known expanded identities and original contextual rows, while unknown/custom
 and foreign names remain constructible. `HtmlDocumentBuilder` and
-`HtmlFragmentBuilder` [append exact element/text records](src/construction.rs)
+`HtmlFragmentBuilder` [append exact element/text records](src/internal/construction.rs)
 and freeze immutable results with result-qualified IDs, ordered children and
 separate template contents. [Values tests](tests/html/values/core.rs),
 [construction tests](tests/html/construction/builder.rs) and [vocabulary tests](tests/html/values/vocabulary.rs)
@@ -416,8 +416,8 @@ normalization; original lexemes/quotes/entity spelling belong provenance.
 
 ## Common grammar
 
-[Interpretation](src/interpretation.rs), [numeric](src/numeric.rs),
-[temporal](src/temporal.rs), [token](src/tokens.rs) and [legacy color](src/color.rs)
+[Interpretation](src/internal/values/interpretation.rs), [numeric](src/internal/microsyntax/numeric.rs),
+[temporal](src/internal/microsyntax/temporal.rs), [token](src/internal/microsyntax/tokens.rs) and [legacy color](src/internal/microsyntax/color.rs)
 own the shared grammars. Reports separate strict whole-value author syntax from
 processing recovery and preserve exact raw state. Missing is not a syntax error;
 recovery does not automatically certify authored text. Grammar-valid but
@@ -439,7 +439,7 @@ Source grouping/identity headings in the M table are not independent parse value
 and omits false. `HtmlValueInterpreter::boolean_attribute` observes presence
 independently of author spelling: arbitrary present text still means true while
 conforming spelling is empty or the exact attribute name ASCII-insensitively.
-[The owner](src/attributes.rs) has role/state/context-specific methods for input,
+[The owner](src/internal/attributes.rs) has role/state/context-specific methods for input,
 script, form-associated custom elements, submit buttons, img and link. A
 prohibited author context does not suppress source-defined content presence.
 [Content](tests/html/attributes/boolean_content.rs),
@@ -452,7 +452,7 @@ checked/selected/open/muted default content are not live current-state snapshots
 ## Enumerations
 
 `HtmlValueInterpreter` and checked native keyword enums in
-[attributes.rs](src/attributes.rs) own exact applicable keyword tables.
+[attributes.rs](src/internal/attributes.rs) own exact applicable keyword tables.
 [Attribute tests](tests/html/attributes/content_attributes.rs) retain wrong names, missing/empty/invalid
 text, independent author conformance and intrinsic values. Unless specified
 below, an empty string follows keyword/invalid processing rather than a newly
@@ -500,7 +500,7 @@ phase separation; source-required context methods must be selected explicitly.
 
 ## Numeric content
 
-[Scalar](src/attributes/scalar.rs) binds shared integers to element rules:
+[Scalar](src/internal/attributes/scalar.rs) binds shared integers to element rules:
 canvas width/height default 300/150 after missing/failed nonnegative recovery,
 including valid zero; textarea cols/rows default 20/2 after missing/failure/zero.
 Cell colspan/col/colgroup span default 1 and clamp1000; cell rowspan defaults1,
@@ -517,7 +517,7 @@ Canvas fallback is not an implementation of all embedded element dimensions.
 
 ## Control lengths
 
-[Control length owner](src/attributes/control_length.rs) exposes `input_size`,
+[Control length owner](src/internal/attributes/control_length.rs) exposes `input_size`,
 `input_size_for_input` and `control_length_bounds`; native positive size/bound
 constructors serialize canonical integer content. Input size's own positive
 getter defaults 20, while content supplies no positive request for rejected/zero
@@ -531,7 +531,7 @@ current dirty-value validation, edit truncation or DOM setters.
 
 ## Direction submission name
 
-A043 uses [control_text.rs](src/attributes/control_text.rs) for the
+A043 uses [control_text.rs](src/internal/attributes/control_text.rs) for the
 [specified nonempty dirname constraint](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-fe-dirname).
 `HtmlDirectionSubmissionName` accepts every nonempty exact UTF-16 string,
 including spaces, NULL and isolated surrogates, and emits the canonical
@@ -573,9 +573,9 @@ the local projection does not imply a shown hint or applied ignored attribute.
 
 ## Input quantities
 
-[Input bounds](src/attributes/input_bounds.rs) exposes
+[Input bounds](src/internal/attributes/input_bounds.rs) exposes
 `input_numeric_constraints` for Number/Range and Date/Month/Week/Time/LocalDateTime
-with native [temporal coordinates](src/temporal.rs). Number absent bounds remain
+with native [temporal coordinates](src/internal/microsyntax/temporal.rs). Number absent bounds remain
 None; Range uses0/100 fallback. Temporal quantities use their actual state units;
 Time permits periodic reversed bounds, nonperiodic inverted relations remain
 independent author observations. Step uses exact any or parsing to finite number
@@ -589,8 +589,8 @@ converted/recovered quantities; no clamp/sanitize/current validity/stepUp occurs
 
 ## Meter and progress
 
-[Meter author owner](src/attributes/meter.rs) and
-[progress author owner](src/attributes/progress.rs) expose coupled raw/common/
+[Meter author owner](src/internal/attributes/meter.rs) and
+[progress author owner](src/internal/attributes/progress.rs) expose coupled raw/common/
 author reports and checked native attribute bundles. Exact authored decimal
 relations are distinguished from binary64 representation; meter missing required
 value is not a fabricated zero-author success. Progress authored maximum must be
@@ -610,7 +610,7 @@ Neither family supplies rendering or task lifecycle.
 ## Area geometry
 
 `area_coordinates` and native checked area shape/point/rectangle/circle/polygon
-values live in [area.rs](src/attributes/area.rs). Shape's missing/invalid default
+values live in [area.rs](src/internal/attributes/area.rs). Shape's missing/invalid default
 is Rect; standard historical aliases recover but are nonconforming keywords.
 Authored coords use exact mathematical integrality/order constraints rather than
 binary64-rounded integer tests; native circle zero radius is valid authored
@@ -625,7 +625,7 @@ interprets qualified img/input getter results.
 ## File accept
 
 `input_accept` / `input_accept_for_input`, `HtmlAcceptSpecifier` and
-`HtmlAcceptValue` in [accept.rs](src/attributes/accept.rs) bind comma fields,
+`HtmlAcceptValue` in [accept.rs](src/internal/attributes/accept.rs) bind comma fields,
 HTML audio/*/video/*/image/*, filename-extension rules, MIME symbolic roles,
 processing comma splitting with boundary ASCII-space handling and duplicate/context observations. Full MIME
 conformance is explicitly separate. [Accept tests](tests/html/attributes/accept.rs)
@@ -634,7 +634,7 @@ file, validate selected resources or implement a picker.
 
 ## Control autocomplete
 
-[Autocomplete](src/attributes/autocomplete.rs) owns exact token order, recognized
+[Autocomplete](src/internal/attributes/autocomplete.rs) owns exact token order, recognized
 field/mode/contact/section/webauthn grammar, actual input-state/anchor mantle
 restrictions and field identity/scope/defaults. `ControlAutocomplete` in the
 [captured owner](../surgeist-html-semantics/src/semantics/autocomplete.rs) joins actual form association to
@@ -645,7 +645,7 @@ stored data, credential retrieval and UI autofill are external transitions.
 
 ## Responsive images
 
-[srcset.rs](src/attributes/srcset.rs) implements img/source/link candidate
+[srcset.rs](src/internal/attributes/srcset.rs) implements img/source/link candidate
 strict author fields and HTML recovery parsing, width/density exact descriptors,
 URL token/range retention, diagnostics and supplied context author observations.
 [Srcset tests](tests/html/attributes/srcset.rs) cover those contracts without external
@@ -661,7 +661,7 @@ not excused by CSS delegation.
 ## Sandbox
 
 `iframe_sandbox` and native sandbox tokens/flags in
-[sandbox.rs](src/attributes/sandbox.rs) apply ASCII token processing, independent
+[sandbox.rs](src/internal/attributes/sandbox.rs) apply ASCII token processing, independent
 unknown/duplicate/redundancy author observations and source sandbox flag-set
 complement. Missing/empty have different flag consequences;
 [sandbox tests](tests/html/attributes/sandbox.rs) exercise them. Current inherited
@@ -670,7 +670,7 @@ actual document/host state, not inference from a lexical token bundle.
 
 ## Navigable target
 
-[navigable_target.rs](src/attributes/navigable_target.rs) provides checked name
+[navigable_target.rs](src/internal/attributes/navigable_target.rs) provides checked name
 and name-or-four-keyword values and `navigable_target_attribute` roles. Name-only
 iframe/object attributes differ from target name-or-keyword attributes; leading
 underscore/empty and combined TAB/LF/CR plus less-than restrictions are explicit.
@@ -681,7 +681,7 @@ consumer requiring actual document/navigation context.
 
 ## IDs
 
-[id_attribute](src/attributes/id.rs) and native `HtmlSpaceToken` prove local
+[id_attribute](src/internal/attributes/id.rs) and native `HtmlSpaceToken` prove local
 nonempty/no-ASCII-whitespace id author syntax, preserving exact units; missing,
 empty, invalid and differently named slots remain distinct.
 [ID tests](tests/html/attributes/id.rs) cover local behavior. Same-tree/document
@@ -716,7 +716,7 @@ extensions are intentionally breaking; no compatibility adapter is provided.
 
 ## Hash and map reference
 
-[Hash scanner](src/attributes/hash_name.rs) exposes exact first-hash/tail/local
+[Hash scanner](src/internal/attributes/hash_name.rs) exposes exact first-hash/tail/local
 author form with native `HtmlUsemapReference` over a checked map-name token.
 [Usemap owner](../surgeist-html-semantics/src/semantics/image_map.rs) computes the first same-tree map with
 matching id/name for processing independently from the existential author
@@ -729,7 +729,7 @@ and [areas](../surgeist-html-semantics/tests/semantics/media/map_areas.rs) cover
 
 ## Modification datetime
 
-[modification.rs](src/attributes/modification.rs) binds ins/del datetime to strict
+[modification.rs](src/internal/attributes/modification.rs) binds ins/del datetime to strict
 `HtmlDateWithOptionalTime` author syntax, independent `HtmlDateOrTime` common
 recovery and associated date/global timestamp only. Time-only recovery has no
 associated timestamp; missing/empty/invalid/unapplied remain distinct. Exact
@@ -739,7 +739,7 @@ This does not turn a time-element value into a modification timestamp.
 
 ## Time element
 
-[Temporal](src/temporal.rs) and [interpretation](src/interpretation.rs) supply
+[Temporal](src/internal/microsyntax/temporal.rs) and [interpretation](src/internal/values/interpretation.rs) supply
 `HtmlTimeElementValue`, `HtmlMachineReadableTime` and `time_element_value` for
 ordered Month/Date/Yearless/Time/Local/Offset/Global/Week/Year/Duration alternatives;
 strict year author syntax differs positive-year processing. Actual captured
@@ -751,7 +751,7 @@ stepping or complete content-conformance checker is advertised.
 
 ## Textarea wrap
 
-[textarea_wrap.rs](src/attributes/textarea_wrap.rs) observes Soft missing/invalid
+[textarea_wrap.rs](src/internal/attributes/textarea_wrap.rs) observes Soft missing/invalid
 and Hard keyword, with separate hard-requires-cols author context; actual cols
 common report is reused. [Wrap tests](tests/html/attributes/textarea_wrap.rs) cover
 raw/state/context. It does not run wrapping layout or mutate the submission
@@ -816,8 +816,8 @@ conformance is certified.
 
 ## Control facts
 
-Shared [input state/rules](src/input.rs) and
-[textarea/select/option flags](src/control_values.rs) provide the HTML-owned
+Shared [input state/rules](src/internal/elements/input.rs) and
+[textarea/select/option flags](src/internal/elements/control_values.rs) provide the HTML-owned
 fixed intrinsic vocabulary consumed by the actual private parser. Input rules
 include Checkbox/Radio DefaultOn content readback, Submit/Reset/Button Default
 content readback with absent empty, checked/indeterminate transitions and the
@@ -886,7 +886,7 @@ validation, sanitization or a live control transition. Source:
 
 ## Form names
 
-A104's [local owner](src/attributes/form_name.rs) supplies exact nonempty
+A104's [local owner](src/internal/attributes/form_name.rs) supplies exact nonempty
 `HtmlFormName`, canonical no-namespace name emission and optional `form_name`
 reports. Absence is Missing observation/recognition but locally Conforming;
 specified empty is a local violation. Whitespace, case, NULL and isolated UTF-16
@@ -933,7 +933,7 @@ or entry-list/form submission execution.
 
 ## Form keywords and submission
 
-`formmethod`/`formenctype` [scalar overlays](src/attributes/scalar.rs) intentionally
+`formmethod`/`formenctype` [scalar overlays](src/internal/attributes/scalar.rs) intentionally
 have no own missing override; invalid defaults Get/UrlEncoded differ from None.
 Captured SubmitterFormMethod/SubmitterFormEnctype/SubmitterNoValidate in
 [form_settings.rs](../surgeist-html-semantics/src/semantics/form_settings.rs) join supplied actual owner/
@@ -996,7 +996,7 @@ dt/dd content conformance, human-name uniqueness, live DOM or parser behavior.
 using exact signed start/value, reversed and explicit CSS display/box participation
 revision-qualified supplement. Own li content value does not invent an ordinal
 outside a list; missing participation is not false. Native/content integer
-reports live in [scalar](src/attributes/scalar.rs);
+reports live in [scalar](src/internal/attributes/scalar.rs);
 [list integer tests](tests/html/attributes/list_integers.rs) and
 [semantics tests](../surgeist-html-semantics/tests/semantics/session.rs) cover real source/default behavior. CSS
 layout/marker rendering and update publication belong their consuming owners.
@@ -1053,7 +1053,7 @@ order does not turn the author grammar into an ordered set.
 
 ## Table header scope
 
-[table_header_scope.rs](src/attributes/table_header_scope.rs) owns A134 local
+[table_header_scope.rs](src/internal/attributes/table_header_scope.rs) owns A134 local
 scope interpretation on exact HTML th. Row/Column/RowGroup/ColumnGroup select
 the four recognized keywords; missing, empty and invalid content select Auto
 processing independently of raw observation and author conformance. Literal
@@ -1075,10 +1075,10 @@ cancellation or physical-memory guarantees.
 [details.rs](../surgeist-html-semantics/src/semantics/details.rs) exposes first direct HTML summary optional
 ID, SummaryForParentDetails predicate and same-ordinary-tree exact nonempty name
 group including subject; absent/empty yields singleton without unneeded topology.
-[details_name](src/attributes/details_name.rs) adds local nonempty native author
+[details_name](src/internal/attributes/details_name.rs) adds local nonempty native author
 syntax. [Name tests](tests/html/attributes/details_name.rs) and
 [captured tests](../surgeist-html-semantics/tests/semantics/elements/details.rs) cover those observations.
-[details_rules.rs](src/details_rules.rs) owns allocation-free attribute effects;
+[details_rules.rs](src/internal/elements/details_rules.rs) owns allocation-free attribute effects;
 [rule tests](tests/html/elements/details_rules.rs) distinguish name/open presence and namespaces.
 Private construction applies exclusive-open changes at ordered creation, cloning
 and insertion, with controlled native attribute removal and retained source
@@ -1099,7 +1099,7 @@ Focusability, navigation order and focus effects require actual host algorithms.
 
 ## Encoding labels
 
-A003/A019 use the published [encoding_label.rs](src/attributes/encoding_label.rs)
+A003/A019 use the published [encoding_label.rs](src/internal/attributes/encoding_label.rs)
 owner: `HtmlUtf8EncodingLabel` accepts only exact ASCII-case-insensitive UTF-8,
 preserves supplied casing and moves it into canonical accept-charset/charset
 attributes. `form_accept_charset` and `meta_charset` admit the entire selected
@@ -1120,7 +1120,7 @@ memory guarantees. Source: [form accept-charset](https://html.spec.whatwg.org/co
 
 ## Color input
 
-A025 uses [input_colorspace.rs](src/attributes/input_colorspace.rs):
+A025 uses [input_colorspace.rs](src/internal/attributes/input_colorspace.rs):
 `HtmlInputColorSpace` emits canonical limited-srgb/display-p3 attributes.
 `input_colorspace` keeps raw observation, keyword recognition and author spelling
 separate from the Limited sRGB missing/invalid fallback. Present applicable
@@ -1153,7 +1153,7 @@ external operations.
 ## Heading offset
 
 A062's [headingoffset](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#attr-headingoffset)
-uses [scalar.rs](src/attributes/scalar.rs). `heading_offset` separates whole
+uses [scalar.rs](src/internal/attributes/scalar.rs). `heading_offset` separates whole
 nonnegative author syntax constrained to 0..=8 from exact successful recovery,
 including values above eight. Missing and failed recovery contribute zero with
 distinct origins; lexical failures are not overwritten by range errors.
@@ -1337,7 +1337,7 @@ notifications remain required distinct operations.
 
 ## Commands and popovers
 
-[command.rs](src/attributes/command.rs) supplies six standard command keywords,
+[command.rs](src/internal/attributes/command.rs) supplies six standard command keywords,
 Custom with an exact retained UTF-16 payload, and missing/invalid Unknown.
 Checked native standard and Custom values emit command attributes; Unknown is
 a processing state without an author emitter. Native Custom requires two exact
@@ -1397,7 +1397,7 @@ distinct operations; captured results execute none of them.
 
 ## Access keys
 
-[token_declarations.rs](src/attributes/token_declarations.rs) supplies
+[token_declarations.rs](src/internal/attributes/token_declarations.rs) supplies
 `HtmlAccessKeys` and the `accesskey` report for A004. Local author checking uses
 an ordered case-sensitive unique set with exactly one code point per token.
 UTF-16 pairs count once; isolated surrogates, NULL and non-ASCII whitespace retain
@@ -1463,13 +1463,13 @@ it is independent of DataBlock meaning and unchecked MIME author grammar.
 
 Both selected original values are admitted before role/override processing.
 Standalone reports use ordinary allocation and a per-value UTF-16 cap. The sole
-[borrowed classifier](src/script_type.rs) also serves the private parser under its
+[borrowed classifier](src/internal/elements/script_type.rs) also serves the private parser under its
 actual controller; public `HtmlScriptKind` does not set saved preparation
 metadata. Public Boolean script operations still require their explicit context.
 External MIME, script/JSON body, wider placement/source conditions and language
 author conformance remain unasserted; no execution or whole-element validity
 follows. The [overview](../../docs/reference/html-operations.md#script-type-values),
-[public owner](src/attributes/script_type.rs),
+[public owner](src/internal/attributes/script_type.rs),
 [source-derived tests](tests/html/attributes/script_type.rs) and
 [pinned MIME reference](../../references/mimesniff-javascript-essence--39aa53511b13.md)
 record this boundary. Private checkpoint provenance remains in
@@ -1496,7 +1496,7 @@ appropriate for an equivalent button without the image. [src](https://html.spec.
 must be present and contain a valid nonempty URL potentially surrounded by
 spaces, referencing a non-interactive, optionally animated image that is neither
 paged nor scripted.
-The [local image values](src/attributes/image_values.rs) supply required-presence
+The [local image values](src/internal/attributes/image_values.rs) supply required-presence
 and nonempty reports selected by the actual InputType classification, plus an
 exact-string native bundle that emits `type=image`. Content-only input reports
 retain Unchecked state requirements. Label adequacy, URL validity and actual
@@ -1510,11 +1510,11 @@ When both are specified, either width is within 0.5 of height times the target
 ratio, height is within 0.5 of width divided by that ratio, or both are zero.
 The target ratio is the resource's natural width divided by natural height.
 Both attributes must be omitted if the resource lacks either natural dimension.
-The [local dimension reports](src/attributes/image_values.rs) reuse the common
+The [local dimension reports](src/internal/attributes/image_values.rs) reuse the common
 nonnegative-integer owner for author grammar and exact prefix recovery, with
 actual input-state and source-parent companions. Content-only conditional roles
 remain Unchecked; unavailable source-parent evidence does not establish
-inapplicability. These reports do not apply the [canvas report's](src/attributes/scalar.rs)
+inapplicability. These reports do not apply the [canvas report's](src/internal/attributes/scalar.rs)
 300/150 defaults. The [captured natural-dimension query](../surgeist-html-semantics/src/semantics/natural_dimensions.rs)
 uses the same applicability owner and strict whole-value author grammar.
 `EmbeddedDimensionAuthorConformance` independently reports omission and the
@@ -1556,7 +1556,7 @@ unsigned-long conversion/setters and other elements' reflection are external.
 
 A010 `as` uses the six HTML preload destinations and nine modulepreload
 destinations, with thirteen distinct states in their union. The
-[local owner](src/attributes/link_destination.rs) consumes the shared enumeration
+[local owner](src/internal/attributes/link_destination.rs) consumes the shared enumeration
 and token scanners. Native `HtmlLinkDestination` emits canonical spelling;
 `link_as` preserves whole-value ASCII-insensitive recognition without trimming,
 with no state for missing, empty or invalid values and no enum default.
@@ -1626,7 +1626,7 @@ Closed Query/Fact additions are intentionally breaking. Ordinary capture and
 fixed shared-wrapper allocation limitations remain; repeated scans may be
 quadratic under finite work, with no linear or complete process-memory claim.
 
-A071's [local pragma report](src/attributes/meta_pragma.rs) recognizes all seven
+A071's [local pragma report](src/internal/attributes/meta_pragma.rs) recognizes all seven
 source states with exact ASCII-insensitive whole keywords and no invented
 missing/empty/invalid defaults. Content-language and set-cookie remain recognized
 but nonconforming; `HtmlMetaPragma` emits the five conforming native author
@@ -1692,8 +1692,8 @@ The [captured explanation](../../docs/reference/html-operations.md#captured-temp
 [semantic owner](../surgeist-html-semantics/src/semantics/template.rs) and
 [public tests](../surgeist-html-semantics/tests/semantics/elements/template_for.rs) describe admission, missing
 evidence, actual cancellation and atomic batches. Native and captured readers
-share the [complete XML pseudo-attribute grammar](src/pi_pseudo_attributes.rs)
-and [marker selection rules](src/template_markers.rs); duplicate names or any
+share the [complete XML pseudo-attribute grammar](src/internal/microsyntax/pi_pseudo_attributes.rs)
+and [marker selection rules](src/internal/elements/template_markers.rs); duplicate names or any
 malformed suffix invalidate the entire map. This is independent of label/output
 for grammar. The [private fresh ordinary parser](../../docs/reference/html-operations.md#private-ordinary-templates)
 executes insertion/replacement effects over actual PI maps and template state.
@@ -1702,7 +1702,7 @@ mutation and shadow attachment retain their separate owners.
 
 ### Microdata
 
-A080–A084: [local token observations](src/attributes/microdata.rs) preserve exact
+A080–A084: [local token observations](src/internal/attributes/microdata.rs) preserve exact
 backing, occurrence ranges, duplicate positions and separate processing/author
 rules. Native `HtmlMicrodataTokenList` enforces local uniqueness and required
 nonempty lists; URL/vocabulary context is independently qualified. Itemscope's
@@ -1733,7 +1733,7 @@ claims remain outside this immutable contribution.
 
 ### Map names
 
-A106: [HtmlValueInterpreter::map_name](src/attributes/map_name.rs) reports required
+A106: [HtmlValueInterpreter::map_name](src/internal/attributes/map_name.rs) reports required
 presence and the sole `HtmlSpaceToken` nonempty/no-ASCII-whitespace grammar.
 Original raw admission precedes expanded-name applicability. Missing, Empty,
 invalid and Unapplied remain distinct without a default; present local reports
@@ -1764,7 +1764,7 @@ activation or live-collection guarantee is added.
 
 ### Nonce
 
-A110: [shared decisions](src/nonce.rs) preserve exact UTF-16 and the distinct
+A110: [shared decisions](src/internal/security/nonce.rs) preserve exact UTF-16 and the distinct
 content attribute and cryptographic slot for HTML/SVG/MathML elements. Native
 eligible elements initialize an admitted registered empty slot. The actual
 [construction hooks](../surgeist-html-parser/src/construction/nonce.rs) handle content
@@ -1795,7 +1795,7 @@ are retained; unavailable compilation is not Invalid or a match success.
 
 ### Link relationships
 
-A127/A128: [local reports](src/rel.rs) preserve exact rel/rev fields and token
+A127/A128: [local reports](src/internal/elements/rel.rs) preserve exact rel/rev fields and token
 occurrences, distinguishing role applicability, relationship effects, no-links
 cases and independent rel/itemprop author constraints. Captured
 [relationship facts](../surgeist-html-semantics/src/semantics/link_relationships.rs) qualify extensions,
@@ -1840,7 +1840,7 @@ and [captured tests](../surgeist-html-semantics/tests/semantics/base/semantic_ba
 
 ### Custom element names
 
-E111/A078: [HtmlCustomElementName](src/custom_names.rs) owns the complete
+E111/A078: [HtmlCustomElementName](src/internal/values/custom_names.rs) owns the complete
 selected valid-custom-element-name predicate and preserves exact UTF-16.
 Moving conversions emit an unprefixed HTML local name or canonical no-namespace
 `is` attribute; raw qualified storage remains open. The selected DOM ASCII-first
@@ -1848,7 +1848,7 @@ local-name branch permits less-than, equals, quotes, noncharacters and isolated
 surrogates after the required lowercase ASCII first letter, subject to HTML's
 other exclusions. This is local-name syntax proof, not serialized HTML syntax.
 
-[HtmlValueInterpreter::is_attribute](src/attributes/custom_name.rs) admits the
+[HtmlValueInterpreter::is_attribute](src/internal/attributes/custom_name.rs) admits the
 original raw value before expanded-name applicability and uses the same checked
 name owner. Missing, Empty, locally nonconforming and Unapplied states remain
 distinct; no default name is manufactured. Every applicable present value leaves
@@ -1887,10 +1887,10 @@ separate surfaces.
 
 ### Media queries
 
-M:mq/A095: [media.rs](src/media.rs) owns the borrowed UTF-16 cursor and HTML's
+M:mq/A095: [media.rs](src/internal/elements/media.rs) owns the borrowed UTF-16 cursor and HTML's
 specified-empty/ASCII-whitespace unconditional match. Specified `all` remains a
 CSS observation; its boundary-trimmed spelling separately controls picture
-source author requirements. [Local reports](src/attributes/media.rs) retain exact
+source author requirements. [Local reports](src/internal/attributes/media.rs) retain exact
 fields, expanded-name applicability and independent theme-color placement.
 
 Captured `MediaAttributeRules` exposes conditional link advice/resource gates,
@@ -1957,7 +1957,7 @@ surface is required to read this reference.
 
 ## Token sequences
 
-[Tokens](src/tokens.rs) provide checked individual space/comma tokens, sequences,
+[Tokens](src/internal/microsyntax/tokens.rs) provide checked individual space/comma tokens, sequences,
 and ordered/unordered unique sets with explicit comparison. Native valid tokens
 retain exact unit values; normalized/split views never rewrite raw Attribute.
 [Token tests](tests/html/values/tokens.rs) and [interpretation tests](tests/html/values/interpretation.rs)

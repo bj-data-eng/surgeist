@@ -2,6 +2,7 @@
 //! and validates their actual raw operands before retaining a response.
 use super::*;
 use crate::{DomError, DomHostedChildRequest, DomOpaqueOrigin};
+
 use surgeist_html_semantics::{
     HtmlBaseEncoding, HtmlBaseFactsRevision, HtmlBaseParseObservation, HtmlBaseParseOutcome,
     HtmlBaseUrlRecord,

@@ -1,6 +1,10 @@
 //! Disabled script allocation, standalone proofs and script preparation in the parser session.
 
 use super::*;
+use surgeist_html::{
+    construction::HtmlNodeKind,
+    elements::script::{HtmlScriptFlags, HtmlScriptResult},
+};
 
 impl ParserArenaSession {
     pub(crate) fn validate_standalone_document(
@@ -99,10 +103,9 @@ impl ParserArenaSession {
         let storage = self.active_mut()?;
         storage.document_slot(control, 0)?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let inert = storage
-            .fragment
-            .as_ref()
-            .is_some_and(|fragment| fragment.mode == crate::HtmlParserScriptingMode::Inert);
+        let inert = storage.fragment.as_ref().is_some_and(|fragment| {
+            fragment.mode == surgeist_html::parsing::HtmlParserScriptingMode::Inert
+        });
         let prepared = storage.prepare_payload_slot(control)?;
         payload_write::<Option<usize>>(control, 1)?;
         let script = storage

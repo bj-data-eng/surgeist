@@ -1,9 +1,14 @@
 //! Exact completed metadata adaptation; no native mutation-hook replay.
 use super::*;
 use crate::element::NativeFamily;
+use surgeist_html::values::DocumentString;
 use surgeist_html::{
-    HtmlElementClass as Requirement, HtmlInputImageHistory, HtmlInputSelection,
-    HtmlNativeFormAssociationKind as Form, KnownHtmlElement as Element,
+    elements::{
+        form::HtmlNativeFormAssociationKind as Form,
+        input::{HtmlInputImageHistory, HtmlInputSelection},
+        native::HtmlElementClass as Requirement,
+    },
+    vocabulary::KnownHtmlElement as Element,
 };
 
 fn required<T>(value: Option<T>, node: HtmlNode<'_>) -> Result<T, Error> {
@@ -49,7 +54,7 @@ pub(super) fn transfer_document_meta<'a>(
     source: &Source<'a>,
     node: HtmlNode<'a>,
     metadata: &mut DomDocumentMetadata,
-    issuer: &custody::Held<std::cell::RefCell<surgeist_html::HtmlCspOwner>>,
+    issuer: &custody::Held<std::cell::RefCell<surgeist_html::security::csp::HtmlCspOwner>>,
     c: &mut Control<'_>,
 ) -> Result<(), Error> {
     use surgeist_html_parser::{
@@ -112,12 +117,14 @@ pub(super) fn transfer_document_meta<'a>(
         let association = owner
             .associate_document_with(
                 original,
-                surgeist_html::HtmlCspAssociationCause::Installation,
+                surgeist_html::security::csp::HtmlCspAssociationCause::Installation,
                 &mut |layout| c.csp(layout),
             )
             .map_err(|error| match error {
-                surgeist_html::HtmlCspError::Protocol(error) => Error::CspProtocol(error),
-                surgeist_html::HtmlCspError::Interrupted(error) => error,
+                surgeist_html::security::csp::HtmlCspError::Protocol(error) => {
+                    Error::CspProtocol(error)
+                }
+                surgeist_html::security::csp::HtmlCspError::Interrupted(error) => error,
             })?;
         let layout = association.retained_layout().map_err(Error::CspProtocol)?;
         // Protocol admission covered the actual transitive graph and closing;
@@ -325,17 +332,19 @@ pub(super) fn metadata(
             if !matches!(
                 node.template_contents_kind(),
                 Some(
-                    surgeist_html::HtmlTemplateContentsKind::Owned
-                        | surgeist_html::HtmlTemplateContentsKind::ShadowReference
+                    surgeist_html::construction::HtmlTemplateContentsKind::Owned
+                        | surgeist_html::construction::HtmlTemplateContentsKind::ShadowReference
                 )
             ) {
                 return Err(Error::UnsupportedState { subject: node.id() });
             }
             let owned = node.template_contents_kind()
-                == Some(surgeist_html::HtmlTemplateContentsKind::Owned);
+                == Some(surgeist_html::construction::HtmlTemplateContentsKind::Owned);
             if owned
                 && template.contents().fragment_owner()
-                    != Some(&surgeist_html::HtmlFragmentOwner::Template(node.id()))
+                    != Some(&surgeist_html::construction::HtmlFragmentOwner::Template(
+                        node.id(),
+                    ))
             {
                 return Err(Error::UnsupportedState { subject: node.id() });
             }
@@ -396,7 +405,7 @@ pub(super) fn metadata(
         if let Some(script) = record.script_state() {
             let (parser, preparation) = required(record.script_documents(), node)?;
             let value = Some(crate::script::ScriptState {
-                flags: surgeist_html::HtmlScriptFlags::from_retained(
+                flags: surgeist_html::elements::script::HtmlScriptFlags::from_retained(
                     script.force_async(),
                     script.already_started(),
                     script.external_file(),
@@ -765,8 +774,10 @@ pub(super) fn allocate(
             if let Some(value) = saved_is {
                 c.string(value)?;
             }
-            let class =
-                surgeist_html::bounded::element_classification_with(element.name(), |_| c.step(1))?;
+            let class = surgeist_html::bounded::native::element_classification_with(
+                element.name(),
+                |_| c.step(1),
+            )?;
             let common = required(
                 source.observation(&node.id(), c, |r| r.common_state())?,
                 node,
@@ -890,7 +901,7 @@ fn family(
         // Those unchanged initial slots are source-profile invariants; the
         // actual parser flags and associations below are retained separately.
         Requirement::KnownHtml(Element::Form) => {
-            NativeFamily::Form(surgeist_html::HtmlFormNativeState::fresh())
+            NativeFamily::Form(surgeist_html::elements::form::HtmlFormNativeState::fresh())
         }
         Requirement::KnownHtml(Element::Template) => {
             required(source.observation(&node.id(), c, |r| r.template())?, node)?;
@@ -1000,7 +1011,9 @@ fn family(
         }
         // No parser operation invokes Marquee's start/stop API or animation
         // resources; its initial on/index scalars remain unchanged.
-        Requirement::HtmlMarquee => NativeFamily::Marquee(surgeist_html::HtmlMarqueeState::fresh()),
+        Requirement::HtmlMarquee => {
+            NativeFamily::Marquee(surgeist_html::elements::marquee::HtmlMarqueeState::fresh())
+        }
         Requirement::KnownHtml(Element::Canvas) => {
             let HtmlNodeKind::Element(element) = node.kind() else {
                 unreachable!("issued element requirement")
@@ -1127,7 +1140,7 @@ fn family(
                 source.observation(&node.id(), c, |r| r.input_cursor())?,
                 node,
             )?;
-            let files = if flags.input_type() == surgeist_html::HtmlInputType::File {
+            let files = if flags.input_type() == surgeist_html::attributes::HtmlInputType::File {
                 required(
                     source.observation(&node.id(), c, |r| r.input_file_selection())?,
                     node,
@@ -1135,18 +1148,19 @@ fn family(
             } else {
                 // No selected-File/resource ingress exists in this closed
                 // producer; entering/leaving File cannot install resources.
-                surgeist_html::HtmlInputFileSelection::Empty
+                surgeist_html::elements::input::HtmlInputFileSelection::Empty
             };
-            let coordinate = if flags.input_type() == surgeist_html::HtmlInputType::Image {
-                required(
-                    source.observation(&node.id(), c, |r| r.input_image_coordinate())?,
-                    node,
-                )?
-            } else {
-                // The producer has no pointer/coordinate setter. A prior Image
-                // history still retains its actual initial (0,0) coordinate.
-                surgeist_html::HtmlInputImageCoordinate::initial()
-            };
+            let coordinate =
+                if flags.input_type() == surgeist_html::attributes::HtmlInputType::Image {
+                    required(
+                        source.observation(&node.id(), c, |r| r.input_image_coordinate())?,
+                        node,
+                    )?
+                } else {
+                    // The producer has no pointer/coordinate setter. A prior Image
+                    // history still retains its actual initial (0,0) coordinate.
+                    surgeist_html::elements::input::HtmlInputImageCoordinate::initial()
+                };
             let image = source.observation(&node.id(), c, |r| r.input_image_source())?;
             if let Some(surgeist_html_parser::HtmlInputImageSource::Present(value)) = image {
                 c.string(value)?;
@@ -1200,7 +1214,7 @@ fn family(
                 source.observation(&node.id(), c, |r| r.svg_script_origin())?,
                 node,
             )?;
-            let flags = surgeist_html::SvgScriptFlags::from_retained(processed);
+            let flags = surgeist_html::elements::script::SvgScriptFlags::from_retained(processed);
             NativeFamily::SvgScript(crate::svg_script::SvgScriptState::from_parsed(
                 flags,
                 match origin {

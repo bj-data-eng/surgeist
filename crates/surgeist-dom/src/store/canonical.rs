@@ -2,6 +2,7 @@
 //! edited language and relation groups retain their own immutable identity.
 use super::*;
 use crate::store::payload::Payload;
+
 use surgeist_html_semantics::HtmlParseBaseFacts;
 
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -6,8 +6,8 @@ own package facts, the public front door and capability/verification guidance.
 
 HTML owns language values, local rules, native builders, controlled construction and immutable
 results. [Parser](../surgeist-html-parser/AGENTS.md) and
-[semantics](../surgeist-html-semantics/AGENTS.md) consume its public root and
-bounded front doors directly. The [selected edition](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline)
+[semantics](../surgeist-html-semantics/AGENTS.md) consume its public domain
+modules and `bounded` front doors directly. The [selected edition](../../references/SOURCE-EDITIONS.md#pinned-html-language-baseline)
 governs behavior. Preserve exact UTF-16 and private generic storage invariants.
 
 The owned `HtmlNode` Document design-mode readback certifies the original
@@ -15,6 +15,16 @@ constructor's false state under this owner's no-mutator domain. A raw node-kind
 value or captured external Document supplies no such qualification. If controlled
 construction gains a design-mode transition, update the readback to retain its
 actual current state rather than continuing to return an initial value.
+
+## Module Layout
+
+The crate root only declares public modules (`values`, `microsyntax`,
+`vocabulary`, `attributes`, `elements`, `focus`, `security`, `parsing`,
+`construction`, `bounded`). Each re-exports its items from the private
+`src/internal/` implementation tree by explicit lists, so every public item has
+exactly one path and a new `pub` item in an implementation file is not public
+until a module lists it. Add no glob re-export, root re-export or `as` alias to
+a public module; name an item correctly at its definition.
 
 ## Command Inventory
 

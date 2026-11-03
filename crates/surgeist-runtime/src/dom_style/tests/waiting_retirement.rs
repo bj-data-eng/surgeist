@@ -1,5 +1,6 @@
 //! Exact native wait custody and admission at the owning Runtime bank.
 use super::*;
+use surgeist_html::values::Namespace;
 
 fn drive(session: &mut DomSession, context: &mut Context, edit: DomSourceEdit) {
     assert!(matches!(

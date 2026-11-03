@@ -1,5 +1,5 @@
 //! Processing expectations from pinned HTML §2.3.5, independent of author grammar.
-use surgeist_html::{
+use surgeist_html::values::{
     DocumentString, HtmlValueAuthorState, HtmlValueInterpreter, HtmlValueRecoveryState,
 };
 

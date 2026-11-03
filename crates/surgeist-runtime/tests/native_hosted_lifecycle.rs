@@ -12,7 +12,7 @@
 use std::sync::atomic::AtomicBool;
 use surgeist_css::source::CssUtf16InputLimits;
 use surgeist_dom::*;
-use surgeist_html::HtmlDocumentMode;
+use surgeist_html::construction::HtmlDocumentMode;
 use surgeist_runtime::*;
 
 fn cancel() -> AtomicBool {
@@ -277,7 +277,7 @@ fn initial_blank_has_real_html_tree_registry_and_current_global_settings() {
     );
     assert_eq!(
         facts.nonce_environment().browsing_context(),
-        surgeist_html::HtmlBrowsingContextPresence::Present
+        surgeist_html::security::nonce::HtmlBrowsingContextPresence::Present
     );
     let captured_registry = captured_document.lookup_registry();
     let surgeist_html_semantics::HtmlCapturedRegistry::Registry(id) = &captured_registry else {
@@ -348,7 +348,7 @@ fn initial_blank_has_real_html_tree_registry_and_current_global_settings() {
     assert_eq!(settings.time_origin_microseconds() % 100, 0);
     assert_eq!(
         settings.creation_url().serialization(),
-        &surgeist_html::DocumentString::from("about:blank")
+        &surgeist_html::values::DocumentString::from("about:blank")
     );
     assert_eq!(settings.top_level_creation_url(), settings.creation_url());
     assert!(!settings.cross_origin_isolated());
@@ -1208,7 +1208,7 @@ fn associated_html_creator_and_template_owner_do_not_copy_live_hosted_associatio
     );
     assert_eq!(
         copied.metadata().document_environment().browsing_context(),
-        surgeist_html::HtmlBrowsingContextPresence::Absent
+        surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent
     );
     assert!(
         !copied
@@ -1248,7 +1248,7 @@ fn associated_html_creator_and_template_owner_do_not_copy_live_hosted_associatio
             .metadata()
             .document_environment()
             .browsing_context(),
-        surgeist_html::HtmlBrowsingContextPresence::Absent
+        surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent
     );
     assert!(
         !inert_document
@@ -1360,7 +1360,7 @@ fn owned_shadow_retains_the_real_global_registry_and_capture_deduplicates_it() {
 
 #[test]
 fn unsupported_child_navigable_and_svg_processing_profiles_refuse_connection_atomically() {
-    use surgeist_html::{HtmlElementClass, KnownHtmlElement};
+    use surgeist_html::{elements::native::HtmlElementClass, vocabulary::KnownHtmlElement};
     let mut session = session();
     let top = create(&mut session);
     let parent = body(&session.snapshot(), top.document());
@@ -1497,7 +1497,7 @@ fn html_script_in_present_native_context_stops_at_explicit_disabled_scripting() 
         .document_environment();
     assert_eq!(
         environment.browsing_context(),
-        surgeist_html::HtmlBrowsingContextPresence::Present
+        surgeist_html::security::nonce::HtmlBrowsingContextPresence::Present
     );
     assert_eq!(
         environment.scripting(),
@@ -1508,7 +1508,7 @@ fn html_script_in_present_native_context_stops_at_explicit_disabled_scripting() 
     let state = snapshot.node(script).unwrap().as_html_script().unwrap();
     assert_eq!(
         state.script_type(),
-        Some(surgeist_html::HtmlScriptKind::Classic)
+        Some(surgeist_html::elements::script::HtmlScriptKind::Classic)
     );
     assert!(state.flags().already_started());
     assert!(state.flags().force_async());
@@ -1519,7 +1519,7 @@ fn html_script_in_present_native_context_stops_at_explicit_disabled_scripting() 
     assert_eq!(state.preparation_document(), Some(top.document()));
     assert_eq!(
         state.result(),
-        surgeist_html::HtmlScriptResult::Uninitialized
+        surgeist_html::elements::script::HtmlScriptResult::Uninitialized
     );
     assert_eq!(state.steps_when_result_ready(), None);
 }
@@ -2468,7 +2468,7 @@ fn canonical_adoption_style_resource_refusal_after_hosted_teardown_preserves_rea
     assert_eq!(
         session.dom().apply(batch, &cancel()).unwrap_err(),
         DomError::StyleCompositionRequired(
-            surgeist_html::HtmlStyleUpdateAction::RemoveAssociatedSheet
+            surgeist_html::elements::style::HtmlStyleUpdateAction::RemoveAssociatedSheet
         )
     );
     let after = session.snapshot();

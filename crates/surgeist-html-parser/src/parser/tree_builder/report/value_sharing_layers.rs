@@ -13,6 +13,10 @@ use crate::parser::tree_builder::{
 use crate::request::ValueSharingMode;
 use crate::*;
 use std::sync::Arc;
+use surgeist_html::{
+    construction::{HtmlDocumentMode, HtmlElement, HtmlNode, HtmlNodeId, HtmlNodeKind},
+    values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 
 const EQUAL_BANKS: &str =
     "<table><tbody><tr><td class=k title=v>A</td><td class=k title=v>B</td></tr></tbody></table>";
@@ -178,7 +182,7 @@ fn origin(
 fn check_equal_banks(
     report: &HtmlParseReport,
     mode: ValueSharingMode,
-) -> Arc<Vec<surgeist_html::Attribute>> {
+) -> Arc<Vec<surgeist_html::values::Attribute>> {
     let cells = elements(report, "td");
     assert_eq!(cells.len(), 2);
     assert_ne!(cells[0], cells[1]);
@@ -227,7 +231,7 @@ fn check_equal_banks(
 fn check_distinct_banks_text(
     report: &HtmlParseReport,
     mode: ValueSharingMode,
-) -> Arc<Vec<surgeist_html::Attribute>> {
+) -> Arc<Vec<surgeist_html::values::Attribute>> {
     let paragraphs = elements(report, "p");
     assert_eq!(paragraphs.len(), 2);
     assert_ne!(paragraphs[0], paragraphs[1]);

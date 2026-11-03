@@ -1,10 +1,11 @@
 //! Ordinary-driver-owned Meta CSP service obligations and retained policy values.
 use super::*;
 use crate::meta_csp::{Account, Caller, Outcome, Service, Storage};
-use surgeist_html::{
+use surgeist_html::security::csp::{
     HtmlCspAssociation, HtmlCspOwner, HtmlCspPolicyId, HtmlCspPolicyRevision, HtmlMetaCspPrepared,
     HtmlMetaCspReceipt, HtmlMetaCspRequest,
 };
+use surgeist_html::values::DocumentString;
 
 pub(super) struct Policy {
     pub value: Option<HtmlCspAssociation>,
@@ -34,10 +35,13 @@ pub(super) struct State {
     initial: Option<(HtmlCspPolicyId, HtmlCspPolicyRevision)>,
     owner_usage: Storage,
 }
-fn protocol(c: &mut ParseControl, e: surgeist_html::HtmlCspError<HtmlParseStop>) -> SessionError {
+fn protocol(
+    c: &mut ParseControl,
+    e: surgeist_html::security::csp::HtmlCspError<HtmlParseStop>,
+) -> SessionError {
     match e {
-        surgeist_html::HtmlCspError::Interrupted(s) => s.into(),
-        surgeist_html::HtmlCspError::Protocol(p) => {
+        surgeist_html::security::csp::HtmlCspError::Interrupted(s) => s.into(),
+        surgeist_html::security::csp::HtmlCspError::Protocol(p) => {
             c.csp_protocol_stop(p);
             SessionError::CspProtocol(p)
         }
@@ -567,6 +571,7 @@ mod tests {
     use super::*;
     use crate::construction::effects::tests::{graph, request};
     use crate::construction::tests::storage_zero;
+    use surgeist_html::security::csp::HtmlCspOwner;
 
     #[test]
     fn a_meta_csp_state_row_replaced_during_its_use_reports_the_registry_row() {
@@ -630,8 +635,10 @@ mod tests {
         let request = request("<body><div id=a>");
         let mut c = ParseControl::new(*request.limits(), request.cancellation().clone());
         c.admit_source(request.source()).unwrap();
-        let mut allow = |_: surgeist_html::HtmlCspLayout| Ok::<(), std::convert::Infallible>(());
-        let authority = surgeist_html::HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
+        let mut allow =
+            |_: surgeist_html::security::csp::HtmlCspLayout| Ok::<(), std::convert::Infallible>(());
+        let authority =
+            surgeist_html::security::csp::HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
         let profile = authority.profile_with(17, &mut allow).unwrap();
         let mut covered = Account::default();
         let mut owner =
@@ -672,8 +679,10 @@ mod tests {
         let request = request("<body><div id=a>");
         let mut c = ParseControl::new(*request.limits(), request.cancellation().clone());
         c.admit_source(request.source()).unwrap();
-        let mut allow = |_: surgeist_html::HtmlCspLayout| Ok::<(), std::convert::Infallible>(());
-        let authority = surgeist_html::HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
+        let mut allow =
+            |_: surgeist_html::security::csp::HtmlCspLayout| Ok::<(), std::convert::Infallible>(());
+        let authority =
+            surgeist_html::security::csp::HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
         let profile = authority.profile_with(17, &mut allow).unwrap();
         let mut covered = Account::default();
         let mut owner =
@@ -700,8 +709,10 @@ mod tests {
         let request = request("<body><div id=a>");
         let mut c = ParseControl::new(*request.limits(), request.cancellation().clone());
         c.admit_source(request.source()).unwrap();
-        let mut allow = |_: surgeist_html::HtmlCspLayout| Ok::<(), std::convert::Infallible>(());
-        let authority = surgeist_html::HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
+        let mut allow =
+            |_: surgeist_html::security::csp::HtmlCspLayout| Ok::<(), std::convert::Infallible>(());
+        let authority =
+            surgeist_html::security::csp::HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
         let profile = authority.profile_with(17, &mut allow).unwrap();
         let mut covered = Account::default();
         let mut owner =
@@ -713,10 +724,10 @@ mod tests {
         short
             .admit(
                 &mut c,
-                surgeist_html::HtmlCspLayout::processing(
+                surgeist_html::security::csp::HtmlCspLayout::processing(
                     0,
-                    surgeist_html::HtmlCspStorage::default(),
-                    surgeist_html::HtmlCspDisposalWork::default(),
+                    surgeist_html::security::csp::HtmlCspStorage::default(),
+                    surgeist_html::security::csp::HtmlCspDisposalWork::default(),
                     0,
                 )
                 .unwrap(),

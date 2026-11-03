@@ -122,7 +122,11 @@ fn acknowledged_style_creation_discovers_body_without_scanning_unrelated_childre
                 let before_body = batch.create_comment(document, "inside");
                 batch.insert_before(&before_body, html, body_present.then_some(body.into()));
             }
-            let style = batch.create_element_ns(document, crate::Namespace::html(), "style");
+            let style = batch.create_element_ns(
+                document,
+                surgeist_html::values::Namespace::html(),
+                "style",
+            );
             batch.set_attribute(&style, "blocking", "render");
             let text = batch.create_text(document, "a {}");
             batch.insert_before(&text, &style, None);
@@ -274,10 +278,18 @@ fn absent_render_blocking_removal_ignores_other_roles_and_preserves_duplicate_oc
         .unwrap();
         let mut batch = DomBatch::new();
         let document = batch.create_document();
-        let absent = batch.create_element_ns(&document, crate::Namespace::html(), "style");
-        let anchor = batch.create_element_ns(&document, crate::Namespace::html(), "style");
+        let absent =
+            batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "style");
+        let anchor =
+            batch.create_element_ns(&document, surgeist_html::values::Namespace::html(), "style");
         let tickets: Vec<_> = (0..unrelated)
-            .map(|_| batch.create_element_ns(&document, crate::Namespace::html(), "style"))
+            .map(|_| {
+                batch.create_element_ns(
+                    &document,
+                    surgeist_html::values::Namespace::html(),
+                    "style",
+                )
+            })
             .collect();
         let setup = dom.apply(batch, &cancel).unwrap();
         let document = setup.document(&document).unwrap();
@@ -444,7 +456,8 @@ fn body_presence_uses_the_first_document_element_and_only_direct_html_children()
     };
     check(&dom, true);
     let mut batch = DomBatch::new();
-    let container = batch.create_element_ns(document, crate::Namespace::html(), "div");
+    let container =
+        batch.create_element_ns(document, surgeist_html::values::Namespace::html(), "div");
     batch.insert_before(&container, html, None);
     batch.insert_before(body, &container, None);
     dom.apply(batch, &cancel).unwrap();
@@ -455,7 +468,7 @@ fn body_presence_uses_the_first_document_element_and_only_direct_html_children()
     check(&dom, true);
     let mut batch = DomBatch::new();
     batch.detach(html);
-    let xml = batch.create_element_ns(document, crate::Namespace::none(), "html");
+    let xml = batch.create_element_ns(document, surgeist_html::values::Namespace::none(), "html");
     batch.insert_before(&xml, document.node(), None);
     batch.insert_before(body, &xml, None);
     dom.apply(batch, &cancel).unwrap();

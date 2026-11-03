@@ -1,9 +1,10 @@
 use super::*;
+use crate::DomNameAtom;
 use crate::name::NameRecord;
 use crate::store::MaterializationId;
-use crate::{DomNameAtom, QualifiedName};
 use std::collections::HashMap;
 use std::{mem::size_of, sync::Arc};
+use surgeist_html::values::QualifiedName;
 
 // These receipt fixtures construct valid canonical values with one record per
 // owner/spelling. Actual registry admission/lifecycle is tested by its owner.

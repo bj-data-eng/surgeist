@@ -1,5 +1,5 @@
 use crate::parser::support::limits;
-use surgeist_html::{HtmlScriptKind, HtmlScriptReadySteps, HtmlScriptResult};
+use surgeist_html::elements::script::{HtmlScriptKind, HtmlScriptReadySteps, HtmlScriptResult};
 use surgeist_html_parser::{HtmlDocumentParseRequest, HtmlParseMetadataStep, HtmlSource};
 
 // HTML877d raw47442–47447 initializes result/ready steps; Disabled preparation

@@ -10,7 +10,13 @@ use std::{
         atomic::{AtomicUsize, Ordering},
     },
 };
-use surgeist_html::*;
+use surgeist_html::security::csp::{
+    HtmlCspArtifactLayout, HtmlCspDisposalWork, HtmlCspError, HtmlCspLayout, HtmlCspNativePolicy,
+    HtmlCspPolicyArtifact, HtmlCspProcessorAuthority, HtmlCspProcessorProfile,
+    HtmlCspProtocolError, HtmlCspStorage, HtmlCspUnavailable, HtmlMetaCspDisposition,
+    HtmlMetaCspOutcome, HtmlMetaCspProcessor, HtmlMetaCspRemovedDirective, HtmlMetaCspRequest,
+    HtmlMetaCspSource,
+};
 use surgeist_html_parser::*;
 
 const FIRST: &str = "default-src 'self'; report-uri /reports; frame-ancestors 'none'; sandbox";
@@ -737,14 +743,14 @@ fn a_processor_that_releases_storage_it_never_held_fails_the_processing() {
 /// provoking it.
 fn protocol_error() -> HtmlCspProtocolError {
     let admit = &mut |_| Ok::<(), std::convert::Infallible>(());
-    let mut owner = surgeist_html::HtmlCspOwner::new_with(admit).unwrap();
-    let mut other = surgeist_html::HtmlCspOwner::new_with(admit).unwrap();
+    let mut owner = surgeist_html::security::csp::HtmlCspOwner::new_with(admit).unwrap();
+    let mut other = surgeist_html::security::csp::HtmlCspOwner::new_with(admit).unwrap();
     let association = owner.initial_document_with(admit).unwrap();
-    let profile = surgeist_html::HtmlCspProcessorAuthority::new_with(admit)
+    let profile = surgeist_html::security::csp::HtmlCspProcessorAuthority::new_with(admit)
         .unwrap()
         .profile_with(1, admit)
         .unwrap();
-    let content = surgeist_html::DocumentString::from("default-src 'none'");
+    let content = surgeist_html::values::DocumentString::from("default-src 'none'");
     match other.request_meta_insertion_with(&association, &profile, content, admit) {
         Err(rejected) => match rejected.error {
             HtmlCspError::Protocol(error) => error,

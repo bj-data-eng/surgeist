@@ -1,5 +1,10 @@
 //! Pure HTML877d noopener invocation over qualified actual URL/settings facts.
 use super::*;
+use surgeist_html::{
+    bounded::rel::{HtmlRelInputs, HtmlRelInterpretation, HtmlRelMeter, HtmlRelReservation},
+    elements::link::{HtmlRelKeyword, HtmlRelRole, HtmlRelSpelling},
+    values::{Attribute, DocumentString},
+};
 
 macro_rules! identity {
     ($name:ident) => {
@@ -305,7 +310,7 @@ impl<'a> HtmlSemanticSession<'a> {
             capacity: 0,
         };
         let mut owner = Some(HtmlRelInterpretation::new(
-            RelInputs::new(Some(role)).with_rel(rel).with_rev(rev),
+            HtmlRelInputs::new(Some(role)).with_rel(rel).with_rev(rev),
         ));
         owner
             .as_mut()
@@ -367,7 +372,10 @@ impl<'a> HtmlSemanticSession<'a> {
                 .stop(HtmlSemanticFailureKind::RepresentationExhausted)
         })?;
         meter.work(envelope)?;
-        if !opener && !unknown && rel::rel_ascii_keyword(input.target.code_units(), "_blank") {
+        if !opener
+            && !unknown
+            && surgeist_html::bounded::rel::rel_ascii_keyword(input.target.code_units(), "_blank")
+        {
             return Ok(HtmlSemanticValue::Known(true));
         }
         let mut blob = None;

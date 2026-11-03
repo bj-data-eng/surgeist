@@ -1,6 +1,7 @@
 //! Actual descendant queries retain their original Source leaf without supplied focus facts.
 use super::*;
-use surgeist_html::{HtmlAutofocusDelegateAction, HtmlFocusDelegateAction};
+use surgeist_html::focus::{HtmlAutofocusDelegateAction, HtmlFocusDelegateAction};
+use surgeist_html::{construction::HtmlShadowRootMode, values::Namespace};
 
 fn edit(session: &mut DomSession, edit: DomSourceEdit) {
     let result = session

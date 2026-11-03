@@ -8,7 +8,7 @@ use crate::{
 pub struct DomSourceDialogFocusingRequest {
     pub(crate) operation: crate::DomSourceOperationId,
     pub(crate) subject: crate::NodeId,
-    pub(crate) action: surgeist_html::HtmlDialogFocusingAction,
+    pub(crate) action: surgeist_html::elements::dialog::HtmlDialogFocusingAction,
     pub(crate) occurrence: super::watcher::HookOccurrence,
 }
 impl DomSourceDialogFocusingRequest {
@@ -18,7 +18,7 @@ impl DomSourceDialogFocusingRequest {
     pub const fn subject(&self) -> crate::NodeId {
         self.subject
     }
-    pub const fn action(&self) -> surgeist_html::HtmlDialogFocusingAction {
+    pub const fn action(&self) -> surgeist_html::elements::dialog::HtmlDialogFocusingAction {
         self.action
     }
     pub const fn command(&self) -> usize {
@@ -31,8 +31,8 @@ impl DomSourceDialogFocusingRequest {
 /// The exact unavailable query of an original called focus-delegate protocol.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomSourceFocusDelegateStep {
-    Focus(surgeist_html::HtmlFocusDelegateAction),
-    Autofocus(surgeist_html::HtmlAutofocusDelegateAction),
+    Focus(surgeist_html::focus::HtmlFocusDelegateAction),
+    Autofocus(surgeist_html::focus::HtmlAutofocusDelegateAction),
 }
 /// One source-issued descendant query. This observation supplies no focus fact
 /// and grants no authority to complete the called algorithm.
@@ -73,7 +73,7 @@ impl DomSourceFocusDelegateRequest {
 pub struct DomSourceAutofocusInsertionRequest {
     pub(crate) operation: crate::DomSourceOperationId,
     pub(crate) subject: crate::NodeId,
-    pub(crate) action: surgeist_html::HtmlAutofocusInsertionAction,
+    pub(crate) action: surgeist_html::focus::HtmlAutofocusInsertionAction,
     pub(crate) occurrence: super::watcher::HookOccurrence,
 }
 impl DomSourceAutofocusInsertionRequest {
@@ -83,7 +83,7 @@ impl DomSourceAutofocusInsertionRequest {
     pub const fn subject(&self) -> crate::NodeId {
         self.subject
     }
-    pub const fn action(&self) -> surgeist_html::HtmlAutofocusInsertionAction {
+    pub const fn action(&self) -> surgeist_html::focus::HtmlAutofocusInsertionAction {
         self.action
     }
     pub const fn command(&self) -> usize {

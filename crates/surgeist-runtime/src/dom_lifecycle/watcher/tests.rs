@@ -9,6 +9,10 @@ use crate::{
     DomSourceEventRuntimeLimits, DomSourceServices, DomStyleRuntimeLimits,
 };
 use surgeist_dom::*;
+use surgeist_html::{
+    construction::HtmlShadowRootMode,
+    values::{Attribute, Namespace, OrderedAttributes, QualifiedName},
+};
 fn source_limits() -> DomSourceLimits {
     DomSourceLimits::new(32_000_000, 1_000_000, 10_000_000, 128, 4096, 4096, 4)
 }
@@ -594,8 +598,8 @@ fn actual_created_hook_repeats_same_exposed_identity_before_real_watcher_service
     let cancel = AtomicBool::new(false);
     let before = session.snapshot();
     let prior = before.node(body).unwrap().children().to_vec();
-    let mut builder = surgeist_html::HtmlFragment::builder(
-        surgeist_html::HtmlConstructionLimits::new(16, 16, 16, 4096, 16),
+    let mut builder = surgeist_html::construction::HtmlFragment::builder(
+        surgeist_html::construction::HtmlConstructionLimits::new(16, 16, 16, 4096, 16),
     )
     .unwrap();
     builder
@@ -1096,8 +1100,14 @@ fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect()
             .unwrap();
         assert_eq!(dialog.toggle_task_tracker().unwrap().task(), task.id());
         assert_eq!(task.id().target(), subject);
-        assert_eq!(task.old_state(), surgeist_html::HtmlDialogState::Closed);
-        assert_eq!(task.new_state(), surgeist_html::HtmlDialogState::Open);
+        assert_eq!(
+            task.old_state(),
+            surgeist_html::elements::dialog::HtmlDialogState::Closed
+        );
+        assert_eq!(
+            task.new_state(),
+            surgeist_html::elements::dialog::HtmlDialogState::Open
+        );
         assert_eq!(task.source(), None);
         let association = task.queue_association().unwrap();
         assert_eq!(association.global(), top.global());

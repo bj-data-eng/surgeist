@@ -3,7 +3,12 @@
 //! No overall conformance bit, live collection, map association or geometry.
 
 use super::*;
-use crate::{HtmlAttributeReport, HtmlSpaceToken};
+use surgeist_html::{
+    attributes::HtmlAttributeReport,
+    microsyntax::tokens::HtmlSpaceToken,
+    values::{Attribute, DocumentString, HtmlValueInterpreter},
+    vocabulary::KnownHtmlElement,
+};
 
 /// Exact specified name/id relationship, independent of each local grammar.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

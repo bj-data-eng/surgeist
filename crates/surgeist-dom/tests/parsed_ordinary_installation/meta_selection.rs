@@ -5,6 +5,7 @@ use surgeist_css::component::CssValueOrigin;
 use surgeist_css::property::CssKnownPropertyValueRef;
 use surgeist_css::source::{CssUtf16InputLimits, CssUtf16PropertyValueLimits};
 use surgeist_css::values::color_adjust::{CssColorSchemeKeyword, CssColorSchemeParseReport};
+use surgeist_html::values::{DocumentString, Namespace};
 use surgeist_html_parser::HtmlParseMetadataStep;
 
 fn transfer_owner() -> (Dom, DomParsedDocumentEnvironment) {

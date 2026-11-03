@@ -1,12 +1,12 @@
 //! Immutable Unicode sources and validated coordinates, independent of URL context.
 
-use crate::DocumentString;
 use std::{
     error::Error,
     fmt,
     hash::{Hash, Hasher},
     sync::Arc,
 };
+use surgeist_html::values::DocumentString;
 
 /// Opaque identity of one supplied source, independent of equal text or URLs.
 #[derive(Clone, Debug)]
@@ -363,6 +363,7 @@ impl HtmlSource {
 #[cfg(test)]
 mod consumed_boundary_tests {
     use super::*;
+    use surgeist_html::values::DocumentString;
 
     #[test]
     fn available_decoded_spans_prove_exact_ranges_without_an_end_byte() {
@@ -646,6 +647,7 @@ impl Error for HtmlSourceRangeError {}
 #[cfg(test)]
 mod text_tests {
     use super::*;
+    use surgeist_html::values::DocumentString;
 
     /// A range that only this module can build: it names the source's own
     /// identity but was never validated against its text.

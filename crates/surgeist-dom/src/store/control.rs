@@ -1,16 +1,16 @@
 //! Actual native control state, bounded reset observations and native mutation hooks.
 use super::*;
-use surgeist_html::KnownHtmlAttribute;
-use surgeist_html::bounded::{
+use surgeist_html::bounded::form::{
     HtmlFormOwnerResetDecision as Decision, HtmlFormOwnerResetTrigger as Trigger,
     form_owner_reset_trigger,
 };
+use surgeist_html::vocabulary::KnownHtmlAttribute;
 
 fn state<'a>(
     kind: transaction::KindRead<'a>,
 ) -> Option<(
     &'a crate::control::NativeControlState,
-    surgeist_html::HtmlNativeFormAssociationKind,
+    surgeist_html::elements::form::HtmlNativeFormAssociationKind,
 )> {
     match kind {
         transaction::KindRead::Element(element) => element.language().native_control(),
@@ -22,14 +22,17 @@ fn state<'a>(
 // acquire a custom validity message through this join.
 fn association(
     node: &transaction::NodeRead<'_>,
-) -> Option<(bool, surgeist_html::HtmlNativeFormAssociationKind)> {
+) -> Option<(
+    bool,
+    surgeist_html::elements::form::HtmlNativeFormAssociationKind,
+)> {
     state(node.kind())
         .map(|(control, kind)| (control.parser_inserted, kind))
         .or_else(|| {
             node.image().map(|image| {
                 (
                     image.parser_inserted,
-                    surgeist_html::HtmlNativeFormAssociationKind::Image,
+                    surgeist_html::elements::form::HtmlNativeFormAssociationKind::Image,
                 )
             })
         })
@@ -50,7 +53,7 @@ impl Draft {
         formation: Option<source::formation::Formation>,
         edit: impl FnOnce(&mut crate::control::NativeControlState) -> R,
     ) -> Result<R, DomError> {
-        use surgeist_html::HtmlNativeFormAssociationKind as Kind;
+        use surgeist_html::elements::form::HtmlNativeFormAssociationKind as Kind;
         let kind = state(self.node(key)?.kind())
             .expect("checked native control")
             .1;
@@ -85,7 +88,7 @@ impl Draft {
             .message
             .len();
         let mut length = 0usize;
-        let mut normalizer = surgeist_html::HtmlNewlineNormalizer::new();
+        let mut normalizer = surgeist_html::values::HtmlNewlineNormalizer::new();
         for unit in raw.code_units() {
             self.source_step(cancel)?;
             if normalizer.push(*unit).is_some() {
@@ -117,7 +120,7 @@ impl Draft {
                 output
             }
         };
-        let mut normalizer = surgeist_html::HtmlNewlineNormalizer::new();
+        let mut normalizer = surgeist_html::values::HtmlNewlineNormalizer::new();
         for unit in raw.code_units() {
             self.source_step(cancel)?;
             if let Some(unit) = normalizer.push(*unit) {
@@ -218,7 +221,7 @@ impl Draft {
         Ok(None)
     }
     fn reset_control(&mut self, key: Key, cancel: &AtomicBool) -> Result<(), DomError> {
-        use surgeist_html::bounded::{
+        use surgeist_html::bounded::form::{
             HtmlFormOwnerResetAction as A, HtmlFormOwnerResetCursor, HtmlFormOwnerResetReply as R,
         };
         let (_, kind) =
@@ -275,16 +278,16 @@ impl Draft {
                         self.remove_form_aliases(former, key, cancel)?;
                     }
                     match kind {
-                        surgeist_html::HtmlNativeFormAssociationKind::Button
-                        | surgeist_html::HtmlNativeFormAssociationKind::Fieldset
-                        | surgeist_html::HtmlNativeFormAssociationKind::Textarea
-                        | surgeist_html::HtmlNativeFormAssociationKind::Output
-                        | surgeist_html::HtmlNativeFormAssociationKind::Select
-                        | surgeist_html::HtmlNativeFormAssociationKind::Image => {}
-                        surgeist_html::HtmlNativeFormAssociationKind::Input => self
+                        surgeist_html::elements::form::HtmlNativeFormAssociationKind::Button
+                        | surgeist_html::elements::form::HtmlNativeFormAssociationKind::Fieldset
+                        | surgeist_html::elements::form::HtmlNativeFormAssociationKind::Textarea
+                        | surgeist_html::elements::form::HtmlNativeFormAssociationKind::Output
+                        | surgeist_html::elements::form::HtmlNativeFormAssociationKind::Select
+                        | surgeist_html::elements::form::HtmlNativeFormAssociationKind::Image => {}
+                        surgeist_html::elements::form::HtmlNativeFormAssociationKind::Input => self
                             .input_radio_normalize(
                                 key,
-                                surgeist_html::HtmlRadioTrigger::FormOwner,
+                                surgeist_html::elements::input::HtmlRadioTrigger::FormOwner,
                                 cancel,
                             )?,
                         _ => unreachable!("actual admitted native control kinds"),
@@ -352,7 +355,7 @@ impl Draft {
             if self.control_connected(key, cancel)? {
                 self.input_radio_normalize(
                     key,
-                    surgeist_html::HtmlRadioTrigger::Connected,
+                    surgeist_html::elements::input::HtmlRadioTrigger::Connected,
                     cancel,
                 )?;
             }
@@ -463,6 +466,7 @@ impl Draft {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn cancellation_after_prepared_message_and_reset_hooks_preserves_all_published_state() {
         let mut dom = Dom::new(
@@ -482,7 +486,7 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let mut b = DomBatch::new();
         let d = b.create_document();
-        let f = b.create_element_ns(&d, crate::Namespace::html(), "fieldset");
+        let f = b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "fieldset");
         b.insert_before(&f, &d, None);
         let c = dom.apply(b, &cancel).unwrap();
         let f = c.created(&f).unwrap().unwrap();

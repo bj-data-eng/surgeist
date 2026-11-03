@@ -11,10 +11,16 @@
 //! and [determine dimensions](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#determine-dimensions).
 
 use super::*;
-use crate::{HtmlInputType, HtmlNonNegativeInteger, HtmlNonNegativeRational};
-use surgeist_html::bounded::{
-    IntegerPrefixScanner, NumericMaterializationError, NumericMaterializationFailure,
-    NumericMaterialized, NumericParseError,
+use surgeist_html::bounded::numeric::{
+    HtmlIntegerPrefixScanner, HtmlNumericMaterializationError, HtmlNumericMaterializationFailure,
+    HtmlNumericMaterialized, HtmlNumericParseError,
+};
+use surgeist_html::microsyntax::numeric::{HtmlNonNegativeInteger, HtmlNonNegativeRational};
+use surgeist_html::{
+    attributes::HtmlInputType,
+    bounded::numeric::HtmlIntegerUnitStepError,
+    values::{Attribute, DocumentString},
+    vocabulary::KnownHtmlElement,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1076,7 +1082,7 @@ impl<'a> HtmlSemanticSession<'a> {
             .admit_attribute_raw(Some(attribute.value()))
             .map_err(|e| self.stop(HtmlSemanticFailureKind::Attribute(e)))?;
         let units = attribute.value().code_units();
-        let mut scanner = IntegerPrefixScanner::new(true);
+        let mut scanner = HtmlIntegerPrefixScanner::new(true);
         for unit in units {
             self.charge(1)?;
             if !scanner.feed(*unit) {
@@ -1116,7 +1122,7 @@ impl<'a> HtmlSemanticSession<'a> {
                     HtmlImageDimensionRecovery::Recovered,
                 )
             }
-            Err(NumericParseError::Negative) => (None, HtmlImageDimensionRecovery::Negative),
+            Err(HtmlNumericParseError::Negative) => (None, HtmlImageDimensionRecovery::Negative),
             Err(_) => (None, HtmlImageDimensionRecovery::InvalidSyntax),
         };
         self.charge(1)?;
@@ -1140,7 +1146,7 @@ impl<'a> HtmlSemanticSession<'a> {
     }
     fn image_numeric_result<T>(
         &mut self,
-        result: Result<NumericMaterialized<T>, NumericMaterializationFailure>,
+        result: Result<HtmlNumericMaterialized<T>, HtmlNumericMaterializationFailure>,
     ) -> Result<T, HtmlSemanticFailure> {
         let baseline = self.usage.allocated_bytes;
         let observed = match &result {
@@ -1151,25 +1157,26 @@ impl<'a> HtmlSemanticSession<'a> {
         let value = result
             .map_err(|e| {
                 let kind = match e.kind() {
-                    NumericMaterializationError::Digits(_) => {
+                    HtmlNumericMaterializationError::Digits(_) => {
                         HtmlSemanticFailureKind::IntrinsicUnavailable
                     }
-                    NumericMaterializationError::Boundary(e) => match e {
-                        IntegerUnitStepError::RepresentationExhausted => {
+                    HtmlNumericMaterializationError::Boundary(e) => match e {
+                        HtmlIntegerUnitStepError::RepresentationExhausted => {
                             HtmlSemanticFailureKind::RepresentationExhausted
                         }
-                        IntegerUnitStepError::AllocationFailed { .. } => {
+                        HtmlIntegerUnitStepError::AllocationFailed { .. } => {
                             HtmlSemanticFailureKind::AllocationFailed
                         }
-                        IntegerUnitStepError::DigitLimitExceeded { limit, required } => {
+                        HtmlIntegerUnitStepError::DigitLimitExceeded { limit, required } => {
                             HtmlSemanticFailureKind::LimitExceeded {
                                 resource: HtmlSemanticResource::IntegerDigits,
                                 limit,
                                 required,
                             }
                         }
-                        IntegerUnitStepError::RequestedCapacityLimitExceeded {
-                            required, ..
+                        HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded {
+                            required,
+                            ..
                         } => match baseline.checked_add(required) {
                             Some(required) => HtmlSemanticFailureKind::LimitExceeded {
                                 resource: HtmlSemanticResource::AllocatedBytes,
@@ -1178,7 +1185,7 @@ impl<'a> HtmlSemanticSession<'a> {
                             },
                             None => HtmlSemanticFailureKind::RepresentationExhausted,
                         },
-                        IntegerUnitStepError::ActualCapacityLimitExceeded { .. } => {
+                        HtmlIntegerUnitStepError::ActualCapacityLimitExceeded { .. } => {
                             HtmlSemanticFailureKind::LimitExceeded {
                                 resource: HtmlSemanticResource::AllocatedBytes,
                                 limit: self.limits.allocated_bytes,

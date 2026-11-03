@@ -399,6 +399,7 @@ fn selected(
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn work_accounting_exhaustion_is_checked() {
         let mut work = BindingWork {

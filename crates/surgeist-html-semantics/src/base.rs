@@ -4,10 +4,11 @@
 //! attestations. This owner checks their qualification; it is no URL engine.
 
 use crate::{
-    DocumentString, HtmlCapture, HtmlCaptureDocumentId, HtmlCaptureError, HtmlCaptureId,
-    HtmlCaptureSubjectId, HtmlCapturedNodeKind, HtmlHostFactsRevision,
+    HtmlCapture, HtmlCaptureDocumentId, HtmlCaptureError, HtmlCaptureId, HtmlCaptureSubjectId,
+    HtmlCapturedNodeKind, HtmlHostFactsRevision,
 };
 use std::{error::Error, fmt, sync::Arc};
+use surgeist_html::values::DocumentString;
 
 /// Identity of an external URL/CSP observation producer.
 #[derive(Clone, Debug)]

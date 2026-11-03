@@ -1,4 +1,8 @@
 use super::*;
+use surgeist_html::{
+    construction::{HtmlDocumentMode, HtmlNodeKind},
+    values::DocumentString,
+};
 
 #[test]
 fn template_real_document_pair_node_cap_rejects_before_lexical_take_and_disposes_all_owners() {

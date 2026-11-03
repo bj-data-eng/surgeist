@@ -23,7 +23,7 @@ use crate::{HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseLimits,
 /// A terminal reason is separate from recoverable syntax diagnostics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlParseFailureReason {
-    CspProtocol(surgeist_html::HtmlCspProtocolError),
+    CspProtocol(surgeist_html::security::csp::HtmlCspProtocolError),
     CspProcessing,
     Stop(HtmlParseStop),
     UnsupportedDocumentInitialization,
@@ -288,11 +288,11 @@ impl HtmlParseFailure {
         }
     }
     /// The original request option, not a claim that execution occurred.
-    pub fn requested_scripting_mode(&self) -> crate::HtmlParserScriptingMode {
+    pub fn requested_scripting_mode(&self) -> surgeist_html::parsing::HtmlParserScriptingMode {
         match &self.storage {
             FailureStorage::OrdinaryInitialization(o) => o.request().scripting_mode(),
             FailureStorage::Ordinary(_) | FailureStorage::OrdinaryFrozen(_) => {
-                crate::HtmlParserScriptingMode::Disabled
+                surgeist_html::parsing::HtmlParserScriptingMode::Disabled
             }
             FailureStorage::FragmentInitialization(o) => {
                 o.original_request().requested_scripting_mode()

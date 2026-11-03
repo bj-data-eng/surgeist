@@ -1,9 +1,14 @@
 //! Source-time Img updates and Picture/Source fanout over actual canonical keys.
 use super::*;
+
 use surgeist_html::{
-    HtmlImageAttributeChange, HtmlImageAttributeEffect, HtmlImageDocumentActivity,
-    HtmlImageMutationTargets, HtmlImageTreeChange, HtmlImageUpdateFlags,
-    HtmlImageUpdateStartDecision, HtmlValueInterpreter, KnownHtmlAttribute, KnownHtmlElement,
+    elements::image::{
+        HtmlImageAttributeChange, HtmlImageAttributeEffect, HtmlImageDocumentActivity,
+        HtmlImageMutationTargets, HtmlImageTreeChange, HtmlImageUpdateFlags,
+        HtmlImageUpdateStartDecision,
+    },
+    values::HtmlValueInterpreter,
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 
 #[derive(Clone, Copy)]
@@ -66,7 +71,7 @@ impl Draft {
         } else {
             HtmlImageDocumentActivity::NotFullyActive
         };
-        if surgeist_html::image_update_start(activity)
+        if surgeist_html::elements::image::image_update_start(activity)
             != HtmlImageUpdateStartDecision::WaitForFullyActive
         {
             return Err(DomError::ImageProcessingUnavailable);
@@ -75,9 +80,10 @@ impl Draft {
             // Only wholly inactive waits are admitted: no acquired resource,
             // callback, promise, continuation or independent task identity can
             // observe the superseded invocation. The high-water survives it.
-            let superseded =
-                surgeist_html::image_update_is_superseded(older.invocation.cmp(&invocation))
-                    .map_err(|_| DomError::ImageProcessingUnavailable)?;
+            let superseded = surgeist_html::elements::image::image_update_is_superseded(
+                older.invocation.cmp(&invocation),
+            )
+            .map_err(|_| DomError::ImageProcessingUnavailable)?;
             if !superseded {
                 return Err(DomError::ImageProcessingUnavailable);
             }
@@ -210,9 +216,14 @@ impl Draft {
         let parent = self.node(key)?.parent();
         let parent_tag = parent.map(|p| self.image_tag(p)).transpose()?.flatten();
         let old_tag = old_parent.map(|p| self.image_tag(p)).transpose()?.flatten();
-        let effect =
-            surgeist_html::image_tree_effect(element, change, parent_tag, old_tag, key == root)
-                .expect("actual Img/Source marker");
+        let effect = surgeist_html::elements::image::image_tree_effect(
+            element,
+            change,
+            parent_tag,
+            old_tag,
+            key == root,
+        )
+        .expect("actual Img/Source marker");
         if effect.check_media_parent_selection() {
             // Audio/Video are not admitted native families. A future resource
             // owner must provide its real src/networkState/selection operation.
@@ -337,8 +348,8 @@ impl Draft {
                     budget.step(cancel)?;
                 }
                 for keyword in [
-                    surgeist_html::HtmlLoading::Lazy,
-                    surgeist_html::HtmlLoading::Eager,
+                    surgeist_html::attributes::HtmlLoading::Lazy,
+                    surgeist_html::attributes::HtmlLoading::Eager,
                 ] {
                     budget.step(cancel)?;
                     // Full raw traversal is a conservative envelope; the
@@ -373,11 +384,11 @@ impl Draft {
             return Ok(());
         };
         if tag == KnownHtmlElement::Source {
-            if surgeist_html::image_source_attribute_affects_following(
-                &name
-                    .namespace_uri()
-                    .cloned()
-                    .map_or_else(crate::Namespace::none, crate::Namespace::from_uri),
+            if surgeist_html::elements::image::image_source_attribute_affects_following(
+                &name.namespace_uri().cloned().map_or_else(
+                    surgeist_html::values::Namespace::none,
+                    surgeist_html::values::Namespace::from_uri,
+                ),
                 attribute,
             ) && let Some(parent) = self.node(key)?.parent()
                 && self.image_tag(parent)? == Some(KnownHtmlElement::Picture)
@@ -412,11 +423,11 @@ impl Draft {
         } else {
             HtmlImageAttributeChange::Removed
         };
-        let effect = surgeist_html::image_attribute_effect(
-            &name
-                .namespace_uri()
-                .cloned()
-                .map_or_else(crate::Namespace::none, crate::Namespace::from_uri),
+        let effect = surgeist_html::elements::image::image_attribute_effect(
+            &name.namespace_uri().cloned().map_or_else(
+                surgeist_html::values::Namespace::none,
+                surgeist_html::values::Namespace::from_uri,
+            ),
             attribute,
             change,
         );
@@ -436,22 +447,26 @@ impl Draft {
             self.image_comparison_reads(old, new, cancel)?;
             let update = match effect {
                 HtmlImageAttributeEffect::CompareCrossOrigin => {
-                    let old = surgeist_html::bounded::crossorigin_processing_with(old, |_| {
-                        self.source_step(cancel)
-                    })?;
-                    let new = surgeist_html::bounded::crossorigin_processing_with(new, |_| {
-                        self.source_step(cancel)
-                    })?;
-                    surgeist_html::image_crossorigin_changed(old, new)
+                    let old = surgeist_html::bounded::attributes::crossorigin_processing_with(
+                        old,
+                        |_| self.source_step(cancel),
+                    )?;
+                    let new = surgeist_html::bounded::attributes::crossorigin_processing_with(
+                        new,
+                        |_| self.source_step(cancel),
+                    )?;
+                    surgeist_html::elements::image::image_crossorigin_changed(old, new)
                 }
                 HtmlImageAttributeEffect::CompareReferrerPolicy => {
-                    let old = surgeist_html::bounded::referrerpolicy_processing_with(old, |_| {
-                        self.source_step(cancel)
-                    })?;
-                    let new = surgeist_html::bounded::referrerpolicy_processing_with(new, |_| {
-                        self.source_step(cancel)
-                    })?;
-                    surgeist_html::image_referrerpolicy_changed(old, new)
+                    let old = surgeist_html::bounded::attributes::referrerpolicy_processing_with(
+                        old,
+                        |_| self.source_step(cancel),
+                    )?;
+                    let new = surgeist_html::bounded::attributes::referrerpolicy_processing_with(
+                        new,
+                        |_| self.source_step(cancel),
+                    )?;
+                    surgeist_html::elements::image::image_referrerpolicy_changed(old, new)
                 }
                 _ => unreachable!("selected borrowed comparison"),
             };
@@ -508,15 +523,15 @@ impl Draft {
         let update = match effect {
             HtmlImageAttributeEffect::CompareCrossOrigin => {
                 let (old, new) = states!(crossorigin);
-                surgeist_html::image_crossorigin_changed(old, new)
+                surgeist_html::elements::image::image_crossorigin_changed(old, new)
             }
             HtmlImageAttributeEffect::CompareReferrerPolicy => {
                 let (old, new) = states!(referrerpolicy);
-                surgeist_html::image_referrerpolicy_changed(old, new)
+                surgeist_html::elements::image::image_referrerpolicy_changed(old, new)
             }
             HtmlImageAttributeEffect::CompareLoading => {
                 let (old, new) = states!(loading);
-                if surgeist_html::image_loading_became_eager(old, new)
+                if surgeist_html::elements::image::image_loading_became_eager(old, new)
                     && !self
                         .node(key)?
                         .image()
@@ -543,6 +558,7 @@ impl Draft {
 mod source_observation {
     use super::*;
     use std::cell::Cell;
+
     #[derive(Clone, Copy, Debug)]
     pub(super) struct Report {
         pub required: usize,
@@ -563,19 +579,19 @@ mod source_observation {
     fn string(value: &DocumentString) -> usize {
         size_of::<Vec<u16>>() + value.shared_code_units().capacity() * size_of::<u16>()
     }
-    fn name(value: &(impl surgeist_html::HtmlNameInput + ?Sized)) -> usize {
+    fn name(value: &(impl surgeist_html::values::HtmlNameInput + ?Sized)) -> usize {
         value.namespace_uri().map_or(0, string)
             + value.prefix().map_or(0, string)
             + string(value.local_name())
     }
-    fn attribute(value: &impl surgeist_html::HtmlAttributeInput) -> usize {
+    fn attribute(value: &impl surgeist_html::values::HtmlAttributeInput) -> usize {
         name(value.name()) + string(value.value())
     }
     pub(super) fn reported<T>(
         draft: &Draft,
         old: Option<&crate::DomAttribute>,
         new: Option<&crate::DomAttribute>,
-        reports: [&surgeist_html::HtmlAttributeReport<T>; 2],
+        reports: [&surgeist_html::attributes::HtmlAttributeReport<T>; 2],
         registered: bool,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
@@ -614,6 +630,7 @@ mod source_observation {
 mod report_cancellation {
     use super::*;
     use std::cell::RefCell;
+
     thread_local! { static LIVE: RefCell<Option<(Arc<AtomicUsize>,Arc<AtomicUsize>)>> = const { RefCell::new(None) }; static ACTIVE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
     pub(super) fn start() {
         LIVE.with_borrow_mut(|live| *live = None);
@@ -642,6 +659,7 @@ mod report_cancellation {
 pub(in crate::store) mod publication_cancellation {
     use super::*;
     use std::cell::Cell;
+
     thread_local! {
         static ARMED: Cell<bool> = const { Cell::new(false) };
         static HITS: Cell<usize> = const { Cell::new(0) };
@@ -665,6 +683,7 @@ pub(in crate::store) mod publication_cancellation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     fn fixture() -> (Dom, NodeId) {
         let cancel = AtomicBool::new(false);
         let mut dom = Dom::new(
@@ -683,7 +702,7 @@ mod tests {
         .unwrap();
         let mut b = DomBatch::new();
         let doc = b.create_document();
-        let img = b.create_element_ns(&doc, crate::Namespace::html(), "img");
+        let img = b.create_element_ns(&doc, surgeist_html::values::Namespace::html(), "img");
         let c = dom.apply(b, &cancel).unwrap();
         (dom, c.created(&img).unwrap().unwrap())
     }
@@ -842,8 +861,10 @@ mod tests {
         let mut dom = Dom::new(limits).unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let first = setup.create_element_ns(&document, crate::Namespace::html(), "img");
-        let second = setup.create_element_ns(&document, crate::Namespace::html(), "img");
+        let first =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "img");
+        let second =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "img");
         let commit = dom.apply(setup, &cancel).unwrap();
         let first = commit.created(&first).unwrap().unwrap();
         let second = commit.created(&second).unwrap().unwrap();
@@ -918,7 +939,8 @@ mod tests {
         .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let img = setup.create_element_ns(&document, crate::Namespace::html(), "img");
+        let img =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "img");
         let mut old = Vec::with_capacity(65_536);
         old.extend("lazy".encode_utf16());
         setup.set_attribute(&img, "loading", DocumentString::from_utf16(old));
@@ -1064,7 +1086,10 @@ mod tests {
             let report = HtmlValueInterpreter::new(4)
                 .loading(element.name(), Some(raw))
                 .unwrap();
-            assert_eq!(report.intrinsic(), Some(&surgeist_html::HtmlLoading::Lazy));
+            assert_eq!(
+                report.intrinsic(),
+                Some(&surgeist_html::attributes::HtmlLoading::Lazy)
+            );
             assert_eq!(draft.source_formation_bytes.load(Ordering::Relaxed), bytes);
             assert_eq!(draft.source_temporary_units.load(Ordering::Relaxed), units);
             drop(report);
@@ -1291,12 +1316,13 @@ mod tests {
         .unwrap();
         let mut b = DomBatch::new();
         let doc = b.create_document();
-        let picture = b.create_element_ns(&doc, crate::Namespace::html(), "picture");
-        let source = b.create_element_ns(&doc, crate::Namespace::html(), "source");
-        let img = b.create_element_ns(&doc, crate::Namespace::html(), "img");
+        let picture =
+            b.create_element_ns(&doc, surgeist_html::values::Namespace::html(), "picture");
+        let source = b.create_element_ns(&doc, surgeist_html::values::Namespace::html(), "source");
+        let img = b.create_element_ns(&doc, surgeist_html::values::Namespace::html(), "img");
         b.insert_before(&source, &picture, None);
         b.insert_before(&img, &picture, None);
-        let option = b.create_element_ns(&doc, crate::Namespace::html(), "option");
+        let option = b.create_element_ns(&doc, surgeist_html::values::Namespace::html(), "option");
         let c = dom.apply(b, &cancel).unwrap();
         let picture = c.created(&picture).unwrap().unwrap();
         let img = c.created(&img).unwrap().unwrap();

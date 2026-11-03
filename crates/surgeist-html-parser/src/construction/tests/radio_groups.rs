@@ -1,4 +1,8 @@
 use super::*;
+use surgeist_html::{
+    construction::{HtmlElement, HtmlNodeKind},
+    values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
+};
 
 fn radio_pair(
     request: &crate::HtmlDocumentParseRequest,
@@ -554,7 +558,7 @@ fn radio_actual_type_signal_from_checked_checkbox_normalizes_and_same_radio_stat
         .unwrap();
     assert_eq!(
         session.input_state(&mut c, &a).unwrap().flags.input_type(),
-        crate::HtmlInputType::Radio
+        surgeist_html::attributes::HtmlInputType::Radio
     );
     assert!(session.input_state(&mut c, &a).unwrap().flags.checkedness());
     assert!(!session.input_state(&mut c, &b).unwrap().flags.checkedness());

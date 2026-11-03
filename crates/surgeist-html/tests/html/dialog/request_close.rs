@@ -1,5 +1,5 @@
 //! Literal HTML877d raw46708–46723 source traces; operands remain adapter-owned.
-use surgeist_html::{
+use surgeist_html::elements::dialog::{
     HtmlDialogAction as A, HtmlDialogCursor, HtmlDialogOperation, HtmlDialogOutcome,
     HtmlDialogReply as R,
 };

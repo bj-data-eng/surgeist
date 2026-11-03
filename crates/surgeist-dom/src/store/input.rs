@@ -1,8 +1,9 @@
 //! Source-ordered native Input transitions in the one canonical Draft.
 use super::*;
 use surgeist_html::{
-    HtmlInputSelection, HtmlInputType, HtmlInputValueSanitization, HtmlRadioTrigger,
-    KnownHtmlAttribute as A,
+    attributes::HtmlInputType,
+    elements::input::{HtmlInputSelection, HtmlInputValueSanitization, HtmlRadioTrigger},
+    vocabulary::KnownHtmlAttribute as A,
 };
 
 impl Draft {
@@ -23,8 +24,10 @@ impl Draft {
         cancel: &AtomicBool,
     ) -> Result<bool, DomError> {
         self.source_step(cancel)?;
-        let mut cursor =
-            surgeist_html::HtmlInputValueComparisonCursor::new(a.code_units(), b.code_units());
+        let mut cursor = surgeist_html::elements::input::HtmlInputValueComparisonCursor::new(
+            a.code_units(),
+            b.code_units(),
+        );
         loop {
             self.source_step(cancel)?;
             if cursor.required_work().is_none() {
@@ -147,11 +150,13 @@ impl Draft {
         &mut self,
         key: Key,
         raw: &DocumentString,
-        policy: surgeist_html::HtmlInputSanitization,
+        policy: surgeist_html::elements::input::HtmlInputSanitization,
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        use surgeist_html::{HtmlInputEmailMode, HtmlInputSanitizationCursor as Cursor};
+        use surgeist_html::elements::input::{
+            HtmlInputEmailMode, HtmlInputSanitizationCursor as Cursor,
+        };
         let mode = if self.control_attribute(key, A::Multiple, cancel)?.is_some() {
             HtmlInputEmailMode::Multiple
         } else {
@@ -282,8 +287,10 @@ impl Draft {
                 self.input_put_value(key, output, None, limits, cancel)
             }
             HtmlInputValueSanitization::Color => {
-                use surgeist_html::{HtmlInputColorSpaceCursor, HtmlInputColorValueSource};
-                let raw = match surgeist_html::input_color_value_source(
+                use surgeist_html::elements::input::{
+                    HtmlInputColorSpaceCursor, HtmlInputColorValueSource,
+                };
+                let raw = match surgeist_html::elements::input::input_color_value_source(
                     self.input_state(key)?.flags.dirty_value(),
                 ) {
                     HtmlInputColorValueSource::CurrentValue => raw,
@@ -324,7 +331,9 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        use surgeist_html::{HtmlInputValueSetterStart, HtmlTextControlValueSetterFinish};
+        use surgeist_html::elements::{
+            form::HtmlTextControlValueSetterFinish, input::HtmlInputValueSetterStart,
+        };
         self.source_step(cancel)?;
         match self.input_state(key)?.flags.value_setter_begin() {
             HtmlInputValueSetterStart::SetContentValue => {
@@ -332,7 +341,7 @@ impl Draft {
                 let name = source::formation::string("value", operand.as_ref(), cancel)?;
                 self.set_attribute(
                     key,
-                    Some(&crate::Namespace::none()),
+                    Some(&surgeist_html::values::Namespace::none()),
                     &name,
                     value,
                     limits,
@@ -341,8 +350,9 @@ impl Draft {
             }
             HtmlInputValueSetterStart::SetFilename => {
                 self.source_step(cancel)?;
-                let files = surgeist_html::input_filename_setter(value.code_units())
-                    .map_err(|_| DomError::InputFilenameInvalidState)?;
+                let files =
+                    surgeist_html::elements::input::input_filename_setter(value.code_units())
+                        .map_err(|_| DomError::InputFilenameInvalidState)?;
                 self.with_input_state(key, cancel, |state| state.files = files)?;
                 Ok(())
             }
@@ -352,10 +362,11 @@ impl Draft {
                 self.input_put_value(key, self.input_shared(value, cancel)?, None, limits, cancel)?;
                 self.input_sanitize(key, limits, cancel)?;
                 let state = self.input_state(key)?;
-                let mut comparison = surgeist_html::HtmlInputValueComparisonCursor::new(
-                    old.value.code_units(),
-                    state.current.code_units(),
-                );
+                let mut comparison =
+                    surgeist_html::elements::input::HtmlInputValueComparisonCursor::new(
+                        old.value.code_units(),
+                        state.current.code_units(),
+                    );
                 loop {
                     self.source_step(cancel)?;
                     if comparison.required_work().is_none() {
@@ -363,7 +374,7 @@ impl Draft {
                     }
                     comparison.advance();
                 }
-                if surgeist_html::input_value_setter_finish(
+                if surgeist_html::elements::input::input_value_setter_finish(
                     state.input_type(),
                     comparison.result().expect("completed comparison"),
                     state.selection,
@@ -377,7 +388,7 @@ impl Draft {
                     self.with_input_state(key, cancel, |state| {
                         state.selection = HtmlInputSelection::cursor(
                             len,
-                            surgeist_html::HtmlInputSelectionDirection::None
+                            surgeist_html::elements::input::HtmlInputSelectionDirection::None
                                 .resolve_none(platform.none_direction()),
                         )
                     })?;
@@ -414,8 +425,9 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        use surgeist_html::HtmlInputResetEffect as Effect;
-        let mut cursor = surgeist_html::HtmlInputReset::new(self.input_state(key)?.flags);
+        use surgeist_html::elements::input::HtmlInputResetEffect as Effect;
+        let mut cursor =
+            surgeist_html::elements::input::HtmlInputReset::new(self.input_state(key)?.flags);
         loop {
             self.source_step(cancel)?;
             let Some(effect) = cursor.next_effect() else {
@@ -437,7 +449,7 @@ impl Draft {
                 }
                 Effect::EmptySelectedFiles => {
                     self.with_input_state(key, cancel, |state| {
-                        state.files = surgeist_html::HtmlInputFileSelection::Empty
+                        state.files = surgeist_html::elements::input::HtmlInputFileSelection::Empty
                     })?;
                 }
                 Effect::Sanitize(_) => self.input_sanitize(key, limits, cancel)?,
@@ -453,14 +465,17 @@ impl Draft {
         limits: DomLimits,
         cancel: &AtomicBool,
     ) -> Result<(), DomError> {
-        use surgeist_html::HtmlInputTypeEffect as Effect;
+        use surgeist_html::elements::input::HtmlInputTypeEffect as Effect;
         let state = self.input_state(key)?;
         let previous = state.input_type();
         if previous == next {
             return Ok(());
         }
-        let mut cursor =
-            surgeist_html::HtmlInputTypeChange::new(previous, next, state.current.len());
+        let mut cursor = surgeist_html::elements::input::HtmlInputTypeChange::new(
+            previous,
+            next,
+            state.current.len(),
+        );
         let flags = state.flags.type_changed(next);
         self.with_input_state(key, cancel, |state| state.flags = flags)?;
         if next != HtmlInputType::Email {
@@ -482,7 +497,7 @@ impl Draft {
                     let name = source::formation::string("value", operand.as_ref(), cancel)?;
                     self.set_attribute(
                         key,
-                        Some(&crate::Namespace::none()),
+                        Some(&surgeist_html::values::Namespace::none()),
                         &name,
                         &raw,
                         limits,
@@ -541,10 +556,12 @@ impl Draft {
             return Ok(());
         }
         self.source_step(cancel)?;
-        let guard = surgeist_html::HtmlInputImageUpdateGuard::for_source(
+        let guard = surgeist_html::elements::input::HtmlInputImageUpdateGuard::for_source(
             raw.as_ref().map(|raw| &raw.value),
         );
-        let guard = if guard == surgeist_html::HtmlInputImageUpdateGuard::NeedsImageEnvironment {
+        let guard = if guard
+            == surgeist_html::elements::input::HtmlInputImageUpdateGuard::NeedsImageEnvironment
+        {
             guard.with_disabled_images(
                 self.document_metadata(self.node(key)?.document())?
                     .document_environment()
@@ -555,7 +572,7 @@ impl Draft {
         };
         debug_assert_ne!(
             guard,
-            surgeist_html::HtmlInputImageUpdateGuard::NeedsImageEnvironment
+            surgeist_html::elements::input::HtmlInputImageUpdateGuard::NeedsImageEnvironment
         );
         let old = self
             .input_state(key)?
@@ -597,7 +614,7 @@ impl Draft {
             && self.input_attribute_is(name, A::Value, cancel)?
             && matches!(
                 flags.value_attribute_changed(),
-                surgeist_html::HtmlInputValueAttributeEffect::ReplaceCurrentFromInstalledDefault(_)
+                surgeist_html::elements::input::HtmlInputValueAttributeEffect::ReplaceCurrentFromInstalledDefault(_)
             )
         {
             let raw = self.input_default(key, cancel)?;
@@ -608,9 +625,9 @@ impl Draft {
             && !matches!(change, attributes::AttributeChange::Set)
         {
             let change = if matches!(change, attributes::AttributeChange::Removed) {
-                surgeist_html::HtmlInputCheckedAttributeChange::Removed
+                surgeist_html::elements::input::HtmlInputCheckedAttributeChange::Removed
             } else {
-                surgeist_html::HtmlInputCheckedAttributeChange::Added
+                surgeist_html::elements::input::HtmlInputCheckedAttributeChange::Added
             };
             if let Some(next) = self
                 .input_state(key)?
@@ -623,8 +640,9 @@ impl Draft {
         }
         if self.input_attribute_is(name, A::Type, cancel)? {
             let raw = self.input_raw(key, A::Type, cancel)?;
-            let mut cursor =
-                surgeist_html::HtmlInputTypeCursor::new(raw.as_ref().map(|raw| &raw.value));
+            let mut cursor = surgeist_html::elements::input::HtmlInputTypeCursor::new(
+                raw.as_ref().map(|raw| &raw.value),
+            );
             loop {
                 self.source_step(cancel)?;
                 if cursor.required_work().is_none() {
@@ -738,6 +756,7 @@ impl Draft {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     fn source_radio_name(bytes: usize) -> Option<source::formation::mutation_observation::Growth> {
         let cancel = AtomicBool::new(false);
         let mut dom = Dom::new(
@@ -756,9 +775,12 @@ mod tests {
         .unwrap();
         let mut setup = DomBatch::new();
         let document = setup.create_document();
-        let parent = setup.create_element_ns(&document, crate::Namespace::html(), "div");
-        let key = setup.create_element_ns(&document, crate::Namespace::html(), "input");
-        let peer = setup.create_element_ns(&document, crate::Namespace::html(), "input");
+        let parent =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
+        let key =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "input");
+        let peer =
+            setup.create_element_ns(&document, surgeist_html::values::Namespace::html(), "input");
         for input in [&key, &peer] {
             setup.set_attribute(input, "type", "radio");
             setup.insert_before(input, &parent, None);
@@ -900,9 +922,12 @@ mod tests {
             let cancel = AtomicBool::new(false);
             let mut b = DomBatch::new();
             let document = b.create_document();
-            let root = b.create_element_ns(&document, crate::Namespace::html(), "div");
-            let first = b.create_element_ns(&document, crate::Namespace::html(), "input");
-            let second = b.create_element_ns(&document, crate::Namespace::html(), "input");
+            let root =
+                b.create_element_ns(&document, surgeist_html::values::Namespace::html(), "div");
+            let first =
+                b.create_element_ns(&document, surgeist_html::values::Namespace::html(), "input");
+            let second =
+                b.create_element_ns(&document, surgeist_html::values::Namespace::html(), "input");
             b.insert_before(&root, &document, None);
             for node in [&first, &second] {
                 b.set_attribute(node, "type", "radio");
@@ -960,7 +985,7 @@ mod tests {
     }
     #[test]
     fn relevant_value_clamp_and_direction_use_the_independent_established_facts() {
-        use surgeist_html::{
+        use surgeist_html::elements::input::{
             HtmlInputEmptySelectionSupport as Empty,
             HtmlInputNoneDirectionSupport as NoneDirection,
             HtmlInputSelectionDirection as Direction,
@@ -986,7 +1011,8 @@ mod tests {
                 let cancel = AtomicBool::new(false);
                 let mut b = DomBatch::new();
                 let d = b.create_document();
-                let input = b.create_element_ns(&d, crate::Namespace::html(), "input");
+                let input =
+                    b.create_element_ns(&d, surgeist_html::values::Namespace::html(), "input");
                 b.set_input_value(&input, "abcd");
                 let c = dom.apply(b, &cancel).unwrap();
                 let input = c.created(&input).unwrap().unwrap();

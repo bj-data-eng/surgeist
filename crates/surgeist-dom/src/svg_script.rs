@@ -1,6 +1,6 @@
 //! Retained SVG Tiny processing state, separate from HTML preparation.
 use crate::{DomNode, NodeId};
-use surgeist_html::SvgScriptFlags;
+use surgeist_html::elements::script::SvgScriptFlags;
 
 /// Actual SVG Script creation cause, preserving parser and clone provenance.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -50,7 +50,8 @@ impl SvgScriptState {
         // Current selected offline environment AND actual node admission cause
         // qualify this prefix. Neither absent BC nor Parser origin alone does.
         if environment.has_ever_had_navigable()
-            || environment.browsing_context() != surgeist_html::HtmlBrowsingContextPresence::Absent
+            || environment.browsing_context()
+                != surgeist_html::security::nonce::HtmlBrowsingContextPresence::Absent
         {
             return Err(crate::DomError::SvgScriptProcessingUnavailable);
         }

@@ -1,10 +1,19 @@
 //! Literal setter/selection outcomes from HTML877d41486–41494 and44332–44352.
 use surgeist_html::{
-    HtmlInputEmptySelectionSupport as EmptySupport, HtmlInputNoneDirectionSupport as NoneSupport,
-    HtmlInputSelection as Selection, HtmlInputSelectionDirection as Direction, HtmlInputType,
-    HtmlInputValueComparison, HtmlInputValueComparisonCursor, HtmlNewlineNormalizer,
-    HtmlTextControlValueSetterFinish as Finish, HtmlTextareaFlags, input_value_setter_finish,
-    textarea_value_setter_finish,
+    attributes::HtmlInputType,
+    elements::{
+        form::{
+            HtmlTextControlValueSetterFinish as Finish, HtmlTextareaFlags,
+            textarea_value_setter_finish,
+        },
+        input::{
+            HtmlInputEmptySelectionSupport as EmptySupport,
+            HtmlInputNoneDirectionSupport as NoneSupport, HtmlInputSelection as Selection,
+            HtmlInputSelectionDirection as Direction, HtmlInputValueComparison,
+            HtmlInputValueComparisonCursor, input_value_setter_finish,
+        },
+    },
+    values::HtmlNewlineNormalizer,
 };
 
 fn api_value(raw: &[u16]) -> Vec<u16> {

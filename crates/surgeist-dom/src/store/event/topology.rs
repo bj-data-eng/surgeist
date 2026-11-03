@@ -7,7 +7,7 @@ use crate::{
     DomHostedError, DomHostedGlobalId, DomNodeKind, DomSnapshot, NodeId,
 };
 use std::sync::atomic::AtomicBool;
-use surgeist_html::HtmlBrowsingContextPresence;
+use surgeist_html::security::nonce::HtmlBrowsingContextPresence;
 
 #[derive(Clone, Copy)]
 struct Document {

@@ -4,9 +4,10 @@
 use crate::{
     HtmlCapture, HtmlCaptureDocumentId, HtmlCaptureError, HtmlCaptureFact, HtmlCaptureSubjectKind,
     HtmlCapturedDocument, HtmlCapturedNodeKind, HtmlFragmentContext, HtmlParseCancellation,
-    HtmlParseLimits, HtmlParserScriptingMode, HtmlScriptingStatus, HtmlSource,
+    HtmlParseLimits, HtmlScriptingStatus, HtmlSource,
 };
 use std::{error::Error, fmt};
+use surgeist_html::parsing::HtmlParserScriptingMode;
 
 /// Private qualification selection. Every mode still executes terminal
 /// promotion and both pools' fixed lifecycle; only optional reuse differs.
@@ -211,7 +212,7 @@ impl HtmlDocumentParseRequest {
         clippy::result_large_err,
         reason = "returns the actual original request, controller and native error custody without allocating after a stop"
     )]
-    pub fn parse_with_meta_csp<P: surgeist_html::HtmlMetaCspProcessor>(
+    pub fn parse_with_meta_csp<P: surgeist_html::security::csp::HtmlMetaCspProcessor>(
         self,
         processor: &mut P,
     ) -> Result<crate::HtmlParseReport, crate::HtmlParseCspFailure<P::Error>> {

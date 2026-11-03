@@ -5,6 +5,7 @@
 //! No benchmark crate, ignored Rust source, other parser or live sink is used.
 use super::{Kind, Name, Node, Projection, project, units};
 use crate::*;
+use surgeist_html::{construction::HtmlDocumentMode, values::DocumentString};
 
 mod artifact_tool;
 

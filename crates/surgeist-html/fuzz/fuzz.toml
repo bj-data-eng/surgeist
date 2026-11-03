@@ -34,7 +34,7 @@ id = "surgeist-html::native-authoring"
 owner = "surgeist-html"
 binary = "html-native-worker"
 properties = ["surgeist-html::native-exact-values", "surgeist-html::native-associations", "surgeist-html::native-rejection", "surgeist-html::native-identities", "surgeist-html::native-literal-semantics", "surgeist-html::native-capture"]
-source_references = ["references/SOURCE-EDITIONS.md#pinned-html-language-baseline", "crates/surgeist-html/src/construction.rs", "crates/surgeist-html/src/values.rs", "crates/surgeist-html/tests/html/construction.rs", "crates/surgeist-html-semantics/src/capture/construction.rs", "crates/surgeist-html/fuzz/README.md"]
+source_references = ["references/SOURCE-EDITIONS.md#pinned-html-language-baseline", "crates/surgeist-html/src/internal/construction.rs", "crates/surgeist-html/src/internal/values.rs", "crates/surgeist-html/tests/html/construction.rs", "crates/surgeist-html-semantics/src/capture/construction.rs", "crates/surgeist-html/fuzz/README.md"]
 format = { identity = "surgeist-html::native-authoring", revision = 1 }
 generator_identity = { identity = "surgeist-html::native-authoring", revision = 1 }
 encoding = "structured"

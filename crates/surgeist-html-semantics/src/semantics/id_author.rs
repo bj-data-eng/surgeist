@@ -2,7 +2,11 @@
 //! DOM's concept-ID applies to competing elements in every namespace.
 
 use super::*;
-use crate::{HtmlAttributeReport, HtmlSpaceToken};
+use surgeist_html::{
+    attributes::HtmlAttributeReport,
+    microsyntax::tokens::HtmlSpaceToken,
+    values::{Attribute, DocumentString, HtmlValueInterpreter},
+};
 
 /// Exact DOM-ID uniqueness, independent of the local HTML author grammar.
 #[derive(Clone, Debug, Eq, PartialEq)]

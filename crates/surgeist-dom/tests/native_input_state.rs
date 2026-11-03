@@ -2,9 +2,11 @@
 use std::sync::atomic::AtomicBool;
 use surgeist_dom::*;
 use surgeist_html::{
-    HtmlInputEmptySelectionSupport as Empty, HtmlInputImageHistory,
-    HtmlInputNoneDirectionSupport as NoneDirection, HtmlInputSelectionDirection as Direction,
-    HtmlInputType as Type,
+    attributes::HtmlInputType as Type,
+    elements::input::{
+        HtmlInputEmptySelectionSupport as Empty, HtmlInputImageHistory,
+        HtmlInputNoneDirectionSupport as NoneDirection, HtmlInputSelectionDirection as Direction,
+    },
 };
 
 #[path = "support/input_processing.rs"]
@@ -78,7 +80,7 @@ fn fresh_state_and_template_environment_use_each_independent_selected_platform()
             assert_eq!(environment.input_platform(), platform);
             assert_eq!(
                 environment.input_images(),
-                surgeist_html::HtmlInputImagesDisabled::ExplicitlyDisabled
+                surgeist_html::elements::input::HtmlInputImagesDisabled::ExplicitlyDisabled
             );
             let input_state = state(&s, input);
             let flags = input_state.flags();
@@ -317,7 +319,7 @@ fn type_transfers_default_on_file_and_selection_follow_the_ordered_effects() {
     assert_eq!(value(&s, input), "".into());
     assert_eq!(
         state(&s, input).selected_files(),
-        Some(surgeist_html::HtmlInputFileSelection::Empty)
+        Some(surgeist_html::elements::input::HtmlInputFileSelection::Empty)
     );
     let usage = dom.usage();
     let mut b = DomBatch::new();
@@ -868,7 +870,7 @@ fn fact(
     use surgeist_html_semantics::*;
     c.query(
         &[HtmlSemanticRequest::new(c.subject(n).unwrap(), q)],
-        surgeist_html::HtmlValueInterpreter::new(131072),
+        surgeist_html::values::HtmlValueInterpreter::new(131072),
         HtmlSemanticLimits::new(10000000, 32, 2048, 2048, 10000000, 2048),
         HtmlSemanticCancellation::new(),
     )
@@ -997,8 +999,8 @@ fn capture_admits_both_association_and_input_records_for_every_detached_input() 
 fn native_fragment_installation_uses_real_input_defaults_and_live_commands() {
     let mut dom = owner();
     let (d, root, _) = setup(&mut dom);
-    let mut builder = surgeist_html::HtmlFragment::builder(
-        surgeist_html::HtmlConstructionLimits::new(16, 16, 16, 1024, 16),
+    let mut builder = surgeist_html::construction::HtmlFragment::builder(
+        surgeist_html::construction::HtmlConstructionLimits::new(16, 16, 16, 1024, 16),
     )
     .unwrap();
     builder

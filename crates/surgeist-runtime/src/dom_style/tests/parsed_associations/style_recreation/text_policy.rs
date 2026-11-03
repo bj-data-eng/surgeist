@@ -3,7 +3,7 @@ use std::{convert::Infallible, mem::size_of, sync::Arc};
 use surgeist_dom::{
     DomParsedHtmlStyleInlinePolicyObservation, DomParsedHtmlStyleInlinePolicyRequest,
 };
-use surgeist_html::{
+use surgeist_html::security::csp::{
     HtmlCspArtifactLayout, HtmlCspAssociation, HtmlCspDisposalWork, HtmlCspLayout,
     HtmlCspNativePolicy, HtmlCspOwner, HtmlCspPolicyArtifact, HtmlCspProcessorAuthority,
     HtmlCspProcessorProfile, HtmlCspStorage,
