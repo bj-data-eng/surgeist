@@ -2038,6 +2038,7 @@ where
             constants.flow_axes,
             prepared.parent(),
             prepared.available(),
+            prepared.sizing_mode(),
         )
         .map_err(|error| sizing_resolution_error(node, error))?;
         Some(resolve_grid_track_sizes(

@@ -382,7 +382,11 @@ fn intrinsic_container_available<S: LayoutScalar>(
     sizing_flow_axes: crate::geometry::FlowAxes,
     parent: Size<Option<S>>,
     available: Size<AvailableOf<S>>,
+    sizing_mode: SizingMode,
 ) -> Result<LogicalSizeOf<AvailableOf<S>>, SizingResolutionError<S>> {
+    if sizing_mode == SizingMode::ContentSize {
+        return Ok(sizing_flow_axes.logical_size(available));
+    }
     let algorithm = sizing_algorithm_for_grid_display(style.display);
     let style_size = sizing_flow_axes.logical_size(Size::new(
         resolve_preferred_sizing(
@@ -646,9 +650,14 @@ where
     debug_assert_eq!(lines.row_explicit_start, context.leading_rows);
     debug_assert_eq!(lines.row_explicit_count, context.explicit_rows);
     let sizing_flow_axes = constants.flow_axes;
-    let track_available =
-        intrinsic_container_available(&style, sizing_flow_axes, input.parent(), input.available())
-            .map_err(|error| sizing_resolution_error(node, error))?;
+    let track_available = intrinsic_container_available(
+        &style,
+        sizing_flow_axes,
+        input.parent(),
+        input.available(),
+        input.sizing_mode(),
+    )
+    .map_err(|error| sizing_resolution_error(node, error))?;
     let track_intrinsic_max_available =
         intrinsic_max_available(&constants, sizing_flow_axes, input.available());
     let track_input = GridTrackResolutionInput {
@@ -920,9 +929,14 @@ where
     } = initialized_tracks;
     let gap = context.gap;
     let sizing_flow_axes = constants.flow_axes;
-    let track_available =
-        intrinsic_container_available(&style, sizing_flow_axes, input.parent(), input.available())
-            .map_err(|error| sizing_resolution_error(node, error))?;
+    let track_available = intrinsic_container_available(
+        &style,
+        sizing_flow_axes,
+        input.parent(),
+        input.available(),
+        input.sizing_mode(),
+    )
+    .map_err(|error| sizing_resolution_error(node, error))?;
     let track_intrinsic_max_available =
         intrinsic_max_available(&constants, sizing_flow_axes, input.available());
     let track_input = GridTrackResolutionInput {
