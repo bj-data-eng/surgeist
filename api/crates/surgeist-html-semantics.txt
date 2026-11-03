@@ -1866,6 +1866,8 @@ pub fn surgeist_html_semantics::HtmlConstructionCaptureMap::builder_subject(&sel
 pub fn surgeist_html_semantics::HtmlConstructionCaptureMap::host_revision(&self) -> &surgeist_html_semantics::HtmlHostFactsRevision
 pub fn surgeist_html_semantics::HtmlConstructionCaptureMap::root(&self) -> &surgeist_html::construction::HtmlNodeId
 pub fn surgeist_html_semantics::HtmlConstructionCaptureMap::subject(&self, node: &surgeist_html::construction::HtmlNodeId, capture: &surgeist_html_semantics::HtmlCapture) -> core::result::Result<surgeist_html_semantics::HtmlCaptureSubjectId, surgeist_html_semantics::HtmlConstructionCaptureError>
+impl core::fmt::Debug for surgeist_html_semantics::HtmlConstructionCaptureMap
+pub fn surgeist_html_semantics::HtmlConstructionCaptureMap::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html_semantics::HtmlConstructionCaptureNodeFacts
 impl surgeist_html_semantics::HtmlConstructionCaptureNodeFacts
 pub fn surgeist_html_semantics::HtmlConstructionCaptureNodeFacts::document(&self) -> &surgeist_html_semantics::HtmlConstructionCaptureDocument
