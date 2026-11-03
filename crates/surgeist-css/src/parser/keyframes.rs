@@ -1,5 +1,5 @@
 use super::block_units::{
-    DeclarationUnit, GrammarError, NativeError, drive_units, dropped_unit, grammar_error,
+    DeclarationUnit, GrammarError, GrammarFailure, drive_units, dropped_unit, grammar_error,
     location_at, offset_of,
 };
 use super::declaration_unit::{DeclarationText, parse_declaration_unit};
@@ -37,7 +37,7 @@ pub(super) static IMPLEMENTED_RULES: &[CssFeatureId] =
 pub(crate) fn parse_keyframes_name<'i>(
     input: &mut Stream<'i>,
     snapshot: &crate::source::CssSourceSnapshot,
-) -> std::result::Result<CssKeyframesName, NativeError> {
+) -> std::result::Result<CssKeyframesName, GrammarFailure> {
     read_scope(input, snapshot, keyframes_name)
 }
 
@@ -234,7 +234,7 @@ impl<'s> KeyframeBlockParser<'s> {
         start: Site<'i>,
         opening: usize,
         block: RuleBlock<'i>,
-    ) -> Result<CssKeyframeBlock, NativeError> {
+    ) -> Result<CssKeyframeBlock, GrammarFailure> {
         let mut depth = self
             .recovery
             .enter_rule_block(Offset::new(opening), "baseline.keyframes.block")?;
@@ -283,7 +283,7 @@ impl<'i> RuleListGrammar<'i> for KeyframeBlockParser<'_> {
         _: Site<'i>,
         prelude: &mut Stream<'i>,
         block: RuleBlock<'i>,
-    ) -> Result<CssKeyframeBlock, NativeError> {
+    ) -> Result<CssKeyframeBlock, GrammarFailure> {
         self.unit.start_index = Some(start.index());
         let error = crate::diagnostic::error::unknown_at_rule(
             location_at(self.recovery.source_snapshot(), offset_of(prelude.site())),
@@ -303,7 +303,7 @@ impl<'i> RuleListGrammar<'i> for KeyframeBlockParser<'_> {
         start: Site<'i>,
         prelude: &mut Stream<'i>,
         block: RuleBlock<'i>,
-    ) -> Result<CssKeyframeBlock, NativeError> {
+    ) -> Result<CssKeyframeBlock, GrammarFailure> {
         self.unit.start_index = Some(start.index());
         let Some(opening) = block_opening_of(&block) else {
             return Err(crate::diagnostic::error::unexpected_syntax_end(
@@ -341,7 +341,7 @@ fn block_opening_of(block: &RuleBlock<'_>) -> Option<usize> {
 
 impl<'i> RuleGrammar<'i, Attached<'i>> for KeyframeBlockParser<'_> {
     type Item = CssKeyframeBlock;
-    type Error = NativeError;
+    type Error = GrammarFailure;
 
     fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Self::Item, GrammarError<'i>> {
         let at = rule.start();
@@ -382,7 +382,7 @@ impl<'i> BlockGrammar<'i, Attached<'i>> for KeyframeBlockParser<'_> {
 pub(super) fn parse_keyframe_selector_list<'i>(
     input: &mut Stream<'i>,
     snapshot: &crate::source::CssSourceSnapshot,
-) -> std::result::Result<CssKeyframeSelectorList, NativeError> {
+) -> std::result::Result<CssKeyframeSelectorList, GrammarFailure> {
     read_scope(input, snapshot, read_keyframe_selector_list)
 }
 
@@ -390,7 +390,7 @@ pub(super) fn read_keyframe_selector_list<'i>(
     input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
 ) -> Value<'i, CssKeyframeSelectorList> {
-    let selectors = super::combinators::parse_native_comma_list(
+    let selectors = super::combinators::parse_comma_separated(
         input,
         |input| parse_keyframe_selector(input, numeric),
         |_, at| fail(numeric, at, unexpected_at),
@@ -452,7 +452,7 @@ struct KeyframeDeclarationParser<'s> {
 
 impl<'i> RuleGrammar<'i, Attached<'i>> for KeyframeDeclarationParser<'_> {
     type Item = CssKeyframeDeclaration;
-    type Error = NativeError;
+    type Error = GrammarFailure;
 
     fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Self::Item, GrammarError<'i>> {
         let snapshot = self.recovery.source_snapshot();
@@ -488,7 +488,7 @@ impl KeyframeDeclarationParser<'_> {
         &mut self,
         name: &str,
         text: &DeclarationText,
-    ) -> Result<CssKeyframeDeclaration, NativeError> {
+    ) -> Result<CssKeyframeDeclaration, GrammarFailure> {
         let implicit_closures = self.recovery.check_component_values_from(
             self.source,
             text.value_start,

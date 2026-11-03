@@ -9,7 +9,7 @@
 use surgeist_css_parser::Token;
 use surgeist_css_parser::grammar::{BlockGrammar, Declaration, Failed, RuleEnd, UnitKind};
 
-pub(super) use crate::diagnostic::error::NativeError;
+pub(super) use crate::diagnostic::error::GrammarFailure;
 use crate::diagnostic::error::{
     invalid_at_rule_body, invalid_syntax, unexpected_syntax_end, unexpected_syntax_token,
     unknown_at_rule,
@@ -19,9 +19,9 @@ use crate::parser::syntax_types::{Attached, Site, Stream, SyntaxError};
 use crate::source::{CssSourcePosition, CssSourceSnapshot, CssSourceSpan};
 
 /// The failure of a ported grammar, as the driver carries it.
-pub(super) type GrammarError<'i> = SyntaxError<'i, NativeError>;
+pub(super) type GrammarError<'i> = SyntaxError<'i, GrammarFailure>;
 /// A unit the driver consumed and the grammar did not accept.
-pub(super) type Failure<'i> = Failed<'i, NativeError, Attached<'i>>;
+pub(super) type Failure<'i> = Failed<'i, GrammarFailure, Attached<'i>>;
 /// A declaration the driver consumed.
 pub(super) type DeclarationUnit<'i> = Declaration<'i, Attached<'i>>;
 
@@ -37,25 +37,25 @@ pub(super) fn offset_of(site: Site<'_>) -> usize {
 }
 
 /// A grammar's own error, at the boundary `at`.
-pub(super) fn grammar_error<'i>(at: Site<'i>, error: NativeError) -> GrammarError<'i> {
+pub(super) fn grammar_error<'i>(at: Site<'i>, error: GrammarFailure) -> GrammarError<'i> {
     SyntaxError::custom(at, error)
 }
 
 /// The native error a failure stands for: the grammar's own, or the one the
 /// parser crate's failure names (Syntax 3 sections 5.3 and 5.5.2), read through
 /// its predicates and accessors.
-pub(super) fn native_error<'i>(
+pub(super) fn grammar_failure<'i>(
     snapshot: &CssSourceSnapshot,
     error: &GrammarError<'i>,
-) -> NativeError {
-    native_error_located(error, |site| location_at(snapshot, offset_of(site)))
+) -> GrammarFailure {
+    grammar_failure_located(error, |site| location_at(snapshot, offset_of(site)))
 }
 
-/// [`native_error`] for a document whose boundaries `locate` places.
-pub(super) fn native_error_located<'i>(
+/// [`grammar_failure`] for a document whose boundaries `locate` places.
+pub(super) fn grammar_failure_located<'i>(
     error: &GrammarError<'i>,
     locate: impl FnOnce(Site<'i>) -> CssSourcePosition,
-) -> NativeError {
+) -> GrammarFailure {
     if let Some(native) = error.custom_value() {
         return native.clone();
     }
@@ -81,7 +81,7 @@ pub(super) fn native_error_located<'i>(
 }
 
 /// The error of a stream whose meter refused a step, at `location`.
-pub(super) fn refused_error(location: CssSourcePosition) -> NativeError {
+pub(super) fn refused_error(location: CssSourcePosition) -> GrammarFailure {
     crate::diagnostic::error::invalid_component_value(
         location,
         crate::component::CssComponentValueError::new(
@@ -96,7 +96,7 @@ pub(super) struct DroppedUnit<'s> {
     pub(super) kind: UnitKind,
     /// Why the unit is reported as dropped: the declaration's error for a unit
     /// that begins with an identifier, otherwise the rule's.
-    pub(super) error: NativeError,
+    pub(super) error: GrammarFailure,
     /// The source the offsets belong to.
     source: &'s str,
     pub(super) start: usize,
@@ -121,7 +121,7 @@ pub(super) fn drive_units<'i, G>(
     mut unit: impl FnMut(Result<G::Item, Failure<'i>>),
 ) -> bool
 where
-    G: BlockGrammar<'i, Attached<'i>, Error = NativeError>,
+    G: BlockGrammar<'i, Attached<'i>, Error = GrammarFailure>,
 {
     let mut stream = contents.clone();
     let mut units = stream.block_contents(&mut *grammar);
@@ -235,7 +235,7 @@ pub(super) fn dropped_unit<'s, 'i>(
             // its input.
             unexpected_syntax_end(location_at(snapshot, offset_of(declaration_error.at())))
         } else {
-            native_error(snapshot, declaration_error)
+            grammar_failure(snapshot, declaration_error)
         }
     } else if kind == UnitKind::Declaration {
         // The rule attempt found no block: it met the `;` that stops it or
@@ -245,7 +245,7 @@ pub(super) fn dropped_unit<'s, 'i>(
             _ => unexpected_syntax_end(at_end),
         }
     } else {
-        native_error(snapshot, failed.error())
+        grammar_failure(snapshot, failed.error())
     };
     let prelude_end = match (kind, rule_end) {
         (UnitKind::AtRule, Some(RuleEnd::Semicolon)) => end.saturating_sub(1),

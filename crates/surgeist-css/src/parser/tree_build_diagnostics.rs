@@ -6,7 +6,7 @@
 use crate::diagnostic::error::from_parse_error;
 use crate::parser::recovery::recovery_action_for_error;
 
-pub(super) fn arena_error(
+pub(super) fn tree_build_failure(
     source: &str,
     error: crate::component::CssComponentValueError,
 ) -> crate::diagnostic::CssRecoveryDiagnostic {

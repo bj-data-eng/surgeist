@@ -1,5 +1,5 @@
 use super::Recovered;
-use super::block_units::{location_at, native_error};
+use super::block_units::{grammar_failure, location_at};
 use super::recovery::RecoveryState;
 use super::rule_list::{RuleListKind, RuleParser, StyleSink, recover_rule_list};
 use super::syntax_types::Stream;
@@ -114,7 +114,7 @@ pub(super) fn admit_one_rule(
             } else if let Some(resource) = parser.take_block_resource_error() {
                 resource
             } else {
-                native_error(&snapshot, failed.error())
+                grammar_failure(&snapshot, failed.error())
             };
             Err(super::fragments::reject(
                 source,

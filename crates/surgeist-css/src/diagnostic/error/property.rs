@@ -3,7 +3,7 @@ use super::ErrorKind;
 use super::source_resolution::{ends_input, precedes_input};
 use crate::diagnostic::error::{
     CssQualifiedRuleError, CssUnexpectedEndError, CssUnexpectedTokenError, EXPECT_CSS_SYNTAX,
-    EXPECT_DECLARATION_VALUE, EXPECT_PROPERTY_VALUE, NativeError, PropertyValueRejection,
+    EXPECT_DECLARATION_VALUE, EXPECT_PROPERTY_VALUE, GrammarFailure, PropertyValueRejection,
     QUALIFIED_RULE, encountered_mut, is_component_resource_error, optional_encountered_mut,
 };
 use crate::diagnostic::{CssGrammarExpectation, CssTokenKind, CssTokenSummary};
@@ -26,8 +26,8 @@ pub(crate) trait SyntaxErrorExt<'i>: Sized {
         control: &crate::values::color_adjust::utf16_value::Control<'_>,
     ) -> Result<(ErrorKind, crate::component::CssSerializedOrigin), ()>;
     fn into_parts(self) -> (ErrorKind, crate::component::CssSerializedOrigin);
-    fn into_native_at(self, source: &str, offset: usize) -> NativeError;
-    fn into_native_source(self) -> NativeError;
+    fn into_grammar_failure_at(self, source: &str, offset: usize) -> GrammarFailure;
+    fn into_grammar_failure_source(self) -> GrammarFailure;
     /// Only source-owned callers may ask for a single source diagnostic.
     fn into_source_error(self) -> crate::diagnostic::CssError;
 }
@@ -142,16 +142,16 @@ impl<'i> SyntaxErrorExt<'i> for SyntaxError<'i, Error> {
         (kind, origin)
     }
 
-    fn into_native_at(self, source: &str, offset: usize) -> NativeError {
+    fn into_grammar_failure_at(self, source: &str, offset: usize) -> GrammarFailure {
         let (kind, _) = self.into_parts();
         let position = CssSourcePosition::from_byte_offset_in(source, offset);
-        NativeError::new(crate::diagnostic::CssError { position, kind }, position)
+        GrammarFailure::new(crate::diagnostic::CssError { position, kind }, position)
     }
 
-    fn into_native_source(self) -> NativeError {
+    fn into_grammar_failure_source(self) -> GrammarFailure {
         let error = self.into_source_error();
         let position = error.position();
-        NativeError::new(error, position)
+        GrammarFailure::new(error, position)
     }
 
     fn into_source_error(self) -> crate::diagnostic::CssError {

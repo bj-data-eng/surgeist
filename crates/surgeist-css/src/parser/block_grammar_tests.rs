@@ -43,7 +43,7 @@ fn dropped<T>(
 }
 
 #[test]
-fn a_keyframe_block_entered_by_the_native_rule_driver_drops_rules_and_keeps_declarations() {
+fn a_keyframe_block_entered_by_the_rule_driver_drops_rules_and_keeps_declarations() {
     let source = "{ from { color: red; @media x {} opacity: 1 } }";
     let report = fragments::parse_keyframes_block_with_context(source, CssParserContext::default());
     let blocks = report.syntax().as_ref().expect("a keyframes block").body();
@@ -244,7 +244,7 @@ fn a_rule_that_is_no_margin_box_is_rejected_with_its_own_reason() {
 }
 
 #[test]
-fn a_detached_keyframe_rule_reaches_the_declaration_grammar_through_the_native_rule() {
+fn a_detached_keyframe_rule_reaches_the_declaration_grammar_through_the_rule_driver() {
     let source = "from { color: red; bogus: 1; opacity: 1 }";
     let report = CssParsedKeyframeRule::parse(&CssParser::default(), source);
     let rule = report.syntax().as_ref().expect("a keyframe rule");
@@ -420,7 +420,7 @@ type CeilingRow = (
 // detached keyframe, a page rule or a sheet. The scope of a block therefore
 // has no ceiling of its own that could refuse all of it.
 #[test]
-fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_native_driver_enters() {
+fn a_nest_at_the_depth_ceiling_drops_only_its_unit_in_every_block_the_rule_driver_enters() {
     use CssErrorCode::{
         InvalidAtRuleBody, InvalidQualifiedRule, NestingLimit, UnexpectedEnd, UnexpectedToken,
     };

@@ -12,7 +12,7 @@
 //! a document of its own.
 use std::ops::Range;
 
-use crate::diagnostic::error::NativeError;
+use crate::diagnostic::error::GrammarFailure;
 
 use super::block_units::{DeclarationUnit, location_at, offset_of};
 use super::{
@@ -129,7 +129,7 @@ pub(super) fn parse_declaration_unit(
     text: &DeclarationText,
     snapshot: &CssSourceSnapshot,
     parser_context: crate::CssParserContext,
-) -> Result<ParsedDeclaration, NativeError> {
+) -> Result<ParsedDeclaration, GrammarFailure> {
     let name_origin = CssParsedOrigin::covering(snapshot, text.name.clone());
     let plan = declaration_plan(
         mode,
@@ -153,7 +153,7 @@ pub(super) fn parse_declaration_unit(
         &numeric,
         plan.value_context,
     )
-    .map_err(SyntaxErrorExt::into_native_source)
+    .map_err(SyntaxErrorExt::into_grammar_failure_source)
     .map_err(|error| plan.contextualize(error))?;
     let components =
         crate::component::values::parse::promote_window(&document).map_err(|error| {

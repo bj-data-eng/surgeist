@@ -9,7 +9,7 @@
 use std::borrow::Cow;
 use std::ops::Range;
 
-use crate::diagnostic::error::NativeError;
+use crate::diagnostic::error::GrammarFailure;
 use surgeist_css_parser::document::{BlockKind, GroupEnd, GroupKind, ListId, NodeId};
 use surgeist_css_parser::lexer::{Lexer, Options};
 use surgeist_css_parser::{Offset, Token};
@@ -405,7 +405,7 @@ pub(super) fn scan_nested(
     base_depth: u32,
     enclosing_production: &'static str,
     boundary: ScanBoundary,
-) -> Result<usize, NativeError> {
+) -> Result<usize, GrammarFailure> {
     let end_of_source = source.len();
     let Some(site) = document.node_at_offset(Offset::new(start.min(end_of_source))) else {
         return Ok(end_of_source);

@@ -84,7 +84,7 @@ pub(crate) static IMPLEMENTED_SHARED_VALUES: &[CssFeatureId] = &[
 pub(super) fn checked_percentage_value(
     location: CssSourcePosition,
     token_css: &str,
-) -> std::result::Result<f64, crate::diagnostic::error::NativeError> {
+) -> std::result::Result<f64, crate::diagnostic::error::GrammarFailure> {
     // The authored digits are the value: dividing by 100 and multiplying back
     // after a rounding to f32 changes the magnitude (30% -> 30.000002).
     // The caller passes exactly the consumed percentage token, without trivia.
@@ -335,7 +335,7 @@ pub(super) fn parse_custom_ident_from_str_at<'i>(
 pub(super) fn parse_custom_ident_from_str_at_source(
     ident: &str,
     location: CssSourcePosition,
-) -> Result<CssCustomIdent, crate::diagnostic::error::NativeError> {
+) -> Result<CssCustomIdent, crate::diagnostic::error::GrammarFailure> {
     CssCustomIdent::try_from_ident(CssIdent::new(ident))
         .ok_or_else(|| crate::diagnostic::error::unexpected_at(location))
 }

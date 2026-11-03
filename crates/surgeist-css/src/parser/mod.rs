@@ -100,12 +100,12 @@ pub(crate) mod structure;
 pub(crate) mod style_scope_media_separator_tests;
 pub(crate) mod style_selector_fragments;
 pub(crate) mod supports;
-pub(crate) mod syntax_bridge;
 pub(crate) mod syntax_types;
 pub(crate) mod text_alignment;
 pub(crate) mod text_decoration;
 pub(crate) mod text_flow;
 pub(crate) mod timing;
+pub(crate) mod tree_build_diagnostics;
 pub(crate) mod typography;
 pub(crate) mod ui;
 pub(crate) mod url;
@@ -222,7 +222,7 @@ use shape_outside::parse_shape_outside;
 use view_transitions::parse_view_transition_name;
 // Shared checked media construction uses the same private admission engine.
 
-use crate::diagnostic::error::NativeError;
+use crate::diagnostic::error::GrammarFailure;
 
 use crate::parser::alignment::*;
 use crate::parser::background::*;
@@ -697,7 +697,7 @@ fn parse_sheet_inner(source: &str, recovery: RecoveryState) -> crate::CssParseRe
         Err(error) => {
             return crate::CssParseReport::new(
                 CssSheet::new(),
-                vec![syntax_bridge::arena_error(source, error)],
+                vec![tree_build_diagnostics::tree_build_failure(source, error)],
             );
         }
     };
@@ -722,7 +722,7 @@ pub(crate) struct Recovered<T> {
 
 pub(crate) fn block_item_diagnostic(
     recovery: &RecoveryState,
-    error: NativeError,
+    error: GrammarFailure,
     failed_unit: &str,
     unit_end: usize,
     action: crate::diagnostic::CssRecoveryAction,
@@ -732,7 +732,7 @@ pub(crate) fn block_item_diagnostic(
 }
 
 /// The error `error` names, qualified by the tokens `recovery` reads.
-fn qualified(recovery: &RecoveryState, error: NativeError) -> CssError {
+fn qualified(recovery: &RecoveryState, error: GrammarFailure) -> CssError {
     match recovery.structure() {
         Ok(document) => from_parse_error_in(&*document, error),
         Err(_) => from_parse_error(recovery.source_snapshot().as_str(), error),
@@ -745,7 +745,7 @@ pub(crate) fn qualified_rule_error(
     recovery: &RecoveryState,
     failed_unit: &str,
     semicolon_terminated: bool,
-    error: NativeError,
+    error: GrammarFailure,
 ) -> CssError {
     match recovery.structure() {
         Ok(document) => from_rule_parse_error(&*document, failed_unit, semicolon_terminated, error),
@@ -762,7 +762,7 @@ pub(crate) fn qualified_rule_error(
 
 pub(crate) fn block_item_diagnostic_from_start(
     recovery: &RecoveryState,
-    error: NativeError,
+    error: GrammarFailure,
     unit_start: usize,
     unit_end: usize,
     action: crate::diagnostic::CssRecoveryAction,
@@ -783,7 +783,7 @@ pub(crate) fn block_item_diagnostic_from_start(
 /// says the unit's text ends with a `;` token of its list.
 pub(crate) fn structural_rule_diagnostic(
     recovery: &RecoveryState,
-    error: NativeError,
+    error: GrammarFailure,
     failed_unit: &str,
     semicolon_terminated: bool,
     unit_start: usize,
@@ -815,7 +815,7 @@ pub(crate) fn structural_recovery_action(
 pub(crate) fn top_level_only_at_rule_placement(
     location: CssSourcePosition,
     name: &str,
-) -> NativeError {
+) -> GrammarFailure {
     invalid_at_rule_placement(location, name, "the stylesheet top level")
 }
 
@@ -979,7 +979,7 @@ fn parse_container_prelude<'i>(
     source: &str,
     input: &mut syntax_types::Stream<'i>,
     recovery: &RecoveryState,
-) -> std::result::Result<CssContainerPrelude, NativeError> {
+) -> std::result::Result<CssContainerPrelude, GrammarFailure> {
     let (values, implicit) = collect_container_components(source, input, recovery)?;
     let prelude = container_prelude_from_components(
         values,
@@ -992,7 +992,7 @@ fn parse_container_prelude<'i>(
     Ok(prelude)
 }
 
-fn with_container_prelude_context(error: NativeError) -> NativeError {
+fn with_container_prelude_context(error: GrammarFailure) -> GrammarFailure {
     if queries::media_terminal_error(&error) {
         error
     } else {
@@ -1040,7 +1040,7 @@ fn block_follows(input: &syntax_types::Stream<'_>) -> bool {
 fn parse_page_prelude<'i>(
     input: &mut syntax_types::Stream<'i>,
     snapshot: &CssSourceSnapshot,
-) -> std::result::Result<CssPageSelectorList, NativeError> {
+) -> std::result::Result<CssPageSelectorList, GrammarFailure> {
     let selector = page::read_page_selector(input, snapshot).map_err(|error| {
         with_at_rule_prelude_context(
             error,
@@ -1070,7 +1070,7 @@ fn block_form_required(
     name: &str,
     production: &'static str,
     expectation: &'static str,
-) -> NativeError {
+) -> GrammarFailure {
     crate::diagnostic::error::invalid_at_rule_body_at(
         snapshot.position_or_walk(at),
         block_units::location_at(snapshot, at),
@@ -1107,7 +1107,7 @@ fn parse_scoped_rule_list<'i>(
 fn parse_namespace_prelude<'i>(
     input: &mut syntax_types::Stream<'i>,
     snapshot: &CssSourceSnapshot,
-) -> std::result::Result<CssNamespacePrelude, NativeError> {
+) -> std::result::Result<CssNamespacePrelude, GrammarFailure> {
     descriptor_stream::read_scope(input, snapshot, |input, _| {
         use surgeist_css_parser::Token as T;
         let prefix = input
@@ -1136,7 +1136,7 @@ fn parse_namespace_prelude<'i>(
 fn parse_layer_prelude<'i>(
     input: &mut syntax_types::Stream<'i>,
     snapshot: &crate::source::CssSourceSnapshot,
-) -> std::result::Result<Vec<CssLayerName>, NativeError> {
+) -> std::result::Result<Vec<CssLayerName>, GrammarFailure> {
     descriptor_stream::read_scope(input, snapshot, read_layer_prelude)
 }
 
@@ -1151,7 +1151,7 @@ fn read_layer_prelude<'i>(
 
     // `<layer-name>#`. List post-condition: a remainder after a name is an
     // at-rule syntax error, and a trailing comma reports the missing name.
-    combinators::parse_native_comma_list(
+    combinators::parse_comma_separated(
         input,
         |input| {
             let name = read_layer_name(input, numeric)?;
@@ -1216,7 +1216,7 @@ fn parse_scope_prelude<'i>(
     state: &RecoveryState,
     root_anchors: selectors::SelectorAnchorMode,
     relative_root: bool,
-) -> std::result::Result<CssScopePrelude, NativeError> {
+) -> std::result::Result<CssScopePrelude, GrammarFailure> {
     descriptor_stream::read_scope(input, state.source_snapshot(), |input, numeric| {
         scope_prelude(
             source,
@@ -1296,12 +1296,12 @@ fn enter_boundary<'i>(
     opening: usize,
     at: syntax_types::Site<'i>,
 ) -> std::result::Result<recovery::RecoveryDepthGuard, descriptor_stream::ValueError<'i>> {
-    let entered: std::result::Result<_, NativeError> =
+    let entered: std::result::Result<_, GrammarFailure> =
         state.enter_component_block_at(opening, "baseline.rule.scope");
     entered.map_err(|error| syntax_types::SyntaxError::custom(at, error))
 }
 
-fn with_scope_prelude_context(error: NativeError) -> NativeError {
+fn with_scope_prelude_context(error: GrammarFailure) -> GrammarFailure {
     if crate::diagnostic::error::is_nesting_limit_error(&error) {
         error
     } else {
@@ -1317,7 +1317,7 @@ fn with_scope_prelude_context(error: NativeError) -> NativeError {
 fn parse_counter_style_prelude<'i>(
     input: &mut syntax_types::Stream<'i>,
     source_snapshot: &CssSourceSnapshot,
-) -> Result<CounterStylePrelude, NativeError> {
+) -> Result<CounterStylePrelude, GrammarFailure> {
     let name = parse_counter_style_name(input, source_snapshot).map_err(|error| {
         with_at_rule_prelude_context(
             error,
@@ -1342,7 +1342,7 @@ fn parse_counter_style_prelude<'i>(
 fn parse_font_face_prelude<'i>(
     input: &mut syntax_types::Stream<'i>,
     recovery: &RecoveryState,
-) -> Result<(), NativeError> {
+) -> Result<(), GrammarFailure> {
     if !input.only_whitespace_remains() {
         return Err(with_at_rule_prelude_context(
             invalid_syntax(block_units::location_at(
@@ -1360,7 +1360,7 @@ fn parse_font_face_prelude<'i>(
 fn parse_keyframes_prelude<'i>(
     input: &mut syntax_types::Stream<'i>,
     snapshot: &CssSourceSnapshot,
-) -> Result<CssKeyframesName, NativeError> {
+) -> Result<CssKeyframesName, GrammarFailure> {
     let name = parse_keyframes_name(input, snapshot).map_err(|error| {
         with_at_rule_prelude_context(
             error,
@@ -1401,7 +1401,7 @@ impl<'s> StrictDeclarationParser<'s> {
         &self,
         name: &str,
         text: &declaration_unit::DeclarationText,
-    ) -> std::result::Result<CssDeclaration, NativeError> {
+    ) -> std::result::Result<CssDeclaration, GrammarFailure> {
         let implicit_closures = self.recovery.check_component_values_from(
             self.source,
             text.value_start,
@@ -1514,7 +1514,7 @@ impl DeclarationPlan {
         }
     }
 
-    fn contextualize(&self, error: NativeError) -> NativeError {
+    fn contextualize(&self, error: GrammarFailure) -> GrammarFailure {
         match &self.custom_name {
             Some(name) => with_property_context(error, name),
             None => error,
@@ -1527,7 +1527,7 @@ fn declaration_plan(
     name: &str,
     location: CssSourcePosition,
     parser_context: crate::CssParserContext,
-) -> std::result::Result<DeclarationPlan, NativeError> {
+) -> std::result::Result<DeclarationPlan, GrammarFailure> {
     if name.starts_with("--") {
         let Some(custom_name) = parse_custom_property_name(name) else {
             return Err(property_name_error(location, name));
@@ -2188,7 +2188,7 @@ pub(crate) fn trailing_importance<T>(
 fn invalid_annotation_for_context(
     location: CssSourcePosition,
     context: &DeclarationBoundaryContext,
-) -> NativeError {
+) -> GrammarFailure {
     match context {
         DeclarationBoundaryContext::OrdinarySvgGlyph
         | DeclarationBoundaryContext::KeyframeSvgGlyph => {
@@ -2224,7 +2224,7 @@ fn parse_custom_media_prelude<'i>(
     source: &str,
     input: &mut syntax_types::Stream<'i>,
     recovery: &RecoveryState,
-) -> Result<CustomMediaPrelude, NativeError> {
+) -> Result<CustomMediaPrelude, GrammarFailure> {
     descriptor_stream::read_scope(input, recovery.source_snapshot(), |stream, numeric| {
         custom_media_prelude(source, stream, numeric, recovery)
     })

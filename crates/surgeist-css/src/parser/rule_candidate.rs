@@ -6,7 +6,7 @@ use crate::diagnostic::{CssRecoveryAction, CssRecoveryDiagnostic};
 use crate::parser::nesting::admit_one_rule;
 use crate::parser::recovery::{RecoveryState, SharedNamespaces};
 use crate::parser::rule_list::RuleParser;
-use crate::parser::{ScopedBodyKind, fragments, recovery, syntax_bridge};
+use crate::parser::{ScopedBodyKind, fragments, recovery, tree_build_diagnostics};
 use crate::rule::CssRule;
 use crate::rule::CssStyleAncestor;
 use crate::rule::{CssRuleAdmissionContext, CssRuleSyntax};
@@ -23,7 +23,10 @@ pub(crate) fn classify_rule_syntax_with_limits(
     let document = match syntax::source_document_with_limits(source, limits) {
         Ok(document) => document,
         Err(error) => {
-            return CssParseReport::new(None, vec![syntax_bridge::arena_error(source, error)]);
+            return CssParseReport::new(
+                None,
+                vec![tree_build_diagnostics::tree_build_failure(source, error)],
+            );
         }
     };
     let snapshot = document
@@ -99,7 +102,7 @@ pub(crate) fn classify_rule_syntax_with_limits(
             let CssValueOrigin::Parsed(origin) = &token_origin else {
                 unreachable!("source token origin")
             };
-            let diagnostic = syntax_bridge::component_error_diagnostic(
+            let diagnostic = tree_build_diagnostics::component_error_diagnostic(
                 source,
                 crate::component::CssComponentValueError::new(kind, token_origin.clone()),
                 origin.span(),

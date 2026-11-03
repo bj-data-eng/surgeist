@@ -1,7 +1,7 @@
 //! Feature shapes, known-domain admission, and when-media leaf construction.
 
 use super::super::descriptor_stream::{
-    Value, ValueError, consume_remaining, expect_exhausted, from_here, native,
+    Value, ValueError, consume_remaining, expect_exhausted, from_here, value_failure,
 };
 use super::super::query_components::{
     RangePrefix, media_literal_number, negative_literal, query_comparison, query_plain_range,
@@ -135,7 +135,7 @@ pub(super) fn construct_when_media_feature(
         })
     })();
     let admitted = result.map_err(|error| {
-        let error = native(&numeric, &error);
+        let error = value_failure(&numeric, &error);
         if let crate::diagnostic::error::ErrorKind::InvalidComponentValue(component) =
             error.error.kind()
         {

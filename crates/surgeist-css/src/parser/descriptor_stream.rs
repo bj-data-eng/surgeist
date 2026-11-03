@@ -14,7 +14,7 @@ use surgeist_css_parser::grammar::{BlockGrammar, UnitKind};
 use surgeist_css_parser::stream::StopToken;
 
 use super::block_units::{
-    Failure, NativeError, drive_units, dropped_unit, location_at, offset_of, refusal_diagnostic,
+    Failure, GrammarFailure, drive_units, dropped_unit, location_at, offset_of, refusal_diagnostic,
     refused_error,
 };
 use super::property_input::SiteExt;
@@ -34,10 +34,8 @@ use crate::diagnostic::{CssRecoveryAction, CssRecoveryDiagnostic};
 use crate::numeric::expression::NumericInputContext;
 use crate::source::{CssSourcePosition, CssSourceSnapshot};
 
-/// The native error of a value grammar. It borrows nothing from the input.
-pub(super) type NativeValueError = NativeError;
 /// The failure of a value grammar.
-pub(super) type ValueError<'i> = SyntaxError<'i, NativeValueError>;
+pub(super) type ValueError<'i> = SyntaxError<'i, GrammarFailure>;
 /// The result of a value grammar.
 pub(super) type Value<'i, T> = Result<T, ValueError<'i>>;
 
@@ -127,12 +125,12 @@ pub(super) fn token_spelling<'i>(site: Site<'i>) -> Option<&'i str> {
 }
 
 /// The native error of a failure of a value grammar.
-pub(super) fn native(
+pub(super) fn value_failure(
     numeric: &NumericInputContext<'_>,
     error: &ValueError<'_>,
-) -> NativeValueError {
-    if let Some(native) = error.custom_value() {
-        return native.clone();
+) -> GrammarFailure {
+    if let Some(failure) = error.custom_value() {
+        return failure.clone();
     }
     let at = location(numeric, error.at());
     if error.is_refused() {
@@ -154,7 +152,7 @@ pub(super) fn native(
 pub(super) fn fail<'i>(
     numeric: &NumericInputContext<'_>,
     at: Site<'i>,
-    make: impl FnOnce(CssSourcePosition) -> NativeValueError,
+    make: impl FnOnce(CssSourcePosition) -> GrammarFailure,
 ) -> ValueError<'i> {
     SyntaxError::custom(at, make(location(numeric, at)))
 }
@@ -167,15 +165,15 @@ pub(super) fn from_property<'i, T>(
 ) -> Value<'i, T> {
     result.map_err(|error| {
         let at = error.at();
-        let native = match numeric.ordinary() {
+        let failure = match numeric.ordinary() {
             NumericInputContext::Components(values, serialized) => {
                 let error = error.qualify();
                 let offset = serialized_offset(values, serialized, error.at());
-                error.into_native_at(serialized.as_css(), offset)
+                error.into_grammar_failure_at(serialized.as_css(), offset)
             }
-            _ => error.into_native_source(),
+            _ => error.into_grammar_failure_source(),
         };
-        SyntaxError::custom(at, native)
+        SyntaxError::custom(at, failure)
     })
 }
 
@@ -233,7 +231,7 @@ pub(super) fn from_window<'i, T>(
                 .is_some_and(|at| at.value() < consumed)
                 && input.consume_token_with_comments().is_ok()
             {}
-            result.map_err(|error| SyntaxError::custom(first, error.into_native_source()))
+            result.map_err(|error| SyntaxError::custom(first, error.into_grammar_failure_source()))
         }
         NumericInputContext::Components(values, serialized) => {
             let count = last.index().saturating_sub(first.index());
@@ -305,7 +303,10 @@ pub(super) fn from_window<'i, T>(
                     }
                 }
                 .unwrap_or(end);
-                SyntaxError::custom(first, error.into_native_at(serialized.as_css(), offset))
+                SyntaxError::custom(
+                    first,
+                    error.into_grammar_failure_at(serialized.as_css(), offset),
+                )
             })
         }
         NumericInputContext::Checked | NumericInputContext::QuirkyLengths(_) => {
@@ -553,7 +554,7 @@ pub(super) fn parse_descriptor_range<T>(
         &NumericInputContext<'_>,
         Range<usize>,
     ) -> Value<'d, T>,
-) -> Result<T, NativeValueError> {
+) -> Result<T, GrammarFailure> {
     let numeric = NumericInputContext::parsed(snapshot);
     let failed_at = |end: usize| {
         move |error: crate::component::CssComponentValueError| {
@@ -565,7 +566,7 @@ pub(super) fn parse_descriptor_range<T>(
         .map_err(failed_at(value_end))?;
     if boundary.validates_value() {
         validate_root(&mut value.root(), &numeric, owner, descriptor)
-            .map_err(|error| native(&numeric, &error))?;
+            .map_err(|error| value_failure(&numeric, &error))?;
     }
     let components = crate::component::values::parse::promote_window(&value).map_err(|error| {
         invalid_component_value(
@@ -575,10 +576,10 @@ pub(super) fn parse_descriptor_range<T>(
     })?;
     let range = value_start..value_end;
     let parsed = parse(&mut value.root(), components, &numeric, range)
-        .map_err(|error| native(&numeric, &error))?;
+        .map_err(|error| value_failure(&numeric, &error))?;
     if boundary.refuses_bang() {
         refuse_root_bang(&mut value.root(), &numeric, owner, descriptor)
-            .map_err(|error| native(&numeric, &error))?;
+            .map_err(|error| value_failure(&numeric, &error))?;
     }
     match bang {
         Some(bang) => Err(invalid_descriptor_annotation(
@@ -610,7 +611,7 @@ pub(super) fn parse_descriptor_scope<'i, T>(
     owner: &str,
     descriptor: &str,
     parse: impl FnOnce(&mut Stream<'i>) -> Value<'i, T>,
-) -> Result<T, NativeValueError> {
+) -> Result<T, GrammarFailure> {
     match scope {
         ValueScope::Declared => parse_descriptor_checked(input, numeric, owner, descriptor, parse),
         ValueScope::Text => reading_value_text(input, numeric, owner, descriptor, |input| {
@@ -618,7 +619,7 @@ pub(super) fn parse_descriptor_scope<'i, T>(
             expect_exhausted(input)?;
             Ok(parsed)
         })
-        .map_err(|error| native(numeric, &error)),
+        .map_err(|error| value_failure(numeric, &error)),
     }
 }
 
@@ -648,10 +649,10 @@ pub(super) fn parse_descriptor_checked<'i, T>(
     owner: &str,
     descriptor: &str,
     parse: impl FnOnce(&mut Stream<'i>) -> Value<'i, T>,
-) -> Result<T, NativeValueError> {
+) -> Result<T, GrammarFailure> {
     let parsed = input
         .within_list_until(StopToken::ExclamationMark, parse)
-        .map_err(|error| native(numeric, &error))?;
+        .map_err(|error| value_failure(numeric, &error))?;
     if input.only_whitespace_remains() {
         return Ok(parsed);
     }
@@ -685,7 +686,7 @@ pub(super) fn drive_descriptors<'i, Item, G>(
     context: &DescriptorRecovery<'_>,
 ) -> (Vec<Item>, Vec<CssRecoveryDiagnostic>)
 where
-    G: BlockGrammar<'i, Attached<'i>, Item = Item, Error = NativeError>,
+    G: BlockGrammar<'i, Attached<'i>, Item = Item, Error = GrammarFailure>,
 {
     let diagnostics = RefCell::new(Vec::new());
     let items = drive_descriptors_into(contents, grammar, context, &diagnostics);
@@ -702,7 +703,7 @@ pub(super) fn drive_descriptors_into<'i, Item, G>(
     sink: &RefCell<Vec<CssRecoveryDiagnostic>>,
 ) -> Vec<Item>
 where
-    G: BlockGrammar<'i, Attached<'i>, Item = Item, Error = NativeError>,
+    G: BlockGrammar<'i, Attached<'i>, Item = Item, Error = GrammarFailure>,
 {
     let snapshot = context.recovery.source_snapshot();
     let mut items = Vec::new();
@@ -774,11 +775,11 @@ pub(super) fn parse_text<T>(
     snapshot: &CssSourceSnapshot,
     range: Range<usize>,
     parse: impl for<'d> FnOnce(&mut Stream<'d>, &NumericInputContext<'_>) -> Value<'d, T>,
-) -> Result<T, NativeValueError> {
+) -> Result<T, GrammarFailure> {
     let numeric = NumericInputContext::parsed(snapshot);
     let document = scope_document(snapshot, range)?;
     let mut stream = document.root();
-    parse(&mut stream, &numeric).map_err(|error| native(&numeric, &error))
+    parse(&mut stream, &numeric).map_err(|error| value_failure(&numeric, &error))
 }
 
 /// [`parse_text`], and the components the text holds with the origin of the
@@ -787,11 +788,11 @@ pub(super) fn parse_collecting<T>(
     snapshot: &CssSourceSnapshot,
     range: Range<usize>,
     parse: impl for<'d> FnOnce(&mut Stream<'d>, &NumericInputContext<'_>) -> Value<'d, T>,
-) -> Result<(T, CssComponentValues, crate::source::CssParsedOrigin), NativeValueError> {
+) -> Result<(T, CssComponentValues, crate::source::CssParsedOrigin), GrammarFailure> {
     let numeric = NumericInputContext::parsed(snapshot);
     let document = scope_document(snapshot, range.clone())?;
     let mut stream = document.root();
-    let value = parse(&mut stream, &numeric).map_err(|error| native(&numeric, &error))?;
+    let value = parse(&mut stream, &numeric).map_err(|error| value_failure(&numeric, &error))?;
     let (components, origin) = collected(snapshot, &document, range)?;
     Ok((value, components, origin))
 }
@@ -801,7 +802,7 @@ pub(super) fn parse_collecting<T>(
 pub(super) fn collect_text(
     snapshot: &CssSourceSnapshot,
     range: Range<usize>,
-) -> Result<(CssComponentValues, crate::source::CssParsedOrigin), NativeValueError> {
+) -> Result<(CssComponentValues, crate::source::CssParsedOrigin), GrammarFailure> {
     let document = scope_document(snapshot, range.clone())?;
     collected(snapshot, &document, range)
 }
@@ -810,7 +811,7 @@ pub(super) fn collect_text(
 fn scope_document(
     snapshot: &CssSourceSnapshot,
     range: Range<usize>,
-) -> Result<Document<'_>, NativeValueError> {
+) -> Result<Document<'_>, GrammarFailure> {
     crate::syntax_consumption::source_scope_document(snapshot, range.clone())
         .map_err(|error| invalid_component_value(location_at(snapshot, range.start), error))
 }
@@ -819,7 +820,7 @@ fn collected(
     snapshot: &CssSourceSnapshot,
     document: &Document<'_>,
     range: Range<usize>,
-) -> Result<(CssComponentValues, crate::source::CssParsedOrigin), NativeValueError> {
+) -> Result<(CssComponentValues, crate::source::CssParsedOrigin), GrammarFailure> {
     let components =
         crate::component::values::parse::promote_window(document).map_err(|error| {
             invalid_component_value(
@@ -838,9 +839,9 @@ pub(super) fn read_scope<'i, T>(
     input: &mut Stream<'i>,
     snapshot: &CssSourceSnapshot,
     parse: impl FnOnce(&mut Stream<'i>, &NumericInputContext<'_>) -> Value<'i, T>,
-) -> Result<T, NativeError> {
+) -> Result<T, GrammarFailure> {
     let numeric = NumericInputContext::parsed(snapshot);
-    parse(input, &numeric).map_err(|error| native(&numeric, &error))
+    parse(input, &numeric).map_err(|error| value_failure(&numeric, &error))
 }
 
 /// The components of the rest of the stream `input`, which is consumed, or the
@@ -878,7 +879,7 @@ pub(super) fn drive_block_items<'i, Item, G>(
     declaration: CssRecoveryAction,
 ) -> (Vec<Item>, Vec<CssRecoveryDiagnostic>)
 where
-    G: BlockGrammar<'i, Attached<'i>, Item = Item, Error = NativeError>,
+    G: BlockGrammar<'i, Attached<'i>, Item = Item, Error = GrammarFailure>,
 {
     let snapshot = recovery.source_snapshot();
     let mut items = Vec::new();
@@ -1056,9 +1057,9 @@ mod tests {
             crate::parser::values::parse_integer_value(window, &numeric)
         })
         .unwrap_err();
-        let native = native(&numeric, &error);
+        let failure = value_failure(&numeric, &error);
         assert!(matches!(
-            native.error.kind(),
+            failure.error.kind(),
             crate::diagnostic::error::ErrorKind::UnexpectedEnd(_)
         ));
     }
@@ -1132,11 +1133,12 @@ mod tests {
         assert!(rest.is_refused());
         // Mapped to the error the declaration reports, it is a resource
         // failure and no unexpected end.
-        let native =
-            crate::parser::block_units::native_error_located(&error, |_| CssSourcePosition::START);
-        assert!(crate::diagnostic::error::is_resource_parse_error(&native));
+        let failure = crate::parser::block_units::grammar_failure_located(&error, |_| {
+            CssSourcePosition::START
+        });
+        assert!(crate::diagnostic::error::is_resource_parse_error(&failure));
         assert!(!matches!(
-            native.error.kind(),
+            failure.error.kind(),
             crate::diagnostic::error::ErrorKind::UnexpectedEnd(_)
         ));
         let exhausted = expect_exhausted::<()>(&mut document.root()).unwrap_err();
@@ -1187,10 +1189,10 @@ mod tests {
             Ok::<(), SyntaxError<'_, crate::diagnostic::error::property::Error>>(())
         })
         .unwrap_err();
-        let native = native(&numeric, &error);
-        assert!(crate::diagnostic::error::is_resource_parse_error(&native));
+        let failure = value_failure(&numeric, &error);
+        assert!(crate::diagnostic::error::is_resource_parse_error(&failure));
         assert!(!matches!(
-            native.error.kind(),
+            failure.error.kind(),
             crate::diagnostic::error::ErrorKind::UnexpectedEnd(_)
         ));
         // The same text without a refusal is read to its end.

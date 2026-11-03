@@ -5,7 +5,7 @@ use std::rc::Rc;
 use surgeist_css_parser::grammar::{AtRule, BlockGrammar, QualifiedRule, RuleGrammar};
 
 use super::block_units::{
-    DeclarationUnit, GrammarError, NativeError, grammar_error, location_at, offset_of,
+    DeclarationUnit, GrammarError, GrammarFailure, grammar_error, location_at, offset_of,
 };
 use super::declaration_unit::DeclarationText;
 use super::descriptor_stream::{DescriptorRecovery, drive_descriptors};
@@ -16,9 +16,9 @@ use surgeist_css_parser::stream::StopToken;
 pub(crate) mod unicode_range;
 
 use super::descriptor_stream::{
-    NativeValueError, Value, ValueScope, at_final_comma, byte_offset, collect_scope,
-    consume_remaining, expect_exhausted, fail, from_component, from_here, from_remaining,
-    inside_consumed, location, native, parse_descriptor_scope, validate_root,
+    Value, ValueScope, at_final_comma, byte_offset, collect_scope, consume_remaining,
+    expect_exhausted, fail, from_component, from_here, from_remaining, inside_consumed, location,
+    parse_descriptor_scope, validate_root, value_failure,
 };
 use super::font_controls::parse_font_language_override;
 use super::font_settings::{parse_font_feature_settings, parse_font_variation_settings};
@@ -33,7 +33,7 @@ use super::url::parse_url;
 use super::values::parse_nonnegative_percentage;
 use crate::diagnostic::error::token_navigation::Scoped;
 use crate::diagnostic::error::{
-    descriptor_name_error, from_native_error, from_parse_error, unexpected_at,
+    descriptor_name_error, from_grammar_failure, from_parse_error, unexpected_at,
     with_descriptor_context,
 };
 use crate::diagnostic::{CssError, CssFeatureId};
@@ -152,7 +152,11 @@ pub(super) fn parse_contents(
 
 impl super::declaration_block::Receiver for FontFaceDescriptorParser<'_> {
     type Declaration = CssFontFaceDescriptor;
-    fn check_name<'i>(&self, name: &str, location: CssSourcePosition) -> Result<(), NativeError> {
+    fn check_name<'i>(
+        &self,
+        name: &str,
+        location: CssSourcePosition,
+    ) -> Result<(), GrammarFailure> {
         descriptor_kind(name, location).map(|_| ())
     }
     fn admit<'i>(
@@ -160,7 +164,7 @@ impl super::declaration_block::Receiver for FontFaceDescriptorParser<'_> {
         name: &str,
         text: &DeclarationText,
         _recovery: &RecoveryState,
-    ) -> Result<CssFontFaceDescriptor, NativeError> {
+    ) -> Result<CssFontFaceDescriptor, GrammarFailure> {
         FontFaceDescriptorParser::admit(self, name, text)
     }
     fn take_diagnostics(&mut self) -> Vec<crate::diagnostic::CssRecoveryDiagnostic> {
@@ -171,7 +175,7 @@ impl super::declaration_block::Receiver for FontFaceDescriptorParser<'_> {
 fn descriptor_kind(
     name: &str,
     location: CssSourcePosition,
-) -> Result<CssFontFaceDescriptorKind, NativeError> {
+) -> Result<CssFontFaceDescriptorKind, GrammarFailure> {
     CssFontFaceDescriptorKind::from_css_name(name)
         .ok_or_else(|| descriptor_name_error(location, "font-face", name))
 }
@@ -180,7 +184,7 @@ fn descriptor_kind(
 // misplaced here; an unrecognized one stays unknown.
 impl<'i> RuleGrammar<'i, Attached<'i>> for FontFaceDescriptorParser<'_> {
     type Item = CssFontFaceDescriptor;
-    type Error = NativeError;
+    type Error = GrammarFailure;
 
     fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Self::Item, GrammarError<'i>> {
         let name = rule.name();
@@ -229,7 +233,7 @@ impl FontFaceDescriptorParser<'_> {
         &mut self,
         name: &str,
         text: &DeclarationText,
-    ) -> Result<CssFontFaceDescriptor, NativeError> {
+    ) -> Result<CssFontFaceDescriptor, GrammarFailure> {
         let snapshot = self.recovery.source_snapshot();
         let mut implicit_closures = self.recovery.check_component_values_from(
             self.source,
@@ -273,7 +277,7 @@ impl FontFaceDescriptorParser<'_> {
         kind: CssFontFaceDescriptorKind,
         member_diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
         implicit_closures: &mut Vec<usize>,
-    ) -> Result<CssAuthoredFontFaceDescriptorValue, NativeValueError> {
+    ) -> Result<CssAuthoredFontFaceDescriptorValue, GrammarFailure> {
         let snapshot = self.recovery.source_snapshot();
         let numeric = NumericInputContext::parsed(snapshot);
         let document = crate::syntax_consumption::source_scope_document(
@@ -317,9 +321,9 @@ pub(super) fn read_authored_value<'i>(
     numeric: &NumericInputContext<'_>,
     member_diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     implicit_closures: &mut Vec<usize>,
-) -> Result<CssAuthoredFontFaceDescriptorValue, NativeValueError> {
+) -> Result<CssAuthoredFontFaceDescriptorValue, GrammarFailure> {
     validate_root(input, numeric, "font-face", kind.as_str())
-        .map_err(|error| native(numeric, &error))?;
+        .map_err(|error| value_failure(numeric, &error))?;
     let start = input.mark();
     let components = match collect_scope(input, numeric) {
         Ok(components) => components,
@@ -369,7 +373,7 @@ fn read_value_with_components<'i>(
     numeric: &NumericInputContext<'_>,
     member_diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     implicit_closures: &mut Vec<usize>,
-) -> Result<CssAuthoredFontFaceDescriptorValue, NativeValueError> {
+) -> Result<CssAuthoredFontFaceDescriptorValue, GrammarFailure> {
     let pending = super::variables::descriptor_environment_qualifies(components.items(), numeric)
         .map_err(|error| {
         crate::diagnostic::error::invalid_component_value(location(numeric, input.site()), error)
@@ -422,7 +426,7 @@ pub(crate) fn construct_font_face_descriptor_value(
         })?;
         let mut input = document.root();
         validate_root(&mut input, &numeric, "font-face", kind.as_str())
-            .map_err(|error| native(&numeric, &error))?;
+            .map_err(|error| value_failure(&numeric, &error))?;
         let value = read_value_with_components(
             source,
             &mut input,
@@ -432,8 +436,8 @@ pub(crate) fn construct_font_face_descriptor_value(
             &mut member_diagnostics,
             &mut implicit_closures,
         )?;
-        expect_exhausted(&mut input).map_err(|error| native(&numeric, &error))?;
-        Ok::<_, NativeValueError>(value)
+        expect_exhausted(&mut input).map_err(|error| value_failure(&numeric, &error))?;
+        Ok::<_, GrammarFailure>(value)
     })();
     let value = result.map_err(|error| from_parse_error(source, error))?;
     let recovered = member_diagnostics
@@ -451,7 +455,7 @@ fn read_font_face_value<'i>(
     numeric: &NumericInputContext<'_>,
     member_diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     implicit_closures: &mut Vec<usize>,
-) -> Result<CssFontFaceDescriptorValue, NativeValueError> {
+) -> Result<CssFontFaceDescriptorValue, GrammarFailure> {
     parse_descriptor_scope(scope, input, numeric, "font-face", kind.as_str(), |input| {
         Ok(match kind {
             CssFontFaceDescriptorKind::FontFamily => {
@@ -597,7 +601,7 @@ fn parse_font_face_source_list<'i>(
         match result {
             Ok(parsed) => sources.push(parsed),
             Err(error) => {
-                let error = native(numeric, &error);
+                let error = value_failure(numeric, &error);
                 // Openings in a discarded member do not describe retained syntax.
                 implicit_closures.retain(|opening| !(member_start..member_end).contains(opening));
                 if first_error.is_none() {
@@ -609,7 +613,7 @@ fn parse_font_face_source_list<'i>(
                 );
                 let error = with_descriptor_context(error, "font-face", "src");
                 let error = match numeric.ordinary() {
-                    NumericInputContext::Parsed(snapshot) => from_native_error(
+                    NumericInputContext::Parsed(snapshot) => from_grammar_failure(
                         &Scoped {
                             document: input.site().document(),
                             text: snapshot.as_str(),

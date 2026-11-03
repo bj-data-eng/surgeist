@@ -6,13 +6,13 @@ use surgeist_css_parser::{Offset, Token};
 
 use super::Recovered;
 use super::block_units::{
-    DeclarationUnit, GrammarError, NativeError, grammar_error, location_at, offset_of,
+    DeclarationUnit, GrammarError, GrammarFailure, grammar_error, location_at, offset_of,
 };
 use super::declaration_unit::DeclarationText;
 use super::descriptor_stream::{
-    Boundary, DescriptorRecovery, NativeValueError, Value, comma_list, consume_remaining,
-    declaration_position, drive_descriptors_into, expect_exhausted, fail, from_remaining, native,
-    parse_descriptor_checked, parse_descriptor_range, read_scope, validate_root,
+    Boundary, DescriptorRecovery, Value, comma_list, consume_remaining, declaration_position,
+    drive_descriptors_into, expect_exhausted, fail, from_remaining, parse_descriptor_checked,
+    parse_descriptor_range, read_scope, validate_root, value_failure,
 };
 use super::property_input::StreamExt;
 use super::recovery::RecoveryState;
@@ -47,7 +47,7 @@ pub(super) fn parse_families<'i>(
     source: &str,
     input: &mut Stream<'i>,
     recovery: &RecoveryState,
-) -> Result<Vec<CssFontFaceFamily>, NativeError> {
+) -> Result<Vec<CssFontFaceFamily>, GrammarFailure> {
     parse_families_observed(source, input, recovery, |_, _| Ok(()))
 }
 
@@ -57,8 +57,8 @@ pub(super) fn parse_families_observed<'i>(
     source: &str,
     input: &mut Stream<'i>,
     recovery: &RecoveryState,
-    observe: impl FnMut(std::ops::Range<usize>, CssSourcePosition) -> Result<(), NativeError>,
-) -> Result<Vec<CssFontFaceFamily>, NativeError> {
+    observe: impl FnMut(std::ops::Range<usize>, CssSourcePosition) -> Result<(), GrammarFailure>,
+) -> Result<Vec<CssFontFaceFamily>, GrammarFailure> {
     recovery.check_specialized_components_from(
         source,
         offset_of(input.site()),
@@ -73,7 +73,7 @@ pub(super) fn parse_families_observed<'i>(
 fn families<'i>(
     input: &mut Stream<'i>,
     numeric: &NumericInputContext<'_>,
-    mut observe: impl FnMut(std::ops::Range<usize>, CssSourcePosition) -> Result<(), NativeError>,
+    mut observe: impl FnMut(std::ops::Range<usize>, CssSourcePosition) -> Result<(), GrammarFailure>,
 ) -> Value<'i, Vec<CssFontFaceFamily>> {
     comma_list(input, |input| {
         let start = input.site();
@@ -96,7 +96,7 @@ fn families<'i>(
     })
 }
 
-fn families_context(error: NativeError) -> NativeError {
+fn families_context(error: GrammarFailure) -> GrammarFailure {
     with_at_rule_prelude_context(
         error,
         "font-feature-values",
@@ -112,7 +112,7 @@ pub(super) fn parse_rule<'i>(
     position: CssSourcePosition,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: RecoveryState,
-) -> Result<CssFontFeatureValuesRule, NativeError> {
+) -> Result<CssFontFeatureValuesRule, GrammarFailure> {
     let recovered = parse_outer_body(source, contents, recovery);
     diagnostics.extend(recovered.diagnostics);
     CssFontFeatureValuesRule::try_new(families, recovered.syntax)
@@ -206,7 +206,7 @@ struct BodyParser<'i> {
 
 impl<'i> RuleGrammar<'i, Attached<'i>> for BodyParser<'_> {
     type Item = Member;
-    type Error = NativeError;
+    type Error = GrammarFailure;
 
     // The outer body admits the blocks of the feature types, whose own bodies
     // are definitions. A prelude that is rejected is reported at its start,
@@ -284,7 +284,7 @@ impl<'i> BlockGrammar<'i, Attached<'i>> for BodyParser<'_> {
 
 impl BodyParser<'_> {
     /// Admits the declaration named `name` that lies at `text`.
-    fn admit(&mut self, name: &str, text: &DeclarationText) -> Result<Member, NativeError> {
+    fn admit(&mut self, name: &str, text: &DeclarationText) -> Result<Member, GrammarFailure> {
         let snapshot = self.recovery.source_snapshot();
         let implicit = self.recovery.check_component_values_from(
             self.source,
@@ -368,8 +368,8 @@ impl BodyParser<'_> {
 // (reference "Source coordinates and diagnostics") with this exact token grammar.
 pub(super) fn indexes_from_components(
     values: &CssComponentValues,
-    error_for_component: impl Fn(&CssComponentValue) -> NativeError,
-) -> Result<Vec<CssFontFeatureValueIndex>, NativeError> {
+    error_for_component: impl Fn(&CssComponentValue) -> GrammarFailure,
+) -> Result<Vec<CssFontFeatureValueIndex>, GrammarFailure> {
     let mut indexes = Vec::new();
     for value in values.items() {
         match value.view() {
@@ -420,7 +420,7 @@ fn pending(input: &mut Stream<'_>) -> CssSubstitutionDependentValue {
 pub(super) fn parse_display_text(
     snapshot: &CssSourceSnapshot,
     range: std::ops::Range<usize>,
-) -> Result<FontFeatureDisplayData, NativeError> {
+) -> Result<FontFeatureDisplayData, GrammarFailure> {
     parse_descriptor_range(
         snapshot,
         range.start..range.end,
@@ -461,7 +461,7 @@ pub(crate) fn construct_display_value(
         })?;
         let mut input = document.root();
         validate_root(&mut input, &numeric, "font-feature-values", "font-display")
-            .map_err(|error| native(&numeric, &error))?;
+            .map_err(|error| value_failure(&numeric, &error))?;
         parse_descriptor_checked(
             &mut input,
             &numeric,
@@ -478,7 +478,7 @@ pub(super) fn parse_feature_text(
     snapshot: &CssSourceSnapshot,
     range: std::ops::Range<usize>,
     kind: CssFontFeatureValueKind,
-) -> Result<FontFeatureValueData, NativeError> {
+) -> Result<FontFeatureValueData, GrammarFailure> {
     parse_descriptor_range(
         snapshot,
         range.start..range.end,
@@ -503,7 +503,7 @@ fn feature_data<'i>(
     kind: CssFontFeatureValueKind,
     components: &CssComponentValues,
     numeric: &NumericInputContext<'_>,
-    error: impl Fn(&CssComponentValue, &'static str) -> NativeValueError,
+    error: impl Fn(&CssComponentValue, &'static str) -> GrammarFailure,
 ) -> Value<'i, FontFeatureValueData> {
     // Annotation/boundary tokens are disallowed before whole-value qualification.
     for component in components.items() {
@@ -592,7 +592,7 @@ pub(crate) fn construct_feature_value(
                 )
             },
         )
-        .map_err(|error| native(&numeric, &error))
+        .map_err(|error| value_failure(&numeric, &error))
     })();
     result.map_err(|error| crate::diagnostic::error::from_parse_error(serialized.as_css(), error))
 }

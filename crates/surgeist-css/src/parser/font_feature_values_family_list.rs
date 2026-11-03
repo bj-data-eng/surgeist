@@ -1,6 +1,6 @@
 //! Raw literal family preludes through the native feature-value grammar.
 use super::recovery::RecoveryState;
-use super::{fragments, syntax_bridge};
+use super::{fragments, tree_build_diagnostics};
 use crate::component::values::CssComponentValueErrorKind;
 use crate::component::{CssComponentValueError, CssComponentValueLimits, CssValueOrigin};
 use crate::diagnostic::CssRecoveryAction;
@@ -20,7 +20,10 @@ pub(crate) fn parse_with_context(
         {
             Ok(document) => document,
             Err(error) => {
-                return CssParseReport::new(None, vec![syntax_bridge::arena_error(source, error)]);
+                return CssParseReport::new(
+                    None,
+                    vec![tree_build_diagnostics::tree_build_failure(source, error)],
+                );
             }
         };
         let snapshot = document

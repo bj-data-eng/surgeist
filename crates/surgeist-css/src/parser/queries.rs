@@ -11,14 +11,14 @@ pub(crate) fn construct_when_media_feature(
 ) -> Result<crate::query::CssWhenMediaFeature, crate::query::CssConditionConstructionError> {
     features::construct_when_media_feature(component, limits)
 }
-use crate::diagnostic::error::NativeError;
+use crate::diagnostic::error::GrammarFailure;
 use surgeist_css_parser::stream::StopToken;
 use surgeist_css_parser::{Token, match_ignore_ascii_case};
 
 use super::boolean_condition::{BooleanConditionGrammar, parse_boolean_condition};
 use super::descriptor_stream::{
     Value, ValueError, at_final_comma, byte_offset, collect_scope, consume_remaining,
-    expect_exhausted, from_here, location, native,
+    expect_exhausted, from_here, location, value_failure,
 };
 use super::recovery::{
     RecoveryState, comma_member_span, first_non_trivia_position, recovery_action_for_error,
@@ -107,7 +107,7 @@ pub(crate) fn parse_media_query_list<'i>(
     input: &mut Stream<'i>,
     diagnostics: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
-) -> std::result::Result<CssMediaQueryList, NativeError> {
+) -> std::result::Result<CssMediaQueryList, GrammarFailure> {
     super::descriptor_stream::read_scope(input, recovery.source_snapshot(), |stream, numeric| {
         media_query_list(source, stream, numeric, diagnostics, recovery)
     })
@@ -180,7 +180,7 @@ pub(super) fn media_query_list<'i>(
                 implicit_closures.extend(openings);
             }
             Err(error) => {
-                let error = native(numeric, &error);
+                let error = value_failure(numeric, &error);
                 let action = recovery_action_for_error(
                     &error,
                     crate::diagnostic::CssRecoveryAction::ReplaceMediaQueryWithNever,
@@ -668,7 +668,7 @@ impl<'a> MediaInput<'a> {
     }
     /// How far into the text a failure got: where it is, as a reader counts.
     pub(super) fn reach(&self, error: &ValueError<'_>) -> (u32, u32) {
-        let location = native(self.numeric, error).location;
+        let location = value_failure(self.numeric, error).location;
         (location.line().value(), location.column().value())
     }
     pub(super) fn next_origin(&self, input: &mut Stream<'_>) -> CssValueOrigin {
@@ -712,11 +712,11 @@ impl<'a> MediaInput<'a> {
         })
     }
 }
-fn media_committed_error(error: &NativeError) -> bool {
+fn media_committed_error(error: &GrammarFailure) -> bool {
     media_terminal_error(error)
         || matches!(error.error.kind(), crate::diagnostic::error::ErrorKind::InvalidMediaQuery(detail) if detail.is_committed_context())
 }
-pub(super) fn media_terminal_error(error: &NativeError) -> bool {
+pub(super) fn media_terminal_error(error: &GrammarFailure) -> bool {
     is_nesting_limit_error(error)
         || matches!(
             error.error.kind(),
@@ -866,7 +866,7 @@ fn construct_media(
         Ok(query)
     })();
     let query = result.map_err(|error: ValueError<'_>| {
-        let error = native(&numeric, &error);
+        let error = value_failure(&numeric, &error);
         if let crate::diagnostic::error::ErrorKind::InvalidComponentValue(component) =
             error.error.kind()
         {

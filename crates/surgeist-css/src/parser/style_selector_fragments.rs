@@ -1,6 +1,6 @@
 //! Raw selector admission in the actual style-rule grammar context.
 use crate::parser::recovery::{RecoveryState, SharedNamespaces};
-use crate::parser::{fragments, selectors, syntax_bridge};
+use crate::parser::{fragments, selectors, tree_build_diagnostics};
 use crate::selector::{CssNamespaceContext, CssStyleSelectorList};
 use crate::selector::{CssParsedStyleSelectors, CssStyleSelectorContext};
 use crate::source::CssParsedOrigin;
@@ -20,7 +20,7 @@ pub(crate) fn parse_style_selector_list_with_limits(
             Err(error) => {
                 return crate::CssParseReport::new(
                     None,
-                    vec![syntax_bridge::arena_error(source, error)],
+                    vec![tree_build_diagnostics::tree_build_failure(source, error)],
                 );
             }
         };

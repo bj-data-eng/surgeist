@@ -11,7 +11,7 @@ use crate::component::{
     CssBlockKind, CssComponentValueLimits, CssComponentValueRef, CssComponentValues, CssValueOrigin,
 };
 use crate::diagnostic::CssFeatureId;
-use crate::diagnostic::error::NativeError;
+use crate::diagnostic::error::GrammarFailure;
 use crate::query::supports::construction::SupportsLexical;
 use crate::query::{
     CssCondition, CssConditionConstructionError, CssConditionKind, CssConditionList,
@@ -39,7 +39,7 @@ pub(super) fn parse_prelude<'i>(
     recovery: &RecoveryState,
     name: &str,
     optional: bool,
-) -> Result<WhenPrelude, NativeError> {
+) -> Result<WhenPrelude, GrammarFailure> {
     let production = if optional {
         "ext.rule.else"
     } else {
@@ -72,7 +72,7 @@ fn prelude_error(
     name: &str,
     fallback: usize,
     error: CssConditionConstructionError,
-) -> NativeError {
+) -> GrammarFailure {
     let position = crate::query::media::construction::parsed_position(error.origin())
         .unwrap_or_else(|| {
             CssSourcePosition::from_byte_offset_in(

@@ -20,11 +20,10 @@ use crate::diagnostic::error::{
     unexpected_at,
 };
 use crate::numeric::expression::NumericInputContext;
-use crate::parser::block_units::{location_at, offset_of};
-use crate::parser::combinators::parse_native_comma_list;
+use crate::parser::block_units::{GrammarFailure, location_at, offset_of};
+use crate::parser::combinators::parse_comma_separated;
 use crate::parser::descriptor_stream::{
-    NativeValueError, Value, ValueError, at_serialized_offset, consume_remaining, fail,
-    serialized_offset,
+    Value, ValueError, at_serialized_offset, consume_remaining, fail, serialized_offset,
 };
 use crate::parser::syntax_types::{Site, Stream, SyntaxError};
 use crate::rule::font_face::CssUnicodeRange;
@@ -133,8 +132,8 @@ fn authored_text(
 fn read<'w>(
     stream: &mut Stream<'w>,
     locator: &Locator<'_>,
-) -> Result<Vec<CssUnicodeRange>, NativeValueError> {
-    parse_native_comma_list(
+) -> Result<Vec<CssUnicodeRange>, GrammarFailure> {
+    parse_comma_separated(
         stream,
         |item| range(item, locator),
         |_, at| {

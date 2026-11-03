@@ -2,7 +2,7 @@
 
 use super::descriptor_stream::{
     Value, ValueError, byte_offset, collect_scope, consume_remaining, expect_exhausted, location,
-    native, read_scope,
+    read_scope, value_failure,
 };
 use super::property_input::StreamExt as _;
 use super::recovery::{RecoveryState, SharedNamespaces};
@@ -10,7 +10,7 @@ use super::syntax_types::{Mark, Site, Stream, SyntaxError};
 use super::url::parse_url;
 use super::{queries, supports};
 use crate::diagnostic::CssError;
-use crate::diagnostic::error::NativeError;
+use crate::diagnostic::error::GrammarFailure;
 use crate::diagnostic::error::{from_parse_error, invalid_syntax};
 use crate::numeric::expression::NumericInputContext;
 use crate::query::condition::SupportsAuthoredForm;
@@ -234,7 +234,7 @@ fn classify_constructed_import(
     result.map_err(|error: ValueError<'_>| {
         let (kind, origin) = failure_of(
             serialized,
-            from_parse_error(source, native(&numeric, &error)),
+            from_parse_error(source, value_failure(&numeric, &error)),
             crate::component::CssValueOrigin::Programmatic,
         );
         match kind {
@@ -264,7 +264,7 @@ fn checked_import_target<'i>(
     })?;
     let mut stream = document.root();
     parse_import_target(&mut stream, &numeric)
-        .map_err(|error| SyntaxError::custom(at, native(&numeric, &error)))
+        .map_err(|error| SyntaxError::custom(at, value_failure(&numeric, &error)))
 }
 fn construct_import_media(
     items: &[crate::component::CssComponentValue],
@@ -323,7 +323,7 @@ pub(crate) fn parse_import_prelude<'i>(
     source: &str,
     input: &mut Stream<'i>,
     recovery: &RecoveryState,
-) -> Result<CssImportPrelude, NativeError> {
+) -> Result<CssImportPrelude, GrammarFailure> {
     read_scope(input, recovery.source_snapshot(), |stream, numeric| {
         import_prelude(source, stream, numeric, recovery)
     })
@@ -561,7 +561,7 @@ pub(crate) fn import_boundaries_match(
     result.map_err(|error: ValueError<'_>| {
         let (kind, origin) = failure_of(
             serialized,
-            from_parse_error(source, native(&numeric, &error)),
+            from_parse_error(source, value_failure(&numeric, &error)),
             original_origin.clone(),
         );
         match kind {

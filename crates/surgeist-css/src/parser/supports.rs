@@ -2,7 +2,7 @@ use super::boolean_condition::{
     BooleanConditionGrammar, ConditionFailure, parse_boolean_condition,
 };
 use super::descriptor_stream::{
-    Value, byte_offset, collect_scope, consume_remaining, location, native, read_scope,
+    Value, byte_offset, collect_scope, consume_remaining, location, read_scope, value_failure,
 };
 use super::recovery::{RecoveryState, SharedNamespaces};
 use super::selectors::{SelectorRecovery, read_rule_selector};
@@ -15,7 +15,7 @@ use crate::component::{
 };
 use crate::declaration::{CssDeclarationBody, CssImportance};
 use crate::diagnostic::error::ErrorKind;
-use crate::diagnostic::error::NativeError;
+use crate::diagnostic::error::GrammarFailure;
 use crate::diagnostic::error::property::SyntaxErrorExt;
 use crate::diagnostic::error::{
     invalid_component_value, invalid_syntax, is_nesting_limit_error, with_at_rule_prelude_context,
@@ -47,7 +47,7 @@ pub(super) static IMPLEMENTED_SELECTORS: &[crate::diagnostic::CssFeatureId] =
         "ext.supports.selector",
     )];
 
-fn terminal_error(error: &NativeError) -> bool {
+fn terminal_error(error: &GrammarFailure) -> bool {
     is_nesting_limit_error(error)
         || matches!(
             error.error.kind(),
@@ -65,7 +65,7 @@ pub(super) fn grammar_probe<'i, T>(result: Value<'i, T>) -> Value<'i, Option<T>>
     }
 }
 
-pub(crate) fn with_supports_prelude_context(error: NativeError) -> NativeError {
+pub(crate) fn with_supports_prelude_context(error: GrammarFailure) -> GrammarFailure {
     if terminal_error(&error) {
         error
     } else {
@@ -83,7 +83,7 @@ pub(crate) fn parse_supports_condition<'i>(
     source: &str,
     input: &mut Stream<'i>,
     recovery: &RecoveryState,
-) -> Result<CssCondition<CssSupportsLeaf>, NativeError> {
+) -> Result<CssCondition<CssSupportsLeaf>, GrammarFailure> {
     read_scope(input, recovery.source_snapshot(), |stream, numeric| {
         supports_condition(source, stream, numeric, recovery)
     })
@@ -138,7 +138,10 @@ pub(super) fn supports_declaration<'i>(
     )
     .map_err(|e| SyntaxError::custom(input.site(), parser_error(e, start)))
 }
-fn parser_error(error: CssSupportsConstructionError, fallback: CssSourcePosition) -> NativeError {
+fn parser_error(
+    error: CssSupportsConstructionError,
+    fallback: CssSourcePosition,
+) -> GrammarFailure {
     let location =
         crate::query::media::construction::parsed_position(error.origin()).unwrap_or(fallback);
     match error.into_kind() {
@@ -401,8 +404,10 @@ fn operand(
                 let mut input = tree.root();
                 let mut diagnostics = Vec::new();
                 let mut selector_recovery = SelectorRecovery::new(source, &mut diagnostics, probe);
-                let parsed = read_rule_selector(&mut input, &mut selector_recovery)
-                    .map_err(|error| native(&NumericInputContext::parsed(&snapshot), &error));
+                let parsed =
+                    read_rule_selector(&mut input, &mut selector_recovery).map_err(|error| {
+                        value_failure(&NumericInputContext::parsed(&snapshot), &error)
+                    });
                 let selector_ends = input.only_whitespace_remains();
                 match parsed {
                     Ok(selector) if selector_ends && diagnostics.is_empty() => {

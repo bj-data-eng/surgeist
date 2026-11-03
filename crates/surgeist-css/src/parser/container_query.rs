@@ -1,4 +1,4 @@
-use crate::diagnostic::error::NativeError;
+use crate::diagnostic::error::GrammarFailure;
 use crate::source::CssSourcePosition;
 
 use super::boolean_condition::{
@@ -487,7 +487,7 @@ pub(crate) fn collect_container_components<'i>(
     source: &str,
     input: &mut Stream<'i>,
     recovery: &RecoveryState,
-) -> Result<(CssComponentValues, Vec<usize>), NativeError> {
+) -> Result<(CssComponentValues, Vec<usize>), GrammarFailure> {
     let implicit = recovery.check_specialized_components_from(
         source,
         super::block_units::offset_of(input.site()),
@@ -587,7 +587,7 @@ fn admit_container_prelude(
 pub(crate) fn container_prelude_from_components(
     values: CssComponentValues,
     location: CssSourcePosition,
-) -> Result<CssContainerPrelude, NativeError> {
+) -> Result<CssContainerPrelude, GrammarFailure> {
     let end = values.items().len();
     admit_container_prelude(values).map_err(|error| match error {
         ContainerPreludeAdmissionError::Component(error) => {
@@ -608,7 +608,7 @@ pub(crate) fn container_prelude_from_components(
 fn container_component_error(
     fallback: CssSourcePosition,
     error: crate::component::CssComponentValueError,
-) -> NativeError {
+) -> GrammarFailure {
     let location =
         crate::query::media::construction::parsed_position(error.origin()).unwrap_or(fallback);
     crate::diagnostic::error::invalid_component_value(location, error)

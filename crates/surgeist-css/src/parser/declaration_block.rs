@@ -10,14 +10,14 @@ use crate::diagnostic::error::{
     property_name_error, unexpected_syntax_end, unexpected_syntax_token,
 };
 use crate::parser::block_units::{
-    DeclarationUnit, Failure, GrammarError, NativeError, grammar_error, location_at, native_error,
-    offset_of,
+    DeclarationUnit, Failure, GrammarError, GrammarFailure, grammar_error, grammar_failure,
+    location_at, offset_of,
 };
 use crate::parser::declaration_unit::{DeclarationText, parse_declaration_unit};
 use crate::parser::recovery::{RecoveryState, SharedNamespaces};
 use crate::parser::syntax_types::{Attached, SyntaxError};
 use crate::parser::{
-    DeclarationMode, block_item_diagnostic_from_start, fragments, recovery, syntax_bridge,
+    DeclarationMode, block_item_diagnostic_from_start, fragments, recovery, tree_build_diagnostics,
 };
 use crate::property::properties::resolve_property_name;
 use crate::source::CssSourcePosition;
@@ -73,14 +73,14 @@ pub(super) trait Receiver {
     /// Ordinary raw admission retains its established resource recovery policy.
     /// Domain replacement must reject preparation rather than publish a prefix.
     const ABORT_ON_RESOURCE: bool = true;
-    fn check_name(&self, name: &str, location: CssSourcePosition) -> Result<(), NativeError>;
+    fn check_name(&self, name: &str, location: CssSourcePosition) -> Result<(), GrammarFailure>;
     /// Admits the declaration named `name` that lies at `text`.
     fn admit(
         &mut self,
         name: &str,
         text: &DeclarationText,
         recovery: &RecoveryState,
-    ) -> Result<Self::Declaration, NativeError>;
+    ) -> Result<Self::Declaration, GrammarFailure>;
     fn retained(&self, _declaration: &Self::Declaration, _recovery: &RecoveryState) {}
     fn take_diagnostics(&mut self) -> Vec<crate::diagnostic::CssRecoveryDiagnostic> {
         Vec::new()
@@ -93,7 +93,11 @@ struct OrdinaryReceiver {
 impl Receiver for OrdinaryReceiver {
     type Declaration = CssDeclaration;
     const ABORT_ON_RESOURCE: bool = false;
-    fn check_name<'i>(&self, name: &str, location: CssSourcePosition) -> Result<(), NativeError> {
+    fn check_name<'i>(
+        &self,
+        name: &str,
+        location: CssSourcePosition,
+    ) -> Result<(), GrammarFailure> {
         if !self.parser_context.selects_svg_glyph(name) && resolve_property_name(name).is_none() {
             Err(property_name_error(location, name))
         } else {
@@ -105,7 +109,7 @@ impl Receiver for OrdinaryReceiver {
         name: &str,
         text: &DeclarationText,
         recovery: &RecoveryState,
-    ) -> Result<CssDeclaration, NativeError> {
+    ) -> Result<CssDeclaration, GrammarFailure> {
         parse_declaration_unit(
             DeclarationMode::Ordinary,
             name,
@@ -140,7 +144,7 @@ struct Contents<'r, R> {
 
 impl<'i, R: Receiver> RuleGrammar<'i, Attached<'i>> for Contents<'_, R> {
     type Item = R::Declaration;
-    type Error = NativeError;
+    type Error = GrammarFailure;
 
     fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Self::Item, GrammarError<'i>> {
         let at = rule.start();
@@ -183,7 +187,7 @@ impl<'i, R: Receiver> BlockGrammar<'i, Attached<'i>> for Contents<'_, R> {
 /// The error a declaration that failed is reported with: the declaration
 /// attempt's own, with a `;` where the declaration needed more reported as the
 /// end of the declaration.
-fn declaration_failure<'i>(snapshot: &CssSourceSnapshot, failed: &Failure<'i>) -> NativeError {
+fn declaration_failure<'i>(snapshot: &CssSourceSnapshot, failed: &Failure<'i>) -> GrammarFailure {
     let error = failed.declaration_error().unwrap_or_else(|| failed.error());
     // A `;` or the `}` that ends the contents is the end of the declaration.
     if matches!(
@@ -206,7 +210,7 @@ fn declaration_failure<'i>(snapshot: &CssSourceSnapshot, failed: &Failure<'i>) -
         }
         unexpected_syntax_end(location_at(snapshot, at))
     } else {
-        native_error(snapshot, error)
+        grammar_failure(snapshot, error)
     }
 }
 
@@ -227,7 +231,10 @@ fn parse_contents_with_snapshot<R: Receiver>(
         ) {
             Ok(document) => document,
             Err(error) => {
-                return CssParseReport::new(None, vec![syntax_bridge::arena_error(source, error)]);
+                return CssParseReport::new(
+                    None,
+                    vec![tree_build_diagnostics::tree_build_failure(source, error)],
+                );
             }
         };
         let snapshot = document

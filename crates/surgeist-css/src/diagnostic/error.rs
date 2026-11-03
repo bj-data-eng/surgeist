@@ -1810,7 +1810,7 @@ impl std::error::Error for CssError {
 /// What a grammar reports for a failure, until the public boundary publishes it
 /// as a [`CssError`] (see [`from_parse_error`]).
 #[derive(Clone, Debug)]
-pub(crate) struct NativeError {
+pub(crate) struct GrammarFailure {
     /// The diagnostic the grammar names. Its position is the grammar's own;
     /// a derived diagnostic takes `location` instead.
     pub(crate) error: Box<CssError>,
@@ -1818,7 +1818,7 @@ pub(crate) struct NativeError {
     pub(crate) location: CssSourcePosition,
 }
 
-impl NativeError {
+impl GrammarFailure {
     /// The failure `error` at `location`.
     pub(crate) fn new(error: CssError, location: CssSourcePosition) -> Self {
         Self {
@@ -1839,14 +1839,14 @@ pub(crate) fn lexer_at(text: &str, offset: usize) -> Option<Lexer<'_>> {
 
 /// The diagnostic `error` names, qualified by the tokens of `source`, which
 /// are lexed when the qualification asks for them.
-pub(crate) fn from_parse_error(source: &str, error: NativeError) -> CssError {
+pub(crate) fn from_parse_error(source: &str, error: GrammarFailure) -> CssError {
     (*error.error).resolve_source(&token_navigation::LexedText::new(source))
 }
 
 /// The diagnostic `error` names, qualified by `tokens`.
-pub(crate) fn from_native_error(
+pub(crate) fn from_grammar_failure(
     tokens: &impl token_navigation::TokenContext,
-    error: NativeError,
+    error: GrammarFailure,
 ) -> CssError {
     (*error.error).resolve_source(tokens)
 }
@@ -1855,12 +1855,12 @@ pub(crate) fn from_native_error(
 /// `document`.
 pub(crate) fn from_parse_error_in<P>(
     document: &surgeist_css_parser::Document<'_, P>,
-    error: NativeError,
+    error: GrammarFailure,
 ) -> CssError {
     (*error.error).resolve_source(document)
 }
 
-pub(crate) fn is_nesting_limit_error(error: &NativeError) -> bool {
+pub(crate) fn is_nesting_limit_error(error: &GrammarFailure) -> bool {
     matches!(error.error.kind, ErrorKind::NestingLimit(_))
 }
 
@@ -1868,7 +1868,7 @@ pub(crate) fn nesting_limit(
     position: CssSourcePosition,
     limit: u32,
     enclosing_production: &'static str,
-) -> NativeError {
+) -> GrammarFailure {
     depth_error(
         position,
         ErrorKind::NestingLimit(CssNestingLimitError {
@@ -1884,7 +1884,7 @@ pub(crate) fn parser_unavailable(
     position: CssSourcePosition,
     direct_depth: u32,
     enclosing_production: &'static str,
-) -> NativeError {
+) -> GrammarFailure {
     depth_error(
         position,
         ErrorKind::ParserUnavailable(CssNestingLimitError {
@@ -1894,8 +1894,8 @@ pub(crate) fn parser_unavailable(
     )
 }
 
-fn depth_error(position: CssSourcePosition, kind: ErrorKind) -> NativeError {
-    NativeError::new(CssError { kind, position }, position)
+fn depth_error(position: CssSourcePosition, kind: ErrorKind) -> GrammarFailure {
+    GrammarFailure::new(CssError { kind, position }, position)
 }
 
 pub(crate) fn legacy_navigation_target(target: &str, position: CssSourcePosition) -> CssError {
@@ -1955,7 +1955,7 @@ pub(crate) fn escape_parse_error(
 pub(crate) fn unexpected_component_value(
     component: &crate::component::CssComponentValue,
     expectation: &'static str,
-) -> NativeError {
+) -> GrammarFailure {
     let crate::component::CssValueOrigin::Parsed(origin) = component.origin() else {
         unreachable!("source value grammar owns parsed component origins")
     };
@@ -1966,9 +1966,9 @@ pub(crate) fn unexpected_component_value_at(
     component: &crate::component::CssComponentValue,
     expectation: &'static str,
     position: CssSourcePosition,
-) -> NativeError {
+) -> GrammarFailure {
     let encountered = CssTokenSummary::from_component(component);
-    NativeError::new(
+    GrammarFailure::new(
         CssError {
             position,
             kind: ErrorKind::UnexpectedToken(CssUnexpectedTokenError {
@@ -1983,7 +1983,7 @@ pub(crate) fn unexpected_component_value_at(
 pub(crate) fn unexpected_end_at(
     location: CssSourcePosition,
     expectation: &'static str,
-) -> NativeError {
+) -> GrammarFailure {
     error_at(
         location,
         ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
@@ -2045,7 +2045,7 @@ pub(crate) fn from_rule_parse_error(
     tokens: &impl token_navigation::TokenContext,
     failed_unit: &str,
     semicolon_terminated: bool,
-    error: NativeError,
+    error: GrammarFailure,
 ) -> CssError {
     let mut error = (*error.error).resolve_source(tokens);
     let unit = failed_unit
@@ -2108,7 +2108,7 @@ pub(crate) fn from_rule_parse_error(
 
 /// The rule protocol's rejection of an at-rule whose name no grammar admits
 /// in its context (Syntax 3 section 5.5.2), at `location`.
-pub(crate) fn unknown_at_rule(location: CssSourcePosition, name: &str) -> NativeError {
+pub(crate) fn unknown_at_rule(location: CssSourcePosition, name: &str) -> GrammarFailure {
     let kind = if let Some(feature) = unsupported_at_rule_feature(name) {
         ErrorKind::UnsupportedAtRule(CssUnsupportedAtRuleError {
             name: CssAtRuleName::new(name),
@@ -2124,7 +2124,7 @@ pub(crate) fn unknown_at_rule(location: CssSourcePosition, name: &str) -> Native
 
 /// The rule protocol's rejection of an at-rule block (Syntax 3 section 5.5.2)
 /// at `location`.
-pub(crate) fn invalid_at_rule_body(location: CssSourcePosition) -> NativeError {
+pub(crate) fn invalid_at_rule_body(location: CssSourcePosition) -> GrammarFailure {
     error_at(
         location,
         ErrorKind::InvalidAtRuleBody(CssAtRuleSyntaxError {
@@ -2140,7 +2140,7 @@ pub(crate) fn invalid_at_rule_body(location: CssSourcePosition) -> NativeError {
 pub(crate) fn selector_encountered_at(
     location: CssSourcePosition,
     encountered: Option<CssTokenSummary>,
-) -> NativeError {
+) -> GrammarFailure {
     error_at(
         location,
         ErrorKind::InvalidSelector(CssSelectorError {
@@ -2157,7 +2157,7 @@ pub(crate) fn selector_encountered_at(
 pub(crate) fn selector_component_error(
     fallback: CssSourcePosition,
     detail: crate::component::CssComponentValueError,
-) -> NativeError {
+) -> GrammarFailure {
     let crate::component::CssValueOrigin::Parsed(origin) = detail.origin() else {
         return invalid_component_value(fallback, detail);
     };
@@ -2177,7 +2177,7 @@ pub(crate) fn selector_component_error(
         _ => return invalid_component_value(fallback, detail),
     };
     let position = origin.span().start();
-    NativeError::new(
+    GrammarFailure::new(
         CssError {
             position,
             kind: ErrorKind::InvalidSelector(CssSelectorError {
@@ -2196,14 +2196,14 @@ pub(crate) fn selector_component_error(
 pub(crate) fn invalid_component_value(
     location: CssSourcePosition,
     detail: crate::component::CssComponentValueError,
-) -> NativeError {
+) -> GrammarFailure {
     let position = match detail.origin() {
         crate::component::CssValueOrigin::Parsed(origin) => origin.span().start(),
         crate::component::CssValueOrigin::ImplicitClosure { opening, .. } => opening.span().start(),
         crate::component::CssValueOrigin::Programmatic
         | crate::component::CssValueOrigin::UnretainedInput { .. } => location,
     };
-    NativeError::new(
+    GrammarFailure::new(
         CssError {
             kind: ErrorKind::InvalidComponentValue(Box::new(detail)),
             position,
@@ -2212,7 +2212,7 @@ pub(crate) fn invalid_component_value(
     )
 }
 
-pub(crate) fn invalid_syntax(location: CssSourcePosition) -> NativeError {
+pub(crate) fn invalid_syntax(location: CssSourcePosition) -> GrammarFailure {
     error_at(
         location,
         ErrorKind::InvalidQualifiedRule(CssQualifiedRuleError {
@@ -2229,13 +2229,13 @@ pub(crate) fn invalid_when_prelude(
     source: &str,
     position: CssSourcePosition,
     name: &str,
-) -> NativeError {
+) -> GrammarFailure {
     let encountered = lexer_at(source, position.byte_offset().value()).and_then(|mut lexer| {
         lexer
             .next_lexeme()
             .map(|lexeme| CssTokenSummary::from_syntax_token(lexeme.token()))
     });
-    NativeError::new(
+    GrammarFailure::new(
         CssError {
             position,
             kind: ErrorKind::InvalidAtRulePrelude(CssAtRuleSyntaxError {
@@ -2269,7 +2269,7 @@ pub(crate) fn invalid_at_rule_placement(
     location: CssSourcePosition,
     name: &str,
     expected_context: &'static str,
-) -> NativeError {
+) -> GrammarFailure {
     error_at(
         location,
         ErrorKind::InvalidAtRulePlacement(CssAtRulePlacementError {
@@ -2280,11 +2280,11 @@ pub(crate) fn invalid_at_rule_placement(
 }
 
 pub(crate) fn with_at_rule_prelude_context(
-    mut error: NativeError,
+    mut error: GrammarFailure,
     name: &str,
     production: &'static str,
     expectation: &'static str,
-) -> NativeError {
+) -> GrammarFailure {
     let encountered = take_encountered(&mut error.error.kind);
     if !matches!(error.error.kind, ErrorKind::InvalidMediaQuery(_)) {
         error.error = Box::new(CssError::at(
@@ -2306,8 +2306,8 @@ pub(crate) fn invalid_at_rule_body_at(
     name: &str,
     production: &'static str,
     expectation: &'static str,
-) -> NativeError {
-    NativeError::new(
+) -> GrammarFailure {
+    GrammarFailure::new(
         CssError {
             position,
             kind: ErrorKind::InvalidAtRuleBody(CssAtRuleSyntaxError {
@@ -2321,7 +2321,7 @@ pub(crate) fn invalid_at_rule_body_at(
     )
 }
 
-pub(crate) fn invalid_selector_at(location: CssSourcePosition) -> NativeError {
+pub(crate) fn invalid_selector_at(location: CssSourcePosition) -> GrammarFailure {
     error_at(
         location,
         ErrorKind::InvalidSelector(CssSelectorError {
@@ -2334,7 +2334,7 @@ pub(crate) fn invalid_selector_at(location: CssSourcePosition) -> NativeError {
 
 /// A recognized property refused by the active grammar, such as `size` in a
 /// margin rule, names that property's support-catalog record.
-pub(crate) fn property_name_error(location: CssSourcePosition, name: &str) -> NativeError {
+pub(crate) fn property_name_error(location: CssSourcePosition, name: &str) -> GrammarFailure {
     match property_for_supported_name(name) {
         Some(property) => error_at(
             location,
@@ -2356,7 +2356,7 @@ pub(crate) fn descriptor_name_error(
     location: CssSourcePosition,
     at_rule: &str,
     name: &str,
-) -> NativeError {
+) -> GrammarFailure {
     error_at(
         location,
         ErrorKind::UnknownDescriptor(CssUnknownDescriptorError {
@@ -2375,9 +2375,9 @@ pub(crate) fn color_syntax_kind(component: Option<&str>) -> ErrorKind {
 }
 
 pub(crate) fn with_media_query_context(
-    mut error: NativeError,
+    mut error: GrammarFailure,
     feature: Option<&str>,
-) -> NativeError {
+) -> GrammarFailure {
     if matches!(error.error.kind, ErrorKind::InvalidMediaQuery(_)) {
         return error;
     }
@@ -2394,7 +2394,10 @@ pub(crate) fn with_media_query_context(
     error
 }
 
-pub(crate) fn custom_media_context_error(location: CssSourcePosition, name: &str) -> NativeError {
+pub(crate) fn custom_media_context_error(
+    location: CssSourcePosition,
+    name: &str,
+) -> GrammarFailure {
     let mut error = with_media_query_context(invalid_syntax(location), Some(name));
     if let ErrorKind::InvalidMediaQuery(detail) = &mut error.error.kind {
         detail.committed_context = true;
@@ -2402,7 +2405,7 @@ pub(crate) fn custom_media_context_error(location: CssSourcePosition, name: &str
     error
 }
 
-pub(crate) fn with_property_context(mut error: NativeError, property: &str) -> NativeError {
+pub(crate) fn with_property_context(mut error: GrammarFailure, property: &str) -> GrammarFailure {
     let Some(property) = property_for_supported_name(property) else {
         return error;
     };
@@ -2435,7 +2438,7 @@ pub(crate) fn is_component_resource_error(
 }
 
 /// A speculative grammar alternative must not erase resource failures.
-pub(crate) fn is_resource_parse_error(error: &NativeError) -> bool {
+pub(crate) fn is_resource_parse_error(error: &GrammarFailure) -> bool {
     is_nesting_limit_error(error)
         || matches!(
             &error.error.kind,
@@ -2447,10 +2450,10 @@ pub(crate) fn is_resource_parse_error(error: &NativeError) -> bool {
 /// grammar failure, as the enclosing rule body does. Resource and component
 /// failures keep their own kinds.
 pub(crate) fn with_descriptor_value_context(
-    error: NativeError,
+    error: GrammarFailure,
     at_rule: &str,
     descriptor: &str,
-) -> NativeError {
+) -> GrammarFailure {
     if is_resource_parse_error(&error)
         || matches!(&error.error.kind, ErrorKind::InvalidComponentValue(_))
     {
@@ -2461,10 +2464,10 @@ pub(crate) fn with_descriptor_value_context(
 }
 
 pub(crate) fn with_descriptor_context(
-    mut error: NativeError,
+    mut error: GrammarFailure,
     at_rule: &str,
     descriptor: &str,
-) -> NativeError {
+) -> GrammarFailure {
     if matches!(
         error.error.kind,
         ErrorKind::UnknownDescriptor(_)
@@ -2497,7 +2500,7 @@ pub(crate) fn invalid_descriptor_syntax_token_at(
     at_rule: &str,
     descriptor: &str,
     token: surgeist_css_parser::Token<'_>,
-) -> NativeError {
+) -> GrammarFailure {
     explicit_descriptor_error(
         location,
         at_rule,
@@ -2514,7 +2517,7 @@ pub(crate) fn invalid_descriptor_authored_syntax_token_at(
     descriptor: &str,
     token: surgeist_css_parser::Token<'_>,
     authored: &str,
-) -> NativeError {
+) -> GrammarFailure {
     explicit_descriptor_error(
         location,
         at_rule,
@@ -2528,7 +2531,7 @@ pub(crate) fn incomplete_descriptor_at(
     location: CssSourcePosition,
     at_rule: &str,
     descriptor: &str,
-) -> NativeError {
+) -> GrammarFailure {
     explicit_descriptor_error(
         location,
         at_rule,
@@ -2544,7 +2547,7 @@ fn explicit_descriptor_error(
     descriptor: &str,
     encountered: Option<CssTokenSummary>,
     origin: DiagnosticOrigin,
-) -> NativeError {
+) -> GrammarFailure {
     error_at(
         location,
         ErrorKind::InvalidDescriptorValue(CssDescriptorValueError {
@@ -2560,7 +2563,7 @@ fn explicit_descriptor_error(
 pub(crate) fn invalid_svg_glyph_declaration_annotation(
     location: CssSourcePosition,
     keyframe: bool,
-) -> NativeError {
+) -> GrammarFailure {
     error_at(
         location,
         ErrorKind::InvalidDeclarationAnnotation(CssDeclarationAnnotationError {
@@ -2578,7 +2581,7 @@ pub(crate) fn invalid_known_declaration_annotation(
     location: CssSourcePosition,
     property: CssKnownProperty,
     keyframe: bool,
-) -> NativeError {
+) -> GrammarFailure {
     let context = if keyframe {
         CssDeclarationContext::Keyframe(property)
     } else {
@@ -2597,7 +2600,7 @@ pub(crate) fn invalid_custom_declaration_annotation(
     location: CssSourcePosition,
     property: &CssCustomPropertyName,
     keyframe: bool,
-) -> NativeError {
+) -> GrammarFailure {
     let context = if keyframe {
         CssDeclarationContext::KeyframeCustom(property.clone())
     } else {
@@ -2616,7 +2619,7 @@ pub(crate) fn invalid_descriptor_annotation(
     location: CssSourcePosition,
     at_rule: &str,
     descriptor: &str,
-) -> NativeError {
+) -> GrammarFailure {
     error_at(
         location,
         ErrorKind::InvalidDeclarationAnnotation(CssDeclarationAnnotationError {
@@ -2629,11 +2632,11 @@ pub(crate) fn invalid_descriptor_annotation(
     )
 }
 
-pub(crate) fn error_at(location: CssSourcePosition, kind: ErrorKind) -> NativeError {
-    NativeError::new(CssError::at(location, kind), location)
+pub(crate) fn error_at(location: CssSourcePosition, kind: ErrorKind) -> GrammarFailure {
+    GrammarFailure::new(CssError::at(location, kind), location)
 }
 
-pub(crate) fn unexpected_at(location: CssSourcePosition) -> NativeError {
+pub(crate) fn unexpected_at(location: CssSourcePosition) -> GrammarFailure {
     error_at(
         location,
         ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
@@ -2647,7 +2650,7 @@ pub(crate) fn unexpected_at(location: CssSourcePosition) -> NativeError {
 pub(crate) fn unexpected_syntax_token(
     location: CssSourcePosition,
     token: surgeist_css_parser::Token<'_>,
-) -> NativeError {
+) -> GrammarFailure {
     error_at(
         location,
         ErrorKind::UnexpectedToken(CssUnexpectedTokenError {
@@ -2662,7 +2665,7 @@ pub(crate) fn unexpected_authored_syntax_token(
     location: CssSourcePosition,
     token: surgeist_css_parser::Token<'_>,
     authored: &str,
-) -> NativeError {
+) -> GrammarFailure {
     error_at(
         location,
         ErrorKind::UnexpectedToken(CssUnexpectedTokenError {
@@ -2673,7 +2676,7 @@ pub(crate) fn unexpected_authored_syntax_token(
 }
 
 /// The error of a token stream that ended where its grammar needed a token.
-pub(crate) fn unexpected_syntax_end(location: CssSourcePosition) -> NativeError {
+pub(crate) fn unexpected_syntax_end(location: CssSourcePosition) -> GrammarFailure {
     error_at(
         location,
         ErrorKind::UnexpectedEnd(CssUnexpectedEndError {

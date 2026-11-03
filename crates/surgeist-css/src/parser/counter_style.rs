@@ -4,12 +4,12 @@ use surgeist_css_parser::{Token, match_ignore_ascii_case};
 
 use super::background::parse_image;
 use super::block_units::{
-    DeclarationUnit, GrammarError, NativeError, grammar_error, location_at, offset_of,
+    DeclarationUnit, GrammarError, GrammarFailure, grammar_error, location_at, offset_of,
 };
 use super::declaration_unit::DeclarationText;
 use super::descriptor_stream::{
     Boundary, Value, consume_remaining, drive_block_items, expect_exhausted, fail, from_component,
-    native, parse_descriptor_checked, parse_descriptor_range, read_scope, validate_root,
+    parse_descriptor_checked, parse_descriptor_range, read_scope, validate_root, value_failure,
 };
 use super::property_input::StreamExt;
 use super::recovery::RecoveryState;
@@ -42,7 +42,7 @@ pub(crate) struct CounterStylePrelude {
 pub(crate) fn parse_counter_style_name<'i>(
     input: &mut Stream<'i>,
     source_snapshot: &crate::source::CssSourceSnapshot,
-) -> Result<CounterStylePrelude, NativeError> {
+) -> Result<CounterStylePrelude, GrammarFailure> {
     read_scope(input, source_snapshot, |input, numeric| {
         input.discard_whitespace();
         let token_start = input.site();
@@ -120,7 +120,7 @@ struct CounterStyleDescriptorParser<'s> {
 
 impl<'i> RuleGrammar<'i, Attached<'i>> for CounterStyleDescriptorParser<'_> {
     type Item = CssCounterStyleDescriptor;
-    type Error = NativeError;
+    type Error = GrammarFailure;
 
     // The prelude of an at-rule is read to its end whatever it holds, and the
     // block is then rejected: a recognized top-level rule is misplaced here, and
@@ -169,7 +169,7 @@ impl CounterStyleDescriptorParser<'_> {
         &mut self,
         name: &str,
         text: &DeclarationText,
-    ) -> Result<CssCounterStyleDescriptor, NativeError> {
+    ) -> Result<CssCounterStyleDescriptor, GrammarFailure> {
         let snapshot = self.recovery.source_snapshot();
         let implicit_closures = self.recovery.check_component_values_from(
             self.source,
@@ -216,7 +216,7 @@ fn parse_occurrence(
     text: &DeclarationText,
     name_origin: &crate::source::CssParsedOrigin,
     descriptor: CssCounterStyleDescriptorKind,
-) -> Result<CssCounterStyleDescriptor, NativeError> {
+) -> Result<CssCounterStyleDescriptor, GrammarFailure> {
     parse_descriptor_range(
         source_snapshot,
         text.value_start..text.value_end(),
@@ -538,7 +538,7 @@ pub(super) fn parse_text_value(
     snapshot: &crate::source::CssSourceSnapshot,
     range: std::ops::Range<usize>,
     kind: CssCounterStyleDescriptorKind,
-) -> Result<CounterStyleValueData, NativeError> {
+) -> Result<CounterStyleValueData, GrammarFailure> {
     parse_descriptor_range(
         snapshot,
         range.start..range.end,
@@ -596,7 +596,7 @@ pub(crate) fn construct_descriptor_value(
         })?;
         let mut input = document.root();
         validate_root(&mut input, &numeric, "counter-style", kind.as_str())
-            .map_err(|error| native(&numeric, &error))?;
+            .map_err(|error| value_failure(&numeric, &error))?;
         parse_descriptor_checked(
             &mut input,
             &numeric,

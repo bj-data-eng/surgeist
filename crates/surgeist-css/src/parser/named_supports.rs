@@ -7,14 +7,14 @@ use crate::component::{
     CssComponentValue, CssComponentValueError, CssComponentValueLimits, CssValueOrigin,
 };
 use crate::declaration::CssCustomPropertyName;
-use crate::diagnostic::error::NativeError;
+use crate::diagnostic::error::GrammarFailure;
 use crate::diagnostic::error::invalid_component_value;
 use crate::diagnostic::error::{invalid_syntax, with_at_rule_prelude_context};
 use crate::diagnostic::{CssRecoveryAction, CssRecoveryDiagnostic};
 use crate::parser::block_units::{location_at, offset_of};
 use crate::parser::recovery::RecoveryState;
 use crate::parser::syntax_types::{Document, Site, Stream};
-use crate::parser::{fragments, recovery, syntax_bridge};
+use crate::parser::{fragments, recovery, tree_build_diagnostics};
 use crate::query::supports::CssSupportsConstructionError;
 use crate::query::supports::named_supports::retained_component_recovery;
 use crate::query::supports::{
@@ -57,7 +57,7 @@ pub(crate) struct NamedSupportsPrelude {
 pub(super) fn parse_prelude<'i>(
     input: &mut Stream<'i>,
     recovery: &RecoveryState,
-) -> Result<NamedSupportsPrelude, NativeError> {
+) -> Result<NamedSupportsPrelude, GrammarFailure> {
     let collected =
         super::descriptor_stream::collect_stream_scope(input, recovery.source_snapshot());
     let at = collected.start;
@@ -96,7 +96,7 @@ pub(super) fn parse_rule<'i>(
     contents: &mut Stream<'i>,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
-) -> Result<CssSupportsConditionRule, NativeError> {
+) -> Result<CssSupportsConditionRule, GrammarFailure> {
     let (body, opening, closing) = parse_body(source, contents, diagnostics, recovery)?;
     let snapshot = recovery.source_snapshot();
     let Some(at_node) = start.node() else {
@@ -134,7 +134,7 @@ pub(super) fn parse_body<'i>(
     contents: &mut Stream<'i>,
     diagnostics: &mut Vec<CssRecoveryDiagnostic>,
     recovery: &RecoveryState,
-) -> Result<(CssSupportsTestBody, CssValueOrigin, CssValueOrigin), NativeError> {
+) -> Result<(CssSupportsTestBody, CssValueOrigin, CssValueOrigin), GrammarFailure> {
     let body_start = offset_of(contents.start_site());
     // Arena preparation may omit resource-invalid components. Actual current
     // source admission must therefore precede checked promotion of this body.
@@ -229,9 +229,9 @@ fn issue_diagnostic(
     let location = position;
     let error = match &issue {
         PartitionIssue::Grammar(_, _) => {
-            crate::diagnostic::error::from_native_error(tokens, invalid_syntax(location))
+            crate::diagnostic::error::from_grammar_failure(tokens, invalid_syntax(location))
         }
-        PartitionIssue::Lexical(detail, _) => crate::diagnostic::error::from_native_error(
+        PartitionIssue::Lexical(detail, _) => crate::diagnostic::error::from_grammar_failure(
             tokens,
             invalid_component_value(location, detail.clone()),
         ),
@@ -649,14 +649,20 @@ pub(crate) fn parse_supports_test_contents_with_limits(
         let document = match syntax::source_document_with_limits(source, limits) {
             Ok(document) => document,
             Err(error) => {
-                return CssParseReport::new(None, vec![syntax_bridge::arena_error(source, error)]);
+                return CssParseReport::new(
+                    None,
+                    vec![tree_build_diagnostics::tree_build_failure(source, error)],
+                );
             }
         };
         let mut issues = Vec::new();
         let body = match partition(&document, document.root_list(), None, true, &mut issues) {
             Ok(body) => body,
             Err(error) => {
-                return CssParseReport::new(None, vec![syntax_bridge::arena_error(source, error)]);
+                return CssParseReport::new(
+                    None,
+                    vec![tree_build_diagnostics::tree_build_failure(source, error)],
+                );
             }
         };
         let mut diagnostics: Vec<_> = issues
@@ -707,7 +713,7 @@ pub(crate) fn parse_supports_test_child_with_limits(
         } else {
             CssComponentValueErrorKind::TrailingInput
         };
-        diagnostics.push(syntax_bridge::arena_error(
+        diagnostics.push(tree_build_diagnostics::tree_build_failure(
             source,
             CssComponentValueError::new(kind, origin),
         ));

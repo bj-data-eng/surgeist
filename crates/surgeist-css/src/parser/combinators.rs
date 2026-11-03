@@ -203,7 +203,7 @@ pub(super) fn fill<'i, T>(
 /// (given the exhausted input and the empty item's start); elsewhere `item`
 /// re-enters at the stray separator and reports it as it would any
 /// unexpected component.
-pub(super) fn parse_native_comma_list<'i, T>(
+pub(super) fn parse_comma_separated<'i, T>(
     input: &mut Stream<'i>,
     mut item: impl FnMut(&mut Stream<'i>) -> Result<T, ValueError<'i>>,
     trailing: impl FnOnce(&mut Stream<'i>, Site<'i>) -> ValueError<'i>,

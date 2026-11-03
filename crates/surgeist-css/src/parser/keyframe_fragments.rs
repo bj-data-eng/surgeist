@@ -1,4 +1,4 @@
-use crate::diagnostic::error::NativeError;
+use crate::diagnostic::error::GrammarFailure;
 use crate::parser::recovery::{RecoveryState, SharedNamespaces};
 use crate::parser::{descriptor_stream, fragments, keyframes};
 use crate::rule::keyframes::{CssParsedKeyframeRule, CssParsedKeyframeSelectors};
@@ -60,7 +60,7 @@ pub(crate) fn parse_keyframe_rule_with_context(
                         crate::parser::block_units::location_at(&snapshot, 0),
                     )
                 } else {
-                    crate::parser::block_units::native_error(&snapshot, failed.error())
+                    crate::parser::block_units::grammar_failure(&snapshot, failed.error())
                 }
             })
             .and_then(|block| {
@@ -83,7 +83,7 @@ pub(crate) fn parse_keyframe_rule_with_context(
 
 fn finish<T>(
     source: &str,
-    result: Result<T, NativeError>,
+    result: Result<T, GrammarFailure>,
     mut diagnostics: Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     state: &RecoveryState,
 ) -> crate::CssParseReport<Option<T>> {

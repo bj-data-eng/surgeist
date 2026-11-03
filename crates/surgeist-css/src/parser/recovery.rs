@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use crate::diagnostic::error::NativeError;
+use crate::diagnostic::error::GrammarFailure;
 use surgeist_css_parser::lexer::{Lexer, Options};
 use surgeist_css_parser::{Offset, Token};
 
@@ -336,7 +336,7 @@ impl RecoveryState {
         depth: u32,
         enclosing_production: &'static str,
         boundary: ScanBoundary,
-    ) -> Result<usize, NativeError> {
+    ) -> Result<usize, GrammarFailure> {
         let document = self.structure().map_err(|error| {
             crate::diagnostic::error::invalid_component_value(
                 crate::parser::block_units::location_at(&self.source_snapshot, 0),
@@ -401,7 +401,7 @@ impl RecoveryState {
         &self,
         at: Offset,
         enclosing_production: &'static str,
-    ) -> Result<RecoveryDepthGuard, NativeError> {
+    ) -> Result<RecoveryDepthGuard, GrammarFailure> {
         self.enter(at.value(), enclosing_production)
     }
 
@@ -416,7 +416,7 @@ impl RecoveryState {
         &self,
         opening_offset: usize,
         enclosing_production: &'static str,
-    ) -> Result<RecoveryDepthGuard, NativeError> {
+    ) -> Result<RecoveryDepthGuard, GrammarFailure> {
         self.enter(opening_offset, enclosing_production)
     }
 
@@ -427,7 +427,7 @@ impl RecoveryState {
         source: &str,
         start: usize,
         enclosing_production: &'static str,
-    ) -> Result<Vec<usize>, NativeError> {
+    ) -> Result<Vec<usize>, GrammarFailure> {
         let end = self.scan(
             source,
             start,
@@ -445,7 +445,7 @@ impl RecoveryState {
         source: &str,
         start: usize,
         enclosing_production: &'static str,
-    ) -> Result<Vec<usize>, NativeError> {
+    ) -> Result<Vec<usize>, GrammarFailure> {
         let end = self.scan(
             source,
             start,
@@ -462,7 +462,7 @@ impl RecoveryState {
         source: &str,
         start: usize,
         enclosing_production: &'static str,
-    ) -> Result<(), NativeError> {
+    ) -> Result<(), GrammarFailure> {
         self.scan(
             source,
             start,
@@ -480,7 +480,7 @@ impl RecoveryState {
         source: &str,
         start: usize,
         enclosing_production: &'static str,
-    ) -> Result<Vec<usize>, NativeError> {
+    ) -> Result<Vec<usize>, GrammarFailure> {
         let end = self.scan(
             source,
             start,
@@ -578,7 +578,7 @@ impl RecoveryState {
         source: &str,
         content_start: usize,
         enclosing_production: &'static str,
-    ) -> Option<NativeError> {
+    ) -> Option<GrammarFailure> {
         let opening_offset = content_start.saturating_sub(1);
         if self.depth.get() >= STRUCTURAL_NESTING_LIMIT {
             return Some(nesting_limit(
@@ -604,7 +604,7 @@ impl RecoveryState {
         source: &str,
         start: usize,
         enclosing_production: &'static str,
-    ) -> Result<(), NativeError> {
+    ) -> Result<(), GrammarFailure> {
         self.scan(
             source,
             start,
@@ -619,7 +619,7 @@ impl RecoveryState {
         &self,
         opening_offset: usize,
         enclosing_production: &'static str,
-    ) -> Result<RecoveryDepthGuard, NativeError> {
+    ) -> Result<RecoveryDepthGuard, GrammarFailure> {
         let depth = self.depth.get();
         if depth >= STRUCTURAL_NESTING_LIMIT {
             return Err(nesting_limit(
@@ -710,7 +710,7 @@ impl RecoveryProgress {
 }
 
 pub(crate) fn recovery_action_for_error(
-    error: &NativeError,
+    error: &GrammarFailure,
     ordinary: crate::diagnostic::CssRecoveryAction,
 ) -> crate::diagnostic::CssRecoveryAction {
     if is_nesting_limit_error(error) {

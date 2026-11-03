@@ -1,4 +1,4 @@
-use crate::diagnostic::error::NativeError;
+use crate::diagnostic::error::GrammarFailure;
 use surgeist_css_parser::anb;
 use surgeist_css_parser::stream::StopToken;
 use surgeist_css_parser::token::HashKind;
@@ -6,7 +6,7 @@ use surgeist_css_parser::{Token, match_ignore_ascii_case};
 
 use super::block_units::offset_of;
 use super::descriptor_stream::{
-    Value, ValueError, after_token, at_final_comma, consume_remaining, fail, native,
+    Value, ValueError, after_token, at_final_comma, consume_remaining, fail, value_failure,
 };
 use super::property_input::StreamExt;
 use super::recovery::{RecoveryState, comma_member_span, recovery_action_for_error};
@@ -238,7 +238,7 @@ impl<'a> SelectorRecovery<'a> {
 
     fn diagnose_forgiving_member(
         &mut self,
-        error: NativeError,
+        error: GrammarFailure,
         member_start: usize,
         member_end: usize,
         following_comma: Option<(usize, usize)>,
@@ -268,17 +268,17 @@ impl<'a> SelectorRecovery<'a> {
         &mut self,
         input: &mut Stream<'i>,
         parse: impl FnOnce(&mut Stream<'i>, &mut Self) -> Value<'i, T>,
-    ) -> Result<T, NativeError> {
+    ) -> Result<T, GrammarFailure> {
         let snapshot = self.state.source_snapshot().clone();
         let numeric = crate::numeric::expression::NumericInputContext::parsed(&snapshot);
-        parse(input, self).map_err(|error| native(&numeric, &error))
+        parse(input, self).map_err(|error| value_failure(&numeric, &error))
     }
 }
 
 pub(crate) fn parse_rule_selector_list<'i>(
     input: &mut Stream<'i>,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<Vec<CssSelector>, NativeError> {
+) -> std::result::Result<Vec<CssSelector>, GrammarFailure> {
     recovery.read_stream(input, rule_selector_list)
 }
 
@@ -342,7 +342,7 @@ pub(crate) fn scope_boundary_selector_list<'i>(
 pub(crate) fn parse_scoped_style_selector_list<'i>(
     input: &mut Stream<'i>,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssStyleSelectorList, NativeError> {
+) -> std::result::Result<CssStyleSelectorList, GrammarFailure> {
     recovery.read_stream(input, scoped_style_selector_list)
 }
 
@@ -369,7 +369,7 @@ fn scoped_style_selector_list<'i>(
 pub(super) fn parse_nested_style_selector_list<'i>(
     input: &mut Stream<'i>,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<Vec<CssStyleSelector>, NativeError> {
+) -> std::result::Result<Vec<CssStyleSelector>, GrammarFailure> {
     recovery.read_stream(input, nested_style_selector_list)
 }
 
@@ -460,7 +460,7 @@ pub(super) fn read_rule_selector<'i>(
 pub(super) fn parse_rule_selector<'i>(
     input: &mut Stream<'i>,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssSelector, NativeError> {
+) -> std::result::Result<CssSelector, GrammarFailure> {
     recovery.read_stream(input, |input, recovery| read_rule_selector(input, recovery))
 }
 
@@ -469,8 +469,8 @@ pub(super) fn parse_rule_selector<'i>(
 pub(super) fn finish<'i>(
     input: &mut Stream<'i>,
     recovery: &SelectorRecovery<'_>,
-) -> std::result::Result<(), NativeError> {
-    expect_exhausted(input, recovery).map_err(|error| native(&recovery.numeric(), &error))
+) -> std::result::Result<(), GrammarFailure> {
+    expect_exhausted(input, recovery).map_err(|error| value_failure(&recovery.numeric(), &error))
 }
 
 #[derive(Clone, Copy)]
@@ -1746,7 +1746,7 @@ fn parse_forgiving_pseudo_selector_list<'i>(
             Ok(selector) => Some(CssPseudoSelectorListItem::Selector(selector)),
             Err(error) => {
                 let components = invalid_components.expect("failed member components");
-                let error = native(&recovery.numeric(), &error);
+                let error = value_failure(&recovery.numeric(), &error);
                 let location = error.location;
                 let contains_nesting = components.contains_delimiter('&').map_err(|error| {
                     SyntaxError::custom(input.site(), selector_component_error(location, error))
@@ -1811,7 +1811,7 @@ fn parse_has_relative_selector_list<'i>(
 pub(super) fn parse_general_relative_selector_list<'i>(
     input: &mut Stream<'i>,
     recovery: &mut SelectorRecovery<'_>,
-) -> std::result::Result<CssRelativeSelectorList, NativeError> {
+) -> std::result::Result<CssRelativeSelectorList, GrammarFailure> {
     recovery.read_stream(input, |input, recovery| {
         recovery.check_depth(input)?;
         parse_relative_selector_list_with_options(input, SelectorParseOptions::standard(), recovery)

@@ -1,13 +1,13 @@
 use surgeist_css_parser::grammar::{AtRule, BlockGrammar, QualifiedRule, RuleGrammar};
 
 use super::block_units::{
-    DeclarationUnit, GrammarError, NativeError, grammar_error, location_at, offset_of,
+    DeclarationUnit, GrammarError, GrammarFailure, grammar_error, location_at, offset_of,
 };
 use super::declaration_unit::DeclarationText;
 use super::descriptor_stream::{
     Boundary, DescriptorRecovery, Value, comma_list, consume_remaining, declaration_position,
-    drive_descriptors, expect_exhausted, fail, from_component, native, parse_descriptor_checked,
-    parse_descriptor_range, read_scope, validate_root,
+    drive_descriptors, expect_exhausted, fail, from_component, parse_descriptor_checked,
+    parse_descriptor_range, read_scope, validate_root, value_failure,
 };
 use super::property_input::StreamExt;
 use super::recovery::RecoveryState;
@@ -40,7 +40,7 @@ pub(super) fn parse_name<'i>(
     source: &str,
     input: &mut Stream<'i>,
     recovery: &RecoveryState,
-) -> Result<CssColorProfileRuleName, NativeError> {
+) -> Result<CssColorProfileRuleName, GrammarFailure> {
     recovery.check_specialized_components_from(
         source,
         offset_of(input.site()),
@@ -121,7 +121,7 @@ struct BodyParser<'i> {
 
 impl<'i> RuleGrammar<'i, Attached<'i>> for BodyParser<'_> {
     type Item = CssColorProfileDescriptor;
-    type Error = NativeError;
+    type Error = GrammarFailure;
 
     // The body is a descriptor list: an at-rule is not valid in it.
     fn at_rule(&mut self, rule: AtRule<'i, Attached<'i>>) -> Result<Self::Item, GrammarError<'i>> {
@@ -158,7 +158,7 @@ impl BodyParser<'_> {
         &mut self,
         name: &str,
         text: &DeclarationText,
-    ) -> Result<CssColorProfileDescriptor, NativeError> {
+    ) -> Result<CssColorProfileDescriptor, GrammarFailure> {
         let snapshot = self.recovery.source_snapshot();
         let implicit = self.recovery.check_component_values_from(
             self.source,
@@ -188,7 +188,7 @@ pub(super) fn parse_text_value(
     value_start: usize,
     end: usize,
     kind: CssColorProfileDescriptorKind,
-) -> Result<CssColorProfileDescriptorValue, NativeError> {
+) -> Result<CssColorProfileDescriptorValue, GrammarFailure> {
     parse_descriptor_range(
         snapshot,
         value_start..end,
@@ -205,7 +205,7 @@ fn parse_declared_value(
     snapshot: &crate::source::CssSourceSnapshot,
     text: &DeclarationText,
     kind: CssColorProfileDescriptorKind,
-) -> Result<CssColorProfileDescriptorValue, NativeError> {
+) -> Result<CssColorProfileDescriptorValue, GrammarFailure> {
     parse_descriptor_range(
         snapshot,
         text.value_start..text.value_end(),
@@ -246,7 +246,7 @@ pub(crate) fn construct_descriptor_value(
         .map_err(|error| invalid_component_value(CssSourcePosition::START, error))?;
         let mut input = document.root();
         validate_root(&mut input, &numeric, "color-profile", kind.as_str())
-            .map_err(|error| native(&numeric, &error))?;
+            .map_err(|error| value_failure(&numeric, &error))?;
         parse_descriptor_checked(
             &mut input,
             &numeric,
