@@ -137,12 +137,13 @@ clause and the Encoding Standard. `tests/input_receipts.rs` checks that
 `input::preprocess_utf16` charges the same work and live bytes as the loop it
 replaced, against values recorded from the old function.
 
-## Performance gate
+## Lexer throughput
 
-The lexer must match or beat cssparser's tokenizer on the
+`tests/lexer_performance.rs` measures the lexer's throughput in MB/s on the
 CSSTree corpus sources and on a 1 MiB synthetic style sheet, in a release build
-and unmetered. `tests/lexer_performance.rs` measures it; it is ignored and runs
-only when `SURGEIST_CSS_PARSER_PERF=1` is set:
+and unmetered. It asserts nothing; its output is the baseline for a later change
+to the lexer. It is ignored and runs only when `SURGEIST_CSS_PARSER_PERF=1` is
+set:
 
 ```sh
 SURGEIST_CSS_PARSER_PERF=1 cargo test --release --offline --locked -j 1 -p surgeist-css-parser --test lexer_performance -- --ignored --nocapture

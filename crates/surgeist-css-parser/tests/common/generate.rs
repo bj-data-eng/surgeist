@@ -1,7 +1,7 @@
-//! The case generator shared by the property tests and the cssparser oracle:
-//! pieces of authored CSS joined without separators, so every construct meets
-//! every other, balanced and not, including the escaped block punctuation of
-//! `\{`, `\}`, `\(`, `\)`, `\[` and `\]` in every context.
+//! The case generator shared by the property tests: pieces of authored CSS
+//! joined without separators, so every construct meets every other, balanced
+//! and not, including the escaped block punctuation of `\{`, `\}`, `\(`, `\)`,
+//! `\[` and `\]` in every context.
 //!
 //! The pieces are chosen from CSS Syntax 3 sections 4.3.1 to 4.3.15: each token
 //! class, each way to end a string, url or comment, and each way a backslash can
@@ -122,9 +122,6 @@ pub const ESCAPES: [&str; 6] = ["\\{", "\\}", "\\(", "\\)", "\\[", "\\]"];
 /// The most pieces in one case.
 pub const MAX_PIECES: usize = 24;
 
-/// The entropy bytes a case consumes.
-pub const ENTROPY_BYTES: usize = 2 * MAX_PIECES + 1;
-
 /// Builds a case from `entropy`. About two in five pieces are escaped
 /// punctuation; the rest come from [`PIECES`].
 pub fn generate(entropy: &[u8]) -> String {
@@ -177,32 +174,5 @@ pub fn text_of(entropy: &[u8]) -> String {
     match entropy.first() {
         Some(first) if first % 2 == 1 => raw_text(&entropy[1..]),
         _ => generate(entropy.get(1..).unwrap_or(&[])),
-    }
-}
-
-/// A deterministic byte source (SplitMix64), so the cases do not depend on any
-/// framework's random number generator.
-pub struct Entropy(u64);
-
-impl Entropy {
-    pub const fn new(seed: u64) -> Self {
-        Self(seed)
-    }
-
-    pub fn next_u64(&mut self) -> u64 {
-        self.0 = self.0.wrapping_add(0x9e37_79b9_7f4a_7c15);
-        let mut z = self.0;
-        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
-        z ^ (z >> 31)
-    }
-
-    pub fn bytes(&mut self, count: usize) -> Vec<u8> {
-        let mut out = Vec::with_capacity(count + 8);
-        while out.len() < count {
-            out.extend_from_slice(&self.next_u64().to_le_bytes());
-        }
-        out.truncate(count);
-        out
     }
 }
