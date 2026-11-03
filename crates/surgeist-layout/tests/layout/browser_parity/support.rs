@@ -12399,3 +12399,7 @@ mod source_root_frame_tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "numeric_comparison_tests.rs"]
+mod numeric_comparison_tests;
