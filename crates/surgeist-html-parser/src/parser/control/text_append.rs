@@ -9,36 +9,36 @@ impl ParseControl {
         &mut self,
         allocation: &mut DocumentStringAllocation,
         value: &crate::DocumentString,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.require_document_string(allocation, value)?;
         self.prepare_text_append_restore()?;
         self.suspend_text_append_weak(allocation)?;
         Ok(())
     }
-    fn prepare_text_append_restore(&mut self) -> Result<(), ParseStop> {
+    fn prepare_text_append_restore(&mut self) -> Result<(), HtmlParseStop> {
         self.charge_many(&[
-            (WorkCategory::ProviderCall, 1),
+            (HtmlParseWorkCategory::ProviderCall, 1),
             (
-                WorkCategory::CopyByte,
+                HtmlParseWorkCategory::CopyByte,
                 const {
                     (size_of::<u64>() + size_of::<usize>() + size_of::<Option<Weak<Vec<u16>>>>())
                         as u64
                 },
             ),
-            (WorkCategory::RecordWrite, 3),
+            (HtmlParseWorkCategory::RecordWrite, 3),
         ])
     }
     fn suspend_text_append_weak(
         &mut self,
         allocation: &mut DocumentStringAllocation,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.charge_many(&[
-            (WorkCategory::ProviderCall, 1),
+            (HtmlParseWorkCategory::ProviderCall, 1),
             (
-                WorkCategory::CopyByte,
+                HtmlParseWorkCategory::CopyByte,
                 size_of::<Option<Weak<Vec<u16>>>>() as u64,
             ),
-            (WorkCategory::RecordWrite, 1),
+            (HtmlParseWorkCategory::RecordWrite, 1),
         ])?;
         drop(allocation.backing.take());
         Ok(())
@@ -46,15 +46,15 @@ impl ParseControl {
     /// Prepares the actual empty pending wrapper before HTML constructs it.
     pub(crate) fn prepare_text_append_allocation(
         &mut self,
-    ) -> Result<DocumentStringAllocation, ParseStop> {
+    ) -> Result<DocumentStringAllocation, HtmlParseStop> {
         self.prepare_text_append_restore()?;
         self.charge_many(&[
-            (WorkCategory::ProviderCall, 1),
+            (HtmlParseWorkCategory::ProviderCall, 1),
             (
-                WorkCategory::CopyByte,
+                HtmlParseWorkCategory::CopyByte,
                 const { (size_of::<DocumentStringAllocation>() + 2 * size_of::<usize>()) as u64 },
             ),
-            (WorkCategory::RecordWrite, 3),
+            (HtmlParseWorkCategory::RecordWrite, 3),
         ])?;
         let wrapper_bytes =
             self.admit_document_string_payload(HtmlParseResource::BufferedUtf16Units)?;
@@ -76,13 +76,13 @@ impl ParseControl {
         &mut self,
         allocation: &mut DocumentStringAllocation,
         value: &crate::DocumentString,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.charge_many(&[
             (
-                WorkCategory::CopyByte,
+                HtmlParseWorkCategory::CopyByte,
                 size_of::<Option<Weak<Vec<u16>>>>() as u64,
             ),
-            (WorkCategory::RecordWrite, 1),
+            (HtmlParseWorkCategory::RecordWrite, 1),
         ])?;
         self.bind_document_string(allocation, value)?;
         self.suspend_text_append_weak(allocation)
@@ -92,11 +92,13 @@ impl ParseControl {
         allocation: &DocumentStringAllocation,
         before: Capacity,
         required: usize,
-    ) -> Result<usize, ParseStop> {
+    ) -> Result<usize, HtmlParseStop> {
         self.require_suspended_text_append(allocation, before)?;
         // HTML requests a capacity that holds the initialized units.
         let Some(additional) = required.checked_sub(before.initialized_len()) else {
-            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::CapacityMismatch,
+            ));
         };
         let Some(plan) = self.geometric_capacity::<u16>(
             before.initialized_len(),
@@ -104,19 +106,21 @@ impl ParseControl {
             additional,
         )?
         else {
-            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::CapacityMismatch,
+            ));
         };
         let Some(reserve_bytes) = plan.old_bytes.checked_add(plan.new_bytes) else {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
         self.charge_many(&[
-            (WorkCategory::ReserveByte, reserve_bytes),
+            (HtmlParseWorkCategory::ReserveByte, reserve_bytes),
             // HTML's descriptor charges its provider and native fields.
             (
-                WorkCategory::CopyByte,
+                HtmlParseWorkCategory::CopyByte,
                 const { (2 * size_of::<usize>()) as u64 },
             ),
-            (WorkCategory::RecordWrite, 2),
+            (HtmlParseWorkCategory::RecordWrite, 2),
         ])?;
         self.preflight_construction_capacity(plan.old_bytes, plan.new_bytes)?;
         const UNIT_BYTES: u64 = size_of::<u16>() as u64;
@@ -126,17 +130,21 @@ impl ParseControl {
         &mut self,
         allocation: &DocumentStringAllocation,
         value: Capacity,
-    ) -> Result<(), ParseStop> {
-        self.charge(WorkCategory::RecordVisit, 2)?;
+    ) -> Result<(), HtmlParseStop> {
+        self.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         if !Arc::ptr_eq(&allocation.owner, &self.identity) {
-            return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::ForeignControl,
+            ));
         }
         if allocation.backing.is_some()
             || allocation.vector_capacity != value.capacity()
             || allocation.units != value.initialized_len() as u64
             || (allocation.data_pointer != 0 && allocation.data_pointer != value.data_address())
         {
-            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::CapacityMismatch,
+            ));
         }
         Ok(())
     }
@@ -147,15 +155,19 @@ impl ParseControl {
         allocation: &mut DocumentStringAllocation,
         value: Capacity,
         expected_capacity: usize,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         if !Arc::ptr_eq(&allocation.owner, &self.identity) {
-            return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::ForeignControl,
+            ));
         }
         // Growth is recorded while the ticket is pending; a ticket already
         // bound to a backing is in another allocation state than the one this
         // controller charged, whoever holds it.
         if allocation.backing.is_some() {
-            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::CapacityMismatch,
+            ));
         }
         const UNIT_BYTES: u64 = size_of::<u16>() as u64;
         let Some(old) = (allocation.vector_capacity as u64).checked_mul(UNIT_BYTES) else {
@@ -167,7 +179,9 @@ impl ParseControl {
             .resource(HtmlParseResource::ManagedCapacityBytes)
             .current;
         let Some(total) = current.checked_sub(old).and_then(|v| v.checked_add(actual)) else {
-            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::CapacityMismatch,
+            ));
         };
         let Some(overlap) = current.checked_add(actual) else {
             return self.representation(HtmlParseResource::PeakTransientBytes);
@@ -180,7 +194,7 @@ impl ParseControl {
         self.usage.actual_capacity_bytes = total;
         self.usage.actual_capacity_high_water = self.usage.actual_capacity_high_water.max(total);
         if value.capacity() > expected_capacity {
-            return self.fail(ParseStop::LimitExceeded {
+            return self.fail(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::ManagedCapacityBytes,
                 limit: expected_capacity.saturating_mul(size_of::<u16>()) as u64,
                 current: old,
@@ -194,7 +208,7 @@ impl ParseControl {
         &mut self,
         allocation: &mut DocumentStringAllocation,
         units: usize,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         let total = u64::try_from(units).ok().and_then(|units| {
             allocation
                 .units
@@ -205,8 +219,8 @@ impl ParseControl {
             return self.representation(allocation.resource);
         };
         self.charge_many(&[
-            (WorkCategory::CopyByte, size_of::<u64>() as u64),
-            (WorkCategory::RecordWrite, 1),
+            (HtmlParseWorkCategory::CopyByte, size_of::<u64>() as u64),
+            (HtmlParseWorkCategory::RecordWrite, 1),
         ])?;
         self.acquire(allocation.resource, units)?;
         allocation.units = total;
@@ -216,7 +230,7 @@ impl ParseControl {
     pub(crate) fn commit_text_append_domain(
         &mut self,
         allocation: &mut DocumentStringAllocation,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.checkpoint()?;
         if allocation.resource == HtmlParseResource::BufferedUtf16Units {
             let managed = self
@@ -237,7 +251,9 @@ impl ParseControl {
             )?;
             // The appended units were admitted as buffered text.
             let Some(buffered) = buffered.checked_sub(allocation.units) else {
-                return self.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow));
+                return self.fail(HtmlParseStop::InternalInvariant(
+                    HtmlParseInvariant::ReleaseUnderflow,
+                ));
             };
             self.set(HtmlParseResource::BufferedUtf16Units, buffered);
             self.set(HtmlParseResource::ManagedUtf16Units, total);
@@ -252,7 +268,7 @@ impl ParseControl {
         &mut self,
         allocation: &mut DocumentStringAllocation,
         value: &crate::DocumentString,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         if allocation.backing.is_none() {
             self.restore_text_append_ticket(allocation, value)
         } else {
@@ -267,23 +283,33 @@ impl ParseControl {
         &mut self,
         allocation: &mut DocumentStringAllocation,
         value: &crate::DocumentString,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         #[cfg(test)]
         if self.take_text_append_restore_fault() {
-            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::CapacityMismatch,
+            ));
         }
         if !Arc::ptr_eq(&allocation.owner, &self.identity) {
-            return self.fail(ParseStop::InternalInvariant(Invariant::ForeignControl));
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::ForeignControl,
+            ));
         }
         if allocation.backing.is_some() {
-            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::CapacityMismatch,
+            ));
         }
         let kept = value.len() as u64;
         let Some(discarded) = allocation.units.checked_sub(kept) else {
-            return self.fail(ParseStop::InternalInvariant(Invariant::ReleaseUnderflow));
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::ReleaseUnderflow,
+            ));
         };
         if allocation.vector_capacity != value.shared_code_units().capacity() {
-            return self.fail(ParseStop::InternalInvariant(Invariant::CapacityMismatch));
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::CapacityMismatch,
+            ));
         }
         self.cleanup_storage(allocation.resource, discarded, 0)?;
         allocation.units = kept;

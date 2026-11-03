@@ -2,7 +2,7 @@
 //! Normative end-of-parsing transitions remain in the sibling EOF owner.
 
 use super::*;
-use crate::construction::StandaloneDocumentState;
+use crate::construction::HtmlParseDocumentState;
 use head::HeadError;
 
 /// Actual completed construction retains the sole driver, control, arena,
@@ -10,7 +10,7 @@ use head::HeadError;
 pub(crate) struct CompletedStandaloneDocument<'source> {
     driver: Option<StandaloneDocumentDriver<'source>>,
     frozen: Option<crate::construction::FrozenArena>,
-    after_cleanup: Option<super::super::control::ParseUsage>,
+    after_cleanup: Option<super::super::control::HtmlParseUsage>,
     #[cfg(test)]
     cancel_after_freeze: Option<crate::HtmlParseCancellation>,
 }
@@ -63,7 +63,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
             .as_ref()
             .ok_or(StandaloneError::Consumed)?
             .qualify_completed(&mut self.control)?;
-        self.control.charge(WorkCategory::RecordVisit, 6)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 6)?;
         if self.prologue.is_some()
             || self.before.is_some()
             || self.tokenizer.is_some()
@@ -247,7 +247,7 @@ impl<'source> CompletedStandaloneDocument<'source> {
     #[cfg(test)]
     pub(crate) fn diagnostics(
         &self,
-    ) -> Result<crate::construction::evidence::DiagnosticEvidenceView<'_>, StandaloneError> {
+    ) -> Result<crate::construction::evidence::HtmlParseDiagnostics<'_>, StandaloneError> {
         if let Some(evidence) = self
             .driver
             .as_ref()
@@ -280,7 +280,7 @@ impl<'source> CompletedStandaloneDocument<'source> {
             .map_err(StandaloneError::from)
     }
     #[cfg(test)]
-    pub(crate) fn document_state(&mut self) -> Result<StandaloneDocumentState, StandaloneError> {
+    pub(crate) fn document_state(&mut self) -> Result<HtmlParseDocumentState, StandaloneError> {
         if self.frozen.is_some() {
             return Err(StandaloneError::Consumed);
         }
@@ -303,7 +303,7 @@ impl<'source> CompletedStandaloneDocument<'source> {
             .map_err(HeadError::from)?)
     }
     #[cfg(test)]
-    pub(crate) fn usage(&self) -> Result<&super::super::control::ParseUsage, StandaloneError> {
+    pub(crate) fn usage(&self) -> Result<&super::super::control::HtmlParseUsage, StandaloneError> {
         Ok(self
             .driver
             .as_ref()
@@ -312,11 +312,11 @@ impl<'source> CompletedStandaloneDocument<'source> {
             .usage())
     }
     #[cfg(test)]
-    pub(crate) fn at_stop(&self) -> Option<&super::super::control::ParseUsage> {
+    pub(crate) fn at_stop(&self) -> Option<&super::super::control::HtmlParseUsage> {
         self.driver.as_ref()?.control.first_stop_usage()
     }
     #[cfg(test)]
-    pub(crate) fn after_cleanup(&self) -> Option<&super::super::control::ParseUsage> {
+    pub(crate) fn after_cleanup(&self) -> Option<&super::super::control::HtmlParseUsage> {
         self.after_cleanup.as_ref()
     }
     /// Safe committed diagnostics remain owned separately from reclaimed arena
@@ -419,7 +419,7 @@ impl<'source> CompletedStandaloneDocument<'source> {
     fn freeze_driver(
         &mut self,
         driver: &mut StandaloneDocumentDriver<'source>,
-    ) -> Result<(FrozenSourceBinding, StandaloneDocumentState), StandaloneError> {
+    ) -> Result<(FrozenSourceBinding, HtmlParseDocumentState), StandaloneError> {
         let c = &mut driver.control;
         c.require_source(driver.source)?;
         let state = driver
@@ -455,8 +455,8 @@ impl<'source> CompletedStandaloneDocument<'source> {
             13,
             c,
         )?;
-        c.charge(WorkCategory::RecordVisit, 3)?;
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         let source = FrozenSourceBinding {
             identity: driver.source.identity().clone(),
             coordinates: driver.source.coordinates(),
@@ -495,10 +495,10 @@ pub(crate) struct FrozenStandaloneParts {
     source: FrozenSourceBinding,
     pub(super) control: ParseControl,
     pub(super) arena: Option<crate::construction::FrozenArena>,
-    document_state: StandaloneDocumentState,
-    final_usage: super::super::control::ParseUsage,
+    document_state: HtmlParseDocumentState,
+    final_usage: super::super::control::HtmlParseUsage,
     failed_evidence: Option<crate::construction::evidence::FailureDiagnosticEvidence>,
-    after_cleanup: Option<super::super::control::ParseUsage>,
+    after_cleanup: Option<super::super::control::HtmlParseUsage>,
 }
 impl FrozenStandaloneParts {
     pub(super) fn prepare_report_request(
@@ -507,16 +507,17 @@ impl FrozenStandaloneParts {
     ) -> Result<(), crate::construction::SessionError> {
         use crate::construction::SessionError;
         self.control.require_source(request.source())?;
-        self.control.charge(WorkCategory::ProviderCall, 1)?;
-        self.control.charge(WorkCategory::RecordVisit, 7)?;
+        self.control
+            .charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 7)?;
         self.control.charge(
-            WorkCategory::InspectByte,
+            HtmlParseWorkCategory::InspectByte,
             const {
                 2 * size_of::<crate::HtmlSourceId>()
                     + 2 * size_of::<crate::HtmlSourceCoordinates>()
                     + 2 * size_of::<usize>()
                     + 2 * size_of::<crate::HtmlParseCancellation>()
-                    + size_of::<StandaloneDocumentState>()
+                    + size_of::<HtmlParseDocumentState>()
             } as u64,
         )?;
         if !request.is_offline()
@@ -530,8 +531,7 @@ impl FrozenStandaloneParts {
             || self.failed_evidence.is_some()
             || self.after_cleanup.is_some()
             || self.arena.as_ref().and_then(|a| a.document()).is_none()
-            || self.document_state.completion
-                != crate::construction::ConstructionCompletion::Complete
+            || self.document_state.completion != crate::construction::HtmlParseCompletion::Complete
         {
             return Err(SessionError::WrongToken);
         }
@@ -577,9 +577,9 @@ impl FrozenStandaloneParts {
         &mut self,
     ) -> Result<
         (
-            ParseStop,
+            HtmlParseStop,
             (crate::HtmlSourceId, crate::HtmlSourceCoordinates),
-            super::super::control::ParseUsage,
+            super::super::control::HtmlParseUsage,
         ),
         StandaloneError,
     > {
@@ -606,12 +606,13 @@ impl FrozenStandaloneParts {
         if request.capture().is_some() || request.document().is_some() {
             return Err(StandaloneError::UnsupportedDocumentInitialization);
         }
-        self.control.charge(WorkCategory::ProviderCall, 1)?;
+        self.control
+            .charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         if !self.control.owns_request(request.cancellation()) {
             return Err(StandaloneError::Consumed);
         }
         self.control.require_source(request.source())?;
-        self.control.charge(WorkCategory::RecordVisit, 5)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 5)?;
         if self.source_binding()
             != (
                 request.source().identity(),
@@ -632,7 +633,7 @@ impl FrozenStandaloneParts {
             const {
                 size_of::<super::seal::SealedOrdinaryConstruction>()
                     + size_of::<crate::request::DocumentRequestParts>()
-                    + size_of::<super::super::control::ParseUsage>()
+                    + size_of::<super::super::control::HtmlParseUsage>()
             },
             7,
             &mut self.control,
@@ -679,31 +680,31 @@ impl FrozenStandaloneParts {
     #[cfg(test)]
     pub(crate) fn document(&mut self) -> Result<&crate::HtmlDocument, StandaloneError> {
         self.control.checkpoint()?;
-        self.control.charge(WorkCategory::RecordVisit, 1)?;
+        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.arena
             .as_ref()
             .and_then(|arena| arena.document())
             .ok_or(StandaloneError::Consumed)
     }
-    pub(crate) fn document_state(&self) -> StandaloneDocumentState {
+    pub(crate) fn document_state(&self) -> HtmlParseDocumentState {
         self.document_state
     }
     #[cfg(test)]
-    pub(crate) fn final_usage(&self) -> &super::super::control::ParseUsage {
+    pub(crate) fn final_usage(&self) -> &super::super::control::HtmlParseUsage {
         &self.final_usage
     }
-    pub(crate) fn retained_usage(&self) -> &super::super::control::ParseUsage {
+    pub(crate) fn retained_usage(&self) -> &super::super::control::HtmlParseUsage {
         self.control.usage()
     }
-    pub(crate) fn at_stop(&self) -> Option<&super::super::control::ParseUsage> {
+    pub(crate) fn at_stop(&self) -> Option<&super::super::control::HtmlParseUsage> {
         self.control.first_stop_usage()
     }
-    pub(crate) fn after_cleanup(&self) -> Option<&super::super::control::ParseUsage> {
+    pub(crate) fn after_cleanup(&self) -> Option<&super::super::control::HtmlParseUsage> {
         self.after_cleanup.as_ref()
     }
     pub(crate) fn diagnostics(
         &self,
-    ) -> Result<crate::construction::evidence::DiagnosticEvidenceView<'_>, StandaloneError> {
+    ) -> Result<crate::construction::evidence::HtmlParseDiagnostics<'_>, StandaloneError> {
         if let Some(evidence) = &self.failed_evidence {
             return Ok(evidence.diagnostics());
         }
@@ -757,9 +758,9 @@ impl FrozenStandaloneParts {
 pub(crate) struct FailedStandaloneDocument<'source> {
     _source: &'source crate::HtmlSource,
     control: ParseControl,
-    stop: ParseStop,
-    _at_stop: super::super::control::ParseUsage,
-    after_cleanup: super::super::control::ParseUsage,
+    stop: HtmlParseStop,
+    _at_stop: super::super::control::HtmlParseUsage,
+    after_cleanup: super::super::control::HtmlParseUsage,
     evidence: Option<crate::construction::evidence::FailureDiagnosticEvidence>,
 }
 /// Lifetime-free stopped owner after all borrowed parse owners were reclaimed.
@@ -767,8 +768,8 @@ pub(crate) struct FailedStandaloneDocument<'source> {
 pub(crate) struct DetachedStandaloneFailure {
     pub(super) binding: (crate::HtmlSourceId, crate::HtmlSourceCoordinates),
     control: ParseControl,
-    stop: ParseStop,
-    after_cleanup: super::super::control::ParseUsage,
+    stop: HtmlParseStop,
+    after_cleanup: super::super::control::HtmlParseUsage,
     evidence: Option<crate::construction::evidence::FailureDiagnosticEvidence>,
 }
 impl DetachedStandaloneFailure {
@@ -778,27 +779,27 @@ impl DetachedStandaloneFailure {
     pub(crate) fn release_csp_storage(
         &mut self,
         storage: crate::meta_csp::Storage,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         storage.release(&mut self.control)
     }
     pub(super) fn owns_request(&self, cancellation: &crate::HtmlParseCancellation) -> bool {
         self.control.owns_request(cancellation)
     }
-    pub(super) fn stop(&self) -> ParseStop {
+    pub(super) fn stop(&self) -> HtmlParseStop {
         self.stop
     }
-    pub(super) fn at_stop(&self) -> Option<&super::super::control::ParseUsage> {
+    pub(super) fn at_stop(&self) -> Option<&super::super::control::HtmlParseUsage> {
         self.control.first_stop_usage()
     }
-    pub(super) fn after_cleanup(&self) -> &super::super::control::ParseUsage {
+    pub(super) fn after_cleanup(&self) -> &super::super::control::HtmlParseUsage {
         &self.after_cleanup
     }
-    pub(super) fn retained_usage(&self) -> &super::super::control::ParseUsage {
+    pub(super) fn retained_usage(&self) -> &super::super::control::HtmlParseUsage {
         self.control.usage()
     }
     pub(super) fn diagnostics(
         &self,
-    ) -> Option<crate::construction::evidence::DiagnosticEvidenceView<'_>> {
+    ) -> Option<crate::construction::evidence::HtmlParseDiagnostics<'_>> {
         self.evidence
             .as_ref()
             .map(|evidence| evidence.diagnostics())
@@ -849,7 +850,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
     }
     fn reclaim_failed(
         &mut self,
-    ) -> Result<(ParseStop, super::super::control::ParseUsage), StandaloneError> {
+    ) -> Result<(HtmlParseStop, super::super::control::HtmlParseUsage), StandaloneError> {
         // The stop and its snapshot exist together.
         let (stop, at_stop) = self
             .control
@@ -930,25 +931,25 @@ impl FailedStandaloneDocument<'_> {
         self._source
     }
     #[cfg(test)]
-    pub(crate) fn stop(&self) -> ParseStop {
+    pub(crate) fn stop(&self) -> HtmlParseStop {
         self.stop
     }
     #[cfg(test)]
-    pub(crate) fn at_stop(&self) -> &super::super::control::ParseUsage {
+    pub(crate) fn at_stop(&self) -> &super::super::control::HtmlParseUsage {
         &self._at_stop
     }
     #[cfg(test)]
-    pub(crate) fn after_cleanup(&self) -> &super::super::control::ParseUsage {
+    pub(crate) fn after_cleanup(&self) -> &super::super::control::HtmlParseUsage {
         &self.after_cleanup
     }
     #[cfg(test)]
-    pub(crate) fn retained_usage(&self) -> &super::super::control::ParseUsage {
+    pub(crate) fn retained_usage(&self) -> &super::super::control::HtmlParseUsage {
         self.control.usage()
     }
     #[cfg(test)]
     pub(crate) fn diagnostics(
         &self,
-    ) -> Option<crate::construction::evidence::DiagnosticEvidenceView<'_>> {
+    ) -> Option<crate::construction::evidence::HtmlParseDiagnostics<'_>> {
         self.evidence
             .as_ref()
             .map(|evidence| evidence.diagnostics())

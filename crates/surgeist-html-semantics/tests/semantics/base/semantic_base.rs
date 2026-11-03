@@ -1,11 +1,11 @@
-use crate::semantics::support::builder_with;
+use crate::semantics::support::tenth_builder as builder;
 use surgeist_html::*;
 use surgeist_html_semantics::select_frozen_base;
 use surgeist_html_semantics::{
     HtmlAboutBaseUrl, HtmlBaseAllowed, HtmlBaseDocumentFacts, HtmlBaseEncoding, HtmlBaseFactsError,
     HtmlBaseFactsLimits, HtmlBaseFactsRevision, HtmlBaseMissing, HtmlBaseParseObservation,
     HtmlBaseParseOutcome, HtmlBaseProducerId, HtmlBaseUrlRecord, HtmlBaseUrlScheme, HtmlCapture,
-    HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureLimits, HtmlCaptureRegistryInput,
+    HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
     HtmlCapturedBaseDocument, HtmlCapturedBaseFacts, HtmlCapturedFrozenBase, HtmlCapturedIsValue,
     HtmlControlFacts, HtmlControlFactsLimits, HtmlFormAssociation, HtmlFormAssociationState,
     HtmlParseBaseFacts, HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextError,
@@ -182,11 +182,6 @@ fn document_fallback_selects_srcdoc_and_about_blank_facts_lazily() {
 
 fn attr(name: &str, value: impl Into<DocumentString>) -> Attribute {
     Attribute::new(QualifiedName::new(Namespace::none(), None, name), value)
-}
-fn builder() -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    builder_with(HtmlCaptureLimits::new(
-        100, 10000, 100, 100000, 100, 10, 10, 16_777_216,
-    ))
 }
 fn element(
     builder: &mut HtmlCaptureBuilder,

@@ -19,8 +19,8 @@ impl From<SessionError> for Failure {
         Self::Session(value)
     }
 }
-impl From<ParseStop> for Failure {
-    fn from(value: ParseStop) -> Self {
+impl From<HtmlParseStop> for Failure {
+    fn from(value: HtmlParseStop) -> Self {
         Self::Session(value.into())
     }
 }
@@ -33,7 +33,7 @@ pub(super) fn source_processing(c: &mut ParseControl, error: CssColorError) -> F
     }
 }
 fn integrity(c: &mut ParseControl) -> SessionError {
-    c.fail_invariant(crate::parser::control::Invariant::ColorConversionState)
+    c.fail_invariant(crate::parser::control::HtmlParseInvariant::ColorConversionState)
         .into()
 }
 const BANK_COUNT: usize = 3;
@@ -84,36 +84,51 @@ pub(super) fn frame(
             .map_err(Into::into);
     };
     c.admit_atomic_layout(layout)?;
-    c.charge(WorkCategory::RecordVisit, 1)?;
-    c.charge(WorkCategory::InspectByte, register as u64)?;
-    c.charge(WorkCategory::CopyByte, layout as u64)?;
-    c.charge(WorkCategory::RecordWrite, 1)?;
-    c.charge(WorkCategory::StateStep, 1)?;
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+    c.charge(HtmlParseWorkCategory::InspectByte, register as u64)?;
+    c.charge(HtmlParseWorkCategory::CopyByte, layout as u64)?;
+    c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
+    c.charge(HtmlParseWorkCategory::StateStep, 1)?;
     Ok(())
 }
 pub(super) fn action_layout(
     c: &mut ParseControl,
     layout: CssColorActionLayout,
 ) -> Result<(), SessionError> {
-    c.charge(WorkCategory::InspectByte, layout.input_unit_bytes as u64)?;
-    c.charge(WorkCategory::InspectByte, layout.slot_read_bytes as u64)?;
-    c.charge(WorkCategory::CopyByte, layout.slot_write_bytes as u64)?;
     c.charge(
-        WorkCategory::InspectByte,
+        HtmlParseWorkCategory::InspectByte,
+        layout.input_unit_bytes as u64,
+    )?;
+    c.charge(
+        HtmlParseWorkCategory::InspectByte,
+        layout.slot_read_bytes as u64,
+    )?;
+    c.charge(
+        HtmlParseWorkCategory::CopyByte,
+        layout.slot_write_bytes as u64,
+    )?;
+    c.charge(
+        HtmlParseWorkCategory::InspectByte,
         layout.numerical_read_bytes as u64,
     )?;
-    c.charge(WorkCategory::CopyByte, layout.numerical_write_bytes as u64)?;
+    c.charge(
+        HtmlParseWorkCategory::CopyByte,
+        layout.numerical_write_bytes as u64,
+    )?;
     if layout.slot_write_bytes != 0 || layout.numerical_write_bytes != 0 {
-        c.charge(WorkCategory::RecordWrite, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
     }
     // At most three actual fixed fact records; no array/variable payload scan.
     for bytes in layout.fact_records {
         if bytes != 0 {
-            c.charge(WorkCategory::RecordVisit, 1)?;
-            c.charge(WorkCategory::InspectByte, bytes as u64)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::InspectByte, bytes as u64)?;
         }
     }
-    c.charge(WorkCategory::CopyByte, layout.output_unit_bytes as u64)?;
+    c.charge(
+        HtmlParseWorkCategory::CopyByte,
+        layout.output_unit_bytes as u64,
+    )?;
     c.checkpoint()?;
     Ok(())
 }
@@ -123,16 +138,16 @@ pub(super) fn numerical_layout(
     c: &mut ParseControl,
     layout: surgeist_color::ActionLayout,
 ) -> Result<(), SessionError> {
-    c.charge(WorkCategory::InspectByte, layout.read_bytes as u64)?;
-    c.charge(WorkCategory::CopyByte, layout.write_bytes as u64)?;
+    c.charge(HtmlParseWorkCategory::InspectByte, layout.read_bytes as u64)?;
+    c.charge(HtmlParseWorkCategory::CopyByte, layout.write_bytes as u64)?;
     if layout.write_bytes != 0 {
-        c.charge(WorkCategory::RecordWrite, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
     }
-    c.charge(WorkCategory::CopyByte, layout.output_bytes as u64)?;
+    c.charge(HtmlParseWorkCategory::CopyByte, layout.output_bytes as u64)?;
     c.checkpoint()?;
     Ok(())
 }
-pub(super) fn parse<'facts, E: From<SessionError> + From<ParseStop>>(
+pub(super) fn parse<'facts, E: From<SessionError> + From<HtmlParseStop>>(
     c: &mut ParseControl,
     input: &[u16],
     owner: &mut CssColorOperationOwner,
@@ -240,13 +255,13 @@ pub(super) fn parse<'facts, E: From<SessionError> + From<ParseStop>>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::control::Invariant;
+    use crate::parser::control::HtmlParseInvariant;
 
     #[test]
     fn a_colour_bank_fault_is_a_color_conversion_invariant() {
         let mut c = crate::construction::tests::control();
         let error = integrity(&mut c);
-        let stop = ParseStop::InternalInvariant(Invariant::ColorConversionState);
+        let stop = HtmlParseStop::InternalInvariant(HtmlParseInvariant::ColorConversionState);
         assert_eq!(error, SessionError::Stop(stop));
         assert_eq!(c.stop(), Some(stop));
     }

@@ -1,7 +1,9 @@
 //! Factored terminal-layer qualification. Off still pays both pools' fixed
 //! lifecycle and the same promotion traversal; it is not a pool-free parser.
 use super::*;
-use crate::parser::control::{FinalizationCut, FinalizationTransferStage, ParseControl, ParseStop};
+use crate::parser::control::{
+    FinalizationCut, FinalizationTransferStage, HtmlParseStop, ParseControl,
+};
 use crate::parser::tree_builder::{
     StandaloneDocumentDriver,
     context::{ContextFragmentDriver, ownership::FragmentInitializationOwner},
@@ -59,7 +61,7 @@ fn context() -> HtmlFragmentContext {
     HtmlFragmentContext::element(&capture, &capture.subject_id(&div).unwrap()).unwrap()
 }
 
-fn parse(fragment: bool, mode: ValueSharingMode, markup: &str) -> ImmutableParseReport {
+fn parse(fragment: bool, mode: ValueSharingMode, markup: &str) -> HtmlParseReport {
     let literal = if fragment {
         markup.to_owned()
     } else {
@@ -97,14 +99,14 @@ fn parse(fragment: bool, mode: ValueSharingMode, markup: &str) -> ImmutableParse
     report
 }
 
-fn node<'a>(report: &'a ImmutableParseReport, id: &HtmlNodeId) -> HtmlNode<'a> {
+fn node<'a>(report: &'a HtmlParseReport, id: &HtmlNodeId) -> HtmlNode<'a> {
     if let Some(document) = report.document() {
         document.node(id).unwrap()
     } else {
         report.fragment().unwrap().node(id).unwrap()
     }
 }
-fn elements(report: &ImmutableParseReport, local: &str) -> Vec<HtmlNodeId> {
+fn elements(report: &HtmlParseReport, local: &str) -> Vec<HtmlNodeId> {
     let root = report.document().map_or_else(
         || report.fragment().unwrap().root(),
         |document| document.root(),
@@ -122,7 +124,7 @@ fn elements(report: &ImmutableParseReport, local: &str) -> Vec<HtmlNodeId> {
     }
     found
 }
-fn element<'a>(report: &'a ImmutableParseReport, id: &HtmlNodeId) -> &'a HtmlElement {
+fn element<'a>(report: &'a HtmlParseReport, id: &HtmlNodeId) -> &'a HtmlElement {
     let HtmlNodeKind::Element(value) = node(report, id).kind() else {
         panic!("literal Element")
     };
@@ -130,10 +132,7 @@ fn element<'a>(report: &'a ImmutableParseReport, id: &HtmlNodeId) -> &'a HtmlEle
     assert!(value.name().prefix().is_none());
     value
 }
-fn text<'a>(
-    report: &'a ImmutableParseReport,
-    parent: &HtmlNodeId,
-) -> (HtmlNodeId, &'a DocumentString) {
+fn text<'a>(report: &'a HtmlParseReport, parent: &HtmlNodeId) -> (HtmlNodeId, &'a DocumentString) {
     let children: Vec<_> = node(report, parent).children().collect();
     assert_eq!(children.len(), 1);
     let HtmlNodeKind::Text(value) = node(report, &children[0]).kind() else {
@@ -142,7 +141,7 @@ fn text<'a>(
     (children[0].clone(), value)
 }
 fn origin(
-    report: &ImmutableParseReport,
+    report: &HtmlParseReport,
     id: &HtmlNodeId,
     field: HtmlParseField,
     start: usize,
@@ -177,7 +176,7 @@ fn origin(
 }
 
 fn check_equal_banks(
-    report: &ImmutableParseReport,
+    report: &HtmlParseReport,
     mode: ValueSharingMode,
 ) -> Arc<Vec<surgeist_html::Attribute>> {
     let cells = elements(report, "td");
@@ -226,7 +225,7 @@ fn check_equal_banks(
 }
 
 fn check_distinct_banks_text(
-    report: &ImmutableParseReport,
+    report: &HtmlParseReport,
     mode: ValueSharingMode,
 ) -> Arc<Vec<surgeist_html::Attribute>> {
     let paragraphs = elements(report, "p");
@@ -386,10 +385,10 @@ impl Sealed {
             Self::Fragment(value) => &mut value.as_mut().unwrap().parts.control,
         }
     }
-    fn report(&mut self) -> Result<ImmutableParseReport, SessionError> {
+    fn report(&mut self) -> Result<HtmlParseReport, SessionError> {
         match self {
-            Self::Document(value) => ImmutableParseReport::take_document(value),
-            Self::Fragment(value) => ImmutableParseReport::take_fragment(value),
+            Self::Document(value) => HtmlParseReport::take_document(value),
+            Self::Fragment(value) => HtmlParseReport::take_fragment(value),
         }
     }
     fn source(&self) -> &HtmlSource {
@@ -441,11 +440,11 @@ fn all_layers_keep_both_pool_authorities_through_actual_terminal_refusal_and_cle
                     assert_eq!(sealed.source().as_utf8(), Some(literal));
                     match kind {
                         FinalizationCut::Work => assert!(
-                            matches!(result.unwrap(), Err(SessionError::Stop(ParseStop::LimitExceeded {resource: HtmlParseResource::WorkCredits, limit, ..})) if limit == seen.work)
+                            matches!(result.unwrap(), Err(SessionError::Stop(HtmlParseStop::LimitExceeded {resource: HtmlParseResource::WorkCredits, limit, ..})) if limit == seen.work)
                         ),
                         FinalizationCut::Cancellation => assert!(matches!(
                             result.unwrap(),
-                            Err(SessionError::Stop(ParseStop::Cancelled))
+                            Err(SessionError::Stop(HtmlParseStop::Cancelled))
                         )),
                         FinalizationCut::Panic => {
                             assert_eq!(

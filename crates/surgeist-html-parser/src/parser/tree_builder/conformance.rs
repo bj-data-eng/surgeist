@@ -1318,7 +1318,7 @@ fn parsed_expected(
 use crate::HtmlParseResource;
 use crate::construction::native_view::{NativeFragmentOwner, NativeKind, NativeName, NativeString};
 use crate::construction::{NativeView, ParserNode, SessionError};
-use crate::parser::control::{OwnedVec, ParseControl, ParseStop, WorkCategory};
+use crate::parser::control::{HtmlParseStop, HtmlParseWorkCategory, OwnedVec, ParseControl};
 use std::mem::size_of;
 
 #[derive(Clone, Copy)]
@@ -1380,13 +1380,13 @@ struct MeteredProjection {
 }
 #[derive(Debug)]
 enum AdapterError {
-    Stop(ParseStop),
+    Stop(HtmlParseStop),
     Session(SessionError),
     Structure(ProjectionError),
     Mismatch,
 }
-impl From<ParseStop> for AdapterError {
-    fn from(e: ParseStop) -> Self {
+impl From<HtmlParseStop> for AdapterError {
+    fn from(e: HtmlParseStop) -> Self {
         Self::Stop(e)
     }
 }
@@ -1398,7 +1398,10 @@ impl From<SessionError> for AdapterError {
 
 /// Fixed POD output reads are admitted before inspection/copy. This does not
 /// bulk-prepay a variable traversal; loops below poll per edge/record/code unit.
-fn charges(c: &mut ParseControl, values: &[(WorkCategory, u64)]) -> Result<(), ParseStop> {
+fn charges(
+    c: &mut ParseControl,
+    values: &[(HtmlParseWorkCategory, u64)],
+) -> Result<(), HtmlParseStop> {
     for (kind, units) in values {
         c.charge(*kind, *units)?;
     }
@@ -1410,9 +1413,9 @@ fn read<T: Copy>(v: &mut OwnedVec<T>, i: usize, c: &mut ParseControl) -> Result<
     charges(
         c,
         &[
-            (WorkCategory::RecordVisit, 1),
-            (WorkCategory::InspectByte, size_of::<T>() as u64),
-            (WorkCategory::CopyByte, size_of::<T>() as u64),
+            (HtmlParseWorkCategory::RecordVisit, 1),
+            (HtmlParseWorkCategory::InspectByte, size_of::<T>() as u64),
+            (HtmlParseWorkCategory::CopyByte, size_of::<T>() as u64),
         ],
     )?;
     v.as_slice()
@@ -1429,10 +1432,16 @@ fn id_at(
     charges(
         c,
         &[
-            (WorkCategory::RecordVisit, 1),
-            (WorkCategory::InspectByte, size_of::<ParserNode>() as u64),
-            (WorkCategory::CopyByte, size_of::<ParserNode>() as u64),
-            (WorkCategory::ProviderCall, 1),
+            (HtmlParseWorkCategory::RecordVisit, 1),
+            (
+                HtmlParseWorkCategory::InspectByte,
+                size_of::<ParserNode>() as u64,
+            ),
+            (
+                HtmlParseWorkCategory::CopyByte,
+                size_of::<ParserNode>() as u64,
+            ),
+            (HtmlParseWorkCategory::ProviderCall, 1),
         ],
     )?;
     v.as_slice()
@@ -1441,7 +1450,7 @@ fn id_at(
         .ok_or(AdapterError::Structure(ProjectionError::Limit))
 }
 impl MeteredProjection {
-    fn new() -> Result<Self, ParseStop> {
+    fn new() -> Result<Self, HtmlParseStop> {
         Ok(Self {
             nodes: OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?,
             attrs: OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?,
@@ -1449,7 +1458,7 @@ impl MeteredProjection {
             units: OwnedVec::new(HtmlParseResource::BufferedUtf16Units)?,
         })
     }
-    fn release(self, view: &mut NativeView<'_>) -> Result<(), ParseStop> {
+    fn release(self, view: &mut NativeView<'_>) -> Result<(), HtmlParseStop> {
         // No nested allocations in any record, and release is also valid after
         // a first stop. Never refund work or high-water observations.
         self.nodes.release(view.control())?;
@@ -1462,7 +1471,8 @@ impl MeteredProjection {
         s: &NativeString<'_>,
         view: &mut NativeView<'_>,
     ) -> Result<Span, AdapterError> {
-        view.control().charge(WorkCategory::RecordVisit, 1)?;
+        view.control()
+            .charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let span = Span {
             start: self.units.len(),
             len: s.len(),
@@ -1618,8 +1628,11 @@ impl MeteredProjection {
                         charges(
                             view.control(),
                             &[
-                                (WorkCategory::RecordWrite, 1),
-                                (WorkCategory::CopyByte, size_of::<Option<usize>>() as u64),
+                                (HtmlParseWorkCategory::RecordWrite, 1),
+                                (
+                                    HtmlParseWorkCategory::CopyByte,
+                                    size_of::<Option<usize>>() as u64,
+                                ),
                             ],
                         )?;
                         self.nodes
@@ -1640,9 +1653,9 @@ impl MeteredProjection {
                         charges(
                             view.control(),
                             &[
-                                (WorkCategory::RecordWrite, 1),
+                                (HtmlParseWorkCategory::RecordWrite, 1),
                                 (
-                                    WorkCategory::CopyByte,
+                                    HtmlParseWorkCategory::CopyByte,
                                     size_of::<Option<(usize, HtmlShadowRootProperties)>>() as u64,
                                 ),
                             ],
@@ -1705,12 +1718,12 @@ impl MeteredProjection {
         expected: &[u16],
         c: &mut ParseControl,
     ) -> Result<bool, AdapterError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if actual.len != expected.len() {
             return Ok(false);
         }
         for (offset, expected) in expected.iter().enumerate() {
-            c.charge(WorkCategory::InspectByte, 2)?;
+            c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
             if read(&mut self.units, actual.start + offset, c)? != *expected {
                 return Ok(false);
             }
@@ -1723,7 +1736,7 @@ impl MeteredProjection {
         expected: Option<&Vec<u16>>,
         c: &mut ParseControl,
     ) -> Result<bool, AdapterError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         match (actual, expected) {
             (None, None) => Ok(true),
             (Some(a), Some(e)) => self.equal_units(a, e, c),
@@ -1748,7 +1761,7 @@ impl MeteredProjection {
         expected: &Kind,
         c: &mut ParseControl,
     ) -> Result<bool, AdapterError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         match (actual, expected) {
             (MeteredKind::Document(a), Kind::Document(e)) => Ok(a == *e),
             (MeteredKind::Document(_), Kind::DocumentModeNotCarried) => Ok(true),
@@ -1810,14 +1823,14 @@ impl MeteredProjection {
         view: &mut NativeView<'_>,
     ) -> Result<(), AdapterError> {
         let c = view.control();
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self.nodes.len() != expected.nodes.len() {
             return Err(AdapterError::Mismatch);
         }
         for (i, expected) in expected.nodes.iter().enumerate() {
             let actual = read(&mut self.nodes, i, c)?;
             c.admit_atomic_layout(size_of::<Node>())?;
-            c.charge(WorkCategory::InspectByte, size_of::<Node>() as u64)?;
+            c.charge(HtmlParseWorkCategory::InspectByte, size_of::<Node>() as u64)?;
             if actual.parent != expected.parent
                 || actual.template != expected.template
                 || actual.shadow != expected.shadow
@@ -1830,7 +1843,7 @@ impl MeteredProjection {
             for e in 0..self.edges.len() {
                 let edge = read(&mut self.edges, e, c)?;
                 if edge.parent == i {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     if expected.children.get(child_index) != Some(&edge.child) {
                         return Err(AdapterError::Mismatch);
                     }
@@ -1849,7 +1862,7 @@ impl MeteredProjection {
 enum CaseError {
     Parser(super::StandaloneError),
     Observation(AdapterError),
-    Cleanup(ParseStop),
+    Cleanup(HtmlParseStop),
 }
 impl std::fmt::Display for AdapterError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -2555,7 +2568,7 @@ mod tests {
                             .resource(HtmlParseResource::WorkCredits)
                             .current;
                     view.control()
-                        .charge(WorkCategory::StateStep, left - 1)
+                        .charge(HtmlParseWorkCategory::StateStep, left - 1)
                         .unwrap();
                 }
                 let mut projection = MeteredProjection::new().unwrap();
@@ -2715,7 +2728,7 @@ mod tests {
             let mut output = MeteredProjection::new().unwrap();
             assert!(matches!(
                 output.build(&mut view),
-                Err(AdapterError::Stop(ParseStop::LimitExceeded {
+                Err(AdapterError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::ManagedCapacityBytes,
                     ..
                 }))
@@ -2773,9 +2786,7 @@ mod tests {
 #[cfg(test)]
 mod reference_recovery {
     use super::comment_diagnostic_corpus::{completed, completed_at_cuts, completed_driver};
-    use crate::parser::tree_builder::{
-        report::ImmutableParseReport, seal::SealedOrdinaryConstruction,
-    };
+    use crate::parser::tree_builder::{report::HtmlParseReport, seal::SealedOrdinaryConstruction};
     use crate::*;
 
     type Atom = (usize, usize, usize, usize, HtmlParseOriginKind);
@@ -2969,7 +2980,7 @@ mod reference_recovery {
     pub(super) fn report(
         request: HtmlDocumentParseRequest,
         cuts: Option<&[usize]>,
-    ) -> ImmutableParseReport {
+    ) -> HtmlParseReport {
         let parts = {
             let mut output = match cuts {
                 Some(cuts) => completed_at_cuts(&request, cuts),
@@ -2980,7 +2991,7 @@ mod reference_recovery {
         };
         let mut owner =
             Some(SealedOrdinaryConstruction::take(&mut Some(request), &mut Some(parts)).unwrap());
-        ImmutableParseReport::take_document(&mut owner).unwrap()
+        HtmlParseReport::take_document(&mut owner).unwrap()
     }
     fn check(reference: &Reference, utf16: bool, cuts: Option<&[usize]>) {
         let raw = format!("<!doctype html><p>é{}</p>", reference.raw);
@@ -3371,7 +3382,7 @@ mod reference_recovery {
     }
     #[test]
     fn reference_diagnostic_one_short_and_between_step_cancel_keep_exact_committed_prefix() {
-        use crate::parser::control::{ParseStop, WorkCategory};
+        use crate::parser::control::{HtmlParseStop, HtmlParseWorkCategory};
         use crate::parser::tree_builder::{
             StandaloneDocumentDriver, head::HeadStep, seal::OrdinaryInitializationOwner,
         };
@@ -3428,11 +3439,11 @@ mod reference_recovery {
                     let control = &driver.as_ref().unwrap().control;
                     let stop = control.stop().unwrap();
                     if cancel_prefix {
-                        assert_eq!(stop, ParseStop::Cancelled);
+                        assert_eq!(stop, HtmlParseStop::Cancelled);
                     } else {
                         assert!(matches!(
                             stop,
-                            ParseStop::LimitExceeded {
+                            HtmlParseStop::LimitExceeded {
                                 resource: HtmlParseResource::Diagnostics,
                                 requested_delta: 1,
                                 ..
@@ -3441,7 +3452,7 @@ mod reference_recovery {
                     }
                     let first = control.first_stop_usage().unwrap().clone();
                     assert_eq!(first.resource(HtmlParseResource::Diagnostics).current, 1);
-                    assert!(first.work(WorkCategory::InputUnitRead) > 0);
+                    assert!(first.work(HtmlParseWorkCategory::InputUnitRead) > 0);
                     assert!(StandaloneDocumentDriver::take_completed(&mut driver).is_err());
                     assert!(driver.is_some());
                     let mut failed = StandaloneDocumentDriver::take_failed(&mut driver).unwrap();
@@ -3551,7 +3562,7 @@ mod reference_recovery {
             SessionError, StringLocation,
             provenance::{NativeAssociations, NativeDestination},
         };
-        use crate::parser::control::{ParseStop, WorkCategory};
+        use crate::parser::control::{HtmlParseStop, HtmlParseWorkCategory};
         for short in [false, true] {
             let request = HtmlDocumentParseRequest::offline(
                 HtmlSource::utf8("<!doctype html><p>é&#0x</p>"),
@@ -3590,7 +3601,7 @@ mod reference_recovery {
                     .current;
                 control
                     .charge(
-                        WorkCategory::StateStep,
+                        HtmlParseWorkCategory::StateStep,
                         request.limits().work_credits() - used - remaining,
                     )
                     .unwrap();
@@ -3598,14 +3609,14 @@ mod reference_recovery {
                     .usage()
                     .resource(HtmlParseResource::WorkCredits)
                     .current;
-                let reads = control.usage().work(WorkCategory::InputUnitRead);
+                let reads = control.usage().work(HtmlParseWorkCategory::InputUnitRead);
                 {
                     let mut rows = session.native_associations(control).unwrap();
                     let result = rows.row(index);
                     if short {
                         assert!(matches!(
                             result,
-                            Err(SessionError::Stop(ParseStop::LimitExceeded {
+                            Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                                 resource: HtmlParseResource::WorkCredits,
                                 requested_delta: 1,
                                 ..
@@ -3621,7 +3632,10 @@ mod reference_recovery {
                         );
                     }
                 }
-                assert_eq!(control.usage().work(WorkCategory::InputUnitRead), reads);
+                assert_eq!(
+                    control.usage().work(HtmlParseWorkCategory::InputUnitRead),
+                    reads
+                );
                 assert_eq!(
                     control
                         .usage()
@@ -3633,7 +3647,7 @@ mod reference_recovery {
                 if !short {
                     request.cancellation().cancel();
                     assert!(session.native_associations(control).is_err());
-                    assert_eq!(control.stop(), Some(ParseStop::Cancelled));
+                    assert_eq!(control.stop(), Some(HtmlParseStop::Cancelled));
                 }
                 let first = control.first_stop_usage().unwrap().clone();
                 assert_eq!(control.first_stop_usage(), Some(&first));
@@ -3652,25 +3666,30 @@ mod whole_source_comparisons {
     use crate::construction::{
         StringLocation,
         evidence::{
-            DiagnosticContext, DiagnosticKind, DiagnosticLocation, DiagnosticLocationRole,
-            DiagnosticRecord, DiagnosticSeverity, DiagnosticToken,
+            HtmlParseDiagnostic, HtmlParseDiagnosticContext, HtmlParseDiagnosticKind,
+            HtmlParseDiagnosticLocation, HtmlParseDiagnosticLocationRole,
+            HtmlParseDiagnosticSeverity, HtmlParseTokenFamily,
         },
         provenance::{
-            AssociationRelation, LexicalDisposition, LexicalKind, LexicalOccurrence, LexicalPart,
-            NativeAssociation, NativeAttributeField, NativeDestination,
+            HtmlParseAssociationRelation, HtmlParseLexicalDisposition, HtmlParseLexicalKind,
+            LexicalOccurrence, LexicalPart, NativeAssociation, NativeAttributeField,
+            NativeDestination,
         },
-        report::MetadataStep,
+        report::HtmlParseMetadataStep,
     };
     use crate::parser::{
-        control::ParseUsage,
+        control::HtmlParseUsage,
         tokenizer::{
-            states::State,
-            token::{DiagnosticCode, DiagnosticPhase, OriginKind, TextOrigin},
+            states::HtmlTokenizerState,
+            token::{
+                HtmlParseOriginKind, HtmlParseTextOrigin, HtmlTokenizerDiagnostic,
+                HtmlTokenizerDiagnosticPhase,
+            },
         },
         tree_builder::{
             StandaloneDocumentDriver,
             head::HeadStep,
-            report::ImmutableParseReport,
+            report::HtmlParseReport,
             seal::{OrdinaryInitializationOwner, SealedOrdinaryConstruction},
         },
     };
@@ -3679,15 +3698,15 @@ mod whole_source_comparisons {
 
     const PREFIX: &str = "<!doctype html><html><head></head><body>";
     const SUFFIX: &str = "</body></html>";
-    const WORK: [WorkCategory; 8] = [
-        WorkCategory::InputUnitRead,
-        WorkCategory::InspectByte,
-        WorkCategory::CopyByte,
-        WorkCategory::StateStep,
-        WorkCategory::RecordVisit,
-        WorkCategory::RecordWrite,
-        WorkCategory::ReserveByte,
-        WorkCategory::ProviderCall,
+    const WORK: [HtmlParseWorkCategory; 8] = [
+        HtmlParseWorkCategory::InputUnitRead,
+        HtmlParseWorkCategory::InspectByte,
+        HtmlParseWorkCategory::CopyByte,
+        HtmlParseWorkCategory::StateStep,
+        HtmlParseWorkCategory::RecordVisit,
+        HtmlParseWorkCategory::RecordWrite,
+        HtmlParseWorkCategory::ReserveByte,
+        HtmlParseWorkCategory::ProviderCall,
     ];
 
     #[derive(Clone, Debug, Eq, PartialEq)]
@@ -3695,14 +3714,14 @@ mod whole_source_comparisons {
         node: usize,
         output: (usize, usize),
         source: (usize, usize),
-        kind: OriginKind,
+        kind: HtmlParseOriginKind,
     }
     #[derive(Clone, Debug, Eq, PartialEq)]
     struct Error {
-        kind: DiagnosticKind,
-        context: DiagnosticContext,
-        role: DiagnosticLocationRole,
-        token: Option<DiagnosticToken>,
+        kind: HtmlParseDiagnosticKind,
+        context: HtmlParseDiagnosticContext,
+        role: HtmlParseDiagnosticLocationRole,
+        token: Option<HtmlParseTokenFamily>,
         anchor: &'static str,
         branch: &'static str,
         source: (usize, usize),
@@ -3713,11 +3732,11 @@ mod whole_source_comparisons {
         expected: Projection,
         origins: Vec<Origin>,
         errors: Vec<Error>,
-        attributes: Vec<((usize, usize), LexicalDisposition)>,
+        attributes: Vec<((usize, usize), HtmlParseLexicalDisposition)>,
     }
     struct Observation {
         projection: Projection,
-        phases: Vec<(&'static str, ParseUsage, Duration)>,
+        phases: Vec<(&'static str, HtmlParseUsage, Duration)>,
     }
     fn append(p: &mut Projection, parent: usize, kind: Kind) -> usize {
         let index = p.nodes.len();
@@ -3773,7 +3792,7 @@ mod whole_source_comparisons {
         expected: Projection,
         origins: Vec<Origin>,
         errors: Vec<Error>,
-        attributes: Vec<((usize, usize), LexicalDisposition)>,
+        attributes: Vec<((usize, usize), HtmlParseLexicalDisposition)>,
     ) -> Literal {
         let mut raw = units(PREFIX);
         raw.extend(body);
@@ -3801,7 +3820,7 @@ mod whole_source_comparisons {
                     node: 6,
                     output: (4 * i + a, 4 * i + b),
                     source: (PREFIX.len() + 3 + 4 * i + a, PREFIX.len() + 3 + 4 * i + b),
-                    kind: OriginKind::Literal,
+                    kind: HtmlParseOriginKind::Literal,
                 });
             }
         }
@@ -3831,35 +3850,35 @@ mod whole_source_comparisons {
             let s = PREFIX.len() + 3 + i * spelling.len();
             let o = 7 * i;
             for (out, src, kind) in [
-                ((o, o + 1), (s, s + 1), OriginKind::Literal),
+                ((o, o + 1), (s, s + 1), HtmlParseOriginKind::Literal),
                 (
                     (o + 1, o + 2),
                     (s + 1, s + 1 + newline),
                     if crlf {
-                        OriginKind::Newline
+                        HtmlParseOriginKind::Newline
                     } else {
-                        OriginKind::Literal
+                        HtmlParseOriginKind::Literal
                     },
                 ),
                 (
                     (o + 2, o + 3),
                     (s + 1 + newline, s + 6 + newline),
-                    OriginKind::CharacterReference,
+                    HtmlParseOriginKind::CharacterReference,
                 ),
                 (
                     (o + 3, o + 5),
                     (s + 6 + newline, s + 15 + newline),
-                    OriginKind::CharacterReference,
+                    HtmlParseOriginKind::CharacterReference,
                 ),
                 (
                     (o + 5, o + 6),
                     (s + 15 + newline, s + 30 + newline),
-                    OriginKind::CharacterReference,
+                    HtmlParseOriginKind::CharacterReference,
                 ),
                 (
                     (o + 6, o + 7),
                     (s + 15 + newline, s + 30 + newline),
-                    OriginKind::CharacterReference,
+                    HtmlParseOriginKind::CharacterReference,
                 ),
             ] {
                 origins.push(Origin {
@@ -3903,19 +3922,21 @@ mod whole_source_comparisons {
                 spans.push((
                     (start, PREFIX.len() + body.len()),
                     if duplicate {
-                        LexicalDisposition::DuplicateAttribute
+                        HtmlParseLexicalDisposition::DuplicateAttribute
                     } else {
-                        LexicalDisposition::StoredAttribute
+                        HtmlParseLexicalDisposition::StoredAttribute
                     },
                 ));
                 if duplicate {
                     errors.push(Error {
-                        kind: DiagnosticKind::Tokenizer(DiagnosticCode::DuplicateAttribute),
-                        context: DiagnosticContext::Tokenizer {
-                            phase: DiagnosticPhase::Tokenizer,
-                            state: State::AttributeName,
+                        kind: HtmlParseDiagnosticKind::Tokenizer(
+                            HtmlTokenizerDiagnostic::DuplicateAttribute,
+                        ),
+                        context: HtmlParseDiagnosticContext::Tokenizer {
+                            phase: HtmlTokenizerDiagnosticPhase::Tokenizer,
+                            state: HtmlTokenizerState::AttributeName,
                         },
-                        role: DiagnosticLocationRole::InputFrontier,
+                        role: HtmlParseDiagnosticLocationRole::InputFrontier,
                         token: None,
                         anchor: "parse-error-duplicate-attribute",
                         branch: "duplicate-attribute",
@@ -3956,7 +3977,7 @@ mod whole_source_comparisons {
                 node: 6 + 2 * i,
                 output: (0, 1),
                 source: (s, s + 1),
-                kind: OriginKind::Literal,
+                kind: HtmlParseOriginKind::Literal,
             });
         }
         literal(
@@ -3978,11 +3999,11 @@ mod whole_source_comparisons {
         let k = (l.raw.len() + l.expected.nodes.len() + l.errors.len() + l.attributes.len() + 64)
             as u64;
         let layout = (size_of::<NativeAssociation>()
-            + size_of::<TextOrigin>()
+            + size_of::<HtmlParseTextOrigin>()
             + size_of::<LexicalOccurrence>()
             + size_of::<LexicalPart>()
-            + size_of::<DiagnosticRecord>()
-            + size_of::<DiagnosticLocation>()
+            + size_of::<HtmlParseDiagnostic>()
+            + size_of::<HtmlParseDiagnosticLocation>()
             + size_of::<MeteredNode>()
             + size_of::<MeteredAttr>()
             + size_of::<Edge>()
@@ -4075,7 +4096,7 @@ mod whole_source_comparisons {
         let starts: Vec<_> = literal
             .attributes
             .iter()
-            .filter(|(_, disposition)| *disposition == LexicalDisposition::StoredAttribute)
+            .filter(|(_, disposition)| *disposition == HtmlParseLexicalDisposition::StoredAttribute)
             .map(|(span, _)| span.0)
             .collect();
         let expected: Vec<_> = values
@@ -4090,7 +4111,7 @@ mod whole_source_comparisons {
                         node: 5,
                         output: (0, 1),
                         source: (start, start + 1),
-                        kind: OriginKind::Literal,
+                        kind: HtmlParseOriginKind::Literal,
                     },
                 )
             })
@@ -4114,7 +4135,7 @@ mod whole_source_comparisons {
     fn evidence(
         l: &Literal,
         utf8: bool,
-        report: &ImmutableParseReport,
+        report: &HtmlParseReport,
         positions: &[(bool, usize, usize)],
     ) {
         let source = report.source();
@@ -4124,7 +4145,7 @@ mod whole_source_comparisons {
             let (record, location) = diagnostics.retained_record(i).unwrap().unwrap();
             assert_eq!(record.kind, expected.kind);
             assert_eq!(record.context, expected.context);
-            assert_eq!(record.severity, DiagnosticSeverity::Recoverable);
+            assert_eq!(record.severity, HtmlParseDiagnosticSeverity::Recoverable);
             assert_eq!(location.role, expected.role);
             assert_eq!(location.token, expected.token);
             assert_eq!(record.rule.anchor, expected.anchor);
@@ -4155,7 +4176,7 @@ mod whole_source_comparisons {
             if let Some(range) = &row.source {
                 check_range(source, range, (range.start(), range.end()));
             }
-            if row.relation == AssociationRelation::Output
+            if row.relation == HtmlParseAssociationRelation::Output
                 && matches!(
                     row.destination,
                     NativeDestination::Field(StringLocation::Text(_))
@@ -4178,7 +4199,7 @@ mod whole_source_comparisons {
                     kind: row.kind.expect("selected output origin"),
                 });
             }
-            if row.relation == AssociationRelation::Output {
+            if row.relation == HtmlParseAssociationRelation::Output {
                 let field = match row.destination {
                     NativeDestination::Field(StringLocation::AttributeName(owner, slot)) => {
                         Some((position(true, owner), slot, 1, &mut attributes))
@@ -4239,13 +4260,13 @@ mod whole_source_comparisons {
         let mut actual = Vec::new();
         let mut i = 0;
         while let Some(occurrence) = associations.lexical_occurrence(i) {
-            assert_ne!(occurrence.disposition, LexicalDisposition::Draft);
+            assert_ne!(occurrence.disposition, HtmlParseLexicalDisposition::Draft);
             check_range(
                 source,
                 &occurrence.source,
                 (occurrence.source.start(), occurrence.source.end()),
             );
-            if occurrence.kind == LexicalKind::Attribute {
+            if occurrence.kind == HtmlParseLexicalKind::Attribute {
                 actual.push((
                     (occurrence.source.start(), occurrence.source.end()),
                     occurrence.disposition,
@@ -4276,7 +4297,7 @@ mod whole_source_comparisons {
         let stored: Vec<_> = l
             .attributes
             .iter()
-            .filter(|(_, disposition)| *disposition == LexicalDisposition::StoredAttribute)
+            .filter(|(_, disposition)| *disposition == HtmlParseLexicalDisposition::StoredAttribute)
             .collect();
         assert_eq!(authored.len(), stored.len());
         let mut expected_attributes = Vec::new();
@@ -4300,7 +4321,7 @@ mod whole_source_comparisons {
                                 offset(l, utf8, raw_start + i),
                                 offset(l, utf8, raw_start + i + 1),
                             ),
-                            kind: OriginKind::Literal,
+                            kind: HtmlParseOriginKind::Literal,
                         },
                     ));
                 }
@@ -4331,7 +4352,7 @@ mod whole_source_comparisons {
                                 offset(l, utf8, raw_start + i),
                                 offset(l, utf8, raw_start + i + 1),
                             ),
-                            kind: OriginKind::Literal,
+                            kind: HtmlParseOriginKind::Literal,
                         },
                     ));
                 }
@@ -4353,10 +4374,10 @@ mod whole_source_comparisons {
         let mut created = Vec::new();
         loop {
             match metadata.advance() {
-                MetadataStep::Fault(fault) => panic!("{fault}"),
-                MetadataStep::Complete => break,
-                MetadataStep::Skipped => {}
-                MetadataStep::Record(record) => {
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
+                HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Skipped => {}
+                HtmlParseMetadataStep::Record(record) => {
                     assert!(document.node(&record.node().id()).is_ok());
                     // These fixed ordinary fixtures contain known elements with
                     // no `is`: their actual creation state remains independent.
@@ -4364,8 +4385,9 @@ mod whole_source_comparisons {
                         assert_eq!(creation.0, crate::HtmlCustomElementState::Uncustomized);
                         assert!(creation.1.is_none());
                     }
-                    if let Some(crate::construction::report::MetadataDocument::Owned(owner)) =
-                        record.node_document()
+                    if let Some(crate::construction::report::HtmlParseMetadataDocument::Owned(
+                        owner,
+                    )) = record.node_document()
                     {
                         assert_eq!(owner.id(), document.root().id());
                         let node = record.node();
@@ -4456,7 +4478,7 @@ mod whole_source_comparisons {
     }
     struct SealObservation {
         owner: SealedOrdinaryConstruction,
-        phases: Vec<(&'static str, ParseUsage, Duration)>,
+        phases: Vec<(&'static str, HtmlParseUsage, Duration)>,
         positions: Vec<(bool, usize, usize)>,
     }
     fn sealed(
@@ -4552,7 +4574,7 @@ mod whole_source_comparisons {
         let original = input.as_ref().unwrap().source().identity().clone();
         let clock = Instant::now();
         let cancelled_after_publication = input.as_ref().unwrap().request.cancellation().clone();
-        let report = ImmutableParseReport::take_document(&mut input).unwrap();
+        let report = HtmlParseReport::take_document(&mut input).unwrap();
         assert!(input.is_none());
         phases.push(("report", report.usage().clone(), clock.elapsed()));
         assert_eq!(report.source().identity(), &original);
@@ -4595,11 +4617,11 @@ mod whole_source_comparisons {
         let state = report.document_state().unwrap();
         assert_eq!(
             state.readiness,
-            crate::construction::ConstructionReadiness::Complete
+            crate::construction::HtmlParseReadiness::Complete
         );
         assert_eq!(
             state.completion,
-            crate::construction::ConstructionCompletion::Complete
+            crate::construction::HtmlParseCompletion::Complete
         );
         assert!(state.ready_for_post_load_tasks);
         cancelled_after_publication.cancel(); // Immutable lenders retain no live execution authority.
@@ -4687,10 +4709,10 @@ mod whole_source_comparisons {
             Kind::Text(vec![0xd800, 10, 0xd83d, 0xde00, 0xd83d, 0xde00]),
         );
         let origins = [
-            ((0, 1), (0, 1), OriginKind::Literal),
-            ((1, 2), (1, 3), OriginKind::Newline),
-            ((2, 4), (3, 5), OriginKind::Literal),
-            ((4, 6), (5, 14), OriginKind::CharacterReference),
+            ((0, 1), (0, 1), HtmlParseOriginKind::Literal),
+            ((1, 2), (1, 3), HtmlParseOriginKind::Newline),
+            ((2, 4), (3, 5), HtmlParseOriginKind::Literal),
+            ((4, 6), (5, 14), HtmlParseOriginKind::CharacterReference),
         ]
         .into_iter()
         .map(|(output, source, kind)| Origin {
@@ -4709,12 +4731,14 @@ mod whole_source_comparisons {
             expected,
             origins,
             vec![Error {
-                kind: DiagnosticKind::Tokenizer(DiagnosticCode::SurrogateInInputStream),
-                context: DiagnosticContext::Tokenizer {
-                    phase: DiagnosticPhase::InputStream,
-                    state: State::Data,
+                kind: HtmlParseDiagnosticKind::Tokenizer(
+                    HtmlTokenizerDiagnostic::SurrogateInInputStream,
+                ),
+                context: HtmlParseDiagnosticContext::Tokenizer {
+                    phase: HtmlTokenizerDiagnosticPhase::InputStream,
+                    state: HtmlTokenizerState::Data,
                 },
-                role: DiagnosticLocationRole::InputFrontier,
+                role: HtmlParseDiagnosticLocationRole::InputFrontier,
                 token: None,
                 anchor: "parse-error-surrogate-in-input-stream",
                 branch: "surrogate-in-input-stream",
@@ -4728,8 +4752,8 @@ mod whole_source_comparisons {
     #[test]
     fn literal_initial_pi_and_leading_feff_preserve_source_defined_mode_and_errors() {
         use crate::parser::tree_builder::{
-            head::{HeadCondition, InsertionMode},
-            prologue::{PrologueCondition, PrologueMode},
+            head::{HtmlInsertionMode, HtmlTreeDiagnostic},
+            prologue::{HtmlPrologueDiagnostic, HtmlPrologueMode},
         };
         // Initial PI is inserted without leaving Initial. Literal FEFF is not
         // ASCII whitespace/BOM decoding; it takes Initial's anything-else path.
@@ -4799,7 +4823,7 @@ mod whole_source_comparisons {
                 node: 7,
                 output: (0, 1),
                 source: (x, x + 1),
-                kind: OriginKind::Literal,
+                kind: HtmlParseOriginKind::Literal,
             }];
             let errors = if feff {
                 origins.insert(
@@ -4808,24 +4832,26 @@ mod whole_source_comparisons {
                         node: 4,
                         output: (0, 1),
                         source: (0, 1),
-                        kind: OriginKind::Literal,
+                        kind: HtmlParseOriginKind::Literal,
                     },
                 );
                 vec![
                     Error {
-                        kind: DiagnosticKind::Prologue(PrologueCondition::MissingDoctype),
-                        context: DiagnosticContext::Prologue(PrologueMode::Initial),
-                        role: DiagnosticLocationRole::TokenEnvelope,
-                        token: Some(DiagnosticToken::Text),
+                        kind: HtmlParseDiagnosticKind::Prologue(
+                            HtmlPrologueDiagnostic::MissingDoctype,
+                        ),
+                        context: HtmlParseDiagnosticContext::Prologue(HtmlPrologueMode::Initial),
+                        role: HtmlParseDiagnosticLocationRole::TokenEnvelope,
+                        token: Some(HtmlParseTokenFamily::Text),
                         anchor: "the-initial-insertion-mode",
                         branch: "anything-else/missing-doctype",
                         source: (0, 1),
                     },
                     Error {
-                        kind: DiagnosticKind::Tree(HeadCondition::UnexpectedDoctype),
-                        context: DiagnosticContext::Tree(InsertionMode::InBody),
-                        role: DiagnosticLocationRole::TokenEnvelope,
-                        token: Some(DiagnosticToken::Doctype),
+                        kind: HtmlParseDiagnosticKind::Tree(HtmlTreeDiagnostic::UnexpectedDoctype),
+                        context: HtmlParseDiagnosticContext::Tree(HtmlInsertionMode::InBody),
+                        role: HtmlParseDiagnosticLocationRole::TokenEnvelope,
+                        token: Some(HtmlParseTokenFamily::Doctype),
                         anchor: "parsing-main-inbody",
                         branch: "doctype/ignore",
                         source: (1 + pi, 1 + pi + "<!doctype html>".len()),
@@ -4932,7 +4958,7 @@ mod whole_source_comparisons {
             cancel.cancel();
             assert!(matches!(
                 rows.attribute_for(0, &element, 0, NativeAttributeField::Name),
-                Err(SessionError::Stop(ParseStop::Cancelled))
+                Err(SessionError::Stop(HtmlParseStop::Cancelled))
             ));
         }
         let first = completed.at_stop().unwrap().clone();
@@ -4945,7 +4971,7 @@ mod whole_source_comparisons {
         foreign_session.release(&mut foreign_control).unwrap();
         super::super::tests::assert_released(&foreign_control);
     }
-    fn zero_storage(usage: &ParseUsage) {
+    fn zero_storage(usage: &HtmlParseUsage) {
         for resource in [
             HtmlParseResource::BufferedUtf16Units,
             HtmlParseResource::TokenAttributes,
@@ -4978,7 +5004,7 @@ mod whole_source_comparisons {
             let mut attempt = owner.begin().unwrap();
             assert!(matches!(
                 attempt.take_driver(),
-                Err(StandaloneError::Stop(ParseStop::Cancelled))
+                Err(StandaloneError::Stop(HtmlParseStop::Cancelled))
             ));
             let first = attempt.at_stop().unwrap().clone();
             assert_eq!(first.resource(HtmlParseResource::SourceUnits).current, 0);
@@ -5025,7 +5051,7 @@ mod whole_source_comparisons {
             cancel.cancel();
             assert!(driver.as_mut().unwrap().step().is_err());
             let c = &driver.as_ref().unwrap().control;
-            assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+            assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
             let first = c.first_stop_usage().unwrap().clone();
             assert_eq!(
                 first.resource(HtmlParseResource::SourceUnits).current,
@@ -5035,7 +5061,7 @@ mod whole_source_comparisons {
             assert!(driver.is_none());
             assert_eq!(failed.at_stop(), &first);
             assert_eq!(failed.source().identity(), &identity);
-            assert_eq!(failed.stop(), ParseStop::Cancelled);
+            assert_eq!(failed.stop(), HtmlParseStop::Cancelled);
             let diagnostics = failed.diagnostics().unwrap();
             assert_eq!(diagnostics.len(), 1);
             let (record, location) = diagnostics.retained_record(0).unwrap().unwrap();
@@ -5047,7 +5073,7 @@ mod whole_source_comparisons {
             failed.release().unwrap();
             zero_storage(failed.retained_usage());
             assert_eq!(failed.at_stop(), &first);
-            assert_eq!(failed.stop(), ParseStop::Cancelled);
+            assert_eq!(failed.stop(), HtmlParseStop::Cancelled);
         }
         assert_eq!(owner.take_request().unwrap().source().identity(), &identity);
     }
@@ -5058,7 +5084,7 @@ mod whole_source_comparisons {
             owner, positions, ..
         } = sealed(&l, true, false, None);
         let mut measured = Some(owner);
-        let report = ImmutableParseReport::take_document(&mut measured).unwrap();
+        let report = HtmlParseReport::take_document(&mut measured).unwrap();
         evidence(&l, true, &report, &positions);
         assert_eq!(project(report.document().unwrap()).unwrap(), l.expected);
         let exact = report
@@ -5075,7 +5101,7 @@ mod whole_source_comparisons {
             } = sealed(&l, true, false, Some(work));
             let mut input = Some(owner);
             let identity = input.as_ref().unwrap().source().identity().clone();
-            let result = ImmutableParseReport::take_document(&mut input);
+            let result = HtmlParseReport::take_document(&mut input);
             if work == exact {
                 let report = result.unwrap();
                 assert!(input.is_none());
@@ -5090,7 +5116,7 @@ mod whole_source_comparisons {
                 assert_eq!(report.source().identity(), &identity);
             } else {
                 assert!(
-                    matches!(result,Err(SessionError::Stop(ParseStop::LimitExceeded {
+                    matches!(result,Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource:HtmlParseResource::WorkCredits,current,requested_delta:5,..})) if current==exact-5)
                 );
                 let kept = input.as_mut().unwrap();
@@ -5113,7 +5139,7 @@ mod whole_source_comparisons {
 
     #[test]
     fn completed_reference_lineage_uses_contributed_extents_not_atom_times_history() {
-        use crate::construction::provenance::{ConstructionOperation, GroupBody};
+        use crate::construction::provenance::{GroupBody, HtmlParseConstructionOperation};
         // Five actual Text insertions per literal repetition, but six exact
         // direct origin atoms: the last entity has two output atoms in one leaf.
         // Data lineage has one qualified contribution per insertion. Each of
@@ -5146,7 +5172,7 @@ mod whole_source_comparisons {
             let mut cause_rows = Vec::new();
             for i in 0..view.len() {
                 let row = view.row(i).unwrap();
-                if row.relation == AssociationRelation::Cause {
+                if row.relation == HtmlParseAssociationRelation::Cause {
                     assert!(row.destination == NativeDestination::Cause(row.cause));
                     assert!(row.group.is_none());
                     assert_eq!((row.start, row.end), (0, 0));
@@ -5169,7 +5195,7 @@ mod whole_source_comparisons {
                 assert!(positions.contains(&(false, node, 6)));
                 let range = row.source.as_ref().unwrap();
                 check_range(owner.source(), range, (range.start(), range.end()));
-                if row.relation == AssociationRelation::Output {
+                if row.relation == HtmlParseAssociationRelation::Output {
                     let group = row.group.unwrap();
                     assert!(root.is_none_or(|previous| previous == group));
                     root = Some(group);
@@ -5200,7 +5226,7 @@ mod whole_source_comparisons {
                 if let Some(source) = &cause.source {
                     check_range(owner.source(), source, (source.start(), source.end()));
                 }
-                if cause.operation == ConstructionOperation::Token {
+                if cause.operation == HtmlParseConstructionOperation::Token {
                     assert!(cause.trigger.is_some());
                 }
                 causes += 1;
@@ -5218,7 +5244,7 @@ mod whole_source_comparisons {
                         incoming,
                         offset,
                     } => {
-                        assert_eq!(cause.operation, ConstructionOperation::Merge);
+                        assert_eq!(cause.operation, HtmlParseConstructionOperation::Merge);
                         assert!(cause.source.is_none());
                         assert_eq!(
                             (cause.original, cause.incoming),
@@ -5231,7 +5257,7 @@ mod whole_source_comparisons {
                         assert!(original < index && incoming < index);
                         assert!(matches!(right.body, GroupBody::Leaf { .. }));
                         let leaf_cause = view.cause(right.cause).unwrap();
-                        assert_eq!(leaf_cause.operation, ConstructionOperation::Token);
+                        assert_eq!(leaf_cause.operation, HtmlParseConstructionOperation::Token);
                         assert_eq!(cause.trigger, Some(right.cause));
                         let range = leaf_cause.source.as_ref().unwrap();
                         leaves.push((
@@ -5242,13 +5268,16 @@ mod whole_source_comparisons {
                             (range.start(), range.end()),
                         ));
                         let retired = view.cause(left.retirement.unwrap()).unwrap();
-                        assert_eq!(retired.operation, ConstructionOperation::Retirement);
+                        assert_eq!(
+                            retired.operation,
+                            HtmlParseConstructionOperation::Retirement
+                        );
                         assert_eq!(retired.original, Some(original));
                         merged += 1;
                         index = original;
                     }
                     GroupBody::Leaf { .. } => {
-                        assert_eq!(cause.operation, ConstructionOperation::Token);
+                        assert_eq!(cause.operation, HtmlParseConstructionOperation::Token);
                         let range = cause.source.as_ref().unwrap();
                         leaves.push((
                             index,
@@ -5321,9 +5350,9 @@ mod whole_source_comparisons {
                 .map(|(i, (group, cause, a, b, source))| {
                     (
                         if i == 0 {
-                            AssociationRelation::Original
+                            HtmlParseAssociationRelation::Original
                         } else {
-                            AssociationRelation::Incoming
+                            HtmlParseAssociationRelation::Incoming
                         },
                         *a,
                         *b,
@@ -5337,7 +5366,14 @@ mod whole_source_comparisons {
                 .iter()
                 .skip(1)
                 .map(|(_, cause, a, b, source)| {
-                    (AssociationRelation::Trigger, *a, *b, *source, None, *cause)
+                    (
+                        HtmlParseAssociationRelation::Trigger,
+                        *a,
+                        *b,
+                        *source,
+                        None,
+                        *cause,
+                    )
                 })
                 .collect();
             assert_eq!(
@@ -5360,60 +5396,60 @@ mod whole_source_comparisons {
 mod comment_diagnostic_corpus {
     use super::*;
     use crate::construction::evidence::{
-        DiagnosticContext, DiagnosticKind, DiagnosticLocation, DiagnosticLocationRole,
-        DiagnosticRecord, DiagnosticRule, DiagnosticSeverity, DiagnosticToken,
-        FailureDiagnosticEvidence,
+        FailureDiagnosticEvidence, HtmlParseDiagnostic, HtmlParseDiagnosticContext,
+        HtmlParseDiagnosticKind, HtmlParseDiagnosticLocation, HtmlParseDiagnosticLocationRole,
+        HtmlParseDiagnosticRule, HtmlParseDiagnosticSeverity, HtmlParseTokenFamily,
     };
-    use crate::parser::control::ParseUsage;
+    use crate::parser::control::HtmlParseUsage;
     use crate::parser::tokenizer::{
-        states::State,
-        token::{DiagnosticCode, DiagnosticPhase},
+        states::HtmlTokenizerState,
+        token::{HtmlTokenizerDiagnostic, HtmlTokenizerDiagnosticPhase},
     };
     use crate::parser::tree_builder::{
         StandaloneDocumentDriver,
         head::HeadStep,
-        prologue::{PrologueCondition, PrologueMode},
+        prologue::{HtmlPrologueDiagnostic, HtmlPrologueMode},
         terminal::CompletedStandaloneDocument,
     };
     use crate::{HtmlDocumentParseRequest, HtmlSource};
 
     #[derive(Clone, Copy)]
     struct ExpectedDiagnostic {
-        kind: DiagnosticKind,
-        context: DiagnosticContext,
-        rule: DiagnosticRule,
-        role: DiagnosticLocationRole,
-        token: Option<DiagnosticToken>,
+        kind: HtmlParseDiagnosticKind,
+        context: HtmlParseDiagnosticContext,
+        rule: HtmlParseDiagnosticRule,
+        role: HtmlParseDiagnosticLocationRole,
+        token: Option<HtmlParseTokenFamily>,
         source: (usize, usize),
     }
-    const fn missing(source: (usize, usize), token: DiagnosticToken) -> ExpectedDiagnostic {
+    const fn missing(source: (usize, usize), token: HtmlParseTokenFamily) -> ExpectedDiagnostic {
         ExpectedDiagnostic {
-            kind: DiagnosticKind::Prologue(PrologueCondition::MissingDoctype),
-            context: DiagnosticContext::Prologue(PrologueMode::Initial),
-            rule: DiagnosticRule {
+            kind: HtmlParseDiagnosticKind::Prologue(HtmlPrologueDiagnostic::MissingDoctype),
+            context: HtmlParseDiagnosticContext::Prologue(HtmlPrologueMode::Initial),
+            rule: HtmlParseDiagnosticRule {
                 anchor: "the-initial-insertion-mode",
                 branch: "anything-else/missing-doctype",
             },
-            role: DiagnosticLocationRole::TokenEnvelope,
+            role: HtmlParseDiagnosticLocationRole::TokenEnvelope,
             token: Some(token),
             source,
         }
     }
     const fn tokenizer(
-        code: DiagnosticCode,
-        state: State,
+        code: HtmlTokenizerDiagnostic,
+        state: HtmlTokenizerState,
         anchor: &'static str,
         branch: &'static str,
         source: (usize, usize),
     ) -> ExpectedDiagnostic {
         ExpectedDiagnostic {
-            kind: DiagnosticKind::Tokenizer(code),
-            context: DiagnosticContext::Tokenizer {
-                phase: DiagnosticPhase::Tokenizer,
+            kind: HtmlParseDiagnosticKind::Tokenizer(code),
+            context: HtmlParseDiagnosticContext::Tokenizer {
+                phase: HtmlTokenizerDiagnosticPhase::Tokenizer,
                 state,
             },
-            rule: DiagnosticRule { anchor, branch },
-            role: DiagnosticLocationRole::InputFrontier,
+            rule: HtmlParseDiagnosticRule { anchor, branch },
+            role: HtmlParseDiagnosticLocationRole::InputFrontier,
             token: None,
             source,
         }
@@ -5424,10 +5460,10 @@ mod comment_diagnostic_corpus {
     // not a translation of the corpus's legacy line/column labels.
     // Data-state raw94593 emits the current input character. Initial sees
     // first F0..1 (or H20..21), not a callback-batched whole word.
-    const FOO: ExpectedDiagnostic = missing((0, 1), DiagnosticToken::Text);
+    const FOO: ExpectedDiagnostic = missing((0, 1), HtmlParseTokenFamily::Text);
     const RESERVED_XML: ExpectedDiagnostic = tokenizer(
-        DiagnosticCode::DisallowedProcessingInstructionTarget,
-        State::PiTarget,
+        HtmlTokenizerDiagnostic::DisallowedProcessingInstructionTarget,
+        HtmlTokenizerState::PiTarget,
         "parse-error-disallowed-processing-instruction-target",
         "disallowed-processing-instruction-target",
         (5, 6),
@@ -5437,8 +5473,8 @@ mod comment_diagnostic_corpus {
         &[
             FOO,
             tokenizer(
-                DiagnosticCode::IncorrectlyClosedComment,
-                State::CommentEndBang,
+                HtmlTokenizerDiagnostic::IncorrectlyClosedComment,
+                HtmlTokenizerState::CommentEndBang,
                 "parse-error-incorrectly-closed-comment",
                 "incorrectly-closed-comment",
                 (15, 16),
@@ -5447,8 +5483,8 @@ mod comment_diagnostic_corpus {
         &[
             FOO,
             tokenizer(
-                DiagnosticCode::EofInComment,
-                State::Comment,
+                HtmlTokenizerDiagnostic::EofInComment,
+                HtmlTokenizerState::Comment,
                 "parse-error-eof-in-comment",
                 "eof-in-comment",
                 (20, 20),
@@ -5457,8 +5493,8 @@ mod comment_diagnostic_corpus {
         &[
             FOO,
             tokenizer(
-                DiagnosticCode::EofInComment,
-                State::Comment,
+                HtmlTokenizerDiagnostic::EofInComment,
+                HtmlTokenizerState::Comment,
                 "parse-error-eof-in-comment",
                 "eof-in-comment",
                 (20, 20),
@@ -5467,8 +5503,8 @@ mod comment_diagnostic_corpus {
         &[
             FOO,
             tokenizer(
-                DiagnosticCode::EofInComment,
-                State::Comment,
+                HtmlTokenizerDiagnostic::EofInComment,
+                HtmlTokenizerState::Comment,
                 "parse-error-eof-in-comment",
                 "eof-in-comment",
                 (21, 21),
@@ -5478,8 +5514,8 @@ mod comment_diagnostic_corpus {
         &[
             FOO,
             tokenizer(
-                DiagnosticCode::IncorrectlyClosedComment,
-                State::CommentEndBang,
+                HtmlTokenizerDiagnostic::IncorrectlyClosedComment,
+                HtmlTokenizerState::CommentEndBang,
                 "parse-error-incorrectly-closed-comment",
                 "incorrectly-closed-comment",
                 (31, 32),
@@ -5488,8 +5524,8 @@ mod comment_diagnostic_corpus {
         &[
             FOO,
             tokenizer(
-                DiagnosticCode::EofInComment,
-                State::Comment,
+                HtmlTokenizerDiagnostic::EofInComment,
+                HtmlTokenizerState::Comment,
                 "parse-error-eof-in-comment",
                 "eof-in-comment",
                 (35, 35),
@@ -5499,8 +5535,8 @@ mod comment_diagnostic_corpus {
         &[
             FOO,
             tokenizer(
-                DiagnosticCode::AbruptClosingOfEmptyComment,
-                State::CommentStartDash,
+                HtmlTokenizerDiagnostic::AbruptClosingOfEmptyComment,
+                HtmlTokenizerState::CommentStartDash,
                 "parse-error-abrupt-closing-of-empty-comment",
                 "abrupt-closing-of-empty-comment",
                 (8, 9),
@@ -5509,29 +5545,29 @@ mod comment_diagnostic_corpus {
         &[
             FOO,
             tokenizer(
-                DiagnosticCode::AbruptClosingOfEmptyComment,
-                State::CommentStart,
+                HtmlTokenizerDiagnostic::AbruptClosingOfEmptyComment,
+                HtmlTokenizerState::CommentStart,
                 "parse-error-abrupt-closing-of-empty-comment",
                 "abrupt-closing-of-empty-comment",
                 (7, 8),
             ),
         ],
-        &[RESERVED_XML, missing((20, 21), DiagnosticToken::Text)],
-        &[RESERVED_XML, missing((20, 20), DiagnosticToken::Eof)],
-        &[RESERVED_XML, missing((13, 13), DiagnosticToken::Eof)],
+        &[RESERVED_XML, missing((20, 21), HtmlParseTokenFamily::Text)],
+        &[RESERVED_XML, missing((20, 20), HtmlParseTokenFamily::Eof)],
+        &[RESERVED_XML, missing((13, 13), HtmlParseTokenFamily::Eof)],
         &[FOO],
-        &[missing((0, 6), DiagnosticToken::Tag)],
+        &[missing((0, 6), HtmlParseTokenFamily::Tag)],
     ];
     fn selected(ordinal: usize) -> &'static [ExpectedDiagnostic] {
         SELECTED[ordinal.checked_sub(1).expect("one-based fixture ordinal")]
     }
     #[derive(Debug, Eq, PartialEq)]
     enum ComparisonError {
-        Stop(ParseStop),
+        Stop(HtmlParseStop),
         Mismatch { index: usize, field: &'static str },
     }
-    impl From<ParseStop> for ComparisonError {
-        fn from(stop: ParseStop) -> Self {
+    impl From<HtmlParseStop> for ComparisonError {
+        fn from(stop: HtmlParseStop) -> Self {
             Self::Stop(stop)
         }
     }
@@ -5540,13 +5576,16 @@ mod comment_diagnostic_corpus {
         actual: &str,
         expected: &str,
     ) -> Result<bool, ComparisonError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        c.charge(WorkCategory::InspectByte, (2 * size_of::<usize>()) as u64)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        c.charge(
+            HtmlParseWorkCategory::InspectByte,
+            (2 * size_of::<usize>()) as u64,
+        )?;
         if actual.len() != expected.len() {
             return Ok(false);
         }
         for (actual, expected) in actual.bytes().zip(expected.bytes()) {
-            c.charge(WorkCategory::InspectByte, 2)?;
+            c.charge(HtmlParseWorkCategory::InspectByte, 2)?;
             if actual != expected {
                 return Ok(false);
             }
@@ -5563,8 +5602,11 @@ mod comment_diagnostic_corpus {
         expected: &[ExpectedDiagnostic],
     ) -> Result<(), ComparisonError> {
         c.require_source(source)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        c.charge(WorkCategory::InspectByte, (2 * size_of::<usize>()) as u64)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        c.charge(
+            HtmlParseWorkCategory::InspectByte,
+            (2 * size_of::<usize>()) as u64,
+        )?;
         if evidence.len() != expected.len() {
             return Err(ComparisonError::Mismatch {
                 index: 0,
@@ -5572,11 +5614,11 @@ mod comment_diagnostic_corpus {
             });
         }
         for (index, expected) in expected.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
-                WorkCategory::InspectByte,
-                (size_of::<DiagnosticRecord>()
-                    + size_of::<DiagnosticLocation>()
+                HtmlParseWorkCategory::InspectByte,
+                (size_of::<HtmlParseDiagnostic>()
+                    + size_of::<HtmlParseDiagnosticLocation>()
                     + size_of::<ExpectedDiagnostic>()) as u64,
             )?;
             let (record, location) = evidence
@@ -5588,7 +5630,7 @@ mod comment_diagnostic_corpus {
                 ("phase/state", record.context == expected.context),
                 (
                     "severity",
-                    record.severity == DiagnosticSeverity::Recoverable,
+                    record.severity == HtmlParseDiagnosticSeverity::Recoverable,
                 ),
                 ("location role", location.role == expected.role),
                 ("token family", location.token == expected.token),
@@ -5700,14 +5742,17 @@ mod comment_diagnostic_corpus {
             let evidence = completed.take_diagnostics().unwrap();
             let (diagnostics, structure) = {
                 let mut view = completed.native_view().unwrap();
-                let before_reads = view.usage().work(WorkCategory::InputUnitRead);
+                let before_reads = view.usage().work(HtmlParseWorkCategory::InputUnitRead);
                 let diagnostic_result = compare(
                     view.control(),
                     &evidence,
                     request.source(),
                     selected(fixture.ordinal),
                 );
-                assert_eq!(view.usage().work(WorkCategory::InputUnitRead), before_reads);
+                assert_eq!(
+                    view.usage().work(HtmlParseWorkCategory::InputUnitRead),
+                    before_reads
+                );
                 if diagnostic_result.is_err() {
                     for index in 0..evidence.len() {
                         let (record, location) = evidence.retained_record(index).unwrap();
@@ -5748,7 +5793,7 @@ mod comment_diagnostic_corpus {
         }
     }
 
-    fn zero_storage(usage: &ParseUsage) {
+    fn zero_storage(usage: &HtmlParseUsage) {
         for resource in [
             HtmlParseResource::BufferedUtf16Units,
             HtmlParseResource::TokenAttributes,
@@ -5787,10 +5832,10 @@ mod comment_diagnostic_corpus {
             changed[0].context = changed[1].context;
             checks.push((changed, "phase/state"));
             let mut changed = expected.to_vec();
-            changed[0].role = DiagnosticLocationRole::InputFrontier;
+            changed[0].role = HtmlParseDiagnosticLocationRole::InputFrontier;
             checks.push((changed, "location role"));
             let mut changed = expected.to_vec();
-            changed[0].token = Some(DiagnosticToken::Tag);
+            changed[0].token = Some(HtmlParseTokenFamily::Tag);
             checks.push((changed, "token family"));
             let mut changed = expected.to_vec();
             changed[0].rule.anchor = "the-Initial-insertion-mode";
@@ -5837,7 +5882,7 @@ mod comment_diagnostic_corpus {
             request.cancellation().cancel();
             assert_eq!(
                 compare(view.control(), &evidence, request.source(), selected(2)),
-                Err(ComparisonError::Stop(ParseStop::Cancelled))
+                Err(ComparisonError::Stop(HtmlParseStop::Cancelled))
             );
             let first = view.control().first_stop_usage().unwrap().clone();
             assert_eq!(first, before);
@@ -5948,14 +5993,17 @@ mod comment_diagnostic_corpus {
                     .current,
                 request.source().len() as u64,
             );
-            let before_reads = view.usage().work(WorkCategory::InputUnitRead);
+            let before_reads = view.usage().work(HtmlParseWorkCategory::InputUnitRead);
             let diagnostics = compare(
                 view.control(),
                 &evidence,
                 request.source(),
                 expected_diagnostics,
             );
-            assert_eq!(view.usage().work(WorkCategory::InputUnitRead), before_reads);
+            assert_eq!(
+                view.usage().work(HtmlParseWorkCategory::InputUnitRead),
+                before_reads
+            );
             let mut projection = MeteredProjection::new().unwrap();
             let structure = projection
                 .build(&mut view)
@@ -6070,22 +6118,24 @@ mod comment_diagnostic_corpus {
     }
     const UNICODE_COMMENT_DIAGNOSTICS: &[ExpectedDiagnostic] = &[
         ExpectedDiagnostic {
-            kind: DiagnosticKind::Tokenizer(DiagnosticCode::SurrogateInInputStream),
-            context: DiagnosticContext::Tokenizer {
-                phase: DiagnosticPhase::InputStream,
-                state: State::Comment,
+            kind: HtmlParseDiagnosticKind::Tokenizer(
+                HtmlTokenizerDiagnostic::SurrogateInInputStream,
+            ),
+            context: HtmlParseDiagnosticContext::Tokenizer {
+                phase: HtmlTokenizerDiagnosticPhase::InputStream,
+                state: HtmlTokenizerState::Comment,
             },
-            rule: DiagnosticRule {
+            rule: HtmlParseDiagnosticRule {
                 anchor: "parse-error-surrogate-in-input-stream",
                 branch: "surrogate-in-input-stream",
             },
-            role: DiagnosticLocationRole::InputFrontier,
+            role: HtmlParseDiagnosticLocationRole::InputFrontier,
             token: None,
             source: (20, 21),
         },
         tokenizer(
-            DiagnosticCode::IncorrectlyClosedComment,
-            State::CommentEndBang,
+            HtmlTokenizerDiagnostic::IncorrectlyClosedComment,
+            HtmlTokenizerState::CommentEndBang,
             "parse-error-incorrectly-closed-comment",
             "incorrectly-closed-comment",
             (28, 29),
@@ -6098,9 +6148,9 @@ mod comment_diagnostic_corpus {
     ) {
         use crate::construction::{
             StringLocation,
-            provenance::{AssociationRelation, NativeDestination},
+            provenance::{HtmlParseAssociationRelation, NativeDestination},
         };
-        use crate::parser::tokenizer::token::OriginKind;
+        use crate::parser::tokenizer::token::HtmlParseOriginKind;
         completed.prepare_native_associations().unwrap();
         let comment = {
             let mut view = completed.native_view().unwrap();
@@ -6119,15 +6169,17 @@ mod comment_diagnostic_corpus {
         }
         let destination = NativeDestination::Field(StringLocation::Comment(comment_index.unwrap()));
         let expected = [
-            (0, 1, 19, 20, OriginKind::Literal),
-            (1, 2, 20, 21, OriginKind::Literal),
-            (2, 3, 21, 23, OriginKind::Newline),
-            (3, 5, 23, 25, OriginKind::Literal),
+            (0, 1, 19, 20, HtmlParseOriginKind::Literal),
+            (1, 2, 20, 21, HtmlParseOriginKind::Literal),
+            (2, 3, 21, 23, HtmlParseOriginKind::Newline),
+            (3, 5, 23, 25, HtmlParseOriginKind::Literal),
         ];
         let mut count = 0;
         for index in 0..rows.len() {
             let (row, _) = rows.row(index).unwrap().unwrap();
-            if row.destination != destination || row.relation != AssociationRelation::Output {
+            if row.destination != destination
+                || row.relation != HtmlParseAssociationRelation::Output
+            {
                 continue;
             }
             let &(start, end, source_start, source_end, kind) = expected.get(count).unwrap();
@@ -6188,13 +6240,17 @@ mod comment_diagnostic_corpus {
         request.cancellation().cancel();
         assert!(matches!(
             active.make_available(request.source().len()),
-            Err(super::super::StandaloneError::Stop(ParseStop::Cancelled))
+            Err(super::super::StandaloneError::Stop(
+                HtmlParseStop::Cancelled
+            ))
         ));
         let first = active.control.first_stop_usage().unwrap().clone();
         assert_eq!(first, before);
         assert!(matches!(
             active.seal_input(),
-            Err(super::super::StandaloneError::Stop(ParseStop::Cancelled))
+            Err(super::super::StandaloneError::Stop(
+                HtmlParseStop::Cancelled
+            ))
         ));
         assert_eq!(active.control.usage(), &first);
         assert_eq!(active.control.first_stop_usage(), Some(&first));
@@ -6206,7 +6262,7 @@ mod comment_diagnostic_corpus {
         assert_eq!(record.kind, FOO.kind);
         assert_eq!(record.context, FOO.context);
         assert_eq!(record.rule, FOO.rule);
-        assert_eq!(record.severity, DiagnosticSeverity::Recoverable);
+        assert_eq!(record.severity, HtmlParseDiagnosticSeverity::Recoverable);
         assert_eq!(location.role, FOO.role);
         assert_eq!(location.token, FOO.token);
         assert_eq!(location.source, request.source().range(0, 1).unwrap());
@@ -6400,7 +6456,7 @@ mod comment_diagnostic_corpus {
                             .resource(HtmlParseResource::WorkCredits)
                             .current;
                     view.control()
-                        .charge(WorkCategory::StateStep, left - remaining)
+                        .charge(HtmlParseWorkCategory::StateStep, left - remaining)
                         .unwrap();
                 }
                 if cancel_before_projection {
@@ -6413,7 +6469,7 @@ mod comment_diagnostic_corpus {
                 if remaining_work.is_some() {
                     assert!(matches!(
                         result,
-                        Err(AdapterError::Stop(ParseStop::LimitExceeded {
+                        Err(AdapterError::Stop(HtmlParseStop::LimitExceeded {
                             resource: HtmlParseResource::WorkCredits,
                             ..
                         }))
@@ -6422,7 +6478,7 @@ mod comment_diagnostic_corpus {
                 if cancel_before_projection {
                     assert!(matches!(
                         result,
-                        Err(AdapterError::Stop(ParseStop::Cancelled))
+                        Err(AdapterError::Stop(HtmlParseStop::Cancelled))
                     ));
                 }
                 let first = view.control().first_stop_usage().cloned();
@@ -6784,22 +6840,22 @@ mod comment_diagnostic_corpus {
 
         #[test]
         fn nested_template_eof_diagnostics_retain_two_distinct_source_invocations() {
-            use crate::parser::tree_builder::head::{HeadCondition, InsertionMode};
+            use crate::parser::tree_builder::head::{HtmlInsertionMode, HtmlTreeDiagnostic};
             // HTML877d Initial anything-else; InTemplate raw98077–98095.
             // Two template nodes are actually on the stack. EOF is reprocessed
             // after each distinct pop/clear-marker/pop-mode/reset invocation.
             let eof = ExpectedDiagnostic {
-                kind: DiagnosticKind::Tree(HeadCondition::UnexpectedOpenElement),
-                context: DiagnosticContext::Tree(InsertionMode::InTemplate),
-                rule: DiagnosticRule {
+                kind: HtmlParseDiagnosticKind::Tree(HtmlTreeDiagnostic::UnexpectedOpenElement),
+                context: HtmlParseDiagnosticContext::Tree(HtmlInsertionMode::InTemplate),
+                rule: HtmlParseDiagnosticRule {
                     anchor: "parsing-main-intemplate",
                     branch: "template-eof/template-open",
                 },
-                role: DiagnosticLocationRole::TokenEnvelope,
-                token: Some(DiagnosticToken::Eof),
+                role: HtmlParseDiagnosticLocationRole::TokenEnvelope,
+                token: Some(HtmlParseTokenFamily::Eof),
                 source: (20, 20),
             };
-            let expected_diagnostics = [missing((0, 10), DiagnosticToken::Tag), eof, eof];
+            let expected_diagnostics = [missing((0, 10), HtmlParseTokenFamily::Tag), eof, eof];
             let fixture = &fixtures()[80];
             assert_eq!(fixture.input, "<template><template>");
             let tree = parsed_expected(fixture, HtmlDocumentMode::Quirks).unwrap();
@@ -6884,24 +6940,24 @@ mod comment_diagnostic_corpus {
 
     mod table_recovery_diagnostics {
         use super::*;
-        use crate::parser::tree_builder::head::{HeadCondition, InsertionMode};
+        use crate::parser::tree_builder::head::{HtmlInsertionMode, HtmlTreeDiagnostic};
 
         // HTML877d Initial 96374–79; InBody EOF 96880–95; InTable
         // 97595–97702; InTableText 97720–47; InColumnGroup 97788–97836;
         // InTableBody 97841–97888. Historical corpus #errors labels are
         // retained metadata, not these chronological diagnostic oracles.
         const fn tree(
-            kind: HeadCondition,
-            mode: InsertionMode,
+            kind: HtmlTreeDiagnostic,
+            mode: HtmlInsertionMode,
             rule: (&'static str, &'static str),
-            role: DiagnosticLocationRole,
-            token: DiagnosticToken,
+            role: HtmlParseDiagnosticLocationRole,
+            token: HtmlParseTokenFamily,
             source: (usize, usize),
         ) -> ExpectedDiagnostic {
             ExpectedDiagnostic {
-                kind: DiagnosticKind::Tree(kind),
-                context: DiagnosticContext::Tree(mode),
-                rule: DiagnosticRule {
+                kind: HtmlParseDiagnosticKind::Tree(kind),
+                context: HtmlParseDiagnosticContext::Tree(mode),
+                rule: HtmlParseDiagnosticRule {
                     anchor: rule.0,
                     branch: rule.1,
                 },
@@ -6910,59 +6966,59 @@ mod comment_diagnostic_corpus {
                 source,
             }
         }
-        const fn eof(mode: InsertionMode, position: usize) -> ExpectedDiagnostic {
+        const fn eof(mode: HtmlInsertionMode, position: usize) -> ExpectedDiagnostic {
             tree(
-                HeadCondition::UnexpectedOpenElement,
+                HtmlTreeDiagnostic::UnexpectedOpenElement,
                 mode,
                 (
                     "parsing-main-inbody",
                     "body-end-or-eof/disallowed-open-element",
                 ),
-                DiagnosticLocationRole::TokenEnvelope,
-                DiagnosticToken::Eof,
+                HtmlParseDiagnosticLocationRole::TokenEnvelope,
+                HtmlParseTokenFamily::Eof,
                 (position, position),
             )
         }
         const fn forbidden_end(source: (usize, usize)) -> ExpectedDiagnostic {
             tree(
-                HeadCondition::UnexpectedTableToken,
-                InsertionMode::InTable,
+                HtmlTreeDiagnostic::UnexpectedTableToken,
+                HtmlInsertionMode::InTable,
                 ("parsing-main-intable", "disallowed-end-tag"),
-                DiagnosticLocationRole::TokenEnvelope,
-                DiagnosticToken::Tag,
+                HtmlParseDiagnosticLocationRole::TokenEnvelope,
+                HtmlParseTokenFamily::Tag,
                 source,
             )
         }
         const fn cell(source: (usize, usize)) -> ExpectedDiagnostic {
             tree(
-                HeadCondition::UnexpectedTableToken,
-                InsertionMode::InTableBody,
+                HtmlTreeDiagnostic::UnexpectedTableToken,
+                HtmlInsertionMode::InTableBody,
                 ("parsing-main-intbody", "cell-start/implied-row"),
-                DiagnosticLocationRole::TokenEnvelope,
-                DiagnosticToken::Tag,
+                HtmlParseDiagnosticLocationRole::TokenEnvelope,
+                HtmlParseTokenFamily::Tag,
                 source,
             )
         }
         const fn nonwhite(source: (usize, usize)) -> ExpectedDiagnostic {
             tree(
-                HeadCondition::NonWhitespaceInTable,
-                InsertionMode::InTableText,
+                HtmlTreeDiagnostic::NonWhitespaceInTable,
+                HtmlInsertionMode::InTableText,
                 (
                     "parsing-main-intabletext",
                     "pending-characters/non-whitespace",
                 ),
-                DiagnosticLocationRole::BufferedTableCharacter,
-                DiagnosticToken::Text,
+                HtmlParseDiagnosticLocationRole::BufferedTableCharacter,
+                HtmlParseTokenFamily::Text,
                 source,
             )
         }
         const fn fostered(source: (usize, usize)) -> ExpectedDiagnostic {
             tree(
-                HeadCondition::UnexpectedTableToken,
-                InsertionMode::InTableText,
+                HtmlTreeDiagnostic::UnexpectedTableToken,
+                HtmlInsertionMode::InTableText,
                 ("parsing-main-intable", "anything-else/pending-character"),
-                DiagnosticLocationRole::BufferedTableCharacter,
-                DiagnosticToken::Text,
+                HtmlParseDiagnosticLocationRole::BufferedTableCharacter,
+                HtmlParseTokenFamily::Text,
                 source,
             )
         }
@@ -6971,29 +7027,29 @@ mod comment_diagnostic_corpus {
                 1 => {
                     const {
                         &[
-                            missing((0, 7), DiagnosticToken::Tag),
+                            missing((0, 7), HtmlParseTokenFamily::Tag),
                             cell((7, 11)),
-                            eof(InsertionMode::InCell, 11),
+                            eof(HtmlInsertionMode::InCell, 11),
                         ]
                     }
                 }
                 4 => {
                     const {
                         &[
-                            missing((0, 7), DiagnosticToken::Tag),
+                            missing((0, 7), HtmlParseTokenFamily::Tag),
                             forbidden_end((17, 24)),
                             nonwhite((24, 25)),
                             fostered((24, 25)),
                             fostered((25, 26)),
                             fostered((26, 27)),
-                            eof(InsertionMode::InTable, 27),
+                            eof(HtmlInsertionMode::InTable, 27),
                         ]
                     }
                 }
                 6 => {
                     const {
                         &[
-                            missing((0, 7), DiagnosticToken::Tag),
+                            missing((0, 7), HtmlParseTokenFamily::Tag),
                             forbidden_end((7, 14)),
                             forbidden_end((14, 24)),
                             forbidden_end((24, 30)),
@@ -7006,25 +7062,25 @@ mod comment_diagnostic_corpus {
                             forbidden_end((74, 82)),
                             forbidden_end((82, 87)),
                             cell((87, 91)),
-                            eof(InsertionMode::InCell, 91),
+                            eof(HtmlInsertionMode::InCell, 91),
                         ]
                     }
                 }
                 19 => {
                     const {
                         &[
-                            missing((0, 7), DiagnosticToken::Tag),
+                            missing((0, 7), HtmlParseTokenFamily::Tag),
                             nonwhite((7, 8)),
                             fostered((7, 8)),
                             tree(
-                                HeadCondition::UnexpectedDoctype,
-                                InsertionMode::InTable,
+                                HtmlTreeDiagnostic::UnexpectedDoctype,
+                                HtmlInsertionMode::InTable,
                                 ("parsing-main-intable", "doctype/ignore"),
-                                DiagnosticLocationRole::TokenEnvelope,
-                                DiagnosticToken::Doctype,
+                                HtmlParseDiagnosticLocationRole::TokenEnvelope,
+                                HtmlParseTokenFamily::Doctype,
                                 (8, 23),
                             ),
-                            eof(InsertionMode::InTable, 23),
+                            eof(HtmlInsertionMode::InTable, 23),
                         ]
                     }
                 }

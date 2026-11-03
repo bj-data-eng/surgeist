@@ -70,9 +70,9 @@ impl PayloadStorage {
     ) -> Result<(usize, usize), SessionError> {
         let mut at = node;
         for _ in 0..storage.len() {
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let Some(root) = self.cached_root(at) {
-                control.charge(WorkCategory::RecordVisit, 1)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if storage
                     .node_at(root)
                     .ok_or(SessionError::ForeignNode)?
@@ -136,8 +136,8 @@ impl PayloadStorage {
         };
         let mut at = node;
         for _ in 0..storage.len() {
-            control.charge(WorkCategory::RecordVisit, 1)?;
-            control.charge(WorkCategory::RecordWrite, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
             if let Some(cell) = self.node_joins.get_mut(at) {
                 cell.tree_root = TreeRootCell::Cached {
                     root: cell_root,
@@ -189,7 +189,7 @@ impl SessionStorage {
         destination: Option<usize>,
     ) -> Result<Reroot, SessionError> {
         self.payloads.count_topology_change();
-        control.charge(WorkCategory::RecordVisit, 1)?;
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let bare = self
             .construction
             .node_at(node)
@@ -197,7 +197,7 @@ impl SessionStorage {
             .child_count()
             == 0;
         if bare {
-            control.charge(WorkCategory::RecordWrite, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
             self.payloads.forget_tree_root(node);
             return Ok(Reroot::Bare(node));
         }
@@ -210,7 +210,7 @@ impl SessionStorage {
             }
         }
         // Charged here so that finishing the change cannot be refused.
-        control.charge(WorkCategory::RecordWrite, 2)?;
+        control.charge(HtmlParseWorkCategory::RecordWrite, 2)?;
         self.payloads.forget_every_tree_root();
         Ok(Reroot::Cross)
     }

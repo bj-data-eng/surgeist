@@ -12,14 +12,17 @@
 
 use super::{
     KernelError,
-    head::{HeadBoundary, HeadCondition, HeadError, HeadState, HeadStep, InsertionMode},
+    head::{
+        HeadError, HeadState, HeadStep, HtmlInsertionMode, HtmlParseConstructionBoundary,
+        HtmlTreeDiagnostic,
+    },
     prologue::Payload,
     tag_sets, write,
 };
 use crate::{
     construction::CreationContext,
     parser::{
-        control::{ParseControl, WorkCategory},
+        control::{HtmlParseWorkCategory, ParseControl},
         tokenizer::token::TagKind,
     },
 };
@@ -27,16 +30,17 @@ use std::mem::size_of;
 
 impl HeadState<'_> {
     pub(super) fn template_start(&mut self, c: &mut ParseControl) -> Result<HeadStep, HeadError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if self.script.is_none() {
-            return self.stop_at(HeadBoundary::Template, c);
+            return self.stop_at(HtmlParseConstructionBoundary::Template, c);
         }
         self.validate_standalone_capability(c)?;
         let old_template = self.before.kernel.last_template(c)?;
         self.push_marker(c)?;
         self.frameset(false, c)?;
-        self.set_mode(InsertionMode::InTemplate, c)?;
-        self.template_modes.try_push(c, InsertionMode::InTemplate)?;
+        self.set_mode(HtmlInsertionMode::InTemplate, c)?;
+        self.template_modes
+            .try_push(c, HtmlInsertionMode::InTemplate)?;
         let place = self.before.kernel.appropriate_place(None, c)?;
         // Determine the token states without replacing them with final tree
         // spelling. A non-None shadow mode selects its row before for-patching.
@@ -52,7 +56,7 @@ impl HeadState<'_> {
             let mut patch = false;
             let mut shadow = false;
             for attr in tag.attributes.as_slice() {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if tag_sets::ascii_eq(attr.name.value.text(), "for", c)? {
                     write(size_of::<bool>(), 1, c)?;
                     patch = true;
@@ -99,7 +103,7 @@ impl HeadState<'_> {
                     .session
                     .fragment_context(c)?
                     .ok_or(crate::construction::SessionError::ContextUnavailable)?;
-                c.charge(WorkCategory::ProviderCall, 1)?;
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                 write(size_of::<Host>(), 1, c)?;
                 Host::Captured(context.context_element().clone())
             } else {
@@ -238,8 +242,8 @@ impl HeadState<'_> {
             let current = self.before.kernel.current(c)?;
             if !self.before.kernel.named(&current, "template", c)? {
                 self.emit(
-                    HeadCondition::UnexpectedOpenElement,
-                    crate::construction::evidence::DiagnosticRule {
+                    HtmlTreeDiagnostic::UnexpectedOpenElement,
+                    crate::construction::evidence::HtmlParseDiagnosticRule {
                         anchor: "parsing-main-inhead",
                         branch: "template-end/current-node-mismatch",
                     },
@@ -276,8 +280,8 @@ impl HeadState<'_> {
             return Ok(Some(self.begin_end(c)?));
         }
         self.emit(
-            HeadCondition::UnexpectedOpenElement,
-            crate::construction::evidence::DiagnosticRule {
+            HtmlTreeDiagnostic::UnexpectedOpenElement,
+            crate::construction::evidence::HtmlParseDiagnosticRule {
                 anchor: "parsing-main-intemplate",
                 branch: "template-eof/template-open",
             },
@@ -304,7 +308,7 @@ impl HeadState<'_> {
                     .ok_or(HeadError::ConstructionCapabilityUnavailable)?
                     .capability
                     .source;
-                return self.body_rules(InsertionMode::InBody, source, c);
+                return self.body_rules(HtmlInsertionMode::InBody, source, c);
             }
             _ => {}
         }
@@ -314,8 +318,8 @@ impl HeadState<'_> {
                 return Ok(Some(self.end_template(c)?));
             }
             self.emit(
-                HeadCondition::UnexpectedEndTag,
-                crate::construction::evidence::DiagnosticRule {
+                HtmlTreeDiagnostic::UnexpectedEndTag,
+                crate::construction::evidence::HtmlParseDiagnosticRule {
                     anchor: "parsing-main-intemplate",
                     branch: "template/disallowed-end-tag",
                 },
@@ -339,23 +343,23 @@ impl HeadState<'_> {
             .token_in(&["caption", "colgroup", "tbody", "tfoot", "thead"], c)?
             .is_some()
         {
-            InsertionMode::InTable
+            HtmlInsertionMode::InTable
         } else if self.token_in(&["col"], c)?.is_some() {
-            InsertionMode::InColumnGroup
+            HtmlInsertionMode::InColumnGroup
         } else if self.token_in(&["tr"], c)?.is_some() {
-            InsertionMode::InTableBody
+            HtmlInsertionMode::InTableBody
         } else if self.token_in(&["td", "th"], c)?.is_some() {
-            InsertionMode::InRow
+            HtmlInsertionMode::InRow
         } else {
-            InsertionMode::InBody
+            HtmlInsertionMode::InBody
         };
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let index = self
             .template_modes
             .len()
             .checked_sub(1)
             .ok_or(HeadError::MissingInput)?;
-        write(size_of::<InsertionMode>(), 1, c)?;
+        write(size_of::<HtmlInsertionMode>(), 1, c)?;
         *self
             .template_modes
             .get_mut(index, c)?

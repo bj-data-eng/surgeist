@@ -12,50 +12,50 @@
 // HTML 877d6146487f15b15bc8dd0e3c625063a37b456a, §13.2.5.72–76.
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Escape {
+pub enum HtmlTokenizerEscape {
     Escaped,
     DoubleEscaped,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Identifier {
+pub enum HtmlTokenizerIdentifier {
     Public,
     System,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Raw {
+pub enum HtmlTokenizerRawState {
     Rcdata,
     Rawtext,
     Script,
-    ScriptEscaped(Escape),
+    ScriptEscaped(HtmlTokenizerEscape),
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Quote {
+pub enum HtmlTokenizerQuote {
     Unquoted,
     Single,
     Double,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum State {
+pub enum HtmlTokenizerState {
     Data,
     Plaintext,
     TagOpen,
     EndTagOpen,
     TagName,
-    Raw(Raw),
-    RawLessThan(Raw),
-    RawEndOpen(Raw),
-    RawEndName(Raw),
+    Raw(HtmlTokenizerRawState),
+    RawLessThan(HtmlTokenizerRawState),
+    RawEndOpen(HtmlTokenizerRawState),
+    RawEndName(HtmlTokenizerRawState),
     ScriptEscapeStart,
     ScriptEscapeStartDash,
     ScriptDoubleEscapeStart,
-    ScriptDash(Escape),
-    ScriptDashDash(Escape),
+    ScriptDash(HtmlTokenizerEscape),
+    ScriptDashDash(HtmlTokenizerEscape),
     ScriptDoubleEscapeEnd,
     BeforeAttributeName,
     AttributeName,
     AfterAttributeName,
     BeforeAttributeValue,
-    AttributeValue(Quote),
+    AttributeValue(HtmlTokenizerQuote),
     AfterAttributeValue,
     SelfClosing,
     BogusComment,
@@ -74,10 +74,10 @@ pub enum State {
     BeforeDoctypeName,
     DoctypeName,
     AfterDoctypeName,
-    AfterDoctypeKeyword(Identifier),
-    BeforeDoctypeIdentifier(Identifier),
-    DoctypeIdentifier(Identifier, Quote),
-    AfterDoctypeIdentifier(Identifier),
+    AfterDoctypeKeyword(HtmlTokenizerIdentifier),
+    BeforeDoctypeIdentifier(HtmlTokenizerIdentifier),
+    DoctypeIdentifier(HtmlTokenizerIdentifier, HtmlTokenizerQuote),
+    AfterDoctypeIdentifier(HtmlTokenizerIdentifier),
     BetweenDoctypeIdentifiers,
     BogusDoctype,
     Cdata,

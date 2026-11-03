@@ -10,7 +10,7 @@ pub(crate) struct LexicalRef {
     control: ControlIdentity,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum LexicalKind {
+pub enum HtmlParseLexicalKind {
     Markup,
     StartTag,
     EndTag,
@@ -21,7 +21,7 @@ pub enum LexicalKind {
     Cdata,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum LexicalDisposition {
+pub enum HtmlParseLexicalDisposition {
     Draft,
     Emitted,
     StoredAttribute,
@@ -34,7 +34,7 @@ pub enum LexicalDisposition {
     Ignored,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum LexicalRole {
+pub enum HtmlParseLexicalRole {
     Name,
     Value,
     PublicIdentifier,
@@ -42,15 +42,15 @@ pub enum LexicalRole {
     Target,
     Data,
     Equals,
-    OpeningQuote(crate::parser::tokenizer::states::Quote),
-    ClosingQuote(crate::parser::tokenizer::states::Quote),
+    OpeningQuote(crate::parser::tokenizer::states::HtmlTokenizerQuote),
+    ClosingQuote(crate::parser::tokenizer::states::HtmlTokenizerQuote),
     Syntax,
     Whitespace,
     EndAnchor,
 }
 pub(crate) struct LexicalOccurrence {
-    pub(crate) kind: LexicalKind,
-    pub(crate) disposition: LexicalDisposition,
+    pub(crate) kind: HtmlParseLexicalKind,
+    pub(crate) disposition: HtmlParseLexicalDisposition,
     pub(crate) source: crate::HtmlSourceRange,
     pub(crate) parent: Option<usize>,
     cause: usize,
@@ -73,14 +73,14 @@ impl LexicalOccurrence {
 }
 pub(crate) struct LexicalPart {
     pub(crate) occurrence: usize,
-    pub(crate) role: LexicalRole,
+    pub(crate) role: HtmlParseLexicalRole,
     pub(crate) source: crate::HtmlSourceRange,
     pub(crate) start: usize,
     pub(crate) end: usize,
-    pub(crate) kind: Option<OriginKind>,
+    pub(crate) kind: Option<HtmlParseOriginKind>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum OmissionKind {
+pub enum HtmlParseOmissionKind {
     LeadingWhitespace,
     InitialLf,
     NullInBody,
@@ -92,9 +92,9 @@ pub(crate) struct LexicalOmission {
     pub(crate) source: crate::HtmlSourceRange,
     pub(crate) start: usize,
     pub(crate) end: usize,
-    pub(crate) origin: OriginKind,
-    pub(crate) kind: OmissionKind,
-    pub(crate) rule: ParserRule,
+    pub(crate) origin: HtmlParseOriginKind,
+    pub(crate) kind: HtmlParseOmissionKind,
+    pub(crate) rule: HtmlParserRule,
     cause: usize,
 }
 impl LexicalOmission {
@@ -109,7 +109,7 @@ pub(super) struct LexicalStorage {
     pub(super) end: Option<crate::HtmlSourceRange>,
 }
 impl LexicalStorage {
-    pub(super) fn new(c: &mut ParseControl) -> Result<Self, ParseStop> {
+    pub(super) fn new(c: &mut ParseControl) -> Result<Self, HtmlParseStop> {
         let mut occurrences = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
         let mut parts = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
         let mut omissions = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
@@ -123,16 +123,16 @@ impl LexicalStorage {
             end: None,
         })
     }
-    pub(super) fn extents(&self, c: &mut ParseControl) -> Result<[(u64, u64); 3], ParseStop> {
+    pub(super) fn extents(&self, c: &mut ParseControl) -> Result<[(u64, u64); 3], HtmlParseStop> {
         self.occurrences.require_disposal_owner(c)?;
         self.parts.require_disposal_owner(c)?;
         self.omissions.require_disposal_owner(c)?;
-        fn bytes<T>(values: &OwnedVec<T>, c: &mut ParseControl) -> Result<u64, ParseStop> {
+        fn bytes<T>(values: &OwnedVec<T>, c: &mut ParseControl) -> Result<u64, HtmlParseStop> {
             values
                 .capacity()
                 .checked_mul(mem::size_of::<T>())
                 .and_then(|bytes| u64::try_from(bytes).ok())
-                .ok_or_else(|| c.fail_invariant(Invariant::CapacityMismatch))
+                .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::CapacityMismatch))
         }
         Ok([
             (self.occurrences.len() as u64, bytes(&self.occurrences, c)?),
@@ -140,7 +140,7 @@ impl LexicalStorage {
             (self.omissions.len() as u64, bytes(&self.omissions, c)?),
         ])
     }
-    pub(super) fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub(super) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         self.occurrences.release(c)?;
         self.parts.release(c)?;
         self.omissions.release(c)
@@ -153,10 +153,10 @@ impl ParseEvidence {
         &mut self,
         c: &mut ParseControl,
         point: &crate::HtmlSourceRange,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.native.lexical.occurrences.require_owner(c)?;
         c.require_source_range(point)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if point.start() != point.end()
             || self.native.lexical.end.is_some()
             || self
@@ -165,14 +165,14 @@ impl ParseEvidence {
                 .as_ref()
                 .is_some_and(|source| point.end() != source.len())
         {
-            return Err(c.fail_invariant(Invariant::TokenizerState));
+            return Err(c.fail_invariant(HtmlParseInvariant::TokenizerState));
         }
         c.charge(
-            WorkCategory::CopyByte,
+            HtmlParseWorkCategory::CopyByte,
             mem::size_of::<Option<crate::HtmlSourceRange>>() as u64,
         )?;
-        c.charge(WorkCategory::RecordWrite, 1)?;
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         self.native.lexical.end = Some(point.clone());
         Ok(())
     }
@@ -189,16 +189,16 @@ impl ParseEvidence {
     pub(crate) fn retain_omission(
         &mut self,
         c: &mut ParseControl,
-        origins: &[TextOrigin],
-        kind: OmissionKind,
-        rule: ParserRule,
+        origins: &[HtmlParseTextOrigin],
+        kind: HtmlParseOmissionKind,
+        rule: HtmlParserRule,
     ) -> Result<(), SessionError> {
         let cause = self.field_cause(c)?;
         for origin in origins {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.require_source_range(&origin.source)?;
             payload_write::<LexicalOmission>(c, 1)?;
-            c.charge(WorkCategory::ProviderCall, 1)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             self.native.lexical.omissions.reserve_geometric(c, 1)?;
             self.native.lexical.omissions.try_push(
                 c,
@@ -219,9 +219,9 @@ impl ParseEvidence {
         &mut self,
         c: &mut ParseControl,
         source: &crate::HtmlSourceRange,
-        kind: LexicalKind,
+        kind: HtmlParseLexicalKind,
         parent: Option<&LexicalRef>,
-    ) -> Result<LexicalRef, ParseStop> {
+    ) -> Result<LexicalRef, HtmlParseStop> {
         c.require_source_range(source)?;
         let parent = parent
             .map(|parent| self.require_lexical(c, parent))
@@ -230,7 +230,7 @@ impl ParseEvidence {
             .append_cause(
                 c,
                 ConstructionCause {
-                    operation: ConstructionOperation::Lexical,
+                    operation: HtmlParseConstructionOperation::Lexical,
                     source: None,
                     captured: None,
                     rule: None,
@@ -247,29 +247,32 @@ impl ParseEvidence {
             )
             .map_err(|error| match error {
                 SessionError::Stop(stop) => stop,
-                _ => c.fail_invariant(Invariant::RegistryRow),
+                _ => c.fail_invariant(HtmlParseInvariant::RegistryRow),
             })?;
         let index = self.native.lexical.occurrences.len();
         payload_write::<LexicalOccurrence>(c, 1).map_err(|error| match error {
             SessionError::Stop(stop) => stop,
-            _ => c.fail_invariant(Invariant::RegistryRow),
+            _ => c.fail_invariant(HtmlParseInvariant::RegistryRow),
         })?;
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         self.native.lexical.occurrences.reserve_geometric(c, 1)?;
         self.native.lexical.occurrences.try_push(
             c,
             LexicalOccurrence {
                 kind,
-                disposition: LexicalDisposition::Draft,
+                disposition: HtmlParseLexicalDisposition::Draft,
                 source: source.clone(),
                 parent,
                 cause,
                 data_units: 0,
             },
         )?;
-        c.charge(WorkCategory::CopyByte, mem::size_of::<LexicalRef>() as u64)?;
-        c.charge(WorkCategory::RecordWrite, 1)?;
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(
+            HtmlParseWorkCategory::CopyByte,
+            mem::size_of::<LexicalRef>() as u64,
+        )?;
+        c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         Ok(LexicalRef {
             index,
             issuer: Arc::downgrade(&self.identity),
@@ -280,15 +283,15 @@ impl ParseEvidence {
         &self,
         c: &mut ParseControl,
         reference: &LexicalRef,
-    ) -> Result<usize, ParseStop> {
+    ) -> Result<usize, HtmlParseStop> {
         c.require_identity(&reference.control)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         c.charge(
-            WorkCategory::InspectByte,
+            HtmlParseWorkCategory::InspectByte,
             mem::size_of::<Weak<evidence::EvidenceIdentity>>() as u64,
         )?;
         if reference.issuer.as_ptr() != Arc::as_ptr(&self.identity) {
-            return Err(c.fail_invariant(Invariant::ForeignEvidence));
+            return Err(c.fail_invariant(HtmlParseInvariant::ForeignEvidence));
         }
         if self
             .native
@@ -298,7 +301,7 @@ impl ParseEvidence {
             .get(reference.index)
             .is_none()
         {
-            return Err(c.fail_invariant(Invariant::RegistryRow));
+            return Err(c.fail_invariant(HtmlParseInvariant::RegistryRow));
         }
         Ok(reference.index)
     }
@@ -309,22 +312,25 @@ impl ParseEvidence {
         &self,
         c: &mut ParseControl,
         index: usize,
-    ) -> Result<&LexicalOccurrence, ParseStop> {
+    ) -> Result<&LexicalOccurrence, HtmlParseStop> {
         self.native
             .lexical
             .occurrences
             .as_slice()
             .get(index)
-            .ok_or_else(|| c.fail_invariant(Invariant::RegistryRow))
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::RegistryRow))
     }
     pub(crate) fn lexical_data_offset(
         &self,
         c: &mut ParseControl,
         reference: &LexicalRef,
-    ) -> Result<usize, ParseStop> {
+    ) -> Result<usize, HtmlParseStop> {
         let index = self.require_lexical(c, reference)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
-        c.charge(WorkCategory::InspectByte, mem::size_of::<usize>() as u64)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        c.charge(
+            HtmlParseWorkCategory::InspectByte,
+            mem::size_of::<usize>() as u64,
+        )?;
         Ok(self.lexical_occurrence(c, index)?.data_units)
     }
     pub(crate) fn lexical_data_commit(
@@ -333,23 +339,26 @@ impl ParseEvidence {
         reference: &LexicalRef,
         old: usize,
         new: usize,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         let index = self.require_lexical(c, reference)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let occurrence = self.lexical_occurrence(c, index)?;
-        if occurrence.disposition != LexicalDisposition::Draft
+        if occurrence.disposition != HtmlParseLexicalDisposition::Draft
             || occurrence.data_units != old
             || new < old
         {
-            return Err(c.fail_invariant(Invariant::TokenizerState));
+            return Err(c.fail_invariant(HtmlParseInvariant::TokenizerState));
         }
-        c.charge(WorkCategory::CopyByte, mem::size_of::<usize>() as u64)?;
-        c.charge(WorkCategory::RecordWrite, 1)?;
+        c.charge(
+            HtmlParseWorkCategory::CopyByte,
+            mem::size_of::<usize>() as u64,
+        )?;
+        c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
         self.native
             .lexical
             .occurrences
             .get_mut(index, c)?
-            .ok_or_else(|| c.fail_invariant(Invariant::RegistryRow))?
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::RegistryRow))?
             .data_units = new;
         Ok(())
     }
@@ -357,32 +366,32 @@ impl ParseEvidence {
         &mut self,
         c: &mut ParseControl,
         occurrence: &LexicalRef,
-        role: LexicalRole,
+        role: HtmlParseLexicalRole,
         source: &crate::HtmlSourceRange,
         output: std::ops::Range<usize>,
-        kind: Option<OriginKind>,
-    ) -> Result<(), ParseStop> {
+        kind: Option<HtmlParseOriginKind>,
+    ) -> Result<(), HtmlParseStop> {
         let occurrence = self.require_lexical(c, occurrence)?;
         c.require_source_range(source)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let record = self
             .native
             .lexical
             .occurrences
             .as_slice()
             .get(occurrence)
-            .ok_or_else(|| c.fail_invariant(Invariant::RegistryRow))?;
-        if record.disposition != LexicalDisposition::Draft
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::RegistryRow))?;
+        if record.disposition != HtmlParseLexicalDisposition::Draft
             || source.source() != record.source.source()
             || source.coordinates() != record.source.coordinates()
             || output.start > output.end
         {
-            return Err(c.fail_invariant(Invariant::TokenizerState));
+            return Err(c.fail_invariant(HtmlParseInvariant::TokenizerState));
         }
         if let Some(last) = self.native.lexical.parts.as_slice().last() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
-                WorkCategory::InspectByte,
+                HtmlParseWorkCategory::InspectByte,
                 mem::size_of::<LexicalPart>() as u64,
             )?;
             if last.occurrence == occurrence
@@ -395,8 +404,11 @@ impl ParseEvidence {
                 return Ok(());
             }
         }
-        c.charge(WorkCategory::CopyByte, mem::size_of::<LexicalPart>() as u64)?;
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(
+            HtmlParseWorkCategory::CopyByte,
+            mem::size_of::<LexicalPart>() as u64,
+        )?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         self.native.lexical.parts.reserve_geometric(c, 1)?;
         self.native.lexical.parts.try_push(
             c,
@@ -415,25 +427,25 @@ impl ParseEvidence {
         c: &mut ParseControl,
         occurrence: &LexicalRef,
         source: &crate::HtmlSourceRange,
-        kind: LexicalKind,
-        disposition: LexicalDisposition,
-    ) -> Result<(), ParseStop> {
+        kind: HtmlParseLexicalKind,
+        disposition: HtmlParseLexicalDisposition,
+    ) -> Result<(), HtmlParseStop> {
         let occurrence = self.require_lexical(c, occurrence)?;
         c.require_source_range(source)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let old = self
             .native
             .lexical
             .occurrences
             .as_slice()
             .get(occurrence)
-            .ok_or_else(|| c.fail_invariant(Invariant::RegistryRow))?;
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::RegistryRow))?;
         if old.source.source() != source.source()
             || old.source.start() != source.start()
             || old.source.end() > source.end()
-            || old.disposition != LexicalDisposition::Draft
+            || old.disposition != HtmlParseLexicalDisposition::Draft
         {
-            return Err(c.fail_invariant(Invariant::TokenizerState));
+            return Err(c.fail_invariant(HtmlParseInvariant::TokenizerState));
         }
         let cause_index = old.cause;
         // Acquire both actual mutable slots before any content update. A stop
@@ -442,24 +454,24 @@ impl ParseEvidence {
             .native
             .causes
             .get_mut(cause_index, c)?
-            .ok_or_else(|| c.fail_invariant(Invariant::RegistryRow))?;
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::RegistryRow))?;
         let record = self
             .native
             .lexical
             .occurrences
             .get_mut(occurrence, c)?
-            .ok_or_else(|| c.fail_invariant(Invariant::RegistryRow))?;
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::RegistryRow))?;
         c.charge(
-            WorkCategory::CopyByte,
+            HtmlParseWorkCategory::CopyByte,
             const {
                 (mem::size_of::<Option<crate::HtmlSourceRange>>()
                     + mem::size_of::<crate::HtmlSourceRange>()
-                    + mem::size_of::<LexicalKind>()
-                    + mem::size_of::<LexicalDisposition>()) as u64
+                    + mem::size_of::<HtmlParseLexicalKind>()
+                    + mem::size_of::<HtmlParseLexicalDisposition>()) as u64
             },
         )?;
-        c.charge(WorkCategory::RecordWrite, 2)?;
-        c.charge(WorkCategory::ProviderCall, 2)?;
+        c.charge(HtmlParseWorkCategory::RecordWrite, 2)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
         cause.source = Some(source.clone());
         record.source = source.clone();
         record.kind = kind;
@@ -473,7 +485,7 @@ impl ParseEvidence {
         &mut self,
         c: &mut ParseControl,
         reference: Option<&LexicalRef>,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         // Generic source-unbound construction accepts controlled token fields,
         // but owns no complete lexical report. Only the source-bound parser
         // evidence owner can classify a handle issued by that actual lexer.
@@ -485,22 +497,22 @@ impl ParseEvidence {
         };
         let index = self.require_lexical(c, reference)?;
         let record = self.lexical_occurrence(c, index)?;
-        if record.kind != LexicalKind::Attribute
-            || record.disposition != LexicalDisposition::StoredAttribute
+        if record.kind != HtmlParseLexicalKind::Attribute
+            || record.disposition != HtmlParseLexicalDisposition::StoredAttribute
         {
-            return Err(c.fail_invariant(Invariant::TokenizerState));
+            return Err(c.fail_invariant(HtmlParseInvariant::TokenizerState));
         }
-        c.charge(WorkCategory::RecordWrite, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
         c.charge(
-            WorkCategory::CopyByte,
-            mem::size_of::<LexicalDisposition>() as u64,
+            HtmlParseWorkCategory::CopyByte,
+            mem::size_of::<HtmlParseLexicalDisposition>() as u64,
         )?;
         self.native
             .lexical
             .occurrences
             .get_mut(index, c)?
-            .ok_or_else(|| c.fail_invariant(Invariant::RegistryRow))?
-            .disposition = LexicalDisposition::AlreadyPresentAttribute;
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::RegistryRow))?
+            .disposition = HtmlParseLexicalDisposition::AlreadyPresentAttribute;
         Ok(())
     }
     pub(crate) fn lexical_disposition(
@@ -508,27 +520,27 @@ impl ParseEvidence {
         c: &mut ParseControl,
         reference: Option<&LexicalRef>,
         ignored: bool,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         let Some(reference) = reference else {
             return Ok(());
         };
         let index = self.require_lexical(c, reference)?;
         let record = self.lexical_occurrence(c, index)?;
-        if record.disposition == LexicalDisposition::Emitted {
-            c.charge(WorkCategory::RecordWrite, 1)?;
+        if record.disposition == HtmlParseLexicalDisposition::Emitted {
+            c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
             c.charge(
-                WorkCategory::CopyByte,
-                mem::size_of::<LexicalDisposition>() as u64,
+                HtmlParseWorkCategory::CopyByte,
+                mem::size_of::<HtmlParseLexicalDisposition>() as u64,
             )?;
             self.native
                 .lexical
                 .occurrences
                 .get_mut(index, c)?
-                .ok_or_else(|| c.fail_invariant(Invariant::RegistryRow))?
+                .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::RegistryRow))?
                 .disposition = if ignored {
-                LexicalDisposition::Ignored
+                HtmlParseLexicalDisposition::Ignored
             } else {
-                LexicalDisposition::Applied
+                HtmlParseLexicalDisposition::Applied
             };
         }
         Ok(())
@@ -540,10 +552,10 @@ impl ParseEvidence {
         if let Some(point) = &self.native.lexical.end {
             c.require_source_range(point)?;
             payload_write::<NativeAssociation>(c, 1)?;
-            c.charge(WorkCategory::ProviderCall, 1)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             let row = NativeAssociation {
                 group: None,
-                relation: AssociationRelation::LexicalAnchor,
+                relation: HtmlParseAssociationRelation::LexicalAnchor,
                 destination: NativeDestination::LexicalEnd,
                 start: 0,
                 end: 0,
@@ -570,19 +582,19 @@ impl ParseEvidence {
             .iter()
             .enumerate()
         {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if matches!(
                 occurrence.disposition,
-                LexicalDisposition::Draft | LexicalDisposition::Emitted
+                HtmlParseLexicalDisposition::Draft | HtmlParseLexicalDisposition::Emitted
             ) {
                 return Err(SessionError::WrongToken);
             }
             c.require_source_range(&occurrence.source)?;
             payload_write::<NativeAssociation>(c, 1)?;
-            c.charge(WorkCategory::ProviderCall, 1)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             let row = NativeAssociation {
                 group: None,
-                relation: AssociationRelation::LexicalEnvelope,
+                relation: HtmlParseAssociationRelation::LexicalEnvelope,
                 destination: NativeDestination::Lexical {
                     occurrence: index,
                     part: None,
@@ -605,7 +617,7 @@ impl ParseEvidence {
                 .try_push(c, row)?;
         }
         for (index, part) in self.native.lexical.parts.as_slice().iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 2)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             let occurrence = self
                 .native
                 .lexical
@@ -621,10 +633,10 @@ impl ParseEvidence {
             }
             c.require_source_range(&part.source)?;
             payload_write::<NativeAssociation>(c, 1)?;
-            c.charge(WorkCategory::ProviderCall, 1)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             let row = NativeAssociation {
                 group: None,
-                relation: AssociationRelation::LexicalPart,
+                relation: HtmlParseAssociationRelation::LexicalPart,
                 destination: NativeDestination::Lexical {
                     occurrence: part.occurrence,
                     part: Some(index),
@@ -647,13 +659,13 @@ impl ParseEvidence {
                 .try_push(c, row)?;
         }
         for (index, omission) in self.native.lexical.omissions.as_slice().iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.require_source_range(&omission.source)?;
             payload_write::<NativeAssociation>(c, 1)?;
-            c.charge(WorkCategory::ProviderCall, 1)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             let row = NativeAssociation {
                 group: None,
-                relation: AssociationRelation::Omission,
+                relation: HtmlParseAssociationRelation::Omission,
                 destination: NativeDestination::Omission(index),
                 start: omission.start,
                 end: omission.end,
@@ -700,20 +712,22 @@ mod tests {
                 foreign.admit_source(&source).unwrap();
                 assert_eq!(
                     evidence.lexical_eof(&mut foreign, &point),
-                    Err(ParseStop::InternalInvariant(Invariant::ForeignControl))
+                    Err(HtmlParseStop::InternalInvariant(
+                        HtmlParseInvariant::ForeignControl
+                    ))
                 );
                 assert!(evidence.native.lexical.end.is_none());
                 crate::parser::tree_builder::tests::assert_released(&foreign);
             } else {
                 let expected = match case {
-                    1 => ParseStop::InternalInvariant(Invariant::TokenizerState),
+                    1 => HtmlParseStop::InternalInvariant(HtmlParseInvariant::TokenizerState),
                     2 => {
                         cancellation.cancel();
-                        ParseStop::Cancelled
+                        HtmlParseStop::Cancelled
                     }
                     3 => {
                         evidence.lexical_eof(&mut c, &point).unwrap();
-                        ParseStop::InternalInvariant(Invariant::TokenizerState)
+                        HtmlParseStop::InternalInvariant(HtmlParseInvariant::TokenizerState)
                     }
                     _ => unreachable!(),
                 };
@@ -757,7 +771,7 @@ mod tests {
                 .lexical_begin(
                     &mut c,
                     &source.range(0, 1).unwrap(),
-                    LexicalKind::Markup,
+                    HtmlParseLexicalKind::Markup,
                     None,
                 )
                 .unwrap();
@@ -767,21 +781,21 @@ mod tests {
                     .lexical_part(
                         &mut c,
                         &reference,
-                        LexicalRole::Syntax,
+                        HtmlParseLexicalRole::Syntax,
                         &source.range(0, 1).unwrap(),
                         reversed,
                         None,
                     )
                     .unwrap_err();
-                (stop, Invariant::TokenizerState)
+                (stop, HtmlParseInvariant::TokenizerState)
             } else {
                 let valid = reference.index;
                 reference.index = evidence.native.lexical.occurrences.len();
                 let stop = evidence.lexical_data_offset(&mut c, &reference);
                 reference.index = valid;
-                (stop.unwrap_err(), Invariant::RegistryRow)
+                (stop.unwrap_err(), HtmlParseInvariant::RegistryRow)
             };
-            assert_eq!(expected.0, ParseStop::InternalInvariant(expected.1));
+            assert_eq!(expected.0, HtmlParseStop::InternalInvariant(expected.1));
             assert_eq!(c.stop(), Some(expected.0));
             drop(reference);
             evidence.release(&mut c).unwrap();
@@ -804,7 +818,7 @@ mod tests {
             .lexical_begin(
                 &mut c,
                 &source.range(0, 1).unwrap(),
-                LexicalKind::Markup,
+                HtmlParseLexicalKind::Markup,
                 None,
             )
             .unwrap();
@@ -812,7 +826,7 @@ mod tests {
             .lexical_part(
                 &mut c,
                 &reference,
-                LexicalRole::Syntax,
+                HtmlParseLexicalRole::Syntax,
                 &source.range(0, 1).unwrap(),
                 0..0,
                 None,
@@ -820,20 +834,20 @@ mod tests {
             .unwrap_err();
         assert_eq!(
             stop,
-            ParseStop::InternalInvariant(Invariant::ForeignEvidence)
+            HtmlParseStop::InternalInvariant(HtmlParseInvariant::ForeignEvidence)
         );
         assert!(second.native.lexical.parts.as_slice().is_empty());
         assert_eq!(
             first.native.lexical.occurrences.as_slice()[0].disposition,
-            LexicalDisposition::Draft
+            HtmlParseLexicalDisposition::Draft
         );
         assert_eq!(
             first.lexical_finish(
                 &mut c,
                 &reference,
                 &source.range(0, 3).unwrap(),
-                LexicalKind::StartTag,
-                LexicalDisposition::Emitted
+                HtmlParseLexicalKind::StartTag,
+                HtmlParseLexicalDisposition::Emitted
             ),
             Err(stop)
         );
@@ -862,7 +876,7 @@ mod tests {
                 .lexical_begin(
                     &mut c,
                     &source.range(0, 1).unwrap(),
-                    LexicalKind::Markup,
+                    HtmlParseLexicalKind::Markup,
                     None,
                 )
                 .unwrap();
@@ -873,18 +887,18 @@ mod tests {
                 .lexical_part(
                     &mut c,
                     &reference,
-                    LexicalRole::Syntax,
+                    HtmlParseLexicalRole::Syntax,
                     &source.range(0, 1).unwrap(),
                     0..0,
                     None,
                 )
                 .unwrap_err();
             if cancelled {
-                assert_eq!(stop, ParseStop::Cancelled);
+                assert_eq!(stop, HtmlParseStop::Cancelled);
             } else {
                 assert!(matches!(
                     stop,
-                    ParseStop::LimitExceeded {
+                    HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::SourceMapEntries,
                         limit: 2,
                         current: 2,
@@ -895,7 +909,7 @@ mod tests {
             assert!(evidence.native.lexical.parts.as_slice().is_empty());
             assert_eq!(
                 evidence.native.lexical.occurrences.as_slice()[0].disposition,
-                LexicalDisposition::Draft
+                HtmlParseLexicalDisposition::Draft
             );
             drop(reference);
             evidence.release(&mut c).unwrap();

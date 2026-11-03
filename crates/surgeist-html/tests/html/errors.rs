@@ -7,6 +7,7 @@
 
 use std::error::Error;
 
+use crate::html::support::construction_limits;
 use std::convert::Infallible;
 use surgeist_html::bounded::{
     AutocompleteMaterializationError, FloatingPointAllocationError, IntegerRecoveryError,
@@ -995,13 +996,9 @@ fn input_refusals_state_what_was_refused() {
     );
 }
 
-fn builder_limits() -> HtmlConstructionLimits {
-    HtmlConstructionLimits::new(100, 100, 100, 100_000, 100)
-}
-
 #[test]
 fn construction_refusals_state_their_cause_and_answer_the_matching_predicate() {
-    let mut builder = HtmlDocument::builder(builder_limits(), HtmlDocumentMode::NoQuirks)
+    let mut builder = HtmlDocument::builder(construction_limits(), HtmlDocumentMode::NoQuirks)
         .expect("limits admit the document");
     let root = builder.root();
     let template = builder
@@ -1024,7 +1021,7 @@ fn construction_refusals_state_their_cause_and_answer_the_matching_predicate() {
     assert_eq!(contents_required.exceeded_resource(), None);
     assert_eq!(contents_required.duplicate_attribute_indices(), None);
 
-    let other = HtmlFragment::builder(builder_limits()).expect("fragment builder");
+    let other = HtmlFragment::builder(construction_limits()).expect("fragment builder");
     let foreign_root = other.root();
     let foreign = builder
         .append_text(&foreign_root, "foreign")

@@ -76,7 +76,7 @@ impl SessionStorage {
                 },
             )
             .map_err(|_| latch_registry_row(c))?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = self
             .construction
             .node_at(node)
@@ -173,7 +173,7 @@ impl SessionStorage {
         let Some(slot) = self.dialog_slot(c, node)? else {
             return Ok(());
         };
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let Some(RetainedPayload::Dialog { state, .. }) = self.payloads.values.get(slot) else {
             return Err(latch_registry_row(c));
         };
@@ -185,7 +185,7 @@ impl SessionStorage {
         payload_write::<HtmlDialogCursor>(c, 1)?;
         let mut cursor = HtmlDialogCursor::new(operation);
         loop {
-            c.charge(WorkCategory::ProviderCall, 1)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             let action = cursor.action();
             #[cfg(test)]
             observe(action);
@@ -231,7 +231,7 @@ impl SessionStorage {
         if !self.html_local(c, node, "dialog")? {
             return Ok(());
         }
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = self
             .construction
             .node_at(node)
@@ -259,7 +259,7 @@ impl SessionStorage {
         old: bool,
         new: bool,
     ) -> Result<(), SessionError> {
-        c.charge(WorkCategory::ProviderCall, 1)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         // The owner answers an operation for exactly this null-namespace open
         // attribute; anything else is an impossible registry state.
         let Some(operation) = surgeist_html::dialog_attribute_operation(
@@ -295,7 +295,7 @@ impl SessionStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture, token::Event};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
 
     fn next_tag(lexer: &mut LexerFixture<'_>, c: &mut ParseControl) -> Tag {
         loop {
@@ -353,7 +353,8 @@ mod tests {
             .unwrap()
             .position();
         let parent = session.active().unwrap().node(&mut c, html).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let tag = next_tag(&mut lexer, &mut c);
         let node = session
             .allocate_html_tag_for_creation(
@@ -468,7 +469,8 @@ mod tests {
             .unwrap()
             .position();
         let parent = session.active().unwrap().node(&mut c, html).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let tag = next_tag(&mut lexer, &mut c);
         let node = session
             .allocate_html_tag_for_creation(
@@ -532,7 +534,8 @@ mod tests {
             .unwrap()
             .position();
         let parent = session.active().unwrap().node(&mut c, html).unwrap();
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let tag = next_tag(&mut lexer, &mut c);
         let node = session
             .allocate_html_tag_for_creation(

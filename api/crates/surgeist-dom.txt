@@ -246,7 +246,7 @@ pub surgeist_dom::DomError::ParsedAssociationProcessingPoisoned
 pub surgeist_dom::DomError::ParsedAssociationProcessingPoisoned::pending: surgeist_dom::DomParsedHtmlAssociationId
 pub surgeist_dom::DomError::ParsedAssociationSynchronousPending
 pub surgeist_dom::DomError::ParsedAssociationSynchronousPending::pending: surgeist_dom::DomParsedHtmlAssociationId
-pub surgeist_dom::DomError::ParsedReportUnresolved(surgeist_html_parser::construction::read::UnresolvedReference)
+pub surgeist_dom::DomError::ParsedReportUnresolved(surgeist_html_parser::construction::read::HtmlParseUnresolvedReference)
 pub surgeist_dom::DomError::RangeAssociationIneligible
 pub surgeist_dom::DomError::RangePublicationUnavailable
 pub surgeist_dom::DomError::RepresentationExhausted
@@ -753,21 +753,21 @@ pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::EarlierPending::pendin
 pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::History(surgeist_dom::DomParsedHtmlHistoryReadError)
 pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::Incomplete
 pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::Incomplete::contribution: surgeist_dom::DomParsedHtmlAssociationId
-pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::Incomplete::missing: surgeist_html_parser::construction::pending_association::MissingKind
+pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::Incomplete::missing: surgeist_html_parser::construction::pending_association::HtmlParseAssociationMissingKind
 pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::LimitReduction
 pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::LimitReduction::contribution: surgeist_dom::DomParsedHtmlAssociationId
 pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::MissingPreferredName
 pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::MissingPreferredName::contribution: surgeist_dom::DomParsedHtmlAssociationId
-pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::MissingPreferredName::occurrence: surgeist_html_parser::construction::pending_association::OccurrenceId
+pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::MissingPreferredName::occurrence: surgeist_html_parser::construction::pending_association::HtmlParseAssociationOccurrenceId
 pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::NotPending
 pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::NotPending::contribution: surgeist_dom::DomParsedHtmlAssociationId
 pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::StaleDocument
 pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::StaleDocument::document: surgeist_dom::DocumentId
-pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::UnresolvedReport(surgeist_html_parser::construction::read::UnresolvedReference)
+pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::UnresolvedReport(surgeist_html_parser::construction::read::HtmlParseUnresolvedReference)
 pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::Unsupported
 pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::Unsupported::contribution: surgeist_dom::DomParsedHtmlAssociationId
-pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::Unsupported::kind: surgeist_html_parser::construction::pending_association::OccurrenceKind
-pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::Unsupported::occurrence: surgeist_html_parser::construction::pending_association::OccurrenceId
+pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::Unsupported::kind: surgeist_html_parser::construction::pending_association::HtmlParseAssociationOccurrenceKind
+pub surgeist_dom::DomParsedHtmlAssociationAdmissionError::Unsupported::occurrence: surgeist_html_parser::construction::pending_association::HtmlParseAssociationOccurrenceId
 impl core::convert::From<surgeist_dom::DomError> for surgeist_dom::DomParsedHtmlAssociationAdmissionError
 pub fn surgeist_dom::DomParsedHtmlAssociationAdmissionError::from(value: surgeist_dom::DomError) -> Self
 impl core::convert::From<surgeist_dom::DomParsedHtmlAssociationAdmissionError> for surgeist_dom::DomParsedHtmlMetaError
@@ -782,10 +782,10 @@ impl core::convert::From<surgeist_dom::DomParsedHtmlAssociationAdmissionError> f
 pub fn surgeist_dom::DomParsedHtmlStyleSuccessorError::from(value: surgeist_dom::DomParsedHtmlAssociationAdmissionError) -> Self
 impl core::convert::From<surgeist_dom::DomParsedHtmlAssociationAdmissionError> for surgeist_dom::DomParsedHtmlTerminalError
 pub fn surgeist_dom::DomParsedHtmlTerminalError::from(error: surgeist_dom::DomParsedHtmlAssociationAdmissionError) -> Self
-impl core::convert::From<surgeist_html_parser::construction::history::HistoryReadError> for surgeist_dom::DomParsedHtmlAssociationAdmissionError
-pub fn surgeist_dom::DomParsedHtmlAssociationAdmissionError::from(value: surgeist_html_parser::construction::history::HistoryReadError) -> Self
-impl core::convert::From<surgeist_html_parser::construction::read::UnresolvedReference> for surgeist_dom::DomParsedHtmlAssociationAdmissionError
-pub fn surgeist_dom::DomParsedHtmlAssociationAdmissionError::from(value: surgeist_html_parser::construction::read::UnresolvedReference) -> Self
+impl core::convert::From<surgeist_html_parser::construction::history::HtmlParseHistoryError> for surgeist_dom::DomParsedHtmlAssociationAdmissionError
+pub fn surgeist_dom::DomParsedHtmlAssociationAdmissionError::from(value: surgeist_html_parser::construction::history::HtmlParseHistoryError) -> Self
+impl core::convert::From<surgeist_html_parser::construction::read::HtmlParseUnresolvedReference> for surgeist_dom::DomParsedHtmlAssociationAdmissionError
+pub fn surgeist_dom::DomParsedHtmlAssociationAdmissionError::from(value: surgeist_html_parser::construction::read::HtmlParseUnresolvedReference) -> Self
 impl core::error::Error for surgeist_dom::DomParsedHtmlAssociationAdmissionError
 pub fn surgeist_dom::DomParsedHtmlAssociationAdmissionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_dom::DomParsedHtmlAssociationAdmissionError
@@ -803,8 +803,8 @@ impl core::convert::From<surgeist_dom::DomError> for surgeist_dom::DomParsedHtml
 pub fn surgeist_dom::DomParsedHtmlFrontierError::from(value: surgeist_dom::DomError) -> Self
 impl core::convert::From<surgeist_dom::DomParsedHtmlStyleError> for surgeist_dom::DomParsedHtmlFrontierError
 pub fn surgeist_dom::DomParsedHtmlFrontierError::from(value: surgeist_dom::DomParsedHtmlStyleError) -> Self
-impl core::convert::From<surgeist_html_parser::construction::read::UnresolvedReference> for surgeist_dom::DomParsedHtmlFrontierError
-pub fn surgeist_dom::DomParsedHtmlFrontierError::from(value: surgeist_html_parser::construction::read::UnresolvedReference) -> Self
+impl core::convert::From<surgeist_html_parser::construction::read::HtmlParseUnresolvedReference> for surgeist_dom::DomParsedHtmlFrontierError
+pub fn surgeist_dom::DomParsedHtmlFrontierError::from(value: surgeist_html_parser::construction::read::HtmlParseUnresolvedReference) -> Self
 impl core::error::Error for surgeist_dom::DomParsedHtmlFrontierError
 pub fn surgeist_dom::DomParsedHtmlFrontierError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_dom::DomParsedHtmlFrontierError
@@ -824,7 +824,7 @@ pub enum surgeist_dom::DomParsedHtmlInstallError
 pub surgeist_dom::DomParsedHtmlInstallError::AllocationFailed
 pub surgeist_dom::DomParsedHtmlInstallError::AssociationCaptureUnavailable
 pub surgeist_dom::DomParsedHtmlInstallError::AssociationCaptureUnavailable::document: surgeist_dom::DomParsedHtmlHistoricalDocument
-pub surgeist_dom::DomParsedHtmlInstallError::AssociationCaptureUnavailable::reason: surgeist_html_parser::construction::pending_association::MissingKind
+pub surgeist_dom::DomParsedHtmlInstallError::AssociationCaptureUnavailable::reason: surgeist_html_parser::construction::pending_association::HtmlParseAssociationMissingKind
 pub surgeist_dom::DomParsedHtmlInstallError::BaseStateUnavailable
 pub surgeist_dom::DomParsedHtmlInstallError::BaseStateUnavailable::subject: surgeist_html::construction::HtmlNodeId
 pub surgeist_dom::DomParsedHtmlInstallError::Cancelled
@@ -841,13 +841,13 @@ pub surgeist_dom::DomParsedHtmlInstallError::FamilyStateUnavailable::class: surg
 pub surgeist_dom::DomParsedHtmlInstallError::FamilyStateUnavailable::subject: surgeist_html::construction::HtmlNodeId
 pub surgeist_dom::DomParsedHtmlInstallError::ForeignContext
 pub surgeist_dom::DomParsedHtmlInstallError::HyperlinkUnavailable
-pub surgeist_dom::DomParsedHtmlInstallError::HyperlinkUnavailable::reason: surgeist_html_parser::construction::associated::HyperlinkUnavailable
+pub surgeist_dom::DomParsedHtmlInstallError::HyperlinkUnavailable::reason: surgeist_html_parser::construction::associated::HtmlParseHyperlinkUnavailable
 pub surgeist_dom::DomParsedHtmlInstallError::HyperlinkUnavailable::subject: surgeist_html::construction::HtmlNodeId
 pub surgeist_dom::DomParsedHtmlInstallError::ImageActivityUnavailable
 pub surgeist_dom::DomParsedHtmlInstallError::ImageActivityUnavailable::subject: surgeist_html::construction::HtmlNodeId
 pub surgeist_dom::DomParsedHtmlInstallError::MetaStateUnavailable
 pub surgeist_dom::DomParsedHtmlInstallError::MetaStateUnavailable::document: surgeist_html::construction::HtmlNodeId
-pub surgeist_dom::DomParsedHtmlInstallError::MetaStateUnavailable::reason: surgeist_html_parser::construction::meta::MetaMissingKind
+pub surgeist_dom::DomParsedHtmlInstallError::MetaStateUnavailable::reason: surgeist_html_parser::construction::meta::HtmlParseMetaMissingKind
 pub surgeist_dom::DomParsedHtmlInstallError::MetaStateUnavailable::subject: surgeist_html::construction::HtmlNodeId
 pub surgeist_dom::DomParsedHtmlInstallError::MissingMetadata
 pub surgeist_dom::DomParsedHtmlInstallError::MissingMetadata::subject: surgeist_html::construction::HtmlNodeId
@@ -864,13 +864,13 @@ pub surgeist_dom::DomParsedHtmlInstallError::StaleDestination
 pub surgeist_dom::DomParsedHtmlInstallError::StaleDestination::actual: surgeist_dom::DomStamp
 pub surgeist_dom::DomParsedHtmlInstallError::StaleDestination::expected: surgeist_dom::DomStamp
 pub surgeist_dom::DomParsedHtmlInstallError::Target(surgeist_dom::DomError)
-pub surgeist_dom::DomParsedHtmlInstallError::UnresolvedReport(surgeist_html_parser::construction::read::UnresolvedReference)
+pub surgeist_dom::DomParsedHtmlInstallError::UnresolvedReport(surgeist_html_parser::construction::read::HtmlParseUnresolvedReference)
 pub surgeist_dom::DomParsedHtmlInstallError::UnsupportedState
 pub surgeist_dom::DomParsedHtmlInstallError::UnsupportedState::subject: surgeist_html::construction::HtmlNodeId
 impl core::convert::From<surgeist_dom::DomError> for surgeist_dom::DomParsedHtmlInstallError
 pub fn surgeist_dom::DomParsedHtmlInstallError::from(error: surgeist_dom::DomError) -> Self
-impl core::convert::From<surgeist_html_parser::construction::read::UnresolvedReference> for surgeist_dom::DomParsedHtmlInstallError
-pub fn surgeist_dom::DomParsedHtmlInstallError::from(error: surgeist_html_parser::construction::read::UnresolvedReference) -> Self
+impl core::convert::From<surgeist_html_parser::construction::read::HtmlParseUnresolvedReference> for surgeist_dom::DomParsedHtmlInstallError
+pub fn surgeist_dom::DomParsedHtmlInstallError::from(error: surgeist_html_parser::construction::read::HtmlParseUnresolvedReference) -> Self
 impl core::error::Error for surgeist_dom::DomParsedHtmlInstallError
 pub fn surgeist_dom::DomParsedHtmlInstallError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_dom::DomParsedHtmlInstallError
@@ -923,8 +923,8 @@ impl core::convert::From<surgeist_dom::DomParsedHtmlAssociationAdmissionError> f
 pub fn surgeist_dom::DomParsedHtmlMetaOccurrenceError::from(e: surgeist_dom::DomParsedHtmlAssociationAdmissionError) -> Self
 impl core::convert::From<surgeist_dom::DomParsedHtmlStyleError> for surgeist_dom::DomParsedHtmlMetaOccurrenceError
 pub fn surgeist_dom::DomParsedHtmlMetaOccurrenceError::from(e: surgeist_dom::DomParsedHtmlStyleError) -> Self
-impl core::convert::From<surgeist_html_parser::construction::read::UnresolvedReference> for surgeist_dom::DomParsedHtmlMetaOccurrenceError
-pub fn surgeist_dom::DomParsedHtmlMetaOccurrenceError::from(e: surgeist_html_parser::construction::read::UnresolvedReference) -> Self
+impl core::convert::From<surgeist_html_parser::construction::read::HtmlParseUnresolvedReference> for surgeist_dom::DomParsedHtmlMetaOccurrenceError
+pub fn surgeist_dom::DomParsedHtmlMetaOccurrenceError::from(e: surgeist_html_parser::construction::read::HtmlParseUnresolvedReference) -> Self
 impl core::error::Error for surgeist_dom::DomParsedHtmlMetaOccurrenceError
 pub fn surgeist_dom::DomParsedHtmlMetaOccurrenceError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_dom::DomParsedHtmlMetaOccurrenceError
@@ -940,7 +940,7 @@ pub surgeist_dom::DomParsedHtmlStyleError::DecisionAlreadyAccepted::contribution
 pub surgeist_dom::DomParsedHtmlStyleError::ExecutionNotAdmitted
 pub surgeist_dom::DomParsedHtmlStyleError::ExecutionNotAdmitted::contribution: surgeist_dom::DomParsedHtmlAssociationId
 pub surgeist_dom::DomParsedHtmlStyleError::HandoffRequired
-pub surgeist_dom::DomParsedHtmlStyleError::HandoffRequired::occurrence: surgeist_html_parser::construction::pending_association::OccurrenceId
+pub surgeist_dom::DomParsedHtmlStyleError::HandoffRequired::occurrence: surgeist_html_parser::construction::pending_association::HtmlParseAssociationOccurrenceId
 pub surgeist_dom::DomParsedHtmlStyleError::InvalidSheetInput
 pub surgeist_dom::DomParsedHtmlStyleError::MissingObservation
 pub surgeist_dom::DomParsedHtmlStyleError::MissingPolicy
@@ -948,7 +948,7 @@ pub surgeist_dom::DomParsedHtmlStyleError::NotificationTransferred
 pub surgeist_dom::DomParsedHtmlStyleError::Poisoned
 pub surgeist_dom::DomParsedHtmlStyleError::Poisoned::contribution: surgeist_dom::DomParsedHtmlAssociationId
 pub surgeist_dom::DomParsedHtmlStyleError::PolicyContext
-pub surgeist_dom::DomParsedHtmlStyleError::PolicyContext::requirement: surgeist_html_parser::construction::pending_association::ContextRequirement
+pub surgeist_dom::DomParsedHtmlStyleError::PolicyContext::requirement: surgeist_html_parser::construction::pending_association::HtmlParseAssociationContextRequirement
 pub surgeist_dom::DomParsedHtmlStyleError::Protocol(surgeist_html::style::HtmlStyleProtocolError)
 pub surgeist_dom::DomParsedHtmlStyleError::ReceiverOccupied
 pub surgeist_dom::DomParsedHtmlStyleError::UnsupportedProfile
@@ -980,8 +980,8 @@ impl core::convert::From<surgeist_html::csp_policy::HtmlCspProtocolError> for su
 pub fn surgeist_dom::DomParsedHtmlStyleError::from(e: surgeist_html::csp_policy::HtmlCspProtocolError) -> Self
 impl core::convert::From<surgeist_html::style::HtmlStyleProtocolError> for surgeist_dom::DomParsedHtmlStyleError
 pub fn surgeist_dom::DomParsedHtmlStyleError::from(e: surgeist_html::style::HtmlStyleProtocolError) -> Self
-impl core::convert::From<surgeist_html_parser::construction::read::UnresolvedReference> for surgeist_dom::DomParsedHtmlStyleError
-pub fn surgeist_dom::DomParsedHtmlStyleError::from(e: surgeist_html_parser::construction::read::UnresolvedReference) -> Self
+impl core::convert::From<surgeist_html_parser::construction::read::HtmlParseUnresolvedReference> for surgeist_dom::DomParsedHtmlStyleError
+pub fn surgeist_dom::DomParsedHtmlStyleError::from(e: surgeist_html_parser::construction::read::HtmlParseUnresolvedReference) -> Self
 impl core::error::Error for surgeist_dom::DomParsedHtmlStyleError
 pub fn surgeist_dom::DomParsedHtmlStyleError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_dom::DomParsedHtmlStyleError
@@ -1024,19 +1024,19 @@ pub enum surgeist_dom::DomParsedHtmlStyleNotificationRequirement
 pub surgeist_dom::DomParsedHtmlStyleNotificationRequirement::Invocation
 pub surgeist_dom::DomParsedHtmlStyleNotificationRequirement::Invocation::contribution: surgeist_dom::DomParsedHtmlAssociationId
 pub surgeist_dom::DomParsedHtmlStyleNotificationRequirement::Invocation::document: surgeist_dom::DocumentId
-pub surgeist_dom::DomParsedHtmlStyleNotificationRequirement::Invocation::occurrence: surgeist_html_parser::construction::pending_association::OccurrenceId
+pub surgeist_dom::DomParsedHtmlStyleNotificationRequirement::Invocation::occurrence: surgeist_html_parser::construction::pending_association::HtmlParseAssociationOccurrenceId
 pub surgeist_dom::DomParsedHtmlStyleNotificationRequirement::Invocation::phase: surgeist_dom::DomParsedHtmlStylePhase
 pub surgeist_dom::DomParsedHtmlStyleNotificationRequirement::Occurrence
 pub surgeist_dom::DomParsedHtmlStyleNotificationRequirement::Occurrence::contribution: surgeist_dom::DomParsedHtmlAssociationId
 pub surgeist_dom::DomParsedHtmlStyleNotificationRequirement::Occurrence::document: surgeist_dom::DocumentId
-pub surgeist_dom::DomParsedHtmlStyleNotificationRequirement::Occurrence::kind: surgeist_html_parser::construction::pending_association::OccurrenceKind
-pub surgeist_dom::DomParsedHtmlStyleNotificationRequirement::Occurrence::occurrence: surgeist_html_parser::construction::pending_association::OccurrenceId
+pub surgeist_dom::DomParsedHtmlStyleNotificationRequirement::Occurrence::kind: surgeist_html_parser::construction::pending_association::HtmlParseAssociationOccurrenceKind
+pub surgeist_dom::DomParsedHtmlStyleNotificationRequirement::Occurrence::occurrence: surgeist_html_parser::construction::pending_association::HtmlParseAssociationOccurrenceId
 pub surgeist_dom::DomParsedHtmlStyleNotificationRequirement::Unavailable
 pub surgeist_dom::DomParsedHtmlStyleNotificationRequirement::Unavailable::contribution: surgeist_dom::DomParsedHtmlAssociationId
 pub surgeist_dom::DomParsedHtmlStyleNotificationRequirement::Unavailable::reason: surgeist_dom::DomParsedHtmlStyleNotificationUnavailable
 pub enum surgeist_dom::DomParsedHtmlStyleNotificationUnavailable
 pub surgeist_dom::DomParsedHtmlStyleNotificationUnavailable::ConsumerFrontierUnavailable
-pub surgeist_dom::DomParsedHtmlStyleNotificationUnavailable::IncompleteCapture(surgeist_html_parser::construction::pending_association::MissingKind)
+pub surgeist_dom::DomParsedHtmlStyleNotificationUnavailable::IncompleteCapture(surgeist_html_parser::construction::pending_association::HtmlParseAssociationMissingKind)
 pub surgeist_dom::DomParsedHtmlStyleNotificationUnavailable::InvocationNotExecuted
 pub surgeist_dom::DomParsedHtmlStyleNotificationUnavailable::OriginalEntryMissing
 pub surgeist_dom::DomParsedHtmlStyleNotificationUnavailable::UnsupportedInventory
@@ -1055,8 +1055,8 @@ pub surgeist_dom::DomParsedHtmlStyleRenderingProgress::Pending(surgeist_dom::Dom
 pub enum surgeist_dom::DomParsedHtmlStyleRenderingRequirement
 pub surgeist_dom::DomParsedHtmlStyleRenderingRequirement::MediaEnvironment
 pub surgeist_dom::DomParsedHtmlStyleRenderingRequirement::OriginalContext
-pub surgeist_dom::DomParsedHtmlStyleRenderingRequirement::OriginalContext::requirement: surgeist_html_parser::construction::pending_association::ContextRequirement
-pub surgeist_dom::DomParsedHtmlStyleRenderingRequirement::OriginalContext::role: surgeist_html_parser::construction::pending_association::ContextRole
+pub surgeist_dom::DomParsedHtmlStyleRenderingRequirement::OriginalContext::requirement: surgeist_html_parser::construction::pending_association::HtmlParseAssociationContextRequirement
+pub surgeist_dom::DomParsedHtmlStyleRenderingRequirement::OriginalContext::role: surgeist_html_parser::construction::pending_association::HtmlParseAssociationContextRole
 pub enum surgeist_dom::DomParsedHtmlStyleResources
 pub surgeist_dom::DomParsedHtmlStyleResources::ImportsUnresolved
 pub surgeist_dom::DomParsedHtmlStyleResources::NoImports
@@ -1092,8 +1092,8 @@ impl core::convert::From<surgeist_dom::DomParsedHtmlStyleError> for surgeist_dom
 pub fn surgeist_dom::DomParsedHtmlStyleSubjectError::from(e: surgeist_dom::DomParsedHtmlStyleError) -> Self
 impl core::convert::From<surgeist_html::style::HtmlStyleProtocolError> for surgeist_dom::DomParsedHtmlStyleSubjectError
 pub fn surgeist_dom::DomParsedHtmlStyleSubjectError::from(e: surgeist_html::style::HtmlStyleProtocolError) -> Self
-impl core::convert::From<surgeist_html_parser::construction::read::UnresolvedReference> for surgeist_dom::DomParsedHtmlStyleSubjectError
-pub fn surgeist_dom::DomParsedHtmlStyleSubjectError::from(e: surgeist_html_parser::construction::read::UnresolvedReference) -> Self
+impl core::convert::From<surgeist_html_parser::construction::read::HtmlParseUnresolvedReference> for surgeist_dom::DomParsedHtmlStyleSubjectError
+pub fn surgeist_dom::DomParsedHtmlStyleSubjectError::from(e: surgeist_html_parser::construction::read::HtmlParseUnresolvedReference) -> Self
 impl core::error::Error for surgeist_dom::DomParsedHtmlStyleSubjectError
 pub fn surgeist_dom::DomParsedHtmlStyleSubjectError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_dom::DomParsedHtmlStyleSubjectError
@@ -1144,8 +1144,8 @@ impl core::convert::From<surgeist_dom::DomParsedHtmlAssociationAdmissionError> f
 pub fn surgeist_dom::DomParsedHtmlTerminalError::from(error: surgeist_dom::DomParsedHtmlAssociationAdmissionError) -> Self
 impl core::convert::From<surgeist_dom::DomParsedHtmlStyleError> for surgeist_dom::DomParsedHtmlTerminalError
 pub fn surgeist_dom::DomParsedHtmlTerminalError::from(error: surgeist_dom::DomParsedHtmlStyleError) -> Self
-impl core::convert::From<surgeist_html_parser::construction::read::UnresolvedReference> for surgeist_dom::DomParsedHtmlTerminalError
-pub fn surgeist_dom::DomParsedHtmlTerminalError::from(error: surgeist_html_parser::construction::read::UnresolvedReference) -> Self
+impl core::convert::From<surgeist_html_parser::construction::read::HtmlParseUnresolvedReference> for surgeist_dom::DomParsedHtmlTerminalError
+pub fn surgeist_dom::DomParsedHtmlTerminalError::from(error: surgeist_html_parser::construction::read::HtmlParseUnresolvedReference) -> Self
 impl core::error::Error for surgeist_dom::DomParsedHtmlTerminalError
 pub fn surgeist_dom::DomParsedHtmlTerminalError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_dom::DomParsedHtmlTerminalError
@@ -1325,7 +1325,7 @@ pub enum surgeist_dom::DomStyleNotificationOrigin
 pub surgeist_dom::DomStyleNotificationOrigin::NativeSource(surgeist_dom::DomSourceOperationId)
 pub surgeist_dom::DomStyleNotificationOrigin::ParsedOccurrence
 pub surgeist_dom::DomStyleNotificationOrigin::ParsedOccurrence::contribution: surgeist_dom::DomParsedHtmlAssociationId
-pub surgeist_dom::DomStyleNotificationOrigin::ParsedOccurrence::occurrence: surgeist_html_parser::construction::pending_association::OccurrenceId
+pub surgeist_dom::DomStyleNotificationOrigin::ParsedOccurrence::occurrence: surgeist_html_parser::construction::pending_association::HtmlParseAssociationOccurrenceId
 pub enum surgeist_dom::DomStyleRootKind
 pub surgeist_dom::DomStyleRootKind::Detached
 pub surgeist_dom::DomStyleRootKind::Document
@@ -1508,8 +1508,8 @@ pub fn surgeist_dom::Dom::hosted_navigable(&self, id: surgeist_dom::DomHostedNav
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::install_native_html_fragment(&mut self, basis: surgeist_dom::DomDocumentStamp, parent: surgeist_dom::NodeId, before: core::option::Option<surgeist_dom::NodeId>, source: &surgeist_html::construction::HtmlFragment, limits: surgeist_dom::DomNativeHtmlInstallLimits, cancelled: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::DomNativeHtmlInstallation, surgeist_dom::DomNativeHtmlInstallError>
 impl surgeist_dom::Dom
-pub fn surgeist_dom::Dom::install_parsed_html_document(&mut self, basis: surgeist_dom::DomStamp, report: alloc::sync::Arc<surgeist_html_parser::parser::tree_builder::report::ImmutableParseReport>, environment: surgeist_dom::DomParsedDocumentEnvironment, limits: surgeist_dom::DomParsedHtmlInstallLimits, cancelled: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::DomParsedHtmlInstallation, surgeist_dom::DomParsedHtmlInstallError>
-pub fn surgeist_dom::Dom::install_parsed_html_fragment(&mut self, report: alloc::sync::Arc<surgeist_html_parser::parser::tree_builder::report::ImmutableParseReport>, capture: &surgeist_dom::DomHtmlCapture, limits: surgeist_dom::DomParsedHtmlInstallLimits, cancelled: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::DomParsedHtmlInstallation, surgeist_dom::DomParsedHtmlInstallError>
+pub fn surgeist_dom::Dom::install_parsed_html_document(&mut self, basis: surgeist_dom::DomStamp, report: alloc::sync::Arc<surgeist_html_parser::parser::tree_builder::report::HtmlParseReport>, environment: surgeist_dom::DomParsedDocumentEnvironment, limits: surgeist_dom::DomParsedHtmlInstallLimits, cancelled: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::DomParsedHtmlInstallation, surgeist_dom::DomParsedHtmlInstallError>
+pub fn surgeist_dom::Dom::install_parsed_html_fragment(&mut self, report: alloc::sync::Arc<surgeist_html_parser::parser::tree_builder::report::HtmlParseReport>, capture: &surgeist_dom::DomHtmlCapture, limits: surgeist_dom::DomParsedHtmlInstallLimits, cancelled: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::DomParsedHtmlInstallation, surgeist_dom::DomParsedHtmlInstallError>
 impl surgeist_dom::Dom
 pub fn surgeist_dom::Dom::parsed_html_dispatch_cursor(&self) -> surgeist_dom::DomParsedHtmlDispatchCursor<'_>
 pub fn surgeist_dom::Dom::parsed_html_synchronous_end(&self, id: surgeist_dom::DomParsedHtmlAssociationId) -> core::result::Result<core::option::Option<surgeist_dom::DomParsedHtmlSynchronousEndView<'_>>, surgeist_dom::DomParsedHtmlAssociationAdmissionError>
@@ -2848,7 +2848,7 @@ pub fn surgeist_dom::DomParsedHtmlInstallation::context_basis(&self) -> core::op
 pub fn surgeist_dom::DomParsedHtmlInstallation::document(&self) -> surgeist_dom::DocumentId
 pub fn surgeist_dom::DomParsedHtmlInstallation::node_for(&self, source: &surgeist_html::construction::HtmlNodeId) -> core::option::Option<surgeist_dom::NodeId>
 pub fn surgeist_dom::DomParsedHtmlInstallation::pending_association(&self) -> core::option::Option<surgeist_dom::DomParsedHtmlAssociationId>
-pub fn surgeist_dom::DomParsedHtmlInstallation::report(&self) -> &surgeist_html_parser::parser::tree_builder::report::ImmutableParseReport
+pub fn surgeist_dom::DomParsedHtmlInstallation::report(&self) -> &surgeist_html_parser::parser::tree_builder::report::HtmlParseReport
 pub fn surgeist_dom::DomParsedHtmlInstallation::root(&self) -> surgeist_dom::NodeId
 pub fn surgeist_dom::DomParsedHtmlInstallation::snapshot(&self) -> &surgeist_dom::DomSnapshot
 pub fn surgeist_dom::DomParsedHtmlInstallation::source(&self) -> &surgeist_html_parser::source::HtmlSourceId
@@ -2866,7 +2866,7 @@ impl surgeist_dom::DomParsedHtmlMetaOccurrence
 pub fn surgeist_dom::DomParsedHtmlMetaOccurrence::content(&self) -> &surgeist_html::values::DocumentString
 pub fn surgeist_dom::DomParsedHtmlMetaOccurrence::contribution(&self) -> surgeist_dom::DomParsedHtmlAssociationId
 pub fn surgeist_dom::DomParsedHtmlMetaOccurrence::document(&self) -> surgeist_dom::DocumentId
-pub fn surgeist_dom::DomParsedHtmlMetaOccurrence::id(&self) -> &surgeist_html_parser::construction::pending_association::OccurrenceId
+pub fn surgeist_dom::DomParsedHtmlMetaOccurrence::id(&self) -> &surgeist_html_parser::construction::pending_association::HtmlParseAssociationOccurrenceId
 pub fn surgeist_dom::DomParsedHtmlMetaOccurrence::subject(&self) -> &surgeist_html::construction::HtmlNodeId
 pub struct surgeist_dom::DomParsedHtmlMetaOccurrenceCompletion
 impl surgeist_dom::DomParsedHtmlMetaOccurrenceCompletion
@@ -2924,7 +2924,7 @@ pub fn surgeist_dom::DomParsedHtmlPendingAssociations<'a>::context_basis(&self) 
 pub fn surgeist_dom::DomParsedHtmlPendingAssociations<'a>::documents(&self) -> &'a [surgeist_dom::DomParsedHtmlAssociationDocument]
 pub fn surgeist_dom::DomParsedHtmlPendingAssociations<'a>::id(&self) -> surgeist_dom::DomParsedHtmlAssociationId
 pub fn surgeist_dom::DomParsedHtmlPendingAssociations<'a>::node_for(&self, source: &surgeist_html::construction::HtmlNodeId) -> core::option::Option<surgeist_dom::NodeId>
-pub fn surgeist_dom::DomParsedHtmlPendingAssociations<'a>::report(&self) -> &'a surgeist_html_parser::parser::tree_builder::report::ImmutableParseReport
+pub fn surgeist_dom::DomParsedHtmlPendingAssociations<'a>::report(&self) -> &'a surgeist_html_parser::parser::tree_builder::report::HtmlParseReport
 pub struct surgeist_dom::DomParsedHtmlStyleCreateSheetRequest
 impl surgeist_dom::DomParsedHtmlStyleCreateSheetRequest
 pub fn surgeist_dom::DomParsedHtmlStyleCreateSheetRequest::document(&self) -> surgeist_dom::DocumentId
@@ -2941,7 +2941,7 @@ pub fn surgeist_dom::DomParsedHtmlStyleDeliveryPublication::fmt(&self, f: &mut c
 pub struct surgeist_dom::DomParsedHtmlStyleInitialPolicyRequest
 impl surgeist_dom::DomParsedHtmlStyleInitialPolicyRequest
 pub fn surgeist_dom::DomParsedHtmlStyleInitialPolicyRequest::qualification(&self) -> &surgeist_dom::DomParsedHtmlStyleQualification
-pub fn surgeist_dom::DomParsedHtmlStyleInitialPolicyRequest::slot(&self) -> &surgeist_html_parser::construction::pending_association::ContextSlotId
+pub fn surgeist_dom::DomParsedHtmlStyleInitialPolicyRequest::slot(&self) -> &surgeist_html_parser::construction::pending_association::HtmlParseAssociationContextSlotId
 pub struct surgeist_dom::DomParsedHtmlStyleInlinePolicyObservation
 impl surgeist_dom::DomParsedHtmlStyleInlinePolicyObservation
 pub fn surgeist_dom::DomParsedHtmlStyleInlinePolicyObservation::allowed(&self) -> bool
@@ -2989,10 +2989,10 @@ pub fn surgeist_dom::DomParsedHtmlStylePrefixView<'_>::qualification(&self) -> c
 pub fn surgeist_dom::DomParsedHtmlStylePrefixView<'_>::script_bookkeeping_exclusion(&self) -> core::option::Option<surgeist_html::style::HtmlStyleExecutionProfile>
 pub struct surgeist_dom::DomParsedHtmlStyleQualification
 impl surgeist_dom::DomParsedHtmlStyleQualification
-pub fn surgeist_dom::DomParsedHtmlStyleQualification::context_epoch(&self) -> &surgeist_html_parser::construction::pending_association::ContextEpochId
+pub fn surgeist_dom::DomParsedHtmlStyleQualification::context_epoch(&self) -> &surgeist_html_parser::construction::pending_association::HtmlParseAssociationContextEpochId
 pub fn surgeist_dom::DomParsedHtmlStyleQualification::contribution(&self) -> surgeist_dom::DomParsedHtmlAssociationId
 pub fn surgeist_dom::DomParsedHtmlStyleQualification::document(&self) -> surgeist_dom::DocumentId
-pub fn surgeist_dom::DomParsedHtmlStyleQualification::occurrence(&self) -> &surgeist_html_parser::construction::pending_association::OccurrenceId
+pub fn surgeist_dom::DomParsedHtmlStyleQualification::occurrence(&self) -> &surgeist_html_parser::construction::pending_association::HtmlParseAssociationOccurrenceId
 pub fn surgeist_dom::DomParsedHtmlStyleQualification::original_document(&self) -> &surgeist_dom::DomParsedHtmlHistoricalDocument
 pub fn surgeist_dom::DomParsedHtmlStyleQualification::subject(&self) -> &surgeist_html::construction::HtmlNodeId
 pub struct surgeist_dom::DomParsedHtmlStyleRenderingCompletion
@@ -3017,7 +3017,7 @@ pub fn surgeist_dom::DomParsedHtmlStyleRuntimeHold<'_>::limits(&self) -> surgeis
 pub fn surgeist_dom::DomParsedHtmlStyleRuntimeHold<'_>::spent_work(&self) -> u64
 pub fn surgeist_dom::DomParsedHtmlStyleRuntimeHold<'_>::step(&self, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_dom::DomError>
 impl surgeist_dom::DomParsedHtmlStyleRuntimeHold<'_>
-pub fn surgeist_dom::DomParsedHtmlStyleRuntimeHold<'_>::advance_subject(&mut self, expected: &surgeist_html_parser::construction::pending_association::OccurrenceId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::DomParsedHtmlStyleSubjectCompletion, surgeist_dom::DomParsedHtmlStyleSubjectError>
+pub fn surgeist_dom::DomParsedHtmlStyleRuntimeHold<'_>::advance_subject(&mut self, expected: &surgeist_html_parser::construction::pending_association::HtmlParseAssociationOccurrenceId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::DomParsedHtmlStyleSubjectCompletion, surgeist_dom::DomParsedHtmlStyleSubjectError>
 impl surgeist_dom::DomParsedHtmlStyleRuntimeHold<'_>
 pub fn surgeist_dom::DomParsedHtmlStyleRuntimeHold<'_>::complete_contribution(self, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::DomParsedHtmlContributionCompletion, surgeist_dom::DomParsedHtmlTerminalError>
 impl surgeist_dom::DomParsedHtmlStyleRuntimeHold<'_>
@@ -3031,8 +3031,8 @@ pub fn surgeist_dom::DomParsedHtmlStyleRuntimeHold<'_>::successor_owner_document
 impl surgeist_dom::DomParsedHtmlStyleRuntimeHold<'_>
 pub fn surgeist_dom::DomParsedHtmlStyleRuntimeHold<'_>::transfer_notification(&mut self, q: &surgeist_dom::DomParsedHtmlStyleQualification, receiver: &mut core::option::Option<surgeist_dom::DomParsedHtmlStyleNotificationContinuation>, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<(), surgeist_dom::DomParsedHtmlStyleError>
 impl<'dom> surgeist_dom::DomParsedHtmlStyleRuntimeHold<'dom>
-pub fn surgeist_dom::DomParsedHtmlStyleRuntimeHold<'dom>::meta_occurrence_document(&self, expected: &surgeist_html_parser::construction::pending_association::OccurrenceId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::DocumentId, surgeist_dom::DomParsedHtmlMetaOccurrenceError>
-pub fn surgeist_dom::DomParsedHtmlStyleRuntimeHold<'dom>::prepare_meta_occurrence<'hold, 'caps>(&'hold mut self, expected: &surgeist_html_parser::construction::pending_association::OccurrenceId, cap: &'caps surgeist_dom::DomStyleCssomRoot, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::DomParsedHtmlMetaOccurrencePreparation<'hold, 'dom, 'caps>, surgeist_dom::DomParsedHtmlMetaOccurrenceError>
+pub fn surgeist_dom::DomParsedHtmlStyleRuntimeHold<'dom>::meta_occurrence_document(&self, expected: &surgeist_html_parser::construction::pending_association::HtmlParseAssociationOccurrenceId, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::DocumentId, surgeist_dom::DomParsedHtmlMetaOccurrenceError>
+pub fn surgeist_dom::DomParsedHtmlStyleRuntimeHold<'dom>::prepare_meta_occurrence<'hold, 'caps>(&'hold mut self, expected: &surgeist_html_parser::construction::pending_association::HtmlParseAssociationOccurrenceId, cap: &'caps surgeist_dom::DomStyleCssomRoot, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::DomParsedHtmlMetaOccurrencePreparation<'hold, 'dom, 'caps>, surgeist_dom::DomParsedHtmlMetaOccurrenceError>
 impl<'dom> surgeist_dom::DomParsedHtmlStyleRuntimeHold<'dom>
 pub fn surgeist_dom::DomParsedHtmlStyleRuntimeHold<'dom>::prepare_create_sheet<'hold, 'caps>(&'hold mut self, cap: &'caps surgeist_dom::DomStyleCssomRoot, cancel: &core::sync::atomic::AtomicBool) -> core::result::Result<surgeist_dom::DomParsedHtmlStyleSheetPreparation<'hold, 'dom, 'caps>, surgeist_dom::DomParsedHtmlStyleSheetError>
 impl<'dom> surgeist_dom::DomParsedHtmlStyleRuntimeHold<'dom>

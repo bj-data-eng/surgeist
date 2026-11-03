@@ -23,7 +23,7 @@ fn lookup(
     table: &'static [(&str, &str)],
 ) -> Result<Option<(&'static str, usize)>, SessionError> {
     for &(original, adjusted) in table {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if exact_ascii(c, Some(name), original)? {
             return Ok(Some((adjusted, 0)));
         }
@@ -44,27 +44,27 @@ fn adjusted_text(
     let mut origins = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
     let result = (|| {
         for byte in replacement.bytes() {
-            c.charge(WorkCategory::InspectByte, 1)?;
+            c.charge(HtmlParseWorkCategory::InspectByte, 1)?;
             value.push_unit(u16::from(byte), c)?;
         }
         for origin in original.origins.as_slice() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
-                WorkCategory::InspectByte,
+                HtmlParseWorkCategory::InspectByte,
                 const { (2 * mem::size_of::<usize>()) as u64 },
             )?;
             if origin.end <= skip {
                 continue;
             }
-            c.charge(WorkCategory::ProviderCall, 1)?;
-            payload_write::<TextOrigin>(c, 1)?;
+            c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+            payload_write::<HtmlParseTextOrigin>(c, 1)?;
             origins.try_push(
                 c,
-                TextOrigin {
+                HtmlParseTextOrigin {
                     start: origin.start.saturating_sub(skip),
                     end: origin.end.saturating_sub(skip),
                     source: origin.source.clone(),
-                    kind: crate::parser::tokenizer::token::OriginKind::RecoverySyntax,
+                    kind: crate::parser::tokenizer::token::HtmlParseOriginKind::RecoverySyntax,
                 },
             )?;
         }
@@ -109,7 +109,7 @@ impl ParserArenaSession {
         SessionStorage::check_html_tag(c, tag)?;
         check_formatting_tag(c, tag, token_source)?;
         if namespace == ForeignNamespace::Context {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             storage
                 .fragment
                 .as_ref()
@@ -121,7 +121,7 @@ impl ParserArenaSession {
                 .prepare_document_allocation(c, Some(document), false)?;
         let mut is_value = None;
         for attribute in tag.attributes.as_slice() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if exact_ascii(c, Some(attribute.name.value.text()), "is")? {
                 is_value = Some(&attribute.value);
                 break;
@@ -162,7 +162,7 @@ impl ParserArenaSession {
     ) -> Result<Option<&'a OrderedAttributes>, SessionError> {
         let storage = self.active()?;
         let index = storage.index(c, node)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         Ok(
             match &storage
                 .construction
@@ -188,23 +188,23 @@ impl ParserArenaSession {
         let mut origins = OwnedVec::new(HtmlParseResource::SourceMapEntries)?;
         let result = (|| {
             for &unit in original.value.text().code_units() {
-                c.charge(WorkCategory::InspectByte, 2)?;
+                c.charge_unit_inspection()?;
                 if unit != 0 {
                     return Err(SessionError::WrongToken);
                 }
                 value.push_unit(0xfffd, c)?;
             }
             for origin in original.origins.as_slice() {
-                c.charge(WorkCategory::RecordVisit, 1)?;
-                c.charge(WorkCategory::ProviderCall, 1)?;
-                payload_write::<TextOrigin>(c, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+                payload_write::<HtmlParseTextOrigin>(c, 1)?;
                 origins.try_push(
                     c,
-                    TextOrigin {
+                    HtmlParseTextOrigin {
                         start: origin.start,
                         end: origin.end,
                         source: origin.source.clone(),
-                        kind: crate::parser::tokenizer::token::OriginKind::NullReplacement,
+                        kind: crate::parser::tokenizer::token::HtmlParseOriginKind::NullReplacement,
                     },
                 )?;
             }
@@ -320,7 +320,7 @@ impl SessionStorage {
                 ("xmlns", None, "xmlns", XMLNS),
                 ("xmlns:xlink", Some("xmlns"), "xlink", XMLNS),
             ] {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if exact_ascii(c, Some(original.value.text()), input)? {
                     return Ok((
                         if prefix.is_some() {
@@ -371,13 +371,13 @@ impl SessionStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture, token::Event};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
 
     fn lexical<'a>(
         source: &'a crate::HtmlSource,
         c: &mut ParseControl,
     ) -> (LexerFixture<'a>, Option<Tag>, crate::HtmlSourceRange) {
-        let mut lexer = LexerFixture::new(source, State::Data, None, c).unwrap();
+        let mut lexer = LexerFixture::new(source, HtmlTokenizerState::Data, None, c).unwrap();
         loop {
             match lexer.next(c, false).unwrap().unwrap() {
                 Event::Token(event) => {
@@ -475,7 +475,7 @@ mod tests {
                         panic!("actual cap stop");
                     };
                     assert!(
-                        matches!(first, ParseStop::LimitExceeded { resource: stopped, .. } if stopped == resource)
+                        matches!(first, HtmlParseStop::LimitExceeded { resource: stopped, .. } if stopped == resource)
                     );
                     assert_eq!(c.stop(), Some(first));
                     assert!(
@@ -634,11 +634,11 @@ mod tests {
         assert_eq!(adjusted.1, original_view);
         assert_ne!(
             original.2,
-            crate::parser::tokenizer::token::OriginKind::RecoverySyntax
+            crate::parser::tokenizer::token::HtmlParseOriginKind::RecoverySyntax
         );
         assert_eq!(
             adjusted.2,
-            crate::parser::tokenizer::token::OriginKind::RecoverySyntax
+            crate::parser::tokenizer::token::HtmlParseOriginKind::RecoverySyntax
         );
         assert_eq!(href.unwrap(), (4, 0, 1, original_href));
         session
@@ -685,7 +685,7 @@ mod tests {
             let (lexer, mut input, range) = lexical(request.source(), &mut c);
             let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
             c.charge(
-                WorkCategory::StateStep,
+                HtmlParseWorkCategory::StateStep,
                 request.limits().work_credits() - used - allowance,
             )
             .unwrap();
@@ -700,7 +700,7 @@ mod tests {
             if let Err(SessionError::Stop(first)) = result {
                 assert!(matches!(
                     first,
-                    ParseStop::LimitExceeded {
+                    HtmlParseStop::LimitExceeded {
                         resource: HtmlParseResource::WorkCredits,
                         ..
                     }
@@ -783,7 +783,7 @@ mod tests {
             let used = c.usage().resource(HtmlParseResource::WorkCredits).current;
             if let Some(allowance) = allowance {
                 c.charge(
-                    WorkCategory::StateStep,
+                    HtmlParseWorkCategory::StateStep,
                     request.limits().work_credits() - used - allowance,
                 )
                 .unwrap();
@@ -840,7 +840,7 @@ mod tests {
                     assert_eq!(c.stop(), Some(first));
                     assert!(matches!(
                         first,
-                        ParseStop::LimitExceeded {
+                        HtmlParseStop::LimitExceeded {
                             resource: HtmlParseResource::WorkCredits,
                             ..
                         }
@@ -1109,13 +1109,13 @@ impl SessionStorage {
             } else {
                 self.copy_context_namespace(control)?
             };
-            control.charge(WorkCategory::RecordVisit, 2)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             let mut units = name
                 .len()
                 .checked_add(namespace.uri().map_or(0, DocumentString::len))
                 .ok_or_else(|| control.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
             let (values, allocation) = control.new_vector()?;
-            control.charge(WorkCategory::RecordVisit, 1)?;
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let original_len = attributes.len();
             let admission = match self.prepare_payload_slot(control) {
                 Ok(admission) => admission,
@@ -1146,7 +1146,7 @@ impl SessionStorage {
                     }
                 };
                 let (value, value_ticket) = self.register_text(control, attribute.value)?;
-                control.charge(WorkCategory::RecordVisit, 2)?;
+                control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                 units = units
                     .checked_add(qualified.local_name().len())
                     .and_then(|sum| {
@@ -1264,9 +1264,9 @@ impl SessionStorage {
                 shared,
                 element: None,
             });
-            control.charge(WorkCategory::ProviderCall, 1)?;
+            control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
             control.charge(
-                WorkCategory::CopyByte,
+                HtmlParseWorkCategory::CopyByte,
                 mem::size_of::<OrderedAttributes>() as u64,
             )?;
             let Some(RetainedPayload::Attributes(Some(AttributeStorage::Frozen {

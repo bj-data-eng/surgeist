@@ -3,7 +3,7 @@
 use crate::bounded::{
     HtmlCustomNameScanAction as CustomNameScanAction, validate_custom_element_name_with,
 };
-use crate::parser::control::{ParseControl, ParseStop, WorkCategory};
+use crate::parser::control::{HtmlParseStop, HtmlParseWorkCategory, ParseControl};
 use crate::{
     DocumentString, HtmlInputRuleWork, HtmlInputType, HtmlInputTypeCursor,
     HtmlInputValueComparisonCursor,
@@ -35,13 +35,13 @@ fn control(work: u64, cancellation: HtmlParseCancellation) -> ParseControl {
         .unwrap();
     ParseControl::new(limits, cancellation)
 }
-fn admit(c: &mut ParseControl, work: HtmlInputRuleWork) -> Result<(), ParseStop> {
+fn admit(c: &mut ParseControl, work: HtmlInputRuleWork) -> Result<(), HtmlParseStop> {
     match work {
-        HtmlInputRuleWork::ReadField => c.charge(WorkCategory::RecordVisit, 1),
-        HtmlInputRuleWork::ReadValueLengths => c.charge(WorkCategory::RecordVisit, 2),
-        HtmlInputRuleWork::CompareAsciiUnit => c.charge(WorkCategory::InspectByte, 3),
+        HtmlInputRuleWork::ReadField => c.charge(HtmlParseWorkCategory::RecordVisit, 1),
+        HtmlInputRuleWork::ReadValueLengths => c.charge(HtmlParseWorkCategory::RecordVisit, 2),
+        HtmlInputRuleWork::CompareAsciiUnit => c.charge(HtmlParseWorkCategory::InspectByte, 3),
         HtmlInputRuleWork::CompareValueUnits | HtmlInputRuleWork::InspectValueUnit => {
-            c.charge(WorkCategory::InspectByte, 2)
+            c.charge(HtmlParseWorkCategory::InspectByte, 2)
         }
     }
 }
@@ -69,7 +69,7 @@ fn type_exact_sixteen_and_one_short_stop_before_final_pair_and_keep_original() {
             assert_eq!(cursor.result(), None);
             assert!(matches!(
                 c.stop(),
-                Some(ParseStop::LimitExceeded {
+                Some(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
                     ..
                 })
@@ -107,7 +107,7 @@ fn comparison_exact_eight_and_one_short_use_actual_controller_without_materializ
             assert_eq!(cursor.result(), None);
             assert!(matches!(
                 c.stop(),
-                Some(ParseStop::LimitExceeded {
+                Some(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::WorkCredits,
                     ..
                 })
@@ -132,7 +132,7 @@ fn cancellation_before_pair_retains_unfinished_cursor_and_canonical_first_stop()
     cancellation.cancel();
     assert_eq!(
         admit(&mut c, cursor.required_work().unwrap()),
-        Err(ParseStop::Cancelled)
+        Err(HtmlParseStop::Cancelled)
     );
     assert_eq!(cursor.result(), None);
     assert_eq!(
@@ -141,7 +141,7 @@ fn cancellation_before_pair_retains_unfinished_cursor_and_canonical_first_stop()
     );
     assert_eq!(
         admit(&mut c, cursor.required_work().unwrap()),
-        Err(ParseStop::Cancelled)
+        Err(HtmlParseStop::Cancelled)
     );
     assert_eq!(c.first_stop_usage(), Some(c.usage()));
     assert_eq!(c.usage().actual_capacity_high_water, 0);
@@ -149,7 +149,7 @@ fn cancellation_before_pair_retains_unfinished_cursor_and_canonical_first_stop()
 
 #[test]
 fn controlled_scanner_propagates_actual_cancellation_before_next_unit() {
-    use crate::parser::control::{ParseControl, ParseStop, WorkCategory};
+    use crate::parser::control::{HtmlParseStop, HtmlParseWorkCategory, ParseControl};
     let cancellation = crate::HtmlParseCancellation::new();
     let mut control = ParseControl::new(
         crate::parser::tree_builder::tests::limits(100),
@@ -160,24 +160,26 @@ fn controlled_scanner_propagates_actual_cancellation_before_next_unit() {
     let result = validate_custom_element_name_with(&name, |action| {
         match action {
             CustomNameScanAction::Header | CustomNameScanAction::ReservedHeader => {
-                control.charge(WorkCategory::RecordVisit, 1)?
+                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?
             }
             CustomNameScanAction::Unit => {
                 if units == 2 {
                     cancellation.cancel();
                 }
-                control.charge(WorkCategory::InspectByte, 2)?;
+                control.charge(HtmlParseWorkCategory::InspectByte, 2)?;
                 units += 1;
             }
-            CustomNameScanAction::ReservedPair => control.charge(WorkCategory::InspectByte, 4)?,
+            CustomNameScanAction::ReservedPair => {
+                control.charge(HtmlParseWorkCategory::InspectByte, 4)?
+            }
         }
-        Ok::<(), ParseStop>(())
+        Ok::<(), HtmlParseStop>(())
     });
-    assert_eq!(result, Err(ParseStop::Cancelled));
+    assert_eq!(result, Err(HtmlParseStop::Cancelled));
     assert_eq!(units, 2);
-    assert_eq!(control.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(control.stop(), Some(HtmlParseStop::Cancelled));
     assert_eq!(
-        control.charge(WorkCategory::RecordVisit, 1),
-        Err(ParseStop::Cancelled)
+        control.charge(HtmlParseWorkCategory::RecordVisit, 1),
+        Err(HtmlParseStop::Cancelled)
     );
 }

@@ -1,4 +1,4 @@
-use crate::html::support::{cause, is_limit};
+use crate::html::support::{cause, construction_limits as limits, is_limit};
 use surgeist_html::{
     Attribute, DocumentString, ForeignHtmlResult, HtmlAuthoredProcessingInstruction,
     HtmlConstructionLimits, HtmlConstructionResource, HtmlDoctype, HtmlDocument, HtmlDocumentMode,
@@ -7,9 +7,6 @@ use surgeist_html::{
     HtmlSlotAssignment, Namespace, OrderedAttributes, QualifiedName,
 };
 
-fn limits() -> HtmlConstructionLimits {
-    HtmlConstructionLimits::new(100, 100, 100, 100_000, 100)
-}
 fn name(namespace: Namespace, local: &str) -> QualifiedName {
     QualifiedName::new(namespace, None, local)
 }

@@ -1,6 +1,8 @@
 //! Explicit caller-supplied processing for original Meta CSP transitions.
 use crate::construction::SessionError;
-use crate::parser::control::{Invariant, ParseControl, ParseStop, WorkCategory};
+use crate::parser::control::{
+    HtmlParseInvariant, HtmlParseStop, HtmlParseWorkCategory, ParseControl,
+};
 use crate::parser::tree_builder::parse::ReturnableCspStorage;
 use crate::{HtmlDocumentParseRequest, HtmlParseFailure, HtmlParseReport};
 use std::{
@@ -16,7 +18,7 @@ pub enum HtmlParseCspFailureKind {
     Failed,
     Cancelled,
     Protocol(HtmlCspProtocolError),
-    Interrupted(ParseStop),
+    Interrupted(HtmlParseStop),
     Parse,
 }
 /// A terminal consuming parse, its native error and original accounting owner.
@@ -142,14 +144,14 @@ impl Storage {
         let admitted = live.max(peak).max(next);
         (admitted.saturating_sub(live), admitted.saturating_sub(next))
     }
-    pub fn acquire(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub fn acquire(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         c.acquire_retained_provider(self.bytes as u64, self.units as u64, self.entries as u64)
     }
     /// Whether `c` holds this much admitted provider storage to credit.
     pub fn fits(self, c: &ParseControl) -> bool {
         c.can_release_retained_provider(self.bytes as u64, self.units as u64, self.entries as u64)
     }
-    pub fn release(self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         let owner = c.identity();
         c.release_retained_provider(
             &owner,
@@ -187,7 +189,7 @@ impl Account {
         self.live = live;
         self.processor_touched = false;
     }
-    pub fn settle(&mut self, c: &mut ParseControl) -> Result<(), ParseStop> {
+    pub fn settle(&mut self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         self.overlap.release(c)?;
         self.overlap = Storage::ZERO;
         Ok(())
@@ -197,14 +199,14 @@ impl Account {
         c: &mut ParseControl,
         a: HtmlCspLayout,
         caller: Caller,
-    ) -> Result<(), ParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         self.processor_touched |= caller == Caller::Processor;
         self.settle(c)?;
         let work = a
             .work_credits()
             .checked_add(a.closing_work().work_credits())
             .ok_or_else(|| c.stop_representation(crate::HtmlParseResource::WorkCredits))?;
-        c.charge(WorkCategory::ProviderCall, work)?;
+        c.charge(HtmlParseWorkCategory::ProviderCall, work)?;
         c.admit_atomic_layout(a.atomic_bytes())?;
         let base = self
             .live
@@ -212,7 +214,7 @@ impl Account {
             .ok_or_else(|| match (caller, self.processor_touched) {
                 // The account differs from the graph only by what the
                 // processor did, once it has acted, whoever finds the gap.
-                (Caller::Parser, false) => c.fail_invariant(Invariant::CapacityMismatch),
+                (Caller::Parser, false) => c.fail_invariant(HtmlParseInvariant::CapacityMismatch),
                 (Caller::Parser, true) | (Caller::Processor, _) => c.csp_processing_stop(),
             })?;
         let peak = base
@@ -231,7 +233,11 @@ impl Account {
     }
     /// Only the processor's release callback releases through the account, so
     /// storage it never held is the processor's accounting failing.
-    pub fn release(&mut self, c: &mut ParseControl, v: HtmlCspStorage) -> Result<(), ParseStop> {
+    pub fn release(
+        &mut self,
+        c: &mut ParseControl,
+        v: HtmlCspStorage,
+    ) -> Result<(), HtmlParseStop> {
         self.processor_touched = true;
         self.settle(c)?;
         let n = Storage::from(v);
@@ -259,7 +265,7 @@ pub(crate) trait Service {
 /// this state through one cell.
 struct Shared<'c, 'a> {
     state: RefCell<(&'c mut ParseControl, &'a mut Account)>,
-    release_error: Cell<Option<ParseStop>>,
+    release_error: Cell<Option<HtmlParseStop>>,
     reentered: Cell<bool>,
 }
 impl<'c, 'a> Shared<'c, 'a> {
@@ -273,11 +279,11 @@ impl<'c, 'a> Shared<'c, 'a> {
     /// The stop handed back to a processor that entered a callback while
     /// another still held the state. The controller is out of reach there, so
     /// `finish` latches it as the first stop once the processor has returned.
-    fn refuse_reentry(&self) -> ParseStop {
+    fn refuse_reentry(&self) -> HtmlParseStop {
         self.reentered.set(true);
-        ParseStop::InternalInvariant(Invariant::ReentrantProviderCallback)
+        HtmlParseStop::InternalInvariant(HtmlParseInvariant::ReentrantProviderCallback)
     }
-    fn admit(&self, layout: HtmlCspLayout) -> Result<(), ParseStop> {
+    fn admit(&self, layout: HtmlCspLayout) -> Result<(), HtmlParseStop> {
         let Ok(mut state) = self.state.try_borrow_mut() else {
             return Err(self.refuse_reentry());
         };
@@ -301,7 +307,7 @@ impl<'c, 'a> Shared<'c, 'a> {
         let (c, account) = self.state.into_inner();
         if reentered {
             return Err(c
-                .fail_invariant(Invariant::ReentrantProviderCallback)
+                .fail_invariant(HtmlParseInvariant::ReentrantProviderCallback)
                 .into());
         }
         match release_error {
@@ -508,13 +514,13 @@ mod tests {
             let _running = shared.state.borrow_mut();
             assert_eq!(
                 shared.admit(layout()),
-                Err(ParseStop::InternalInvariant(
-                    Invariant::ReentrantProviderCallback
+                Err(HtmlParseStop::InternalInvariant(
+                    HtmlParseInvariant::ReentrantProviderCallback
                 ))
             );
             shared.release(HtmlCspStorage::default());
         }
-        let stop = ParseStop::InternalInvariant(Invariant::ReentrantProviderCallback);
+        let stop = HtmlParseStop::InternalInvariant(HtmlParseInvariant::ReentrantProviderCallback);
         assert!(matches!(shared.finish(), Err(SessionError::Stop(s)) if s == stop));
         assert_eq!(c.stop(), Some(stop));
         assert_eq!(c.usage(), &before);
@@ -559,7 +565,7 @@ mod tests {
         assert_eq!(failure.storage, ReturnableCspStorage::NONE);
         assert_eq!(
             failure.parse_failure().reason(),
-            crate::HtmlParseFailureReason::Stop(ParseStop::Cancelled)
+            crate::HtmlParseFailureReason::Stop(HtmlParseStop::Cancelled)
         );
         drop(failure);
     }

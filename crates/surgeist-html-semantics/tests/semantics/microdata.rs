@@ -545,6 +545,54 @@ fn a_later_itemref_token_stops_at_a_refused_id_before_its_match() {
         HtmlSemanticFailureKind::Attribute(_)
     ));
 }
+#[test]
+fn author_itemref_check_stops_at_a_refused_id_only_when_its_scan_reaches_it() {
+    // HTML877d §5.2 resolves an itemref token to the first element in tree
+    // order with that ID: the scan for `a` ends at its match before the
+    // oversized ID, the scan for `b` reaches that ID first, and a token with
+    // no match reads every ID.
+    for (tokens, refused) in [("a", false), ("a b", true), ("b", true), ("a z", true)] {
+        let (mut b, d) = builder();
+        let owner = el(&mut b, &d, "div", &[("itemscope", ""), ("itemref", tokens)]);
+        let first = el(&mut b, &d, "p", &[("id", "a")]);
+        let oversized = el(&mut b, &d, "span", &[("id", "toolong")]);
+        let second = el(&mut b, &d, "p", &[("id", "b")]);
+        for leaf in [&owner, &first, &oversized, &second] {
+            cs(&mut b, leaf, &[]);
+        }
+        cs(&mut b, &d, &[owner.clone(), first, oversized, second]);
+        let c = b.finish().unwrap();
+        let cx = context(&c);
+        let mut s = HtmlSemanticSession::new(
+            &c,
+            &cx,
+            HtmlValueInterpreter::new(5),
+            limits(),
+            HtmlSemanticCancellation::new(),
+        )
+        .unwrap();
+        let request = HtmlSemanticRequest::new(
+            c.subject_id(&owner).unwrap(),
+            HtmlSemanticQuery::MicrodataAuthor,
+        );
+        let result = s.query(&[request]);
+        if refused {
+            assert!(
+                matches!(
+                    result.unwrap_err().kind(),
+                    HtmlSemanticFailureKind::Attribute(_)
+                ),
+                "{tokens}"
+            );
+        } else {
+            assert_eq!(
+                author(&result.unwrap()).references(),
+                &HtmlMicrodataCondition::Satisfied,
+                "{tokens}"
+            );
+        }
+    }
+}
 fn property_subjects(r: &HtmlSemanticReport) -> Vec<HtmlCaptureSubjectId> {
     known(item(r).properties())
         .iter()
@@ -780,6 +828,67 @@ fn item_and_document_queries_scale_with_the_item_graph_not_its_routes() {
             "{name} work grew by {growth:.2} when the property set doubled"
         );
     }
+}
+/// A referrer whose `count` itemref tokens name, in the reverse of tree order,
+/// `count` distinct elements of its tree, or (without targets) no element.
+fn itemref_author_work(count: usize, with_targets: bool) -> usize {
+    let (mut b, d) = builder();
+    let tokens = (0..count)
+        .rev()
+        .map(|i| format!("t{i:03}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let referrer = el(
+        &mut b,
+        &d,
+        "div",
+        &[("itemscope", ""), ("itemref", &tokens)],
+    );
+    cs(&mut b, &referrer, &[]);
+    let mut children = vec![referrer.clone()];
+    if with_targets {
+        for i in 0..count {
+            let id = format!("t{i:03}");
+            let target = el(&mut b, &d, "meta", &[("id", &id)]);
+            cs(&mut b, &target, &[]);
+            children.push(target);
+        }
+    }
+    cs(&mut b, &d, &children);
+    let capture = b.finish().unwrap();
+    let subject = capture.subject_id(&referrer).unwrap();
+    let r = run(
+        &capture,
+        &context(&capture),
+        &subject,
+        HtmlSemanticQuery::MicrodataAuthor,
+    );
+    // HTML §5.2: each itemref token must match the ID of an element in the
+    // same tree, so the first absent token is the first violation.
+    let expected = if with_targets {
+        HtmlMicrodataCondition::Satisfied
+    } else {
+        HtmlMicrodataCondition::Violated(0)
+    };
+    assert_eq!(author(&r).references(), &expected);
+    r.usage().work()
+}
+#[test]
+fn author_itemref_lookups_scale_with_the_tree_not_tokens_times_tree() {
+    // Reading the tokens costs the same with or without targets, so the
+    // difference isolates resolving them. Scanning the tree once per token
+    // reads about count * count / 2 elements, and doubling the tokens grows
+    // that difference by about 4; one pass over the IDs and a search per
+    // token grows it by about 2.3 (a logarithmic search factor). The bound is
+    // a growth property, not a pinned cost.
+    let lookup_work = |count: usize| {
+        (itemref_author_work(count, true) - itemref_author_work(count, false)) as f64
+    };
+    let growth = lookup_work(128) / lookup_work(64);
+    assert!(
+        growth < 2.75,
+        "itemref lookup work grew by {growth:.2} when the tokens doubled"
+    );
 }
 #[test]
 fn item_graph_cycle_is_distinct_from_crawl_revisit() {

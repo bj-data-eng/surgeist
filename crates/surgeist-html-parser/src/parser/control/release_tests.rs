@@ -5,10 +5,12 @@
 use super::*;
 use crate::{Attribute, Namespace, OrderedAttributes, QualifiedName};
 
-const FOREIGN: ParseStop = ParseStop::InternalInvariant(Invariant::ForeignControl);
-const MISMATCH: ParseStop = ParseStop::InternalInvariant(Invariant::CapacityMismatch);
-const UNDERFLOW: ParseStop = ParseStop::InternalInvariant(Invariant::ReleaseUnderflow);
-const REPRESENTATION: ParseStop = ParseStop::RepresentationExhausted {
+const FOREIGN: HtmlParseStop = HtmlParseStop::InternalInvariant(HtmlParseInvariant::ForeignControl);
+const MISMATCH: HtmlParseStop =
+    HtmlParseStop::InternalInvariant(HtmlParseInvariant::CapacityMismatch);
+const UNDERFLOW: HtmlParseStop =
+    HtmlParseStop::InternalInvariant(HtmlParseInvariant::ReleaseUnderflow);
+const REPRESENTATION: HtmlParseStop = HtmlParseStop::RepresentationExhausted {
     resource: HtmlParseResource::ManagedCapacityBytes,
 };
 
@@ -36,7 +38,7 @@ fn assert_drained(c: &ParseControl) {
         }
     }
 }
-fn current_of(usage: &ParseUsage, resource: HtmlParseResource) -> u64 {
+fn current_of(usage: &HtmlParseUsage, resource: HtmlParseResource) -> u64 {
     usage.resource(resource).current()
 }
 fn bank() -> OrderedAttributes {
@@ -401,7 +403,7 @@ fn text_unit_admission_that_overflows_the_ticket_count_is_a_representation_stop(
     let mut c = control();
     let mut ticket = c.prepare_text_append_allocation().unwrap();
     ticket.units = u64::MAX;
-    let exhausted = ParseStop::RepresentationExhausted {
+    let exhausted = HtmlParseStop::RepresentationExhausted {
         resource: HtmlParseResource::BufferedUtf16Units,
     };
     let before = c.usage().clone();
@@ -457,6 +459,9 @@ fn a_shared_admission_whose_charge_vanished_still_reports_the_post_poll_stop() {
     let bytes = c.admit_shared_layout::<u32>().unwrap();
     c.set(HtmlParseResource::ManagedCapacityBytes, 0);
     c.cancellation.cancel();
-    assert_eq!(c.confirm_shared_admission(bytes), Err(ParseStop::Cancelled));
-    assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+    assert_eq!(
+        c.confirm_shared_admission(bytes),
+        Err(HtmlParseStop::Cancelled)
+    );
+    assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
 }

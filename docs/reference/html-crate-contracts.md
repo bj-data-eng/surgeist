@@ -682,7 +682,7 @@ Abort never needs a useful-work scan or a new allocation. A ready owner
 has no public constructor, `Default`, unchecked conversion, deserializer or
 field mutation; a pending/failed operation cannot construct one. Parser calls
 the guarded ready transition only after its corresponding admission and
-post-provider cancellation checks have succeeded. On an external `ParseStop`
+post-provider cancellation checks have succeeded. On an external `HtmlParseStop`
 it aborts the retained owner instead. HTML does not encode or override that
 independent controller's first-stop policy.
 
@@ -1579,7 +1579,7 @@ execution failure. Successful partial trees, effects or report fragments are
 not returned on error.
 
 `OrdinaryInitializationOwner`, EOF completion, `SealedOrdinaryConstruction`,
-`FrozenStandaloneParts` and `ImmutableParseReport` remain parser-private.
+`FrozenStandaloneParts` and `HtmlParseReport` remain parser-private.
 Construction publication proves an HTML tree; parser publication additionally
 requires completed metadata, associations, lexical/source evidence and terminal
 state. Native freeze alone cannot stand in for a complete parse report.

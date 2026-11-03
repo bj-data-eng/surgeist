@@ -1,6 +1,6 @@
 //! Actual canonical link change and clone paths, independent literal expectations.
 use super::*;
-use crate::parser::tokenizer::{states::State, tests::LexerFixture, token::Event};
+use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture, token::Event};
 
 fn next_tag(lexer: &mut LexerFixture<'_>, c: &mut ParseControl) -> Tag {
     loop {
@@ -53,7 +53,8 @@ fn actual_link_disabled_removal_readdition_rel_change_and_clone_use_canonical_fl
     );
     let (mut c, mut session, proof) = super::tests::fresh_script_owner(&request);
     let root = session.root(&mut c).unwrap();
-    let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+    let mut lexer =
+        LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
     let mut tag = Some(next_tag(&mut lexer, &mut c));
     let node = session
         .allocate_for_creation(
@@ -140,7 +141,8 @@ fn removing_absent_disabled_does_not_manufacture_explicit_enablement() {
     );
     let (mut c, mut session, _) = super::tests::fresh_script_owner(&request);
     let root = session.root(&mut c).unwrap();
-    let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+    let mut lexer =
+        LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
     let mut tag = Some(next_tag(&mut lexer, &mut c));
     let node = session
         .allocate_for_creation(

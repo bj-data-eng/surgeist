@@ -1,35 +1,35 @@
 //! Bounded original occurrences and immutable inputs; no CSSOM execution.
 use super::*;
-use history::{FrozenHistory, HistoryGroup};
+use history::{FrozenHistory, HtmlParseOriginGroup};
 
 /// An original occurrence, qualified by its immutable construction result.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct OccurrenceId {
+pub struct HtmlParseAssociationOccurrenceId {
     result: HtmlNodeId,
     slot: usize,
 }
 /// An original context frontier. This is not resource-completion order.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ContextEpochId {
+pub struct HtmlParseAssociationContextEpochId {
     result: HtmlNodeId,
     slot: usize,
 }
 /// A deliberately unbound input at one exact original context frontier.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ContextSlotId {
-    epoch: ContextEpochId,
-    role: ContextRole,
+pub struct HtmlParseAssociationContextSlotId {
+    epoch: HtmlParseAssociationContextEpochId,
+    role: HtmlParseAssociationContextRole,
 }
-impl ContextSlotId {
-    pub fn epoch(&self) -> &ContextEpochId {
+impl HtmlParseAssociationContextSlotId {
+    pub fn epoch(&self) -> &HtmlParseAssociationContextEpochId {
         &self.epoch
     }
-    pub fn role(&self) -> ContextRole {
+    pub fn role(&self) -> HtmlParseAssociationContextRole {
         self.role
     }
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ContextRole {
+pub enum HtmlParseAssociationContextRole {
     DocumentUrl,
     FallbackBase,
     Encoding,
@@ -40,14 +40,14 @@ pub enum ContextRole {
 }
 /// Pending external input is distinct from lost original evidence.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ContextRequirement {
+pub enum HtmlParseAssociationContextRequirement {
     Known,
     OfflineUnbound,
     DeferredCaptured,
-    Unavailable(MissingKind),
+    Unavailable(HtmlParseAssociationMissingKind),
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum MissingKind {
+pub enum HtmlParseAssociationMissingKind {
     UnsupportedLinkStylesheetHistory,
     ExtensionLinkHistory,
     OriginalContext,
@@ -55,13 +55,13 @@ pub enum MissingKind {
 }
 /// Completeness of capture, never completeness of CSSOM processing.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CaptureDisposition {
+pub enum HtmlParseAssociationCaptureDisposition {
     PendingComplete,
-    Unavailable(MissingKind),
+    Unavailable(HtmlParseAssociationMissingKind),
 }
 /// Closed original-controller operations. None asserts successful sheet addition.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum OccurrenceKind {
+pub enum HtmlParseAssociationOccurrenceKind {
     StyleCreated,
     StyleParserCreated,
     StyleUpdate(surgeist_html::HtmlStyleTrigger),
@@ -78,7 +78,7 @@ pub(super) struct DocumentCapture {
     count: usize,
     obligations: usize,
     last: Option<usize>,
-    missing: Option<MissingKind>,
+    missing: Option<HtmlParseAssociationMissingKind>,
     missing_at: Option<usize>,
 }
 pub(super) struct CapturedContext {
@@ -140,7 +140,7 @@ pub(super) struct Occurrence {
     prior_document: Option<usize>,
     prior_style: Option<usize>,
     cause: Option<provenance::ConstructionCauseRef>,
-    kind: OccurrenceKind,
+    kind: HtmlParseAssociationOccurrenceKind,
     inputs: Option<Inputs>,
     preferred: Option<OriginGroupRef>,
     base_changed_input: Option<OriginGroupRef>,
@@ -188,7 +188,7 @@ impl SessionStorage {
         document: &DocumentRef,
     ) -> Result<usize, SessionError> {
         for &slot in self.payloads.kind_list(KindList::AssociationDocument) {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if matches!(self.payloads.values.get(slot), Some(RetainedPayload::AssociationDocument(value)) if &value.document == document)
             {
                 return Ok(slot);
@@ -259,7 +259,7 @@ impl SessionStorage {
             return Ok(None);
         };
         for (index, attr) in element.attributes().as_slice().iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if attr.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(attr.name().local_name()), local)?
             {
@@ -299,7 +299,7 @@ impl SessionStorage {
         node: usize,
     ) -> Result<Option<OriginGroupRef>, SessionError> {
         if let Some(slot) = self.payloads.joined(c, node, Join::Nonce)? {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let Some(RetainedPayload::Nonce {
                 node: Some(owner),
                 raw,
@@ -323,7 +323,7 @@ impl SessionStorage {
         }
         let mut state = None;
         if let Some(slot) = self.payloads.joined(c, node, Join::Style)? {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let Some(RetainedPayload::Style {
                 node: owner,
                 state: value,
@@ -344,7 +344,7 @@ impl SessionStorage {
         let connected = self.shadow_including_connected(c, node, detached)?;
         let type_eligible = surgeist_html::style_type_allows_css_with(
             self.form_attribute(c, node, "type")?,
-            || c.charge(WorkCategory::RecordVisit, 1),
+            || c.charge(HtmlParseWorkCategory::RecordVisit, 1),
         )?;
         let root = self.ordinary_root(c, node, detached)?;
         let document_tree = matches!(
@@ -375,7 +375,7 @@ impl SessionStorage {
                 .child_at(0)
                 .map(|n| n.position());
             while let Some(child) = next {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 let record = self
                     .construction
                     .node_at(child)
@@ -425,7 +425,7 @@ impl SessionStorage {
             let order = match current.slot {
                 None => None,
                 Some(slot) => {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let Some(RetainedPayload::StyleOrder(list)) = self.payloads.values.get(slot)
                     else {
                         return Err(latch_registry_row(c));
@@ -532,7 +532,7 @@ impl SessionStorage {
             .ok_or_else(|| latch_registry_row(c))?;
         let mut elements = false;
         for position in 0..record.child_count() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             elements |= record
                 .child_at(position)
                 .is_some_and(|child| matches!(child.kind(), HtmlNodeKind::Element(_)));
@@ -596,7 +596,7 @@ impl SessionStorage {
         document: &crate::HtmlCaptureDocumentId,
     ) -> Result<Option<usize>, SessionError> {
         for (index, row) in self.payloads.values.iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::AssociationCapturedContext(value) = row
                 && value.value.document() == document
             {
@@ -605,10 +605,10 @@ impl SessionStorage {
         }
         let mut selected = None;
         for row in &self.payloads.values {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::AssociatedInputs { inputs, .. } = row {
                 for value in &inputs.captured {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     if value.document() == document {
                         selected = Some(value);
                         break;
@@ -710,7 +710,7 @@ impl SessionStorage {
                     .child_at(0)
                     .map(|n| n.position());
                 while let Some(index) = child {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     let node = self
                         .construction
                         .node_at(index)
@@ -721,12 +721,12 @@ impl SessionStorage {
                     }
                     if let HtmlNodeKind::Element(element) = node.kind() {
                         if surgeist_html::document_body_role_with(element.name(), |_| {
-                            c.charge(WorkCategory::RecordVisit, 1)
+                            c.charge(HtmlParseWorkCategory::RecordVisit, 1)
                         })? == surgeist_html::HtmlDocumentBodyRole::Html
                         {
                             let mut body = node.child_at(0).map(|n| n.position());
                             while let Some(index) = body {
-                                c.charge(WorkCategory::RecordVisit, 1)?;
+                                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                                 let node = self
                                     .construction
                                     .node_at(index)
@@ -738,7 +738,7 @@ impl SessionStorage {
                                 if let HtmlNodeKind::Element(element) = node.kind()
                                     && surgeist_html::document_body_role_with(
                                         element.name(),
-                                        |_| c.charge(WorkCategory::RecordVisit, 1),
+                                        |_| c.charge(HtmlParseWorkCategory::RecordVisit, 1),
                                     )? == surgeist_html::HtmlDocumentBodyRole::Body
                                 {
                                     context.body = true;
@@ -751,7 +751,7 @@ impl SessionStorage {
                 }
                 context.policy_missing = self.meta_policy_missing(c, *document)?.is_some();
                 if let Some(slot) = self.payloads.joined(c, *document, Join::BaseDocument)? {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     if let Some(RetainedPayload::BaseDocument { node, first, .. }) =
                         self.payloads.values.get(slot)
                         && node == document
@@ -788,7 +788,7 @@ impl SessionStorage {
                             .encoding()
                             .ok_or(SessionError::WrongToken)?;
                         for (index, observation) in facts.observations().iter().enumerate() {
-                            c.charge(WorkCategory::RecordVisit, 1)?;
+                            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                             if observation.inputs_match(
                                 fallback,
                                 encoding,
@@ -817,7 +817,7 @@ impl SessionStorage {
         &mut self,
         c: &mut ParseControl,
         node: usize,
-        kind: OccurrenceKind,
+        kind: HtmlParseAssociationOccurrenceKind,
         detached: Option<usize>,
         previous_document: Option<DocumentRef>,
         preferred: bool,
@@ -834,7 +834,7 @@ impl SessionStorage {
         } else {
             None
         };
-        let base_changed_input = if kind == OccurrenceKind::BaseChanged {
+        let base_changed_input = if kind == HtmlParseAssociationOccurrenceKind::BaseChanged {
             self.association_attribute(c, node, "href")?
         } else {
             None
@@ -856,19 +856,19 @@ impl SessionStorage {
                 .ok_or(SessionError::WrongToken)?;
             let mut obligation = matches!(
                 kind,
-                OccurrenceKind::ChangePreferred
-                    | OccurrenceKind::UnsupportedLink
-                    | OccurrenceKind::UnsupportedLinkExtension
+                HtmlParseAssociationOccurrenceKind::ChangePreferred
+                    | HtmlParseAssociationOccurrenceKind::UnsupportedLink
+                    | HtmlParseAssociationOccurrenceKind::UnsupportedLinkExtension
             );
             let mut may_have_sheet = prior_sheet;
             if let Some(inputs) = &inputs {
                 // Removal is conditional on the prior real association, never parser None.
                 obligation |= match kind {
-                    OccurrenceKind::StyleUpdate(_) => {
+                    HtmlParseAssociationOccurrenceKind::StyleUpdate(_) => {
                         may_have_sheet = inputs.connected && inputs.type_eligible;
                         prior_sheet || may_have_sheet
                     }
-                    OccurrenceKind::StyleOwnerAttributes => prior_sheet,
+                    HtmlParseAssociationOccurrenceKind::StyleOwnerAttributes => prior_sheet,
                     _ => false,
                 };
             }
@@ -877,15 +877,16 @@ impl SessionStorage {
                 .checked_add(usize::from(obligation))
                 .ok_or(SessionError::WrongToken)?;
             let prior_document = summary.last;
-            let creating = matches!(kind, OccurrenceKind::StyleUpdate(_)) && may_have_sheet;
+            let creating = matches!(kind, HtmlParseAssociationOccurrenceKind::StyleUpdate(_))
+                && may_have_sheet;
             let missing = if creating && context.policy_missing {
-                Some(MissingKind::PolicyHistory)
+                Some(HtmlParseAssociationMissingKind::PolicyHistory)
             } else if creating && context.missing {
-                Some(MissingKind::OriginalContext)
-            } else if kind == OccurrenceKind::UnsupportedLink {
-                Some(MissingKind::UnsupportedLinkStylesheetHistory)
-            } else if kind == OccurrenceKind::UnsupportedLinkExtension {
-                Some(MissingKind::ExtensionLinkHistory)
+                Some(HtmlParseAssociationMissingKind::OriginalContext)
+            } else if kind == HtmlParseAssociationOccurrenceKind::UnsupportedLink {
+                Some(HtmlParseAssociationMissingKind::UnsupportedLinkStylesheetHistory)
+            } else if kind == HtmlParseAssociationOccurrenceKind::UnsupportedLinkExtension {
+                Some(HtmlParseAssociationMissingKind::ExtensionLinkHistory)
             } else {
                 None
             };
@@ -999,7 +1000,7 @@ impl SessionStorage {
             self.record_association(
                 c,
                 node,
-                OccurrenceKind::StyleUpdate(trigger),
+                HtmlParseAssociationOccurrenceKind::StyleUpdate(trigger),
                 detached,
                 None,
                 false,
@@ -1099,7 +1100,7 @@ impl SessionStorage {
             self.record_association(
                 c,
                 node,
-                OccurrenceKind::StyleOwnerAttributes,
+                HtmlParseAssociationOccurrenceKind::StyleOwnerAttributes,
                 None,
                 None,
                 false,
@@ -1140,7 +1141,7 @@ impl SessionStorage {
         #[cfg(test)]
         let extent = extent.saturating_add(c.take_registry_walk_overshoot());
         for index in 0..extent {
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let document = match self.payloads.row(c, index)? {
                 RetainedPayload::Document {
                     node: Some(node), ..
@@ -1149,7 +1150,7 @@ impl SessionStorage {
                     document: DocumentRef::Captured(id),
                     ..
                 } => {
-                    c.charge(WorkCategory::ProviderCall, 1)?;
+                    c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
                     Some(DocumentRef::Captured(id.clone()))
                 }
                 _ => None,
@@ -1176,7 +1177,7 @@ impl SessionStorage {
         let mut extension = false;
         loop {
             c.charge(
-                WorkCategory::RecordVisit,
+                HtmlParseWorkCategory::RecordVisit,
                 bounded::HtmlSpaceTokenCursor::STEP_WORK as u64,
             )?;
             match cursor.step() {
@@ -1190,7 +1191,7 @@ impl SessionStorage {
                         type Error = SessionError;
                         fn work(&mut self, units: usize) -> Result<(), Self::Error> {
                             self.0
-                                .charge(WorkCategory::RecordVisit, units as u64)
+                                .charge(HtmlParseWorkCategory::RecordVisit, units as u64)
                                 .map_err(Into::into)
                         }
                         fn reserve(
@@ -1215,12 +1216,19 @@ impl SessionStorage {
             }
         }
         if stylesheet {
-            self.record_association(c, node, OccurrenceKind::UnsupportedLink, None, None, false)?;
+            self.record_association(
+                c,
+                node,
+                HtmlParseAssociationOccurrenceKind::UnsupportedLink,
+                None,
+                None,
+                false,
+            )?;
         } else if extension {
             self.record_association(
                 c,
                 node,
-                OccurrenceKind::UnsupportedLinkExtension,
+                HtmlParseAssociationOccurrenceKind::UnsupportedLinkExtension,
                 None,
                 None,
                 false,
@@ -1230,9 +1238,9 @@ impl SessionStorage {
     }
 }
 
-type Fault = read::UnresolvedReference;
-fn unresolved(kind: read::UnresolvedKind) -> Fault {
-    read::UnresolvedReference::new(kind)
+type Fault = read::HtmlParseUnresolvedReference;
+fn unresolved(kind: read::HtmlParseUnresolvedKind) -> Fault {
+    read::HtmlParseUnresolvedReference::new(kind)
 }
 /// The report storage the readers answer from, with the one node that every
 /// identity names. Resolved when a cursor is created, so no reader looks it up.
@@ -1256,12 +1264,12 @@ impl<'a> Resolved<'a> {
             DocumentRef::Captured(id) => storage
                 .fragment
                 .as_ref()
-                .ok_or(unresolved(read::UnresolvedKind::Fragment))?
+                .ok_or(unresolved(read::HtmlParseUnresolvedKind::Fragment))?
                 .context
                 .capture()
                 .node(id.subject())
                 .map(Self::Captured)
-                .map_err(|_| unresolved(read::UnresolvedKind::CapturedNode)),
+                .map_err(|_| unresolved(read::HtmlParseUnresolvedKind::CapturedNode)),
         }
     }
     fn optional(
@@ -1270,10 +1278,10 @@ impl<'a> Resolved<'a> {
     ) -> Result<Option<Self>, Fault> {
         value.map(|value| Self::new(storage, value)).transpose()
     }
-    fn lend(self) -> report::MetadataDocument<'a> {
+    fn lend(self) -> report::HtmlParseMetadataDocument<'a> {
         match self {
-            Self::Owned(node) => report::MetadataDocument::Owned(node),
-            Self::Captured(node) => report::MetadataDocument::Captured(node),
+            Self::Owned(node) => report::HtmlParseMetadataDocument::Owned(node),
+            Self::Captured(node) => report::HtmlParseMetadataDocument::Captured(node),
         }
     }
 }
@@ -1284,9 +1292,9 @@ impl<'a> Resolved<'a> {
 /// whose references the report cannot resolve is a defect in that
 /// qualification: the cursor reports it as a fault, and keeps reporting it,
 /// instead of skipping the row, because a consumer that skipped it would act
-/// on a report that lacks an association. `Step::Skipped` means only a row
+/// on a report that lacks an association. `HtmlParsePendingAssociationStep::Skipped` means only a row
 /// that is not an association.
-pub struct Cursor<'a> {
+pub struct HtmlParsePendingAssociationCursor<'a> {
     anchor: Result<Anchor<'a>, Fault>,
     next: usize,
     fault: Option<Fault>,
@@ -1295,18 +1303,18 @@ pub struct Cursor<'a> {
     clippy::large_enum_variant,
     reason = "The occurrence holds what it resolved, and is lent by value so the read path allocates nothing; boxing it would add an allocation where no controller exists to charge it"
 )]
-pub enum Step<'a> {
-    Document(DocumentView<'a>),
-    Occurrence(OccurrenceView<'a>),
+pub enum HtmlParsePendingAssociationStep<'a> {
+    Document(HtmlParseAssociationDocument<'a>),
+    Occurrence(HtmlParseAssociationOccurrence<'a>),
     /// A row that is not an association.
     Skipped,
     Complete,
     /// The row is an association that names a reference the report cannot
     /// resolve. The cursor stays faulted, so a caller that continues is told
     /// again.
-    Fault(read::UnresolvedReference),
+    Fault(read::HtmlParseUnresolvedReference),
 }
-impl<'a> Cursor<'a> {
+impl<'a> HtmlParsePendingAssociationCursor<'a> {
     pub(crate) fn new(history: &'a FrozenHistory) -> Self {
         let storage = history.storage();
         let anchor = native(storage, 0).map(|first| Anchor {
@@ -1320,13 +1328,13 @@ impl<'a> Cursor<'a> {
             fault: None,
         }
     }
-    fn fail(&mut self, fault: Fault) -> Step<'a> {
+    fn fail(&mut self, fault: Fault) -> HtmlParsePendingAssociationStep<'a> {
         self.fault = Some(fault);
-        Step::Fault(fault)
+        HtmlParsePendingAssociationStep::Fault(fault)
     }
-    pub fn advance(&mut self) -> Step<'a> {
+    pub fn advance(&mut self) -> HtmlParsePendingAssociationStep<'a> {
         if let Some(fault) = self.fault {
-            return Step::Fault(fault);
+            return HtmlParsePendingAssociationStep::Fault(fault);
         }
         let anchor = match self.anchor {
             Ok(anchor) => anchor,
@@ -1334,21 +1342,22 @@ impl<'a> Cursor<'a> {
         };
         let slot = self.next;
         let Some(row) = anchor.storage.payloads.values.get(slot) else {
-            return Step::Complete;
+            return HtmlParsePendingAssociationStep::Complete;
         };
         // `slot` indexes a vector, so it is below the address space.
         self.next = slot.saturating_add(1);
         let view = match row {
             RetainedPayload::AssociationDocument(value) => {
-                DocumentView::new(anchor, value).map(Step::Document)
+                HtmlParseAssociationDocument::new(anchor, value)
+                    .map(HtmlParsePendingAssociationStep::Document)
             }
             RetainedPayload::AssociationOccurrence(values) => values
                 .as_slice()
                 .first()
-                .ok_or(unresolved(read::UnresolvedKind::Fact))
-                .and_then(|value| OccurrenceView::new(anchor, slot, value))
-                .map(Step::Occurrence),
-            _ => return Step::Skipped,
+                .ok_or(unresolved(read::HtmlParseUnresolvedKind::Fact))
+                .and_then(|value| HtmlParseAssociationOccurrence::new(anchor, slot, value))
+                .map(HtmlParsePendingAssociationStep::Occurrence),
+            _ => return HtmlParsePendingAssociationStep::Skipped,
         };
         view.unwrap_or_else(|fault| self.fail(fault))
     }
@@ -1358,16 +1367,16 @@ fn native(storage: &FrozenStorage, index: usize) -> Result<HtmlNode<'_>, Fault> 
         .view
         .node_at(index)
         .map(|node| node.as_node())
-        .ok_or(unresolved(read::UnresolvedKind::Node))
+        .ok_or(unresolved(read::HtmlParseUnresolvedKind::Node))
 }
-fn identity(anchor: Anchor<'_>, slot: usize) -> OccurrenceId {
-    OccurrenceId {
+fn identity(anchor: Anchor<'_>, slot: usize) -> HtmlParseAssociationOccurrenceId {
+    HtmlParseAssociationOccurrenceId {
         result: anchor.first.id(),
         slot,
     }
 }
-fn context_epoch(anchor: Anchor<'_>, slot: usize) -> ContextEpochId {
-    ContextEpochId {
+fn context_epoch(anchor: Anchor<'_>, slot: usize) -> HtmlParseAssociationContextEpochId {
+    HtmlParseAssociationContextEpochId {
         result: anchor.first.id(),
         slot,
     }
@@ -1376,24 +1385,24 @@ fn context_epoch(anchor: Anchor<'_>, slot: usize) -> ContextEpochId {
 fn group<'a>(
     history: &'a FrozenHistory,
     value: &OriginGroupRef,
-) -> Result<HistoryGroup<'a>, Fault> {
+) -> Result<HtmlParseOriginGroup<'a>, Fault> {
     history
         .view()
         .group(value.index)
-        .ok_or(unresolved(read::UnresolvedKind::Group))
+        .ok_or(unresolved(read::HtmlParseUnresolvedKind::Group))
 }
 fn optional_group<'a>(
     history: &'a FrozenHistory,
     value: Option<&OriginGroupRef>,
-) -> Result<Option<HistoryGroup<'a>>, Fault> {
+) -> Result<Option<HtmlParseOriginGroup<'a>>, Fault> {
     value.map(|value| group(history, value)).transpose()
 }
-pub struct DocumentView<'a> {
+pub struct HtmlParseAssociationDocument<'a> {
     anchor: Anchor<'a>,
     value: &'a DocumentCapture,
     document: Resolved<'a>,
 }
-impl<'a> DocumentView<'a> {
+impl<'a> HtmlParseAssociationDocument<'a> {
     fn new(anchor: Anchor<'a>, value: &'a DocumentCapture) -> Result<Self, Fault> {
         Ok(Self {
             anchor,
@@ -1401,13 +1410,13 @@ impl<'a> DocumentView<'a> {
             document: Resolved::new(anchor.storage, &value.document)?,
         })
     }
-    pub fn document(&self) -> report::MetadataDocument<'a> {
+    pub fn document(&self) -> report::HtmlParseMetadataDocument<'a> {
         self.document.lend()
     }
-    pub fn disposition(&self) -> CaptureDisposition {
+    pub fn disposition(&self) -> HtmlParseAssociationCaptureDisposition {
         self.value.missing.map_or(
-            CaptureDisposition::PendingComplete,
-            CaptureDisposition::Unavailable,
+            HtmlParseAssociationCaptureDisposition::PendingComplete,
+            HtmlParseAssociationCaptureDisposition::Unavailable,
         )
     }
     pub fn occurrence_count(&self) -> usize {
@@ -1416,10 +1425,10 @@ impl<'a> DocumentView<'a> {
     pub fn has_obligations(&self) -> bool {
         self.value.obligations != 0
     }
-    pub fn last_occurrence(&self) -> Option<OccurrenceId> {
+    pub fn last_occurrence(&self) -> Option<HtmlParseAssociationOccurrenceId> {
         self.value.last.map(|slot| identity(self.anchor, slot))
     }
-    pub fn first_missing(&self) -> Option<OccurrenceId> {
+    pub fn first_missing(&self) -> Option<HtmlParseAssociationOccurrenceId> {
         self.value
             .missing_at
             .map(|slot| identity(self.anchor, slot))
@@ -1431,7 +1440,7 @@ impl<'a> DocumentView<'a> {
 /// An occurrence with everything it names resolved when it is lent, so the
 /// readers of the view cannot fail afterwards.
 #[derive(Clone, Copy)]
-pub struct OccurrenceView<'a> {
+pub struct HtmlParseAssociationOccurrence<'a> {
     anchor: Anchor<'a>,
     slot: usize,
     value: &'a Occurrence,
@@ -1440,12 +1449,12 @@ pub struct OccurrenceView<'a> {
     document: Resolved<'a>,
     previous_document: Option<Resolved<'a>>,
     cause: Option<read::HtmlParseCause<'a>>,
-    preferred: Option<HistoryGroup<'a>>,
-    base_changed_input: Option<HistoryGroup<'a>>,
-    style: Option<StyleInputs<'a>>,
-    context: ContextView<'a>,
+    preferred: Option<HtmlParseOriginGroup<'a>>,
+    base_changed_input: Option<HtmlParseOriginGroup<'a>>,
+    style: Option<HtmlParseAssociationStyleInputs<'a>>,
+    context: HtmlParseAssociationContext<'a>,
 }
-impl<'a> OccurrenceView<'a> {
+impl<'a> HtmlParseAssociationOccurrence<'a> {
     /// The fault if the report no longer holds a node, Document, cause, group
     /// or row the occurrence names.
     fn new(anchor: Anchor<'a>, slot: usize, value: &'a Occurrence) -> Result<Self, Fault> {
@@ -1461,7 +1470,7 @@ impl<'a> OccurrenceView<'a> {
         let style = value
             .inputs
             .as_ref()
-            .map(|inputs| StyleInputs::new(anchor, inputs, parser_document))
+            .map(|inputs| HtmlParseAssociationStyleInputs::new(anchor, inputs, parser_document))
             .transpose()?;
         let cause = value
             .cause
@@ -1471,7 +1480,7 @@ impl<'a> OccurrenceView<'a> {
                     .evidence()
                     .retained_cause(cause)
                     .map(|retained| read::HtmlParseCause::qualified(history, retained))
-                    .ok_or(unresolved(read::UnresolvedKind::Cause))
+                    .ok_or(unresolved(read::HtmlParseUnresolvedKind::Cause))
             })
             .transpose()?;
         Ok(Self {
@@ -1486,13 +1495,18 @@ impl<'a> OccurrenceView<'a> {
             preferred: optional_group(history, value.preferred.as_ref())?,
             base_changed_input: optional_group(history, value.base_changed_input.as_ref())?,
             style,
-            context: ContextView::new(anchor, slot, &value.document, &value.context)?,
+            context: HtmlParseAssociationContext::new(
+                anchor,
+                slot,
+                &value.document,
+                &value.context,
+            )?,
         })
     }
-    pub fn id(&self) -> OccurrenceId {
+    pub fn id(&self) -> HtmlParseAssociationOccurrenceId {
         identity(self.anchor, self.slot)
     }
-    pub fn kind(&self) -> OccurrenceKind {
+    pub fn kind(&self) -> HtmlParseAssociationOccurrenceKind {
         self.value.kind
     }
     pub fn requires_processing(&self) -> bool {
@@ -1501,23 +1515,26 @@ impl<'a> OccurrenceView<'a> {
     pub fn subject(&self) -> HtmlNode<'a> {
         self.subject
     }
-    pub fn document(&self) -> report::MetadataDocument<'a> {
+    pub fn document(&self) -> report::HtmlParseMetadataDocument<'a> {
         self.document.lend()
     }
     pub fn root(&self) -> HtmlNode<'a> {
         self.root
     }
-    pub fn previous_document(&self) -> Option<report::MetadataDocument<'a>> {
-        matches!(self.value.kind, OccurrenceKind::StyleDocumentChanged)
-            .then(|| self.document.lend())
+    pub fn previous_document(&self) -> Option<report::HtmlParseMetadataDocument<'a>> {
+        matches!(
+            self.value.kind,
+            HtmlParseAssociationOccurrenceKind::StyleDocumentChanged
+        )
+        .then(|| self.document.lend())
     }
     /// Adoption is captured before replacing the old Document relation.
-    pub fn next_document(&self) -> Option<report::MetadataDocument<'a>> {
+    pub fn next_document(&self) -> Option<report::HtmlParseMetadataDocument<'a>> {
         self.previous_document.map(Resolved::lend)
     }
     /// Prior original invocation in this Document. This records causal source
     /// order, not successful sheet addition or asynchronous resource completion.
-    pub fn prior_document(&self) -> Option<OccurrenceId> {
+    pub fn prior_document(&self) -> Option<HtmlParseAssociationOccurrenceId> {
         self.value
             .prior_document
             .map(|slot| identity(self.anchor, slot))
@@ -1525,7 +1542,7 @@ impl<'a> OccurrenceView<'a> {
     /// Prior lifecycle invocation for this Style. Consumers preserve the HTML
     /// synchronous prefix and genuine resource dependencies; this edge does not
     /// impose lexical completion order on outstanding resource operations.
-    pub fn prior_style(&self) -> Option<OccurrenceId> {
+    pub fn prior_style(&self) -> Option<HtmlParseAssociationOccurrenceId> {
         self.value
             .prior_style
             .map(|slot| identity(self.anchor, slot))
@@ -1535,28 +1552,28 @@ impl<'a> OccurrenceView<'a> {
         self.cause
     }
     /// `None` when there is no preferred name.
-    pub fn preferred_name(&self) -> Option<HistoryGroup<'a>> {
+    pub fn preferred_name(&self) -> Option<HtmlParseOriginGroup<'a>> {
         self.preferred
     }
     /// `None` when there is no changed input.
-    pub fn base_changed_input(&self) -> Option<HistoryGroup<'a>> {
+    pub fn base_changed_input(&self) -> Option<HtmlParseOriginGroup<'a>> {
         self.base_changed_input
     }
-    pub fn style(&self) -> Option<StyleInputs<'a>> {
+    pub fn style(&self) -> Option<HtmlParseAssociationStyleInputs<'a>> {
         self.style
     }
-    pub fn context(&self) -> ContextView<'a> {
+    pub fn context(&self) -> HtmlParseAssociationContext<'a> {
         self.context
     }
 }
 #[derive(Clone, Copy)]
-pub struct StyleInputs<'a> {
+pub struct HtmlParseAssociationStyleInputs<'a> {
     anchor: Anchor<'a>,
     value: &'a Inputs,
     parser_document: Option<Resolved<'a>>,
-    attributes: [Option<HistoryGroup<'a>>; 5],
+    attributes: [Option<HtmlParseOriginGroup<'a>>; 5],
 }
-impl<'a> StyleInputs<'a> {
+impl<'a> HtmlParseAssociationStyleInputs<'a> {
     fn new(
         anchor: Anchor<'a>,
         value: &'a Inputs,
@@ -1576,7 +1593,7 @@ impl<'a> StyleInputs<'a> {
     pub fn state(&self) -> surgeist_html::HtmlStyleState {
         self.value.state
     }
-    pub fn creating_parser_document(&self) -> Option<report::MetadataDocument<'a>> {
+    pub fn creating_parser_document(&self) -> Option<report::HtmlParseMetadataDocument<'a>> {
         self.parser_document.map(Resolved::lend)
     }
     pub fn connected(&self) -> bool {
@@ -1592,7 +1609,7 @@ impl<'a> StyleInputs<'a> {
         self.value.text.len()
     }
     /// `None` past the text. A group the history no longer holds is a fault.
-    pub fn text(&self, index: usize) -> Result<Option<HistoryGroup<'a>>, Fault> {
+    pub fn text(&self, index: usize) -> Result<Option<HtmlParseOriginGroup<'a>>, Fault> {
         optional_group(self.anchor.history, self.value.text.as_slice().get(index))
     }
     pub fn sheet_order_len(&self) -> usize {
@@ -1609,18 +1626,18 @@ impl<'a> StyleInputs<'a> {
         let Some(RetainedPayload::StyleOrder(list)) =
             self.anchor.storage.payloads.values.get(order.slot)
         else {
-            return Err(unresolved(read::UnresolvedKind::Fact));
+            return Err(unresolved(read::HtmlParseUnresolvedKind::Fact));
         };
         let entry = list
             .as_slice()
             .get(index)
-            .ok_or(unresolved(read::UnresolvedKind::Fact))?;
+            .ok_or(unresolved(read::HtmlParseUnresolvedKind::Fact))?;
         native(self.anchor.storage, *entry).map(Some)
     }
     pub fn attribute(
         &self,
         attribute: surgeist_html::KnownHtmlAttribute,
-    ) -> Option<HistoryGroup<'a>> {
+    ) -> Option<HtmlParseOriginGroup<'a>> {
         let [kind, media, title, blocking, nonce] = self.attributes;
         match attribute {
             surgeist_html::KnownHtmlAttribute::Type => kind,
@@ -1635,7 +1652,7 @@ impl<'a> StyleInputs<'a> {
 /// The context of an occurrence, with the policy, the base facts, the captured
 /// context, the first Base and the input it names resolved when it is lent.
 #[derive(Clone, Copy)]
-pub struct ContextView<'a> {
+pub struct HtmlParseAssociationContext<'a> {
     anchor: Anchor<'a>,
     slot: usize,
     document: &'a DocumentRef,
@@ -1644,7 +1661,7 @@ pub struct ContextView<'a> {
     base_facts: Option<&'a crate::HtmlParseBaseFacts>,
     captured_context: Option<&'a surgeist_html_semantics::HtmlDocumentEncodingUrlContext>,
     first_base: Option<HtmlNode<'a>>,
-    base_input: Option<HistoryGroup<'a>>,
+    base_input: Option<HtmlParseOriginGroup<'a>>,
     observation: Option<&'a surgeist_html_semantics::HtmlBaseParseObservation>,
     /// For a captured Document: its identity and the context that captured it.
     captured: Option<(
@@ -1652,7 +1669,7 @@ pub struct ContextView<'a> {
         &'a crate::HtmlFragmentContext,
     )>,
 }
-impl<'a> ContextView<'a> {
+impl<'a> HtmlParseAssociationContext<'a> {
     fn new(
         anchor: Anchor<'a>,
         slot: usize,
@@ -1665,27 +1682,27 @@ impl<'a> ContextView<'a> {
                 .payloads
                 .values
                 .get(slot)
-                .ok_or(unresolved(read::UnresolvedKind::Fact))
+                .ok_or(unresolved(read::HtmlParseUnresolvedKind::Fact))
         };
         // A policy that is missing from the history has no association.
         let csp = match value.csp {
             Some(slot) if !value.policy_missing => match row(slot)? {
                 RetainedPayload::CspPolicy(policy) => policy.value.as_ref(),
-                _ => return Err(unresolved(read::UnresolvedKind::Fact)),
+                _ => return Err(unresolved(read::HtmlParseUnresolvedKind::Fact)),
             },
             _ => None,
         };
         let base_facts = match value.base_document {
             Some(slot) => match row(slot)? {
                 RetainedPayload::BaseDocument { facts, .. } => Some(facts),
-                _ => return Err(unresolved(read::UnresolvedKind::Fact)),
+                _ => return Err(unresolved(read::HtmlParseUnresolvedKind::Fact)),
             },
             None => None,
         };
         let captured_context = match value.captured {
             Some(slot) => match row(slot)? {
                 RetainedPayload::AssociationCapturedContext(captured) => Some(&captured.value),
-                _ => return Err(unresolved(read::UnresolvedKind::Fact)),
+                _ => return Err(unresolved(read::HtmlParseUnresolvedKind::Fact)),
             },
             None => None,
         };
@@ -1700,7 +1717,7 @@ impl<'a> ContextView<'a> {
                 facts
                     .observations()
                     .get(index)
-                    .ok_or(unresolved(read::UnresolvedKind::Fact))?,
+                    .ok_or(unresolved(read::HtmlParseUnresolvedKind::Fact))?,
             ),
             _ => None,
         };
@@ -1721,7 +1738,7 @@ impl<'a> ContextView<'a> {
                     &storage
                         .fragment
                         .as_ref()
-                        .ok_or(unresolved(read::UnresolvedKind::Fragment))?
+                        .ok_or(unresolved(read::HtmlParseUnresolvedKind::Fragment))?
                         .context,
                 )),
                 DocumentRef::Owned(_) => None,
@@ -1733,20 +1750,23 @@ impl<'a> ContextView<'a> {
     pub fn csp_association(&self) -> Option<&'a surgeist_html::HtmlCspAssociation> {
         self.csp
     }
-    pub fn epoch(&self) -> ContextEpochId {
+    pub fn epoch(&self) -> HtmlParseAssociationContextEpochId {
         context_epoch(self.anchor, self.slot)
     }
     /// Immutable initial Document input lineage for URL, fallback, encoding and
     /// initial policy; other roles retain their original occurrence frontier.
     /// This never identifies a derived selected Base result: original Base
     /// inputs, selection epochs and known providers remain occurrence-specific.
-    pub fn input_epoch(&self, role: ContextRole) -> ContextEpochId {
+    pub fn input_epoch(
+        &self,
+        role: HtmlParseAssociationContextRole,
+    ) -> HtmlParseAssociationContextEpochId {
         if matches!(
             role,
-            ContextRole::DocumentUrl
-                | ContextRole::FallbackBase
-                | ContextRole::Encoding
-                | ContextRole::InitialPolicy
+            HtmlParseAssociationContextRole::DocumentUrl
+                | HtmlParseAssociationContextRole::FallbackBase
+                | HtmlParseAssociationContextRole::Encoding
+                | HtmlParseAssociationContextRole::InitialPolicy
         ) {
             context_epoch(self.anchor, self.value.input_document)
         } else {
@@ -1762,62 +1782,85 @@ impl<'a> ContextView<'a> {
     pub fn body_present(&self) -> Option<bool> {
         matches!(self.document, DocumentRef::Owned(_)).then_some(self.value.body)
     }
-    pub fn requirement(&self, role: ContextRole) -> ContextRequirement {
+    pub fn requirement(
+        &self,
+        role: HtmlParseAssociationContextRole,
+    ) -> HtmlParseAssociationContextRequirement {
         if self.value.missing {
-            return ContextRequirement::Unavailable(MissingKind::OriginalContext);
+            return HtmlParseAssociationContextRequirement::Unavailable(
+                HtmlParseAssociationMissingKind::OriginalContext,
+            );
         }
-        if role == ContextRole::InitialPolicy && self.value.policy_missing {
-            return ContextRequirement::Unavailable(MissingKind::PolicyHistory);
+        if role == HtmlParseAssociationContextRole::InitialPolicy && self.value.policy_missing {
+            return HtmlParseAssociationContextRequirement::Unavailable(
+                HtmlParseAssociationMissingKind::PolicyHistory,
+            );
         }
-        if role == ContextRole::InitialPolicy && self.value.csp.is_some() {
-            return ContextRequirement::Known;
+        if role == HtmlParseAssociationContextRole::InitialPolicy && self.value.csp.is_some() {
+            return HtmlParseAssociationContextRequirement::Known;
         }
         if matches!(self.document, DocumentRef::Captured(_)) {
             if (self.value.captured.is_some()
-                && matches!(role, ContextRole::FallbackBase | ContextRole::Encoding))
-                || (role == ContextRole::DocumentEligibility
+                && matches!(
+                    role,
+                    HtmlParseAssociationContextRole::FallbackBase
+                        | HtmlParseAssociationContextRole::Encoding
+                ))
+                || (role == HtmlParseAssociationContextRole::DocumentEligibility
                     && self.value.class != crate::HtmlDocumentClass::Unavailable)
             {
-                ContextRequirement::Known
+                HtmlParseAssociationContextRequirement::Known
             } else {
-                ContextRequirement::DeferredCaptured
+                HtmlParseAssociationContextRequirement::DeferredCaptured
             }
         } else if let Some(facts) = self.base_facts() {
             let known = match role {
-                ContextRole::DocumentUrl => facts.document().document_url().is_some(),
-                ContextRole::FallbackBase => self.selected_base().is_ok(),
-                ContextRole::Encoding => facts.document().encoding().is_some(),
-                ContextRole::BodyPresence | ContextRole::DocumentEligibility => true,
+                HtmlParseAssociationContextRole::DocumentUrl => {
+                    facts.document().document_url().is_some()
+                }
+                HtmlParseAssociationContextRole::FallbackBase => self.selected_base().is_ok(),
+                HtmlParseAssociationContextRole::Encoding => facts.document().encoding().is_some(),
+                HtmlParseAssociationContextRole::BodyPresence
+                | HtmlParseAssociationContextRole::DocumentEligibility => true,
                 _ => false,
             };
             if known {
-                ContextRequirement::Known
+                HtmlParseAssociationContextRequirement::Known
             } else {
-                ContextRequirement::OfflineUnbound
+                HtmlParseAssociationContextRequirement::OfflineUnbound
             }
         } else if matches!(
             role,
-            ContextRole::BodyPresence | ContextRole::DocumentEligibility
+            HtmlParseAssociationContextRole::BodyPresence
+                | HtmlParseAssociationContextRole::DocumentEligibility
         ) {
-            ContextRequirement::Known
+            HtmlParseAssociationContextRequirement::Known
         } else {
-            ContextRequirement::OfflineUnbound
+            HtmlParseAssociationContextRequirement::OfflineUnbound
         }
     }
-    pub fn slot(&self, role: ContextRole) -> Option<ContextSlotId> {
-        (self.requirement(role) == ContextRequirement::OfflineUnbound).then(|| ContextSlotId {
-            epoch: self.input_epoch(role),
-            role,
-        })
+    pub fn slot(
+        &self,
+        role: HtmlParseAssociationContextRole,
+    ) -> Option<HtmlParseAssociationContextSlotId> {
+        (self.requirement(role) == HtmlParseAssociationContextRequirement::OfflineUnbound).then(
+            || HtmlParseAssociationContextSlotId {
+                epoch: self.input_epoch(role),
+                role,
+            },
+        )
     }
     /// Exact original capture authority for a deferred observation. This lender
     /// is a request basis, not permission to replace it with current host facts.
-    pub fn captured_observation(&self, role: ContextRole) -> Option<CapturedObservation<'a>> {
-        if self.requirement(role) != ContextRequirement::DeferredCaptured {
+    pub fn captured_observation(
+        &self,
+        role: HtmlParseAssociationContextRole,
+    ) -> Option<HtmlParseAssociationCapturedObservation<'a>> {
+        if self.requirement(role) != HtmlParseAssociationContextRequirement::DeferredCaptured {
             return None;
         }
         let (document, context) = self.captured?;
-        Some(CapturedObservation {
+        Some(HtmlParseAssociationCapturedObservation {
             epoch: self.input_epoch(role),
             role,
             document,
@@ -1839,7 +1882,7 @@ impl<'a> ContextView<'a> {
         self.first_base
     }
     /// `None` when there is no input.
-    pub fn base_input(&self) -> Option<HistoryGroup<'a>> {
+    pub fn base_input(&self) -> Option<HtmlParseOriginGroup<'a>> {
         self.base_input
     }
     pub fn base_observation(&self) -> Option<usize> {
@@ -1867,17 +1910,17 @@ impl<'a> ContextView<'a> {
         }
     }
 }
-pub struct CapturedObservation<'a> {
-    epoch: ContextEpochId,
-    role: ContextRole,
+pub struct HtmlParseAssociationCapturedObservation<'a> {
+    epoch: HtmlParseAssociationContextEpochId,
+    role: HtmlParseAssociationContextRole,
     document: &'a crate::HtmlCaptureDocumentId,
     context: &'a crate::HtmlFragmentContext,
 }
-impl CapturedObservation<'_> {
-    pub fn epoch(&self) -> &ContextEpochId {
+impl HtmlParseAssociationCapturedObservation<'_> {
+    pub fn epoch(&self) -> &HtmlParseAssociationContextEpochId {
         &self.epoch
     }
-    pub fn role(&self) -> ContextRole {
+    pub fn role(&self) -> HtmlParseAssociationContextRole {
         self.role
     }
     pub fn document(&self) -> &crate::HtmlCaptureDocumentId {
@@ -1890,7 +1933,7 @@ impl CapturedObservation<'_> {
 
 pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(), SessionError> {
     for (slot, row) in storage.payloads.values.iter().enumerate() {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         match row {
             RetainedPayload::AssociationDocument(value) => {
                 storage.validate_association_document(c, &value.document)?;
@@ -1954,12 +1997,12 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                 .flatten()
                 {
                     evidence.require_group(reference)?;
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 }
                 if let Some(inputs) = &value.inputs {
                     inputs.text.require_disposal_owner(c)?;
                     if let Some(order) = inputs.order {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                         // Entries are qualified once, with their row.
                         if order.slot >= slot
                             || !matches!(
@@ -1977,7 +2020,7 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                         .chain(inputs.text.as_slice())
                     {
                         evidence.require_group(reference)?;
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     }
                     if let Some(document) = &inputs.parser_document {
                         storage.validate_association_document(c, document)?;
@@ -1988,15 +2031,15 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
                 {
                     return Err(latch_registry_row(c));
                 }
-                // `ContextView::first_base` and `selected_base` read this node
+                // `HtmlParseAssociationContext::first_base` and `selected_base` read this node
                 // without a controller, so it is established here, at publication.
                 if let Some(first) = value.context.first_base {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     if storage.view.node_at(first).is_none() {
                         return Err(latch_registry_row(c));
                     }
                 }
-                // `ContextView::csp_association` reads this row without a controller,
+                // `HtmlParseAssociationContext::csp_association` reads this row without a controller,
                 // so its kind is established here, at publication.
                 if let Some(policy) = value.context.csp
                     && !matches!(
@@ -2015,7 +2058,7 @@ pub(super) fn qualify(storage: &FrozenStorage, c: &mut ParseControl) -> Result<(
             RetainedPayload::StyleOrder(list) => {
                 list.require_disposal_owner(c)?;
                 for node in list.as_slice() {
-                    c.charge(WorkCategory::RecordVisit, 1)?;
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     if storage.view.node_at(*node).is_none() {
                         return Err(latch_registry_row(c));
                     }
@@ -2032,7 +2075,7 @@ impl FrozenStorage {
         c: &mut ParseControl,
         document: &DocumentRef,
     ) -> Result<(), SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         match document {
             DocumentRef::Owned(node)
                 if matches!(
@@ -2061,7 +2104,7 @@ impl FrozenStorage {
 pub(super) fn release_occurrence(
     mut values: OwnedVec<Occurrence>,
     c: &mut ParseControl,
-) -> Result<(), ParseStop> {
+) -> Result<(), HtmlParseStop> {
     let mut refused = None;
     loop {
         let popped = if c.stop().is_some() {
@@ -2094,7 +2137,7 @@ pub(super) fn release_occurrence(
     }
     refused.map_or(Ok(()), Err)
 }
-fn release_inputs(value: Occurrence, c: &mut ParseControl) -> Result<(), ParseStop> {
+fn release_inputs(value: Occurrence, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
     match value.inputs {
         Some(inputs) => inputs.text.release(c),
         None => Ok(()),
@@ -2107,7 +2150,7 @@ pub(super) fn captured_usage(value: &CapturedContext) -> associated::AssociatedS
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::tokenizer::{states::State, tests::LexerFixture};
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
 
     fn lexical_node(
         session: &mut ParserArenaSession,
@@ -2150,7 +2193,8 @@ mod tests {
             super::super::tests::limits(),
         );
         let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let root = session.root(&mut c).unwrap();
         let style = lexical_node(&mut session, &mut c, &mut lexer);
         session
@@ -2214,7 +2258,7 @@ mod tests {
             .filter(|row| {
                 matches!(
                     row.kind,
-                    OccurrenceKind::StyleUpdate(
+                    HtmlParseAssociationOccurrenceKind::StyleUpdate(
                         surgeist_html::HtmlStyleTrigger::ChildrenChanged { .. }
                     )
                 )
@@ -2247,7 +2291,7 @@ mod tests {
         );
         let attributes: Vec<_> = rows
             .iter()
-            .filter(|row| row.kind == OccurrenceKind::StyleOwnerAttributes)
+            .filter(|row| row.kind == HtmlParseAssociationOccurrenceKind::StyleOwnerAttributes)
             .collect();
         assert!(attributes.iter().any(|row| {
             row.inputs.as_ref().unwrap().attributes[2]
@@ -2266,14 +2310,12 @@ mod tests {
         );
         let moved = rows
             .iter()
-            .find(|row| row.kind == OccurrenceKind::StyleDocumentChanged)
+            .find(|row| row.kind == HtmlParseAssociationOccurrenceKind::StyleDocumentChanged)
             .unwrap();
         assert_eq!(moved.document, DocumentRef::Owned(0));
         assert_eq!(moved.previous_document.as_ref(), Some(&document));
-        assert!(
-            rows.iter().any(|row| row.document == document
-                && matches!(row.kind, OccurrenceKind::StyleUpdate(_)))
-        );
+        assert!(rows.iter().any(|row| row.document == document
+            && matches!(row.kind, HtmlParseAssociationOccurrenceKind::StyleUpdate(_))));
         lexer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
         super::super::tests::storage_zero(&c);
@@ -2356,8 +2398,8 @@ mod tests {
     // controller's first stop, never as a panic. Each test forces the state
     // through a controller hook, asserts the exact typed error and that the
     // stop is latched first, and that the session's own release drains.
-    fn registry_row() -> ParseStop {
-        ParseStop::InternalInvariant(crate::parser::control::Invariant::RegistryRow)
+    fn registry_row() -> HtmlParseStop {
+        HtmlParseStop::InternalInvariant(crate::parser::control::HtmlParseInvariant::RegistryRow)
     }
     #[test]
     fn a_registry_walk_past_the_end_reports_the_registry_row() {
@@ -2384,7 +2426,8 @@ mod tests {
             super::super::tests::limits(),
         );
         let (mut c, mut session, capability) = super::super::tests::fresh_script_owner(&request);
-        let mut lexer = LexerFixture::new(request.source(), State::Data, None, &mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
         let root = session.root(&mut c).unwrap();
         let link = lexical_node(&mut session, &mut c, &mut lexer);
         session
@@ -2410,7 +2453,7 @@ mod tests {
             prior_document: None,
             prior_style: None,
             cause: None,
-            kind: OccurrenceKind::StyleCreated,
+            kind: HtmlParseAssociationOccurrenceKind::StyleCreated,
             inputs,
             preferred: None,
             base_changed_input: None,
@@ -2432,8 +2475,8 @@ mod tests {
             may_have_sheet: false,
         }
     }
-    fn foreign_stop() -> ParseStop {
-        ParseStop::InternalInvariant(crate::parser::control::Invariant::ForeignControl)
+    fn foreign_stop() -> HtmlParseStop {
+        HtmlParseStop::InternalInvariant(crate::parser::control::HtmlParseInvariant::ForeignControl)
     }
     #[test]
     fn releasing_occurrences_to_a_foreign_controller_stops_instead_of_panicking() {
@@ -2499,8 +2542,8 @@ mod tests {
     fn frozen(report: &mut crate::HtmlParseReport) -> &mut FrozenStorage {
         report.storage_mut().history_mut().storage_mut()
     }
-    fn fault(kind: read::UnresolvedKind) -> read::UnresolvedReference {
-        read::UnresolvedReference::new(kind)
+    fn fault(kind: read::HtmlParseUnresolvedKind) -> read::HtmlParseUnresolvedReference {
+        read::HtmlParseUnresolvedReference::new(kind)
     }
     /// Edits the first style occurrence a report holds that the filter accepts.
     fn corrupt_style_occurrence(
@@ -2528,7 +2571,7 @@ mod tests {
     struct Walk {
         presented: usize,
         skipped: usize,
-        fault: Option<read::UnresolvedReference>,
+        fault: Option<read::HtmlParseUnresolvedReference>,
     }
     fn walk(report: &crate::HtmlParseReport) -> Walk {
         let mut cursor = report.pending_associations();
@@ -2539,11 +2582,14 @@ mod tests {
         };
         loop {
             match cursor.advance() {
-                Step::Occurrence(_) | Step::Document(_) => walk.presented += 1,
-                Step::Skipped => walk.skipped += 1,
-                Step::Complete => return walk,
-                Step::Fault(first) => {
-                    assert!(matches!(cursor.advance(), Step::Fault(again) if again == first));
+                HtmlParsePendingAssociationStep::Occurrence(_)
+                | HtmlParsePendingAssociationStep::Document(_) => walk.presented += 1,
+                HtmlParsePendingAssociationStep::Skipped => walk.skipped += 1,
+                HtmlParsePendingAssociationStep::Complete => return walk,
+                HtmlParsePendingAssociationStep::Fault(first) => {
+                    assert!(
+                        matches!(cursor.advance(), HtmlParsePendingAssociationStep::Fault(again) if again == first)
+                    );
                     walk.fault = Some(first);
                     return walk;
                 }
@@ -2557,20 +2603,20 @@ mod tests {
         assert!(walk.presented > 0 && walk.skipped > 0);
         assert_eq!(walk.fault, None);
     }
-    fn assert_row_fault(report: &crate::HtmlParseReport, kind: read::UnresolvedKind) {
+    fn assert_row_fault(report: &crate::HtmlParseReport, kind: read::HtmlParseUnresolvedKind) {
         assert_eq!(walk(report).fault, Some(fault(kind)));
     }
     #[test]
     fn an_occurrence_whose_subject_is_missing_is_a_fault() {
         let mut report = styled_report();
         corrupt_style_occurrence(&mut report, |_| true, |row| row.subject = usize::MAX);
-        assert_row_fault(&report, read::UnresolvedKind::Node);
+        assert_row_fault(&report, read::HtmlParseUnresolvedKind::Node);
     }
     #[test]
     fn an_occurrence_whose_root_is_missing_is_a_fault() {
         let mut report = styled_report();
         corrupt_style_occurrence(&mut report, |_| true, |row| row.root = usize::MAX);
-        assert_row_fault(&report, read::UnresolvedKind::Node);
+        assert_row_fault(&report, read::HtmlParseUnresolvedKind::Node);
     }
     #[test]
     fn an_occurrence_whose_document_is_missing_is_a_fault() {
@@ -2580,7 +2626,7 @@ mod tests {
             |_| true,
             |row| row.document = DocumentRef::Owned(usize::MAX),
         );
-        assert_row_fault(&report, read::UnresolvedKind::Node);
+        assert_row_fault(&report, read::HtmlParseUnresolvedKind::Node);
     }
     #[test]
     fn an_occurrence_whose_previous_document_is_missing_is_a_fault() {
@@ -2590,7 +2636,7 @@ mod tests {
             |_| true,
             |row| row.previous_document = Some(DocumentRef::Owned(usize::MAX)),
         );
-        assert_row_fault(&report, read::UnresolvedKind::Node);
+        assert_row_fault(&report, read::HtmlParseUnresolvedKind::Node);
     }
     #[test]
     fn an_occurrence_whose_creating_parser_document_is_missing_is_a_fault() {
@@ -2602,7 +2648,7 @@ mod tests {
                 row.inputs.as_mut().unwrap().parser_document = Some(DocumentRef::Owned(usize::MAX));
             },
         );
-        assert_row_fault(&report, read::UnresolvedKind::Node);
+        assert_row_fault(&report, read::HtmlParseUnresolvedKind::Node);
     }
     #[test]
     fn an_occurrence_whose_cause_is_missing_is_a_fault() {
@@ -2612,7 +2658,7 @@ mod tests {
             |row| row.cause.is_some(),
             |row| row.cause.as_mut().unwrap().corrupt_for_test(),
         );
-        assert_row_fault(&report, read::UnresolvedKind::Cause);
+        assert_row_fault(&report, read::HtmlParseUnresolvedKind::Cause);
     }
     #[test]
     fn an_occurrence_whose_attribute_group_is_missing_is_a_fault() {
@@ -2626,7 +2672,7 @@ mod tests {
             let attributes = &mut row.inputs.as_mut().unwrap().attributes;
             attributes.iter_mut().flatten().next().unwrap().index = usize::MAX;
         });
-        assert_row_fault(&report, read::UnresolvedKind::Group);
+        assert_row_fault(&report, read::HtmlParseUnresolvedKind::Group);
     }
     #[test]
     fn an_occurrence_whose_policy_row_is_not_a_policy_is_a_fault() {
@@ -2636,7 +2682,7 @@ mod tests {
             |row| !row.context.policy_missing,
             |row| row.context.csp = Some(usize::MAX),
         );
-        assert_row_fault(&report, read::UnresolvedKind::Fact);
+        assert_row_fault(&report, read::HtmlParseUnresolvedKind::Fact);
     }
     #[test]
     fn an_occurrence_whose_base_facts_row_is_not_base_facts_is_a_fault() {
@@ -2649,7 +2695,7 @@ mod tests {
             |row| row.context.base_document.is_some(),
             |row| row.context.base_document = Some(usize::MAX),
         );
-        assert_row_fault(&report, read::UnresolvedKind::Fact);
+        assert_row_fault(&report, read::HtmlParseUnresolvedKind::Fact);
     }
     #[test]
     fn a_text_group_that_is_missing_is_a_fault_of_the_text_reader() {
@@ -2663,20 +2709,20 @@ mod tests {
         let mut checked = false;
         loop {
             match cursor.advance() {
-                Step::Occurrence(view) => {
+                HtmlParsePendingAssociationStep::Occurrence(view) => {
                     if let Some(style) = view.style()
                         && style.text_len() != 0
                     {
                         assert_eq!(
                             style.text(0).err(),
-                            Some(fault(read::UnresolvedKind::Group))
+                            Some(fault(read::HtmlParseUnresolvedKind::Group))
                         );
                         assert!(matches!(style.text(style.text_len()), Ok(None)));
                         checked = true;
                     }
                 }
-                Step::Complete => break,
-                Step::Fault(fault) => panic!("{fault}"),
+                HtmlParsePendingAssociationStep::Complete => break,
+                HtmlParsePendingAssociationStep::Fault(fault) => panic!("{fault}"),
                 _ => {}
             }
         }
@@ -2694,13 +2740,13 @@ mod tests {
         let mut checked = false;
         loop {
             match cursor.advance() {
-                Step::Occurrence(view) => {
+                HtmlParsePendingAssociationStep::Occurrence(view) => {
                     if let Some(style) = view.style()
                         && style.sheet_order_len() != 0
                     {
                         assert_eq!(
                             style.sheet_order(0).err(),
-                            Some(fault(read::UnresolvedKind::Node))
+                            Some(fault(read::HtmlParseUnresolvedKind::Node))
                         );
                         assert!(matches!(
                             style.sheet_order(style.sheet_order_len()),
@@ -2709,8 +2755,8 @@ mod tests {
                         checked = true;
                     }
                 }
-                Step::Complete => break,
-                Step::Fault(fault) => panic!("{fault}"),
+                HtmlParsePendingAssociationStep::Complete => break,
+                HtmlParsePendingAssociationStep::Fault(fault) => panic!("{fault}"),
                 _ => {}
             }
         }
@@ -2721,7 +2767,7 @@ mod tests {
         let mut report =
             super::super::fragment_document::tests::fragment_report("<style>a</style>");
         frozen(&mut report).fragment = None;
-        assert_row_fault(&report, read::UnresolvedKind::Fragment);
+        assert_row_fault(&report, read::HtmlParseUnresolvedKind::Fragment);
     }
     #[test]
     fn a_base_observation_that_is_missing_is_a_fault() {
@@ -2737,7 +2783,7 @@ mod tests {
         corrupt_style_occurrence(&mut report, with_base, |row| {
             row.context.base_observation = Some(usize::MAX);
         });
-        assert_row_fault(&report, read::UnresolvedKind::Fact);
+        assert_row_fault(&report, read::HtmlParseUnresolvedKind::Fact);
     }
     #[test]
     fn a_first_base_that_is_missing_is_a_fault() {
@@ -2749,6 +2795,6 @@ mod tests {
         corrupt_style_occurrence(&mut report, with_base, |row| {
             row.context.first_base = Some(usize::MAX);
         });
-        assert_row_fault(&report, read::UnresolvedKind::Node);
+        assert_row_fault(&report, read::HtmlParseUnresolvedKind::Node);
     }
 }

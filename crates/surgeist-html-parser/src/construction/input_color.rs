@@ -7,7 +7,9 @@
 use super::css_color::Banks;
 use super::css_color::{action_layout, frame, numerical_layout};
 use super::*;
-use provenance::{ColorComputation, ColorOperandTable, ColorValueSource, InputValueComputation};
+use provenance::{
+    ColorComputation, ColorOperandTable, HtmlParseColorValueSource, InputValueComputation,
+};
 use surgeist_css::color::controlled::{
     CssColorOperationOwner, CssColorParseOutcome, CssColorTransform, CssUsedColorCheckpoint,
 };
@@ -32,7 +34,7 @@ fn css_error(c: &mut ParseControl, error: CssColorError) -> SessionError {
     c.stop_color_processing(error).into()
 }
 fn integrity(c: &mut ParseControl) -> SessionError {
-    c.fail_invariant(crate::parser::control::Invariant::ColorConversionState)
+    c.fail_invariant(crate::parser::control::HtmlParseInvariant::ColorConversionState)
         .into()
 }
 /// One total transformation; a refused admission drops it, which declines it.
@@ -97,7 +99,7 @@ fn execute(
         let mut sequence = crate::HtmlInputColorSerialization::new(alpha, space);
         loop {
             payload_write::<crate::HtmlInputColorSerialization>(c, 1)?;
-            c.charge(WorkCategory::StateStep, 1)?;
+            c.charge(HtmlParseWorkCategory::StateStep, 1)?;
             let Some(effect) = sequence.next_effect() else {
                 break;
             };
@@ -231,7 +233,7 @@ impl SessionStorage {
         node: usize,
         name: &str,
     ) -> Result<Option<usize>, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
@@ -241,7 +243,7 @@ impl SessionStorage {
             return Err(integrity(c));
         };
         for (position, attribute) in element.attributes().as_slice().iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 2)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             if attribute.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(attribute.name().local_name()), name)?
             {
@@ -279,12 +281,14 @@ impl SessionStorage {
                 .transpose()?,
         };
         let source = match crate::input_color_value_source(state.flags.dirty_value()) {
-            crate::HtmlInputColorValueSource::CurrentValue => ColorValueSource::CurrentValue,
+            crate::HtmlInputColorValueSource::CurrentValue => {
+                HtmlParseColorValueSource::CurrentValue
+            }
             crate::HtmlInputColorValueSource::ValueAttribute if value_slot.is_some() => {
-                ColorValueSource::InstalledValue
+                HtmlParseColorValueSource::InstalledValue
             }
             crate::HtmlInputColorValueSource::ValueAttribute => {
-                ColorValueSource::MissingInstalledValue
+                HtmlParseColorValueSource::MissingInstalledValue
             }
         };
         let original = value_slot
@@ -302,18 +306,18 @@ impl SessionStorage {
                 .transpose()?;
             let mut cursor = crate::HtmlInputColorSpaceCursor::new(value);
             while let Some(work) = cursor.required_work() {
-                c.charge(WorkCategory::StateStep, 1)?;
+                c.charge(HtmlParseWorkCategory::StateStep, 1)?;
                 c.charge(
-                    WorkCategory::InspectByte,
+                    HtmlParseWorkCategory::InspectByte,
                     mem::size_of::<crate::HtmlInputColorSpaceCursor<'_>>() as u64,
                 )?;
                 payload_write::<crate::HtmlInputColorSpaceCursor<'_>>(c, 1)?;
                 match work {
                     crate::HtmlInputRuleWork::CompareAsciiUnit => {
-                        c.charge(WorkCategory::InspectByte, 3)?;
+                        c.charge_unit_literal_comparison()?;
                     }
                     crate::HtmlInputRuleWork::ReadField => {
-                        c.charge(WorkCategory::RecordVisit, 1)?;
+                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     }
                     _ => return Err(integrity(c)),
                 }
@@ -372,8 +376,9 @@ mod tests {
     fn a_colour_digit_fault_is_a_color_conversion_invariant() {
         let mut c = ParseControl::new(color_limits(), crate::HtmlParseCancellation::new());
         let error = integrity(&mut c);
-        let stop =
-            ParseStop::InternalInvariant(crate::parser::control::Invariant::ColorConversionState);
+        let stop = HtmlParseStop::InternalInvariant(
+            crate::parser::control::HtmlParseInvariant::ColorConversionState,
+        );
         assert_eq!(error, SessionError::Stop(stop));
         assert_eq!(c.stop(), Some(stop));
     }
@@ -812,32 +817,37 @@ mod tests {
                     let mut generated_name = false;
                     for index in 0..view.len() {
                         let header = view.header(view.group(index).unwrap()).unwrap();
-                        if matches!(&header.body, history::HistoryBody::Leaf(leaf) if leaf.units() == [118,97,108,117,101])
+                        if matches!(&header.body, history::HtmlParseHistoryBody::Leaf(leaf) if leaf.units() == [118,97,108,117,101])
                             && header.units == 5
                             && header.cause.original_node == Some(node.index)
                             && header.cause.operation
-                                == provenance::ConstructionOperation::Replacement
+                                == provenance::HtmlParseConstructionOperation::Replacement
                         {
                             generated_name = true;
                             assert_eq!(
                                 header.cause.source.as_ref().unwrap().source(),
                                 request.source().identity()
                             );
-                            let mut scratch = vec![history::HistoryFrame::default(); view.len()];
+                            let mut scratch =
+                                vec![history::HtmlParseHistoryFrame::default(); view.len()];
                             let mut cursor = view
                                 .cursor(view.group(index).unwrap(), &mut scratch, None)
                                 .unwrap();
                             let mut units = Vec::new();
                             loop {
                                 match cursor.advance() {
-                                    history::HistoryStep::Fault(fault) => panic!("{fault}"),
-                                    history::HistoryStep::Leaf(leaf) => {
+                                    history::HtmlParseHistoryStep::Fault(fault) => {
+                                        panic!("{fault}")
+                                    }
+                                    history::HtmlParseHistoryStep::Leaf(leaf) => {
                                         assert!(leaf.origins().is_empty());
                                         units.extend_from_slice(leaf.units());
                                     }
-                                    history::HistoryStep::Progress => {}
-                                    history::HistoryStep::Complete => break,
-                                    history::HistoryStep::Cancelled => panic!("no cancellation"),
+                                    history::HtmlParseHistoryStep::Progress => {}
+                                    history::HtmlParseHistoryStep::Complete => break,
+                                    history::HtmlParseHistoryStep::Cancelled => {
+                                        panic!("no cancellation")
+                                    }
                                 }
                             }
                             assert_eq!(units, [118, 97, 108, 117, 101]);
@@ -848,7 +858,7 @@ mod tests {
                 } else {
                     assert!(matches!(
                         result,
-                        Err(SessionError::Stop(ParseStop::LimitExceeded {
+                        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                             resource: HtmlParseResource::ManagedAttributes,
                             limit: 1,
                             current: 1,
@@ -1019,7 +1029,7 @@ mod tests {
         assert!(execute(&mut c, &raw, false, crate::HtmlInputColorSpace::LimitedSrgb).is_err());
         assert!(matches!(
             c.stop(),
-            Some(ParseStop::ColorProcessing(
+            Some(HtmlParseStop::ColorProcessing(
                 crate::parser::control::HtmlColorProcessingError::Unavailable(_)
             ))
         ));
@@ -1078,14 +1088,14 @@ mod tests {
         let first = c.stop().unwrap();
         assert_eq!(
             first,
-            ParseStop::LimitExceeded {
+            HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::WorkCredits,
                 limit: first_header - 1,
                 current: first_header - 1,
                 requested_delta: 1
             }
         );
-        assert_eq!(c.usage().work(WorkCategory::InputUnitRead), 0);
+        assert_eq!(c.usage().work(HtmlParseWorkCategory::InputUnitRead), 0);
         assert_eq!(c.usage().actual_capacity_bytes, 0);
         cancellation.cancel();
         let work = c.usage().resource(HtmlParseResource::WorkCredits).current;
@@ -1111,7 +1121,7 @@ mod tests {
             )
             .is_err()
         );
-        assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+        assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
         assert_eq!(c.usage().actual_capacity_bytes, 0);
         assert_eq!(
             c.usage().resource(HtmlParseResource::WorkCredits).current,
@@ -1138,7 +1148,7 @@ mod tests {
         let first = c.stop().unwrap();
         assert_eq!(
             first,
-            ParseStop::LimitExceeded {
+            HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::AuxiliaryEntries,
                 limit: 0,
                 current: 0,
@@ -1343,7 +1353,7 @@ mod tests {
                 output.release(&mut c).unwrap();
             } else {
                 assert!(result.is_err());
-                let first = ParseStop::LimitExceeded {
+                let first = HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::BufferedUtf16Units,
                     limit: 6,
                     current: 6,
@@ -1388,7 +1398,7 @@ mod tests {
             )
             .is_err()
         );
-        let first = ParseStop::LimitExceeded {
+        let first = HtmlParseStop::LimitExceeded {
             resource: HtmlParseResource::AuxiliaryEntries,
             limit: 1,
             current: 1,
@@ -1442,7 +1452,7 @@ mod tests {
                 observation.reached(),
                 "actual source action must reach {point:?}"
             );
-            assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+            assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
             let at_stop = c.first_stop_usage().unwrap().clone();
             match point {
                 ColorCancelPoint::ParseSlotCommit => {
@@ -1501,7 +1511,7 @@ mod tests {
             assert_eq!(c.usage().actual_capacity_bytes, 0);
             let stopped_work = c.usage().resource(HtmlParseResource::WorkCredits).current;
             assert!(execute(&mut c, &[], false, crate::HtmlInputColorSpace::LimitedSrgb).is_err());
-            assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+            assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
             assert_eq!(c.first_stop_usage(), Some(&at_stop));
             assert_eq!(
                 c.usage().resource(HtmlParseResource::WorkCredits).current,

@@ -15,7 +15,7 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
     ) -> Result<Option<usize>, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = &self
             .construction
             .node_at(node)
@@ -25,7 +25,7 @@ impl SessionStorage {
             return Err(SessionError::WrongToken);
         };
         for (position, attribute) in element.attributes().as_slice().iter().enumerate() {
-            c.charge(WorkCategory::RecordVisit, 2)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             if attribute.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(attribute.name().local_name()), "src")?
             {
@@ -39,7 +39,7 @@ impl SessionStorage {
         c: &mut ParseControl,
         source: usize,
     ) -> Result<&DocumentString, SessionError> {
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let Some(RetainedPayload::String {
             value, allocation, ..
         }) = self.payloads.values.get(source)
@@ -56,7 +56,7 @@ impl SessionStorage {
     ) -> Result<crate::HtmlImageSupport, SessionError> {
         let document = self.node_document_ref(c, node)?;
         self.validate_document_ref(c, &document)?;
-        c.charge(WorkCategory::RecordVisit, 1)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         if let Some(fragment) = &self.fragment {
             let id = match &document {
                 DocumentRef::Captured(id) => id,
@@ -64,7 +64,7 @@ impl SessionStorage {
                 // attested policy, retaining their distinct document identity.
                 DocumentRef::Owned(_) => fragment.context.target_document(),
             };
-            c.charge(WorkCategory::RecordVisit, 2)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             let captured = fragment
                 .context
                 .capture()
@@ -76,7 +76,7 @@ impl SessionStorage {
             Ok(facts.parser_creation_image_support())
         } else {
             let slot = self.completion_slot(c)?;
-            c.charge(WorkCategory::RecordVisit, 1)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let Some(RetainedPayload::StandaloneDocumentCompletion { state, .. }) =
                 self.payloads.values.get(slot)
             else {
@@ -100,7 +100,7 @@ impl SessionStorage {
         let guard = match source {
             None => Guard::for_source(None),
             Some(source) => {
-                c.charge(WorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 Guard::for_source(Some(self.image_source_value(c, source)?))
             }
         };
@@ -123,7 +123,7 @@ impl SessionStorage {
                 crate::HtmlCaptureFact::ImageSupport,
             )),
             crate::HtmlImageSupport::Enabled => Err(SessionError::Stop(
-                c.stop_unsupported_standalone(StandaloneUnsupported::ImageResource),
+                c.stop_unsupported_standalone(HtmlParseUnsupportedState::ImageResource),
             )),
         }
     }
@@ -190,7 +190,7 @@ pub(super) fn append_native_input_value(
     state: InputState,
     destination: &mut Utf16Buffer,
 ) -> Result<(), SessionError> {
-    c.charge(WorkCategory::RecordVisit, 1)?;
+    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
     let (_, raw, _) = find_input_state(payloads, c, node).map(|(raw, state)| (node, raw, state))?;
     let internal = textarea_raw(payloads, c, raw)?.code_units();
     let HtmlNodeKind::Element(element) = records
@@ -206,7 +206,7 @@ pub(super) fn append_native_input_value(
         crate::HtmlInputValueMode::Default | crate::HtmlInputValueMode::DefaultOn
     ) {
         for attribute in element.attributes().as_slice() {
-            c.charge(WorkCategory::RecordVisit, 2)?;
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
             if attribute.name().namespace().uri().is_none()
                 && exact_ascii(c, Some(attribute.name().local_name()), "value")?
             {
@@ -633,7 +633,7 @@ mod tests {
             let mut driver = crate::parser::tree_builder::initialized_fragment_fixture(&request);
             let mut lexer = crate::parser::tokenizer::tests::LexerFixture::new(
                 request.source(),
-                crate::parser::tokenizer::states::State::Data,
+                crate::parser::tokenizer::states::HtmlTokenizerState::Data,
                 None,
                 driver.input_fixture_parts().unwrap().0,
             )
@@ -702,9 +702,11 @@ mod tests {
                 ),
                 HtmlImageSupport::Enabled => assert_eq!(
                     result,
-                    Err(SessionError::Stop(ParseStop::UnsupportedStandaloneState(
-                        StandaloneUnsupported::ImageResource
-                    )))
+                    Err(SessionError::Stop(
+                        HtmlParseStop::UnsupportedStandaloneState(
+                            HtmlParseUnsupportedState::ImageResource
+                        )
+                    ))
                 ),
             }
             lexer.release(c).unwrap();
@@ -735,7 +737,10 @@ mod tests {
                 &range,
                 &cap,
             );
-            assert_eq!(result.err(), Some(SessionError::Stop(ParseStop::Cancelled)));
+            assert_eq!(
+                result.err(),
+                Some(SessionError::Stop(HtmlParseStop::Cancelled))
+            );
             assert!(tag.is_none());
             assert!(
                 session
@@ -749,13 +754,13 @@ mod tests {
             let first = c.first_stop_usage().unwrap().clone();
             assert_eq!(
                 session.freeze(&mut c).err(),
-                Some(SessionError::Stop(ParseStop::Cancelled))
+                Some(SessionError::Stop(HtmlParseStop::Cancelled))
             );
             assert_eq!(c.first_stop_usage(), Some(&first));
             lexer.release(&mut c).unwrap();
             session.release(&mut c).unwrap();
             storage_zero(&c);
-            assert_eq!(c.stop(), Some(ParseStop::Cancelled));
+            assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
             assert_eq!(c.first_stop_usage(), Some(&first));
         }
     }

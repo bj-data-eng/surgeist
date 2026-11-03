@@ -825,7 +825,7 @@ branch requires bytes, then select the required modern family. The CSS action
 layout maps to actual kernel/layout admission before the action. Serialized
 ASCII units append to the parser's admitted UTF-16 output buffer. The parser
 installs value/output/provenance only after complete receipt and all required
-storage cleanup. ParseStop retains `CssColorError` and, where serialization
+storage cleanup. HtmlParseStop retains `CssColorError` and, where serialization
 is driven directly, the typed Color `SerializationError`; cancellation/limits retain
 their original stop. The fixed unavailable-environment identity in the existing
 adapter qualifies that explicit environment policy, not an invented native
