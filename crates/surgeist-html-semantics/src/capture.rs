@@ -1719,14 +1719,6 @@ impl HtmlCaptureBuilder {
         }
         Ok(())
     }
-    fn edge_depths(
-        &self,
-        child: usize,
-        parent: usize,
-    ) -> Result<Vec<(usize, usize)>, HtmlCaptureError> {
-        self.edge_depths_controlled(child, parent, &mut preflight::ordinary)
-            .map_err(preflight::ordinary_error)
-    }
     fn edge_depths_controlled<E>(
         &self,
         child: usize,
@@ -1795,14 +1787,25 @@ impl HtmlCaptureBuilder {
         child: &HtmlCaptureBuilderSubject,
         parent: &HtmlCaptureBuilderSubject,
     ) -> Result<(), HtmlCaptureError> {
+        self.establish_parent_controlled(child, parent, &mut preflight::ordinary)
+            .map_err(preflight::ordinary_error)
+    }
+    fn establish_parent_controlled<E>(
+        &mut self,
+        child: &HtmlCaptureBuilderSubject,
+        parent: &HtmlCaptureBuilderSubject,
+        admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,
+    ) -> Result<(), preflight::Failure<E>> {
         let child = self.index(child)?;
         let parent = self.index(parent)?;
         if self.data.records[child].parent != Parent::Unavailable {
-            return Err(HtmlCaptureError::ParentAlreadyEstablished);
+            return Err(preflight::Failure::Capture(
+                HtmlCaptureError::ParentAlreadyEstablished,
+            ));
         }
         self.ordinary_edge(child, parent)?;
         let usage = self.admit(0, 2, 0, 0, 0, 0)?;
-        let updates = self.edge_depths(child, parent)?;
+        let updates = self.edge_depths_controlled(child, parent, admit)?;
         reserve(&mut self.data.records[parent].dependents, 1)?;
         self.data.records[child].parent = Parent::Index(parent);
         self.data.records[parent].dependents.push(child);
