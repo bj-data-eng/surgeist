@@ -3559,12 +3559,6 @@ fn xml_generation_preserves_vertical_align_top() {
 }
 
 #[test]
-fn bundled_helper_falls_back_to_computed_min_size_units() {
-    assert!(TEST_HELPER_SOURCE.contains("parseResolvedDimension(lengthStyleValue(\"minWidth\")"));
-    assert!(TEST_HELPER_SOURCE.contains("parseResolvedDimension(lengthStyleValue(\"minHeight\")"));
-}
-
-#[test]
 fn bundled_helper_preserves_resolved_percentage_min_max_size_values() {
     let root = std::env::temp_dir().join(format!(
         "surgeist-layout-resolved-percent-min-max-size-{}",
@@ -4649,7 +4643,7 @@ for (const [kind, value] of [
 }
 
 #[test]
-fn bundled_helper_captures_exact_order_without_fabricating_parent_authority() {
+fn bundled_helper_captures_resolved_minima_and_order_without_parent_authority() {
     let script = format!(
         r#"
 const window = {{ innerWidth: 800 }};
@@ -4678,6 +4672,8 @@ const element = {{
   tagName: "DIV",
   classList: {{ contains() {{ return false; }} }},
   style: {{
+    minWidth: "2em",
+    minHeight: "0.5em",
     gridTemplateRows: "",
     gridTemplateColumns: "",
     gridAutoRows: "",
@@ -4719,8 +4715,8 @@ function getComputedStyle(target) {{
     lineHeight: "10px",
     width: "160px",
     height: "20px",
-    minWidth: "0px",
-    minHeight: "0px",
+    minWidth: "20px",
+    minHeight: "5px",
     maxWidth: "none",
     maxHeight: "none",
     marginLeft: "0px",
@@ -4743,6 +4739,12 @@ for (const testCase of [
   const data = describeElement(element);
   if (data.style.order !== testCase.order) {{
     throw new Error(`expected exact order ${{testCase.order}}, got ${{data.style.order}}`);
+  }}
+  if (JSON.stringify(data.style.minSize) !== JSON.stringify({{
+    width: {{ unit: "px", value: 20 }},
+    height: {{ unit: "px", value: 5 }},
+  }})) {{
+    throw new Error(`computed minima must retain the actual 10px-font resolutions: ${{JSON.stringify(data.style.minSize)}}`);
   }}
   if (data.viewport !== undefined) {{
     throw new Error("describeElement fabricated a root request from node geometry");

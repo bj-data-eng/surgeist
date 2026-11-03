@@ -366,8 +366,11 @@ function qualifyRootLocalSubtree(root, unshifted) {
     if (!unshifted(style) || style.clipPath !== 'none' ||
         !['normal', 'none'].includes(style.content)) fail('RootLocalExternalFrame');
     if (style.writingMode !== 'horizontal-tb') fail('RootLocalWritingMode');
+    // These elements have no border-box observation that can share the root's
+    // omitted translation. A world-zero rectangle is not a local zero box.
+    if (['none', 'contents'].includes(style.display)) fail('RootLocalBoxlessObservation');
     if (!['DIV', 'SPAN'].includes(node.tagName) ||
-        !['none', 'block', 'flow-root', 'flex', 'grid', 'grid-lanes'].includes(style.display)) fail('RootLocalBoxProfile');
+        !['block', 'flow-root', 'flex', 'grid', 'grid-lanes'].includes(style.display)) fail('RootLocalBoxProfile');
     // Unlike variant box-sizing/direction rules, .viewport supplies dimensions
     // absent from this inline-declaration-only normalized sizing channel.
     if (node.classList.contains('viewport')) fail('RootLocalUnrepresentedClass');
@@ -375,10 +378,6 @@ function qualifyRootLocalSubtree(root, unshifted) {
     if (node.scrollLeft !== 0 || node.scrollTop !== 0) fail('RootLocalScrolledBox');
     for (const property of Array.from(node.style)) {
       const value = node.style.getPropertyValue(property);
-      // These source states are not resolved by the inline-only descriptor.
-      // Refuse rather than dropping a real used declaration into Native Auto.
-      if (/(?:^|[^a-z-])(?:var|attr)\s*\(/i.test(value) ||
-          /^(?:inherit|initial|unset|revert|revert-layer)$/i.test(value.trim())) fail('RootLocalUnresolvedDeclaration');
       if (property === 'all' || property.startsWith('anchor-') || property.startsWith('position-') ||
           property === 'container-type' || property === 'container-name' ||
           /(?:anchor(?:-size)?|env)\s*\(/i.test(value) ||
@@ -799,6 +798,31 @@ function parseResolvedDimension(input, computedInput) {
   return parseSizingDimension(input) || (input ? parseSizingDimension(computedInput) : undefined);
 }
 
+// Try-parsers retain their grammar/absence contract. The actual descriptor
+// consumer must not publish an omitted field for a present sizing declaration.
+function requireSizingProjection(input, projected) {
+  if (input && projected === undefined) {
+    throw new Error('Root context: UnresolvedSizingDeclaration');
+  }
+  return projected;
+}
+
+function representedEdges(edges) {
+  const projected = parseEdges(edges);
+  for (const edge of ['left', 'right', 'top', 'bottom']) {
+    requireSizingProjection(edges[edge], projected?.[edge]);
+  }
+  return projected;
+}
+
+function representedGaps(styleValue) {
+  const values = { gap: styleValue('gap'), rowGap: styleValue('rowGap'), columnGap: styleValue('columnGap') };
+  const projected = parseGaps(property => values[property]);
+  requireSizingProjection(values.gap || values.rowGap, projected?.row);
+  requireSizingProjection(values.gap || values.columnGap, projected?.column);
+  return projected;
+}
+
 function parseNumber(input) {
   if (input === '' || isNaN(input)) return undefined;
   return Number(input);
@@ -924,7 +948,7 @@ function parseEffectiveMargin(e, computedStyle) {
   const authoredEdges = authoredMarginEdges(e, computedStyle);
   if (!hasAuthoredMarginDeclaration(e, computedStyle) && !Object.values(autoEdges).some(Boolean)) return undefined;
 
-  return parseEdges({
+  return representedEdges({
     left: effectiveMarginValue(authoredEdges.left, computedStyle.marginLeft, autoEdges.left),
     right: effectiveMarginValue(authoredEdges.right, computedStyle.marginRight, autoEdges.right),
     top: effectiveMarginValue(authoredEdges.top, computedStyle.marginTop, autoEdges.top),
@@ -1227,6 +1251,16 @@ function describeElement(e, expectedElement = null) {
     if (typed?.unit === "calc") return typed;
     return inlineCalc;
   };
+  const preferredSizeValue = property => {
+    const input = lengthStyleValue(property);
+    return requireSizingProjection(input, parseSizeDimension(input));
+  };
+  const resolvedSizeValue = property => {
+    const input = lengthStyleValue(property);
+    return requireSizingProjection(input, parseResolvedDimension(input, computedStyle[property]));
+  };
+  const basisInput = lengthStyleValue('flexBasis');
+  const flexBasis = requireSizingProjection(basisInput, parseSizingDimension(basisInput));
   const layoutReadyInlineRoot = e.getAttribute?.('data-surgeist-layout-ready-inline') === 'true';
   if (layoutReadyInlineRoot) resetLayoutReadyRangeLineRegistry(e);
   const preparedCapture = e.getAttribute?.('data-surgeist-prepared-text') === 'ahem-ttf-v1'
@@ -1296,7 +1330,7 @@ function describeElement(e, expectedElement = null) {
 
       flexGrow: parseNumber(styleValue("flexGrow")),
       flexShrink: parseNumber(styleValue("flexShrink")),
-      flexBasis: parseSizingDimension(lengthStyleValue("flexBasis")),
+      flexBasis,
 
       gridTemplateRows: parseGridTrackDefinitions(lengthStyleValue("gridTemplateRows")),
       gridTemplateColumns: parseGridTrackDefinitions(lengthStyleValue("gridTemplateColumns")),
@@ -1312,36 +1346,36 @@ function describeElement(e, expectedElement = null) {
       gridColumnStart: parseGridPosition(styleValue("gridColumnStart")),
       gridColumnEnd: parseGridPosition(styleValue("gridColumnEnd")),
 
-      gap: parseGaps(lengthStyleValue),
+      gap: representedGaps(lengthStyleValue),
 
-      size: parseElementSize(lengthStyleValue, computedStyle),
+      size: parseElementSize(preferredSizeValue, computedStyle),
       minSize: parseSize({
-        width: parseResolvedDimension(lengthStyleValue("minWidth"), computedStyle.minWidth),
-        height: parseResolvedDimension(lengthStyleValue("minHeight"), computedStyle.minHeight),
+        width: resolvedSizeValue("minWidth"),
+        height: resolvedSizeValue("minHeight"),
       }),
       maxSize: parseSize({
-        width: parseResolvedDimension(lengthStyleValue("maxWidth"), computedStyle.maxWidth),
-        height: parseResolvedDimension(lengthStyleValue("maxHeight"), computedStyle.maxHeight),
+        width: resolvedSizeValue("maxWidth"),
+        height: resolvedSizeValue("maxHeight"),
       }),
       aspectRatio: parseRatio(styleValue("aspectRatio")),
 
       margin: parseEffectiveMargin(e, computedStyle),
 
-      padding: parseEdges({
+      padding: representedEdges({
         left: lengthStyleValue("paddingLeft"),
         right: lengthStyleValue("paddingRight"),
         top: lengthStyleValue("paddingTop"),
         bottom: lengthStyleValue("paddingBottom"),
       }),
 
-      border: parseEdges({
+      border: representedEdges({
         left: lengthStyleValue("borderLeftWidth"),
         right: lengthStyleValue("borderRightWidth"),
         top: lengthStyleValue("borderTopWidth"),
         bottom: lengthStyleValue("borderBottomWidth"),
       }),
 
-      inset: parseEdges({
+      inset: representedEdges({
         left: lengthStyleValue("left"),
         right: lengthStyleValue("right"),
         top: lengthStyleValue("top"),

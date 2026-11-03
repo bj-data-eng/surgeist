@@ -72,17 +72,22 @@ extra body content. Source and live subtree/frame facts must remain stable.
 Absolute-local capture additionally checks every box for local facts that do
 not depend on a common translation. Fixed/sticky/transformed frames, external
 sizing and anchors, remaining-block-space dependence, noninitial scrolling and unqualified
-typed-inline/observation channels refuse. Hidden clipping within the admitted
-moving subtree remains local. The base `.viewport` class refuses because its
-sizes are absent from this inline-declaration-only sizing channel.
+typed-inline/observation channels refuse. Boxless `display:none`/`contents`
+observations refuse with `RootLocalBoxlessObservation`; their world-zero rectangle
+is not normalized into a fabricated local zero. A genuine zero-size box remains
+a box. Hidden clipping within the admitted moving subtree remains local. The base
+`.viewport` class refuses because its sizes are absent from this inline-declaration-only sizing channel.
 
-Within the absolute-local closure, unresolved `var()`/`attr()` and CSS-wide
-declaration states (`inherit`, `initial`, `unset`, `revert`, `revert-layer`) refuse
-rather than disappearing into Native Auto. BlockFlow retains its existing
-source/descriptor checks; this does not qualify every source declaration or
-implement a cascade. Represented literals and supported calc expressions retain
-the existing sizing bridge. Broader source profiles or a changed base asset
-require independent qualification.
+The descriptor used by both root contexts validates preferred-size, bound,
+flex-basis, edge and gap projections. A present value whose actual projection is
+absent refuses with `Root context: UnresolvedSizingDeclaration`;
+for example, an unsupported own-width unit or unresolved own-width variable
+cannot disappear into Native Auto. Existing min/max computed projections and
+represented literals/calcs remain intact. Unconsumed shorthand reset fields are
+not sizing operands and do not trigger a blanket CSS-wide refusal. Try-parser
+grammar APIs retain their absence contract; validation belongs to the descriptor
+consumer. This does not implement a cascade or qualify every source declaration.
+Broader source profiles or a changed base asset need independent qualification.
 
 Extents come from the standards-mode unscaled CSSOM viewport after scrollbar
 reservation, with matching visual viewport and actual body inline extent. Used
