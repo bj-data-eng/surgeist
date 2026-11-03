@@ -283,7 +283,7 @@ impl SessionStorage {
             .as_mut()
             .ok_or(SessionError::ContextUnavailable)?;
         let effect = fragment.effects.len();
-        fragment.effects.try_push(
+        fragment.effects.try_push_geometric(
             c,
             ContextEffect::TemplateCache {
                 document,
@@ -1402,7 +1402,7 @@ impl ParserArenaSession {
             available_to_internals: false,
             source: source.clone(),
         };
-        if let Err((stop, _)) = fragment.effects.try_push_recover(c, effect) {
+        if let Err((stop, _)) = fragment.effects.try_push_recover_geometric(c, effect) {
             // The push refusal is the error reported; a refused release latched
             // its own stop.
             let _ = release_logical(c, &storage.control, HtmlParseResource::SourceMapEntries, 1);

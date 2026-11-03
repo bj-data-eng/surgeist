@@ -759,7 +759,45 @@ struct Record {
     parent: Parent,
     children: Option<Vec<usize>>,
     dependents: Vec<usize>,
-    depth: usize,
+    depth: DepthLink,
+}
+/// A record's depth, kept as a weighted union-find over the owning edges
+/// (ordinary parent, shadow host and template contents) attached so far.
+///
+/// Each attached component is a tree whose root has no owning edge. Attaching a
+/// root below a record only links the root, so no record of the attached
+/// subtree is revisited, and the order in which a producer attaches edges
+/// cannot change the cost. The depth of a record is the sum of the offsets on
+/// its path to the root of its component, found with path halving. Depths that
+/// are not asked for are never materialized.
+#[derive(Debug)]
+struct DepthLink {
+    /// The next record towards the root; a root links to itself.
+    link: usize,
+    /// Edges from this record to `link`; zero for a root.
+    offset: usize,
+    /// Greatest depth below this record. Meaningful only while this record is a
+    /// root; a record that gained an owner never reads it again.
+    height: usize,
+}
+impl DepthLink {
+    const fn root(index: usize) -> Self {
+        Self {
+            link: index,
+            offset: 0,
+            height: 0,
+        }
+    }
+}
+/// The outcome of admitting new edges below one parent, applied after every
+/// fallible step of the call has succeeded.
+struct DepthPlan {
+    /// Root of the component holding the parent.
+    root: usize,
+    /// Edges from `root` to each attached child.
+    first: usize,
+    /// Greatest depth in the component once the children are attached.
+    height: usize,
 }
 impl Record {
     fn incoming(&self) -> Option<usize> {
@@ -1105,7 +1143,7 @@ impl HtmlCaptureBuilder {
             parent,
             children: if container { None } else { Some(Vec::new()) },
             dependents: Vec::new(),
-            depth: 0,
+            depth: DepthLink::root(index),
         });
         self.data.usage = usage;
         Ok(HtmlCaptureBuilderSubject {
@@ -1719,40 +1757,130 @@ impl HtmlCaptureBuilder {
         }
         Ok(())
     }
-    fn edge_depths(
-        &self,
-        child: usize,
-        parent: usize,
-    ) -> Result<Vec<(usize, usize)>, HtmlCaptureError> {
-        self.edge_depths_controlled(child, parent, &mut preflight::ordinary)
-            .map_err(preflight::ordinary_error)
-    }
+    /// Admits one owning edge from `child`, a root, to `parent`.
     fn edge_depths_controlled<E>(
-        &self,
+        &mut self,
         child: usize,
         parent: usize,
         admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,
-    ) -> Result<Vec<(usize, usize)>, preflight::Failure<E>> {
+    ) -> Result<Option<DepthPlan>, preflight::Failure<E>> {
         preflight::work(admit, 8)?;
         if child == parent {
             return Err(preflight::Failure::Capture(HtmlCaptureError::Cycle));
         }
-        // The new edge closes a cycle exactly when `parent` is `child` or below
-        // it. Every ordinary, host and template edge is recorded in `dependents`
-        // as well as in the dependent's own `incoming`, so the traversal that
-        // revises the depths below `child` reaches `parent` in that case.
-        let first = add(self.data.records[parent].depth, 1)?;
+        self.plan_depths(&[(child, parent)], parent, admit)
+    }
+    /// Finds the root of `start`'s component and `start`'s depth below it,
+    /// halving the path walked. Each step is charged, so the work is the
+    /// records actually visited; amortized it is logarithmic in the records.
+    fn find_root<E>(
+        &mut self,
+        start: usize,
+        admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,
+    ) -> Result<(usize, usize), preflight::Failure<E>> {
+        let mut at = start;
+        let mut distance = 0;
+        loop {
+            preflight::work(admit, 6)?;
+            let link = self.data.records[at].depth.link;
+            if link == at {
+                return Ok((at, distance));
+            }
+            let beyond = self.data.records[link].depth.link;
+            if beyond == link {
+                return Ok((link, add(distance, self.data.records[at].depth.offset)?));
+            }
+            let offset = add(
+                self.data.records[at].depth.offset,
+                self.data.records[link].depth.offset,
+            )?;
+            self.data.records[at].depth.link = beyond;
+            self.data.records[at].depth.offset = offset;
+            distance = add(distance, offset)?;
+            at = beyond;
+        }
+    }
+    /// Admits edges from each of `edges`' children, all roots, to `parent`.
+    /// The new edges close a cycle exactly when `parent` is below one of the
+    /// children, that is, when the root of `parent`'s component is a child. They
+    /// exceed the depth limit exactly when the deepest child's subtree, placed
+    /// below `parent`, does. Both are decided from the roots and heights alone;
+    /// only a refusal walks the attached subtrees, to report the record reached
+    /// first.
+    fn plan_depths<E>(
+        &mut self,
+        edges: &[(usize, usize)],
+        parent: usize,
+        admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,
+    ) -> Result<Option<DepthPlan>, preflight::Failure<E>> {
+        if edges.is_empty() {
+            return Ok(None);
+        }
+        let (root, below) = self.find_root(parent, admit)?;
+        let first = add(below, 1)?;
+        preflight::work(admit, edges.len())?;
+        let mut cycle = false;
+        let mut tallest = 0;
+        for &(child, _) in edges {
+            cycle |= child == root;
+            tallest = tallest.max(self.data.records[child].depth.height);
+        }
+        let height = add(first, tallest)?;
+        if cycle || height > self.limits.depth {
+            return Err(self.first_refusal(edges, parent, first, cycle, height, admit));
+        }
+        Ok(Some(DepthPlan {
+            root,
+            first,
+            height: height.max(self.data.records[root].depth.height),
+        }))
+    }
+    /// The failure the breadth-first revision of the attached subtrees reaches
+    /// first, for edges already known to be refused. At each record, reaching the
+    /// parent is a cycle and is reported before that record's depth is checked
+    /// against the limit; the new edge itself is checked before any traversal.
+    /// Work is proportional to the records visited.
+    fn first_refusal<E>(
+        &self,
+        edges: &[(usize, usize)],
+        parent: usize,
+        first: usize,
+        cycle: bool,
+        height: usize,
+        admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,
+    ) -> preflight::Failure<E> {
+        match self.refusal_walk(edges, parent, first, admit) {
+            Err(failure) => failure,
+            // The walk and the roots and heights decide the same refusal.
+            Ok(()) if cycle => preflight::Failure::Capture(HtmlCaptureError::Cycle),
+            Ok(()) => preflight::Failure::Capture(HtmlCaptureError::LimitExceeded {
+                resource: HtmlCaptureResource::Depth,
+                limit: self.limits.depth,
+                required: height,
+            }),
+        }
+    }
+    fn refusal_walk<E>(
+        &self,
+        edges: &[(usize, usize)],
+        parent: usize,
+        first: usize,
+        admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,
+    ) -> Result<(), preflight::Failure<E>> {
+        preflight::work(admit, 8)?;
         self.depth(first)?;
         let mut updates = Vec::new();
-        preflight::reserve(&mut updates, 1, admit)?;
-        updates.push((child, first));
-        self.propagate_depths(&mut updates, Some(parent), admit)?;
-        Ok(updates)
+        preflight::reserve(&mut updates, edges.len(), admit)?;
+        for &(child, _) in edges {
+            preflight::work(admit, 3)?;
+            updates.push((child, first));
+        }
+        self.propagate_depths(&mut updates, Some(parent), admit)
     }
     /// Depths of every record below the seeded ones, in breadth-first order. At
     /// each record, reaching `forbidden` is a cycle and is reported before that
     /// record's depth is checked against the limit. Work is proportional to the
-    /// records visited, never to the whole forest.
+    /// records visited, never to the whole forest. Used only to name a refusal.
     fn propagate_depths<E>(
         &self,
         updates: &mut Vec<(usize, usize)>,
@@ -1783,11 +1911,16 @@ impl HtmlCaptureBuilder {
         }
         Ok(())
     }
-    fn apply_depths(&mut self, updates: Vec<(usize, usize)>) {
-        for (i, depth) in updates {
-            self.data.records[i].depth = depth;
-            self.data.usage.depth = self.data.usage.depth.max(depth);
+    /// Links each child's component below the root the plan names.
+    fn apply_depths(&mut self, plan: Option<DepthPlan>, edges: &[(usize, usize)]) {
+        let Some(plan) = plan else { return };
+        for &(child, _) in edges {
+            let depth = &mut self.data.records[child].depth;
+            depth.link = plan.root;
+            depth.offset = plan.first;
         }
+        self.data.records[plan.root].depth.height = plan.height;
+        self.data.usage.depth = self.data.usage.depth.max(plan.height);
     }
     /// Establishes an ordinary parent without claiming complete ordered children.
     pub fn establish_parent(
@@ -1795,19 +1928,30 @@ impl HtmlCaptureBuilder {
         child: &HtmlCaptureBuilderSubject,
         parent: &HtmlCaptureBuilderSubject,
     ) -> Result<(), HtmlCaptureError> {
+        self.establish_parent_controlled(child, parent, &mut preflight::ordinary)
+            .map_err(preflight::ordinary_error)
+    }
+    fn establish_parent_controlled<E>(
+        &mut self,
+        child: &HtmlCaptureBuilderSubject,
+        parent: &HtmlCaptureBuilderSubject,
+        admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,
+    ) -> Result<(), preflight::Failure<E>> {
         let child = self.index(child)?;
         let parent = self.index(parent)?;
         if self.data.records[child].parent != Parent::Unavailable {
-            return Err(HtmlCaptureError::ParentAlreadyEstablished);
+            return Err(preflight::Failure::Capture(
+                HtmlCaptureError::ParentAlreadyEstablished,
+            ));
         }
         self.ordinary_edge(child, parent)?;
         let usage = self.admit(0, 2, 0, 0, 0, 0)?;
-        let updates = self.edge_depths(child, parent)?;
+        let plan = self.edge_depths_controlled(child, parent, admit)?;
         reserve(&mut self.data.records[parent].dependents, 1)?;
         self.data.records[child].parent = Parent::Index(parent);
         self.data.records[parent].dependents.push(child);
         self.data.usage = usage;
-        self.apply_depths(updates);
+        self.apply_depths(plan, &[(child, parent)]);
         Ok(())
     }
     /// Establishes all ordered children atomically, also resolving unknown parents.
@@ -1921,22 +2065,20 @@ impl HtmlCaptureBuilder {
                 .ok_or(HtmlCaptureError::RepresentationExhausted)?,
         )?;
         let usage = self.admit(0, relationships, 0, 0, 0, 0)?;
-        // Only the subtrees attached here change depth: every other record keeps
-        // the depth its own edge established. A cycle needs the parent below one
-        // of the attached children, which the same traversal reaches.
-        let mut updates = Vec::new();
+        // Only the roots attached here are linked: every other record keeps the
+        // depth its own edge established. A cycle needs the parent below one of
+        // the attached children, which the roots reveal.
         if !edges.is_empty() {
             preflight::work(admit, 8)?;
-            let first = add(self.data.records[parent].depth, 1)?;
-            self.depth(first)?;
-            preflight::reserve(&mut updates, edges.len(), admit)?;
-            for &(child, _) in &edges {
-                preflight::work(admit, 3)?;
-                updates.push((child, first));
-            }
-            self.propagate_depths(&mut updates, Some(parent), admit)?;
         }
-        preflight::work(admit, add(updates.len(), edges.len())?)?;
+        let plan = self.plan_depths(&edges, parent, admit)?;
+        preflight::work(
+            admit,
+            edges
+                .len()
+                .checked_mul(2)
+                .ok_or(HtmlCaptureError::RepresentationExhausted)?,
+        )?;
         preflight::reserve_storage(
             &mut self.data.records[parent].dependents,
             edges.len(),
@@ -1948,13 +2090,13 @@ impl HtmlCaptureBuilder {
             bytes: indices.capacity() * std::mem::size_of::<usize>(),
         })
         .map_err(preflight::Failure::Admission)?;
-        for (child, _) in edges {
+        for &(child, _) in &edges {
             self.data.records[child].parent = Parent::Index(parent);
             self.data.records[parent].dependents.push(child);
         }
         self.data.records[parent].children = Some(indices);
         self.data.usage = usage;
-        self.apply_depths(updates);
+        self.apply_depths(plan, &edges);
         Ok(())
     }
     pub fn establish_unhosted(
@@ -2038,7 +2180,7 @@ impl HtmlCaptureBuilder {
             ));
         }
         let usage = self.admit(0, 3, 0, 0, 0, 0)?;
-        let updates = self.edge_depths_controlled(f, t, admit)?;
+        let plan = self.edge_depths_controlled(f, t, admit)?;
         reserve(&mut self.data.records[t].dependents, 1)?;
         let HtmlCapturedNodeKind::Element(e) = &mut self.data.records[t].kind else {
             unreachable!()
@@ -2050,7 +2192,7 @@ impl HtmlCaptureBuilder {
         frag.host = Association::Index(t);
         self.data.records[t].dependents.push(f);
         self.data.usage = usage;
-        self.apply_depths(updates);
+        self.apply_depths(plan, &[(f, t)]);
         Ok(())
     }
     /// Records a non-owning template reference to existing shadow contents.
@@ -2146,7 +2288,10 @@ impl HtmlCaptureBuilder {
             0,
             0,
         )?;
-        let depth = add(self.data.records[h].depth, 1)?;
+        let (root, below) = self
+            .find_root(h, &mut preflight::ordinary)
+            .map_err(preflight::ordinary_error)?;
+        let depth = add(below, 1)?;
         self.depth(depth)?;
         reserve(&mut self.data.records[h].dependents, 1)?;
         reserve(&mut self.data.records, 1)?;
@@ -2161,8 +2306,14 @@ impl HtmlCaptureBuilder {
             parent: Parent::Root,
             children: None,
             dependents: Vec::new(),
-            depth,
+            depth: DepthLink {
+                link: root,
+                offset: depth,
+                height: 0,
+            },
         });
+        let top = &mut self.data.records[root].depth.height;
+        *top = (*top).max(depth);
         let HtmlCapturedNodeKind::Element(e) = &mut self.data.records[h].kind else {
             unreachable!()
         };
@@ -2995,6 +3146,8 @@ impl HtmlDefinitionLookupCursor<'_> {
     }
 }
 
+#[cfg(test)]
+mod depth_tests;
 #[cfg(test)]
 mod definition_cursor_tests {
     use super::*;

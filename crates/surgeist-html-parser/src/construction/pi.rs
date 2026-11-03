@@ -390,7 +390,7 @@ impl SessionStorage {
             return Err(latch_registry_row(c));
         };
         let index = values.len();
-        if let Err((stop, pair)) = values.try_push_recover(
+        if let Err((stop, pair)) = values.try_push_recover_geometric(
             c,
             PseudoAttribute {
                 name,

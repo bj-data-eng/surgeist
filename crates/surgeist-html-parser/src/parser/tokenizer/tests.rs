@@ -2992,33 +2992,35 @@ fn retained_attribute_growth_is_bounded_without_charging_duplicates_as_new_slots
 }
 
 #[test]
-fn name_growth_clips_to_exact_physical_room_and_retains_one_short_failure() {
-    // One UTF-16 unit requires the root plus its sixteen bit prefixes.
+fn name_growth_admits_the_doubled_target_and_retains_a_refused_one_short_failure() {
+    // One UTF-16 unit requires the root plus its sixteen bit prefixes: the seventeenth node
+    // finds a full sixteen-slot index and asks for thirty-two slots, whatever the limits are.
     let bytes = size_of::<Branch>() as u64;
-    for slots in [16, 17] {
+    for slots in [16, 17, 31, 32] {
         let caps = limits()
             .into_builder()
             .auxiliary_entries(17)
             .managed_capacity_bytes(slots * bytes)
-            .peak_transient_bytes(33 * bytes)
-            .atomic_layout_bytes(17 * bytes)
+            .peak_transient_bytes(48 * bytes)
+            .atomic_layout_bytes(32 * bytes)
             .finish()
             .unwrap();
         let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
         let mut names = Names::new().unwrap();
         let result = names.insert(&[97], &mut c);
-        if slots == 17 {
+        let retained = if slots == 32 {
             assert_eq!(result, Ok(false));
             assert_eq!(names.nodes.len(), 17);
-            assert_eq!(names.nodes.capacity(), 17);
+            assert_eq!(names.nodes.capacity(), 32);
             assert_eq!(names.insert(&[97], &mut c), Ok(true));
-            // Final clipped growth retains 16 old and submits 17 new slots.
+            // The growth retains 16 old and submits 32 new slots.
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::PeakTransientBytes)
                     .high_water,
-                33 * bytes
+                48 * bytes
             );
+            32
         } else {
             let stop = result.unwrap_err();
             assert!(matches!(
@@ -3032,8 +3034,9 @@ fn name_growth_clips_to_exact_physical_room_and_retains_one_short_failure() {
             assert_eq!(names.nodes.capacity(), 16);
             assert!(names.nodes.as_slice().iter().all(|node| !node.terminal));
             assert_eq!(names.insert(&[97], &mut c), Err(stop));
-        }
-        assert_eq!(c.usage().actual_capacity_bytes, slots * bytes);
+            16
+        };
+        assert_eq!(c.usage().actual_capacity_bytes, retained * bytes);
         let snapshot = c.first_stop_usage().cloned();
         let before = c.usage().clone();
         names.nodes.release(&mut c).unwrap();
@@ -3418,17 +3421,23 @@ fn long_comment_origin_storage_submits_bounded_layouts_with_exact_literal_mappin
 }
 
 #[test]
-fn draft_text_origin_growth_clips_and_keeps_post_value_one_short_failure() {
+fn draft_text_origin_growth_admits_the_doubled_target_and_keeps_post_value_refusals() {
     let source = HtmlSource::utf8("abc");
     let bytes = size_of::<token::HtmlParseTextOrigin>() as u64;
-    // The actual third UTF-16 unit retains six bytes. Origins grow from two
-    // slots to exactly three when four cannot fit. Replacement retains both
-    // old and new layouts: 6 + (2 + 3) * bytes at the successful peak.
-    for short in [false, true] {
+    // The third UTF-16 unit finds a full two-unit value and two-slot origins. Both double: the
+    // value to four units (eight bytes), then the origins to four slots. The origins' growth
+    // retains the doubled value and both old and new origin layouts: 8 + (2 + 4) * bytes at the
+    // successful peak. A limit that holds the origins' three required slots but not the
+    // doubled four refuses, as does one byte less than the doubled layout.
+    for (short, managed) in [
+        (false, 8 + 4 * bytes),
+        (true, 8 + 4 * bytes - 1),
+        (true, 8 + 3 * bytes),
+    ] {
         let caps = limits()
             .into_builder()
-            .managed_capacity_bytes(6 + 3 * bytes - u64::from(short))
-            .peak_transient_bytes(6 + 5 * bytes)
+            .managed_capacity_bytes(managed)
+            .peak_transient_bytes(8 + 6 * bytes)
             .finish()
             .unwrap();
         let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
@@ -3458,7 +3467,7 @@ fn draft_text_origin_growth_clips_and_keeps_post_value_one_short_failure() {
                 }
             ));
             assert_eq!((draft.origins.len(), draft.origins.capacity()), (2, 2));
-            assert_eq!(c.usage().actual_capacity_bytes, 6 + 2 * bytes);
+            assert_eq!(c.usage().actual_capacity_bytes, 8 + 2 * bytes);
             let before = c.usage().clone();
             assert_eq!(
                 draft.push(99, &third, HtmlParseOriginKind::Literal, &mut c),
@@ -3468,13 +3477,13 @@ fn draft_text_origin_growth_clips_and_keeps_post_value_one_short_failure() {
             assert_eq!(draft.value.units(), &[97, 98, 99]);
         } else {
             assert_eq!(result, Ok(()));
-            assert_eq!((draft.origins.len(), draft.origins.capacity()), (3, 3));
-            assert_eq!(c.usage().actual_capacity_bytes, 6 + 3 * bytes);
+            assert_eq!((draft.origins.len(), draft.origins.capacity()), (3, 4));
+            assert_eq!(c.usage().actual_capacity_bytes, 8 + 4 * bytes);
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::PeakTransientBytes)
                     .high_water,
-                6 + 5 * bytes
+                8 + 6 * bytes
             );
         }
         for (i, origin) in draft.origins.as_slice().iter().enumerate() {
@@ -3540,7 +3549,7 @@ fn draft_text_origin_logical_denial_retains_reserved_capacity_and_partial_value(
     assert_eq!((draft.origins.len(), draft.origins.capacity()), (2, 4));
     assert_eq!(
         c.usage().actual_capacity_bytes,
-        6 + 4 * size_of::<token::HtmlParseTextOrigin>() as u64
+        8 + 4 * size_of::<token::HtmlParseTextOrigin>() as u64
     );
     assert_eq!(
         c.usage()

@@ -92,7 +92,7 @@ fn record_reserve_grows_the_bank_geometrically_and_keeps_the_exact_layout_gate()
 }
 
 #[test]
-fn record_reserve_clamps_spare_capacity_to_the_limit_and_keeps_the_exact_refusal() {
+fn record_reserve_admits_the_doubled_target_and_a_limit_below_it_refuses_the_reservation() {
     // Grows an eight-slot bank to ten records, the bank doubling to sixteen.
     let session_at_eight = |limits: HtmlParseLimits| {
         let mut c = ParseControl::new(limits, HtmlParseCancellation::new());
@@ -111,37 +111,44 @@ fn record_reserve_clamps_spare_capacity_to_the_limit_and_keeps_the_exact_refusal
     let required = storage.construction.test_storage().len() + 9;
     assert!(capacity < required && required < 2 * capacity);
     let exact_fit = at_eight - (capacity * element_size) as u64 + (required * element_size) as u64;
+    let doubled_fit =
+        at_eight - (capacity * element_size) as u64 + (2 * capacity * element_size) as u64;
+    assert!(exact_fit < doubled_fit);
     original.release(&mut baseline).unwrap();
 
+    // The doubled target fits exactly: the bank reaches sixteen slots and all of them are charged.
     let (mut fits, mut session) = session_at_eight(
         limits()
             .into_builder()
-            .managed_capacity_bytes(exact_fit)
+            .managed_capacity_bytes(doubled_fit)
             .finish()
             .unwrap(),
     );
     let storage = session.active_mut().unwrap();
     storage.construction.reserve_records(&mut fits, 9).unwrap();
-    // Spare capacity stops at the limit instead of doubling past it.
-    assert_eq!(storage.construction.actual_record_layout().0, required);
-    assert_eq!(fits.usage().actual_capacity_bytes, exact_fit);
+    assert_eq!(storage.construction.actual_record_layout().0, 2 * capacity);
+    assert_eq!(fits.usage().actual_capacity_bytes, doubled_fit);
     session.release(&mut fits).unwrap();
 
-    let (mut refuses, mut session) = session_at_eight(
-        limits()
-            .into_builder()
-            .managed_capacity_bytes(exact_fit - 1)
-            .finish()
-            .unwrap(),
-    );
-    let error = session
-        .active_mut()
-        .unwrap()
-        .construction
-        .reserve_records(&mut refuses, 9)
-        .err();
-    assert!(
-        matches!(error, Some(SessionError::Stop(HtmlParseStop::LimitExceeded { resource: HtmlParseResource::ManagedCapacityBytes, limit, .. })) if limit == exact_fit - 1)
-    );
-    session.release(&mut refuses).unwrap();
+    // One byte less refuses, although the required ten records alone would fit: a limit never
+    // shrinks the target. A limit that holds the required layout exactly refuses the same way.
+    for limit in [doubled_fit - 1, exact_fit] {
+        let (mut refuses, mut session) = session_at_eight(
+            limits()
+                .into_builder()
+                .managed_capacity_bytes(limit)
+                .finish()
+                .unwrap(),
+        );
+        let error = session
+            .active_mut()
+            .unwrap()
+            .construction
+            .reserve_records(&mut refuses, 9)
+            .err();
+        assert!(
+            matches!(error, Some(SessionError::Stop(HtmlParseStop::LimitExceeded { resource: HtmlParseResource::ManagedCapacityBytes, limit: refused, .. })) if refused == limit)
+        );
+        session.release(&mut refuses).unwrap();
+    }
 }

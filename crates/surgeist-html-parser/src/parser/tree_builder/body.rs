@@ -202,7 +202,7 @@ impl HeadState<'_> {
             .whitespace_pending
             .take()
             .ok_or(HeadError::MissingInput)?;
-        if let Err((stop, text)) = self.before.whitespace.try_push_recover(c, text) {
+        if let Err((stop, text)) = self.before.whitespace.try_push_recover_geometric(c, text) {
             self.whitespace_pending = Some(text);
             return Err(stop.into());
         }

@@ -40,7 +40,7 @@ impl HeadState<'_> {
         self.frameset(false, c)?;
         self.set_mode(HtmlInsertionMode::InTemplate, c)?;
         self.template_modes
-            .try_push(c, HtmlInsertionMode::InTemplate)?;
+            .try_push_geometric(c, HtmlInsertionMode::InTemplate)?;
         let place = self.before.kernel.appropriate_place(None, c)?;
         // Determine the token states without replacing them with final tree
         // spelling. A non-None shadow mode selects its row before for-patching.

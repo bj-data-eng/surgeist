@@ -712,3 +712,188 @@ fn a_declarative_shadow_root_adds_the_same_visits_whatever_shadow_roots_enclose_
         "one more shadow root added {measures:?} record visits inside 25, 100 and 400"
     );
 }
+
+/// `roomy_limits` with room for the stacks, trees and credits that the longest
+/// single-token and single-run documents below reach.
+fn long_input_limits() -> HtmlParseLimits {
+    roomy_limits()
+        .into_builder()
+        .source_units(10_000_000)
+        .buffered_utf16_units(10_000_000)
+        .open_elements(100_000)
+        .tree_depth(10_000_000)
+        .work_credits(500_000_000_000)
+        .finish()
+        .unwrap()
+}
+
+fn parse_long_input_work(raw: String) -> Work {
+    let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8(raw), long_input_limits());
+    let report = request
+        .parse()
+        .unwrap_or_else(|_| panic!("the document parses within the long-input limits"));
+    work_of(report.usage())
+}
+
+/// Requires every measure of the work at a size to be at most 2.2 times its
+/// work at the size before, for each of the three doublings of `sizes`.
+///
+/// A buffer that grows by a constant factor copies each element a constant
+/// number of times, so n elements cost `a*n + b` credits with `b` the fixed
+/// cost of the document: doubling n at most doubles the credits, and the
+/// tenth more allowed here is for capacity steps and the share of the work
+/// that is not linear in the size of one run. A buffer that grows by one slot
+/// per element charges the whole old and new vector for each: credits `c*n^2`,
+/// which quadruple with each doubling.
+fn assert_each_doubling_costs_at_most_two_point_two_times(
+    sizes: [usize; 4],
+    document: impl Fn(usize) -> String,
+) {
+    assert_measures_at_most_two_point_two_times(sizes, document, &[TOTAL_WORK, RESERVATION_WORK]);
+}
+
+const TOTAL_WORK: Measure = ("total work", |work| work.total);
+const RESERVATION_WORK: Measure = ("reservation work", |work| work.reserved);
+
+/// As `assert_each_doubling_costs_at_most_two_point_two_times`, for the given measures only.
+fn assert_measures_at_most_two_point_two_times(
+    sizes: [usize; 4],
+    document: impl Fn(usize) -> String,
+    measures: &[Measure],
+) {
+    let measured: Vec<Work> = sizes
+        .iter()
+        .map(|&n| parse_long_input_work(document(n)))
+        .collect();
+    for (name, pick) in measures {
+        let work: Vec<u64> = measured.iter().map(pick).collect();
+        for (pair, window) in sizes.windows(2).zip(work.windows(2)) {
+            assert!(
+                window[1].saturating_mul(10) <= window[0].saturating_mul(22),
+                "{name} grew faster than linearly: {} repeats cost {}, {} repeats cost {} \
+                 (all measured: {work:?})",
+                pair[0],
+                window[0],
+                pair[1],
+                window[1],
+            );
+        }
+    }
+}
+
+const LONG_RUN_SIZES: [usize; 4] = [1_000, 2_000, 4_000, 8_000];
+
+#[test]
+fn work_of_one_long_comment_at_most_doubles_with_its_length() {
+    assert_each_doubling_costs_at_most_two_point_two_times(LONG_RUN_SIZES, |n| {
+        format!("<!doctype html><!--{}-->", "x".repeat(n))
+    });
+}
+
+#[test]
+fn work_of_one_long_attribute_value_at_most_doubles_with_its_length() {
+    assert_each_doubling_costs_at_most_two_point_two_times(LONG_RUN_SIZES, |n| {
+        format!("<!doctype html><div a='{}'>", "x".repeat(n))
+    });
+}
+
+#[test]
+fn work_of_one_long_attribute_name_at_most_doubles_with_its_length() {
+    assert_each_doubling_costs_at_most_two_point_two_times(LONG_RUN_SIZES, |n| {
+        format!("<!doctype html><div {}>", "x".repeat(n))
+    });
+}
+
+#[test]
+fn work_of_one_long_doctype_identifier_at_most_doubles_with_its_length() {
+    assert_each_doubling_costs_at_most_two_point_two_times(LONG_RUN_SIZES, |n| {
+        format!("<!DOCTYPE html PUBLIC \"{}\">", "x".repeat(n))
+    });
+}
+
+#[test]
+fn work_of_one_long_processing_instruction_at_most_doubles_with_its_length() {
+    assert_each_doubling_costs_at_most_two_point_two_times(LONG_RUN_SIZES, |n| {
+        format!("<!doctype html><?{}>", "a".repeat(n))
+    });
+}
+
+#[test]
+fn work_of_one_long_ambiguous_ampersand_literal_at_most_doubles_with_its_length() {
+    assert_each_doubling_costs_at_most_two_point_two_times(LONG_RUN_SIZES, |n| {
+        format!("<!doctype html>&{}", "a".repeat(n))
+    });
+}
+
+#[test]
+fn work_of_long_whitespace_runs_before_the_html_element_at_most_doubles_with_their_length() {
+    for unit in [" ", "\n", "\r\n", "\0"] {
+        assert_each_doubling_costs_at_most_two_point_two_times(LONG_RUN_SIZES, |n| {
+            format!("<!doctype html>{}", unit.repeat(n))
+        });
+    }
+}
+
+#[test]
+fn work_of_whitespace_runs_kept_between_comments_before_the_html_element_at_most_doubles() {
+    // Each run is a separate pending text that waits for the `html` element.
+    assert_each_doubling_costs_at_most_two_point_two_times([500, 1_000, 2_000, 4_000], |n| {
+        format!("<!doctype html>{}", "<!--c--> ".repeat(n))
+    });
+}
+
+#[test]
+fn work_of_long_whitespace_and_null_runs_inside_the_body_at_most_doubles_with_their_length() {
+    for unit in [" ", "\r\n", "\0", "a\0"] {
+        assert_each_doubling_costs_at_most_two_point_two_times(LONG_RUN_SIZES, |n| {
+            format!("<!doctype html><body>{}", unit.repeat(n))
+        });
+    }
+}
+
+#[test]
+fn work_of_a_long_text_run_in_a_table_at_most_doubles_with_its_length() {
+    // The characters wait as pending table text until a token ends the run.
+    assert_each_doubling_costs_at_most_two_point_two_times([250, 500, 1_000, 2_000], |n| {
+        format!("<!doctype html><table>{}", "a b ".repeat(n))
+    });
+}
+
+#[test]
+fn work_of_nested_template_elements_at_most_doubles_with_their_number() {
+    assert_each_doubling_costs_at_most_two_point_two_times(LONG_RUN_SIZES, |n| {
+        format!("<!doctype html>{}", "<template>".repeat(n))
+    });
+}
+
+#[test]
+fn work_of_repeated_formatting_elements_with_an_attribute_at_most_doubles_with_their_number() {
+    assert_each_doubling_costs_at_most_two_point_two_times(LONG_RUN_SIZES, |n| {
+        format!("<!doctype html><p>{}", "<b a=i>".repeat(n))
+    });
+}
+
+#[test]
+fn work_of_reconstructing_a_formatting_element_with_many_attributes_at_most_doubles() {
+    // `</p>` closes the `b` it contains, which stays in the list of active formatting elements;
+    // the `x` that follows reconstructs it, copying every attribute to the new element.
+    // Only the reservation work is measured: copying the attributes also visits records
+    // quadratically in their number, which no reservation causes. Issue #1731 restores the
+    // total-work measure.
+    assert_measures_at_most_two_point_two_times(
+        [250, 500, 1_000, 2_000],
+        |n| {
+            let attributes: String = (0..n).map(|i| format!(" a{i}=v")).collect();
+            format!("<!doctype html><p><b{attributes}></p>x")
+        },
+        &[RESERVATION_WORK],
+    );
+}
+
+#[test]
+fn work_of_one_long_input_value_at_most_doubles_with_its_length() {
+    // The value is sanitized into a copy that keeps the origin of every code point.
+    assert_each_doubling_costs_at_most_two_point_two_times(LONG_RUN_SIZES, |n| {
+        format!("<!doctype html><input value='{}'>", "x".repeat(n))
+    });
+}

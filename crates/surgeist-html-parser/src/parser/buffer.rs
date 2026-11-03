@@ -60,7 +60,7 @@ impl Utf16Buffer {
         unit: u16,
         control: &mut ParseControl,
     ) -> Result<(), HtmlParseStop> {
-        self.units.try_push(control, unit)
+        self.units.try_push_geometric(control, unit)
     }
 
     pub(crate) fn push_code_point(
@@ -90,7 +90,7 @@ impl Utf16Buffer {
         units: &[u16],
         control: &mut ParseControl,
     ) -> Result<(), HtmlParseStop> {
-        self.units.try_extend_from_slice(control, units)
+        self.units.try_extend_from_slice_geometric(control, units)
     }
 
     pub(crate) fn clear(&mut self, control: &mut ParseControl) -> Result<(), HtmlParseStop> {
@@ -361,6 +361,43 @@ mod tests {
                 .usage()
                 .resource(HtmlParseResource::ManagedCapacityBytes)
                 .current,
+            0
+        );
+    }
+
+    #[test]
+    fn frozen_text_accounts_the_spare_capacity_that_geometric_growth_leaves() {
+        let mut control = control();
+        let mut buffer = Utf16Buffer::new(&mut control).unwrap();
+        for unit in 0..5_u16 {
+            buffer.push_unit(0x61 + unit, &mut control).unwrap();
+        }
+        // Capacities 1, 2, 4 and 8 hold five units: three slots are spare.
+        assert_eq!((buffer.len(), buffer.capacity()), (5, 8));
+        let frozen = buffer.freeze(&mut control).unwrap();
+        let (text, allocation) = frozen.into_parts();
+        assert_eq!(text.code_units().len(), 5);
+        assert_eq!(allocation.units(), 5);
+        assert_eq!(allocation.vector_capacity(), 8);
+        // The ledger holds the sixteen bytes of the real allocation, not the ten of the text,
+        // and the fixed vector wrapper.
+        let held = 16 + size_of::<Vec<u16>>() as u64;
+        assert_eq!(control.usage().actual_capacity_bytes(), held);
+        assert_eq!(
+            control
+                .usage()
+                .resource(HtmlParseResource::ManagedCapacityBytes)
+                .current(),
+            held
+        );
+        drop(text);
+        control.release_document_string(allocation).unwrap();
+        assert_eq!(control.usage().actual_capacity_bytes(), 0);
+        assert_eq!(
+            control
+                .usage()
+                .resource(HtmlParseResource::ManagedCapacityBytes)
+                .current(),
             0
         );
     }
