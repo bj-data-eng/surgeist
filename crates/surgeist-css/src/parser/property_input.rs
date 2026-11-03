@@ -246,10 +246,7 @@ impl<'i> SiteExt<'i> for Site<'i> {
             && let Some(GroupEnd::Eof { at: Some(at) }) = document.group_end(node)
             && let Some(snapshot) = snapshot
         {
-            return Some(CssSourcePosition::from_byte_offset_in(
-                snapshot.as_str(),
-                at.value(),
-            ));
+            return Some(snapshot.position_or_walk(at.value()));
         }
         if let Some(origin) = self.token_origin() {
             match origin {
@@ -259,10 +256,7 @@ impl<'i> SiteExt<'i> for Site<'i> {
             }
         }
         let offset = document.boundary(self.list(), self.index()).offset?;
-        Some(CssSourcePosition::from_byte_offset_in(
-            snapshot?.as_str(),
-            offset,
-        ))
+        Some(snapshot?.position_or_walk(offset))
     }
 
     fn origin(self) -> CssSerializedOrigin {

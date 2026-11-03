@@ -105,7 +105,7 @@ impl RuleListSink<CssKeyframeBlock> for BlockSink {
     fn retain(
         &mut self,
         item: CssKeyframeBlock,
-        _: &str,
+        _: &crate::source::CssSourceSnapshot,
         _: usize,
         _: &mut Vec<crate::diagnostic::CssRecoveryDiagnostic>,
     ) {
@@ -177,7 +177,7 @@ pub(super) fn drive_declarations<'i>(
             crate::diagnostic::CssRecoveryAction::DropQualifiedRule
         };
         if let Some(diagnostic) =
-            structural_rule_diagnostic(source, error, text, dropped.start, dropped.end, action)
+            structural_rule_diagnostic(snapshot, error, text, dropped.start, dropped.end, action)
         {
             diagnostics.push(diagnostic);
         }
@@ -229,15 +229,12 @@ impl<'s> KeyframeBlockParser<'s> {
         opening: usize,
         block: RuleBlock<'i>,
     ) -> Result<CssKeyframeBlock, NativeError> {
-        let mut depth = self.recovery.enter_rule_block(
-            self.source,
-            Offset::new(opening),
-            "baseline.keyframes.block",
-        )?;
+        let mut depth = self
+            .recovery
+            .enter_rule_block(Offset::new(opening), "baseline.keyframes.block")?;
         let RuleBlock::Open { mut contents, .. } = block else {
             return Err(crate::diagnostic::error::nesting_limit(
-                self.source,
-                opening,
+                self.recovery.source_position(opening),
                 super::recovery::STRUCTURAL_NESTING_LIMIT,
                 "baseline.keyframes.block",
             ));

@@ -43,7 +43,7 @@ impl CssError {
             if let Some(token) = encountered_mut(&mut self.kind) {
                 if token.kind == summary.kind {
                     token.authored = summary.authored;
-                    self.position = CssSourcePosition::from_byte_offset_in(source, start);
+                    self.position = self.position.resolved_near(source, start);
                 }
             } else if let Some(slot) = optional_encountered_mut(&mut self.kind) {
                 let ending = ends_input(summary.kind)
@@ -54,7 +54,7 @@ impl CssError {
                 // An ending token is no violating token, but it locates an
                 // input that holds no authored token of its own.
                 if !ending || slot.is_none() {
-                    self.position = CssSourcePosition::from_byte_offset_in(source, start);
+                    self.position = self.position.resolved_near(source, start);
                 }
             }
         }
@@ -68,13 +68,13 @@ impl CssError {
             && !(prelude && summary.kind == CssTokenKind::AtKeyword)
         {
             *slot = Some(summary);
-            self.position = CssSourcePosition::from_byte_offset_in(source, start);
+            self.position = self.position.resolved_near(source, start);
         }
 
         if let Some(name) = at_rule_name(&self.kind)
             && let Some(start) = authored_at_rule_start(source, self.position, name.as_str())
         {
-            self.position = CssSourcePosition::from_byte_offset_in(source, start);
+            self.position = self.position.resolved_near(source, start);
         }
 
         if let ErrorKind::InvalidAtRuleBody(detail) = &mut self.kind

@@ -1275,9 +1275,11 @@ pub struct CssError {
 }
 
 impl CssError {
-    pub(crate) fn resolve_original_coordinates(&mut self, source: &str) {
-        self.position =
-            CssSourcePosition::from_byte_offset_in(source, self.position.byte_offset().value());
+    pub(crate) fn resolve_original_coordinates(
+        &mut self,
+        source: &crate::source::CssSourceSnapshot,
+    ) {
+        self.position = source.position_or_walk(self.position.byte_offset().value());
     }
 
     fn at(location: CssSourcePosition, kind: ErrorKind) -> Self {
@@ -1840,14 +1842,12 @@ pub(crate) fn is_nesting_limit_error(error: &NativeError) -> bool {
 }
 
 pub(crate) fn nesting_limit(
-    source: &str,
-    byte_offset: usize,
+    position: CssSourcePosition,
     limit: u32,
     enclosing_production: &'static str,
 ) -> NativeError {
     depth_error(
-        source,
-        byte_offset,
+        position,
         ErrorKind::NestingLimit(CssNestingLimitError {
             limit,
             enclosing_production: CssProductionId::new(enclosing_production),
@@ -1858,14 +1858,12 @@ pub(crate) fn nesting_limit(
 /// The refusal of input deeper than `direct_depth` when the bounded parser
 /// thread cannot start (#1277), at the first opening beyond that depth.
 pub(crate) fn parser_unavailable(
-    source: &str,
-    byte_offset: usize,
+    position: CssSourcePosition,
     direct_depth: u32,
     enclosing_production: &'static str,
 ) -> NativeError {
     depth_error(
-        source,
-        byte_offset,
+        position,
         ErrorKind::ParserUnavailable(CssNestingLimitError {
             limit: direct_depth,
             enclosing_production: CssProductionId::new(enclosing_production),
@@ -1873,8 +1871,7 @@ pub(crate) fn parser_unavailable(
     )
 }
 
-fn depth_error(source: &str, byte_offset: usize, kind: ErrorKind) -> NativeError {
-    let position = CssSourcePosition::from_byte_offset_in(source, byte_offset);
+fn depth_error(position: CssSourcePosition, kind: ErrorKind) -> NativeError {
     NativeError::new(CssError { kind, position }, position)
 }
 
@@ -1901,32 +1898,33 @@ pub(crate) fn namespace_redeclaration(
     }
 }
 
-pub(crate) fn implicit_eof(source: &str) -> CssError {
+/// The end of the input `eof` is the position of, which a missing token is
+/// reported at.
+pub(crate) fn implicit_eof(eof: CssSourcePosition) -> CssError {
     CssError {
         kind: ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
             expectation: EXPECT_CSS_SYNTAX,
         }),
-        position: CssSourcePosition::from_byte_offset_in(source, source.len()),
+        position: eof,
     }
 }
 
-pub(crate) fn unterminated_at_rule(source: &str, byte_offset: usize) -> CssError {
+pub(crate) fn unterminated_at_rule(position: CssSourcePosition) -> CssError {
     CssError {
         kind: ErrorKind::UnexpectedEnd(CssUnexpectedEndError {
             expectation: CssGrammarExpectation::new("a semicolon or block terminating an at-rule"),
         }),
-        position: CssSourcePosition::from_byte_offset_in(source, byte_offset),
+        position,
     }
 }
 
 pub(crate) fn escape_parse_error(
-    source: &str,
-    byte_offset: usize,
+    position: CssSourcePosition,
     detail: CssEscapeFailure,
 ) -> CssError {
     CssError {
         kind: ErrorKind::EscapeParseError(detail),
-        position: CssSourcePosition::from_byte_offset_in(source, byte_offset),
+        position,
     }
 }
 

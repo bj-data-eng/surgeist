@@ -105,6 +105,15 @@ impl<'a> NumericInputContext<'a> {
         matches!(self, Self::QuirkyLengths(_))
     }
 
+    /// The position of the byte `offset` of `text`, the text this context's
+    /// grammar reads: a source's checkpoints bound the walk.
+    pub(crate) fn position_in(&self, text: &str, offset: usize) -> CssSourcePosition {
+        match self.ordinary() {
+            Self::Parsed(snapshot) => snapshot.position_or_walk(offset),
+            _ => CssSourcePosition::from_byte_offset_in(text, offset),
+        }
+    }
+
     pub(crate) fn is_source_input(&self) -> bool {
         matches!(self.ordinary(), Self::Parsed(_))
     }

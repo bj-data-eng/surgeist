@@ -242,11 +242,7 @@ impl<'i> RuleGrammar<'i, Attached<'i>> for BodyParser<'_> {
         let opening = offset_of(block.start_site()).saturating_sub(1);
         let mut depth = self
             .recovery
-            .enter_rule_block(
-                self.source,
-                Offset::new(opening),
-                "later.rule.font-feature-values",
-            )
+            .enter_rule_block(Offset::new(opening), "later.rule.font-feature-values")
             .map_err(|error| grammar_error(at, error))?;
         let (definitions, recovered) =
             drive_members(&mut block, self.source, Some(kind), &self.recovery);

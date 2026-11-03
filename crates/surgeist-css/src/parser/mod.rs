@@ -73,6 +73,8 @@ pub(crate) mod overflow_controls;
 pub(crate) mod page;
 pub(crate) mod page_margin_rule;
 pub(crate) mod position;
+#[cfg(test)]
+pub(crate) mod position_work_tests;
 pub(crate) mod property_input;
 pub(crate) mod queries;
 pub(crate) mod query_components;
@@ -680,7 +682,7 @@ fn parse_sheet_snapshot_inner(
             parser_context,
         )
     });
-    recovery::finish_report(source, conditional_chains::sheet(source, report))
+    recovery::finish_report(source, conditional_chains::sheet(source_snapshot, report))
 }
 
 #[derive(Clone, Copy)]
@@ -719,28 +721,28 @@ pub(crate) struct Recovered<T> {
 }
 
 pub(crate) fn block_item_diagnostic(
-    source: &str,
+    snapshot: &CssSourceSnapshot,
     error: NativeError,
     failed_unit: &str,
     unit_end: usize,
     action: crate::diagnostic::CssRecoveryAction,
 ) -> Option<crate::diagnostic::CssRecoveryDiagnostic> {
     let unit_start = unit_end.saturating_sub(failed_unit.len());
-    block_item_diagnostic_from_start(source, error, unit_start, unit_end, action)
+    block_item_diagnostic_from_start(snapshot, error, unit_start, unit_end, action)
 }
 
 pub(crate) fn block_item_diagnostic_from_start(
-    source: &str,
+    snapshot: &CssSourceSnapshot,
     error: NativeError,
     unit_start: usize,
     unit_end: usize,
     action: crate::diagnostic::CssRecoveryAction,
 ) -> Option<crate::diagnostic::CssRecoveryDiagnostic> {
     let action = recovery_action_for_error(&error, action);
-    let error = from_parse_error(source, error);
+    let error = from_parse_error(snapshot.as_str(), error);
     let span = crate::source::CssSourceSpan::new(
-        crate::source::CssSourcePosition::from_byte_offset_in(source, unit_start),
-        crate::source::CssSourcePosition::from_byte_offset_in(source, unit_end),
+        snapshot.position_or_walk(unit_start),
+        snapshot.position_or_walk(unit_end),
     )?;
     if span.start() == span.end() {
         return None;
@@ -750,7 +752,7 @@ pub(crate) fn block_item_diagnostic_from_start(
 
 /// A dropped unit's diagnostic, spanning exactly that unit.
 pub(crate) fn structural_rule_diagnostic(
-    source: &str,
+    snapshot: &CssSourceSnapshot,
     error: NativeError,
     failed_unit: &str,
     unit_start: usize,
@@ -758,10 +760,10 @@ pub(crate) fn structural_rule_diagnostic(
     action: crate::diagnostic::CssRecoveryAction,
 ) -> Option<crate::diagnostic::CssRecoveryDiagnostic> {
     let action = recovery_action_for_error(&error, action);
-    let error = from_rule_parse_error(source, failed_unit, error);
+    let error = from_rule_parse_error(snapshot.as_str(), failed_unit, error);
     let span = crate::source::CssSourceSpan::new(
-        crate::source::CssSourcePosition::from_byte_offset_in(source, unit_start),
-        crate::source::CssSourcePosition::from_byte_offset_in(source, unit_end),
+        snapshot.position_or_walk(unit_start),
+        snapshot.position_or_walk(unit_end),
     )?;
     if span.start() == span.end() {
         return None;
@@ -984,7 +986,7 @@ fn block_form_required(
     expectation: &'static str,
 ) -> NativeError {
     crate::diagnostic::error::invalid_at_rule_body_at(
-        CssSourcePosition::from_byte_offset_in(snapshot.as_str(), at),
+        snapshot.position_or_walk(at),
         block_units::location_at(snapshot, at),
         name,
         production,
@@ -1163,7 +1165,7 @@ fn scope_prelude<'i>(
     };
     let root = if input.attempt(open).is_ok() {
         let opening = block_units::offset_of(inside_consumed(input.site())).saturating_sub(1);
-        let _boundary_depth = enter_boundary(state, source, opening, input.site())?;
+        let _boundary_depth = enter_boundary(state, opening, input.site())?;
         Some(input.within_block(|input| {
             let mut recovery = SelectorRecovery::new(source, diagnostics, state.clone());
             selectors::scope_boundary_selector_list(
@@ -1180,7 +1182,7 @@ fn scope_prelude<'i>(
     let limit = if input.attempt(|input| input.consume_keyword("to")).is_ok() {
         open(input)?;
         let opening = block_units::offset_of(inside_consumed(input.site())).saturating_sub(1);
-        let _boundary_depth = enter_boundary(state, source, opening, input.site())?;
+        let _boundary_depth = enter_boundary(state, opening, input.site())?;
         Some(input.within_block(|input| {
             let mut recovery = SelectorRecovery::new(source, diagnostics, state.clone());
             selectors::scope_boundary_selector_list(
@@ -1205,12 +1207,11 @@ fn scope_prelude<'i>(
 /// `opening`, or fails with the structural limit.
 fn enter_boundary<'i>(
     state: &RecoveryState,
-    source: &str,
     opening: usize,
     at: syntax_types::Site<'i>,
 ) -> std::result::Result<recovery::RecoveryDepthGuard, descriptor_stream::ValueError<'i>> {
     let entered: std::result::Result<_, NativeError> =
-        state.enter_component_block_at(source, opening, "baseline.rule.scope");
+        state.enter_component_block_at(opening, "baseline.rule.scope");
     entered.map_err(|error| syntax_types::SyntaxError::custom(at, error))
 }
 

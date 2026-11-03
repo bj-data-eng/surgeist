@@ -490,8 +490,15 @@ pub(super) fn scan_nested(
                 base_depth.saturating_add(u32::try_from(returns.len()).unwrap_or(u32::MAX));
             if nested_depth >= STRUCTURAL_NESTING_LIMIT {
                 return Err(nesting_limit(
-                    source,
-                    token_start,
+                    crate::syntax_consumption::DocumentExt::snapshot(document).map_or_else(
+                        || {
+                            crate::source::CssSourcePosition::from_byte_offset_in(
+                                source,
+                                token_start,
+                            )
+                        },
+                        |snapshot| snapshot.position_or_walk(token_start),
+                    ),
                     STRUCTURAL_NESTING_LIMIT,
                     enclosing_production,
                 ));

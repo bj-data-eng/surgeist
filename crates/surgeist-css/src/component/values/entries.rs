@@ -29,7 +29,7 @@ pub(crate) fn parse_component_value_with_limits(
             Ok(node) => match promote(&document, &[node], limits.max_css_bytes) {
                 Err(error) => rejected(source, error, None),
                 Ok(values) => {
-                    let diagnostics = implicit_diagnostics(source, &values);
+                    let diagnostics = implicit_diagnostics(&values);
                     let component = values
                         .items
                         .into_vec()
@@ -93,7 +93,7 @@ fn comma_lists(
                 if let Err(error) = output.push_components(values.items()) {
                     return rejected(source, error, Vec::new());
                 }
-                diagnostics.extend(implicit_diagnostics(source, &values));
+                diagnostics.extend(implicit_diagnostics(&values));
                 lists.push(Some(values));
             }
             Err(error) if crate::diagnostic::error::is_component_resource_error(&error) => {
@@ -170,7 +170,7 @@ fn rejection(
         .expect("component fault belongs to its selected source range")
 }
 
-fn implicit_diagnostics(source: &str, values: &CssComponentValues) -> Vec<CssRecoveryDiagnostic> {
+fn implicit_diagnostics(values: &CssComponentValues) -> Vec<CssRecoveryDiagnostic> {
     let mut diagnostics = Vec::new();
     let mut pending: Vec<_> = values.items().iter().rev().collect();
     while let Some(component) = pending.pop() {
@@ -191,7 +191,7 @@ fn implicit_diagnostics(source: &str, values: &CssComponentValues) -> Vec<CssRec
         {
             diagnostics.push(
                 CssRecoveryDiagnostic::new(
-                    crate::diagnostic::error::implicit_eof(source),
+                    crate::diagnostic::error::implicit_eof(at.span().end()),
                     at.span(),
                     CssRecoveryAction::RetainWithImplicitClosure,
                 )

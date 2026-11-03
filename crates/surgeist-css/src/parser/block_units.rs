@@ -160,8 +160,8 @@ pub(super) fn refusal_diagnostic(
         refused_error(location_at(snapshot, at)),
     );
     let span = CssSourceSpan::new(
-        CssSourcePosition::from_byte_offset_in(snapshot.as_str(), at),
-        CssSourcePosition::from_byte_offset_in(snapshot.as_str(), end),
+        snapshot.position_or_walk(at),
+        snapshot.position_or_walk(end),
     )?;
     CssRecoveryDiagnostic::new(error, span, action)
 }
