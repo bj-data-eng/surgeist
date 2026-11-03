@@ -722,7 +722,7 @@ impl ConstructionOwner {
                 control.charge(
                     HtmlParseWorkCategory::CopyByte,
                     const {
-                        (mem::size_of::<Vec<usize>>()
+                        (mem::size_of::<std::collections::VecDeque<usize>>()
                             + mem::size_of::<Option<ConstructionAllocation>>())
                             as u64
                     },
