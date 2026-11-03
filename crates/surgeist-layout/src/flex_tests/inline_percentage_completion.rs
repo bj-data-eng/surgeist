@@ -628,3 +628,319 @@ fn auto_and_max_only_block_cycle_stays_automatic_f32() {
 fn auto_and_max_only_block_cycle_stays_automatic_f64() {
     block_cycle::<f64>();
 }
+
+fn assert_basis_rect<S: LayoutScalar>(rect: ScrollRectOf<S>, expected: [f64; 4]) {
+    let [x, y, width, height] = expected.map(scalar::<S>);
+    assert_eq!(rect.origin(), Point::new(x, y));
+    assert_eq!(rect.size(), Size::new(width, height));
+}
+
+fn fractional_content_basis<S: LayoutScalar>() {
+    for direction in [Direction::Ltr, Direction::Rtl] {
+        for (box_sizing, outer_width, content_width, half) in [
+            (BoxSizing::BorderBox, 150.5, 125.5, 62.75),
+            (BoxSizing::ContentBox, 160.5, 135.5, 67.75),
+        ] {
+            for definite in [true, false] {
+                let mut tree = subtree::<S>(
+                    WritingMode::HorizontalTb,
+                    direction,
+                    box_sizing,
+                    0.5,
+                    false,
+                    false,
+                );
+                let mut parent = tree.node_input(2).clone();
+                parent.size.width = if definite {
+                    PreferredSizeOf::px(scalar(150.5))
+                } else {
+                    PreferredSizeOf::AUTO
+                };
+                parent.max_size.width = MaxSizeOf::px(scalar(150.5));
+                parent.border = Edges::all(LengthOf::px(scalar(2.0)));
+                parent.padding = Edges::all(LengthOf::px(scalar(3.0)));
+                parent.overflow =
+                    ComputedOverflow::try_new(Overflow::Scroll, Overflow::Scroll).unwrap();
+                parent.scrollbar_width = ScrollbarWidthOf::try_new(scalar(15.0)).unwrap();
+                tree = tree.style(2, parent);
+                assert_eq!(Traverse::children(&tree, 2).collect::<Vec<_>>(), [3, 4, 5]);
+                assert_eq!(Traverse::children(&tree, 5).collect::<Vec<_>>(), [6]);
+                assert_eq!(
+                    tree.node_input(2).max_size.width,
+                    MaxSizeOf::px(scalar(150.5))
+                );
+                assert_eq!(
+                    tree.node_input(2).border,
+                    Edges::all(LengthOf::px(scalar(2.0)))
+                );
+                assert_eq!(
+                    tree.node_input(2).padding,
+                    Edges::all(LengthOf::px(scalar(3.0)))
+                );
+                assert_eq!(
+                    tree.node_input(4).size.width,
+                    PreferredSizeOf::percent(scalar(0.5))
+                );
+                assert_eq!(
+                    tree.node_input(5).size.width,
+                    PreferredSizeOf::percent(scalar(0.5))
+                );
+                for node in 2..=6 {
+                    assert!(!tree.has_leaf_measurement(node));
+                }
+                // Native quantitative ContentBox bounds add padding+border10;
+                // forced gutters are reserved inside that border box. Thus the
+                // two accepted outer widths are150.5/160.5 and actual content
+                // widths subtract25, yielding125.5/135.5. The fixed200 child
+                // exceeds both maxima; it cannot become the final basis.
+                // Block content remains10+10+10=30, so outer height is55.
+                assert_eq!(outer_width - 25.0, content_width);
+                assert_eq!(content_width * 0.5, half);
+                let batch = compute_layout(
+                    &tree,
+                    2,
+                    request(WritingMode::HorizontalTb, SizingOperation::Normal),
+                )
+                .expect("real bounded ColumnFlex with actual reserved scrollbars");
+                let entries = batch.unrounded_entries();
+                let actual = output(entries, 2);
+                assert_eq!(actual.location, Point::ZERO);
+                assert_eq!(actual.size, Size::new(scalar(outer_width), scalar(55.0)));
+                assert_eq!(actual.source_index, SourceIndex::ZERO);
+                assert_eq!(actual.border, Edges::all(scalar(2.0)));
+                assert_eq!(actual.padding, Edges::all(scalar(3.0)));
+                let scroll = actual
+                    .scroll_geometry
+                    .expect("actual accepted scroll/content geometry");
+                assert_eq!(
+                    scroll.flow_axes(),
+                    FlowAxes::new(WritingMode::HorizontalTb, direction)
+                );
+                assert_eq!(scroll.used_overflow_x(), Overflow::Scroll);
+                assert_eq!(scroll.used_overflow_y(), Overflow::Scroll);
+                assert_eq!(scroll.scrollbar_size(), Size::splat(scalar(15.0)));
+                let content_x = if direction == Direction::Ltr {
+                    5.0
+                } else {
+                    20.0
+                };
+                let scrollport_x = if direction == Direction::Ltr {
+                    2.0
+                } else {
+                    17.0
+                };
+                assert_basis_rect(scroll.border_box(), [0.0, 0.0, outer_width, 55.0]);
+                assert_basis_rect(scroll.padding_box(), [2.0, 2.0, outer_width - 4.0, 51.0]);
+                assert_basis_rect(
+                    scroll.scrollport(),
+                    [scrollport_x, 2.0, outer_width - 19.0, 36.0],
+                );
+                assert_basis_rect(scroll.content_box(), [content_x, 5.0, content_width, 30.0]);
+                assert_eq!(
+                    actual.content_box_size(),
+                    Size::new(scalar(content_width), scalar(30.0))
+                );
+                assert_eq!(scroll.gutters().top(), None);
+                let (vertical, absent, vertical_x) = if direction == Direction::Ltr {
+                    (
+                        scroll.gutters().right(),
+                        scroll.gutters().left(),
+                        outer_width - 17.0,
+                    )
+                } else {
+                    (scroll.gutters().left(), scroll.gutters().right(), 2.0)
+                };
+                assert_eq!(absent, None);
+                assert_basis_rect(
+                    vertical.expect("real inline-end15px reservation"),
+                    [vertical_x, 2.0, 15.0, 36.0],
+                );
+                assert_basis_rect(
+                    scroll
+                        .gutters()
+                        .bottom()
+                        .expect("real bottom15px reservation"),
+                    [scrollport_x, 38.0, outer_width - 19.0, 15.0],
+                );
+                let fixed_x = if direction == Direction::Ltr {
+                    content_x
+                } else {
+                    content_x + content_width - 200.0
+                };
+                let percentage_x = if direction == Direction::Ltr {
+                    content_x
+                } else {
+                    content_x + half
+                };
+                assert_box(entries, 3, [fixed_x, 5.0, 200.0, 10.0], 0);
+                assert_box(entries, 4, [percentage_x, 15.0, half, 10.0], 1);
+                assert_box(entries, 5, [percentage_x, 25.0, half, 10.0], 2);
+                assert_box(
+                    entries,
+                    6,
+                    [
+                        if direction == Direction::Ltr {
+                            0.0
+                        } else {
+                            half - 10.0
+                        },
+                        0.0,
+                        10.0,
+                        10.0,
+                    ],
+                    0,
+                );
+                // Exact independent publication table under native (x+.5).floor
+                // corner policy. Normal percentage resolution precedes this;
+                // canonical content126/136 must not replace raw125.5/135.5.
+                let (
+                    published_outer,
+                    published_half,
+                    published_fixed_x,
+                    published_pct_x,
+                    published_nested_x,
+                ) = match (box_sizing, direction) {
+                    (BoxSizing::BorderBox, Direction::Ltr) => (151.0, 63.0, 5.0, 5.0, 0.0),
+                    (BoxSizing::BorderBox, Direction::Rtl) => (151.0, 63.0, -54.0, 83.0, 53.0),
+                    (BoxSizing::ContentBox, Direction::Ltr) => (161.0, 68.0, 5.0, 5.0, 0.0),
+                    (BoxSizing::ContentBox, Direction::Rtl) => (161.0, 68.0, -44.0, 88.0, 58.0),
+                };
+                let published = batch.final_entries();
+                assert_eq!(output(published, 2).location, Point::ZERO);
+                assert_eq!(
+                    output(published, 2).size,
+                    Size::new(scalar(published_outer), scalar(55.0))
+                );
+                assert_box(published, 3, [published_fixed_x, 5.0, 200.0, 10.0], 0);
+                assert_box(
+                    published,
+                    4,
+                    [published_pct_x, 15.0, published_half, 10.0],
+                    1,
+                );
+                assert_box(
+                    published,
+                    5,
+                    [published_pct_x, 25.0, published_half, 10.0],
+                    2,
+                );
+                assert_box(published, 6, [published_nested_x, 0.0, 10.0, 10.0], 0);
+            }
+        }
+    }
+}
+
+fn late_inline_overflow<S: LayoutScalar>() {
+    let control = subtree::<S>(
+        WritingMode::HorizontalTb,
+        Direction::Ltr,
+        BoxSizing::BorderBox,
+        0.5,
+        true,
+        false,
+    );
+    let query = request(WritingMode::HorizontalTb, SizingOperation::Normal);
+    let prior =
+        compute_layout(&control, 2, query).expect("genuine definite-width completed control");
+    assert_subtree(
+        &prior,
+        WritingMode::HorizontalTb,
+        Direction::Ltr,
+        0.5,
+        false,
+    );
+    let retained_unrounded = prior.unrounded_entries().to_vec();
+    let retained_final = prior.final_entries().to_vec();
+    let largest = fri06_mr02_geometry_error_largest_finite::<S>();
+    assert!(largest.is_finite());
+    let expected_invalid = scalar::<S>(200.0) * largest;
+    assert!(!expected_invalid.is_finite() && expected_invalid > S::ZERO);
+    let mut automatic = control.node_input(2).clone();
+    automatic.size.width = PreferredSizeOf::AUTO;
+    let mut overflowing = control.node_input(4).clone();
+    overflowing.size.width = PreferredSizeOf::percent(largest);
+    let invalid = control.clone().style(2, automatic).style(4, overflowing);
+    assert!(invalid.node_input(2).size.width.is_auto());
+    assert_eq!(
+        invalid.node_input(4).size.width,
+        PreferredSizeOf::percent(largest)
+    );
+    assert!(!invalid.node_input(4).size.width.is_auto());
+    for node in 2..=6 {
+        assert!(!invalid.has_leaf_measurement(node));
+    }
+    // Finite authored coefficient is valid. It has no basis during formal
+    // intrinsic completion, which must remain intrinsic rather than resolving
+    // against either a provisional200 or the independent external600 bound.
+    for operation in [SizingOperation::MinContent, SizingOperation::MaxContent] {
+        let intrinsic = compute_layout(&invalid, 2, request(WritingMode::HorizontalTb, operation))
+            .expect("cyclic inline percentage is initial during intrinsic contribution sizing");
+        for entries in [intrinsic.unrounded_entries(), intrinsic.final_entries()] {
+            assert_box(entries, 2, [0.0, 0.0, 200.0, 30.0], 0);
+        }
+    }
+    // Normal contents layout alone receives the actual accepted200 basis.
+    // 200*MAX is positive infinity in either scalar lane, owned by node4's
+    // preferred-width resolution, not a root/frame/provider failure.
+    let error = match compute_layout(&invalid, 2, query) {
+        Err(error) => error,
+        Ok(_) => panic!("late Normal percentage overflow must refuse the complete batch"),
+    };
+    assert_eq!(error.site(), LayoutErrorSiteOf::Node(4));
+    assert_eq!(error.operation(), LayoutOperation::ValueResolution);
+    match error.kind() {
+        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric { value }) => {
+            assert_eq!(*value, expected_invalid);
+        }
+        other => panic!("expected actual percentage arithmetic InvalidNumeric, got {other:?}"),
+    }
+    // Public computation is transactional: no partially successful batch is
+    // returned; a previously completed immutable publication retains identity.
+    assert_eq!(prior.unrounded_entries(), retained_unrounded.as_slice());
+    assert_eq!(prior.final_entries(), retained_final.as_slice());
+    assert_subtree(
+        &prior,
+        WritingMode::HorizontalTb,
+        Direction::Ltr,
+        0.5,
+        false,
+    );
+    let recovered = invalid.style(4, control.node_input(4).clone());
+    let recovery =
+        compute_layout(&recovered, 2, query).expect("restored finite coefficient recovers");
+    assert_subtree(
+        &recovery,
+        WritingMode::HorizontalTb,
+        Direction::Ltr,
+        0.5,
+        false,
+    );
+    let replay =
+        compute_layout(&control, 2, query).expect("unchanged real control inputs remain reusable");
+    assert_subtree(
+        &replay,
+        WritingMode::HorizontalTb,
+        Direction::Ltr,
+        0.5,
+        false,
+    );
+    assert_eq!(prior.unrounded_entries(), retained_unrounded.as_slice());
+    assert_eq!(prior.final_entries(), retained_final.as_slice());
+}
+
+#[test]
+fn accepted_fractional_content_basis_excludes_edges_gutters_and_maximum_f32() {
+    fractional_content_basis::<f32>();
+}
+#[test]
+fn accepted_fractional_content_basis_excludes_edges_gutters_and_maximum_f64() {
+    fractional_content_basis::<f64>();
+}
+#[test]
+fn late_normal_inline_percentage_overflow_refuses_and_recovers_f32() {
+    late_inline_overflow::<f32>();
+}
+#[test]
+fn late_normal_inline_percentage_overflow_refuses_and_recovers_f64() {
+    late_inline_overflow::<f64>();
+}
