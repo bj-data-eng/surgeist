@@ -533,6 +533,7 @@ root_direction = "variant"
 root_writing_mode = "horizontal-tb"
 root_position = "relative"
 atomic_paragraphs = 6
+grid_reference_owners = []
 
 [[records]]
 source = "html/subgrid/subgrid_baseline_vertical_auto_rows_inner_row1_first.html"
@@ -552,6 +553,7 @@ root_direction = "variant"
 root_writing_mode = "vertical-rl"
 root_position = "relative"
 atomic_paragraphs = 6
+grid_reference_owners = ["/","/0","/0/0"]
 
 [[records]]
 source = "html/qualification/boxless-descendant.html"

@@ -172,6 +172,7 @@ enum ExpectedMetadata {
         root_writing_mode: String,
         root_position: String,
         atomic_paragraphs: Option<usize>,
+        grid_reference_owners: Option<Vec<String>>,
     },
 }
 #[derive(Clone, Deserialize)]
@@ -443,6 +444,17 @@ fn qualify(
         // Source certificates and parsing remain fatal in every mode.
         qualify_xml(&xml, case)?;
         let golden = crate::parity_support::Golden::parse(&xml)?;
+        if let ExpectedDisposition::Generated {
+            metadata:
+                ExpectedMetadata::BlockFlow {
+                    grid_reference_owners: Some(owners),
+                    ..
+                },
+        } = &case.expected
+        {
+            qualify_grid_reference_census(&golden.root, owners)?;
+            crate::parity_support::assert_grid_alignment_reference_inputs(&golden, owners)?;
+        }
         if mode == QualificationMode::NumericDiagnostics {
             match collect_numeric_case(&golden, case, &mut std::io::stdout().lock()) {
                 Ok(mismatches) => numeric.record_case(mismatches)?,
@@ -902,6 +914,7 @@ fn qualify_xml(xml: &str, case: &ExpectedCase) -> Result<()> {
             root_writing_mode,
             root_position,
             atomic_paragraphs: _,
+            grid_reference_owners: _,
         } => {
             // The zero-edge Htb Auto body owns only its actual inline extent.
             // No used/root height is promoted into a body percentage basis or
@@ -987,6 +1000,49 @@ fn qualify_xml(xml: &str, case: &ExpectedCase) -> Result<()> {
         root_direction
     };
     assert_eq!(root.attribute("direction"), Some(root_direction));
+    Ok(())
+}
+
+fn qualify_grid_reference_census(
+    root: &crate::parity_support::Node,
+    expected: &[String],
+) -> Result<()> {
+    fn visit(
+        node: &crate::parity_support::Node,
+        path: String,
+        actual: &mut Vec<String>,
+    ) -> Result<()> {
+        if node.style.get("grid-alignment-reference").is_some() {
+            if !matches!(node.style.get("display"), Some("grid" | "inline-grid")) {
+                return Err(format!(
+                    "Grid reference certificate belongs to non-Grid source at {path}"
+                )
+                .into());
+            }
+            actual.push(path.clone());
+        }
+        for (index, child) in node.children.iter().enumerate() {
+            let child_path = if path == "/" {
+                format!("/{index}")
+            } else {
+                format!("{path}/{index}")
+            };
+            visit(child, child_path, actual)?;
+        }
+        Ok(())
+    }
+    let mut actual = Vec::new();
+    visit(root, "/".into(), &mut actual)?;
+    if actual != expected {
+        return Err(format!(
+            "actual source-bound Grid reference census: expected {expected:?}, got {actual:?}"
+        )
+        .into());
+    }
+    eprintln!(
+        "qualify-root-context: {} actual own-Grid reference records qualified",
+        actual.len()
+    );
     Ok(())
 }
 

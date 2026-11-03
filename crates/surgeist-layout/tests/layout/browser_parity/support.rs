@@ -162,6 +162,61 @@ pub fn assert_surgeist_matches_with_endpoint_accounting(
     compare_captured_expectations(golden, &mut NumericComparisonSink::Strict)
 }
 
+/// Qualification of actual Native selector inputs, separate from geometry and
+/// the containing paragraph's own inline/BR reference. Expected paths belong
+/// to the one authored source inventory; they do not supply Native operands.
+pub fn assert_grid_alignment_reference_inputs(
+    golden: &Golden,
+    expected: &[String],
+) -> Result<(), Error> {
+    fn visit(
+        tree: &TestTree,
+        node: usize,
+        path: String,
+        expected: &[String],
+        seen: &mut Vec<String>,
+    ) -> Result<(), Error> {
+        if let Some(input) = tree.nodes[node].layout_input.as_box()
+            && input.display == layout::Display::Grid
+        {
+            let reference = if expected.contains(&path) {
+                seen.push(path.clone());
+                layout::GridBaselineReference::Named(layout::BaselineName::Central)
+            } else {
+                layout::GridBaselineReference::Physical
+            };
+            let references = layout::GridBaselineReferences {
+                columns: reference,
+                rows: reference,
+            };
+            if input.grid_baseline_references != references {
+                return Err(Error::new(format!(
+                    "actual Native Grid alignment selectors at {path}: expected {references:?}, got {:?}",
+                    input.grid_baseline_references
+                )));
+            }
+        }
+        for (index, child) in tree.nodes[node].children.iter().enumerate() {
+            let child_path = if path == "/" {
+                format!("/{index}")
+            } else {
+                format!("{path}/{index}")
+            };
+            visit(tree, *child, child_path, expected, seen)?;
+        }
+        Ok(())
+    }
+    let tree = TestTree::from_golden(&golden.root, Some(&golden.viewport.root_context))?;
+    let mut seen = Vec::new();
+    visit(&tree, 0, "/".into(), expected, &mut seen)?;
+    if seen != expected {
+        return Err(Error::new(format!(
+            "actual Native Grid owner census: expected {expected:?}, got {seen:?}"
+        )));
+    }
+    Ok(())
+}
+
 /// Collects every requested numeric box/scroll mismatch after real captured
 /// admission and Native computation. Other observation categories are refused;
 /// a returned set does not classify or accept any difference.
@@ -12762,3 +12817,18 @@ mod numeric_comparison_tests;
 #[cfg(test)]
 #[path = "atomic_paragraph_metrics_tests.rs"]
 mod atomic_paragraph_metrics_tests;
+
+#[cfg(test)]
+#[test]
+fn grid_reference_qualification_observes_raw_inputs_without_assigning_names() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity/xml/subgrid/subgrid_baseline_vertical_auto_rows_inner_row1_first__border_box_ltr.xml");
+    let golden = Golden::parse_file(path).unwrap();
+    assert_grid_alignment_reference_inputs(&golden, &[]).unwrap();
+    let named = ["/", "/0", "/0/0"].map(str::to_owned);
+    let error = assert_grid_alignment_reference_inputs(&golden, &named).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("actual Native Grid alignment selectors at /")
+    );
+}
