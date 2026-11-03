@@ -50,6 +50,14 @@ pub enum HtmlPiPseudoAttributeAction {
         /// `start..end` spans the whole reference rather than one literal scalar.
         reference: bool,
     },
+    /// The name of the pair being scanned is complete. Find the committed pair whose name
+    /// equals it, using the caller's own index of committed names, and reply with
+    /// `HtmlPiPseudoAttributeReply::Pair`: `Some(index)` of the committed pair, or `None` when no
+    /// committed pair has that name. The caller also records the name in its index for the
+    /// pair that `Commit` then adds, which takes the next index. The cursor verifies a
+    /// `Some` answer with `NameLength` and `NameUnit` against that one pair only, so the
+    /// requests of a scan grow with the pair count and the name units, not with their product.
+    FindName,
     /// Report the length, in UTF-16 code units, of the name of the committed pair at this index,
     /// to compare it with the name of the pair being scanned for a duplicate. Reply with
     /// `HtmlPiPseudoAttributeReply::Length`.
@@ -74,6 +82,9 @@ pub enum HtmlPiPseudoAttributeReply {
     Unit(Option<u16>),
     /// Answer to `NameLength`: the requested name's length in UTF-16 code units.
     Length(usize),
+    /// Answer to `FindName`: the index of the committed pair whose name equals the current name,
+    /// or `None`.
+    Pair(Option<usize>),
     /// The pending write or transition was performed; carries no data.
     Ack,
 }
@@ -294,6 +305,19 @@ impl HtmlPiPseudoAttributeCursor {
                 }
                 self.consume()?;
             }
+            HtmlPiPseudoAttributeAction::FindName => {
+                let HtmlPiPseudoAttributeReply::Pair(candidate) = reply else {
+                    return Err(HtmlPiPseudoAttributeError::Integrity);
+                };
+                match candidate {
+                    None => self.action = Some(HtmlPiPseudoAttributeAction::Commit),
+                    Some(index) if index < self.pairs => {
+                        self.compare = index;
+                        self.action = Some(HtmlPiPseudoAttributeAction::NameLength(index));
+                    }
+                    Some(_) => return Err(HtmlPiPseudoAttributeError::Integrity),
+                }
+            }
             HtmlPiPseudoAttributeAction::NameLength(index) => {
                 let HtmlPiPseudoAttributeReply::Length(len) = reply else {
                     return Err(HtmlPiPseudoAttributeError::Integrity);
@@ -308,7 +332,8 @@ impl HtmlPiPseudoAttributeCursor {
                         0,
                     ));
                 } else {
-                    self.next_comparison()?;
+                    // The named candidate is a different name: nothing is a duplicate.
+                    self.action = Some(HtmlPiPseudoAttributeAction::Commit);
                 }
             }
             HtmlPiPseudoAttributeAction::NameUnit(name, index) => {
@@ -328,7 +353,7 @@ impl HtmlPiPseudoAttributeCursor {
                     }
                     HtmlPiPseudoAttributeName::Pair(pair) if pair == self.compare => {
                         if unit != self.current_unit {
-                            self.next_comparison()?;
+                            self.action = Some(HtmlPiPseudoAttributeAction::Commit);
                         } else {
                             self.comparison_offset = Self::add(index, 1)?;
                             if self.comparison_offset == self.name_len {
@@ -374,15 +399,6 @@ impl HtmlPiPseudoAttributeCursor {
                 self.action = None;
             }
         }
-        Ok(())
-    }
-    fn next_comparison(&mut self) -> Result<(), HtmlPiPseudoAttributeError> {
-        self.compare = Self::add(self.compare, 1)?;
-        self.action = Some(if self.compare < self.pairs {
-            HtmlPiPseudoAttributeAction::NameLength(self.compare)
-        } else {
-            HtmlPiPseudoAttributeAction::Commit
-        });
         Ok(())
     }
     fn step(&mut self) -> Result<(), HtmlPiPseudoAttributeError> {
@@ -456,12 +472,7 @@ impl HtmlPiPseudoAttributeCursor {
             Phase::Value => match cp {
                 Some(cp) if cp == self.quote => {
                     self.consume()?;
-                    self.compare = 0;
-                    self.action = Some(if self.pairs == 0 {
-                        HtmlPiPseudoAttributeAction::Commit
-                    } else {
-                        HtmlPiPseudoAttributeAction::NameLength(0)
-                    });
+                    self.action = Some(HtmlPiPseudoAttributeAction::FindName);
                 }
                 Some(38) => {
                     self.ref_start = self.offset;
@@ -570,6 +581,80 @@ impl HtmlPiPseudoAttributeCursor {
         Ok(())
     }
 }
+/// A random key and probe sequence for a consumer's index of committed pseudo-attribute names.
+///
+/// The consumer keeps a table of [`table_slots`](Self::table_slots) entries, each empty or naming a
+/// committed pair, and answers `HtmlPiPseudoAttributeAction::FindName` by probing it: it
+/// starts at [`probe`](Self::probe)'s first slot, compares the name of the pair in each
+/// occupied slot with the current name, takes the pair of an equal name as the answer,
+/// and, at an empty slot, records the current name's pair there and answers `None`.
+/// The table holds at most half as many names as it has slots, so a probe always reaches
+/// an empty slot, and the key is random for each instance, so no input can choose names
+/// that collide: the expected probes per lookup are constant. The consumer
+/// charges the table, the hash of the name and every probe and comparison it makes.
+#[derive(Clone, Debug)]
+pub struct HtmlPiPseudoAttributeNameKey {
+    state: std::hash::RandomState,
+}
+impl Default for HtmlPiPseudoAttributeNameKey {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+impl HtmlPiPseudoAttributeNameKey {
+    /// Creates a key that is random for this instance.
+    pub fn new() -> Self {
+        Self {
+            state: std::hash::RandomState::new(),
+        }
+    }
+    /// The number of slots, a power of two, that holds the names of any valid pseudo-attribute
+    /// string of `data_len` code units at most half full. A pair needs at least four code units
+    /// (a name, `=` and two quotes) and consecutive pairs are separated by at least one more, so a
+    /// string holds at most `data_len / 4 + 1` pairs. The count never exceeds 2^(usize::BITS - 1),
+    /// so the arithmetic cannot overflow; a table of that size is the consumer's reservation to
+    /// refuse.
+    pub fn table_slots(data_len: usize) -> usize {
+        ((data_len / 4 + 1) * 2).next_power_of_two()
+    }
+    /// The probe sequence of `name` over a table of `slots` entries. `None` when `slots` is
+    /// not a power of two.
+    pub fn probe(&self, name: &[u16], slots: usize) -> Option<HtmlPiPseudoAttributeNameProbe> {
+        use std::hash::BuildHasher;
+        if !slots.is_power_of_two() {
+            return None;
+        }
+        let mask = slots - 1;
+        Some(HtmlPiPseudoAttributeNameProbe {
+            slot: (self.state.hash_one(name) as usize) & mask,
+            mask,
+            remaining: slots,
+        })
+    }
+}
+/// The slots that a name visits in a table, from its hash onward and wrapping around once.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlPiPseudoAttributeNameProbe {
+    slot: usize,
+    mask: usize,
+    remaining: usize,
+}
+impl HtmlPiPseudoAttributeNameProbe {
+    /// The slot to inspect now.
+    pub fn slot(&self) -> usize {
+        self.slot
+    }
+    /// Moves to the next slot. Returns false, leaving the probe unchanged, once every slot has
+    /// been visited.
+    pub fn advance(&mut self) -> bool {
+        if self.remaining <= 1 {
+            return false;
+        }
+        self.remaining -= 1;
+        self.slot = (self.slot + 1) & self.mask;
+        true
+    }
+}
 fn xml_char(cp: u32) -> bool {
     matches!(cp,9|10|13|0x20..=0xd7ff|0xe000..=0xfffd|0x10000..=0x10ffff)
 }
@@ -600,7 +685,7 @@ mod tests {
         let mut names: Vec<Vec<u16>> = vec![];
         let mut name = vec![];
         let mut value = vec![];
-        let mut seen = [false; 12];
+        let mut seen = [false; 13];
         while let Some(action) = cursor.action() {
             let before = cursor;
             let invalid = if matches!(
@@ -656,6 +741,10 @@ mod tests {
                     }
                     HtmlPiPseudoAttributeReply::Ack
                 }
+                HtmlPiPseudoAttributeAction::FindName => {
+                    seen[12] = true;
+                    HtmlPiPseudoAttributeReply::Pair(names.iter().position(|n| *n == name))
+                }
                 HtmlPiPseudoAttributeAction::NameLength(i) => {
                     seen[6] = true;
                     HtmlPiPseudoAttributeReply::Length(names[i].len())
@@ -692,7 +781,7 @@ mod tests {
             };
             cursor.reply(reply).unwrap();
         }
-        assert_eq!(seen, [true; 12]);
+        assert_eq!(seen, [true; 13]);
         assert_eq!(
             cursor.reply(HtmlPiPseudoAttributeReply::Ack),
             Err(HtmlPiPseudoAttributeError::Integrity)
@@ -745,5 +834,129 @@ mod tests {
             .unwrap();
         }
         assert_eq!(c.action(), None);
+    }
+    /// Runs the grammar over `source`, answering `FindName` with `answer`, which receives the
+    /// committed names and the current name. Returns the final validity and committed names.
+    fn drive(
+        source: &str,
+        answer: impl Fn(&[Vec<u16>], &[u16]) -> Option<usize>,
+    ) -> Result<(bool, Vec<Vec<u16>>), HtmlPiPseudoAttributeError> {
+        let source: Vec<u16> = source.encode_utf16().collect();
+        let mut cursor = HtmlPiPseudoAttributeCursor::new(source.len());
+        let (mut names, mut name) = (Vec::<Vec<u16>>::new(), Vec::<u16>::new());
+        let mut valid = false;
+        while let Some(action) = cursor.action() {
+            let reply = match action {
+                HtmlPiPseudoAttributeAction::Read(i) => {
+                    HtmlPiPseudoAttributeReply::Unit(source.get(i).copied())
+                }
+                HtmlPiPseudoAttributeAction::Begin(HtmlPiPseudoAttributeField::Name) => {
+                    name.clear();
+                    HtmlPiPseudoAttributeReply::Ack
+                }
+                HtmlPiPseudoAttributeAction::Emit {
+                    field: HtmlPiPseudoAttributeField::Name,
+                    units,
+                    len,
+                    ..
+                } => {
+                    name.extend_from_slice(&units[..len]);
+                    HtmlPiPseudoAttributeReply::Ack
+                }
+                HtmlPiPseudoAttributeAction::FindName => {
+                    HtmlPiPseudoAttributeReply::Pair(answer(&names, &name))
+                }
+                HtmlPiPseudoAttributeAction::NameLength(i) => {
+                    HtmlPiPseudoAttributeReply::Length(names[i].len())
+                }
+                HtmlPiPseudoAttributeAction::NameUnit(which, i) => {
+                    HtmlPiPseudoAttributeReply::Unit(Some(match which {
+                        HtmlPiPseudoAttributeName::Current => name[i],
+                        HtmlPiPseudoAttributeName::Pair(n) => names[n][i],
+                    }))
+                }
+                HtmlPiPseudoAttributeAction::Commit => {
+                    names.push(name.clone());
+                    HtmlPiPseudoAttributeReply::Ack
+                }
+                HtmlPiPseudoAttributeAction::Pop => {
+                    names.pop().unwrap();
+                    HtmlPiPseudoAttributeReply::Ack
+                }
+                HtmlPiPseudoAttributeAction::Ready(ok) => {
+                    valid = ok;
+                    HtmlPiPseudoAttributeReply::Ack
+                }
+                _ => HtmlPiPseudoAttributeReply::Ack,
+            };
+            cursor.reply(reply)?;
+        }
+        Ok((valid, names))
+    }
+    fn honest(names: &[Vec<u16>], name: &[u16]) -> Option<usize> {
+        names.iter().position(|n| n == name)
+    }
+    #[test]
+    fn find_name_answers_decide_duplicates_and_a_candidate_is_verified_against_its_units() {
+        let text = |s: &str| s.encode_utf16().collect::<Vec<u16>>();
+        // An exact duplicate is invalid and the map is emptied again.
+        assert_eq!(drive("a='1' b='2' a='3'", honest), Ok((false, vec![])));
+        // Names that differ only in case, in length or in a late unit are distinct.
+        assert_eq!(
+            drive("a='' A='' ab='' aB='' abc=''", honest).unwrap().1,
+            vec![text("a"), text("A"), text("ab"), text("aB"), text("abc")]
+        );
+        // A wrong candidate, of another length or of the same length with other units, is
+        // verified against the one pair it names and is not a duplicate.
+        let wrong = |names: &[Vec<u16>], _: &[u16]| (!names.is_empty()).then_some(0);
+        assert_eq!(
+            drive("a='' bb='' cc='' dd=''", wrong).unwrap(),
+            (true, vec![text("a"), text("bb"), text("cc"), text("dd")])
+        );
+        assert_eq!(
+            drive("aa='' ab=''", wrong).unwrap(),
+            (true, vec![text("aa"), text("ab")])
+        );
+        // A candidate that is not a committed pair is refused as an integrity failure.
+        let missing = |names: &[Vec<u16>], _: &[u16]| Some(names.len());
+        assert_eq!(
+            drive("a=''", missing),
+            Err(HtmlPiPseudoAttributeError::Integrity)
+        );
+    }
+    #[test]
+    fn name_probes_visit_every_slot_once_and_tables_hold_all_pairs_at_most_half_full() {
+        let key = HtmlPiPseudoAttributeNameKey::new();
+        assert!(key.probe(&[97], 0).is_none());
+        assert!(key.probe(&[97], 6).is_none());
+        for slots in [1_usize, 2, 8, 64] {
+            let mut probe = key.probe(&[97, 98], slots).unwrap();
+            let mut seen = vec![probe.slot()];
+            while probe.advance() {
+                seen.push(probe.slot());
+            }
+            assert!(!probe.advance());
+            seen.sort_unstable();
+            assert_eq!(seen, (0..slots).collect::<Vec<_>>());
+        }
+        assert_eq!(
+            [0, 3, 4, 8, 12, 1000].map(HtmlPiPseudoAttributeNameKey::table_slots),
+            [2, 2, 4, 8, 8, 512]
+        );
+        assert_eq!(
+            HtmlPiPseudoAttributeNameKey::table_slots(usize::MAX),
+            1 << (usize::BITS - 1)
+        );
+        // The densest string, one-unit names with empty values, has len / 4 + 1 pairs at most.
+        for pairs in 1..40_usize {
+            let names: Vec<String> = (0..pairs).map(|n| format!("n{n}")).collect();
+            let source: String = names
+                .iter()
+                .map(|n| format!("{n}=''"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let slots = HtmlPiPseudoAttributeNameKey::table_slots(source.encode_utf16().count());
+            assert!(2 * pairs <= slots, "{pairs} pairs in {slots} slots");
+        }
     }
 }

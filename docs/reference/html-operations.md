@@ -167,6 +167,14 @@ machine-integer magnitude cap. Time and duration author values use millisecond
 precision, matching the strict author grammar. A global date/time retains its
 explicit local value and offset; it does not perform an implicit UTC conversion.
 
+Recovery durations let one unit repeat, so the ordinary operation adds each
+component's digits into per-place column sums (carries resolved once, when the
+value is read) instead of rebuilding the running decimal; its work is linear in
+the input however long the first number or fraction is. The controlled
+interpretation charges each duration recognition step `16 * units consumed + 256`
+(it previously charged the whole unread remainder), which is linear in total;
+its exact staged accumulation still charges each addition by the accumulated size.
+
 Temporal recovery returns separate parsed values where the source accepts a
 wider domain. Exact decimal seconds retain arbitrary admitted fractional
 precision; projection to millisecond author values fails when that value cannot
@@ -2894,7 +2902,12 @@ record the consumed boundary.
 `HtmlValueInterpreter::rel_with_attributes` interprets the pinned standard link
 types for the distinct `link`, `a`, `area` and `form` roles. Its
 [local report](../../crates/surgeist-html/src/internal/elements/rel.rs) retains exact `rel`/`rev` fields, token occurrence
-ranges and duplicate relationships. It separates recognized keywords, role
+ranges and duplicate relationships. A token's `duplicate_of` names the first earlier
+token equal under ASCII case folding. Finding them heap-sorts the token occurrences
+in place by (folded content, position), marks the adjacent equal runs and restores
+the source order by the strictly increasing offsets; nothing is allocated, and each
+comparison is charged before it is made, so the work is O(token units * log tokens)
+instead of one comparison per pair of tokens. It separates recognized keywords, role
 applicability, actual relationship effects and author constraints. Token
 recognition does not establish supported browser capabilities or URL grammar.
 
@@ -3115,7 +3128,13 @@ Native and captured readers share one allocation-free
 [XML pseudo-attribute cursor](../../crates/surgeist-html/src/internal/microsyntax/pi_pseudo_attributes.rs) and
 [marker rules](../../crates/surgeist-html/src/internal/elements/template_markers.rs). The cursor validates the complete map:
 duplicate names or malformed unrelated fields invalidate it, including suffixes
-after a provisional matching name. XML scalar/name rules and numeric/predefined
+after a provisional matching name. When a name is complete the cursor asks the
+consumer (`FindName`) for the committed pair with that name and verifies the one
+candidate unit by unit, so its requests grow with the pairs plus the name units, not
+with their product. Each consumer keeps the index: a table at most half full
+(`HtmlPiPseudoAttributeNameKey::table_slots`) probed from a randomly keyed hash of the
+name, so no input can pick colliding names. The consumer admits the table before
+allocating it and charges the hash, every probe and every comparison. XML scalar/name rules and numeric/predefined
 references apply; HTML entity recovery supplies no substitute. Original raw for
 is admitted before role classification. The existing semantic session owns all
 work, scratch, nested output, cancellation, sticky failure and atomic publication.

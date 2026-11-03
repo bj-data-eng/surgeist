@@ -7,7 +7,7 @@ use surgeist_html::bounded::{
     lexical::{
         HtmlPiPseudoAttributeAction as Action, HtmlPiPseudoAttributeCursor as Cursor,
         HtmlPiPseudoAttributeField as Field, HtmlPiPseudoAttributeName as Name,
-        HtmlPiPseudoAttributeReply as Reply,
+        HtmlPiPseudoAttributeNameKey as NameKey, HtmlPiPseudoAttributeReply as Reply,
     },
     template::{
         HtmlTemplateMarkerFirst as First, HtmlTemplateMarkerSiblings as Siblings,
@@ -371,6 +371,12 @@ impl<'a> HtmlSemanticSession<'a> {
         self.template_raw(pi.data())?;
         let mut cursor = Cursor::new(pi.data().len());
         let mut names: Vec<Range<usize>> = Vec::new();
+        // The index of committed names: a table at most half full of pair numbers plus one,
+        // probed from a randomly keyed hash of the name, so that no input can choose names that
+        // collide. It is reserved when the first name is complete and released with `names`.
+        let key = NameKey::new();
+        let slots = NameKey::table_slots(pi.data().len());
+        let mut table: Vec<usize> = Vec::new();
         let mut current = 0..0;
         let mut name_count = 0usize;
         let mut is_name = true;
@@ -432,6 +438,55 @@ impl<'a> HtmlSemanticSession<'a> {
                             }
                         }
                         Reply::Ack
+                    }
+                    Action::FindName => {
+                        if table.is_empty() {
+                            self.reserve_scratch(&mut table, slots)?;
+                            self.charge(slots)?;
+                            table.resize(slots, 0);
+                        }
+                        let units = pi.data().code_units();
+                        let unavailable = |this: &mut Self| {
+                            this.stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
+                        };
+                        let sought = units
+                            .get(current.clone())
+                            .ok_or_else(|| unavailable(self))?;
+                        self.charge(sought.len())?;
+                        let mut probe =
+                            key.probe(sought, slots).ok_or_else(|| unavailable(self))?;
+                        let found = loop {
+                            self.charge(1)?;
+                            let entry =
+                                *table.get(probe.slot()).ok_or_else(|| unavailable(self))?;
+                            if entry == 0 {
+                                *table
+                                    .get_mut(probe.slot())
+                                    .ok_or_else(|| unavailable(self))? = names.len() + 1;
+                                break None;
+                            }
+                            let existing = names
+                                .get(entry - 1)
+                                .and_then(|span| units.get(span.clone()))
+                                .ok_or_else(|| unavailable(self))?;
+                            let mut equal = existing.len() == sought.len();
+                            if equal {
+                                for (left, right) in existing.iter().zip(sought) {
+                                    self.charge(1)?;
+                                    if left != right {
+                                        equal = false;
+                                        break;
+                                    }
+                                }
+                            }
+                            if equal {
+                                break Some(entry - 1);
+                            }
+                            if !probe.advance() {
+                                return Err(unavailable(self));
+                            }
+                        };
+                        Reply::Pair(found)
                     }
                     Action::NameLength(index) => {
                         self.charge(1)?;
@@ -502,6 +557,7 @@ impl<'a> HtmlSemanticSession<'a> {
             Ok(matched)
         })();
         self.release_scratch(names.capacity());
+        self.release_scratch(table.capacity());
         result
     }
     fn template_end(

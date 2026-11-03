@@ -3,8 +3,9 @@ use surgeist_html::bounded::{
         HtmlCustomNameScanAction as CustomAction, HtmlPiPseudoAttributeAction as PiAction,
         HtmlPiPseudoAttributeCursor as PiCursor, HtmlPiPseudoAttributeError as PiError,
         HtmlPiPseudoAttributeField as PiField, HtmlPiPseudoAttributeName as PiName,
-        HtmlPiPseudoAttributeReply as PiReply, HtmlSpaceTokenCursor, HtmlSpaceTokenStep,
-        is_ascii_whitespace, validate_custom_element_name, validate_custom_element_name_with,
+        HtmlPiPseudoAttributeNameKey as PiNameKey, HtmlPiPseudoAttributeReply as PiReply,
+        HtmlSpaceTokenCursor, HtmlSpaceTokenStep, is_ascii_whitespace,
+        validate_custom_element_name, validate_custom_element_name_with,
     },
     security::is_nonce_element,
     template::{
@@ -139,6 +140,10 @@ fn pseudo_attribute_requests(raw: &str) -> (bool, PseudoAttributePairs, usize) {
     let mut current = (Vec::<u16>::new(), Vec::<u16>::new());
     let mut pairs = Vec::<(Vec<u16>, Vec<u16>)>::new();
     let mut requests = 0;
+    // The consumer's index of committed names: a table at most half full, probed from a keyed hash.
+    let key = PiNameKey::new();
+    let slots = PiNameKey::table_slots(units.len());
+    let mut table = vec![None::<usize>; slots];
     while let Some(action) = cursor.action() {
         requests += 1;
         let reply = match action {
@@ -157,6 +162,20 @@ fn pseudo_attribute_requests(raw: &str) -> (bool, PseudoAttributePairs, usize) {
                     PiField::Value => current.1.extend_from_slice(&units[..len]),
                 }
                 PiReply::Ack
+            }
+            PiAction::FindName => {
+                let mut probe = key.probe(&current.0, slots).unwrap();
+                let found = loop {
+                    match table[probe.slot()] {
+                        None => {
+                            table[probe.slot()] = Some(pairs.len());
+                            break None;
+                        }
+                        Some(pair) if pairs[pair].0 == current.0 => break Some(pair),
+                        Some(_) => assert!(probe.advance(), "a half-full table has an empty slot"),
+                    }
+                };
+                PiReply::Pair(found)
             }
             PiAction::NameLength(index) => PiReply::Length(pairs[index].0.len()),
             PiAction::NameUnit(name, offset) => PiReply::Unit(match name {
@@ -224,6 +243,51 @@ fn pseudo_attribute_requests_grow_linearly_with_distinct_names() {
             "doubling the pairs grew the requests from {} to {}: {requests:?}",
             pair[0],
             pair[1]
+        );
+    }
+}
+
+/// Two pseudo-attributes with the same name make the parsing result an error; names are exact XML
+/// Names, so case and every unit matter.
+#[test]
+fn pseudo_attribute_duplicates_are_exactly_the_repeated_names() {
+    let names = [
+        "a",
+        "A",
+        "b",
+        "ab",
+        "aB",
+        "a-b",
+        "\u{e9}",
+        "\u{c9}",
+        "x:y",
+        "\u{1F600}",
+    ];
+    let mut state = 0x853c_49e6_748f_ea9b_u64;
+    let mut next = move |bound: usize| {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        (state % bound as u64) as usize
+    };
+    for _ in 0..500 {
+        let chosen: Vec<&str> = (0..next(9)).map(|_| names[next(names.len())]).collect();
+        let raw = chosen
+            .iter()
+            .map(|name| format!("{name}='v'"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let distinct = chosen
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+            == chosen.len();
+        let (valid, pairs) = pseudo_attributes(&raw);
+        assert_eq!(valid, distinct, "{raw}");
+        assert_eq!(
+            pairs.len(),
+            if distinct { chosen.len() } else { 0 },
+            "{raw}"
         );
     }
 }

@@ -6,8 +6,9 @@
 
 pub use crate::internal::microsyntax::pi_pseudo_attributes::{
     HtmlPiPseudoAttributeAction, HtmlPiPseudoAttributeCursor, HtmlPiPseudoAttributeError,
-    HtmlPiPseudoAttributeField, HtmlPiPseudoAttributeName, HtmlPiPseudoAttributeReply,
-    is_xml_name_code_point, is_xml_name_start_code_point,
+    HtmlPiPseudoAttributeField, HtmlPiPseudoAttributeName, HtmlPiPseudoAttributeNameKey,
+    HtmlPiPseudoAttributeNameProbe, HtmlPiPseudoAttributeReply, is_xml_name_code_point,
+    is_xml_name_start_code_point,
 };
 pub use crate::internal::microsyntax::tokens::{
     HtmlSpaceTokenCursor, HtmlSpaceTokenStep, ascii_case_insensitive_unit, ascii_lowercase,

@@ -3,8 +3,8 @@ use std::sync::atomic::AtomicBool;
 use surgeist_html::bounded::lexical::{
     HtmlPiPseudoAttributeAction as Action, HtmlPiPseudoAttributeCursor as Cursor,
     HtmlPiPseudoAttributeError as CursorError, HtmlPiPseudoAttributeField as Field,
-    HtmlPiPseudoAttributeName as Name, HtmlPiPseudoAttributeReply as Reply, is_xml_name_code_point,
-    is_xml_name_start_code_point,
+    HtmlPiPseudoAttributeName as Name, HtmlPiPseudoAttributeNameKey as NameKey,
+    HtmlPiPseudoAttributeReply as Reply, is_xml_name_code_point, is_xml_name_start_code_point,
 };
 
 use crate::store::source::{
@@ -291,6 +291,21 @@ thread_local! {
     static PI_REQUESTS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
+fn release_table(table: Vec<usize>, budget: Option<&Formation>) -> Result<(), DomError> {
+    let payload = Payload {
+        bytes: table
+            .capacity()
+            .checked_mul(size_of::<usize>())
+            .ok_or(DomError::RepresentationExhausted)?,
+        units: 0,
+    };
+    drop(table);
+    if let Some(budget) = budget {
+        budget.release_payload(payload);
+    }
+    Ok(())
+}
+
 fn parse_attributes(
     data: &DocumentString,
     budget: Option<&Formation>,
@@ -302,6 +317,12 @@ fn parse_attributes(
     #[cfg(test)]
     let mut pi_writes = crate::store::CopyObservation::default();
     let mut pairs: Vec<(DocumentString, DocumentString)> = Vec::new();
+    // The index of committed names: a table at most half full of pair numbers plus one, probed from
+    // a randomly keyed hash of the name, so that no input can choose names that collide. It is
+    // reserved when the first name is complete, under the same custody as the other banks.
+    let key = NameKey::new();
+    let slots = NameKey::table_slots(data.len());
+    let mut table: Vec<usize> = Vec::new();
     while let Some(action) = cursor.action() {
         formation::step(budget, cancelled)?;
         #[cfg(test)]
@@ -341,6 +362,54 @@ fn parse_attributes(
                 #[cfg(test)]
                 pi_writes.extended::<u16>(len);
                 Reply::Ack
+            }
+            Action::FindName => {
+                if table.is_empty() {
+                    #[cfg(test)]
+                    let observed =
+                        source_observation::before(&name, &value, &pairs, budget.is_some());
+                    formation::reserve(&mut table, slots, budget, cancelled)?;
+                    table.resize(slots, 0);
+                    #[cfg(test)]
+                    source_observation::grew(
+                        observed,
+                        table.capacity() * std::mem::size_of::<usize>(),
+                        0,
+                    );
+                }
+                for _ in 0..name.len() {
+                    formation::step(budget, cancelled)?;
+                }
+                let mut probe = key
+                    .probe(&name, slots)
+                    .expect("the table has a power-of-two slot count");
+                let found = loop {
+                    formation::step(budget, cancelled)?;
+                    let entry = table[probe.slot()];
+                    if entry == 0 {
+                        table[probe.slot()] = pairs.len() + 1;
+                        break None;
+                    }
+                    let existing = pairs[entry - 1].0.code_units();
+                    let mut equal = existing.len() == name.len();
+                    if equal {
+                        for (left, right) in existing.iter().zip(&name) {
+                            formation::step(budget, cancelled)?;
+                            if left != right {
+                                equal = false;
+                                break;
+                            }
+                        }
+                    }
+                    if equal {
+                        break Some(entry - 1);
+                    }
+                    assert!(
+                        probe.advance(),
+                        "a table at most half full has an empty slot"
+                    );
+                };
+                Reply::Pair(found)
             }
             Action::NameLength(index) => Reply::Length(pairs[index].0.len()),
             Action::NameUnit(which, offset) => Reply::Unit(Some(match which {
@@ -422,6 +491,7 @@ fn parse_attributes(
     // Committed strings and the pairs backing stay with the caller's Formation.
     release_scratch(name, budget)?;
     release_scratch(value, budget)?;
+    release_table(table, budget)?;
     Ok(pairs)
 }
 

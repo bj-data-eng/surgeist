@@ -88,7 +88,7 @@ impl SessionStorage {
             HtmlPiPseudoAttributeAction as Action,
             HtmlPiPseudoAttributeCursor as HtmlParsePendingAssociationCursor,
             HtmlPiPseudoAttributeField as Field, HtmlPiPseudoAttributeName as Name,
-            HtmlPiPseudoAttributeReply as Reply,
+            HtmlPiPseudoAttributeNameKey as NameKey, HtmlPiPseudoAttributeReply as Reply,
         };
         c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let HtmlNodeKind::ProcessingInstruction(pi) = &self
@@ -99,9 +99,15 @@ impl SessionStorage {
         else {
             return Err(SessionError::WrongToken);
         };
-        let mut cursor = HtmlParsePendingAssociationCursor::new(pi.data().len());
+        let data_len = pi.data().len();
+        let mut cursor = HtmlParsePendingAssociationCursor::new(data_len);
         let mut name: Option<PendingField> = None;
         let mut value: Option<PendingField> = None;
+        // The index of committed names: a table at most half full of pair numbers plus one,
+        // probed from a randomly keyed hash of the name, so that no input can choose names that
+        // collide. It exists once the first name is complete and is released with the fields.
+        let key = NameKey::new();
+        let mut table: Option<OwnedVec<usize>> = None;
         let result = (|| {
             while let Some(action) = cursor.action() {
                 payload_write::<HtmlParsePendingAssociationCursor>(c, 1)?;
@@ -162,6 +168,76 @@ impl SessionStorage {
                             &mut pending.maps,
                         )?;
                         Reply::Ack
+                    }
+                    Action::FindName => {
+                        let slots = NameKey::table_slots(data_len);
+                        if table.is_none() {
+                            table = Some(OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?);
+                            for _ in 0..slots {
+                                table
+                                    .as_mut()
+                                    .ok_or(SessionError::WrongToken)?
+                                    .try_push_geometric_toward(c, 0, slots)?;
+                            }
+                        }
+                        let current = name
+                            .as_ref()
+                            .ok_or(SessionError::WrongToken)?
+                            .buffer
+                            .units();
+                        for _ in current {
+                            c.charge_unit_inspection()?;
+                        }
+                        let mut probe = key
+                            .probe(current, slots)
+                            .ok_or_else(|| latch_registry_row(c))?;
+                        let found = loop {
+                            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                            let bank = table.as_mut().ok_or(SessionError::WrongToken)?;
+                            let entry = *bank
+                                .as_slice()
+                                .get(probe.slot())
+                                .ok_or_else(|| latch_registry_row(c))?;
+                            let RetainedPayload::PiAttributes { values, .. } =
+                                self.payloads.row(c, map)?
+                            else {
+                                return Err(SessionError::WrongToken);
+                            };
+                            let Some(existing_pair) = entry.checked_sub(1) else {
+                                let next = values
+                                    .len()
+                                    .checked_add(1)
+                                    .ok_or_else(|| latch_registry_row(c))?;
+                                *bank
+                                    .get_mut(probe.slot(), c)?
+                                    .ok_or_else(|| latch_registry_row(c))? = next;
+                                break None;
+                            };
+                            let existing = values
+                                .as_slice()
+                                .get(existing_pair)
+                                .ok_or(SessionError::WrongToken)?
+                                .name
+                                .code_units();
+                            let mut equal = existing.len() == current.len();
+                            if equal {
+                                for (left, right) in existing.iter().zip(current) {
+                                    c.charge_unit_inspection()?;
+                                    c.charge_unit_inspection()?;
+                                    if left != right {
+                                        equal = false;
+                                        break;
+                                    }
+                                }
+                            }
+                            if equal {
+                                break Some(existing_pair);
+                            }
+                            if !probe.advance() {
+                                return Err(latch_registry_row(c));
+                            }
+                        };
+                        Reply::Pair(found)
                     }
                     Action::NameLength(index) => {
                         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -260,6 +336,9 @@ impl SessionStorage {
         }
         if let Some(field) = value {
             field.release(c)?;
+        }
+        if let Some(bank) = table {
+            bank.release(c)?;
         }
         result
     }
