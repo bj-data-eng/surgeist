@@ -13,7 +13,9 @@ fn decode_style(style: Value, unsupported: bool) -> Result<DecodedMeasurement, M
                 "containingLimits": {"width": "unbounded", "height": "unbounded"}
             }
         }},
-        "style": style, "unroundedLayout": {"x": 0, "y": 0, "width": 0, "height": 0}, "children": []
+        "style": style, "unroundedLayout": {"x": 0, "y": 0, "width": 0, "height": 0},
+        // Explicit zero-phase diagnostic for this authored Box codec fixture.
+        "worldRoundedLayout": {"x": 0, "y": 0, "width": 0, "height": 0}, "children": []
     });
     if unsupported {
         node["unsupportedReason"] = json!("unsupported fixture");

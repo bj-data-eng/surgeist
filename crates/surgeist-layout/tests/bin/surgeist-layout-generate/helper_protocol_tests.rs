@@ -82,7 +82,7 @@ fn decode_envelope(result: &Value) -> Value {
         .expect("getTestData retains JSON-string transport");
     let envelope: Value =
         serde_json::from_str(response).expect("measurement envelope is valid JSON");
-    assert_eq!(envelope["schemaVersion"].as_u64(), Some(3));
+    assert_eq!(envelope["schemaVersion"].as_u64(), Some(4));
     assert_eq!(
         envelope
             .as_object()
@@ -128,7 +128,7 @@ fn present_root_without_source_authority_returns_four_precise_refusals() {
 }
 
 #[test]
-fn missing_root_returns_version_three_with_four_unsupported_variants() {
+fn missing_root_returns_version_four_with_four_unsupported_variants() {
     let result = helper_response(false);
     let envelope = decode_envelope(&result);
     assert_eq!(result["rootQueries"], json!(["test-root"]));

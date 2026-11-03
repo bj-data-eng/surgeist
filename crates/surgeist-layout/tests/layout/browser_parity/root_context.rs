@@ -13,9 +13,12 @@ pub enum RootContext {
 }
 #[derive(Clone, Debug, PartialEq)]
 pub enum QualifiedRootContext {
-    PositionedAutoInsets {
+    AbsoluteRootLocal {
         containing_size: layout::Size<layout::NonNegativeFiniteOf>,
         containing_direction: layout::Direction,
+        hypothetical_direction: layout::Direction,
+        hypothetical_display: String,
+        hypothetical_inline_offset: Scalar,
         fallback: RootFallback,
     },
     BlockFlowAuto {
@@ -48,14 +51,14 @@ pub(super) fn parse_root_context(
     version: Option<&str>,
 ) -> Result<RootContext, Error> {
     match version {
-        None | Some("1" | "2") => {
+        None | Some("1" | "2" | "3") => {
             let raw = &node.document().input_text()[node.range()];
             return Ok(RootContext::UnqualifiedCapture {
                 measurement_version: version.map(str::to_owned),
                 raw_viewport: raw.to_owned(),
             });
         }
-        Some("3") => {}
+        Some("4") => {}
         Some(other) => {
             return Err(Error::new(format!(
                 "unsupported root-capture version {other}"
@@ -66,10 +69,14 @@ pub(super) fn parse_root_context(
         .attribute("root-context")
         .ok_or_else(|| Error::new("missing root-context authority"))?;
     let specific = match kind {
-        "positioned-auto-insets" => &[
+        "absolute-root-local" => &[
             "containing-width",
             "containing-height",
             "containing-direction",
+            "hypothetical-direction",
+            "hypothetical-display",
+            "hypothetical-anchor",
+            "hypothetical-inline-offset",
         ][..],
         "block-flow-auto" => &["parent-inline-extent", "parent-direction"][..],
         _ => return Err(Error::new(format!("unsupported root context {kind}"))),
@@ -117,7 +124,7 @@ pub(super) fn parse_root_context(
             .and_then(parse_direction)
     };
     let qualified = match kind {
-        "positioned-auto-insets" => {
+        "absolute-root-local" => {
             let containing_size = layout::Size::new(
                 extent(node, "containing-width")?,
                 extent(node, "containing-height")?,
@@ -127,9 +134,39 @@ pub(super) fn parse_root_context(
                     "positioned root does not name its authenticated ICB",
                 ));
             }
-            QualifiedRootContext::PositionedAutoInsets {
+            let hypothetical_direction = direction("hypothetical-direction")?;
+            let hypothetical_display = node
+                .attribute("hypothetical-display")
+                .filter(|value| {
+                    [
+                        "block",
+                        "flow-root",
+                        "flex",
+                        "inline-flex",
+                        "grid",
+                        "inline-grid",
+                        "grid-lanes",
+                    ]
+                    .contains(value)
+                })
+                .ok_or_else(|| Error::new("missing or unsupported hypothetical outer display"))?
+                .to_owned();
+            if node.attribute("hypothetical-anchor") != Some("inline-start") {
+                return Err(Error::new("missing or unsupported hypothetical anchor"));
+            }
+            let raw = node
+                .attribute("hypothetical-inline-offset")
+                .and_then(|value| value.strip_suffix("px"))
+                .ok_or_else(|| {
+                    Error::new("hypothetical-inline-offset requires signed CSS pixels")
+                })?;
+            let hypothetical_inline_offset = parse_number(raw)?;
+            QualifiedRootContext::AbsoluteRootLocal {
                 containing_size,
                 containing_direction: direction("containing-direction")?,
+                hypothetical_direction,
+                hypothetical_display,
+                hypothetical_inline_offset,
                 fallback,
             }
         }
@@ -148,7 +185,14 @@ pub(super) fn parse_root_context(
         }
         _ => return Err(Error::new("invalid qualified root kind")),
     };
-    Ok(RootContext::Qualified(qualified))
+    let context = RootContext::Qualified(qualified);
+    if matches!(
+        &context,
+        RootContext::Qualified(QualifiedRootContext::AbsoluteRootLocal { .. })
+    ) {
+        context.request()?;
+    }
+    Ok(context)
 }
 
 impl RootFallback {
@@ -161,6 +205,30 @@ impl RootFallback {
     }
 }
 impl RootContext {
+    pub(super) fn validate_root(&self, root: &super::Node) -> Result<(), Error> {
+        if let Self::Qualified(QualifiedRootContext::AbsoluteRootLocal {
+            hypothetical_display,
+            ..
+        }) = self
+        {
+            let expected = match hypothetical_display.as_str() {
+                "block" => "block",
+                "flow-root" => "flow-root",
+                "flex" | "inline-flex" => "flex",
+                "grid" | "inline-grid" => "grid",
+                "grid-lanes" => "grid-lanes",
+                _ => return Err(Error::new("unsupported hypothetical outer display")),
+            };
+            if root.style.get("position") != Some("absolute")
+                || root.style.get("display") != Some(expected)
+            {
+                return Err(Error::new(
+                    "absolute proof disagrees with actual position or blockified display",
+                ));
+            }
+        }
+        Ok(())
+    }
     pub(super) fn request(&self) -> Result<layout::LayoutRootRequest, Error> {
         let Self::Qualified(context) = self else {
             return Err(Error::new(
@@ -168,17 +236,26 @@ impl RootContext {
             ));
         };
         Ok(match context {
-            QualifiedRootContext::PositionedAutoInsets {
+            QualifiedRootContext::AbsoluteRootLocal {
                 containing_size,
                 containing_direction,
+                hypothetical_inline_offset,
                 fallback,
-            } => layout::LayoutRootRequest::positioned_auto_insets(
-                layout::PositionedRootContext::horizontal_auto_insets(
+                ..
+            } => {
+                let local = layout::RootLocalPositionedContext::horizontal_auto_insets(
                     *containing_size,
                     *containing_direction,
+                    *hypothetical_inline_offset,
                     fallback.normalized(),
-                ),
-            ),
+                )
+                .map_err(|error| {
+                    Error::new(format!("invalid hypothetical inline offset: {error:?}"))
+                })?;
+                layout::LayoutRootRequest::positioned_root_local(local).map_err(|error| {
+                    Error::new(format!("invalid root-local available space: {error:?}"))
+                })?
+            }
             QualifiedRootContext::BlockFlowAuto {
                 parent_inline_extent,
                 parent_direction,
@@ -210,11 +287,12 @@ impl RootContext {
                 parent_direction,
                 ..
             } => (parent_inline_extent.get(), *parent_direction),
-            QualifiedRootContext::PositionedAutoInsets {
-                containing_size,
-                containing_direction,
-                ..
-            } => (containing_size.width.get(), *containing_direction),
+            QualifiedRootContext::AbsoluteRootLocal { .. } => {
+                if location != layout::Point::ZERO {
+                    return Err(Error::new("Native root-local origin must be (0, 0)"));
+                }
+                return Ok(());
+            }
         };
         let expected_x = if direction == layout::Direction::Ltr {
             0.0
@@ -259,7 +337,7 @@ mod tests {
     #[test]
     fn auto_body_keeps_block_space_indefinite_and_owns_separate_fallback_facts() {
         let raw = r#"<viewport root-context="block-flow-auto" parent-inline-extent="800px" parent-direction="rtl" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>"#;
-        let request = context(raw, Some("3")).unwrap().request().unwrap();
+        let request = context(raw, Some("4")).unwrap().request().unwrap();
         let sizing = request.sizing_request();
         assert_eq!(
             sizing.axes().width.space().definite_size().unwrap().get(),
@@ -314,7 +392,89 @@ mod tests {
             ),
             raw.replace("/>", r#" width="max-content"/>"#),
         ] {
-            assert!(context(&invalid, Some("3")).is_err());
+            assert!(context(&invalid, Some("4")).is_err());
         }
+    }
+    fn absolute(offset: &str, html: &str, body: &str) -> String {
+        format!(
+            r#"<viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="{html}" hypothetical-direction="{body}" hypothetical-display="inline-grid" hypothetical-anchor="inline-start" hypothetical-inline-offset="{offset}px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>"#
+        )
+    }
+    #[test]
+    fn local_absolute_uses_signed_progression_distance_and_independent_directions() {
+        for html in ["ltr", "rtl"] {
+            for body in ["ltr", "rtl"] {
+                for (offset, expected) in
+                    [("0", 800.0), ("100", 700.0), ("-100", 900.0), ("900", 0.0)]
+                {
+                    let parsed = context(&absolute(offset, html, body), Some("4")).unwrap();
+                    let request = parsed.request().unwrap();
+                    assert_eq!(
+                        request
+                            .sizing_request()
+                            .axes()
+                            .width
+                            .space()
+                            .definite_size()
+                            .unwrap()
+                            .get(),
+                        expected
+                    );
+                    let layout::LayoutRootContext::RootLocalPositioned(local) = request.context()
+                    else {
+                        panic!("wrong local capability");
+                    };
+                    assert_eq!(
+                        local.containing_flow_axes().direction(),
+                        parse_direction(html).unwrap()
+                    );
+                    assert_eq!(
+                        local.hypothetical_inline_offset(),
+                        offset.parse::<Scalar>().unwrap()
+                    );
+                    parsed
+                        .validate_native_origin(layout::Point::ZERO, layout::Size::new(100.0, 20.0))
+                        .unwrap();
+                    assert!(
+                        parsed
+                            .validate_native_origin(
+                                layout::Point::new(1.0, 0.0),
+                                layout::Size::new(100.0, 20.0)
+                            )
+                            .is_err()
+                    );
+                }
+            }
+        }
+    }
+    #[test]
+    fn local_root_metadata_rejects_missing_unknown_nonfinite_and_overflow_facts() {
+        let raw = absolute("0", "ltr", "rtl");
+        for field in [
+            "hypothetical-direction=\"rtl\" ",
+            "hypothetical-display=\"inline-grid\" ",
+            "hypothetical-anchor=\"inline-start\" ",
+            "hypothetical-inline-offset=\"0px\" ",
+        ] {
+            assert!(
+                context(&raw.replace(field, ""), Some("4")).is_err(),
+                "{field}"
+            );
+        }
+        for invalid in [
+            raw.replace("inline-start", "physical-left"),
+            raw.replace("inline-grid", "inline-table"),
+            raw.replace("0px\" fallback", "NaNpx\" fallback"),
+            raw.replace("0px\" fallback", "1e100px\" fallback"),
+            raw.replace("absolute-root-local", "positioned-auto-insets"),
+            raw.replace("/>", " extra=\"1\"/>"),
+            absolute("-3.4028235e38", "ltr", "ltr").replace("800px", "3.4028235e38px"),
+        ] {
+            assert!(context(&invalid, Some("4")).is_err(), "{invalid}");
+        }
+        let old = raw.replace("absolute-root-local", "positioned-auto-insets");
+        let parsed = context(&old, Some("3")).unwrap();
+        assert!(matches!(&parsed, RootContext::UnqualifiedCapture { .. }));
+        assert!(parsed.request().is_err());
     }
 }

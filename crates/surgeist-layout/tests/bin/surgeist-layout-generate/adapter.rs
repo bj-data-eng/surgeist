@@ -417,6 +417,7 @@ mod tests {
             "style": {"position":"relative","display": "block", "boxSizing": "border-box", "writingMode": "horizontal-tb", "direction": "ltr"},
             "unroundedLayout": geometry.clone(),
             "smartRoundedLayout": geometry.clone(),
+            "worldRoundedLayout": geometry.clone(),
             "naivelyRoundedLayout": geometry,
             "children": [],
         })
@@ -583,7 +584,7 @@ mod tests {
     }
 
     #[test]
-    fn adapter_requires_a_closed_version_three_measurement_envelope() {
+    fn adapter_requires_a_closed_measurement_envelope() {
         let variants = fixture_cases()
             .into_iter()
             .map(|(_, key)| format!("\"{key}\":{{\"layoutInput\":\"unsupported\",\"unsupportedReason\":\"known unsupported\"}}"))
@@ -591,11 +592,12 @@ mod tests {
             .join(",");
         for extra in [
             "",
-            "\"schemaVersion\":4,",
-            "\"schemaVersion\":3.0,",
+            "\"schemaVersion\":3,",
+            "\"schemaVersion\":5,",
+            "\"schemaVersion\":4.0,",
             "\"schemaVersion\":null,",
-            "\"schemaVersion\":3,\"unexpected\":true,",
-            "\"schemaVersion\":3,\"schemaVersion\":3,",
+            "\"schemaVersion\":4,\"unexpected\":true,",
+            "\"schemaVersion\":4,\"schemaVersion\":4,",
         ] {
             let payload = format!("{{{extra}{variants}}}");
             assert!(
@@ -623,7 +625,7 @@ mod tests {
         let error = LayoutAdapter
             .lower(
                 &fixture(),
-                Value::String("{\"schemaVersion\":3}".to_string()),
+                Value::String("{\"schemaVersion\":4}".to_string()),
             )
             .unwrap_err();
         assert_eq!(

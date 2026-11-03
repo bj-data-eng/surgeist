@@ -159,6 +159,8 @@ class TrackSizingParser {
 // The capture profile is source-qualified, not a CSS cascade implementation.
 // Its producer is the adapter holding the exact HTML/base/helper input bytes.
 let rootContextCapture;
+// One synchronous observation occurrence; restored after every variant.
+let rootLocalObservation;
 
 function configureRootContextCapture(source, baseStyle, helperReference, styleReference) {
   const reject = reason => { rootContextCapture = { reason }; };
@@ -222,7 +224,11 @@ function configureRootContextCapture(source, baseStyle, helperReference, styleRe
       ownedStyle.textContent = baseStyle;
       liveLinks[0].replaceWith(ownedStyle);
     }
-    rootContextCapture = { source, baseStyle, ownedStyle,
+    // Only this exact base sheet supplies the DIV default. Restoring position,
+    // float and clear must not use the live absolute box's blockified display.
+    const hypotheticalDisplay = sourceRoot.style.getPropertyValue('all') ? null :
+      sourceRoot.style.display || (sourceRoot.tagName === 'DIV' ? 'flex' : null);
+    rootContextCapture = { source, baseStyle, ownedStyle, hypotheticalDisplay,
       sourceRoot: sourceRoot.outerHTML, html: parsed.documentElement,
       body: parsed.body, rules, helperUrl, styleUrl };
   } catch (_) {
@@ -286,7 +292,7 @@ function captureRootContext(root) {
   // The exact admitted base stylesheet and empty html/body declaration lists
   // establish Auto body dimensions. Used CSSOM body height is deliberately unread.
   if (body.style.length || html.style.length) fail('AncestorInlineStyleChanged');
-  if (!['ltr', 'rtl'].includes(parentStyle.direction)) fail('ContainingDirection');
+  if (![parentStyle.direction, htmlStyle.direction].every(value => ['ltr', 'rtl'].includes(value))) fail('ContainingDirection');
   if (window.scrollX !== 0 || window.scrollY !== 0) fail('ScrolledFrame');
   const visual = window.visualViewport;
   if (!visual || visual.scale !== 1 || visual.offsetLeft !== 0 || visual.offsetTop !== 0) fail('ViewportScale');
@@ -316,8 +322,21 @@ function captureRootContext(root) {
         style.justifySelf !== 'auto' || ['IMG', 'VIDEO', 'CANVAS', 'IFRAME', 'OBJECT', 'EMBED', 'INPUT'].includes(root.tagName)) {
       fail('PositionedRootProfile');
     }
-    return { kind: 'positioned-auto-insets', containingWidth: width,
-      containingHeight: height, containingDirection: parentStyle.direction, fallback };
+    const hypotheticalDisplay = proof.hypotheticalDisplay;
+    const blockified = { 'inline-flex': 'flex', 'inline-grid': 'grid' };
+    if (!['block', 'flow-root', 'flex', 'inline-flex', 'grid', 'inline-grid', 'grid-lanes'].includes(hypotheticalDisplay) ||
+        style.display !== (blockified[hypotheticalDisplay] || hypotheticalDisplay)) fail('HypotheticalDisplaySource');
+    // The source proof permits only comments/collapsible ASCII whitespace before
+    // the sole root. Its empty first line has no advance donor, indentation,
+    // alignment displacement or float. Root direction is not the line direction.
+    if (parentStyle.whiteSpace !== 'normal' || parentStyle.textAlign !== 'start' ||
+        !zero(parentStyle.textIndent) ||
+        ![parentStyle.unicodeBidi, style.unicodeBidi].every(value => ['normal', 'isolate'].includes(value))) fail('HypotheticalInlineStartUnavailable');
+    qualifyRootLocalSubtree(root, unshifted);
+    return { kind: 'absolute-root-local', containingWidth: width,
+      containingHeight: height, containingDirection: htmlStyle.direction,
+      hypotheticalDirection: parentStyle.direction, hypotheticalDisplay,
+      hypotheticalAnchor: 'inline-start', hypotheticalInlineOffset: 0, fallback };
   }
   if (style.position === 'static' || style.position === 'relative') {
     return { kind: 'block-flow-auto', parentInlineExtent: width,
@@ -326,6 +345,52 @@ function captureRootContext(root) {
   fail('UnsupportedPosition');
 }
 
+
+// This is a closed source/capture capability, not a CSS cascade or an assumed
+// zero block origin. Every accepted producer must commute with a common root
+// translation before publication rounding. The exact base/inline declarations
+// and complete source/live subtree equality are authenticated above.
+function qualifyRootLocalSubtree(root, unshifted) {
+  const fail = reason => { throw new Error('Root context: ' + reason); };
+  const blockProperties = ['height', 'min-height', 'max-height',
+    'block-size', 'min-block-size', 'max-block-size'];
+  for (const property of blockProperties) {
+    const value = root.style.getPropertyValue(property);
+    if (/(?:^|[^a-z-])(?:stretch|fit-content|(?:-webkit-)?fill-available|available|contain)(?:$|[^a-z-])/i.test(value)) fail('RootLocalBlockSizeDependency');
+  }
+  const pending = [root];
+  while (pending.length) {
+    const node = pending.pop();
+    const style = getComputedStyle(node);
+    if (node !== root && !['static', 'relative', 'absolute'].includes(style.position)) fail('RootLocalExternalFrame');
+    if (!unshifted(style) || style.clipPath !== 'none' ||
+        !['normal', 'none'].includes(style.content)) fail('RootLocalExternalFrame');
+    if (style.writingMode !== 'horizontal-tb') fail('RootLocalWritingMode');
+    if (!['DIV', 'SPAN'].includes(node.tagName) ||
+        !['none', 'block', 'flow-root', 'flex', 'grid', 'grid-lanes'].includes(style.display)) fail('RootLocalBoxProfile');
+    // Unlike variant box-sizing/direction rules, .viewport supplies dimensions
+    // absent from this inline-declaration-only normalized sizing channel.
+    if (node.classList.contains('viewport')) fail('RootLocalUnrepresentedClass');
+    if (Array.from(node.attributes).some(attribute => attribute.name.startsWith('data-surgeist-'))) fail('RootLocalObservationChannel');
+    if (node.scrollLeft !== 0 || node.scrollTop !== 0) fail('RootLocalScrolledBox');
+    for (const property of Array.from(node.style)) {
+      const value = node.style.getPropertyValue(property);
+      // These source states are not resolved by the inline-only descriptor.
+      // Refuse rather than dropping a real used declaration into Native Auto.
+      if (/(?:^|[^a-z-])(?:var|attr)\s*\(/i.test(value) ||
+          /^(?:inherit|initial|unset|revert|revert-layer)$/i.test(value.trim())) fail('RootLocalUnresolvedDeclaration');
+      if (property === 'all' || property.startsWith('anchor-') || property.startsWith('position-') ||
+          property === 'container-type' || property === 'container-name' ||
+          /(?:anchor(?:-size)?|env)\s*\(/i.test(value) ||
+          /(?:^|[^a-z-])(?:[sld]?v[whib]|[sld]?vmin|[sld]?vmax)(?:$|[^a-z-])/i.test(value)) fail('RootLocalExternalSize');
+    }
+    // Absolute descendants have a containing box inside this actual absolute
+    // root; local hidden/scroll clipping remains in that same moving subtree.
+    // Fixed/sticky, transformed, viewport-dependent and typed inline producers
+    // have deliberately not been qualified by this first capability.
+    pending.push(...node.children);
+  }
+}
 
 function qualifyAnalyticCaptureText(node, containingMode, inheritedOrthogonal = false) {
   // A genuine Prepared paragraph retains its own font/source/control authority.
@@ -341,8 +406,17 @@ function qualifyAnalyticCaptureText(node, containingMode, inheritedOrthogonal = 
 
 function captureRootVariant(root, className) {
   document.body.className = className;
+  const previousObservation = rootLocalObservation;
   try {
     const before = captureRootContext(root);
+    if (before.kind === 'absolute-root-local') {
+      const rectangle = root.getBoundingClientRect();
+      // These coordinates are observation operands only, never source/static
+      // position evidence or inputs to the root sizing context above.
+      rootLocalObservation = { root, x: rectangle.left, y: rectangle.top };
+    } else {
+      rootLocalObservation = undefined;
+    }
     const data = describeElement(root);
     // Base-CSS positioning is real normalized input, not an omitted authored value.
     data.style.position = getComputedStyle(root).position;
@@ -353,6 +427,8 @@ function captureRootVariant(root, className) {
     return data;
   } catch (error) {
     return unsupportedTestData(error.message);
+  } finally {
+    rootLocalObservation = previousObservation;
   }
 }
 
@@ -1120,6 +1196,25 @@ function describeElement(e, expectedElement = null) {
   // Get precise, unrounded dimensions for the current element and it's parent
   let boundingRect = e.getBoundingClientRect();
   let parentBoundingRect = e.parentNode.getBoundingClientRect();
+  const observation = rootLocalObservation;
+  const isLocalRoot = observation?.root === e;
+  // Retain the prior world-corner observation as diagnostics. Its x/y have
+  // always been parent-local, not document positions.
+  const worldRoundedLayout = {
+    width: Math.round(boundingRect.right) - Math.round(boundingRect.left),
+    height: Math.round(boundingRect.bottom) - Math.round(boundingRect.top),
+    x: Math.round(boundingRect.x - parentBoundingRect.x),
+    y: Math.round(boundingRect.y - parentBoundingRect.y),
+    scrollWidth: e.scrollWidth, scrollHeight: e.scrollHeight,
+    clientWidth: e.clientWidth, clientHeight: e.clientHeight,
+  };
+  const smartRoundedLayout = observation ? {
+    ...worldRoundedLayout,
+    width: Math.round(boundingRect.right - observation.x) - Math.round(boundingRect.left - observation.x),
+    height: Math.round(boundingRect.bottom - observation.y) - Math.round(boundingRect.top - observation.y),
+    x: isLocalRoot ? 0 : worldRoundedLayout.x,
+    y: isLocalRoot ? 0 : worldRoundedLayout.y,
+  } : worldRoundedLayout;
 
   const computedStyle = getComputedStyle(e);
   const useAuthoredCssRules = expectedElement !== null;
@@ -1264,16 +1359,16 @@ function describeElement(e, expectedElement = null) {
     unroundedLayout: {
       width: boundingRect.width,
       height: boundingRect.height,
-      x: boundingRect.x - parentBoundingRect.x,
-      y: boundingRect.y - parentBoundingRect.y,
+      x: isLocalRoot ? 0 : boundingRect.x - parentBoundingRect.x,
+      y: isLocalRoot ? 0 : boundingRect.y - parentBoundingRect.y,
       scrollWidth: e.scrollWidth,
       scrollHeight: e.scrollHeight,
       clientWidth: e.clientWidth,
       clientHeight: e.clientHeight,
     },
 
-    // The naively rounded layout of the node. This is equivalent to calling Math.round() on
-    // each value in the unrounded layout individually
+    // Original offset/offset-parent diagnostics. These do not define the
+    // selected absolute-local observation or its cumulative corner phase.
     naivelyRoundedLayout: {
       width: e.offsetWidth,
       height: e.offsetHeight,
@@ -1285,19 +1380,11 @@ function describeElement(e, expectedElement = null) {
       clientHeight: e.clientHeight,
     },
 
-    // The naive rounding can result in 1px gaps in the layout. Chrome also uses
-    // a smarter algorithm, but it doesn't expose the output of that rounding.
-    // So we emulate the cumulative edge computation here.
-    smartRoundedLayout: {
-      width: Math.round(boundingRect.right) - Math.round(boundingRect.left),
-      height: Math.round(boundingRect.bottom) - Math.round(boundingRect.top),
-      x: Math.round(boundingRect.x - parentBoundingRect.x),
-      y: Math.round(boundingRect.y - parentBoundingRect.y),
-      scrollWidth: e.scrollWidth,
-      scrollHeight: e.scrollHeight,
-      clientWidth: e.clientWidth,
-      clientHeight: e.clientHeight,
-    },
+    // Absolute-local observations normalize continuous corners BEFORE Q.
+    // Child locations retain Native's Q(parent-local delta) policy; only the
+    // root location is zero. BlockFlow keeps its actual world-corner phase.
+    smartRoundedLayout,
+    worldRoundedLayout,
 
     // Whether the test should enable rounding
     useRounding: e.getAttribute("data-test-rounding") !== "false",
@@ -2397,7 +2484,7 @@ function getTestData() {
   if (!root) {
     const reason = "Unsupported missing #test-root fixture root";
     return JSON.stringify({
-      schemaVersion: 3,
+      schemaVersion: 4,
       borderBoxLtrData: unsupportedTestData(reason),
       contentBoxLtrData: unsupportedTestData(reason),
       borderBoxRtlData: unsupportedTestData(reason),
@@ -2410,7 +2497,7 @@ function getTestData() {
   const borderBoxRtlData = captureRootVariant(root, "border-box rtl");
   const contentBoxRtlData = captureRootVariant(root, "content-box rtl");
 
-  return JSON.stringify({ schemaVersion: 3, borderBoxLtrData, contentBoxLtrData, borderBoxRtlData, contentBoxRtlData });
+  return JSON.stringify({ schemaVersion: 4, borderBoxLtrData, contentBoxLtrData, borderBoxRtlData, contentBoxRtlData });
 }
 
 // Useful when developing this script. Logs the parsed style to the console when any test fixture is opened in a browser.

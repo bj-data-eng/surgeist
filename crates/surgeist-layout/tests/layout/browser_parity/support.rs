@@ -5,11 +5,16 @@ use crate::pinned_font;
 use surgeist_layout as layout;
 #[path = "prepared_source.rs"]
 mod prepared_source;
-use surgeist_layout::{ComputeInput, ComputeOutput, GridSpan, LayoutTree as _};
+#[cfg(test)]
+use surgeist_layout::GridSpan;
+use surgeist_layout::{ComputeInput, ComputeOutput, LayoutTree as _};
 #[path = "root_context.rs"]
 mod root_context;
 pub use root_context::RootContext;
 use root_context::parse_root_context;
+#[path = "root_diagnostics.rs"]
+mod root_diagnostics;
+pub use root_diagnostics::WorldRoundedLayout;
 
 type Scalar = layout::Scalar;
 
@@ -35,6 +40,7 @@ pub struct Golden {
     pub viewport: Viewport,
     pub root: Node,
     pub expectations: Expectation,
+    pub world_rounding_diagnostics: Vec<WorldRoundedLayout>,
 }
 
 impl Golden {
@@ -58,10 +64,10 @@ impl Golden {
         if test
             .descendants()
             .any(|node| node.has_tag_name("prepared-paragraph"))
-            && !matches!(test.attribute("measurement-version"), Some("2" | "3"))
+            && !matches!(test.attribute("measurement-version"), Some("2" | "3" | "4"))
         {
             return Err(Error::new(
-                "native source capture requires measurement-version=2 or 3",
+                "native source capture requires measurement-version=2, 3 or 4",
             ));
         }
         if test.attribute("measurement-version") == Some("3")
@@ -71,19 +77,34 @@ impl Golden {
                 "measurement version 3 requires observation-frame=root-border",
             ));
         }
+        if test.attribute("measurement-version") == Some("4") {
+            let expected = match viewport.attribute("root-context") {
+                Some("absolute-root-local") => "root-border-local",
+                Some("block-flow-auto") => "root-border",
+                _ => return Err(Error::new("V4 requires a closed root-context authority")),
+            };
+            if test.attribute("observation-frame") != Some(expected) {
+                return Err(Error::new(
+                    "V4 observation frame disagrees with root context",
+                ));
+            }
+        }
         let name = required_attr(test, "name")?.to_string();
         let root = parse_node(one_element_child(input)?)?;
         validate_fri06_c08r_explicit_input(&root, true)?;
         let expectations = parse_expectation(one_element_child(expectations)?)?;
+        let world_rounding_diagnostics =
+            root_diagnostics::parse(test, &root, test.attribute("measurement-version"))?;
+        let root_context = parse_root_context(viewport, test.attribute("measurement-version"))?;
+        root_context.validate_root(&root)?;
 
         Ok(Self {
             name,
             use_rounding: parse_bool(test.attribute("use-rounding").unwrap_or("true"))?,
-            viewport: Viewport {
-                root_context: parse_root_context(viewport, test.attribute("measurement-version"))?,
-            },
+            viewport: Viewport { root_context },
             root,
             expectations,
+            world_rounding_diagnostics,
         })
     }
 }
@@ -211,7 +232,7 @@ fn validate_capture_analytic_profile(tree: &TestTree, context: &RootContext) -> 
             parent_direction,
             ..
         }) => layout::FlowAxes::new(layout::WritingMode::HorizontalTb, *parent_direction),
-        RootContext::Qualified(root_context::QualifiedRootContext::PositionedAutoInsets {
+        RootContext::Qualified(root_context::QualifiedRootContext::AbsoluteRootLocal {
             containing_direction,
             ..
         }) => layout::FlowAxes::new(layout::WritingMode::HorizontalTb, *containing_direction),
@@ -2003,6 +2024,7 @@ struct InheritedTextContext {
 }
 
 impl TestTree {
+    #[cfg(test)]
     fn unrounded_inline_fragments(&self, node: usize) -> Option<&[layout::InlineFragmentOutput]> {
         self.nodes[node].unrounded_inline_fragments.as_deref()
     }
@@ -2856,6 +2878,7 @@ impl layout::LayoutBatchSink<usize, Scalar> for TestTree {
     }
 }
 
+#[cfg(test)]
 fn compare_expectation(
     tree: &TestTree,
     node: usize,
@@ -2887,6 +2910,7 @@ fn compare_expectation_with_endpoint_accounting(
     frame: ComparisonFrame,
 ) -> Result<ComparisonResult, Error> {
     let root_border_origin = match frame {
+        #[cfg(test)]
         ComparisonFrame::ParentLocal => None,
         ComparisonFrame::RootBorder => Some((
             node,
@@ -2998,6 +3022,7 @@ impl<'a> FragmentCursors<'a> {
 
 #[derive(Clone, Copy)]
 enum ComparisonFrame {
+    #[cfg(test)]
     ParentLocal,
     RootBorder,
 }
@@ -4186,6 +4211,7 @@ fn compare_optional_number(
     }
 }
 
+#[cfg(test)]
 fn to_layout_input(attrs: &StyleAttrs) -> Result<layout::LayoutInput, Error> {
     to_layout_input_in_flow(attrs, None)
 }
@@ -5956,6 +5982,7 @@ fn track_component_px(value: Scalar) -> layout::TrackComponent {
     layout::TrackComponent::Track(track_px(value))
 }
 
+#[cfg(test)]
 fn parse_track_component_list(raw: &str) -> Result<Vec<layout::TrackComponent>, Error> {
     parse_track_component_list_with_calc(raw)
 }
@@ -5970,6 +5997,7 @@ fn parse_track_component_list_with_calc(raw: &str) -> Result<Vec<layout::TrackCo
         .collect()
 }
 
+#[cfg(test)]
 fn parse_track_component(raw: &str) -> Result<layout::TrackComponent, Error> {
     parse_track_component_with_calc(raw)
 }
@@ -6082,6 +6110,7 @@ fn parse_track_sizing_with_calc(raw: &str) -> Result<layout::TrackSizing, Error>
     }
 }
 
+#[cfg(test)]
 fn parse_min_track_sizing_with_calc(raw: &str) -> Result<layout::MinTrackSizing, Error> {
     let raw = checked_sizing_fixture(raw)?;
     parse_min_track_sizing_inner(raw)
@@ -6098,6 +6127,7 @@ fn parse_min_track_sizing_inner(raw: &str) -> Result<layout::MinTrackSizing, Err
     }
 }
 
+#[cfg(test)]
 fn parse_max_track_sizing_with_calc(raw: &str) -> Result<layout::MaxTrackSizing, Error> {
     let raw = checked_sizing_fixture(raw)?;
     parse_max_track_sizing_inner(raw)
@@ -6177,6 +6207,7 @@ fn split_top_level_whitespace(raw: &str) -> Vec<String> {
     parts
 }
 
+#[cfg(test)]
 fn parse_grid_line(raw: &str) -> Result<Option<isize>, Error> {
     if raw == "auto" || raw.starts_with("span ") {
         return Ok(None);
@@ -12257,7 +12288,7 @@ mod source_root_frame_tests {
     fn rtl_body_root_placement_and_root_border_observation_are_independent() {
         // Authored Native context/geometry, not a browser-capture claim.
         // Parent RTL owns the root origin; the root's own LTR flow owns children.
-        let golden = Golden::parse(r#"<test name="rtl-body-frame" measurement-version="3" observation-frame="root-border" use-rounding="false"><viewport root-context="block-flow-auto" parent-inline-extent="800px" parent-direction="rtl" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/><input><div display="block" position="relative" direction="ltr" width="100px" height="20px"><div display="block" width="20px" height="10px"/></div></input><expectations><node x="0" y="0" width="100" height="20"><node x="0" y="0" width="20" height="10"/></node></expectations></test>"#).unwrap();
+        let golden = Golden::parse(r#"<test name="rtl-body-frame" measurement-version="4" observation-frame="root-border" use-rounding="false"><viewport root-context="block-flow-auto" parent-inline-extent="800px" parent-direction="rtl" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/><input><div display="block" position="relative" direction="ltr" width="100px" height="20px"><div display="block" width="20px" height="10px"/></div></input><expectations><node x="0" y="0" width="100" height="20"><node x="0" y="0" width="20" height="10"/></node></expectations><diagnostics><world-rounded-layout node-path="0" x="700" y="0" width="100" height="20"/><world-rounded-layout node-path="0.0" x="0" y="0" width="20" height="10"/></diagnostics></test>"#).unwrap();
         let mut tree = TestTree::from_golden(&golden.root, None).unwrap();
         let request = root_request(&golden.viewport.root_context).unwrap();
         let batch = layout::compute_layout(&tree, 0, request).unwrap();
@@ -12328,12 +12359,15 @@ mod source_root_frame_tests {
                 false,
             ),
         ] {
-            let xml = format!(
-                r#"<test name="authored-profile" measurement-version="3" observation-frame="root-border" use-rounding="false">{context}<input><div display="grid" position="relative">{children}</div></input><expectations><node/></expectations></test>"#
-            );
-            let golden = Golden::parse(&xml).unwrap();
-            let tree = TestTree::from_golden(&golden.root, None).unwrap();
-            let result = validate_capture_analytic_profile(&tree, &golden.viewport.root_context);
+            // This policy unit owns authored input/context, not browser observations.
+            let input_xml = format!("<div display=\"grid\" position=\"relative\">{children}</div>");
+            let input_document = roxmltree::Document::parse(&input_xml).unwrap();
+            let root = parse_node(input_document.root_element()).unwrap();
+            let context_document = roxmltree::Document::parse(context).unwrap();
+            let root_context =
+                parse_root_context(context_document.root_element(), Some("4")).unwrap();
+            let tree = TestTree::from_golden(&root, None).unwrap();
+            let result = validate_capture_analytic_profile(&tree, &root_context);
             if refused {
                 assert_eq!(
                     result.unwrap_err().to_string(),
@@ -12347,7 +12381,7 @@ mod source_root_frame_tests {
 
     #[test]
     fn only_qualified_static_auto_root_lowers_to_the_native_in_flow_role() {
-        let xml = r#"<test name="authored-static" measurement-version="3" observation-frame="root-border" use-rounding="false"><viewport root-context="block-flow-auto" parent-inline-extent="800px" parent-direction="ltr" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/><input><div display="grid" position="static" width="100px" height="20px"/></input><expectations><node/></expectations></test>"#;
+        let xml = r#"<test name="authored-static" measurement-version="4" observation-frame="root-border" use-rounding="false"><viewport root-context="block-flow-auto" parent-inline-extent="800px" parent-direction="ltr" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/><input><div display="grid" position="static" width="100px" height="20px"/></input><expectations><node/></expectations><diagnostics><world-rounded-layout node-path="0" x="0" y="0" width="100" height="20"/></diagnostics></test>"#;
         let golden = Golden::parse(xml).unwrap();
         let tree =
             TestTree::from_golden(&golden.root, Some(&golden.viewport.root_context)).unwrap();

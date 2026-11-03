@@ -4,8 +4,9 @@ use crate::measurement::{Attributes, Node, NodeKind, Observation, ValidatedMeasu
 
 pub(super) fn generate_xml(name: &str, measurement: &ValidatedMeasurement) -> String {
     let mut lines = vec![format!(
-        "<test name=\"{}\" measurement-version=\"3\" observation-frame=\"root-border\" use-rounding=\"{}\">",
+        "<test name=\"{}\" measurement-version=\"4\" observation-frame=\"{}\" use-rounding=\"{}\">",
         escape_attr(name),
+        measurement.observation_frame(),
         measurement.use_rounding()
     )];
     lines.push(format!(
@@ -18,8 +19,21 @@ pub(super) fn generate_xml(name: &str, measurement: &ValidatedMeasurement) -> St
     lines.push("  <expectations>".into());
     write_expectation(&mut lines, measurement.root(), 4, true);
     lines.push("  </expectations>".into());
+    lines.push("  <diagnostics>".into());
+    write_world_diagnostics(&mut lines, measurement.root(), "0");
+    lines.push("  </diagnostics>".into());
     lines.push("</test>".into());
     format!("{}\n", lines.join("\n"))
+}
+fn write_world_diagnostics(lines: &mut Vec<String>, node: &Node, path: &str) {
+    if let Some(attrs) = node.world_rounded_layout() {
+        let mut row = vec![("node-path", path.to_owned())];
+        row.extend_from_slice(attrs);
+        lines.push(format!("    <world-rounded-layout{}/>", attr_text(&row)));
+    }
+    for (index, child) in node.children().iter().enumerate() {
+        write_world_diagnostics(lines, child, &format!("{path}.{index}"));
+    }
 }
 fn write_input(lines: &mut Vec<String>, node: &Node, indent: usize) {
     let pad = " ".repeat(indent);

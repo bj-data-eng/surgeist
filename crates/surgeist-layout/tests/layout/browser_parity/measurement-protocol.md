@@ -1,4 +1,4 @@
-# Browser measurement protocol, version 3
+# Browser measurement protocol, version 4
 
 This is the private interchange between layout's bundled JavaScript helper and
 its Rust browser-corpus adapter. It describes measured fixture data, not authored
@@ -7,99 +7,166 @@ continue to use schema 4 independently of this protocol version.
 
 ## Root requests and observation frames
 
-Version 3 separates ordinary layout from physical availability. Preferred CSS
-width/height, an observed root rectangle and a viewport-filling test do not issue
-intrinsic operations. The closed viewport.rootContext alternatives are:
+Version 4 separates sizing operation, physical availability and observation
+frame. Preferred CSS width/height, an observed root rectangle and a
+viewport-filling test do not issue intrinsic operations. The closed
+`viewport.rootContext` alternatives are:
 
-- positioned-auto-insets: zero-edge, non-replaced horizontal absolute root,
-  all insets Auto, at the initial block/inline start of actual unshifted ICB and
-  static-position frames. Required fields are containingWidth, containingHeight,
-  containingDirection and fallback.
-- block-flow-auto: zero-edge static/relative root, all insets Auto, first in-flow
-  child of an ordinary horizontal Auto-sized body. Required fields are
-  parentInlineExtent, parentDirection and fallback. Normal operations have a
-  definite parent inline extent, independently indefinite Auto block extent and
-  percentage parent (Some(inline), None). Root flow remains independent. The qualified computed root positioning is
-serialized as normalized input, including positioning supplied by base CSS.
+| Kind | Required fields | Observation |
+| --- | --- | --- |
+| `absolute-root-local` | `containingWidth`, `containingHeight`, `containingDirection`, `hypotheticalDirection`, `hypotheticalDisplay`, `hypotheticalAnchor`, `hypotheticalInlineOffset`, `fallback` | `observation-frame="root-border-local"`; no document-space placement claim. |
+| `block-flow-auto` | `parentInlineExtent`, `parentDirection`, `fallback` | `observation-frame="root-border"` with independently checked actual Native body placement. |
+
+Absolute-local containing extents and direction belong to the actual ICB/html
+frame. Hypothetical direction belongs to the body; root direction remains its
+own captured style. The authenticated pre-blockification display comes from the
+original inline declaration or the exact owned base sheet's DIV default, not
+computed Grid. Its selected set is `block`, `flow-root`, `flex`, `inline-flex`,
+`grid`, `inline-grid` and `grid-lanes`, subject to all other source checks.
+
+The anchor is `inline-start`. Its finite signed offset `s` is a distance along
+the hypothetical body's progression over the same physical containing width
+`W`, not a physical-left coordinate. LTR and RTL both use `max(0, W - s)` once
+as inline availability; the offset itself is never converted to `W - s` for RTL.
+The request keeps full actual CB width/height as percentage bases, Normal
+operations and independently indefinite block availability. Native shrink-to-fit
+acceptance uses genuine min/max contributions. Root-local output starts at zero.
+
+The current producer establishes only `s = 0`: the sole direct-body root has an
+empty, unindented, start-aligned hypothetical first line, with only collapsible
+ASCII whitespace/comments around it and no preceding content or floats. It
+checks actual whitespace/bidi/alignment without inventing a font, strut or line
+rectangle. Nonzero indentation, preserved leading content and preceding spacers
+need separately qualified source profiles.
+
+BlockFlow has Normal operations, definite parent inline extent, independently
+indefinite Auto block extent and percentage parent `(Some(inline), None)`.
+Root flow remains independent. The reader checks actual unrounded Native body
+placement: LTR starts at zero; RTL at `parentInlineExtent - actual Native root
+width`. It then normalizes root observations using the computed Native origin.
 Only a source-qualified static/all-Auto root lowers to Native in-flow Relative
-with zero displacement; the original static fact remains in XML/provenance.
-Other static/offset profiles precisely refuse.
+with zero displacement; original static positioning remains in XML/provenance.
+Other static/offset profiles refuse.
 
-Fallback requires three independent facts: initialContainingBlock with physical
-width/height; nearestScrollport equal to none; and containingLimits with width
-and height both unbounded. This profile proves no intervening element scrollport
-and default local containing limits. Other nearest/bound states require separate
-source qualification. Native owners retain/replace them through OrthogonalFallback;
-a nearer unfixed scrollport must not inherit an older fixed bound.
+The public Native `PositionedRootContext` remains separate for genuine
+containing-frame placement; see the [Native root contexts](../../../src/output.rs).
+V4 has no `positioned-auto-insets` wire alias. Native root-local padding/border
+admission requires a definite preferred width under its sizing resolver. It does
+not expand browser source admission: current browser roots still require zero margin/padding/border and
+the retained non-collapsing boundary check. Padded roots and visible-overflow
+Block roots require their own qualification.
 
-The adapter authenticates the exact captured base stylesheet. Its current profile
-hash is 5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6.
-The helper qualifies the original direct-body DIV source tree, one owned helper and
-stylesheet, no additional sheet/script/frame, no html/body inline declarations
-and no extra body content. A non-collapsing root formatting boundary is required
-to prove the initial block origin; a bare visible-overflow block is not enough.
-It verifies source and live frames for each variant.
-This is a closed profile, not a partial cascade implementation. Additional,
-opaque or changed source refuses; a changed base asset needs fresh qualification.
+### Source and stylesheet custody
 
-Extents are captured from the standards-mode unscaled CSSOM viewport after
-scrollbar reservation, with matching visual viewport, actual body inline extent
-and stable before/after observations. Used body height is never read as a basis.
-Body direction is independent: the .rtl * selector does not set body direction.
-Unsupported contexts return precise Root context reasons. In particular, the
-old Flex-host extent derived from a root rectangle is not certified. No legacy
-MaxContent field becomes a Normal default.
+The adapter authenticates the exact captured base sheet, profile hash
+`5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6`.
+The helper authenticates the original direct-body DIV source, one helper and
+base LINK. It replaces only that exact live LINK in place with one owned STYLE
+containing unchanged captured bytes, including the data-URI font. Every variant
+checks the retained owner, text, CSSOM rules and complete sheet inventory.
+Repeated setup retains that owner; a marker cannot authorize replacement or
+repair changed source. Additional/adopted/opaque/changed sheets refuse.
 
-Version-3 XML explicitly declares observation-frame="root-border". Root x/y
-expectations are relative to its own border origin; children remain parent-local.
-The reader separately validates actual unrounded Native body-frame root placement
-(LTR start 0; RTL start parentInlineExtent minus actual Native root width), then
-normalizes root observations using the computed Native root origin. Every size,
-child, scroll, source and control observation remains compared. Browser root
-rectangles never become Layout inputs.
+The closed profile has no extra scripts/frames, html/body inline declarations or
+extra body content. Source and live subtree/frame facts must remain stable.
+Absolute-local capture additionally checks every box for local facts that do
+not depend on a common translation. Fixed/sticky/transformed frames, external
+sizing and anchors, remaining-block-space dependence, noninitial scrolling and unqualified
+typed-inline/observation channels refuse. Hidden clipping within the admitted
+moving subtree remains local. The base `.viewport` class refuses because its
+sizes are absent from this inline-declaration-only sizing channel.
 
-Historical XML is unchanged; its exact viewport element remains opaque metadata.
-It can retain genuine Source/font IR for independently authored Native tests,
-but root issuance fails with MissingRootContextAuthority. Fresh version-3 capture
-is required for browser parity. There is no legacy operation conversion and no
-change to the prepared paragraph's font/source profile.
+Within the absolute-local closure, unresolved `var()`/`attr()` and CSS-wide
+declaration states (`inherit`, `initial`, `unset`, `revert`, `revert-layer`) refuse
+rather than disappearing into Native Auto. BlockFlow retains its existing
+source/descriptor checks; this does not qualify every source declaration or
+implement a cascade. Represented literals and supported calc expressions retain
+the existing sizing bridge. Broader source profiles or a changed base asset
+require independent qualification.
 
-The opaque analytic text provider is a separate bounded profile. Its known,
-definite, formal MinContent/MaxContent and parallel unbounded requests retain
-those distinct operations. It does not claim the complete orthogonal infinite
-containing-block algorithm: capture and reader precisely refuse opaque analytic
-text through an orthogonal ancestor, including an inherited-infinite path.
-The provider additionally checks actual core-owned leaf and containing axes
-before accepting a Normal/Indefinite inline request. No universal fallback cap
-is applied. Real Prepared paragraphs retain their independently authenticated
-source/font/context path; glyph-free atomic/control roots do not fabricate text.
+Extents come from the standards-mode unscaled CSSOM viewport after scrollbar
+reservation, with matching visual viewport and actual body inline extent. Used
+Auto body height and browser root rectangles never supply request operands.
+The `.rtl *` selector does not set body direction. Unsupported contexts retain
+precise `Root context:` reasons; no historical MaxContent field becomes Normal.
+
+Fallback requires independent `initialContainingBlock` physical width/height,
+`nearestScrollport: "none"` and `containingLimits` with both axes `unbounded`.
+This profile proves absent intervening element scrollports and default local
+limits. Other states need their own source proof. Native `OrthogonalFallback`
+owners retain/replace those components: a nearer unfixed scrollport must not
+inherit an older fixed bound.
+
+### Continuous local rounding and separate diagnostics
+
+Let `Q` be the existing coordinate-rounding operation. Absolute-local sizes use
+`Q(worldEnd - rootStart) - Q(worldStart - rootStart)`: continuous corners are
+normalized before rounding. Child locations retain `Q(worldStart - parentStart)`,
+not a difference of separately rounded root-local starts. Root selected x/y are
+zero. Unrounded sizes and child parent-local locations remain measured, with
+root x/y zero. The measured root start is an observation operand only.
+
+BlockFlow retains its actual world-corner size phase and parent-local locations,
+plus its body-placement check. Neither path drops size, child, scroll, source
+or control comparisons because root observations are local.
+
+Every wire `layoutInput: "box"`, including a BR/control box, requires
+`worldRoundedLayout`: the former smart-rounded values, with parent-local
+`Q(delta)` x/y and world-corner width/height. They are not document positions.
+Full x/y/width/height are required; scrollWidth/scrollHeight and
+clientWidth/clientHeight are optional complete pairs. Values remain finite f64,
+with signed locations and nonnegative extents. Non-box typed text, boundaries
+and reason-only unsupported alternatives cannot carry this field.
+
+XML retains them separately as
+`<diagnostics><world-rounded-layout node-path="0.0" .../></diagnostics>`.
+Numbers are unitless CSS pixels; optional pairs use `scroll-width`/`scroll-height`
+and `client-width`/`client-height`.
+Root path is `0`; later dot-separated indices select the actual measured child
+array. Structural XML metadata is not a child occurrence. The reader checks the
+per-box census against the input tree. Diagnostics never become Native inputs,
+selected expectations or a replacement oracle. Existing naive offset/offset-parent
+diagnostics likewise do not define local rounding.
+
+Historical XML 1/2/3 remains exact raw, unqualified capture. Its viewport cannot
+issue a current Native root operation: `MissingRootContextAuthority` remains
+visible. Genuine Native tests may use retained Source/font IR with independently
+authored requests. Old captures are not relabeled or supplied missing facts;
+fresh V4 capture is required for current browser parity. Prepared font/source
+capabilities are unchanged.
+
+The opaque analytic provider remains separate. Known, definite, formal MIN/MAX
+and parallel unbounded requests retain distinct operations. It does not claim
+the complete orthogonal infinite-containing-block algorithm: capture and reader
+refuse opaque analytic text through an orthogonal ancestor, including inherited
+infinity. Actual core-owned leaf/containing axes are checked before accepting
+Normal/Indefinite inline requests; no universal fallback cap is applied. Genuine
+Prepared paragraphs retain their independent source/font/context path; the
+absolute-local closure does not admit unqualified typed-inline channels.
 
 ### Functional qualification before adoption
 
-Decoder/reader controls cover complete closed payloads, explicit zero, finite
-ranges, contradiction, required nearest/local-limit facts, historical refusal,
-and Native RTL body versus root-border coordinates. They are new-API functional
-controls, not preimplementation regression claims.
+Use the real [qualification example](../../../examples/qualify-root-context.rs)
+with `layout-golden-generate` and a verified cached browser. Its single source
+records own scheduling, declared outcomes and historical observation hashes.
+It uses the actual Layout adapter/public BrowserCorpus rather than a source or
+cascade mock. Follow the [corpus procedures](README.md) and
+[crate guide](../../../AGENTS.md) for execution/publication.
 
-Real browser qualification must use the owning generate-existing procedure on a
-self-contained candidate corpus root. Capture unchanged absolute fit-content
-and explicitly-relative baseline fixtures in all four variants. Check profile
-choice, source/resources, actual body direction, Auto block indefiniteness and
-stable post-reservation extents. Add an independent RTL-body/LTR-root control
-with authored root width and a real child, checking both coordinate frames.
-Exercise viewport scrollbar reservation and orthogonal fallback without promoting
-Auto percentage height. Require precise refusals for extra/opaque stylesheets,
-body overrides, preceding content/floats, shifted frames, non-Auto insets,
-unsupported scrollports and unstable/unqualified viewport precision.
-
-Preserve original XML/raw mismatches until faithful capture and full comparison
-exist. Filtered generation is diagnostic, not full corpus verification. Do not
-change manifest counts, fonts, HTML, CSS or geometry to hide missing authority.
+Require closed decoder/reader controls for complete payloads, explicit zero,
+finite ranges, fallback facts, local-zero versus actual body placement,
+world-diagnostic census and historical refusal. Real capture preserves original
+source/resources and every historical observation field. Broader source profiles
+need their own real-browser operand/refusal qualification; schema checks alone
+establish no such provenance. Preserve original XML/raw mismatches until faithful
+capture and full comparison exist. Filtered or finite-example generation does
+not verify the full corpus. Do not alter counts, fonts, HTML, CSS or geometry to
+hide missing source authority.
 
 ## Authentic prepared-text input
 
-Version 2 adds a closed original-source profile, independently validated by the
-Rust generator and the default XML reader. The reader does not import the
+The original-source profile introduced in version 2 is independently validated
+by the Rust generator and the default XML reader. The reader does not import the
 generator's wire types. `data-surgeist-prepared-text="ahem-ttf-v1"` opts a real
 formatting container into capture. Its `<prepared-paragraph capture="…"/>`
 contains JSON, escaped as an XML attribute; source strings are arrays of exact
@@ -269,21 +336,22 @@ returns a **JSON string**, whose object has exactly these five required fields:
 
 | Field | Type | Measurement state / case suffix |
 | --- | --- | --- |
-| `schemaVersion` | Integer `3` | Version of this measurement contract |
+| `schemaVersion` | Integer `4` | Version of this measurement contract |
 | `borderBoxLtrData` | Node object | `border-box ltr` / `border_box_ltr` |
 | `contentBoxLtrData` | Node object | `content-box ltr` / `content_box_ltr` |
 | `borderBoxRtlData` | Node object | `border-box rtl` / `border_box_rtl` |
 | `contentBoxRtlData` | Node object | `content-box rtl` / `content_box_rtl` |
 
 Measurements occur in the table's order by changing `document.body.className`
-and describing the same `#test-root` each time. The version-3 adapter explicitly loads the pinned face before measurement; it
-does not add a second document or derive source inputs from measurements. A missing root
+and describing the same `#test-root` each time. For the genuine Prepared profile,
+the adapter explicitly loads its pinned face before measurement. It adds no
+second document and derives no source inputs from measurements. A missing root
 returns all four variants as `layoutInput: "unsupported"` nodes with
 `unsupportedReason: "Unsupported missing #test-root fixture root"`; it performs
 no measurements or body-class changes.
 
 The helper is injected only if `getTestData` is missing. A fixture's preloaded
-helper remains in effect and must implement version 3. Unversioned and unknown
+helper remains in effect and must implement version 4. Unversioned and unknown
 versions are errors; there is no production legacy decoder or automatic helper
 replacement. Preservation tests explicitly transform captured old measurements
 into the historical version-1 wire shape offline. That test harness is not part
@@ -329,6 +397,7 @@ separate semantic value. Explicit empty observations are preserved.
 | `layoutInput` | Required explicit tag: `box`, `prepared-text`, `inline-text` (historical schema only), `inline-boundary`, or `unsupported`. No node kind is inferred from a missing tag. |
 | `unsupportedReason` | Optional classification on a measured node; required by the reason-only `unsupported` tag. Classification uses the first reason after wire validation. |
 | `children` | Required ordered array on supported nodes; `[]` means no children. Unsupported reason-only nodes omit it. |
+| `worldRoundedLayout` | Required on every box; absent on non-box alternatives. Complete finite x/y/width/height, with optional paired scroll/client extents; retained only as separate world-phase diagnostics. |
 | Optional `style` fields | Omission means no explicit fixture declaration. XML default-value omission remains a serialization rule; the decoder does not fabricate an observed value. |
 | `style.inlineMetrics` | Optional numeric object with required `baseline` and `lineHeight`. Omit the object when metrics are absent. Empty strings, individual metric fields, and null are invalid. |
 | `size`, `minSize`, `maxSize`, `gap`, edge groups | Optional structured dimensions; missing axes or edges remain absent. The helper omits an entire group when none of its entries is present. |
@@ -355,7 +424,7 @@ line-control participation is `forced-break` on an inline `br`; a block `br`
 remains a box.
 
 The supported root requires an explicit `useRounding` boolean and the closed
-version-3 `viewport.rootContext` described above. Child viewport data cannot
+version-4 `viewport.rootContext` described above. Child viewport data cannot
 replace root authority. Historical width/height and root/flex-item tags remain
 opaque archival metadata; neither intrinsic keywords nor observed host extents
 are converted into a new operation.
@@ -404,12 +473,17 @@ line feeds, carriage returns, and legal Unicode remain unchanged; forbidden
 control characters fail at their original node and field location. This check
 does not parse symbolic sizing expressions or other opaque style strings.
 
-Only ordinary layout geometry crosses the existing `f32` formatting boundary,
-after representability has been checked. Segment metrics, fragments, Range rectangles,
+Only selected ordinary layout geometry crosses the existing `f32` formatting
+boundary, after representability has been checked. Segment metrics, fragments,
+Range rectangles,
 and dimensions retain their existing `f64` formatting. The root's `useRounding`
 chooses smart-rounded or unrounded geometry for the tree. Root `x` and `y` write
 as zero; child geometry stays relative to its parent. Scroll extents use the
 existing nonnegative difference from naive client measurements.
+
+World-rounded diagnostics retain f64 precision independently of selected ordinary
+geometry formatting. They serialize only under the separate `diagnostics` tree,
+with checked node paths; they never enter Native sizing or comparison operands.
 
 Source segment IDs retain their helper-provided values. Atomic placeholder
 indices count lowered input children, including inline boundaries. Expectation
@@ -419,7 +493,8 @@ containing-root line registry. No protocol step renumbers these identities.
 
 XML attribute order, default-value omission, whitespace, escaping, text trimming,
 and formatting are preservation contracts. The fixture reader in `support.rs`
-remains an independent consumer: it parses the generated XML and compares layout
-results without importing these private measurement types. Full-corpus changes
-must preserve XML bytes, accounting, and each fixture's parity outcome unless a
-separate browser-expectation change is explicitly intended.
+remains an independent consumer: it parses generated XML and compares layout
+without importing private measurement types. Versioned recapture retains original
+XML bytes and exact raw comparisons in history. Fresh metadata/diagnostics come
+from authenticated current inputs and are not patched into old artifacts.
+Accounting and each fixture's comparison outcome remain independently visible.

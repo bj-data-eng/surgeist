@@ -17,10 +17,14 @@ pub(super) struct WireViewport {
     deny_unknown_fields
 )]
 enum WireRootContext {
-    PositionedAutoInsets {
+    AbsoluteRootLocal {
         containing_width: f64,
         containing_height: f64,
         containing_direction: Direction,
+        hypothetical_direction: Direction,
+        hypothetical_display: HypotheticalDisplay,
+        hypothetical_anchor: HypotheticalAnchor,
+        hypothetical_inline_offset: f64,
         fallback: Fallback,
     },
     BlockFlowAuto {
@@ -43,6 +47,36 @@ impl Direction {
             Self::Rtl => "rtl",
         }
     }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum HypotheticalDisplay {
+    Block,
+    FlowRoot,
+    Flex,
+    InlineFlex,
+    Grid,
+    InlineGrid,
+    GridLanes,
+}
+impl HypotheticalDisplay {
+    const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Block => "block",
+            Self::FlowRoot => "flow-root",
+            Self::Flex => "flex",
+            Self::InlineFlex => "inline-flex",
+            Self::Grid => "grid",
+            Self::InlineGrid => "inline-grid",
+            Self::GridLanes => "grid-lanes",
+        }
+    }
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum HypotheticalAnchor {
+    InlineStart,
 }
 
 #[derive(Deserialize)]
@@ -123,14 +157,45 @@ impl Fallback {
 }
 
 impl WireViewport {
+    pub(super) fn root_local_positioned(&self) -> bool {
+        matches!(self.root_context, WireRootContext::AbsoluteRootLocal { .. })
+    }
+    pub(super) fn validate_root_style(
+        &self,
+        style: Option<&super::style::Style>,
+        context: &Context<'_>,
+    ) -> Result<(), MeasurementError> {
+        if let WireRootContext::AbsoluteRootLocal {
+            hypothetical_display,
+            ..
+        } = &self.root_context
+        {
+            let style = context.required(style, "style")?;
+            let expected = match hypothetical_display {
+                HypotheticalDisplay::Block => "block",
+                HypotheticalDisplay::FlowRoot => "flow-root",
+                HypotheticalDisplay::Flex | HypotheticalDisplay::InlineFlex => "flex",
+                HypotheticalDisplay::Grid | HypotheticalDisplay::InlineGrid => "grid",
+                HypotheticalDisplay::GridLanes => "grid-lanes",
+            };
+            context.compatible(
+                style.position.as_deref() == Some("absolute")
+                    && style.display.as_deref() == Some(expected),
+                "viewport.rootContext.hypotheticalDisplay",
+                "absolute proof disagrees with actual position or blockified display",
+            )?;
+        }
+        Ok(())
+    }
     pub(super) fn validate_alternative(
         &self,
         context: &Context<'_>,
     ) -> Result<(), MeasurementError> {
         match &self.root_context {
-            WireRootContext::PositionedAutoInsets {
+            WireRootContext::AbsoluteRootLocal {
                 containing_width,
                 containing_height,
+                hypothetical_inline_offset,
                 fallback,
                 ..
             } => {
@@ -157,7 +222,18 @@ impl WireViewport {
                     *containing_width == fallback.initial_containing_block.width
                         && *containing_height == fallback.initial_containing_block.height,
                     "viewport.rootContext",
-                    "positioned source profile requires its actual initial containing block",
+                    "absolute source profile requires its actual initial containing block",
+                )?;
+                let offset = layout_number(
+                    *hypothetical_inline_offset,
+                    context,
+                    "viewport.rootContext.hypotheticalInlineOffset",
+                )? as f32;
+                let width = *containing_width as f32;
+                layout_number(
+                    f64::from(width - offset),
+                    context,
+                    "viewport.rootContext.hypotheticalInlineOffset",
                 )?;
             }
             WireRootContext::BlockFlowAuto {
@@ -187,14 +263,18 @@ impl WireViewport {
     pub(super) fn validate(&self, context: &Context<'_>) -> Result<Attributes, MeasurementError> {
         self.validate_alternative(context)?;
         let (mut attrs, fallback) = match &self.root_context {
-            WireRootContext::PositionedAutoInsets {
+            WireRootContext::AbsoluteRootLocal {
                 containing_width,
                 containing_height,
                 containing_direction,
+                hypothetical_direction,
+                hypothetical_display,
+                hypothetical_anchor: HypotheticalAnchor::InlineStart,
+                hypothetical_inline_offset,
                 fallback,
             } => (
                 vec![
-                    ("root-context", "positioned-auto-insets".into()),
+                    ("root-context", "absolute-root-local".into()),
                     (
                         "containing-width",
                         format!("{}px", number(*containing_width)),
@@ -204,6 +284,16 @@ impl WireViewport {
                         format!("{}px", number(*containing_height)),
                     ),
                     ("containing-direction", containing_direction.as_str().into()),
+                    (
+                        "hypothetical-direction",
+                        hypothetical_direction.as_str().into(),
+                    ),
+                    ("hypothetical-display", hypothetical_display.as_str().into()),
+                    ("hypothetical-anchor", "inline-start".into()),
+                    (
+                        "hypothetical-inline-offset",
+                        format!("{}px", number(*hypothetical_inline_offset)),
+                    ),
                 ],
                 fallback,
             ),
@@ -272,5 +362,60 @@ mod tests {
             let wire: WireViewport = serde_json::from_str(&raw).unwrap();
             assert!(wire.validate(&context).is_err());
         }
+    }
+    #[test]
+    fn absolute_local_requires_complete_proof_and_checked_native_remaining_space() {
+        let context = Context {
+            case_id: "local",
+            variant: "rtl",
+            node_path: "root".into(),
+        };
+        let valid = serde_json::json!({"rootContext":{"kind":"absolute-root-local","containingWidth":800,"containingHeight":600,"containingDirection":"ltr","hypotheticalDirection":"rtl","hypotheticalDisplay":"inline-grid","hypotheticalAnchor":"inline-start","hypotheticalInlineOffset":0,"fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}});
+        let wire: WireViewport = serde_json::from_value(valid.clone()).unwrap();
+        assert!(wire.root_local_positioned());
+        let attrs = wire.validate(&context).unwrap();
+        assert!(attrs.contains(&("hypothetical-inline-offset", "0px".into())));
+        assert!(attrs.contains(&("hypothetical-direction", "rtl".into())));
+        for field in [
+            "hypotheticalDirection",
+            "hypotheticalDisplay",
+            "hypotheticalAnchor",
+            "hypotheticalInlineOffset",
+        ] {
+            let mut invalid = valid.clone();
+            invalid["rootContext"]
+                .as_object_mut()
+                .unwrap()
+                .remove(field);
+            assert!(
+                serde_json::from_value::<WireViewport>(invalid).is_err(),
+                "{field}"
+            );
+        }
+        for (field, value) in [
+            ("hypotheticalDisplay", serde_json::json!("inline-table")),
+            ("hypotheticalAnchor", serde_json::json!("physical-left")),
+            ("hypotheticalInlineOffset", serde_json::Value::Null),
+            ("extra", serde_json::json!(1)),
+        ] {
+            let mut invalid = valid.clone();
+            invalid["rootContext"][field] = value;
+            assert!(
+                serde_json::from_value::<WireViewport>(invalid).is_err(),
+                "{field}"
+            );
+        }
+        let mut overflow = valid;
+        overflow["rootContext"]["containingWidth"] = serde_json::json!(f64::from(f32::MAX));
+        overflow["rootContext"]["fallback"]["initialContainingBlock"]["width"] =
+            serde_json::json!(f64::from(f32::MAX));
+        overflow["rootContext"]["hypotheticalInlineOffset"] =
+            serde_json::json!(-f64::from(f32::MAX));
+        assert!(
+            serde_json::from_value::<WireViewport>(overflow)
+                .unwrap()
+                .validate(&context)
+                .is_err()
+        );
     }
 }

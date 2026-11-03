@@ -155,6 +155,8 @@ struct WireNode {
     #[serde(default, deserialize_with = "present")]
     smart_rounded_layout: Option<WireGeometry>,
     #[serde(default, deserialize_with = "present")]
+    world_rounded_layout: Option<WireGeometry>,
+    #[serde(default, deserialize_with = "present")]
     naively_rounded_layout: Option<WireGeometry>,
     #[serde(default, deserialize_with = "present")]
     inline_segments: Option<Vec<WireSegment>>,
@@ -352,6 +354,7 @@ pub(super) enum DecodedMeasurement {
 pub(super) struct ValidatedMeasurement {
     use_rounding: bool,
     viewport: Attributes,
+    root_local_positioned: bool,
     root: Box<Node>,
 }
 #[derive(Debug)]
@@ -362,6 +365,7 @@ pub(super) struct Node {
     children: Vec<Node>,
     text: Option<String>,
     observation: Observation,
+    world_rounded_layout: Option<Attributes>,
     atomic: Option<Attributes>,
     bands: Option<Vec<Attributes>>,
     control_expectation: Option<Attributes>,
@@ -440,6 +444,13 @@ pub(super) fn decode(
         });
     }
     let use_rounding = context.required(wire.use_rounding, "useRounding")?;
+    if let Some(viewport) = &wire.viewport {
+        viewport.validate_root_style(wire.style.as_ref(), &context)?;
+    }
+    let root_local_positioned = wire
+        .viewport
+        .as_ref()
+        .is_some_and(WireViewport::root_local_positioned);
     let viewport = wire
         .viewport
         .as_ref()
@@ -452,9 +463,29 @@ pub(super) fn decode(
         })?
         .validate(&context)?;
     let root = wire.validate(&context, "horizontal-tb", use_rounding, true)?;
+    if root_local_positioned {
+        let Observation::Geometry {
+            unrounded,
+            selected,
+            ..
+        } = root.observation()
+        else {
+            return Err(context.error(
+                "unroundedLayout",
+                MeasurementErrorKind::ContradictoryFields,
+                "absolute root-local capture requires a root box",
+            ));
+        };
+        context.compatible(
+            unrounded.x == 0.0 && unrounded.y == 0.0 && selected.x == 0.0 && selected.y == 0.0,
+            "unroundedLayout",
+            "absolute root-local observations require root origin (0, 0)",
+        )?;
+    }
     Ok(DecodedMeasurement::Supported(ValidatedMeasurement {
         use_rounding,
         viewport,
+        root_local_positioned,
         root: Box::new(root),
     }))
 }
@@ -510,6 +541,11 @@ impl WireNode {
         })
     }
     fn validate_wire(&self, context: &Context<'_>) -> Result<(), MeasurementError> {
+        context.compatible(
+            self.world_rounded_layout.is_none() || self.layout_input == LayoutInput::Box,
+            "worldRoundedLayout",
+            "world-corner diagnostic requires an actual measured box",
+        )?;
         context.compatible(
             self.browser_br_observation.is_none()
                 || (self.layout_input == LayoutInput::Box
@@ -568,6 +604,7 @@ impl WireNode {
                     && self.text_content.is_none()
                     && self.unrounded_layout.is_none()
                     && self.smart_rounded_layout.is_none()
+                    && self.world_rounded_layout.is_none()
                     && self.naively_rounded_layout.is_none()
                     && self.prepared_paragraph.is_none()
                     && self.prepared_occurrence.is_none()
@@ -622,7 +659,8 @@ impl WireNode {
                 "historical measured observations cannot masquerade as native source observations",
             )?;
             if self.range_rectangles.is_some() || self.range_fragments.is_some() {
-                context.compatible(self.fragments.is_none() && self.unrounded_layout.is_none() && self.smart_rounded_layout.is_none() && self.naively_rounded_layout.is_none() && self.children.as_ref().is_none_or(Vec::is_empty) && self.style.as_ref().is_none_or(|style| !style.has_scroll_fields()), "rangeInks", "Range observations cannot carry geometry, fragments, children, or scroll state")?;
+                context.compatible(self.fragments.is_none() && self.unrounded_layout.is_none() && self.smart_rounded_layout.is_none()
+                    && self.world_rounded_layout.is_none() && self.naively_rounded_layout.is_none() && self.children.as_ref().is_none_or(Vec::is_empty) && self.style.as_ref().is_none_or(|style| !style.has_scroll_fields()), "rangeInks", "Range observations cannot carry geometry, fragments, children, or scroll state")?;
             }
             context.compatible(
                 self.line_control_participation.is_none(),
@@ -654,6 +692,7 @@ impl WireNode {
                     && self.text_content.is_none()
                     && self.unrounded_layout.is_none()
                     && self.smart_rounded_layout.is_none()
+                    && self.world_rounded_layout.is_none()
                     && self.naively_rounded_layout.is_none()
                     && self.inline_segments.is_none()
                     && self.line_control_participation.is_none()
@@ -729,6 +768,7 @@ impl WireNode {
                 children: Vec::new(),
                 text: None,
                 observation: Observation::Boundary,
+                world_rounded_layout: None,
                 atomic: None,
                 bands: None,
                 control_expectation: None,
@@ -897,6 +937,15 @@ impl WireNode {
         } else {
             NodeKind::Box
         };
+        let world_rounded_layout = if self.layout_input == LayoutInput::Box {
+            Some(
+                context
+                    .required(self.world_rounded_layout, "worldRoundedLayout")?
+                    .validate_diagnostic(context)?,
+            )
+        } else {
+            None
+        };
         let native_ranges = self.range_fragments.is_some();
         let native_rectangles = self.range_fragments.map(|rows| {
             rows.into_iter()
@@ -908,6 +957,7 @@ impl WireNode {
                 self.fragments.is_none()
                     && self.unrounded_layout.is_none()
                     && self.smart_rounded_layout.is_none()
+                    && world_rounded_layout.is_none()
                     && self.naively_rounded_layout.is_none()
                     && !style.has_scroll_fields(),
                 "rangeInks",
@@ -1200,6 +1250,7 @@ impl WireNode {
                 self.text_content
             },
             observation,
+            world_rounded_layout,
             atomic,
             bands: shape,
             control_expectation: None,
@@ -1208,6 +1259,56 @@ impl WireNode {
     }
 }
 impl WireGeometry {
+    fn validate_diagnostic(&self, context: &Context<'_>) -> Result<Attributes, MeasurementError> {
+        let mut attrs = Vec::new();
+        for (name, value, extent) in [
+            ("x", self.x, false),
+            ("y", self.y, false),
+            ("width", self.width, true),
+            ("height", self.height, true),
+        ] {
+            let field = format!("worldRoundedLayout.{name}");
+            let value = context.required(value, &field)?;
+            if extent {
+                nonnegative(value, context, &field)?;
+            } else {
+                finite(value, context, &field)?;
+            }
+            attrs.push((name, number(value)));
+        }
+        for (first, second, a, b) in [
+            (
+                "scroll-width",
+                "scroll-height",
+                self.scroll_width,
+                self.scroll_height,
+            ),
+            (
+                "client-width",
+                "client-height",
+                self.client_width,
+                self.client_height,
+            ),
+        ] {
+            context.compatible(
+                a.is_some() == b.is_some(),
+                "worldRoundedLayout",
+                "diagnostic extent pairs must be supplied together",
+            )?;
+            if let (Some(a), Some(b)) = (a, b) {
+                attrs.push((
+                    first,
+                    number(nonnegative(a, context, "worldRoundedLayout")?),
+                ));
+                attrs.push((
+                    second,
+                    number(nonnegative(b, context, "worldRoundedLayout")?),
+                ));
+            }
+        }
+        Ok(attrs)
+    }
+
     fn validate(&self, context: &Context<'_>, prefix: &str) -> Result<Geometry, MeasurementError> {
         self.validate_supplied(context, prefix)?;
         let field = |name: &str| format!("{prefix}.{name}");
@@ -1536,6 +1637,13 @@ impl WireRange {
 }
 
 impl ValidatedMeasurement {
+    pub fn observation_frame(&self) -> &'static str {
+        if self.root_local_positioned {
+            "root-border-local"
+        } else {
+            "root-border"
+        }
+    }
     pub fn use_rounding(&self) -> bool {
         self.use_rounding
     }
@@ -1547,6 +1655,9 @@ impl ValidatedMeasurement {
     }
 }
 impl Node {
+    pub fn world_rounded_layout(&self) -> Option<&Attributes> {
+        self.world_rounded_layout.as_ref()
+    }
     pub fn prepared_paragraph(&self) -> Option<&str> {
         self.prepared_paragraph.as_deref()
     }
