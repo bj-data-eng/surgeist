@@ -1,34 +1,568 @@
-schema_version = 2
+schema_version = 3
 
-# Each record requires four Generated V4 root-local cases; these original
-# sources and historical observations are inputs, never Layout operands.
+# One source inventory owns scheduling, expected dispositions, metadata, pairs
+# and counts. Original source/history remains pinned; authored inputs are local.
 
 [[records]]
 source = "html/grid/grid_fit_content_points_argument.html"
 source_sha256 = "9a8e404470f5f0b8afed2c858d2840f4df46a1492f41cb022ce921fcc23c9e01"
-expected_hypothetical_display = "grid"
+source_kind = "original"
 [records.historical_sha256]
 border_box_ltr = "202e335e62bd797c087b073f641650c6c8a9cb7e48cdb7f1bfa75652ea20e5a9"
 content_box_ltr = "559712abf282c99f3a4f6fd8a0b5bd5a8ff026f772860c2479ece60e384a3432"
 border_box_rtl = "a25ad3b02bf411181df28ed13f4d18cdfd5c334474083a7732f1e8e431a43bc3"
 content_box_rtl = "e761edc0be86e8489e428eb28a35d053a2e8feae1f696684c1316da0b781ac66"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
 
 [[records]]
 source = "html/subgrid/subgrid_standalone_axis_column_autoflow.html"
 source_sha256 = "377ec9188ae1e024b3293b403d0fe0ffd86e78f4298bef9cdc3b87a78036e823"
-expected_hypothetical_display = "inline-grid"
+source_kind = "original"
 [records.historical_sha256]
 border_box_ltr = "9482a5a6bc0a1b041f3febc6f8ff24998453e68d3eff7ab8ee1908951d0eded2"
 content_box_ltr = "2e19e3600b5a8600e5fd45f5d32adf7f82080154e622517e002a6dbfe53b24d3"
 border_box_rtl = "c7dd0e4680ffedbcf7a22bed891f16ffb1553b81aad6fff2183a5502e9e9d56c"
 content_box_rtl = "d62e1205847826d52c37aaecb623dd9f8338ef26eabb56d03b14b5d0a439d333"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "inline-grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
 
 [[records]]
 source = "html/subgrid/subgrid_overflow_hidden_does_not_prohibit.html"
 source_sha256 = "3332d3e2c86878867f3c1db9ef13096386bec1615aa796cbb81c817dfc2a2b9b"
-expected_hypothetical_display = "inline-grid"
+source_kind = "original"
 [records.historical_sha256]
 border_box_ltr = "03e127d2a4c3a10b93c55b3e1bd8c87f5d3720db2b4c9cb5df57ac2b5223e004"
 content_box_ltr = "056a7fc328493f10686923251f6ae968dd6528b3b4a786e8137eb23cb557b138"
 border_box_rtl = "d0cf7b79a67fe4480a70226f44f0c008f8555298e02b9297905c83fb35d3711f"
 content_box_rtl = "25fe19dc380ea85bf13a42b25798a64e810914cc15f55ce5c3dee78658c407df"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "inline-grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/qualification/fixed-grid.html"
+source_sha256 = "ecbb8c3835468d539659404677b63625af591fe15a0e0a0ce1dccc140c221a94"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "ltr"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 80
+height = 30
+
+[[records]]
+source = "html/qualification/fixed-inline-grid.html"
+source_sha256 = "8bf1c5fdf49eddcfcf0d1e3916b55c278d5209f2c1791f673e8ee6accf8545c0"
+source_kind = "authored"
+[records.relation]
+peer = "fixed-grid"
+world_phase_change = false
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "inline-grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "ltr"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 80
+height = 30
+
+[[records]]
+source = "html/qualification/direction-ltr-cb-rtl-hypothetical.html"
+source_sha256 = "0825dc0e570458710d0a1daf84fe95f258646b24c54c87583015d6b819b608dc"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "inline-flex"
+containing_direction = "ltr"
+hypothetical_direction = "rtl"
+root_direction = "ltr"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "flex-pair"
+item_width = 400
+item_height = 10
+
+[[records]]
+source = "html/qualification/direction-rtl-cb-ltr-hypothetical.html"
+source_sha256 = "dca5c5a8df73c7afaa240a8b47b93d128c883412d8b6ffbac69e80042d941965"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "inline-flex"
+containing_direction = "rtl"
+hypothetical_direction = "ltr"
+root_direction = "rtl"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "flex-pair"
+item_width = 400
+item_height = 10
+
+[[records]]
+source = "html/qualification/collapsed-leading-whitespace.html"
+source_sha256 = "4659086476cc10cdac8b75c5009d120a6a8cbcbebf7486d7aec320994e90fa2f"
+source_kind = "authored"
+[records.relation]
+peer = "fixed-inline-grid"
+world_phase_change = false
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "inline-grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "ltr"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 80
+height = 30
+
+[[records]]
+source = "html/qualification/preserved-leading-whitespace.html"
+source_sha256 = "e8d4898ce6c699e0f6264585e6f95f481ad35d1e34e66c458ada2117ebc615c1"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: AuthoredBodyOrHtmlStyle"
+
+[[records]]
+source = "html/qualification/indented-block-flex.html"
+source_sha256 = "65c133cb39029a9252fad238351230ddeefde5ed2fb001fd1b77ffb71c64f898"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "flex"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "ltr"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "flex-pair"
+item_width = 400
+item_height = 10
+
+[[records]]
+source = "html/qualification/indented-inline-flex.html"
+source_sha256 = "48201c73d84f1b7204287e967e0d6f0e3391994d060b943d9d101c05fdd43f4f"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "inline-flex"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "ltr"
+inline_offset = 40
+[records.expected.metadata.root_size]
+kind = "flex-pair"
+item_width = 400
+item_height = 10
+
+[[records]]
+source = "html/qualification/block-translation-0-25.html"
+source_sha256 = "bf94207f58c4559a981acef633c4c2ae9f10a1f960bb61bee07672349da9945d"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "inline-grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "ltr"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 10.5
+height = 10.5
+
+[[records]]
+source = "html/qualification/block-translation-0-75.html"
+source_sha256 = "8c85d6fa06d0dc661fb673107e9a07d66468e59801b8be3b8f2caabf5631ae9d"
+source_kind = "authored"
+[records.relation]
+peer = "block-translation-0-25"
+world_phase_change = true
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "inline-grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "ltr"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 10.5
+height = 10.5
+
+[[records]]
+source = "html/qualification/preceding-float.html"
+source_sha256 = "4f8a45983266104aff6588c2a2c1402cc1ddbee8928c3f39e4f48459e67fdfaf"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: SourceBodySiblings"
+
+[[records]]
+source = "html/qualification/fixed-descendant.html"
+source_sha256 = "6cd7da788dd97728ec948ac0b467cbce4d3362a0c669317bed67b6e3e0a862cc"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: RootLocalExternalFrame"
+
+[[records]]
+source = "html/qualification/bottom-inset.html"
+source_sha256 = "8d7f70f308ad25d1e23e9c9d6aa65450bf5b0017218f8a4e344ec7e0cbe5f62a"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: AuthoredInsets"
+
+[[records]]
+source = "html/qualification/remaining-block-size.html"
+source_sha256 = "2eb1e6c4b0302a53159afab53878f8756e800f5eb681eb730678d0c682950eb6"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: RootLocalBlockSizeDependency"
+
+[[records]]
+source = "html/qualification/unrepresented-variable-width.html"
+source_sha256 = "d8646c0dd9990666294c1f19d671c030b01245271ffbfd19b30f61b290994bda"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: UnresolvedSizingDeclaration"
+
+[[records]]
+source = "html/qualification/unrepresented-block-flow-variable-width.html"
+source_sha256 = "0ef3b3081dfd004ed20cd33e0e0265d0cb0718c56f30f2b5cabb407ad07b0859"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: UnresolvedSizingDeclaration"
+
+[[records]]
+source = "html/grid/grid_align_items_baseline_child_multiline_no_override_on_secondline.html"
+source_sha256 = "fe5bf7514ef5402c343dea5e5de8dcb22298f0956e487f33f9ed935c75e47822"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "f77fc79691eb6744ccb11e015ce428933a66799ab7f29576d657462b0cc091d1"
+content_box_ltr = "92f72021c4ba70ef5324a4f88a746fae3c1c57cdde8a23fa206a3b1a1741d284"
+border_box_rtl = "9bfb9d29447d232fd8991c90bf07463ac59f708fe871270eb64a52f7e6bb3144"
+content_box_rtl = "bcdab8ecf8db60071eeb9c790074dc99bce4585c01eb39f048b1a599e917ad35"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/grid_align_items_baseline_child_multiline_override.html"
+source_sha256 = "6ce7b7a9ca2ac614f0f437ab5a615dc88990561748124579cd285350761bd9d1"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "ee93daa81b41c0f4ecd61e504985b6a8cc241fbe3d00988efb2708b97d1b8d30"
+content_box_ltr = "4d64150c2f1eac802b7c59d6583b73467995822816719c1f6e6a840a6f5bc1ed"
+border_box_rtl = "bbcfcc873b187fab99a7486e68ef975aec0671f9a20f6b44d414a172c3406e19"
+content_box_rtl = "23b94cee15665f92b20ef82f76c74d61433ba8bedaac47fee6f7615f0fba5133"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/absolute_correct_cross_child_size_with_percentage.html"
+source_sha256 = "ef52406bb6e1e11c32fc20f2f0e64c72045bca33278d45a977dc40a17366c7b1"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "fac5046aa53e1dd982b57e5fac4518e71cfdc2dad9245f9845e3d3229ea75636"
+content_box_ltr = "5fca0f89e6a967f8e9ff0fabe1fc94fa784b89927d5c7957fc5408c8aa6c445c"
+border_box_rtl = "669436181d8a0d0bfdc71f173117ebaeff7f91daf8b8e30bdd7551ba77f5aa7a"
+content_box_rtl = "10f48e9544e8c90a7ab5d30cef8df0493a980e0e26f41cd58d7f9076e643ffcf"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "block-flow"
+parent_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+root_position = "relative"
+
+[[records]]
+source = "html/grid/grid_absolute_layout_within_border_static.html"
+source_sha256 = "9cc3ec5d8fad45b6e022a1b9178cbfad1a01f75c8dc30d9c802057dc1d240b65"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "3b25dd0dfffefcbbfbc7050f6d583045cf68cd2eac32c890ed0678a1ff8e2c26"
+content_box_ltr = "2467da46edc636c44f5483ec8914278686173c289f26ee40964e13a51c970999"
+border_box_rtl = "10184e25f69a7187580866f8118c3d2fbc4311af973df313344af076ae714a10"
+content_box_rtl = "d47f675b923939a5fb8164fa7c21b0dae92e26f8e53fe9fe9b8215061e1ad26b"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/grid-lanes/grid_lanes_min_content_container_sizing.html"
+source_sha256 = "4bf761c29cb69a3b68046ec6c28938c653ac846805a63df82249d1a31e47131f"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "b05264a280d5c9caa46f9bf68e838665cee8029bf7e902df7714550b02fb085c"
+content_box_ltr = "3136d496354d84acd958897e9400a96c50deb8a5b0d29986beac66c79d65528d"
+border_box_rtl = "a8ace12112664cca216f14c92d100adf13bdfc393dc2f27d97981140ba6a23d5"
+content_box_rtl = "76f60e583e079726e688f266e8a350438066ec0190e5b009e1026b4b8700cad2"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/grid-lanes/grid_lanes_max_content_container_sizing.html"
+source_sha256 = "997009e354f48de29fec1bf88e11c89b9cd4b4d930cca4d33ce4cc0f4a0ab1d3"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "ffc45f5653006d25c3d44cfbc30c641d6be2072492b1c027115e70f1cee32ca5"
+content_box_ltr = "4148a9cd4d66e9f428a61950b1d0710ae9cdf4f0d155bfc7f6c0f3893fec80ee"
+border_box_rtl = "8707272e6f03a5395df03e1982ee2b27d6c7125d60ac8dffaba345263056d587"
+content_box_rtl = "722cfc3edc62b30bcd9ee03da07b9a14a28be0940dd0120986a388078d7b6f16"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/grid_overflow_inline_axis_scroll.html"
+source_sha256 = "2afab8f93dd99b1da44923fe29acea27a07c1c149dea7c559c017b4ac411b8eb"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "de398a684db771453eb3e7003299965c2c6216b85f289d46724937bc5debe940"
+content_box_ltr = "25930287a7692be8f6230e438789a6b9c1b6337eb81ff8193576a04f618e7da9"
+border_box_rtl = "0b71773721c2876b3c65dfc54a9f66f8626efc43d3640452c27b0e96b3bfd442"
+content_box_rtl = "62ee29f5c49a894a58bf6e4082dc346e36ae5952ba75bf77a0c784afc9912003"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/subgrid/subgrid_sibling_overflow_footer_second_matches_first.html"
+source_sha256 = "74c92a5ac60e37031a7f992ea1748a8ee4dc8ceaeb30b4a8e224e145f169d94a"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "89ec9d904a14c42b01cafbca470afb5c7f81747f09a5ac4d0b165fefdbef065d"
+content_box_ltr = "68c1ae07bd30dc6720ad96e3c782a42aa39d034a2ccdbf81291ce28cb3b415ca"
+border_box_rtl = "44b23e1d709ac95a61de9f5fa59ee091e643c1f1a19a1d95cb21c99b61b44017"
+content_box_rtl = "d498d681d9537e1a6b8b47e8cb5988a7b9becb413808c16fbc2395bd4fb27d8c"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/subgrid/subgrid_sibling_overflow_footer_third_matches_first.html"
+source_sha256 = "14445537ec1510bf93684d63b798627811d5d42dd0935e8937dbb188251d243e"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "27346401bd32acdac79b75840ae937ac0ebf6b378302c1b1df37df4268be8c8a"
+content_box_ltr = "be1abd5a8ccdd753cf9af4763200e19cdba3b411b7a35b9bf616cb28b208f47e"
+border_box_rtl = "7c64c928f5cf493f29f961806e3bdcca9d28d5409dcdc879354d870676f26a70"
+content_box_rtl = "de1a154bce2216d5dbca75dfd761a8bfd75e21dca967e6cb5b0f46e29b751b38"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/grid/fri08_auto_fit_occupied_track_collapse.html"
+source_sha256 = "07c4c6a4c5d6c312a4a8f6c520a5f064acca6c74cc1dc5423230fb6003958111"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "1b1a1ead1d1a1425aec22bd2aa76a5f2f3821a58f68d1891f255a89425f4858c"
+content_box_ltr = "89622afda1375f4c3682265fa15f3ff884fa74a89af1ad478d01c5b1710d0b36"
+border_box_rtl = "03d7b898325aacdde1408fb462ad81a35c68602d0729b762575052ac7658a568"
+content_box_rtl = "abe74cd0d692e8c96f92048071de0344cec4bf2dc0bdf22e128ab31835e09b7b"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/subgrid/subgrid_baseline_auto_rows_inner_row1_first.html"
+source_sha256 = "74d1b4f9ca489e4e8ee53b548d49132e7aeaebfed4c8853854e870069773d3a5"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "416bef90e81fc33fe58e53577960113ee2a080f0dc16a7c50d5961357bd67bb1"
+content_box_ltr = "000c0896b2e7a5574a2234b6482586b88bcac3f932068785bb4032840253bdd9"
+border_box_rtl = "8858a13e7bab42ab6431f04a7eccaeecb5a3f9202cd8a9ffa605fdf95dbee3de"
+content_box_rtl = "f1b2585c2fccdbc1d3513cdca0ca8104a5301b88067fee1b9d629ca505700527"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "block-flow"
+parent_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+root_position = "relative"
+
+[[records]]
+source = "html/subgrid/subgrid_baseline_inline_column_inner_col1_first.html"
+source_sha256 = "3717eeafc180abb56946253c0b2d13ccc9f1b0c81ed8229a7b483fc81545f075"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "37f812de96ccc541c7fe427278d31f6b2734486394fbcfefb4aea8d51d3313e1"
+content_box_ltr = "c9c9a8ef24dacc396cbf470979d42c69525053b930b5a47a6ba718bf3e619a80"
+border_box_rtl = "0989f284ea78074136bcfe23a7bbcf371fc5629b79cafe07fb4b3ccbb0e85ae2"
+content_box_rtl = "ac9bf1d8e97aa1b9f832ae56d83d8979fed6c6ff45686b356e3d7b5ad26cf5fa"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "block-flow"
+parent_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+root_position = "relative"
+
+[[records]]
+source = "html/subgrid/subgrid_baseline_vertical_auto_rows_inner_row1_first.html"
+source_sha256 = "19c777698f1dd90458ec5550e31b5d885a229eba4a98aed4db14328563569115"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "6e895bd51122f967e866949b00b34d76ef4f3c1f767704c73025cb919066ed0e"
+content_box_ltr = "c1d65c30f38c2e64cda8408c610010c7c6748391c7c9108d788045979b72bdf2"
+border_box_rtl = "369390c027b13593680010c8e7690fbb05209c7b9578d96b564d115e0f134a20"
+content_box_rtl = "63bf16ba19e0bf7309ae06e7171d451f8845d4a24689a95cd21f1efb954af156"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "block-flow"
+parent_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "vertical-rl"
+root_position = "relative"
+
+[[records]]
+source = "html/qualification/boxless-descendant.html"
+source_sha256 = "bd4ce7bb4585258cb6aecf4903984998c6617a808d2fb7a21611baadfbdeed6d"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: RootLocalBoxlessObservation"
+
+[[records]]
+source = "html/qualification/unrepresented-font-width.html"
+source_sha256 = "9ca984bdc6cd77463b7712380585e92818387acd35f2e439b23e09027d5af8b9"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: UnresolvedSizingDeclaration"

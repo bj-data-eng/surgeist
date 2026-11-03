@@ -22,8 +22,11 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if let Some(result) = surgeist_generator::browser::run_supervisor_from_env() {
         return result.map_err(Into::into);
     }
-    if std::env::args_os().len() != 1 {
-        return Err("qualify-root-context takes no arguments".into());
-    }
-    support::run()
+    let arguments: Vec<_> = std::env::args().skip(1).collect();
+    let fixture = match arguments.as_slice() {
+        [] => None,
+        [flag, source] if flag == "--fixture" => Some(source.as_str()),
+        _ => return Err("usage: qualify-root-context [--fixture <declared-source>]".into()),
+    };
+    support::run(fixture)
 }
