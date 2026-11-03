@@ -2222,8 +2222,9 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
     allocated. A cell without a `headers` attribute scans leftward each row it
     crosses and upward each column. The rows of one run hold the same tall
     cells, so a single scan serves every row of the run that has no cell of its
-    own before the scanning cell and no overlap; any other row is scanned on
-    its own. A scan costs a binary search, one visit per header cell met that
+    own before the scanning cell and no overlap, and runs that differ only by
+    cells that start at or after the scanning cell, which a scan does not
+    reach, count as one; any other row is scanned on its own. A scan costs a binary search, one visit per header cell met that
     no earlier header of the scan hides, and one step for each run of data
     cells, however long. A header is hidden when an earlier header of the scan,
     after a data cell, crosses the same rows (or columns): that is one stamp
