@@ -11,9 +11,10 @@
 //! four, never by the 23 to 30 a per-slot scan of every cell costs.
 
 use super::scope_work::{cell, element, query};
-use crate::semantics::support::wide_builder_without_registries;
+use crate::semantics::support::{builder_with, wide_builder_without_registries};
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureBuilderSubject, HtmlSemanticFact, HtmlSemanticLimits, HtmlSemanticValue,
+    HtmlCapture, HtmlCaptureBuilderSubject, HtmlCaptureLimits, HtmlSemanticFact,
+    HtmlSemanticLimits, HtmlSemanticValue,
 };
 
 /// Ample for every size below, so the work measured is the work needed, not a
@@ -32,8 +33,19 @@ fn limits() -> HtmlSemanticLimits {
 /// An `n` by `n` table. With `headers`, the first row and the first column are
 /// th cells without a `scope`; every other cell is td. Each cell holds one
 /// unit of text. The rows are direct children of the table.
-fn grid(n: usize, headers: bool) -> (HtmlCapture, HtmlCaptureBuilderSubject) {
-    let (mut b, d) = wide_builder_without_registries();
+fn grid(n: usize, headers: bool, grouped: bool) -> (HtmlCapture, HtmlCaptureBuilderSubject) {
+    // Large grids hold more subjects than the shared table fixture admits.
+    let (mut b, d) = builder_with(HtmlCaptureLimits::new(
+        1_000_000,
+        10_000_000,
+        1_000_000,
+        100_000_000,
+        1000,
+        0,
+        0,
+        16_777_216,
+    ));
+
     let table = element(&mut b, &d, "table", &[]);
     let mut rows = Vec::new();
     for y in 0..n {
@@ -50,14 +62,20 @@ fn grid(n: usize, headers: bool) -> (HtmlCapture, HtmlCaptureBuilderSubject) {
         b.establish_children(&row, &cells).unwrap();
         rows.push(row);
     }
-    b.establish_children(&table, &rows).unwrap();
+    if grouped {
+        let body = element(&mut b, &d, "tbody", &[]);
+        b.establish_children(&body, &rows).unwrap();
+        b.establish_children(&table, &[body]).unwrap();
+    } else {
+        b.establish_children(&table, &rows).unwrap();
+    }
     (b.finish().unwrap(), table)
 }
 
 /// Work the model query admitted, after checking that it formed the whole grid
 /// and found the header associations the algorithm defines for it.
-fn work(n: usize, headers: bool) -> usize {
-    let (capture, table) = grid(n, headers);
+fn work(n: usize, headers: bool, grouped: bool) -> usize {
+    let (capture, table) = grid(n, headers, grouped);
     let report = query(&capture, &table, limits()).0.unwrap();
     let HtmlSemanticFact::TableModel(HtmlSemanticValue::Known(model)) = report.results()[0].fact()
     else {
@@ -86,15 +104,19 @@ fn work(n: usize, headers: bool) -> usize {
 }
 
 /// Work for 5x5, 10x10, 20x20 and 40x40 grids: three quadruplings of the cells.
-fn assert_work_grows_about_four_times_per_four_times_the_cells(headers: bool) {
-    let sizes = [5, 10, 20, 40];
-    let measured: Vec<usize> = sizes.iter().map(|n| work(*n, headers)).collect();
+fn assert_work_grows_about_four_times_per_four_times_the_cells(headers: bool, grouped: bool) {
+    let sizes: &[usize] = if grouped {
+        &[25, 50, 100, 200]
+    } else {
+        &[5, 10, 20, 40]
+    };
+    let measured: Vec<usize> = sizes.iter().map(|n| work(*n, headers, grouped)).collect();
     for (pair, sizes) in measured.windows(2).zip(sizes.windows(2)) {
         // Four times the cells, linear work, plus a small allowance for the
         // logarithmic slot lookups and the fixed per-table charges.
         assert!(
             pair[1] <= pair[0] * 5,
-            "headers={headers}: work for {0}x{0} is {1} but {2} for {3}x{3} \
+            "headers={headers} grouped={grouped}: work for {0}x{0} is {1} but {2} for {3}x{3} \
              (cells x4 may cost at most x5)",
             sizes[0],
             pair[0],
@@ -106,12 +128,18 @@ fn assert_work_grows_about_four_times_per_four_times_the_cells(headers: bool) {
 
 #[test]
 fn data_grid_work_grows_about_four_times_per_four_times_the_cells() {
-    assert_work_grows_about_four_times_per_four_times_the_cells(false);
+    assert_work_grows_about_four_times_per_four_times_the_cells(false, false);
 }
 
 #[test]
 fn header_row_and_column_grid_work_grows_about_four_times_per_four_times_the_cells() {
-    assert_work_grows_about_four_times_per_four_times_the_cells(true);
+    assert_work_grows_about_four_times_per_four_times_the_cells(true, false);
+}
+
+#[test]
+fn header_row_and_column_grid_in_a_tbody_grows_about_four_times_per_four_times_the_cells() {
+    // A parser puts every row in a tbody; no header cell scopes a group.
+    assert_work_grows_about_four_times_per_four_times_the_cells(true, true);
 }
 
 /// The live tall cells of a table are not revisited once per row, and a cell
