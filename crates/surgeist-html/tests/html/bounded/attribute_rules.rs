@@ -25,7 +25,7 @@ fn autocomplete_owner_retains_literal_processing_and_exact_capacity_limits() {
             limits,
         )
     };
-    let first = run(AutocompleteMaterializationLimits::new(
+    let first = run(HtmlAutocompleteMaterializationLimits::new(
         100_000, 100_000, 100_000,
     ))
     .unwrap();
@@ -47,7 +47,7 @@ fn autocomplete_owner_retains_literal_processing_and_exact_capacity_limits() {
     assert_eq!(processed.idl_value(), raw.value());
     assert_eq!(first.report().raw(), Some(raw.value()));
     let usage = first.usage();
-    let exact = AutocompleteMaterializationLimits::new(
+    let exact = HtmlAutocompleteMaterializationLimits::new(
         usage.allocated_bytes(),
         usage.nested_output_records(),
         usage.peak_scratch_records(),
@@ -58,7 +58,7 @@ fn autocomplete_owner_retains_literal_processing_and_exact_capacity_limits() {
     assert_eq!(exact.allocated_bytes(), usage.allocated_bytes());
     assert_eq!(exact.nested_output_records(), usage.nested_output_records());
     assert_eq!(exact.scratch_records(), usage.peak_scratch_records());
-    let bytes = run(AutocompleteMaterializationLimits::new(
+    let bytes = run(HtmlAutocompleteMaterializationLimits::new(
         usage.allocated_bytes() - 1,
         usage.nested_output_records(),
         usage.peak_scratch_records(),
@@ -66,10 +66,10 @@ fn autocomplete_owner_retains_literal_processing_and_exact_capacity_limits() {
     .unwrap_err();
     assert!(matches!(
         bytes.kind(),
-        AutocompleteMaterializationError::BytesLimit { .. }
+        HtmlAutocompleteMaterializationError::BytesLimit { .. }
     ));
     assert!(bytes.usage().allocated_bytes() > 0);
-    let output = run(AutocompleteMaterializationLimits::new(
+    let output = run(HtmlAutocompleteMaterializationLimits::new(
         usage.allocated_bytes(),
         usage.nested_output_records() - 1,
         usage.peak_scratch_records(),
@@ -77,9 +77,9 @@ fn autocomplete_owner_retains_literal_processing_and_exact_capacity_limits() {
     .unwrap_err();
     assert!(matches!(
         output.kind(),
-        AutocompleteMaterializationError::OutputLimit { .. }
+        HtmlAutocompleteMaterializationError::OutputLimit { .. }
     ));
-    let scratch = run(AutocompleteMaterializationLimits::new(
+    let scratch = run(HtmlAutocompleteMaterializationLimits::new(
         usage.allocated_bytes(),
         usage.nested_output_records(),
         usage.peak_scratch_records() - 1,
@@ -87,7 +87,7 @@ fn autocomplete_owner_retains_literal_processing_and_exact_capacity_limits() {
     .unwrap_err();
     assert!(matches!(
         scratch.kind(),
-        AutocompleteMaterializationError::ScratchLimit { .. }
+        HtmlAutocompleteMaterializationError::ScratchLimit { .. }
     ));
     assert!(scratch.usage().peak_scratch_records() > 0);
     let (report, observed) = repeated.into_parts();
@@ -106,16 +106,16 @@ fn autocomplete_raw_admission_precedes_foreign_role_and_observes_no_allocation()
     let raw = autocomplete_raw(DocumentString::from_utf16(vec![0xd800, 110, 97, 109, 101]));
     let original = raw.value().clone();
     let foreign = QualifiedName::new(Namespace::svg(), None, "input");
-    let zero = AutocompleteMaterializationLimits::new(0, 0, 0);
+    let zero = HtmlAutocompleteMaterializationLimits::new(0, 0, 0);
     let failure = HtmlValueInterpreter::new(4)
         .control_autocomplete_controlled(&foreign, Some(&raw), None, zero)
         .unwrap_err();
     let (kind, usage) = failure.into_parts();
     assert!(matches!(
         kind,
-        AutocompleteMaterializationError::RawAdmission(_)
+        HtmlAutocompleteMaterializationError::RawAdmission(_)
     ));
-    assert_eq!(usage, AutocompleteMaterializationUsage::default());
+    assert_eq!(usage, HtmlAutocompleteMaterializationUsage::default());
     assert_eq!(raw.value(), &original);
     let unapplied = HtmlValueInterpreter::new(5)
         .control_autocomplete_controlled(&foreign, Some(&raw), None, zero)
@@ -127,28 +127,31 @@ fn autocomplete_raw_admission_precedes_foreign_role_and_observes_no_allocation()
     assert_eq!(unapplied.report().raw(), Some(&original));
     assert_eq!(
         unapplied.usage(),
-        AutocompleteMaterializationUsage::default()
+        HtmlAutocompleteMaterializationUsage::default()
     );
 }
 
 #[test]
 fn hash_name_scan_separates_first_hash_read_from_report_retention() {
     let raw = DocumentString::from_utf16(vec![0xd800, 97, 35, 0xdc00]);
-    let mut scan = HashNameScan::new(&raw);
+    let mut scan = HtmlHashNameScan::new(&raw);
     for _ in 0..3 {
-        let HashNameScanStep::Continue(next) = scan.step() else {
+        let HtmlHashNameScanStep::Continue(next) = scan.step() else {
             panic!("retention is a separate action")
         };
         scan = next;
     }
-    let HashNameScanStep::Complete(report) = scan.step() else {
+    let HtmlHashNameScanStep::Complete(report) = scan.step() else {
         panic!("first hash is ready")
     };
     assert_eq!(report.first_hash_offset(), Some(2));
     assert_eq!(report.processing(), HtmlHashNameProcessing::Name);
     assert_eq!(report.processing_name_units(), Some(&[0xdc00][..]));
     assert_eq!(report.raw(), Some(&raw));
-    assert_eq!((HashNameScan::BEGIN_WORK, HashNameScan::STEP_WORK), (1, 4));
+    assert_eq!(
+        (HtmlHashNameScan::BEGIN_WORK, HtmlHashNameScan::STEP_WORK),
+        (1, 4)
+    );
     let missing = surgeist_html::HtmlHashNameReferenceReport::missing();
     assert_eq!(missing.raw(), None);
     assert_eq!(missing.processing(), HtmlHashNameProcessing::Missing);
@@ -156,7 +159,7 @@ fn hash_name_scan_separates_first_hash_read_from_report_retention() {
 
 #[test]
 fn target_recovery_tracks_first_actual_dangerous_unit_offsets() {
-    let mut recovery = TargetRecovery::default();
+    let mut recovery = HtmlTargetRecovery::default();
     recovery.unit(0, 12); // Form feed is not TAB/LF/CR.
     recovery.unit(1, 60);
     assert_eq!(recovery.dangerous(), None);
@@ -195,32 +198,38 @@ fn writing_and_embedded_classifiers_leave_structural_selection_to_the_caller() {
     assert!(!input_readonly_applies(HtmlInputType::Checkbox));
     assert!(matches!(
         embedded_dimension_applicability(Some(KnownHtmlElement::Input), None),
-        EmbeddedDimensionApplicability::Unavailable(EmbeddedDimensionEvidenceNeeded::InputState)
+        HtmlEmbeddedDimensionApplicability::Unavailable(
+            HtmlEmbeddedDimensionEvidenceNeeded::InputState
+        )
     ));
     assert!(matches!(
         embedded_dimension_applicability(
             Some(KnownHtmlElement::Input),
-            Some(EmbeddedDimensionContext::InputState(HtmlInputType::Image))
+            Some(HtmlEmbeddedDimensionApplicabilityContext::InputState(
+                HtmlInputType::Image
+            ))
         ),
-        EmbeddedDimensionApplicability::Applicable
+        HtmlEmbeddedDimensionApplicability::Applicable
     ));
     assert!(matches!(
         embedded_dimension_applicability(
             Some(KnownHtmlElement::Source),
-            Some(EmbeddedDimensionContext::SourceParent(
-                EmbeddedDimensionParent::Unavailable
+            Some(HtmlEmbeddedDimensionApplicabilityContext::SourceParent(
+                HtmlEmbeddedDimensionParent::Unavailable
             ))
         ),
-        EmbeddedDimensionApplicability::Unavailable(EmbeddedDimensionEvidenceNeeded::SourceParent)
+        HtmlEmbeddedDimensionApplicability::Unavailable(
+            HtmlEmbeddedDimensionEvidenceNeeded::SourceParent
+        )
     ));
     assert!(matches!(
         embedded_dimension_applicability(
             Some(KnownHtmlElement::Source),
-            Some(EmbeddedDimensionContext::SourceParent(
-                EmbeddedDimensionParent::Parent(Some(KnownHtmlElement::Picture))
+            Some(HtmlEmbeddedDimensionApplicabilityContext::SourceParent(
+                HtmlEmbeddedDimensionParent::Parent(Some(KnownHtmlElement::Picture))
             ))
         ),
-        EmbeddedDimensionApplicability::Applicable
+        HtmlEmbeddedDimensionApplicability::Applicable
     ));
     assert_eq!(stylesheet_link_context_work_bound(10), Some(93));
     assert_eq!(stylesheet_link_context_work_bound(usize::MAX), None);
@@ -231,25 +240,25 @@ fn icon_cursor_exposes_original_arbitrary_precision_ranges_without_materializing
     let units: Vec<_> = "999999999999999999999999999999x123"
         .encode_utf16()
         .collect();
-    let mut cursor = IconSizeCursor::new(&units);
+    let mut cursor = HtmlIconSizeCursor::new(&units);
     for _ in 0..1000 {
         if cursor.is_complete() {
             break;
         }
         cursor.step();
     }
-    let Some(Ok(IconSizeShape::Bitmap { width, height })) = cursor.result() else {
+    let Some(Ok(HtmlIconSizeShape::Bitmap { width, height })) = cursor.result() else {
         panic!("valid unbounded dimensions")
     };
     assert_eq!(&units[width.clone()], &units[..30]);
     assert_eq!(&units[height.clone()], &[49, 50, 51]);
     let zero: Vec<_> = "01x2".encode_utf16().collect();
-    let mut invalid = IconSizeCursor::new(&zero);
+    let mut invalid = HtmlIconSizeCursor::new(&zero);
     while !invalid.is_complete() {
         invalid.step();
     }
     assert_eq!(invalid.result(), Some(&Err(HtmlIconSizeError::LeadingZero)));
-    assert_eq!(IconSizeCursor::STEP_WORK, 7);
+    assert_eq!(HtmlIconSizeCursor::STEP_WORK, 7);
 }
 
 #[test]

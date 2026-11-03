@@ -4,7 +4,7 @@
 //! DOM foundation. The required lowercase ASCII first code point selects DOM's
 //! ASCII-alpha branch; subsequent code points need not be Unicode scalars.
 
-use crate::internal::microsyntax::tokens::ascii_whitespace;
+use crate::internal::microsyntax::tokens::is_ascii_whitespace;
 use crate::{Attribute, DocumentString, KnownHtmlAttribute, Namespace, QualifiedName};
 use std::{error::Error, fmt};
 
@@ -116,7 +116,7 @@ pub fn validate_custom_element_name(
 /// each action before the indicated dereference; native validation remains
 /// explicitly unbudgeted and uses the same grammar.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CustomNameScanAction {
+pub enum HtmlCustomNameScanAction {
     /// The fixed per-name step, admitted once before any unit of the name is inspected.
     Header,
     /// One unit read of the name, charged before that unit is dereferenced.
@@ -128,21 +128,21 @@ pub enum CustomNameScanAction {
 }
 /// Validates `name` like [`validate_custom_element_name`] while admitting each scan step first.
 ///
-/// `admit` is called with the [`CustomNameScanAction`] about to be performed, before the
+/// `admit` is called with the [`HtmlCustomNameScanAction`] about to be performed, before the
 /// corresponding read of `name`. The outer `Err(E)` is the first refusal from `admit`; the scan
 /// stops there and nothing further is read. The inner result is the validation outcome, with
 /// the first reached rejection as in [`HtmlCustomElementName::new`]. The grammar is identical to
 /// the unbudgeted scan; this adds no allocation.
 pub fn validate_custom_element_name_with<E>(
     name: &DocumentString,
-    mut admit: impl FnMut(CustomNameScanAction) -> Result<(), E>,
+    mut admit: impl FnMut(HtmlCustomNameScanAction) -> Result<(), E>,
 ) -> Result<Result<(), HtmlCustomElementNameError>, E> {
     let units = name.code_units();
-    admit(CustomNameScanAction::Header)?;
+    admit(HtmlCustomNameScanAction::Header)?;
     if units.is_empty() {
         return Ok(Err(HtmlCustomElementNameError::Empty));
     }
-    admit(CustomNameScanAction::Unit)?;
+    admit(HtmlCustomNameScanAction::Unit)?;
     if !matches!(units[0], 0x61..=0x7a) {
         return Ok(Err(
             HtmlCustomElementNameError::FirstCodePointNotLowercaseAscii,
@@ -151,9 +151,9 @@ pub fn validate_custom_element_name_with<E>(
     let mut hyphen = false;
     let mut code_unit_offset = 0;
     while code_unit_offset < units.len() {
-        admit(CustomNameScanAction::Unit)?;
+        admit(HtmlCustomNameScanAction::Unit)?;
         let code_unit = units[code_unit_offset];
-        if ascii_whitespace(code_unit) || matches!(code_unit, 0 | 47 | 62 | 0x41..=0x5a) {
+        if is_ascii_whitespace(code_unit) || matches!(code_unit, 0 | 47 | 62 | 0x41..=0x5a) {
             return Ok(Err(HtmlCustomElementNameError::ForbiddenCodeUnit {
                 code_unit_offset,
                 code_unit,
@@ -175,13 +175,13 @@ pub fn validate_custom_element_name_with<E>(
         "font-face-name",
         "missing-glyph",
     ] {
-        admit(CustomNameScanAction::ReservedHeader)?;
+        admit(HtmlCustomNameScanAction::ReservedHeader)?;
         if units.len() != reserved.len() {
             continue;
         }
         let mut equal = true;
         for (offset, right) in reserved.bytes().enumerate() {
-            admit(CustomNameScanAction::ReservedPair)?;
+            admit(HtmlCustomNameScanAction::ReservedPair)?;
             if units[offset] != u16::from(right) {
                 equal = false;
                 break;
@@ -227,7 +227,7 @@ mod scanner_tests {
         let name = DocumentString::from("a-b");
         let mut accepted = 0;
         let result = validate_custom_element_name_with(&name, |action| {
-            if matches!(action, CustomNameScanAction::Unit) {
+            if matches!(action, HtmlCustomNameScanAction::Unit) {
                 if accepted == 2 {
                     return Err("cancelled before next actual read");
                 }

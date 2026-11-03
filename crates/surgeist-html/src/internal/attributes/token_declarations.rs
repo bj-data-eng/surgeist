@@ -448,7 +448,7 @@ impl HtmlIconSizesReport {
 /// Borrowed canonical sizes-token grammar. Dimension ranges retain arbitrary
 /// precision and exact authored UTF-16; callers choose materialization.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum IconSizeShape {
+pub enum HtmlIconSizeShape {
     /// The token is `any`, compared ASCII case-insensitively.
     Scalable,
     /// The token is a `WIDTHxHEIGHT` bitmap size.
@@ -479,17 +479,17 @@ enum IconSizeStage {
 /// A stepper that reads one icon size token over a borrowed slice of UTF-16 code units, one bounded
 /// action per step. It performs no allocation.
 #[derive(Clone, Debug)]
-pub struct IconSizeCursor<'a> {
+pub struct HtmlIconSizeCursor<'a> {
     units: &'a [u16],
     stage: IconSizeStage,
     index: usize,
-    result: Option<Result<IconSizeShape, HtmlIconSizeError>>,
+    result: Option<Result<HtmlIconSizeShape, HtmlIconSizeError>>,
 }
-impl<'a> IconSizeCursor<'a> {
+impl<'a> HtmlIconSizeCursor<'a> {
     // Seven bounded grammar actions: phase/range selection, original-unit read,
     // ASCII classification, error selection, position update, result/transition.
     // No dimension materialization is hidden behind this borrowed operation.
-    /// The work units that one [`IconSizeCursor::step`] charges.
+    /// The work units that one [`HtmlIconSizeCursor::step`] charges.
     pub const STEP_WORK: usize = 7;
     /// Starts reading `units`, a single token, before its first step.
     pub fn new(units: &'a [u16]) -> Self {
@@ -505,11 +505,11 @@ impl<'a> IconSizeCursor<'a> {
         self.result.is_some()
     }
     /// The grammar result once complete, or `None` while steps remain.
-    pub fn result(&self) -> Option<&Result<IconSizeShape, HtmlIconSizeError>> {
+    pub fn result(&self) -> Option<&Result<HtmlIconSizeShape, HtmlIconSizeError>> {
         self.result.as_ref()
     }
     /// Steps until the grammar completes and returns its result.
-    fn finish(mut self) -> Result<IconSizeShape, HtmlIconSizeError> {
+    fn finish(mut self) -> Result<HtmlIconSizeShape, HtmlIconSizeError> {
         loop {
             if let Some(result) = self.result.take() {
                 return result;
@@ -518,7 +518,7 @@ impl<'a> IconSizeCursor<'a> {
         }
     }
     /// Performs one bounded grammar action. Callers stop stepping once
-    /// [`IconSizeCursor::is_complete`] returns true.
+    /// [`HtmlIconSizeCursor::is_complete`] returns true.
     pub fn step(&mut self) {
         match self.stage {
             IconSizeStage::Any => {
@@ -529,7 +529,7 @@ impl<'a> IconSizeCursor<'a> {
                     };
                     self.index = 0;
                 } else if self.index == 3 {
-                    self.result = Some(Ok(IconSizeShape::Scalable));
+                    self.result = Some(Ok(HtmlIconSizeShape::Scalable));
                 } else if ascii_case_insensitive_unit(self.units[self.index], b"any"[self.index]) {
                     self.index += 1;
                 } else {
@@ -585,7 +585,7 @@ impl<'a> IconSizeCursor<'a> {
                         self.stage = IconSizeStage::Height(separator);
                         self.index = 0;
                     } else {
-                        self.result = Some(Ok(IconSizeShape::Bitmap {
+                        self.result = Some(Ok(HtmlIconSizeShape::Bitmap {
                             width: 0..separator,
                             height: separator + 1..self.units.len(),
                         }));
@@ -601,10 +601,10 @@ impl<'a> IconSizeCursor<'a> {
 }
 fn icon_size(token: &HtmlSpaceToken) -> Result<HtmlIconSize, HtmlIconSizeError> {
     let units = token.value().code_units();
-    match IconSizeCursor::new(units).finish() {
+    match HtmlIconSizeCursor::new(units).finish() {
         Err(error) => Err(error),
-        Ok(IconSizeShape::Scalable) => Ok(HtmlIconSize::Scalable),
-        Ok(IconSizeShape::Bitmap { width, height }) => {
+        Ok(HtmlIconSizeShape::Scalable) => Ok(HtmlIconSize::Scalable),
+        Ok(HtmlIconSizeShape::Bitmap { width, height }) => {
             let dimension = |range: std::ops::Range<usize>| {
                 HtmlNonNegativeInteger::from_decimal_digits(&DocumentString::from_utf16(
                     units[range].to_vec(),

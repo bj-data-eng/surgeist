@@ -2058,7 +2058,7 @@ impl<'a> Cursor<'a> {
     fn whitespace(&mut self) {
         while self
             .peek()
-            .is_some_and(crate::internal::microsyntax::tokens::ascii_whitespace)
+            .is_some_and(crate::internal::microsyntax::tokens::is_ascii_whitespace)
         {
             self.position += 1;
         }

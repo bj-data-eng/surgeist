@@ -201,11 +201,11 @@ impl HtmlNavigableTargetAttribute {
 
 /// One exact unit per action; adapters own their admission and traversal.
 #[derive(Clone, Debug, Default)]
-pub struct TargetRecovery {
+pub struct HtmlTargetRecovery {
     newline: Option<usize>,
     angle: Option<usize>,
 }
-impl TargetRecovery {
+impl HtmlTargetRecovery {
     /// Records one UTF-16 code unit at `offset`. Only the first TAB, LF or CR and
     /// the first `<` are kept; later units never replace them.
     pub fn unit(&mut self, offset: usize, unit: u16) {
@@ -231,7 +231,7 @@ fn validate_name(value: &DocumentString) -> Result<(), HtmlNavigableTargetError>
     if first == 0x5F {
         return Err(HtmlNavigableTargetError::ReservedLeadingUnderscore);
     }
-    let mut recovery = TargetRecovery::default();
+    let mut recovery = HtmlTargetRecovery::default();
     for (offset, &unit) in units.iter().enumerate() {
         recovery.unit(offset, unit);
         if let Some((tab_or_newline_code_unit_offset, less_than_code_unit_offset)) =

@@ -92,7 +92,7 @@ pub enum HtmlInputRangeSanitizationAction {
         /// The upper bound of the range.
         maximum: HtmlInputRangeNumber,
     },
-    /// Serialize through BestFiniteNumberCursor and install the actual string.
+    /// Serialize through HtmlBestFiniteNumberCursor and install the actual string.
     Replace {
         /// The number to serialize as the best floating-point representation and install as the
         /// value.
@@ -106,7 +106,7 @@ pub enum HtmlInputRangeSanitizationAction {
     ReadStep,
     /// Read the actual content value only when min supplied no finite base.
     ReadValueContent,
-    /// RangeLatticeCursor selects actual admissible finite candidates, ties up.
+    /// HtmlRangeLatticeCursor selects actual admissible finite candidates, ties up.
     Lattice {
         /// The current value that the selected number must replace or equal.
         current: HtmlInputRangeNumber,

@@ -38,7 +38,7 @@ enum ActiveHelper {
 /// through `EmitUnit` requests.
 #[derive(Clone, Copy, Debug)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
-pub struct BestFiniteNumberCursor {
+pub struct HtmlBestFiniteNumberCursor {
     io: Io,
     bits: u64,
     negative: bool,
@@ -69,16 +69,19 @@ pub struct BestFiniteNumberCursor {
     output_index: usize,
     phase: Phase,
 }
-impl BestFiniteNumberCursor {
+impl HtmlBestFiniteNumberCursor {
     /// Starts serializing `value`. `headers` describes the caller's empty output buffer and its
     /// scratch buffers. A non-finite `value` is an `Overflow` error, checked before the buffer, and
     /// a nonempty output buffer is an `Integrity` error.
-    pub fn new(value: f64, headers: RangeNumericHeaders) -> Result<Self, RangeNumericError> {
+    pub fn new(
+        value: f64,
+        headers: HtmlRangeNumericHeaders,
+    ) -> Result<Self, HtmlRangeNumericError> {
         let raw = value.to_bits();
         let bits = raw & !(1u64 << 63);
         let (mantissa, exponent) = finite_dyadic(bits)?;
         if headers.output.len != 0 {
-            return Err(RangeNumericError::Integrity);
+            return Err(HtmlRangeNumericError::Integrity);
         }
         Ok(Self {
             io: Io::new(headers, 0, 1386),
@@ -113,13 +116,13 @@ impl BestFiniteNumberCursor {
         })
     }
     /// The next effect the cursor needs from its caller, or `None` once the cursor has finished.
-    /// Perform and admit it, then pass the matching `RangeNumericReply` to `reply`; the same
+    /// Perform and admit it, then pass the matching `HtmlRangeNumericReply` to `reply`; the same
     /// request stays pending until a valid reply arrives.
-    pub fn request(&self) -> Option<RangeNumericRequest> {
+    pub fn request(&self) -> Option<HtmlRangeNumericRequest> {
         self.io.request
     }
     /// The cursor's copy of the buffer headers, as updated by the replies it accepted.
-    pub fn headers(&self) -> RangeNumericHeaders {
+    pub fn headers(&self) -> HtmlRangeNumericHeaders {
         self.io.headers
     }
     /// The number of output units emitted once the cursor has finished, or `None` while it is
@@ -131,22 +134,22 @@ impl BestFiniteNumberCursor {
     pub(crate) fn selected(&self) -> Option<(u64, usize, i32)> {
         self.best.map(|(s, n)| (s, self.k, n))
     }
-    fn validate_active(&self) -> Result<(), RangeNumericError> {
+    fn validate_active(&self) -> Result<(), HtmlRangeNumericError> {
         let request = match (self.phase, &self.active) {
             (Phase::Build, ActiveHelper::Build(helper)) => helper.request(),
             (Phase::SumBuild, ActiveHelper::Build(helper)) => helper.request(),
             (Phase::Cut, ActiveHelper::Cut(helper)) => helper.request(),
             (Phase::Compare, ActiveHelper::Compare(helper)) => helper.request(),
             (Phase::Build | Phase::SumBuild | Phase::Cut | Phase::Compare, _) => {
-                return Err(RangeNumericError::Integrity);
+                return Err(HtmlRangeNumericError::Integrity);
             }
             (_, ActiveHelper::None) => return Ok(()),
-            _ => return Err(RangeNumericError::Integrity),
+            _ => return Err(HtmlRangeNumericError::Integrity),
         };
         if request == self.io.request {
             Ok(())
         } else {
-            Err(RangeNumericError::Integrity)
+            Err(HtmlRangeNumericError::Integrity)
         }
     }
     #[cfg(test)]
@@ -161,7 +164,7 @@ impl BestFiniteNumberCursor {
     /// Accepts the caller's answer to the pending request and advances. A reply that does not match
     /// the request, or violates the headers, returns an error and leaves the cursor exactly as it
     /// was.
-    pub fn reply(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
+    pub fn reply(&mut self, reply: HtmlRangeNumericReply) -> Result<(), HtmlRangeNumericError> {
         let mut next = *self;
         next.validate_active()?;
         next.io.accept(reply)?;
@@ -173,11 +176,15 @@ impl BestFiniteNumberCursor {
     fn scalar(&mut self, phase: Phase) {
         self.active = ActiveHelper::None;
         self.phase = phase;
-        self.io.queue(RangeNumericRequest::ScalarStep);
+        self.io.queue(HtmlRangeNumericRequest::ScalarStep);
     }
-    fn begin_build(&mut self) -> Result<(), RangeNumericError> {
+    fn begin_build(&mut self) -> Result<(), HtmlRangeNumericError> {
         let (role, m, e) = match self.build_index {
-            0 => (RangeScratchRole::Coefficient, self.mantissa, self.exponent),
+            0 => (
+                HtmlRangeScratchRole::Coefficient,
+                self.mantissa,
+                self.exponent,
+            ),
             1 => {
                 let (m, e) = if self.bits == 1 {
                     (1, -1075)
@@ -186,15 +193,15 @@ impl BestFiniteNumberCursor {
                 } else {
                     (self.mantissa * 2 - 1, self.exponent - 1)
                 };
-                (RangeScratchRole::Lower, m, e)
+                (HtmlRangeScratchRole::Lower, m, e)
             }
             2 => (
-                RangeScratchRole::Upper,
+                HtmlRangeScratchRole::Upper,
                 self.mantissa * 2 + 1,
                 self.exponent - 1,
             ),
-            3 => (RangeScratchRole::Left, self.mantissa * 2, self.exponent),
-            _ => return Err(RangeNumericError::Integrity),
+            3 => (HtmlRangeScratchRole::Left, self.mantissa * 2, self.exponent),
+            _ => return Err(HtmlRangeNumericError::Integrity),
         };
         let build = RangeDyadicCursor::new(self.io.headers, role, m, e)?;
         self.io.request = build.request();
@@ -202,13 +209,13 @@ impl BestFiniteNumberCursor {
         self.phase = Phase::Build;
         Ok(())
     }
-    fn begin_cut(&mut self) -> Result<(), RangeNumericError> {
+    fn begin_cut(&mut self) -> Result<(), HtmlRangeNumericError> {
         let index = usize::from(self.cut_index);
         let role = match index {
-            0 => RangeScratchRole::Lower,
-            1 => RangeScratchRole::Upper,
-            2 => RangeScratchRole::Coefficient,
-            _ => return Err(RangeNumericError::Integrity),
+            0 => HtmlRangeScratchRole::Lower,
+            1 => HtmlRangeScratchRole::Upper,
+            2 => HtmlRangeScratchRole::Coefficient,
+            _ => return Err(HtmlRangeNumericError::Integrity),
         };
         let scale = self.scales[match index {
             0 => 1,
@@ -226,7 +233,7 @@ impl BestFiniteNumberCursor {
         self.phase = Phase::Cut;
         Ok(())
     }
-    fn start_candidate(&mut self, s: u64) -> Result<(), RangeNumericError> {
+    fn start_candidate(&mut self, s: u64) -> Result<(), HtmlRangeNumericError> {
         self.candidate = s;
         let Some((old, old_n)) = self.best else {
             self.best = Some((s, self.n));
@@ -245,20 +252,20 @@ impl BestFiniteNumberCursor {
         };
         let shift = high_n - low_n;
         if !(0..=1).contains(&shift) {
-            return Err(RangeNumericError::Integrity);
+            return Err(HtmlRangeNumericError::Integrity);
         }
         let sum = high
             .checked_mul(if shift == 0 { 1 } else { 10 })
             .and_then(|v| v.checked_add(low))
-            .ok_or(RangeNumericError::Representation)?;
+            .ok_or(HtmlRangeNumericError::Representation)?;
         self.sum_scale = low_n - self.k as i32;
-        let build = RangeDyadicCursor::new(self.io.headers, RangeScratchRole::Trial, sum, 0)?;
+        let build = RangeDyadicCursor::new(self.io.headers, HtmlRangeScratchRole::Trial, sum, 0)?;
         self.io.request = build.request();
         self.active = ActiveHelper::Build(build);
         self.phase = Phase::SumBuild;
         Ok(())
     }
-    fn next_candidate(&mut self) -> Result<(), RangeNumericError> {
+    fn next_candidate(&mut self) -> Result<(), HtmlRangeNumericError> {
         match self.candidate_index {
             0 => {
                 if let Some(s) = self.below {
@@ -281,19 +288,19 @@ impl BestFiniteNumberCursor {
     fn decimal_digit(s: u64, k: usize, position: usize) -> u16 {
         0x30 + ((s / POW10[k - 1 - position]) % 10) as u16
     }
-    fn unit_at(&self, position: usize) -> Result<u16, RangeNumericError> {
+    fn unit_at(&self, position: usize) -> Result<u16, HtmlRangeNumericError> {
         if self.bits == 0 {
             return if position == 0 {
                 Ok(0x30)
             } else {
-                Err(RangeNumericError::Integrity)
+                Err(HtmlRangeNumericError::Integrity)
             };
         }
         if self.negative && position == 0 {
             return Ok(0x2d);
         }
         let p = position - usize::from(self.negative);
-        let (s, n) = self.best.ok_or(RangeNumericError::Integrity)?;
+        let (s, n) = self.best.ok_or(HtmlRangeNumericError::Integrity)?;
         if n > 0 && n <= 21 {
             let n = n as usize;
             Ok(if self.k <= n {
@@ -342,14 +349,14 @@ impl BestFiniteNumberCursor {
             };
             let index = p - significand - 2;
             if index >= digits {
-                return Err(RangeNumericError::Integrity);
+                return Err(HtmlRangeNumericError::Integrity);
             }
             Ok(0x30 + ((u64::from(exponent) / POW10[digits - 1 - index]) % 10) as u16)
         }
     }
-    fn advance(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
+    fn advance(&mut self, reply: HtmlRangeNumericReply) -> Result<(), HtmlRangeNumericError> {
+        use HtmlRangeNumericRequest as Q;
         use Phase as S;
-        use RangeNumericRequest as Q;
         match self.phase {
             S::Start => {
                 if self.bits == 0 {
@@ -361,7 +368,7 @@ impl BestFiniteNumberCursor {
             }
             S::Build => {
                 let ActiveHelper::Build(build) = &mut self.active else {
-                    return Err(RangeNumericError::Integrity);
+                    return Err(HtmlRangeNumericError::Integrity);
                 };
                 build.accept_in_place(reply)?;
                 self.io.headers = build.headers();
@@ -378,10 +385,10 @@ impl BestFiniteNumberCursor {
                 }
             }
             S::Order => {
-                self.lower_order = self.io.len(RangeScratchRole::Lower) as i32 + self.scales[1];
-                self.upper_order = self.io.len(RangeScratchRole::Upper) as i32 + self.scales[2];
+                self.lower_order = self.io.len(HtmlRangeScratchRole::Lower) as i32 + self.scales[1];
+                self.upper_order = self.io.len(HtmlRangeScratchRole::Upper) as i32 + self.scales[2];
                 if self.upper_order - self.lower_order > 1 || self.lower_order > self.upper_order {
-                    return Err(RangeNumericError::Integrity);
+                    return Err(HtmlRangeNumericError::Integrity);
                 }
                 self.n = self.lower_order;
                 self.cut_index = 0;
@@ -389,7 +396,7 @@ impl BestFiniteNumberCursor {
             }
             S::Cut => {
                 let ActiveHelper::Cut(cut) = &mut self.active else {
-                    return Err(RangeNumericError::Integrity);
+                    return Err(HtmlRangeNumericError::Integrity);
                 };
                 cut.accept_in_place(reply)?;
                 if let Some((floor, exact)) = cut.result() {
@@ -397,14 +404,14 @@ impl BestFiniteNumberCursor {
                         0 => {
                             self.lower = floor
                                 .checked_add(u64::from(!exact || !self.inclusive))
-                                .ok_or(RangeNumericError::Representation)?
+                                .ok_or(HtmlRangeNumericError::Representation)?
                         }
                         1 => self.upper = floor.saturating_sub(u64::from(exact && !self.inclusive)),
                         2 => {
                             self.floor = floor;
                             self.exact = exact;
                         }
-                        _ => return Err(RangeNumericError::Integrity),
+                        _ => return Err(HtmlRangeNumericError::Integrity),
                     }
                     self.cut_index += 1;
                     if self.cut_index == 3 {
@@ -432,12 +439,12 @@ impl BestFiniteNumberCursor {
                     let mut above = self
                         .floor
                         .checked_add(u64::from(!self.exact))
-                        .ok_or(RangeNumericError::Representation)?
+                        .ok_or(HtmlRangeNumericError::Representation)?
                         .max(self.lower);
                     if above.is_multiple_of(10) {
                         above = above
                             .checked_add(1)
-                            .ok_or(RangeNumericError::Representation)?;
+                            .ok_or(HtmlRangeNumericError::Representation)?;
                     }
                     if above <= self.upper {
                         self.above = Some(above);
@@ -452,17 +459,17 @@ impl BestFiniteNumberCursor {
             }
             S::SumBuild => {
                 let ActiveHelper::Build(build) = &mut self.active else {
-                    return Err(RangeNumericError::Integrity);
+                    return Err(HtmlRangeNumericError::Integrity);
                 };
                 build.accept_in_place(reply)?;
                 self.io.headers = build.headers();
                 if build.result().is_some() {
                     let compare = RangeScaledComparisonCursor::new(
                         self.io.headers,
-                        RangeScratchRole::Left,
+                        HtmlRangeScratchRole::Left,
                         i128::from(self.scales[3]),
                         false,
-                        RangeScratchRole::Trial,
+                        HtmlRangeScratchRole::Trial,
                         i128::from(self.sum_scale),
                         false,
                     );
@@ -475,7 +482,7 @@ impl BestFiniteNumberCursor {
             }
             S::Compare => {
                 let ActiveHelper::Compare(compare) = &mut self.active else {
-                    return Err(RangeNumericError::Integrity);
+                    return Err(HtmlRangeNumericError::Integrity);
                 };
                 compare.accept_in_place(reply)?;
                 if let Some(order) = compare.result() {
@@ -486,7 +493,7 @@ impl BestFiniteNumberCursor {
                 }
             }
             S::Winner => {
-                let (old, _) = self.best.ok_or(RangeNumericError::Integrity)?;
+                let (old, _) = self.best.ok_or(HtmlRangeNumericError::Integrity)?;
                 if prefer_candidate(self.ordering, self.candidate_is_high, self.candidate, old) {
                     self.best = Some((self.candidate, self.n));
                 }
@@ -526,11 +533,11 @@ impl BestFiniteNumberCursor {
                     };
                     self.output_len = length + usize::from(self.negative);
                     if self.output_len > 25 {
-                        return Err(RangeNumericError::Representation);
+                        return Err(HtmlRangeNumericError::Representation);
                     }
                     self.scalar(S::Output);
                 } else if self.k == 17 {
-                    return Err(RangeNumericError::Representation);
+                    return Err(HtmlRangeNumericError::Representation);
                 } else {
                     self.k += 1;
                     self.n = self.lower_order;
@@ -561,7 +568,7 @@ impl BestFiniteNumberCursor {
                     });
                 }
             }
-            S::Done => return Err(RangeNumericError::Integrity),
+            S::Done => return Err(HtmlRangeNumericError::Integrity),
         }
         Ok(())
     }
@@ -580,10 +587,10 @@ pub(super) fn prefer_candidate(
     }
 }
 
-impl BestFiniteNumberCursor {
+impl HtmlBestFiniteNumberCursor {
     /// The fixed state and message sizes of this cursor.
-    pub const fn layout() -> RangeNumericLayout {
-        RangeNumericLayout {
+    pub const fn layout() -> HtmlRangeNumericLayout {
+        HtmlRangeNumericLayout {
             registers: size_of::<Self>(),
         }
     }
@@ -594,18 +601,18 @@ mod exclusive_tests {
     use super::*;
     #[test]
     fn active_phase_and_cached_request_mismatches_are_transactional_refusals() {
-        let headers = RangeNumericHeaders {
-            buffers: [RangeBufferHeader {
+        let headers = HtmlRangeNumericHeaders {
+            buffers: [HtmlRangeBufferHeader {
                 len: 0,
                 capacity: 0,
             }; 8],
-            output: RangeBufferHeader {
+            output: HtmlRangeBufferHeader {
                 len: 0,
                 capacity: 0,
             },
         };
-        let original = BestFiniteNumberCursor::new(1.0, headers).unwrap();
-        let build = RangeDyadicCursor::new(headers, RangeScratchRole::Trial, 1, 0).unwrap();
+        let original = HtmlBestFiniteNumberCursor::new(1.0, headers).unwrap();
+        let build = RangeDyadicCursor::new(headers, HtmlRangeScratchRole::Trial, 1, 0).unwrap();
         for case in 0..3 {
             let mut c = original;
             match case {
@@ -619,8 +626,8 @@ mod exclusive_tests {
             }
             let snapshot = c;
             assert_eq!(
-                c.reply(RangeNumericReply::Ack),
-                Err(RangeNumericError::Integrity)
+                c.reply(HtmlRangeNumericReply::Ack),
+                Err(HtmlRangeNumericError::Integrity)
             );
             assert_eq!(c, snapshot);
         }

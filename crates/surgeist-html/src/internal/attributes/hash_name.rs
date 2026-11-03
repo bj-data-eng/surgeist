@@ -178,11 +178,11 @@ impl HtmlValueInterpreter {
         let Some(raw) = raw else {
             return Ok(HtmlHashNameReferenceReport::missing());
         };
-        let mut scan = HashNameScan::new(raw);
+        let mut scan = HtmlHashNameScan::new(raw);
         loop {
             match scan.step() {
-                HashNameScanStep::Continue(next) => scan = next,
-                HashNameScanStep::Complete(report) => return Ok(report),
+                HtmlHashNameScanStep::Continue(next) => scan = next,
+                HtmlHashNameScanStep::Complete(report) => return Ok(report),
             }
         }
     }
@@ -194,7 +194,7 @@ impl HtmlValueInterpreter {
 /// The scan is a consuming cursor: it is not `Clone`, so one state cannot be
 /// stepped twice. It borrows the raw value for `'raw`.
 #[derive(Debug)]
-pub struct HashNameScan<'raw> {
+pub struct HtmlHashNameScan<'raw> {
     raw: &'raw DocumentString,
     len: usize,
     phase: HashNameScanPhase,
@@ -204,16 +204,16 @@ enum HashNameScanPhase {
     Searching(usize),
     Ready(Option<usize>),
 }
-/// The result of one `HashNameScan::step`.
+/// The result of one `HtmlHashNameScan::step`.
 #[derive(Debug)]
-pub enum HashNameScanStep<'raw> {
+pub enum HtmlHashNameScanStep<'raw> {
     /// The scan has more steps. Step this state to continue.
-    Continue(HashNameScan<'raw>),
+    Continue(HtmlHashNameScan<'raw>),
     /// The scan is finished. The report holds the shared raw handle and the
     /// local classification.
     Complete(HtmlHashNameReferenceReport),
 }
-impl<'raw> HashNameScan<'raw> {
+impl<'raw> HtmlHashNameScan<'raw> {
     // Action-accounting contract, not a CPU-instruction count. Begin observes
     // length. Search charges bounds/read/compare/advance; Ready charges author
     // classification/processing classification/raw retention/report write.
@@ -238,7 +238,7 @@ impl<'raw> HashNameScan<'raw> {
     /// Consumes this state and performs one action. A searching step reads one
     /// code unit; the following step completes the report after the first `#`
     /// or the last unit.
-    pub fn step(mut self) -> HashNameScanStep<'raw> {
+    pub fn step(mut self) -> HtmlHashNameScanStep<'raw> {
         match self.phase {
             HashNameScanPhase::Searching(offset) => {
                 // Searching guarantees offset < len. The next offset cannot
@@ -252,10 +252,10 @@ impl<'raw> HashNameScan<'raw> {
                 } else {
                     HashNameScanPhase::Searching(next)
                 };
-                HashNameScanStep::Continue(self)
+                HtmlHashNameScanStep::Continue(self)
             }
             HashNameScanPhase::Ready(first_hash) => {
-                HashNameScanStep::Complete(HtmlHashNameReferenceReport {
+                HtmlHashNameScanStep::Complete(HtmlHashNameReferenceReport {
                     operand: HashNameOperand::Present {
                         raw: self.raw.clone(),
                         first_hash,
@@ -273,21 +273,21 @@ mod tests {
     #[test]
     fn consumed_scan_separates_the_final_unit_from_ready_retention() {
         let raw = DocumentString::from("ab#c");
-        let mut scan = HashNameScan::new(&raw);
+        let mut scan = HtmlHashNameScan::new(&raw);
         assert!(matches!(scan.phase, HashNameScanPhase::Searching(0)));
         for offset in [1, 2] {
             scan = match scan.step() {
-                HashNameScanStep::Continue(next) => next,
-                HashNameScanStep::Complete(_) => panic!("premature completion"),
+                HtmlHashNameScanStep::Continue(next) => next,
+                HtmlHashNameScanStep::Complete(_) => panic!("premature completion"),
             };
             assert!(matches!(scan.phase, HashNameScanPhase::Searching(n) if n == offset));
         }
         scan = match scan.step() {
-            HashNameScanStep::Continue(next) => next,
-            HashNameScanStep::Complete(_) => panic!("retained during unit read"),
+            HtmlHashNameScanStep::Continue(next) => next,
+            HtmlHashNameScanStep::Complete(_) => panic!("retained during unit read"),
         };
         assert!(matches!(scan.phase, HashNameScanPhase::Ready(Some(2))));
-        let HashNameScanStep::Complete(report) = scan.step() else {
+        let HtmlHashNameScanStep::Complete(report) = scan.step() else {
             panic!("Ready must complete")
         };
         assert_eq!(report.first_hash_offset(), Some(2));
@@ -304,18 +304,18 @@ mod tests {
             ("#long-tail", 2, 9),
         ] {
             let raw = DocumentString::from(raw);
-            let mut scan = HashNameScan::new(&raw);
+            let mut scan = HtmlHashNameScan::new(&raw);
             let mut observed_steps = 0;
             loop {
                 observed_steps += 1;
                 match scan.step() {
-                    HashNameScanStep::Continue(next) => scan = next,
-                    HashNameScanStep::Complete(_) => break,
+                    HtmlHashNameScanStep::Continue(next) => scan = next,
+                    HtmlHashNameScanStep::Complete(_) => break,
                 }
             }
             assert_eq!(observed_steps, steps);
             assert_eq!(
-                HashNameScan::BEGIN_WORK + observed_steps * HashNameScan::STEP_WORK,
+                HtmlHashNameScan::BEGIN_WORK + observed_steps * HtmlHashNameScan::STEP_WORK,
                 work
             );
         }

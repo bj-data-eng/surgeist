@@ -5,7 +5,7 @@
 //! request limits before invoking these algorithms.
 
 use crate::DocumentString;
-use crate::internal::microsyntax::tokens::ascii_whitespace;
+use crate::internal::microsyntax::tokens::is_ascii_whitespace;
 use std::{cmp::Ordering, error::Error, fmt, num::NonZeroU32};
 pub(crate) mod natural_ratio;
 pub(crate) mod range;
@@ -140,7 +140,7 @@ fn ascii_digit_string(bytes: Vec<u8>) -> String {
 /// concrete operation, including intermediates that have already been dropped.
 /// The semantic session records this before interpreting either outcome.
 #[derive(Debug)]
-pub struct NumericMaterialized<T> {
+pub struct HtmlNumericMaterialized<T> {
     pub(crate) value: T,
     pub(crate) capacity_bytes: usize,
 }
@@ -148,27 +148,27 @@ pub struct NumericMaterialized<T> {
 /// Why a controlled digit materialization failed: the digits were invalid, or the allocation hit a
 /// boundary. The semantic session owns admission of both.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum NumericMaterializationError {
+pub enum HtmlNumericMaterializationError {
     /// The borrowed UTF-16 digits are empty or contain a code unit that is not an ASCII digit.
     Digits(HtmlDecimalDigitsError),
     /// The digit allocation exceeded a limit, could not be represented, or failed.
-    Boundary(IntegerUnitStepError),
+    Boundary(HtmlIntegerUnitStepError),
 }
 
 /// A failed materialization: its cause and the capacity of every allocation observed before it
 /// failed, which the caller must still account for. Read it with `kind` and `capacity_bytes`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct NumericMaterializationFailure {
-    pub(crate) kind: NumericMaterializationError,
+pub struct HtmlNumericMaterializationFailure {
+    pub(crate) kind: HtmlNumericMaterializationError,
     pub(crate) capacity_bytes: usize,
 }
 
 fn materialization_boundary(
-    error: IntegerUnitStepError,
+    error: HtmlIntegerUnitStepError,
     capacity_bytes: usize,
-) -> NumericMaterializationFailure {
-    NumericMaterializationFailure {
-        kind: NumericMaterializationError::Boundary(error),
+) -> HtmlNumericMaterializationFailure {
+    HtmlNumericMaterializationFailure {
+        kind: HtmlNumericMaterializationError::Boundary(error),
         capacity_bytes,
     }
 }
@@ -176,9 +176,9 @@ fn materialization_boundary(
 fn materialization_digits(
     error: HtmlDecimalDigitsError,
     capacity_bytes: usize,
-) -> NumericMaterializationFailure {
-    NumericMaterializationFailure {
-        kind: NumericMaterializationError::Digits(error),
+) -> HtmlNumericMaterializationFailure {
+    HtmlNumericMaterializationFailure {
+        kind: HtmlNumericMaterializationError::Digits(error),
         capacity_bytes,
     }
 }
@@ -188,22 +188,22 @@ fn reserve_materialization(
     max_integer_digits: Option<usize>,
     max_capacity_bytes: usize,
     observed: &mut usize,
-) -> Result<Vec<u8>, NumericMaterializationFailure> {
+) -> Result<Vec<u8>, HtmlNumericMaterializationFailure> {
     if let Some(max_digits) = max_integer_digits {
         check_integer_digit_capacity(requested, max_digits, usize::MAX)
             .map_err(|e| materialization_boundary(e, *observed))?;
     } else if requested > isize::MAX as usize {
         return Err(materialization_boundary(
-            IntegerUnitStepError::RepresentationExhausted,
+            HtmlIntegerUnitStepError::RepresentationExhausted,
             *observed,
         ));
     }
     let required = observed.checked_add(requested).ok_or_else(|| {
-        materialization_boundary(IntegerUnitStepError::RepresentationExhausted, *observed)
+        materialization_boundary(HtmlIntegerUnitStepError::RepresentationExhausted, *observed)
     })?;
     if required > max_capacity_bytes {
         return Err(materialization_boundary(
-            IntegerUnitStepError::RequestedCapacityLimitExceeded {
+            HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded {
                 limit: max_capacity_bytes,
                 required,
             },
@@ -215,11 +215,11 @@ fn reserve_materialization(
     // Even an allocation failure retains any observed backing, without claiming
     // allocator internals or old immutable inputs as new variable storage.
     *observed = observed.checked_add(bytes.capacity()).ok_or_else(|| {
-        materialization_boundary(IntegerUnitStepError::RepresentationExhausted, *observed)
+        materialization_boundary(HtmlIntegerUnitStepError::RepresentationExhausted, *observed)
     })?;
     allocation.map_err(|_| {
         materialization_boundary(
-            IntegerUnitStepError::AllocationFailed { requested },
+            HtmlIntegerUnitStepError::AllocationFailed { requested },
             *observed,
         )
     })?;
@@ -234,7 +234,7 @@ fn controlled_digit_string(
     max_integer_digits: usize,
     max_capacity_bytes: usize,
     observed: &mut usize,
-) -> Result<String, NumericMaterializationFailure> {
+) -> Result<String, HtmlNumericMaterializationFailure> {
     // An empty fraction is the exact integer case, not an invalid integer.
     if fractional && input.is_empty() {
         return Ok(String::new());
@@ -290,10 +290,10 @@ impl HtmlNonNegativeInteger {
         input: &[u16],
         max_digits: usize,
         max_bytes: usize,
-    ) -> Result<NumericMaterialized<Self>, NumericMaterializationFailure> {
+    ) -> Result<HtmlNumericMaterialized<Self>, HtmlNumericMaterializationFailure> {
         let mut observed = 0;
         let digits = controlled_digit_string(input, false, max_digits, max_bytes, &mut observed)?;
-        Ok(NumericMaterialized {
+        Ok(HtmlNumericMaterialized {
             value: Self { digits },
             capacity_bytes: observed,
         })
@@ -313,10 +313,10 @@ impl HtmlNonNegativeInteger {
         value: u32,
         max_digits: usize,
         max_bytes: usize,
-    ) -> Result<NumericMaterialized<Self>, NumericMaterializationFailure> {
+    ) -> Result<HtmlNumericMaterialized<Self>, HtmlNumericMaterializationFailure> {
         let result = HtmlInteger::try_from_usize(value as usize, max_digits, max_bytes)
             .map_err(unit_step_materialization_failure)?;
-        Ok(NumericMaterialized {
+        Ok(HtmlNumericMaterialized {
             value: result.value.magnitude,
             capacity_bytes: result.capacity_bytes,
         })
@@ -334,7 +334,7 @@ impl HtmlNonNegativeInteger {
         &self,
         max_digits: usize,
         max_bytes: usize,
-    ) -> Result<NumericMaterialized<Self>, NumericMaterializationFailure> {
+    ) -> Result<HtmlNumericMaterialized<Self>, HtmlNumericMaterializationFailure> {
         let mut observed = 0;
         let mut bytes = reserve_materialization(
             self.digits.len(),
@@ -343,7 +343,7 @@ impl HtmlNonNegativeInteger {
             &mut observed,
         )?;
         bytes.extend_from_slice(self.digits.as_bytes());
-        Ok(NumericMaterialized {
+        Ok(HtmlNumericMaterialized {
             value: Self {
                 digits: ascii_digit_string(bytes),
             },
@@ -367,7 +367,7 @@ impl HtmlNonNegativeInteger {
         divisor: NonZeroU32,
         max_digits: usize,
         max_bytes: usize,
-    ) -> Result<NumericMaterialized<(Self, u32)>, NumericMaterializationFailure> {
+    ) -> Result<HtmlNumericMaterialized<(Self, u32)>, HtmlNumericMaterializationFailure> {
         let mut remainder = 0u64;
         let mut length = 0;
         for &digit in self.digits.as_bytes() {
@@ -380,7 +380,7 @@ impl HtmlNonNegativeInteger {
         let mut bytes =
             reserve_materialization(length.max(1), Some(max_digits), max_bytes, &mut observed)?;
         let remainder = write_quotient(self.digits.as_bytes(), divisor, &mut bytes);
-        Ok(NumericMaterialized {
+        Ok(HtmlNumericMaterialized {
             value: (
                 Self {
                     digits: ascii_digit_string(bytes),
@@ -404,9 +404,9 @@ impl HtmlNonNegativeInteger {
         &self,
         max_digits: usize,
         max_bytes: usize,
-    ) -> Result<NumericMaterialized<Option<Self>>, NumericMaterializationFailure> {
+    ) -> Result<HtmlNumericMaterialized<Option<Self>>, HtmlNumericMaterializationFailure> {
         if self.is_zero() {
-            return Ok(NumericMaterialized {
+            return Ok(HtmlNumericMaterialized {
                 value: None,
                 capacity_bytes: 0,
             });
@@ -414,7 +414,7 @@ impl HtmlNonNegativeInteger {
         let digits = try_unit_step_digits(&self.digits, false, max_digits, max_bytes)
             .map_err(unit_step_materialization_failure)?;
         let capacity_bytes = digits.capacity();
-        Ok(NumericMaterialized {
+        Ok(HtmlNumericMaterialized {
             value: Some(Self { digits }),
             capacity_bytes,
         })
@@ -436,7 +436,7 @@ impl HtmlNonNegativeInteger {
         multiplier: u32,
         max_digits: usize,
         max_bytes: usize,
-    ) -> Result<NumericMaterialized<Self>, NumericMaterializationFailure> {
+    ) -> Result<HtmlNumericMaterialized<Self>, HtmlNumericMaterializationFailure> {
         if multiplier == 0 || self.is_zero() {
             return Self::try_from_u32(0, max_digits, max_bytes);
         }
@@ -449,7 +449,7 @@ impl HtmlNonNegativeInteger {
             max_bytes,
             &mut observed,
         )?;
-        Ok(NumericMaterialized {
+        Ok(HtmlNumericMaterialized {
             value: Self { digits },
             capacity_bytes: observed,
         })
@@ -472,7 +472,7 @@ impl HtmlNonNegativeInteger {
         other: &Self,
         max_digits: usize,
         max_bytes: usize,
-    ) -> Result<NumericMaterialized<Self>, NumericMaterializationFailure> {
+    ) -> Result<HtmlNumericMaterialized<Self>, HtmlNumericMaterializationFailure> {
         let mut observed = 0;
         let digits = controlled_sum(
             self.digits.as_bytes(),
@@ -482,7 +482,7 @@ impl HtmlNonNegativeInteger {
             max_bytes,
             &mut observed,
         )?;
-        Ok(NumericMaterialized {
+        Ok(HtmlNumericMaterialized {
             value: Self { digits },
             capacity_bytes: observed,
         })
@@ -496,9 +496,9 @@ fn controlled_product(
     max_digits: usize,
     max_bytes: usize,
     observed: &mut usize,
-) -> Result<String, NumericMaterializationFailure> {
+) -> Result<String, HtmlNumericMaterializationFailure> {
     input.len().checked_add(10).ok_or_else(|| {
-        materialization_boundary(IntegerUnitStepError::RepresentationExhausted, *observed)
+        materialization_boundary(HtmlIntegerUnitStepError::RepresentationExhausted, *observed)
     })?;
     let required = product_length(input, multiplier, carry);
     let mut bytes = reserve_materialization(required, Some(max_digits), max_bytes, observed)?;
@@ -513,13 +513,13 @@ fn controlled_sum(
     max_digits: usize,
     max_bytes: usize,
     observed: &mut usize,
-) -> Result<String, NumericMaterializationFailure> {
+) -> Result<String, HtmlNumericMaterializationFailure> {
     let required = left
         .len()
         .max(right.len())
         .checked_add(usize::from(sum_carry(left, right, carry)))
         .ok_or_else(|| {
-            materialization_boundary(IntegerUnitStepError::RepresentationExhausted, *observed)
+            materialization_boundary(HtmlIntegerUnitStepError::RepresentationExhausted, *observed)
         })?;
     let mut bytes = reserve_materialization(required, Some(max_digits), max_bytes, observed)?;
     write_sum(left, right, carry, &mut bytes);
@@ -529,7 +529,7 @@ fn controlled_sum(
 fn unit_step_shape(
     input: &str,
     grow: bool,
-) -> Result<(usize, Option<usize>), IntegerUnitStepError> {
+) -> Result<(usize, Option<usize>), HtmlIntegerUnitStepError> {
     let pivot = input
         .as_bytes()
         .iter()
@@ -538,7 +538,7 @@ fn unit_step_shape(
         input
             .len()
             .checked_add(1)
-            .ok_or(IntegerUnitStepError::RepresentationExhausted)?
+            .ok_or(HtmlIntegerUnitStepError::RepresentationExhausted)?
     } else if !grow && pivot == Some(0) && input.as_bytes()[0] == b'1' && input.len() > 1 {
         input.len() - 1
     } else {
@@ -584,16 +584,20 @@ fn try_unit_step_digits(
     grow: bool,
     max_digits: usize,
     max_bytes: usize,
-) -> Result<String, IntegerUnitStepError> {
+) -> Result<String, HtmlIntegerUnitStepError> {
     let (required, pivot) = unit_step_shape(input, grow)?;
     let mut digits = reserve_integer_digits(required, max_digits, max_bytes)?;
     write_unit_step(input, grow, pivot, &mut digits);
     Ok(digits)
 }
 
-fn unit_step_materialization_failure(error: IntegerUnitStepError) -> NumericMaterializationFailure {
+fn unit_step_materialization_failure(
+    error: HtmlIntegerUnitStepError,
+) -> HtmlNumericMaterializationFailure {
     let capacity = match error {
-        IntegerUnitStepError::ActualCapacityLimitExceeded { capacity_bytes, .. } => capacity_bytes,
+        HtmlIntegerUnitStepError::ActualCapacityLimitExceeded { capacity_bytes, .. } => {
+            capacity_bytes
+        }
         _ => 0,
     };
     materialization_boundary(error, capacity)
@@ -615,15 +619,15 @@ impl HtmlInteger {
     /// Increments or decrements the integer by one as `step` selects and reports the observed
     /// allocation capacity. Its digit and byte limits and exact result are those of
     /// `try_unit_step`; only the failure shape differs, since it uses
-    /// `NumericMaterializationFailure`.
+    /// `HtmlNumericMaterializationFailure`.
     pub fn try_materialized_unit_step(
         &self,
-        step: IntegerUnitStep,
+        step: HtmlIntegerUnitStep,
         max_digits: usize,
         max_bytes: usize,
-    ) -> Result<NumericMaterialized<Self>, NumericMaterializationFailure> {
+    ) -> Result<HtmlNumericMaterialized<Self>, HtmlNumericMaterializationFailure> {
         self.try_unit_step(step, max_digits, max_bytes)
-            .map(|r| NumericMaterialized {
+            .map(|r| HtmlNumericMaterialized {
                 value: r.value,
                 capacity_bytes: r.capacity_bytes,
             })
@@ -651,13 +655,13 @@ impl HtmlNonNegativeDecimal {
         fraction: &[u16],
         max_digits: usize,
         max_bytes: usize,
-    ) -> Result<NumericMaterialized<Self>, NumericMaterializationFailure> {
+    ) -> Result<HtmlNumericMaterialized<Self>, HtmlNumericMaterializationFailure> {
         let mut observed = 0;
         let integer =
             controlled_digit_string(integer, false, max_digits, max_bytes, &mut observed)?;
         let fraction =
             controlled_digit_string(fraction, true, max_digits, max_bytes, &mut observed)?;
-        Ok(NumericMaterialized {
+        Ok(HtmlNumericMaterialized {
             value: Self {
                 integer: HtmlNonNegativeInteger { digits: integer },
                 fraction,
@@ -680,7 +684,7 @@ impl HtmlNonNegativeDecimal {
         &self,
         max_digits: usize,
         max_bytes: usize,
-    ) -> Result<NumericMaterialized<Self>, NumericMaterializationFailure> {
+    ) -> Result<HtmlNumericMaterialized<Self>, HtmlNumericMaterializationFailure> {
         let mut observed = 0;
         let mut integer = reserve_materialization(
             self.integer.digits.len(),
@@ -692,7 +696,7 @@ impl HtmlNonNegativeDecimal {
         let mut fraction =
             reserve_materialization(self.fraction.len(), None, max_bytes, &mut observed)?;
         fraction.extend_from_slice(self.fraction.as_bytes());
-        Ok(NumericMaterialized {
+        Ok(HtmlNumericMaterialized {
             value: Self {
                 integer: HtmlNonNegativeInteger {
                     digits: ascii_digit_string(integer),
@@ -722,10 +726,10 @@ impl HtmlNonNegativeDecimal {
         multiplier: u32,
         max_digits: usize,
         max_bytes: usize,
-    ) -> Result<NumericMaterialized<Self>, NumericMaterializationFailure> {
+    ) -> Result<HtmlNumericMaterialized<Self>, HtmlNumericMaterializationFailure> {
         if multiplier == 0 || self.is_zero() {
             return HtmlNonNegativeInteger::try_from_u32(0, max_digits, max_bytes).map(|r| {
-                NumericMaterialized {
+                HtmlNumericMaterialized {
                     value: r.value.into(),
                     capacity_bytes: r.capacity_bytes,
                 }
@@ -744,7 +748,7 @@ impl HtmlNonNegativeDecimal {
             max_bytes,
             &mut observed,
         )?;
-        Ok(NumericMaterialized {
+        Ok(HtmlNumericMaterialized {
             value: Self::from_ascii_fraction(HtmlNonNegativeInteger { digits: integer }, fraction),
             capacity_bytes: observed,
         })
@@ -767,7 +771,7 @@ impl HtmlNonNegativeDecimal {
         other: &Self,
         max_digits: usize,
         max_bytes: usize,
-    ) -> Result<NumericMaterialized<Self>, NumericMaterializationFailure> {
+    ) -> Result<HtmlNumericMaterialized<Self>, HtmlNumericMaterializationFailure> {
         let mut observed = 0;
         let scale = self.fraction.len().max(other.fraction.len());
         let mut fraction = reserve_materialization(scale, None, max_bytes, &mut observed)?;
@@ -785,7 +789,7 @@ impl HtmlNonNegativeDecimal {
             max_bytes,
             &mut observed,
         )?;
-        Ok(NumericMaterialized {
+        Ok(HtmlNumericMaterialized {
             value: Self::from_ascii_fraction(HtmlNonNegativeInteger { digits: integer }, fraction),
             capacity_bytes: observed,
         })
@@ -804,7 +808,7 @@ pub struct HtmlInteger {
 
 /// The two exact arithmetic operations used by HTML's ordinal-value algorithm.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum IntegerUnitStep {
+pub enum HtmlIntegerUnitStep {
     /// Adds one to the integer.
     Increment,
     /// Subtracts one from the integer. The result of decrementing zero is `-1`.
@@ -813,14 +817,14 @@ pub enum IntegerUnitStep {
 
 /// One canonical integer and the actual capacity of its sole digit allocation.
 #[derive(Debug)]
-pub struct IntegerUnitStepResult {
+pub struct HtmlIntegerUnitStepResult {
     pub(crate) value: HtmlInteger,
     pub(crate) capacity_bytes: usize,
 }
 
 /// Numeric allocation boundaries; the semantic session owns their admission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum IntegerUnitStepError {
+pub enum HtmlIntegerUnitStepError {
     /// The digit count or a capacity sum overflows `usize` or exceeds `isize::MAX`, so no
     /// allocation could represent it.
     RepresentationExhausted,
@@ -860,12 +864,12 @@ fn reserve_integer_digits(
     required: usize,
     max_result_digits: usize,
     max_capacity_bytes: usize,
-) -> Result<String, IntegerUnitStepError> {
+) -> Result<String, HtmlIntegerUnitStepError> {
     check_integer_digit_capacity(required, max_result_digits, max_capacity_bytes)?;
     let mut digits = String::new();
     digits
         .try_reserve_exact(required)
-        .map_err(|_| IntegerUnitStepError::AllocationFailed {
+        .map_err(|_| HtmlIntegerUnitStepError::AllocationFailed {
             requested: required,
         })?;
     check_integer_actual_capacity(required, digits.capacity(), max_capacity_bytes)?;
@@ -876,18 +880,18 @@ fn check_integer_digit_capacity(
     required: usize,
     max_result_digits: usize,
     max_capacity_bytes: usize,
-) -> Result<(), IntegerUnitStepError> {
+) -> Result<(), HtmlIntegerUnitStepError> {
     if required > isize::MAX as usize {
-        return Err(IntegerUnitStepError::RepresentationExhausted);
+        return Err(HtmlIntegerUnitStepError::RepresentationExhausted);
     }
     if required > max_result_digits {
-        return Err(IntegerUnitStepError::DigitLimitExceeded {
+        return Err(HtmlIntegerUnitStepError::DigitLimitExceeded {
             limit: max_result_digits,
             required,
         });
     }
     if required > max_capacity_bytes {
-        return Err(IntegerUnitStepError::RequestedCapacityLimitExceeded {
+        return Err(HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded {
             limit: max_capacity_bytes,
             required,
         });
@@ -899,9 +903,9 @@ fn check_integer_actual_capacity(
     requested: usize,
     capacity_bytes: usize,
     max_capacity_bytes: usize,
-) -> Result<(), IntegerUnitStepError> {
+) -> Result<(), HtmlIntegerUnitStepError> {
     if capacity_bytes > max_capacity_bytes {
-        Err(IntegerUnitStepError::ActualCapacityLimitExceeded {
+        Err(HtmlIntegerUnitStepError::ActualCapacityLimitExceeded {
             limit: max_capacity_bytes,
             requested,
             capacity_bytes,
@@ -950,21 +954,21 @@ impl HtmlInteger {
     /// capacity. Logical digits and actual requested allocation are separate.
     pub fn try_unit_step(
         &self,
-        step: IntegerUnitStep,
+        step: HtmlIntegerUnitStep,
         max_result_digits: usize,
         max_capacity_bytes: usize,
-    ) -> Result<IntegerUnitStepResult, IntegerUnitStepError> {
+    ) -> Result<HtmlIntegerUnitStepResult, HtmlIntegerUnitStepError> {
         let input = self.magnitude.decimal_digits();
         let zero = self.magnitude.is_zero();
-        let grow = zero || (step == IntegerUnitStep::Increment) != self.negative;
+        let grow = zero || (step == HtmlIntegerUnitStep::Increment) != self.negative;
         let negative = if zero {
-            step == IntegerUnitStep::Decrement
+            step == HtmlIntegerUnitStep::Decrement
         } else {
             self.negative
         };
         let digits = try_unit_step_digits(input, grow, max_result_digits, max_capacity_bytes)?;
         let capacity_bytes = digits.capacity();
-        Ok(IntegerUnitStepResult {
+        Ok(HtmlIntegerUnitStepResult {
             value: Self::from_magnitude(HtmlNonNegativeInteger { digits }, negative),
             capacity_bytes,
         })
@@ -976,7 +980,7 @@ impl HtmlInteger {
         value: usize,
         max_result_digits: usize,
         max_capacity_bytes: usize,
-    ) -> Result<IntegerUnitStepResult, IntegerUnitStepError> {
+    ) -> Result<HtmlIntegerUnitStepResult, HtmlIntegerUnitStepError> {
         let mut divisor = 1_usize;
         let mut required = 1;
         while divisor <= value / 10 {
@@ -992,7 +996,7 @@ impl HtmlInteger {
             }
         }
         let capacity_bytes = digits.capacity();
-        Ok(IntegerUnitStepResult {
+        Ok(HtmlIntegerUnitStepResult {
             value: Self::from_magnitude(HtmlNonNegativeInteger { digits }, false),
             capacity_bytes,
         })
@@ -1341,7 +1345,7 @@ impl HtmlFloatingPointNumber {
     ///
     /// It is not the ECMAScript `ToString` operation that HTML's value
     /// sanitization algorithm calls "best representation". That serialization
-    /// is `bounded::BestFiniteNumberCursor`, which the parser and DOM input
+    /// is `bounded::HtmlBestFiniteNumberCursor`, which the parser and DOM input
     /// range sanitization use over caller-owned storage; the two spellings
     /// differ for large and small magnitudes (`1e21`).
     pub fn to_plain_decimal_string(&self) -> DocumentString {
@@ -1767,7 +1771,7 @@ impl HtmlDimensionList {
 /// Failures of the common numeric algorithms; request limits are separate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum NumericParseError {
+pub enum HtmlNumericParseError {
     /// The value does not match the HTML grammar the entry point implements: author mode rejects
     /// what recovery would skip or truncate, and a value with no digits is always invalid (HTML877d
     /// #numbers).
@@ -1801,7 +1805,10 @@ fn check_decimal_digits(units: &[u16]) -> Result<(), HtmlDecimalDigitsError> {
 }
 
 fn skip_whitespace(units: &[u16], position: &mut usize) {
-    while units.get(*position).is_some_and(|&u| ascii_whitespace(u)) {
+    while units
+        .get(*position)
+        .is_some_and(|&u| is_ascii_whitespace(u))
+    {
         *position += 1;
     }
 }
@@ -1813,12 +1820,14 @@ fn collect_digits(units: &[u16], position: &mut usize) {
 }
 
 /// Author grammar: an optional minus followed by one or more ASCII digits.
-pub(crate) fn validate_integer(input: &DocumentString) -> Result<HtmlInteger, NumericParseError> {
+pub(crate) fn validate_integer(
+    input: &DocumentString,
+) -> Result<HtmlInteger, HtmlNumericParseError> {
     integer(input.code_units(), false)
 }
 
 /// §2.3.4.1 recovery consumes only the initial signed digit sequence.
-pub(crate) fn parse_integer(input: &DocumentString) -> Result<HtmlInteger, NumericParseError> {
+pub(crate) fn parse_integer(input: &DocumentString) -> Result<HtmlInteger, HtmlNumericParseError> {
     integer(input.code_units(), true)
 }
 
@@ -1831,7 +1840,7 @@ struct IntegerPrefix<'a> {
 /// The shared integer grammar as one-unit progress. Callers own admission;
 /// this scanner never reads an input provider or allocates digit storage.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct IntegerPrefixScanner {
+pub struct HtmlIntegerPrefixScanner {
     recover: bool,
     phase: IntegerPrefixPhase,
     negative: bool,
@@ -1851,12 +1860,12 @@ enum IntegerPrefixPhase {
 /// that were fed. The range indexes the caller's input, so reading the digits back needs that same
 /// input.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ScannedIntegerPrefix {
+pub struct HtmlScannedIntegerPrefix {
     pub(crate) negative: bool,
     pub(crate) start: usize,
     pub(crate) end: usize,
 }
-impl IntegerPrefixScanner {
+impl HtmlIntegerPrefixScanner {
     /// Starts a scan. With `recover` false it follows the author grammar: an optional `-`, then
     /// ASCII digits to the end of input. With `recover` true it follows the recovery algorithm of
     /// HTML877d #signed-integers: leading ASCII whitespace is skipped, `+` or `-` may precede the
@@ -1875,7 +1884,7 @@ impl IntegerPrefixScanner {
     pub fn feed(&mut self, unit: u16) -> bool {
         match self.phase {
             IntegerPrefixPhase::Done | IntegerPrefixPhase::Invalid => return false,
-            IntegerPrefixPhase::Leading if self.recover && ascii_whitespace(unit) => {
+            IntegerPrefixPhase::Leading if self.recover && is_ascii_whitespace(unit) => {
                 self.position += 1;
                 return true;
             }
@@ -1908,32 +1917,38 @@ impl IntegerPrefixScanner {
     /// Ends the scan after the last unit has been fed. It returns the sign and digit range when at
     /// least one digit was accepted and the grammar was not violated, and `InvalidSyntax`
     /// otherwise.
-    pub fn finish(self) -> Result<ScannedIntegerPrefix, NumericParseError> {
+    pub fn finish(self) -> Result<HtmlScannedIntegerPrefix, HtmlNumericParseError> {
         if matches!(
             self.phase,
             IntegerPrefixPhase::Digits | IntegerPrefixPhase::Done
         ) {
-            Ok(ScannedIntegerPrefix {
+            Ok(HtmlScannedIntegerPrefix {
                 negative: self.negative,
                 start: self.start,
                 end: self.end,
             })
         } else {
-            Err(NumericParseError::InvalidSyntax)
+            Err(HtmlNumericParseError::InvalidSyntax)
         }
     }
 }
 
-fn nonnegative_prefix_digits(negative: bool, digits: &[u16]) -> Result<&[u16], NumericParseError> {
+fn nonnegative_prefix_digits(
+    negative: bool,
+    digits: &[u16],
+) -> Result<&[u16], HtmlNumericParseError> {
     if negative && digits.iter().any(|&unit| unit != b'0' as u16) {
-        Err(NumericParseError::Negative)
+        Err(HtmlNumericParseError::Negative)
     } else {
         Ok(digits)
     }
 }
 
-fn integer_prefix(units: &[u16], recover: bool) -> Result<IntegerPrefix<'_>, NumericParseError> {
-    let mut scanner = IntegerPrefixScanner::new(recover);
+fn integer_prefix(
+    units: &[u16],
+    recover: bool,
+) -> Result<IntegerPrefix<'_>, HtmlNumericParseError> {
+    let mut scanner = HtmlIntegerPrefixScanner::new(recover);
     for &unit in units {
         if !scanner.feed(unit) {
             break;
@@ -1946,7 +1961,7 @@ fn integer_prefix(units: &[u16], recover: bool) -> Result<IntegerPrefix<'_>, Num
     })
 }
 
-fn integer(units: &[u16], recover: bool) -> Result<HtmlInteger, NumericParseError> {
+fn integer(units: &[u16], recover: bool) -> Result<HtmlInteger, HtmlNumericParseError> {
     let prefix = integer_prefix(units, recover)?;
     Ok(HtmlInteger::from_magnitude(
         HtmlNonNegativeInteger::from_digits(prefix.digits),
@@ -1956,12 +1971,12 @@ fn integer(units: &[u16], recover: bool) -> Result<HtmlInteger, NumericParseErro
 
 /// Recovery rejection and allocation admission are separate source outcomes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum IntegerRecoveryError {
+pub enum HtmlIntegerRecoveryError {
     /// The input is not an acceptable integer prefix; no allocation was attempted.
-    Syntax(NumericParseError),
+    Syntax(HtmlNumericParseError),
     /// The input is syntactically acceptable but the canonical digit allocation was refused or
     /// failed.
-    Allocation(IntegerUnitStepError),
+    Allocation(HtmlIntegerUnitStepError),
 }
 
 /// §2.3.4.1 recovery with one fallible canonical digit allocation.
@@ -1974,7 +1989,7 @@ pub fn try_parse_integer(
     input: &DocumentString,
     max_result_digits: usize,
     max_capacity_bytes: usize,
-) -> Result<IntegerUnitStepResult, IntegerRecoveryError> {
+) -> Result<HtmlIntegerUnitStepResult, HtmlIntegerRecoveryError> {
     let prefix = integer_prefix(input.code_units(), true)?;
     // The scanner proves at least one ASCII digit. All-zero input retains its
     // last zero, so canonical zero also requires exactly one output digit.
@@ -1990,7 +2005,7 @@ pub fn try_parse_integer(
         digits.push(char::from(unit as u8));
     }
     let capacity_bytes = digits.capacity();
-    Ok(IntegerUnitStepResult {
+    Ok(HtmlIntegerUnitStepResult {
         value: HtmlInteger::from_magnitude(HtmlNonNegativeInteger { digits }, prefix.negative),
         capacity_bytes,
     })
@@ -1999,7 +2014,7 @@ pub fn try_parse_integer(
 /// Fixed signed-long projection of the shared integer recovery prefix.
 /// `None` is a successfully parsed mathematical integer outside i32, not syntax
 /// failure. No canonical digit allocation or arbitrary integer digit cap.
-pub fn parse_integer_long(input: &DocumentString) -> Result<Option<i32>, NumericParseError> {
+pub fn parse_integer_long(input: &DocumentString) -> Result<Option<i32>, HtmlNumericParseError> {
     let prefix = integer_prefix(input.code_units(), true)?;
     let limit = if prefix.negative {
         2_147_483_648_u32
@@ -2048,7 +2063,7 @@ pub fn integer_long_work_bound(input_units: usize) -> Option<usize> {
 pub fn parse_nonnegative_integer_capped(
     input: &DocumentString,
     cap: usize,
-) -> Result<usize, NumericParseError> {
+) -> Result<usize, HtmlNumericParseError> {
     parse_nonnegative_integer_capped_steps(input.code_units(), cap, &mut || {})
 }
 
@@ -2059,8 +2074,8 @@ pub(crate) fn parse_nonnegative_integer_capped_steps(
     units: &[u16],
     cap: usize,
     step: &mut impl FnMut(),
-) -> Result<usize, NumericParseError> {
-    let mut scanner = IntegerPrefixScanner::new(true);
+) -> Result<usize, HtmlNumericParseError> {
+    let mut scanner = HtmlIntegerPrefixScanner::new(true);
     for &unit in units {
         step();
         if !scanner.feed(unit) {
@@ -2073,7 +2088,7 @@ pub(crate) fn parse_nonnegative_integer_capped_steps(
         for &unit in digits {
             step();
             if unit != b'0' as u16 {
-                return Err(NumericParseError::Negative);
+                return Err(HtmlNumericParseError::Negative);
             }
         }
     }
@@ -2095,10 +2110,10 @@ pub(crate) fn parse_nonnegative_integer_capped_steps(
 /// Author grammar: one or more ASCII digits, without either sign.
 pub(crate) fn validate_nonnegative_integer(
     input: &DocumentString,
-) -> Result<HtmlNonNegativeInteger, NumericParseError> {
+) -> Result<HtmlNonNegativeInteger, HtmlNumericParseError> {
     let units = input.code_units();
     if units.is_empty() || !units.iter().copied().all(is_digit) {
-        return Err(NumericParseError::InvalidSyntax);
+        return Err(HtmlNumericParseError::InvalidSyntax);
     }
     Ok(HtmlNonNegativeInteger::from_digits(units))
 }
@@ -2106,7 +2121,7 @@ pub(crate) fn validate_nonnegative_integer(
 /// §2.3.4.2 recovery rejects negative values, while accepting recovered -0.
 pub(crate) fn parse_nonnegative_integer(
     input: &DocumentString,
-) -> Result<HtmlNonNegativeInteger, NumericParseError> {
+) -> Result<HtmlNonNegativeInteger, HtmlNumericParseError> {
     let prefix = integer_prefix(input.code_units(), true)?;
     Ok(HtmlNonNegativeInteger::from_digits(
         nonnegative_prefix_digits(prefix.negative, prefix.digits)?,
@@ -2117,20 +2132,20 @@ pub(crate) fn parse_nonnegative_integer(
 /// Grammatical overflow is distinct from invalid author syntax.
 pub(crate) fn validate_floating_point_number(
     input: &DocumentString,
-) -> Result<HtmlFloatingPointNumber, NumericParseError> {
+) -> Result<HtmlFloatingPointNumber, HtmlNumericParseError> {
     floating_point(input.code_units(), false)
 }
 
 /// §2.3.4.3 recovery, including ignored leading plus and incomplete exponents.
 pub(crate) fn parse_floating_point_number(
     input: &DocumentString,
-) -> Result<HtmlFloatingPointNumber, NumericParseError> {
+) -> Result<HtmlFloatingPointNumber, HtmlNumericParseError> {
     floating_point(input.code_units(), true)
 }
 
 /// The source's author grammar and user-agent recovery remain distinct modes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FloatingPointParseMode {
+pub enum HtmlFloatingPointParseMode {
     /// Follows the author grammar: no leading whitespace, no `+`, and no trailing garbage.
     Author,
     /// Follows the user-agent recovery rules of HTML877d #floating-point-numbers: leading
@@ -2141,14 +2156,14 @@ pub enum FloatingPointParseMode {
 /// The conversion outcome and capacity of its already-dropped temporary token.
 /// Numeric rejection after allocation must still be accounted by the caller.
 #[derive(Debug)]
-pub struct FloatingPointParseResult {
-    pub(crate) value: Result<HtmlFloatingPointNumber, NumericParseError>,
+pub struct HtmlFloatingPointParseResult {
+    pub(crate) value: Result<HtmlFloatingPointNumber, HtmlNumericParseError>,
     pub(crate) capacity_bytes: usize,
 }
 
 /// Allocation admission failures, distinct from source numeric rejection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FloatingPointAllocationError {
+pub enum HtmlFloatingPointAllocationError {
     /// The token length overflows or exceeds `isize::MAX`, so no allocation could represent it.
     RepresentationExhausted,
     /// The bytes the token needs exceed the caller's byte limit before allocation.
@@ -2261,7 +2276,7 @@ impl HtmlScientificDecimalKey {
 /// Native representation exhaustion is not a rejection of decimal grammar.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ScientificDecimalKeyError {
-    Syntax(NumericParseError),
+    Syntax(HtmlNumericParseError),
     RepresentationExhausted,
 }
 
@@ -2283,7 +2298,7 @@ pub(crate) fn strict_scientific_decimal_key(
 pub(crate) fn strict_scientific_decimal_key_units(
     input: &[u16],
 ) -> Result<HtmlScientificDecimalKey, ScientificDecimalKeyError> {
-    let prefix = floating_point_prefix(input, FloatingPointParseMode::Author)
+    let prefix = floating_point_prefix(input, HtmlFloatingPointParseMode::Author)
         .map_err(ScientificDecimalKeyError::Syntax)?;
     let digit_count = prefix
         .integer_digits
@@ -2391,11 +2406,11 @@ fn adjust_scientific_exponent(
 fn floating_point(
     units: &[u16],
     recover: bool,
-) -> Result<HtmlFloatingPointNumber, NumericParseError> {
+) -> Result<HtmlFloatingPointNumber, HtmlNumericParseError> {
     let mode = if recover {
-        FloatingPointParseMode::Recovery
+        HtmlFloatingPointParseMode::Recovery
     } else {
-        FloatingPointParseMode::Author
+        HtmlFloatingPointParseMode::Author
     };
     let prefix = floating_point_prefix(units, mode)?;
     // Preserve all decimal digits until the single final binary64 conversion.
@@ -2422,9 +2437,9 @@ struct FloatingPointPrefix<'a> {
 /// Author mode recognizes the complete HTML floating-point grammar, independently
 /// of whether its decimal value can be represented as a finite binary64 number.
 #[derive(Clone, Copy, Debug)]
-pub struct FloatingPointGrammarCursor<'a> {
+pub struct HtmlFloatingPointGrammarCursor<'a> {
     units: &'a [u16],
-    mode: FloatingPointParseMode,
+    mode: HtmlFloatingPointParseMode,
     step: FloatingGrammarStep,
     position: usize,
     start: usize,
@@ -2454,10 +2469,10 @@ enum FloatingGrammarStep {
     Done,
 }
 
-impl<'a> FloatingPointGrammarCursor<'a> {
+impl<'a> HtmlFloatingPointGrammarCursor<'a> {
     /// Creates a cursor at the start of `units`, the exact UTF-16 code units of the value, to be
     /// read under `mode`. It does no work.
-    pub fn new(units: &'a [u16], mode: FloatingPointParseMode) -> Self {
+    pub fn new(units: &'a [u16], mode: HtmlFloatingPointParseMode) -> Self {
         Self {
             units,
             mode,
@@ -2493,7 +2508,9 @@ impl<'a> FloatingPointGrammarCursor<'a> {
     pub fn inspects_unit(&self) -> bool {
         self.position < self.units.len()
             && match self.step {
-                FloatingGrammarStep::Whitespace => self.mode == FloatingPointParseMode::Recovery,
+                FloatingGrammarStep::Whitespace => {
+                    self.mode == HtmlFloatingPointParseMode::Recovery
+                }
                 FloatingGrammarStep::Sign
                 | FloatingGrammarStep::Integer
                 | FloatingGrammarStep::Point
@@ -2516,11 +2533,11 @@ impl<'a> FloatingPointGrammarCursor<'a> {
         use FloatingGrammarStep::*;
         match self.step {
             Whitespace => {
-                if self.mode == FloatingPointParseMode::Recovery
+                if self.mode == HtmlFloatingPointParseMode::Recovery
                     && self
                         .units
                         .get(self.position)
-                        .is_some_and(|&u| ascii_whitespace(u))
+                        .is_some_and(|&u| is_ascii_whitespace(u))
                 {
                     self.position += 1;
                 } else {
@@ -2532,7 +2549,8 @@ impl<'a> FloatingPointGrammarCursor<'a> {
                 let unit = self.units.get(self.position).copied();
                 self.negative = unit == Some(b'-' as u16);
                 if self.negative
-                    || (self.mode == FloatingPointParseMode::Recovery && unit == Some(b'+' as u16))
+                    || (self.mode == HtmlFloatingPointParseMode::Recovery
+                        && unit == Some(b'+' as u16))
                 {
                     self.position += 1;
                 }
@@ -2567,7 +2585,7 @@ impl<'a> FloatingPointGrammarCursor<'a> {
                 } else {
                     self.fraction_end = self.position;
                     if self.fraction_end == self.fraction_start
-                        && (self.mode == FloatingPointParseMode::Author
+                        && (self.mode == HtmlFloatingPointParseMode::Author
                             || self.integer_end == self.integer_start)
                     {
                         self.reject();
@@ -2598,7 +2616,7 @@ impl<'a> FloatingPointGrammarCursor<'a> {
                 if self.units.get(self.position).is_some_and(|&u| is_digit(u)) {
                     self.position += 1;
                 } else if self.position == self.exponent_start {
-                    if self.mode == FloatingPointParseMode::Author {
+                    if self.mode == HtmlFloatingPointParseMode::Author {
                         self.reject();
                     } else {
                         self.position = self.significand_end;
@@ -2610,7 +2628,7 @@ impl<'a> FloatingPointGrammarCursor<'a> {
                 }
             }
             Finish => {
-                self.valid = self.mode == FloatingPointParseMode::Recovery
+                self.valid = self.mode == HtmlFloatingPointParseMode::Recovery
                     || self.position == self.units.len();
                 self.step = Done;
             }
@@ -2620,11 +2638,13 @@ impl<'a> FloatingPointGrammarCursor<'a> {
 
     /// Issued only by the completed shared grammar. The numeric executor owns
     /// offsets and signs; its adapter retains and qualifies the selected source.
-    pub fn range_decimal_parts(&self) -> Result<range::RangeDecimalParts, NumericParseError> {
+    pub fn range_decimal_parts(
+        &self,
+    ) -> Result<range::HtmlRangeDecimalParts, HtmlNumericParseError> {
         if !self.is_valid() {
-            return Err(NumericParseError::InvalidSyntax);
+            return Err(HtmlNumericParseError::InvalidSyntax);
         }
-        Ok(range::RangeDecimalParts {
+        Ok(range::HtmlRangeDecimalParts {
             negative: self.negative,
             integer_start: self.integer_start,
             integer_end: self.integer_end,
@@ -2640,9 +2660,9 @@ impl<'a> FloatingPointGrammarCursor<'a> {
         })
     }
 
-    fn prefix(&self) -> Result<FloatingPointPrefix<'a>, NumericParseError> {
+    fn prefix(&self) -> Result<FloatingPointPrefix<'a>, HtmlNumericParseError> {
         if !self.is_valid() {
-            return Err(NumericParseError::InvalidSyntax);
+            return Err(HtmlNumericParseError::InvalidSyntax);
         }
         Ok(FloatingPointPrefix {
             token: &self.units[self.start..self.position],
@@ -2659,32 +2679,35 @@ impl<'a> FloatingPointGrammarCursor<'a> {
 
 fn floating_point_prefix(
     units: &[u16],
-    mode: FloatingPointParseMode,
-) -> Result<FloatingPointPrefix<'_>, NumericParseError> {
-    let mut cursor = FloatingPointGrammarCursor::new(units, mode);
+    mode: HtmlFloatingPointParseMode,
+) -> Result<FloatingPointPrefix<'_>, HtmlNumericParseError> {
+    let mut cursor = HtmlFloatingPointGrammarCursor::new(units, mode);
     while !cursor.is_finished() {
         cursor.advance();
     }
     cursor.prefix()
 }
 
-fn convert_floating_point_token(token: &str) -> Result<HtmlFloatingPointNumber, NumericParseError> {
+fn convert_floating_point_token(
+    token: &str,
+) -> Result<HtmlFloatingPointNumber, HtmlNumericParseError> {
     let value = token
         .parse::<f64>()
-        .map_err(|_| NumericParseError::InvalidSyntax)?;
-    HtmlFloatingPointNumber::try_from(value).map_err(|_| NumericParseError::FloatingPointOverflow)
+        .map_err(|_| HtmlNumericParseError::InvalidSyntax)?;
+    HtmlFloatingPointNumber::try_from(value)
+        .map_err(|_| HtmlNumericParseError::FloatingPointOverflow)
 }
 
 fn check_floating_point_requested_capacity(
     required: usize,
     max_capacity_bytes: usize,
-) -> Result<(), FloatingPointAllocationError> {
+) -> Result<(), HtmlFloatingPointAllocationError> {
     if required > isize::MAX as usize {
-        return Err(FloatingPointAllocationError::RepresentationExhausted);
+        return Err(HtmlFloatingPointAllocationError::RepresentationExhausted);
     }
     if required > max_capacity_bytes {
         return Err(
-            FloatingPointAllocationError::RequestedCapacityLimitExceeded {
+            HtmlFloatingPointAllocationError::RequestedCapacityLimitExceeded {
                 limit: max_capacity_bytes,
                 required,
             },
@@ -2697,13 +2720,15 @@ fn check_floating_point_actual_capacity(
     requested: usize,
     capacity_bytes: usize,
     max_capacity_bytes: usize,
-) -> Result<(), FloatingPointAllocationError> {
+) -> Result<(), HtmlFloatingPointAllocationError> {
     if capacity_bytes > max_capacity_bytes {
-        Err(FloatingPointAllocationError::ActualCapacityLimitExceeded {
-            limit: max_capacity_bytes,
-            requested,
-            capacity_bytes,
-        })
+        Err(
+            HtmlFloatingPointAllocationError::ActualCapacityLimitExceeded {
+                limit: max_capacity_bytes,
+                requested,
+                capacity_bytes,
+            },
+        )
     } else {
         Ok(())
     }
@@ -2719,13 +2744,13 @@ fn check_floating_point_actual_capacity(
 /// reports zero capacity. No raw copy, report, or second grammar is constructed.
 pub fn try_floating_point_number(
     input: &DocumentString,
-    mode: FloatingPointParseMode,
+    mode: HtmlFloatingPointParseMode,
     max_capacity_bytes: usize,
-) -> Result<FloatingPointParseResult, FloatingPointAllocationError> {
+) -> Result<HtmlFloatingPointParseResult, HtmlFloatingPointAllocationError> {
     let prefix = match floating_point_prefix(input.code_units(), mode) {
         Ok(prefix) => prefix,
         Err(error) => {
-            return Ok(FloatingPointParseResult {
+            return Ok(HtmlFloatingPointParseResult {
                 value: Err(error),
                 capacity_bytes: 0,
             });
@@ -2735,7 +2760,7 @@ pub fn try_floating_point_number(
     check_floating_point_requested_capacity(required, max_capacity_bytes)?;
     let mut token = String::new();
     token.try_reserve_exact(required).map_err(|_| {
-        FloatingPointAllocationError::AllocationFailed {
+        HtmlFloatingPointAllocationError::AllocationFailed {
             requested: required,
         }
     })?;
@@ -2743,7 +2768,7 @@ pub fn try_floating_point_number(
     for &unit in prefix.token {
         token.push(char::from(unit as u8));
     }
-    Ok(FloatingPointParseResult {
+    Ok(HtmlFloatingPointParseResult {
         value: convert_floating_point_token(&token),
         capacity_bytes: token.capacity(),
     })
@@ -2752,7 +2777,7 @@ pub fn try_floating_point_number(
 /// Author list grammar is comma-separated author numbers, without whitespace.
 pub(crate) fn validate_floating_point_list(
     input: &DocumentString,
-) -> Result<HtmlFloatingPointList, NumericParseError> {
+) -> Result<HtmlFloatingPointList, HtmlNumericParseError> {
     if input.is_empty() {
         return Ok(HtmlFloatingPointList::default());
     }
@@ -2761,14 +2786,14 @@ pub(crate) fn validate_floating_point_list(
     for units in input.code_units().split(|&unit| unit == b',' as u16) {
         match floating_point(units, false) {
             Ok(value) => values.push(value),
-            Err(NumericParseError::FloatingPointOverflow) => overflow = true,
+            Err(HtmlNumericParseError::FloatingPointOverflow) => overflow = true,
             Err(error) => return Err(error),
         }
     }
     // Overflow describes a representational failure only when the complete
     // list satisfies author grammar. A later invalid token takes precedence.
     if overflow {
-        Err(NumericParseError::FloatingPointOverflow)
+        Err(HtmlNumericParseError::FloatingPointOverflow)
     } else {
         Ok(HtmlFloatingPointList::new(values))
     }
@@ -2779,7 +2804,7 @@ pub(crate) fn parse_floating_point_list(input: &DocumentString) -> HtmlFloatingP
     let units = input.code_units();
     let mut position = 0;
     let mut values = Vec::new();
-    let is_delimiter = |unit| ascii_whitespace(unit) || matches!(unit, 0x2c | 0x3b);
+    let is_delimiter = |unit| is_ascii_whitespace(unit) || matches!(unit, 0x2c | 0x3b);
     while units.get(position).is_some_and(|&u| is_delimiter(u)) {
         position += 1;
     }
@@ -2806,14 +2831,16 @@ pub(crate) fn parse_floating_point_list(input: &DocumentString) -> HtmlFloatingP
 }
 
 /// §2.3.4.4 digit-led dimension recovery, without an invented author grammar.
-pub(crate) fn parse_dimension(input: &DocumentString) -> Result<HtmlDimension, NumericParseError> {
+pub(crate) fn parse_dimension(
+    input: &DocumentString,
+) -> Result<HtmlDimension, HtmlNumericParseError> {
     let units = input.code_units();
     let mut position = 0;
     skip_whitespace(units, &mut position);
     let start = position;
     collect_digits(units, &mut position);
     if start == position {
-        return Err(NumericParseError::InvalidSyntax);
+        return Err(HtmlNumericParseError::InvalidSyntax);
     }
     let integer = HtmlNonNegativeInteger::from_digits(&units[start..position]);
     let mut fraction = &[][..];
@@ -2834,10 +2861,10 @@ pub(crate) fn parse_dimension(input: &DocumentString) -> Result<HtmlDimension, N
 /// §2.3.4.5 rejects exact zero, including arbitrarily small nonzero decimals.
 pub(crate) fn parse_nonzero_dimension(
     input: &DocumentString,
-) -> Result<HtmlDimension, NumericParseError> {
+) -> Result<HtmlDimension, HtmlNumericParseError> {
     let dimension = parse_dimension(input)?;
     if dimension.value().is_zero() {
-        Err(NumericParseError::ZeroDimension)
+        Err(HtmlNumericParseError::ZeroDimension)
     } else {
         Ok(dimension)
     }
@@ -2862,10 +2889,10 @@ pub(crate) fn parse_dimension_list(input: &DocumentString) -> HtmlDimensionList 
             position += 1;
         }
         let mut token = &units[start..position];
-        while token.first().is_some_and(|&unit| ascii_whitespace(unit)) {
+        while token.first().is_some_and(|&unit| is_ascii_whitespace(unit)) {
             token = &token[1..];
         }
-        while token.last().is_some_and(|&unit| ascii_whitespace(unit)) {
+        while token.last().is_some_and(|&unit| is_ascii_whitespace(unit)) {
             token = &token[..token.len() - 1];
         }
         values.push(dimension_list_token(token));
@@ -2889,7 +2916,7 @@ fn dimension_list_token(units: &[u16]) -> HtmlDimension {
         while let Some(&unit) = units.get(position) {
             if is_digit(unit) {
                 fraction.push(unit);
-            } else if !ascii_whitespace(unit) {
+            } else if !is_ascii_whitespace(unit) {
                 break;
             }
             position += 1;
@@ -2905,7 +2932,7 @@ fn dimension_list_token(units: &[u16]) -> HtmlDimension {
 }
 
 // Public readback never permits callers to create canonical digit storage.
-impl<T> NumericMaterialized<T> {
+impl<T> HtmlNumericMaterialized<T> {
     /// The materialized value, which can only have been built by the owner's canonical
     /// constructors.
     pub fn value(&self) -> &T {
@@ -2921,9 +2948,9 @@ impl<T> NumericMaterialized<T> {
         (self.value, self.capacity_bytes)
     }
 }
-impl NumericMaterializationFailure {
+impl HtmlNumericMaterializationFailure {
     /// The cause of the failure.
-    pub const fn kind(&self) -> NumericMaterializationError {
+    pub const fn kind(&self) -> HtmlNumericMaterializationError {
         self.kind
     }
     /// The cumulative capacity in bytes of every allocation observed before the failure, which the
@@ -2932,7 +2959,7 @@ impl NumericMaterializationFailure {
         self.capacity_bytes
     }
 }
-impl IntegerUnitStepResult {
+impl HtmlIntegerUnitStepResult {
     /// The canonical result of the step.
     pub fn value(&self) -> &HtmlInteger {
         &self.value
@@ -2946,10 +2973,10 @@ impl IntegerUnitStepResult {
         (self.value, self.capacity_bytes)
     }
 }
-impl FloatingPointParseResult {
+impl HtmlFloatingPointParseResult {
     /// The conversion outcome: the number, or the numeric rejection. A rejection can follow an
     /// allocation, whose capacity is reported separately.
-    pub fn value(&self) -> &Result<HtmlFloatingPointNumber, NumericParseError> {
+    pub fn value(&self) -> &Result<HtmlFloatingPointNumber, HtmlNumericParseError> {
         &self.value
     }
     /// The capacity in bytes of the temporary token the conversion allocated, or zero when syntax
@@ -2958,11 +2985,16 @@ impl FloatingPointParseResult {
         self.capacity_bytes
     }
     /// Splits the result into the conversion outcome and the token capacity in bytes.
-    pub fn into_parts(self) -> (Result<HtmlFloatingPointNumber, NumericParseError>, usize) {
+    pub fn into_parts(
+        self,
+    ) -> (
+        Result<HtmlFloatingPointNumber, HtmlNumericParseError>,
+        usize,
+    ) {
         (self.value, self.capacity_bytes)
     }
 }
-impl ScannedIntegerPrefix {
+impl HtmlScannedIntegerPrefix {
     /// Whether a `-` sign preceded the digits. A negative zero prefix is still reported negative
     /// here; the value types normalize it.
     pub const fn is_negative(&self) -> bool {
@@ -2978,16 +3010,16 @@ impl ScannedIntegerPrefix {
     }
     /// Checks a separately supplied input before returning its nonnegative prefix.
     /// Admit at most two visits per prefix unit, plus fixed range/sign work.
-    pub fn try_nonnegative_digits(self, units: &[u16]) -> Result<&[u16], NumericParseError> {
+    pub fn try_nonnegative_digits(self, units: &[u16]) -> Result<&[u16], HtmlNumericParseError> {
         let digits = units
             .get(self.start..self.end)
-            .ok_or(NumericParseError::InvalidSyntax)?;
-        check_decimal_digits(digits).map_err(|_| NumericParseError::InvalidSyntax)?;
+            .ok_or(HtmlNumericParseError::InvalidSyntax)?;
+        check_decimal_digits(digits).map_err(|_| HtmlNumericParseError::InvalidSyntax)?;
         nonnegative_prefix_digits(self.negative, digits)
     }
 }
 
-impl fmt::Display for NumericParseError {
+impl fmt::Display for HtmlNumericParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::InvalidSyntax => "value does not match the HTML numeric syntax",
@@ -2997,9 +3029,9 @@ impl fmt::Display for NumericParseError {
         })
     }
 }
-impl Error for NumericParseError {}
+impl Error for HtmlNumericParseError {}
 
-impl fmt::Display for IntegerUnitStepError {
+impl fmt::Display for HtmlIntegerUnitStepError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::RepresentationExhausted => {
@@ -3027,9 +3059,9 @@ impl fmt::Display for IntegerUnitStepError {
         }
     }
 }
-impl Error for IntegerUnitStepError {}
+impl Error for HtmlIntegerUnitStepError {}
 
-impl fmt::Display for IntegerRecoveryError {
+impl fmt::Display for HtmlIntegerRecoveryError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::Syntax(_) => "integer recovery rejected the input",
@@ -3037,17 +3069,17 @@ impl fmt::Display for IntegerRecoveryError {
         })
     }
 }
-impl From<NumericParseError> for IntegerRecoveryError {
-    fn from(error: NumericParseError) -> Self {
+impl From<HtmlNumericParseError> for HtmlIntegerRecoveryError {
+    fn from(error: HtmlNumericParseError) -> Self {
         Self::Syntax(error)
     }
 }
-impl From<IntegerUnitStepError> for IntegerRecoveryError {
-    fn from(error: IntegerUnitStepError) -> Self {
+impl From<HtmlIntegerUnitStepError> for HtmlIntegerRecoveryError {
+    fn from(error: HtmlIntegerUnitStepError) -> Self {
         Self::Allocation(error)
     }
 }
-impl Error for IntegerRecoveryError {
+impl Error for HtmlIntegerRecoveryError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Syntax(error) => Some(error),
@@ -3056,7 +3088,7 @@ impl Error for IntegerRecoveryError {
     }
 }
 
-impl fmt::Display for FloatingPointAllocationError {
+impl fmt::Display for HtmlFloatingPointAllocationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::RepresentationExhausted => {
@@ -3081,9 +3113,9 @@ impl fmt::Display for FloatingPointAllocationError {
         }
     }
 }
-impl Error for FloatingPointAllocationError {}
+impl Error for HtmlFloatingPointAllocationError {}
 
-impl fmt::Display for NumericMaterializationError {
+impl fmt::Display for HtmlNumericMaterializationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::Digits(_) => "numeric digits are not a valid decimal magnitude",
@@ -3091,7 +3123,7 @@ impl fmt::Display for NumericMaterializationError {
         })
     }
 }
-impl Error for NumericMaterializationError {
+impl Error for HtmlNumericMaterializationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Digits(error) => Some(error),
@@ -3100,7 +3132,7 @@ impl Error for NumericMaterializationError {
     }
 }
 
-impl fmt::Display for NumericMaterializationFailure {
+impl fmt::Display for HtmlNumericMaterializationFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -3109,7 +3141,7 @@ impl fmt::Display for NumericMaterializationFailure {
         )
     }
 }
-impl Error for NumericMaterializationFailure {
+impl Error for HtmlNumericMaterializationFailure {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         Some(&self.kind)
     }
@@ -3157,17 +3189,17 @@ mod tests {
 
     #[test]
     fn integer_unit_scanner_keeps_author_and_recovery_prefixes_distinct() {
-        use super::{IntegerPrefixScanner, NumericParseError, ScannedIntegerPrefix};
+        use super::{HtmlIntegerPrefixScanner, HtmlNumericParseError, HtmlScannedIntegerPrefix};
         for (raw, recover, expected) in [
             (" \t+0012suffix", true, Ok((false, 3, 7))),
             ("-000tail", true, Ok((true, 1, 4))),
-            ("12tail", false, Err(NumericParseError::InvalidSyntax)),
-            ("+12", false, Err(NumericParseError::InvalidSyntax)),
+            ("12tail", false, Err(HtmlNumericParseError::InvalidSyntax)),
+            ("+12", false, Err(HtmlNumericParseError::InvalidSyntax)),
             ("-12", false, Ok((true, 1, 3))),
-            ("-", true, Err(NumericParseError::InvalidSyntax)),
-            (" \t", true, Err(NumericParseError::InvalidSyntax)),
+            ("-", true, Err(HtmlNumericParseError::InvalidSyntax)),
+            (" \t", true, Err(HtmlNumericParseError::InvalidSyntax)),
         ] {
-            let mut scanner = IntegerPrefixScanner::new(recover);
+            let mut scanner = HtmlIntegerPrefixScanner::new(recover);
             for unit in raw.encode_utf16() {
                 if !scanner.feed(unit) {
                     break;
@@ -3175,7 +3207,7 @@ mod tests {
             }
             assert_eq!(
                 scanner.finish(),
-                expected.map(|(negative, start, end)| ScannedIntegerPrefix {
+                expected.map(|(negative, start, end)| HtmlScannedIntegerPrefix {
                     negative,
                     start,
                     end,
@@ -3209,12 +3241,12 @@ mod tests {
         for raw in ["", "-", "+", "--1", "\u{00a0}1", "x12"] {
             assert_eq!(
                 parse_integer_long(&DocumentString::from(raw)),
-                Err(NumericParseError::InvalidSyntax)
+                Err(HtmlNumericParseError::InvalidSyntax)
             );
         }
         assert_eq!(
             parse_integer_long(&DocumentString::from_utf16(vec![0xd800, 49])),
-            Err(NumericParseError::InvalidSyntax)
+            Err(HtmlNumericParseError::InvalidSyntax)
         );
         assert_eq!(
             parse_integer_long(&DocumentString::from_utf16(vec![49, 0xd800])),
@@ -3260,7 +3292,7 @@ mod tests {
             HtmlNonNegativeInteger::try_from_borrowed_digits(&[49, 0xd800], 2, 2).unwrap_err();
         assert_eq!(
             invalid.kind,
-            NumericMaterializationError::Digits(HtmlDecimalDigitsError::NonAsciiDigit {
+            HtmlNumericMaterializationError::Digits(HtmlDecimalDigitsError::NonAsciiDigit {
                 code_unit_offset: 1,
                 code_unit: 0xd800
             })
@@ -3270,7 +3302,7 @@ mod tests {
             HtmlNonNegativeInteger::try_from_borrowed_digits(&[], 0, 0)
                 .unwrap_err()
                 .kind,
-            NumericMaterializationError::Digits(HtmlDecimalDigitsError::Empty)
+            HtmlNumericMaterializationError::Digits(HtmlDecimalDigitsError::Empty)
         );
     }
 
@@ -3311,13 +3343,13 @@ mod tests {
         }
         let day = HtmlInteger::from_magnitude(zero, false);
         let previous = day
-            .try_materialized_unit_step(IntegerUnitStep::Decrement, 1, 1)
+            .try_materialized_unit_step(HtmlIntegerUnitStep::Decrement, 1, 1)
             .unwrap();
         assert_eq!(previous.value.as_document_string(), text("-1"));
         assert_eq!(
             previous
                 .value
-                .try_materialized_unit_step(IntegerUnitStep::Increment, 1, 1)
+                .try_materialized_unit_step(HtmlIntegerUnitStep::Increment, 1, 1)
                 .unwrap()
                 .value
                 .as_document_string(),
@@ -3396,9 +3428,9 @@ mod tests {
             value
                 .try_added_to(&HtmlNonNegativeInteger::from(1), 3, 100)
                 .unwrap_err(),
-            NumericMaterializationFailure {
-                kind: NumericMaterializationError::Boundary(
-                    IntegerUnitStepError::DigitLimitExceeded {
+            HtmlNumericMaterializationFailure {
+                kind: HtmlNumericMaterializationError::Boundary(
+                    HtmlIntegerUnitStepError::DigitLimitExceeded {
                         limit: 3,
                         required: 4
                     }
@@ -3408,9 +3440,9 @@ mod tests {
         );
         assert_eq!(
             value.try_multiplied_by(10, 4, 3).unwrap_err(),
-            NumericMaterializationFailure {
-                kind: NumericMaterializationError::Boundary(
-                    IntegerUnitStepError::RequestedCapacityLimitExceeded {
+            HtmlNumericMaterializationFailure {
+                kind: HtmlNumericMaterializationError::Boundary(
+                    HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded {
                         limit: 3,
                         required: 4
                     }
@@ -3422,10 +3454,12 @@ mod tests {
             HtmlNonNegativeInteger::try_from_u32(0, 0, 1)
                 .unwrap_err()
                 .kind,
-            NumericMaterializationError::Boundary(IntegerUnitStepError::DigitLimitExceeded {
-                limit: 0,
-                required: 1
-            })
+            HtmlNumericMaterializationError::Boundary(
+                HtmlIntegerUnitStepError::DigitLimitExceeded {
+                    limit: 0,
+                    required: 1
+                }
+            )
         );
         let copied = value.try_copy(3, 100).unwrap();
         let exact = value.try_copy(3, copied.capacity_bytes).unwrap();
@@ -3433,9 +3467,9 @@ mod tests {
         let short = value.try_copy(3, copied.capacity_bytes - 1).unwrap_err();
         assert!(matches!(
             short.kind,
-            NumericMaterializationError::Boundary(
-                IntegerUnitStepError::RequestedCapacityLimitExceeded { .. }
-                    | IntegerUnitStepError::ActualCapacityLimitExceeded { .. }
+            HtmlNumericMaterializationError::Boundary(
+                HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded { .. }
+                    | HtmlIntegerUnitStepError::ActualCapacityLimitExceeded { .. }
             )
         ));
     }
@@ -3515,7 +3549,7 @@ mod tests {
                 .unwrap_err();
         assert_eq!(
             syntax.kind,
-            NumericMaterializationError::Digits(HtmlDecimalDigitsError::NonAsciiDigit {
+            HtmlNumericMaterializationError::Digits(HtmlDecimalDigitsError::NonAsciiDigit {
                 code_unit_offset: 0,
                 code_unit: 0xdfff
             })
@@ -3527,8 +3561,8 @@ mod tests {
         assert!(requested.capacity_bytes >= 1);
         assert_eq!(
             requested.kind,
-            NumericMaterializationError::Boundary(
-                IntegerUnitStepError::RequestedCapacityLimitExceeded {
+            HtmlNumericMaterializationError::Boundary(
+                HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded {
                     limit: 1,
                     required: requested.capacity_bytes + 3
                 }
@@ -3546,10 +3580,12 @@ mod tests {
         ] {
             assert_eq!(
                 failure.kind,
-                NumericMaterializationError::Boundary(IntegerUnitStepError::DigitLimitExceeded {
-                    limit: 1,
-                    required: 2
-                })
+                HtmlNumericMaterializationError::Boundary(
+                    HtmlIntegerUnitStepError::DigitLimitExceeded {
+                        limit: 1,
+                        required: 2
+                    }
+                )
             );
             assert!(failure.capacity_bytes >= 4);
         }
@@ -3561,7 +3597,7 @@ mod tests {
         // whose try_reserve_exact may or may not overshoot on this host.
         assert_eq!(
             check_integer_actual_capacity(3, 4, 3),
-            Err(IntegerUnitStepError::ActualCapacityLimitExceeded {
+            Err(HtmlIntegerUnitStepError::ActualCapacityLimitExceeded {
                 limit: 3,
                 requested: 3,
                 capacity_bytes: 4
@@ -3573,14 +3609,16 @@ mod tests {
         assert_eq!(representation.capacity_bytes, 7);
         assert_eq!(
             representation.kind,
-            NumericMaterializationError::Boundary(IntegerUnitStepError::RepresentationExhausted)
+            HtmlNumericMaterializationError::Boundary(
+                HtmlIntegerUnitStepError::RepresentationExhausted
+            )
         );
         let requested = reserve_materialization(3, Some(3), 9, &mut observed).unwrap_err();
         assert_eq!(requested.capacity_bytes, 7);
         assert_eq!(
             requested.kind,
-            NumericMaterializationError::Boundary(
-                IntegerUnitStepError::RequestedCapacityLimitExceeded {
+            HtmlNumericMaterializationError::Boundary(
+                HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded {
                     limit: 9,
                     required: 10
                 }
@@ -3590,10 +3628,12 @@ mod tests {
         assert_eq!(digit.capacity_bytes, 7);
         assert_eq!(
             digit.kind,
-            NumericMaterializationError::Boundary(IntegerUnitStepError::DigitLimitExceeded {
-                limit: 2,
-                required: 3
-            })
+            HtmlNumericMaterializationError::Boundary(
+                HtmlIntegerUnitStepError::DigitLimitExceeded {
+                    limit: 2,
+                    required: 3
+                }
+            )
         );
     }
 
@@ -3659,7 +3699,7 @@ mod tests {
             assert_eq!(
                 strict_scientific_decimal_key(&text(input)),
                 Err(ScientificDecimalKeyError::Syntax(
-                    NumericParseError::InvalidSyntax
+                    HtmlNumericParseError::InvalidSyntax
                 ))
             );
         }
@@ -3692,7 +3732,7 @@ mod tests {
         assert!(overflow.is_positive());
         assert_eq!(
             validate_floating_point_number(&text("1e999")),
-            Err(NumericParseError::FloatingPointOverflow)
+            Err(HtmlNumericParseError::FloatingPointOverflow)
         );
     }
 
@@ -3736,12 +3776,12 @@ mod tests {
             assert_eq!(
                 strict_scientific_decimal_key(&text(input)),
                 Err(ScientificDecimalKeyError::Syntax(
-                    NumericParseError::InvalidSyntax
+                    HtmlNumericParseError::InvalidSyntax
                 ))
             );
             assert_eq!(
                 validate_floating_point_number(&text(input)),
-                Err(NumericParseError::InvalidSyntax)
+                Err(HtmlNumericParseError::InvalidSyntax)
             );
             assert_eq!(
                 parse_floating_point_number(&text(input)).unwrap().value(),
@@ -3749,7 +3789,7 @@ mod tests {
             );
             let bounded = try_floating_point_number(
                 &text(input),
-                FloatingPointParseMode::Recovery,
+                HtmlFloatingPointParseMode::Recovery,
                 input.len(),
             )
             .unwrap();
@@ -3759,7 +3799,7 @@ mod tests {
             assert_eq!(
                 strict_scientific_decimal_key(&text(input)),
                 Err(ScientificDecimalKeyError::Syntax(
-                    NumericParseError::InvalidSyntax
+                    HtmlNumericParseError::InvalidSyntax
                 ))
             );
         }
@@ -3768,7 +3808,7 @@ mod tests {
             assert_eq!(
                 strict_scientific_decimal_key(&input),
                 Err(ScientificDecimalKeyError::Syntax(
-                    NumericParseError::InvalidSyntax
+                    HtmlNumericParseError::InvalidSyntax
                 ))
             );
         }
@@ -3993,8 +4033,8 @@ mod tests {
         ] {
             let value = exact_signed(input);
             for (step, expected) in [
-                (IntegerUnitStep::Increment, incremented),
-                (IntegerUnitStep::Decrement, decremented),
+                (HtmlIntegerUnitStep::Increment, incremented),
+                (HtmlIntegerUnitStep::Decrement, decremented),
             ] {
                 let stepped = value.try_unit_step(step, 100, 100).unwrap();
                 assert_eq!(stepped.value.as_document_string(), text(expected));
@@ -4006,14 +4046,14 @@ mod tests {
         let nines = exact_signed("9999999999999999999999999999999999999999");
         assert_eq!(
             nines
-                .try_unit_step(IntegerUnitStep::Increment, 41, 41)
+                .try_unit_step(HtmlIntegerUnitStep::Increment, 41, 41)
                 .unwrap()
                 .value
                 .as_document_string(),
             text("10000000000000000000000000000000000000000")
         );
         let minus_one = exact_signed("-1")
-            .try_unit_step(IntegerUnitStep::Increment, 1, 1)
+            .try_unit_step(HtmlIntegerUnitStep::Increment, 1, 1)
             .unwrap();
         assert!(!minus_one.value.is_negative());
         assert!(minus_one.value.magnitude().is_zero());
@@ -4024,25 +4064,25 @@ mod tests {
         let value = exact_signed("999");
         assert_eq!(
             value
-                .try_unit_step(IntegerUnitStep::Increment, 3, 100)
+                .try_unit_step(HtmlIntegerUnitStep::Increment, 3, 100)
                 .unwrap_err(),
-            IntegerUnitStepError::DigitLimitExceeded {
+            HtmlIntegerUnitStepError::DigitLimitExceeded {
                 limit: 3,
                 required: 4,
             }
         );
         assert_eq!(
             value
-                .try_unit_step(IntegerUnitStep::Increment, 4, 3)
+                .try_unit_step(HtmlIntegerUnitStep::Increment, 4, 3)
                 .unwrap_err(),
-            IntegerUnitStepError::RequestedCapacityLimitExceeded {
+            HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded {
                 limit: 3,
                 required: 4,
             }
         );
         assert_eq!(
             value
-                .try_unit_step(IntegerUnitStep::Increment, 4, 4)
+                .try_unit_step(HtmlIntegerUnitStep::Increment, 4, 4)
                 .unwrap()
                 .value
                 .as_document_string(),
@@ -4050,7 +4090,7 @@ mod tests {
         );
         assert_eq!(
             exact_signed("1000")
-                .try_unit_step(IntegerUnitStep::Decrement, 3, 3)
+                .try_unit_step(HtmlIntegerUnitStep::Decrement, 3, 3)
                 .unwrap()
                 .value
                 .as_document_string(),
@@ -4058,9 +4098,9 @@ mod tests {
         );
         assert_eq!(
             exact_signed("1")
-                .try_unit_step(IntegerUnitStep::Decrement, 0, 1)
+                .try_unit_step(HtmlIntegerUnitStep::Decrement, 0, 1)
                 .unwrap_err(),
-            IntegerUnitStepError::DigitLimitExceeded {
+            HtmlIntegerUnitStepError::DigitLimitExceeded {
                 limit: 0,
                 required: 1,
             }
@@ -4091,14 +4131,14 @@ mod tests {
         );
         assert_eq!(
             HtmlInteger::try_from_usize(10, 1, 2).unwrap_err(),
-            IntegerUnitStepError::DigitLimitExceeded {
+            HtmlIntegerUnitStepError::DigitLimitExceeded {
                 limit: 1,
                 required: 2,
             }
         );
         assert_eq!(
             HtmlInteger::try_from_usize(0, 1, 0).unwrap_err(),
-            IntegerUnitStepError::RequestedCapacityLimitExceeded {
+            HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded {
                 limit: 0,
                 required: 1,
             }
@@ -4113,7 +4153,7 @@ mod tests {
         assert_eq!(check_integer_actual_capacity(3, 4, 4), Ok(()));
         assert_eq!(
             check_integer_actual_capacity(3, 4, 3),
-            Err(IntegerUnitStepError::ActualCapacityLimitExceeded {
+            Err(HtmlIntegerUnitStepError::ActualCapacityLimitExceeded {
                 limit: 3,
                 requested: 3,
                 capacity_bytes: 4,
@@ -4121,7 +4161,7 @@ mod tests {
         );
         assert_eq!(
             check_integer_digit_capacity(isize::MAX as usize + 1, usize::MAX, usize::MAX),
-            Err(IntegerUnitStepError::RepresentationExhausted)
+            Err(HtmlIntegerUnitStepError::RepresentationExhausted)
         );
         assert_eq!(
             check_integer_digit_capacity(isize::MAX as usize, usize::MAX, usize::MAX),
@@ -4167,7 +4207,7 @@ mod tests {
         for input in ["", " \t", "+", "-", "+ 1", "--1", "\u{a0}1", "١", "x1"] {
             assert_eq!(
                 try_parse_integer(&text(input), 0, 0).unwrap_err(),
-                IntegerRecoveryError::Syntax(NumericParseError::InvalidSyntax)
+                HtmlIntegerRecoveryError::Syntax(HtmlNumericParseError::InvalidSyntax)
             );
         }
         let raw = text(" -000123suffix");
@@ -4177,15 +4217,15 @@ mod tests {
         );
         assert_eq!(
             try_parse_integer(&raw, 2, 3).unwrap_err(),
-            IntegerRecoveryError::Allocation(IntegerUnitStepError::DigitLimitExceeded {
+            HtmlIntegerRecoveryError::Allocation(HtmlIntegerUnitStepError::DigitLimitExceeded {
                 limit: 2,
                 required: 3,
             })
         );
         assert_eq!(
             try_parse_integer(&raw, 3, 2).unwrap_err(),
-            IntegerRecoveryError::Allocation(
-                IntegerUnitStepError::RequestedCapacityLimitExceeded {
+            HtmlIntegerRecoveryError::Allocation(
+                HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded {
                     limit: 2,
                     required: 3,
                 }
@@ -4200,7 +4240,7 @@ mod tests {
         );
         assert_eq!(
             try_parse_integer(&text("-00000"), 0, 1).unwrap_err(),
-            IntegerRecoveryError::Allocation(IntegerUnitStepError::DigitLimitExceeded {
+            HtmlIntegerRecoveryError::Allocation(HtmlIntegerUnitStepError::DigitLimitExceeded {
                 limit: 0,
                 required: 1,
             })
@@ -4259,20 +4299,20 @@ mod tests {
             for cap in [0, 1, 1000, usize::MAX] {
                 assert_eq!(
                     parse_nonnegative_integer_capped(&text(input), cap),
-                    Err(NumericParseError::Negative)
+                    Err(HtmlNumericParseError::Negative)
                 );
             }
         }
         for input in ["", "+", " -", "- 0", "x1", "\u{a0}1"] {
             assert_eq!(
                 parse_nonnegative_integer_capped(&text(input), 0),
-                Err(NumericParseError::InvalidSyntax)
+                Err(HtmlNumericParseError::InvalidSyntax)
             );
         }
         let leading_surrogate = DocumentString::from_utf16(vec![0xd800, b'1' as u16]);
         assert_eq!(
             parse_nonnegative_integer_capped(&leading_surrogate, 1000),
-            Err(NumericParseError::InvalidSyntax)
+            Err(HtmlNumericParseError::InvalidSyntax)
         );
         let suffix_surrogate = DocumentString::from_utf16(vec![b'7' as u16, 0xdc00]);
         assert_eq!(
@@ -4286,7 +4326,7 @@ mod tests {
         for input in ["", "+1", " 1", "1 ", "1suffix", "--1", "١"] {
             assert_eq!(
                 validate_integer(&text(input)),
-                Err(NumericParseError::InvalidSyntax)
+                Err(HtmlNumericParseError::InvalidSyntax)
             );
         }
         assert_eq!(validate_integer(&text("-0012")).unwrap().to_i64(), Ok(-12));
@@ -4308,7 +4348,7 @@ mod tests {
         assert_eq!(integer.magnitude().to_u128(), Err(HtmlNumericRangeError));
         assert_eq!(
             parse_integer(&text("\u{a0}1")),
-            Err(NumericParseError::InvalidSyntax)
+            Err(HtmlNumericParseError::InvalidSyntax)
         );
         assert_eq!(
             parse_integer(&DocumentString::from_utf16(vec![49, 0xd800]))
@@ -4318,7 +4358,7 @@ mod tests {
         );
         assert_eq!(
             validate_integer(&DocumentString::from_utf16(vec![49, 0xd800])),
-            Err(NumericParseError::InvalidSyntax)
+            Err(HtmlNumericParseError::InvalidSyntax)
         );
     }
 
@@ -4409,15 +4449,15 @@ mod tests {
         for (raw, expected) in [
             (" +12tail", Ok("12")),
             (" -000tail", Ok("000")),
-            ("-001", Err(NumericParseError::Negative)),
-            ("+", Err(NumericParseError::InvalidSyntax)),
+            ("-001", Err(HtmlNumericParseError::Negative)),
+            ("+", Err(HtmlNumericParseError::InvalidSyntax)),
             (
                 "340282366920938463463374607431768211456z",
                 Ok("340282366920938463463374607431768211456"),
             ),
         ] {
             let input = text(raw);
-            let mut scanner = IntegerPrefixScanner::new(true);
+            let mut scanner = HtmlIntegerPrefixScanner::new(true);
             for &unit in input.code_units() {
                 if !scanner.feed(unit) {
                     break;
@@ -4445,11 +4485,11 @@ mod tests {
         );
         assert_eq!(
             validate_nonnegative_integer(&text("-0")),
-            Err(NumericParseError::InvalidSyntax)
+            Err(HtmlNumericParseError::InvalidSyntax)
         );
         assert_eq!(
             parse_nonnegative_integer(&text("-1")),
-            Err(NumericParseError::Negative)
+            Err(HtmlNumericParseError::Negative)
         );
         assert_eq!(
             validate_nonnegative_integer(&text("00042"))
@@ -4476,19 +4516,19 @@ mod tests {
         ] {
             let raw = text(input);
             let author =
-                try_floating_point_number(&raw, FloatingPointParseMode::Author, 0).unwrap();
-            assert_eq!(author.value, Err(NumericParseError::InvalidSyntax));
+                try_floating_point_number(&raw, HtmlFloatingPointParseMode::Author, 0).unwrap();
+            assert_eq!(author.value, Err(HtmlNumericParseError::InvalidSyntax));
             assert_eq!(author.capacity_bytes, 0);
             let recovery =
-                try_floating_point_number(&raw, FloatingPointParseMode::Recovery, token_bytes)
+                try_floating_point_number(&raw, HtmlFloatingPointParseMode::Recovery, token_bytes)
                     .unwrap();
             assert_eq!(recovery.value.unwrap().value(), expected);
             assert_eq!(recovery.capacity_bytes, token_bytes);
         }
         for (input, expected) in [(".5", 0.5), ("-.5", -0.5), ("1e+2", 100.0), ("1E-2", 0.01)] {
             for mode in [
-                FloatingPointParseMode::Author,
-                FloatingPointParseMode::Recovery,
+                HtmlFloatingPointParseMode::Author,
+                HtmlFloatingPointParseMode::Recovery,
             ] {
                 let parsed = try_floating_point_number(&text(input), mode, 100).unwrap();
                 assert_eq!(parsed.value.unwrap().value(), expected);
@@ -4518,8 +4558,8 @@ mod tests {
             ("1.7976931348623158e308", 0x7fefffffffffffff),
         ] {
             for mode in [
-                FloatingPointParseMode::Author,
-                FloatingPointParseMode::Recovery,
+                HtmlFloatingPointParseMode::Author,
+                HtmlFloatingPointParseMode::Recovery,
             ] {
                 let parsed = try_floating_point_number(&text(input), mode, 100).unwrap();
                 assert_eq!(parsed.value.unwrap().value().to_bits(), expected_bits);
@@ -4530,7 +4570,7 @@ mod tests {
         // significand digits; no intermediate f64 accumulation is permitted.
         let input = text(&format!("1{}e-400", "0".repeat(400)));
         let parsed =
-            try_floating_point_number(&input, FloatingPointParseMode::Recovery, input.len())
+            try_floating_point_number(&input, HtmlFloatingPointParseMode::Recovery, input.len())
                 .unwrap();
         assert_eq!(parsed.value.unwrap().value(), 1.0);
         assert_eq!(parsed.capacity_bytes, input.len());
@@ -4546,9 +4586,12 @@ mod tests {
         ] {
             let raw = text(input);
             let parsed =
-                try_floating_point_number(&raw, FloatingPointParseMode::Recovery, raw.len())
+                try_floating_point_number(&raw, HtmlFloatingPointParseMode::Recovery, raw.len())
                     .unwrap();
-            assert_eq!(parsed.value, Err(NumericParseError::FloatingPointOverflow));
+            assert_eq!(
+                parsed.value,
+                Err(HtmlNumericParseError::FloatingPointOverflow)
+            );
             assert_eq!(parsed.capacity_bytes, raw.len());
         }
         for input in [
@@ -4557,20 +4600,21 @@ mod tests {
         ] {
             let raw = text(input);
             let parsed =
-                try_floating_point_number(&raw, FloatingPointParseMode::Recovery, raw.len())
+                try_floating_point_number(&raw, HtmlFloatingPointParseMode::Recovery, raw.len())
                     .unwrap();
             assert_eq!(parsed.value.unwrap().value().to_bits(), 0);
             assert_eq!(parsed.capacity_bytes, raw.len());
         }
         let raw = text("1e999tail");
-        let author = try_floating_point_number(&raw, FloatingPointParseMode::Author, 0).unwrap();
-        assert_eq!(author.value, Err(NumericParseError::InvalidSyntax));
+        let author =
+            try_floating_point_number(&raw, HtmlFloatingPointParseMode::Author, 0).unwrap();
+        assert_eq!(author.value, Err(HtmlNumericParseError::InvalidSyntax));
         assert_eq!(author.capacity_bytes, 0);
         let recovered =
-            try_floating_point_number(&raw, FloatingPointParseMode::Recovery, 5).unwrap();
+            try_floating_point_number(&raw, HtmlFloatingPointParseMode::Recovery, 5).unwrap();
         assert_eq!(
             recovered.value,
-            Err(NumericParseError::FloatingPointOverflow)
+            Err(HtmlNumericParseError::FloatingPointOverflow)
         );
         assert_eq!(recovered.capacity_bytes, 5);
     }
@@ -4579,29 +4623,30 @@ mod tests {
     fn controlled_float_rejection_and_utf16_suffixes_allocate_only_the_selected_token() {
         for input in ["", " \t", ".", "-.", "+", "NaN", "Infinity", "١", "\u{a0}1"] {
             for mode in [
-                FloatingPointParseMode::Author,
-                FloatingPointParseMode::Recovery,
+                HtmlFloatingPointParseMode::Author,
+                HtmlFloatingPointParseMode::Recovery,
             ] {
                 let parsed = try_floating_point_number(&text(input), mode, 0).unwrap();
-                assert_eq!(parsed.value, Err(NumericParseError::InvalidSyntax));
+                assert_eq!(parsed.value, Err(HtmlNumericParseError::InvalidSyntax));
                 assert_eq!(parsed.capacity_bytes, 0);
             }
         }
         let suffix = DocumentString::from_utf16(vec![b'1' as u16, 0xd800, b'2' as u16]);
         let parsed =
-            try_floating_point_number(&suffix, FloatingPointParseMode::Recovery, 1).unwrap();
+            try_floating_point_number(&suffix, HtmlFloatingPointParseMode::Recovery, 1).unwrap();
         assert_eq!(parsed.value.unwrap().value(), 1.0);
         assert_eq!(parsed.capacity_bytes, 1);
         assert_eq!(suffix.code_units(), &[b'1' as u16, 0xd800, b'2' as u16]);
-        let author = try_floating_point_number(&suffix, FloatingPointParseMode::Author, 0).unwrap();
-        assert_eq!(author.value, Err(NumericParseError::InvalidSyntax));
+        let author =
+            try_floating_point_number(&suffix, HtmlFloatingPointParseMode::Author, 0).unwrap();
+        assert_eq!(author.value, Err(HtmlNumericParseError::InvalidSyntax));
         assert_eq!(author.capacity_bytes, 0);
         let leading = DocumentString::from_utf16(vec![0xdc00, b'1' as u16]);
         assert_eq!(
-            try_floating_point_number(&leading, FloatingPointParseMode::Recovery, 0)
+            try_floating_point_number(&leading, HtmlFloatingPointParseMode::Recovery, 0)
                 .unwrap()
                 .value,
-            Err(NumericParseError::InvalidSyntax)
+            Err(HtmlNumericParseError::InvalidSyntax)
         );
     }
 
@@ -4609,14 +4654,14 @@ mod tests {
     fn controlled_float_reservation_obeys_requested_observed_and_representation_limits() {
         let input = text("  -1.5tail");
         assert_eq!(
-            try_floating_point_number(&input, FloatingPointParseMode::Recovery, 3).unwrap_err(),
-            FloatingPointAllocationError::RequestedCapacityLimitExceeded {
+            try_floating_point_number(&input, HtmlFloatingPointParseMode::Recovery, 3).unwrap_err(),
+            HtmlFloatingPointAllocationError::RequestedCapacityLimitExceeded {
                 limit: 3,
                 required: 4
             }
         );
         let parsed =
-            try_floating_point_number(&input, FloatingPointParseMode::Recovery, 4).unwrap();
+            try_floating_point_number(&input, HtmlFloatingPointParseMode::Recovery, 4).unwrap();
         assert_eq!(parsed.value.unwrap().value(), -1.5);
         assert_eq!(parsed.capacity_bytes, 4);
         // Exercise the real observed-capacity boundary with independent literal
@@ -4625,15 +4670,17 @@ mod tests {
         assert_eq!(check_floating_point_actual_capacity(3, 4, 4), Ok(()));
         assert_eq!(
             check_floating_point_actual_capacity(3, 4, 3),
-            Err(FloatingPointAllocationError::ActualCapacityLimitExceeded {
-                limit: 3,
-                requested: 3,
-                capacity_bytes: 4
-            })
+            Err(
+                HtmlFloatingPointAllocationError::ActualCapacityLimitExceeded {
+                    limit: 3,
+                    requested: 3,
+                    capacity_bytes: 4
+                }
+            )
         );
         assert_eq!(
             check_floating_point_requested_capacity(isize::MAX as usize + 1, usize::MAX),
-            Err(FloatingPointAllocationError::RepresentationExhausted)
+            Err(HtmlFloatingPointAllocationError::RepresentationExhausted)
         );
         assert_eq!(
             check_floating_point_requested_capacity(isize::MAX as usize, usize::MAX),
@@ -4662,7 +4709,7 @@ mod tests {
         ] {
             assert_eq!(
                 validate_floating_point_number(&text(input)),
-                Err(NumericParseError::InvalidSyntax)
+                Err(HtmlNumericParseError::InvalidSyntax)
             );
             assert_eq!(
                 parse_floating_point_number(&text(input)).unwrap().value(),
@@ -4672,7 +4719,7 @@ mod tests {
         for input in ["", ".", "-.", "NaN", "Infinity", "\u{a0}1"] {
             assert_eq!(
                 parse_floating_point_number(&text(input)),
-                Err(NumericParseError::InvalidSyntax)
+                Err(HtmlNumericParseError::InvalidSyntax)
             );
         }
     }
@@ -4700,11 +4747,11 @@ mod tests {
         );
         assert_eq!(
             parse_floating_point_number(&text("1.7976931348623159e308")),
-            Err(NumericParseError::FloatingPointOverflow)
+            Err(HtmlNumericParseError::FloatingPointOverflow)
         );
         assert_eq!(
             validate_floating_point_number(&text("1e9999")),
-            Err(NumericParseError::FloatingPointOverflow)
+            Err(HtmlNumericParseError::FloatingPointOverflow)
         );
         let long = text(&format!("1{}e-400", "0".repeat(400)));
         assert_eq!(parse_floating_point_number(&long).unwrap().value(), 1.0);
@@ -4764,7 +4811,7 @@ mod tests {
         for input in ["1, 2", "1;2", "1,", ",1", "1,,2", "+1"] {
             assert_eq!(
                 validate_floating_point_list(&text(input)),
-                Err(NumericParseError::InvalidSyntax)
+                Err(HtmlNumericParseError::InvalidSyntax)
             );
         }
         assert!(
@@ -4795,12 +4842,12 @@ mod tests {
         for input in ["1e999,nope", "1e999,", "1e999, 1", "1e999,+1"] {
             assert_eq!(
                 validate_floating_point_list(&text(input)),
-                Err(NumericParseError::InvalidSyntax)
+                Err(HtmlNumericParseError::InvalidSyntax)
             );
         }
         assert_eq!(
             validate_floating_point_list(&text("1e999,1.5")),
-            Err(NumericParseError::FloatingPointOverflow)
+            Err(HtmlNumericParseError::FloatingPointOverflow)
         );
     }
 
@@ -5024,7 +5071,7 @@ mod tests {
         for input in ["", " ", ".5%", "+1", "-0", "\u{a0}1", "١"] {
             assert_eq!(
                 parse_dimension(&text(input)),
-                Err(NumericParseError::InvalidSyntax)
+                Err(HtmlNumericParseError::InvalidSyntax)
             );
         }
     }
@@ -5034,7 +5081,7 @@ mod tests {
         for input in ["0", "0.000%", "000.0tail"] {
             assert_eq!(
                 parse_nonzero_dimension(&text(input)),
-                Err(NumericParseError::ZeroDimension)
+                Err(HtmlNumericParseError::ZeroDimension)
             );
         }
         let tiny = format!("0.{}1%", "0".repeat(400));
@@ -5184,7 +5231,7 @@ mod tests {
     /// generous fixed ceiling so a non-terminating regression fails with a clear
     /// message instead of hanging; it is not a cost contract, and the grammar
     /// declares no total action count.
-    fn finish_grammar(cursor: &mut FloatingPointGrammarCursor<'_>) {
+    fn finish_grammar(cursor: &mut HtmlFloatingPointGrammarCursor<'_>) {
         const HANG_GUARD: usize = 100_000;
         for _ in 0..HANG_GUARD {
             if cursor.is_finished() {
@@ -5206,7 +5253,7 @@ mod tests {
         ] {
             let units = raw.encode_utf16().collect::<Vec<_>>();
             let mut cursor =
-                FloatingPointGrammarCursor::new(&units, FloatingPointParseMode::Recovery);
+                HtmlFloatingPointGrammarCursor::new(&units, HtmlFloatingPointParseMode::Recovery);
             finish_grammar(&mut cursor);
             let prefix = cursor.prefix().unwrap();
             assert_eq!(prefix.token, token.encode_utf16().collect::<Vec<_>>());
@@ -5223,19 +5270,21 @@ mod tests {
                 exponent.map(|e| e.encode_utf16().collect::<Vec<_>>())
             );
             assert_eq!(
-                floating_point_prefix(&units, FloatingPointParseMode::Author).err(),
-                Some(NumericParseError::InvalidSyntax)
+                floating_point_prefix(&units, HtmlFloatingPointParseMode::Author).err(),
+                Some(HtmlNumericParseError::InvalidSyntax)
             );
         }
         let units = text("1e999");
-        let mut cursor =
-            FloatingPointGrammarCursor::new(units.code_units(), FloatingPointParseMode::Author);
+        let mut cursor = HtmlFloatingPointGrammarCursor::new(
+            units.code_units(),
+            HtmlFloatingPointParseMode::Author,
+        );
         finish_grammar(&mut cursor);
         assert!(cursor.is_valid());
         assert_eq!(cursor.prefix().unwrap().token, units.code_units());
         assert_eq!(
             validate_floating_point_number(&units),
-            Err(NumericParseError::FloatingPointOverflow)
+            Err(HtmlNumericParseError::FloatingPointOverflow)
         );
     }
 }

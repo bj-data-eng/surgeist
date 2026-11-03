@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::internal::microsyntax::numeric::{
-    self, HtmlScientificDecimalKey, NumericParseError, ScientificDecimalKeyError,
+    self, HtmlNumericParseError, HtmlScientificDecimalKey, ScientificDecimalKeyError,
 };
 use crate::{HtmlFloatingPointNumber, HtmlNonNegativeInteger, OrderedAttributes};
 use std::{collections::HashMap, error::Error, fmt};
@@ -29,7 +29,7 @@ impl HtmlSrcsetUrlToken {
         }
         if units
             .iter()
-            .any(|&u| crate::internal::microsyntax::tokens::ascii_whitespace(u))
+            .any(|&u| crate::internal::microsyntax::tokens::is_ascii_whitespace(u))
         {
             return Err(HtmlSrcsetUrlTokenError::AsciiWhitespace);
         }
@@ -133,7 +133,9 @@ impl HtmlSrcsetDensity {
     ) -> Result<HtmlFloatingPointNumber, HtmlSrcsetDensityProjectionError> {
         match numeric::validate_floating_point_number(&self.syntax) {
             Ok(value) => Ok(value),
-            Err(NumericParseError::FloatingPointOverflow) => Err(HtmlSrcsetDensityProjectionError),
+            Err(HtmlNumericParseError::FloatingPointOverflow) => {
+                Err(HtmlSrcsetDensityProjectionError)
+            }
             Err(_) => unreachable!("checked density owns complete strict numeric grammar"),
         }
     }
@@ -1286,10 +1288,9 @@ fn tokenize(raw: &DocumentString) -> LexicalResult {
     loop {
         let splitting_start = position;
         let mut skipped_comma = false;
-        while units
-            .get(position)
-            .is_some_and(|&u| crate::internal::microsyntax::tokens::ascii_whitespace(u) || u == 44)
-        {
+        while units.get(position).is_some_and(|&u| {
+            crate::internal::microsyntax::tokens::is_ascii_whitespace(u) || u == 44
+        }) {
             skipped_comma |= units[position] == 44;
             position += 1;
         }
@@ -1318,7 +1319,7 @@ fn tokenize(raw: &DocumentString) -> LexicalResult {
         let start = position;
         while units
             .get(position)
-            .is_some_and(|&u| !crate::internal::microsyntax::tokens::ascii_whitespace(u))
+            .is_some_and(|&u| !crate::internal::microsyntax::tokens::is_ascii_whitespace(u))
         {
             position += 1;
         }
@@ -1347,7 +1348,7 @@ fn tokenize(raw: &DocumentString) -> LexicalResult {
         } else {
             while units
                 .get(position)
-                .is_some_and(|&u| crate::internal::microsyntax::tokens::ascii_whitespace(u))
+                .is_some_and(|&u| crate::internal::microsyntax::tokens::is_ascii_whitespace(u))
             {
                 position += 1;
             }
@@ -1371,7 +1372,7 @@ fn tokenize(raw: &DocumentString) -> LexicalResult {
                             position += 1;
                             break;
                         }
-                        Some(u) if crate::internal::microsyntax::tokens::ascii_whitespace(u) => {
+                        Some(u) if crate::internal::microsyntax::tokens::is_ascii_whitespace(u) => {
                             if let Some(start) = descriptor_start.take() {
                                 descriptors.push(range(start, position));
                             }
@@ -1398,7 +1399,8 @@ fn tokenize(raw: &DocumentString) -> LexicalResult {
                     },
                     DescriptorState::AfterDescriptor => match current {
                         None => break,
-                        Some(u) if crate::internal::microsyntax::tokens::ascii_whitespace(u) => {}
+                        Some(u) if crate::internal::microsyntax::tokens::is_ascii_whitespace(u) => {
+                        }
                         _ => {
                             state = DescriptorState::InDescriptor;
                             continue;
@@ -1561,7 +1563,7 @@ fn parse_candidates(raw: &DocumentString) -> Result<ParsedResult, HtmlSrcsetInte
                     match numeric::parse_floating_point_number(&copied(raw, descriptor_range)) {
                         Ok(value) if value.value() >= 0.0 => density = Some(value),
                         Ok(_) => failed = true,
-                        Err(NumericParseError::FloatingPointOverflow) => {
+                        Err(HtmlNumericParseError::FloatingPointOverflow) => {
                             diagnostics.push(parse_diagnostic(
                                 HtmlSrcsetParseError::DensityConversionOverflow,
                                 descriptor_range,

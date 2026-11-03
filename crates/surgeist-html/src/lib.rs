@@ -26,8 +26,8 @@
 //!    causes never break a caller.
 //! 3. Does a driver charge or branch on every variant, and does a consumer
 //!    match it exhaustively? Then it is an exhaustive enum: the resource
-//!    accounting enums such as [`bounded::IntegerUnitStepError`] and
-//!    [`bounded::FloatingPointAllocationError`], and the two-source wrappers
+//!    accounting enums such as [`bounded::HtmlIntegerUnitStepError`] and
+//!    [`bounded::HtmlFloatingPointAllocationError`], and the two-source wrappers
 //!    [`HtmlCspError`] and `bounded::HtmlRelActionError`, which separate the
 //!    caller's own refusal from this crate's.
 //! 4. Otherwise it names a rule of the pinned standard, a syntax class, an

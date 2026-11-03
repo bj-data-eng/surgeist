@@ -215,7 +215,7 @@ impl HtmlValueInterpreter {
     }
 }
 
-use crate::internal::microsyntax::tokens::{SpaceTokenCursor, SpaceTokenStep};
+use crate::internal::microsyntax::tokens::{HtmlSpaceTokenCursor, HtmlSpaceTokenStep};
 
 /// A protocol refusal leaves the interpretation and its operands in place.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -571,7 +571,7 @@ pub struct HtmlMicrodataTokenInterpretation<'raw> {
     /// The scanned units: the raw's, or empty when no raw is present, in which
     /// case no scanning phase is ever issued.
     units: &'raw [u16],
-    cursor: SpaceTokenCursor<'raw>,
+    cursor: HtmlSpaceTokenCursor<'raw>,
     tokens: Vec<HtmlMicrodataToken>,
     /// Scratch for duplicate detection: the internal nodes of an index over the distinct tokens
     /// committed so far. It is dropped when the report is assembled and never published.
@@ -593,7 +593,7 @@ impl<'raw> HtmlMicrodataTokenInterpretation<'raw> {
             kind,
             raw,
             units,
-            cursor: SpaceTokenCursor::new(units),
+            cursor: HtmlSpaceTokenCursor::new(units),
             tokens: Vec::new(),
             index: Vec::new(),
             root: None,
@@ -796,9 +796,9 @@ impl HtmlMicrodataTokenAction<'_, '_> {
     pub fn kind(&self) -> HtmlMicrodataTokenActionKind {
         use HtmlMicrodataTokenActionKind::{Reserve, Work};
         match self.owner.phase {
-            Phase::Begin => Work(SpaceTokenCursor::BEGIN_WORK),
+            Phase::Begin => Work(HtmlSpaceTokenCursor::BEGIN_WORK),
             Phase::Scan => Work(if self.owner.cursor.inspects_unit() {
-                SpaceTokenCursor::STEP_WORK
+                HtmlSpaceTokenCursor::STEP_WORK
             } else {
                 2
             }),
@@ -851,9 +851,9 @@ impl HtmlMicrodataTokenAction<'_, '_> {
             Phase::Begin => o.phase = Phase::Header,
             Phase::Header => o.phase = Phase::Scan,
             Phase::Scan => match o.cursor.step() {
-                SpaceTokenStep::Continue => o.phase = Phase::Header,
-                SpaceTokenStep::Done => o.phase = Phase::Assemble,
-                SpaceTokenStep::Token { start, end } => {
+                HtmlSpaceTokenStep::Continue => o.phase = Phase::Header,
+                HtmlSpaceTokenStep::Done => o.phase = Phase::Assemble,
+                HtmlSpaceTokenStep::Token { start, end } => {
                     o.start = start;
                     o.end = end;
                     o.dot_or_colon = false;

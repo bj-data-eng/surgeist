@@ -442,7 +442,7 @@ impl HtmlValueInterpreter {
             let units = attribute.value().code_units();
             if units
                 .iter()
-                .all(|&u| crate::internal::microsyntax::tokens::ascii_whitespace(u))
+                .all(|&u| crate::internal::microsyntax::tokens::is_ascii_whitespace(u))
             {
                 return Vec::new();
             }

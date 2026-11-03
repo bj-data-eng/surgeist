@@ -1,6 +1,6 @@
 //! Actual-field selection and deferred local media report production.
 use super::*;
-use crate::bounded::ThemeColorNameCursor;
+use crate::bounded::HtmlThemeColorNameCursor;
 /// The two no-namespace attributes that media interpretation matches by local
 /// name.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -238,7 +238,7 @@ pub struct HtmlMediaInterpretation<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttri
     namespace_code_units: usize,
     role: Option<Option<HtmlMediaElementRole>>,
     value: Option<HtmlMediaValueCursor<'raw>>,
-    theme: Option<ThemeColorNameCursor<'raw>>,
+    theme: Option<HtmlThemeColorNameCursor<'raw>>,
     report: Option<HtmlMediaAttributeReport>,
     stopped: bool,
     applicability: Option<HtmlAttributeApplicability>,
@@ -526,7 +526,7 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
             ));
         }
         self.execute(|| admit(1))?;
-        self.theme = Some(ThemeColorNameCursor::new(
+        self.theme = Some(HtmlThemeColorNameCursor::new(
             self.name_attribute().map(|a| a.value().code_units()),
         ));
         Ok(())
@@ -539,7 +539,7 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
         }
         self.theme
             .as_ref()
-            .map(ThemeColorNameCursor::is_complete)
+            .map(HtmlThemeColorNameCursor::is_complete)
             .ok_or(HtmlMediaInterpretationErrorKind::NotReady.error())
     }
     /// Admits one unit and compares the next code unit of the name. `WrongPhase`

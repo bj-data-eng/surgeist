@@ -113,19 +113,19 @@ impl HtmlSandboxFlags {
     ) -> Result<Self, E> {
         admit()?;
         let units = raw.code_units();
-        let mut cursor = crate::internal::microsyntax::tokens::SpaceTokenCursor::new(units);
+        let mut cursor = crate::internal::microsyntax::tokens::HtmlSpaceTokenCursor::new(units);
         let mut keywords = 0;
         loop {
             admit()?;
             match cursor.step() {
-                crate::internal::microsyntax::tokens::SpaceTokenStep::Continue => {}
-                crate::internal::microsyntax::tokens::SpaceTokenStep::Token { start, end } => {
+                crate::internal::microsyntax::tokens::HtmlSpaceTokenStep::Continue => {}
+                crate::internal::microsyntax::tokens::HtmlSpaceTokenStep::Token { start, end } => {
                     admit()?;
                     if let Some(keyword) = keyword_with(&units[start..end], &mut admit)? {
                         keywords |= keyword.bit();
                     }
                 }
-                crate::internal::microsyntax::tokens::SpaceTokenStep::Done => break,
+                crate::internal::microsyntax::tokens::HtmlSpaceTokenStep::Done => break,
             }
         }
         admit()?;

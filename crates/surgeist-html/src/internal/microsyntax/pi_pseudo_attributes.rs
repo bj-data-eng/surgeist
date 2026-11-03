@@ -4,7 +4,7 @@
 
 /// The caller-owned field affected by a cursor action.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Field {
+pub enum HtmlPiPseudoAttributeField {
     /// The pseudo-attribute name being scanned.
     Name,
     /// The quoted pseudo-attribute value being scanned, including its references.
@@ -12,7 +12,7 @@ pub enum Field {
 }
 /// A name in the caller's current field or committed pair bank.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Name {
+pub enum HtmlPiPseudoAttributeName {
     /// The name of the pair still being scanned, before it is committed.
     Current,
     /// The name of the committed pair at this zero-based index.
@@ -25,19 +25,19 @@ pub enum Name {
 /// cursor. `Commit`, `Discard`, and `Pop` update that same caller-owned bank.
 /// `Ready(false)` follows cleanup of all committed pairs.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Action {
-    /// Read the original input's UTF-16 code unit at this index; reply with `Reply::Unit`,
+pub enum HtmlPiPseudoAttributeAction {
+    /// Read the original input's UTF-16 code unit at this index; reply with `HtmlPiPseudoAttributeReply::Unit`,
     /// `None` exactly when the index equals the input length.
     Read(usize),
-    /// Run the grammar transition for the scalar value already read. The reply is `Reply::Ack`
+    /// Run the grammar transition for the scalar value already read. The reply is `HtmlPiPseudoAttributeReply::Ack`
     /// and needs no caller read.
     Step,
-    /// Start a fresh caller-owned field. The reply is `Reply::Ack` once the bank is ready.
-    Begin(Field),
+    /// Start a fresh caller-owned field. The reply is `HtmlPiPseudoAttributeReply::Ack` once the bank is ready.
+    Begin(HtmlPiPseudoAttributeField),
     /// Append one decoded scalar value to a field of the pair being scanned.
     Emit {
         /// The field that receives the scalar value.
-        field: Field,
+        field: HtmlPiPseudoAttributeField,
         /// The scalar value as UTF-16 code units; only the first `len` are meaningful.
         units: [u16; 2],
         /// How many of `units` are meaningful: one for a BMP value, two for a surrogate pair.
@@ -52,11 +52,11 @@ pub enum Action {
     },
     /// Report the length, in UTF-16 code units, of the name of the committed pair at this index,
     /// to compare it with the name of the pair being scanned for a duplicate. Reply with
-    /// `Reply::Length`.
+    /// `HtmlPiPseudoAttributeReply::Length`.
     NameLength(usize),
     /// Report one UTF-16 code unit at this index of the named field, for the same duplicate
-    /// comparison. Reply with `Reply::Unit(Some(unit))`.
-    NameUnit(Name, usize),
+    /// comparison. Reply with `HtmlPiPseudoAttributeReply::Unit(Some(unit))`.
+    NameUnit(HtmlPiPseudoAttributeName, usize),
     /// The pair is complete and its name is not a duplicate: record it as a committed pair.
     Commit,
     /// Drop the unfinished pair after an error; the scan is invalid.
@@ -69,7 +69,7 @@ pub enum Action {
 }
 /// The actual read result, or acknowledgement after performing a pending action.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Reply {
+pub enum HtmlPiPseudoAttributeReply {
     /// Answer to `Read` or `NameUnit`: the requested code unit, or `None` at the input's end.
     Unit(Option<u16>),
     /// Answer to `NameLength`: the requested name's length in UTF-16 code units.
@@ -79,13 +79,13 @@ pub enum Reply {
 }
 /// A refused protocol transition; the cursor retains its previous state.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Error {
+pub enum HtmlPiPseudoAttributeError {
     /// A reply does not match the pending action or original input extent.
     Integrity,
     /// A cursor offset, field length, or pair count cannot be represented.
     Representation,
 }
-impl std::fmt::Display for Error {
+impl std::fmt::Display for HtmlPiPseudoAttributeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             Self::Integrity => "HTML PI pseudo-attribute reply does not match its pending action",
@@ -93,7 +93,7 @@ impl std::fmt::Display for Error {
         })
     }
 }
-impl std::error::Error for Error {}
+impl std::error::Error for HtmlPiPseudoAttributeError {}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Phase {
     Leading,
@@ -113,8 +113,8 @@ enum Phase {
 /// Allocation-free grammar state; source and emitted fields stay with the caller.
 #[derive(Clone, Copy, Debug)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
-pub struct Cursor {
-    action: Option<Action>,
+pub struct HtmlPiPseudoAttributeCursor {
+    action: Option<HtmlPiPseudoAttributeAction>,
     phase: Phase,
     len: usize,
     offset: usize,
@@ -134,11 +134,11 @@ pub struct Cursor {
     named: [u8; 4],
     named_len: usize,
 }
-impl Cursor {
+impl HtmlPiPseudoAttributeCursor {
     /// Starts a whole-string scan over the actual input's UTF-16 length.
     pub fn new(len: usize) -> Self {
         Self {
-            action: Some(Action::Read(0)),
+            action: Some(HtmlPiPseudoAttributeAction::Read(0)),
             phase: Phase::Leading,
             len,
             offset: 0,
@@ -160,49 +160,63 @@ impl Cursor {
         }
     }
     /// Observes the pending action without advancing it; `None` is terminal.
-    pub fn action(&self) -> Option<Action> {
+    pub fn action(&self) -> Option<HtmlPiPseudoAttributeAction> {
         self.action
     }
     /// Applies an actual action result, preserving the cursor on any error.
-    pub fn reply(&mut self, reply: Reply) -> Result<(), Error> {
+    pub fn reply(
+        &mut self,
+        reply: HtmlPiPseudoAttributeReply,
+    ) -> Result<(), HtmlPiPseudoAttributeError> {
         let mut next = *self;
         next.advance(reply)?;
         *self = next;
         Ok(())
     }
-    fn add(a: usize, b: usize) -> Result<usize, Error> {
-        a.checked_add(b).ok_or(Error::Representation)
+    fn add(a: usize, b: usize) -> Result<usize, HtmlPiPseudoAttributeError> {
+        a.checked_add(b)
+            .ok_or(HtmlPiPseudoAttributeError::Representation)
     }
     fn read(&mut self) {
         self.action = Some(if self.scalar.is_some() {
-            Action::Step
+            HtmlPiPseudoAttributeAction::Step
         } else {
-            Action::Read(self.offset)
+            HtmlPiPseudoAttributeAction::Read(self.offset)
         });
     }
-    fn consume(&mut self) -> Result<(), Error> {
-        let (_, width) = self.scalar.take().ok_or(Error::Integrity)?;
+    fn consume(&mut self) -> Result<(), HtmlPiPseudoAttributeError> {
+        let (_, width) = self
+            .scalar
+            .take()
+            .ok_or(HtmlPiPseudoAttributeError::Integrity)?;
         self.offset = Self::add(self.offset, width)?;
         self.read();
         Ok(())
     }
     fn invalid(&mut self) {
         self.action = Some(if self.active {
-            Action::Discard
+            HtmlPiPseudoAttributeAction::Discard
         } else if self.pairs != 0 {
-            Action::Pop
+            HtmlPiPseudoAttributeAction::Pop
         } else {
-            Action::Ready(false)
+            HtmlPiPseudoAttributeAction::Ready(false)
         });
     }
-    fn emit(&mut self, field: Field, cp: u32, start: usize, end: usize, reference: bool) {
+    fn emit(
+        &mut self,
+        field: HtmlPiPseudoAttributeField,
+        cp: u32,
+        start: usize,
+        end: usize,
+        reference: bool,
+    ) {
         let (units, len) = if cp <= 0xffff {
             ([cp as u16, 0], 1)
         } else {
             let n = cp - 0x10000;
             ([0xd800 | (n >> 10) as u16, 0xdc00 | (n & 0x3ff) as u16], 2)
         };
-        self.action = Some(Action::Emit {
+        self.action = Some(HtmlPiPseudoAttributeAction::Emit {
             field,
             units,
             len,
@@ -211,14 +225,17 @@ impl Cursor {
             reference,
         });
     }
-    fn advance(&mut self, reply: Reply) -> Result<(), Error> {
-        match self.action.ok_or(Error::Integrity)? {
-            Action::Read(index) => {
-                let Reply::Unit(unit) = reply else {
-                    return Err(Error::Integrity);
+    fn advance(
+        &mut self,
+        reply: HtmlPiPseudoAttributeReply,
+    ) -> Result<(), HtmlPiPseudoAttributeError> {
+        match self.action.ok_or(HtmlPiPseudoAttributeError::Integrity)? {
+            HtmlPiPseudoAttributeAction::Read(index) => {
+                let HtmlPiPseudoAttributeReply::Unit(unit) = reply else {
+                    return Err(HtmlPiPseudoAttributeError::Integrity);
                 };
                 if index > self.len || (index == self.len) != unit.is_none() {
-                    return Err(Error::Integrity);
+                    return Err(HtmlPiPseudoAttributeError::Integrity);
                 }
                 if let Some(high) = self.high.take() {
                     let cp = match unit {
@@ -231,45 +248,45 @@ impl Cursor {
                 } else if let Some(unit) = unit {
                     if (0xd800..=0xdbff).contains(&unit) && index + 1 < self.len {
                         self.high = Some(unit);
-                        self.action = Some(Action::Read(Self::add(index, 1)?));
+                        self.action = Some(HtmlPiPseudoAttributeAction::Read(Self::add(index, 1)?));
                         return Ok(());
                     }
                     self.scalar = Some((u32::from(unit), 1));
                 }
-                self.action = Some(Action::Step);
+                self.action = Some(HtmlPiPseudoAttributeAction::Step);
             }
-            Action::Step => {
-                if reply != Reply::Ack {
-                    return Err(Error::Integrity);
+            HtmlPiPseudoAttributeAction::Step => {
+                if reply != HtmlPiPseudoAttributeReply::Ack {
+                    return Err(HtmlPiPseudoAttributeError::Integrity);
                 }
                 self.step()?;
             }
-            Action::Begin(Field::Name) => {
-                if reply != Reply::Ack {
-                    return Err(Error::Integrity);
+            HtmlPiPseudoAttributeAction::Begin(HtmlPiPseudoAttributeField::Name) => {
+                if reply != HtmlPiPseudoAttributeReply::Ack {
+                    return Err(HtmlPiPseudoAttributeError::Integrity);
                 }
                 self.active = true;
                 self.name_len = 0;
                 self.phase = Phase::FirstName;
                 self.read();
             }
-            Action::Begin(Field::Value) => {
-                if reply != Reply::Ack {
-                    return Err(Error::Integrity);
+            HtmlPiPseudoAttributeAction::Begin(HtmlPiPseudoAttributeField::Value) => {
+                if reply != HtmlPiPseudoAttributeReply::Ack {
+                    return Err(HtmlPiPseudoAttributeError::Integrity);
                 }
                 self.phase = Phase::Quote;
                 self.read();
             }
-            Action::Emit {
+            HtmlPiPseudoAttributeAction::Emit {
                 field,
                 len,
                 reference,
                 ..
             } => {
-                if reply != Reply::Ack {
-                    return Err(Error::Integrity);
+                if reply != HtmlPiPseudoAttributeReply::Ack {
+                    return Err(HtmlPiPseudoAttributeError::Integrity);
                 }
-                if field == Field::Name {
+                if field == HtmlPiPseudoAttributeField::Name {
                     self.name_len = Self::add(self.name_len, len)?;
                     self.phase = Phase::Name;
                 } else if reference {
@@ -277,33 +294,39 @@ impl Cursor {
                 }
                 self.consume()?;
             }
-            Action::NameLength(index) => {
-                let Reply::Length(len) = reply else {
-                    return Err(Error::Integrity);
+            HtmlPiPseudoAttributeAction::NameLength(index) => {
+                let HtmlPiPseudoAttributeReply::Length(len) = reply else {
+                    return Err(HtmlPiPseudoAttributeError::Integrity);
                 };
                 if index != self.compare || index >= self.pairs {
-                    return Err(Error::Integrity);
+                    return Err(HtmlPiPseudoAttributeError::Integrity);
                 }
                 if len == self.name_len {
                     self.comparison_offset = 0;
-                    self.action = Some(Action::NameUnit(Name::Current, 0));
+                    self.action = Some(HtmlPiPseudoAttributeAction::NameUnit(
+                        HtmlPiPseudoAttributeName::Current,
+                        0,
+                    ));
                 } else {
                     self.next_comparison()?;
                 }
             }
-            Action::NameUnit(name, index) => {
-                let Reply::Unit(Some(unit)) = reply else {
-                    return Err(Error::Integrity);
+            HtmlPiPseudoAttributeAction::NameUnit(name, index) => {
+                let HtmlPiPseudoAttributeReply::Unit(Some(unit)) = reply else {
+                    return Err(HtmlPiPseudoAttributeError::Integrity);
                 };
                 if index != self.comparison_offset || index >= self.name_len {
-                    return Err(Error::Integrity);
+                    return Err(HtmlPiPseudoAttributeError::Integrity);
                 }
                 match name {
-                    Name::Current => {
+                    HtmlPiPseudoAttributeName::Current => {
                         self.current_unit = unit;
-                        self.action = Some(Action::NameUnit(Name::Pair(self.compare), index));
+                        self.action = Some(HtmlPiPseudoAttributeAction::NameUnit(
+                            HtmlPiPseudoAttributeName::Pair(self.compare),
+                            index,
+                        ));
                     }
-                    Name::Pair(pair) if pair == self.compare => {
+                    HtmlPiPseudoAttributeName::Pair(pair) if pair == self.compare => {
                         if unit != self.current_unit {
                             self.next_comparison()?;
                         } else {
@@ -311,67 +334,73 @@ impl Cursor {
                             if self.comparison_offset == self.name_len {
                                 self.invalid();
                             } else {
-                                self.action =
-                                    Some(Action::NameUnit(Name::Current, self.comparison_offset));
+                                self.action = Some(HtmlPiPseudoAttributeAction::NameUnit(
+                                    HtmlPiPseudoAttributeName::Current,
+                                    self.comparison_offset,
+                                ));
                             }
                         }
                     }
-                    _ => return Err(Error::Integrity),
+                    _ => return Err(HtmlPiPseudoAttributeError::Integrity),
                 }
             }
-            Action::Commit => {
-                if reply != Reply::Ack {
-                    return Err(Error::Integrity);
+            HtmlPiPseudoAttributeAction::Commit => {
+                if reply != HtmlPiPseudoAttributeReply::Ack {
+                    return Err(HtmlPiPseudoAttributeError::Integrity);
                 }
                 self.pairs = Self::add(self.pairs, 1)?;
                 self.active = false;
                 self.phase = Phase::Separated;
                 self.read();
             }
-            Action::Discard => {
-                if reply != Reply::Ack {
-                    return Err(Error::Integrity);
+            HtmlPiPseudoAttributeAction::Discard => {
+                if reply != HtmlPiPseudoAttributeReply::Ack {
+                    return Err(HtmlPiPseudoAttributeError::Integrity);
                 }
                 self.active = false;
                 self.invalid();
             }
-            Action::Pop => {
-                if reply != Reply::Ack || self.pairs == 0 {
-                    return Err(Error::Integrity);
+            HtmlPiPseudoAttributeAction::Pop => {
+                if reply != HtmlPiPseudoAttributeReply::Ack || self.pairs == 0 {
+                    return Err(HtmlPiPseudoAttributeError::Integrity);
                 }
                 self.pairs -= 1;
                 self.invalid();
             }
-            Action::Ready(_) => {
-                if reply != Reply::Ack {
-                    return Err(Error::Integrity);
+            HtmlPiPseudoAttributeAction::Ready(_) => {
+                if reply != HtmlPiPseudoAttributeReply::Ack {
+                    return Err(HtmlPiPseudoAttributeError::Integrity);
                 }
                 self.action = None;
             }
         }
         Ok(())
     }
-    fn next_comparison(&mut self) -> Result<(), Error> {
+    fn next_comparison(&mut self) -> Result<(), HtmlPiPseudoAttributeError> {
         self.compare = Self::add(self.compare, 1)?;
         self.action = Some(if self.compare < self.pairs {
-            Action::NameLength(self.compare)
+            HtmlPiPseudoAttributeAction::NameLength(self.compare)
         } else {
-            Action::Commit
+            HtmlPiPseudoAttributeAction::Commit
         });
         Ok(())
     }
-    fn step(&mut self) -> Result<(), Error> {
+    fn step(&mut self) -> Result<(), HtmlPiPseudoAttributeError> {
         let cp = self.scalar.map(|x| x.0);
         let width = self.scalar.map_or(0, |x| x.1);
         match self.phase {
             Phase::Leading => match cp {
-                None => self.action = Some(Action::Ready(true)),
+                None => self.action = Some(HtmlPiPseudoAttributeAction::Ready(true)),
                 Some(cp) if whitespace(cp) => self.consume()?,
-                _ => self.action = Some(Action::Begin(Field::Name)),
+                _ => {
+                    self.action = Some(HtmlPiPseudoAttributeAction::Begin(
+                        HtmlPiPseudoAttributeField::Name,
+                    ))
+                }
             },
             Phase::FirstName => match cp {
                 Some(cp) if is_xml_name_start_code_point(cp) => self.emit(
-                    Field::Name,
+                    HtmlPiPseudoAttributeField::Name,
                     cp,
                     self.offset,
                     Self::add(self.offset, width)?,
@@ -381,7 +410,7 @@ impl Cursor {
             },
             Phase::Name => match cp {
                 Some(cp) if is_xml_name_code_point(cp) => self.emit(
-                    Field::Name,
+                    HtmlPiPseudoAttributeField::Name,
                     cp,
                     self.offset,
                     Self::add(self.offset, width)?,
@@ -409,11 +438,15 @@ impl Cursor {
             }
             Phase::BeforeValue => match cp {
                 Some(cp) if whitespace(cp) => self.consume()?,
-                _ => self.action = Some(Action::Begin(Field::Value)),
+                _ => {
+                    self.action = Some(HtmlPiPseudoAttributeAction::Begin(
+                        HtmlPiPseudoAttributeField::Value,
+                    ))
+                }
             },
             Phase::Quote => {
                 if matches!(cp, Some(34 | 39)) {
-                    self.quote = cp.ok_or(Error::Integrity)?;
+                    self.quote = cp.ok_or(HtmlPiPseudoAttributeError::Integrity)?;
                     self.phase = Phase::Value;
                     self.consume()?;
                 } else {
@@ -425,9 +458,9 @@ impl Cursor {
                     self.consume()?;
                     self.compare = 0;
                     self.action = Some(if self.pairs == 0 {
-                        Action::Commit
+                        HtmlPiPseudoAttributeAction::Commit
                     } else {
-                        Action::NameLength(0)
+                        HtmlPiPseudoAttributeAction::NameLength(0)
                     });
                 }
                 Some(38) => {
@@ -436,7 +469,7 @@ impl Cursor {
                     self.consume()?;
                 }
                 Some(cp) if cp != 60 && xml_char(cp) => self.emit(
-                    Field::Value,
+                    HtmlPiPseudoAttributeField::Value,
                     cp,
                     self.offset,
                     Self::add(self.offset, width)?,
@@ -469,7 +502,7 @@ impl Cursor {
             }
             Phase::RefDigits => match cp {
                 Some(59) if self.digits != 0 && xml_char(self.number) => self.emit(
-                    Field::Value,
+                    HtmlPiPseudoAttributeField::Value,
                     self.number,
                     self.ref_start,
                     Self::add(self.offset, width)?,
@@ -508,7 +541,7 @@ impl Cursor {
                     };
                     if let Some(value) = value {
                         self.emit(
-                            Field::Value,
+                            HtmlPiPseudoAttributeField::Value,
                             value,
                             self.ref_start,
                             Self::add(self.offset, width)?,
@@ -526,7 +559,7 @@ impl Cursor {
                 _ => self.invalid(),
             },
             Phase::Separated => match cp {
-                None => self.action = Some(Action::Ready(true)),
+                None => self.action = Some(HtmlPiPseudoAttributeAction::Ready(true)),
                 Some(cp) if whitespace(cp) => {
                     self.phase = Phase::Leading;
                     self.consume()?;
@@ -563,7 +596,7 @@ mod tests {
     #[test]
     fn closed_replies_rollback_and_invalidation_visit_every_concrete_action() {
         let source: Vec<u16> = "name='&#88;' x=\"a\" x='b'".encode_utf16().collect();
-        let mut cursor = Cursor::new(source.len());
+        let mut cursor = HtmlPiPseudoAttributeCursor::new(source.len());
         let mut names: Vec<Vec<u16>> = vec![];
         let mut name = vec![];
         let mut value = vec![];
@@ -572,41 +605,46 @@ mod tests {
             let before = cursor;
             let invalid = if matches!(
                 action,
-                Action::Read(_) | Action::NameUnit(..) | Action::NameLength(_)
+                HtmlPiPseudoAttributeAction::Read(_)
+                    | HtmlPiPseudoAttributeAction::NameUnit(..)
+                    | HtmlPiPseudoAttributeAction::NameLength(_)
             ) {
-                Reply::Ack
+                HtmlPiPseudoAttributeReply::Ack
             } else {
-                Reply::Length(0)
+                HtmlPiPseudoAttributeReply::Length(0)
             };
-            assert_eq!(cursor.reply(invalid), Err(Error::Integrity));
+            assert_eq!(
+                cursor.reply(invalid),
+                Err(HtmlPiPseudoAttributeError::Integrity)
+            );
             assert_eq!(cursor, before);
             let reply = match action {
-                Action::Read(i) => {
+                HtmlPiPseudoAttributeAction::Read(i) => {
                     seen[0] = true;
-                    Reply::Unit(source.get(i).copied())
+                    HtmlPiPseudoAttributeReply::Unit(source.get(i).copied())
                 }
-                Action::Step => {
+                HtmlPiPseudoAttributeAction::Step => {
                     seen[1] = true;
-                    Reply::Ack
+                    HtmlPiPseudoAttributeReply::Ack
                 }
-                Action::Begin(field) => {
-                    if field == Field::Name {
+                HtmlPiPseudoAttributeAction::Begin(field) => {
+                    if field == HtmlPiPseudoAttributeField::Name {
                         seen[2] = true;
                         name.clear()
                     } else {
                         seen[3] = true;
                         value.clear()
                     }
-                    Reply::Ack
+                    HtmlPiPseudoAttributeReply::Ack
                 }
-                Action::Emit {
+                HtmlPiPseudoAttributeAction::Emit {
                     field,
                     units,
                     len,
                     reference,
                     ..
                 } => {
-                    if field == Field::Name {
+                    if field == HtmlPiPseudoAttributeField::Name {
                         seen[4] = true;
                         name.extend_from_slice(&units[..len]);
                     } else {
@@ -616,87 +654,93 @@ mod tests {
                             assert_eq!(&units[..len], [88]);
                         }
                     }
-                    Reply::Ack
+                    HtmlPiPseudoAttributeReply::Ack
                 }
-                Action::NameLength(i) => {
+                HtmlPiPseudoAttributeAction::NameLength(i) => {
                     seen[6] = true;
-                    Reply::Length(names[i].len())
+                    HtmlPiPseudoAttributeReply::Length(names[i].len())
                 }
-                Action::NameUnit(which, i) => {
+                HtmlPiPseudoAttributeAction::NameUnit(which, i) => {
                     seen[7] = true;
-                    Reply::Unit(Some(match which {
-                        Name::Current => name[i],
-                        Name::Pair(n) => names[n][i],
+                    HtmlPiPseudoAttributeReply::Unit(Some(match which {
+                        HtmlPiPseudoAttributeName::Current => name[i],
+                        HtmlPiPseudoAttributeName::Pair(n) => names[n][i],
                     }))
                 }
-                Action::Commit => {
+                HtmlPiPseudoAttributeAction::Commit => {
                     seen[8] = true;
                     names.push(name.clone());
-                    Reply::Ack
+                    HtmlPiPseudoAttributeReply::Ack
                 }
-                Action::Discard => {
+                HtmlPiPseudoAttributeAction::Discard => {
                     seen[9] = true;
                     name.clear();
                     value.clear();
-                    Reply::Ack
+                    HtmlPiPseudoAttributeReply::Ack
                 }
-                Action::Pop => {
+                HtmlPiPseudoAttributeAction::Pop => {
                     seen[10] = true;
                     names.pop().unwrap();
-                    Reply::Ack
+                    HtmlPiPseudoAttributeReply::Ack
                 }
-                Action::Ready(valid) => {
+                HtmlPiPseudoAttributeAction::Ready(valid) => {
                     seen[11] = true;
                     assert!(!valid);
                     assert!(names.is_empty());
-                    Reply::Ack
+                    HtmlPiPseudoAttributeReply::Ack
                 }
             };
             cursor.reply(reply).unwrap();
         }
         assert_eq!(seen, [true; 12]);
-        assert_eq!(cursor.reply(Reply::Ack), Err(Error::Integrity));
+        assert_eq!(
+            cursor.reply(HtmlPiPseudoAttributeReply::Ack),
+            Err(HtmlPiPseudoAttributeError::Integrity)
+        );
     }
     #[test]
     fn impossible_original_unit_presence_is_integrity_and_transactional() {
-        for (len, reply) in [(0, Reply::Unit(Some(65))), (1, Reply::Unit(None))] {
-            let mut c = Cursor::new(len);
+        for (len, reply) in [
+            (0, HtmlPiPseudoAttributeReply::Unit(Some(65))),
+            (1, HtmlPiPseudoAttributeReply::Unit(None)),
+        ] {
+            let mut c = HtmlPiPseudoAttributeCursor::new(len);
             let old = c;
-            assert_eq!(c.reply(reply), Err(Error::Integrity));
+            assert_eq!(c.reply(reply), Err(HtmlPiPseudoAttributeError::Integrity));
             assert_eq!(c, old);
         }
     }
     #[test]
     fn literal_d_invalid_map_has_the_exact_thirteen_closed_admitted_actions() {
         let expected = [
-            Action::Read(0),
-            Action::Step,
-            Action::Begin(Field::Name),
-            Action::Step,
-            Action::Emit {
-                field: Field::Name,
+            HtmlPiPseudoAttributeAction::Read(0),
+            HtmlPiPseudoAttributeAction::Step,
+            HtmlPiPseudoAttributeAction::Begin(HtmlPiPseudoAttributeField::Name),
+            HtmlPiPseudoAttributeAction::Step,
+            HtmlPiPseudoAttributeAction::Emit {
+                field: HtmlPiPseudoAttributeField::Name,
                 units: [68, 0],
                 len: 1,
                 start: 0,
                 end: 1,
                 reference: false,
             },
-            Action::Read(1),
-            Action::Step,
-            Action::Read(1),
-            Action::Step,
-            Action::Read(1),
-            Action::Step,
-            Action::Discard,
-            Action::Ready(false),
+            HtmlPiPseudoAttributeAction::Read(1),
+            HtmlPiPseudoAttributeAction::Step,
+            HtmlPiPseudoAttributeAction::Read(1),
+            HtmlPiPseudoAttributeAction::Step,
+            HtmlPiPseudoAttributeAction::Read(1),
+            HtmlPiPseudoAttributeAction::Step,
+            HtmlPiPseudoAttributeAction::Discard,
+            HtmlPiPseudoAttributeAction::Ready(false),
         ];
-        let mut c = Cursor::new(1);
+        let mut c = HtmlPiPseudoAttributeCursor::new(1);
         for action in expected {
             assert_eq!(c.action(), Some(action));
             c.reply(match action {
-                Action::Read(0) => Reply::Unit(Some(68)),
-                Action::Read(1) => Reply::Unit(None),
-                _ => Reply::Ack,
+                HtmlPiPseudoAttributeAction::Read(0) => HtmlPiPseudoAttributeReply::Unit(Some(68)),
+                HtmlPiPseudoAttributeAction::Read(1) => HtmlPiPseudoAttributeReply::Unit(None),
+                _ => HtmlPiPseudoAttributeReply::Ack,
             })
             .unwrap();
         }

@@ -9,9 +9,9 @@ pub(crate) mod lattice;
 /// One of the eight caller-owned scratch buffers of the exact range arithmetic. Each holds decimal
 /// digits, one value of 0 to 9 per cell with the least significant digit first, and the cursor that
 /// issues a request names the role it acts on. `index` is the role's position in
-/// `RangeNumericHeaders`.
+/// `HtmlRangeNumericHeaders`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RangeScratchRole {
+pub enum HtmlRangeScratchRole {
     /// The exact decimal coefficient of the value being converted or serialized.
     Coefficient,
     /// The exact decimal coefficient of the lower rounding boundary of a value being serialized.
@@ -29,7 +29,7 @@ pub enum RangeScratchRole {
     /// A candidate value under test, such as a trial significand or a candidate decimal sum.
     Trial,
 }
-impl RangeScratchRole {
+impl HtmlRangeScratchRole {
     /// Every role exactly once, in `index` order.
     pub const ALL: [Self; 8] = [
         Self::Coefficient,
@@ -41,7 +41,7 @@ impl RangeScratchRole {
         Self::Remainder,
         Self::Trial,
     ];
-    /// The role's slot, 0 to 7, in the buffer array of `RangeNumericHeaders`.
+    /// The role's slot, 0 to 7, in the buffer array of `HtmlRangeNumericHeaders`.
     pub const fn index(self) -> usize {
         match self {
             Self::Coefficient => 0,
@@ -58,15 +58,15 @@ impl RangeScratchRole {
 /// The address of one digit cell: a scratch role and a zero-based index from the least significant
 /// digit. The index must be less than the buffer's current length when a request names the cell.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct RangeCell {
-    pub(crate) role: RangeScratchRole,
+pub struct HtmlRangeCell {
+    pub(crate) role: HtmlRangeScratchRole,
     pub(crate) index: usize,
 }
 /// One effect a range cursor asks its caller to perform before the cursor can continue. The caller
 /// admits the effect, performs it on its own storage, and answers with the matching
-/// `RangeNumericReply`; any other reply is an integrity error.
+/// `HtmlRangeNumericReply`; any other reply is an integrity error.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RangeNumericRequest {
+pub enum HtmlRangeNumericRequest {
     /// Read one code unit of the source value; answer with `Unit`.
     SourceUnit {
         /// The zero-based UTF-16 code-unit offset in the source, which is less than its length.
@@ -76,34 +76,34 @@ pub enum RangeNumericRequest {
     /// cell and `None` for each absent one.
     ReadCells {
         /// The cells to read, which may be absent.
-        cells: [Option<RangeCell>; 3],
+        cells: [Option<HtmlRangeCell>; 3],
     },
     /// Ensure the buffer of `role` can hold `required_len` cells without reallocating; answer with
     /// `Reserved`. The caller chooses the actual capacity.
     Reserve {
         /// The buffer to grow.
-        role: RangeScratchRole,
+        role: HtmlRangeScratchRole,
         /// The length in cells the buffer must be able to hold.
         required_len: usize,
     },
     /// Push one digit onto the buffer of `role`, within its reserved capacity; answer with `Ack`.
     AppendCell {
         /// The buffer to extend.
-        role: RangeScratchRole,
+        role: HtmlRangeScratchRole,
         /// The digit, 0 to 9.
         value: u8,
     },
     /// Overwrite an existing cell with a digit; answer with `Ack`.
     WriteCell {
         /// The cell to overwrite, which is within the buffer's length.
-        cell: RangeCell,
+        cell: HtmlRangeCell,
         /// The digit, 0 to 9.
         value: u8,
     },
     /// Remove the last cell of the buffer of `role`, which is nonempty; answer with `Ack`.
     PopCell {
         /// The buffer to shorten.
-        role: RangeScratchRole,
+        role: HtmlRangeScratchRole,
     },
     /// No storage effect: the cursor performs a fixed scalar transition; answer with `Ack`.
     ScalarStep,
@@ -118,10 +118,10 @@ pub enum RangeNumericRequest {
         unit: u16,
     },
 }
-/// The caller's answer to a `RangeNumericRequest`. A cursor validates the reply against the pending
+/// The caller's answer to a `HtmlRangeNumericRequest`. A cursor validates the reply against the pending
 /// request and commits only if it is valid, so a rejected reply leaves the cursor unchanged.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RangeNumericReply {
+pub enum HtmlRangeNumericReply {
     /// The source code unit for `SourceUnit`.
     Unit(u16),
     /// The digits for `ReadCells`, in request order: `Some` digit (0 to 9) exactly where the
@@ -151,7 +151,7 @@ pub enum RangeNumericReply {
 /// added.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum RangeNumericError {
+pub enum HtmlRangeNumericError {
     /// The reply, headers or operands contradict the protocol: a reply that does not match the
     /// pending request, a header whose length exceeds its capacity, an inconsistent length, or, for
     /// the midpoint and lattice cursors, an operand that is not finite.
@@ -168,23 +168,23 @@ pub enum RangeNumericError {
 /// The length never exceeds the capacity, and the capacity never exceeds `isize::MAX`; `new`
 /// enforces both.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct RangeBufferHeader {
+pub struct HtmlRangeBufferHeader {
     pub(crate) len: usize,
     pub(crate) capacity: usize,
 }
-/// The headers of the eight scratch buffers, indexed by `RangeScratchRole::index`, and of the
+/// The headers of the eight scratch buffers, indexed by `HtmlRangeScratchRole::index`, and of the
 /// output buffer. A cursor keeps its own copy and updates it as replies are accepted, so the
 /// caller's storage and these headers must stay in step.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct RangeNumericHeaders {
-    pub(crate) buffers: [RangeBufferHeader; 8],
-    pub(crate) output: RangeBufferHeader,
+pub struct HtmlRangeNumericHeaders {
+    pub(crate) buffers: [HtmlRangeBufferHeader; 8],
+    pub(crate) output: HtmlRangeBufferHeader,
 }
 
 /// Only the enclosing authoritative grammar owner can issue these headers.
 #[derive(Clone, Copy, Debug)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
-pub struct RangeDecimalParts {
+pub struct HtmlRangeDecimalParts {
     pub(super) negative: bool,
     pub(super) integer_start: usize,
     pub(super) integer_end: usize,
@@ -198,55 +198,59 @@ pub struct RangeDecimalParts {
 #[derive(Clone, Copy, Debug)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
 struct Io {
-    headers: RangeNumericHeaders,
-    request: Option<RangeNumericRequest>,
+    headers: HtmlRangeNumericHeaders,
+    request: Option<HtmlRangeNumericRequest>,
     source_len: usize,
     width: usize,
 }
 impl Io {
-    fn new(headers: RangeNumericHeaders, source_len: usize, width: usize) -> Self {
+    fn new(headers: HtmlRangeNumericHeaders, source_len: usize, width: usize) -> Self {
         Self {
             headers,
-            request: Some(RangeNumericRequest::ScalarStep),
+            request: Some(HtmlRangeNumericRequest::ScalarStep),
             source_len,
             width,
         }
     }
-    fn len(&self, role: RangeScratchRole) -> usize {
+    fn len(&self, role: HtmlRangeScratchRole) -> usize {
         self.headers.buffers[role.index()].len
     }
-    fn queue(&mut self, request: RangeNumericRequest) {
+    fn queue(&mut self, request: HtmlRangeNumericRequest) {
         self.request = Some(request);
     }
-    fn append(&mut self, role: RangeScratchRole, value: u8) -> Result<bool, RangeNumericError> {
+    fn append(
+        &mut self,
+        role: HtmlRangeScratchRole,
+        value: u8,
+    ) -> Result<bool, HtmlRangeNumericError> {
         let required = self
             .len(role)
             .checked_add(1)
-            .ok_or(RangeNumericError::Representation)?;
+            .ok_or(HtmlRangeNumericError::Representation)?;
         if required > self.width {
-            return Err(RangeNumericError::Representation);
+            return Err(HtmlRangeNumericError::Representation);
         }
         if self.headers.buffers[role.index()].capacity < required {
-            self.queue(RangeNumericRequest::Reserve {
+            self.queue(HtmlRangeNumericRequest::Reserve {
                 role,
                 required_len: required,
             });
             Ok(false)
         } else {
-            self.queue(RangeNumericRequest::AppendCell { role, value });
+            self.queue(HtmlRangeNumericRequest::AppendCell { role, value });
             Ok(true)
         }
     }
-    fn cell_ok(&self, cell: Option<RangeCell>, value: Option<u8>) -> bool {
+    fn cell_ok(&self, cell: Option<HtmlRangeCell>, value: Option<u8>) -> bool {
         match (cell, value) {
             (None, None) => true,
             (Some(c), Some(v)) => c.index < self.len(c.role) && v <= 9,
             _ => false,
         }
     }
-    fn accept(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
-        use RangeNumericReply as P;
-        use RangeNumericRequest as Q;
+    fn accept(&mut self, reply: HtmlRangeNumericReply) -> Result<(), HtmlRangeNumericError> {
+        use HtmlRangeNumericReply as P;
+        use HtmlRangeNumericRequest as Q;
         let h = &self.headers.buffers;
         if h[0].len > h[0].capacity
             || h[1].len > h[1].capacity
@@ -258,9 +262,9 @@ impl Io {
             || h[7].len > h[7].capacity
             || self.headers.output.len > self.headers.output.capacity
         {
-            return Err(RangeNumericError::Integrity);
+            return Err(HtmlRangeNumericError::Integrity);
         }
-        match (self.request.ok_or(RangeNumericError::Integrity)?, reply) {
+        match (self.request.ok_or(HtmlRangeNumericError::Integrity)?, reply) {
             (Q::SourceUnit { index }, P::Unit(_)) if index < self.source_len => {}
             (Q::ReadCells { cells }, P::Cells(values))
                 if self.cell_ok(cells[0], values[0])
@@ -313,7 +317,7 @@ impl Io {
             {
                 self.headers.output.len += 1;
             }
-            _ => return Err(RangeNumericError::Integrity),
+            _ => return Err(HtmlRangeNumericError::Integrity),
         }
         Ok(())
     }
@@ -339,8 +343,8 @@ enum ProductPhase {
 #[cfg_attr(test, derive(Eq, PartialEq))]
 pub(crate) struct RangeMantissaProductCursor {
     io: Io,
-    source: RangeScratchRole,
-    destination: RangeScratchRole,
+    source: HtmlRangeScratchRole,
+    destination: HtmlRangeScratchRole,
     mantissa: u64,
     carry: u128,
     index: usize,
@@ -349,13 +353,13 @@ pub(crate) struct RangeMantissaProductCursor {
 }
 impl RangeMantissaProductCursor {
     pub(crate) fn new(
-        headers: RangeNumericHeaders,
-        source: RangeScratchRole,
-        destination: RangeScratchRole,
+        headers: HtmlRangeNumericHeaders,
+        source: HtmlRangeScratchRole,
+        destination: HtmlRangeScratchRole,
         mantissa: u64,
-    ) -> Result<Self, RangeNumericError> {
+    ) -> Result<Self, HtmlRangeNumericError> {
         if source == destination || headers.buffers[source.index()].len == 0 || mantissa == 0 {
-            return Err(RangeNumericError::Integrity);
+            return Err(HtmlRangeNumericError::Integrity);
         }
         Ok(Self {
             io: Io::new(headers, 0, 1386),
@@ -368,26 +372,32 @@ impl RangeMantissaProductCursor {
             phase: ProductPhase::Start,
         })
     }
-    pub(crate) fn request(&self) -> Option<RangeNumericRequest> {
+    pub(crate) fn request(&self) -> Option<HtmlRangeNumericRequest> {
         self.io.request
     }
-    pub(crate) fn headers(&self) -> RangeNumericHeaders {
+    pub(crate) fn headers(&self) -> HtmlRangeNumericHeaders {
         self.io.headers
     }
     pub(crate) fn result(&self) -> Option<()> {
         matches!(self.phase, ProductPhase::Done).then_some(())
     }
     #[cfg(test)]
-    pub(crate) fn reply(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
+    pub(crate) fn reply(
+        &mut self,
+        reply: HtmlRangeNumericReply,
+    ) -> Result<(), HtmlRangeNumericError> {
         let mut next = *self;
         next.accept_in_place(reply)?;
         *self = next;
         Ok(())
     }
-    fn accept_in_place(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
+    fn accept_in_place(
+        &mut self,
+        reply: HtmlRangeNumericReply,
+    ) -> Result<(), HtmlRangeNumericError> {
         self.io.accept(reply)?;
+        use HtmlRangeNumericRequest as Q;
         use ProductPhase as S;
-        use RangeNumericRequest as Q;
         match self.phase {
             S::Start | S::Clear => {
                 if self.io.len(self.destination) != 0 {
@@ -401,8 +411,8 @@ impl RangeMantissaProductCursor {
                 }
             }
             S::Read => {
-                let RangeNumericReply::Cells([Some(digit), None, None]) = reply else {
-                    return Err(RangeNumericError::Integrity);
+                let HtmlRangeNumericReply::Cells([Some(digit), None, None]) = reply else {
+                    return Err(HtmlRangeNumericError::Integrity);
                 };
                 let value = u128::from(digit) * u128::from(self.mantissa) + self.carry;
                 self.digit = (value % 10) as u8;
@@ -432,7 +442,7 @@ impl RangeMantissaProductCursor {
                 self.index = self
                     .index
                     .checked_add(1)
-                    .ok_or(RangeNumericError::Representation)?;
+                    .ok_or(HtmlRangeNumericError::Representation)?;
                 if self.index < self.io.len(self.source) {
                     self.phase = S::Read;
                     self.queue_read();
@@ -459,14 +469,14 @@ impl RangeMantissaProductCursor {
                 self.phase = S::Carry;
                 self.io.queue(Q::ScalarStep);
             }
-            S::Done => return Err(RangeNumericError::Integrity),
+            S::Done => return Err(HtmlRangeNumericError::Integrity),
         }
         Ok(())
     }
     fn queue_read(&mut self) {
-        self.io.queue(RangeNumericRequest::ReadCells {
+        self.io.queue(HtmlRangeNumericRequest::ReadCells {
             cells: [
-                Some(RangeCell {
+                Some(HtmlRangeCell {
                     role: self.source,
                     index: self.index,
                 }),
@@ -503,28 +513,28 @@ fn decimal_dyadic_ordering(
     decimal_order: i128,
     mantissa: u64,
     exponent: i32,
-) -> Result<Option<std::cmp::Ordering>, RangeNumericError> {
+) -> Result<Option<std::cmp::Ordering>, HtmlRangeNumericError> {
     if mantissa == 0 {
         return Ok(None);
     }
     let binary_order = i128::from(63 - mantissa.leading_zeros())
         .checked_add(i128::from(exponent))
-        .ok_or(RangeNumericError::Representation)?;
+        .ok_or(HtmlRangeNumericError::Representation)?;
     let lower_decimal = decimal_order
         .checked_sub(1)
-        .ok_or(RangeNumericError::Representation)?;
+        .ok_or(HtmlRangeNumericError::Representation)?;
     let (upper_binary, lower_binary) = if decimal_order >= 1 {
         (decimal_order.checked_mul(4), lower_decimal.checked_mul(3))
     } else {
         (decimal_order.checked_mul(3), lower_decimal.checked_mul(4))
     };
-    let upper_binary = upper_binary.ok_or(RangeNumericError::Representation)?;
-    let lower_binary = lower_binary.ok_or(RangeNumericError::Representation)?;
+    let upper_binary = upper_binary.ok_or(HtmlRangeNumericError::Representation)?;
+    let lower_binary = lower_binary.ok_or(HtmlRangeNumericError::Representation)?;
     if binary_order >= upper_binary {
         Ok(Some(std::cmp::Ordering::Less))
     } else if binary_order
         .checked_add(1)
-        .ok_or(RangeNumericError::Representation)?
+        .ok_or(HtmlRangeNumericError::Representation)?
         <= lower_binary
     {
         Ok(Some(std::cmp::Ordering::Greater))
@@ -538,7 +548,7 @@ fn decimal_dyadic_ordering(
 #[cfg_attr(test, derive(Eq, PartialEq))]
 pub(crate) struct RangeDyadicCursor {
     io: Io,
-    role: RangeScratchRole,
+    role: HtmlRangeScratchRole,
     seed: u64,
     exponent: i32,
     remaining: u16,
@@ -551,13 +561,13 @@ pub(crate) struct RangeDyadicCursor {
 }
 impl RangeDyadicCursor {
     pub(crate) fn new(
-        headers: RangeNumericHeaders,
-        role: RangeScratchRole,
+        headers: HtmlRangeNumericHeaders,
+        role: HtmlRangeScratchRole,
         mantissa: u64,
         exponent: i32,
-    ) -> Result<Self, RangeNumericError> {
+    ) -> Result<Self, HtmlRangeNumericError> {
         if !(-1075..=1024).contains(&exponent) {
-            return Err(RangeNumericError::Representation);
+            return Err(HtmlRangeNumericError::Representation);
         }
         Ok(Self {
             io: Io::new(headers, 0, 1386),
@@ -573,17 +583,20 @@ impl RangeDyadicCursor {
             phase: BuildPhase::Start,
         })
     }
-    pub(crate) fn request(&self) -> Option<RangeNumericRequest> {
+    pub(crate) fn request(&self) -> Option<HtmlRangeNumericRequest> {
         self.io.request
     }
-    pub(crate) fn headers(&self) -> RangeNumericHeaders {
+    pub(crate) fn headers(&self) -> HtmlRangeNumericHeaders {
         self.io.headers
     }
     pub(crate) fn result(&self) -> Option<i32> {
         matches!(self.phase, BuildPhase::Done).then_some(self.scale)
     }
     #[cfg(test)]
-    pub(crate) fn reply(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
+    pub(crate) fn reply(
+        &mut self,
+        reply: HtmlRangeNumericReply,
+    ) -> Result<(), HtmlRangeNumericError> {
         let mut next = *self;
         next.accept_in_place(reply)?;
         *self = next;
@@ -591,7 +604,10 @@ impl RangeDyadicCursor {
     }
     // An enclosing cursor already owns its transactional receiver. It invokes
     // this transition directly, avoiding a second uncharged receiver copy.
-    fn accept_in_place(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
+    fn accept_in_place(
+        &mut self,
+        reply: HtmlRangeNumericReply,
+    ) -> Result<(), HtmlRangeNumericError> {
         self.io.accept(reply)?;
         self.advance(reply)
     }
@@ -599,15 +615,15 @@ impl RangeDyadicCursor {
         if self.io.len(self.role) != 0 {
             self.phase = BuildPhase::Clear;
             self.io
-                .queue(RangeNumericRequest::PopCell { role: self.role });
+                .queue(HtmlRangeNumericRequest::PopCell { role: self.role });
         } else {
             self.phase = BuildPhase::Normalize;
-            self.io.queue(RangeNumericRequest::ScalarStep);
+            self.io.queue(HtmlRangeNumericRequest::ScalarStep);
         }
     }
-    fn advance(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
+    fn advance(&mut self, reply: HtmlRangeNumericReply) -> Result<(), HtmlRangeNumericError> {
         use BuildPhase as S;
-        use RangeNumericRequest as Q;
+        use HtmlRangeNumericRequest as Q;
         match self.phase {
             S::Start | S::Clear => self.clear_or_normalize(),
             S::Normalize => {
@@ -618,14 +634,14 @@ impl RangeDyadicCursor {
                     self.exponent = self
                         .exponent
                         .checked_add(1)
-                        .ok_or(RangeNumericError::Representation)?;
+                        .ok_or(HtmlRangeNumericError::Representation)?;
                     self.io.queue(Q::ScalarStep);
                 } else {
                     self.remaining = if self.seed == 0 {
                         0
                     } else {
                         u16::try_from(self.exponent.unsigned_abs())
-                            .map_err(|_| RangeNumericError::Representation)?
+                            .map_err(|_| HtmlRangeNumericError::Representation)?
                     };
                     self.multiplier = if self.exponent < 0 { 5 } else { 2 };
                     self.scale = if self.seed == 0 {
@@ -671,7 +687,7 @@ impl RangeDyadicCursor {
                     self.phase = S::Read;
                     self.io.queue(Q::ReadCells {
                         cells: [
-                            Some(RangeCell {
+                            Some(HtmlRangeCell {
                                 role: self.role,
                                 index: 0,
                             }),
@@ -682,15 +698,15 @@ impl RangeDyadicCursor {
                 }
             }
             S::Read => {
-                let RangeNumericReply::Cells([Some(digit), None, None]) = reply else {
-                    return Err(RangeNumericError::Integrity);
+                let HtmlRangeNumericReply::Cells([Some(digit), None, None]) = reply else {
+                    return Err(HtmlRangeNumericError::Integrity);
                 };
                 let value = u16::from(digit) * u16::from(self.multiplier) + self.carry;
                 self.digit = (value % 10) as u8;
                 self.carry = value / 10;
                 self.phase = S::Write;
                 self.io.queue(Q::WriteCell {
-                    cell: RangeCell {
+                    cell: HtmlRangeCell {
                         role: self.role,
                         index: self.index,
                     },
@@ -707,7 +723,7 @@ impl RangeDyadicCursor {
                     self.phase = S::Read;
                     self.io.queue(Q::ReadCells {
                         cells: [
-                            Some(RangeCell {
+                            Some(HtmlRangeCell {
                                 role: self.role,
                                 index: self.index,
                             }),
@@ -740,7 +756,7 @@ impl RangeDyadicCursor {
                 self.phase = S::MultiplyStart;
                 self.io.queue(Q::ScalarStep);
             }
-            S::Done => return Err(RangeNumericError::Integrity),
+            S::Done => return Err(HtmlRangeNumericError::Integrity),
         }
         Ok(())
     }
@@ -750,8 +766,8 @@ impl RangeDyadicCursor {
 #[cfg_attr(test, derive(Eq, PartialEq))]
 pub(crate) struct RangeScaledComparisonCursor {
     io: Io,
-    left: RangeScratchRole,
-    right: RangeScratchRole,
+    left: HtmlRangeScratchRole,
+    right: HtmlRangeScratchRole,
     left_scale: i128,
     right_scale: i128,
     left_zero: bool,
@@ -762,11 +778,11 @@ pub(crate) struct RangeScaledComparisonCursor {
 }
 impl RangeScaledComparisonCursor {
     pub(crate) fn new(
-        headers: RangeNumericHeaders,
-        left: RangeScratchRole,
+        headers: HtmlRangeNumericHeaders,
+        left: HtmlRangeScratchRole,
         left_scale: i128,
         left_zero: bool,
-        right: RangeScratchRole,
+        right: HtmlRangeScratchRole,
         right_scale: i128,
         right_zero: bool,
     ) -> Self {
@@ -783,14 +799,17 @@ impl RangeScaledComparisonCursor {
             started: false,
         }
     }
-    pub(crate) fn request(&self) -> Option<RangeNumericRequest> {
+    pub(crate) fn request(&self) -> Option<HtmlRangeNumericRequest> {
         self.io.request
     }
     pub(crate) fn result(&self) -> Option<std::cmp::Ordering> {
         self.result
     }
     #[cfg(test)]
-    pub(crate) fn reply(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
+    pub(crate) fn reply(
+        &mut self,
+        reply: HtmlRangeNumericReply,
+    ) -> Result<(), HtmlRangeNumericError> {
         let mut next = *self;
         next.accept_in_place(reply)?;
         *self = next;
@@ -798,17 +817,20 @@ impl RangeScaledComparisonCursor {
     }
     // An enclosing cursor already owns its transactional receiver. It invokes
     // this transition directly, avoiding a second uncharged receiver copy.
-    fn accept_in_place(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
+    fn accept_in_place(
+        &mut self,
+        reply: HtmlRangeNumericReply,
+    ) -> Result<(), HtmlRangeNumericError> {
         self.io.accept(reply)?;
         self.advance(reply)
     }
     fn queue_cells(&mut self) {
         let l = self.io.len(self.left);
         let r = self.io.len(self.right);
-        self.io.queue(RangeNumericRequest::ReadCells {
+        self.io.queue(HtmlRangeNumericRequest::ReadCells {
             cells: [
                 if self.index < l {
-                    Some(RangeCell {
+                    Some(HtmlRangeCell {
                         role: self.left,
                         index: l - 1 - self.index,
                     })
@@ -816,7 +838,7 @@ impl RangeScaledComparisonCursor {
                     None
                 },
                 if self.index < r {
-                    Some(RangeCell {
+                    Some(HtmlRangeCell {
                         role: self.right,
                         index: r - 1 - self.index,
                     })
@@ -831,7 +853,7 @@ impl RangeScaledComparisonCursor {
         self.result = Some(result);
         self.io.request = None;
     }
-    fn advance(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
+    fn advance(&mut self, reply: HtmlRangeNumericReply) -> Result<(), HtmlRangeNumericError> {
         use std::cmp::Ordering as O;
         if !self.started {
             self.started = true;
@@ -843,14 +865,14 @@ impl RangeScaledComparisonCursor {
                 });
             } else {
                 if self.io.len(self.left) == 0 || self.io.len(self.right) == 0 {
-                    return Err(RangeNumericError::Integrity);
+                    return Err(HtmlRangeNumericError::Integrity);
                 }
                 let l = (self.io.len(self.left) as i128)
                     .checked_add(self.left_scale)
-                    .ok_or(RangeNumericError::Representation)?;
+                    .ok_or(HtmlRangeNumericError::Representation)?;
                 let r = (self.io.len(self.right) as i128)
                     .checked_add(self.right_scale)
-                    .ok_or(RangeNumericError::Representation)?;
+                    .ok_or(HtmlRangeNumericError::Representation)?;
                 if l != r {
                     self.finish(l.cmp(&r));
                 } else {
@@ -858,8 +880,8 @@ impl RangeScaledComparisonCursor {
                 }
             }
         } else {
-            let RangeNumericReply::Cells([l, r, None]) = reply else {
-                return Err(RangeNumericError::Integrity);
+            let HtmlRangeNumericReply::Cells([l, r, None]) = reply else {
+                return Err(HtmlRangeNumericError::Integrity);
             };
             let order = l.unwrap_or(0).cmp(&r.unwrap_or(0));
             if order != O::Equal {
@@ -881,7 +903,7 @@ impl RangeScaledComparisonCursor {
 #[cfg_attr(test, derive(Eq, PartialEq))]
 pub(crate) struct RangePowerTenCutCursor {
     io: Io,
-    role: RangeScratchRole,
+    role: HtmlRangeScratchRole,
     integer_cells: usize,
     zeroes: usize,
     index: usize,
@@ -892,32 +914,33 @@ pub(crate) struct RangePowerTenCutCursor {
 }
 impl RangePowerTenCutCursor {
     pub(crate) fn new(
-        headers: RangeNumericHeaders,
-        role: RangeScratchRole,
+        headers: HtmlRangeNumericHeaders,
+        role: HtmlRangeScratchRole,
         scale: i128,
         cut: i128,
-    ) -> Result<Self, RangeNumericError> {
+    ) -> Result<Self, HtmlRangeNumericError> {
         let delta = scale
             .checked_sub(cut)
-            .ok_or(RangeNumericError::Representation)?;
+            .ok_or(HtmlRangeNumericError::Representation)?;
         let len = headers.buffers[role.index()].len;
         let fractional = if delta < 0 {
-            usize::try_from(delta.unsigned_abs()).map_err(|_| RangeNumericError::Representation)?
+            usize::try_from(delta.unsigned_abs())
+                .map_err(|_| HtmlRangeNumericError::Representation)?
         } else {
             0
         };
         let zeroes = if delta > 0 {
-            usize::try_from(delta).map_err(|_| RangeNumericError::Representation)?
+            usize::try_from(delta).map_err(|_| HtmlRangeNumericError::Representation)?
         } else {
             0
         };
         let integer_cells = len.saturating_sub(fractional);
         if integer_cells
             .checked_add(zeroes)
-            .ok_or(RangeNumericError::Representation)?
+            .ok_or(HtmlRangeNumericError::Representation)?
             > 19
         {
-            return Err(RangeNumericError::Representation);
+            return Err(HtmlRangeNumericError::Representation);
         }
         Ok(Self {
             io: Io::new(headers, 0, usize::MAX),
@@ -931,14 +954,17 @@ impl RangePowerTenCutCursor {
             started: false,
         })
     }
-    pub(crate) fn request(&self) -> Option<RangeNumericRequest> {
+    pub(crate) fn request(&self) -> Option<HtmlRangeNumericRequest> {
         self.io.request
     }
     pub(crate) fn result(&self) -> Option<(u64, bool)> {
         self.done.then_some((self.floor, !self.fractional))
     }
     #[cfg(test)]
-    pub(crate) fn reply(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
+    pub(crate) fn reply(
+        &mut self,
+        reply: HtmlRangeNumericReply,
+    ) -> Result<(), HtmlRangeNumericError> {
         let mut next = *self;
         next.accept_in_place(reply)?;
         *self = next;
@@ -946,16 +972,19 @@ impl RangePowerTenCutCursor {
     }
     // An enclosing cursor already owns its transactional receiver. It invokes
     // this transition directly, avoiding a second uncharged receiver copy.
-    fn accept_in_place(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
+    fn accept_in_place(
+        &mut self,
+        reply: HtmlRangeNumericReply,
+    ) -> Result<(), HtmlRangeNumericError> {
         self.io.accept(reply)?;
         self.advance(reply)
     }
     fn queue_next(&mut self) {
         let len = self.io.len(self.role);
         if self.index < len {
-            self.io.queue(RangeNumericRequest::ReadCells {
+            self.io.queue(HtmlRangeNumericRequest::ReadCells {
                 cells: [
-                    Some(RangeCell {
+                    Some(HtmlRangeCell {
                         role: self.role,
                         index: len - 1 - self.index,
                     }),
@@ -964,29 +993,29 @@ impl RangePowerTenCutCursor {
                 ],
             });
         } else if self.zeroes != 0 {
-            self.io.queue(RangeNumericRequest::ScalarStep);
+            self.io.queue(HtmlRangeNumericRequest::ScalarStep);
         } else {
             self.done = true;
             self.io.request = None;
         }
     }
-    fn advance(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
+    fn advance(&mut self, reply: HtmlRangeNumericReply) -> Result<(), HtmlRangeNumericError> {
         if !self.started {
             self.started = true;
             if self.io.len(self.role) == 0 {
-                return Err(RangeNumericError::Integrity);
+                return Err(HtmlRangeNumericError::Integrity);
             }
             self.queue_next();
         } else if self.index < self.io.len(self.role) {
-            let RangeNumericReply::Cells([Some(digit), None, None]) = reply else {
-                return Err(RangeNumericError::Integrity);
+            let HtmlRangeNumericReply::Cells([Some(digit), None, None]) = reply else {
+                return Err(HtmlRangeNumericError::Integrity);
             };
             if self.index < self.integer_cells {
                 self.floor = self
                     .floor
                     .checked_mul(10)
                     .and_then(|v| v.checked_add(u64::from(digit)))
-                    .ok_or(RangeNumericError::Representation)?;
+                    .ok_or(HtmlRangeNumericError::Representation)?;
             } else {
                 self.fractional |= digit != 0;
             }
@@ -996,7 +1025,7 @@ impl RangePowerTenCutCursor {
             self.floor = self
                 .floor
                 .checked_mul(10)
-                .ok_or(RangeNumericError::Representation)?;
+                .ok_or(HtmlRangeNumericError::Representation)?;
             self.zeroes -= 1;
             self.queue_next();
         }
@@ -1004,11 +1033,11 @@ impl RangePowerTenCutCursor {
     }
 }
 
-pub(crate) fn finite_dyadic(bits: u64) -> Result<(u64, i32), RangeNumericError> {
+pub(crate) fn finite_dyadic(bits: u64) -> Result<(u64, i32), HtmlRangeNumericError> {
     let exponent = ((bits >> 52) & 0x7ff) as i32;
     let mantissa = bits & ((1u64 << 52) - 1);
     if exponent == 0x7ff {
-        return Err(RangeNumericError::Overflow);
+        return Err(HtmlRangeNumericError::Overflow);
     }
     Ok(if exponent == 0 {
         (mantissa, -1074)
@@ -1016,7 +1045,7 @@ pub(crate) fn finite_dyadic(bits: u64) -> Result<(u64, i32), RangeNumericError> 
         (mantissa | (1u64 << 52), exponent - 1075)
     })
 }
-fn upper_midpoint(bits: u64) -> Result<(u64, i32), RangeNumericError> {
+fn upper_midpoint(bits: u64) -> Result<(u64, i32), HtmlRangeNumericError> {
     let (mantissa, exponent) = finite_dyadic(bits)?;
     Ok((mantissa * 2 + 1, exponent - 1))
 }
@@ -1042,14 +1071,14 @@ const POW10: [u64; 19] = [
     1000000000000000000,
 ];
 
-impl RangeCell {
+impl HtmlRangeCell {
     /// Names the cell at `index` of the buffer for `role`. It does not check the index against any
     /// buffer; the cursor does when it receives a request.
-    pub const fn new(role: RangeScratchRole, index: usize) -> Self {
+    pub const fn new(role: HtmlRangeScratchRole, index: usize) -> Self {
         Self { role, index }
     }
     /// The buffer this cell belongs to.
-    pub const fn role(self) -> RangeScratchRole {
+    pub const fn role(self) -> HtmlRangeScratchRole {
         self.role
     }
     /// The zero-based position from the least significant digit.
@@ -1057,11 +1086,11 @@ impl RangeCell {
         self.index
     }
 }
-impl RangeBufferHeader {
+impl HtmlRangeBufferHeader {
     /// Describe actual caller-owned backing. A live length cannot exceed it.
-    pub fn new(len: usize, capacity: usize) -> Result<Self, RangeNumericError> {
+    pub fn new(len: usize, capacity: usize) -> Result<Self, HtmlRangeNumericError> {
         if len > capacity || capacity > isize::MAX as usize {
-            return Err(RangeNumericError::Integrity);
+            return Err(HtmlRangeNumericError::Integrity);
         }
         Ok(Self { len, capacity })
     }
@@ -1078,44 +1107,44 @@ impl RangeBufferHeader {
         self.capacity
     }
 }
-impl RangeNumericHeaders {
-    /// Combines the eight scratch headers, in `RangeScratchRole::index` order, with the output
+impl HtmlRangeNumericHeaders {
+    /// Combines the eight scratch headers, in `HtmlRangeScratchRole::index` order, with the output
     /// header. It validates nothing beyond what each header already guarantees.
-    pub const fn new(buffers: [RangeBufferHeader; 8], output: RangeBufferHeader) -> Self {
+    pub const fn new(buffers: [HtmlRangeBufferHeader; 8], output: HtmlRangeBufferHeader) -> Self {
         Self { buffers, output }
     }
     /// The header of the scratch buffer for `role`.
-    pub const fn buffer(&self, role: RangeScratchRole) -> RangeBufferHeader {
+    pub const fn buffer(&self, role: HtmlRangeScratchRole) -> HtmlRangeBufferHeader {
         self.buffers[role.index()]
     }
     /// The header of the output buffer, whose unit is one UTF-16 code unit.
-    pub const fn output(&self) -> RangeBufferHeader {
+    pub const fn output(&self) -> HtmlRangeBufferHeader {
         self.output
     }
 }
 /// Fixed layouts before construction; variable scratch and output belong to
 /// the caller. Requested lengths and actual capacities travel in the protocol.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct RangeNumericLayout {
+pub struct HtmlRangeNumericLayout {
     registers: usize,
 }
-impl RangeNumericLayout {
+impl HtmlRangeNumericLayout {
     /// The size in bytes of the cursor's own state, which the caller can reserve before
     /// constructing it.
     pub const fn register_bytes(self) -> usize {
         self.registers
     }
-    /// The size in bytes of one `RangeNumericRequest`.
+    /// The size in bytes of one `HtmlRangeNumericRequest`.
     pub const fn request_bytes(self) -> usize {
-        size_of::<RangeNumericRequest>()
+        size_of::<HtmlRangeNumericRequest>()
     }
-    /// The size in bytes of one `RangeNumericReply`.
+    /// The size in bytes of one `HtmlRangeNumericReply`.
     pub const fn reply_bytes(self) -> usize {
-        size_of::<RangeNumericReply>()
+        size_of::<HtmlRangeNumericReply>()
     }
-    /// The size in bytes of `RangeNumericHeaders`.
+    /// The size in bytes of `HtmlRangeNumericHeaders`.
     pub const fn headers_bytes(self) -> usize {
-        size_of::<RangeNumericHeaders>()
+        size_of::<HtmlRangeNumericHeaders>()
     }
     /// The size in bytes of one scratch digit cell, which is one byte.
     pub const fn scratch_cell_bytes(self) -> usize {
@@ -1126,7 +1155,7 @@ impl RangeNumericLayout {
         size_of::<u16>()
     }
 }
-impl RangeNumericRequest {
+impl HtmlRangeNumericRequest {
     /// Operand payload bytes inspected by the described action, excluding the
     /// fixed request/reply/register layouts and caller's allocation metadata.
     pub fn read_bytes(self) -> usize {
@@ -1146,7 +1175,7 @@ impl RangeNumericRequest {
         }
     }
 }
-impl std::fmt::Display for RangeNumericError {
+impl std::fmt::Display for HtmlRangeNumericError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             Self::Integrity => "range numeric reply does not match its pending request",
@@ -1156,13 +1185,13 @@ impl std::fmt::Display for RangeNumericError {
         })
     }
 }
-impl std::error::Error for RangeNumericError {}
+impl std::error::Error for HtmlRangeNumericError {}
 
 #[cfg(test)]
 mod tests {
-    use super::super::{FloatingPointGrammarCursor, FloatingPointParseMode};
+    use super::super::{HtmlFloatingPointGrammarCursor, HtmlFloatingPointParseMode};
     use super::*;
-    use super::{best::BestFiniteNumberCursor, ingress::FiniteDecimalIngressCursor};
+    use super::{best::HtmlBestFiniteNumberCursor, ingress::HtmlFiniteDecimalIngressCursor};
 
     type Serialized = (String, Option<(u64, usize, i32)>);
 
@@ -1181,13 +1210,13 @@ mod tests {
                 requests: [0; 9],
             }
         }
-        fn headers(&self) -> RangeNumericHeaders {
-            RangeNumericHeaders {
-                buffers: std::array::from_fn(|i| RangeBufferHeader {
+        fn headers(&self) -> HtmlRangeNumericHeaders {
+            HtmlRangeNumericHeaders {
+                buffers: std::array::from_fn(|i| HtmlRangeBufferHeader {
                     len: self.scratch[i].len(),
                     capacity: self.scratch[i].capacity(),
                 }),
-                output: RangeBufferHeader {
+                output: HtmlRangeBufferHeader {
                     len: self.output.len(),
                     capacity: self.output.capacity(),
                 },
@@ -1195,9 +1224,9 @@ mod tests {
         }
         // Ordinary test adapter: these allocations are not a controlled parser
         // claim. Actual admission/qualification is tested by the session owner.
-        fn fulfill(&mut self, request: RangeNumericRequest) -> RangeNumericReply {
-            use RangeNumericReply as P;
-            use RangeNumericRequest as Q;
+        fn fulfill(&mut self, request: HtmlRangeNumericRequest) -> HtmlRangeNumericReply {
+            use HtmlRangeNumericReply as P;
+            use HtmlRangeNumericRequest as Q;
             match request {
                 Q::SourceUnit { index } => {
                     self.requests[0] += 1;
@@ -1257,16 +1286,16 @@ mod tests {
         }
         fn parts(
             &self,
-            mode: FloatingPointParseMode,
-        ) -> Result<RangeDecimalParts, RangeNumericError> {
-            let mut c = FloatingPointGrammarCursor::new(&self.source, mode);
+            mode: HtmlFloatingPointParseMode,
+        ) -> Result<HtmlRangeDecimalParts, HtmlRangeNumericError> {
+            let mut c = HtmlFloatingPointGrammarCursor::new(&self.source, mode);
             while !c.is_finished() {
                 c.advance();
             }
             if !c.is_valid() {
-                return Err(RangeNumericError::InvalidSyntax);
+                return Err(HtmlRangeNumericError::InvalidSyntax);
             }
-            Ok(RangeDecimalParts {
+            Ok(HtmlRangeDecimalParts {
                 negative: c.negative,
                 integer_start: c.integer_start,
                 integer_end: c.integer_end,
@@ -1277,8 +1306,11 @@ mod tests {
                 exponent_negative: c.exponent_negative,
             })
         }
-        fn ingress(&mut self, mode: FloatingPointParseMode) -> Result<u64, RangeNumericError> {
-            let mut c = FiniteDecimalIngressCursor::new(
+        fn ingress(
+            &mut self,
+            mode: HtmlFloatingPointParseMode,
+        ) -> Result<u64, HtmlRangeNumericError> {
+            let mut c = HtmlFiniteDecimalIngressCursor::new(
                 self.parts(mode)?,
                 self.source.len(),
                 self.headers(),
@@ -1290,8 +1322,8 @@ mod tests {
             assert_eq!(c.headers(), self.headers());
             c.result().unwrap()
         }
-        fn best(&mut self, value: f64) -> Result<Serialized, RangeNumericError> {
-            let mut c = BestFiniteNumberCursor::new(value, self.headers())?;
+        fn best(&mut self, value: f64) -> Result<Serialized, HtmlRangeNumericError> {
+            let mut c = HtmlBestFiniteNumberCursor::new(value, self.headers())?;
             while let Some(q) = c.request() {
                 let r = self.fulfill(q);
                 c.reply(r)?;
@@ -1315,19 +1347,19 @@ mod tests {
             ("9007199254740995", 0x4340000000000002),
         ] {
             assert_eq!(
-                Driver::new(raw).ingress(FloatingPointParseMode::Author),
+                Driver::new(raw).ingress(HtmlFloatingPointParseMode::Author),
                 Ok(bits),
                 "{raw}"
             );
         }
         assert_eq!(
-            Driver::new(" +1e2tail").ingress(FloatingPointParseMode::Recovery),
+            Driver::new(" +1e2tail").ingress(HtmlFloatingPointParseMode::Recovery),
             Ok(0x4059000000000000)
         );
         for raw in ["+1", "1.", "1x", " 1", "1e", "NaN", "Infinity"] {
             assert_eq!(
-                Driver::new(raw).ingress(FloatingPointParseMode::Author),
-                Err(RangeNumericError::InvalidSyntax)
+                Driver::new(raw).ingress(HtmlFloatingPointParseMode::Author),
+                Err(HtmlRangeNumericError::InvalidSyntax)
             );
         }
     }
@@ -1336,7 +1368,7 @@ mod tests {
         for (raw, result) in [
             (
                 format!("1e{}", "9".repeat(2000)),
-                Err(RangeNumericError::Overflow),
+                Err(HtmlRangeNumericError::Overflow),
             ),
             // Step 15 rounds a negative underflow to the nearest value in a set
             // that excludes −0, so the result is the unsigned zero.
@@ -1344,7 +1376,7 @@ mod tests {
             (format!("0e{}", "9".repeat(2000)), Ok(0)),
         ] {
             let mut d = Driver::new(&raw);
-            assert_eq!(d.ingress(FloatingPointParseMode::Author), result);
+            assert_eq!(d.ingress(HtmlFloatingPointParseMode::Author), result);
             assert!(d.scratch.iter().all(Vec::is_empty));
             assert_eq!(d.requests[0], 2001);
         }
@@ -1366,7 +1398,7 @@ mod tests {
             ),
         ] {
             assert_eq!(
-                Driver::new(raw).ingress(FloatingPointParseMode::Author),
+                Driver::new(raw).ingress(HtmlFloatingPointParseMode::Author),
                 Ok(bits)
             );
         }
@@ -1378,10 +1410,17 @@ mod tests {
             ("3e-324", Ok(1)),
             ("5e-324", Ok(1)),
             ("1.7976931348623157e308", Ok(0x7fefffffffffffff)),
-            ("1.7976931348623159e308", Err(RangeNumericError::Overflow)),
+            (
+                "1.7976931348623159e308",
+                Err(HtmlRangeNumericError::Overflow),
+            ),
         ] {
             let mut d = Driver::new(raw);
-            assert_eq!(d.ingress(FloatingPointParseMode::Author), result, "{raw}");
+            assert_eq!(
+                d.ingress(HtmlFloatingPointParseMode::Author),
+                result,
+                "{raw}"
+            );
             assert!(d.scratch.iter().all(|s| s.len() <= d.source.len() + 1386));
         }
     }
@@ -1433,16 +1472,17 @@ mod tests {
     fn serializer_rejects_nonfinite_before_any_action() {
         for value in [f64::INFINITY, f64::NEG_INFINITY, f64::NAN] {
             assert!(matches!(
-                BestFiniteNumberCursor::new(value, RangeNumericHeaders::default()),
-                Err(RangeNumericError::Overflow)
+                HtmlBestFiniteNumberCursor::new(value, HtmlRangeNumericHeaders::default()),
+                Err(HtmlRangeNumericError::Overflow)
             ));
         }
     }
     #[test]
     fn dyadic_builder_reuses_retained_capacity_and_exposes_every_write_pop() {
         let mut d = Driver::new("");
-        d.scratch[RangeScratchRole::Trial.index()] = vec![9, 9, 9];
-        let mut c = RangeDyadicCursor::new(d.headers(), RangeScratchRole::Trial, 3, -3).unwrap();
+        d.scratch[HtmlRangeScratchRole::Trial.index()] = vec![9, 9, 9];
+        let mut c =
+            RangeDyadicCursor::new(d.headers(), HtmlRangeScratchRole::Trial, 3, -3).unwrap();
         while let Some(q) = c.request() {
             let r = d.fulfill(q);
             c.reply(r).unwrap();
@@ -1463,9 +1503,13 @@ mod tests {
         ] {
             let mut d = Driver::new("");
             d.scratch[0] = vec![5, 4, 3, 2, 1];
-            let mut c =
-                RangePowerTenCutCursor::new(d.headers(), RangeScratchRole::Coefficient, scale, cut)
-                    .unwrap();
+            let mut c = RangePowerTenCutCursor::new(
+                d.headers(),
+                HtmlRangeScratchRole::Coefficient,
+                scale,
+                cut,
+            )
+            .unwrap();
             while let Some(q) = c.request() {
                 let r = d.fulfill(q);
                 c.reply(r).unwrap();
@@ -1476,62 +1520,62 @@ mod tests {
     #[test]
     fn malformed_reply_is_transactional_and_does_not_advance_cached_request() {
         let mut d = Driver::new("1");
-        let mut c = FiniteDecimalIngressCursor::new(
-            d.parts(FloatingPointParseMode::Author).unwrap(),
+        let mut c = HtmlFiniteDecimalIngressCursor::new(
+            d.parts(HtmlFloatingPointParseMode::Author).unwrap(),
             1,
             d.headers(),
         )
         .unwrap();
         assert_eq!(
-            c.reply(RangeNumericReply::Unit(49)),
-            Err(RangeNumericError::Integrity)
+            c.reply(HtmlRangeNumericReply::Unit(49)),
+            Err(HtmlRangeNumericError::Integrity)
         );
-        assert_eq!(c.request(), Some(RangeNumericRequest::ScalarStep));
+        assert_eq!(c.request(), Some(HtmlRangeNumericRequest::ScalarStep));
         let r = d.fulfill(c.request().unwrap());
         c.reply(r).unwrap();
         let q = c.request();
         assert_eq!(
-            c.reply(RangeNumericReply::Ack),
-            Err(RangeNumericError::Integrity)
+            c.reply(HtmlRangeNumericReply::Ack),
+            Err(HtmlRangeNumericError::Integrity)
         );
         assert_eq!(c.request(), q);
         assert_eq!(c.headers(), d.headers());
         let mut io = Io::new(d.headers(), 0, 1386);
-        io.queue(RangeNumericRequest::ReadCells {
+        io.queue(HtmlRangeNumericRequest::ReadCells {
             cells: [None, None, None],
         });
         assert_eq!(
-            io.accept(RangeNumericReply::Cells([Some(1), None, None])),
-            Err(RangeNumericError::Integrity)
+            io.accept(HtmlRangeNumericReply::Cells([Some(1), None, None])),
+            Err(HtmlRangeNumericError::Integrity)
         );
     }
     #[test]
     fn one_short_headers_and_out_of_range_cells_are_typed_integrity_failures() {
-        let mut io = Io::new(RangeNumericHeaders::default(), 0, 1386);
-        io.queue(RangeNumericRequest::Reserve {
-            role: RangeScratchRole::Trial,
+        let mut io = Io::new(HtmlRangeNumericHeaders::default(), 0, 1386);
+        io.queue(HtmlRangeNumericRequest::Reserve {
+            role: HtmlRangeScratchRole::Trial,
             required_len: 2,
         });
         assert_eq!(
-            io.accept(RangeNumericReply::Reserved {
+            io.accept(HtmlRangeNumericReply::Reserved {
                 actual_capacity: 1,
                 actual_len: 0
             }),
-            Err(RangeNumericError::Integrity)
+            Err(HtmlRangeNumericError::Integrity)
         );
-        assert_eq!(io.headers, RangeNumericHeaders::default());
-        io.queue(RangeNumericRequest::AppendCell {
-            role: RangeScratchRole::Trial,
+        assert_eq!(io.headers, HtmlRangeNumericHeaders::default());
+        io.queue(HtmlRangeNumericRequest::AppendCell {
+            role: HtmlRangeScratchRole::Trial,
             value: 1,
         });
         assert_eq!(
-            io.accept(RangeNumericReply::Ack),
-            Err(RangeNumericError::Integrity)
+            io.accept(HtmlRangeNumericReply::Ack),
+            Err(HtmlRangeNumericError::Integrity)
         );
-        io.queue(RangeNumericRequest::ReadCells {
+        io.queue(HtmlRangeNumericRequest::ReadCells {
             cells: [
-                Some(RangeCell {
-                    role: RangeScratchRole::Trial,
+                Some(HtmlRangeCell {
+                    role: HtmlRangeScratchRole::Trial,
                     index: 0,
                 }),
                 None,
@@ -1539,22 +1583,22 @@ mod tests {
             ],
         });
         assert_eq!(
-            io.accept(RangeNumericReply::Cells([Some(10), None, None])),
-            Err(RangeNumericError::Integrity)
+            io.accept(HtmlRangeNumericReply::Cells([Some(10), None, None])),
+            Err(HtmlRangeNumericError::Integrity)
         );
-        io.queue(RangeNumericRequest::ReserveOutput { required_len: 25 });
+        io.queue(HtmlRangeNumericRequest::ReserveOutput { required_len: 25 });
         assert_eq!(
-            io.accept(RangeNumericReply::OutputReserved {
+            io.accept(HtmlRangeNumericReply::OutputReserved {
                 actual_capacity: 24,
                 actual_len: 0
             }),
-            Err(RangeNumericError::Integrity)
+            Err(HtmlRangeNumericError::Integrity)
         );
     }
     #[test]
     fn every_closed_scratch_role_and_three_cell_shape_uses_the_same_owner() {
         let mut d = Driver::new("");
-        for role in RangeScratchRole::ALL {
+        for role in HtmlRangeScratchRole::ALL {
             let mut c = RangeDyadicCursor::new(d.headers(), role, 7, 0).unwrap();
             while let Some(q) = c.request() {
                 let r = d.fulfill(q);
@@ -1563,18 +1607,18 @@ mod tests {
             assert_eq!(d.scratch[role.index()], [7]);
         }
         let mut io = Io::new(d.headers(), 0, 1386);
-        let q = RangeNumericRequest::ReadCells {
+        let q = HtmlRangeNumericRequest::ReadCells {
             cells: [
-                Some(RangeCell {
-                    role: RangeScratchRole::Right,
+                Some(HtmlRangeCell {
+                    role: HtmlRangeScratchRole::Right,
                     index: 0,
                 }),
-                Some(RangeCell {
-                    role: RangeScratchRole::Quotient,
+                Some(HtmlRangeCell {
+                    role: HtmlRangeScratchRole::Quotient,
                     index: 0,
                 }),
-                Some(RangeCell {
-                    role: RangeScratchRole::Remainder,
+                Some(HtmlRangeCell {
+                    role: HtmlRangeScratchRole::Remainder,
                     index: 0,
                 }),
             ],
@@ -1598,7 +1642,7 @@ mod tests {
             ),
             (
                 "179769313486231580793728971405303415079934132710037826936173778980444968292764750946649017977587207096330286416692887910946555547851940402630657488671505820681908902000708383676273854845817711531764475730270069855571366959622842914819860834936475292719074168444365510704342711559699508093042880177904174497792",
-                Err(RangeNumericError::Overflow),
+                Err(HtmlRangeNumericError::Overflow),
             ),
             (
                 "179769313486231580793728971405303415079934132710037826936173778980444968292764750946649017977587207096330286416692887910946555547851940402630657488671505820681908902000708383676273854845817711531764475730270069855571366959622842914819860834936475292719074168444365510704342711559699508093042880177904174497791",
@@ -1606,7 +1650,7 @@ mod tests {
             ),
         ] {
             assert_eq!(
-                Driver::new(raw).ingress(FloatingPointParseMode::Author),
+                Driver::new(raw).ingress(HtmlFloatingPointParseMode::Author),
                 result
             );
         }
@@ -1616,7 +1660,7 @@ mod tests {
         let raw = format!("1{}e-4096", "0".repeat(4096));
         let mut d = Driver::new(&raw);
         assert_eq!(
-            d.ingress(FloatingPointParseMode::Author),
+            d.ingress(HtmlFloatingPointParseMode::Author),
             Ok(0x3ff0000000000000)
         );
         assert_eq!(d.scratch[0].len(), 4097);
@@ -1641,10 +1685,10 @@ mod tests {
         d.scratch[4] = vec![9, 9];
         let mut c = RangeScaledComparisonCursor::new(
             d.headers(),
-            RangeScratchRole::Left,
+            HtmlRangeScratchRole::Left,
             2,
             false,
-            RangeScratchRole::Right,
+            HtmlRangeScratchRole::Right,
             0,
             false,
         );
@@ -1665,9 +1709,13 @@ mod tests {
             (0, -1075, vec![0], 0, 0),
         ] {
             let mut d = Driver::new("");
-            let mut c =
-                RangeDyadicCursor::new(d.headers(), RangeScratchRole::Trial, mantissa, exponent)
-                    .unwrap();
+            let mut c = RangeDyadicCursor::new(
+                d.headers(),
+                HtmlRangeScratchRole::Trial,
+                mantissa,
+                exponent,
+            )
+            .unwrap();
             let mut observed = 0;
             while let Some(q) = c.request() {
                 let before = (c.phase, c.seed, c.exponent);
@@ -1677,7 +1725,7 @@ mod tests {
                     && before.1 != 0
                     && before.1.is_multiple_of(2)
                 {
-                    assert_eq!(q, RangeNumericRequest::ScalarStep);
+                    assert_eq!(q, HtmlRangeNumericRequest::ScalarStep);
                     assert_eq!(c.seed, before.1 / 2);
                     assert_eq!(c.exponent, before.2 + 1);
                     observed += 1;
@@ -1695,20 +1743,21 @@ mod tests {
         // Only admitted scalar replies may perform those 52 reductions.
         let mut d = Driver::new("");
         let mut c =
-            RangeDyadicCursor::new(d.headers(), RangeScratchRole::Trial, 1 << 52, -1074).unwrap();
+            RangeDyadicCursor::new(d.headers(), HtmlRangeScratchRole::Trial, 1 << 52, -1074)
+                .unwrap();
         c.reply(d.fulfill(c.request().unwrap())).unwrap();
         for factor in 1..=52 {
             assert!(matches!(c.phase, BuildPhase::Normalize));
-            assert_eq!(c.request(), Some(RangeNumericRequest::ScalarStep));
+            assert_eq!(c.request(), Some(HtmlRangeNumericRequest::ScalarStep));
             let before = c;
-            assert_eq!(c.reply(RangeNumericReply::Ack), Ok(()));
+            assert_eq!(c.reply(HtmlRangeNumericReply::Ack), Ok(()));
             assert_eq!(c.seed, 1 << (52 - factor));
             assert_eq!(c.exponent, -1074 + factor);
             assert_eq!(c.io.headers, before.io.headers);
         }
         assert_eq!(c.seed, 1);
         assert_eq!(c.exponent, -1022);
-        c.reply(RangeNumericReply::Ack).unwrap();
+        c.reply(HtmlRangeNumericReply::Ack).unwrap();
         assert!(matches!(c.phase, BuildPhase::Seed));
         assert_eq!(c.remaining, 1022);
         assert_eq!(c.scale, -1022);
@@ -1737,11 +1786,11 @@ mod tests {
         }
         assert_eq!(
             decimal_dyadic_ordering(i128::MAX, 1, 0),
-            Err(RangeNumericError::Representation)
+            Err(HtmlRangeNumericError::Representation)
         );
         assert_eq!(
             decimal_dyadic_ordering(i128::MIN, 1, 0),
-            Err(RangeNumericError::Representation)
+            Err(HtmlRangeNumericError::Representation)
         );
     }
     #[test]
@@ -1756,7 +1805,7 @@ mod tests {
             ("1e-323", 2),
         ] {
             assert_eq!(
-                Driver::new(raw).ingress(FloatingPointParseMode::Author),
+                Driver::new(raw).ingress(HtmlFloatingPointParseMode::Author),
                 Ok(expected)
             );
         }
@@ -1769,18 +1818,18 @@ mod tests {
             (vec![1], u64::MAX, "18446744073709551615"),
         ] {
             let mut d = Driver::new("");
-            d.scratch[RangeScratchRole::Right.index()] = source.clone();
-            d.scratch[RangeScratchRole::Trial.index()] = vec![9, 9];
+            d.scratch[HtmlRangeScratchRole::Right.index()] = source.clone();
+            d.scratch[HtmlRangeScratchRole::Trial.index()] = vec![9, 9];
             let mut c = RangeMantissaProductCursor::new(
                 d.headers(),
-                RangeScratchRole::Right,
-                RangeScratchRole::Trial,
+                HtmlRangeScratchRole::Right,
+                HtmlRangeScratchRole::Trial,
                 factor,
             )
             .unwrap();
             while let Some(q) = c.request() {
-                if let RangeNumericRequest::ReadCells { cells } = q {
-                    assert_eq!(cells[0].unwrap().role, RangeScratchRole::Right);
+                if let HtmlRangeNumericRequest::ReadCells { cells } = q {
+                    assert_eq!(cells[0].unwrap().role, HtmlRangeScratchRole::Right);
                 }
                 let reply = d.fulfill(q);
                 c.reply(reply).unwrap();
@@ -1799,51 +1848,51 @@ mod tests {
         let mut d = Driver::new("");
         d.scratch[4] = vec![1];
         for (source, destination, factor) in [
-            (RangeScratchRole::Right, RangeScratchRole::Right, 2),
-            (RangeScratchRole::Lower, RangeScratchRole::Trial, 2),
-            (RangeScratchRole::Right, RangeScratchRole::Trial, 0),
+            (HtmlRangeScratchRole::Right, HtmlRangeScratchRole::Right, 2),
+            (HtmlRangeScratchRole::Lower, HtmlRangeScratchRole::Trial, 2),
+            (HtmlRangeScratchRole::Right, HtmlRangeScratchRole::Trial, 0),
         ] {
             assert!(matches!(
                 RangeMantissaProductCursor::new(d.headers(), source, destination, factor),
-                Err(RangeNumericError::Integrity)
+                Err(HtmlRangeNumericError::Integrity)
             ));
         }
         let mut c = RangeMantissaProductCursor::new(
             d.headers(),
-            RangeScratchRole::Right,
-            RangeScratchRole::Trial,
+            HtmlRangeScratchRole::Right,
+            HtmlRangeScratchRole::Trial,
             2,
         )
         .unwrap();
         assert_eq!(
-            c.reply(RangeNumericReply::Unit(49)),
-            Err(RangeNumericError::Integrity)
+            c.reply(HtmlRangeNumericReply::Unit(49)),
+            Err(HtmlRangeNumericError::Integrity)
         );
-        assert_eq!(c.request(), Some(RangeNumericRequest::ScalarStep));
-        c.reply(RangeNumericReply::Ack).unwrap();
+        assert_eq!(c.request(), Some(HtmlRangeNumericRequest::ScalarStep));
+        c.reply(HtmlRangeNumericReply::Ack).unwrap();
         let saved = c;
         assert_eq!(
-            c.reply(RangeNumericReply::Cells([Some(1), Some(1), None])),
-            Err(RangeNumericError::Integrity)
+            c.reply(HtmlRangeNumericReply::Cells([Some(1), Some(1), None])),
+            Err(HtmlRangeNumericError::Integrity)
         );
         assert_eq!(c.request(), saved.request());
         assert_eq!(c.headers(), saved.headers());
-        c.reply(RangeNumericReply::Cells([Some(1), None, None]))
+        c.reply(HtmlRangeNumericReply::Cells([Some(1), None, None]))
             .unwrap();
         assert!(matches!(
             c.request(),
-            Some(RangeNumericRequest::Reserve {
+            Some(HtmlRangeNumericRequest::Reserve {
                 required_len: 1,
                 ..
             })
         ));
         let saved = c;
         assert_eq!(
-            c.reply(RangeNumericReply::Reserved {
+            c.reply(HtmlRangeNumericReply::Reserved {
                 actual_capacity: 0,
                 actual_len: 0
             }),
-            Err(RangeNumericError::Integrity)
+            Err(HtmlRangeNumericError::Integrity)
         );
         assert_eq!(c.request(), saved.request());
         assert_eq!(c.headers(), saved.headers());
@@ -1852,8 +1901,8 @@ mod tests {
     #[test]
     fn ingress_cache_uses_raw_exponent_and_rebuilds_for_exact_midpoint() {
         let mut d = Driver::new("0.10000000000000000000");
-        let mut c = FiniteDecimalIngressCursor::new(
-            d.parts(FloatingPointParseMode::Author).unwrap(),
+        let mut c = HtmlFiniteDecimalIngressCursor::new(
+            d.parts(HtmlFloatingPointParseMode::Author).unwrap(),
             d.source.len(),
             d.headers(),
         )
@@ -1863,25 +1912,25 @@ mod tests {
         while let Some(q) = c.request() {
             let key = c.cache_key();
             match q {
-                RangeNumericRequest::PopCell {
-                    role: RangeScratchRole::Right,
+                HtmlRangeNumericRequest::PopCell {
+                    role: HtmlRangeScratchRole::Right,
                 }
-                | RangeNumericRequest::AppendCell {
-                    role: RangeScratchRole::Right,
+                | HtmlRangeNumericRequest::AppendCell {
+                    role: HtmlRangeScratchRole::Right,
                     ..
                 }
-                | RangeNumericRequest::WriteCell {
+                | HtmlRangeNumericRequest::WriteCell {
                     cell:
-                        RangeCell {
-                            role: RangeScratchRole::Right,
+                        HtmlRangeCell {
+                            role: HtmlRangeScratchRole::Right,
                             ..
                         },
                     ..
                 } => {
                     assert_eq!(key, None);
                 }
-                RangeNumericRequest::ReadCells { cells }
-                    if cells[0].is_some_and(|cell| cell.role == RangeScratchRole::Right)
+                HtmlRangeNumericRequest::ReadCells { cells }
+                    if cells[0].is_some_and(|cell| cell.role == HtmlRangeScratchRole::Right)
                         && key == Some(-56) =>
                 {
                     reused_reads += 1
@@ -1889,27 +1938,27 @@ mod tests {
                 _ => {}
             }
             let before = c.headers();
-            if let RangeNumericRequest::Reserve {
-                role: RangeScratchRole::Right,
+            if let HtmlRangeNumericRequest::Reserve {
+                role: HtmlRangeScratchRole::Right,
                 required_len,
             } = q
             {
                 assert_eq!(key, None);
                 assert_eq!(
-                    c.reply(RangeNumericReply::Reserved {
+                    c.reply(HtmlRangeNumericReply::Reserved {
                         actual_capacity: required_len,
                         actual_len: before.buffers[4].len + 1,
                     }),
-                    Err(RangeNumericError::Integrity)
+                    Err(HtmlRangeNumericError::Integrity)
                 );
                 assert_eq!(c.request(), Some(q));
                 assert_eq!(c.headers(), before);
                 assert_eq!(c.cache_key(), None);
             }
-            if matches!(q, RangeNumericRequest::ReadCells { .. }) && key.is_some() {
+            if matches!(q, HtmlRangeNumericRequest::ReadCells { .. }) && key.is_some() {
                 assert_eq!(
-                    c.reply(RangeNumericReply::Cells([None; 3])),
-                    Err(RangeNumericError::Integrity)
+                    c.reply(HtmlRangeNumericReply::Cells([None; 3])),
+                    Err(HtmlRangeNumericError::Integrity)
                 );
                 assert_eq!(c.request(), Some(q));
                 assert_eq!(c.headers(), before);
@@ -1940,12 +1989,12 @@ mod tests {
         d.scratch[4] = vec![9];
         let headers = d.headers();
         assert!(matches!(
-            FiniteDecimalIngressCursor::new(
-                d.parts(FloatingPointParseMode::Author).unwrap(),
+            HtmlFiniteDecimalIngressCursor::new(
+                d.parts(HtmlFloatingPointParseMode::Author).unwrap(),
                 d.source.len(),
                 headers
             ),
-            Err(RangeNumericError::Integrity)
+            Err(HtmlRangeNumericError::Integrity)
         ));
         assert_eq!(d.headers(), headers);
         assert_eq!(d.scratch[4], [9]);
@@ -1959,16 +2008,16 @@ mod tests {
         headers.buffers[4].capacity = 0;
         let mut c = RangeMantissaProductCursor::new(
             headers,
-            RangeScratchRole::Right,
-            RangeScratchRole::Trial,
+            HtmlRangeScratchRole::Right,
+            HtmlRangeScratchRole::Trial,
             2,
         )
         .unwrap();
         assert_eq!(
-            c.reply(RangeNumericReply::Ack),
-            Err(RangeNumericError::Integrity)
+            c.reply(HtmlRangeNumericReply::Ack),
+            Err(HtmlRangeNumericError::Integrity)
         );
-        assert_eq!(c.request(), Some(RangeNumericRequest::ScalarStep));
+        assert_eq!(c.request(), Some(HtmlRangeNumericRequest::ScalarStep));
         assert_eq!(c.headers(), headers);
         assert_eq!(c.result(), None);
         assert_eq!(d.scratch[4], [1]);
@@ -1979,9 +2028,9 @@ mod tests {
     // request/reply/acknowledged-header sequence under this exact-reserve adapter.
     fn representation_trace(
         hash: &mut u64,
-        q: RangeNumericRequest,
-        r: RangeNumericReply,
-        h: RangeNumericHeaders,
+        q: HtmlRangeNumericRequest,
+        r: HtmlRangeNumericReply,
+        h: HtmlRangeNumericHeaders,
     ) {
         for byte in format!("{q:?}|{r:?}|{h:?}\n").bytes() {
             *hash = (*hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
@@ -1990,15 +2039,15 @@ mod tests {
     #[test]
     fn exclusive_helpers_preserve_fallback_and_best_request_and_header_traces() {
         for (raw, expected) in [
-            ("50.000000000000000000", 0x89879303f20c29a6),
-            ("0.10000000000000000000", 0x5394a0c48cb010b8),
-            (".12500000000000000000", 0x3882e5b504c1e041),
-            ("-0", 0xb8763caf96d91bf3),
-            ("1e999", 0x12d24b9057be04f5),
+            ("50.000000000000000000", 0xd4625f63910e202b),
+            ("0.10000000000000000000", 0xa63cee415313b18),
+            (".12500000000000000000", 0x761ca0cc97cdbbfc),
+            ("-0", 0x15b90fedc82cfd67),
+            ("1e999", 0x8a32dc706eafc769),
         ] {
             let mut d = Driver::new(raw);
-            let mut c = FiniteDecimalIngressCursor::new(
-                d.parts(FloatingPointParseMode::Author).unwrap(),
+            let mut c = HtmlFiniteDecimalIngressCursor::new(
+                d.parts(HtmlFloatingPointParseMode::Author).unwrap(),
                 d.source.len(),
                 d.headers(),
             )
@@ -2012,12 +2061,12 @@ mod tests {
             assert_eq!(hash, expected, "{raw}");
         }
         for (value, expected) in [
-            (50.0, 0x2d545b4186c6e521),
-            (0.2, 0xa767a4668f1ff5ab),
-            (0.0, 0x6b0e404a381c9bf6),
+            (50.0, 0xa9a0fc673359fa5),
+            (0.2, 0xa46e60d06d218fd5),
+            (0.0, 0x878b47f84ae3a9da),
         ] {
             let mut d = Driver::new("");
-            let mut c = BestFiniteNumberCursor::new(value, d.headers()).unwrap();
+            let mut c = HtmlBestFiniteNumberCursor::new(value, d.headers()).unwrap();
             let mut hash = 0xcbf29ce484222325;
             while let Some(q) = c.request() {
                 let r = d.fulfill(q);
@@ -2030,8 +2079,8 @@ mod tests {
     #[test]
     fn ingress_exclusive_helpers_retire_only_after_committed_cache_and_results() {
         let mut d = Driver::new("0.10000000000000000000");
-        let mut c = FiniteDecimalIngressCursor::new(
-            d.parts(FloatingPointParseMode::Author).unwrap(),
+        let mut c = HtmlFiniteDecimalIngressCursor::new(
+            d.parts(HtmlFloatingPointParseMode::Author).unwrap(),
             d.source.len(),
             d.headers(),
         )
@@ -2042,11 +2091,11 @@ mod tests {
             seen[usize::from(kind)] = true;
             let snapshot = c;
             assert_eq!(
-                c.reply(RangeNumericReply::OutputReserved {
+                c.reply(HtmlRangeNumericReply::OutputReserved {
                     actual_capacity: 0,
                     actual_len: 0
                 }),
-                Err(RangeNumericError::Integrity)
+                Err(HtmlRangeNumericError::Integrity)
             );
             assert_eq!(c, snapshot);
             let r = d.fulfill(q);
@@ -2067,8 +2116,8 @@ mod tests {
         assert_eq!(c.result(), Some(Ok(0x3fb9_9999_9999_999a)));
         let snapshot = c;
         assert_eq!(
-            c.reply(RangeNumericReply::Ack),
-            Err(RangeNumericError::Integrity)
+            c.reply(HtmlRangeNumericReply::Ack),
+            Err(HtmlRangeNumericError::Integrity)
         );
         assert_eq!(c, snapshot);
     }
@@ -2092,13 +2141,13 @@ mod tests {
             ),
         ] {
             let mut d = Driver::new("");
-            let mut c = BestFiniteNumberCursor::new(value, d.headers()).unwrap();
+            let mut c = HtmlBestFiniteNumberCursor::new(value, d.headers()).unwrap();
             while let Some(q) = c.request() {
                 seen[usize::from(c.active_kind())] = true;
                 let snapshot = c;
                 assert_eq!(
-                    c.reply(RangeNumericReply::Unit(0)),
-                    Err(RangeNumericError::Integrity)
+                    c.reply(HtmlRangeNumericReply::Unit(0)),
+                    Err(HtmlRangeNumericError::Integrity)
                 );
                 assert_eq!(c, snapshot);
                 let r = d.fulfill(q);
@@ -2111,8 +2160,8 @@ mod tests {
             assert_eq!(String::from_utf16(&d.output).unwrap(), text);
             let snapshot = c;
             assert_eq!(
-                c.reply(RangeNumericReply::Ack),
-                Err(RangeNumericError::Integrity)
+                c.reply(HtmlRangeNumericReply::Ack),
+                Err(HtmlRangeNumericError::Integrity)
             );
             assert_eq!(c, snapshot);
         }
@@ -2136,8 +2185,8 @@ mod tests {
             ("34028236692093846e22", 0x47f0_0000_0000_0000),
         ] {
             let mut d = Driver::new(raw);
-            let mut c = FiniteDecimalIngressCursor::new(
-                d.parts(FloatingPointParseMode::Author).unwrap(),
+            let mut c = HtmlFiniteDecimalIngressCursor::new(
+                d.parts(HtmlFloatingPointParseMode::Author).unwrap(),
                 d.source.len(),
                 d.headers(),
             )
@@ -2152,12 +2201,12 @@ mod tests {
             assert!(small, "{raw}");
             assert_eq!(c.result(), Some(Ok(bits)), "{raw}");
             assert_eq!(c.cache_key(), None);
-            assert!(d.scratch[RangeScratchRole::Right.index()].is_empty());
-            assert!(d.scratch[RangeScratchRole::Trial.index()].is_empty());
+            assert!(d.scratch[HtmlRangeScratchRole::Right.index()].is_empty());
+            assert!(d.scratch[HtmlRangeScratchRole::Trial.index()].is_empty());
         }
         for (raw, bits) in [("0", 0), ("-0", 0)] {
             let mut d = Driver::new(raw);
-            assert_eq!(d.ingress(FloatingPointParseMode::Author), Ok(bits));
+            assert_eq!(d.ingress(HtmlFloatingPointParseMode::Author), Ok(bits));
             assert!(d.scratch.iter().all(Vec::is_empty));
         }
     }
@@ -2173,8 +2222,8 @@ mod tests {
             ("34028236692093847e22", true, true, 0x47f0_0000_0000_0000),
         ] {
             let mut d = Driver::new(raw);
-            let mut c = FiniteDecimalIngressCursor::new(
-                d.parts(FloatingPointParseMode::Author).unwrap(),
+            let mut c = HtmlFiniteDecimalIngressCursor::new(
+                d.parts(HtmlFloatingPointParseMode::Author).unwrap(),
                 d.source.len(),
                 d.headers(),
             )
@@ -2199,8 +2248,8 @@ mod tests {
             ("1e-22", vec![0], 29),
         ] {
             let mut d = Driver::new(raw);
-            let mut c = FiniteDecimalIngressCursor::new(
-                d.parts(FloatingPointParseMode::Author).unwrap(),
+            let mut c = HtmlFiniteDecimalIngressCursor::new(
+                d.parts(HtmlFloatingPointParseMode::Author).unwrap(),
                 d.source.len(),
                 d.headers(),
             )
@@ -2212,14 +2261,14 @@ mod tests {
                 if c.active_kind() == 4 {
                     original_coefficient.get_or_insert_with(|| d.scratch[0].clone());
                     match q {
-                        RangeNumericRequest::ReadCells {
+                        HtmlRangeNumericRequest::ReadCells {
                             cells: [Some(cell), None, None],
                         } => {
-                            assert_eq!(cell.role, RangeScratchRole::Coefficient);
+                            assert_eq!(cell.role, HtmlRangeScratchRole::Coefficient);
                             assert!(cell.index < c.headers().buffers[0].len);
                             indices.push(cell.index);
                         }
-                        RangeNumericRequest::ScalarStep => steps += 1,
+                        HtmlRangeNumericRequest::ScalarStep => steps += 1,
                         _ => panic!("small ratio must not reserve, write, or inspect source"),
                     }
                 }
@@ -2235,8 +2284,8 @@ mod tests {
     #[test]
     fn small_decimal_every_reply_refusal_preserves_the_outer_transaction() {
         let mut d = Driver::new("9007199254740991.5");
-        let mut c = FiniteDecimalIngressCursor::new(
-            d.parts(FloatingPointParseMode::Author).unwrap(),
+        let mut c = HtmlFiniteDecimalIngressCursor::new(
+            d.parts(HtmlFloatingPointParseMode::Author).unwrap(),
             d.source.len(),
             d.headers(),
         )
@@ -2245,20 +2294,20 @@ mod tests {
         let mut scalar = false;
         while let Some(q) = c.request() {
             if c.active_kind() == 4 {
-                read |= matches!(q, RangeNumericRequest::ReadCells { .. });
-                scalar |= q == RangeNumericRequest::ScalarStep;
+                read |= matches!(q, HtmlRangeNumericRequest::ReadCells { .. });
+                scalar |= q == HtmlRangeNumericRequest::ScalarStep;
                 let snapshot = c;
                 let headers = c.headers();
                 assert_eq!(
-                    c.reply(RangeNumericReply::Unit(0)),
-                    Err(RangeNumericError::Integrity)
+                    c.reply(HtmlRangeNumericReply::Unit(0)),
+                    Err(HtmlRangeNumericError::Integrity)
                 );
                 assert_eq!(c, snapshot);
                 assert_eq!(c.headers(), headers);
-                if let RangeNumericRequest::ReadCells { .. } = q {
+                if let HtmlRangeNumericRequest::ReadCells { .. } = q {
                     assert_eq!(
-                        c.reply(RangeNumericReply::Cells([Some(10), None, None])),
-                        Err(RangeNumericError::Integrity)
+                        c.reply(HtmlRangeNumericReply::Cells([Some(10), None, None])),
+                        Err(HtmlRangeNumericError::Integrity)
                     );
                     assert_eq!(c, snapshot);
                 }
@@ -2269,16 +2318,16 @@ mod tests {
         assert_eq!(c.result(), Some(Ok(0x4340_0000_0000_0000)));
         let snapshot = c;
         assert_eq!(
-            c.reply(RangeNumericReply::Ack),
-            Err(RangeNumericError::Integrity)
+            c.reply(HtmlRangeNumericReply::Ack),
+            Err(HtmlRangeNumericError::Integrity)
         );
         assert_eq!(c, snapshot);
     }
     #[test]
     fn small_decimal_zero_high_cell_is_integrity_not_search_fallback() {
         let mut d = Driver::new("50");
-        let mut c = FiniteDecimalIngressCursor::new(
-            d.parts(FloatingPointParseMode::Author).unwrap(),
+        let mut c = HtmlFiniteDecimalIngressCursor::new(
+            d.parts(HtmlFloatingPointParseMode::Author).unwrap(),
             d.source.len(),
             d.headers(),
         )
@@ -2289,10 +2338,10 @@ mod tests {
         }
         assert_eq!(
             c.request(),
-            Some(RangeNumericRequest::ReadCells {
+            Some(HtmlRangeNumericRequest::ReadCells {
                 cells: [
-                    Some(RangeCell {
-                        role: RangeScratchRole::Coefficient,
+                    Some(HtmlRangeCell {
+                        role: HtmlRangeScratchRole::Coefficient,
                         index: 1
                     }),
                     None,
@@ -2302,8 +2351,8 @@ mod tests {
         );
         let snapshot = c;
         assert_eq!(
-            c.reply(RangeNumericReply::Cells([Some(0), None, None])),
-            Err(RangeNumericError::Integrity)
+            c.reply(HtmlRangeNumericReply::Cells([Some(0), None, None])),
+            Err(HtmlRangeNumericError::Integrity)
         );
         assert_eq!(c, snapshot);
         assert_eq!(c.active_kind(), 4);

@@ -1,8 +1,8 @@
 //! Retained time-element recognition and admitted exact materialization.
 use super::*;
 use crate::internal::microsyntax::numeric::{
-    IntegerUnitStep, NumericMaterializationError, NumericMaterializationFailure,
-    NumericMaterialized,
+    HtmlIntegerUnitStep, HtmlNumericMaterializationError, HtmlNumericMaterializationFailure,
+    HtmlNumericMaterialized,
 };
 use crate::{HtmlValueAdmissionError, HtmlValueInterpreter, HtmlValueReport};
 
@@ -17,7 +17,7 @@ pub(crate) enum HtmlTimeElementInterpretationErrorKind {
     NotReady,
     Consumed,
     RepresentationExhausted,
-    Processing(NumericMaterializationError),
+    Processing(HtmlNumericMaterializationError),
     InvalidRecognizedPlan,
 }
 
@@ -58,7 +58,7 @@ impl HtmlTimeElementInterpretationError {
         )
     }
     /// The value-processing failure that stopped the interpretation, if that was the cause.
-    pub fn processing_failure(&self) -> Option<NumericMaterializationError> {
+    pub fn processing_failure(&self) -> Option<HtmlNumericMaterializationError> {
         match self.kind {
             HtmlTimeElementInterpretationErrorKind::Processing(error) => Some(error),
             _ => None,
@@ -793,9 +793,9 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
             }
             GlobalStage::AdjustDay(mut v) => {
                 let direction = if self.adjustment < 0 {
-                    IntegerUnitStep::Decrement
+                    HtmlIntegerUnitStep::Decrement
                 } else {
-                    IntegerUnitStep::Increment
+                    HtmlIntegerUnitStep::Increment
                 };
                 v.day = materialized(
                     v.day.try_materialized_unit_step(direction, digits, bytes),
@@ -1023,7 +1023,7 @@ fn read_seconds(
     )
 }
 fn materialized<T>(
-    result: Result<NumericMaterialized<T>, NumericMaterializationFailure>,
+    result: Result<HtmlNumericMaterialized<T>, HtmlNumericMaterializationFailure>,
     observed: &mut usize,
 ) -> Result<T, HtmlTimeElementInterpretationError> {
     match result {
@@ -1098,7 +1098,7 @@ mod cause_tests {
             ),
             (
                 HtmlTimeElementInterpretationErrorKind::Processing(
-                    NumericMaterializationError::Digits(crate::HtmlDecimalDigitsError::Empty),
+                    HtmlNumericMaterializationError::Digits(crate::HtmlDecimalDigitsError::Empty),
                 )
                 .error(),
                 "time-element value processing failed",

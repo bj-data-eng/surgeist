@@ -1,10 +1,11 @@
 //! Range language decisions serviced by the real bounded numerical operations.
 use surgeist_html::bounded::{
-    BestFiniteNumberCursor, HtmlInputRangeNumber as RangeNumber, HtmlInputRangeReplacement as B,
-    HtmlInputRangeSanitizationAction as A, HtmlInputRangeSanitizationCursor as Policy,
-    HtmlInputRangeSanitizationReply as R, HtmlInputRangeSanitizationReplyError,
-    HtmlInputRangeValue as V, RangeBufferHeader, RangeLatticeCursor, RangeMidpointCursor,
-    RangeNumericHeaders, RangeNumericReply, RangeNumericRequest,
+    HtmlBestFiniteNumberCursor, HtmlInputRangeNumber as RangeNumber,
+    HtmlInputRangeReplacement as B, HtmlInputRangeSanitizationAction as A,
+    HtmlInputRangeSanitizationCursor as Policy, HtmlInputRangeSanitizationReply as R,
+    HtmlInputRangeSanitizationReplyError, HtmlInputRangeValue as V, HtmlRangeBufferHeader,
+    HtmlRangeLatticeCursor, HtmlRangeMidpointCursor, HtmlRangeNumericHeaders,
+    HtmlRangeNumericReply, HtmlRangeNumericRequest,
 };
 use surgeist_html::{
     DocumentString, HtmlFloatingPointNumber as Number, HtmlInputNumericBoundOrigin,
@@ -40,10 +41,11 @@ fn calculation_values_preserve_actual_finite_bits_and_reject_nonfinite_values() 
 }
 
 fn midpoint(a: RangeNumber, b: RangeNumber) -> RangeNumber {
-    let mut cursor = RangeMidpointCursor::new(a.value().to_bits(), b.value().to_bits()).unwrap();
+    let mut cursor =
+        HtmlRangeMidpointCursor::new(a.value().to_bits(), b.value().to_bits()).unwrap();
     while let Some(request) = cursor.request() {
-        assert_eq!(request, RangeNumericRequest::ScalarStep);
-        cursor.reply(RangeNumericReply::Ack).unwrap();
+        assert_eq!(request, HtmlRangeNumericRequest::ScalarStep);
+        cursor.reply(HtmlRangeNumericReply::Ack).unwrap();
     }
     r(f64::from_bits(cursor.result().unwrap()))
 }
@@ -54,7 +56,7 @@ fn lattice(
     base: RangeNumber,
     step: RangeNumber,
 ) -> Option<RangeNumber> {
-    let mut cursor = RangeLatticeCursor::new(
+    let mut cursor = HtmlRangeLatticeCursor::new(
         current.value().to_bits(),
         min.value().to_bits(),
         max.map(|n| n.value().to_bits()),
@@ -63,8 +65,8 @@ fn lattice(
     )
     .unwrap();
     while let Some(request) = cursor.request() {
-        assert_eq!(request, RangeNumericRequest::ScalarStep);
-        cursor.reply(RangeNumericReply::Ack).unwrap();
+        assert_eq!(request, HtmlRangeNumericRequest::ScalarStep);
+        cursor.reply(HtmlRangeNumericReply::Ack).unwrap();
     }
     cursor.result().unwrap().map(|bits| r(f64::from_bits(bits)))
 }
@@ -72,52 +74,53 @@ fn best(value: RangeNumber) -> String {
     let mut cells: [Vec<u8>; 8] = std::array::from_fn(|_| Vec::new());
     let mut output = Vec::new();
     let headers = |cells: &[Vec<u8>; 8], output: &Vec<u16>| {
-        RangeNumericHeaders::new(
+        HtmlRangeNumericHeaders::new(
             std::array::from_fn(|i| {
-                RangeBufferHeader::new(cells[i].len(), cells[i].capacity()).unwrap()
+                HtmlRangeBufferHeader::new(cells[i].len(), cells[i].capacity()).unwrap()
             }),
-            RangeBufferHeader::new(output.len(), output.capacity()).unwrap(),
+            HtmlRangeBufferHeader::new(output.len(), output.capacity()).unwrap(),
         )
     };
-    let mut cursor = BestFiniteNumberCursor::new(value.value(), headers(&cells, &output)).unwrap();
+    let mut cursor =
+        HtmlBestFiniteNumberCursor::new(value.value(), headers(&cells, &output)).unwrap();
     while let Some(request) = cursor.request() {
         let reply = match request {
-            RangeNumericRequest::ReadCells { cells: reads } => RangeNumericReply::Cells(
+            HtmlRangeNumericRequest::ReadCells { cells: reads } => HtmlRangeNumericReply::Cells(
                 reads.map(|cell| cell.map(|cell| cells[cell.role().index()][cell.index()])),
             ),
-            RangeNumericRequest::Reserve { role, required_len } => {
+            HtmlRangeNumericRequest::Reserve { role, required_len } => {
                 let target = &mut cells[role.index()];
                 target.reserve_exact(required_len - target.len());
-                RangeNumericReply::Reserved {
+                HtmlRangeNumericReply::Reserved {
                     actual_capacity: target.capacity(),
                     actual_len: target.len(),
                 }
             }
-            RangeNumericRequest::AppendCell { role, value } => {
+            HtmlRangeNumericRequest::AppendCell { role, value } => {
                 cells[role.index()].push(value);
-                RangeNumericReply::Ack
+                HtmlRangeNumericReply::Ack
             }
-            RangeNumericRequest::WriteCell { cell, value } => {
+            HtmlRangeNumericRequest::WriteCell { cell, value } => {
                 cells[cell.role().index()][cell.index()] = value;
-                RangeNumericReply::Ack
+                HtmlRangeNumericReply::Ack
             }
-            RangeNumericRequest::PopCell { role } => {
+            HtmlRangeNumericRequest::PopCell { role } => {
                 cells[role.index()].pop().unwrap();
-                RangeNumericReply::Ack
+                HtmlRangeNumericReply::Ack
             }
-            RangeNumericRequest::ScalarStep => RangeNumericReply::Ack,
-            RangeNumericRequest::ReserveOutput { required_len } => {
+            HtmlRangeNumericRequest::ScalarStep => HtmlRangeNumericReply::Ack,
+            HtmlRangeNumericRequest::ReserveOutput { required_len } => {
                 output.reserve_exact(required_len - output.len());
-                RangeNumericReply::OutputReserved {
+                HtmlRangeNumericReply::OutputReserved {
                     actual_capacity: output.capacity(),
                     actual_len: output.len(),
                 }
             }
-            RangeNumericRequest::EmitUnit { unit } => {
+            HtmlRangeNumericRequest::EmitUnit { unit } => {
                 output.push(unit);
-                RangeNumericReply::Ack
+                HtmlRangeNumericReply::Ack
             }
-            RangeNumericRequest::SourceUnit { .. } => {
+            HtmlRangeNumericRequest::SourceUnit { .. } => {
                 panic!("best serialization reads no authored source")
             }
         };

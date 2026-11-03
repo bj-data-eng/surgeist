@@ -358,7 +358,7 @@ impl HtmlInputRetainedRange {
 }
 enum SanitizerStep<'a> {
     Temporal(crate::internal::microsyntax::temporal::TemporalValidationCursor<'a>),
-    Number(crate::internal::microsyntax::numeric::FloatingPointGrammarCursor<'a>),
+    Number(crate::internal::microsyntax::numeric::HtmlFloatingPointGrammarCursor<'a>),
     Leading,
     Trailing,
     Emit,
@@ -406,9 +406,9 @@ impl<'a> HtmlInputSanitizationCursor<'a> {
                 ),
             ),
             HtmlInputSanitization::Number => SanitizerStep::Number(
-                crate::internal::microsyntax::numeric::FloatingPointGrammarCursor::new(
+                crate::internal::microsyntax::numeric::HtmlFloatingPointGrammarCursor::new(
                     units,
-                    crate::internal::microsyntax::numeric::FloatingPointParseMode::Author,
+                    crate::internal::microsyntax::numeric::HtmlFloatingPointParseMode::Author,
                 ),
             ),
             HtmlInputSanitization::Email if mode == HtmlInputEmailMode::Multiple => {
@@ -492,7 +492,7 @@ impl<'a> HtmlInputSanitizationCursor<'a> {
 
             SanitizerStep::Leading => {
                 if self.start < self.end
-                    && crate::internal::microsyntax::tokens::ascii_whitespace(
+                    && crate::internal::microsyntax::tokens::is_ascii_whitespace(
                         self.units[self.start],
                     )
                 {
@@ -503,7 +503,7 @@ impl<'a> HtmlInputSanitizationCursor<'a> {
             }
             SanitizerStep::Trailing => {
                 if self.start < self.end
-                    && crate::internal::microsyntax::tokens::ascii_whitespace(
+                    && crate::internal::microsyntax::tokens::is_ascii_whitespace(
                         self.units[self.end - 1],
                     )
                 {

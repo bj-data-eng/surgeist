@@ -77,10 +77,10 @@ struct SmallDecimalCursor {
     result: Option<SmallResult>,
 }
 impl SmallDecimalCursor {
-    fn new(headers: RangeNumericHeaders, scale: i32) -> Result<Self, RangeNumericError> {
-        let len = headers.buffers[RangeScratchRole::Coefficient.index()].len;
+    fn new(headers: HtmlRangeNumericHeaders, scale: i32) -> Result<Self, HtmlRangeNumericError> {
+        let len = headers.buffers[HtmlRangeScratchRole::Coefficient.index()].len;
         if !(1..=19).contains(&len) || !(-22..=22).contains(&scale) {
-            return Err(RangeNumericError::Integrity);
+            return Err(HtmlRangeNumericError::Integrity);
         }
         let mut cursor = Self {
             io: Io::new(headers, 0, 0),
@@ -99,10 +99,10 @@ impl SmallDecimalCursor {
         Ok(cursor)
     }
     fn read(&mut self) {
-        self.io.queue(RangeNumericRequest::ReadCells {
+        self.io.queue(HtmlRangeNumericRequest::ReadCells {
             cells: [
-                Some(RangeCell {
-                    role: RangeScratchRole::Coefficient,
+                Some(HtmlRangeCell {
+                    role: HtmlRangeScratchRole::Coefficient,
                     index: self.index,
                 }),
                 None,
@@ -110,19 +110,19 @@ impl SmallDecimalCursor {
             ],
         });
     }
-    fn shift(value: u128, count: u32) -> Result<u128, RangeNumericError> {
+    fn shift(value: u128, count: u32) -> Result<u128, HtmlRangeNumericError> {
         let width = u128::BITS - value.leading_zeros();
         if count >= u128::BITS || width.checked_add(count).is_none_or(|n| n > u128::BITS) {
-            return Err(RangeNumericError::Representation);
+            return Err(HtmlRangeNumericError::Representation);
         }
         Ok(value << count)
     }
-    fn validate_request(&self) -> Result<(), RangeNumericError> {
+    fn validate_request(&self) -> Result<(), HtmlRangeNumericError> {
         let expected = match self.phase {
-            SmallPhase::Read => Some(RangeNumericRequest::ReadCells {
+            SmallPhase::Read => Some(HtmlRangeNumericRequest::ReadCells {
                 cells: [
-                    Some(RangeCell {
-                        role: RangeScratchRole::Coefficient,
+                    Some(HtmlRangeCell {
+                        role: HtmlRangeScratchRole::Coefficient,
                         index: self.index,
                     }),
                     None,
@@ -130,30 +130,33 @@ impl SmallDecimalCursor {
                 ],
             }),
             SmallPhase::Done => None,
-            _ => Some(RangeNumericRequest::ScalarStep),
+            _ => Some(HtmlRangeNumericRequest::ScalarStep),
         };
         if self.io.request != expected {
-            return Err(RangeNumericError::Integrity);
+            return Err(HtmlRangeNumericError::Integrity);
         }
         Ok(())
     }
-    fn accept_in_place(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
+    fn accept_in_place(
+        &mut self,
+        reply: HtmlRangeNumericReply,
+    ) -> Result<(), HtmlRangeNumericError> {
         self.validate_request()?;
         self.io.accept(reply)?;
         use SmallPhase as S;
         match self.phase {
             S::Read => {
-                let RangeNumericReply::Cells([Some(digit), None, None]) = reply else {
-                    return Err(RangeNumericError::Integrity);
+                let HtmlRangeNumericReply::Cells([Some(digit), None, None]) = reply else {
+                    return Err(HtmlRangeNumericError::Integrity);
                 };
-                if self.index + 1 == self.io.len(RangeScratchRole::Coefficient) && digit == 0 {
-                    return Err(RangeNumericError::Integrity);
+                if self.index + 1 == self.io.len(HtmlRangeScratchRole::Coefficient) && digit == 0 {
+                    return Err(HtmlRangeNumericError::Integrity);
                 }
                 self.numerator = self
                     .numerator
                     .checked_mul(10)
                     .and_then(|n| n.checked_add(u128::from(digit)))
-                    .ok_or(RangeNumericError::Representation)?;
+                    .ok_or(HtmlRangeNumericError::Representation)?;
                 self.phase = S::Next;
             }
             S::Next => {
@@ -182,14 +185,14 @@ impl SmallDecimalCursor {
                         self.denominator = self
                             .denominator
                             .checked_mul(10)
-                            .ok_or(RangeNumericError::Representation)?;
+                            .ok_or(HtmlRangeNumericError::Representation)?;
                     }
                     self.power -= 1;
                 }
             }
             S::Exponent => {
                 if self.numerator == 0 || self.denominator == 0 {
-                    return Err(RangeNumericError::Integrity);
+                    return Err(HtmlRangeNumericError::Integrity);
                 }
                 let a = (u128::BITS - 1 - self.numerator.leading_zeros()) as i32;
                 let b = (u128::BITS - 1 - self.denominator.leading_zeros()) as i32;
@@ -201,7 +204,7 @@ impl SmallDecimalCursor {
                 };
                 self.exponent = e0 - i32::from(less);
                 if !(-74..=127).contains(&self.exponent) {
-                    return Err(RangeNumericError::Integrity);
+                    return Err(HtmlRangeNumericError::Integrity);
                 }
                 self.phase = S::Scale;
             }
@@ -218,7 +221,7 @@ impl SmallDecimalCursor {
                 self.quotient = self.numerator / self.denominator;
                 self.remainder = self.numerator % self.denominator;
                 if !((1u128 << 52)..(1u128 << 53)).contains(&self.quotient) {
-                    return Err(RangeNumericError::Integrity);
+                    return Err(HtmlRangeNumericError::Integrity);
                 }
                 self.phase = S::Round;
             }
@@ -240,7 +243,7 @@ impl SmallDecimalCursor {
                 if !(-74..=128).contains(&self.exponent)
                     || !((1u128 << 52)..(1u128 << 53)).contains(&self.quotient)
                 {
-                    return Err(RangeNumericError::Integrity);
+                    return Err(HtmlRangeNumericError::Integrity);
                 }
                 let bits =
                     ((self.exponent + 1023) as u64) << 52 | (self.quotient as u64 - (1u64 << 52));
@@ -249,9 +252,9 @@ impl SmallDecimalCursor {
                 self.io.request = None;
                 return Ok(());
             }
-            S::Done => return Err(RangeNumericError::Integrity),
+            S::Done => return Err(HtmlRangeNumericError::Integrity),
         }
-        self.io.queue(RangeNumericRequest::ScalarStep);
+        self.io.queue(HtmlRangeNumericRequest::ScalarStep);
         Ok(())
     }
 }
@@ -262,9 +265,9 @@ impl SmallDecimalCursor {
 /// No source borrow, collection, or storage ticket.
 #[derive(Clone, Copy, Debug)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
-pub struct FiniteDecimalIngressCursor {
+pub struct HtmlFiniteDecimalIngressCursor {
     io: Io,
-    parts: RangeDecimalParts,
+    parts: HtmlRangeDecimalParts,
     total: usize,
     ordinal: usize,
     first: Option<usize>,
@@ -284,41 +287,41 @@ pub struct FiniteDecimalIngressCursor {
     cache_len: usize,
     ordering: Ordering,
     phase: Phase,
-    result: Option<Result<u64, RangeNumericError>>,
+    result: Option<Result<u64, HtmlRangeNumericError>>,
 }
-impl FiniteDecimalIngressCursor {
+impl HtmlFiniteDecimalIngressCursor {
     /// Starts converting the decimal described by `parts`, whose offsets index a source of
     /// `source_len` UTF-16 code units, to the nearest finite binary64 value. The offsets must be
     /// ordered and within the source, the `Right` scratch buffer must be empty, and the decimal
     /// needs at least one digit. A broken precondition is `Integrity`, no digits is
     /// `InvalidSyntax`, and a length that cannot be represented is `Representation`.
     pub fn new(
-        parts: RangeDecimalParts,
+        parts: HtmlRangeDecimalParts,
         source_len: usize,
-        headers: RangeNumericHeaders,
-    ) -> Result<Self, RangeNumericError> {
+        headers: HtmlRangeNumericHeaders,
+    ) -> Result<Self, HtmlRangeNumericError> {
         if parts.integer_start > parts.integer_end
             || parts.integer_end > source_len
             || parts.fraction_start > parts.fraction_end
             || parts.fraction_end > source_len
             || parts.exponent_start > parts.exponent_end
             || parts.exponent_end > source_len
-            || headers.buffers[RangeScratchRole::Right.index()].len != 0
+            || headers.buffers[HtmlRangeScratchRole::Right.index()].len != 0
         {
-            return Err(RangeNumericError::Integrity);
+            return Err(HtmlRangeNumericError::Integrity);
         }
         let total = (parts.integer_end - parts.integer_start)
             .checked_add(parts.fraction_end - parts.fraction_start)
-            .ok_or(RangeNumericError::Representation)?;
+            .ok_or(HtmlRangeNumericError::Representation)?;
         if total == 0 {
-            return Err(RangeNumericError::InvalidSyntax);
+            return Err(HtmlRangeNumericError::InvalidSyntax);
         }
         let width = source_len
             .checked_add(1386)
-            .ok_or(RangeNumericError::Representation)?;
+            .ok_or(HtmlRangeNumericError::Representation)?;
         let threshold = source_len
             .checked_add(4096)
-            .ok_or(RangeNumericError::Representation)?;
+            .ok_or(HtmlRangeNumericError::Representation)?;
         Ok(Self {
             io: Io::new(headers, source_len, width),
             parts,
@@ -345,26 +348,26 @@ impl FiniteDecimalIngressCursor {
         })
     }
     /// The next effect the cursor needs from its caller, or `None` once the cursor has finished.
-    /// Perform and admit it, then pass the matching `RangeNumericReply` to `reply`; the same
+    /// Perform and admit it, then pass the matching `HtmlRangeNumericReply` to `reply`; the same
     /// request stays pending until a valid reply arrives.
-    pub fn request(&self) -> Option<RangeNumericRequest> {
+    pub fn request(&self) -> Option<HtmlRangeNumericRequest> {
         self.io.request
     }
     /// The cursor's copy of the buffer headers, as updated by the replies it accepted.
-    pub fn headers(&self) -> RangeNumericHeaders {
+    pub fn headers(&self) -> HtmlRangeNumericHeaders {
         self.io.headers
     }
     /// Once the cursor has finished, the raw IEEE 754 binary64 bits of the nearest finite value,
     /// with ties resolved to even, or the error such as `Overflow` when the value exceeds the
     /// finite range. `None` while it is running.
-    pub fn result(&self) -> Option<Result<u64, RangeNumericError>> {
+    pub fn result(&self) -> Option<Result<u64, HtmlRangeNumericError>> {
         self.result
     }
     #[cfg(test)]
     pub(crate) fn cache_key(&self) -> Option<i32> {
         self.cache_exponent
     }
-    fn validate_active(&self) -> Result<(), RangeNumericError> {
+    fn validate_active(&self) -> Result<(), HtmlRangeNumericError> {
         let request = match (self.phase, &self.active) {
             (Phase::Small, ActiveHelper::Small(helper)) => {
                 helper.validate_request()?;
@@ -374,15 +377,15 @@ impl FiniteDecimalIngressCursor {
             (Phase::ProductTrial, ActiveHelper::Product(helper)) => helper.request(),
             (Phase::Compare, ActiveHelper::Compare(helper)) => helper.request(),
             (Phase::Small | Phase::BuildTrial | Phase::ProductTrial | Phase::Compare, _) => {
-                return Err(RangeNumericError::Integrity);
+                return Err(HtmlRangeNumericError::Integrity);
             }
             (_, ActiveHelper::None) => return Ok(()),
-            _ => return Err(RangeNumericError::Integrity),
+            _ => return Err(HtmlRangeNumericError::Integrity),
         };
         if request == self.io.request {
             Ok(())
         } else {
-            Err(RangeNumericError::Integrity)
+            Err(HtmlRangeNumericError::Integrity)
         }
     }
     #[cfg(test)]
@@ -398,7 +401,7 @@ impl FiniteDecimalIngressCursor {
     /// Accepts the caller's answer to the pending request and advances. A reply that does not match
     /// the request, or violates the headers, returns an error and leaves the cursor exactly as it
     /// was.
-    pub fn reply(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
+    pub fn reply(&mut self, reply: HtmlRangeNumericReply) -> Result<(), HtmlRangeNumericError> {
         let mut next = *self;
         next.validate_active()?;
         next.io.accept(reply)?;
@@ -415,7 +418,7 @@ impl FiniteDecimalIngressCursor {
             self.parts.fraction_start + ordinal - integer
         }
     }
-    fn finish(&mut self, result: Result<u64, RangeNumericError>) {
+    fn finish(&mut self, result: Result<u64, HtmlRangeNumericError>) {
         // Step 15 converts into the finite binary64 values except −0, so a zero
         // magnitude (exact or underflowed) is the unsigned zero whatever the sign.
         self.result = Some(result.map(|bits| {
@@ -432,45 +435,45 @@ impl FiniteDecimalIngressCursor {
     fn exponent_or_classify(&mut self) {
         if self.exponent_index < self.parts.exponent_end {
             self.phase = Phase::Exponent;
-            self.io.queue(RangeNumericRequest::SourceUnit {
+            self.io.queue(HtmlRangeNumericRequest::SourceUnit {
                 index: self.exponent_index,
             });
         } else {
             self.phase = Phase::Classify;
-            self.io.queue(RangeNumericRequest::ScalarStep);
+            self.io.queue(HtmlRangeNumericRequest::ScalarStep);
         }
     }
     fn clear_or_coefficient(&mut self) {
-        if self.io.len(RangeScratchRole::Coefficient) != 0 {
+        if self.io.len(HtmlRangeScratchRole::Coefficient) != 0 {
             self.phase = Phase::Clear;
-            self.io.queue(RangeNumericRequest::PopCell {
-                role: RangeScratchRole::Coefficient,
+            self.io.queue(HtmlRangeNumericRequest::PopCell {
+                role: HtmlRangeScratchRole::Coefficient,
             });
         } else {
             self.ordinal = self.total - 1;
             self.phase = Phase::CoefficientRead;
-            self.io.queue(RangeNumericRequest::SourceUnit {
+            self.io.queue(HtmlRangeNumericRequest::SourceUnit {
                 index: self.source_index(self.ordinal),
             });
         }
     }
-    fn begin_trial(&mut self, mantissa: u64, exponent: i32) -> Result<(), RangeNumericError> {
+    fn begin_trial(&mut self, mantissa: u64, exponent: i32) -> Result<(), HtmlRangeNumericError> {
         if !self.midpoint {
-            let decimal_order = (self.io.len(RangeScratchRole::Coefficient) as i128)
+            let decimal_order = (self.io.len(HtmlRangeScratchRole::Coefficient) as i128)
                 .checked_add(self.scale)
-                .ok_or(RangeNumericError::Representation)?;
+                .ok_or(HtmlRangeNumericError::Representation)?;
             if let Some(order) = decimal_dyadic_ordering(decimal_order, mantissa, exponent)? {
                 self.ordering = order;
                 self.phase = Phase::Decide;
-                self.io.queue(RangeNumericRequest::ScalarStep);
+                self.io.queue(HtmlRangeNumericRequest::ScalarStep);
                 return Ok(());
             }
         }
         self.trial_mantissa = mantissa;
         self.trial_exponent = exponent;
         if self.cache_exponent == Some(exponent) {
-            if self.cache_len == 0 || self.cache_len != self.io.len(RangeScratchRole::Right) {
-                return Err(RangeNumericError::Integrity);
+            if self.cache_len == 0 || self.cache_len != self.io.len(HtmlRangeScratchRole::Right) {
+                return Err(HtmlRangeNumericError::Integrity);
             }
             return self.begin_product();
         }
@@ -478,17 +481,18 @@ impl FiniteDecimalIngressCursor {
         // Publish the raw exponent only after the complete admitted build.
         self.cache_exponent = None;
         self.cache_len = 0;
-        let build = RangeDyadicCursor::new(self.io.headers, RangeScratchRole::Right, 1, exponent)?;
+        let build =
+            RangeDyadicCursor::new(self.io.headers, HtmlRangeScratchRole::Right, 1, exponent)?;
         self.io.request = build.request();
         self.active = ActiveHelper::Build(build);
         self.phase = Phase::BuildTrial;
         Ok(())
     }
-    fn begin_product(&mut self) -> Result<(), RangeNumericError> {
+    fn begin_product(&mut self) -> Result<(), HtmlRangeNumericError> {
         let product = RangeMantissaProductCursor::new(
             self.io.headers,
-            RangeScratchRole::Right,
-            RangeScratchRole::Trial,
+            HtmlRangeScratchRole::Right,
+            HtmlRangeScratchRole::Trial,
             self.trial_mantissa,
         )?;
         self.io.request = product.request();
@@ -496,7 +500,7 @@ impl FiniteDecimalIngressCursor {
         self.phase = Phase::ProductTrial;
         Ok(())
     }
-    fn next_trial(&mut self) -> Result<(), RangeNumericError> {
+    fn next_trial(&mut self) -> Result<(), HtmlRangeNumericError> {
         if self.high - self.low == 1 {
             self.midpoint = true;
             let (m, e) = upper_midpoint(self.low)?;
@@ -507,15 +511,15 @@ impl FiniteDecimalIngressCursor {
             self.begin_trial(m, e)
         }
     }
-    fn digit(reply: RangeNumericReply) -> Result<u8, RangeNumericError> {
-        let RangeNumericReply::Unit(unit @ 0x30..=0x39) = reply else {
-            return Err(RangeNumericError::Integrity);
+    fn digit(reply: HtmlRangeNumericReply) -> Result<u8, HtmlRangeNumericError> {
+        let HtmlRangeNumericReply::Unit(unit @ 0x30..=0x39) = reply else {
+            return Err(HtmlRangeNumericError::Integrity);
         };
         Ok((unit - 0x30) as u8)
     }
-    fn advance(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
+    fn advance(&mut self, reply: HtmlRangeNumericReply) -> Result<(), HtmlRangeNumericError> {
+        use HtmlRangeNumericRequest as Q;
         use Phase as S;
-        use RangeNumericRequest as Q;
         match self.phase {
             S::Start => {
                 self.phase = S::Mantissa;
@@ -566,7 +570,7 @@ impl FiniteDecimalIngressCursor {
                     if order < -323 {
                         self.finish(Ok(0));
                     } else if order > 309 {
-                        self.finish(Err(RangeNumericError::Overflow));
+                        self.finish(Err(HtmlRangeNumericError::Overflow));
                     } else {
                         self.clear_or_coefficient();
                     }
@@ -577,7 +581,10 @@ impl FiniteDecimalIngressCursor {
             S::Clear => self.clear_or_coefficient(),
             S::CoefficientRead => {
                 self.digit = Self::digit(reply)?;
-                self.phase = if self.io.append(RangeScratchRole::Coefficient, self.digit)? {
+                self.phase = if self
+                    .io
+                    .append(HtmlRangeScratchRole::Coefficient, self.digit)?
+                {
                     S::CoefficientAppend
                 } else {
                     S::CoefficientReserve
@@ -586,7 +593,7 @@ impl FiniteDecimalIngressCursor {
             S::CoefficientReserve => {
                 self.phase = S::CoefficientAppend;
                 self.io.queue(Q::AppendCell {
-                    role: RangeScratchRole::Coefficient,
+                    role: HtmlRangeScratchRole::Coefficient,
                     value: self.digit,
                 });
             }
@@ -596,7 +603,7 @@ impl FiniteDecimalIngressCursor {
             }
             S::CoefficientNext => {
                 if Some(self.ordinal) == self.first {
-                    let len = self.io.len(RangeScratchRole::Coefficient);
+                    let len = self.io.len(HtmlRangeScratchRole::Coefficient);
                     if (1..=19).contains(&len) && (-22..=22).contains(&self.scale) {
                         let small = SmallDecimalCursor::new(self.io.headers, self.scale as i32)?;
                         self.io.request = small.io.request;
@@ -615,7 +622,7 @@ impl FiniteDecimalIngressCursor {
             }
             S::Small => {
                 let ActiveHelper::Small(small) = &mut self.active else {
-                    return Err(RangeNumericError::Integrity);
+                    return Err(HtmlRangeNumericError::Integrity);
                 };
                 small.accept_in_place(reply)?;
                 if let Some(result) = small.result {
@@ -632,15 +639,15 @@ impl FiniteDecimalIngressCursor {
             }
             S::BuildTrial => {
                 let ActiveHelper::Build(build) = &mut self.active else {
-                    return Err(RangeNumericError::Integrity);
+                    return Err(HtmlRangeNumericError::Integrity);
                 };
                 build.accept_in_place(reply)?;
                 self.io.headers = build.headers();
                 if let Some(scale) = build.result() {
                     if scale != self.trial_exponent.min(0) {
-                        return Err(RangeNumericError::Integrity);
+                        return Err(HtmlRangeNumericError::Integrity);
                     }
-                    self.cache_len = self.io.len(RangeScratchRole::Right);
+                    self.cache_len = self.io.len(HtmlRangeScratchRole::Right);
                     self.cache_exponent = Some(self.trial_exponent);
                     self.begin_product()?;
                 } else {
@@ -649,17 +656,17 @@ impl FiniteDecimalIngressCursor {
             }
             S::ProductTrial => {
                 let ActiveHelper::Product(product) = &mut self.active else {
-                    return Err(RangeNumericError::Integrity);
+                    return Err(HtmlRangeNumericError::Integrity);
                 };
                 product.accept_in_place(reply)?;
                 self.io.headers = product.headers();
                 if product.result().is_some() {
                     let compare = RangeScaledComparisonCursor::new(
                         self.io.headers,
-                        RangeScratchRole::Coefficient,
+                        HtmlRangeScratchRole::Coefficient,
                         self.scale,
                         false,
-                        RangeScratchRole::Trial,
+                        HtmlRangeScratchRole::Trial,
                         i128::from(self.trial_exponent.min(0)),
                         false,
                     );
@@ -672,7 +679,7 @@ impl FiniteDecimalIngressCursor {
             }
             S::Compare => {
                 let ActiveHelper::Compare(compare) = &mut self.active else {
-                    return Err(RangeNumericError::Integrity);
+                    return Err(HtmlRangeNumericError::Integrity);
                 };
                 compare.accept_in_place(reply)?;
                 if let Some(order) = compare.result() {
@@ -694,7 +701,7 @@ impl FiniteDecimalIngressCursor {
                         self.low
                     };
                     self.finish(if selected == INFINITY {
-                        Err(RangeNumericError::Overflow)
+                        Err(HtmlRangeNumericError::Overflow)
                     } else {
                         Ok(selected)
                     });
@@ -709,16 +716,16 @@ impl FiniteDecimalIngressCursor {
                     self.next_trial()?;
                 }
             }
-            S::Done => return Err(RangeNumericError::Integrity),
+            S::Done => return Err(HtmlRangeNumericError::Integrity),
         }
         Ok(())
     }
 }
 
-impl FiniteDecimalIngressCursor {
+impl HtmlFiniteDecimalIngressCursor {
     /// The fixed state and message sizes of this cursor.
-    pub const fn layout() -> RangeNumericLayout {
-        RangeNumericLayout {
+    pub const fn layout() -> HtmlRangeNumericLayout {
+        HtmlRangeNumericLayout {
             registers: size_of::<Self>(),
         }
     }
@@ -729,18 +736,18 @@ mod exclusive_tests {
     use super::*;
     #[test]
     fn active_phase_and_cached_request_mismatches_are_transactional_refusals() {
-        let headers = RangeNumericHeaders {
-            buffers: [RangeBufferHeader {
+        let headers = HtmlRangeNumericHeaders {
+            buffers: [HtmlRangeBufferHeader {
                 len: 0,
                 capacity: 0,
             }; 8],
-            output: RangeBufferHeader {
+            output: HtmlRangeBufferHeader {
                 len: 0,
                 capacity: 0,
             },
         };
-        let original = FiniteDecimalIngressCursor::new(
-            RangeDecimalParts {
+        let original = HtmlFiniteDecimalIngressCursor::new(
+            HtmlRangeDecimalParts {
                 negative: false,
                 integer_start: 0,
                 integer_end: 1,
@@ -754,7 +761,7 @@ mod exclusive_tests {
             headers,
         )
         .unwrap();
-        let build = RangeDyadicCursor::new(headers, RangeScratchRole::Trial, 1, 0).unwrap();
+        let build = RangeDyadicCursor::new(headers, HtmlRangeScratchRole::Trial, 1, 0).unwrap();
         for case in 0..3 {
             let mut c = original;
             match case {
@@ -768,8 +775,8 @@ mod exclusive_tests {
             }
             let snapshot = c;
             assert_eq!(
-                c.reply(RangeNumericReply::Ack),
-                Err(RangeNumericError::Integrity)
+                c.reply(HtmlRangeNumericReply::Ack),
+                Err(HtmlRangeNumericError::Integrity)
             );
             assert_eq!(c, snapshot);
         }
@@ -781,7 +788,7 @@ mod small_tests {
     use super::*;
     #[test]
     fn small_ratio_header_phase_and_request_refusals_do_not_commit() {
-        let parts = RangeDecimalParts {
+        let parts = HtmlRangeDecimalParts {
             negative: false,
             integer_start: 0,
             integer_end: 1,
@@ -791,14 +798,14 @@ mod small_tests {
             exponent_end: 0,
             exponent_negative: false,
         };
-        let mut headers = RangeNumericHeaders::default();
-        headers.buffers[0] = RangeBufferHeader {
+        let mut headers = HtmlRangeNumericHeaders::default();
+        headers.buffers[0] = HtmlRangeBufferHeader {
             len: 1,
             capacity: 1,
         };
         let small = SmallDecimalCursor::new(headers, 0).unwrap();
         for case in 0..5 {
-            let mut c = FiniteDecimalIngressCursor::new(parts, 1, headers).unwrap();
+            let mut c = HtmlFiniteDecimalIngressCursor::new(parts, 1, headers).unwrap();
             c.phase = Phase::Small;
             c.io.request = small.io.request;
             c.active = ActiveHelper::Small(small);
@@ -811,7 +818,7 @@ mod small_tests {
                     s.io.headers.buffers[0].capacity = 0;
                 }
                 2 => c.phase = Phase::Compare,
-                3 => c.io.request = Some(RangeNumericRequest::ScalarStep),
+                3 => c.io.request = Some(HtmlRangeNumericRequest::ScalarStep),
                 _ => {
                     let ActiveHelper::Small(s) = &mut c.active else {
                         panic!()
@@ -821,8 +828,8 @@ mod small_tests {
             }
             let snapshot = c;
             assert_eq!(
-                c.reply(RangeNumericReply::Cells([Some(1), None, None])),
-                Err(RangeNumericError::Integrity)
+                c.reply(HtmlRangeNumericReply::Cells([Some(1), None, None])),
+                Err(HtmlRangeNumericError::Integrity)
             );
             assert_eq!(c, snapshot);
         }
@@ -831,11 +838,11 @@ mod small_tests {
     fn small_ratio_checked_shift_rejects_value_loss_as_well_as_shift_count() {
         assert_eq!(
             SmallDecimalCursor::shift(1u128 << 127, 1),
-            Err(RangeNumericError::Representation)
+            Err(HtmlRangeNumericError::Representation)
         );
         assert_eq!(
             SmallDecimalCursor::shift(1, 128),
-            Err(RangeNumericError::Representation)
+            Err(HtmlRangeNumericError::Representation)
         );
         assert_eq!(SmallDecimalCursor::shift(1, 127), Ok(1u128 << 127));
         assert_eq!(SmallDecimalCursor::shift(u128::MAX, 0), Ok(u128::MAX));

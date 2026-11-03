@@ -5,8 +5,8 @@
 //! this owner introduces no geometry or resource loader.
 
 use super::{
-    HtmlNonNegativeInteger, IntegerUnitStepError, NumericMaterializationFailure,
-    NumericMaterialized,
+    HtmlIntegerUnitStepError, HtmlNonNegativeInteger, HtmlNumericMaterializationFailure,
+    HtmlNumericMaterialized,
 };
 use std::{cmp::Ordering, error::Error, fmt};
 
@@ -91,7 +91,7 @@ impl HtmlNonNegativeRational {
         &self,
         max_digits: usize,
         max_bytes: usize,
-    ) -> Result<NumericMaterialized<Self>, NumericMaterializationFailure> {
+    ) -> Result<HtmlNumericMaterialized<Self>, HtmlNumericMaterializationFailure> {
         let numerator = self.numerator.try_copy(max_digits, max_bytes)?;
         let denominator = self
             .denominator
@@ -99,14 +99,17 @@ impl HtmlNonNegativeRational {
             .map_err(|mut error| {
                 error.capacity_bytes += numerator.capacity_bytes;
                 match &mut error.kind {
-                    super::NumericMaterializationError::Boundary(
-                        IntegerUnitStepError::RequestedCapacityLimitExceeded { limit, required },
+                    super::HtmlNumericMaterializationError::Boundary(
+                        HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded {
+                            limit,
+                            required,
+                        },
                     ) => {
                         *limit = max_bytes;
                         *required += numerator.capacity_bytes;
                     }
-                    super::NumericMaterializationError::Boundary(
-                        IntegerUnitStepError::ActualCapacityLimitExceeded { limit, .. },
+                    super::HtmlNumericMaterializationError::Boundary(
+                        HtmlIntegerUnitStepError::ActualCapacityLimitExceeded { limit, .. },
                     ) => {
                         *limit = max_bytes;
                     }
@@ -114,7 +117,7 @@ impl HtmlNonNegativeRational {
                 }
                 error
             })?;
-        Ok(NumericMaterialized {
+        Ok(HtmlNumericMaterialized {
             capacity_bytes: numerator.capacity_bytes + denominator.capacity_bytes,
             value: Self {
                 numerator: numerator.value,
@@ -135,14 +138,14 @@ impl HtmlNonNegativeRational {
         numerator: HtmlNonNegativeInteger,
         max_digits: usize,
         max_bytes: usize,
-    ) -> Result<NumericMaterialized<Self>, RationalIntegerMaterializationFailure> {
+    ) -> Result<HtmlNumericMaterialized<Self>, HtmlRationalIntegerMaterializationFailure> {
         let denominator = match HtmlNonNegativeInteger::try_from_u32(1, max_digits, max_bytes) {
             Ok(value) => value,
             Err(failure) => {
-                return Err(RationalIntegerMaterializationFailure { failure, numerator });
+                return Err(HtmlRationalIntegerMaterializationFailure { failure, numerator });
             }
         };
-        Ok(NumericMaterialized {
+        Ok(HtmlNumericMaterialized {
             capacity_bytes: denominator.capacity_bytes,
             value: Self {
                 numerator,
@@ -156,17 +159,17 @@ impl HtmlNonNegativeRational {
 /// observed denominator-allocation byte. Readback does not copy digit storage;
 /// consuming this error returns both owners for explicit cleanup or retry.
 #[derive(Debug)]
-pub struct RationalIntegerMaterializationFailure {
-    failure: NumericMaterializationFailure,
+pub struct HtmlRationalIntegerMaterializationFailure {
+    failure: HtmlNumericMaterializationFailure,
     numerator: HtmlNonNegativeInteger,
 }
-impl RationalIntegerMaterializationFailure {
+impl HtmlRationalIntegerMaterializationFailure {
     /// The numerator that was handed in, unchanged and not copied.
     pub fn numerator(&self) -> &HtmlNonNegativeInteger {
         &self.numerator
     }
     /// The failure of the denominator materialization.
-    pub fn failure(&self) -> &NumericMaterializationFailure {
+    pub fn failure(&self) -> &HtmlNumericMaterializationFailure {
         &self.failure
     }
     /// The cumulative capacity in bytes observed while materializing the denominator.
@@ -174,21 +177,21 @@ impl RationalIntegerMaterializationFailure {
         self.failure.capacity_bytes()
     }
     /// The cause of the denominator failure.
-    pub fn kind(&self) -> super::NumericMaterializationError {
+    pub fn kind(&self) -> super::HtmlNumericMaterializationError {
         self.failure.kind()
     }
     /// Splits the error into the failure and the original numerator, returning ownership of both
     /// for cleanup or retry.
-    pub fn into_parts(self) -> (NumericMaterializationFailure, HtmlNonNegativeInteger) {
+    pub fn into_parts(self) -> (HtmlNumericMaterializationFailure, HtmlNonNegativeInteger) {
         (self.failure, self.numerator)
     }
 }
-impl fmt::Display for RationalIntegerMaterializationFailure {
+impl fmt::Display for HtmlRationalIntegerMaterializationFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("rational integer materialization failed")
     }
 }
-impl Error for RationalIntegerMaterializationFailure {
+impl Error for HtmlRationalIntegerMaterializationFailure {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         Some(&self.failure)
     }
@@ -198,7 +201,7 @@ impl Error for RationalIntegerMaterializationFailure {
 /// decimal digits. A completed arithmetic cursor can lend its actual scratch
 /// directly, without another validation pass.
 #[derive(Clone, Copy, Debug)]
-pub struct NaturalDigits<'a> {
+pub struct HtmlNaturalDigits<'a> {
     repr: NaturalDigitsRepr<'a>,
 }
 #[derive(Clone, Copy, Debug)]
@@ -206,7 +209,7 @@ enum NaturalDigitsRepr<'a> {
     Integer(&'a HtmlNonNegativeInteger),
     Little(&'a [u8]),
 }
-impl<'a> NaturalDigits<'a> {
+impl<'a> HtmlNaturalDigits<'a> {
     /// Borrows a native integer as an operand. Its digits are already canonical, so no validation
     /// or allocation occurs.
     pub fn integer(value: &'a HtmlNonNegativeInteger) -> Self {
@@ -216,12 +219,12 @@ impl<'a> NaturalDigits<'a> {
     }
     /// Validate external scratch once. Zero is `[0]`; other operands have a
     /// nonzero last digit. No allocation or machine-integer projection occurs.
-    pub fn try_little(value: &'a [u8]) -> Result<Self, NaturalArithmeticError> {
+    pub fn try_little(value: &'a [u8]) -> Result<Self, HtmlNaturalArithmeticError> {
         if value.is_empty() || (value.len() > 1 && value.last() == Some(&0)) {
-            return Err(NaturalArithmeticError::NonCanonical);
+            return Err(HtmlNaturalArithmeticError::NonCanonical);
         }
         if let Some((index, &value)) = value.iter().enumerate().find(|(_, d)| **d > 9) {
-            return Err(NaturalArithmeticError::InvalidDigit { index, value });
+            return Err(HtmlNaturalArithmeticError::InvalidDigit { index, value });
         }
         Ok(Self {
             repr: NaturalDigitsRepr::Little(value),
@@ -252,7 +255,7 @@ impl<'a> NaturalDigits<'a> {
 /// Invalid external operands, unadmitted scratch, or premature completion.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
-pub enum NaturalArithmeticError {
+pub enum HtmlNaturalArithmeticError {
     /// External little-endian digits are empty or end in a leading zero while longer than one
     /// digit. Zero must be exactly `[0]`.
     NonCanonical,
@@ -280,7 +283,7 @@ pub enum NaturalArithmeticError {
     /// The slot holding the operation is empty because it was already taken.
     EmptySlot,
 }
-impl fmt::Display for NaturalArithmeticError {
+impl fmt::Display for HtmlNaturalArithmeticError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NonCanonical => {
@@ -302,13 +305,13 @@ impl fmt::Display for NaturalArithmeticError {
         }
     }
 }
-impl Error for NaturalArithmeticError {}
-fn check_scratch(output: &Vec<u8>, required: usize) -> Result<(), NaturalArithmeticError> {
+impl Error for HtmlNaturalArithmeticError {}
+fn check_scratch(output: &Vec<u8>, required: usize) -> Result<(), HtmlNaturalArithmeticError> {
     if !output.is_empty() {
-        return Err(NaturalArithmeticError::ScratchNotEmpty);
+        return Err(HtmlNaturalArithmeticError::ScratchNotEmpty);
     }
     if output.capacity() < required {
-        return Err(NaturalArithmeticError::ScratchCapacity {
+        return Err(HtmlNaturalArithmeticError::ScratchCapacity {
             required,
             capacity: output.capacity(),
         });
@@ -321,8 +324,8 @@ fn check_scratch(output: &Vec<u8>, required: usize) -> Result<(), NaturalArithme
 /// responsibility. A cell accumulator is at most 9+81+9=99.
 #[derive(Debug)]
 pub(crate) struct NaturalProductKernel<'a> {
-    left: NaturalDigits<'a>,
-    right: NaturalDigits<'a>,
+    left: HtmlNaturalDigits<'a>,
+    right: HtmlNaturalDigits<'a>,
     initialized: usize,
     row: usize,
     column: usize,
@@ -333,7 +336,7 @@ fn natural_product_capacity(left: usize, right: usize) -> Option<usize> {
         .filter(|&length| length <= isize::MAX as usize)
 }
 impl<'a> NaturalProductKernel<'a> {
-    pub(crate) fn new(left: NaturalDigits<'a>, right: NaturalDigits<'a>) -> Self {
+    pub(crate) fn new(left: HtmlNaturalDigits<'a>, right: HtmlNaturalDigits<'a>) -> Self {
         Self {
             left,
             right,
@@ -383,15 +386,15 @@ impl<'a> NaturalProductKernel<'a> {
 /// admission left to the caller. After it completes, its operands can authorize a difference
 /// through `take_difference`.
 #[derive(Debug)]
-pub struct NaturalComparison<'a> {
-    left: NaturalDigits<'a>,
-    right: NaturalDigits<'a>,
+pub struct HtmlNaturalComparison<'a> {
+    left: HtmlNaturalDigits<'a>,
+    right: HtmlNaturalDigits<'a>,
     next: usize,
     result: Option<Ordering>,
 }
-impl<'a> NaturalComparison<'a> {
+impl<'a> HtmlNaturalComparison<'a> {
     /// Starts a comparison of `left` against `right`. It does no work.
-    pub fn new(left: NaturalDigits<'a>, right: NaturalDigits<'a>) -> Self {
+    pub fn new(left: HtmlNaturalDigits<'a>, right: HtmlNaturalDigits<'a>) -> Self {
         Self {
             left,
             right,
@@ -432,9 +435,11 @@ impl<'a> NaturalComparison<'a> {
     pub fn take_difference<'scratch>(
         slot: &mut Option<Self>,
         output: &'scratch mut Vec<u8>,
-    ) -> Result<NaturalDifference<'a, 'scratch>, NaturalArithmeticError> {
-        let comparison = slot.as_ref().ok_or(NaturalArithmeticError::EmptySlot)?;
-        let ordering = comparison.result.ok_or(NaturalArithmeticError::NotReady)?;
+    ) -> Result<HtmlNaturalDifference<'a, 'scratch>, HtmlNaturalArithmeticError> {
+        let comparison = slot.as_ref().ok_or(HtmlNaturalArithmeticError::EmptySlot)?;
+        let ordering = comparison
+            .result
+            .ok_or(HtmlNaturalArithmeticError::NotReady)?;
         let (large, small) = if ordering == Ordering::Less {
             (comparison.right, comparison.left)
         } else {
@@ -445,7 +450,7 @@ impl<'a> NaturalComparison<'a> {
         let _completed = slot
             .take()
             .expect("shared preflight proved a completed comparison");
-        Ok(NaturalDifference {
+        Ok(HtmlNaturalDifference {
             kernel: NaturalDifferenceKernel::new(large, small),
             output,
             finished: false,
@@ -454,14 +459,14 @@ impl<'a> NaturalComparison<'a> {
 }
 #[derive(Debug)]
 pub(crate) struct NaturalDifferenceKernel<'a> {
-    large: NaturalDigits<'a>,
-    small: NaturalDigits<'a>,
+    large: HtmlNaturalDigits<'a>,
+    small: HtmlNaturalDigits<'a>,
     next: usize,
     borrow: i16,
 }
 impl<'a> NaturalDifferenceKernel<'a> {
     /// The consumer's admitted exact comparison proves large >= small.
-    pub(crate) fn new(large: NaturalDigits<'a>, small: NaturalDigits<'a>) -> Self {
+    pub(crate) fn new(large: HtmlNaturalDigits<'a>, small: HtmlNaturalDigits<'a>) -> Self {
         Self {
             large,
             small,
@@ -496,26 +501,29 @@ impl<'a> NaturalDifferenceKernel<'a> {
 /// Bounded multiplication over checked operands and caller-reserved scratch.
 /// Exclusive borrowing prevents workspace replacement between admitted steps.
 #[derive(Debug)]
-pub struct NaturalProduct<'input, 'scratch> {
+pub struct HtmlNaturalProduct<'input, 'scratch> {
     kernel: NaturalProductKernel<'input>,
     output: &'scratch mut Vec<u8>,
     finished: bool,
 }
-impl<'input, 'scratch> NaturalProduct<'input, 'scratch> {
+impl<'input, 'scratch> HtmlNaturalProduct<'input, 'scratch> {
     /// The scratch capacity in digits the product needs, the sum of the operand lengths, or `None`
     /// if that is not representable.
-    pub fn required_capacity(left: NaturalDigits<'_>, right: NaturalDigits<'_>) -> Option<usize> {
+    pub fn required_capacity(
+        left: HtmlNaturalDigits<'_>,
+        right: HtmlNaturalDigits<'_>,
+    ) -> Option<usize> {
         natural_product_capacity(left.len(), right.len())
     }
     /// Starts a product of `left` and `right` in `output`, which must be empty and have the
     /// capacity `required_capacity` reports. Refusal leaves `output` untouched.
     pub fn new(
-        left: NaturalDigits<'input>,
-        right: NaturalDigits<'input>,
+        left: HtmlNaturalDigits<'input>,
+        right: HtmlNaturalDigits<'input>,
         output: &'scratch mut Vec<u8>,
-    ) -> Result<Self, NaturalArithmeticError> {
+    ) -> Result<Self, HtmlNaturalArithmeticError> {
         let capacity = Self::required_capacity(left, right)
-            .ok_or(NaturalArithmeticError::RepresentationExhausted)?;
+            .ok_or(HtmlNaturalArithmeticError::RepresentationExhausted)?;
         check_scratch(output, capacity)?;
         Ok(Self {
             kernel: NaturalProductKernel::new(left, right),
@@ -544,15 +552,15 @@ impl<'input, 'scratch> NaturalProduct<'input, 'scratch> {
     /// Only a completed cursor is removed and lends its canonical result.
     pub fn take(
         slot: &mut Option<Self>,
-    ) -> Result<NaturalDigits<'scratch>, NaturalArithmeticError> {
-        let cursor = slot.as_ref().ok_or(NaturalArithmeticError::EmptySlot)?;
+    ) -> Result<HtmlNaturalDigits<'scratch>, HtmlNaturalArithmeticError> {
+        let cursor = slot.as_ref().ok_or(HtmlNaturalArithmeticError::EmptySlot)?;
         if !cursor.finished {
-            return Err(NaturalArithmeticError::NotReady);
+            return Err(HtmlNaturalArithmeticError::NotReady);
         }
         let cursor = slot
             .take()
             .expect("shared preflight proved a completed cursor");
-        Ok(NaturalDigits {
+        Ok(HtmlNaturalDigits {
             repr: NaturalDigitsRepr::Little(cursor.output.as_slice()),
         })
     }
@@ -560,12 +568,12 @@ impl<'input, 'scratch> NaturalProduct<'input, 'scratch> {
 /// Absolute difference authorized by a completed immutable comparison.
 /// Each step writes one subtraction digit or trims one high zero.
 #[derive(Debug)]
-pub struct NaturalDifference<'input, 'scratch> {
+pub struct HtmlNaturalDifference<'input, 'scratch> {
     kernel: NaturalDifferenceKernel<'input>,
     output: &'scratch mut Vec<u8>,
     finished: bool,
 }
-impl<'scratch> NaturalDifference<'_, 'scratch> {
+impl<'scratch> HtmlNaturalDifference<'_, 'scratch> {
     /// Performs one subtraction digit or high-zero trim and returns whether the difference is now
     /// complete. After completion it does nothing more and keeps returning `true`.
     pub fn step(&mut self) -> bool {
@@ -587,15 +595,15 @@ impl<'scratch> NaturalDifference<'_, 'scratch> {
     /// Only a completed cursor is removed and lends its canonical result.
     pub fn take(
         slot: &mut Option<Self>,
-    ) -> Result<NaturalDigits<'scratch>, NaturalArithmeticError> {
-        let cursor = slot.as_ref().ok_or(NaturalArithmeticError::EmptySlot)?;
+    ) -> Result<HtmlNaturalDigits<'scratch>, HtmlNaturalArithmeticError> {
+        let cursor = slot.as_ref().ok_or(HtmlNaturalArithmeticError::EmptySlot)?;
         if !cursor.finished {
-            return Err(NaturalArithmeticError::NotReady);
+            return Err(HtmlNaturalArithmeticError::NotReady);
         }
         let cursor = slot
             .take()
             .expect("shared preflight proved a completed cursor");
-        Ok(NaturalDigits {
+        Ok(HtmlNaturalDigits {
             repr: NaturalDigitsRepr::Little(cursor.output.as_slice()),
         })
     }
@@ -633,8 +641,8 @@ mod tests {
         assert_eq!(failure.capacity_bytes, 5);
         assert_eq!(
             failure.kind,
-            super::super::NumericMaterializationError::Boundary(
-                IntegerUnitStepError::RequestedCapacityLimitExceeded {
+            super::super::HtmlNumericMaterializationError::Boundary(
+                HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded {
                     limit: 5,
                     required: 7
                 }
@@ -644,8 +652,8 @@ mod tests {
         assert_eq!(failure.capacity_bytes, 0);
         assert_eq!(
             failure.kind,
-            super::super::NumericMaterializationError::Boundary(
-                IntegerUnitStepError::DigitLimitExceeded {
+            super::super::HtmlNumericMaterializationError::Boundary(
+                HtmlIntegerUnitStepError::DigitLimitExceeded {
                     limit: 1,
                     required: 5
                 }
@@ -664,8 +672,8 @@ mod tests {
         assert_eq!(e.capacity_bytes(), 0);
         assert!(matches!(
             e.kind(),
-            super::super::NumericMaterializationError::Boundary(
-                IntegerUnitStepError::RequestedCapacityLimitExceeded { required: 1, .. }
+            super::super::HtmlNumericMaterializationError::Boundary(
+                HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded { required: 1, .. }
             )
         ));
     }
@@ -695,8 +703,10 @@ mod tests {
             ),
         ] {
             let (a, b) = (integer(a), integer(b));
-            let mut cursor =
-                NaturalProductKernel::new(NaturalDigits::integer(&a), NaturalDigits::integer(&b));
+            let mut cursor = NaturalProductKernel::new(
+                HtmlNaturalDigits::integer(&a),
+                HtmlNaturalDigits::integer(&b),
+            );
             let mut out = Vec::with_capacity(cursor.capacity().unwrap());
             let mut steps = 0;
             while !cursor.step(&mut out) {
@@ -714,8 +724,10 @@ mod tests {
             ("123456789012345678901", "123456789012345678900", "1"),
         ] {
             let (a, b) = (integer(a), integer(b));
-            let mut compare =
-                NaturalComparison::new(NaturalDigits::integer(&a), NaturalDigits::integer(&b));
+            let mut compare = HtmlNaturalComparison::new(
+                HtmlNaturalDigits::integer(&a),
+                HtmlNaturalDigits::integer(&b),
+            );
             let actual = loop {
                 if let Some(v) = compare.step() {
                     break v;
@@ -723,8 +735,8 @@ mod tests {
             };
             assert_ne!(actual, Ordering::Less);
             let mut cursor = NaturalDifferenceKernel::new(
-                NaturalDigits::integer(&a),
-                NaturalDigits::integer(&b),
+                HtmlNaturalDigits::integer(&a),
+                HtmlNaturalDigits::integer(&b),
             );
             let mut out = Vec::with_capacity(a.digits.len());
             while !cursor.step(&mut out) {}

@@ -1,6 +1,6 @@
 //! Shared HTML877d intrinsic Meta processing. No Document/URL/CSS/UI controller.
 use super::*;
-use crate::internal::microsyntax::tokens::ascii_whitespace;
+use crate::internal::microsyntax::tokens::is_ascii_whitespace;
 use std::ops::Range;
 
 /// Caller admission before a shared refresh operation.
@@ -74,7 +74,7 @@ pub fn meta_language_token_with<E>(
     let mut pos = 0;
     loop {
         admit()?;
-        if !units.get(pos).copied().is_some_and(ascii_whitespace) {
+        if !units.get(pos).copied().is_some_and(is_ascii_whitespace) {
             break;
         }
         pos += 1;
@@ -85,7 +85,7 @@ pub fn meta_language_token_with<E>(
         if !units
             .get(pos)
             .copied()
-            .is_some_and(|unit| !ascii_whitespace(unit))
+            .is_some_and(|unit| !is_ascii_whitespace(unit))
         {
             break;
         }
@@ -112,7 +112,7 @@ fn refresh_space<E>(
     pos: &mut usize,
     admit: &mut impl FnMut(HtmlMetaRefreshAction) -> Result<(), E>,
 ) -> Result<(), E> {
-    while refresh_unit(units, *pos, admit)?.is_some_and(ascii_whitespace) {
+    while refresh_unit(units, *pos, admit)?.is_some_and(is_ascii_whitespace) {
         *pos += 1;
     }
     Ok(())
@@ -142,7 +142,7 @@ pub fn meta_refresh_syntax_with<E>(
     admit(HtmlMetaRefreshAction::Step)?;
     if pos != units.len() {
         if !refresh_unit(units, pos, &mut admit)?
-            .is_some_and(|u| u == 59 || u == 44 || ascii_whitespace(u))
+            .is_some_and(|u| u == 59 || u == 44 || is_ascii_whitespace(u))
         {
             return Ok(None);
         }

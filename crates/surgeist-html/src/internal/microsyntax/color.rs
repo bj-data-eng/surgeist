@@ -5,7 +5,7 @@
 //! contextual color-input operations are separate contracts.
 
 use crate::DocumentString;
-use crate::internal::microsyntax::tokens::ascii_whitespace;
+use crate::internal::microsyntax::tokens::is_ascii_whitespace;
 
 /// An opaque sRGB color with exact eight-bit red, green and blue components.
 ///
@@ -84,10 +84,10 @@ pub(crate) fn parse_legacy_color(
         return Err(LegacyColorParseError::EmptyInput);
     }
     let mut units = input.code_units();
-    while units.first().is_some_and(|&unit| ascii_whitespace(unit)) {
+    while units.first().is_some_and(|&unit| is_ascii_whitespace(unit)) {
         units = &units[1..];
     }
-    while units.last().is_some_and(|&unit| ascii_whitespace(unit)) {
+    while units.last().is_some_and(|&unit| is_ascii_whitespace(unit)) {
         units = &units[..units.len() - 1];
     }
 

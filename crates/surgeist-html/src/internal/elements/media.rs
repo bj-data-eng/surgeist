@@ -1,6 +1,6 @@
 //! HTML 877d #mq and #the-source-element surrounding rules, without CSS parsing.
 
-use crate::internal::microsyntax::tokens::{ascii_case_insensitive_unit, ascii_whitespace};
+use crate::internal::microsyntax::tokens::{ascii_case_insensitive_unit, is_ascii_whitespace};
 
 /// Original presence/content classification; non-ASCII whitespace is content.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -106,7 +106,7 @@ impl<'a> HtmlMediaValueCursor<'a> {
         match self.pending() {
             Pending::Inspect(index, units) => {
                 let unit = units[index];
-                if !ascii_whitespace(unit) {
+                if !is_ascii_whitespace(unit) {
                     self.first.get_or_insert(index);
                     self.end = index + 1;
                 }
@@ -158,13 +158,13 @@ pub(crate) mod theme {
     use super::ascii_case_insensitive_unit;
     /// One fixed-name comparison step; shared by ordinary and controlled owners.
     #[derive(Debug)]
-    pub struct ThemeColorNameCursor<'a> {
+    pub struct HtmlThemeColorNameCursor<'a> {
         /// Empty when the name is absent, which is never equal.
         units: &'a [u16],
         position: usize,
         equal: bool,
     }
-    impl<'a> ThemeColorNameCursor<'a> {
+    impl<'a> HtmlThemeColorNameCursor<'a> {
         /// Starts a comparison of the `name` attribute's UTF-16 code units with `theme-color`,
         /// ignoring ASCII case; `None` means the attribute is absent and never equal.
         pub fn new(units: Option<&'a [u16]>) -> Self {

@@ -2178,10 +2178,10 @@ impl HtmlValueInterpreter {
     pub fn writingsuggestions_processing(
         &self,
         raw: Option<&DocumentString>,
-    ) -> Result<WritingSuggestionsProcessing, HtmlValueAdmissionError> {
+    ) -> Result<HtmlWritingSuggestionsProcessing, HtmlValueAdmissionError> {
         self.admit_attribute_raw(raw)?;
         let selection = enum_value_selection(&WRITINGSUGGESTIONS, raw);
-        Ok(WritingSuggestionsProcessing {
+        Ok(HtmlWritingSuggestionsProcessing {
             recognition: selection.recognition,
             intrinsic: selection.intrinsic,
         })
@@ -2863,11 +2863,11 @@ pub(crate) mod bounded_rules {
     /// The bounded front door returns it after admitting the value under the caller's work
     /// accounting.
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-    pub struct WritingSuggestionsProcessing {
+    pub struct HtmlWritingSuggestionsProcessing {
         pub(crate) recognition: HtmlAttributeRecognition,
         pub(crate) intrinsic: Option<HtmlWritingSuggestionsState>,
     }
-    impl WritingSuggestionsProcessing {
+    impl HtmlWritingSuggestionsProcessing {
         /// Returns how the literal value matched the `true` and `false` keywords, before defaults.
         pub const fn recognition(&self) -> HtmlAttributeRecognition {
             self.recognition
@@ -2879,7 +2879,7 @@ pub(crate) mod bounded_rules {
         }
     }
 }
-pub(crate) use bounded_rules::WritingSuggestionsProcessing;
+pub(crate) use bounded_rules::HtmlWritingSuggestionsProcessing;
 #[cfg(test)]
 use bounded_rules::stylesheet_link_context_work_bound;
 

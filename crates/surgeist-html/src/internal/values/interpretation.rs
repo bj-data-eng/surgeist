@@ -7,7 +7,7 @@
 use crate::internal::microsyntax::color::{HtmlLegacyColor, LegacyColorParseError};
 use crate::internal::microsyntax::numeric::{
     HtmlDimension, HtmlDimensionList, HtmlFloatingPointList, HtmlFloatingPointNumber, HtmlInteger,
-    HtmlNonNegativeInteger, NumericParseError,
+    HtmlNonNegativeInteger, HtmlNumericParseError,
 };
 use crate::internal::microsyntax::temporal::{
     HtmlDate, HtmlDateOrTime, HtmlDateWithOptionalTime, HtmlDuration, HtmlGlobalDateTime,
@@ -777,24 +777,24 @@ impl HtmlValueInterpreter {
     }
 }
 
-fn numeric_failure(error: NumericParseError) -> HtmlValueFailure {
+fn numeric_failure(error: HtmlNumericParseError) -> HtmlValueFailure {
     match error {
-        NumericParseError::InvalidSyntax => {
+        HtmlNumericParseError::InvalidSyntax => {
             HtmlValueFailure::Syntax(HtmlValueSyntaxError::InvalidNumericSyntax)
         }
-        NumericParseError::Negative => {
+        HtmlNumericParseError::Negative => {
             HtmlValueFailure::Syntax(HtmlValueSyntaxError::NegativeNonnegativeInteger)
         }
-        NumericParseError::ZeroDimension => {
+        HtmlNumericParseError::ZeroDimension => {
             HtmlValueFailure::Syntax(HtmlValueSyntaxError::ZeroNonzeroDimension)
         }
-        NumericParseError::FloatingPointOverflow => {
+        HtmlNumericParseError::FloatingPointOverflow => {
             HtmlValueFailure::Representation(HtmlValueRepresentationError::FloatingPointOverflow)
         }
     }
 }
 
-fn numeric_author<T>(result: Result<T, NumericParseError>) -> HtmlValueAuthorState<T> {
+fn numeric_author<T>(result: Result<T, HtmlNumericParseError>) -> HtmlValueAuthorState<T> {
     match result {
         Ok(value) => HtmlValueAuthorState::Valid(value),
         Err(error) => match numeric_failure(error) {
@@ -804,7 +804,7 @@ fn numeric_author<T>(result: Result<T, NumericParseError>) -> HtmlValueAuthorSta
     }
 }
 
-fn numeric_recovery<T>(result: Result<T, NumericParseError>) -> HtmlValueRecoveryState<T> {
+fn numeric_recovery<T>(result: Result<T, HtmlNumericParseError>) -> HtmlValueRecoveryState<T> {
     match result {
         Ok(value) => HtmlValueRecoveryState::Value(value),
         Err(error) => HtmlValueRecoveryState::Failed(numeric_failure(error)),

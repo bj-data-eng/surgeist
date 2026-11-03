@@ -1,7 +1,7 @@
 //! Local command/action content states. Targets and activation are separate.
 
 use super::*;
-use crate::internal::microsyntax::tokens::ascii_whitespace;
+use crate::internal::microsyntax::tokens::is_ascii_whitespace;
 
 keyword_type!(HtmlStandardCommand, Command, [
     /// The `toggle-popover` command: shows or hides the targeted popover element.
@@ -137,7 +137,7 @@ fn custom_boundary_whitespace(value: &DocumentString) -> bool {
     value
         .code_units()
         .last()
-        .is_some_and(|&unit| ascii_whitespace(unit))
+        .is_some_and(|&unit| is_ascii_whitespace(unit))
 }
 
 enum_rule!(COMMAND, HtmlCommandState, Command, Context::Elements(&[KnownHtmlElement::Button]), [28], "attr-button-command",

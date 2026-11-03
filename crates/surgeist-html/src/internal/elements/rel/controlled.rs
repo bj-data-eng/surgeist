@@ -3,7 +3,7 @@ use super::*;
 
 /// The explicit original operands, independent of captured-tree qualification.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RelInputs<'raw> {
+pub struct HtmlRelInputs<'raw> {
     pub(super) role: Option<HtmlRelRole>,
     pub(super) rel: Option<&'raw DocumentString>,
     pub(super) rev: Option<&'raw DocumentString>,
@@ -14,7 +14,7 @@ pub struct RelInputs<'raw> {
     pub(super) type_hint: Option<&'raw DocumentString>,
     pub(super) as_destination: Option<HtmlLinkDestination>,
 }
-impl<'raw> RelInputs<'raw> {
+impl<'raw> HtmlRelInputs<'raw> {
     /// Creates inputs for an element of `role`, with every operand absent. A `role` of `None` is an
     /// element that takes no `rel`; interpretation then reports no occurrences.
     pub fn new(role: Option<HtmlRelRole>) -> Self {
@@ -471,7 +471,7 @@ enum Phase {
 /// Owns all unpublished backing, even after a consumer stops inside a rule.
 #[derive(Debug)]
 pub struct HtmlRelInterpretation<'raw> {
-    inputs: RelInputs<'raw>,
+    inputs: HtmlRelInputs<'raw>,
     occurrences: Vec<HtmlRelOccurrence>,
     report: HtmlRelReport,
     phase: Phase,
@@ -479,7 +479,7 @@ pub struct HtmlRelInterpretation<'raw> {
 }
 impl<'raw> HtmlRelInterpretation<'raw> {
     /// Starts an interpretation over `inputs`. Nothing runs until `interpret`.
-    pub fn new(inputs: RelInputs<'raw>) -> Self {
+    pub fn new(inputs: HtmlRelInputs<'raw>) -> Self {
         Self {
             inputs,
             occurrences: Vec::new(),
@@ -520,7 +520,7 @@ impl<'raw> HtmlRelInterpretation<'raw> {
     }
     /// The inputs this interpretation was created from. Valid after `interpret` has started; before
     /// then it fails with the wrong-phase cause, and after a stop with the stopped cause.
-    pub fn inputs(&self) -> Result<&RelInputs<'raw>, HtmlRelInterpretationError> {
+    pub fn inputs(&self) -> Result<&HtmlRelInputs<'raw>, HtmlRelInterpretationError> {
         self.require(|p| !matches!(p, Phase::Initial))?;
         Ok(&self.inputs)
     }
@@ -631,7 +631,7 @@ impl<'raw> HtmlRelInterpretation<'raw> {
         self.phase = Phase::Stopped;
     }
     /// Gives the inputs back and discards all partial results.
-    pub fn abort(self) -> RelInputs<'raw> {
+    pub fn abort(self) -> HtmlRelInputs<'raw> {
         self.inputs
     }
     /// Takes the finished report out of `slot`. It succeeds when the interpretation is interpreted
@@ -682,7 +682,7 @@ pub fn rel_href_is_empty_or_ascii_whitespace_with<E>(
     let mut only_whitespace = true;
     for &unit in units {
         work(6)?;
-        only_whitespace &= super::ascii_whitespace(unit);
+        only_whitespace &= super::is_ascii_whitespace(unit);
     }
     Ok(only_whitespace)
 }

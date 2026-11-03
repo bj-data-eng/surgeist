@@ -102,7 +102,7 @@ pub enum HtmlNonceAttributeEffect<'a> {
 /// The most UTF-16 code units one nonce decision can inspect: three namespace URI literals of
 /// at most 40 units each, plus the five units of `nonce`. A length mismatch is rejected before
 /// any unit is read.
-pub const NONCE_INSPECTION_BOUND: usize = 3 * 40 + 5;
+pub const HTML_NONCE_INSPECTION_BOUND: usize = 3 * 40 + 5;
 fn exact(value: &DocumentString, literal: &[u8]) -> bool {
     value.len() == literal.len()
         && value
@@ -113,7 +113,7 @@ fn exact(value: &DocumentString, literal: &[u8]) -> bool {
 }
 /// Whether `name` is in the HTML, SVG or MathML namespace, the elements that implement the
 /// nonce mixin. Compares the exact expanded namespace URI, not the prefix.
-pub fn nonce_element(name: &(impl crate::HtmlNameInput + ?Sized)) -> bool {
+pub fn is_nonce_element(name: &(impl crate::HtmlNameInput + ?Sized)) -> bool {
     name.namespace_uri().is_some_and(|uri| {
         [
             HTML_NAMESPACE_URI.as_bytes(),
@@ -130,7 +130,7 @@ pub fn nonce_attribute_change<'a>(
     attribute: &(impl crate::HtmlNameInput + ?Sized),
     new_value: Option<&'a DocumentString>,
 ) -> HtmlNonceAttributeEffect<'a> {
-    if !nonce_element(element)
+    if !is_nonce_element(element)
         || attribute.namespace_uri().is_some()
         || !exact(attribute.local_name(), b"nonce")
     {
@@ -148,7 +148,7 @@ pub fn nonce_insertion_effect(
     connection: HtmlNonceConnection,
     policy: HtmlHeaderDeliveredCsp,
 ) -> HtmlNonceInsertionEffect {
-    if !nonce_element(element)
+    if !is_nonce_element(element)
         || content.is_none_or(DocumentString::is_empty)
         || connection == HtmlNonceConnection::NotBrowsingContextConnected
         || policy == HtmlHeaderDeliveredCsp::Absent

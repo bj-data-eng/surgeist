@@ -65,19 +65,19 @@ pub fn autocomplete_materialization_work_bound(input_code_units: usize) -> Optio
 /// Remaining session allowances. Fixed Arc wrappers and allocator internals are
 /// excluded; every variable Vec capacity is observed before its next write.
 #[derive(Clone, Copy, Debug)]
-pub struct AutocompleteMaterializationLimits {
+pub struct HtmlAutocompleteMaterializationLimits {
     pub(crate) allocated_bytes: usize,
     pub(crate) nested_output_records: usize,
     pub(crate) scratch_records: usize,
 }
 
 /// Storage a materialization actually took, in the same units as
-/// [`AutocompleteMaterializationLimits`].
+/// [`HtmlAutocompleteMaterializationLimits`].
 ///
 /// Growth is observed after each reservation and before it can be rejected, so the figures include
 /// any allocator overshoot.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct AutocompleteMaterializationUsage {
+pub struct HtmlAutocompleteMaterializationUsage {
     pub(crate) allocated_bytes: usize,
     pub(crate) nested_output_records: usize,
     pub(crate) peak_scratch_records: usize,
@@ -87,15 +87,15 @@ pub struct AutocompleteMaterializationUsage {
 ///
 /// Take the pair apart with `into_parts`, or read each half through `report` and `usage`.
 #[derive(Debug)]
-pub struct AutocompleteMaterialized {
+pub struct HtmlAutocompleteMaterialized {
     pub(crate) report: HtmlAutocompleteReport,
-    pub(crate) usage: AutocompleteMaterializationUsage,
+    pub(crate) usage: HtmlAutocompleteMaterializationUsage,
 }
 
 /// Why a controlled materialization stopped. Every variant ends the operation and discards its
 /// partial storage.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum AutocompleteMaterializationError {
+pub enum HtmlAutocompleteMaterializationError {
     /// The raw value was refused by the interpreter's per-value UTF-16 admission cap before any
     /// storage was taken. The cause is returned from `source`.
     RawAdmission(HtmlValueAdmissionError),
@@ -135,12 +135,12 @@ pub enum AutocompleteMaterializationError {
 /// The refusal carries recoverable values, so it is a carrier: `into_parts` hands back the cause
 /// and the usage.
 #[derive(Debug)]
-pub struct AutocompleteMaterializationFailure {
-    pub(crate) kind: AutocompleteMaterializationError,
-    pub(crate) usage: AutocompleteMaterializationUsage,
+pub struct HtmlAutocompleteMaterializationFailure {
+    pub(crate) kind: HtmlAutocompleteMaterializationError,
+    pub(crate) usage: HtmlAutocompleteMaterializationUsage,
 }
 
-impl AutocompleteMaterializationLimits {
+impl HtmlAutocompleteMaterializationLimits {
     /// Builds a set of allowances. A zero allowance admits no growth of that kind.
     pub const fn new(
         allocated_bytes: usize,
@@ -167,7 +167,7 @@ impl AutocompleteMaterializationLimits {
         self.scratch_records
     }
 }
-impl AutocompleteMaterializationUsage {
+impl HtmlAutocompleteMaterializationUsage {
     /// Returns the bytes of buffer growth observed so far, output and scratch together.
     pub const fn allocated_bytes(self) -> usize {
         self.allocated_bytes
@@ -181,41 +181,41 @@ impl AutocompleteMaterializationUsage {
         self.peak_scratch_records
     }
 }
-impl AutocompleteMaterialized {
+impl HtmlAutocompleteMaterialized {
     /// Returns the materialized report.
     pub fn report(&self) -> &HtmlAutocompleteReport {
         &self.report
     }
     /// Returns the storage the materialization took.
-    pub const fn usage(&self) -> AutocompleteMaterializationUsage {
+    pub const fn usage(&self) -> HtmlAutocompleteMaterializationUsage {
         self.usage
     }
     /// Splits the result into the report and its usage.
-    pub fn into_parts(self) -> (HtmlAutocompleteReport, AutocompleteMaterializationUsage) {
+    pub fn into_parts(self) -> (HtmlAutocompleteReport, HtmlAutocompleteMaterializationUsage) {
         (self.report, self.usage)
     }
 }
-impl AutocompleteMaterializationFailure {
+impl HtmlAutocompleteMaterializationFailure {
     /// Returns why the materialization stopped.
-    pub const fn kind(&self) -> AutocompleteMaterializationError {
+    pub const fn kind(&self) -> HtmlAutocompleteMaterializationError {
         self.kind
     }
     /// Returns the storage taken before the materialization stopped, including growth that was
     /// rejected after being observed.
-    pub const fn usage(&self) -> AutocompleteMaterializationUsage {
+    pub const fn usage(&self) -> HtmlAutocompleteMaterializationUsage {
         self.usage
     }
     /// Splits the failure into its cause and usage.
     pub fn into_parts(
         self,
     ) -> (
-        AutocompleteMaterializationError,
-        AutocompleteMaterializationUsage,
+        HtmlAutocompleteMaterializationError,
+        HtmlAutocompleteMaterializationUsage,
     ) {
         (self.kind, self.usage)
     }
 }
-impl fmt::Display for AutocompleteMaterializationError {
+impl fmt::Display for HtmlAutocompleteMaterializationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::RawAdmission(_) => {
@@ -243,12 +243,12 @@ impl fmt::Display for AutocompleteMaterializationError {
         }
     }
 }
-impl From<HtmlValueAdmissionError> for AutocompleteMaterializationError {
+impl From<HtmlValueAdmissionError> for HtmlAutocompleteMaterializationError {
     fn from(error: HtmlValueAdmissionError) -> Self {
         Self::RawAdmission(error)
     }
 }
-impl Error for AutocompleteMaterializationError {
+impl Error for HtmlAutocompleteMaterializationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::RawAdmission(error) => Some(error),
@@ -256,12 +256,12 @@ impl Error for AutocompleteMaterializationError {
         }
     }
 }
-impl fmt::Display for AutocompleteMaterializationFailure {
+impl fmt::Display for HtmlAutocompleteMaterializationFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("autocomplete materialization failed")
     }
 }
-impl Error for AutocompleteMaterializationFailure {
+impl Error for HtmlAutocompleteMaterializationFailure {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         Some(&self.kind)
     }
@@ -276,16 +276,16 @@ enum StoragePurpose {
 /// One reservation owner used by both interpreter front doors. Standalone
 /// retains its ordinary infallible allocation contract, not a resource cap.
 struct Materialization {
-    limits: Option<AutocompleteMaterializationLimits>,
-    usage: AutocompleteMaterializationUsage,
+    limits: Option<HtmlAutocompleteMaterializationLimits>,
+    usage: HtmlAutocompleteMaterializationUsage,
     scratch: usize,
 }
 
 impl Materialization {
-    fn new(limits: Option<AutocompleteMaterializationLimits>) -> Self {
+    fn new(limits: Option<HtmlAutocompleteMaterializationLimits>) -> Self {
         Self {
             limits,
-            usage: AutocompleteMaterializationUsage::default(),
+            usage: HtmlAutocompleteMaterializationUsage::default(),
             scratch: 0,
         }
     }
@@ -295,8 +295,8 @@ impl Materialization {
         values: &mut Vec<T>,
         additional: usize,
         purpose: StoragePurpose,
-    ) -> Result<(), AutocompleteMaterializationError> {
-        use AutocompleteMaterializationError as E;
+    ) -> Result<(), HtmlAutocompleteMaterializationError> {
+        use HtmlAutocompleteMaterializationError as E;
         let needed = values
             .len()
             .checked_add(additional)
@@ -337,8 +337,8 @@ impl Materialization {
         growth: usize,
         bytes: usize,
         purpose: StoragePurpose,
-    ) -> Result<(), AutocompleteMaterializationError> {
-        use AutocompleteMaterializationError as E;
+    ) -> Result<(), HtmlAutocompleteMaterializationError> {
+        use HtmlAutocompleteMaterializationError as E;
         let bytes = self
             .usage
             .allocated_bytes
@@ -381,8 +381,8 @@ impl Materialization {
         growth: usize,
         item_bytes: usize,
         purpose: StoragePurpose,
-    ) -> Result<(), AutocompleteMaterializationError> {
-        use AutocompleteMaterializationError as E;
+    ) -> Result<(), HtmlAutocompleteMaterializationError> {
+        use HtmlAutocompleteMaterializationError as E;
         self.usage.allocated_bytes = growth
             .checked_mul(item_bytes)
             .and_then(|bytes| self.usage.allocated_bytes.checked_add(bytes))
@@ -408,7 +408,7 @@ impl Materialization {
         &mut self,
         units: &[u16],
         lowercase: bool,
-    ) -> Result<DocumentString, AutocompleteMaterializationError> {
+    ) -> Result<DocumentString, HtmlAutocompleteMaterializationError> {
         let mut output = Vec::new();
         self.reserve(&mut output, units.len(), StoragePurpose::Output)?;
         output.extend(units.iter().map(|&unit| {
@@ -424,7 +424,7 @@ impl Materialization {
     fn keyword(
         &mut self,
         keyword: &'static str,
-    ) -> Result<DocumentString, AutocompleteMaterializationError> {
+    ) -> Result<DocumentString, HtmlAutocompleteMaterializationError> {
         let mut output = Vec::new();
         self.reserve(&mut output, keyword.len(), StoragePurpose::Output)?;
         output.extend(keyword.bytes().map(u16::from));
@@ -434,7 +434,7 @@ impl Materialization {
     fn tokens(
         &mut self,
         input: &DocumentString,
-    ) -> Result<HtmlSpaceSeparatedTokens, AutocompleteMaterializationError> {
+    ) -> Result<HtmlSpaceSeparatedTokens, HtmlAutocompleteMaterializationError> {
         let slices = crate::internal::microsyntax::tokens::space_token_slices(input);
         let mut tokens = Vec::new();
         self.reserve(&mut tokens, slices.clone().count(), StoragePurpose::Output)?;
@@ -452,7 +452,7 @@ impl Materialization {
         tokens: &mut Vec<HtmlSpaceToken>,
         token: HtmlSpaceToken,
         purpose: StoragePurpose,
-    ) -> Result<(), AutocompleteMaterializationError> {
+    ) -> Result<(), HtmlAutocompleteMaterializationError> {
         self.reserve(tokens, 1, purpose)?;
         tokens.insert(0, token);
         Ok(())
@@ -461,13 +461,13 @@ impl Materialization {
     fn idl(
         &mut self,
         tokens: &[HtmlSpaceToken],
-    ) -> Result<DocumentString, AutocompleteMaterializationError> {
+    ) -> Result<DocumentString, HtmlAutocompleteMaterializationError> {
         let units = tokens
             .iter()
             .try_fold(tokens.len().saturating_sub(1), |length, token| {
                 length.checked_add(token.value().len())
             })
-            .ok_or(AutocompleteMaterializationError::Representation)?;
+            .ok_or(HtmlAutocompleteMaterializationError::Representation)?;
         let mut output = Vec::new();
         self.reserve(&mut output, units, StoragePurpose::Output)?;
         for (index, token) in tokens.iter().enumerate() {
@@ -1484,7 +1484,7 @@ fn process(
     tokens: Option<&HtmlSpaceSeparatedTokens>,
     mantle: HtmlAutocompleteMantle,
     storage: &mut Materialization,
-) -> Result<HtmlAutocompleteProcessingState, AutocompleteMaterializationError> {
+) -> Result<HtmlAutocompleteProcessingState, HtmlAutocompleteMaterializationError> {
     // All temporary IDL handle storage is local to process_inner, including its
     // failure/default paths. Drop it before releasing current scratch accounting.
     let result = process_inner(tokens, mantle, storage);
@@ -1496,7 +1496,7 @@ fn process_inner(
     tokens: Option<&HtmlSpaceSeparatedTokens>,
     mantle: HtmlAutocompleteMantle,
     storage: &mut Materialization,
-) -> Result<HtmlAutocompleteProcessingState, AutocompleteMaterializationError> {
+) -> Result<HtmlAutocompleteProcessingState, HtmlAutocompleteMaterializationError> {
     use HtmlAutocompleteDefaultReason as D;
     let Some(tokens) = tokens else {
         return Ok(default_state(mantle, D::MissingAttribute));
@@ -1614,7 +1614,7 @@ impl ProcessingOutput {
     fn finish(
         self,
         storage: &mut Materialization,
-    ) -> Result<HtmlAutocompleteProcessingState, AutocompleteMaterializationError> {
+    ) -> Result<HtmlAutocompleteProcessingState, HtmlAutocompleteMaterializationError> {
         let idl_value = storage.idl(&self.idl)?;
         Ok(HtmlAutocompleteProcessingState::Processed(
             HtmlAutocompleteProcessed {
@@ -1661,7 +1661,7 @@ impl HtmlValueInterpreter {
             self.materialize_autocomplete(element, raw, state, &mut Materialization::new(None));
         match result {
             Ok(report) => Ok(report),
-            Err(AutocompleteMaterializationError::RawAdmission(error)) => Err(error),
+            Err(HtmlAutocompleteMaterializationError::RawAdmission(error)) => Err(error),
             // Standalone has no allocation-limit result contract. Its ordinary
             // reserve policy already panics/aborts on representation/allocation
             // failure, as the previous infallible materialization did.
@@ -1679,17 +1679,17 @@ impl HtmlValueInterpreter {
         element: &(impl crate::HtmlNameInput + ?Sized),
         raw: Option<&impl crate::HtmlAttributeInput>,
         state: Option<HtmlInputType>,
-        limits: AutocompleteMaterializationLimits,
-    ) -> Result<AutocompleteMaterialized, AutocompleteMaterializationFailure> {
+        limits: HtmlAutocompleteMaterializationLimits,
+    ) -> Result<HtmlAutocompleteMaterialized, HtmlAutocompleteMaterializationFailure> {
         let mut storage = Materialization::new(Some(limits));
         let result = self.materialize_autocomplete(element, raw, state, &mut storage);
         debug_assert_eq!(storage.scratch, 0);
         result
-            .map(|report| AutocompleteMaterialized {
+            .map(|report| HtmlAutocompleteMaterialized {
                 report,
                 usage: storage.usage,
             })
-            .map_err(|kind| AutocompleteMaterializationFailure {
+            .map_err(|kind| HtmlAutocompleteMaterializationFailure {
                 kind,
                 usage: storage.usage,
             })
@@ -1701,7 +1701,7 @@ impl HtmlValueInterpreter {
         raw: Option<&impl crate::HtmlAttributeInput>,
         state: Option<HtmlInputType>,
         storage: &mut Materialization,
-    ) -> Result<HtmlAutocompleteReport, AutocompleteMaterializationError> {
+    ) -> Result<HtmlAutocompleteReport, HtmlAutocompleteMaterializationError> {
         self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let mut input = report(RULE, element, raw);
         if let Some(state) = state {
@@ -1759,8 +1759,8 @@ impl HtmlValueInterpreter {
 mod controlled_tests {
     use super::*;
 
-    fn limits() -> AutocompleteMaterializationLimits {
-        AutocompleteMaterializationLimits {
+    fn limits() -> HtmlAutocompleteMaterializationLimits {
+        HtmlAutocompleteMaterializationLimits {
             allocated_bytes: usize::MAX,
             nested_output_records: usize::MAX,
             scratch_records: usize::MAX,
@@ -1784,8 +1784,8 @@ mod controlled_tests {
     }
     fn controlled(
         value: &str,
-        limits: AutocompleteMaterializationLimits,
-    ) -> Result<AutocompleteMaterialized, AutocompleteMaterializationFailure> {
+        limits: HtmlAutocompleteMaterializationLimits,
+    ) -> Result<HtmlAutocompleteMaterialized, HtmlAutocompleteMaterializationFailure> {
         HtmlValueInterpreter::new(200).control_autocomplete_controlled(
             &KnownHtmlElement::Textarea.qualified_name(),
             Some(&raw(value)),
@@ -1883,7 +1883,7 @@ mod controlled_tests {
         // units and 36 final IDL units. IDL needs five simultaneous handles.
         assert!(initial.usage.nested_output_records >= 97);
         assert!(initial.usage.peak_scratch_records >= 5);
-        let exact = AutocompleteMaterializationLimits {
+        let exact = HtmlAutocompleteMaterializationLimits {
             allocated_bytes: initial.usage.allocated_bytes,
             nested_output_records: initial.usage.nested_output_records,
             scratch_records: initial.usage.peak_scratch_records,
@@ -1893,7 +1893,7 @@ mod controlled_tests {
         assert_eq!(repeated.report, initial.report);
         let error = controlled(
             value,
-            AutocompleteMaterializationLimits {
+            HtmlAutocompleteMaterializationLimits {
                 allocated_bytes: exact.allocated_bytes - 1,
                 ..exact
             },
@@ -1901,7 +1901,7 @@ mod controlled_tests {
         .unwrap_err();
         assert_eq!(
             error.kind,
-            AutocompleteMaterializationError::BytesLimit {
+            HtmlAutocompleteMaterializationError::BytesLimit {
                 limit: exact.allocated_bytes - 1,
                 required: exact.allocated_bytes
             }
@@ -1909,7 +1909,7 @@ mod controlled_tests {
         assert!(error.usage.allocated_bytes > 0);
         let error = controlled(
             value,
-            AutocompleteMaterializationLimits {
+            HtmlAutocompleteMaterializationLimits {
                 nested_output_records: exact.nested_output_records - 1,
                 ..exact
             },
@@ -1917,14 +1917,14 @@ mod controlled_tests {
         .unwrap_err();
         assert_eq!(
             error.kind,
-            AutocompleteMaterializationError::OutputLimit {
+            HtmlAutocompleteMaterializationError::OutputLimit {
                 limit: exact.nested_output_records - 1,
                 required: exact.nested_output_records
             }
         );
         let error = controlled(
             value,
-            AutocompleteMaterializationLimits {
+            HtmlAutocompleteMaterializationLimits {
                 scratch_records: exact.scratch_records - 1,
                 ..exact
             },
@@ -1932,7 +1932,7 @@ mod controlled_tests {
         .unwrap_err();
         assert_eq!(
             error.kind,
-            AutocompleteMaterializationError::ScratchLimit {
+            HtmlAutocompleteMaterializationError::ScratchLimit {
                 limit: exact.scratch_records - 1,
                 required: exact.scratch_records
             }
@@ -1944,7 +1944,7 @@ mod controlled_tests {
     fn failed_and_discarded_intermediates_retain_observed_usage() {
         let error = controlled(
             "name",
-            AutocompleteMaterializationLimits {
+            HtmlAutocompleteMaterializationLimits {
                 scratch_records: 0,
                 ..limits()
             },
@@ -1952,7 +1952,7 @@ mod controlled_tests {
         .unwrap_err();
         assert_eq!(
             error.kind,
-            AutocompleteMaterializationError::ScratchLimit {
+            HtmlAutocompleteMaterializationError::ScratchLimit {
                 limit: 0,
                 required: 1
             }
@@ -1992,7 +1992,7 @@ mod controlled_tests {
 
     #[test]
     fn allocator_overshoot_is_observed_before_resource_rejection() {
-        let mut storage = Materialization::new(Some(AutocompleteMaterializationLimits {
+        let mut storage = Materialization::new(Some(HtmlAutocompleteMaterializationLimits {
             allocated_bytes: 8,
             nested_output_records: 4,
             scratch_records: 4,
@@ -2000,20 +2000,20 @@ mod controlled_tests {
         storage.check_growth(4, 8, StoragePurpose::Output).unwrap();
         assert_eq!(
             storage.observe_growth(5, 2, StoragePurpose::Output),
-            Err(AutocompleteMaterializationError::BytesLimit {
+            Err(HtmlAutocompleteMaterializationError::BytesLimit {
                 limit: 8,
                 required: 10
             })
         );
         assert_eq!(storage.usage.allocated_bytes, 10);
         assert_eq!(storage.usage.nested_output_records, 5);
-        let mut storage = Materialization::new(Some(AutocompleteMaterializationLimits {
+        let mut storage = Materialization::new(Some(HtmlAutocompleteMaterializationLimits {
             scratch_records: 4,
             ..limits()
         }));
         assert_eq!(
             storage.observe_growth(5, 8, StoragePurpose::Scratch),
-            Err(AutocompleteMaterializationError::ScratchLimit {
+            Err(HtmlAutocompleteMaterializationError::ScratchLimit {
                 limit: 4,
                 required: 5
             })
@@ -2024,7 +2024,7 @@ mod controlled_tests {
 
     #[test]
     fn admission_precedes_irrelevant_context_and_zero_storage_is_valid_when_unused() {
-        let zero = AutocompleteMaterializationLimits {
+        let zero = HtmlAutocompleteMaterializationLimits {
             allocated_bytes: 0,
             nested_output_records: 0,
             scratch_records: 0,
@@ -2036,9 +2036,9 @@ mod controlled_tests {
             .unwrap_err();
         assert!(matches!(
             error.kind,
-            AutocompleteMaterializationError::RawAdmission(_)
+            HtmlAutocompleteMaterializationError::RawAdmission(_)
         ));
-        assert_eq!(error.usage, AutocompleteMaterializationUsage::default());
+        assert_eq!(error.usage, HtmlAutocompleteMaterializationUsage::default());
         let result = HtmlValueInterpreter::new(4)
             .control_autocomplete_controlled(&foreign, Some(&raw), None, zero)
             .unwrap();
@@ -2046,7 +2046,10 @@ mod controlled_tests {
             result.report.applicability(),
             HtmlAttributeApplicability::ForeignElementNamespace
         );
-        assert_eq!(result.usage, AutocompleteMaterializationUsage::default());
+        assert_eq!(
+            result.usage,
+            HtmlAutocompleteMaterializationUsage::default()
+        );
         let result = HtmlValueInterpreter::new(0)
             .control_autocomplete_controlled(
                 &KnownHtmlElement::Input.qualified_name(),
@@ -2063,7 +2066,10 @@ mod controlled_tests {
             HtmlAutocompleteDefaultReason::MissingAttribute,
             HtmlAutocompleteDefaultField::Empty,
         );
-        assert_eq!(result.usage, AutocompleteMaterializationUsage::default());
+        assert_eq!(
+            result.usage,
+            HtmlAutocompleteMaterializationUsage::default()
+        );
     }
 
     #[test]
@@ -2071,9 +2077,12 @@ mod controlled_tests {
         let mut storage = Materialization::new(Some(limits()));
         assert_eq!(
             storage.reserve(&mut Vec::<u16>::new(), usize::MAX, StoragePurpose::Output),
-            Err(AutocompleteMaterializationError::Representation)
+            Err(HtmlAutocompleteMaterializationError::Representation)
         );
-        assert_eq!(storage.usage, AutocompleteMaterializationUsage::default());
+        assert_eq!(
+            storage.usage,
+            HtmlAutocompleteMaterializationUsage::default()
+        );
         assert!(autocomplete_materialization_work_bound(0).unwrap() > 0);
         assert_eq!(
             autocomplete_materialization_work_bound(1).unwrap()

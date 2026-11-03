@@ -4,7 +4,7 @@
 //! recorded by this crate's NOTICE. This is not MIME parsing or author validation.
 
 use crate::DocumentString;
-use crate::internal::microsyntax::tokens::{ascii_case_insensitive_unit, ascii_whitespace};
+use crate::internal::microsyntax::tokens::{ascii_case_insensitive_unit, is_ascii_whitespace};
 
 /// A script kind selected by HTML's type/language classification step.
 /// This value alone does not establish preparation, saved metadata or execution.
@@ -239,14 +239,14 @@ impl<'a> Scan<'a> {
             }
             Stage::Match(matcher) => matcher.advance(),
             Stage::TrimStart => {
-                if ascii_whitespace(self.value.code_units()[self.start]) {
+                if is_ascii_whitespace(self.value.code_units()[self.start]) {
                     self.start += 1;
                 } else {
                     self.stage = Stage::TrimEnd;
                 }
             }
             Stage::TrimEnd => {
-                if ascii_whitespace(self.value.code_units()[self.end - 1]) {
+                if is_ascii_whitespace(self.value.code_units()[self.end - 1]) {
                     self.end -= 1;
                 } else {
                     self.pass = Pass::TrimmedEssences;

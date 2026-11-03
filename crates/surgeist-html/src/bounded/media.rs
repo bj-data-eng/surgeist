@@ -4,4 +4,4 @@ pub use crate::internal::attributes::media::controlled::{
     HtmlMediaInterpretation, HtmlMediaInterpretationError, HtmlMediaNameSupply, match_media_field,
     media_field_matches,
 };
-pub use crate::internal::elements::media::theme::ThemeColorNameCursor;
+pub use crate::internal::elements::media::theme::HtmlThemeColorNameCursor;

@@ -5,7 +5,9 @@
 //! occurs here. Mantissa congruences are evaluated in each representability
 //! band; the only multiplication is bounded u64 x u64 -> u128.
 
-use super::{RangeNumericError, RangeNumericLayout, RangeNumericReply, RangeNumericRequest};
+use super::{
+    HtmlRangeNumericError, HtmlRangeNumericLayout, HtmlRangeNumericReply, HtmlRangeNumericRequest,
+};
 
 const FRACTION: u64 = (1_u64 << 52) - 1;
 const HIDDEN: u64 = 1_u64 << 52;
@@ -55,7 +57,7 @@ impl Dyadic {
 /// mantissas at one binary position; the receiver never owns a bigint.
 #[derive(Clone, Copy, Debug)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
-pub struct RangeMidpointCursor {
+pub struct HtmlRangeMidpointCursor {
     first: Dyadic,
     second: Dyadic,
     subtract: bool,
@@ -68,14 +70,14 @@ pub struct RangeMidpointCursor {
     selected_sticky: bool,
     result: Option<u64>,
 }
-impl RangeMidpointCursor {
+impl HtmlRangeMidpointCursor {
     /// Starts the midpoint of two finite binary64 values given as raw IEEE 754 bits, in either
     /// order. A non-finite operand is an `Integrity` error.
-    pub fn new(minimum: u64, maximum: u64) -> Result<Self, RangeNumericError> {
+    pub fn new(minimum: u64, maximum: u64) -> Result<Self, HtmlRangeNumericError> {
         let a = f64::from_bits(minimum);
         let b = f64::from_bits(maximum);
         if !a.is_finite() || !b.is_finite() {
-            return Err(RangeNumericError::Integrity);
+            return Err(HtmlRangeNumericError::Integrity);
         }
         let (first, second) = if minimum & !SIGN >= maximum & !SIGN {
             (Dyadic::from_bits(minimum), Dyadic::from_bits(maximum))
@@ -98,10 +100,10 @@ impl RangeMidpointCursor {
     }
     /// A `ScalarStep` request while the cursor is running, or `None` once it has finished. It needs
     /// no storage, so every request is answered with `Ack`.
-    pub fn request(&self) -> Option<RangeNumericRequest> {
+    pub fn request(&self) -> Option<HtmlRangeNumericRequest> {
         self.result
             .is_none()
-            .then_some(RangeNumericRequest::ScalarStep)
+            .then_some(HtmlRangeNumericRequest::ScalarStep)
     }
     /// Once the cursor has finished, the raw bits of the exact midpoint, rounded to nearest with
     /// ties to even. `None` while it is running.
@@ -110,9 +112,9 @@ impl RangeMidpointCursor {
     }
     /// Accepts `Ack` for the pending step and advances. Any other reply, or a reply after the
     /// cursor has finished, is an `Integrity` error and leaves the cursor unchanged.
-    pub fn reply(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
-        if self.result.is_some() || !matches!(reply, RangeNumericReply::Ack) {
-            return Err(RangeNumericError::Integrity);
+    pub fn reply(&mut self, reply: HtmlRangeNumericReply) -> Result<(), HtmlRangeNumericError> {
+        if self.result.is_some() || !matches!(reply, HtmlRangeNumericReply::Ack) {
+            return Err(HtmlRangeNumericError::Integrity);
         }
         let mut next = *self;
         if next.position <= 1024 {
@@ -143,7 +145,7 @@ impl RangeMidpointCursor {
             next.position += 1;
         } else {
             if next.carry != 0 {
-                return Err(RangeNumericError::Integrity);
+                return Err(HtmlRangeNumericError::Integrity);
             }
             next.result = Some(match next.highest {
                 None => 0,
@@ -259,7 +261,7 @@ enum Phase {
 /// transition before each Ack; no request can read a source/scratch cell.
 #[derive(Clone, Copy, Debug)]
 #[cfg_attr(test, derive(Eq, PartialEq))]
-pub struct RangeLatticeCursor {
+pub struct HtmlRangeLatticeCursor {
     current: u64,
     minimum: u64,
     maximum: Option<u64>,
@@ -288,7 +290,7 @@ pub struct RangeLatticeCursor {
     comparison: Option<DistanceComparison>,
     result: Option<Option<u64>>,
 }
-impl RangeLatticeCursor {
+impl HtmlRangeLatticeCursor {
     /// Starts the search for the member of the lattice `base + k * step`, for whole `k`, that is
     /// nearest to `current` within `minimum` and `maximum`. All values are raw IEEE 754 binary64
     /// bits. Every value must be finite, `step` positive, and `maximum`, when present, not below
@@ -299,7 +301,7 @@ impl RangeLatticeCursor {
         maximum: Option<u64>,
         base: u64,
         step: u64,
-    ) -> Result<Self, RangeNumericError> {
+    ) -> Result<Self, HtmlRangeNumericError> {
         if !f64::from_bits(current).is_finite()
             || !f64::from_bits(minimum).is_finite()
             || maximum.is_some_and(|v| !f64::from_bits(v).is_finite())
@@ -308,7 +310,7 @@ impl RangeLatticeCursor {
             || f64::from_bits(step) <= 0.0
             || maximum.is_some_and(|v| f64::from_bits(v) < f64::from_bits(minimum))
         {
-            return Err(RangeNumericError::Integrity);
+            return Err(HtmlRangeNumericError::Integrity);
         }
         let base = Dyadic::from_bits(base).odd();
         let step = Dyadic::from_bits(step).odd();
@@ -351,8 +353,8 @@ impl RangeLatticeCursor {
 
     /// A `ScalarStep` request while the cursor is running, or `None` once it has finished. It needs
     /// no storage, so every request is answered with `Ack`.
-    pub fn request(&self) -> Option<RangeNumericRequest> {
-        (self.phase != Phase::Done).then_some(RangeNumericRequest::ScalarStep)
+    pub fn request(&self) -> Option<HtmlRangeNumericRequest> {
+        (self.phase != Phase::Done).then_some(HtmlRangeNumericRequest::ScalarStep)
     }
 
     /// While running, `None`. Once finished, `Some(None)` when no lattice member exists in the
@@ -365,9 +367,9 @@ impl RangeLatticeCursor {
 
     /// Accepts `Ack` for the pending step and advances. Any other reply, or a reply after the
     /// cursor has finished, is an `Integrity` error and leaves the cursor unchanged.
-    pub fn reply(&mut self, reply: RangeNumericReply) -> Result<(), RangeNumericError> {
-        if self.phase == Phase::Done || !matches!(reply, RangeNumericReply::Ack) {
-            return Err(RangeNumericError::Integrity);
+    pub fn reply(&mut self, reply: HtmlRangeNumericReply) -> Result<(), HtmlRangeNumericError> {
+        if self.phase == Phase::Done || !matches!(reply, HtmlRangeNumericReply::Ack) {
+            return Err(HtmlRangeNumericError::Integrity);
         }
         // Ticket-free actual fixed receiver; a rejected reply never commits.
         let mut next = *self;
@@ -380,7 +382,7 @@ impl RangeLatticeCursor {
         ((u128::from(a) * u128::from(b)) % u128::from(modulus)) as u64
     }
 
-    fn advance(&mut self) -> Result<(), RangeNumericError> {
+    fn advance(&mut self) -> Result<(), HtmlRangeNumericError> {
         match self.phase {
             Phase::BasePower => {
                 if self.power_exponent != 0 {
@@ -427,7 +429,7 @@ impl RangeLatticeCursor {
             }
             Phase::Compare => {
                 let Some(comparison) = &mut self.comparison else {
-                    return Err(RangeNumericError::Integrity);
+                    return Err(HtmlRangeNumericError::Integrity);
                 };
                 if let Some(order) = comparison.advance() {
                     self.finish(if order == std::cmp::Ordering::Less {
@@ -437,7 +439,7 @@ impl RangeLatticeCursor {
                     });
                 }
             }
-            Phase::Done => return Err(RangeNumericError::Integrity),
+            Phase::Done => return Err(HtmlRangeNumericError::Integrity),
         }
         Ok(())
     }
@@ -648,19 +650,19 @@ impl RangeLatticeCursor {
     }
 }
 
-impl RangeMidpointCursor {
+impl HtmlRangeMidpointCursor {
     /// The fixed state and message sizes of this cursor.
-    pub const fn layout() -> RangeNumericLayout {
-        RangeNumericLayout {
+    pub const fn layout() -> HtmlRangeNumericLayout {
+        HtmlRangeNumericLayout {
             registers: size_of::<Self>(),
         }
     }
 }
 
-impl RangeLatticeCursor {
+impl HtmlRangeLatticeCursor {
     /// The fixed state and message sizes of this cursor.
-    pub const fn layout() -> RangeNumericLayout {
-        RangeNumericLayout {
+    pub const fn layout() -> HtmlRangeNumericLayout {
+        HtmlRangeNumericLayout {
             registers: size_of::<Self>(),
         }
     }
@@ -670,10 +672,10 @@ impl RangeLatticeCursor {
 mod midpoint_tests {
     use super::*;
     fn midpoint(a: f64, b: f64) -> f64 {
-        let mut cursor = RangeMidpointCursor::new(a.to_bits(), b.to_bits()).unwrap();
+        let mut cursor = HtmlRangeMidpointCursor::new(a.to_bits(), b.to_bits()).unwrap();
         let mut actions = 0;
         while cursor.request().is_some() {
-            cursor.reply(RangeNumericReply::Ack).unwrap();
+            cursor.reply(HtmlRangeNumericReply::Ack).unwrap();
             actions += 1;
             assert!(actions <= 2101);
         }
@@ -703,14 +705,14 @@ mod midpoint_tests {
     }
     #[test]
     fn mismatched_reply_preserves_cached_action_and_finite_result() {
-        let mut cursor = RangeMidpointCursor::new(0, 100.0f64.to_bits()).unwrap();
-        assert!(cursor.reply(RangeNumericReply::Unit(0)).is_err());
+        let mut cursor = HtmlRangeMidpointCursor::new(0, 100.0f64.to_bits()).unwrap();
+        assert!(cursor.reply(HtmlRangeNumericReply::Unit(0)).is_err());
         assert!(matches!(
             cursor.request(),
-            Some(RangeNumericRequest::ScalarStep)
+            Some(HtmlRangeNumericRequest::ScalarStep)
         ));
         while cursor.request().is_some() {
-            cursor.reply(RangeNumericReply::Ack).unwrap();
+            cursor.reply(HtmlRangeNumericReply::Ack).unwrap();
         }
         assert_eq!(cursor.result(), Some(50.0f64.to_bits()));
     }
@@ -721,7 +723,7 @@ mod tests {
     use super::*;
 
     fn choose(current: f64, min: f64, max: Option<f64>, base: f64, step: f64) -> Option<f64> {
-        let mut cursor = RangeLatticeCursor::new(
+        let mut cursor = HtmlRangeLatticeCursor::new(
             current.to_bits(),
             min.to_bits(),
             max.map(f64::to_bits),
@@ -731,7 +733,7 @@ mod tests {
         .unwrap();
         let mut actions = 0;
         while cursor.request().is_some() {
-            cursor.reply(RangeNumericReply::Ack).unwrap();
+            cursor.reply(HtmlRangeNumericReply::Ack).unwrap();
             actions += 1;
             assert!(actions < 100_000, "finite format bounds scalar transitions");
         }
@@ -786,26 +788,26 @@ mod tests {
     #[test]
     fn invalid_request_reply_and_nonfinite_inputs_never_advance() {
         assert_eq!(
-            RangeLatticeCursor::new(f64::INFINITY.to_bits(), 0, None, 0, 1.0f64.to_bits()),
-            Err(RangeNumericError::Integrity)
+            HtmlRangeLatticeCursor::new(f64::INFINITY.to_bits(), 0, None, 0, 1.0f64.to_bits()),
+            Err(HtmlRangeNumericError::Integrity)
         );
         assert_eq!(
-            RangeLatticeCursor::new(0, 0, None, 0, 0),
-            Err(RangeNumericError::Integrity)
+            HtmlRangeLatticeCursor::new(0, 0, None, 0, 0),
+            Err(HtmlRangeNumericError::Integrity)
         );
-        let mut cursor = RangeLatticeCursor::new(0, 0, None, 0, 1.0f64.to_bits()).unwrap();
+        let mut cursor = HtmlRangeLatticeCursor::new(0, 0, None, 0, 1.0f64.to_bits()).unwrap();
         let before = cursor;
         assert_eq!(
-            cursor.reply(RangeNumericReply::Unit(0)),
-            Err(RangeNumericError::Integrity)
+            cursor.reply(HtmlRangeNumericReply::Unit(0)),
+            Err(HtmlRangeNumericError::Integrity)
         );
         assert_eq!(cursor, before);
         while cursor.request().is_some() {
-            cursor.reply(RangeNumericReply::Ack).unwrap();
+            cursor.reply(HtmlRangeNumericReply::Ack).unwrap();
         }
         assert_eq!(
-            cursor.reply(RangeNumericReply::Ack),
-            Err(RangeNumericError::Integrity)
+            cursor.reply(HtmlRangeNumericReply::Ack),
+            Err(HtmlRangeNumericError::Integrity)
         );
     }
 }

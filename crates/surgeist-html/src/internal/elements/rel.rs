@@ -1,8 +1,8 @@
 //! HTML877d link-type interpretation. Resource execution belongs to consumers.
 
 use crate::internal::microsyntax::tokens::{
-    SpaceTokenCursor, SpaceTokenStep, ascii_case_insensitive_unit, ascii_lowercase,
-    ascii_whitespace,
+    HtmlSpaceTokenCursor, HtmlSpaceTokenStep, ascii_case_insensitive_unit, ascii_lowercase,
+    is_ascii_whitespace,
 };
 pub(crate) mod controlled;
 use crate::internal::values::semantic_input::{attributes_iter, find_attribute};
@@ -11,7 +11,7 @@ use crate::{
     KnownHtmlElement,
 };
 use crate::{HtmlAttributeInput, HtmlNameInput};
-use controlled::RelInputs;
+use controlled::HtmlRelInputs;
 
 /// HTML877d's historical flag, owned by the actual constructed link record.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -742,7 +742,7 @@ fn classify<C: RelMeter>(
     ))
 }
 fn interpret<C: RelMeter>(
-    input: &RelInputs<'_>,
+    input: &HtmlRelInputs<'_>,
     occurrences: &mut Vec<HtmlRelOccurrence>,
     data: &mut Vec<RelData>,
     m: &mut C,
@@ -751,18 +751,18 @@ fn interpret<C: RelMeter>(
     if input.role.is_some()
         && let Some(raw) = input.rel
     {
-        m.work(SpaceTokenCursor::BEGIN_WORK)?;
-        let mut cursor = SpaceTokenCursor::new(raw.code_units());
+        m.work(HtmlSpaceTokenCursor::BEGIN_WORK)?;
+        let mut cursor = HtmlSpaceTokenCursor::new(raw.code_units());
         loop {
             m.work(1)?;
             if cursor.inspects_unit() {
                 m.work(1)?;
             }
-            m.work(SpaceTokenCursor::STEP_WORK)?;
+            m.work(HtmlSpaceTokenCursor::STEP_WORK)?;
             match cursor.step() {
-                SpaceTokenStep::Continue => {}
-                SpaceTokenStep::Done => break,
-                SpaceTokenStep::Token { start, end } => {
+                HtmlSpaceTokenStep::Continue => {}
+                HtmlSpaceTokenStep::Done => break,
+                HtmlSpaceTokenStep::Token { start, end } => {
                     let units = &raw.code_units()[start..end];
                     let (keyword, mut spelling) = classify(units, m)?;
                     if spelling == HtmlRelSpelling::InvalidShortcut
@@ -859,7 +859,7 @@ fn interpret<C: RelMeter>(
 }
 fn refresh<C: RelMeter>(
     report: &mut HtmlRelReport,
-    input: &RelInputs<'_>,
+    input: &HtmlRelInputs<'_>,
     m: &mut C,
 ) -> Result<(), C::Error> {
     let data = &mut report.data[0];
@@ -875,7 +875,7 @@ fn refresh<C: RelMeter>(
     Ok(())
 }
 fn image_source_preload<C: RelMeter>(
-    input: &RelInputs<'_>,
+    input: &HtmlRelInputs<'_>,
     occurrences: &[HtmlRelOccurrence],
     m: &mut C,
 ) -> Result<bool, C::Error> {
@@ -895,7 +895,7 @@ fn image_source_preload<C: RelMeter>(
     Ok(false)
 }
 fn summarize<C: RelMeter>(
-    input: &RelInputs<'_>,
+    input: &HtmlRelInputs<'_>,
     occurrences: &mut [HtmlRelOccurrence],
     m: &mut C,
 ) -> Result<
@@ -1026,7 +1026,7 @@ impl HtmlValueInterpreter {
         let as_name = crate::KnownHtmlAttribute::As.qualified_name();
         let as_attribute = find_attribute(attributes, as_name.namespace(), as_name.local_name());
         self.admit_attribute_raw(as_attribute.map(HtmlAttributeInput::value))?;
-        let mut input = RelInputs {
+        let mut input = HtmlRelInputs {
             role: None,
             rel: get("rel"),
             rev: get("rev"),

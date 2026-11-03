@@ -14,15 +14,15 @@ pub fn blocking_tokens_with<E>(
         return Ok(crate::HtmlBlockingTokens::Empty);
     };
     let mut cursor =
-        crate::internal::microsyntax::tokens::SpaceTokenCursor::new(value.code_units());
+        crate::internal::microsyntax::tokens::HtmlSpaceTokenCursor::new(value.code_units());
     loop {
         step()?;
         match cursor.step() {
-            crate::internal::microsyntax::tokens::SpaceTokenStep::Continue => {}
-            crate::internal::microsyntax::tokens::SpaceTokenStep::Done => {
+            crate::internal::microsyntax::tokens::HtmlSpaceTokenStep::Continue => {}
+            crate::internal::microsyntax::tokens::HtmlSpaceTokenStep::Done => {
                 return Ok(crate::HtmlBlockingTokens::Empty);
             }
-            crate::internal::microsyntax::tokens::SpaceTokenStep::Token { start, end } => {
+            crate::internal::microsyntax::tokens::HtmlSpaceTokenStep::Token { start, end } => {
                 if blocking_token_is_render_with(&value.code_units()[start..end], &mut step)? {
                     return Ok(crate::HtmlBlockingTokens::Render);
                 }

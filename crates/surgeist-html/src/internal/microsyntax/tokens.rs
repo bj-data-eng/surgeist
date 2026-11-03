@@ -20,7 +20,10 @@ impl HtmlSpaceToken {
         if value.is_empty() {
             return Err(HtmlTokenError::EmptySpaceToken);
         }
-        if let Some(code_unit_offset) = value.code_units().iter().position(|&u| ascii_whitespace(u))
+        if let Some(code_unit_offset) = value
+            .code_units()
+            .iter()
+            .position(|&u| is_ascii_whitespace(u))
         {
             return Err(HtmlTokenError::SpaceTokenWhitespace { code_unit_offset });
         }
@@ -45,7 +48,7 @@ impl HtmlCommaToken {
     pub fn new(value: impl Into<DocumentString>) -> Result<Self, HtmlTokenError> {
         let value = value.into();
         let units = value.code_units();
-        if units.first().is_some_and(|&u| ascii_whitespace(u)) {
+        if units.first().is_some_and(|&u| is_ascii_whitespace(u)) {
             return Err(HtmlTokenError::CommaTokenBoundaryWhitespace {
                 code_unit_offset: 0,
             });
@@ -53,7 +56,7 @@ impl HtmlCommaToken {
         if let Some(code_unit_offset) = units.iter().position(|&u| u == u16::from(b',')) {
             return Err(HtmlTokenError::CommaTokenComma { code_unit_offset });
         }
-        if units.last().is_some_and(|&u| ascii_whitespace(u)) {
+        if units.last().is_some_and(|&u| is_ascii_whitespace(u)) {
             return Err(HtmlTokenError::CommaTokenBoundaryWhitespace {
                 code_unit_offset: units.len() - 1,
             });
@@ -406,7 +409,7 @@ fn unique_tokens(
 /// The pinned HTML edition defers to Infra; the retained capture is
 /// `references/dom-infra-codepoints-strings--editor-capture-20261010--a140d8f6286f.md`,
 /// "ASCII whitespace" (line 89).
-pub fn ascii_whitespace(unit: u16) -> bool {
+pub fn is_ascii_whitespace(unit: u16) -> bool {
     matches!(unit, 0x09 | 0x0A | 0x0C | 0x0D | 0x20)
 }
 
@@ -460,7 +463,7 @@ pub(crate) fn split_space_tokens(input: &DocumentString) -> HtmlSpaceSeparatedTo
 
 /// Shared Infra token boundaries for ordinary and controlled materialization.
 pub(crate) fn space_token_slices(input: &DocumentString) -> impl Iterator<Item = &[u16]> + Clone {
-    SpaceTokenSlices(SpaceTokenCursor::new(input.code_units()))
+    SpaceTokenSlices(HtmlSpaceTokenCursor::new(input.code_units()))
 }
 
 /// One bounded shared Infra action; admission belongs to the consuming caller.
@@ -470,16 +473,16 @@ pub(crate) fn space_token_slices(input: &DocumentString) -> impl Iterator<Item =
 /// accounts for all of its work. The `Token` spans index into the supplied
 /// slice, split on ASCII whitespace with each token nonempty (HTML877d #space-separated-tokens).
 #[derive(Clone, Debug)]
-pub struct SpaceTokenCursor<'a> {
+pub struct HtmlSpaceTokenCursor<'a> {
     units: &'a [u16],
     position: usize,
     start: Option<usize>,
     ready: Option<(usize, usize)>,
     done: bool,
 }
-/// The outcome of one `SpaceTokenCursor` step.
+/// The outcome of one `HtmlSpaceTokenCursor` step.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum SpaceTokenStep {
+pub enum HtmlSpaceTokenStep {
     /// The step inspected one code unit and emitted no token; step again.
     Continue,
     /// A complete token occupies the half-open range `start..end` of the
@@ -494,7 +497,7 @@ pub enum SpaceTokenStep {
     /// step also returns `Done`.
     Done,
 }
-impl<'a> SpaceTokenCursor<'a> {
+impl<'a> HtmlSpaceTokenCursor<'a> {
     /// Work units a driver charges once before the first step.
     pub const BEGIN_WORK: usize = 1;
     // Header selection/read/classification/progress or fixed token emission.
@@ -521,25 +524,25 @@ impl<'a> SpaceTokenCursor<'a> {
     /// A token ended by whitespace is held back until the next step returns it;
     /// a token ended by the end of the source is returned by the step that
     /// reaches the end. After `Done`, further calls keep returning `Done`.
-    pub fn step(&mut self) -> SpaceTokenStep {
+    pub fn step(&mut self) -> HtmlSpaceTokenStep {
         if let Some((start, end)) = self.ready.take() {
-            return SpaceTokenStep::Token { start, end };
+            return HtmlSpaceTokenStep::Token { start, end };
         }
         if self.done {
-            return SpaceTokenStep::Done;
+            return HtmlSpaceTokenStep::Done;
         }
         if self.position == self.units.len() {
             self.done = true;
             return match self.start.take() {
-                Some(start) => SpaceTokenStep::Token {
+                Some(start) => HtmlSpaceTokenStep::Token {
                     start,
                     end: self.position,
                 },
-                None => SpaceTokenStep::Done,
+                None => HtmlSpaceTokenStep::Done,
             };
         }
         let position = self.position;
-        let white = ascii_whitespace(self.units[position]);
+        let white = is_ascii_whitespace(self.units[position]);
         self.position += 1;
         if white {
             if let Some(start) = self.start.take() {
@@ -548,19 +551,19 @@ impl<'a> SpaceTokenCursor<'a> {
         } else if self.start.is_none() {
             self.start = Some(position);
         }
-        SpaceTokenStep::Continue
+        HtmlSpaceTokenStep::Continue
     }
 }
 #[derive(Clone)]
-struct SpaceTokenSlices<'a>(SpaceTokenCursor<'a>);
+struct SpaceTokenSlices<'a>(HtmlSpaceTokenCursor<'a>);
 impl<'a> Iterator for SpaceTokenSlices<'a> {
     type Item = &'a [u16];
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             match self.0.step() {
-                SpaceTokenStep::Continue => {}
-                SpaceTokenStep::Done => return None,
-                SpaceTokenStep::Token { start, end } => return Some(&self.0.units[start..end]),
+                HtmlSpaceTokenStep::Continue => {}
+                HtmlSpaceTokenStep::Done => return None,
+                HtmlSpaceTokenStep::Token { start, end } => return Some(&self.0.units[start..end]),
             }
         }
     }
@@ -637,14 +640,14 @@ impl<'a> CommaTokenCursor<'a> {
                 }
             }
             CommaStep::Leading => {
-                if self.start < self.end && ascii_whitespace(self.units[self.start]) {
+                if self.start < self.end && is_ascii_whitespace(self.units[self.start]) {
                     self.start += 1;
                 } else {
                     self.step = CommaStep::Trailing;
                 }
             }
             CommaStep::Trailing => {
-                if self.start < self.end && ascii_whitespace(self.units[self.end - 1]) {
+                if self.start < self.end && is_ascii_whitespace(self.units[self.end - 1]) {
                     self.end -= 1;
                 } else {
                     self.step = CommaStep::Emit;
@@ -719,7 +722,7 @@ mod tests {
         for unit in 0..=u16::MAX {
             let whitespace = [0x09, 0x0A, 0x0C, 0x0D, 0x20].contains(&unit);
             assert_eq!(
-                ascii_whitespace(unit),
+                is_ascii_whitespace(unit),
                 whitespace,
                 "whitespace U+{unit:04X}"
             );
@@ -745,7 +748,7 @@ mod tests {
         for unit in [
             0x0B, 0x08, 0x0E, 0x1F, 0x21, 0x85, 0xA0, 0x1680, 0x2028, 0x3000,
         ] {
-            assert!(!ascii_whitespace(unit), "U+{unit:04X}");
+            assert!(!is_ascii_whitespace(unit), "U+{unit:04X}");
         }
         assert_eq!(
             [0x40, 0x41, 0x5A, 0x5B].map(ascii_lowercase),

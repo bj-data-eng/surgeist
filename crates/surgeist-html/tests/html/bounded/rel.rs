@@ -28,7 +28,7 @@ impl HtmlRelMeter for Meter {
         Ok(())
     }
 }
-fn interpreted<'a>(inputs: RelInputs<'a>) -> HtmlRelInterpretation<'a> {
+fn interpreted<'a>(inputs: HtmlRelInputs<'a>) -> HtmlRelInterpretation<'a> {
     let mut owner = HtmlRelInterpretation::new(inputs);
     owner.interpret(&mut Meter::default()).unwrap();
     owner
@@ -46,7 +46,7 @@ fn initial_only_finish_preserves_original_ranges_aliases_and_alternate_styleshee
     let href = DocumentString::from("sheet.css");
     let title = DocumentString::from("Night");
     let owner = interpreted(
-        RelInputs::new(Some(HtmlRelRole::Link))
+        HtmlRelInputs::new(Some(HtmlRelRole::Link))
             .with_rel(Some(&rel))
             .with_href(Some(&href))
             .with_title(Some(&title)),
@@ -79,7 +79,7 @@ fn checked_refinement_rejects_wrong_source_spelling_order_and_extension_effect_w
     let raw = DocumentString::from("vendor vendor2 alternate");
     let rev = DocumentString::from("made");
     let mut owner = interpreted(
-        RelInputs::new(Some(HtmlRelRole::Link))
+        HtmlRelInputs::new(Some(HtmlRelRole::Link))
             .with_rel(Some(&raw))
             .with_rev(Some(&rev)),
     );
@@ -160,7 +160,7 @@ fn refresh_uses_original_type_title_and_image_preload_operands() {
     let hint = DocumentString::from("application/rss+xml");
     let images = DocumentString::from("x 1x");
     let mut owner = interpreted(
-        RelInputs::new(Some(HtmlRelRole::Link))
+        HtmlRelInputs::new(Some(HtmlRelRole::Link))
             .with_rel(Some(&rel))
             .with_href(Some(&href))
             .with_type_hint(Some(&hint))
@@ -191,7 +191,7 @@ fn every_refresh_admission_failure_hides_report_and_occurrences_including_after_
     let title = DocumentString::from("t");
     let make = || {
         let mut o = interpreted(
-            RelInputs::new(Some(HtmlRelRole::Link))
+            HtmlRelInputs::new(Some(HtmlRelRole::Link))
                 .with_rel(Some(&raw))
                 .with_href(Some(&href))
                 .with_title(Some(&title)),
@@ -232,7 +232,7 @@ fn every_refresh_admission_failure_hides_report_and_occurrences_including_after_
 fn initial_error_retains_raw_and_actual_reservation_and_between_action_stop_is_terminal() {
     let raw = DocumentString::from_utf16([120, 0xd800]);
     let mut slot = Some(HtmlRelInterpretation::new(
-        RelInputs::new(Some(HtmlRelRole::Anchor)).with_rel(Some(&raw)),
+        HtmlRelInputs::new(Some(HtmlRelRole::Anchor)).with_rel(Some(&raw)),
     ));
     let mut meter = Meter {
         fail_reserve: true,
@@ -253,7 +253,7 @@ fn initial_error_retains_raw_and_actual_reservation_and_between_action_stop_is_t
         &raw
     ));
     let mut owner = Some(interpreted(
-        RelInputs::new(Some(HtmlRelRole::Anchor)).with_rel(Some(&raw)),
+        HtmlRelInputs::new(Some(HtmlRelRole::Anchor)).with_rel(Some(&raw)),
     ));
     owner.as_mut().unwrap().stop();
     assert!(
@@ -297,7 +297,7 @@ fn reallocation_requests_for_n_occurrences_grow_at_most_logarithmically() {
         let words: Vec<String> = (0..count).map(|i| format!("x{i:06}")).collect();
         let raw = DocumentString::from(words.join(" ").as_str());
         let mut owner = HtmlRelInterpretation::new(
-            RelInputs::new(Some(HtmlRelRole::Anchor)).with_rel(Some(&raw)),
+            HtmlRelInputs::new(Some(HtmlRelRole::Anchor)).with_rel(Some(&raw)),
         );
         let mut meter = CapacityChanges::default();
         owner.interpret(&mut meter).unwrap();
