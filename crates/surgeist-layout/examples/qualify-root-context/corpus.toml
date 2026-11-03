@@ -1,31 +1,34 @@
-schema_version = 1
-name = "grid_fit_content_points_argument"
+schema_version = 2
+
+# Each record requires four Generated V4 root-local cases; these original
+# sources and historical observations are inputs, never Layout operands.
+
+[[records]]
 source = "html/grid/grid_fit_content_points_argument.html"
 source_sha256 = "9a8e404470f5f0b8afed2c858d2840f4df46a1492f41cb022ce921fcc23c9e01"
+expected_hypothetical_display = "grid"
+[records.historical_sha256]
+border_box_ltr = "202e335e62bd797c087b073f641650c6c8a9cb7e48cdb7f1bfa75652ea20e5a9"
+content_box_ltr = "559712abf282c99f3a4f6fd8a0b5bd5a8ff026f772860c2479ece60e384a3432"
+border_box_rtl = "a25ad3b02bf411181df28ed13f4d18cdfd5c334474083a7732f1e8e431a43bc3"
+content_box_rtl = "e761edc0be86e8489e428eb28a35d053a2e8feae1f696684c1316da0b781ac66"
 
-[expected]
-generated = 4
-unsupported = 0
-expected_fail = 0
-quarantined = 0
-failed_to_generate = 0
+[[records]]
+source = "html/subgrid/subgrid_standalone_axis_column_autoflow.html"
+source_sha256 = "377ec9188ae1e024b3293b403d0fe0ffd86e78f4298bef9cdc3b87a78036e823"
+expected_hypothetical_display = "inline-grid"
+[records.historical_sha256]
+border_box_ltr = "9482a5a6bc0a1b041f3febc6f8ff24998453e68d3eff7ab8ee1908951d0eded2"
+content_box_ltr = "2e19e3600b5a8600e5fd45f5d32adf7f82080154e622517e002a6dbfe53b24d3"
+border_box_rtl = "c7dd0e4680ffedbcf7a22bed891f16ffb1553b81aad6fff2183a5502e9e9d56c"
+content_box_rtl = "d62e1205847826d52c37aaecb623dd9f8338ef26eabb56d03b14b5d0a439d333"
 
-[[cases]]
-id = "grid_fit_content_points_argument__border_box_ltr"
-variant = "border_box_ltr"
-output = "xml/grid/grid_fit_content_points_argument__border_box_ltr.xml"
-
-[[cases]]
-id = "grid_fit_content_points_argument__content_box_ltr"
-variant = "content_box_ltr"
-output = "xml/grid/grid_fit_content_points_argument__content_box_ltr.xml"
-
-[[cases]]
-id = "grid_fit_content_points_argument__border_box_rtl"
-variant = "border_box_rtl"
-output = "xml/grid/grid_fit_content_points_argument__border_box_rtl.xml"
-
-[[cases]]
-id = "grid_fit_content_points_argument__content_box_rtl"
-variant = "content_box_rtl"
-output = "xml/grid/grid_fit_content_points_argument__content_box_rtl.xml"
+[[records]]
+source = "html/subgrid/subgrid_overflow_hidden_does_not_prohibit.html"
+source_sha256 = "3332d3e2c86878867f3c1db9ef13096386bec1615aa796cbb81c817dfc2a2b9b"
+expected_hypothetical_display = "inline-grid"
+[records.historical_sha256]
+border_box_ltr = "03e127d2a4c3a10b93c55b3e1bd8c87f5d3720db2b4c9cb5df57ac2b5223e004"
+content_box_ltr = "056a7fc328493f10686923251f6ae968dd6528b3b4a786e8137eb23cb557b138"
+border_box_rtl = "d0cf7b79a67fe4480a70226f44f0c008f8555298e02b9297905c83fb35d3711f"
+content_box_rtl = "25fe19dc380ea85bf13a42b25798a64e810914cc15f55ce5c3dee78658c407df"

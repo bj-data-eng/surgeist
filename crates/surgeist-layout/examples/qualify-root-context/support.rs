@@ -22,12 +22,6 @@ type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
 const DECLARATION: &[u8] = include_bytes!("corpus.toml");
 const INPUTS: &[(&str, &[u8])] = &[
     (
-        "html/grid/grid_fit_content_points_argument.html",
-        include_bytes!(
-            "../../tests/layout/browser_parity/html/grid/grid_fit_content_points_argument.html"
-        ),
-    ),
-    (
         "scripts/gentest/test_helper.js",
         include_bytes!("../../tests/layout/browser_parity/scripts/gentest/test_helper.js"),
     ),
@@ -49,18 +43,43 @@ const INPUTS: &[(&str, &[u8])] = &[
 #[serde(deny_unknown_fields)]
 struct Declaration {
     schema_version: u8,
-    name: String,
-    source: RelativePath,
-    source_sha256: Sha256Digest,
-    expected: BrowserReportSummary,
-    cases: Vec<Case>,
+    records: Vec<Record>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Case {
-    id: String,
-    variant: String,
-    output: RelativePath,
+struct Record {
+    source: RelativePath,
+    source_sha256: Sha256Digest,
+    expected_hypothetical_display: String,
+    historical_sha256: BTreeMap<String, Sha256Digest>,
+}
+
+struct ExpectedCase {
+    source: RelativePath,
+    case: CaseSpec,
+    historical: RelativePath,
+    hypothetical_display: String,
+}
+
+struct Inventory {
+    fixtures: Vec<FixtureSpec>,
+    cases: Vec<ExpectedCase>,
+    global_inputs: Vec<RelativePath>,
+    expected_inputs: BTreeMap<RelativePath, Sha256Digest>,
+}
+
+impl Declaration {
+    fn expected(&self) -> Result<BrowserReportSummary> {
+        if self.records.is_empty() {
+            return Err("root-context qualification requires source records".into());
+        }
+        let generated = self
+            .records
+            .len()
+            .checked_mul(fixture_cases().len())
+            .ok_or("qualification case count overflow")?;
+        Ok(BrowserReportSummary::new(generated, 0, 0, 0, 0)?)
+    }
 }
 
 // This intentionally projects only the browser declaration. It does not claim
@@ -99,15 +118,8 @@ pub(super) fn run() -> Result<()> {
     let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
     let declaration: Declaration =
         surgeist_generator::parse_manifest(std::str::from_utf8(DECLARATION)?, "corpus.toml")?;
-    assert_eq!(declaration.schema_version, 1);
-    assert_eq!(
-        declaration.expected,
-        BrowserReportSummary::new(4, 0, 0, 0, 0)?
-    );
-    assert_eq!(declaration.cases.len(), fixture_cases().len());
-    for (case, (variant, _)) in declaration.cases.iter().zip(fixture_cases()) {
-        assert_eq!(case.variant, variant);
-    }
+    assert_eq!(declaration.schema_version, 2);
+    let _ = declaration.expected()?;
     let owner_bytes = INPUTS
         .iter()
         .find(|(name, _)| *name == "browser-owner.toml")
@@ -186,33 +198,8 @@ fn qualify(
     browser_path: RelativePath,
     declaration: Declaration,
 ) -> Result<()> {
-    let mut expected_inputs = BTreeMap::new();
-    for (name, bytes) in INPUTS
-        .iter()
-        .copied()
-        .chain(std::iter::once(("corpus.toml", DECLARATION)))
-    {
-        let path = RelativePath::new(name)?;
-        let destination = root.join(path.as_str());
-        fs::create_dir_all(destination.parent().expect("input parent"))?;
-        fs::write(destination, bytes)?;
-        expected_inputs.insert(path, Sha256Digest::from_bytes(bytes));
-    }
-    assert_eq!(
-        expected_inputs.get(&declaration.source),
-        Some(&declaration.source_sha256)
-    );
-    let cases = declaration
-        .cases
-        .iter()
-        .map(|case| CaseSpec::new(case.id.clone(), case.variant.clone(), case.output.clone()))
-        .collect::<surgeist_generator::Result<Vec<_>>>()?;
-    let fixture = FixtureSpec::new(
-        declaration.name,
-        declaration.source.clone(),
-        cases,
-        FixtureStatus::Active,
-    )?;
+    let expected = declaration.expected()?;
+    let inventory = prepare_inventory(root, owner, &declaration.records)?;
     let corpus = BrowserCorpus::new(
         BrowserLocation::new(owner, root)?,
         RelativePath::new("corpus.toml")?,
@@ -223,78 +210,282 @@ fn qualify(
             None,
         )?],
         settings,
-        vec![fixture],
-        INPUTS
-            .iter()
-            .filter(|(name, _)| *name != declaration.source.as_str())
-            .map(|(name, _)| RelativePath::new(name))
-            .collect::<surgeist_generator::Result<Vec<_>>>()?,
+        inventory.fixtures,
+        inventory.global_inputs,
         Vec::new(),
     )?
-    .with_expected_inputs(expected_inputs)?
+    .with_expected_inputs(inventory.expected_inputs)?
     .with_exact_input_roots(vec![
         RelativePath::new("scripts/gentest")?,
         RelativePath::new("fonts")?,
+        RelativePath::new("historical")?,
     ])?
-    .with_expected_counts(declaration.expected);
+    .with_expected_counts(expected);
     let request = GenerationRequest::new(corpus.clone(), browser_path, None, None)?;
     let report = browser::generate(request, QualificationAdapter)?;
-    assert_eq!(*report.summary(), declaration.expected);
+    assert_eq!(*report.summary(), expected);
     assert!(report.filter().is_none());
-    assert_eq!(report.generated().len(), declaration.cases.len());
+    assert_eq!(report.generated().len(), inventory.cases.len());
     assert_eq!(
         fs::read(root.join("xml/generation-reports/all.json"))?,
         report.to_bytes()?
     );
-    for artifact in report.generated() {
-        let case = declaration
-            .cases
-            .iter()
-            .find(|case| case.id == artifact.name())
-            .expect("declared generated case");
-        assert_eq!(artifact.source(), &declaration.source);
-        assert_eq!(artifact.output(), &case.output);
-        assert_eq!(artifact.variant(), case.variant);
-        let bytes = fs::read(root.join(artifact.output().as_str()))?;
-        assert_eq!(Sha256Digest::from_bytes(&bytes), *artifact.output_sha256());
-        qualify_xml(std::str::from_utf8(&bytes)?, &case.id)?;
-    }
     assert_eq!(
         browser::check_corpus(&corpus, &LayoutAdapter)?.to_bytes()?,
         report.to_bytes()?
     );
-    qualify_tampering(
-        root,
-        &corpus,
-        &declaration.source,
-        &declaration.cases[0].output,
-    )?;
+
+    // Qualify every retained observation before requiring the new certificate.
+    // Historical fields are assertion inputs only; none enter Layout or capture.
+    for artifact in report.generated() {
+        let case = inventory
+            .cases
+            .iter()
+            .find(|case| case.case.id() == artifact.name())
+            .expect("declared generated case");
+        assert_eq!(artifact.source(), &case.source);
+        assert_eq!(artifact.output(), case.case.output());
+        assert_eq!(artifact.variant(), case.case.variant());
+        let bytes = fs::read(root.join(artifact.output().as_str()))?;
+        assert_eq!(Sha256Digest::from_bytes(&bytes), *artifact.output_sha256());
+        let historical = fs::read_to_string(root.join(case.historical.as_str()))?;
+        qualify_historical_geometry(std::str::from_utf8(&bytes)?, &historical, case.case.id())?;
+    }
+    eprintln!(
+        "qualify-root-context: all {} source-bound historical expectation trees preserved",
+        inventory.cases.len()
+    );
+    for artifact in report.generated() {
+        let case = inventory
+            .cases
+            .iter()
+            .find(|case| case.case.id() == artifact.name())
+            .expect("declared generated case");
+        let xml = fs::read_to_string(root.join(artifact.output().as_str()))?;
+        qualify_xml(&xml, case)?;
+    }
+    let first = inventory
+        .cases
+        .first()
+        .expect("nonempty qualified inventory");
+    qualify_tampering(root, &corpus, &first.source, first.case.output())?;
     assert_eq!(
         browser::check_corpus(&corpus, &LayoutAdapter)?.to_bytes()?,
         report.to_bytes()?
     );
     eprintln!(
-        "qualify-root-context: four generated variants, complete provenance/XML and three tamper refusals qualified"
+        "qualify-root-context: {} Generated V4 local cases, historical geometry and three filesystem tamper refusals qualified",
+        inventory.cases.len()
     );
     Ok(())
 }
 
-fn qualify_xml(xml: &str, case_id: &str) -> Result<()> {
+fn write_input(
+    root: &Path,
+    path: &RelativePath,
+    bytes: &[u8],
+    expected: &mut BTreeMap<RelativePath, Sha256Digest>,
+) -> Result<()> {
+    let destination = root.join(path.as_str());
+    fs::create_dir_all(destination.parent().expect("input parent"))?;
+    fs::write(destination, bytes)?;
+    assert!(
+        expected
+            .insert(path.clone(), Sha256Digest::from_bytes(bytes))
+            .is_none(),
+        "duplicate qualification input"
+    );
+    Ok(())
+}
+
+fn prepare_inventory(root: &Path, owner: &Path, records: &[Record]) -> Result<Inventory> {
+    let mut inventory = Inventory {
+        fixtures: Vec::new(),
+        cases: Vec::new(),
+        global_inputs: Vec::new(),
+        expected_inputs: BTreeMap::new(),
+    };
+    for (name, bytes) in INPUTS
+        .iter()
+        .copied()
+        .chain(std::iter::once(("corpus.toml", DECLARATION)))
+    {
+        let path = RelativePath::new(name)?;
+        write_input(root, &path, bytes, &mut inventory.expected_inputs)?;
+        if name != "corpus.toml" {
+            inventory.global_inputs.push(path);
+        }
+    }
+    let original = owner.join("tests/layout/browser_parity");
+    for record in records {
+        let source = fs::read(original.join(record.source.as_str()))?;
+        assert_eq!(
+            Sha256Digest::from_bytes(&source),
+            record.source_sha256,
+            "original source changed: {}",
+            record.source.as_str()
+        );
+        write_input(
+            root,
+            &record.source,
+            &source,
+            &mut inventory.expected_inputs,
+        )?;
+        let family = record
+            .source
+            .as_str()
+            .strip_prefix("html/")
+            .and_then(|path| path.strip_suffix(".html"))
+            .ok_or("qualification source must be an original html/*.html path")?;
+        let stem = family.rsplit('/').next().ok_or("missing source stem")?;
+        assert_eq!(record.historical_sha256.len(), fixture_cases().len());
+        let mut cases = Vec::new();
+        for (variant, _) in fixture_cases() {
+            let output = RelativePath::new(format!("xml/{family}__{variant}.xml"))?;
+            let historical = RelativePath::new(format!("historical/{family}__{variant}.xml"))?;
+            let bytes = fs::read(original.join(output.as_str()))?;
+            let digest = record
+                .historical_sha256
+                .get(variant)
+                .ok_or("missing historical variant digest")?;
+            assert_eq!(
+                &Sha256Digest::from_bytes(&bytes),
+                digest,
+                "historical observation changed: {}",
+                output.as_str()
+            );
+            write_input(root, &historical, &bytes, &mut inventory.expected_inputs)?;
+            inventory.global_inputs.push(historical.clone());
+            let case = CaseSpec::new(format!("{stem}__{variant}"), variant.into(), output)?;
+            inventory.cases.push(ExpectedCase {
+                source: record.source.clone(),
+                case: case.clone(),
+                historical,
+                hypothetical_display: record.expected_hypothetical_display.clone(),
+            });
+            cases.push(case);
+        }
+        inventory.fixtures.push(FixtureSpec::new(
+            stem.into(),
+            record.source.clone(),
+            cases,
+            FixtureStatus::Active,
+        )?);
+    }
+    Ok(inventory)
+}
+
+fn qualify_historical_geometry(current: &str, historical: &str, case_id: &str) -> Result<()> {
+    let current = roxmltree::Document::parse(current)?;
+    let historical = roxmltree::Document::parse(historical)?;
+    assert_eq!(current.root_element().attribute("name"), Some(case_id));
+    assert_eq!(historical.root_element().attribute("name"), Some(case_id));
+    assert_eq!(
+        current.root_element().attribute("use-rounding"),
+        historical.root_element().attribute("use-rounding")
+    );
+    let current = current
+        .root_element()
+        .children()
+        .find(|node| node.has_tag_name("expectations"))
+        .expect("current expectations");
+    let historical = historical
+        .root_element()
+        .children()
+        .find(|node| node.has_tag_name("expectations"))
+        .expect("historical expectations");
+    compare_observation_tree(current, historical, case_id);
+    Ok(())
+}
+
+fn compare_observation_tree(
+    current: roxmltree::Node<'_, '_>,
+    historical: roxmltree::Node<'_, '_>,
+    path: &str,
+) {
+    assert_eq!(
+        current.tag_name().name(),
+        historical.tag_name().name(),
+        "{path}: observation category"
+    );
+    assert_eq!(
+        current.tag_name().namespace(),
+        historical.tag_name().namespace(),
+        "{path}: observation namespace"
+    );
+    let attributes = |node: roxmltree::Node<'_, '_>| {
+        node.attributes()
+            .map(|attribute| (attribute.name().to_owned(), attribute.value().to_owned()))
+            .collect::<BTreeMap<_, _>>()
+    };
+    assert_eq!(
+        attributes(current),
+        attributes(historical),
+        "{path}: exact historical observation fields"
+    );
+    for node in [current, historical] {
+        assert!(
+            node.children()
+                .filter(roxmltree::Node::is_text)
+                .all(|text| text.text().is_none_or(|value| value.trim().is_empty())),
+            "{path}: unexpected observation text"
+        );
+    }
+    let current = current
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .collect::<Vec<_>>();
+    let historical = historical
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        current.len(),
+        historical.len(),
+        "{path}: observation cardinality"
+    );
+    for (index, (current, historical)) in current.into_iter().zip(historical).enumerate() {
+        compare_observation_tree(current, historical, &format!("{path}/{index}"));
+    }
+}
+
+fn qualify_xml(xml: &str, case: &ExpectedCase) -> Result<()> {
     let document = roxmltree::Document::parse(xml)?;
     let test = document.root_element();
     assert!(test.has_tag_name("test"));
-    assert_eq!(test.attribute("name"), Some(case_id));
-    assert_eq!(test.attribute("measurement-version"), Some("3"));
-    assert_eq!(test.attribute("observation-frame"), Some("root-border"));
+    assert_eq!(test.attribute("name"), Some(case.case.id()));
+    assert_eq!(
+        test.attribute("measurement-version"),
+        Some("4"),
+        "{}: missing V4 source-qualified local capture",
+        case.case.id()
+    );
+    assert_eq!(
+        test.attribute("observation-frame"),
+        Some("root-border-local")
+    );
     let viewport = test
         .children()
         .find(|node| node.has_tag_name("viewport"))
         .expect("viewport");
     assert_eq!(
         viewport.attribute("root-context"),
-        Some("positioned-auto-insets")
+        Some("absolute-root-local")
     );
     assert_eq!(viewport.attribute("containing-direction"), Some("ltr"));
+    assert_eq!(viewport.attribute("hypothetical-direction"), Some("ltr"));
+    assert_eq!(
+        viewport.attribute("hypothetical-display"),
+        Some(case.hypothetical_display.as_str())
+    );
+    assert_eq!(
+        viewport.attribute("hypothetical-anchor"),
+        Some("inline-start")
+    );
+    assert_eq!(
+        viewport.attribute("hypothetical-inline-offset"),
+        Some("0px")
+    );
     assert_eq!(
         viewport.attribute("fallback-nearest-scrollport"),
         Some("none")
@@ -319,10 +510,6 @@ fn qualify_xml(xml: &str, case_id: &str) -> Result<()> {
         .find(roxmltree::Node::is_element)
         .expect("root input");
     assert_eq!(root.attribute("position"), Some("absolute"));
-    assert!(
-        test.children()
-            .any(|node| node.has_tag_name("expectations"))
-    );
     Ok(())
 }
 
