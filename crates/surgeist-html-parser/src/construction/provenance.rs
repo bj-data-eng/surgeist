@@ -1505,11 +1505,55 @@ impl OriginGroupRef {
         cleanup_owner(c, &self.control)
     }
 }
+/// The walk over the origins of one processing instruction's data that the
+/// pieces of its pseudo-attributes make. The pieces arrive in source order, so
+/// the walk resumes where the previous piece stopped instead of starting from
+/// the first origin again for each piece.
+pub(super) struct PiOriginWalk {
+    node: usize,
+    state: PiOriginState,
+}
+
+#[derive(Default)]
+enum PiOriginState {
+    #[default]
+    Unstarted,
+    /// The instruction has no source origins to map.
+    Unmapped,
+    Walking(PiOriginResume),
+}
+
+struct PiOriginResume {
+    cursor: GroupOriginCursor,
+    /// The origin read and found to start at or after the last piece's end.
+    held: Option<HtmlParseTextOrigin>,
+    /// Where the last piece ended; the walk has consumed every origin before it.
+    floor: usize,
+}
+
+impl PiOriginWalk {
+    pub(super) fn new(node: usize) -> Self {
+        Self {
+            node,
+            state: PiOriginState::Unstarted,
+        }
+    }
+    pub(super) fn release(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
+        if let PiOriginState::Walking(mut resume) = mem::take(&mut self.state) {
+            resume.cursor.release(c)?;
+        }
+        Ok(())
+    }
+}
+
 impl SessionStorage {
+    /// Appends the origins of one piece of a pseudo-attribute name or value, the
+    /// input range `input` of the instruction's data copied to the output range
+    /// `output`, resuming `walk` where the previous piece stopped.
     pub(super) fn pi_piece_origins(
         &self,
         c: &mut ParseControl,
-        node: usize,
+        walk: &mut PiOriginWalk,
         input: std::ops::Range<usize>,
         output: std::ops::Range<usize>,
         transformed: bool,
@@ -1517,78 +1561,100 @@ impl SessionStorage {
     ) -> Result<(), SessionError> {
         let (begin, end, output_start, output_end) =
             (input.start, input.end, output.start, output.end);
-        if self
-            .evidence
-            .as_ref()
-            .is_none_or(|evidence| evidence.native.source.is_none())
-        {
+        if matches!(walk.state, PiOriginState::Unmapped) {
             return Ok(());
         }
-        let slot = self.field_slot(c, StringLocation::ProcessingInstructionData(node))?;
-        let RetainedPayload::String {
-            origins: Some(original),
-            ..
-        } = self.payloads.row(c, slot)?
-        else {
-            return Ok(());
+        let evidence = match self.evidence.as_ref() {
+            Some(evidence) if evidence.native.source.is_some() => evidence,
+            _ => return Ok(()),
         };
-        let evidence = self.evidence.as_ref().ok_or(SessionError::WrongToken)?;
-        if evidence.native.source.is_none() {
-            return Ok(());
+        // A piece that starts before the end of the previous one needs origins
+        // the walk has passed; the walk starts again from the first origin.
+        if let PiOriginState::Walking(resume) = &walk.state
+            && begin < resume.floor
+        {
+            walk.release(c)?;
         }
-        let mut cursor = GroupOriginCursor::new(evidence, original, c)?;
+        if matches!(walk.state, PiOriginState::Unstarted) {
+            let slot = self.field_slot(c, StringLocation::ProcessingInstructionData(walk.node))?;
+            let RetainedPayload::String {
+                origins: Some(original),
+                ..
+            } = self.payloads.row(c, slot)?
+            else {
+                walk.state = PiOriginState::Unmapped;
+                return Ok(());
+            };
+            walk.state = PiOriginState::Walking(PiOriginResume {
+                cursor: GroupOriginCursor::new(evidence, original, c)?,
+                held: None,
+                floor: 0,
+            });
+        }
+        let PiOriginState::Walking(resume) = &mut walk.state else {
+            // Both other states returned or became `Walking` above.
+            return Err(latch_registry_row(c));
+        };
         let mut first = None;
         let mut last = None;
         let mut covered = begin;
-        let read = (|| {
-            while let Some(origin) = cursor.next(evidence, c)? {
-                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                if origin.end <= begin || origin.start >= end {
-                    continue;
-                }
-                if origin.start != covered || origin.end > end {
+        loop {
+            let origin = match resume.held.take() {
+                Some(origin) => origin,
+                None => match resume.cursor.next(evidence, c)? {
+                    Some(origin) => origin,
+                    None => break,
+                },
+            };
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            if origin.end <= begin {
+                continue;
+            }
+            if origin.start >= end {
+                // It belongs to a later piece.
+                resume.held = Some(origin);
+                break;
+            }
+            if origin.start != covered || origin.end > end {
+                return Err(SessionError::OriginSplitUnavailable);
+            }
+            if !transformed {
+                payload_write::<HtmlParseTextOrigin>(c, 1)?;
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+                // `origin.start == covered >= begin`, and `origin.end > origin.start`.
+                let (Some(from_start), Some(from_end)) = (
+                    origin.start.checked_sub(begin),
+                    origin.end.checked_sub(begin),
+                ) else {
+                    return Err(SessionError::OriginSplitUnavailable);
+                };
+                let start = output_start
+                    .checked_add(from_start)
+                    .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
+                let end = output_start
+                    .checked_add(from_end)
+                    .ok_or_else(|| c.stop_representation(HtmlParseResource::ManagedUtf16Units))?;
+                maps.try_push_geometric(
+                    c,
+                    HtmlParseTextOrigin {
+                        start,
+                        end,
+                        source: origin.source.clone(),
+                        kind: origin.kind,
+                    },
+                )?;
+            } else {
+                if let Some(previous) = last
+                    && previous != origin.source.start()
+                {
                     return Err(SessionError::OriginSplitUnavailable);
                 }
-                if !transformed {
-                    payload_write::<HtmlParseTextOrigin>(c, 1)?;
-                    c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-                    // `origin.start == covered >= begin`, and `origin.end > origin.start`.
-                    let (Some(from_start), Some(from_end)) = (
-                        origin.start.checked_sub(begin),
-                        origin.end.checked_sub(begin),
-                    ) else {
-                        return Err(SessionError::OriginSplitUnavailable);
-                    };
-                    let start = output_start.checked_add(from_start).ok_or_else(|| {
-                        c.stop_representation(HtmlParseResource::ManagedUtf16Units)
-                    })?;
-                    let end = output_start.checked_add(from_end).ok_or_else(|| {
-                        c.stop_representation(HtmlParseResource::ManagedUtf16Units)
-                    })?;
-                    maps.try_push_geometric(
-                        c,
-                        HtmlParseTextOrigin {
-                            start,
-                            end,
-                            source: origin.source.clone(),
-                            kind: origin.kind,
-                        },
-                    )?;
-                } else {
-                    if let Some(previous) = last
-                        && previous != origin.source.start()
-                    {
-                        return Err(SessionError::OriginSplitUnavailable);
-                    }
-                    first.get_or_insert(origin.source.start());
-                    last = Some(origin.source.end());
-                }
-                covered = origin.end;
+                first.get_or_insert(origin.source.start());
+                last = Some(origin.source.end());
             }
-            Ok::<_, SessionError>(())
-        })();
-        cursor.release(c)?;
-        read?;
+            covered = origin.end;
+        }
+        resume.floor = end;
         if covered != end {
             return Err(SessionError::OriginSplitUnavailable);
         }

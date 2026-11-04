@@ -352,6 +352,19 @@ fn row_join(row: &RetainedPayload) -> Option<(Join, usize)> {
         RetainedPayload::LookupRegistry {
             node: Some(node), ..
         } => (Join::LookupRegistry, *node),
+        RetainedPayload::String {
+            location: StringLocation::ProcessingInstructionData(node),
+            ..
+        } => (Join::ProcessingInstructionData, *node),
+        RetainedPayload::PiAttributes {
+            node: Some(node), ..
+        } => (Join::ProcessingInstructionAttributes, *node),
+        RetainedPayload::SvgScript {
+            node: Some(node), ..
+        } => (Join::SvgScript, *node),
+        RetainedPayload::Details {
+            node: Some(node), ..
+        } => (Join::Details, *node),
         _ => return None,
     })
 }
@@ -734,7 +747,18 @@ impl PayloadStorage {
         records: ConstructionView<'_>,
         control: &mut ParseControl,
     ) -> Result<(), SessionError> {
-        self.audit_aliases(records, control, 0)
+        self.audit_aliases(records, control, 0..self.values.len())
+    }
+    /// The audit of the one row at `slot`, for an edit of the record that row
+    /// backs: the edit is refused if that row is aliased, without the cost of
+    /// auditing the registry.
+    pub(super) fn check_row_aliases(
+        &self,
+        records: ConstructionView<'_>,
+        control: &mut ParseControl,
+        slot: usize,
+    ) -> Result<(), SessionError> {
+        self.audit_aliases(records, control, slot..slot.saturating_add(1))
     }
     /// The creation-time audit: only the rows registered since the previous one,
     /// so the cost is the rows the operations in between added, not the registry.
@@ -744,7 +768,7 @@ impl PayloadStorage {
         records: ConstructionView<'_>,
         control: &mut ParseControl,
     ) -> Result<(), SessionError> {
-        self.audit_aliases(records, control, self.audited_rows)?;
+        self.audit_aliases(records, control, self.audited_rows..self.values.len())?;
         self.audited_rows = self.values.len();
         Ok(())
     }
@@ -752,9 +776,9 @@ impl PayloadStorage {
         &self,
         records: ConstructionView<'_>,
         control: &mut ParseControl,
-        first: usize,
+        rows: std::ops::Range<usize>,
     ) -> Result<(), SessionError> {
-        for index in first..self.values.len() {
+        for index in rows {
             cleanup_charge(control, HtmlParseWorkCategory::RecordVisit, 1)?;
             let payload = self
                 .values

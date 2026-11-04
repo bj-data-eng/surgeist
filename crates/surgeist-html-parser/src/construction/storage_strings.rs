@@ -394,8 +394,12 @@ impl SessionStorage {
             return Err(SessionError::registry_row());
         };
         *current = location;
-        if let StringLocation::Text(node) = location {
-            self.payloads.join_text(node, index)?;
+        match location {
+            StringLocation::Text(node) => self.payloads.join_text(node, index)?,
+            // The join names the first row bound to the instruction, as a scan
+            // of the registry does.
+            StringLocation::ProcessingInstructionData(_) => self.payloads.join_row(index)?,
+            _ => {}
         }
         Ok(())
     }
