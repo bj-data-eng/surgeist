@@ -58,6 +58,15 @@ use crate::{
 /// doubling, never beyond its admitted size, and a growth charges the entries it
 /// moves before it allocates. The producer's edge operations take their own
 /// steps from the same `work` bound and cancellation.
+/// Resolving a canonical registry that was already staged also costs a constant
+/// number of charged steps, through an index of at most four slots per staged
+/// registry, admitted against `subjects` and charged before it allocates; so
+/// does a Document's modal blocker lookup, through the node index which the
+/// first top-layer Dialog builds. The finished capture retains that node index
+/// and a table of one slot per entry from each subject's ordinal to its entry,
+/// admitted against `subjects` and charged before it allocates; its public
+/// node and subject lookups then cost a constant number of steps, and release
+/// both indexes with the capture.
 /// Document design-mode rows use at most `subjects` records. The same finite
 /// `work` bound independently limits GlobalInheritance producer validation per
 /// formation, including Slot context reconstruction; it is not a cumulative
@@ -224,6 +233,21 @@ struct StagedRegistry {
     canonical: DomRegistryId,
     captured: HtmlCaptureBuilderRegistry,
 }
+impl nodes::Keyed for StagedRegistry {
+    type Key = DomRegistryId;
+    fn key(&self) -> DomRegistryId {
+        self.canonical
+    }
+}
+/// The registries one capture has staged so far, in staging order, with an
+/// index from each canonical registry to its position. The number of
+/// registries grows with the hosted documents of the input, so a registry is
+/// found through the index in a constant number of charged steps.
+#[derive(Default)]
+struct StagedRegistries {
+    items: Vec<StagedRegistry>,
+    index: nodes::Table,
+}
 
 /// One exact canonical document, its optional host capture, and HTML's immutable
 /// interpretation input. Detached nodes belong to the requested document closure;
@@ -238,6 +262,7 @@ pub struct DomHtmlCapture {
     capture: HtmlCapture,
     context: HtmlSemanticContext,
     entries: Vec<Entry>,
+    lookup: nodes::Lookup,
     output_default_units: usize,
     base_policy: Option<BaseCapturePolicy>,
     base_work: usize,
@@ -257,17 +282,13 @@ impl DomHtmlCapture {
     pub fn capture(&self) -> &HtmlCapture {
         &self.capture
     }
+    /// The subject captured for `node`, in a constant number of steps.
     pub fn subject(&self, node: NodeId) -> Result<HtmlCaptureSubjectId, DomHtmlCaptureError> {
         self.source.node(node)?;
         let mapped = self
-            .entries
-            .iter()
-            .find(|e| {
-                #[cfg(test)]
-                lookup_work::visit();
-                e.node == node
-            })
-            .map(|e| e.subject.clone())
+            .lookup
+            .entry_of_node(&self.entries, node)
+            .map(|entry| entry.subject.clone())
             .ok_or(DomHtmlCaptureError::UnmappedSubject);
         // Preserve the ordinary wrong-document diagnostic for unmapped nodes,
         // while allowing actual supplemental association members.
@@ -276,16 +297,13 @@ impl DomHtmlCapture {
         }
         mapped
     }
+    /// The node captured as `subject`, in a constant number of steps. A subject
+    /// of another capture is refused before the retained index is consulted.
     pub fn node(&self, subject: &HtmlCaptureSubjectId) -> Result<NodeId, DomHtmlCaptureError> {
         self.capture.node(subject)?;
-        self.entries
-            .iter()
-            .find(|e| {
-                #[cfg(test)]
-                lookup_work::visit();
-                &e.subject == subject
-            })
-            .map(|e| e.node)
+        self.lookup
+            .entry_of_subject(&self.entries, subject)
+            .map(|entry| entry.node)
             .ok_or(DomHtmlCaptureError::UnmappedSubject)
     }
     /// Executes the real HTML semantic session over this exact composition.
@@ -387,7 +405,7 @@ fn add_document(
     builder: &mut HtmlCaptureBuilder,
     snapshot: &DomSnapshot,
     document: DocumentId,
-    registries: &mut Vec<StagedRegistry>,
+    registries: &mut StagedRegistries,
     control: &mut Control<'_>,
 ) -> Result<HtmlCaptureBuilderSubject, DomHtmlCaptureError> {
     let metadata = snapshot.document(document)?.metadata();
@@ -414,17 +432,21 @@ fn registry_input(
     builder: &mut HtmlCaptureBuilder,
     snapshot: &DomSnapshot,
     binding: DomRegistryBinding,
-    registries: &mut Vec<StagedRegistry>,
+    registries: &mut StagedRegistries,
     control: &mut Control<'_>,
 ) -> Result<HtmlCaptureRegistryInput, DomHtmlCaptureError> {
     let DomRegistryBinding::Registry(canonical) = binding else {
         return Ok(HtmlCaptureRegistryInput::Null);
     };
-    for entry in registries.iter() {
-        control.charge(1)?;
-        if entry.canonical == canonical {
-            return Ok(HtmlCaptureRegistryInput::Registry(entry.captured.clone()));
-        }
+    if let Some(position) = registries
+        .index
+        .get(control, &registries.items, canonical)?
+    {
+        return registries
+            .items
+            .get(position)
+            .map(|entry| HtmlCaptureRegistryInput::Registry(entry.captured.clone()))
+            .ok_or(DomHtmlCaptureError::UnmappedSubject);
     }
     control.charge(1)?;
     let record = snapshot
@@ -458,14 +480,18 @@ fn registry_input(
             .into());
         }
     }
-    control.reserve(registries, 1)?;
+    control.reserve(&mut registries.items, 1)?;
     let captured = builder.add_registry(Some(Vec::new()))?;
     control.charge(1)?;
     builder.establish_registry_scope(&captured, scope)?;
-    registries.push(StagedRegistry {
+    let position = registries.items.len();
+    registries.items.push(StagedRegistry {
         canonical,
         captured: captured.clone(),
     });
+    registries
+        .index
+        .insert(control, &registries.items, position)?;
     Ok(HtmlCaptureRegistryInput::Registry(captured))
 }
 
@@ -495,7 +521,7 @@ impl DomSnapshot {
         }
         let revision = HtmlHostFactsRevision::fresh();
         let mut builder = HtmlCaptureBuilder::new(capture_limits, revision.clone());
-        let mut registries = Vec::new();
+        let mut registries = StagedRegistries::default();
         let mut planned = plan::Planned::new();
         // Charge every arena slot, including destroyed/retired entries which
         // the public live-node iterator skips. Sparse snapshots still require
@@ -875,6 +901,8 @@ impl DomSnapshot {
                 subject: capture.subject_id(planned.staged_ref(position)?)?,
             });
         }
+        // The planning index and its builder subjects are not needed again.
+        drop(planned);
         let mut language_fallbacks = Vec::new();
         for entry in &entries {
             control.charge(1)?;
@@ -900,11 +928,12 @@ impl DomSnapshot {
             ),
         )
         .map_err(DomHtmlCaptureError::Language)?;
+        let mut nodes = nodes::LazyNodes::new(&entries, None);
         let input = modal::with_facts(
             control::native_input(self, &entries, &mut control)?.with_language_direction(language),
             self,
             &capture,
-            &entries,
+            &mut nodes,
             Vec::new(),
             surgeist_html_semantics::HtmlInertFactLimits::new(
                 control.limits.subjects,
@@ -912,7 +941,11 @@ impl DomSnapshot {
             ),
             &mut control,
         )?;
-        let subjects = nodes::Subjects::new(&entries, &mut control)?;
+        // A modal blocker lookup that needed the node table has already built it.
+        let subjects = match nodes.into_table() {
+            Some(table) => nodes::Subjects::with_table(&entries, table),
+            None => nodes::Subjects::new(&entries, &mut control)?,
+        };
         let input = control::with_native_state(
             input,
             self,
@@ -933,6 +966,9 @@ impl DomSnapshot {
         )?;
         let context = HtmlSemanticContext::new(&capture, revision, input, control.limits.subjects)
             .map_err(DomHtmlCaptureError::Context)?;
+        // The node table that served the construction now serves the finished
+        // capture's lookups, beside the table by subject ordinal.
+        let lookup = nodes::Lookup::new(subjects.into_table(), &entries, &mut control)?;
         control.charge(1)?;
         Ok(DomHtmlCapture {
             source: self.clone(),
@@ -941,6 +977,7 @@ impl DomSnapshot {
             capture,
             context,
             entries,
+            lookup,
             output_default_units: capture_limits.utf16_units(),
             base_policy,
             base_work,

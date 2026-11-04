@@ -196,7 +196,7 @@ fn partial_document_coverage_uses_actual_lists_and_original_qualification() {
             HtmlSemanticContextInput::new(Vec::new()),
             &source,
             &captured,
-            &entries,
+            &mut nodes::LazyNodes::new(&entries, None),
             Vec::new(),
             HtmlInertFactLimits::new(2, 4),
             &mut Control {
@@ -244,7 +244,7 @@ fn partial_modal_rows_obey_adapter_bounds_producer_capacity_work_and_cancellatio
             HtmlSemanticContextInput::new(Vec::new()),
             &source,
             captured.capture(),
-            &captured.entries,
+            &mut nodes::LazyNodes::new(&captured.entries, None),
             Vec::new(),
             HtmlInertFactLimits::new(records, producer_work),
             &mut Control {

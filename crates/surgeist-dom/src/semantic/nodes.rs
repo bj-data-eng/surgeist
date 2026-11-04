@@ -1,4 +1,5 @@
-//! Open-addressed `NodeId` indexes over caller-owned item slices.
+//! Open-addressed indexes over caller-owned item slices, and the lookups a
+//! finished capture retains.
 //!
 //! A table stores only item positions. It holds at most one slot per two items,
 //! rounded up to a power of two with a minimum of eight, so it never has more
@@ -6,69 +7,117 @@
 //! admits the item count against the adapter's subject limit, charges every slot
 //! it fills and every item it moves, and only then allocates. A lookup charges one step for each
 //! slot it examines. The hash is fixed, so charged work is reproducible.
+//!
+//! A finished capture retains a [`Lookup`]: the `NodeId` table that built it
+//! and a dense table from each subject's ordinal to its entry. The ordinal
+//! table has one slot per entry, admitted against the adapter's subject limit
+//! and charged before it allocates, so a lookup by node or by subject is a
+//! constant number of steps.
 
 use std::{
     collections::hash_map::DefaultHasher,
+    convert::Infallible,
     hash::{Hash, Hasher},
     num::NonZeroUsize,
 };
 
+use surgeist_html_semantics::HtmlCaptureSubjectId;
+
 use super::{Control, DomHtmlCaptureError, DomHtmlCaptureResource, Entry};
 use crate::NodeId;
 
-/// An item an index can find by its node.
+/// An item an index can find by its key.
 pub(super) trait Keyed {
-    fn node_id(&self) -> NodeId;
+    type Key: Copy + Eq + Hash;
+    fn key(&self) -> Self::Key;
 }
 impl Keyed for Entry {
-    fn node_id(&self) -> NodeId {
+    type Key = NodeId;
+    fn key(&self) -> NodeId {
         self.node
     }
 }
 
-#[derive(Default)]
-pub(super) struct NodeTable {
+#[derive(Debug, Default)]
+pub(super) struct Table {
     /// The position plus one of the item filling each slot.
     slots: Vec<Option<NonZeroUsize>>,
 }
 
-fn start(node: NodeId, mask: usize) -> usize {
+/// How a walk of one key's chain ended.
+enum Probed {
+    Found(usize),
+    Absent,
+    /// The walk left the table or visited every slot: not a state the
+    /// half-full table reaches.
+    Exhausted,
+}
+
+fn start<K: Hash>(key: K, mask: usize) -> usize {
     let mut hasher = DefaultHasher::new();
-    node.hash(&mut hasher);
+    key.hash(&mut hasher);
     (hasher.finish() & mask as u64) as usize
 }
 
-impl NodeTable {
-    /// The position of the item for `node`, if indexed.
+impl Table {
+    /// The position of the item for `key`, if indexed.
     pub(super) fn get<T: Keyed>(
         &self,
         control: &mut Control<'_>,
         items: &[T],
-        node: NodeId,
+        key: T::Key,
     ) -> Result<Option<usize>, DomHtmlCaptureError> {
         control.charge(1)?;
-        let Some(mask) = self.slots.len().checked_sub(1) else {
-            return Ok(None);
+        match self.probe(items, key, || control.charge(1))? {
+            Probed::Found(position) => Ok(Some(position)),
+            Probed::Absent => Ok(None),
+            Probed::Exhausted => Err(DomHtmlCaptureError::UnmappedSubject),
+        }
+    }
+
+    /// The position of the item for `key`, if indexed, for a lookup no work
+    /// bound charges: the public lookups of a finished capture.
+    pub(super) fn find<T: Keyed>(&self, items: &[T], key: T::Key) -> Option<usize> {
+        #[cfg(test)]
+        super::lookup_work::visit();
+        let step = || {
+            #[cfg(test)]
+            super::lookup_work::visit();
+            Ok::<(), Infallible>(())
         };
-        let mut at = start(node, mask);
+        match self.probe(items, key, step) {
+            Ok(Probed::Found(position)) => Some(position),
+            Ok(Probed::Absent | Probed::Exhausted) | Err(_) => None,
+        }
+    }
+
+    /// Walks the chain of `key`, calling `step` after each slot examined that
+    /// holds another key.
+    fn probe<T: Keyed, E>(
+        &self,
+        items: &[T],
+        key: T::Key,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Probed, E> {
+        let Some(mask) = self.slots.len().checked_sub(1) else {
+            return Ok(Probed::Absent);
+        };
+        let mut at = start(key, mask);
         for _ in 0..self.slots.len() {
             match self.slots.get(at) {
-                None => return Err(DomHtmlCaptureError::UnmappedSubject),
-                Some(None) => return Ok(None),
+                None => return Ok(Probed::Exhausted),
+                Some(None) => return Ok(Probed::Absent),
                 Some(Some(filled)) => {
                     let position = filled.get() - 1;
-                    if items
-                        .get(position)
-                        .is_some_and(|item| item.node_id() == node)
-                    {
-                        return Ok(Some(position));
+                    if items.get(position).is_some_and(|item| item.key() == key) {
+                        return Ok(Probed::Found(position));
                     }
                 }
             }
             at = (at + 1) & mask;
-            control.charge(1)?;
+            step()?;
         }
-        Err(DomHtmlCaptureError::UnmappedSubject)
+        Ok(Probed::Exhausted)
     }
 
     /// Indexes `items[position]`, which must not be indexed yet. The earlier
@@ -140,10 +189,10 @@ impl NodeTable {
         items: &[T],
         position: usize,
     ) -> Result<(), DomHtmlCaptureError> {
-        let node = items
+        let key = items
             .get(position)
             .ok_or(DomHtmlCaptureError::UnmappedSubject)?
-            .node_id();
+            .key();
         let filled = position
             .checked_add(1)
             .and_then(NonZeroUsize::new)
@@ -153,7 +202,7 @@ impl NodeTable {
             .len()
             .checked_sub(1)
             .ok_or(DomHtmlCaptureError::UnmappedSubject)?;
-        let mut at = start(node, mask);
+        let mut at = start(key, mask);
         for _ in 0..self.slots.len() {
             control.charge(1)?;
             let slot = self
@@ -173,18 +222,22 @@ impl NodeTable {
 /// The captured subject of each node of a finished entry list.
 pub(super) struct Subjects<'a> {
     entries: &'a [Entry],
-    table: NodeTable,
+    table: Table,
 }
 impl<'a> Subjects<'a> {
     pub(super) fn new(
         entries: &'a [Entry],
         control: &mut Control<'_>,
     ) -> Result<Self, DomHtmlCaptureError> {
-        let mut table = NodeTable::default();
-        for position in 0..entries.len() {
-            table.insert(control, entries, position)?;
-        }
-        Ok(Self { entries, table })
+        Ok(Self {
+            entries,
+            table: Table::over(control, entries)?,
+        })
+    }
+
+    /// The subjects of a table already built over exactly `entries`.
+    pub(super) fn with_table(entries: &'a [Entry], table: Table) -> Self {
+        Self { entries, table }
     }
 
     pub(super) fn entries(&self) -> &'a [Entry] {
@@ -196,12 +249,139 @@ impl<'a> Subjects<'a> {
         &self,
         control: &mut Control<'_>,
         node: NodeId,
-    ) -> Result<surgeist_html_semantics::HtmlCaptureSubjectId, DomHtmlCaptureError> {
+    ) -> Result<HtmlCaptureSubjectId, DomHtmlCaptureError> {
         self.table
             .get(control, self.entries, node)?
             .and_then(|position| self.entries.get(position))
             .map(|entry| entry.subject.clone())
             .ok_or(DomHtmlCaptureError::UnmappedSubject)
+    }
+
+    /// The node table, once nothing borrows the entries through this value.
+    pub(super) fn into_table(self) -> Table {
+        self.table
+    }
+}
+
+/// The entries of a finished list, with the node table over them once
+/// something needs it. A caller that already holds the table supplies it.
+pub(super) struct LazyNodes<'a> {
+    entries: &'a [Entry],
+    table: Option<Table>,
+}
+impl<'a> LazyNodes<'a> {
+    pub(super) fn new(entries: &'a [Entry], table: Option<Table>) -> Self {
+        Self { entries, table }
+    }
+
+    pub(super) fn entries(&self) -> &'a [Entry] {
+        self.entries
+    }
+
+    /// The entry of `node`, if any. The first lookup builds the table, charged
+    /// then; every later one costs a constant number of steps.
+    pub(super) fn entry(
+        &mut self,
+        control: &mut Control<'_>,
+        node: NodeId,
+    ) -> Result<Option<&'a Entry>, DomHtmlCaptureError> {
+        let entries = self.entries;
+        let table = match &mut self.table {
+            Some(table) => table,
+            None => self.table.insert(Table::over(control, entries)?),
+        };
+        Ok(table
+            .get(control, entries, node)?
+            .and_then(|position| entries.get(position)))
+    }
+
+    /// The table, if one was supplied or built.
+    pub(super) fn into_table(self) -> Option<Table> {
+        self.table
+    }
+}
+
+impl Table {
+    /// A table over every item of `items`, in order.
+    pub(super) fn over<T: Keyed>(
+        control: &mut Control<'_>,
+        items: &[T],
+    ) -> Result<Self, DomHtmlCaptureError> {
+        let mut table = Self::default();
+        for position in 0..items.len() {
+            table.insert(control, items, position)?;
+        }
+        Ok(table)
+    }
+}
+
+/// The lookups a finished capture retains over its entries, in both
+/// directions. It is owned by the capture and released with it.
+#[derive(Debug)]
+pub(super) struct Lookup {
+    nodes: Table,
+    /// The entry position plus one of the subject at each capture ordinal.
+    subjects: Vec<Option<NonZeroUsize>>,
+}
+impl Lookup {
+    /// Keeps `nodes`, which indexes `entries`, and indexes their subjects by
+    /// ordinal. The ordinal table has one slot per entry; its extent is
+    /// admitted against the adapter's subject limit and its fill and
+    /// placements are charged before they run. An entry whose subject lies
+    /// outside the table, or shares an ordinal with an earlier one, is not a
+    /// finished capture's entry list.
+    pub(super) fn new(
+        nodes: Table,
+        entries: &[Entry],
+        control: &mut Control<'_>,
+    ) -> Result<Self, DomHtmlCaptureError> {
+        let mut subjects: Vec<Option<NonZeroUsize>> = Vec::new();
+        control.reserve(&mut subjects, entries.len())?;
+        control.charge(entries.len())?;
+        subjects.resize(entries.len(), None);
+        for (position, entry) in entries.iter().enumerate() {
+            control.charge(1)?;
+            let slot = subjects
+                .get_mut(entry.subject.ordinal())
+                .ok_or(DomHtmlCaptureError::UnmappedSubject)?;
+            if slot.is_some() {
+                return Err(DomHtmlCaptureError::UnmappedSubject);
+            }
+            *slot = Some(
+                position
+                    .checked_add(1)
+                    .and_then(NonZeroUsize::new)
+                    .ok_or(DomHtmlCaptureError::RepresentationExhausted)?,
+            );
+        }
+        Ok(Self { nodes, subjects })
+    }
+
+    /// The entry of `node` among `entries`, which this lookup was built over.
+    pub(super) fn entry_of_node<'a>(
+        &self,
+        entries: &'a [Entry],
+        node: NodeId,
+    ) -> Option<&'a Entry> {
+        self.nodes
+            .find(entries, node)
+            .and_then(|position| entries.get(position))
+    }
+
+    /// The entry of `subject` among `entries`, which this lookup was built
+    /// over. The caller has checked that the subject belongs to this capture;
+    /// an ordinal outside the table, and an entry holding another subject
+    /// (an ordinal shared with a subject of another capture), find nothing.
+    pub(super) fn entry_of_subject<'a>(
+        &self,
+        entries: &'a [Entry],
+        subject: &HtmlCaptureSubjectId,
+    ) -> Option<&'a Entry> {
+        #[cfg(test)]
+        super::lookup_work::visit();
+        let position = self.subjects.get(subject.ordinal()).copied().flatten()?;
+        let entry = entries.get(position.get() - 1)?;
+        (entry.subject == *subject).then_some(entry)
     }
 }
 
@@ -214,7 +394,8 @@ mod tests {
 
     struct Item(NodeId);
     impl Keyed for Item {
-        fn node_id(&self) -> NodeId {
+        type Key = NodeId;
+        fn key(&self) -> NodeId {
             self.0
         }
     }
@@ -268,7 +449,7 @@ mod tests {
         let items = [Item(a), Item(b), Item(c)];
         let cancel = AtomicBool::new(false);
         let mut control = control(&cancel, 8);
-        let mut table = NodeTable::default();
+        let mut table = Table::default();
         // The first insert fills eight slots and then examines one; the next
         // two examine the occupied slots of their chain and then a free one.
         table.insert(&mut control, &items[..1], 0).unwrap();
@@ -296,7 +477,7 @@ mod tests {
         let items = [Item(ids[0])];
         let cancel = AtomicBool::new(false);
         let mut control = control(&cancel, 8);
-        let mut table = NodeTable::default();
+        let mut table = Table::default();
         assert_eq!(table.get(&mut control, &items, ids[1]).unwrap(), None);
         assert_eq!(control.work, 1);
         table.insert(&mut control, &items, 0).unwrap();
@@ -316,7 +497,7 @@ mod tests {
         let items: Vec<Item> = ids.iter().copied().map(Item).collect();
         let cancel = AtomicBool::new(false);
         let mut control = control(&cancel, 40);
-        let mut table = NodeTable::default();
+        let mut table = Table::default();
         let mut sizes = Vec::new();
         for position in 0..items.len() {
             table
@@ -342,7 +523,7 @@ mod tests {
         let items: Vec<Item> = ids.iter().copied().map(Item).collect();
         let cancel = AtomicBool::new(false);
         let mut control = control(&cancel, 4);
-        let mut table = NodeTable::default();
+        let mut table = Table::default();
         for position in 0..4 {
             table
                 .insert(&mut control, &items[..=position], position)
@@ -367,7 +548,7 @@ mod tests {
         let items: Vec<Item> = ids.iter().copied().map(Item).collect();
         let cancel = AtomicBool::new(false);
         let mut control = control(&cancel, 8);
-        let mut table = NodeTable::default();
+        let mut table = Table::default();
         for position in 0..4 {
             table
                 .insert(&mut control, &items[..=position], position)
@@ -383,6 +564,174 @@ mod tests {
         assert!(matches!(
             table.get(&mut control, &items[..5], ids[0]),
             Err(DomHtmlCaptureError::Cancelled)
+        ));
+    }
+
+    /// A finished capture of `count` Documents, and one entry per Document
+    /// pairing it with a distinct real node.
+    fn capture_entries(count: usize) -> (surgeist_html_semantics::HtmlCapture, Vec<Entry>) {
+        use surgeist_html_semantics::{
+            HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlHostFactsRevision,
+            HtmlScriptingStatus,
+        };
+        let ids = nodes(count);
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(count + 1, 8, 0, 4096, count + 1, 0, 0, 1 << 24),
+            HtmlHostFactsRevision::fresh(),
+        );
+        let handles: Vec<_> = ids
+            .iter()
+            .map(|_| {
+                builder
+                    .add_document(
+                        surgeist_html::construction::HtmlDocumentMode::NoQuirks,
+                        HtmlScriptingStatus::Disabled,
+                        HtmlCaptureRegistryInput::Null,
+                    )
+                    .unwrap()
+            })
+            .collect();
+        let capture = builder.finish().unwrap();
+        let entries = ids
+            .into_iter()
+            .zip(&handles)
+            .map(|(node, handle)| Entry {
+                node,
+                subject: capture.subject_id(handle).unwrap(),
+            })
+            .collect();
+        (capture, entries)
+    }
+
+    fn lookup(entries: &[Entry], subjects: usize) -> Lookup {
+        let cancel = AtomicBool::new(false);
+        let mut control = control(&cancel, subjects);
+        let table = Table::over(&mut control, entries).unwrap();
+        Lookup::new(table, entries, &mut control).unwrap()
+    }
+
+    #[test]
+    fn each_entry_is_found_by_its_node_and_by_its_subject() {
+        let (_capture, entries) = capture_entries(20);
+        let lookup = lookup(&entries, 20);
+        for entry in &entries {
+            let by_node = lookup.entry_of_node(&entries, entry.node).unwrap();
+            let by_subject = lookup.entry_of_subject(&entries, &entry.subject).unwrap();
+            assert!(std::ptr::eq(by_node, entry) && std::ptr::eq(by_subject, entry));
+        }
+        let missing = nodes(24)[23];
+        assert!(lookup.entry_of_node(&entries, missing).is_none());
+    }
+
+    /// A second capture's entries for the same nodes: every subject has the
+    /// ordinal of the same node's subject in the first capture.
+    fn entries_for_the_same_nodes(
+        first: &[Entry],
+    ) -> (surgeist_html_semantics::HtmlCapture, Vec<Entry>) {
+        let (capture, mut entries) = capture_entries(first.len() + 4);
+        entries.truncate(first.len());
+        for (entry, original) in entries.iter_mut().zip(first) {
+            entry.node = original.node;
+        }
+        (capture, entries)
+    }
+
+    #[test]
+    fn a_subject_of_another_capture_with_an_equal_ordinal_finds_nothing() {
+        let (_capture, entries) = capture_entries(20);
+        let lookup = lookup(&entries, 20);
+        let (_other, foreign) = entries_for_the_same_nodes(&entries);
+        for (entry, other) in entries.iter().zip(&foreign) {
+            assert_eq!(entry.subject.ordinal(), other.subject.ordinal());
+            assert_ne!(entry.subject, other.subject);
+            assert!(lookup.entry_of_subject(&entries, &other.subject).is_none());
+        }
+    }
+
+    #[test]
+    fn a_subject_ordinal_beyond_the_entries_finds_nothing() {
+        let (_capture, entries) = capture_entries(20);
+        let lookup = lookup(&entries, 20);
+        // The second capture holds four more subjects than the first has entries.
+        let (_other, longer) = capture_entries(24);
+        for beyond in &longer[20..] {
+            assert!(beyond.subject.ordinal() >= entries.len());
+            assert!(lookup.entry_of_subject(&entries, &beyond.subject).is_none());
+        }
+    }
+
+    #[test]
+    fn the_ordinal_table_refuses_entries_that_are_not_a_finished_capture_list() {
+        let (_capture, entries) = capture_entries(8);
+        let cancel = AtomicBool::new(false);
+        let build = |entries: &[Entry]| {
+            let mut control = control(&cancel, 8);
+            let table = Table::over(&mut control, entries).unwrap();
+            Lookup::new(table, entries, &mut control).map(|_| ())
+        };
+        assert!(build(&entries).is_ok());
+        // A subject listed twice shares its ordinal with itself.
+        let doubled = [
+            Entry {
+                node: entries[0].node,
+                subject: entries[0].subject.clone(),
+            },
+            Entry {
+                node: entries[1].node,
+                subject: entries[0].subject.clone(),
+            },
+        ];
+        assert!(matches!(
+            build(&doubled),
+            Err(DomHtmlCaptureError::UnmappedSubject)
+        ));
+        // A subject whose ordinal lies beyond the listed entries.
+        assert!(matches!(
+            build(&entries[4..]),
+            Err(DomHtmlCaptureError::UnmappedSubject)
+        ));
+    }
+
+    #[test]
+    fn the_ordinal_table_is_admitted_and_charged_before_it_allocates() {
+        let (_capture, entries) = capture_entries(8);
+        let cancel = AtomicBool::new(false);
+        let table = {
+            let mut control = control(&cancel, 8);
+            Table::over(&mut control, &entries).unwrap()
+        };
+        // Over the subject limit: refused before any charge beyond the first.
+        let mut small = control(&cancel, 7);
+        assert!(matches!(
+            Lookup::new(table, &entries, &mut small),
+            Err(DomHtmlCaptureError::ResourceLimit {
+                resource: DomHtmlCaptureResource::Subjects,
+                limit: 7
+            })
+        ));
+        assert_eq!(small.work, 1);
+        // Exactly admitted: one step to admit, one per slot to fill, and one
+        // per entry to place.
+        let table = {
+            let mut control = control(&cancel, 8);
+            Table::over(&mut control, &entries).unwrap()
+        };
+        let mut exact = control(&cancel, 8);
+        Lookup::new(table, &entries, &mut exact).unwrap();
+        assert_eq!(exact.work, 1 + 8 + 8);
+        // One step short of that fails on the work bound.
+        let table = {
+            let mut control = control(&cancel, 8);
+            Table::over(&mut control, &entries).unwrap()
+        };
+        let mut short = control(&cancel, 8);
+        short.limits = DomHtmlCaptureLimits::new(8, 1 + 8 + 8 - 1);
+        assert!(matches!(
+            Lookup::new(table, &entries, &mut short),
+            Err(DomHtmlCaptureError::ResourceLimit {
+                resource: DomHtmlCaptureResource::Work,
+                ..
+            })
         ));
     }
 }

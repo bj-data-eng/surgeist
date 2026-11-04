@@ -6,17 +6,21 @@ use surgeist_html_semantics::{
     HtmlInertFactLimits, HtmlInertFacts, HtmlInertNodeFact,
 };
 
+/// The modal facts of every Document among the entries of `nodes`. Its node
+/// table, if the caller has none, is built on the first top-layer Dialog found,
+/// charged then, and left there for the caller. It serves every blocker lookup
+/// in constant steps; a capture without such a Dialog builds none.
 pub(super) fn with_facts(
     input: HtmlSemanticContextInput,
     source: &DomSnapshot,
     capture: &HtmlCapture,
-    entries: &[Entry],
+    entries: &mut super::nodes::LazyNodes<'_>,
     nodes: Vec<HtmlInertNodeFact>,
     limits: HtmlInertFactLimits,
     control: &mut Control<'_>,
 ) -> Result<HtmlSemanticContextInput, DomHtmlCaptureError> {
     let mut documents = Vec::new();
-    for entry in entries {
+    for entry in entries.entries() {
         control.charge(1)?;
         let node = source.node(entry.node)?;
         if node.as_document().is_none() {
@@ -35,12 +39,8 @@ pub(super) fn with_facts(
                         continue;
                     }
                     blocking = HtmlDocumentModalBlocking::Unavailable;
-                    for mapped in entries {
-                        control.charge(1)?;
-                        if mapped.node == *member {
-                            blocking = HtmlDocumentModalBlocking::BlockedBy(mapped.subject.clone());
-                            break;
-                        }
+                    if let Some(mapped) = entries.entry(control, *member)? {
+                        blocking = HtmlDocumentModalBlocking::BlockedBy(mapped.subject.clone());
                     }
                     break;
                 }

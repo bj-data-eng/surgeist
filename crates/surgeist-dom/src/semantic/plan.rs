@@ -14,7 +14,7 @@ use surgeist_html_semantics::HtmlCaptureBuilderSubject;
 
 use super::{
     Control, DomHtmlCaptureError, DomHtmlCaptureResource,
-    nodes::{Keyed, NodeTable},
+    nodes::{Keyed, Table},
 };
 use crate::NodeId;
 
@@ -28,7 +28,8 @@ struct PlannedEntry {
     subject: Option<HtmlCaptureBuilderSubject>,
 }
 impl Keyed for PlannedEntry {
-    fn node_id(&self) -> NodeId {
+    type Key = NodeId;
+    fn key(&self) -> NodeId {
         self.node
     }
 }
@@ -37,7 +38,7 @@ impl Keyed for PlannedEntry {
 pub(super) struct Planned {
     entries: Vec<PlannedEntry>,
     /// The position of each planned node.
-    index: NodeTable,
+    index: Table,
     /// Every entry at or beyond this position has not been expanded.
     cursor: usize,
     /// Positions below `cursor` to expand again, lowest first. An entry is
@@ -55,7 +56,7 @@ impl Planned {
     pub(super) fn new() -> Self {
         Self {
             entries: Vec::new(),
-            index: NodeTable::default(),
+            index: Table::default(),
             cursor: 0,
             revisit: BinaryHeap::new(),
         }

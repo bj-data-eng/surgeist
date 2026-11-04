@@ -130,7 +130,7 @@ fn registry_snapshot(count: usize) -> (DomSnapshot, Vec<DomRegistryId>) {
 
 #[test]
 fn resolving_each_registry_twice_takes_steps_linear_in_the_registries() {
-    let sizes = [64usize, 128, 256, 512];
+    let sizes = [128usize, 256, 512, 1024];
     let mut counts = Vec::new();
     for n in sizes {
         let (snapshot, ids) = registry_snapshot(n);
@@ -144,7 +144,7 @@ fn resolving_each_registry_twice_takes_steps_linear_in_the_registries() {
             work: 0,
             cancellation: &cancel,
         };
-        let mut registries = Vec::new();
+        let mut registries = StagedRegistries::default();
         // The first pass stages every registry, the second finds each staged.
         for _ in 0..2 {
             for id in &ids {
@@ -158,7 +158,7 @@ fn resolving_each_registry_twice_takes_steps_linear_in_the_registries() {
                 .unwrap();
             }
         }
-        assert_eq!(registries.len(), n);
+        assert_eq!(registries.items.len(), n);
         counts.push(control.work);
     }
     assert_linear("registry resolution", &sizes, &counts);
@@ -166,7 +166,7 @@ fn resolving_each_registry_twice_takes_steps_linear_in_the_registries() {
 
 #[test]
 fn finding_the_modal_blocker_of_each_document_takes_steps_linear_in_the_documents() {
-    let sizes = [64usize, 128, 256, 512];
+    let sizes = [128usize, 256, 512, 1024];
     let mut counts = Vec::new();
     for n in sizes {
         let cancel = AtomicBool::new(false);
@@ -261,7 +261,7 @@ fn finding_the_modal_blocker_of_each_document_takes_steps_linear_in_the_document
             HtmlSemanticContextInput::new(Vec::new()),
             &source,
             &captured,
-            &entries,
+            &mut nodes::LazyNodes::new(&entries, None),
             Vec::new(),
             surgeist_html_semantics::HtmlInertFactLimits::new(n + 8, 1 << 30),
             &mut control,
@@ -287,4 +287,66 @@ fn finding_the_modal_blocker_of_each_document_takes_steps_linear_in_the_document
         counts.push(control.work);
     }
     assert_linear("modal blocker lookups", &sizes, &counts);
+}
+
+/// A snapshot holding a document with `n` elements, captured twice.
+fn captured_twice(n: usize) -> (DomHtmlCapture, DomHtmlCapture) {
+    let limits = DomLimits::new(n + 8, 1 << 20, 4 * n + 64, 0, 0, 1, 65536, names()).unwrap();
+    let mut dom = Dom::new(limits).unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let parent = batch.create_element_ns(&document, Namespace::html(), "div");
+    for _ in 0..n {
+        let child = batch.create_element_ns(&document, Namespace::html(), "p");
+        batch.insert_before(&child, &parent, None);
+    }
+    batch.insert_before(&parent, &document, None);
+    let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    let document = commit.document(&document).unwrap();
+    let snapshot = dom.snapshot();
+    let capture = || {
+        snapshot
+            .html_capture(
+                document,
+                None,
+                HtmlCaptureLimits::new(
+                    4 * n + 16,
+                    16 * n + 64,
+                    4 * n + 16,
+                    100 * n + 100,
+                    4 * n + 16,
+                    0,
+                    0,
+                    1 << 30,
+                ),
+                DomHtmlCaptureLimits::new(4 * n + 16, 1 << 40),
+                &AtomicBool::new(false),
+            )
+            .unwrap()
+    };
+    (capture(), capture())
+}
+
+#[test]
+fn a_subject_of_another_capture_is_refused_whatever_its_ordinal() {
+    let (first, second) = captured_twice(8);
+    let (small, _) = captured_twice(2);
+    for (capture, foreign) in [(&first, &second), (&small, &first)] {
+        for entry in &foreign.entries {
+            assert!(matches!(
+                capture.node(&entry.subject),
+                Err(DomHtmlCaptureError::Capture(
+                    surgeist_html_semantics::HtmlCaptureError::ForeignCapture
+                ))
+            ));
+        }
+    }
+    // The smaller capture is refused for subjects beyond its own count too.
+    assert!(first.entries.len() > small.entries.len());
+    // Each capture still resolves its own subjects, which share ordinals.
+    for (own, other) in first.entries.iter().zip(&second.entries) {
+        assert_eq!(own.subject.ordinal(), other.subject.ordinal());
+        assert_eq!(first.node(&own.subject).unwrap(), own.node);
+        assert_eq!(second.node(&other.subject).unwrap(), other.node);
+    }
 }
