@@ -24,6 +24,8 @@ use surgeist_html_semantics::{
     HtmlSemanticResource, HtmlSemanticResult, HtmlSemanticSession, HtmlSemanticValue,
 };
 
+mod select_button;
+
 // Expectations follow HTML 877d6146487f §6.3.1–2 and the selected CSS Shadow
 // 50337328484f §4.1 relation producer contract. These tests supply actual captured
 // records; HTML consumes the supplied relations and never computes flattening.
