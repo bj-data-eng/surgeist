@@ -2294,10 +2294,13 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
     header cell when the table has such groups: a table with a row or column
     group is refused for a `scope` value that is too long to read on any header
     cell, even one that no cell would otherwise have reached.
-  - *Explicit `headers` tokens* cost `O(V + N log N * I + T log N)` for `V`
-    the nodes of the document, `N` the elements with a non-empty `id`, `I` the
-    longest such `id` in units and `T` the units of all tokens, plus
-    `O(C log C)` for the cells. The first non-empty token builds the whole
+  - *Explicit `headers` tokens* cost `O(V + A + N log N * I + T log (N + C))`
+    for `V` the nodes of the document, `A` the attributes the walk reads (each
+    element's attributes are read to find its `id`, and charged per
+    attribute), `N` the elements with a non-empty `id`, `I` the longest such
+    `id` in units, `T` the units of all tokens (each token is a search of the
+    IDs and, if found, of the cells), and `C` the cells, plus `O(C log C)` to
+    sort them. The first non-empty token builds the whole
     index: one walk of the ordinary tree from the document in tree order, with
     every non-empty `id` entered by value (ties in tree order, so the first
     element wins), and the cells by capture ordinal. Each token is then a
