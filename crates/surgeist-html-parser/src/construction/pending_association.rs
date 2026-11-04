@@ -103,21 +103,28 @@ struct OrderRef {
     slot: usize,
     len: usize,
 }
-/// The style elements of the session's main tree, the tree rooted at record 0,
-/// as a registry row (none while the tree holds no style element) that every
-/// insertion and removal of a style element since the session began has been
-/// applied to.
-#[derive(Clone, Copy)]
-pub(super) struct CurrentOrder {
-    slot: Option<usize>,
-}
 /// Record 0 roots the main tree.
 const MAIN_TREE: usize = 0;
-impl CurrentOrder {
-    /// The main tree has no descendants yet.
-    pub(super) fn empty_main_tree() -> Self {
-        Self { slot: None }
-    }
+/// The row listing the styles of the subtree at `root` that is being removed,
+/// built by the first removal trigger of its styles. The subtree keeps its
+/// styles while the removal hooks run, so every trigger of the removal lists
+/// the same ones; any insertion hook, and the removal of anything else, ends
+/// the removal and drops the row.
+#[derive(Clone, Copy)]
+pub(super) struct DetachedOrder {
+    root: usize,
+    slot: usize,
+}
+/// A subtree being inserted whose first style could not extend its tree's
+/// order. Its hooks run in tree order after the whole subtree is in place, so
+/// a row built from `from` on, by the trigger of that first style, lists every
+/// style of the subtree and the hooks of the others have nothing to apply.
+#[derive(Clone, Copy)]
+pub(super) struct StyleSubtree {
+    root: usize,
+    /// The length of the registry when the first hook found the order
+    /// unable to take its style; a row at or after it was built since.
+    from: usize,
 }
 pub(super) struct Context {
     input_document: usize,
@@ -412,37 +419,50 @@ impl SessionStorage {
         }
     }
     /// The tree's style elements in tree order, as a prefix of a shared row.
-    /// The main tree keeps one row that each style insertion at the end of the
-    /// tree extends; any other change to its style elements, and every other
-    /// tree, builds the row by walking the tree.
+    /// Each tree keeps one row, named by a join of the tree's root, that every
+    /// insertion of a style element at the end of the tree extends; any other
+    /// change to a tree's style elements drops its row, and a removal drops
+    /// every tree's, for the next trigger to rebuild by walking the tree.
     fn style_order(
         &mut self,
         c: &mut ParseControl,
         root: usize,
         detached: Option<usize>,
     ) -> Result<Option<OrderRef>, SessionError> {
-        let cacheable = root == MAIN_TREE && detached.is_none();
-        if cacheable && let Some(current) = self.style_order {
-            let order = match current.slot {
-                None => None,
-                Some(slot) => {
-                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                    let Some(RetainedPayload::StyleOrder(list)) = self.payloads.values.get(slot)
-                    else {
-                        return Err(latch_registry_row(c));
-                    };
-                    Some(OrderRef {
-                        slot,
-                        len: list.len(),
-                    })
-                }
-            };
+        let cacheable = detached.is_none();
+        if cacheable && root == MAIN_TREE && self.main_tree_styleless {
             #[cfg(test)]
             assert_eq!(
-                order.map_or(&[][..], |order| match &self.payloads.values[order.slot] {
-                    RetainedPayload::StyleOrder(list) => list.as_slice(),
-                    _ => &[],
-                }),
+                self.uncharged_style_order(root),
+                Vec::<usize>::new(),
+                "a main tree known to be styleless holds no style element"
+            );
+            return Ok(None);
+        }
+        // The tree of a removal's trigger is the subtree being removed when the
+        // climb from the style stops at the removed root.
+        let removed_tree = detached == Some(root);
+        let cached = if cacheable {
+            self.current_style_order(c, root)?
+        } else if removed_tree {
+            self.detached_order
+                .filter(|order| order.root == root)
+                .map(|order| order.slot)
+        } else {
+            None
+        };
+        if let Some(slot) = cached {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            let Some(RetainedPayload::StyleOrder(list)) = self.payloads.values.get(slot) else {
+                return Err(latch_registry_row(c));
+            };
+            let order = Some(OrderRef {
+                slot,
+                len: list.len(),
+            });
+            #[cfg(test)]
+            assert_eq!(
+                list.as_slice(),
                 self.uncharged_style_order(root).as_slice(),
                 "the extended style order equals the tree's walk"
             );
@@ -464,12 +484,30 @@ impl SessionStorage {
             return Err(error);
         }
         let order = self.retain_style_order(c, list)?;
-        if cacheable {
-            self.style_order = Some(CurrentOrder {
-                slot: order.map(|order| order.slot),
-            });
+        if let Some(order) = order {
+            if cacheable {
+                self.payloads
+                    .join_latest(root, Join::StyleOrder, order.slot)?;
+            } else if removed_tree {
+                self.detached_order = Some(DetachedOrder {
+                    root,
+                    slot: order.slot,
+                });
+            }
         }
         Ok(order)
+    }
+    /// The row listing the style elements of the tree at `root`, when it is
+    /// current.
+    fn current_style_order(
+        &self,
+        c: &mut ParseControl,
+        root: usize,
+    ) -> Result<Option<usize>, SessionError> {
+        Ok(self
+            .payloads
+            .joined(c, root, Join::StyleOrder)?
+            .filter(|slot| *slot >= self.style_order_floor))
     }
     /// Registers a style order row, or releases an empty list.
     fn retain_style_order(
@@ -495,10 +533,11 @@ impl SessionStorage {
             .map_err(|_| latch_registry_row(c))?;
         Ok(Some(OrderRef { slot, len }))
     }
-    /// Applies a style element's insertion or removal to the main tree's style
-    /// order. A removal, or an insertion that is not after every listed style,
-    /// drops the order for the next trigger to rebuild. `root` is the root of
-    /// the subtree whose insertion or removal is being applied.
+    /// Applies a style element's insertion or removal to the style order of
+    /// its tree. A removal, or an insertion into a detaching subtree, drops
+    /// every tree's order; an insertion that is not after every listed style
+    /// drops its tree's order, for the next trigger to rebuild. `root` is the
+    /// root of the subtree whose insertion or removal is being applied.
     fn style_order_changed(
         &mut self,
         c: &mut ParseControl,
@@ -507,25 +546,52 @@ impl SessionStorage {
         removal: bool,
         root: usize,
     ) -> Result<(), SessionError> {
-        let Some(current) = self.style_order else {
-            return Ok(());
-        };
+        if !(removal
+            && self
+                .detached_order
+                .is_some_and(|order| detached == Some(order.root)))
+        {
+            self.detached_order = None;
+        }
         if removal || detached.is_some() {
-            self.style_order = None;
+            self.style_order_floor = self.payloads.values.len();
+            self.main_tree_styleless = false;
+            self.style_subtree = None;
             return Ok(());
         }
-        if self.ordinary_root(c, style, None)? != MAIN_TREE {
+        let tree = self.ordinary_root(c, style, None)?;
+        let current = self.current_style_order(c, tree)?;
+        if root != style
+            && let Some(slot) = current
+            && self
+                .style_subtree
+                .is_some_and(|subtree| subtree.root == root && slot >= subtree.from)
+        {
             return Ok(());
         }
-        if let Some(slot) = current.slot {
-            let Some(RetainedPayload::StyleOrder(list)) = self.payloads.values.get(slot) else {
-                return Err(latch_registry_row(c));
-            };
-            // A rebuild during this subtree's insertion already lists the style.
-            if list.as_slice().last() == Some(&style) {
-                return Ok(());
+        // The main tree before its first style has an empty order and no row.
+        let empty = current.is_none() && tree == MAIN_TREE && self.main_tree_styleless;
+        if current.is_none() && !empty {
+            self.note_unextended_subtree(root, style);
+            return Ok(());
+        }
+        let last = match current {
+            Some(slot) => {
+                let Some(RetainedPayload::StyleOrder(list)) = self.payloads.values.get(slot) else {
+                    return Err(latch_registry_row(c));
+                };
+                // A rebuild during this subtree's insertion already lists the
+                // style.
+                let Some(last) = list.as_slice().last().copied() else {
+                    return Err(latch_registry_row(c));
+                };
+                if last == style {
+                    return Ok(());
+                }
+                Some(last)
             }
-        }
+            None => None,
+        };
         // Style elements hold text, so only the style itself can follow it.
         let record = self
             .construction
@@ -539,7 +605,8 @@ impl SessionStorage {
                 .is_some_and(|child| matches!(child.kind(), HtmlNodeKind::Element(_)));
         }
         if elements {
-            self.style_order = None;
+            self.drop_style_order(tree);
+            self.note_unextended_subtree(root, style);
             return Ok(());
         }
         // The order lists every style of the tree but those in the subtree being
@@ -548,28 +615,19 @@ impl SessionStorage {
         // of the order when it follows the last listed style, wherever in the
         // tree that is. Within a larger subtree it must end the tree.
         let appends = if root == style {
-            let last = match current.slot {
-                None => None,
-                Some(slot) => {
-                    let Some(RetainedPayload::StyleOrder(list)) = self.payloads.values.get(slot)
-                    else {
-                        return Err(latch_registry_row(c));
-                    };
-                    list.as_slice().last().copied()
-                }
-            };
             match last {
                 None => true,
                 Some(last) => self.precedes(c, last, style)?,
             }
         } else {
-            self.ends_subtree(c, MAIN_TREE, style)?
+            self.ends_subtree(c, tree, style)?
         };
         if !appends {
-            self.style_order = None;
+            self.drop_style_order(tree);
+            self.note_unextended_subtree(root, style);
             return Ok(());
         }
-        match current.slot {
+        match current {
             Some(slot) => {
                 let Some(RetainedPayload::StyleOrder(list)) = self.payloads.values.get_mut(slot)
                 else {
@@ -583,13 +641,37 @@ impl SessionStorage {
                     list.release(c)?;
                     return Err(error.into());
                 }
-                let order = self.retain_style_order(c, list)?;
-                self.style_order = Some(CurrentOrder {
-                    slot: order.map(|order| order.slot),
-                });
+                if let Some(order) = self.retain_style_order(c, list)? {
+                    self.payloads
+                        .join_latest(tree, Join::StyleOrder, order.slot)?;
+                }
+                self.main_tree_styleless = false;
             }
         }
         Ok(())
+    }
+    /// Notes that the order could not take `style`, one style of the subtree
+    /// at `root` whose insertion is being applied, so that the row the next
+    /// trigger builds is known to list the subtree.
+    fn note_unextended_subtree(&mut self, root: usize, style: usize) {
+        if root != style
+            && self
+                .style_subtree
+                .is_none_or(|subtree| subtree.root != root)
+        {
+            self.style_subtree = Some(StyleSubtree {
+                root,
+                from: self.payloads.values.len(),
+            });
+        }
+    }
+    /// Forgets the order of the tree at `tree`, for the next trigger to
+    /// rebuild by walking the tree.
+    fn drop_style_order(&mut self, tree: usize) {
+        self.payloads.clear_join(tree, Join::StyleOrder);
+        if tree == MAIN_TREE {
+            self.main_tree_styleless = false;
+        }
     }
     fn association_captured_context(
         &mut self,
@@ -2815,5 +2897,46 @@ mod tests {
             row.context.first_base = Some(usize::MAX);
         });
         assert_row_fault(&report, read::HtmlParseUnresolvedKind::Node);
+    }
+
+    /// The order remembered for a subtree being removed is the order of the
+    /// subtree as it was then: a style inserted into the subtree afterwards
+    /// ends it, so a second removal of the same subtree lists the new style.
+    /// No parsed document reaches this, because the removal of the children of a
+    /// moved element always builds another subtree's order in between.
+    #[test]
+    fn a_style_inserted_into_a_removed_subtree_ends_its_remembered_order() {
+        let request = super::super::effects::tests::request(
+            "<body><div><style>1{}</style><style>2{}</style>",
+        );
+        let (mut c, mut session, proof, nodes) = super::super::effects::tests::graph(&request);
+        let find = |name: &str, nth: usize| {
+            nodes
+                .iter()
+                .filter(|(found, _)| found == name)
+                .nth(nth)
+                .map(|(_, node)| node.clone())
+                .expect("a parsed element")
+        };
+        let (div, second) = (find("div", 0), find("style", 1));
+        session.remove(&mut c, &second, Some(&proof)).unwrap();
+        let storage = session.active_mut().unwrap();
+        // The order of the subtree being removed, remembered.
+        let first = storage
+            .style_order(&mut c, div.index, Some(div.index))
+            .unwrap()
+            .expect("the first style");
+        assert_eq!(first.len, 1);
+        session
+            .insert(&mut c, &div, &second, None, Some(&proof))
+            .unwrap();
+        let storage = session.active_mut().unwrap();
+        let listed = storage
+            .style_order(&mut c, div.index, Some(div.index))
+            .unwrap()
+            .expect("both styles");
+        assert_eq!(listed.len, 2);
+        session.release(&mut c).unwrap();
+        super::super::tests::storage_zero(&c);
     }
 }

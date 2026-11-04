@@ -46,6 +46,9 @@ pub(super) enum Join {
     LookupRegistry,
     /// The latest style occurrence naming the record as its subject.
     StyleOccurrence,
+    /// The `StyleOrder` row listing the style elements of the tree the record
+    /// roots, while it is current; see `SessionStorage::style_order_floor`.
+    StyleOrder,
     /// The string row holding a processing instruction's data.
     ProcessingInstructionData,
     /// The pseudo-attribute map of a processing instruction.
@@ -89,10 +92,11 @@ slots!(Join, JOIN_COUNT, {
     BaseDocument => 14,
     LookupRegistry => 15,
     StyleOccurrence => 16,
-    ProcessingInstructionData => 17,
-    ProcessingInstructionAttributes => 18,
-    SvgScript => 19,
-    Details => 20,
+    StyleOrder => 17,
+    ProcessingInstructionData => 18,
+    ProcessingInstructionAttributes => 19,
+    SvgScript => 20,
+    Details => 21,
 });
 
 /// Cells hold a registry slot plus one in 32 bits; a slot beyond that is
@@ -129,6 +133,10 @@ impl NodeJoins {
     pub(super) fn set_latest(&mut self, join: Join, slot: usize) -> Result<(), SessionError> {
         *self.rows.get_mut(join) = Some(joined_cell(slot)?);
         Ok(())
+    }
+    /// Forgets the registry row of `join`.
+    pub(super) fn clear(&mut self, join: Join) {
+        *self.rows.get_mut(join) = None;
     }
     /// Keeps the earliest registry row, the one a front-to-back scan finds, and
     /// reports whether the cell already named another row.

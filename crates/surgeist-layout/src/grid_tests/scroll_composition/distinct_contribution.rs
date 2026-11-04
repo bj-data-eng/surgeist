@@ -837,3 +837,6 @@ mod native_content_size_operation;
 
 #[path = "../tracks_intrinsic/native_preferred_percent_floor.rs"]
 mod native_preferred_percent_floor;
+
+#[path = "distinct_flattened.rs"]
+mod distinct_flattened;
