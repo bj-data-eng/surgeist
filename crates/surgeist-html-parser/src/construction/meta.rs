@@ -822,20 +822,12 @@ impl SessionStorage {
             return Ok(None);
         };
         if domain == HtmlParseMetaDomain::ThemeColor {
-            if let Some(media) = self.meta_attribute(c, node, "media")? {
-                let mut known_match = true;
-                for unit in media.code_units() {
-                    c.charge_unit_inspection()?;
-                    if !surgeist_html::bounded::lexical::is_ascii_whitespace(*unit) {
-                        known_match = false;
-                        break;
-                    }
-                }
-                if !known_match {
-                    return Ok(Some(Reading::Unsatisfied(
-                        HtmlParseMetaMissingKind::ThemeColor,
-                    )));
-                }
+            if let Some(media) = self.meta_attribute(c, node, "media")?
+                && !matches_without_environment(c, media.code_units())?
+            {
+                return Ok(Some(Reading::Unsatisfied(
+                    HtmlParseMetaMissingKind::ThemeColor,
+                )));
             }
             return Ok(Some(match theme_color(c, content.code_units())? {
                 Ok(Some(color)) => Reading::Theme(color),
@@ -1412,6 +1404,34 @@ fn theme_color(
         Err(css_color::Failure::Session(error)) => Err(error),
         Err(css_color::Failure::Processing(error)) => Ok(Err(error)),
     }
+}
+/// Whether a `media` value matches the environment whatever the environment
+/// is. HTML "matches the environment" holds for the empty string and for
+/// ASCII whitespace only; otherwise the value is a media query list, and the
+/// media type `all` matches all devices (Media Queries 4, media types), ASCII
+/// case-insensitively and ignoring surrounding whitespace. Every other query
+/// depends on an environment this parser does not have.
+fn matches_without_environment(c: &mut ParseControl, media: &[u16]) -> Result<bool, SessionError> {
+    const ALL: &[u8; 3] = b"all";
+    let mut matched = 0;
+    let mut trailing = false;
+    for &unit in media {
+        c.charge_unit_inspection()?;
+        if surgeist_html::bounded::lexical::is_ascii_whitespace(unit) {
+            trailing = trailing || matched != 0;
+            continue;
+        }
+        let Some(&expected) = ALL.get(matched) else {
+            return Ok(false);
+        };
+        if trailing || !surgeist_html::bounded::lexical::ascii_case_insensitive_unit(unit, expected)
+        {
+            return Ok(false);
+        }
+        matched = matched.saturating_add(1);
+    }
+    // Nothing but whitespace, or exactly `all`.
+    Ok(matched == 0 || matched == ALL.len())
 }
 fn meta_ascii(
     c: &mut ParseControl,
