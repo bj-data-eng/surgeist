@@ -241,6 +241,7 @@ pub struct HtmlMicrodataTokenInterpretationError {
 pub(crate) enum HtmlMicrodataTokenInterpretationErrorKind {
     NotReady,
     Stopped,
+    WrongPhase,
     ReservationNotPerformed,
     ReservationAlreadyAttempted,
     RepresentationExhausted,
@@ -273,6 +274,13 @@ impl HtmlMicrodataTokenInterpretationError {
         matches!(
             self.kind,
             HtmlMicrodataTokenInterpretationErrorKind::Stopped
+        )
+    }
+    /// Whether the cause is: microdata token interpretation step was requested out of order.
+    pub fn is_wrong_phase(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlMicrodataTokenInterpretationErrorKind::WrongPhase
         )
     }
     /// Whether the cause is: microdata token storage reservation was not performed.
@@ -313,6 +321,9 @@ impl std::fmt::Display for HtmlMicrodataTokenInterpretationError {
             }
             HtmlMicrodataTokenInterpretationErrorKind::Stopped => {
                 f.write_str("microdata token interpretation was stopped")
+            }
+            HtmlMicrodataTokenInterpretationErrorKind::WrongPhase => {
+                f.write_str("microdata token interpretation step was requested out of order")
             }
             HtmlMicrodataTokenInterpretationErrorKind::ReservationNotPerformed => {
                 f.write_str("microdata token storage reservation was not performed")
@@ -835,6 +846,13 @@ impl HtmlMicrodataTokenAction<'_, '_> {
     ) -> Result<HtmlMicrodataTokenStep, HtmlMicrodataTokenActionError<M::Error>> {
         let kind = self.kind();
         let o = self.owner;
+        // A pending action exists only while the interpretation is between its first step and its
+        // report, which `next_action` checks; a state outside it takes no step.
+        if matches!(o.phase, Phase::Ready | Phase::Stopped) {
+            return Err(HtmlMicrodataTokenActionError::Protocol(
+                HtmlMicrodataTokenInterpretationErrorKind::WrongPhase.error(),
+            ));
+        }
         let HtmlMicrodataTokenActionKind::Work(units) = kind else {
             let mut guard = HtmlMicrodataTokenReservation {
                 values: &mut o.tokens,
@@ -909,7 +927,12 @@ impl HtmlMicrodataTokenAction<'_, '_> {
                 o.phase = Phase::Ready;
                 result = HtmlMicrodataTokenStep::Complete;
             }
-            _ => unreachable!("action only issued for pending phase"),
+            // The reservation phase returned above, and the terminal phases before the charge.
+            Phase::Reserve | Phase::Ready | Phase::Stopped => {
+                return Err(HtmlMicrodataTokenActionError::Protocol(
+                    HtmlMicrodataTokenInterpretationErrorKind::WrongPhase.error(),
+                ));
+            }
         }
         Ok(result)
     }
@@ -934,6 +957,11 @@ mod cause_tests {
                 HtmlMicrodataTokenInterpretationErrorKind::Stopped.error(),
                 "microdata token interpretation was stopped",
                 HtmlMicrodataTokenInterpretationError::is_stopped,
+            ),
+            (
+                HtmlMicrodataTokenInterpretationErrorKind::WrongPhase.error(),
+                "microdata token interpretation step was requested out of order",
+                HtmlMicrodataTokenInterpretationError::is_wrong_phase,
             ),
             (
                 HtmlMicrodataTokenInterpretationErrorKind::ReservationNotPerformed.error(),

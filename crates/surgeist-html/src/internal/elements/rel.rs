@@ -1,8 +1,8 @@
 //! HTML877d link-type interpretation. Resource execution belongs to consumers.
 
 use crate::internal::microsyntax::tokens::{
-    HtmlSpaceTokenCursor, HtmlSpaceTokenStep, ascii_case_insensitive_unit, ascii_lowercase,
-    is_ascii_whitespace,
+    HtmlSpaceToken, HtmlSpaceTokenCursor, HtmlSpaceTokenStep, ascii_case_insensitive_unit,
+    ascii_lowercase, is_ascii_whitespace,
 };
 pub(crate) mod controlled;
 use crate::internal::values::semantic_input::{attributes_iter, find_attribute};
@@ -258,6 +258,10 @@ impl HtmlRelKeyword {
             Self::Tag => "tag",
             Self::TermsOfService => "terms-of-service",
         }
+    }
+    /// The keyword's canonical spelling as a space token.
+    pub fn space_token(self) -> HtmlSpaceToken {
+        HtmlSpaceToken::declared_keyword(self.keyword())
     }
     /// Whether the keyword is body-ok: the standard lists exactly `dns-prefetch`, `modulepreload`,
     /// `pingback`, `preconnect`, `prefetch`, `preload` and `stylesheet`, and a `link` carrying only
@@ -1189,5 +1193,22 @@ mod ordinary_allocation_tests {
             .rel_with_attributes(&element, &attributes)
             .unwrap();
         assert_eq!(report, baseline);
+    }
+}
+
+#[cfg(test)]
+mod keyword_token_tests {
+    use super::*;
+
+    /// The keyword table is the closed set of the standard's link types. Each is a valid space
+    /// token under the checked constructor, which is what lets `space_token` skip the check.
+    #[test]
+    fn every_standard_keyword_is_a_valid_space_token_with_its_spelling() {
+        assert!(!HtmlRelKeyword::ALL.is_empty());
+        for keyword in HtmlRelKeyword::ALL {
+            let checked = HtmlSpaceToken::new(keyword.keyword())
+                .unwrap_or_else(|error| panic!("{keyword:?}: {error:?}"));
+            assert_eq!(keyword.space_token(), checked, "{keyword:?}");
+        }
     }
 }

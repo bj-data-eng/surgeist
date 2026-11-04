@@ -28,6 +28,14 @@ pub(crate) fn digit_steps_during<R>(operation: impl FnOnce() -> R) -> (R, u64) {
     (result, DIGIT_STEPS.with(std::cell::Cell::get) - before)
 }
 
+/// The capacity to reserve ahead for `len` digits and `extra` more. It is only a reservation hint,
+/// since every writer grows its buffer as it pushes: it saturates at the largest length a digit
+/// string can have, so no existing length can make it unrepresentable.
+fn capacity_hint(len: usize, extra: usize) -> usize {
+    len.saturating_add(extra)
+        .min(isize::MAX as usize / size_of::<char>())
+}
+
 fn integer_sum_capacity(left_digits: usize, right_digits: usize) -> Option<usize> {
     left_digits
         .max(right_digits)
@@ -557,21 +565,38 @@ fn unit_step_shape(
     input: &str,
     grow: bool,
 ) -> Result<(usize, Option<usize>), HtmlIntegerUnitStepError> {
-    let pivot = input
-        .as_bytes()
-        .iter()
-        .rposition(|&digit| digit != if grow { b'9' } else { b'0' });
-    let required = if grow && pivot.is_none() {
+    if grow {
+        grow_shape(input)
+    } else {
+        Ok(shrink_shape(input))
+    }
+}
+
+/// The length and pivot (the last digit that is not 9) of the successor of `input`.
+fn grow_shape(input: &str) -> Result<(usize, Option<usize>), HtmlIntegerUnitStepError> {
+    let pivot = input.as_bytes().iter().rposition(|&digit| digit != b'9');
+    let required = if pivot.is_none() {
         input
             .len()
             .checked_add(1)
             .ok_or(HtmlIntegerUnitStepError::RepresentationExhausted)?
-    } else if !grow && pivot == Some(0) && input.as_bytes()[0] == b'1' && input.len() > 1 {
-        input.len() - 1
     } else {
         input.len()
     };
     Ok((required, pivot))
+}
+
+/// The length and pivot (the last digit that is not 0) of the predecessor of `input`. The length
+/// never grows, so no size can be unrepresentable.
+fn shrink_shape(input: &str) -> (usize, Option<usize>) {
+    let pivot = input.as_bytes().iter().rposition(|&digit| digit != b'0');
+    let required = if pivot == Some(0) && input.as_bytes().first() == Some(&b'1') && input.len() > 1
+    {
+        input.len() - 1
+    } else {
+        input.len()
+    };
+    (required, pivot)
 }
 
 fn write_unit_step(input: &str, grow: bool, pivot: Option<usize>, digits: &mut String) {
@@ -1077,9 +1102,15 @@ impl HtmlNonNegativeInteger {
             .then_with(|| self.digits.cmp(&other.digits))
     }
 
-    // The caller proves self >= other + borrow. Digit subtraction never projects
-    // the magnitude into a machine integer. Each output byte is one ASCII digit.
+    /// `self - other - borrow`, or zero when that would be negative. Digit subtraction never
+    /// projects the magnitude into a machine integer. Each output byte is one ASCII digit. The
+    /// callers order the operands first, so the clamp only gives an operand pair outside that
+    /// domain a defined result.
     fn subtract_with_borrow(&self, other: &Self, mut borrow: u8) -> Self {
+        // Canonical digits have no leading zeroes, so a longer subtrahend is the larger one.
+        if other.digits.len() > self.digits.len() {
+            return Self::from(0);
+        }
         let mut right = other.digits.bytes().rev();
         let mut reversed = Vec::with_capacity(self.digits.len());
         for digit in self.digits.bytes().rev() {
@@ -1089,8 +1120,9 @@ impl HtmlNonNegativeInteger {
             borrow = u8::from(difference < 0);
             reversed.push(b'0' + difference.rem_euclid(10) as u8);
         }
-        debug_assert_eq!(borrow, 0);
-        debug_assert!(right.next().is_none());
+        if borrow != 0 {
+            return Self::from(0);
+        }
         while reversed.len() > 1 && reversed.last() == Some(&b'0') {
             reversed.pop();
         }
@@ -1107,6 +1139,11 @@ impl HtmlNonNegativeInteger {
         let units = input.code_units();
         check_decimal_digits(units)?;
         Ok(Self::from_digits(units))
+    }
+
+    /// An integer from digits that recognition already checked to be ASCII decimal digits.
+    pub(crate) fn from_recognized_digits(digits: &[u16]) -> Self {
+        Self::from_digits(digits)
     }
 
     fn from_digits(digits: &[u16]) -> Self {
@@ -1153,13 +1190,7 @@ impl HtmlNonNegativeInteger {
         if multiplier == 0 || self.is_zero() {
             return Self::from(0);
         }
-        let capacity = self
-            .digits
-            .len()
-            .checked_add(10)
-            .filter(|&len| len <= isize::MAX as usize)
-            .expect("integer product representation exceeds native capacity");
-        let mut output = Vec::with_capacity(capacity);
+        let mut output = Vec::with_capacity(capacity_hint(self.digits.len(), 10));
         write_product(self.digits.as_bytes(), multiplier, 0, &mut output);
         Self {
             digits: ascii_digit_string(output),
@@ -1167,9 +1198,8 @@ impl HtmlNonNegativeInteger {
     }
 
     pub(crate) fn added_to(&self, other: &Self) -> Self {
-        let capacity = integer_sum_capacity(self.digits.len(), other.digits.len())
-            .expect("integer sum representation exceeds native capacity");
-        let mut output = Vec::with_capacity(capacity);
+        let mut output =
+            Vec::with_capacity(capacity_hint(self.digits.len().max(other.digits.len()), 1));
         write_sum(
             self.digits.as_bytes(),
             other.digits.as_bytes(),
@@ -1186,8 +1216,7 @@ impl HtmlNonNegativeInteger {
         if self.is_zero() {
             return None;
         }
-        let (required, pivot) = unit_step_shape(&self.digits, false)
-            .expect("integer decrement representation exceeds native capacity");
+        let (required, pivot) = shrink_shape(&self.digits);
         let mut digits = String::with_capacity(required);
         write_unit_step(&self.digits, false, pivot, &mut digits);
         Some(Self { digits })
@@ -1519,7 +1548,7 @@ impl HtmlNonNegativeDecimal {
         Ok(Self::from_parts(integer, fraction.code_units()))
     }
 
-    fn from_parts(integer: HtmlNonNegativeInteger, fraction: &[u16]) -> Self {
+    pub(crate) fn from_parts(integer: HtmlNonNegativeInteger, fraction: &[u16]) -> Self {
         let end = fraction
             .iter()
             .rposition(|&unit| unit != b'0' as u16)
@@ -1541,9 +1570,10 @@ impl HtmlNonNegativeDecimal {
             other.fraction.as_bytes(),
             &mut fraction,
         );
-        let capacity = integer_sum_capacity(self.integer.digits.len(), other.integer.digits.len())
-            .expect("decimal sum representation exceeds native capacity");
-        let mut integer = Vec::with_capacity(capacity);
+        let mut integer = Vec::with_capacity(capacity_hint(
+            self.integer.digits.len().max(other.integer.digits.len()),
+            1,
+        ));
         write_sum(
             self.integer.digits.as_bytes(),
             other.integer.digits.as_bytes(),
@@ -1565,14 +1595,7 @@ impl HtmlNonNegativeDecimal {
         }
         let mut fraction = vec![b'0'; self.fraction.len()];
         let carry = write_fraction_product(self.fraction.as_bytes(), multiplier, &mut fraction);
-        let capacity = self
-            .integer
-            .digits
-            .len()
-            .checked_add(10)
-            .filter(|&len| len <= isize::MAX as usize)
-            .expect("decimal product representation exceeds native capacity");
-        let mut integer = Vec::with_capacity(capacity);
+        let mut integer = Vec::with_capacity(capacity_hint(self.integer.digits.len(), 10));
         write_product(
             self.integer.digits.as_bytes(),
             multiplier,
@@ -1624,14 +1647,14 @@ impl HtmlNonNegativeDecimal {
         if self.fraction.is_empty() {
             self.integer.digits.clone()
         } else {
-            self.integer
-                .digits
-                .len()
-                .checked_add(1)
-                .and_then(|len| len.checked_add(self.fraction.len()))
-                .filter(|&len| len <= isize::MAX as usize)
-                .expect("decimal representation exceeds native capacity");
-            format!("{}.{}", self.integer.digits, self.fraction)
+            let mut text = String::with_capacity(capacity_hint(
+                self.integer.digits.len(),
+                self.fraction.len().saturating_add(1),
+            ));
+            text.push_str(&self.integer.digits);
+            text.push('.');
+            text.push_str(&self.fraction);
+            text
         }
     }
 }
@@ -1796,11 +1819,6 @@ impl HtmlSignedDecimal {
     pub fn as_document_string(&self) -> DocumentString {
         let mut result = self.magnitude.decimal_string();
         if self.negative {
-            result
-                .len()
-                .checked_add(1)
-                .filter(|&len| len <= isize::MAX as usize)
-                .expect("signed decimal representation exceeds native capacity");
             result.insert(0, '-');
         }
         result.into()
@@ -4062,6 +4080,51 @@ mod tests {
             let adjusted =
                 adjust_scientific_exponent(exact_signed(exponent), fraction, trailing).unwrap();
             assert_eq!(adjusted.as_document_string(), text(expected));
+        }
+    }
+
+    /// Independent oracle: ordinary integer subtraction on values that fit a machine integer. The
+    /// operation is exact when the minuend covers the subtrahend and the borrow, and clamps to zero
+    /// when it does not, so no operand pair yields wrong digits.
+    #[test]
+    fn digit_subtraction_is_exact_when_covered_and_clamps_to_zero_otherwise() {
+        for left in [0_u128, 1, 5, 9, 10, 99, 100, 1000, 123_456_789] {
+            for right in [0_u128, 1, 5, 9, 10, 11, 99, 100, 101, 999, 123_456_790] {
+                for borrow in [0_u8, 1] {
+                    let covered = left.saturating_sub(right + u128::from(borrow));
+                    let actual = HtmlNonNegativeInteger::from(left)
+                        .subtract_with_borrow(&HtmlNonNegativeInteger::from(right), borrow);
+                    assert_eq!(
+                        actual.decimal_digits(),
+                        covered.to_string(),
+                        "{left} - {right} - {borrow}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// The predecessor shape of a decimal string keeps its length except when a lone leading one
+    /// drops out, and the pivot is the last digit that is not zero.
+    #[test]
+    fn predecessor_shape_matches_the_decremented_digits() {
+        for value in [1_u128, 2, 9, 10, 11, 100, 101, 1000, 1999, 120_000] {
+            let digits = value.to_string();
+            let (required, pivot) = shrink_shape(&digits);
+            let predecessor = (value - 1).to_string();
+            assert_eq!(required, predecessor.len(), "{value}");
+            assert_eq!(
+                pivot,
+                digits.as_bytes().iter().rposition(|&digit| digit != b'0'),
+                "{value}"
+            );
+            assert_eq!(
+                HtmlNonNegativeInteger::from(value)
+                    .decremented()
+                    .map(|integer| integer.decimal_digits().to_owned()),
+                Some(predecessor),
+                "{value}"
+            );
         }
     }
 

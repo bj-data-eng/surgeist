@@ -2919,6 +2919,7 @@ pub fn surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError:
 pub fn surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError::is_reservation_already_attempted(&self) -> bool
 pub fn surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError::is_reservation_not_performed(&self) -> bool
 pub fn surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError::is_stopped(&self) -> bool
+pub fn surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError::is_wrong_phase(&self) -> bool
 impl core::error::Error for surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError
 impl core::fmt::Display for surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError
 pub fn surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -4836,6 +4837,7 @@ pub fn surgeist_html::elements::link::HtmlRelKeyword::body_ok(self) -> bool
 pub fn surgeist_html::elements::link::HtmlRelKeyword::effect(self, role: surgeist_html::elements::link::HtmlRelRole) -> core::option::Option<surgeist_html::elements::link::HtmlRelEffect>
 pub fn surgeist_html::elements::link::HtmlRelKeyword::keyword(self) -> &'static str
 pub fn surgeist_html::elements::link::HtmlRelKeyword::possible_supported_token(self, role: surgeist_html::elements::link::HtmlRelRole) -> bool
+pub fn surgeist_html::elements::link::HtmlRelKeyword::space_token(self) -> surgeist_html::microsyntax::tokens::HtmlSpaceToken
 pub enum surgeist_html::elements::link::HtmlRelLinks
 pub surgeist_html::elements::link::HtmlRelLinks::Declared
 pub surgeist_html::elements::link::HtmlRelLinks::ExtensionEffectsUnchecked

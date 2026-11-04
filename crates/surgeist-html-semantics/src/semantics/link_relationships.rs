@@ -214,8 +214,7 @@ impl HtmlRelDefinition {
     ) -> Self {
         Self {
             key,
-            canonical: HtmlSpaceToken::new(keyword.keyword())
-                .expect("standard keywords are nonempty ASCII tokens"),
+            canonical: keyword.space_token(),
             status,
             effects: [HtmlRelExtensionEffect::Unavailable; 4],
             standard: Some(keyword),
