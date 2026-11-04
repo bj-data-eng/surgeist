@@ -2266,7 +2266,9 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
     slots, and with many tall cells that is cubic in the size of the table.
     A cell in a row group (or column group) tests only the header cells whose
     `scope` names its group, found by index (by row, then the least column;
-    by column, then the least row), after reading, once, the `scope` of every
+    by column, then the least row) in `O(log + k)` for `k` hits, which are
+    listed before the empty headers among them are removed, so `k` counts those
+    too, after reading, once, the `scope` of every
     header cell when the table has such groups: a table with a row or column
     group is refused for a `scope` value that is too long to read on any header
     cell, even one that no cell would otherwise have reached.
