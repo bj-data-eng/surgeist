@@ -453,16 +453,13 @@ fn caller_shared_values_keep_capacity_and_empty_reserved_banks_are_real_candidat
     assert!(Arc::ptr_eq(&backing, value.shared_code_units()));
     assert_eq!(budget.inspected, 0);
     let values = Vec::<Attribute>::with_capacity(7);
-    let mut validation = Some(
-        crate::internal::values::bounded::HtmlAttributeStorage::from_shared_attributes(Arc::new(
-            values,
-        ))
-        .validate(),
-    );
-    let original =
-        crate::internal::values::bounded::HtmlAttributeValidation::try_finish(&mut validation)
-            .unwrap()
-            .into_attributes();
+    let original = crate::internal::values::bounded::HtmlAttributeStorage::from_shared_attributes(
+        Arc::new(values),
+    )
+    .validate()
+    .finish()
+    .unwrap()
+    .into_attributes();
     let mut pool = HtmlAttributePool::new();
     seed_attributes(&mut pool, &original);
     let empty = OrderedAttributes::default();

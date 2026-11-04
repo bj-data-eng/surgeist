@@ -5,6 +5,7 @@ pub use crate::internal::values::bounded::{
     HtmlAttributeStorage, HtmlAttributeValidation, HtmlAttributeValidationAction,
     HtmlAttributeValidationError, HtmlAttributeValidationLayout, HtmlValidatedAttributes,
 };
+pub use crate::internal::values::finish::HtmlFinishFailure;
 pub use crate::internal::values::name_index::{
     HtmlNameIndex, HtmlNameIndexError, HtmlNameIndexForeignProbe, HtmlNameIndexHasher,
     HtmlNameIndexInsertError, HtmlNameIndexLookup, HtmlNameIndexProbe, HtmlNameIndexSlot,

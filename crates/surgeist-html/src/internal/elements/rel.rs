@@ -1,14 +1,14 @@
 //! HTML877d link-type interpretation. Resource execution belongs to consumers.
 
 use crate::internal::microsyntax::tokens::{
-    HtmlSpaceTokenCursor, HtmlSpaceTokenStep, ascii_case_insensitive_unit, ascii_lowercase,
-    is_ascii_whitespace,
+    HtmlSpaceToken, HtmlSpaceTokenCursor, HtmlSpaceTokenStep, ascii_case_insensitive_unit,
+    ascii_lowercase, is_ascii_whitespace,
 };
 pub(crate) mod controlled;
 use crate::internal::values::semantic_input::{attributes_iter, find_attribute};
 use crate::{
     internal::attributes::link_destination::HtmlLinkDestination, internal::values::DocumentString,
-    internal::values::interpretation::HtmlValueAdmissionError,
+    internal::values::interpretation::HtmlValueInterpretationError,
     internal::values::interpretation::HtmlValueInterpreter, vocabulary::KnownHtmlElement,
 };
 use crate::{
@@ -258,6 +258,10 @@ impl HtmlRelKeyword {
             Self::Tag => "tag",
             Self::TermsOfService => "terms-of-service",
         }
+    }
+    /// The keyword's canonical spelling as a space token.
+    pub fn space_token(self) -> HtmlSpaceToken {
+        HtmlSpaceToken::declared_keyword(self.keyword())
     }
     /// Whether the keyword is body-ok: the standard lists exactly `dns-prefetch`, `modulepreload`,
     /// `pingback`, `preconnect`, `prefetch`, `preload` and `stylesheet`, and a `link` carrying only
@@ -1086,12 +1090,14 @@ pub(crate) fn is_exact_feed_type(raw: &DocumentString) -> bool {
 }
 impl HtmlValueInterpreter {
     /// Ordinary local values with per-original-attribute admission. No contextual,
-    /// registry, aggregate memory/work or cancellation certificate is supplied.
+    /// registry, aggregate memory/work or cancellation certificate is supplied. Storage is reserved
+    /// with the fallible allocator: a refusal returns
+    /// [`HtmlValueInterpretationError::AllocationFailed`].
     pub fn rel_with_attributes(
         &self,
         element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         attributes: &(impl crate::internal::values::semantic_input::HtmlAttributesInput + ?Sized),
-    ) -> Result<HtmlRelReport, HtmlValueAdmissionError> {
+    ) -> Result<HtmlRelReport, HtmlValueInterpretationError> {
         let get = |name: &str| {
             attributes_iter(attributes)
                 .find(|a| {
@@ -1132,13 +1138,77 @@ impl HtmlValueInterpreter {
         }
         input.role = HtmlRelRole::from_element(element);
         input.as_destination = self.link_as(element, as_attribute)?.intrinsic().copied();
-        let mut owner = Some(controlled::HtmlRelInterpretation::new(input));
-        owner
-            .as_mut()
-            .expect("retained owner")
-            .interpret(&mut controlled::OrdinaryRelMeter)
-            .expect("ordinary rel interpretation");
-        Ok(controlled::HtmlRelInterpretation::try_finish(&mut owner)
-            .expect("completed ordinary rel"))
+        controlled::HtmlRelInterpretation::new(input).run_unmetered()
+    }
+}
+
+#[cfg(test)]
+mod ordinary_allocation_tests {
+    use crate::internal::amortized::fault;
+    use crate::values::HtmlValueInterpretationError;
+    use crate::values::{Attribute, HtmlValueInterpreter, OrderedAttributes};
+    use crate::vocabulary::{KnownHtmlAttribute, KnownHtmlElement};
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    /// A refused allocation is an expected condition of a fallible allocator, so the standalone
+    /// operation reports it as its error. It must neither abort the caller by panicking nor claim
+    /// a report for storage it could not reserve.
+    #[test]
+    fn a_refused_reservation_is_an_error_and_never_a_panic() {
+        let interpreter = HtmlValueInterpreter::new(1_000);
+        let element = KnownHtmlElement::Link.qualified_name();
+        let attributes = OrderedAttributes::new([Attribute::new(
+            KnownHtmlAttribute::Rel.qualified_name(),
+            "alternate stylesheet author bookmark canonical help icon license next",
+        )])
+        .unwrap();
+        let counting = fault::count_only();
+        let baseline = interpreter
+            .rel_with_attributes(&element, &attributes)
+            .unwrap();
+        let requests = fault::requests();
+        drop(counting);
+        assert_eq!(baseline.occurrences().len(), 9);
+        assert!(requests >= 2, "{requests} reservation requests");
+        for refuse_from in 1..=requests {
+            let _armed = fault::arm(refuse_from);
+            let outcome = catch_unwind(AssertUnwindSafe(|| {
+                interpreter.rel_with_attributes(&element, &attributes)
+            }));
+            let verdict = match &outcome {
+                Err(_) => "panicked",
+                Ok(Ok(_)) => "reported success",
+                Ok(Err(HtmlValueInterpretationError::AllocationFailed)) => {
+                    "returned the allocation error"
+                }
+                Ok(Err(_)) => "returned another error",
+            };
+            assert_eq!(
+                verdict, "returned the allocation error",
+                "reservation {refuse_from} of {requests} refused"
+            );
+        }
+        let _armed = fault::arm(requests + 1);
+        let report = interpreter
+            .rel_with_attributes(&element, &attributes)
+            .unwrap();
+        assert_eq!(report, baseline);
+    }
+}
+
+#[cfg(test)]
+mod keyword_token_tests {
+    use super::*;
+
+    /// The keyword table is the closed set of the standard's link types. Each is a valid space
+    /// token under the checked constructor, which is what lets `space_token` skip the check.
+    #[test]
+    fn every_standard_keyword_is_a_valid_space_token_with_its_spelling() {
+        assert!(!HtmlRelKeyword::ALL.is_empty());
+        for keyword in HtmlRelKeyword::ALL {
+            let checked = HtmlSpaceToken::new(keyword.keyword())
+                .unwrap_or_else(|error| panic!("{keyword:?}: {error:?}"));
+            assert_eq!(keyword.space_token(), checked, "{keyword:?}");
+        }
     }
 }

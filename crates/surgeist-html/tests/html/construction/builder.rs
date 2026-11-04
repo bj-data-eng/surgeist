@@ -29,7 +29,7 @@ fn mixed_siblings_retain_order_and_exact_utf16_without_reparsing() {
     let exact = DocumentString::from_utf16(vec![0, 0xD83D, 0xDE00, 0xD800, 32, 0xDC00, 13, 10]);
     builder.append_text(&element, exact.clone()).unwrap();
     builder.append_text(&root, "after").unwrap();
-    let fragment = builder.finish();
+    let fragment = builder.finish().unwrap();
     let children: Vec<_> = fragment.root().children().collect();
     assert_eq!(children.len(), 4);
     assert_eq!(
@@ -76,7 +76,7 @@ fn same_local_name_in_foreign_namespaces_and_raw_attributes_stays_distinct() {
             .append_element(&root, name(namespace, "Title"), attributes.clone())
             .unwrap();
     }
-    let fragment = builder.finish();
+    let fragment = builder.finish().unwrap();
     let children: Vec<_> = fragment.root().children().collect();
     for (id, namespace) in children.iter().zip([
         Namespace::html(),
@@ -114,7 +114,7 @@ fn document_mode_and_doctype_identifiers_are_explicit_and_exact() {
         Some(DocumentString::default()),
     );
     builder.append_doctype(&root, doctype.clone()).unwrap();
-    let document = builder.finish();
+    let document = builder.finish().unwrap();
     assert_eq!(document.mode(), HtmlDocumentMode::LimitedQuirks);
     let child = document.root().children().next().unwrap();
     assert_eq!(
@@ -163,7 +163,7 @@ fn strict_pi_authoring_follows_html_target_and_data_rules() {
     builder
         .append_processing_instruction(&root, pi.clone())
         .unwrap();
-    let fragment = builder.finish();
+    let fragment = builder.finish().unwrap();
     let id = fragment.root().children().next().unwrap();
     assert_eq!(
         fragment.node(&id).unwrap().kind(),
@@ -191,7 +191,7 @@ fn authored_pi_roundtrip_and_native_append_preserve_one_exact_record() {
     builder
         .append_processing_instruction(&root, authored)
         .unwrap();
-    let fragment = builder.finish();
+    let fragment = builder.finish().unwrap();
     let id = fragment.root().children().next().unwrap();
     assert_eq!(
         fragment.node(&id).unwrap().kind(),
@@ -218,7 +218,7 @@ fn template_contents_are_a_separate_fragment_with_a_reverse_association() {
     assert_eq!(builder.usage(), before);
     let contents = builder.template_contents(&template).unwrap().unwrap();
     builder.append_text(&contents, "inside").unwrap();
-    let document = builder.finish();
+    let document = builder.finish().unwrap();
     let template_id = document.root().children().next().unwrap();
     let template_view = document.node(&template_id).unwrap();
     assert_eq!(template_view.children().len(), 0);
@@ -252,7 +252,7 @@ fn foreign_template_spelling_is_an_ordinary_exact_element() {
         .unwrap();
     assert!(builder.template_contents(&foreign).unwrap().is_none());
     builder.append_text(&foreign, "ordinary").unwrap();
-    let fragment = builder.finish();
+    let fragment = builder.finish().unwrap();
     let id = fragment.root().children().next().unwrap();
     assert_eq!(fragment.node(&id).unwrap().children().len(), 1);
 }
@@ -288,7 +288,7 @@ fn shadow_host_and_contents_keep_properties_and_separate_ordinary_children() {
         cause::SHADOW_ALREADY_ATTACHED
     );
     assert_eq!(builder.usage(), before);
-    let fragment = builder.finish();
+    let fragment = builder.finish().unwrap();
     let host_id = fragment.root().children().next().unwrap();
     let host_view = fragment.node(&host_id).unwrap();
     assert_eq!(host_view.children().len(), 1);
@@ -326,8 +326,8 @@ fn foreign_builder_handles_and_result_ids_are_rejected_without_changes() {
     first.append_text(&first_root, "first").unwrap();
     let second_root = second.root();
     second.append_text(&second_root, "second").unwrap();
-    let first = first.finish();
-    let second = second.finish();
+    let first = first.finish().unwrap();
+    let second = second.finish().unwrap();
     let id = first.root().children().next().unwrap();
     assert_eq!(second.node(&id).unwrap_err(), ForeignHtmlResult);
     assert_eq!(second.fragment(&id).unwrap_err(), ForeignHtmlResult);
@@ -353,13 +353,13 @@ fn old_immutable_artifact_survives_later_builds_and_associated_view_owns_arena()
         .unwrap();
     let contents = builder.template_contents(&template).unwrap().unwrap();
     builder.append_text(&contents, "historical").unwrap();
-    let old = builder.finish();
+    let old = builder.finish().unwrap();
     let template_id = old.root().children().next().unwrap();
     let contents_id = old.node(&template_id).unwrap().template_contents().unwrap();
     let retained = old.fragment(&contents_id).unwrap().unwrap();
     let text_id = retained.root().children().next().unwrap();
     for _ in 0..10 {
-        let later = HtmlFragment::builder(limits()).unwrap().finish();
+        let later = HtmlFragment::builder(limits()).unwrap().finish().unwrap();
         assert_eq!(later.node(&text_id).unwrap_err(), ForeignHtmlResult);
     }
     assert_eq!(old.mode(), HtmlDocumentMode::Quirks);
@@ -405,7 +405,7 @@ fn each_finite_budget_rejects_atomically_and_later_smaller_append_succeeds() {
             .unwrap_err();
         assert_eq!(failure.exceeded_resource(), Some(expected));
         assert_eq!(builder.usage(), before);
-        assert_eq!(builder.finish().root().children().len(), 0);
+        assert_eq!(builder.finish().unwrap().root().children().len(), 0);
     }
     let mut builder = HtmlFragment::builder(HtmlConstructionLimits::new(3, 2, 0, 2, 2)).unwrap();
     let root = builder.root();
@@ -419,7 +419,7 @@ fn each_finite_budget_rejects_atomically_and_later_smaller_append_succeeds() {
         .append_text(&root, DocumentString::from_utf16(vec![0xD800, 0xDC00]))
         .unwrap();
     assert_eq!(builder.usage().utf16_units(), 2);
-    assert_eq!(builder.finish().root().children().len(), 1);
+    assert_eq!(builder.finish().unwrap().root().children().len(), 1);
 }
 
 #[test]
@@ -474,7 +474,7 @@ fn all_stored_string_slots_consume_exact_unit_budget_and_zero_nodes_rejects_root
         31
     ));
     assert_eq!(builder.usage(), before);
-    assert_eq!(builder.finish().root().children().len(), 5);
+    assert_eq!(builder.finish().unwrap().root().children().len(), 5);
 }
 
 #[test]
@@ -522,7 +522,7 @@ fn template_and_shadow_associations_obey_depth_and_edge_budgets_atomically() {
         1
     ));
     assert_eq!(builder.usage(), before);
-    let result = builder.finish();
+    let result = builder.finish().unwrap();
     let host_id = result.root().children().next().unwrap();
     assert!(
         result
@@ -587,7 +587,7 @@ fn leaf_parents_are_rejected_and_deep_artifacts_drop_without_recursive_ownership
             )
             .unwrap();
     }
-    let artifact = builder.finish();
+    let artifact = builder.finish().unwrap();
     assert_eq!(artifact.usage().depth(), 20_000);
     assert_eq!(artifact.usage().nodes(), 20_002);
     drop(artifact);

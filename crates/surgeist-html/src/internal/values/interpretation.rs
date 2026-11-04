@@ -334,6 +334,68 @@ impl fmt::Display for HtmlValueAdmissionError {
 }
 impl Error for HtmlValueAdmissionError {}
 
+/// Why a standalone operation that retains storage produced no report.
+///
+/// A raw value over the interpreter's capacity is refused before any storage is taken. Once
+/// admitted, the operation reserves its storage with the fallible allocator and reports a refusal
+/// instead of aborting the caller.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlValueInterpretationError {
+    /// The raw value exceeds the interpreter's finite input capacity.
+    Admission(HtmlValueAdmissionError),
+    /// The allocator refused to reserve the storage the report needs.
+    AllocationFailed,
+    /// A size the report needs cannot be represented on this platform.
+    RepresentationExhausted,
+    /// The operation's own driver broke the protocol of the engine it runs. Valid input and
+    /// valid use never reach this cause; it reports a defect in this crate.
+    ProtocolViolated,
+}
+
+impl From<HtmlValueAdmissionError> for HtmlValueInterpretationError {
+    fn from(error: HtmlValueAdmissionError) -> Self {
+        Self::Admission(error)
+    }
+}
+
+impl HtmlValueInterpretationError {
+    /// The cause of an engine failure, from its two storage predicates. A failure that is
+    /// neither a refused allocation nor an unrepresentable size is a driver protocol breach.
+    pub(crate) const fn from_engine(
+        allocation_failed: bool,
+        representation_exhausted: bool,
+    ) -> Self {
+        if allocation_failed {
+            Self::AllocationFailed
+        } else if representation_exhausted {
+            Self::RepresentationExhausted
+        } else {
+            Self::ProtocolViolated
+        }
+    }
+}
+
+impl fmt::Display for HtmlValueInterpretationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Admission(error) => error.fmt(f),
+            Self::AllocationFailed => f.write_str("reserving the report storage failed"),
+            Self::RepresentationExhausted => {
+                f.write_str("report size cannot be represented on this platform")
+            }
+            Self::ProtocolViolated => f.write_str("the interpretation protocol was violated"),
+        }
+    }
+}
+impl Error for HtmlValueInterpretationError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Admission(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
 /// A concrete front door for independent common value interpretation.
 ///
 /// Each operation admits its exact raw input length before scanning it. The

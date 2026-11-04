@@ -314,12 +314,12 @@ fn text_of_mut(storage: &mut HtmlConstructionStorage, index: usize) -> Option<&m
     }
 }
 /// Removes initialized tail from a reused native backing. The tail qualification proved the
-/// backing uniquely owned, so a backing that is not (which nothing can make it) is left as is.
+/// backing exclusively held, so this truncates in place. Were another holder ever to exist, the
+/// record's own text still returns to its original length, on a copy that leaves the other holder
+/// what it saw.
 fn truncate_tail(storage: &mut HtmlConstructionStorage, index: usize, old_len: usize) {
-    if let Some(backing) =
-        text_of_mut(storage, index).and_then(|value| Arc::get_mut(value.construction_backing_mut()))
-    {
-        backing.truncate(old_len);
+    if let Some(value) = text_of_mut(storage, index) {
+        Arc::make_mut(value.construction_backing_mut()).truncate(old_len);
     }
 }
 
@@ -1018,32 +1018,33 @@ impl HtmlConstructionTextAppendReady {
             discarded,
         }
     }
-    /// Only prepaid owning moves and fixed usage writes; no payload copy.
-    pub fn commit(mut self) -> HtmlConstructionTextAppendCompletion {
+    /// Only prepaid owning moves and fixed usage writes; no payload copy. A target that is no
+    /// longer a text node is refused, which `try_ready` checked and the exclusively owned storage
+    /// cannot change; the ready append is handed back unchanged to abort.
+    #[expect(
+        clippy::result_large_err,
+        reason = "a refusal hands the complete owner back without boxing it"
+    )]
+    pub fn commit(
+        mut self,
+    ) -> Result<HtmlConstructionTextAppendCompletion, HtmlConstructionRefusal<Self>> {
+        let Some(original) = text_of_mut(&mut self.storage, self.index) else {
+            return Err(HtmlConstructionRefusal::new(
+                self,
+                HtmlConstructionErrorKind::OperationNotReady,
+            ));
+        };
         let discarded = match self.backing {
             ReadyBacking::InPlace { .. } => None,
-            ReadyBacking::Preserved(copy) => match text_of_mut(&mut self.storage, self.index) {
-                Some(original) => Some(std::mem::replace(original, copy)),
-                // `try_ready` checked that the target is a text node, and the storage has been
-                // exclusively owned since. A commit that nevertheless finds none commits
-                // nothing, as an abort does, and returns the copy for retirement.
-                None => {
-                    return HtmlConstructionTextAppendCompletion {
-                        storage: self.storage,
-                        node: self.node,
-                        incoming: self.incoming,
-                        discarded: Some(copy),
-                    };
-                }
-            },
+            ReadyBacking::Preserved(copy) => Some(std::mem::replace(original, copy)),
         };
         self.storage.arena.usage = self.usage;
-        HtmlConstructionTextAppendCompletion {
+        Ok(HtmlConstructionTextAppendCompletion {
             storage: self.storage,
             node: self.node,
             incoming: self.incoming,
             discarded,
-        }
+        })
     }
 }
 
@@ -1117,6 +1118,7 @@ mod tests {
         let (storage, node, incoming, discarded) = slots::text_append(&mut owner)
             .unwrap()
             .commit()
+            .unwrap()
             .into_parts();
         (storage, node, incoming, discarded, prefix_units, tail_units)
     }
@@ -1386,6 +1388,7 @@ mod tests {
         let (storage, node, _, _) = slots::text_append(&mut Some(owner))
             .unwrap()
             .commit()
+            .unwrap()
             .into_parts();
         assert_eq!(text(&storage, &node).last(), Some(&u16::from(b'z')));
     }
@@ -1511,6 +1514,79 @@ mod tests {
             assert_eq!(text(&storage, &node), [u16::from(b'x')]);
             assert_eq!(storage.usage().utf16_units(), 1);
             assert!(discarded.is_none());
+        }
+    }
+
+    /// The abort restores the original length of the record's own text. The qualification found the
+    /// backing exclusive, so nothing outside the append can hold it; were something to, the tail
+    /// it wrote must still not stay in the record, and the other holder keeps what it saw.
+    #[test]
+    fn abort_restores_the_original_length_when_the_backing_has_another_holder() {
+        let mut units = Vec::with_capacity(8);
+        units.push(u16::from(b'x'));
+        let (storage, node) = make(HtmlNodeKind::Text(DocumentString::from_shared_code_units(
+            Arc::new(units),
+        )));
+        let mut owner =
+            HtmlConstructionTextAppend::begin(storage, node, DocumentString::from("yz"));
+        drive_to(&mut owner, Phase::Commit);
+        owner
+            .next_action()
+            .unwrap()
+            .unwrap()
+            .perform(None)
+            .unwrap()
+            .accept();
+        let mut owner = Some(owner);
+        let ready = slots::text_append(&mut owner).unwrap();
+        let holder = text_of(&ready.storage, ready.index).unwrap().clone();
+        let (storage, node, _, discarded) = ready.abort().into_parts();
+        assert!(discarded.is_none());
+        assert_eq!(text(&storage, &node), [u16::from(b'x')]);
+        assert_eq!(storage.usage().utf16_units(), 1);
+        assert_eq!(holder.len(), 3, "the other holder keeps what it saw");
+    }
+
+    /// A ready append whose target is no longer a text node cannot commit. The commit refuses and
+    /// hands the append back, so the abort returns the storage, and the separate copy of a
+    /// preserved append, to the caller; nothing is reported as committed.
+    #[test]
+    fn commit_refuses_a_target_that_is_no_longer_text_and_hands_the_append_back() {
+        for aliased in [false, true] {
+            let original = DocumentString::from("x");
+            let history = aliased.then(|| original.clone());
+            let (storage, node) = make(HtmlNodeKind::Text(original));
+            let mut owner =
+                HtmlConstructionTextAppend::begin(storage, node, DocumentString::from("y"));
+            drive_to(&mut owner, Phase::Commit);
+            owner
+                .next_action()
+                .unwrap()
+                .unwrap()
+                .perform(None)
+                .unwrap()
+                .accept();
+            let mut owner = Some(owner);
+            let mut ready = slots::text_append(&mut owner).unwrap();
+            let usage = ready.storage.usage();
+            ready.storage.arena.records[ready.index].kind = HtmlNodeKind::Comment("c".into());
+            let Err(refusal) = ready.commit() else {
+                panic!("a target that is not text cannot commit");
+            };
+            assert!(refusal.reason().is_operation_not_ready());
+            let (_, discarded) = {
+                let (ready, _) = refusal.into_parts();
+                assert_eq!(ready.storage.usage(), usage, "no usage was written");
+                let (storage, _, incoming, discarded) = ready.abort().into_parts();
+                assert_eq!(incoming, DocumentString::from("y"));
+                (storage, discarded)
+            };
+            assert_eq!(
+                discarded.is_some(),
+                aliased,
+                "a preserved copy is handed back"
+            );
+            drop(history);
         }
     }
 }

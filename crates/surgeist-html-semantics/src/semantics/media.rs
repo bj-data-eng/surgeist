@@ -226,11 +226,7 @@ impl<'a> HtmlSemanticSession<'a> {
         // This query's original field admission precedes role/namespace shortcuts.
         // The dispatcher defers classification only for this owning query.
         let selected = self.media_select(element, HtmlMediaField::Media)?;
-        let mut local = Some(HtmlMediaInterpretation::from_matched(
-            element.name(),
-            selected,
-        ));
-        let owner = local.as_mut().expect("retained owner");
+        let mut owner = HtmlMediaInterpretation::from_matched(element.name(), selected);
         owner
             .admit_media(|raw| {
                 self.charge(1)?;
@@ -242,7 +238,10 @@ impl<'a> HtmlSemanticSession<'a> {
         owner
             .inspect_namespace(|work| self.charge(work))
             .map_err(|error| self.media_action_failure(error))?;
-        if !owner.is_html_namespace().expect("admitted namespace") {
+        if !owner
+            .is_html_namespace()
+            .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?
+        {
             return Ok(HtmlSemanticValue::Unsupported(
                 HtmlSemanticUnsupported::ForeignNamespace,
             ));
@@ -250,7 +249,10 @@ impl<'a> HtmlSemanticSession<'a> {
         owner
             .derive_role(|work| self.charge(work))
             .map_err(|error| self.media_action_failure(error))?;
-        let Some(role) = owner.role().expect("admitted role") else {
+        let Some(role) = owner
+            .role()
+            .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?
+        else {
             return Ok(HtmlSemanticValue::Inapplicable);
         };
         if role == HtmlMediaElementRole::Meta {
@@ -275,7 +277,9 @@ impl<'a> HtmlSemanticSession<'a> {
                 .advance_value(|work| self.charge(work))
                 .map_err(|error| self.media_action_failure(error))?;
         }
-        let value = owner.value().expect("completed admitted value");
+        let value = owner
+            .value()
+            .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
         let raw = owner.raw();
         let external = if raw.is_some() {
             self.media_external(subject)?
@@ -326,7 +330,6 @@ impl<'a> HtmlSemanticSession<'a> {
         };
         let mut frames = Vec::new();
         let result = (|| {
-            let owner = local.as_mut().expect("retained owner");
             self.charge(1)?;
             let processing = match role {
                 HtmlMediaElementRole::Link => {
@@ -370,7 +373,9 @@ impl<'a> HtmlSemanticSession<'a> {
                             .advance_theme_color(|work| self.charge(work))
                             .map_err(|error| self.media_action_failure(error))?;
                     }
-                    let theme = owner.theme_color().expect("completed admitted theme name");
+                    let theme = owner
+                        .theme_color()
+                        .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
                     let processing = if theme {
                         let uniqueness = if let Some(raw) = raw {
                             self.theme_media_uniqueness(subject, raw.value(), &mut frames)?
@@ -394,7 +399,8 @@ impl<'a> HtmlSemanticSession<'a> {
                     self.charge(1)
                 })
                 .map_err(|error| self.media_action_failure(error))?;
-            let report = HtmlMediaInterpretation::try_finish(&mut local)
+            let report = owner
+                .finish()
                 .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
             data.push(MediaReadbackData {
                 local: report,

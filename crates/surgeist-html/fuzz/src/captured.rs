@@ -623,7 +623,8 @@ pub(crate) fn check(result: &HtmlConstructionResult, plan: &Plan) -> Result<Verd
         Fault::ForeignNode => {
             let foreign = HtmlFragment::builder(HtmlConstructionLimits::new(1, 0, 0, 0, 0))
                 .map_err(|e| harness("capture fault", "foreign source", e))?
-                .finish();
+                .finish()
+                .map_err(|e| harness("capture fault", "foreign source", e))?;
             let mut rows = facts.nodes().to_vec();
             rows.push(HtmlConstructionCaptureNodeFacts::new(
                 foreign.root().id(),
@@ -888,7 +889,7 @@ mod tests {
             )
             .unwrap();
         b.append_text(&div, "x").unwrap();
-        HtmlConstructionResult::Fragment(b.finish())
+        HtmlConstructionResult::Fragment(b.finish().unwrap())
     }
 
     fn imported(

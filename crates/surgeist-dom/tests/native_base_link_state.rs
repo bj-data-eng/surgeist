@@ -696,7 +696,7 @@ fn native_immutable_installation_runs_fresh_base_and_link_hooks_atomically() {
             .unwrap(),
         )
         .unwrap();
-    let source = builder.finish();
+    let source = builder.finish().unwrap();
     let source_ids: Vec<_> = source.root().children().collect();
     let report = dom
         .install_native_html_fragment(

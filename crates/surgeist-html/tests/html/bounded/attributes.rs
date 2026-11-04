@@ -18,13 +18,20 @@ fn attribute(
     )
 }
 
-fn drive(
-    owner: &mut Option<HtmlAttributeValidation>,
-) -> Result<HtmlValidatedAttributes, HtmlAttributeValidationError> {
-    while let Some(action) = owner.as_mut().unwrap().next_action()? {
+/// Performs every comparison, leaving the cursor with its latched failure when one occurs.
+fn run(validation: &mut HtmlAttributeValidation) -> Result<(), HtmlAttributeValidationError> {
+    while let Some(action) = validation.next_action()? {
         action.advance()?;
     }
-    HtmlAttributeValidation::try_finish(owner)
+    Ok(())
+}
+
+/// Performs every comparison and finishes, returning the cause of whichever step refused.
+fn drive(
+    mut validation: HtmlAttributeValidation,
+) -> Result<HtmlValidatedAttributes, HtmlAttributeValidationError> {
+    run(&mut validation)?;
+    validation.finish().map_err(|failure| *failure.cause())
 }
 
 #[test]
@@ -66,10 +73,8 @@ fn successful_validation_moves_the_original_backing_in_source_order() {
         ),
     ]);
     let backing = Arc::new(attributes);
-    let mut validation =
-        Some(HtmlAttributeStorage::from_shared_attributes(backing.clone()).validate());
-    let attributes = drive(&mut validation).unwrap().into_attributes();
-    assert!(validation.is_none());
+    let validation = HtmlAttributeStorage::from_shared_attributes(backing.clone()).validate();
+    let attributes = drive(validation).unwrap().into_attributes();
     assert_eq!(attributes.as_slice(), backing.as_slice());
     assert_eq!(attributes.as_slice().as_ptr(), backing.as_ptr());
     assert_eq!(Arc::strong_count(&backing), 2);
@@ -93,22 +98,18 @@ fn duplicate_refusal_is_sticky_and_retains_the_exact_allocation() {
         attribute(Namespace::none(), Some("second"), "b"),
         attribute(Namespace::none(), None, "a"),
     ]);
-    let mut validation =
-        Some(HtmlAttributeStorage::from_shared_attributes(backing.clone()).validate());
+    let mut validation = HtmlAttributeStorage::from_shared_attributes(backing.clone()).validate();
     let expected = HtmlAttributeValidationError::Duplicate {
         first: 1,
         duplicate: 2,
     };
-    assert_eq!(drive(&mut validation).unwrap_err(), expected);
-    assert_eq!(
-        HtmlAttributeValidation::try_finish(&mut validation).unwrap_err(),
-        expected
-    );
-    assert_eq!(
-        validation.as_mut().unwrap().next_action().unwrap_err(),
-        expected
-    );
-    let recovered = validation.take().unwrap().abort().into_shared_attributes();
+    assert_eq!(run(&mut validation).unwrap_err(), expected);
+    // The finish refuses with the latched failure and hands the cursor back unchanged.
+    let refusal = validation.finish().unwrap_err();
+    assert_eq!(*refusal.cause(), expected);
+    let (mut validation, _) = refusal.into_parts();
+    assert_eq!(validation.next_action().unwrap_err(), expected);
+    let recovered = validation.abort().into_shared_attributes();
     assert!(Arc::ptr_eq(&recovered, &backing));
     assert_eq!(
         recovered[1].name().prefix().unwrap().to_utf8().unwrap(),
@@ -130,12 +131,12 @@ fn exact_namespace_comparison_precedes_local_name_and_ignores_prefix_and_value()
         "different value",
     );
     let mut validation =
-        Some(HtmlAttributeStorage::from_shared_attributes(Arc::new(vec![left, right])).validate());
+        HtmlAttributeStorage::from_shared_attributes(Arc::new(vec![left, right])).validate();
     // Pair, namespace lengths, two namespace units, local lengths, local unit.
     // These fixed layouts are the admission contract, not an inferred total.
     let expected = [(2, 0), (2, 0), (0, 4), (0, 4), (2, 0), (0, 4)];
     for (index, (visits, bytes)) in expected.into_iter().enumerate() {
-        let action = validation.as_mut().unwrap().next_action().unwrap().unwrap();
+        let action = validation.next_action().unwrap().unwrap();
         assert_eq!(
             (
                 action.layout().record_visits(),
@@ -166,43 +167,34 @@ fn every_interrupted_comparison_recovers_all_storage_without_publication() {
     // Pair, namespace lengths and five units, local lengths and two units.
     for completed_actions in 0..10 {
         let mut validation =
-            Some(HtmlAttributeStorage::from_shared_attributes(backing.clone()).validate());
+            HtmlAttributeStorage::from_shared_attributes(backing.clone()).validate();
         for _ in 0..completed_actions {
             validation
-                .as_mut()
-                .unwrap()
                 .next_action()
                 .unwrap()
                 .unwrap()
                 .advance()
                 .unwrap();
         }
-        assert_eq!(
-            HtmlAttributeValidation::try_finish(&mut validation).unwrap_err(),
-            HtmlAttributeValidationError::NotReady
-        );
+        // The finish is refused as not ready and hands the cursor back at the same comparison.
+        let refusal = validation.finish().unwrap_err();
+        assert_eq!(*refusal.cause(), HtmlAttributeValidationError::NotReady);
+        let (mut validation, _) = refusal.into_parts();
         let refused_layout = {
-            let action = validation.as_mut().unwrap().next_action().unwrap().unwrap();
+            let action = validation.next_action().unwrap().unwrap();
             action.layout()
         };
         assert_eq!(
-            validation
-                .as_mut()
-                .unwrap()
-                .next_action()
-                .unwrap()
-                .unwrap()
-                .layout(),
+            validation.next_action().unwrap().unwrap().layout(),
             refused_layout
         );
-        let recovered = validation.take().unwrap().abort();
+        let recovered = validation.abort();
         assert!(Arc::ptr_eq(recovered.shared_attributes(), &backing));
         assert_eq!(recovered.shared_attributes().as_slice(), backing.as_slice());
     }
-    let mut validation =
-        Some(HtmlAttributeStorage::from_shared_attributes(backing.clone()).validate());
+    let validation = HtmlAttributeStorage::from_shared_attributes(backing.clone()).validate();
     assert_eq!(
-        drive(&mut validation).unwrap().into_attributes().as_slice(),
+        drive(validation).unwrap().into_attributes().as_slice(),
         backing.as_slice()
     );
 }
@@ -212,26 +204,16 @@ fn empty_and_singleton_storage_finish_without_comparisons() {
     for attributes in [vec![], vec![attribute(Namespace::none(), None, "")]] {
         let backing = Arc::new(attributes);
         let mut validation =
-            Some(HtmlAttributeStorage::from_shared_attributes(backing.clone()).validate());
-        assert!(
-            validation
-                .as_mut()
-                .unwrap()
-                .next_action()
-                .unwrap()
-                .is_none()
-        );
+            HtmlAttributeStorage::from_shared_attributes(backing.clone()).validate();
+        assert!(validation.next_action().unwrap().is_none());
         assert_eq!(
-            HtmlAttributeValidation::try_finish(&mut validation)
+            validation
+                .finish()
                 .unwrap()
                 .into_attributes()
                 .as_slice()
                 .as_ptr(),
             backing.as_ptr()
-        );
-        assert_eq!(
-            HtmlAttributeValidation::try_finish(&mut validation).unwrap_err(),
-            HtmlAttributeValidationError::Consumed
         );
     }
 }
@@ -256,9 +238,9 @@ fn exact_namespace_and_local_name_pairs_match_native_duplicate_identity() {
                 attribute(right_ns.clone(), Some("q"), right_local.clone()),
             ];
             let native = OrderedAttributes::new(attributes.clone());
-            let mut validation =
-                Some(HtmlAttributeStorage::from_shared_attributes(Arc::new(attributes)).validate());
-            let controlled = drive(&mut validation);
+            let validation =
+                HtmlAttributeStorage::from_shared_attributes(Arc::new(attributes)).validate();
+            let controlled = drive(validation);
             // Entries above are independently distinct expanded names.
             if left_index == right_index {
                 assert_eq!(
@@ -297,22 +279,18 @@ fn indexed_validation_matches_pairwise_validation_and_returns_the_borrowed_slots
     ];
     for attributes in cases {
         let pairwise = {
-            let mut owner = Some(
-                HtmlAttributeStorage::from_shared_attributes(Arc::new(attributes.clone()))
-                    .validate(),
-            );
-            drive(&mut owner).map(|validated| validated.as_slice().len())
+            let owner = HtmlAttributeStorage::from_shared_attributes(Arc::new(attributes.clone()))
+                .validate();
+            drive(owner).map(|validated| validated.as_slice().len())
         };
         let slots = HtmlAttributeNameIndex::slots_required(attributes.len()).unwrap();
         let storage = Vec::<HtmlNameIndexSlot>::with_capacity(slots);
         let capacity = storage.capacity();
-        let mut owner = Some(
-            HtmlAttributeStorage::from_shared_attributes(Arc::new(attributes))
-                .validate_indexed(HtmlAttributeNameIndex::new(storage)),
-        );
+        let mut owner = HtmlAttributeStorage::from_shared_attributes(Arc::new(attributes))
+            .validate_indexed(HtmlAttributeNameIndex::new(storage));
         let mut outcome = Ok(());
         loop {
-            match owner.as_mut().unwrap().next_action() {
+            match owner.next_action() {
                 Ok(Some(action)) => {
                     if let Err(error) = action.advance() {
                         outcome = Err(error);
@@ -326,12 +304,14 @@ fn indexed_validation_matches_pairwise_validation_and_returns_the_borrowed_slots
                 }
             }
         }
-        let index = owner.as_mut().unwrap().take_index().expect("lent index");
+        let index = owner.take_index().expect("lent index");
         assert_eq!(index.capacity(), capacity, "the borrowed slots do not grow");
-        assert!(owner.as_mut().unwrap().take_index().is_none());
+        assert!(owner.take_index().is_none());
         let indexed = outcome.and_then(|()| {
-            HtmlAttributeValidation::try_finish(&mut owner)
+            owner
+                .finish()
                 .map(|validated| validated.as_slice().len())
+                .map_err(|failure| *failure.cause())
         });
         assert_eq!(indexed, pairwise);
         drop(index.into_storage());

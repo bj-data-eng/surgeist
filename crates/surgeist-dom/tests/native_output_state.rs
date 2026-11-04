@@ -597,7 +597,7 @@ fn native_installation_has_null_override_and_exact_live_descendants() {
         )
         .unwrap();
     b.append_text(&span, "A\r\n").unwrap();
-    let source = b.finish();
+    let source = b.finish().unwrap();
     let subject = source.root().children().next().unwrap();
     let result = dom
         .install_native_html_fragment(

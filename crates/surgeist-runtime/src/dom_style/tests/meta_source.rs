@@ -460,7 +460,7 @@ fn native_installation_returns_the_original_mapping_with_its_meta_publication() 
             .unwrap(),
         )
         .unwrap();
-    let fragment = builder.finish();
+    let fragment = builder.finish().unwrap();
     let input = fragment.root().children().next().unwrap();
     let before = session.snapshot();
     let parent = container(&session, document);

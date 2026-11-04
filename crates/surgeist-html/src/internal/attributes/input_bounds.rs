@@ -794,9 +794,51 @@ pub fn select_input_numeric_constraints(
     if !computed_state(state) {
         return None;
     }
-    let range = state == HtmlInputType::Range;
-    let minimum = NumericBound::select(min, range.then(|| number(0.0)));
-    let maximum = NumericBound::select(max, range.then(|| number(100.0)));
+    if state == HtmlInputType::Range {
+        return Some(select_range_constraints(min, max, step, value).constraints);
+    }
+    Some(assemble_constraints(
+        NumericBound::select(min, None),
+        NumericBound::select(max, None),
+        min,
+        step,
+        value,
+    ))
+}
+
+/// The Range state's constraints together with its two bounds. The state defaults a missing or
+/// unparsable bound, so both bounds always exist and need no `Option`.
+pub(crate) struct HtmlInputRangeBounds {
+    pub(crate) constraints: HtmlInputNumericConstraints,
+    pub(crate) minimum: HtmlFloatingPointNumber,
+    pub(crate) maximum: HtmlFloatingPointNumber,
+}
+
+/// Selects the Range state's limits from already-converted exact content facts, defaulting the
+/// minimum to 0 and the maximum to 100.
+pub(crate) fn select_range_constraints(
+    min: HtmlInputNumericContent,
+    max: HtmlInputNumericContent,
+    step: HtmlInputNumericStep,
+    value: HtmlInputNumericContent,
+) -> HtmlInputRangeBounds {
+    let (default_minimum, default_maximum) = (number(0.0), number(100.0));
+    let minimum = NumericBound::select(min, Some(default_minimum));
+    let maximum = NumericBound::select(max, Some(default_maximum));
+    HtmlInputRangeBounds {
+        minimum: minimum.value().unwrap_or(default_minimum),
+        maximum: maximum.value().unwrap_or(default_maximum),
+        constraints: assemble_constraints(minimum, maximum, min, step, value),
+    }
+}
+
+fn assemble_constraints(
+    minimum: NumericBound,
+    maximum: NumericBound,
+    min: HtmlInputNumericContent,
+    step: HtmlInputNumericStep,
+    value: HtmlInputNumericContent,
+) -> HtmlInputNumericConstraints {
     let (allowed_step, step_origin) = select_numeric_step(step);
     let (step_base, step_base_origin) = select_numeric_step_base(min, value);
     let limit_author = match (minimum.value(), maximum.value()) {
@@ -806,7 +848,7 @@ pub fn select_input_numeric_constraints(
         (Some(_), Some(_)) => HtmlInputNumericLimitAuthorState::Conforming,
         _ => HtmlInputNumericLimitAuthorState::NotRequired,
     };
-    Some(HtmlInputNumericConstraints {
+    HtmlInputNumericConstraints {
         minimum,
         maximum,
         allowed_step,
@@ -814,7 +856,7 @@ pub fn select_input_numeric_constraints(
         step_base,
         step_base_origin,
         limit_author,
-    })
+    }
 }
 
 fn select_numeric_step(

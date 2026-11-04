@@ -527,7 +527,7 @@ fn native_authoring_installation_parses_real_copied_href_and_captures_nullable_h
             )
             .unwrap();
     }
-    let source = builder.finish();
+    let source = builder.finish().unwrap();
     let report = dom
         .install_native_html_fragment(
             dom.snapshot().document(doc).unwrap().stamp(),

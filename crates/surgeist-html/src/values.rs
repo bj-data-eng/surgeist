@@ -8,9 +8,9 @@ pub use crate::internal::values::custom_names::{
     HtmlCustomElementName, HtmlCustomElementNameError,
 };
 pub use crate::internal::values::interpretation::{
-    HtmlValueAdmissionError, HtmlValueAuthorState, HtmlValueFailure, HtmlValueInterpreter,
-    HtmlValueRecoveryState, HtmlValueReport, HtmlValueRepresentationError, HtmlValueSyntax,
-    HtmlValueSyntaxError,
+    HtmlValueAdmissionError, HtmlValueAuthorState, HtmlValueFailure, HtmlValueInterpretationError,
+    HtmlValueInterpreter, HtmlValueRecoveryState, HtmlValueReport, HtmlValueRepresentationError,
+    HtmlValueSyntax, HtmlValueSyntaxError,
 };
 pub use crate::internal::values::newlines::HtmlNewlineNormalizer;
 pub use crate::internal::values::semantic_input::{

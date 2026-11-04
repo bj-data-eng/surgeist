@@ -849,7 +849,7 @@ pub surgeist_html_semantics::HtmlMicrodataCondition::Satisfied
 pub surgeist_html_semantics::HtmlMicrodataCondition::Unchecked
 pub surgeist_html_semantics::HtmlMicrodataCondition::Violated(T)
 pub enum surgeist_html_semantics::HtmlMicrodataFactsError
-pub surgeist_html_semantics::HtmlMicrodataFactsError::Attribute(surgeist_html::internal::values::interpretation::HtmlValueAdmissionError)
+pub surgeist_html_semantics::HtmlMicrodataFactsError::Attribute(surgeist_html::internal::values::interpretation::HtmlValueInterpretationError)
 pub surgeist_html_semantics::HtmlMicrodataFactsError::Capture(surgeist_html_semantics::HtmlCaptureError)
 pub surgeist_html_semantics::HtmlMicrodataFactsError::Duplicate
 pub surgeist_html_semantics::HtmlMicrodataFactsError::Limit

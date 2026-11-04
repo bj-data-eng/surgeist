@@ -12,7 +12,10 @@ use surgeist_html::{
             HtmlAutofillField, HtmlAutofillFieldCategory, HtmlAutofillFieldIdentity,
         },
     },
-    values::{Attribute, DocumentString, HtmlValueInterpreter, Namespace, QualifiedName},
+    values::{
+        Attribute, DocumentString, HtmlValueInterpretationError, HtmlValueInterpreter, Namespace,
+        QualifiedName,
+    },
     vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 
@@ -1131,6 +1134,9 @@ fn raw_admission_precedes_role_and_state_checks_while_zero_admits_empty() {
     let error = interpreter
         .control_autocomplete_for_input(&element, Some(&attribute), HtmlInputType::Checkbox)
         .unwrap_err();
+    let HtmlValueInterpretationError::Admission(error) = error else {
+        panic!("expected the admission refusal, got {error:?}");
+    };
     assert_eq!(error.required(), 1);
     assert_eq!(error.capacity(), 0);
 }

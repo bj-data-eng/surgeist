@@ -546,7 +546,15 @@ impl SessionStorage {
                 return Err(error);
             }
             Some(operation) if result.is_ok() => match operation.try_ready() {
-                Ok(ready) => ready.commit(),
+                Ok(ready) => match ready.commit() {
+                    Ok(completion) => completion,
+                    Err(refusal) => {
+                        // The target stopped being a text node: abort the ready append.
+                        let (ready, error) = refusal.into_parts();
+                        result = Err(construction_error(control, error));
+                        ready.abort()
+                    }
+                },
                 Err(refusal) => {
                     // Not ready after all: abort it like any other failure.
                     let (operation, error) = refusal.into_parts();

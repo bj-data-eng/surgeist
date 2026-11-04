@@ -2,15 +2,28 @@
 #![forbid(unsafe_code)]
 use std::sync::Arc;
 use surgeist_html::{
-    attributes::microdata::HtmlMicrodataTokenKind,
+    attributes::microdata::{HtmlMicrodataTokenKind, HtmlMicrodataTokenReport},
     bounded::microdata::{
         HtmlMicrodataTokenActionError, HtmlMicrodataTokenActionKind,
-        HtmlMicrodataTokenInterpretation, HtmlMicrodataTokenMeter, HtmlMicrodataTokenReservation,
+        HtmlMicrodataTokenInterpretation, HtmlMicrodataTokenInterpretationError,
+        HtmlMicrodataTokenMeter, HtmlMicrodataTokenReservation,
     },
     values::DocumentString,
 };
 
 type Owner<'a> = HtmlMicrodataTokenInterpretation<'a>;
+/// Finishes the owner in `slot`. A refused finish hands the owner back, so it returns to the slot
+/// for the test to keep driving, and success leaves the slot empty.
+fn try_finish<'a>(
+    slot: &mut Option<Owner<'a>>,
+) -> Result<HtmlMicrodataTokenReport, HtmlMicrodataTokenInterpretationError> {
+    let owner = slot.take().expect("an owner to finish");
+    owner.finish().map_err(|failure| {
+        let (owner, cause) = failure.into_parts();
+        *slot = Some(owner);
+        cause
+    })
+}
 #[derive(Default)]
 struct Meter {
     work: Vec<usize>,
@@ -60,10 +73,10 @@ fn original_utf16_ranges_first_duplicates_and_itemprop_suppression_are_retained(
     // Infra ASCII whitespace only; non-ASCII space and isolated surrogates stay exact.
     let raw = DocumentString::from_utf16([32, 97, 9, 65, 10, 97, 12, 120, 46, 58, 0xd800, 0xa0]);
     let mut owner = Some(Owner::new(HtmlMicrodataTokenKind::ItemProp, Some(&raw)));
-    assert!(Owner::try_finish(&mut owner).unwrap_err().is_not_ready());
+    assert!(try_finish(&mut owner).unwrap_err().is_not_ready());
     let mut meter = Meter::default();
     drive(owner.as_mut().unwrap(), &mut meter);
-    let report = Owner::try_finish(&mut owner).unwrap();
+    let report = try_finish(&mut owner).unwrap();
     let actual: Vec<_> = report
         .tokens()
         .iter()
@@ -94,7 +107,7 @@ fn original_utf16_ranges_first_duplicates_and_itemprop_suppression_are_retained(
         raw.shared_code_units()
     ));
     assert!(!report.local_author_conforming());
-    assert!(Owner::try_finish(&mut owner).unwrap_err().is_consumed());
+    assert!(owner.is_none());
 }
 #[test]
 fn single_token_includes_separate_loop_header_eof_done_and_report_admissions() {
@@ -108,7 +121,7 @@ fn single_token_includes_separate_loop_header_eof_done_and_report_admissions() {
     assert!(meter.reservations[0].1 >= 1);
     assert!(meter.reservations[0].2 > 0);
     assert_eq!(
-        Owner::try_finish(&mut owner).unwrap().token_units(0),
+        try_finish(&mut owner).unwrap().token_units(0),
         Some(&[112][..])
     );
 }
@@ -128,7 +141,7 @@ fn absent_and_empty_are_distinct_and_assembly_is_the_last_required_action() {
             }
         );
         assert!(meter.reservations.is_empty());
-        let report = Owner::try_finish(&mut owner).unwrap();
+        let report = try_finish(&mut owner).unwrap();
         assert_eq!(report.raw().is_some(), raw.is_some());
         assert_eq!(report.local_author_conforming(), raw.is_none());
     }
@@ -155,7 +168,7 @@ fn callback_error_at_every_work_checkpoint_stops_without_report_or_repeated_work
                 break;
             }
         }
-        assert!(Owner::try_finish(&mut owner).unwrap_err().is_stopped());
+        assert!(try_finish(&mut owner).unwrap_err().is_stopped());
         assert!(matches!(
             owner.as_mut().unwrap().next_action(),
             Err(ref error) if error.is_stopped()
@@ -182,7 +195,7 @@ fn unexecuted_reservation_refuses_and_can_be_retried_but_post_reserve_error_stop
         }
         action.advance(&mut meter).unwrap();
     }
-    assert!(Owner::try_finish(&mut owner).unwrap_err().is_not_ready());
+    assert!(try_finish(&mut owner).unwrap_err().is_not_ready());
     meter.skip_reserve = false;
     meter.fail_after_reserve = true;
     assert_eq!(
@@ -198,7 +211,7 @@ fn unexecuted_reservation_refuses_and_can_be_retried_but_post_reserve_error_stop
         ))
     );
     assert!(meter.reservations[0].1 >= 1);
-    assert!(Owner::try_finish(&mut owner).unwrap_err().is_stopped());
+    assert!(try_finish(&mut owner).unwrap_err().is_stopped());
     assert_eq!(Arc::strong_count(raw.shared_code_units()), 1);
     assert!(std::ptr::eq(owner.take().unwrap().abort().1.unwrap(), &raw));
 }
@@ -208,7 +221,7 @@ fn explicit_between_action_stop_prevents_publication_even_after_assembly() {
     let mut owner = Some(Owner::new(HtmlMicrodataTokenKind::ItemRef, Some(&raw)));
     drive(owner.as_mut().unwrap(), &mut Meter::default());
     owner.as_mut().unwrap().stop();
-    assert!(Owner::try_finish(&mut owner).unwrap_err().is_stopped());
+    assert!(try_finish(&mut owner).unwrap_err().is_stopped());
     assert!(std::ptr::eq(owner.take().unwrap().abort().1.unwrap(), &raw));
 }
 
@@ -238,7 +251,7 @@ fn interpret(kind: HtmlMicrodataTokenKind, text: &DocumentString) -> (usize, Vec
     while let Some(action) = owner.as_mut().unwrap().next_action().unwrap() {
         action.advance(&mut meter).unwrap();
     }
-    let report = Owner::try_finish(&mut owner).unwrap();
+    let report = try_finish(&mut owner).unwrap();
     (
         meter.work,
         report.tokens().iter().map(|t| t.duplicate_of()).collect(),
@@ -373,7 +386,7 @@ fn reallocation_requests_for_n_tokens_grow_at_most_logarithmically() {
         while let Some(action) = owner.as_mut().unwrap().next_action().unwrap() {
             action.advance(&mut meter).unwrap();
         }
-        assert_eq!(Owner::try_finish(&mut owner).unwrap().tokens().len(), count);
+        assert_eq!(try_finish(&mut owner).unwrap().tokens().len(), count);
         let allowed = count.ilog2() as usize + 2;
         assert!(
             meter.changes <= allowed,

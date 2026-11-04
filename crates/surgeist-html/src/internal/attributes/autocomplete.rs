@@ -276,8 +276,9 @@ enum StoragePurpose {
     Scratch,
 }
 
-/// One reservation owner used by both interpreter front doors. Standalone
-/// retains its ordinary infallible allocation contract, not a resource cap.
+/// One reservation owner used by both interpreter front doors. Both reserve with the fallible
+/// allocator and report a refusal; standalone sets no resource cap, so the allocator and the
+/// platform are its only limits.
 struct Materialization {
     limits: Option<HtmlAutocompleteMaterializationLimits>,
     usage: HtmlAutocompleteMaterializationUsage,
@@ -319,15 +320,17 @@ impl Materialization {
         }
         self.check_growth(growth, bytes, purpose)?;
         let before = values.capacity();
-        if self.limits.is_some() {
-            values
-                .try_reserve_exact(needed - values.len())
-                .map_err(|_| E::Allocation {
-                    requested_bytes: bytes,
-                })?;
-        } else {
-            values.reserve_exact(needed - values.len());
+        #[cfg(test)]
+        if crate::internal::amortized::fault::refuses_next_reservation() {
+            return Err(E::Allocation {
+                requested_bytes: bytes,
+            });
         }
+        values
+            .try_reserve_exact(needed - values.len())
+            .map_err(|_| E::Allocation {
+                requested_bytes: bytes,
+            })?;
         self.observe_growth(
             values.capacity() - before,
             std::mem::size_of::<T>(),
@@ -1641,7 +1644,7 @@ impl HtmlValueInterpreter {
         &self,
         element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
-    ) -> Result<HtmlAutocompleteReport, HtmlValueAdmissionError> {
+    ) -> Result<HtmlAutocompleteReport, HtmlValueInterpretationError> {
         self.control_autocomplete_with_state(element, raw, None)
     }
     /// Actual input state selects mantle, author group and processing domain.
@@ -1651,7 +1654,7 @@ impl HtmlValueInterpreter {
         element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         state: HtmlInputType,
-    ) -> Result<HtmlAutocompleteReport, HtmlValueAdmissionError> {
+    ) -> Result<HtmlAutocompleteReport, HtmlValueInterpretationError> {
         self.control_autocomplete_with_state(element, raw, Some(state))
     }
     fn control_autocomplete_with_state(
@@ -1659,17 +1662,23 @@ impl HtmlValueInterpreter {
         element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         state: Option<HtmlInputType>,
-    ) -> Result<HtmlAutocompleteReport, HtmlValueAdmissionError> {
-        let result =
-            self.materialize_autocomplete(element, raw, state, &mut Materialization::new(None));
-        match result {
-            Ok(report) => Ok(report),
-            Err(HtmlAutocompleteMaterializationError::RawAdmission(error)) => Err(error),
-            // Standalone has no allocation-limit result contract. Its ordinary
-            // reserve policy already panics/aborts on representation/allocation
-            // failure, as the previous infallible materialization did.
-            Err(error) => panic!("standalone autocomplete storage exhausted: {error:?}"),
-        }
+    ) -> Result<HtmlAutocompleteReport, HtmlValueInterpretationError> {
+        self.materialize_autocomplete(element, raw, state, &mut Materialization::new(None))
+            .map_err(|error| match error {
+                HtmlAutocompleteMaterializationError::RawAdmission(error) => error.into(),
+                HtmlAutocompleteMaterializationError::Allocation { .. } => {
+                    HtmlValueInterpretationError::AllocationFailed
+                }
+                HtmlAutocompleteMaterializationError::Representation => {
+                    HtmlValueInterpretationError::RepresentationExhausted
+                }
+                // Allowances belong to the controlled operation; this one sets none.
+                HtmlAutocompleteMaterializationError::BytesLimit { .. }
+                | HtmlAutocompleteMaterializationError::OutputLimit { .. }
+                | HtmlAutocompleteMaterializationError::ScratchLimit { .. } => {
+                    HtmlValueInterpretationError::ProtocolViolated
+                }
+            })
     }
 
     /// Materializes the actual attribute's grammar and processing observations
@@ -2093,5 +2102,98 @@ mod controlled_tests {
             12
         );
         assert_eq!(autocomplete_materialization_work_bound(usize::MAX), None);
+    }
+}
+
+#[cfg(test)]
+mod ordinary_allocation_tests {
+    use super::*;
+    use crate::internal::amortized::fault;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    fn raw(value: &str) -> Attribute {
+        Attribute::new(KnownHtmlAttribute::Autocomplete.qualified_name(), value)
+    }
+
+    /// A refused allocation is an expected condition of a fallible allocator, so the standalone
+    /// operation reports it as its error. It must neither abort the caller by panicking nor claim
+    /// a report for storage it could not reserve.
+    #[test]
+    fn a_refused_reservation_is_an_error_and_never_a_panic() {
+        let interpreter = HtmlValueInterpreter::new(200);
+        let name = KnownHtmlElement::Textarea.qualified_name();
+        let attribute = raw("section-a shipping home tel webauthn");
+        let counting = fault::count_only();
+        let baseline = interpreter
+            .control_autocomplete(&name, Some(&attribute))
+            .unwrap();
+        let requests = fault::requests();
+        drop(counting);
+        assert!(requests >= 2, "{requests} reservation requests");
+        for refuse_from in 1..=requests {
+            let _armed = fault::arm(refuse_from);
+            let outcome = catch_unwind(AssertUnwindSafe(|| {
+                interpreter.control_autocomplete(&name, Some(&attribute))
+            }));
+            let verdict = match &outcome {
+                Err(_) => "panicked",
+                Ok(Ok(_)) => "reported success",
+                Ok(Err(HtmlValueInterpretationError::AllocationFailed)) => {
+                    "returned the allocation error"
+                }
+                Ok(Err(_)) => "returned another error",
+            };
+            assert_eq!(
+                verdict, "returned the allocation error",
+                "reservation {refuse_from} of {requests} refused"
+            );
+        }
+        let _armed = fault::arm(requests + 1);
+        let report = interpreter
+            .control_autocomplete(&name, Some(&attribute))
+            .unwrap();
+        assert_eq!(report, baseline);
+    }
+
+    /// The input-state entry point shares the storage policy, so it reports the same refusal.
+    #[test]
+    fn a_refused_reservation_for_an_input_is_an_error_and_never_a_panic() {
+        let interpreter = HtmlValueInterpreter::new(200);
+        let name = KnownHtmlElement::Input.qualified_name();
+        let attribute = raw("section-a shipping home tel webauthn");
+        let counting = fault::count_only();
+        let baseline = interpreter
+            .control_autocomplete_for_input(&name, Some(&attribute), HtmlInputType::Text)
+            .unwrap();
+        let requests = fault::requests();
+        drop(counting);
+        assert!(requests >= 2, "{requests} reservation requests");
+        for refuse_from in 1..=requests {
+            let _armed = fault::arm(refuse_from);
+            let outcome = catch_unwind(AssertUnwindSafe(|| {
+                interpreter.control_autocomplete_for_input(
+                    &name,
+                    Some(&attribute),
+                    HtmlInputType::Text,
+                )
+            }));
+            let verdict = match &outcome {
+                Err(_) => "panicked",
+                Ok(Ok(_)) => "reported success",
+                Ok(Err(HtmlValueInterpretationError::AllocationFailed)) => {
+                    "returned the allocation error"
+                }
+                Ok(Err(_)) => "returned another error",
+            };
+            assert_eq!(
+                verdict, "returned the allocation error",
+                "reservation {refuse_from} of {requests} refused"
+            );
+        }
+        let _armed = fault::arm(requests + 1);
+        let report = interpreter
+            .control_autocomplete_for_input(&name, Some(&attribute), HtmlInputType::Text)
+            .unwrap();
+        assert_eq!(report, baseline);
     }
 }

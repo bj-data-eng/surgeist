@@ -311,6 +311,32 @@ fn release_table(table: Vec<NameSlot>, budget: Option<&Formation>) -> Result<(),
     Ok(())
 }
 
+type Pair = (DocumentString, DocumentString);
+
+/// The cursor asked about a pair, or a unit of a name, that the driver does not hold.
+fn cursor_mismatch() -> DomError {
+    DomError::PseudoAttributeCursor(CursorError::Integrity)
+}
+
+/// The length of the committed pair `index`'s name.
+fn pair_name_length(pairs: &[Pair], index: usize) -> Result<usize, DomError> {
+    pairs
+        .get(index)
+        .map(|(name, _)| name.len())
+        .ok_or_else(cursor_mismatch)
+}
+
+/// The unit at `offset` of the current name or of the committed pair `which`'s name.
+fn name_unit(name: &[u16], pairs: &[Pair], which: Name, offset: usize) -> Result<u16, DomError> {
+    match which {
+        Name::Current => name.get(offset).copied(),
+        Name::Pair(index) => pairs
+            .get(index)
+            .and_then(|(existing, _)| existing.code_units().get(offset).copied()),
+    }
+    .ok_or_else(cursor_mismatch)
+}
+
 fn parse_attributes(
     data: &DocumentString,
     budget: Option<&Formation>,
@@ -364,7 +390,7 @@ fn parse_attributes(
                     target.capacity() * std::mem::size_of::<u16>(),
                     target.capacity(),
                 );
-                target.extend_from_slice(&units[..len]);
+                target.extend_from_slice(units.get(..len).ok_or_else(cursor_mismatch)?);
                 #[cfg(test)]
                 pi_writes.extended::<u16>(len);
                 Reply::Ack
@@ -420,11 +446,10 @@ fn parse_attributes(
                     Err(_) => return Err(DomError::RepresentationExhausted),
                 })
             }
-            Action::NameLength(index) => Reply::Length(pairs[index].0.len()),
-            Action::NameUnit(which, offset) => Reply::Unit(Some(match which {
-                Name::Current => name[offset],
-                Name::Pair(index) => pairs[index].0.code_units()[offset],
-            })),
+            Action::NameLength(index) => Reply::Length(pair_name_length(&pairs, index)?),
+            Action::NameUnit(which, offset) => {
+                Reply::Unit(Some(name_unit(&name, &pairs, which, offset)?))
+            }
             Action::Commit => {
                 #[cfg(test)]
                 let observed = (pairs.len() == pairs.capacity())
@@ -460,7 +485,7 @@ fn parse_attributes(
                 Reply::Ack
             }
             Action::Pop => {
-                let pair = pairs.pop().expect("actual cursor pair");
+                let pair = pairs.pop().ok_or_else(cursor_mismatch)?;
                 let payload = if budget.is_some() {
                     Some(pair_payload(&pair)?)
                 } else {
@@ -491,8 +516,8 @@ fn parse_attributes(
         match cursor.reply(reply) {
             Ok(()) => {}
             Err(CursorError::Representation) => return Err(DomError::RepresentationExhausted),
-            Err(CursorError::Integrity) => {
-                unreachable!("PI cursor replies reflect its actual input and field banks")
+            Err(error @ CursorError::Integrity) => {
+                return Err(DomError::PseudoAttributeCursor(error));
             }
         }
     }
@@ -919,5 +944,43 @@ mod source_tests {
             assert!(actual.required_units <= actual.unit_limit);
             assert!(actual.required_units < high.required_units);
         }
+    }
+}
+
+#[cfg(test)]
+mod cursor_mismatch_tests {
+    use super::*;
+
+    fn pair(name: &str) -> Pair {
+        (DocumentString::from(name), DocumentString::from("v"))
+    }
+
+    /// A question about a pair or unit the driver does not hold is a disagreement with the cursor,
+    /// reported as the cursor's own integrity cause; one it does hold is answered exactly.
+    #[test]
+    fn requests_outside_the_held_names_report_the_cursor_integrity_cause() {
+        let mismatch = DomError::PseudoAttributeCursor(CursorError::Integrity);
+        let pairs = [pair("ab"), pair("c")];
+        assert_eq!(pair_name_length(&pairs, 0), Ok(2));
+        assert_eq!(pair_name_length(&pairs, 1), Ok(1));
+        assert_eq!(pair_name_length(&pairs, 2), Err(mismatch.clone()));
+        let current = [u16::from(b'x'), u16::from(b'y')];
+        assert_eq!(
+            name_unit(&current, &pairs, Name::Current, 1),
+            Ok(u16::from(b'y'))
+        );
+        assert_eq!(
+            name_unit(&current, &pairs, Name::Current, 2),
+            Err(mismatch.clone())
+        );
+        assert_eq!(
+            name_unit(&current, &pairs, Name::Pair(0), 1),
+            Ok(u16::from(b'b'))
+        );
+        assert_eq!(
+            name_unit(&current, &pairs, Name::Pair(0), 2),
+            Err(mismatch.clone())
+        );
+        assert_eq!(name_unit(&current, &pairs, Name::Pair(2), 0), Err(mismatch));
     }
 }

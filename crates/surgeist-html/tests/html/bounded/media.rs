@@ -8,7 +8,9 @@ use surgeist_html::{
         HtmlMediaNameSupply, match_media_field,
     },
     elements::media::{HtmlMediaCursorAction, HtmlMediaValueClass, HtmlMetaMediaPlacement},
-    values::{Attribute, HtmlValueInterpreter, Namespace, QualifiedName},
+    values::{
+        Attribute, HtmlValueInterpretationError, HtmlValueInterpreter, Namespace, QualifiedName,
+    },
     vocabulary::KnownHtmlElement,
 };
 fn matched<'a>(a: &'a Attribute, field: HtmlMediaField) -> HtmlMediaFieldMatch<'a, Attribute> {
@@ -79,16 +81,13 @@ fn value_completion_precedes_theme_scan_and_assembly_shares_each_original_attrib
     let element = KnownHtmlElement::Meta.qualified_name();
     let raw = attr("media", " ALL ");
     let name = attr("name", "THEME-color");
-    let mut slot = Some(HtmlMediaInterpretation::from_matched(
-        &element,
-        Some(matched(&raw, HtmlMediaField::Media)),
-    ));
-    assert!(
-        HtmlMediaInterpretation::try_finish(&mut slot)
-            .unwrap_err()
-            .is_not_ready()
-    );
-    let owner = slot.as_mut().unwrap();
+    let owner =
+        HtmlMediaInterpretation::from_matched(&element, Some(matched(&raw, HtmlMediaField::Media)));
+    // An unassembled owner is refused as not ready and handed back, so the work can continue.
+    let refusal = owner.finish().unwrap_err();
+    assert!(refusal.cause().is_not_ready());
+    let (mut owner_value, _) = refusal.into_parts();
+    let owner = &mut owner_value;
     admitted(owner);
     owner
         .supply_matched_name(Some(matched(&name, HtmlMediaField::Name)))
@@ -155,7 +154,7 @@ fn value_completion_precedes_theme_scan_and_assembly_shares_each_original_attrib
         std::sync::Arc::strong_count(name.value().shared_code_units()),
         name_count + 1
     );
-    let report = HtmlMediaInterpretation::try_finish(&mut slot).unwrap();
+    let report = owner_value.finish().unwrap();
     assert_eq!(
         report.meta_placement(),
         HtmlMediaPlacementObservation::Known(HtmlMetaMediaPlacement::AllowedForThemeColor)
@@ -175,7 +174,7 @@ fn supplied_absence_and_not_selected_name_remain_distinct_and_wrong_phase_refuse
         matches!(unchecked.begin_theme_color(no_error), Err(HtmlMediaActionError::Protocol(ref e)) if e.is_name_not_supplied())
     );
     unchecked.assemble(|| Ok::<_, &str>(())).unwrap();
-    let report = HtmlMediaInterpretation::try_finish(&mut Some(unchecked)).unwrap();
+    let report = unchecked.finish().unwrap();
     assert_eq!(
         report.meta_placement(),
         HtmlMediaPlacementObservation::Unchecked
@@ -199,9 +198,7 @@ fn supplied_absence_and_not_selected_name_remain_distinct_and_wrong_phase_refuse
     );
     absent.assemble(|| Ok::<_, &str>(())).unwrap();
     assert_eq!(
-        HtmlMediaInterpretation::try_finish(&mut Some(absent))
-            .unwrap()
-            .meta_placement(),
+        absent.finish().unwrap().meta_placement(),
         HtmlMediaPlacementObservation::Known(HtmlMetaMediaPlacement::Forbidden)
     );
 }
@@ -235,9 +232,7 @@ fn absent_media_allows_ordinary_placement_but_explicit_semantic_theme_scan_still
     assert_eq!(work, [1; 12]);
     owner.assemble(|| Ok::<_, &str>(())).unwrap();
     assert_eq!(
-        HtmlMediaInterpretation::try_finish(&mut Some(owner))
-            .unwrap()
-            .meta_placement(),
+        owner.finish().unwrap().meta_placement(),
         HtmlMediaPlacementObservation::Known(HtmlMetaMediaPlacement::NotSpecified)
     );
 }
@@ -252,6 +247,9 @@ fn ordinary_both_raw_caps_precede_foreign_namespace_and_non_meta_shortcuts() {
         let error = HtmlValueInterpreter::new(1)
             .media_for_meta(&element, Some(&media), Some(&name))
             .unwrap_err();
+        let HtmlValueInterpretationError::Admission(error) = error else {
+            panic!("expected the admission refusal, got {error:?}");
+        };
         assert_eq!((error.capacity(), error.required()), (1, 4));
     }
 }
@@ -260,34 +258,25 @@ fn rejected_field_proof_and_callback_failure_preserve_owner_operands_and_forbid_
     let element = KnownHtmlElement::Meta.qualified_name();
     let raw = attr("media", "x");
     let name = attr("name", "theme-color");
-    let mut owner = Some(HtmlMediaInterpretation::from_matched(
-        &element,
-        Some(matched(&raw, HtmlMediaField::Media)),
+    let mut owner =
+        HtmlMediaInterpretation::from_matched(&element, Some(matched(&raw, HtmlMediaField::Media)));
+    admitted(&mut owner);
+    assert!(matches!(
+        owner.supply_matched_name(Some(matched(&raw, HtmlMediaField::Media))),
+        Err(ref e) if e.is_wrong_field()
     ));
-    admitted(owner.as_mut().unwrap());
-    assert!(matches!(owner
-            .as_mut()
-            .unwrap()
-            .supply_matched_name(Some(matched(&raw, HtmlMediaField::Media))), Err(ref e) if e.is_wrong_field()));
     owner
-        .as_mut()
-        .unwrap()
         .supply_matched_name(Some(matched(&name, HtmlMediaField::Name)))
         .unwrap();
     assert_eq!(
-        owner
-            .as_mut()
-            .unwrap()
-            .admit_name(|_| Err("original raw refusal")),
+        owner.admit_name(|_| Err("original raw refusal")),
         Err(HtmlMediaActionError::Admission("original raw refusal"))
     );
-    assert!(
-        HtmlMediaInterpretation::try_finish(&mut owner)
-            .unwrap_err()
-            .is_stopped()
-    );
-    assert!(matches!(owner.as_ref().unwrap().role(), Err(ref e) if e.is_stopped()));
-    let inputs = owner.take().unwrap().abort();
+    let refusal = owner.finish().unwrap_err();
+    assert!(refusal.cause().is_stopped());
+    let owner = refusal.into_parts().0;
+    assert!(matches!(owner.role(), Err(ref e) if e.is_stopped()));
+    let inputs = owner.abort();
     assert!(std::ptr::eq(inputs.element(), &element));
     assert!(std::ptr::eq(inputs.raw().unwrap(), &raw));
     assert!(
@@ -298,33 +287,26 @@ fn rejected_field_proof_and_callback_failure_preserve_owner_operands_and_forbid_
 fn final_assembly_refusal_and_explicit_between_action_stop_never_publish_local_report() {
     let element = KnownHtmlElement::Style.qualified_name();
     let raw = attr("media", "screen");
-    let mut owner = Some(HtmlMediaInterpretation::from_matched(
-        &element,
-        Some(matched(&raw, HtmlMediaField::Media)),
-    ));
-    admitted(owner.as_mut().unwrap());
-    value(owner.as_mut().unwrap());
+    let mut owner =
+        HtmlMediaInterpretation::from_matched(&element, Some(matched(&raw, HtmlMediaField::Media)));
+    admitted(&mut owner);
+    value(&mut owner);
     assert_eq!(
-        owner.as_mut().unwrap().assemble(|| Err("write cancelled")),
+        owner.assemble(|| Err("write cancelled")),
         Err(HtmlMediaActionError::Admission("write cancelled"))
     );
-    assert!(
-        HtmlMediaInterpretation::try_finish(&mut owner)
-            .unwrap_err()
-            .is_stopped()
-    );
-    assert!(matches!(owner.as_ref().unwrap().value(), Err(ref e) if e.is_stopped()));
-    let mut second = Some(HtmlMediaInterpretation::from_matched(&element, None));
-    admitted(second.as_mut().unwrap());
-    value(second.as_mut().unwrap());
-    second.as_mut().unwrap().stop();
-    assert!(
-        HtmlMediaInterpretation::try_finish(&mut second)
-            .unwrap_err()
-            .is_stopped()
-    );
+    let refusal = owner.finish().unwrap_err();
+    assert!(refusal.cause().is_stopped());
+    let owner = refusal.into_parts().0;
+    assert!(matches!(owner.value(), Err(ref e) if e.is_stopped()));
+    let mut second = HtmlMediaInterpretation::from_matched(&element, None);
+    admitted(&mut second);
+    value(&mut second);
+    second.stop();
+    let refusal = second.finish().unwrap_err();
+    assert!(refusal.cause().is_stopped());
     assert!(matches!(
-        second.take().unwrap().abort().name(),
+        refusal.into_parts().0.abort().name(),
         HtmlMediaNameSupply::NotSupplied
     ));
 }
@@ -362,12 +344,12 @@ fn every_raw_namespace_role_value_theme_and_assembly_admission_refusal_is_termin
     // and one final assembly admission.
     const CHECKPOINTS: usize = 50;
     for stop in 0..CHECKPOINTS {
-        let mut slot = Some(HtmlMediaInterpretation::from_matched(
+        let mut owner = HtmlMediaInterpretation::from_matched(
             &element,
             Some(matched(&raw, HtmlMediaField::Media)),
-        ));
+        );
         let mut visited = 0;
-        let result = drive_with_checkpoint(slot.as_mut().unwrap(), &name, || {
+        let result = drive_with_checkpoint(&mut owner, &name, || {
             let next = visited;
             visited += 1;
             if next == stop {
@@ -381,16 +363,11 @@ fn every_raw_namespace_role_value_theme_and_assembly_admission_refusal_is_termin
             Err(HtmlMediaActionError::Admission("original checkpoint stop"))
         );
         assert_eq!(visited, stop + 1);
-        assert!(
-            HtmlMediaInterpretation::try_finish(&mut slot)
-                .unwrap_err()
-                .is_stopped()
-        );
-        assert!(matches!(slot.as_ref().unwrap().value(), Err(ref e) if e.is_stopped()));
-        assert!(std::ptr::eq(
-            slot.take().unwrap().abort().raw().unwrap(),
-            &raw
-        ));
+        let refusal = owner.finish().unwrap_err();
+        assert!(refusal.cause().is_stopped());
+        let owner = refusal.into_parts().0;
+        assert!(matches!(owner.value(), Err(ref e) if e.is_stopped()));
+        assert!(std::ptr::eq(owner.abort().raw().unwrap(), &raw));
     }
     let mut owner =
         HtmlMediaInterpretation::from_matched(&element, Some(matched(&raw, HtmlMediaField::Media)));

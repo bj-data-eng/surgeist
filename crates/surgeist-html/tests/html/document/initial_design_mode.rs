@@ -16,7 +16,7 @@ fn original_owned_document_lends_disabled_state_without_granting_non_document_st
             OrderedAttributes::default(),
         )
         .unwrap();
-    let document = builder.finish();
+    let document = builder.finish().unwrap();
     assert_eq!(document.root().document_design_mode_enabled(), Some(false));
     let child = document.root().children().next().unwrap();
     assert_eq!(
@@ -28,13 +28,14 @@ fn original_owned_document_lends_disabled_state_without_granting_non_document_st
     );
     let independent = HtmlDocument::builder(limits, HtmlDocumentMode::Quirks)
         .unwrap()
-        .finish();
+        .finish()
+        .unwrap();
     assert_eq!(
         independent.root().document_design_mode_enabled(),
         Some(false)
     );
     assert_ne!(independent.root().id(), document.root().id());
     assert!(independent.node(&document.root().id()).is_err());
-    let fragment = HtmlFragment::builder(limits).unwrap().finish();
+    let fragment = HtmlFragment::builder(limits).unwrap().finish().unwrap();
     assert_eq!(fragment.root().document_design_mode_enabled(), None);
 }

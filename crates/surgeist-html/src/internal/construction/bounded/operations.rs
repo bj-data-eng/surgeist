@@ -826,7 +826,9 @@ impl HtmlConstructionOperation {
     }
     /// Consumes a ready operation. Returns the latched failure, or the not-ready error before the
     /// last action was accepted; either way the operation is handed back unchanged, so the caller
-    /// can abort it and recover the storage and command.
+    /// can abort it and recover the storage and command. An operation whose planned order edits no
+    /// longer find their places in the storage is refused with the cause the commit action gives
+    /// (`CapacityMismatch` or `ParentChildConflict`).
     #[expect(
         clippy::result_large_err,
         reason = "a refusal hands the complete owner back without boxing it"
@@ -854,6 +856,15 @@ impl HtmlConstructionOperation {
                 self,
                 HtmlConstructionErrorKind::OperationNotReady,
             ));
+        }
+        // The commit applies its order edits exactly where planning located them. The operation owns
+        // the storage exclusively until it commits, so what holds here holds then, and a state that
+        // fails is refused while the operation can still be handed back.
+        if self.plan.edits_order
+            && !self.plan.no_op
+            && let Err(error) = self.plan.check_order_edits(self.arena())
+        {
+            return Err(HtmlConstructionRefusal::new(self, error));
         }
         let staged = std::mem::take(&mut self.plan.staged);
         match resolve(&self.command, staged, self.plan.old_contents) {
@@ -2299,14 +2310,6 @@ impl HtmlConstructionReadyOperation {
         };
         let plan = &mut plan;
         let p = plan.positions;
-        if plan.edits_order && !plan.no_op && plan.check_order_edits(&storage.arena).is_err() {
-            // The Commit action refuses this state first; were it ever reached,
-            // no write may land, so the parent link and the lists cannot diverge.
-            return HtmlConstructionCommit::Changed {
-                storage,
-                created: plan.created.take(),
-            };
-        }
         if !plan.no_op {
             let arena = &mut storage.arena;
             // A reservation and a transfer check assign nothing, not even the
@@ -3008,17 +3011,20 @@ mod order_commit_guard_tests {
     }
 
     #[test]
-    fn ready_commit_applies_nothing_when_the_append_cannot_be_pushed() {
+    fn ready_transition_refuses_an_append_that_cannot_be_pushed() {
         for spoil in [fill_child_order, lose_parent] {
             let (mut operation, children, usage) = pending_commit(append, spoil);
             let node = operation.plan.positions[0];
-            // Bypass the refusing action to reach the commit itself.
+            // Bypass the refusing action to reach the ready transition itself.
             operation.phase = Phase::Ready;
-            let HtmlConstructionCommit::Changed { storage, .. } =
-                slots::operation(&mut Some(operation)).unwrap().commit()
-            else {
-                panic!("mutation published")
+            let Err(refusal) = operation.try_ready() else {
+                panic!("a ready operation that cannot push must not commit");
             };
+            assert_eq!(
+                refusal.reason(),
+                &HtmlConstructionErrorKind::CapacityMismatch.error()
+            );
+            let storage = refusal.into_parts().0.abort().storage;
             assert_eq!(storage.arena.records[0].children, children);
             assert_eq!(storage.arena.records[node].parent, None);
             assert_eq!(storage.usage(), usage);
@@ -3053,7 +3059,7 @@ mod order_commit_guard_tests {
     }
 
     #[test]
-    fn ready_commit_applies_nothing_when_planned_places_are_stale() {
+    fn ready_transition_refuses_edits_whose_planned_places_are_stale() {
         for (build, spoil) in STALE {
             let (mut operation, children, usage) = pending_commit(build, spoil);
             let nodes: Vec<usize> = operation
@@ -3063,11 +3069,14 @@ mod order_commit_guard_tests {
                 .map(|record| record.parent.unwrap_or(usize::MAX))
                 .collect();
             operation.phase = Phase::Ready;
-            let HtmlConstructionCommit::Changed { storage, .. } =
-                slots::operation(&mut Some(operation)).unwrap().commit()
-            else {
-                panic!("mutation published")
+            let Err(refusal) = operation.try_ready() else {
+                panic!("a ready operation with stale places must not commit");
             };
+            assert_eq!(
+                refusal.reason(),
+                &HtmlConstructionErrorKind::ParentChildConflict.error()
+            );
+            let storage = refusal.into_parts().0.abort().storage;
             assert_eq!(storage.arena.records[0].children, children);
             let after: Vec<usize> = storage
                 .arena
@@ -3148,5 +3157,38 @@ mod pairing_tests {
         };
         assert!(created.is_some());
         assert_eq!(storage.len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod native_finish_tests {
+    use super::*;
+    use crate::internal::construction::{Builder, NativeRoot};
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    /// Publication validates the whole tree again. A tree it refuses is an expected condition for
+    /// a fallible publisher, so the native builder reports it and does not abort the caller. The
+    /// child below lost the parent link that its parent's child list still names, which is the
+    /// refusal the publication's own pass reports.
+    #[test]
+    fn finish_reports_a_tree_that_publication_refuses_and_never_panics() {
+        let mut builder = Builder::new(
+            HtmlConstructionLimits::new(4, 4, 0, 8, 3),
+            NativeRoot::Fragment,
+        )
+        .unwrap();
+        let root = builder.handle(0);
+        builder
+            .append(&root, HtmlNodeKind::Comment("c".into()))
+            .unwrap();
+        if let Some(storage) = builder.storage.as_mut() {
+            storage.arena.records[1].parent = None;
+        }
+        let outcome = catch_unwind(AssertUnwindSafe(|| builder.finish()));
+        let Ok(result) = outcome else {
+            panic!("finish panicked on a refused publication");
+        };
+        let error = result.expect_err("a tree with a lost parent link is refused");
+        assert!(error.is_parent_child_conflict(), "{error}");
     }
 }

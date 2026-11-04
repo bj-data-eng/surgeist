@@ -1,6 +1,7 @@
 //! Actual-field selection and deferred local media report production.
 use super::*;
 use crate::internal::elements::media::theme::HtmlThemeColorNameCursor;
+use crate::internal::values::finish::HtmlFinishFailure;
 /// The two no-namespace attributes that media interpretation matches by local
 /// name.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -70,7 +71,7 @@ pub fn media_field_matches(
     }
 }
 /// A misuse of the media interpretation protocol, such as a step requested out
-/// of order, on a stopped or consumed owner, or before its input is ready.
+/// of order, on a stopped owner, or before its input is ready.
 ///
 /// The cause is private; ask about it with the `is_*` predicates. A refusal by
 /// the caller's own admission is not this error: it is
@@ -82,7 +83,6 @@ pub struct HtmlMediaInterpretationError {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum HtmlMediaInterpretationErrorKind {
-    Consumed,
     NotReady,
     Stopped,
     WrongPhase,
@@ -106,10 +106,6 @@ impl From<HtmlMediaInterpretationErrorKind> for HtmlMediaInterpretationError {
 }
 
 impl HtmlMediaInterpretationError {
-    /// Whether the cause is: media interpretation was already consumed.
-    pub fn is_consumed(&self) -> bool {
-        matches!(self.kind, HtmlMediaInterpretationErrorKind::Consumed)
-    }
     /// Whether the cause is: media interpretation has an unfinished step.
     pub fn is_not_ready(&self) -> bool {
         matches!(self.kind, HtmlMediaInterpretationErrorKind::NotReady)
@@ -149,9 +145,6 @@ impl HtmlMediaInterpretationError {
 impl std::fmt::Display for HtmlMediaInterpretationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.kind {
-            HtmlMediaInterpretationErrorKind::Consumed => {
-                f.write_str("media interpretation was already consumed")
-            }
             HtmlMediaInterpretationErrorKind::NotReady => {
                 f.write_str("media interpretation has an unfinished step")
             }
@@ -223,7 +216,7 @@ enum Name<'raw, A: HtmlAttributeInput> {
 /// The owner advances through admission, namespace, role, value and (for a
 /// `meta` element with a name) theme-color steps, each charged to the caller
 /// before it runs. A refused admission stops the owner. `assemble` produces the
-/// report and `try_finish` hands it out once. It is not `Clone`, so one owner
+/// report and `finish` hands it out once. It is not `Clone`, so one owner
 /// cannot be advanced twice.
 #[derive(Debug)]
 pub struct HtmlMediaInterpretation<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> {
@@ -400,19 +393,20 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
         self.require(self.html_namespace.is_some() && self.role.is_none())?;
         self.execute(|| admit(1))?;
         let units = self.element.local_name().len();
-        let work = units
-            .checked_add(1)
-            .and_then(|n| n.checked_mul(KnownHtmlElement::ALL.len()))
+        // The envelope is (local length + 1) * vocabulary size + namespace length; the first unit
+        // was charged above as the header, leaving local length * vocabulary size plus the rest of
+        // one vocabulary pass. The constant fails to compile for an empty vocabulary.
+        const REST_OF_ONE_PASS: usize = KnownHtmlElement::ALL.len() - 1;
+        let remaining = units
+            .checked_mul(KnownHtmlElement::ALL.len())
+            .and_then(|n| n.checked_add(REST_OF_ONE_PASS))
             .and_then(|n| n.checked_add(self.namespace_code_units));
-        let Some(work) = work else {
+        let Some(remaining) = remaining else {
             self.stop();
             return Err(HtmlMediaActionError::Protocol(
                 HtmlMediaInterpretationErrorKind::RepresentationExhausted.error(),
             ));
         };
-        let remaining = work
-            .checked_sub(1)
-            .expect("nonempty HTML vocabulary includes the prepaid local header");
         self.execute(|| admit(remaining))?;
         self.role = Some(HtmlMediaElementRole::from_known(
             KnownHtmlElement::from_name(self.element),
@@ -623,7 +617,7 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
     }
     /// Admits the final report assembly and builds the report once the value is
     /// complete. For an applicable `meta` with both `media` and a supplied name,
-    /// the theme-color comparison must be complete too. `try_finish` hands the
+    /// the theme-color comparison must be complete too. `finish` hands the
     /// report out.
     pub fn assemble<E>(
         &mut self,
@@ -686,26 +680,87 @@ impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpreta
             },
         }
     }
-    /// Takes the assembled report out of the slot, leaving it empty. Fails with
-    /// `Consumed` for an empty slot, `Stopped` for a stopped owner and
-    /// `NotReady` before `assemble`. A failure leaves the owner in the slot.
-    pub fn try_finish(
-        slot: &mut Option<Self>,
-    ) -> Result<HtmlMediaAttributeReport, HtmlMediaInterpretationError> {
-        let owner = slot
-            .as_ref()
-            .ok_or(HtmlMediaInterpretationErrorKind::Consumed)?;
-        if owner.stopped {
-            return Err(HtmlMediaInterpretationErrorKind::Stopped.error());
+    /// Consumes the owner and returns its assembled report. A stopped owner is refused with the
+    /// stopped cause and one that has not assembled with the not-ready cause; either refusal hands
+    /// the owner back unchanged.
+    #[expect(
+        clippy::result_large_err,
+        reason = "a refusal hands the complete owner back without boxing it"
+    )]
+    pub fn finish(
+        mut self,
+    ) -> Result<HtmlMediaAttributeReport, HtmlFinishFailure<Self, HtmlMediaInterpretationError>>
+    {
+        if self.stopped {
+            return Err(HtmlFinishFailure::new(
+                self,
+                HtmlMediaInterpretationErrorKind::Stopped,
+            ));
         }
-        if owner.report.is_none() {
-            return Err(HtmlMediaInterpretationErrorKind::NotReady.error());
+        match self.report.take() {
+            Some(report) => Ok(report),
+            None => Err(HtmlFinishFailure::new(
+                self,
+                HtmlMediaInterpretationErrorKind::NotReady,
+            )),
         }
-        Ok(slot
-            .take()
-            .expect("checked owner")
-            .report
-            .expect("assembled report"))
+    }
+}
+
+/// The standalone operation's cause for an engine failure.
+pub(super) fn ordinary_cause(error: HtmlMediaInterpretationError) -> HtmlValueInterpretationError {
+    HtmlValueInterpretationError::from_engine(false, error.is_representation_exhausted())
+}
+/// The cause of a failed step whose raw value was admitted by the interpreter.
+fn admitted(error: HtmlMediaActionError<HtmlValueAdmissionError>) -> HtmlValueInterpretationError {
+    match error {
+        HtmlMediaActionError::Admission(error) => error.into(),
+        HtmlMediaActionError::Protocol(error) => ordinary_cause(error),
+    }
+}
+/// The cause of a failed step that no admission can refuse.
+fn unadmitted(
+    error: HtmlMediaActionError<std::convert::Infallible>,
+) -> HtmlValueInterpretationError {
+    match error {
+        HtmlMediaActionError::Admission(never) => match never {},
+        HtmlMediaActionError::Protocol(error) => ordinary_cause(error),
+    }
+}
+impl<'raw, N: HtmlNameInput + ?Sized, A: HtmlAttributeInput> HtmlMediaInterpretation<'raw, N, A> {
+    /// Runs the interpretation to its report, admitting only the raw values against the
+    /// interpreter's input capacity and charging no work. This is the one driver of the standalone
+    /// operations. A supplied name operand is expected to be present already.
+    pub(super) fn run_unmetered(
+        mut self,
+        name_supplied: bool,
+        admit: impl Fn(Option<&A>) -> Result<(), HtmlValueAdmissionError>,
+    ) -> Result<HtmlMediaAttributeReport, HtmlValueInterpretationError> {
+        let free = |_| Ok::<_, std::convert::Infallible>(());
+        self.admit_media(&admit).map_err(admitted)?;
+        if name_supplied {
+            self.admit_name(&admit).map_err(admitted)?;
+        }
+        self.inspect_namespace(free).map_err(unadmitted)?;
+        self.derive_role(free).map_err(unadmitted)?;
+        self.begin_value().map_err(ordinary_cause)?;
+        while self.value_action().map_err(ordinary_cause)? != HtmlMediaCursorAction::Complete {
+            self.advance_value(free).map_err(unadmitted)?;
+        }
+        if self.applicability() == HtmlAttributeApplicability::Applicable
+            && self.role() == Ok(Some(HtmlMediaElementRole::Meta))
+            && self.raw().is_some()
+            && name_supplied
+        {
+            self.begin_theme_color(free).map_err(unadmitted)?;
+            while !self.theme_color_complete().map_err(ordinary_cause)? {
+                self.advance_theme_color(free).map_err(unadmitted)?;
+            }
+        }
+        self.assemble(|| Ok::<_, std::convert::Infallible>(()))
+            .map_err(unadmitted)?;
+        self.finish()
+            .map_err(|failure| ordinary_cause(failure.into_parts().1))
     }
 }
 
@@ -751,11 +806,6 @@ mod cause_tests {
     fn every_cause_has_its_message_and_exactly_one_matching_predicate() {
         type Predicate = fn(&HtmlMediaInterpretationError) -> bool;
         let cases: Vec<(HtmlMediaInterpretationError, &str, Predicate)> = vec![
-            (
-                HtmlMediaInterpretationErrorKind::Consumed.error(),
-                "media interpretation was already consumed",
-                HtmlMediaInterpretationError::is_consumed,
-            ),
             (
                 HtmlMediaInterpretationErrorKind::NotReady.error(),
                 "media interpretation has an unfinished step",

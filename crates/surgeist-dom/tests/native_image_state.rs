@@ -280,7 +280,7 @@ fn native_authoring_installation_starts_fresh_updates_and_self_dimension_sources
             .unwrap(),
         )
         .unwrap();
-    let source = builder.finish();
+    let source = builder.finish().unwrap();
     let picture = source.root().children().next().unwrap();
     let source_img = source.node(&picture).unwrap().children().nth(1).unwrap();
     let report = dom

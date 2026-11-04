@@ -2631,7 +2631,7 @@ pub fn surgeist_html::bounded::construction::HtmlConstructionTextAppendObservati
 pub struct surgeist_html::bounded::construction::HtmlConstructionTextAppendReady
 impl surgeist_html::bounded::construction::HtmlConstructionTextAppendReady
 pub fn surgeist_html::bounded::construction::HtmlConstructionTextAppendReady::abort(self) -> surgeist_html::bounded::construction::HtmlConstructionTextAppendCompletion
-pub fn surgeist_html::bounded::construction::HtmlConstructionTextAppendReady::commit(self) -> surgeist_html::bounded::construction::HtmlConstructionTextAppendCompletion
+pub fn surgeist_html::bounded::construction::HtmlConstructionTextAppendReady::commit(self) -> core::result::Result<surgeist_html::bounded::construction::HtmlConstructionTextAppendCompletion, surgeist_html::bounded::construction::HtmlConstructionRefusal<Self>>
 pub struct surgeist_html::bounded::construction::HtmlConstructionTextAppendWork
 pub surgeist_html::bounded::construction::HtmlConstructionTextAppendWork::atomic_layout_bytes: usize
 pub surgeist_html::bounded::construction::HtmlConstructionTextAppendWork::copied_bytes: usize
@@ -2849,6 +2849,7 @@ pub fn surgeist_html::bounded::media::HtmlMediaInterpretation<'raw, N, A>::assem
 pub fn surgeist_html::bounded::media::HtmlMediaInterpretation<'raw, N, A>::begin_theme_color<E>(&mut self, admit: impl core::ops::function::FnOnce(usize) -> core::result::Result<(), E>) -> core::result::Result<(), surgeist_html::bounded::media::HtmlMediaActionError<E>>
 pub fn surgeist_html::bounded::media::HtmlMediaInterpretation<'raw, N, A>::begin_value(&mut self) -> core::result::Result<(), surgeist_html::bounded::media::HtmlMediaInterpretationError>
 pub fn surgeist_html::bounded::media::HtmlMediaInterpretation<'raw, N, A>::derive_role<E>(&mut self, admit: impl core::ops::function::FnMut(usize) -> core::result::Result<(), E>) -> core::result::Result<(), surgeist_html::bounded::media::HtmlMediaActionError<E>>
+pub fn surgeist_html::bounded::media::HtmlMediaInterpretation<'raw, N, A>::finish(self) -> core::result::Result<surgeist_html::attributes::media::HtmlMediaAttributeReport, surgeist_html::bounded::values::HtmlFinishFailure<Self, surgeist_html::bounded::media::HtmlMediaInterpretationError>>
 pub fn surgeist_html::bounded::media::HtmlMediaInterpretation<'raw, N, A>::from_matched(element: &'raw N, raw: core::option::Option<surgeist_html::bounded::media::HtmlMediaFieldMatch<'raw, A>>) -> Self
 pub fn surgeist_html::bounded::media::HtmlMediaInterpretation<'raw, N, A>::inspect_namespace<E>(&mut self, admit: impl core::ops::function::FnMut(usize) -> core::result::Result<(), E>) -> core::result::Result<(), surgeist_html::bounded::media::HtmlMediaActionError<E>>
 pub fn surgeist_html::bounded::media::HtmlMediaInterpretation<'raw, N, A>::is_html_namespace(&self) -> core::result::Result<bool, surgeist_html::bounded::media::HtmlMediaInterpretationError>
@@ -2858,12 +2859,10 @@ pub fn surgeist_html::bounded::media::HtmlMediaInterpretation<'raw, N, A>::stop(
 pub fn surgeist_html::bounded::media::HtmlMediaInterpretation<'raw, N, A>::supply_matched_name(&mut self, name: core::option::Option<surgeist_html::bounded::media::HtmlMediaFieldMatch<'raw, A>>) -> core::result::Result<(), surgeist_html::bounded::media::HtmlMediaInterpretationError>
 pub fn surgeist_html::bounded::media::HtmlMediaInterpretation<'raw, N, A>::theme_color(&self) -> core::result::Result<bool, surgeist_html::bounded::media::HtmlMediaInterpretationError>
 pub fn surgeist_html::bounded::media::HtmlMediaInterpretation<'raw, N, A>::theme_color_complete(&self) -> core::result::Result<bool, surgeist_html::bounded::media::HtmlMediaInterpretationError>
-pub fn surgeist_html::bounded::media::HtmlMediaInterpretation<'raw, N, A>::try_finish(slot: &mut core::option::Option<Self>) -> core::result::Result<surgeist_html::attributes::media::HtmlMediaAttributeReport, surgeist_html::bounded::media::HtmlMediaInterpretationError>
 pub fn surgeist_html::bounded::media::HtmlMediaInterpretation<'raw, N, A>::value(&self) -> core::result::Result<surgeist_html::elements::media::HtmlMediaValue, surgeist_html::bounded::media::HtmlMediaInterpretationError>
 pub fn surgeist_html::bounded::media::HtmlMediaInterpretation<'raw, N, A>::value_action(&self) -> core::result::Result<surgeist_html::elements::media::HtmlMediaCursorAction, surgeist_html::bounded::media::HtmlMediaInterpretationError>
 pub struct surgeist_html::bounded::media::HtmlMediaInterpretationError
 impl surgeist_html::bounded::media::HtmlMediaInterpretationError
-pub fn surgeist_html::bounded::media::HtmlMediaInterpretationError::is_consumed(&self) -> bool
 pub fn surgeist_html::bounded::media::HtmlMediaInterpretationError::is_name_already_supplied(&self) -> bool
 pub fn surgeist_html::bounded::media::HtmlMediaInterpretationError::is_name_not_supplied(&self) -> bool
 pub fn surgeist_html::bounded::media::HtmlMediaInterpretationError::is_not_ready(&self) -> bool
@@ -2908,19 +2907,19 @@ pub fn surgeist_html::bounded::microdata::HtmlMicrodataTokenAction<'_, '_>::kind
 pub struct surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretation<'raw>
 impl<'raw> surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretation<'raw>
 pub fn surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretation<'raw>::abort(self) -> (surgeist_html::attributes::microdata::HtmlMicrodataTokenKind, core::option::Option<&'raw surgeist_html::values::DocumentString>)
+pub fn surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretation<'raw>::finish(self) -> core::result::Result<surgeist_html::attributes::microdata::HtmlMicrodataTokenReport, surgeist_html::bounded::values::HtmlFinishFailure<Self, surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError>>
 pub fn surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretation<'raw>::new(kind: surgeist_html::attributes::microdata::HtmlMicrodataTokenKind, raw: core::option::Option<&'raw surgeist_html::values::DocumentString>) -> Self
 pub fn surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretation<'raw>::next_action(&mut self) -> core::result::Result<core::option::Option<surgeist_html::bounded::microdata::HtmlMicrodataTokenAction<'_, 'raw>>, surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError>
 pub fn surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretation<'raw>::stop(&mut self)
-pub fn surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretation<'raw>::try_finish(slot: &mut core::option::Option<Self>) -> core::result::Result<surgeist_html::attributes::microdata::HtmlMicrodataTokenReport, surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError>
 pub struct surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError
 impl surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError
 pub fn surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError::is_allocation_failed(&self) -> bool
-pub fn surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError::is_consumed(&self) -> bool
 pub fn surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError::is_not_ready(&self) -> bool
 pub fn surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError::is_representation_exhausted(&self) -> bool
 pub fn surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError::is_reservation_already_attempted(&self) -> bool
 pub fn surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError::is_reservation_not_performed(&self) -> bool
 pub fn surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError::is_stopped(&self) -> bool
+pub fn surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError::is_wrong_phase(&self) -> bool
 impl core::error::Error for surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError
 impl core::fmt::Display for surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError
 pub fn surgeist_html::bounded::microdata::HtmlMicrodataTokenInterpretationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -3286,6 +3285,7 @@ pub struct surgeist_html::bounded::rel::HtmlRelInterpretation<'raw>
 impl<'raw> surgeist_html::bounded::rel::HtmlRelInterpretation<'raw>
 pub fn surgeist_html::bounded::rel::HtmlRelInterpretation<'raw>::abort(self) -> surgeist_html::bounded::rel::HtmlRelInputs<'raw>
 pub fn surgeist_html::bounded::rel::HtmlRelInterpretation<'raw>::begin_refinement(&mut self) -> core::result::Result<(), surgeist_html::bounded::rel::HtmlRelInterpretationError>
+pub fn surgeist_html::bounded::rel::HtmlRelInterpretation<'raw>::finish(self) -> core::result::Result<surgeist_html::elements::link::HtmlRelReport, surgeist_html::bounded::values::HtmlFinishFailure<Self, surgeist_html::bounded::rel::HtmlRelInterpretationError>>
 pub fn surgeist_html::bounded::rel::HtmlRelInterpretation<'raw>::inputs(&self) -> core::result::Result<&surgeist_html::bounded::rel::HtmlRelInputs<'raw>, surgeist_html::bounded::rel::HtmlRelInterpretationError>
 pub fn surgeist_html::bounded::rel::HtmlRelInterpretation<'raw>::interpret<M: surgeist_html::bounded::rel::HtmlRelMeter>(&mut self, meter: &mut M) -> core::result::Result<(), surgeist_html::bounded::rel::HtmlRelActionError<<M as surgeist_html::bounded::rel::HtmlRelMeter>::Error>>
 pub fn surgeist_html::bounded::rel::HtmlRelInterpretation<'raw>::new(inputs: surgeist_html::bounded::rel::HtmlRelInputs<'raw>) -> Self
@@ -3294,11 +3294,9 @@ pub fn surgeist_html::bounded::rel::HtmlRelInterpretation<'raw>::occurrences(&se
 pub fn surgeist_html::bounded::rel::HtmlRelInterpretation<'raw>::refine<M: surgeist_html::bounded::rel::HtmlRelMeter>(&mut self, index: usize, refinement: surgeist_html::bounded::rel::HtmlRelRefinement, meter: &mut M) -> core::result::Result<(), surgeist_html::bounded::rel::HtmlRelActionError<<M as surgeist_html::bounded::rel::HtmlRelMeter>::Error>>
 pub fn surgeist_html::bounded::rel::HtmlRelInterpretation<'raw>::refresh<M: surgeist_html::bounded::rel::HtmlRelMeter>(&mut self, meter: &mut M) -> core::result::Result<(), surgeist_html::bounded::rel::HtmlRelActionError<<M as surgeist_html::bounded::rel::HtmlRelMeter>::Error>>
 pub fn surgeist_html::bounded::rel::HtmlRelInterpretation<'raw>::stop(&mut self)
-pub fn surgeist_html::bounded::rel::HtmlRelInterpretation<'raw>::try_finish(slot: &mut core::option::Option<Self>) -> core::result::Result<surgeist_html::elements::link::HtmlRelReport, surgeist_html::bounded::rel::HtmlRelInterpretationError>
 pub struct surgeist_html::bounded::rel::HtmlRelInterpretationError
 impl surgeist_html::bounded::rel::HtmlRelInterpretationError
 pub fn surgeist_html::bounded::rel::HtmlRelInterpretationError::is_allocation_failed(&self) -> bool
-pub fn surgeist_html::bounded::rel::HtmlRelInterpretationError::is_consumed(&self) -> bool
 pub fn surgeist_html::bounded::rel::HtmlRelInterpretationError::is_invalid_extension_effect(&self) -> bool
 pub fn surgeist_html::bounded::rel::HtmlRelInterpretationError::is_not_ready(&self) -> bool
 pub fn surgeist_html::bounded::rel::HtmlRelInterpretationError::is_out_of_order_refinement(&self) -> bool
@@ -3570,17 +3568,16 @@ pub surgeist_html::bounded::temporal::HtmlTimeElementInterpretationActionKind::R
 pub struct surgeist_html::bounded::temporal::HtmlTimeElementInterpretation<'raw>
 impl<'raw> surgeist_html::bounded::temporal::HtmlTimeElementInterpretation<'raw>
 pub fn surgeist_html::bounded::temporal::HtmlTimeElementInterpretation<'raw>::abort(self) -> &'raw surgeist_html::values::DocumentString
+pub fn surgeist_html::bounded::temporal::HtmlTimeElementInterpretation<'raw>::finish(self) -> core::result::Result<surgeist_html::values::HtmlValueReport<surgeist_html::microsyntax::temporal::HtmlTimeElementValue, surgeist_html::microsyntax::temporal::HtmlMachineReadableTime>, surgeist_html::bounded::values::HtmlFinishFailure<Self, surgeist_html::bounded::temporal::HtmlTimeElementInterpretationError>>
 pub fn surgeist_html::bounded::temporal::HtmlTimeElementInterpretation<'raw>::new(raw: &'raw surgeist_html::values::DocumentString, interpreter: surgeist_html::values::HtmlValueInterpreter) -> core::result::Result<Self, surgeist_html::values::HtmlValueAdmissionError>
 pub fn surgeist_html::bounded::temporal::HtmlTimeElementInterpretation<'raw>::next_action(&mut self) -> core::result::Result<core::option::Option<surgeist_html::bounded::temporal::HtmlTimeElementInterpretationAction<'_, 'raw>>, surgeist_html::bounded::temporal::HtmlTimeElementInterpretationError>
 pub fn surgeist_html::bounded::temporal::HtmlTimeElementInterpretation<'raw>::raw(&self) -> &'raw surgeist_html::values::DocumentString
-pub fn surgeist_html::bounded::temporal::HtmlTimeElementInterpretation<'raw>::try_finish(owner: &mut core::option::Option<Self>) -> core::result::Result<surgeist_html::values::HtmlValueReport<surgeist_html::microsyntax::temporal::HtmlTimeElementValue, surgeist_html::microsyntax::temporal::HtmlMachineReadableTime>, surgeist_html::bounded::temporal::HtmlTimeElementInterpretationError>
 pub struct surgeist_html::bounded::temporal::HtmlTimeElementInterpretationAction<'step, 'raw>
 impl surgeist_html::bounded::temporal::HtmlTimeElementInterpretationAction<'_, '_>
 pub fn surgeist_html::bounded::temporal::HtmlTimeElementInterpretationAction<'_, '_>::advance(self, max_integer_digits: usize, max_allocation_bytes: usize) -> surgeist_html::bounded::temporal::HtmlTimeElementInterpretationStep
 pub fn surgeist_html::bounded::temporal::HtmlTimeElementInterpretationAction<'_, '_>::layout(&self) -> surgeist_html::bounded::temporal::HtmlTimeElementInterpretationLayout
 pub struct surgeist_html::bounded::temporal::HtmlTimeElementInterpretationError
 impl surgeist_html::bounded::temporal::HtmlTimeElementInterpretationError
-pub fn surgeist_html::bounded::temporal::HtmlTimeElementInterpretationError::is_consumed(&self) -> bool
 pub fn surgeist_html::bounded::temporal::HtmlTimeElementInterpretationError::is_invalid_recognized_plan(&self) -> bool
 pub fn surgeist_html::bounded::temporal::HtmlTimeElementInterpretationError::is_not_ready(&self) -> bool
 pub fn surgeist_html::bounded::temporal::HtmlTimeElementInterpretationError::is_representation_exhausted(&self) -> bool
@@ -3606,7 +3603,6 @@ pub surgeist_html::bounded::values::HtmlAttributePoolResult::Hit(surgeist_html::
 pub surgeist_html::bounded::values::HtmlAttributePoolResult::Miss
 pub surgeist_html::bounded::values::HtmlAttributePoolResult::Offered(surgeist_html::bounded::values::HtmlValuePoolChange)
 #[non_exhaustive] pub enum surgeist_html::bounded::values::HtmlAttributeValidationError
-pub surgeist_html::bounded::values::HtmlAttributeValidationError::Consumed
 pub surgeist_html::bounded::values::HtmlAttributeValidationError::Duplicate
 pub surgeist_html::bounded::values::HtmlAttributeValidationError::Duplicate::duplicate: usize
 pub surgeist_html::bounded::values::HtmlAttributeValidationError::Duplicate::first: usize
@@ -3731,10 +3727,10 @@ pub struct surgeist_html::bounded::values::HtmlAttributeValidation
 impl surgeist_html::bounded::values::HtmlAttributeValidation
 pub fn surgeist_html::bounded::values::HtmlAttributeValidation::abort(self) -> surgeist_html::bounded::values::HtmlAttributeStorage
 pub fn surgeist_html::bounded::values::HtmlAttributeValidation::abort_with_index(self) -> (surgeist_html::bounded::values::HtmlAttributeStorage, core::option::Option<surgeist_html::bounded::values::HtmlAttributeNameIndex>)
+pub fn surgeist_html::bounded::values::HtmlAttributeValidation::finish(self) -> core::result::Result<surgeist_html::bounded::values::HtmlValidatedAttributes, surgeist_html::bounded::values::HtmlFinishFailure<Self, surgeist_html::bounded::values::HtmlAttributeValidationError>>
+pub fn surgeist_html::bounded::values::HtmlAttributeValidation::finish_with_index(self) -> core::result::Result<(surgeist_html::bounded::values::HtmlValidatedAttributes, core::option::Option<surgeist_html::bounded::values::HtmlAttributeNameIndex>), surgeist_html::bounded::values::HtmlFinishFailure<Self, surgeist_html::bounded::values::HtmlAttributeValidationError>>
 pub fn surgeist_html::bounded::values::HtmlAttributeValidation::next_action(&mut self) -> core::result::Result<core::option::Option<surgeist_html::bounded::values::HtmlAttributeValidationAction<'_>>, surgeist_html::bounded::values::HtmlAttributeValidationError>
 pub fn surgeist_html::bounded::values::HtmlAttributeValidation::take_index(&mut self) -> core::option::Option<surgeist_html::bounded::values::HtmlAttributeNameIndex>
-pub fn surgeist_html::bounded::values::HtmlAttributeValidation::try_finish(owner: &mut core::option::Option<Self>) -> core::result::Result<surgeist_html::bounded::values::HtmlValidatedAttributes, surgeist_html::bounded::values::HtmlAttributeValidationError>
-pub fn surgeist_html::bounded::values::HtmlAttributeValidation::try_finish_with_index(owner: &mut core::option::Option<Self>) -> core::result::Result<(surgeist_html::bounded::values::HtmlValidatedAttributes, core::option::Option<surgeist_html::bounded::values::HtmlAttributeNameIndex>), surgeist_html::bounded::values::HtmlAttributeValidationError>
 pub struct surgeist_html::bounded::values::HtmlAttributeValidationAction<'a>
 impl surgeist_html::bounded::values::HtmlAttributeValidationAction<'_>
 pub fn surgeist_html::bounded::values::HtmlAttributeValidationAction<'_>::advance(self) -> core::result::Result<(), surgeist_html::bounded::values::HtmlAttributeValidationError>
@@ -3745,6 +3741,15 @@ pub fn surgeist_html::bounded::values::HtmlAttributeValidationLayout::copied_byt
 pub fn surgeist_html::bounded::values::HtmlAttributeValidationLayout::inspected_bytes(self) -> u64
 pub fn surgeist_html::bounded::values::HtmlAttributeValidationLayout::record_visits(self) -> u64
 pub fn surgeist_html::bounded::values::HtmlAttributeValidationLayout::record_writes(self) -> u64
+pub struct surgeist_html::bounded::values::HtmlFinishFailure<T, E>
+impl<T, E> surgeist_html::bounded::values::HtmlFinishFailure<T, E>
+pub fn surgeist_html::bounded::values::HtmlFinishFailure<T, E>::cause(&self) -> &E
+pub fn surgeist_html::bounded::values::HtmlFinishFailure<T, E>::into_parts(self) -> (T, E)
+pub fn surgeist_html::bounded::values::HtmlFinishFailure<T, E>::owner(&self) -> &T
+impl<T, E: core::fmt::Display> core::fmt::Display for surgeist_html::bounded::values::HtmlFinishFailure<T, E>
+pub fn surgeist_html::bounded::values::HtmlFinishFailure<T, E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<T: core::fmt::Debug, E: core::error::Error + 'static> core::error::Error for surgeist_html::bounded::values::HtmlFinishFailure<T, E>
+pub fn surgeist_html::bounded::values::HtmlFinishFailure<T, E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 pub struct surgeist_html::bounded::values::HtmlNameIndex
 impl surgeist_html::bounded::values::HtmlNameIndex
 pub fn surgeist_html::bounded::values::HtmlNameIndex::is_empty(&self) -> bool
@@ -4010,7 +4015,7 @@ pub fn surgeist_html::construction::HtmlDocumentBuilder::append_element(&mut sel
 pub fn surgeist_html::construction::HtmlDocumentBuilder::append_processing_instruction(&mut self, parent: &surgeist_html::construction::HtmlBuilderNode, value: surgeist_html::construction::HtmlAuthoredProcessingInstruction) -> core::result::Result<surgeist_html::construction::HtmlBuilderNode, surgeist_html::construction::HtmlConstructionError>
 pub fn surgeist_html::construction::HtmlDocumentBuilder::append_text(&mut self, parent: &surgeist_html::construction::HtmlBuilderNode, value: impl core::convert::Into<surgeist_html::values::DocumentString>) -> core::result::Result<surgeist_html::construction::HtmlBuilderNode, surgeist_html::construction::HtmlConstructionError>
 pub fn surgeist_html::construction::HtmlDocumentBuilder::attach_declarative_shadow(&mut self, host: &surgeist_html::construction::HtmlBuilderNode, properties: surgeist_html::construction::HtmlShadowRootProperties) -> core::result::Result<surgeist_html::construction::HtmlBuilderNode, surgeist_html::construction::HtmlConstructionError>
-pub fn surgeist_html::construction::HtmlDocumentBuilder::finish(self) -> surgeist_html::construction::HtmlDocument
+pub fn surgeist_html::construction::HtmlDocumentBuilder::finish(self) -> core::result::Result<surgeist_html::construction::HtmlDocument, surgeist_html::construction::HtmlConstructionError>
 pub fn surgeist_html::construction::HtmlDocumentBuilder::root(&self) -> surgeist_html::construction::HtmlBuilderNode
 pub fn surgeist_html::construction::HtmlDocumentBuilder::template_contents(&self, template: &surgeist_html::construction::HtmlBuilderNode) -> core::result::Result<core::option::Option<surgeist_html::construction::HtmlBuilderNode>, surgeist_html::construction::HtmlConstructionError>
 pub fn surgeist_html::construction::HtmlDocumentBuilder::usage(&self) -> surgeist_html::construction::HtmlConstructionUsage
@@ -4035,7 +4040,7 @@ pub fn surgeist_html::construction::HtmlFragmentBuilder::append_element(&mut sel
 pub fn surgeist_html::construction::HtmlFragmentBuilder::append_processing_instruction(&mut self, parent: &surgeist_html::construction::HtmlBuilderNode, value: surgeist_html::construction::HtmlAuthoredProcessingInstruction) -> core::result::Result<surgeist_html::construction::HtmlBuilderNode, surgeist_html::construction::HtmlConstructionError>
 pub fn surgeist_html::construction::HtmlFragmentBuilder::append_text(&mut self, parent: &surgeist_html::construction::HtmlBuilderNode, value: impl core::convert::Into<surgeist_html::values::DocumentString>) -> core::result::Result<surgeist_html::construction::HtmlBuilderNode, surgeist_html::construction::HtmlConstructionError>
 pub fn surgeist_html::construction::HtmlFragmentBuilder::attach_declarative_shadow(&mut self, host: &surgeist_html::construction::HtmlBuilderNode, properties: surgeist_html::construction::HtmlShadowRootProperties) -> core::result::Result<surgeist_html::construction::HtmlBuilderNode, surgeist_html::construction::HtmlConstructionError>
-pub fn surgeist_html::construction::HtmlFragmentBuilder::finish(self) -> surgeist_html::construction::HtmlFragment
+pub fn surgeist_html::construction::HtmlFragmentBuilder::finish(self) -> core::result::Result<surgeist_html::construction::HtmlFragment, surgeist_html::construction::HtmlConstructionError>
 pub fn surgeist_html::construction::HtmlFragmentBuilder::root(&self) -> surgeist_html::construction::HtmlBuilderNode
 pub fn surgeist_html::construction::HtmlFragmentBuilder::template_contents(&self, template: &surgeist_html::construction::HtmlBuilderNode) -> core::result::Result<core::option::Option<surgeist_html::construction::HtmlBuilderNode>, surgeist_html::construction::HtmlConstructionError>
 pub fn surgeist_html::construction::HtmlFragmentBuilder::usage(&self) -> surgeist_html::construction::HtmlConstructionUsage
@@ -4832,6 +4837,7 @@ pub fn surgeist_html::elements::link::HtmlRelKeyword::body_ok(self) -> bool
 pub fn surgeist_html::elements::link::HtmlRelKeyword::effect(self, role: surgeist_html::elements::link::HtmlRelRole) -> core::option::Option<surgeist_html::elements::link::HtmlRelEffect>
 pub fn surgeist_html::elements::link::HtmlRelKeyword::keyword(self) -> &'static str
 pub fn surgeist_html::elements::link::HtmlRelKeyword::possible_supported_token(self, role: surgeist_html::elements::link::HtmlRelRole) -> bool
+pub fn surgeist_html::elements::link::HtmlRelKeyword::space_token(self) -> surgeist_html::microsyntax::tokens::HtmlSpaceToken
 pub enum surgeist_html::elements::link::HtmlRelLinks
 pub surgeist_html::elements::link::HtmlRelLinks::Declared
 pub surgeist_html::elements::link::HtmlRelLinks::ExtensionEffectsUnchecked
@@ -6405,6 +6411,17 @@ impl core::error::Error for surgeist_html::values::HtmlValueFailure
 pub fn surgeist_html::values::HtmlValueFailure::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_html::values::HtmlValueFailure
 pub fn surgeist_html::values::HtmlValueFailure::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::values::HtmlValueInterpretationError
+pub surgeist_html::values::HtmlValueInterpretationError::Admission(surgeist_html::values::HtmlValueAdmissionError)
+pub surgeist_html::values::HtmlValueInterpretationError::AllocationFailed
+pub surgeist_html::values::HtmlValueInterpretationError::ProtocolViolated
+pub surgeist_html::values::HtmlValueInterpretationError::RepresentationExhausted
+impl core::convert::From<surgeist_html::values::HtmlValueAdmissionError> for surgeist_html::values::HtmlValueInterpretationError
+pub fn surgeist_html::values::HtmlValueInterpretationError::from(error: surgeist_html::values::HtmlValueAdmissionError) -> Self
+impl core::error::Error for surgeist_html::values::HtmlValueInterpretationError
+pub fn surgeist_html::values::HtmlValueInterpretationError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_html::values::HtmlValueInterpretationError
+pub fn surgeist_html::values::HtmlValueInterpretationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::values::HtmlValueRecoveryState<T>
 pub surgeist_html::values::HtmlValueRecoveryState::Failed(surgeist_html::values::HtmlValueFailure)
 pub surgeist_html::values::HtmlValueRecoveryState::Missing
@@ -6505,6 +6522,8 @@ impl core::convert::From<surgeist_html::values::HtmlValueAdmissionError> for sur
 pub fn surgeist_html::attributes::srcset::HtmlSrcsetInterpretationError::from(error: surgeist_html::values::HtmlValueAdmissionError) -> Self
 impl core::convert::From<surgeist_html::values::HtmlValueAdmissionError> for surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError
 pub fn surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError::from(error: surgeist_html::values::HtmlValueAdmissionError) -> Self
+impl core::convert::From<surgeist_html::values::HtmlValueAdmissionError> for surgeist_html::values::HtmlValueInterpretationError
+pub fn surgeist_html::values::HtmlValueInterpretationError::from(error: surgeist_html::values::HtmlValueAdmissionError) -> Self
 impl core::error::Error for surgeist_html::values::HtmlValueAdmissionError
 impl core::fmt::Display for surgeist_html::values::HtmlValueAdmissionError
 pub fn surgeist_html::values::HtmlValueAdmissionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -6585,9 +6604,9 @@ pub fn surgeist_html::values::HtmlValueInterpreter::popovertargetaction_for_inpu
 impl surgeist_html::values::HtmlValueInterpreter
 pub fn surgeist_html::values::HtmlValueInterpreter::contenteditable(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, raw: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>) -> core::result::Result<surgeist_html::attributes::HtmlAttributeReport<surgeist_html::attributes::HtmlContentEditableState>, surgeist_html::values::HtmlValueAdmissionError>
 impl surgeist_html::values::HtmlValueInterpreter
-pub fn surgeist_html::values::HtmlValueInterpreter::control_autocomplete(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, raw: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>) -> core::result::Result<surgeist_html::attributes::autocomplete::HtmlAutocompleteReport, surgeist_html::values::HtmlValueAdmissionError>
+pub fn surgeist_html::values::HtmlValueInterpreter::control_autocomplete(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, raw: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>) -> core::result::Result<surgeist_html::attributes::autocomplete::HtmlAutocompleteReport, surgeist_html::values::HtmlValueInterpretationError>
 pub fn surgeist_html::values::HtmlValueInterpreter::control_autocomplete_controlled(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, raw: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>, state: core::option::Option<surgeist_html::attributes::HtmlInputType>, limits: surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationLimits) -> core::result::Result<surgeist_html::bounded::attributes::HtmlAutocompleteMaterialized, surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationFailure>
-pub fn surgeist_html::values::HtmlValueInterpreter::control_autocomplete_for_input(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, raw: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>, state: surgeist_html::attributes::HtmlInputType) -> core::result::Result<surgeist_html::attributes::autocomplete::HtmlAutocompleteReport, surgeist_html::values::HtmlValueAdmissionError>
+pub fn surgeist_html::values::HtmlValueInterpreter::control_autocomplete_for_input(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, raw: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>, state: surgeist_html::attributes::HtmlInputType) -> core::result::Result<surgeist_html::attributes::autocomplete::HtmlAutocompleteReport, surgeist_html::values::HtmlValueInterpretationError>
 impl surgeist_html::values::HtmlValueInterpreter
 pub fn surgeist_html::values::HtmlValueInterpreter::control_length_bounds(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, minimum: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>, maximum: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>, input_state: core::option::Option<surgeist_html::attributes::HtmlInputType>, initial_text: core::option::Option<&surgeist_html::attributes::control_length::HtmlControlInitialText>) -> core::result::Result<surgeist_html::attributes::control_length::HtmlControlLengthBoundsReport, surgeist_html::attributes::control_length::HtmlControlLengthError>
 pub fn surgeist_html::values::HtmlValueInterpreter::input_size(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, raw: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>) -> core::result::Result<surgeist_html::attributes::control_length::HtmlInputSizeReport, surgeist_html::values::HtmlValueAdmissionError>
@@ -6681,14 +6700,14 @@ impl surgeist_html::values::HtmlValueInterpreter
 pub fn surgeist_html::values::HtmlValueInterpreter::map_name(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, raw: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>) -> core::result::Result<surgeist_html::attributes::HtmlAttributeReport<surgeist_html::microsyntax::tokens::HtmlSpaceToken>, surgeist_html::values::HtmlValueAdmissionError>
 pub fn surgeist_html::values::HtmlValueInterpreter::map_name_report_work_bound(element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, raw: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>) -> core::option::Option<usize>
 impl surgeist_html::values::HtmlValueInterpreter
-pub fn surgeist_html::values::HtmlValueInterpreter::media(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, raw: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>) -> core::result::Result<surgeist_html::attributes::media::HtmlMediaAttributeReport, surgeist_html::values::HtmlValueAdmissionError>
-pub fn surgeist_html::values::HtmlValueInterpreter::media_for_meta<A: surgeist_html::values::HtmlAttributeInput>(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, raw: core::option::Option<&A>, name: core::option::Option<&A>) -> core::result::Result<surgeist_html::attributes::media::HtmlMediaAttributeReport, surgeist_html::values::HtmlValueAdmissionError>
+pub fn surgeist_html::values::HtmlValueInterpreter::media(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, raw: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>) -> core::result::Result<surgeist_html::attributes::media::HtmlMediaAttributeReport, surgeist_html::values::HtmlValueInterpretationError>
+pub fn surgeist_html::values::HtmlValueInterpreter::media_for_meta<A: surgeist_html::values::HtmlAttributeInput>(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, raw: core::option::Option<&A>, name: core::option::Option<&A>) -> core::result::Result<surgeist_html::attributes::media::HtmlMediaAttributeReport, surgeist_html::values::HtmlValueInterpretationError>
 impl surgeist_html::values::HtmlValueInterpreter
 pub fn surgeist_html::values::HtmlValueInterpreter::meta_http_equiv(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, raw: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>) -> core::result::Result<surgeist_html::attributes::HtmlAttributeReport<surgeist_html::attributes::meta_pragma::HtmlMetaPragmaState>, surgeist_html::values::HtmlValueAdmissionError>
 impl surgeist_html::values::HtmlValueInterpreter
 pub fn surgeist_html::values::HtmlValueInterpreter::meter_attributes(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, input: surgeist_html::attributes::meter::HtmlMeterAttributeInput<'_, impl surgeist_html::values::HtmlAttributeInput>) -> core::result::Result<surgeist_html::attributes::meter::HtmlMeterAttributeReport, surgeist_html::values::HtmlValueAdmissionError>
 impl surgeist_html::values::HtmlValueInterpreter
-pub fn surgeist_html::values::HtmlValueInterpreter::microdata_tokens(&self, kind: surgeist_html::attributes::microdata::HtmlMicrodataTokenKind, raw: core::option::Option<&surgeist_html::values::DocumentString>) -> core::result::Result<surgeist_html::attributes::microdata::HtmlMicrodataTokenReport, surgeist_html::values::HtmlValueAdmissionError>
+pub fn surgeist_html::values::HtmlValueInterpreter::microdata_tokens(&self, kind: surgeist_html::attributes::microdata::HtmlMicrodataTokenKind, raw: core::option::Option<&surgeist_html::values::DocumentString>) -> core::result::Result<surgeist_html::attributes::microdata::HtmlMicrodataTokenReport, surgeist_html::values::HtmlValueInterpretationError>
 impl surgeist_html::values::HtmlValueInterpreter
 pub fn surgeist_html::values::HtmlValueInterpreter::modification_datetime(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, raw: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>) -> core::result::Result<surgeist_html::attributes::modification::HtmlModificationDatetimeReport, surgeist_html::values::HtmlValueAdmissionError>
 impl surgeist_html::values::HtmlValueInterpreter
@@ -6708,7 +6727,7 @@ pub fn surgeist_html::values::HtmlValueInterpreter::referrerpolicy_for_hyperlink
 impl surgeist_html::values::HtmlValueInterpreter
 pub fn surgeist_html::values::HtmlValueInterpreter::referrerpolicy_for_script(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, raw: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>, context: surgeist_html::attributes::HtmlScriptAttributeContext) -> core::result::Result<surgeist_html::attributes::HtmlAttributeReport<surgeist_html::attributes::HtmlReferrerPolicy>, surgeist_html::values::HtmlValueAdmissionError>
 impl surgeist_html::values::HtmlValueInterpreter
-pub fn surgeist_html::values::HtmlValueInterpreter::rel_with_attributes(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, attributes: &impl surgeist_html::values::HtmlAttributesInput + ?core::marker::Sized) -> core::result::Result<surgeist_html::elements::link::HtmlRelReport, surgeist_html::values::HtmlValueAdmissionError>
+pub fn surgeist_html::values::HtmlValueInterpreter::rel_with_attributes(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, attributes: &impl surgeist_html::values::HtmlAttributesInput + ?core::marker::Sized) -> core::result::Result<surgeist_html::elements::link::HtmlRelReport, surgeist_html::values::HtmlValueInterpretationError>
 impl surgeist_html::values::HtmlValueInterpreter
 pub fn surgeist_html::values::HtmlValueInterpreter::script_type(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, raw: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>) -> core::result::Result<surgeist_html::attributes::script_type::HtmlScriptTypeReport, surgeist_html::values::HtmlValueAdmissionError>
 pub fn surgeist_html::values::HtmlValueInterpreter::script_type_with_attributes(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, attributes: &impl surgeist_html::values::HtmlAttributesInput + ?core::marker::Sized) -> core::result::Result<surgeist_html::attributes::script_type::HtmlScriptTypePreparationReport, surgeist_html::values::HtmlValueAdmissionError>

@@ -1166,7 +1166,7 @@ mod tests {
         for _ in 0..n {
             source.append_text(&root, "x").unwrap();
         }
-        let source = source.finish();
+        let source = source.finish().unwrap();
         let root_id = source.root().id();
         let mut ids = vec![root_id.clone()];
         ids.extend(source.node(&root_id).unwrap().children());
@@ -1289,7 +1289,7 @@ mod tests {
             )
             .unwrap();
         source.append_text(&shadow, "inside").unwrap();
-        let source = source.finish();
+        let source = source.finish().unwrap();
         let source_id = source.root().id();
         let mut ids = vec![source_id.clone()];
         let mut cursor = 0;

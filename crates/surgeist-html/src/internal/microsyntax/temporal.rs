@@ -126,8 +126,7 @@ impl HtmlYear {
     }
 
     fn modulo_400(&self) -> u16 {
-        self.value
-            .remainder(NonZeroU32::new(400).expect("400 is nonzero")) as u16
+        self.value.remainder(GREGORIAN_CYCLE) as u16
     }
 
     fn spelling(&self) -> String {
@@ -195,13 +194,13 @@ fn day_within_cycle(preceding_remainder: u32, month: u8, day: u8, leap: bool) ->
 // ordinal zero. Arbitrary years are handled with one 400-year
 // quotient/remainder over the preceding year.
 fn gregorian_ordinal(date: &HtmlDate) -> HtmlNonNegativeInteger {
+    // A year is positive, so it has a predecessor; the year before the first saturates at zero.
     let preceding = date
         .year()
         .value
         .decremented()
-        .expect("HTML years are positive");
-    let (cycles, remainder) =
-        preceding.quotient_remainder(NonZeroU32::new(400).expect("400 is nonzero"));
+        .unwrap_or_else(|| HtmlNonNegativeInteger::from(0));
+    let (cycles, remainder) = preceding.quotient_remainder(GREGORIAN_CYCLE);
     let within_cycle = day_within_cycle(
         remainder,
         date.month(),
@@ -740,12 +739,19 @@ fn exact_millisecond(value: &HtmlNonNegativeDecimal) -> Result<u16, HtmlTemporal
     Ok(millisecond)
 }
 
+/// The length of the Gregorian cycle that year arithmetic reduces by.
+pub(crate) const GREGORIAN_CYCLE: NonZeroU32 = NonZeroU32::MIN.saturating_add(399);
+
 fn authored_decimal(integer: HtmlNonNegativeInteger, millisecond: u16) -> HtmlNonNegativeDecimal {
     if millisecond == 0 {
         return integer.into();
     }
-    HtmlNonNegativeDecimal::with_fraction_digits(integer, &format!("{millisecond:03}").into())
-        .expect("validated milliseconds produce ASCII fraction digits")
+    let digits = [
+        u16::from(b'0') + millisecond / 100 % 10,
+        u16::from(b'0') + millisecond / 10 % 10,
+        u16::from(b'0') + millisecond % 10,
+    ];
+    HtmlNonNegativeDecimal::from_parts(integer, &digits)
 }
 
 impl From<HtmlTime> for HtmlParsedTime {
@@ -764,11 +770,14 @@ impl TryFrom<HtmlParsedTime> for HtmlTime {
         Ok(Self {
             hour: value.hour,
             minute: value.minute,
+            // Parsed seconds are below 60; a value that is not a byte has no `HtmlTime` second.
             second: value
                 .second
                 .integer_part()
                 .to_u64()
-                .expect("parsed time seconds are below 60") as u8,
+                .ok()
+                .and_then(|seconds| u8::try_from(seconds).ok())
+                .ok_or(HtmlTemporalPrecisionError)?,
             millisecond: exact_millisecond(&value.second)?,
         })
     }
@@ -831,14 +840,15 @@ impl HtmlUtcInstant {
         let magnitude = gregorian_ordinal(&local.date);
         let shifted = i32::from(local.time.hour) * 60 + i32::from(local.time.minute)
             - i32::from(offset.minutes);
+        // A validated offset is under a day, so the shift crosses at most one day boundary; the
+        // outer ranges give the same neighboring day.
         let day = match shifted.div_euclid(1440) {
-            -1 => magnitude.decremented().map_or_else(
+            i32::MIN..=-1 => magnitude.decremented().map_or_else(
                 || HtmlInteger::from(-1),
                 |magnitude| HtmlInteger::from_magnitude(magnitude, false),
             ),
             0 => HtmlInteger::from_magnitude(magnitude, false),
-            1 => HtmlInteger::from_magnitude(magnitude.added_to(&1_u128.into()), false),
-            _ => unreachable!("validated HTML offsets carry at most one day"),
+            1..=i32::MAX => HtmlInteger::from_magnitude(magnitude.added_to(&1_u128.into()), false),
         };
         let minute = shifted.rem_euclid(1440);
         Self {
@@ -997,7 +1007,7 @@ enum TemporalScanStep<'a> {
     Finish(TemporalFinish),
     /// The recognition is over; the outcome is the plan with its normalization, or the first
     /// failure.
-    Done(Result<(BorrowedTemporalPlan<'a>, TemporalInputPlan), HtmlTemporalError>),
+    Done(Result<(TemporalScan<'a>, TemporalInputPlan), HtmlTemporalError>),
 }
 /// Where the time component ended, as far as the scan has read it. The scan learns each offset at
 /// the step that reads it, and a later step needs it only to choose the normalized end of a local
@@ -1044,6 +1054,35 @@ enum TemporalPair {
 pub(crate) struct TemporalInputPlan {
     pub(crate) retained_end: usize,
     pub(crate) replacement: Option<usize>,
+}
+/// Everything a finished scan read, whichever format it scanned. A caller takes the component its
+/// format produced, so none matches a plan variant it cannot receive.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct TemporalScan<'a> {
+    #[cfg(test)]
+    format: TemporalInputFormat,
+    month: BorrowedMonth<'a>,
+    date: BorrowedDate<'a>,
+    time: BorrowedTime<'a>,
+    week: BorrowedWeek<'a>,
+}
+impl<'a> TemporalScan<'a> {
+    #[cfg(test)]
+    fn plan(self) -> BorrowedTemporalPlan<'a> {
+        match self.format {
+            TemporalInputFormat::Month => BorrowedTemporalPlan::Month(self.month),
+            TemporalInputFormat::Date => BorrowedTemporalPlan::Date(self.date),
+            TemporalInputFormat::Week => BorrowedTemporalPlan::Week(self.week),
+            TemporalInputFormat::Time => BorrowedTemporalPlan::Time(self.time),
+            TemporalInputFormat::LocalDateTime => BorrowedTemporalPlan::LocalDateTime(self.local()),
+        }
+    }
+    fn local(self) -> BorrowedLocalDateTime<'a> {
+        BorrowedLocalDateTime {
+            date: self.date,
+            time: self.time,
+        }
+    }
 }
 pub(crate) struct TemporalValidationCursor<'a> {
     input: &'a [u16],
@@ -1362,17 +1401,16 @@ impl<'a> TemporalValidationCursor<'a> {
                     fraction_digits: fraction,
                     millisecond: ms,
                 };
-                let plan = match self.format {
-                    TemporalInputFormat::Month => BorrowedTemporalPlan::Month(month),
-                    TemporalInputFormat::Date => BorrowedTemporalPlan::Date(date),
-                    TemporalInputFormat::Week => BorrowedTemporalPlan::Week(BorrowedWeek {
+                let scan = TemporalScan {
+                    #[cfg(test)]
+                    format: self.format,
+                    month,
+                    date,
+                    time,
+                    week: BorrowedWeek {
                         year,
                         week: self.week,
-                    }),
-                    TemporalInputFormat::Time => BorrowedTemporalPlan::Time(time),
-                    TemporalInputFormat::LocalDateTime => {
-                        BorrowedTemporalPlan::LocalDateTime(BorrowedLocalDateTime { date, time })
-                    }
+                    },
                 };
                 // A local date and time keeps the shortest spelling of its time; every other
                 // format keeps everything that was read.
@@ -1385,7 +1423,7 @@ impl<'a> TemporalValidationCursor<'a> {
                     _ => self.position,
                 };
                 self.step = TemporalScanStep::Done(Ok((
-                    plan,
+                    scan,
                     TemporalInputPlan {
                         retained_end,
                         replacement: self.replacement,
@@ -1397,7 +1435,7 @@ impl<'a> TemporalValidationCursor<'a> {
     #[cfg(test)]
     pub(crate) fn result(&self) -> Option<Result<BorrowedTemporalPlan<'a>, HtmlTemporalError>> {
         match self.step {
-            TemporalScanStep::Done(outcome) => Some(outcome.map(|(plan, _)| plan)),
+            TemporalScanStep::Done(outcome) => Some(outcome.map(|(scan, _)| scan.plan())),
             _ => None,
         }
     }
@@ -1407,10 +1445,10 @@ impl<'a> TemporalValidationCursor<'a> {
             _ => None,
         }
     }
-    fn ordinary(mut self) -> Result<(BorrowedTemporalPlan<'a>, usize), HtmlTemporalError> {
+    fn ordinary(mut self) -> Result<(TemporalScan<'a>, usize), HtmlTemporalError> {
         loop {
             if let TemporalScanStep::Done(outcome) = self.step {
-                return outcome.map(|(plan, _)| (plan, self.position));
+                return outcome.map(|(scan, _)| (scan, self.position));
             }
             self.advance();
         }
@@ -1476,24 +1514,18 @@ fn recognize_year_digits(digits: &[u16]) -> Result<BorrowedYear<'_>, HtmlTempora
     if !positive {
         return Err(HtmlTemporalError::ZeroYear);
     }
-    let remainder =
-        borrowed_decimal_remainder(digits, NonZeroU32::new(400).expect("400 is nonzero")) as u16;
+    let remainder = borrowed_decimal_remainder(digits, GREGORIAN_CYCLE) as u16;
     Ok(BorrowedYear { digits, remainder })
 }
 fn ordinary_integer(digits: &[u16]) -> HtmlNonNegativeInteger {
-    HtmlNonNegativeInteger::from_decimal_digits(&DocumentString::from_utf16(digits.to_vec()))
-        .expect("borrowed recognition checked nonempty ASCII digits")
+    HtmlNonNegativeInteger::from_recognized_digits(digits)
 }
 fn ordinary_decimal(integer: &[u16], fraction: &[u16]) -> HtmlNonNegativeDecimal {
     let integer = ordinary_integer(integer);
     if fraction.is_empty() {
         integer.into()
     } else {
-        HtmlNonNegativeDecimal::with_fraction_digits(
-            integer,
-            &DocumentString::from_utf16(fraction.to_vec()),
-        )
-        .expect("borrowed recognition checked fraction digits")
+        HtmlNonNegativeDecimal::from_parts(integer, fraction)
     }
 }
 #[derive(Clone, Copy, Debug)]
@@ -1698,6 +1730,21 @@ pub(crate) enum BorrowedTemporalPlan<'a> {
     Duration(BorrowedDurationPlan<'a>),
 }
 
+/// Recognizes a whole duration, returning its plan.
+pub(crate) fn recognize_duration(
+    input: &[u16],
+    phase: TemporalPhase,
+) -> Result<BorrowedDurationPlan<'_>, HtmlTemporalError> {
+    let plan = BorrowedDurationPlan {
+        input,
+        phase,
+        iso: phase == TemporalPhase::Author && input.first() == Some(&0x50),
+    };
+    let mut duration = plan.cursor();
+    while duration.next_component()?.is_some() {}
+    Ok(plan)
+}
+
 pub(crate) fn recognize_time_alternative(
     input: &[u16],
     phase: TemporalPhase,
@@ -1723,10 +1770,10 @@ pub(crate) fn recognize_time_alternative(
             BorrowedTemporalPlan::GlobalDateTime(BorrowedGlobalDateTime { local, offset })
         }
         TemporalAlternative::Week => {
-            let (plan, consumed) =
+            let (scan, consumed) =
                 TemporalValidationCursor::new(input, TemporalInputFormat::Week, true).ordinary()?;
             cursor.position = consumed;
-            plan
+            BorrowedTemporalPlan::Week(scan.week)
         }
         TemporalAlternative::Year => {
             if phase == TemporalPhase::Author && input.len() < 4 {
@@ -1737,13 +1784,7 @@ pub(crate) fn recognize_time_alternative(
             BorrowedTemporalPlan::Year(year)
         }
         TemporalAlternative::Duration => {
-            let plan = BorrowedDurationPlan {
-                input,
-                phase,
-                iso: phase == TemporalPhase::Author && input.first() == Some(&0x50),
-            };
-            let mut duration = plan.cursor();
-            while duration.next_component()?.is_some() {}
+            let plan = recognize_duration(input, phase)?;
             cursor.position = input.len();
             BorrowedTemporalPlan::Duration(plan)
         }
@@ -2071,33 +2112,27 @@ impl<'a> Cursor<'a> {
         }
     }
     fn borrowed_month(&mut self) -> Result<BorrowedMonth<'a>, HtmlTemporalError> {
-        let (BorrowedTemporalPlan::Month(plan), consumed) = TemporalValidationCursor::new(
+        let (scan, consumed) = TemporalValidationCursor::new(
             &self.input[self.position..],
             TemporalInputFormat::Month,
             false,
         )
-        .ordinary()?
-        else {
-            unreachable!()
-        };
+        .ordinary()?;
         self.position += consumed;
-        Ok(plan)
+        Ok(scan.month)
     }
     fn month(&mut self) -> Result<HtmlMonth, HtmlTemporalError> {
         self.borrowed_month().map(BorrowedMonth::ordinary)
     }
     fn borrowed_date(&mut self) -> Result<BorrowedDate<'a>, HtmlTemporalError> {
-        let (BorrowedTemporalPlan::Date(plan), consumed) = TemporalValidationCursor::new(
+        let (scan, consumed) = TemporalValidationCursor::new(
             &self.input[self.position..],
             TemporalInputFormat::Date,
             false,
         )
-        .ordinary()?
-        else {
-            unreachable!()
-        };
+        .ordinary()?;
         self.position += consumed;
-        Ok(plan)
+        Ok(scan.date)
     }
     fn date(&mut self) -> Result<HtmlDate, HtmlTemporalError> {
         self.borrowed_date().map(BorrowedDate::ordinary)
@@ -2124,17 +2159,14 @@ impl<'a> Cursor<'a> {
         phase: TemporalPhase,
     ) -> Result<BorrowedTime<'a>, HtmlTemporalError> {
         if phase == TemporalPhase::Author {
-            let (BorrowedTemporalPlan::Time(plan), consumed) = TemporalValidationCursor::new(
+            let (scan, consumed) = TemporalValidationCursor::new(
                 &self.input[self.position..],
                 TemporalInputFormat::Time,
                 false,
             )
-            .ordinary()?
-            else {
-                unreachable!()
-            };
+            .ordinary()?;
             self.position += consumed;
-            return Ok(plan);
+            return Ok(scan.time);
         }
         // §2.3.5.4 steps 2 and 5 check each range before the next step.
         let hour = self.pair()?;
@@ -2200,18 +2232,14 @@ impl<'a> Cursor<'a> {
         phase: TemporalPhase,
     ) -> Result<BorrowedLocalDateTime<'a>, HtmlTemporalError> {
         if phase == TemporalPhase::Author {
-            let (BorrowedTemporalPlan::LocalDateTime(plan), consumed) =
-                TemporalValidationCursor::new(
-                    &self.input[self.position..],
-                    TemporalInputFormat::LocalDateTime,
-                    false,
-                )
-                .ordinary()?
-            else {
-                unreachable!()
-            };
+            let (scan, consumed) = TemporalValidationCursor::new(
+                &self.input[self.position..],
+                TemporalInputFormat::LocalDateTime,
+                false,
+            )
+            .ordinary()?;
             self.position += consumed;
-            return Ok(plan);
+            return Ok(scan.local());
         }
         let date = self.borrowed_date()?;
         if !self.take(b'T') && !self.take(b' ') {
@@ -2340,13 +2368,10 @@ pub(crate) fn validate_global_date_time(
     Ok(HtmlGlobalDateTime::new(local, offset))
 }
 pub(crate) fn validate_week(input: &DocumentString) -> Result<HtmlWeek, HtmlTemporalError> {
-    let (BorrowedTemporalPlan::Week(plan), _) =
+    let (scan, _) =
         TemporalValidationCursor::new(input.code_units(), TemporalInputFormat::Week, true)
-            .ordinary()?
-    else {
-        unreachable!()
-    };
-    Ok(plan.ordinary())
+            .ordinary()?;
+    Ok(scan.week.ordinary())
 }
 // The month/date/yearless/week processing algorithms have the same value
 // domains and full-consumption checks as their authored grammars (§2.3.5), so
@@ -2423,14 +2448,7 @@ pub(crate) fn parse_date_or_time(
 pub(crate) fn parse_duration(
     input: &DocumentString,
 ) -> Result<HtmlParsedDuration, HtmlTemporalError> {
-    let BorrowedTemporalPlan::Duration(plan) = recognize_time_alternative(
-        input.code_units(),
-        TemporalPhase::Recovery,
-        TemporalAlternative::Duration,
-    )?
-    else {
-        unreachable!()
-    };
+    let plan = recognize_duration(input.code_units(), TemporalPhase::Recovery)?;
     ordinary_recovery_duration(plan)
 }
 fn ordinary_recovery_duration(
@@ -2464,8 +2482,8 @@ pub(crate) fn validate_date_with_optional_time(
 }
 
 impl BorrowedTemporalPlan<'_> {
-    fn ordinary_author(self) -> HtmlTimeElementValue {
-        match self {
+    fn ordinary_author(self) -> Result<HtmlTimeElementValue, HtmlTemporalError> {
+        Ok(match self {
             Self::Month(value) => HtmlTimeElementValue::Month(value.ordinary()),
             Self::Date(value) => HtmlTimeElementValue::Date(value.ordinary()),
             Self::YearlessDate(value) => HtmlTimeElementValue::YearlessDate(value),
@@ -2480,9 +2498,9 @@ impl BorrowedTemporalPlan<'_> {
             Self::Week(value) => HtmlTimeElementValue::Week(value.ordinary()),
             Self::Year(value) => HtmlTimeElementValue::Year(value.ordinary()),
             Self::Duration(value) => {
-                HtmlTimeElementValue::Duration(ordinary_authored_duration(value))
+                HtmlTimeElementValue::Duration(ordinary_authored_duration(value)?)
             }
-        }
+        })
     }
     fn ordinary_recovery(self) -> Result<HtmlMachineReadableTime, HtmlTemporalError> {
         Ok(match self {
@@ -2522,7 +2540,7 @@ pub(crate) fn validate_time_element_value(
     let mut final_error = HtmlTemporalError::InvalidSyntax;
     for alternative in TemporalAlternative::ALL {
         match recognize_time_alternative(input.code_units(), TemporalPhase::Author, alternative) {
-            Ok(plan) => return Ok(plan.ordinary_author()),
+            Ok(plan) => return plan.ordinary_author(),
             Err(error) => final_error = error,
         }
     }
@@ -2549,35 +2567,26 @@ pub(crate) fn parse_time_element_value(
     }
     Err(final_error)
 }
-fn ordinary_authored_duration(plan: BorrowedDurationPlan<'_>) -> HtmlDuration {
+fn ordinary_authored_duration(
+    plan: BorrowedDurationPlan<'_>,
+) -> Result<HtmlDuration, HtmlTemporalError> {
     let mut cursor = plan.cursor();
     let mut seconds = HtmlNonNegativeInteger::from(0_u128);
     let mut millisecond = 0;
-    while let Some(component) = cursor
-        .next_component()
-        .expect("recognized authored duration")
-    {
-        let scale = component
-            .scale()
-            .expect("author grammar excludes calendar units");
+    while let Some(component) = cursor.next_component()? {
+        // The author grammar has no calendar units, so every component has a scale.
+        let scale = component.scale().ok_or(HtmlTemporalError::InvalidSyntax)?;
         seconds =
             seconds.added_to(&ordinary_integer(component.integer_digits()).multiplied_by(scale));
         if scale == 1 {
             millisecond = component.millisecond();
         }
     }
-    plan.assemble_author(seconds, millisecond)
+    Ok(plan.assemble_author(seconds, millisecond))
 }
 pub(crate) fn validate_duration(input: &DocumentString) -> Result<HtmlDuration, HtmlTemporalError> {
-    let BorrowedTemporalPlan::Duration(plan) = recognize_time_alternative(
-        input.code_units(),
-        TemporalPhase::Author,
-        TemporalAlternative::Duration,
-    )?
-    else {
-        unreachable!()
-    };
-    Ok(ordinary_authored_duration(plan))
+    let plan = recognize_duration(input.code_units(), TemporalPhase::Author)?;
+    ordinary_authored_duration(plan)
 }
 
 #[cfg(test)]
@@ -2952,7 +2961,7 @@ mod tests {
             else {
                 panic!("duration")
             };
-            let value = ordinary_authored_duration(plan);
+            let value = ordinary_authored_duration(plan).unwrap();
             assert_eq!(value.seconds().decimal_digits(), whole);
             assert_eq!(value.millisecond(), millis);
         }

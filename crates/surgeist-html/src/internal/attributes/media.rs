@@ -97,7 +97,7 @@ impl HtmlValueInterpreter {
         &self,
         element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
-    ) -> Result<HtmlMediaAttributeReport, HtmlValueAdmissionError> {
+    ) -> Result<HtmlMediaAttributeReport, HtmlValueInterpretationError> {
         self.media_report(element, raw, None, false)
     }
     /// Adds the actual no-namespace name field for meta placement. None means
@@ -107,7 +107,7 @@ impl HtmlValueInterpreter {
         element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         raw: Option<&A>,
         name: Option<&A>,
-    ) -> Result<HtmlMediaAttributeReport, HtmlValueAdmissionError> {
+    ) -> Result<HtmlMediaAttributeReport, HtmlValueInterpretationError> {
         self.media_report(element, raw, name, true)
     }
     fn media_report<A: HtmlAttributeInput>(
@@ -116,64 +116,15 @@ impl HtmlValueInterpreter {
         raw: Option<&A>,
         name: Option<&A>,
         name_supplied: bool,
-    ) -> Result<HtmlMediaAttributeReport, HtmlValueAdmissionError> {
-        use controlled::{HtmlMediaInterpretation, HtmlMediaInterpretationError};
-        let mut owner = Some(HtmlMediaInterpretation::ordinary(element, raw));
-        let local = owner.as_mut().expect("retained owner");
+    ) -> Result<HtmlMediaAttributeReport, HtmlValueInterpretationError> {
+        let mut owner = controlled::HtmlMediaInterpretation::ordinary(element, raw);
         if name_supplied {
-            local
+            owner
                 .supply_ordinary_name(name)
-                .expect("initial name supply");
+                .map_err(controlled::ordinary_cause)?;
         }
-        local
-            .admit_media(|raw| self.admit_attribute_raw(raw.map(HtmlAttributeInput::value)))
-            .map_err(|error| match error {
-                controlled::HtmlMediaActionError::Admission(error) => error,
-                _ => unreachable!("ordinary media phase"),
-            })?;
-        if name_supplied {
-            local
-                .admit_name(|name| self.admit_attribute_raw(name.map(HtmlAttributeInput::value)))
-                .map_err(|error| match error {
-                    controlled::HtmlMediaActionError::Admission(error) => error,
-                    _ => unreachable!("ordinary name phase"),
-                })?;
-        } else {
-            self.admit_attribute_raw(None)?;
-        }
-        local
-            .inspect_namespace(|_| Ok::<_, std::convert::Infallible>(()))
-            .expect("ordinary namespace");
-        local
-            .derive_role(|_| Ok::<_, std::convert::Infallible>(()))
-            .expect("ordinary role");
-        local.begin_value().expect("ordinary value phase");
-        while local.value_action() != Ok(HtmlMediaCursorAction::Complete) {
-            local
-                .advance_value(|_| Ok::<_, std::convert::Infallible>(()))
-                .expect("ordinary value");
-        }
-        if local.applicability() == HtmlAttributeApplicability::Applicable
-            && local.role() == Ok(Some(HtmlMediaElementRole::Meta))
-            && raw.is_some()
-            && name_supplied
-        {
-            local
-                .begin_theme_color(|_| Ok::<_, std::convert::Infallible>(()))
-                .expect("ordinary theme start");
-            while local.theme_color_complete() != Ok(true) {
-                local
-                    .advance_theme_color(|_| Ok::<_, std::convert::Infallible>(()))
-                    .expect("ordinary theme");
-            }
-        }
-        local
-            .assemble(|| Ok::<_, std::convert::Infallible>(()))
-            .expect("ordinary report assembly");
-        Ok(
-            HtmlMediaInterpretation::try_finish(&mut owner).unwrap_or_else(
-                |_: HtmlMediaInterpretationError| unreachable!("assembled media report"),
-            ),
-        )
+        owner.run_unmetered(name_supplied, |attribute| {
+            self.admit_attribute_raw(attribute.map(HtmlAttributeInput::value))
+        })
     }
 }

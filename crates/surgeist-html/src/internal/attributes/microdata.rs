@@ -1,6 +1,7 @@
 //! HTML §5.2 exact token observations; URL, vocabulary and tree proof are separate.
 use super::*;
 use crate::internal::microsyntax::tokens::HtmlSpaceToken;
+use crate::internal::values::finish::HtmlFinishFailure;
 
 /// Which of the three microdata token-list attributes is being read (HTML877d #encoding-microdata).
 /// The kind decides the attribute name and the nonemptiness and duplicate rules that apply.
@@ -176,46 +177,55 @@ impl HtmlMicrodataTokenList {
     }
 }
 impl HtmlValueInterpreter {
-    /// Whole raw cap precedes scanning. Ordinary allocation; no semantic work budget.
+    /// Whole raw cap precedes scanning. Storage is reserved with the fallible allocator and no
+    /// semantic work budget applies: a refused reservation returns
+    /// [`HtmlValueInterpretationError::AllocationFailed`].
     pub fn microdata_tokens(
         &self,
         kind: HtmlMicrodataTokenKind,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlMicrodataTokenReport, HtmlValueAdmissionError> {
+    ) -> Result<HtmlMicrodataTokenReport, HtmlValueInterpretationError> {
         self.admit_attribute_raw(raw)?;
-        use crate::internal::attributes::microdata::{
-            HtmlMicrodataTokenInterpretation, HtmlMicrodataTokenMeter,
-            HtmlMicrodataTokenReservation,
-        };
-        struct Ordinary;
-        impl HtmlMicrodataTokenMeter for Ordinary {
-            type Error = std::convert::Infallible;
-            fn work(&mut self, _: usize) -> Result<(), Self::Error> {
-                Ok(())
-            }
-            fn reserve(
-                &mut self,
-                reservation: &mut HtmlMicrodataTokenReservation<'_>,
-            ) -> Result<(), Self::Error> {
-                reservation
-                    .try_reserve()
-                    .expect("ordinary microdata allocation");
-                Ok(())
-            }
-        }
-        let mut owner = Some(HtmlMicrodataTokenInterpretation::new(kind, raw));
-        while let Some(action) = owner
-            .as_mut()
-            .expect("retained owner")
-            .next_action()
-            .expect("ordinary protocol")
-        {
+        HtmlMicrodataTokenInterpretation::new(kind, raw).run_unmetered()
+    }
+}
+
+/// The meter of the standalone operation. It admits all work and every reservation, so the only
+/// refusals are the allocator's and the platform's, which it hands back as the engine's own error.
+struct UnmeteredTokens;
+impl HtmlMicrodataTokenMeter for UnmeteredTokens {
+    type Error = HtmlMicrodataTokenInterpretationError;
+    fn work(&mut self, _: usize) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn reserve(
+        &mut self,
+        reservation: &mut HtmlMicrodataTokenReservation<'_>,
+    ) -> Result<(), Self::Error> {
+        reservation.try_reserve()
+    }
+}
+/// The standalone operation's cause for an engine failure.
+fn ordinary(error: HtmlMicrodataTokenInterpretationError) -> HtmlValueInterpretationError {
+    HtmlValueInterpretationError::from_engine(
+        error.is_allocation_failed(),
+        error.is_representation_exhausted(),
+    )
+}
+impl HtmlMicrodataTokenInterpretation<'_> {
+    /// Runs the interpretation to its report with a meter that admits everything. This is the one
+    /// driver of the standalone operation.
+    fn run_unmetered(mut self) -> Result<HtmlMicrodataTokenReport, HtmlValueInterpretationError> {
+        while let Some(action) = self.next_action().map_err(ordinary)? {
             action
-                .advance(&mut Ordinary)
-                .expect("ordinary microdata execution");
+                .advance(&mut UnmeteredTokens)
+                .map_err(|error| match error {
+                    HtmlMicrodataTokenActionError::Admission(error)
+                    | HtmlMicrodataTokenActionError::Protocol(error) => ordinary(error),
+                })?;
         }
-        Ok(HtmlMicrodataTokenInterpretation::try_finish(&mut owner)
-            .expect("completed ordinary interpretation"))
+        self.finish()
+            .map_err(|failure| ordinary(failure.into_parts().1))
     }
 }
 
@@ -229,9 +239,9 @@ pub struct HtmlMicrodataTokenInterpretationError {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum HtmlMicrodataTokenInterpretationErrorKind {
-    Consumed,
     NotReady,
     Stopped,
+    WrongPhase,
     ReservationNotPerformed,
     ReservationAlreadyAttempted,
     RepresentationExhausted,
@@ -252,13 +262,6 @@ impl From<HtmlMicrodataTokenInterpretationErrorKind> for HtmlMicrodataTokenInter
 }
 
 impl HtmlMicrodataTokenInterpretationError {
-    /// Whether the cause is: microdata token interpretation was already consumed.
-    pub fn is_consumed(&self) -> bool {
-        matches!(
-            self.kind,
-            HtmlMicrodataTokenInterpretationErrorKind::Consumed
-        )
-    }
     /// Whether the cause is: microdata token interpretation has an unfinished step.
     pub fn is_not_ready(&self) -> bool {
         matches!(
@@ -271,6 +274,13 @@ impl HtmlMicrodataTokenInterpretationError {
         matches!(
             self.kind,
             HtmlMicrodataTokenInterpretationErrorKind::Stopped
+        )
+    }
+    /// Whether the cause is: microdata token interpretation step was requested out of order.
+    pub fn is_wrong_phase(&self) -> bool {
+        matches!(
+            self.kind,
+            HtmlMicrodataTokenInterpretationErrorKind::WrongPhase
         )
     }
     /// Whether the cause is: microdata token storage reservation was not performed.
@@ -306,14 +316,14 @@ impl HtmlMicrodataTokenInterpretationError {
 impl std::fmt::Display for HtmlMicrodataTokenInterpretationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.kind {
-            HtmlMicrodataTokenInterpretationErrorKind::Consumed => {
-                f.write_str("microdata token interpretation was already consumed")
-            }
             HtmlMicrodataTokenInterpretationErrorKind::NotReady => {
                 f.write_str("microdata token interpretation has an unfinished step")
             }
             HtmlMicrodataTokenInterpretationErrorKind::Stopped => {
                 f.write_str("microdata token interpretation was stopped")
+            }
+            HtmlMicrodataTokenInterpretationErrorKind::WrongPhase => {
+                f.write_str("microdata token interpretation step was requested out of order")
             }
             HtmlMicrodataTokenInterpretationErrorKind::ReservationNotPerformed => {
                 f.write_str("microdata token storage reservation was not performed")
@@ -480,7 +490,7 @@ pub enum HtmlMicrodataTokenStep {
     Continue,
     /// One more token record was committed to the unpublished vector.
     TokenCommitted,
-    /// The report is assembled; collect it with `try_finish`.
+    /// The report is assembled; collect it with `finish`.
     Complete,
 }
 
@@ -614,7 +624,7 @@ impl<'raw> HtmlMicrodataTokenInterpretation<'raw> {
             report: None,
         }
     }
-    /// Abandons the interpretation. Later calls to `next_action` and `try_finish` report the
+    /// Abandons the interpretation. Later calls to `next_action` and `finish` report the
     /// stopped cause, and the partial tokens are never published.
     pub fn stop(&mut self) {
         self.phase = Phase::Stopped;
@@ -636,24 +646,36 @@ impl<'raw> HtmlMicrodataTokenInterpretation<'raw> {
             _ => Ok(Some(HtmlMicrodataTokenAction { owner: self })),
         }
     }
-    /// Takes the finished report out of `slot`, leaving `None`.
+    /// Consumes the interpretation and returns its finished report.
     ///
-    /// Returns the consumed cause when `slot` is already empty, the stopped cause after `stop`, and
-    /// the not-ready cause while actions remain. On every error the interpretation stays in `slot`.
-    pub fn try_finish(
-        slot: &mut Option<Self>,
-    ) -> Result<HtmlMicrodataTokenReport, HtmlMicrodataTokenInterpretationError> {
-        let owner = slot
-            .as_ref()
-            .ok_or(HtmlMicrodataTokenInterpretationErrorKind::Consumed)?;
-        match owner.phase {
-            Phase::Ready => Ok(slot
-                .take()
-                .expect("checked owner")
-                .report
-                .expect("assembled report")),
-            Phase::Stopped => Err(HtmlMicrodataTokenInterpretationErrorKind::Stopped.error()),
-            _ => Err(HtmlMicrodataTokenInterpretationErrorKind::NotReady.error()),
+    /// A stopped interpretation is refused with the stopped cause and one with actions remaining
+    /// with the not-ready cause. Either refusal hands the interpretation back unchanged.
+    #[expect(
+        clippy::result_large_err,
+        reason = "a refusal hands the complete owner back without boxing it"
+    )]
+    pub fn finish(
+        mut self,
+    ) -> Result<
+        HtmlMicrodataTokenReport,
+        HtmlFinishFailure<Self, HtmlMicrodataTokenInterpretationError>,
+    > {
+        match self.phase {
+            Phase::Ready => match self.report.take() {
+                Some(report) => Ok(report),
+                None => Err(HtmlFinishFailure::new(
+                    self,
+                    HtmlMicrodataTokenInterpretationErrorKind::NotReady,
+                )),
+            },
+            Phase::Stopped => Err(HtmlFinishFailure::new(
+                self,
+                HtmlMicrodataTokenInterpretationErrorKind::Stopped,
+            )),
+            _ => Err(HtmlFinishFailure::new(
+                self,
+                HtmlMicrodataTokenInterpretationErrorKind::NotReady,
+            )),
         }
     }
     /// The symbol at `index` of the token occupying `start..end`.
@@ -824,6 +846,13 @@ impl HtmlMicrodataTokenAction<'_, '_> {
     ) -> Result<HtmlMicrodataTokenStep, HtmlMicrodataTokenActionError<M::Error>> {
         let kind = self.kind();
         let o = self.owner;
+        // A pending action exists only while the interpretation is between its first step and its
+        // report, which `next_action` checks; a state outside it takes no step.
+        if matches!(o.phase, Phase::Ready | Phase::Stopped) {
+            return Err(HtmlMicrodataTokenActionError::Protocol(
+                HtmlMicrodataTokenInterpretationErrorKind::WrongPhase.error(),
+            ));
+        }
         let HtmlMicrodataTokenActionKind::Work(units) = kind else {
             let mut guard = HtmlMicrodataTokenReservation {
                 values: &mut o.tokens,
@@ -898,7 +927,12 @@ impl HtmlMicrodataTokenAction<'_, '_> {
                 o.phase = Phase::Ready;
                 result = HtmlMicrodataTokenStep::Complete;
             }
-            _ => unreachable!("action only issued for pending phase"),
+            // The reservation phase returned above, and the terminal phases before the charge.
+            Phase::Reserve | Phase::Ready | Phase::Stopped => {
+                return Err(HtmlMicrodataTokenActionError::Protocol(
+                    HtmlMicrodataTokenInterpretationErrorKind::WrongPhase.error(),
+                ));
+            }
         }
         Ok(result)
     }
@@ -915,11 +949,6 @@ mod cause_tests {
         type Predicate = fn(&HtmlMicrodataTokenInterpretationError) -> bool;
         let cases: Vec<(HtmlMicrodataTokenInterpretationError, &str, Predicate)> = vec![
             (
-                HtmlMicrodataTokenInterpretationErrorKind::Consumed.error(),
-                "microdata token interpretation was already consumed",
-                HtmlMicrodataTokenInterpretationError::is_consumed,
-            ),
-            (
                 HtmlMicrodataTokenInterpretationErrorKind::NotReady.error(),
                 "microdata token interpretation has an unfinished step",
                 HtmlMicrodataTokenInterpretationError::is_not_ready,
@@ -928,6 +957,11 @@ mod cause_tests {
                 HtmlMicrodataTokenInterpretationErrorKind::Stopped.error(),
                 "microdata token interpretation was stopped",
                 HtmlMicrodataTokenInterpretationError::is_stopped,
+            ),
+            (
+                HtmlMicrodataTokenInterpretationErrorKind::WrongPhase.error(),
+                "microdata token interpretation step was requested out of order",
+                HtmlMicrodataTokenInterpretationError::is_wrong_phase,
             ),
             (
                 HtmlMicrodataTokenInterpretationErrorKind::ReservationNotPerformed.error(),
@@ -956,5 +990,54 @@ mod cause_tests {
             let matching = cases.iter().filter(|(_, _, other)| other(error)).count();
             assert_eq!(matching, 1, "{message}");
         }
+    }
+}
+
+#[cfg(test)]
+mod ordinary_allocation_tests {
+    use super::*;
+    use crate::internal::amortized::fault;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    /// A refused allocation is an expected condition of a fallible allocator, so the standalone
+    /// operation reports it as its error. It must neither abort the caller by panicking nor claim
+    /// a report for storage it could not reserve.
+    #[test]
+    fn a_refused_reservation_is_an_error_and_never_a_panic() {
+        let interpreter = HtmlValueInterpreter::new(1_000);
+        let raw = DocumentString::from("a b c d e f g h i j");
+        let counting = fault::count_only();
+        let baseline = interpreter
+            .microdata_tokens(HtmlMicrodataTokenKind::ItemProp, Some(&raw))
+            .unwrap();
+        let requests = fault::requests();
+        drop(counting);
+        assert_eq!(baseline.tokens().len(), 10);
+        // Ten tokens grow the vectors from empty: more than one reservation, so a refusal can
+        // arrive after earlier ones succeeded.
+        assert!(requests >= 2, "{requests} reservation requests");
+        for refuse_from in 1..=requests {
+            let _armed = fault::arm(refuse_from);
+            let outcome = catch_unwind(AssertUnwindSafe(|| {
+                interpreter.microdata_tokens(HtmlMicrodataTokenKind::ItemProp, Some(&raw))
+            }));
+            let verdict = match &outcome {
+                Err(_) => "panicked",
+                Ok(Ok(_)) => "reported success",
+                Ok(Err(HtmlValueInterpretationError::AllocationFailed)) => {
+                    "returned the allocation error"
+                }
+                Ok(Err(_)) => "returned another error",
+            };
+            assert_eq!(
+                verdict, "returned the allocation error",
+                "reservation {refuse_from} of {requests} refused"
+            );
+        }
+        let _armed = fault::arm(requests + 1);
+        let report = interpreter
+            .microdata_tokens(HtmlMicrodataTokenKind::ItemProp, Some(&raw))
+            .unwrap();
+        assert_eq!(report, baseline);
     }
 }

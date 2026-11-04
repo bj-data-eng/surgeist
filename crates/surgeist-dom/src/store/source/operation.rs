@@ -3894,7 +3894,7 @@ pub(in crate::store) mod accounting_tests {
             )
             .unwrap();
         builder.append_text(&style, "a {}").unwrap();
-        let source = builder.finish();
+        let source = builder.finish().unwrap();
         let budgets = crate::DomSourceNativeHtmlInstallLimits::new(
             crate::DomNativeHtmlInstallLimits::new(8, 1_000_000, 1_000_000),
             limits(10_000_000),
@@ -4038,7 +4038,7 @@ pub(in crate::store) mod accounting_tests {
             )
             .unwrap();
         builder.append_text(&style, "a {}").unwrap();
-        let source = builder.finish();
+        let source = builder.finish().unwrap();
         let before = dom.snapshot();
         // Measure the unchanged native staging owner before closing capacity
         // preparation. This selects the same original immutable low allowance
@@ -4199,7 +4199,7 @@ pub(in crate::store) mod accounting_tests {
             )
             .unwrap();
         builder.append_text(&style, "a {}").unwrap();
-        let source = builder.finish();
+        let source = builder.finish().unwrap();
         let bounds = crate::DomSourceNativeHtmlInstallLimits::new(
             crate::DomNativeHtmlInstallLimits::new(8, 1_000_000, 1_000_000),
             limits(100_000_000),

@@ -5,8 +5,8 @@ use super::*;
 use surgeist_html::construction::HtmlElement;
 use surgeist_html::{
     bounded::values::{
-        HtmlAttributeNameIndex, HtmlAttributeStorage, HtmlAttributeValidation,
-        HtmlAttributeValidationError, HtmlNameIndexSlot,
+        HtmlAttributeNameIndex, HtmlAttributeStorage, HtmlAttributeValidationError,
+        HtmlNameIndexSlot,
     },
     construction::{HtmlDocumentMode, HtmlNodeKind},
     elements::form::{HtmlNativeFormAssociationKind, HtmlTextareaFlags},
@@ -109,24 +109,19 @@ pub(super) fn validate_parser_attributes(
         match reserved {
             Ok((vector, ticket)) => {
                 slots = Some(ticket);
-                Some(storage.validate_indexed(HtmlAttributeNameIndex::new(vector)))
+                storage.validate_indexed(HtmlAttributeNameIndex::new(vector))
             }
             Err(error) => return Err((error, spare)),
         }
     } else {
-        Some(storage.validate())
+        storage.validate()
     };
     let validation_error = |error| match error {
         HtmlAttributeValidationError::Duplicate { .. } => SessionError::DuplicateAttribute,
         _ => SessionError::AttributeStorageUnavailable,
     };
     let outcome = (|| {
-        while let Some(action) = validation
-            .as_mut()
-            .ok_or_else(|| latch_registry_row(control))?
-            .next_action()
-            .map_err(validation_error)?
-        {
+        while let Some(action) = validation.next_action().map_err(validation_error)? {
             let layout = action.layout();
             let charges = [
                 (HtmlParseWorkCategory::RecordVisit, layout.record_visits()),
@@ -145,14 +140,17 @@ pub(super) fn validate_parser_attributes(
     })();
     // The table goes back whatever the outcome: finishing consumes the cursor that holds it, so
     // it is taken out first.
-    let table = validation
-        .as_mut()
-        .and_then(HtmlAttributeValidation::take_index);
-    let result = outcome.and_then(|()| {
-        HtmlAttributeValidation::try_finish(&mut validation)
+    let table = validation.take_index();
+    let result = match outcome {
+        Ok(()) => validation
+            .finish()
             .map(|validated| validated.into_attributes())
-            .map_err(validation_error)
-    });
+            .map_err(|failure| validation_error(*failure.cause())),
+        Err(error) => {
+            drop(validation);
+            Err(error)
+        }
+    };
     let released = match (table, slots) {
         (Some(table), Some(ticket)) => release_vector(control, table.into_storage(), ticket),
         _ => Ok(()),
@@ -161,10 +159,7 @@ pub(super) fn validate_parser_attributes(
         Ok(attributes) => released
             .map(|()| attributes)
             .map_err(|error| (error, spare)),
-        Err(error) => {
-            drop(validation);
-            Err((error, spare))
-        }
+        Err(error) => Err((error, spare)),
     }
 }
 

@@ -2,9 +2,7 @@
 
 use super::*;
 use std::mem::size_of;
-use surgeist_html::bounded::values::{
-    HtmlAttributeStorage, HtmlAttributeValidation, HtmlAttributeValidationError,
-};
+use surgeist_html::bounded::values::{HtmlAttributeStorage, HtmlAttributeValidationError};
 use surgeist_html::values::{Attribute, HtmlAttributeInput, HtmlAttributesInput, HtmlNameInput};
 use surgeist_html::values::{DocumentString, Namespace, OrderedAttributes, QualifiedName};
 
@@ -367,10 +365,8 @@ impl HtmlCaptureBuilder {
         // destination throughout every fallible comparison, with no second Vec.
         step(preflight::Action::Work(1)).map_err(HtmlCaptureElementError::Interrupted)?;
         let mut validation =
-            Some(HtmlAttributeStorage::from_shared_attributes(Arc::new(values)).validate());
+            HtmlAttributeStorage::from_shared_attributes(Arc::new(values)).validate();
         while let Some(action) = validation
-            .as_mut()
-            .expect("owned validation")
             .next_action()
             .map_err(HtmlCaptureElementError::Attributes)?
         {
@@ -386,8 +382,9 @@ impl HtmlCaptureBuilder {
                 .advance()
                 .map_err(HtmlCaptureElementError::Attributes)?;
         }
-        let attributes = HtmlAttributeValidation::try_finish(&mut validation)
-            .map_err(HtmlCaptureElementError::Attributes)?
+        let attributes = validation
+            .finish()
+            .map_err(|failure| HtmlCaptureElementError::Attributes(*failure.cause()))?
             .into_attributes();
         let usage = storage::option_value_element(&name, &attributes, saved_is, &mut || {
             step(preflight::Action::Work(1))

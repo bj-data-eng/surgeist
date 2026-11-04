@@ -421,6 +421,7 @@ impl Error for DuplicateAttributeError {}
 pub(crate) mod attribute_name_index;
 pub(crate) mod bounded;
 pub(crate) mod custom_names;
+pub(crate) mod finish;
 pub(crate) mod interpretation;
 pub(crate) mod name_index;
 pub(crate) mod newlines;

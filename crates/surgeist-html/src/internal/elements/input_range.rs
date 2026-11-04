@@ -1,12 +1,11 @@
 //! Source-ordered Range sanitation decisions, HTML877d §4.10.5.1.13.
 //! Arithmetic, strings, storage, provenance and admission remain caller-owned.
 use crate::{
-    internal::attributes::HtmlInputType,
     internal::attributes::input_bounds::HtmlInputNumericBoundOrigin,
     internal::attributes::input_bounds::HtmlInputNumericConstraints,
     internal::attributes::input_bounds::HtmlInputNumericContent,
     internal::attributes::input_bounds::HtmlInputNumericStep,
-    internal::attributes::input_bounds::select_input_numeric_constraints,
+    internal::attributes::input_bounds::select_range_constraints,
     internal::microsyntax::numeric::HtmlFloatingPointNumber,
     internal::microsyntax::numeric::HtmlNonFiniteNumberError,
 };
@@ -191,6 +190,8 @@ enum Phase {
 #[derive(Clone, Copy, Debug)]
 pub struct HtmlInputRangeSanitizationCursor {
     constraints: HtmlInputNumericConstraints,
+    minimum: HtmlInputRangeNumber,
+    maximum: HtmlInputRangeNumber,
     replaced: bool,
     phase: Phase,
 }
@@ -203,16 +204,16 @@ impl HtmlInputRangeSanitizationCursor {
         min: HtmlInputNumericContent,
         max: HtmlInputNumericContent,
     ) -> Self {
-        let constraints = select_input_numeric_constraints(
+        let bounds = select_range_constraints(
             min,
             max,
             HtmlInputNumericStep::Absent,
             HtmlInputNumericContent::Absent,
-            HtmlInputType::Range,
-        )
-        .expect("literal Range always selects numeric constraints");
+        );
         let mut cursor = Self {
-            constraints,
+            constraints: bounds.constraints,
+            minimum: bounds.minimum.into(),
+            maximum: bounds.maximum.into(),
             replaced: false,
             phase: Phase::Complete,
         };
@@ -233,16 +234,10 @@ impl HtmlInputRangeSanitizationCursor {
         cursor
     }
     fn minimum(&self) -> HtmlInputRangeNumber {
-        self.constraints
-            .minimum()
-            .expect("Range has a minimum")
-            .into()
+        self.minimum
     }
     fn maximum(&self) -> HtmlInputRangeNumber {
-        self.constraints
-            .maximum()
-            .expect("Range has a maximum")
-            .into()
+        self.maximum
     }
     fn effective_maximum(&self) -> Option<HtmlInputRangeNumber> {
         (self.maximum().value() >= self.minimum().value()).then(|| self.maximum())

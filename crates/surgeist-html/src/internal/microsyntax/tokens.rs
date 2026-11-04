@@ -34,6 +34,14 @@ impl HtmlSpaceToken {
     pub fn value(&self) -> &DocumentString {
         &self.value
     }
+
+    /// A declared keyword: nonempty ASCII with no whitespace. Each keyword table that uses this
+    /// constructor has a test that validates every entry through [`HtmlSpaceToken::new`].
+    pub(crate) fn declared_keyword(keyword: &'static str) -> Self {
+        Self {
+            value: DocumentString::from(keyword),
+        }
+    }
 }
 
 /// A comma-separated token, which may be empty or contain internal whitespace.

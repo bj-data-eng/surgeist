@@ -406,7 +406,7 @@ fn native_installation_processes_svg_and_clone_history_survives_disconnected_tem
         )
         .unwrap();
     b.append_text(&n, "ignored execution").unwrap();
-    let source = b.finish();
+    let source = b.finish().unwrap();
     let subject = source.root().children().next().unwrap();
     let result = dom
         .install_native_html_fragment(

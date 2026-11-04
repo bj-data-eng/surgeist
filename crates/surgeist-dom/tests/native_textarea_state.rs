@@ -596,7 +596,7 @@ fn native_fragment_installation_creates_real_clean_raw_children_and_later_live_e
         .unwrap();
     builder.append_text(&textarea, "A\r").unwrap();
     builder.append_text(&textarea, "\nB").unwrap();
-    let source = builder.finish();
+    let source = builder.finish().unwrap();
     let subject = source.root().children().next().unwrap();
     let result = dom
         .install_native_html_fragment(
