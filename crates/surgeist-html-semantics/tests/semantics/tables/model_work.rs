@@ -561,3 +561,104 @@ fn a_td_per_row_between_tall_th_of_the_same_rows_costs_the_input_and_the_associa
         );
     }
 }
+
+/// Rows that hide tall headers of two extents by two data cells each cost the
+/// two data cells, not the tall headers they hid.
+///
+/// HTML 877d, internal algorithm for scanning and assigning header cells,
+/// steps 4 and 9. Row 0 holds, left to right, `m - 1` pairs of a tall `th`
+/// `b` (`rowspan="n + 1"`) and a tall `th` `a` (`rowspan="n"`), a `td` `e`, a
+/// `b`, a `td` `d`, an `a`, and a tall `td` `P` of `n` rows; each of the
+/// `n - 1` rows after holds `e` and `d`, which fill the gaps of the first.
+/// Every cell but `P` carries `headers=""`, so only `P` scans.
+///
+/// Each row of `P` is read leftward: the nearest `a` is taken; `d` ends its
+/// block, which makes it opaque; the nearest `b` is taken, as no `b` is opaque;
+/// `e` ends that block, which makes it opaque. Every other `a` is then hidden by
+/// the first and every other `b` by the first, so each is visited and neither
+/// is taken. The rows give the same two headers, so `P` takes two in all.
+/// `d` and `e` are the two data cells that hid tall headers, and every row has
+/// both, so each of the `n` rows should cost the two cells it must hold, not
+/// the `2m` tall headers the first row met.
+fn alternating_extents_work(n: usize) -> (usize, usize, usize) {
+    let m = n;
+    let (mut b, d) = builder_with(HtmlCaptureLimits::new(
+        1_000_000,
+        10_000_000,
+        1_000_000,
+        100_000_000,
+        1000,
+        0,
+        0,
+        16_777_216,
+    ));
+    let table = element(&mut b, &d, "table", &[]);
+    let (tall_a, tall_b) = (n.to_string(), (n + 1).to_string());
+    let tall = |b: &mut surgeist_html_semantics::HtmlCaptureBuilder, span: &str| {
+        cell(
+            b,
+            &d,
+            "th",
+            &[("scope", "row"), ("rowspan", span), ("headers", "")],
+        )
+    };
+    let mut first = Vec::new();
+    for _ in 1..m {
+        first.push(tall(&mut b, &tall_b));
+        first.push(tall(&mut b, &tall_a));
+    }
+    first.push(cell(&mut b, &d, "td", &[("headers", "")]));
+    first.push(tall(&mut b, &tall_b));
+    first.push(cell(&mut b, &d, "td", &[("headers", "")]));
+    first.push(tall(&mut b, &tall_a));
+    first.push(cell(&mut b, &d, "td", &[("rowspan", &tall_a)]));
+    let mut trs = Vec::new();
+    let row = element(&mut b, &d, "tr", &[]);
+    b.establish_children(&row, &first).unwrap();
+    trs.push(row);
+    for _ in 1..n {
+        let two = [
+            cell(&mut b, &d, "td", &[("headers", "")]),
+            cell(&mut b, &d, "td", &[("headers", "")]),
+        ];
+        let row = element(&mut b, &d, "tr", &[]);
+        b.establish_children(&row, &two).unwrap();
+        trs.push(row);
+    }
+    b.establish_children(&table, &trs).unwrap();
+    let capture = b.finish().unwrap();
+    let report = query(&capture, &table, limits()).0.unwrap();
+    let HtmlSemanticFact::TableModel(HtmlSemanticValue::Known(model)) = report.results()[0].fact()
+    else {
+        panic!("expected a complete table model");
+    };
+    // The tall `b` cells reach one row past the last, which has no cell.
+    assert_eq!(
+        (model.width(), model.height(), model.cells().len()),
+        (2 * m + 3, n + 1, 2 * m + 2 * n + 1)
+    );
+    assert_eq!(model.errors().len(), 1);
+    assert_eq!(model.headers().len(), 2);
+    (2 * m + 2 * n + 1, 2, report.usage().work())
+}
+
+#[test]
+fn tall_headers_of_two_extents_hidden_by_two_data_cells_cost_those_cells_in_each_row() {
+    let measured: Vec<_> = [100, 200, 400, 800]
+        .into_iter()
+        .map(alternating_extents_work)
+        .collect();
+    for pair in measured.windows(2) {
+        assert!(
+            pair[1].2 * 10 <= pair[0].2 * 22,
+            "{} cells and {} associations cost {} but {} and {} cost {} \
+             (input x2 may cost at most x2.2)",
+            pair[0].0,
+            pair[0].1,
+            pair[0].2,
+            pair[1].0,
+            pair[1].1,
+            pair[1].2,
+        );
+    }
+}
