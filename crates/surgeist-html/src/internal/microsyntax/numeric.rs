@@ -6,9 +6,11 @@
 
 use crate::internal::microsyntax::tokens::is_ascii_whitespace;
 use crate::internal::values::DocumentString;
+use ordered::Order;
 use std::{cmp::Ordering, error::Error, fmt, num::NonZeroU32};
 pub(crate) mod decimal_total;
 pub(crate) mod natural_ratio;
+mod ordered;
 pub(crate) mod range;
 
 // Digit visits made by the decimal kernels on this thread, for work-growth tests.
@@ -104,6 +106,12 @@ fn write_sum(left: &[u8], right: &[u8], mut carry: u8, output: &mut Vec<u8>) {
     count_digit_steps(output.len());
 }
 
+fn trim_trailing_zeroes(fraction: &mut Vec<u8>) {
+    while fraction.last() == Some(&b'0') {
+        fraction.pop();
+    }
+}
+
 fn write_fraction_sum(left: &[u8], right: &[u8], output: &mut [u8]) -> u8 {
     let mut carry = 0;
     for index in (0..output.len()).rev() {
@@ -164,11 +172,36 @@ fn write_quotient(input: &[u8], divisor: NonZeroU32, output: &mut Vec<u8>) -> u3
     remainder as u32
 }
 
-fn ascii_digit_string(bytes: Vec<u8>) -> String {
+/// Takes ownership of a metered digit buffer as a string, validating it in one pass and making no
+/// second allocation. Writers push only ASCII digits, so a rejected byte reports the first
+/// non-digit as the digits error the controlled operations already carry.
+fn ascii_digit_string(bytes: Vec<u8>) -> Result<String, HtmlDecimalDigitsError> {
     #[cfg(test)]
     count_digit_steps(bytes.len());
-    // Safe ownership transfer, with UTF-8 validation but no second allocation.
-    String::from_utf8(bytes).expect("numeric owner writes only ASCII digits")
+    String::from_utf8(bytes).map_err(|rejected| {
+        let bytes = rejected.into_bytes();
+        let (offset, unit) = bytes
+            .iter()
+            .enumerate()
+            .find(|(_, byte)| !byte.is_ascii_digit())
+            .map_or((bytes.len(), 0), |(offset, byte)| (offset, *byte));
+        HtmlDecimalDigitsError::NonAsciiDigit {
+            code_unit_offset: offset,
+            code_unit: u16::from(unit),
+        }
+    })
+}
+
+/// Builds the string of an unmetered writer's digit buffer. These writers already grow ordinary
+/// buffers without a limit, so the copy is as unmetered as the buffer it reads. It keeps the
+/// buffer's capacity, which `retained_buffer_bytes` reports, and has no validation outcome: each
+/// byte is one character.
+fn ascii_digits(bytes: &[u8], capacity: usize) -> String {
+    #[cfg(test)]
+    count_digit_steps(bytes.len());
+    let mut digits = String::with_capacity(capacity.max(bytes.len()));
+    digits.extend(bytes.iter().map(|&byte| char::from(byte)));
+    digits
 }
 
 /// Observed cumulative capacity of every variable allocation made by one
@@ -297,7 +330,7 @@ fn controlled_digit_string(
     for &unit in canonical {
         bytes.push(unit as u8);
     }
-    Ok(ascii_digit_string(bytes))
+    ascii_digit_string(bytes).map_err(|e| materialization_digits(e, *observed))
 }
 
 // These are loop-derived pre-execution envelopes, not instruction counts or
@@ -378,10 +411,9 @@ impl HtmlNonNegativeInteger {
             &mut observed,
         )?;
         bytes.extend_from_slice(self.digits.as_bytes());
+        let digits = ascii_digit_string(bytes).map_err(|e| materialization_digits(e, observed))?;
         Ok(HtmlNumericMaterialized {
-            value: Self {
-                digits: ascii_digit_string(bytes),
-            },
+            value: Self { digits },
             capacity_bytes: observed,
         })
     }
@@ -415,13 +447,9 @@ impl HtmlNonNegativeInteger {
         let mut bytes =
             reserve_materialization(length.max(1), Some(max_digits), max_bytes, &mut observed)?;
         let remainder = write_quotient(self.digits.as_bytes(), divisor, &mut bytes);
+        let digits = ascii_digit_string(bytes).map_err(|e| materialization_digits(e, observed))?;
         Ok(HtmlNumericMaterialized {
-            value: (
-                Self {
-                    digits: ascii_digit_string(bytes),
-                },
-                remainder,
-            ),
+            value: (Self { digits }, remainder),
             capacity_bytes: observed,
         })
     }
@@ -440,13 +468,13 @@ impl HtmlNonNegativeInteger {
         max_digits: usize,
         max_bytes: usize,
     ) -> Result<HtmlNumericMaterialized<Option<Self>>, HtmlNumericMaterializationFailure> {
-        if self.is_zero() {
+        let Some(nonzero) = NonZeroDigits::new(&self.digits) else {
             return Ok(HtmlNumericMaterialized {
                 value: None,
                 capacity_bytes: 0,
             });
-        }
-        let digits = try_unit_step_digits(&self.digits, false, max_digits, max_bytes)
+        };
+        let digits = try_unit_step_digits(UnitStep::Predecessor(nonzero), max_digits, max_bytes)
             .map_err(unit_step_materialization_failure)?;
         let capacity_bytes = digits.capacity();
         Ok(HtmlNumericMaterialized {
@@ -538,7 +566,7 @@ fn controlled_product(
     let required = product_length(input, multiplier, carry);
     let mut bytes = reserve_materialization(required, Some(max_digits), max_bytes, observed)?;
     write_product(input, multiplier, carry, &mut bytes);
-    Ok(ascii_digit_string(bytes))
+    ascii_digit_string(bytes).map_err(|e| materialization_digits(e, *observed))
 }
 
 fn controlled_sum(
@@ -558,88 +586,104 @@ fn controlled_sum(
         })?;
     let mut bytes = reserve_materialization(required, Some(max_digits), max_bytes, observed)?;
     write_sum(left, right, carry, &mut bytes);
-    Ok(ascii_digit_string(bytes))
+    ascii_digit_string(bytes).map_err(|e| materialization_digits(e, *observed))
 }
 
-fn unit_step_shape(
-    input: &str,
-    grow: bool,
-) -> Result<(usize, Option<usize>), HtmlIntegerUnitStepError> {
-    if grow {
-        grow_shape(input)
-    } else {
-        Ok(shrink_shape(input))
+/// A nonzero magnitude's canonical digits and the position of its last nonzero digit. Only a
+/// nonzero magnitude has a predecessor, so the pivot of a predecessor is the one this type holds.
+#[derive(Clone, Copy)]
+struct NonZeroDigits<'a> {
+    digits: &'a str,
+    pivot: usize,
+}
+impl<'a> NonZeroDigits<'a> {
+    /// The digits with their pivot, or `None` for zero.
+    fn new(digits: &'a str) -> Option<Self> {
+        let pivot = digits.as_bytes().iter().rposition(|&digit| digit != b'0')?;
+        Some(Self { digits, pivot })
+    }
+    /// The length of the predecessor: it keeps this length except when a lone leading one drops
+    /// out. The length never grows, so no size can be unrepresentable.
+    fn predecessor_length(self) -> usize {
+        if self.pivot == 0 && self.digits.as_bytes().first() == Some(&b'1') && self.digits.len() > 1
+        {
+            self.digits.len() - 1
+        } else {
+            self.digits.len()
+        }
     }
 }
 
-/// The length and pivot (the last digit that is not 9) of the successor of `input`.
-fn grow_shape(input: &str) -> Result<(usize, Option<usize>), HtmlIntegerUnitStepError> {
-    let pivot = input.as_bytes().iter().rposition(|&digit| digit != b'9');
-    let required = if pivot.is_none() {
-        input
-            .len()
-            .checked_add(1)
-            .ok_or(HtmlIntegerUnitStepError::RepresentationExhausted)?
-    } else {
-        input.len()
-    };
-    Ok((required, pivot))
+/// The unit step to write: the successor of any magnitude, or the predecessor of a nonzero one.
+/// Each carries the pivot its scan found, so writing it scans nothing again.
+#[derive(Clone, Copy)]
+enum UnitStep<'a> {
+    /// The digits, and the position of their last digit that is not 9 (none for all nines).
+    Successor(&'a str, Option<usize>),
+    Predecessor(NonZeroDigits<'a>),
+}
+impl<'a> UnitStep<'a> {
+    fn successor(digits: &'a str) -> Self {
+        Self::Successor(
+            digits,
+            digits.as_bytes().iter().rposition(|&digit| digit != b'9'),
+        )
+    }
+    /// The length of the result, or the error where a successor's length is not representable.
+    fn result_length(self) -> Result<usize, HtmlIntegerUnitStepError> {
+        match self {
+            Self::Successor(digits, None) => digits
+                .len()
+                .checked_add(1)
+                .ok_or(HtmlIntegerUnitStepError::RepresentationExhausted),
+            Self::Successor(digits, Some(_)) => Ok(digits.len()),
+            Self::Predecessor(digits) => Ok(digits.predecessor_length()),
+        }
+    }
 }
 
-/// The length and pivot (the last digit that is not 0) of the predecessor of `input`. The length
-/// never grows, so no size can be unrepresentable.
-fn shrink_shape(input: &str) -> (usize, Option<usize>) {
-    let pivot = input.as_bytes().iter().rposition(|&digit| digit != b'0');
-    let required = if pivot == Some(0) && input.as_bytes().first() == Some(&b'1') && input.len() > 1
-    {
-        input.len() - 1
-    } else {
-        input.len()
-    };
-    (required, pivot)
-}
-
-fn write_unit_step(input: &str, grow: bool, pivot: Option<usize>, digits: &mut String) {
-    if grow {
-        if let Some(pivot) = pivot {
+fn write_unit_step(step: UnitStep<'_>, digits: &mut String) {
+    match step {
+        UnitStep::Successor(input, Some(pivot)) => {
             digits.push_str(&input[..pivot]);
             digits.push(char::from(input.as_bytes()[pivot] + 1));
             for _ in pivot + 1..input.len() {
                 digits.push('0');
             }
-        } else {
+        }
+        UnitStep::Successor(input, None) => {
             digits.push('1');
             for _ in 0..input.len() {
                 digits.push('0');
             }
         }
-    } else {
-        // The private magnitude invariant is canonical decimal, and zero
-        // selected the growing branch above. A nonzero digit therefore exists.
-        let pivot = pivot.expect("canonical nonzero magnitude has a nonzero digit");
-        if pivot == 0 && input.as_bytes()[0] == b'1' && input.len() > 1 {
-            for _ in 1..input.len() {
-                digits.push('9');
-            }
-        } else {
-            digits.push_str(&input[..pivot]);
-            digits.push(char::from(input.as_bytes()[pivot] - 1));
-            for _ in pivot + 1..input.len() {
-                digits.push('9');
+        UnitStep::Predecessor(NonZeroDigits {
+            digits: input,
+            pivot,
+        }) => {
+            if pivot == 0 && input.as_bytes()[0] == b'1' && input.len() > 1 {
+                for _ in 1..input.len() {
+                    digits.push('9');
+                }
+            } else {
+                digits.push_str(&input[..pivot]);
+                digits.push(char::from(input.as_bytes()[pivot] - 1));
+                for _ in pivot + 1..input.len() {
+                    digits.push('9');
+                }
             }
         }
     }
 }
 
 fn try_unit_step_digits(
-    input: &str,
-    grow: bool,
+    step: UnitStep<'_>,
     max_digits: usize,
     max_bytes: usize,
 ) -> Result<String, HtmlIntegerUnitStepError> {
-    let (required, pivot) = unit_step_shape(input, grow)?;
+    let required = step.result_length()?;
     let mut digits = reserve_integer_digits(required, max_digits, max_bytes)?;
-    write_unit_step(input, grow, pivot, &mut digits);
+    write_unit_step(step, &mut digits);
     Ok(digits)
 }
 
@@ -748,12 +792,14 @@ impl HtmlNonNegativeDecimal {
         let mut fraction =
             reserve_materialization(self.fraction.len(), None, max_bytes, &mut observed)?;
         fraction.extend_from_slice(self.fraction.as_bytes());
+        let integer =
+            ascii_digit_string(integer).map_err(|e| materialization_digits(e, observed))?;
+        let fraction =
+            ascii_digit_string(fraction).map_err(|e| materialization_digits(e, observed))?;
         Ok(HtmlNumericMaterialized {
             value: Self {
-                integer: HtmlNonNegativeInteger {
-                    digits: ascii_digit_string(integer),
-                },
-                fraction: ascii_digit_string(fraction),
+                integer: HtmlNonNegativeInteger { digits: integer },
+                fraction,
             },
             capacity_bytes: observed,
         })
@@ -800,8 +846,11 @@ impl HtmlNonNegativeDecimal {
             max_bytes,
             &mut observed,
         )?;
+        let value =
+            Self::from_metered_fraction(HtmlNonNegativeInteger { digits: integer }, fraction)
+                .map_err(|e| materialization_digits(e, observed))?;
         Ok(HtmlNumericMaterialized {
-            value: Self::from_ascii_fraction(HtmlNonNegativeInteger { digits: integer }, fraction),
+            value,
             capacity_bytes: observed,
         })
     }
@@ -841,8 +890,11 @@ impl HtmlNonNegativeDecimal {
             max_bytes,
             &mut observed,
         )?;
+        let value =
+            Self::from_metered_fraction(HtmlNonNegativeInteger { digits: integer }, fraction)
+                .map_err(|e| materialization_digits(e, observed))?;
         Ok(HtmlNumericMaterialized {
-            value: Self::from_ascii_fraction(HtmlNonNegativeInteger { digits: integer }, fraction),
+            value,
             capacity_bytes: observed,
         })
     }
@@ -1011,14 +1063,19 @@ impl HtmlInteger {
         max_capacity_bytes: usize,
     ) -> Result<HtmlIntegerUnitStepResult, HtmlIntegerUnitStepError> {
         let input = self.magnitude.decimal_digits();
-        let zero = self.magnitude.is_zero();
-        let grow = zero || (step == HtmlIntegerUnitStep::Increment) != self.negative;
-        let negative = if zero {
-            step == HtmlIntegerUnitStep::Decrement
-        } else {
-            self.negative
+        let nonzero = NonZeroDigits::new(input);
+        let (unit_step, negative) = match nonzero {
+            // Zero grows to the successor, whichever way it steps.
+            None => (
+                UnitStep::successor(input),
+                step == HtmlIntegerUnitStep::Decrement,
+            ),
+            Some(_) if (step == HtmlIntegerUnitStep::Increment) != self.negative => {
+                (UnitStep::successor(input), self.negative)
+            }
+            Some(nonzero) => (UnitStep::Predecessor(nonzero), self.negative),
         };
-        let digits = try_unit_step_digits(input, grow, max_result_digits, max_capacity_bytes)?;
+        let digits = try_unit_step_digits(unit_step, max_result_digits, max_capacity_bytes)?;
         let capacity_bytes = digits.capacity();
         Ok(HtmlIntegerUnitStepResult {
             value: Self::from_magnitude(HtmlNonNegativeInteger { digits }, negative),
@@ -1094,41 +1151,58 @@ pub struct HtmlNonNegativeInteger {
     digits: String,
 }
 
+/// An exact integer above zero, which therefore has a predecessor. Zero is refused at
+/// construction, so the predecessor is total.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct HtmlPositiveInteger {
+    magnitude: HtmlNonNegativeInteger,
+}
+impl HtmlPositiveInteger {
+    /// The positive integer, or the zero it was given back.
+    pub(crate) fn new(magnitude: HtmlNonNegativeInteger) -> Result<Self, HtmlNonNegativeInteger> {
+        if magnitude.is_zero() {
+            Err(magnitude)
+        } else {
+            Ok(Self { magnitude })
+        }
+    }
+    pub(crate) fn magnitude(&self) -> &HtmlNonNegativeInteger {
+        &self.magnitude
+    }
+    /// The exact integer below this one.
+    pub(crate) fn predecessor(&self) -> HtmlNonNegativeInteger {
+        // Borrow one from the least significant digit. A zero digit becomes nine and passes the
+        // borrow on; the first other digit absorbs it. A positive magnitude has such a digit, so
+        // no borrow leaves the most significant one.
+        let mut borrow = true;
+        let mut reversed = Vec::with_capacity(self.magnitude.digits.len());
+        for digit in self.magnitude.digits.bytes().rev() {
+            reversed.push(match (borrow, digit) {
+                (true, b'0') => b'9',
+                (true, digit) => {
+                    borrow = false;
+                    digit - 1
+                }
+                (false, digit) => digit,
+            });
+        }
+        // Only the leading digit can have become zero, when it was a one.
+        if reversed.len() > 1 && reversed.last() == Some(&b'0') {
+            reversed.pop();
+        }
+        reversed.reverse();
+        HtmlNonNegativeInteger {
+            digits: ascii_digits(&reversed, reversed.len()),
+        }
+    }
+}
+
 impl HtmlNonNegativeInteger {
     fn compare(&self, other: &Self) -> Ordering {
         self.digits
             .len()
             .cmp(&other.digits.len())
             .then_with(|| self.digits.cmp(&other.digits))
-    }
-
-    /// `self - other - borrow`, or zero when that would be negative. Digit subtraction never
-    /// projects the magnitude into a machine integer. Each output byte is one ASCII digit. The
-    /// callers order the operands first, so the clamp only gives an operand pair outside that
-    /// domain a defined result.
-    fn subtract_with_borrow(&self, other: &Self, mut borrow: u8) -> Self {
-        // Canonical digits have no leading zeroes, so a longer subtrahend is the larger one.
-        if other.digits.len() > self.digits.len() {
-            return Self::from(0);
-        }
-        let mut right = other.digits.bytes().rev();
-        let mut reversed = Vec::with_capacity(self.digits.len());
-        for digit in self.digits.bytes().rev() {
-            let difference = i16::from(digit - b'0')
-                - i16::from(right.next().map_or(0, |digit| digit - b'0'))
-                - i16::from(borrow);
-            borrow = u8::from(difference < 0);
-            reversed.push(b'0' + difference.rem_euclid(10) as u8);
-        }
-        if borrow != 0 {
-            return Self::from(0);
-        }
-        while reversed.len() > 1 && reversed.last() == Some(&b'0') {
-            reversed.pop();
-        }
-        Self {
-            digits: reversed.into_iter().rev().map(char::from).collect(),
-        }
     }
 
     /// Checks an exact sequence of one or more ASCII decimal digits.
@@ -1193,7 +1267,7 @@ impl HtmlNonNegativeInteger {
         let mut output = Vec::with_capacity(capacity_hint(self.digits.len(), 10));
         write_product(self.digits.as_bytes(), multiplier, 0, &mut output);
         Self {
-            digits: ascii_digit_string(output),
+            digits: ascii_digits(&output, output.capacity()),
         }
     }
 
@@ -1207,18 +1281,15 @@ impl HtmlNonNegativeInteger {
             &mut output,
         );
         Self {
-            digits: ascii_digit_string(output),
+            digits: ascii_digits(&output, output.capacity()),
         }
     }
 
     /// Subtracts one exactly, with no result below zero.
     pub(crate) fn decremented(&self) -> Option<Self> {
-        if self.is_zero() {
-            return None;
-        }
-        let (required, pivot) = shrink_shape(&self.digits);
-        let mut digits = String::with_capacity(required);
-        write_unit_step(&self.digits, false, pivot, &mut digits);
+        let nonzero = NonZeroDigits::new(&self.digits)?;
+        let mut digits = String::with_capacity(nonzero.predecessor_length());
+        write_unit_step(UnitStep::Predecessor(nonzero), &mut digits);
         Some(Self { digits })
     }
 
@@ -1229,7 +1300,7 @@ impl HtmlNonNegativeInteger {
         let remainder = write_quotient(self.digits.as_bytes(), divisor, &mut output);
         (
             Self {
-                digits: ascii_digit_string(output),
+                digits: ascii_digits(&output, output.capacity()),
             },
             remainder,
         )
@@ -1387,7 +1458,7 @@ impl HtmlFloatingPointNumber {
                 fraction[scale - digits.len()..].copy_from_slice(digits.as_bytes());
                 (HtmlNonNegativeInteger::from(0), fraction)
             };
-            HtmlNonNegativeDecimal::from_ascii_fraction(integer, fraction)
+            HtmlNonNegativeDecimal::from_unmetered_fraction(integer, fraction)
         };
         HtmlSignedDecimal::from_magnitude(magnitude, bits >> 63 != 0)
     }
@@ -1513,29 +1584,6 @@ impl HtmlNonNegativeDecimal {
         Ordering::Equal
     }
 
-    // Caller establishes the magnitude ordering before entering this operation.
-    fn subtracted_by(&self, other: &Self) -> Self {
-        let scale = self.fraction.len().max(other.fraction.len());
-        let mut fraction = vec![b'0'; scale];
-        let mut borrow = 0;
-        for index in (0..scale).rev() {
-            let left = self.fraction.as_bytes().get(index).copied().unwrap_or(b'0');
-            let right = other
-                .fraction
-                .as_bytes()
-                .get(index)
-                .copied()
-                .unwrap_or(b'0');
-            let difference = i16::from(left - b'0') - i16::from(right - b'0') - i16::from(borrow);
-            borrow = u8::from(difference < 0);
-            fraction[index] = b'0' + difference.rem_euclid(10) as u8;
-        }
-        Self::from_ascii_fraction(
-            self.integer.subtract_with_borrow(&other.integer, borrow),
-            fraction,
-        )
-    }
-
     /// Constructs a decimal from an exact integer and one or more fractional
     /// ASCII digits. Signs, whitespace, and recovery syntax are rejected.
     ///
@@ -1580,9 +1628,9 @@ impl HtmlNonNegativeDecimal {
             carry,
             &mut integer,
         );
-        Self::from_ascii_fraction(
+        Self::from_unmetered_fraction(
             HtmlNonNegativeInteger {
-                digits: ascii_digit_string(integer),
+                digits: ascii_digits(&integer, integer.capacity()),
             },
             fraction,
         )
@@ -1602,9 +1650,9 @@ impl HtmlNonNegativeDecimal {
             carry,
             &mut integer,
         );
-        Self::from_ascii_fraction(
+        Self::from_unmetered_fraction(
             HtmlNonNegativeInteger {
-                digits: ascii_digit_string(integer),
+                digits: ascii_digits(&integer, integer.capacity()),
             },
             fraction,
         )
@@ -1612,13 +1660,23 @@ impl HtmlNonNegativeDecimal {
 
     // Only the arithmetic above constructs these ASCII digit buffers. Leading
     // fractional zeroes retain scale; removing trailing zeroes is lossless.
-    fn from_ascii_fraction(integer: HtmlNonNegativeInteger, mut fraction: Vec<u8>) -> Self {
-        while fraction.last() == Some(&b'0') {
-            fraction.pop();
-        }
+    /// A decimal from a fraction buffer that a metered operation reserved.
+    fn from_metered_fraction(
+        integer: HtmlNonNegativeInteger,
+        mut fraction: Vec<u8>,
+    ) -> Result<Self, HtmlDecimalDigitsError> {
+        trim_trailing_zeroes(&mut fraction);
+        Ok(Self {
+            integer,
+            fraction: ascii_digit_string(fraction)?,
+        })
+    }
+    /// A decimal from a fraction buffer that an unmetered operation built.
+    fn from_unmetered_fraction(integer: HtmlNonNegativeInteger, mut fraction: Vec<u8>) -> Self {
+        trim_trailing_zeroes(&mut fraction);
         Self {
             integer,
-            fraction: ascii_digit_string(fraction),
+            fraction: ascii_digits(&fraction, fraction.capacity()),
         }
     }
 
@@ -1828,16 +1886,10 @@ impl HtmlSignedDecimal {
         if self.negative == other.negative {
             return Self::from_magnitude(self.magnitude.added_to(&other.magnitude), self.negative);
         }
-        match self.magnitude.compare(&other.magnitude) {
-            Ordering::Less => Self::from_magnitude(
-                other.magnitude.subtracted_by(&self.magnitude),
-                other.negative,
-            ),
-            Ordering::Equal => Self::from(HtmlInteger::from(0)),
-            Ordering::Greater => Self::from_magnitude(
-                self.magnitude.subtracted_by(&other.magnitude),
-                self.negative,
-            ),
+        match Order::of(&self.magnitude, &other.magnitude) {
+            Order::SecondLarger(gap) => Self::from_magnitude(gap.difference(), other.negative),
+            Order::Equal => Self::from(HtmlInteger::from(0)),
+            Order::FirstLarger(gap) => Self::from_magnitude(gap.difference(), self.negative),
         }
     }
 
@@ -2381,25 +2433,23 @@ impl HtmlScientificDecimalKey {
     /// Decimal orders use one checked exact integer adjustment; significands
     /// are compared with virtual trailing zeroes, never exponent expansion.
     pub(crate) fn compare(&self, other: &Self) -> Result<Ordering, ScientificDecimalKeyError> {
-        if self.is_zero() || other.is_zero() {
-            return Ok(match (self.is_zero(), other.is_zero()) {
-                (true, true) => Ordering::Equal,
-                (true, false) => {
-                    if other.negative {
-                        Ordering::Greater
-                    } else {
-                        Ordering::Less
-                    }
-                }
-                (false, true) => {
-                    if self.negative {
-                        Ordering::Less
-                    } else {
-                        Ordering::Greater
-                    }
-                }
-                (false, false) => unreachable!(),
-            });
+        match (self.is_zero(), other.is_zero()) {
+            (true, true) => return Ok(Ordering::Equal),
+            (true, false) => {
+                return Ok(if other.negative {
+                    Ordering::Greater
+                } else {
+                    Ordering::Less
+                });
+            }
+            (false, true) => {
+                return Ok(if self.negative {
+                    Ordering::Less
+                } else {
+                    Ordering::Greater
+                });
+            }
+            (false, false) => {}
         }
         if self.negative != other.negative {
             return Ok(if self.negative {
@@ -2550,16 +2600,10 @@ fn adjust_scientific_exponent(
             negative,
         ));
     }
-    Ok(match exponent.magnitude.compare(&adjustment) {
-        Ordering::Less => HtmlInteger::from_magnitude(
-            adjustment.subtract_with_borrow(&exponent.magnitude, 0),
-            negative,
-        ),
-        Ordering::Equal => HtmlInteger::from(0),
-        Ordering::Greater => HtmlInteger::from_magnitude(
-            exponent.magnitude.subtract_with_borrow(&adjustment, 0),
-            exponent.negative,
-        ),
+    Ok(match Order::of(&exponent.magnitude, &adjustment) {
+        Order::SecondLarger(gap) => HtmlInteger::from_magnitude(gap.difference(), negative),
+        Order::Equal => HtmlInteger::from(0),
+        Order::FirstLarger(gap) => HtmlInteger::from_magnitude(gap.difference(), exponent.negative),
     })
 }
 
@@ -4083,38 +4127,17 @@ mod tests {
         }
     }
 
-    /// Independent oracle: ordinary integer subtraction on values that fit a machine integer. The
-    /// operation is exact when the minuend covers the subtrahend and the borrow, and clamps to zero
-    /// when it does not, so no operand pair yields wrong digits.
-    #[test]
-    fn digit_subtraction_is_exact_when_covered_and_clamps_to_zero_otherwise() {
-        for left in [0_u128, 1, 5, 9, 10, 99, 100, 1000, 123_456_789] {
-            for right in [0_u128, 1, 5, 9, 10, 11, 99, 100, 101, 999, 123_456_790] {
-                for borrow in [0_u8, 1] {
-                    let covered = left.saturating_sub(right + u128::from(borrow));
-                    let actual = HtmlNonNegativeInteger::from(left)
-                        .subtract_with_borrow(&HtmlNonNegativeInteger::from(right), borrow);
-                    assert_eq!(
-                        actual.decimal_digits(),
-                        covered.to_string(),
-                        "{left} - {right} - {borrow}"
-                    );
-                }
-            }
-        }
-    }
-
     /// The predecessor shape of a decimal string keeps its length except when a lone leading one
     /// drops out, and the pivot is the last digit that is not zero.
     #[test]
     fn predecessor_shape_matches_the_decremented_digits() {
         for value in [1_u128, 2, 9, 10, 11, 100, 101, 1000, 1999, 120_000] {
             let digits = value.to_string();
-            let (required, pivot) = shrink_shape(&digits);
+            let nonzero = NonZeroDigits::new(&digits).unwrap();
             let predecessor = (value - 1).to_string();
-            assert_eq!(required, predecessor.len(), "{value}");
+            assert_eq!(nonzero.predecessor_length(), predecessor.len(), "{value}");
             assert_eq!(
-                pivot,
+                Some(nonzero.pivot),
                 digits.as_bytes().iter().rposition(|&digit| digit != b'0'),
                 "{value}"
             );

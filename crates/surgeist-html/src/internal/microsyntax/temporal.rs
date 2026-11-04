@@ -26,7 +26,7 @@ pub(crate) mod input_coordinate;
 use crate::{
     internal::microsyntax::numeric::{
         HtmlDecimalColumns, HtmlInteger, HtmlNonNegativeDecimal, HtmlNonNegativeInteger,
-        borrowed_decimal_remainder,
+        HtmlPositiveInteger, borrowed_decimal_remainder,
     },
     internal::values::Attribute,
     internal::values::DocumentString,
@@ -90,7 +90,7 @@ impl Error for HtmlTemporalError {}
 /// An exact positive Gregorian year or ISO week-year, without a machine limit.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct HtmlYear {
-    value: HtmlNonNegativeInteger,
+    value: HtmlPositiveInteger,
 }
 
 impl HtmlYear {
@@ -104,10 +104,9 @@ impl HtmlYear {
 
     /// Constructs a year from an exact number, rejecting zero.
     pub fn from_number(value: HtmlNonNegativeInteger) -> Result<Self, HtmlTemporalError> {
-        if value.is_zero() {
-            return Err(HtmlTemporalError::ZeroYear);
-        }
-        Ok(Self { value })
+        HtmlPositiveInteger::new(value)
+            .map(|value| Self { value })
+            .map_err(|_| HtmlTemporalError::ZeroYear)
     }
 
     /// Constructs a positive year from a native integer.
@@ -117,7 +116,12 @@ impl HtmlYear {
 
     /// Returns the exact numeric year, without leading zeroes.
     pub fn decimal_digits(&self) -> &str {
-        self.value.decimal_digits()
+        self.value.magnitude().decimal_digits()
+    }
+
+    /// The exact number of years before this one. A year is positive, so it has a predecessor.
+    pub(crate) fn preceding_years(&self) -> HtmlNonNegativeInteger {
+        self.value.predecessor()
     }
 
     /// Reports the Gregorian leap-year condition.
@@ -126,7 +130,7 @@ impl HtmlYear {
     }
 
     fn modulo_400(&self) -> u16 {
-        self.value.remainder(GREGORIAN_CYCLE) as u16
+        self.value.magnitude().remainder(GREGORIAN_CYCLE) as u16
     }
 
     fn spelling(&self) -> String {
@@ -194,12 +198,7 @@ fn day_within_cycle(preceding_remainder: u32, month: u8, day: u8, leap: bool) ->
 // ordinal zero. Arbitrary years are handled with one 400-year
 // quotient/remainder over the preceding year.
 fn gregorian_ordinal(date: &HtmlDate) -> HtmlNonNegativeInteger {
-    // A year is positive, so it has a predecessor; the year before the first saturates at zero.
-    let preceding = date
-        .year()
-        .value
-        .decremented()
-        .unwrap_or_else(|| HtmlNonNegativeInteger::from(0));
+    let preceding = date.year().preceding_years();
     let (cycles, remainder) = preceding.quotient_remainder(GREGORIAN_CYCLE);
     let within_cycle = day_within_cycle(
         remainder,
@@ -387,6 +386,14 @@ impl HtmlLocalDateTime {
     }
 }
 
+/// The day on which a shifted instant falls, relative to the local day it was shifted from.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DayShift {
+    Previous,
+    Same,
+    Next,
+}
+
 /// An explicit HTML time-zone offset in minutes east of UTC.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct HtmlTimeZoneOffset {
@@ -404,6 +411,21 @@ impl HtmlTimeZoneOffset {
     /// Returns the signed minutes east of UTC.
     pub fn minutes(self) -> i16 {
         self.minutes
+    }
+    /// The UTC minute of the day for a local minute of the day, and the day it falls on relative
+    /// to the local one. An offset is under a day in either direction, so the shifted minute lies
+    /// less than one day outside the local day and only the adjacent days can be reached.
+    fn shift_minute_of_day(self, local_minute: u16) -> (DayShift, u16) {
+        const DAY: i32 = 1440;
+        let shifted = i32::from(local_minute) - i32::from(self.minutes);
+        let (shift, minute) = if shifted < 0 {
+            (DayShift::Previous, shifted + DAY)
+        } else if shifted >= DAY {
+            (DayShift::Next, shifted - DAY)
+        } else {
+            (DayShift::Same, shifted)
+        };
+        (shift, minute as u16)
     }
     fn spelling(self) -> String {
         if self.minutes == 0 {
@@ -838,19 +860,19 @@ impl HtmlUtcInstant {
         offset: HtmlTimeZoneOffset,
     ) -> Self {
         let magnitude = gregorian_ordinal(&local.date);
-        let shifted = i32::from(local.time.hour) * 60 + i32::from(local.time.minute)
-            - i32::from(offset.minutes);
-        // A validated offset is under a day, so the shift crosses at most one day boundary; the
-        // outer ranges give the same neighboring day.
-        let day = match shifted.div_euclid(1440) {
-            i32::MIN..=-1 => magnitude.decremented().map_or_else(
+        let (shift, minute) = offset
+            .shift_minute_of_day(u16::from(local.time.hour) * 60 + u16::from(local.time.minute));
+        let day = match shift {
+            // Day zero has no ordinal below it: the day before it is the signed day -1.
+            DayShift::Previous => magnitude.decremented().map_or_else(
                 || HtmlInteger::from(-1),
                 |magnitude| HtmlInteger::from_magnitude(magnitude, false),
             ),
-            0 => HtmlInteger::from_magnitude(magnitude, false),
-            1..=i32::MAX => HtmlInteger::from_magnitude(magnitude.added_to(&1_u128.into()), false),
+            DayShift::Same => HtmlInteger::from_magnitude(magnitude, false),
+            DayShift::Next => {
+                HtmlInteger::from_magnitude(magnitude.added_to(&1_u128.into()), false)
+            }
         };
-        let minute = shifted.rem_euclid(1440);
         Self {
             day,
             time: HtmlParsedTime {
@@ -1480,10 +1502,15 @@ impl<'a> BorrowedYear<'a> {
     fn leap(self) -> bool {
         leap_from_remainder(self.remainder)
     }
-    pub(crate) fn assemble(self, value: HtmlNonNegativeInteger) -> HtmlYear {
-        HtmlYear { value }
+    /// The year of an integer that the digits were read into. Recognition refused a zero year, so
+    /// a zero value is a plan and value that disagree.
+    pub(crate) fn assemble(
+        self,
+        value: HtmlNonNegativeInteger,
+    ) -> Result<HtmlYear, HtmlTemporalError> {
+        HtmlYear::from_number(value)
     }
-    fn ordinary(self) -> HtmlYear {
+    fn ordinary(self) -> Result<HtmlYear, HtmlTemporalError> {
         self.assemble(ordinary_integer(self.digits))
     }
 }
@@ -1543,8 +1570,8 @@ impl<'a> BorrowedMonth<'a> {
             month: self.month,
         }
     }
-    fn ordinary(self) -> HtmlMonth {
-        self.assemble(self.year.ordinary())
+    fn ordinary(self) -> Result<HtmlMonth, HtmlTemporalError> {
+        Ok(self.assemble(self.year.ordinary()?))
     }
 }
 #[derive(Clone, Copy, Debug)]
@@ -1572,8 +1599,8 @@ impl<'a> BorrowedDate<'a> {
             day: self.day,
         }
     }
-    fn ordinary(self) -> HtmlDate {
-        self.assemble(self.year().ordinary())
+    fn ordinary(self) -> Result<HtmlDate, HtmlTemporalError> {
+        Ok(self.assemble(self.year().ordinary()?))
     }
 }
 #[derive(Clone, Copy, Debug)]
@@ -1639,14 +1666,14 @@ impl<'a> BorrowedLocalDateTime<'a> {
             time: self.time.assemble_recovery(second),
         }
     }
-    fn ordinary_author(self) -> HtmlLocalDateTime {
-        self.assemble_author(self.date.ordinary())
+    fn ordinary_author(self) -> Result<HtmlLocalDateTime, HtmlTemporalError> {
+        Ok(self.assemble_author(self.date.ordinary()?))
     }
-    fn ordinary_recovery(self) -> HtmlParsedLocalDateTime {
-        self.assemble_recovery(
-            self.date.ordinary(),
+    fn ordinary_recovery(self) -> Result<HtmlParsedLocalDateTime, HtmlTemporalError> {
+        Ok(self.assemble_recovery(
+            self.date.ordinary()?,
             ordinary_decimal(self.time.second_digits, self.time.fraction_digits),
-        )
+        ))
     }
 }
 #[derive(Clone, Copy, Debug)]
@@ -1712,8 +1739,8 @@ impl<'a> BorrowedWeek<'a> {
             week: self.week,
         }
     }
-    fn ordinary(self) -> HtmlWeek {
-        self.assemble(self.year.ordinary())
+    fn ordinary(self) -> Result<HtmlWeek, HtmlTemporalError> {
+        Ok(self.assemble(self.year.ordinary()?))
     }
 }
 #[derive(Clone, Copy, Debug)]
@@ -2122,7 +2149,7 @@ impl<'a> Cursor<'a> {
         Ok(scan.month)
     }
     fn month(&mut self) -> Result<HtmlMonth, HtmlTemporalError> {
-        self.borrowed_month().map(BorrowedMonth::ordinary)
+        self.borrowed_month().and_then(BorrowedMonth::ordinary)
     }
     fn borrowed_date(&mut self) -> Result<BorrowedDate<'a>, HtmlTemporalError> {
         let (scan, consumed) = TemporalValidationCursor::new(
@@ -2135,7 +2162,7 @@ impl<'a> Cursor<'a> {
         Ok(scan.date)
     }
     fn date(&mut self) -> Result<HtmlDate, HtmlTemporalError> {
-        self.borrowed_date().map(BorrowedDate::ordinary)
+        self.borrowed_date().and_then(BorrowedDate::ordinary)
     }
     /// A whole yearless date: optional `--`, month, `-`, day, then the end of
     /// input. §2.3.5.3 checks the month range (step 3) before the hyphen and
@@ -2252,7 +2279,7 @@ impl<'a> Cursor<'a> {
     }
     fn local(&mut self) -> Result<HtmlLocalDateTime, HtmlTemporalError> {
         self.borrowed_local(TemporalPhase::Author)
-            .map(BorrowedLocalDateTime::ordinary_author)
+            .and_then(BorrowedLocalDateTime::ordinary_author)
     }
     fn offset(
         &mut self,
@@ -2297,7 +2324,7 @@ impl<'a> Cursor<'a> {
     }
     fn parsed_local(&mut self) -> Result<HtmlParsedLocalDateTime, HtmlTemporalError> {
         self.borrowed_local(TemporalPhase::Recovery)
-            .map(BorrowedLocalDateTime::ordinary_recovery)
+            .and_then(BorrowedLocalDateTime::ordinary_recovery)
     }
 }
 
@@ -2371,7 +2398,7 @@ pub(crate) fn validate_week(input: &DocumentString) -> Result<HtmlWeek, HtmlTemp
     let (scan, _) =
         TemporalValidationCursor::new(input.code_units(), TemporalInputFormat::Week, true)
             .ordinary()?;
-    Ok(scan.week.ordinary())
+    scan.week.ordinary()
 }
 // The month/date/yearless/week processing algorithms have the same value
 // domains and full-consumption checks as their authored grammars (§2.3.5), so
@@ -2484,19 +2511,19 @@ pub(crate) fn validate_date_with_optional_time(
 impl BorrowedTemporalPlan<'_> {
     fn ordinary_author(self) -> Result<HtmlTimeElementValue, HtmlTemporalError> {
         Ok(match self {
-            Self::Month(value) => HtmlTimeElementValue::Month(value.ordinary()),
-            Self::Date(value) => HtmlTimeElementValue::Date(value.ordinary()),
+            Self::Month(value) => HtmlTimeElementValue::Month(value.ordinary()?),
+            Self::Date(value) => HtmlTimeElementValue::Date(value.ordinary()?),
             Self::YearlessDate(value) => HtmlTimeElementValue::YearlessDate(value),
             Self::Time(value) => HtmlTimeElementValue::Time(value.assemble_author()),
             Self::LocalDateTime(value) => {
-                HtmlTimeElementValue::LocalDateTime(value.ordinary_author())
+                HtmlTimeElementValue::LocalDateTime(value.ordinary_author()?)
             }
             Self::TimeZoneOffset(value) => HtmlTimeElementValue::TimeZoneOffset(value),
             Self::GlobalDateTime(value) => HtmlTimeElementValue::GlobalDateTime(
-                value.assemble_author(value.local.date.ordinary()),
+                value.assemble_author(value.local.date.ordinary()?),
             ),
-            Self::Week(value) => HtmlTimeElementValue::Week(value.ordinary()),
-            Self::Year(value) => HtmlTimeElementValue::Year(value.ordinary()),
+            Self::Week(value) => HtmlTimeElementValue::Week(value.ordinary()?),
+            Self::Year(value) => HtmlTimeElementValue::Year(value.ordinary()?),
             Self::Duration(value) => {
                 HtmlTimeElementValue::Duration(ordinary_authored_duration(value)?)
             }
@@ -2504,19 +2531,19 @@ impl BorrowedTemporalPlan<'_> {
     }
     fn ordinary_recovery(self) -> Result<HtmlMachineReadableTime, HtmlTemporalError> {
         Ok(match self {
-            Self::Month(value) => HtmlMachineReadableTime::Month(value.ordinary()),
-            Self::Date(value) => HtmlMachineReadableTime::Date(value.ordinary()),
+            Self::Month(value) => HtmlMachineReadableTime::Month(value.ordinary()?),
+            Self::Date(value) => HtmlMachineReadableTime::Date(value.ordinary()?),
             Self::YearlessDate(value) => HtmlMachineReadableTime::YearlessDate(value),
             Self::Time(value) => HtmlMachineReadableTime::Time(value.ordinary_recovery()),
             Self::LocalDateTime(value) => {
-                HtmlMachineReadableTime::LocalDateTime(value.ordinary_recovery())
+                HtmlMachineReadableTime::LocalDateTime(value.ordinary_recovery()?)
             }
             Self::TimeZoneOffset(value) => HtmlMachineReadableTime::TimeZoneOffset(value),
             Self::GlobalDateTime(value) => HtmlMachineReadableTime::GlobalDateTime(
-                HtmlParsedGlobalDateTime::new(value.local.ordinary_recovery(), value.offset),
+                HtmlParsedGlobalDateTime::new(value.local.ordinary_recovery()?, value.offset),
             ),
-            Self::Week(value) => HtmlMachineReadableTime::Week(value.ordinary()),
-            Self::Year(value) => HtmlMachineReadableTime::Year(value.ordinary()),
+            Self::Week(value) => HtmlMachineReadableTime::Week(value.ordinary()?),
+            Self::Year(value) => HtmlMachineReadableTime::Year(value.ordinary()?),
             Self::Duration(value) => {
                 HtmlMachineReadableTime::Duration(ordinary_recovery_duration(value)?)
             }
@@ -3929,5 +3956,69 @@ mod tests {
             steps.push(visits);
         }
         assert_linear_growth(&steps);
+    }
+
+    /// Independent oracle: floor division and remainder on machine integers. Every offset and
+    /// every local minute of the day lands on the previous, same or next day exactly as the
+    /// quotient says, and on the remainder minute.
+    #[test]
+    fn offset_shifts_every_minute_of_the_day_to_the_day_the_quotient_names() {
+        for offset in -1439_i16..=1439 {
+            let zone = HtmlTimeZoneOffset::new(offset).unwrap();
+            for local in 0_u16..1440 {
+                let shifted = i32::from(local) - i32::from(offset);
+                let (shift, minute) = zone.shift_minute_of_day(local);
+                let expected = match shifted.div_euclid(1440) {
+                    -1 => DayShift::Previous,
+                    0 => DayShift::Same,
+                    1 => DayShift::Next,
+                    other => panic!("an offset under a day shifts at most one day, not {other}"),
+                };
+                assert_eq!(shift, expected, "{local} at {offset}");
+                assert_eq!(
+                    i32::from(minute),
+                    shifted.rem_euclid(1440),
+                    "{local} at {offset}"
+                );
+            }
+        }
+    }
+
+    /// Independent oracle: the positive years before a year are one fewer than the year, for
+    /// years at every length of digit run that borrows through zeroes.
+    #[test]
+    fn preceding_years_of_a_year_are_one_fewer() {
+        for year in [
+            1_u64,
+            2,
+            9,
+            10,
+            11,
+            100,
+            101,
+            1000,
+            1001,
+            2020,
+            10_000,
+            99_999,
+            u64::MAX,
+        ] {
+            assert_eq!(
+                HtmlYear::new(year)
+                    .unwrap()
+                    .preceding_years()
+                    .decimal_digits(),
+                (year - 1).to_string(),
+                "{year}"
+            );
+        }
+        let huge = format!("1{}", "0".repeat(60));
+        assert_eq!(
+            HtmlYear::from_decimal_digits(&huge)
+                .unwrap()
+                .preceding_years()
+                .decimal_digits(),
+            "9".repeat(60)
+        );
     }
 }

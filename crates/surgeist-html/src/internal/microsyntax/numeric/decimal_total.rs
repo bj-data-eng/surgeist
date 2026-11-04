@@ -18,7 +18,7 @@ use super::{
     HtmlIntegerUnitStepError, HtmlNonNegativeDecimal, HtmlNonNegativeInteger,
     HtmlNumericMaterializationFailure, HtmlNumericMaterialized, ascii_digit_string, bounded_work,
     check_integer_actual_capacity, check_integer_digit_capacity, materialization_boundary,
-    reserve_materialization,
+    materialization_digits, reserve_materialization,
 };
 
 /// Why a step of the total was not made.
@@ -172,12 +172,14 @@ impl HtmlDecimalTotal {
                 .take(fraction_len)
                 .map(|&place| ascii(place)),
         );
+        let integer =
+            ascii_digit_string(integer).map_err(|e| materialization_digits(e, observed))?;
+        let fraction =
+            ascii_digit_string(fraction).map_err(|e| materialization_digits(e, observed))?;
         Ok(HtmlNumericMaterialized {
             value: HtmlNonNegativeDecimal {
-                integer: HtmlNonNegativeInteger {
-                    digits: ascii_digit_string(integer),
-                },
-                fraction: ascii_digit_string(fraction),
+                integer: HtmlNonNegativeInteger { digits: integer },
+                fraction,
             },
             capacity_bytes: observed,
         })
