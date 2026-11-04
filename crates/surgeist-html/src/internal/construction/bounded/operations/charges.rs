@@ -118,6 +118,7 @@ struct RecordSnapshot {
 struct Snapshot {
     records: Vec<RecordSnapshot>,
     usage: HtmlConstructionUsage,
+    attribute_revision: u64,
 }
 
 fn snapshot(storage: &HtmlConstructionStorage) -> Snapshot {
@@ -164,6 +165,7 @@ fn snapshot(storage: &HtmlConstructionStorage) -> Snapshot {
     Snapshot {
         records,
         usage: storage.arena.usage,
+        attribute_revision: storage.arena.attribute_revision,
     }
 }
 
@@ -411,14 +413,26 @@ fn assert_assigned(
         "{label}: {cache} depth cache changes seen against {} writes described",
         seen.depth_writes
     );
+    // The storage's attribute revision advances with every assignment of an element's attribute
+    // list, and with nothing else: a table of attribute names trusts it to see every change.
+    let revision_writes =
+        usize::from(seen.after.attribute_revision != seen.before.attribute_revision);
+    assert_eq!(
+        revision_writes == 1,
+        observed.contains(&"kind.element.attributes"),
+        "{label}: the attribute revision advances exactly when an attribute list is assigned"
+    );
     let usage_writes = usize::from(usage != UsageEffect::Untouched);
     let usage_bytes = usage_writes * size_of::<HtmlConstructionUsage>();
     let field_bytes: usize = observed.iter().map(|field| field_size(field)).sum();
     assert_eq!(
         (seen.record_writes, seen.copied_bytes),
         (
-            usage_writes + observed.len() + seen.depth_writes,
-            usage_bytes + field_bytes + seen.depth_writes * size_of::<usize>(),
+            usage_writes + observed.len() + revision_writes + seen.depth_writes,
+            usage_bytes
+                + field_bytes
+                + revision_writes * size_of::<u64>()
+                + seen.depth_writes * size_of::<usize>(),
         ),
         "{label}: described (writes, bytes) against the assignments seen"
     );

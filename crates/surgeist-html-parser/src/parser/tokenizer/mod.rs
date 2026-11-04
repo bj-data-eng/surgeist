@@ -78,16 +78,21 @@ impl Branch {
 }
 /// Fixed-bit radix lookup: exactly sixteen admitted decisions per UTF-16 unit,
 /// independent of previous attribute count and adversarial shared prefixes.
-struct Names {
+pub(crate) struct Names {
     nodes: OwnedVec<Branch>,
 }
 impl Names {
-    fn new() -> Result<Self, HtmlParseStop> {
+    pub(crate) fn new() -> Result<Self, HtmlParseStop> {
         Ok(Self {
             nodes: OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?,
         })
     }
-    fn insert(&mut self, units: &[u16], c: &mut ParseControl) -> Result<bool, HtmlParseStop> {
+    /// Records a name and reports whether an equal one was recorded before.
+    pub(crate) fn insert(
+        &mut self,
+        units: &[u16],
+        c: &mut ParseControl,
+    ) -> Result<bool, HtmlParseStop> {
         if self.nodes.len() == 0 {
             self.nodes.reserve_geometric(c, 1)?;
             self.nodes.try_push(
@@ -152,6 +157,12 @@ impl Names {
             .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
             .terminal = true;
         Ok(duplicate)
+    }
+}
+impl Names {
+    /// Credits the storage of the recorded names.
+    pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
+        self.nodes.release(c)
     }
 }
 struct DraftAttribute {

@@ -8,17 +8,24 @@ use surgeist_html::bounded::construction::{
     HtmlConstructionOperation, HtmlConstructionReadyOperation, HtmlConstructionRecovery,
     HtmlConstructionResult, HtmlConstructionRetirementDescription, HtmlConstructionStorage,
 };
+use surgeist_html::bounded::values::{HtmlAttributeNameIndex, HtmlNameIndexSlot};
 use surgeist_html::construction::{HtmlBuilderNode, HtmlConstructionError, HtmlConstructionUsage};
 mod attributes;
 #[cfg(test)]
 mod tests;
-pub(super) use attributes::prepare_attribute_slot;
+pub(super) use attributes::{
+    NAME_INDEX_MIN_ENTRIES, NAME_INDEX_SPARE_ENTRIES, prepare_attribute_slot,
+};
 
 pub(super) struct ConstructionOwner {
     control: ControlIdentity,
     pub(super) owner: Option<HtmlConstructionStorage>,
     attribute_edit: Option<HtmlConstructionAttributeEdit>,
     attribute_plan: Option<ConstructionAllocation>,
+    /// The table of attribute names that edits of a long attribute list borrow, and the ticket
+    /// of its slots. The table is lent to an edit while one runs, so the ticket stays here.
+    name_index: Option<HtmlAttributeNameIndex>,
+    name_index_slots: Option<VectorCapacity<HtmlNameIndexSlot>>,
     identity: Option<ConstructionAllocation>,
     records: Option<ConstructionAllocation>,
     children: Vec<Option<ConstructionAllocation>>,
@@ -67,6 +74,7 @@ enum OwnerFault {
     OperationNotReady,
     ForeignAllocation,
     CapacityMismatch,
+    IndexUnavailable,
     SharedAllocationAliased,
     ReleaseUnderflow,
     LimitExceeded,
@@ -80,7 +88,7 @@ enum OwnerFault {
 type CausePredicate = fn(&HtmlConstructionError) -> bool;
 
 /// The owner's cause predicates, each with the fault it names.
-const OWNER_CAUSES: [(CausePredicate, OwnerFault); 28] = [
+const OWNER_CAUSES: [(CausePredicate, OwnerFault); 29] = [
     (
         HtmlConstructionError::is_foreign_builder,
         OwnerFault::ForeignBuilder,
@@ -166,6 +174,10 @@ const OWNER_CAUSES: [(CausePredicate, OwnerFault); 28] = [
     (
         HtmlConstructionError::is_capacity_mismatch,
         OwnerFault::CapacityMismatch,
+    ),
+    (
+        HtmlConstructionError::is_index_unavailable,
+        OwnerFault::IndexUnavailable,
     ),
     (
         HtmlConstructionError::is_shared_allocation_aliased,
@@ -257,6 +269,7 @@ fn disposition(fault: OwnerFault) -> Disposition {
         | OwnerFault::InvalidContentsReference
         | OwnerFault::InvalidOutputRoot
         | OwnerFault::OperationNotReady
+        | OwnerFault::IndexUnavailable
         | OwnerFault::Unlisted => Class(SessionClass::Fault(
             HtmlParseInvariant::ConstructionOwnerRefusal,
         )),
@@ -443,6 +456,8 @@ impl ConstructionOwner {
             owner: Some(owner),
             attribute_edit: None,
             attribute_plan: None,
+            name_index: None,
+            name_index_slots: None,
             identity,
             records: None,
             children,
@@ -965,6 +980,7 @@ impl ConstructionOwner {
     ) -> Result<HtmlConstructionUsage, SessionError> {
         let mut refused = None;
         keep_first(&mut refused, self.abort_attributes(control));
+        keep_first(&mut refused, self.retire_name_index(control));
         let Some(storage) = self.owner.take() else {
             // The storage is lent to something that was not ended, so no bank
             // can be retired here; the tickets below still go back to the

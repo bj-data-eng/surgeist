@@ -5,7 +5,8 @@ use super::*;
 use surgeist_html::construction::HtmlElement;
 use surgeist_html::{
     bounded::values::{
-        HtmlAttributeStorage, HtmlAttributeValidation, HtmlAttributeValidationError,
+        HtmlAttributeNameIndex, HtmlAttributeStorage, HtmlAttributeValidation,
+        HtmlAttributeValidationError, HtmlNameIndexSlot,
     },
     construction::{HtmlDocumentMode, HtmlNodeKind},
     elements::form::{HtmlNativeFormAssociationKind, HtmlTextareaFlags},
@@ -86,12 +87,40 @@ pub(super) fn validate_parser_attributes(
     // from the owner. On success the spare is simply dropped when this
     // function exits.
     let spare = Arc::clone(&backing);
-    let mut validation = Some(HtmlAttributeStorage::from_shared_attributes(backing).validate());
+    let count = backing.len();
+    let storage = HtmlAttributeStorage::from_shared_attributes(backing);
+    // A long list is validated through a table of its names, so that the work is linear in the
+    // list; a short one compares every pair, which is cheaper than building the table.
+    let mut slots = None;
+    let mut validation = if count >= super::construction_owner::NAME_INDEX_MIN_ENTRIES
+        && let Some(required) = HtmlAttributeNameIndex::slots_required(count)
+    {
+        let reserved = (|| {
+            let (mut vector, mut ticket) = control.new_vector::<HtmlNameIndexSlot>()?;
+            match control.reserve_vector(&mut vector, &mut ticket, required) {
+                Ok(()) => Ok((vector, ticket)),
+                Err(stop) => {
+                    // The reserve may have changed the capacity before it stopped.
+                    release_vector(control, vector, ticket)?;
+                    Err(SessionError::from(stop))
+                }
+            }
+        })();
+        match reserved {
+            Ok((vector, ticket)) => {
+                slots = Some(ticket);
+                Some(storage.validate_indexed(HtmlAttributeNameIndex::new(vector)))
+            }
+            Err(error) => return Err((error, spare)),
+        }
+    } else {
+        Some(storage.validate())
+    };
     let validation_error = |error| match error {
         HtmlAttributeValidationError::Duplicate { .. } => SessionError::DuplicateAttribute,
         _ => SessionError::AttributeStorageUnavailable,
     };
-    let result = (|| {
+    let outcome = (|| {
         while let Some(action) = validation
             .as_mut()
             .ok_or_else(|| latch_registry_row(control))?
@@ -99,20 +128,39 @@ pub(super) fn validate_parser_attributes(
             .map_err(validation_error)?
         {
             let layout = action.layout();
-            if layout.record_visits() != 0 {
-                control.charge(HtmlParseWorkCategory::RecordVisit, layout.record_visits())?;
-            }
-            if layout.inspected_bytes() != 0 {
-                control.charge(HtmlParseWorkCategory::InspectByte, layout.inspected_bytes())?;
+            let charges = [
+                (HtmlParseWorkCategory::RecordVisit, layout.record_visits()),
+                (HtmlParseWorkCategory::InspectByte, layout.inspected_bytes()),
+                (HtmlParseWorkCategory::RecordWrite, layout.record_writes()),
+                (HtmlParseWorkCategory::CopyByte, layout.copied_bytes()),
+            ];
+            for (category, units) in charges {
+                if units != 0 {
+                    control.charge(category, units)?;
+                }
             }
             action.advance().map_err(validation_error)?;
         }
+        Ok(())
+    })();
+    // The table goes back whatever the outcome: finishing consumes the cursor that holds it, so
+    // it is taken out first.
+    let table = validation
+        .as_mut()
+        .and_then(HtmlAttributeValidation::take_index);
+    let result = outcome.and_then(|()| {
         HtmlAttributeValidation::try_finish(&mut validation)
             .map(|validated| validated.into_attributes())
             .map_err(validation_error)
-    })();
+    });
+    let released = match (table, slots) {
+        (Some(table), Some(ticket)) => release_vector(control, table.into_storage(), ticket),
+        _ => Ok(()),
+    };
     match result {
-        Ok(attributes) => Ok(attributes),
+        Ok(attributes) => released
+            .map(|()| attributes)
+            .map_err(|error| (error, spare)),
         Err(error) => {
             drop(validation);
             Err((error, spare))
@@ -246,24 +294,19 @@ impl ParserArenaSession {
         let tag = input.as_mut().ok_or(SessionError::Consumed)?;
         SessionStorage::check_html_tag(control, tag)?;
         check_text_source(control, &tag.name)?;
-        for (index, attribute) in tag.attributes.as_slice().iter().enumerate() {
-            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            control.require_source_range(&attribute.source)?;
-            check_text_source(control, &attribute.name)?;
-            check_text_source(control, &attribute.value)?;
-            // No recoverable duplicate rejection may follow an initialized
-            // metadata slot. Compare actual unique no-namespace token names.
-            for earlier in tag.attributes.as_slice().iter().take(index) {
+        // No recoverable duplicate rejection may follow an initialized metadata slot. Compare
+        // actual unique no-namespace token names.
+        token_names::require_distinct_names(
+            control,
+            tag.attributes.as_slice(),
+            |control, _, attribute| {
                 control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                if exact_string_equal(
-                    control,
-                    earlier.name.value.text(),
-                    attribute.name.value.text(),
-                )? {
-                    return Err(SessionError::DuplicateAttribute);
-                }
-            }
-        }
+                control.require_source_range(&attribute.source)?;
+                check_text_source(control, &attribute.name)?;
+                check_text_source(control, &attribute.value)?;
+                Ok(())
+            },
+        )?;
         let mut kind = surgeist_html::bounded::form::native_form_association_with(|candidate| {
             // These two metadata families are admitted only below, after the
             // actual profile/capability/origin checks. Avoid inapplicable reads.

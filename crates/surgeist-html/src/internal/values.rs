@@ -266,6 +266,9 @@ impl Attribute {
     }
 }
 
+/// What reserving capacity in a construction backing did: its result, and the capacity after it.
+pub(crate) type ReserveOutcome = (Result<(), std::collections::TryReserveError>, usize);
+
 /// Immutable attributes in input order, unique by namespace and local name.
 ///
 /// Prefixes and values do not participate in duplicate identity. Native
@@ -307,8 +310,36 @@ impl OrderedAttributes {
 
     /// Only the controlled construction owner may mutate a uniquely owned
     /// backing after proving expanded-name uniqueness and admission.
-    pub(crate) fn construction_backing_mut(&mut self) -> &mut Arc<Vec<Attribute>> {
+    ///
+    /// This is the one way to change the attributes of an element of a construction storage in
+    /// place. Taking the backing advances the storage's attribute `revision`, which a table of
+    /// attribute names compares to know that its element's attributes have not changed since it
+    /// described them, so no writer can skip it.
+    pub(crate) fn construction_backing_mut(
+        &mut self,
+        revision: &mut u64,
+    ) -> &mut Arc<Vec<Attribute>> {
+        *revision = revision.wrapping_add(1);
         &mut self.attributes
+    }
+
+    /// Replaces the whole list of an element of a construction storage, advancing the storage's
+    /// attribute `revision` as [`construction_backing_mut`](Self::construction_backing_mut) does.
+    pub(crate) fn replace_in_construction(&mut self, attributes: Self, revision: &mut u64) {
+        *revision = revision.wrapping_add(1);
+        *self = attributes;
+    }
+
+    /// Reserves exactly `additional` slots in a uniquely held backing and reports the capacity it
+    /// has afterwards, or `None` when the backing is shared. Capacity is not content, so the
+    /// revision does not advance.
+    pub(crate) fn reserve_exact_in_construction(
+        &mut self,
+        additional: usize,
+    ) -> Option<ReserveOutcome> {
+        let backing = Arc::get_mut(&mut self.attributes)?;
+        let result = backing.try_reserve_exact(additional);
+        Some((result, backing.capacity()))
     }
 
     /// Returns the actual backing without copying or revalidating its attributes.
@@ -387,6 +418,7 @@ impl fmt::Display for DuplicateAttributeError {
 
 impl Error for DuplicateAttributeError {}
 
+pub(crate) mod attribute_name_index;
 pub(crate) mod bounded;
 pub(crate) mod custom_names;
 pub(crate) mod interpretation;

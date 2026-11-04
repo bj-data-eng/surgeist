@@ -4,6 +4,7 @@ mod construction_limits;
 mod frameset_noscript;
 mod limit_monotonicity;
 mod linear_work;
+mod many_attributes;
 mod recoverable_input;
 mod reports;
 mod select_options;

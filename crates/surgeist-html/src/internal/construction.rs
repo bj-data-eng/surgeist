@@ -176,6 +176,8 @@ pub(crate) enum HtmlConstructionErrorKind {
     OperationNotReady,
     ForeignAllocation,
     CapacityMismatch,
+    /// A name index lent to an attribute edit could not serve a step.
+    IndexUnavailable,
     SharedAllocationAliased,
     ReleaseUnderflow,
     /// A finite resource limit would be exceeded.
@@ -312,6 +314,10 @@ impl HtmlConstructionError {
     pub fn is_capacity_mismatch(&self) -> bool {
         matches!(self.kind, HtmlConstructionErrorKind::CapacityMismatch)
     }
+    /// Whether the cause is: the name index lent to an attribute edit could not serve a step.
+    pub fn is_index_unavailable(&self) -> bool {
+        matches!(self.kind, HtmlConstructionErrorKind::IndexUnavailable)
+    }
     /// Whether the cause is: result storage is shared and cannot be recovered.
     pub fn is_shared_allocation_aliased(&self) -> bool {
         matches!(
@@ -430,6 +436,9 @@ impl fmt::Display for HtmlConstructionError {
             }
             Kind::CapacityMismatch => {
                 f.write_str("observed capacity does not match the pending reservation")
+            }
+            Kind::IndexUnavailable => {
+                f.write_str("the attribute name index lent to the edit could not serve a step")
             }
             Kind::SharedAllocationAliased => {
                 f.write_str("result storage is shared and cannot be recovered")
@@ -949,6 +958,13 @@ struct Arena {
     // Shared never-reused namespace for child-bank incarnations and temporary
     // banks, including every successful reallocation or child-bank replacement.
     temporary_generation: u64,
+    // Names this storage among all storages, so that a table of attribute names can tell the
+    // attributes it describes from those of another storage.
+    serial: u64,
+    // Advances with every committed change to the attributes of any element of this storage,
+    // whichever edit made it, so that a table of attribute names can tell the attributes it
+    // describes from those that have changed since.
+    attribute_revision: u64,
 }
 impl Arena {
     /// An arena with no records and the given identity. A move out of an arena that sits behind a
@@ -961,6 +977,8 @@ impl Arena {
             records_generation: 0,
             wrapper_generation: 0,
             temporary_generation: 0,
+            serial: 0,
+            attribute_revision: 0,
         }
     }
     /// How many records have exactly this depth.
@@ -1575,6 +1593,8 @@ mod tests {
             records_generation: 0,
             wrapper_generation: 0,
             temporary_generation: 0,
+            serial: 0,
+            attribute_revision: 0,
         };
         let node = HtmlNode {
             arena: &arena,
@@ -1928,6 +1948,11 @@ mod cause_tests {
                 HtmlConstructionErrorKind::CapacityMismatch.error(),
                 "observed capacity does not match the pending reservation",
                 HtmlConstructionError::is_capacity_mismatch,
+            ),
+            (
+                HtmlConstructionErrorKind::IndexUnavailable.error(),
+                "the attribute name index lent to the edit could not serve a step",
+                HtmlConstructionError::is_index_unavailable,
             ),
             (
                 HtmlConstructionErrorKind::SharedAllocationAliased.error(),

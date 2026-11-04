@@ -26,14 +26,15 @@ use surgeist_html_semantics::{
 /// One element subtree with attributes, nested elements and two text nodes.
 const SUBTREE: &str = "<div id=a class=b><p>t</p><span>x</span></div>";
 
-/// `Work` is charged to one parse: total credits, bytes reserved and records
-/// visited.
+/// `Work` is charged to one parse: total credits, bytes reserved, bytes copied,
+/// bytes inspected and records visited.
 #[derive(Clone, Copy)]
 struct Work {
     total: u64,
     reserved: u64,
-    visited: u64,
+    copied: u64,
     inspected: u64,
+    visited: u64,
 }
 
 /// A named measure of one parse's work.
@@ -140,8 +141,9 @@ fn work_of(usage: &surgeist_html_parser::HtmlParseUsage) -> Work {
     Work {
         total: usage.resource(HtmlParseResource::WorkCredits).current(),
         reserved: usage.work(HtmlParseWorkCategory::ReserveByte),
-        visited: usage.work(HtmlParseWorkCategory::RecordVisit),
+        copied: usage.work(HtmlParseWorkCategory::CopyByte),
         inspected: usage.work(HtmlParseWorkCategory::InspectByte),
+        visited: usage.work(HtmlParseWorkCategory::RecordVisit),
     }
 }
 
@@ -223,9 +225,10 @@ fn reservation_work_added_by_each_doubling_of_merged_attributes_beyond_creating_
     // `html-language-syntax-parser--877d6146487f--37a9ba51eed8.md`, line 4306). The plan that
     // records each candidate's decision grows by one slot per candidate unless it grows
     // geometrically, so its reservation work is quadratic. The same attributes on a new element
-    // are tokenized and installed without a plan, so the reservation work beyond that baseline,
-    // `E(n)`, is the merge's own. The comparisons of names are quadratic by the standard's own
-    // definition, so only reservation work is measured.
+    // are tokenized and installed without a plan, so the reservation work that differs from that
+    // baseline, `E(n)`, is the merge's own (the two paths also keep tables of the names, which
+    // are linear in `n` and may reserve more or less than each other, so the gap is measured
+    // without its sign).
     //
     // As in `assert_doublings_add_near_double`, let D(n) = E(2n) - E(n). Linear work
     // E(n) = a*n + b gives D(n) = a*n, so D(2n) = 2*D(n) whatever the constant b is; quadratic
@@ -235,9 +238,9 @@ fn reservation_work_added_by_each_doubling_of_merged_attributes_beyond_creating_
         let names: String = (0..attributes).map(|i| format!(" a{i}=v")).collect();
         let merged = parse_work(format!("<!doctype html><html><body><html{names}>")).reserved;
         let created = parse_work(format!("<!doctype html><html><body><div{names}>")).reserved;
-        merged
-            .checked_sub(created)
-            .expect("merging reserves at least what creating does")
+        // Each path keeps its own table of the attribute names, so neither reserves a bound on the
+        // other; the plan's growth is the part of the gap that is not linear.
+        merged.abs_diff(created)
     };
     let sizes = [100_usize, 200, 400, 800];
     let measured: Vec<u64> = sizes.iter().map(|&n| extra(n)).collect();
@@ -757,6 +760,15 @@ fn assert_each_doubling_costs_at_most_two_point_two_times(
 
 const TOTAL_WORK: Measure = ("total work", |work| work.total);
 const RESERVATION_WORK: Measure = ("reservation work", |work| work.reserved);
+/// Work other than reservation. Reserved bytes step up with each capacity doubling of the many
+/// geometric lists a document keeps, which moves the ratio of two sizes by a factor other than two
+/// whatever the algorithm; the reservation of attribute lists has its own tests.
+const WORK_OUTSIDE_RESERVATION: Measure = ("work outside reservation", |work| {
+    work.total.saturating_sub(work.reserved)
+});
+const COPY_WORK: Measure = ("copy work", |work| work.copied);
+const INSPECTION_WORK: Measure = ("inspection work", |work| work.inspected);
+const VISIT_WORK: Measure = ("record visits", |work| work.visited);
 
 /// As `assert_each_doubling_costs_at_most_two_point_two_times`, for the given measures only.
 fn assert_measures_at_most_two_point_two_times(
@@ -879,17 +891,106 @@ fn work_of_repeated_formatting_elements_with_an_attribute_at_most_doubles_with_t
 #[test]
 fn work_of_reconstructing_a_formatting_element_with_many_attributes_at_most_doubles() {
     // `</p>` closes the `b` it contains, which stays in the list of active formatting elements;
-    // the `x` that follows reconstructs it, copying every attribute to the new element.
-    // Only the reservation work is measured: copying the attributes also visits records
-    // quadratically in their number, which no reservation causes. Issue #1731 restores the
-    // total-work measure.
+    // the `x` that follows reconstructs it, copying every attribute to the new element. Every
+    // measure of the work is linear in the number of attributes: the replay compares no name
+    // pairwise.
     assert_measures_at_most_two_point_two_times(
         [250, 500, 1_000, 2_000],
         |n| {
             let attributes: String = (0..n).map(|i| format!(" a{i}=v")).collect();
             format!("<!doctype html><p><b{attributes}></p>x")
         },
-        &[RESERVATION_WORK],
+        &[
+            TOTAL_WORK,
+            RESERVATION_WORK,
+            COPY_WORK,
+            INSPECTION_WORK,
+            VISIT_WORK,
+        ],
+    );
+}
+
+/// One start tag of `tag` with `n` distinct attributes after `prefix`. The names have one length,
+/// so that the total length of the names, which every algorithm reads, is linear in `n`.
+fn start_tag_with_attributes(prefix: &str, tag: &str, n: usize) -> String {
+    let attributes: String = (0..n).map(|i| format!(" a{i:05}=v")).collect();
+    format!("<!doctype html>{prefix}<{tag}{attributes}>")
+}
+
+#[test]
+fn work_of_an_input_start_tag_with_many_attributes_at_most_doubles() {
+    // `input` installs its attributes one at a time, so that each can run its element-specific
+    // effects. The installation must not compare each against every earlier one.
+    assert_measures_at_most_two_point_two_times(
+        [250, 500, 1_000, 2_000],
+        |n| start_tag_with_attributes("", "input", n),
+        &[
+            WORK_OUTSIDE_RESERVATION,
+            COPY_WORK,
+            INSPECTION_WORK,
+            VISIT_WORK,
+        ],
+    );
+}
+
+#[test]
+fn work_of_a_details_start_tag_with_many_attributes_at_most_doubles() {
+    assert_measures_at_most_two_point_two_times(
+        [250, 500, 1_000, 2_000],
+        |n| start_tag_with_attributes("", "details", n),
+        &[
+            WORK_OUTSIDE_RESERVATION,
+            COPY_WORK,
+            INSPECTION_WORK,
+            VISIT_WORK,
+        ],
+    );
+}
+
+#[test]
+fn work_of_a_select_start_tag_with_many_attributes_at_most_doubles() {
+    assert_measures_at_most_two_point_two_times(
+        [250, 500, 1_000, 2_000],
+        |n| start_tag_with_attributes("", "select", n),
+        &[
+            WORK_OUTSIDE_RESERVATION,
+            COPY_WORK,
+            INSPECTION_WORK,
+            VISIT_WORK,
+        ],
+    );
+}
+
+#[test]
+fn work_of_a_div_start_tag_with_many_attributes_at_most_doubles() {
+    // The bulk installation path every other element takes.
+    assert_measures_at_most_two_point_two_times(
+        [250, 500, 1_000, 2_000],
+        |n| start_tag_with_attributes("", "div", n),
+        &[
+            WORK_OUTSIDE_RESERVATION,
+            COPY_WORK,
+            INSPECTION_WORK,
+            VISIT_WORK,
+        ],
+    );
+}
+
+#[test]
+fn work_of_merging_the_attributes_of_a_second_html_start_tag_at_most_doubles() {
+    // A second `html` start tag merges its attributes into the first element ("in body"
+    // insertion mode, `html` start tag, retained HTML Standard capture
+    // `html-language-syntax-parser--877d6146487f--37a9ba51eed8.md`, line 4306); the tokenizer
+    // already guarantees the candidates' names are distinct.
+    assert_measures_at_most_two_point_two_times(
+        [250, 500, 1_000, 2_000],
+        |n| start_tag_with_attributes("<html><body>", "html", n),
+        &[
+            WORK_OUTSIDE_RESERVATION,
+            COPY_WORK,
+            INSPECTION_WORK,
+            VISIT_WORK,
+        ],
     );
 }
 
