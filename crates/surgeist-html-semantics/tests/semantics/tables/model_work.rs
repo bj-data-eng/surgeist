@@ -545,12 +545,12 @@ fn among_work(n: usize) -> (usize, usize, usize) {
 fn cells_among_tall_header_cells_cost_the_input_and_the_associations() {
     let measured: Vec<_> = [100, 200, 400, 800].into_iter().map(among_work).collect();
     // The input and the associations double with `n`: allow a little over
-    // two for the logarithms of the lookups, as the tests above do.
+    // two for the logarithms of the lookups.
     for pair in measured.windows(2) {
         assert!(
-            pair[1].2 * 10 <= pair[0].2 * 26,
+            pair[1].2 * 10 <= pair[0].2 * 22,
             "{} cells and {} associations cost {} but {} and {} cost {} \
-             (input and associations x2 may cost at most x2.6)",
+             (input and associations x2 may cost at most x2.2)",
             pair[0].0,
             pair[0].1,
             pair[0].2,

@@ -313,15 +313,15 @@ fn tall_table(rng: &mut Rng) -> Vec<Child> {
     let mut ordinals = Ordinals::default();
     let rows = 3 + rng.below(7);
     let mut first = Vec::new();
-    for _ in 0..3 + rng.below(7) {
+    for _ in 0..4 + rng.below(9) {
         let tall = rng.below(5) < 3;
         let th = if tall { !rng.chance(3) } else { rng.chance(3) };
         let mut cell = plain_cell(rng, &mut ordinals, th);
         if tall {
-            cell.rowspan = Some(match rng.below(6) {
+            cell.rowspan = Some(match rng.below(10) {
                 0 => "0".to_string(),
-                1 | 2 => rows.to_string(),
-                3 => rows.saturating_sub(1).to_string(),
+                1..=4 => rows.to_string(),
+                5..=7 => rows.saturating_sub(1).to_string(),
                 _ => (2 + rng.below(rows)).to_string(),
             });
         }
@@ -333,10 +333,10 @@ fn tall_table(rng: &mut Rng) -> Vec<Child> {
     }];
     ordinals.rows = 1;
     for _ in 1..rows {
-        let count = 1 + rng.below(3);
+        let count = 1 + rng.below(5);
         let cells = (0..count)
             .map(|_| {
-                let th = rng.chance(4);
+                let th = rng.chance(3);
                 let mut cell = plain_cell(rng, &mut ordinals, th);
                 if rng.chance(12) {
                     cell.rowspan = Some((2 + rng.below(3)).to_string());

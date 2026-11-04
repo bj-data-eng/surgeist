@@ -7,6 +7,7 @@ mod model_work;
 mod scan_bounds;
 mod scope_work;
 mod sections;
+mod shared_scans;
 mod slot_index;
 mod spans_scope;
 mod spec_oracle;
