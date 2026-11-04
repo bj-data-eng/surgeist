@@ -7,6 +7,7 @@
 use crate::internal::microsyntax::tokens::is_ascii_whitespace;
 use crate::internal::values::DocumentString;
 use std::{cmp::Ordering, error::Error, fmt, num::NonZeroU32};
+pub(crate) mod decimal_total;
 pub(crate) mod natural_ratio;
 pub(crate) mod range;
 
