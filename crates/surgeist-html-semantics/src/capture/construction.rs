@@ -1,6 +1,7 @@
 //! Owning construction-to-capture import. Only immutable public HTML views are read.
 use super::*;
 use crate::HtmlSemanticCancellation;
+use preflight::ActionPolicy;
 use std::collections::HashMap;
 use surgeist_html::construction::{
     HtmlDocument, HtmlFragment, HtmlFragmentOwner, HtmlNodeId, HtmlNodeKind,
@@ -285,16 +286,6 @@ impl Control {
         self.usage.scratch_entries = self.usage.scratch_entries.max(next);
         Ok(())
     }
-    fn action(&mut self, action: preflight::Action) -> Result<(), HtmlConstructionCaptureError> {
-        match action {
-            preflight::Action::Work(work) => self.work(work),
-            preflight::Action::Reserve { entries, .. } => self.scratch(entries),
-            preflight::Action::StorageBefore { .. }
-            | preflight::Action::StorageAfter { .. }
-            | preflight::Action::StorageTransfer { .. }
-            | preflight::Action::ElementValues { .. } => Ok(()),
-        }
-    }
     fn reserve<T>(
         &mut self,
         vec: &mut Vec<T>,
@@ -313,6 +304,37 @@ impl Control {
         vec.try_reserve(count)
             .map_err(|_| HtmlConstructionCaptureError::AllocationFailed)?;
         self.poll()
+    }
+}
+impl preflight::ActionPolicy for Control {
+    type Error = HtmlConstructionCaptureError;
+    fn on_work(&mut self, units: usize) -> Result<(), Self::Error> {
+        self.work(units)
+    }
+    fn on_reserve(&mut self, entries: usize) -> Result<(), Self::Error> {
+        self.scratch(entries)
+    }
+    fn on_storage_before(&mut self, _requested: usize) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn on_storage_after(
+        &mut self,
+        _old: usize,
+        _actual: usize,
+        _retained: bool,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn on_storage_transfer(&mut self, _bytes: usize) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn on_element_values(
+        &mut self,
+        _bytes: usize,
+        _units: usize,
+        _observed: bool,
+    ) -> Result<(), Self::Error> {
+        Ok(())
     }
 }
 /// Position lookup keyed by source node identity.
