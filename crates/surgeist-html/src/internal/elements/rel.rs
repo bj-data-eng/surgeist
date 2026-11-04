@@ -1,8 +1,8 @@
 //! HTML877d link-type interpretation. Resource execution belongs to consumers.
 
 use crate::internal::microsyntax::tokens::{
-    HtmlSpaceToken, HtmlSpaceTokenCursor, HtmlSpaceTokenStep, ascii_case_insensitive_unit,
-    ascii_lowercase, is_ascii_whitespace,
+    DeclaredKeyword, HtmlSpaceToken, HtmlSpaceTokenCursor, HtmlSpaceTokenStep,
+    ascii_case_insensitive_unit, ascii_lowercase, declared_keyword, is_ascii_whitespace,
 };
 pub(crate) mod controlled;
 use crate::internal::values::semantic_input::{attributes_iter, find_attribute};
@@ -111,158 +111,125 @@ impl HtmlRelRole {
     }
 }
 
-/// The pinned standard keywords; registry extensions do not extend this enum.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlRelKeyword {
-    /// `alternate` (HTML877d #rel-alternate): alternate representations of the current document,
-    /// or, with `stylesheet` on a `link`, an alternative style sheet.
-    Alternate,
-    /// `author` (HTML877d #link-type-author): a link to the author of the current document or of
-    /// the nearest `article` ancestor. A `rev` attribute value of `made` counts as this keyword.
-    Author,
-    /// `bookmark` (HTML877d #link-type-bookmark): the permalink for the nearest ancestor section;
-    /// allowed on `a` and `area` only.
-    Bookmark,
-    /// `canonical` (HTML877d #link-type-canonical): the preferred URL for the current document;
-    /// allowed on `link` only.
-    Canonical,
-    /// `dns-prefetch` (HTML877d #link-type-dns-prefetch): preemptive DNS resolution for the target
-    /// resource's origin; body-ok.
-    DnsPrefetch,
-    /// `expect` (HTML877d #link-type-expect): expects an element with the target ID to appear in
-    /// the current document; an internal resource link on `link` only.
-    Expect,
-    /// `external` (HTML877d #link-type-external): the referenced document is not part of the same
-    /// site; an annotation on `a`, `area` and `form`.
-    External,
-    /// `help` (HTML877d #link-type-help): context-sensitive help.
-    Help,
-    /// `icon` (HTML877d #rel-icon): an icon that represents the current document; `link` only. The
-    /// historical `shortcut icon` form is classified separately.
-    Icon,
-    /// `license` (HTML877d #link-type-license): the main content of the current document is covered
-    /// by the license the referenced document describes. `copyright` is a forbidden synonym.
-    License,
-    /// `manifest` (HTML877d #link-type-manifest): an application manifest; `link` only.
-    Manifest,
-    /// `modulepreload` (HTML877d #link-type-modulepreload): preemptively fetches a module script
-    /// into the document's module map; body-ok.
-    ModulePreload,
-    /// `next` (HTML877d #link-type-next): the referenced document is the next one in a series that
-    /// includes the current document.
-    Next,
-    /// `nofollow` (HTML877d #link-type-nofollow): the current document's author or publisher does
-    /// not endorse the referenced document; an annotation.
-    NoFollow,
-    /// `noopener` (HTML877d #link-type-noopener): creates a top-level traversable with a
-    /// non-auxiliary browsing context when the hyperlink would otherwise create an auxiliary one;
-    /// an annotation.
-    NoOpener,
-    /// `noreferrer` (HTML877d #link-type-noreferrer): sends no `Referer` header and has the effect
-    /// of `noopener`; an annotation.
-    NoReferrer,
-    /// `opener` (HTML877d #link-type-opener): creates an auxiliary browsing context when the
-    /// hyperlink would otherwise create a non-auxiliary top-level traversable; an annotation.
-    Opener,
-    /// `pingback` (HTML877d #link-type-pingback): the address of the pingback server for the
-    /// current document; body-ok.
-    Pingback,
-    /// `preconnect` (HTML877d #link-type-preconnect): preemptively connects to the target
-    /// resource's origin; body-ok.
-    Preconnect,
-    /// `prefetch` (HTML877d #link-type-prefetch): preemptively fetches and caches the target for a
-    /// likely follow-up navigation; body-ok.
-    Prefetch,
-    /// `preload` (HTML877d #link-type-preload): preemptively fetches and caches the target for the
-    /// current navigation according to the preload destination of the `as` attribute; body-ok.
-    Preload,
-    /// `prev` (HTML877d #link-type-prev): the referenced document is the previous one in a series
-    /// that includes the current document. `previous` is a forbidden synonym.
-    Prev,
-    /// `privacy-policy` (HTML877d #link-type-privacy-policy): information about the data collection
-    /// and usage practices that apply to the current document.
-    PrivacyPolicy,
-    /// `search` (HTML877d #link-type-search): a resource that can search the current document and
-    /// its related pages.
-    Search,
-    /// `stylesheet` (HTML877d #link-type-stylesheet): imports a style sheet; body-ok.
-    Stylesheet,
-    /// `tag` (HTML877d #link-type-tag): a tag, identified by the given address, that applies to the
-    /// current document; allowed on `a` and `area` only.
-    Tag,
-    /// `terms-of-service` (HTML877d #link-type-terms-of-service): the agreements between the
-    /// current document's provider and its users.
-    TermsOfService,
+/// Declares the pinned standard keywords from one table. The enum, `ALL`, the spelling and the
+/// space token each come from this table, so no keyword can be missing from one of them, and the
+/// compiler checks that every spelling is one space token.
+macro_rules! rel_keywords {
+    ($(#[$meta:meta])* enum $name:ident {
+        $($(#[$doc:meta])* $variant:ident => $spelling:literal,)+
+    }) => {
+        $(#[$meta])*
+        pub enum $name {
+            $($(#[$doc])* $variant,)+
+        }
+        impl $name {
+            /// Every standard keyword exactly once, in declaration order, which is alphabetical by
+            /// spelling.
+            pub const ALL: &'static [Self] = &[$(Self::$variant,)+];
+            /// The keyword's lowercase spelling. Documents compare keywords ASCII case-insensitively, so
+            /// this is the canonical spelling, not the only accepted one (HTML877d #linkTypes).
+            pub fn keyword(self) -> &'static str {
+                self.declared().as_str()
+            }
+            /// The keyword's canonical spelling as a space token.
+            pub fn space_token(self) -> HtmlSpaceToken {
+                HtmlSpaceToken::declared(self.declared())
+            }
+            fn declared(self) -> DeclaredKeyword {
+                match self {
+                    $(Self::$variant => declared_keyword!($spelling),)+
+                }
+            }
+        }
+    };
+}
+
+rel_keywords! {
+    /// The pinned standard keywords; registry extensions do not extend this enum.
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum HtmlRelKeyword {
+        /// `alternate` (HTML877d #rel-alternate): alternate representations of the current document,
+        /// or, with `stylesheet` on a `link`, an alternative style sheet.
+        Alternate => "alternate",
+        /// `author` (HTML877d #link-type-author): a link to the author of the current document or of
+        /// the nearest `article` ancestor. A `rev` attribute value of `made` counts as this keyword.
+        Author => "author",
+        /// `bookmark` (HTML877d #link-type-bookmark): the permalink for the nearest ancestor section;
+        /// allowed on `a` and `area` only.
+        Bookmark => "bookmark",
+        /// `canonical` (HTML877d #link-type-canonical): the preferred URL for the current document;
+        /// allowed on `link` only.
+        Canonical => "canonical",
+        /// `dns-prefetch` (HTML877d #link-type-dns-prefetch): preemptive DNS resolution for the target
+        /// resource's origin; body-ok.
+        DnsPrefetch => "dns-prefetch",
+        /// `expect` (HTML877d #link-type-expect): expects an element with the target ID to appear in
+        /// the current document; an internal resource link on `link` only.
+        Expect => "expect",
+        /// `external` (HTML877d #link-type-external): the referenced document is not part of the same
+        /// site; an annotation on `a`, `area` and `form`.
+        External => "external",
+        /// `help` (HTML877d #link-type-help): context-sensitive help.
+        Help => "help",
+        /// `icon` (HTML877d #rel-icon): an icon that represents the current document; `link` only. The
+        /// historical `shortcut icon` form is classified separately.
+        Icon => "icon",
+        /// `license` (HTML877d #link-type-license): the main content of the current document is covered
+        /// by the license the referenced document describes. `copyright` is a forbidden synonym.
+        License => "license",
+        /// `manifest` (HTML877d #link-type-manifest): an application manifest; `link` only.
+        Manifest => "manifest",
+        /// `modulepreload` (HTML877d #link-type-modulepreload): preemptively fetches a module script
+        /// into the document's module map; body-ok.
+        ModulePreload => "modulepreload",
+        /// `next` (HTML877d #link-type-next): the referenced document is the next one in a series that
+        /// includes the current document.
+        Next => "next",
+        /// `nofollow` (HTML877d #link-type-nofollow): the current document's author or publisher does
+        /// not endorse the referenced document; an annotation.
+        NoFollow => "nofollow",
+        /// `noopener` (HTML877d #link-type-noopener): creates a top-level traversable with a
+        /// non-auxiliary browsing context when the hyperlink would otherwise create an auxiliary one;
+        /// an annotation.
+        NoOpener => "noopener",
+        /// `noreferrer` (HTML877d #link-type-noreferrer): sends no `Referer` header and has the effect
+        /// of `noopener`; an annotation.
+        NoReferrer => "noreferrer",
+        /// `opener` (HTML877d #link-type-opener): creates an auxiliary browsing context when the
+        /// hyperlink would otherwise create a non-auxiliary top-level traversable; an annotation.
+        Opener => "opener",
+        /// `pingback` (HTML877d #link-type-pingback): the address of the pingback server for the
+        /// current document; body-ok.
+        Pingback => "pingback",
+        /// `preconnect` (HTML877d #link-type-preconnect): preemptively connects to the target
+        /// resource's origin; body-ok.
+        Preconnect => "preconnect",
+        /// `prefetch` (HTML877d #link-type-prefetch): preemptively fetches and caches the target for a
+        /// likely follow-up navigation; body-ok.
+        Prefetch => "prefetch",
+        /// `preload` (HTML877d #link-type-preload): preemptively fetches and caches the target for the
+        /// current navigation according to the preload destination of the `as` attribute; body-ok.
+        Preload => "preload",
+        /// `prev` (HTML877d #link-type-prev): the referenced document is the previous one in a series
+        /// that includes the current document. `previous` is a forbidden synonym.
+        Prev => "prev",
+        /// `privacy-policy` (HTML877d #link-type-privacy-policy): information about the data collection
+        /// and usage practices that apply to the current document.
+        PrivacyPolicy => "privacy-policy",
+        /// `search` (HTML877d #link-type-search): a resource that can search the current document and
+        /// its related pages.
+        Search => "search",
+        /// `stylesheet` (HTML877d #link-type-stylesheet): imports a style sheet; body-ok.
+        Stylesheet => "stylesheet",
+        /// `tag` (HTML877d #link-type-tag): a tag, identified by the given address, that applies to the
+        /// current document; allowed on `a` and `area` only.
+        Tag => "tag",
+        /// `terms-of-service` (HTML877d #link-type-terms-of-service): the agreements between the
+        /// current document's provider and its users.
+        TermsOfService => "terms-of-service",
+    }
 }
 impl HtmlRelKeyword {
-    /// Every standard keyword exactly once, in declaration order, which is alphabetical by
-    /// spelling.
-    pub const ALL: &'static [Self] = &[
-        Self::Alternate,
-        Self::Author,
-        Self::Bookmark,
-        Self::Canonical,
-        Self::DnsPrefetch,
-        Self::Expect,
-        Self::External,
-        Self::Help,
-        Self::Icon,
-        Self::License,
-        Self::Manifest,
-        Self::ModulePreload,
-        Self::Next,
-        Self::NoFollow,
-        Self::NoOpener,
-        Self::NoReferrer,
-        Self::Opener,
-        Self::Pingback,
-        Self::Preconnect,
-        Self::Prefetch,
-        Self::Preload,
-        Self::Prev,
-        Self::PrivacyPolicy,
-        Self::Search,
-        Self::Stylesheet,
-        Self::Tag,
-        Self::TermsOfService,
-    ];
-    /// The keyword's lowercase spelling. Documents compare keywords ASCII case-insensitively, so
-    /// this is the canonical spelling, not the only accepted one (HTML877d #linkTypes).
-    pub fn keyword(self) -> &'static str {
-        match self {
-            Self::Alternate => "alternate",
-            Self::Author => "author",
-            Self::Bookmark => "bookmark",
-            Self::Canonical => "canonical",
-            Self::DnsPrefetch => "dns-prefetch",
-            Self::Expect => "expect",
-            Self::External => "external",
-            Self::Help => "help",
-            Self::Icon => "icon",
-            Self::License => "license",
-            Self::Manifest => "manifest",
-            Self::ModulePreload => "modulepreload",
-            Self::Next => "next",
-            Self::NoFollow => "nofollow",
-            Self::NoOpener => "noopener",
-            Self::NoReferrer => "noreferrer",
-            Self::Opener => "opener",
-            Self::Pingback => "pingback",
-            Self::Preconnect => "preconnect",
-            Self::Prefetch => "prefetch",
-            Self::Preload => "preload",
-            Self::Prev => "prev",
-            Self::PrivacyPolicy => "privacy-policy",
-            Self::Search => "search",
-            Self::Stylesheet => "stylesheet",
-            Self::Tag => "tag",
-            Self::TermsOfService => "terms-of-service",
-        }
-    }
-    /// The keyword's canonical spelling as a space token.
-    pub fn space_token(self) -> HtmlSpaceToken {
-        HtmlSpaceToken::declared_keyword(self.keyword())
-    }
     /// Whether the keyword is body-ok: the standard lists exactly `dns-prefetch`, `modulepreload`,
     /// `pingback`, `preconnect`, `prefetch`, `preload` and `stylesheet`, and a `link` carrying only
     /// such keywords is allowed in the body (HTML877d #linkTypes).
@@ -1201,7 +1168,8 @@ mod keyword_token_tests {
     use super::*;
 
     /// The keyword table is the closed set of the standard's link types. Each is a valid space
-    /// token under the checked constructor, which is what lets `space_token` skip the check.
+    /// token under the checked constructor, which is what the compile-time check of the table
+    /// promises, and `ALL` lists each exactly once in alphabetical order, as it documents.
     #[test]
     fn every_standard_keyword_is_a_valid_space_token_with_its_spelling() {
         assert!(!HtmlRelKeyword::ALL.is_empty());
@@ -1210,5 +1178,11 @@ mod keyword_token_tests {
                 .unwrap_or_else(|error| panic!("{keyword:?}: {error:?}"));
             assert_eq!(keyword.space_token(), checked, "{keyword:?}");
         }
+        assert!(
+            HtmlRelKeyword::ALL
+                .windows(2)
+                .all(|pair| pair[0].keyword() < pair[1].keyword()),
+            "ALL is strictly alphabetical by spelling"
+        );
     }
 }

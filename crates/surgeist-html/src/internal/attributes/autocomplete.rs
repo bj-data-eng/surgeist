@@ -3,10 +3,11 @@
 //! separate contextual/effect owners. WHATWG attribution is in the crate notice.
 
 use super::*;
-use crate::internal::microsyntax::tokens::ascii_lowercase;
 use crate::{
+    internal::microsyntax::tokens::DeclaredKeyword,
     internal::microsyntax::tokens::HtmlSpaceSeparatedTokens,
     internal::microsyntax::tokens::HtmlSpaceToken, internal::microsyntax::tokens::HtmlTokenError,
+    internal::microsyntax::tokens::declared_keyword,
 };
 use std::{error::Error, fmt};
 
@@ -22,7 +23,8 @@ const RULE: RuleMetadata = RuleMetadata {
     vocabulary_source: None,
 };
 const PROCESSING_SOURCE: &str = source!("autofill-processing-model");
-const WEBAUTHN: &str = "webauthn";
+const WEBAUTHN_KEYWORD: DeclaredKeyword = declared_keyword!("webauthn");
+const WEBAUTHN: &str = WEBAUTHN_KEYWORD.as_str();
 
 /// Atomic scan/copy/lookup envelope, not machine instructions or parser polling.
 /// The semantic owner separately admits expanded-name recognition. Two shared
@@ -410,23 +412,6 @@ impl Materialization {
         self.check_growth(0, 0, purpose)
     }
 
-    fn units(
-        &mut self,
-        units: &[u16],
-        lowercase: bool,
-    ) -> Result<DocumentString, HtmlAutocompleteMaterializationError> {
-        let mut output = Vec::new();
-        self.reserve(&mut output, units.len(), StoragePurpose::Output)?;
-        output.extend(units.iter().map(|&unit| {
-            if lowercase {
-                ascii_lowercase(unit)
-            } else {
-                unit
-            }
-        }));
-        Ok(DocumentString::from_utf16(output))
-    }
-
     fn keyword(
         &mut self,
         keyword: &'static str,
@@ -441,14 +426,13 @@ impl Materialization {
         &mut self,
         input: &DocumentString,
     ) -> Result<HtmlSpaceSeparatedTokens, HtmlAutocompleteMaterializationError> {
-        let slices = crate::internal::microsyntax::tokens::space_token_slices(input);
+        let split = crate::internal::microsyntax::tokens::space_tokens(input);
         let mut tokens = Vec::new();
-        self.reserve(&mut tokens, slices.clone().count(), StoragePurpose::Output)?;
-        for units in slices {
-            let value = self.units(units, false)?;
-            tokens.push(
-                HtmlSpaceToken::new(value).expect("shared split yields a nonempty space token"),
-            );
+        self.reserve(&mut tokens, split.clone().count(), StoragePurpose::Output)?;
+        for token in split {
+            tokens.push(token.copy(false, |units, count| {
+                self.reserve(units, count, StoragePurpose::Output)
+            })?);
         }
         Ok(HtmlSpaceSeparatedTokens::from_vec(tokens))
     }
@@ -560,7 +544,11 @@ macro_rules! fields {
             const ALL: &'static [Self] = &[$(Self::$variant),+];
             /// Returns the field name in the lowercase spelling of the pinned table.
             pub fn canonical_keyword(self) -> &'static str {
-                match self { $(Self::$variant => $keyword),+ }
+                self.declared().as_str()
+            }
+            /// The field name, checked while compiling to be one space token.
+            fn declared(self) -> DeclaredKeyword {
+                match self { $(Self::$variant => declared_keyword!($keyword)),+ }
             }
             /// Returns whether the field is a normal field or a contact field, which alone admits a
             /// contact hint such as `home` or `work`.
@@ -713,7 +701,11 @@ macro_rules! hint_type {
             const ALL: &'static [Self] = &[$(Self::$variant),+];
             /// Returns the keyword in its lowercase spelling.
             pub fn canonical_keyword(self) -> &'static str {
-                match self { $(Self::$variant => $keyword),+ }
+                self.declared().as_str()
+            }
+            /// The keyword, checked while compiling to be one space token.
+            fn declared(self) -> DeclaredKeyword {
+                match self { $(Self::$variant => declared_keyword!($keyword)),+ }
             }
             fn from_keyword(value: &DocumentString) -> Option<Self> {
                 Self::ALL.iter().copied().find(|hint| ascii_keyword(value, hint.canonical_keyword()))
@@ -927,14 +919,14 @@ impl HtmlAutocompleteDetails {
             tokens.push(section.token);
         }
         if let Some(mode) = self.mode {
-            tokens.push(keyword_token(mode.canonical_keyword()));
+            tokens.push(keyword_token(mode.declared()));
         }
         if let Some(contact) = self.contact {
-            tokens.push(keyword_token(contact.canonical_keyword()));
+            tokens.push(keyword_token(contact.declared()));
         }
-        tokens.push(keyword_token(self.field.canonical_keyword()));
+        tokens.push(keyword_token(self.field.declared()));
         if self.webauthn {
-            tokens.push(keyword_token(WEBAUTHN));
+            tokens.push(keyword_token(WEBAUTHN_KEYWORD));
         }
         Attribute::new(
             KnownHtmlAttribute::Autocomplete.qualified_name(),
@@ -1326,8 +1318,8 @@ impl HtmlAutocompleteReport {
     }
 }
 
-fn keyword_token(keyword: &'static str) -> HtmlSpaceToken {
-    HtmlSpaceToken::new(keyword).expect("declared autocomplete keyword is one nonempty space token")
+fn keyword_token(keyword: DeclaredKeyword) -> HtmlSpaceToken {
+    HtmlSpaceToken::declared(keyword)
 }
 
 fn setting(value: &DocumentString) -> Option<HtmlFormAutocomplete> {
@@ -1573,8 +1565,9 @@ fn process_inner(
             && let Some(hint) = HtmlAutocompleteContactHint::from_keyword(tokens[index].value())
         {
             output.contact = Some(hint);
-            let token = HtmlSpaceToken::new(storage.keyword(hint.canonical_keyword())?)
-                .expect("declared hint is a nonempty space token");
+            let token = hint
+                .declared()
+                .copy(|units, count| storage.reserve(units, count, StoragePurpose::Output))?;
             storage.prepend(&mut output.scope, token.clone(), StoragePurpose::Output)?;
             storage.prepend(&mut output.idl, token, StoragePurpose::Scratch)?;
             if index == 0 {
@@ -1584,8 +1577,9 @@ fn process_inner(
         }
         if let Some(hint) = HtmlAutocompleteMode::from_keyword(tokens[index].value()) {
             output.mode = Some(hint);
-            let token = HtmlSpaceToken::new(storage.keyword(hint.canonical_keyword())?)
-                .expect("declared hint is a nonempty space token");
+            let token = hint
+                .declared()
+                .copy(|units, count| storage.reserve(units, count, StoragePurpose::Output))?;
             storage.prepend(&mut output.scope, token.clone(), StoragePurpose::Output)?;
             storage.prepend(&mut output.idl, token, StoragePurpose::Scratch)?;
             if index == 0 {
@@ -1599,8 +1593,9 @@ fn process_inner(
         if !section_prefix(tokens[0].value()) {
             return Ok(default_state(mantle, D::UnrecognizedLeadingToken));
         }
-        let section = HtmlSpaceToken::new(storage.units(tokens[0].value().code_units(), true)?)
-            .expect("ASCII lowercase preserves a nonempty space token");
+        let section = tokens[0].units().copy(true, |units, count| {
+            storage.reserve(units, count, StoragePurpose::Output)
+        })?;
         storage.prepend(&mut output.scope, section.clone(), StoragePurpose::Output)?;
         storage.prepend(&mut output.idl, section, StoragePurpose::Scratch)?;
     }
@@ -1726,17 +1721,20 @@ impl HtmlValueInterpreter {
         {
             input.applicability = HtmlAttributeApplicability::DifferentContext;
         }
-        if input.applicability != HtmlAttributeApplicability::Applicable {
-            return Ok(HtmlAutocompleteReport {
-                input,
-                tokens: None,
-                syntax: HtmlAutocompleteSyntaxState::Unapplied,
-                mantle: None,
-                context_author: HtmlAutocompleteContextAuthorState::Unapplied,
-                processing: HtmlAutocompleteProcessingState::Unapplied,
-            });
-        }
-        let known = known.expect("autocomplete applicability proves a known HTML control");
+        // The rule applies only to a known control, so an applicable report names one.
+        let known = match known {
+            Some(known) if input.applicability == HtmlAttributeApplicability::Applicable => known,
+            _ => {
+                return Ok(HtmlAutocompleteReport {
+                    input,
+                    tokens: None,
+                    syntax: HtmlAutocompleteSyntaxState::Unapplied,
+                    mantle: None,
+                    context_author: HtmlAutocompleteContextAuthorState::Unapplied,
+                    processing: HtmlAutocompleteProcessingState::Unapplied,
+                });
+            }
+        };
         let tokens = raw.map(|raw| storage.tokens(raw.value())).transpose()?;
         let syntax = tokens
             .as_ref()
