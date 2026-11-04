@@ -2803,13 +2803,31 @@ impl HtmlCapture {
     }
 
     /// Resolves the actual inclusive ordinary ancestor form, without following hosts.
+    /// The walk is bounded by the capture's depth, and nothing here admits or
+    /// cancels it; use [`nearest_form_with`](Self::nearest_form_with) to meter it.
     pub fn nearest_form(
         &self,
         element: &HtmlCaptureElementId,
     ) -> Result<Option<HtmlCaptureElementId>, HtmlCaptureError> {
+        match self.nearest_form_with::<std::convert::Infallible>(element, || Ok(())) {
+            Ok(form) => Ok(form),
+            Err(HtmlCaptureEdgeError::Capture(error)) => Err(error),
+            Err(HtmlCaptureEdgeError::Interrupted(never)) => match never {},
+        }
+    }
+    /// As [`nearest_form`](Self::nearest_form), taking one `step` before each
+    /// record it examines: the element itself, then each ordinary ancestor in
+    /// turn, up to and including the form it finds or the topmost ancestor. The
+    /// first refusal of `step` is returned unchanged and ends the walk.
+    pub fn nearest_form_with<E>(
+        &self,
+        element: &HtmlCaptureElementId,
+        mut step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<HtmlCaptureElementId>, HtmlCaptureEdgeError<E>> {
         self.require(&element.0, HtmlCaptureSubjectKind::Element)?;
         let mut i = element.0.index;
         loop {
+            step().map_err(HtmlCaptureEdgeError::Interrupted)?;
             let r = &self.0.records[i];
             if let HtmlCapturedNodeKind::Element(e) = &r.kind
                 && html(&e.name, "form")
@@ -2820,10 +2838,12 @@ impl HtmlCapture {
                 Parent::Root => return Ok(None),
                 Parent::Index(parent) => i = parent,
                 Parent::Unavailable => {
-                    return Err(HtmlCaptureError::MissingFact {
-                        subject: Some(subject_id(&self.0, i)),
-                        fact: HtmlCaptureFact::Parent,
-                    });
+                    return Err(HtmlCaptureEdgeError::Capture(
+                        HtmlCaptureError::MissingFact {
+                            subject: Some(subject_id(&self.0, i)),
+                            fact: HtmlCaptureFact::Parent,
+                        },
+                    ));
                 }
             }
         }
@@ -3015,40 +3035,74 @@ impl HtmlFragmentContext {
         capture: &HtmlCapture,
         target: &HtmlCaptureSubjectId,
     ) -> Result<Self, HtmlCaptureError> {
+        Self::unmetered(Self::element_with(capture, target, || Ok(())))
+    }
+    /// As [`element`](Self::element), taking one `step` for each record the walk
+    /// for the nearest form examines; see [`HtmlCapture::nearest_form_with`].
+    pub fn element_with<E>(
+        capture: &HtmlCapture,
+        target: &HtmlCaptureSubjectId,
+        step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Self, HtmlCaptureEdgeError<E>> {
         let element = capture.element_id(target)?;
         Self::select(
             capture,
             HtmlFragmentTarget::Element(element.clone()),
             element,
+            step,
         )
     }
     pub fn hosted_fragment(
         capture: &HtmlCapture,
         target: &HtmlCaptureSubjectId,
     ) -> Result<Self, HtmlCaptureError> {
+        Self::unmetered(Self::hosted_fragment_with(capture, target, || Ok(())))
+    }
+    /// As [`hosted_fragment`](Self::hosted_fragment), metered as
+    /// [`element_with`](Self::element_with) is.
+    pub fn hosted_fragment_with<E>(
+        capture: &HtmlCapture,
+        target: &HtmlCaptureSubjectId,
+        step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Self, HtmlCaptureEdgeError<E>> {
         let fragment = capture.fragment_id(target)?;
         let node = capture.node(target)?;
         let context = match node.host() {
             Some(HtmlCapturedHost::Element(host)) => host,
-            Some(HtmlCapturedHost::Absent) => return Err(HtmlCaptureError::UnhostedFragment),
+            Some(HtmlCapturedHost::Absent) => {
+                return Err(HtmlCaptureError::UnhostedFragment.into());
+            }
             _ => {
                 return Err(HtmlCaptureError::MissingFact {
                     subject: Some(target.clone()),
                     fact: HtmlCaptureFact::FragmentHost,
-                });
+                }
+                .into());
             }
         };
         Self::select(
             capture,
             HtmlFragmentTarget::HostedFragment(fragment),
             context,
+            step,
         )
     }
-    fn select(
+    /// The result of a selection whose step never refuses.
+    fn unmetered(
+        selected: Result<Self, HtmlCaptureEdgeError<std::convert::Infallible>>,
+    ) -> Result<Self, HtmlCaptureError> {
+        match selected {
+            Ok(context) => Ok(context),
+            Err(HtmlCaptureEdgeError::Capture(error)) => Err(error),
+            Err(HtmlCaptureEdgeError::Interrupted(never)) => match never {},
+        }
+    }
+    fn select<E>(
         capture: &HtmlCapture,
         target: HtmlFragmentTarget,
         context: HtmlCaptureElementId,
-    ) -> Result<Self, HtmlCaptureError> {
+        step: impl FnMut() -> Result<(), E>,
+    ) -> Result<Self, HtmlCaptureEdgeError<E>> {
         let target_id = match &target {
             HtmlFragmentTarget::Element(e) => &e.0,
             HtmlFragmentTarget::HostedFragment(f) => &f.0,
@@ -3059,11 +3113,12 @@ impl HtmlFragmentContext {
             return Err(HtmlCaptureError::MissingFact {
                 subject: Some(target_id.clone()),
                 fact: HtmlCaptureFact::Registry,
-            });
+            }
+            .into());
         }
         let target_document = target_node.node_document();
         let context_document = capture.node(&context.0)?.node_document();
-        let nearest_form = capture.nearest_form(&context)?;
+        let nearest_form = capture.nearest_form_with(&context, step)?;
         let element = capture.node(&context.0)?.kind().element()?;
         let context_name = element.name.clone();
         let context_html_integration_point =
