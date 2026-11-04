@@ -2862,6 +2862,38 @@ pub(crate) mod bounded_rules {
         InputBooleanApplicability::Readonly.allows(state)
     }
 
+    /// Whether the `list` attribute applies to an `input` of this type state.
+    ///
+    /// `list` applies to the Text, Search, Telephone, URL, Email, Date, Month, Week, Time, Local
+    /// Date and Time, Number, Range and Color states (HTML877d `#input-type-attr-summary`, the
+    /// `list` row). When it does not apply there is no suggestions source element (HTML877d
+    /// `#the-list-attribute`, "If the list attribute does not apply, there is no suggestions
+    /// source element"). Retained capture:
+    /// `references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md`, the
+    /// `input-type-attr-summary` table and the `list` attribute prose. This is applicability
+    /// alone; it does not resolve the attribute's ID reference.
+    pub fn input_list_applies(state: HtmlInputType) -> bool {
+        use HtmlInputType::{
+            Color, Date, Email, LocalDateTime, Month, Number, Range, Search, Telephone, Text, Time,
+            Url, Week,
+        };
+        matches!(
+            state,
+            Text | Search
+                | Telephone
+                | Url
+                | Email
+                | Date
+                | Month
+                | Week
+                | Time
+                | LocalDateTime
+                | Number
+                | Range
+                | Color
+        )
+    }
+
     /// Whether an `input` of this type state is a submit button.
     ///
     /// The Submit Button state and the Image Button state both describe an `input` element that

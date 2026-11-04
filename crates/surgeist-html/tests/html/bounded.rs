@@ -1,5 +1,6 @@
 mod attribute_rules;
 mod attributes;
+mod input_list;
 mod local_rules;
 mod media;
 mod microdata;

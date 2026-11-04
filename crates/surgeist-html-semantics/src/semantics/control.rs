@@ -1262,21 +1262,8 @@ impl<'a> HtmlSemanticSession<'a> {
             self.charge(1)?;
             return Ok(None);
         }
-        if !matches!(
+        if !surgeist_html::bounded::attributes::input_list_applies(
             self.control_input_type(element)?,
-            HtmlInputType::Text
-                | HtmlInputType::Search
-                | HtmlInputType::Telephone
-                | HtmlInputType::Url
-                | HtmlInputType::Email
-                | HtmlInputType::Date
-                | HtmlInputType::Month
-                | HtmlInputType::Week
-                | HtmlInputType::Time
-                | HtmlInputType::LocalDateTime
-                | HtmlInputType::Number
-                | HtmlInputType::Range
-                | HtmlInputType::Color
         ) {
             self.charge(1)?;
             return Ok(None);

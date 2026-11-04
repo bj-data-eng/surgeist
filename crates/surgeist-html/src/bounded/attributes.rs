@@ -10,8 +10,9 @@ pub use crate::internal::attributes::autocomplete::{
 };
 pub use crate::internal::attributes::bounded_rules::{
     HtmlAttributeKeywordRead, HtmlButtonSubmitterFact, HtmlWritingSuggestionsProcessing,
-    button_submitter_context_with, crossorigin_processing_with, input_readonly_applies,
-    input_submitter_context, referrerpolicy_processing_with, stylesheet_link_context_work_bound,
+    button_submitter_context_with, crossorigin_processing_with, input_list_applies,
+    input_readonly_applies, input_submitter_context, referrerpolicy_processing_with,
+    stylesheet_link_context_work_bound,
 };
 pub use crate::internal::attributes::hash_name::{HtmlHashNameScan, HtmlHashNameScanStep};
 pub use crate::internal::attributes::image_values::{
