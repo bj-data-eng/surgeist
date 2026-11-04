@@ -248,6 +248,24 @@ pub(crate) fn numeric_scalar(
     scalar.ok_or_else(|| control.fail_invariant(HtmlParseInvariant::TokenizerState))
 }
 
+/// The value of an ASCII digit of a numeric reference: decimal digits and, in
+/// a hexadecimal reference, the letters A-F in either case.
+pub(crate) fn numeric_digit(point: u32, radix: u32) -> Option<u32> {
+    u8::try_from(point)
+        .ok()
+        .and_then(|byte| char::from(byte).to_digit(radix))
+}
+
+/// Appends one digit to the value of a numeric reference, saturating at one
+/// past the last code point, which every later digit keeps.
+pub(crate) fn accumulate_digit(value: u32, radix: u32, digit: u32) -> u32 {
+    value
+        .checked_mul(radix)
+        .and_then(|value| value.checked_add(digit))
+        .filter(|&value| value <= 0x11_0000)
+        .unwrap_or(0x11_0000)
+}
+
 pub(crate) const MAX_NAME_POINTS: usize = {
     let mut longest = 0;
     let mut index = 0;
@@ -317,16 +335,9 @@ pub(crate) fn decode_spelling(
     let radix = if hex { 16 } else { 10 };
     let mut value = 0_u32;
     let mut digits = false;
-    while let Some(digit) = point
-        .and_then(|point| u8::try_from(point).ok())
-        .and_then(|byte| char::from(byte).to_digit(radix))
-    {
+    while let Some(digit) = point.and_then(|point| numeric_digit(point, radix)) {
         digits = true;
-        value = value
-            .checked_mul(radix)
-            .and_then(|value| value.checked_add(digit))
-            .filter(|&value| value <= 0x11_0000)
-            .unwrap_or(0x11_0000);
+        value = accumulate_digit(value, radix, digit);
         point = read(control)?;
     }
     if !digits {

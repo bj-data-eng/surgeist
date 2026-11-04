@@ -291,21 +291,12 @@ impl Tokenizer<'_> {
             let InputRead::Character(ch) = self.cursor.peek(c)? else {
                 break;
             };
-            // ASCII decimal digits and, in a hexadecimal reference, the
-            // letters A-F in either case.
-            let Some(digit) = u8::try_from(ch.code_point().value())
-                .ok()
-                .and_then(|byte| char::from(byte).to_digit(radix))
-            else {
+            let Some(digit) = references::numeric_digit(ch.code_point().value(), radix) else {
                 break;
             };
             self.read(c, evidence)?;
             digits = true;
-            value = value
-                .checked_mul(radix)
-                .and_then(|v| v.checked_add(digit))
-                .filter(|&v| v <= 0x110000)
-                .unwrap_or(0x110000);
+            value = references::accumulate_digit(value, radix, digit);
         }
         c.charge(HtmlParseWorkCategory::StateStep, 1)?;
         if !digits {
