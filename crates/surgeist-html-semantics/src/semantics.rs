@@ -1933,15 +1933,13 @@ impl<'a> HtmlSemanticSession<'a> {
             Some(_) => Ok(HtmlSemanticValue::Inapplicable),
             None => {
                 let context = self.context;
-                for fact in &context.classifications {
-                    self.charge(1)?;
-                    if &fact.subject == subject {
-                        return if fact.form_associated {
-                            self.form_disabled(subject, true)
-                        } else {
-                            Ok(HtmlSemanticValue::Inapplicable)
-                        };
-                    }
+                self.charge(1)?;
+                if let Some(fact) = context.classification(subject) {
+                    return if fact.form_associated() {
+                        self.form_disabled(subject, true)
+                    } else {
+                        Ok(HtmlSemanticValue::Inapplicable)
+                    };
                 }
                 Ok(HtmlSemanticValue::Missing(
                     HtmlSemanticMissing::CustomControlClassification(subject.clone()),
