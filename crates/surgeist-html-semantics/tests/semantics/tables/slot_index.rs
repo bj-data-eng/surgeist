@@ -250,3 +250,69 @@ fn rows_without_a_cell_of_their_own_are_listed_where_the_first_such_row_stands()
         .collect();
     assert_eq!(of_p, [s0, q, s2]);
 }
+
+#[test]
+fn the_shared_scan_of_a_run_stands_where_its_first_line_with_no_cell_of_its_own_stands() {
+    // X, Y (th, scope row) and P (td) span rows 0 to 2. s0 and s0' are td of
+    // row 0 between them, row 1 is empty, and row 2 has d2 (td) before and Z
+    // (th, scope row) after Y.
+    //   row 0 from P: s0', Y (a row header: taken), s0 (data: closes the
+    //     block, so X, crossing Y's rows, is hidden): [Y].
+    //   row 1 from P: Y, X (no data between them: both taken): [Y, X].
+    //   row 2 from P: Z, Y (taken), d2 (closes the block), X (hidden): [Z, Y].
+    // P adds each header when it first meets it, row by row: Y, X, Z.
+    let row_th = &[("scope", "row"), ("rowspan", "3")];
+    let (capture, table, cells) = table(&[
+        &[
+            ("th", row_th),
+            ("td", &[]),
+            ("th", row_th),
+            ("td", &[]),
+            ("td", &[("rowspan", "3")]),
+        ],
+        &[],
+        &[("td", &[]), ("th", &[("scope", "row")])],
+    ]);
+    let model = model_of(&capture, &table);
+    let [x, _s0, y, _s1, p, _d2, z] = [0, 1, 2, 3, 4, 5, 6];
+    let of_p: Vec<usize> = associations(&capture, &model, &cells)
+        .into_iter()
+        .filter(|(cell, _)| *cell == p)
+        .map(|(_, header)| header)
+        .collect();
+    assert_eq!(of_p, [y, x, z]);
+}
+
+#[test]
+fn a_scope_too_long_to_read_refuses_a_table_with_a_row_group_only() {
+    // The last `th` of the first row is reached by no scan: no cell lies right
+    // of it or below it. Its scope is longer than the limit on attribute input.
+    // A table without groups never reads it; a table with a row group reads the
+    // scope of every header cell once, to know which cells name the group, and
+    // so is refused.
+    let long = "x".repeat(20_000);
+    let long = long.as_str();
+    let build = |grouped: bool| {
+        let (mut b, d) = wide_builder_without_registries();
+        let first = [
+            cell(&mut b, &d, "td", &[]),
+            cell(&mut b, &d, "th", &[("scope", long)]),
+        ];
+        let row = element(&mut b, &d, "tr", &[]);
+        b.establish_children(&row, &first).unwrap();
+        let rows = if grouped {
+            let body = element(&mut b, &d, "tbody", &[]);
+            b.establish_children(&body, &[row]).unwrap();
+            body
+        } else {
+            row
+        };
+        let table = element(&mut b, &d, "table", &[]);
+        b.establish_children(&table, &[rows]).unwrap();
+        (b.finish().unwrap(), table)
+    };
+    let (capture, table) = build(false);
+    assert!(query(&capture, &table, limits()).0.is_ok());
+    let (capture, table) = build(true);
+    assert!(query(&capture, &table, limits()).0.is_err());
+}
