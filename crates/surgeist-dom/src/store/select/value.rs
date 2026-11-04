@@ -512,6 +512,19 @@ mod tests {
         (boundary, result)
     }
 
+    /// The producer's accounting refused storage it never took, a defect in the producer: the
+    /// store reports it as a select protocol breach, not as exhaustion or a resource limit.
+    #[test]
+    fn a_producer_accounting_breach_is_a_select_protocol_error() {
+        let (dom, _, _, _) = fixture();
+        let cancel = AtomicBool::new(false);
+        let draft = Draft::new(&dom, Arc::new(crate::batch::BatchIdentity), &cancel).unwrap();
+        assert_eq!(
+            draft.option_value_control_error(HtmlOptionValueControlError::ProtocolViolated),
+            DomError::SelectProtocol
+        );
+    }
+
     #[test]
     fn source_option_value_actual_capture_sharing_obeys_the_live_envelope() {
         let (high, result) = source_value(16_000_000);
