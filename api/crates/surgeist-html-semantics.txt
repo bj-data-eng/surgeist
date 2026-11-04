@@ -69,6 +69,7 @@ pub enum surgeist_html_semantics::HtmlCaptureEdgeError<E>
 pub surgeist_html_semantics::HtmlCaptureEdgeError::Capture(surgeist_html_semantics::HtmlCaptureError)
 pub surgeist_html_semantics::HtmlCaptureEdgeError::Interrupted(E)
 impl<E: core::error::Error + 'static> core::error::Error for surgeist_html_semantics::HtmlCaptureEdgeError<E>
+pub fn surgeist_html_semantics::HtmlCaptureEdgeError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl<E: core::fmt::Display> core::fmt::Display for surgeist_html_semantics::HtmlCaptureEdgeError<E>
 pub fn surgeist_html_semantics::HtmlCaptureEdgeError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<E> core::convert::From<surgeist_html_semantics::HtmlCaptureError> for surgeist_html_semantics::HtmlCaptureEdgeError<E>
