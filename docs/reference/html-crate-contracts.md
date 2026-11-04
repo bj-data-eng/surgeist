@@ -341,11 +341,16 @@ lends them to it for the first time, which reads every slot once and is admitted
 
 The index describes the attributes of one element of one storage as they were at one revision. The
 storage keeps a serial of its own and a revision that every committed change to an attribute list
-advances (an append, replacement, swap or pop, through an index or not, and a merge append), and
+advances (an append, replacement, swap or pop, through an index or not, a merge append, the
+`ReplaceAttributes` operation, and the rollback of appended records), and
 an index records the serial, the element, the revision and the length it describes after each
 append it served. A step that finds any of them different rebuilds the index before it looks a
 name up, so an edit that held no index, or held it for another element or storage, cannot leave a
-stale index trusted. Without enough capacity a step compares every name as before; the verdict is
+stale index trusted. The revision is advanced where an element's attribute list is taken for
+change, not by each caller: in-place changes go through `OrderedAttributes::construction_backing_mut`,
+which takes the revision to advance, and whole-list replacement through
+`replace_in_construction`; reserving capacity changes no attribute and does not advance it. The
+commit of `ReplaceAttributes` describes its extra write. Without enough capacity a step compares every name as before; the verdict is
 the same and the work quadratic. Verdicts equal the pairwise ones, including the first reached
 failure: a repeat is reported against the single earlier attribute that owns the name, at the
 attribute that repeats it. A table that cannot serve a step (storage, probe or vacancy that does not

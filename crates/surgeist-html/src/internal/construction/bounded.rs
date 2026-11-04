@@ -622,6 +622,9 @@ impl HtmlConstructionStorage {
             }
         }
         self.arena.records.truncate(len);
+        // A later record may take an ordinal given up here, so a table of attribute names that
+        // described one of them must not be trusted.
+        self.arena.attribute_revision = self.arena.attribute_revision.wrapping_add(1);
         self.arena.usage = usage;
     }
     fn records_snapshot(

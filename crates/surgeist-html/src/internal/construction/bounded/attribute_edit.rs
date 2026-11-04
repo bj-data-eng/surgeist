@@ -401,7 +401,26 @@ impl HtmlConstructionAttributeEdit {
     fn attributes(&self) -> Result<&[Attribute], HtmlConstructionError> {
         Ok(self.shared_attributes()?.as_slice())
     }
+    /// The element's backing, taken for a change: the storage's attribute revision advances.
     fn backing_mut(&mut self) -> Result<&mut Arc<Vec<Attribute>>, HtmlConstructionError> {
+        let target = self
+            .stage
+            .target()
+            .ok_or(HtmlConstructionErrorKind::OperationNotReady)?;
+        let arena = &mut self.storage.arena;
+        match arena.records.get_mut(target).map(|record| &mut record.kind) {
+            Some(HtmlNodeKind::Element(v)) => Ok(v
+                .attributes
+                .construction_backing_mut(&mut arena.attribute_revision)),
+            _ => Err(HtmlConstructionErrorKind::OperationNotReady.into()),
+        }
+    }
+    /// Reserves capacity in the element's backing without changing any attribute.
+    fn reserve_backing(
+        &mut self,
+        additional: usize,
+    ) -> Result<Option<(Result<(), std::collections::TryReserveError>, usize)>, HtmlConstructionError>
+    {
         let target = self
             .stage
             .target()
@@ -413,7 +432,9 @@ impl HtmlConstructionAttributeEdit {
             .get_mut(target)
             .map(|record| &mut record.kind)
         {
-            Some(HtmlNodeKind::Element(v)) => Ok(v.attributes.construction_backing_mut()),
+            Some(HtmlNodeKind::Element(v)) => {
+                Ok(v.attributes.reserve_exact_in_construction(additional))
+            }
             _ => Err(HtmlConstructionErrorKind::OperationNotReady.into()),
         }
     }
@@ -2183,10 +2204,11 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                         .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
                     let _ = required_bytes;
                     let additional = s.minimum_capacity - s.edit.capacity.initialized_len;
-                    let backing = Arc::get_mut(s.edit.backing_mut()?)
+                    let (result, reached) = s
+                        .edit
+                        .reserve_backing(additional)?
                         .ok_or(HtmlConstructionErrorKind::SharedAllocationAliased)?;
-                    let result = backing.try_reserve_exact(additional);
-                    s.edit.capacity.capacity = backing.capacity();
+                    s.edit.capacity.capacity = reached;
                     capacity = true;
                     result.map_err(|_| HtmlConstructionErrorKind::AllocationFailed)?;
                     SlotPhase::Layout
@@ -2248,10 +2270,6 @@ impl HtmlConstructionReadyAttributeSlot<'_> {
     /// for every other step.
     pub fn commit(mut self) -> Option<Attribute> {
         let s = &mut self.slot;
-        if !matches!(s.input, SlotInput::Reserve(_)) {
-            s.edit.storage.arena.attribute_revision =
-                s.edit.storage.arena.attribute_revision.wrapping_add(1);
-        }
         let removed = match &mut s.input {
             SlotInput::Reserve(_) => None,
             SlotInput::Append(incoming) => {
@@ -4197,5 +4215,150 @@ mod tests {
             }
             .error())
         );
+    }
+
+    /// Every element's attributes as names and values, for comparing before and after a change.
+    fn attribute_lists(storage: &HtmlConstructionStorage) -> Vec<Vec<(String, String)>> {
+        (0..)
+            .map_while(|position| storage.node_at(position))
+            .filter_map(|node| match node.kind() {
+                HtmlNodeKind::Element(element) => Some(
+                    element
+                        .attributes()
+                        .as_slice()
+                        .iter()
+                        .map(|held| {
+                            (
+                                held.name().local_name().to_utf8().unwrap(),
+                                held.value().to_utf8().unwrap(),
+                            )
+                        })
+                        .collect(),
+                ),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn every_change_to_an_attribute_list_advances_the_attribute_revision_and_nothing_else_does() {
+        let (storage, _) = make_storage(vec![attribute("a", "1")]);
+        let mut storage = add_element(storage, vec![attribute("p", "1")]);
+        let mut admitted = Admitted::default();
+        let mut index = new_index(16);
+        // Each step changes the attribute lists, or only reserves capacity, as its label says.
+        type Step = Box<dyn Fn(HtmlConstructionStorage) -> HtmlConstructionStorage>;
+        let edit = |change: Box<dyn Fn(&mut HtmlConstructionAttributeEdit)>| -> Step {
+            Box::new(move |storage| {
+                let target = storage.node_at(0).unwrap().handle();
+                let mut edit = make_edit(storage, target, HtmlConstructionAttributeEditMode::Slots);
+                change(&mut edit);
+                finish(edit)
+            })
+        };
+        let steps: Vec<(&str, bool, Step)> = vec![
+            (
+                "reserve only",
+                false,
+                edit(Box::new(|edit| {
+                    slot(edit.reserve(8).unwrap());
+                })),
+            ),
+            (
+                "append",
+                true,
+                edit(Box::new(|edit| {
+                    slot(edit.reserve(1).unwrap());
+                    let mut incoming = vec![attribute("b", "2")];
+                    slot(edit.append(&mut incoming).unwrap());
+                })),
+            ),
+            (
+                "swap",
+                true,
+                edit(Box::new(|edit| {
+                    slot(edit.swap_adjacent(0).unwrap());
+                })),
+            ),
+            (
+                "replace",
+                true,
+                edit(Box::new(|edit| {
+                    let mut incoming = Some(attribute("c", "3"));
+                    slot(edit.replace(1, &mut incoming).unwrap());
+                })),
+            ),
+            (
+                "pop",
+                true,
+                edit(Box::new(|edit| {
+                    slot(edit.pop().unwrap());
+                })),
+            ),
+            (
+                "replace attributes",
+                true,
+                Box::new(|storage| {
+                    let element = storage.node_at(0).unwrap().handle();
+                    let replacement =
+                        OrderedAttributes::new(["x", "y"].map(|name| attribute(name, "w")))
+                            .unwrap();
+                    let mut operation =
+                        Some(storage.prepare(HtmlConstructionCommand::ReplaceAttributes {
+                            element,
+                            attributes: replacement.into(),
+                        }));
+                    while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
+                        action.perform().unwrap().accept();
+                    }
+                    let HtmlConstructionCommit::Changed { storage, .. } =
+                        slots::operation(&mut operation).unwrap().commit()
+                    else {
+                        panic!("replace")
+                    };
+                    storage
+                }),
+            ),
+            (
+                "named merge append",
+                true,
+                Box::new(|storage| {
+                    let target = storage.node_at(0).unwrap().handle();
+                    let names = [DocumentString::from("m")];
+                    let mut edit = make_edit(
+                        storage,
+                        target,
+                        HtmlConstructionAttributeEditMode::NamedMerge { candidate_count: 1 },
+                    );
+                    plan(&mut edit, &names);
+                    slot(edit.reserve(1).unwrap());
+                    let mut incoming = vec![attribute(names[0].clone(), "4")];
+                    slot(edit.append(&mut incoming).unwrap());
+                    finish(edit)
+                }),
+            ),
+        ];
+        for (label, changes, step) in steps {
+            let (lists, revision) = (attribute_lists(&storage), storage.arena.attribute_revision);
+            storage = step(storage);
+            let changed = attribute_lists(&storage) != lists;
+            assert_eq!(changed, changes, "{label}: the lists change as expected");
+            assert_eq!(
+                storage.arena.attribute_revision != revision,
+                changed,
+                "{label}: the revision advances exactly when an attribute list changes"
+            );
+        }
+        // An indexed append advances it too, and the index keeps up with it.
+        let revision = storage.arena.attribute_revision;
+        let (next, back, result) = append_in_new_edit(
+            storage,
+            std::mem::replace(&mut index, new_index(4)),
+            attribute("n", "5"),
+            &mut admitted,
+        );
+        result.unwrap();
+        assert_ne!(next.arena.attribute_revision, revision);
+        drop(back);
     }
 }

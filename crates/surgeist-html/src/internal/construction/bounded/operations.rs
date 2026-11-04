@@ -1338,9 +1338,13 @@ impl HtmlConstructionOperation {
                     };
                     plan.new_attributes = attributes.as_slice().len();
                     plan.old_attributes = old.attributes().len();
-                    // The element's attribute collection is the one assignment.
-                    plan.record_writes = add(plan.record_writes, 1)?;
-                    plan.copied_bytes = add(plan.copied_bytes, size_of::<OrderedAttributes>())?;
+                    // The element's attribute collection is the one assignment, and the storage's
+                    // attribute revision advances with it.
+                    plan.record_writes = add(plan.record_writes, 2)?;
+                    plan.copied_bytes = add(
+                        plan.copied_bytes,
+                        size_of::<OrderedAttributes>() + size_of::<u64>(),
+                    )?;
                 }
                 Command::AttachShadow { .. } => {
                     if !matches!(arena.records[a].kind, HtmlNodeKind::Element(_)) {
@@ -2405,7 +2409,10 @@ impl HtmlConstructionReadyOperation {
                     let HtmlNodeKind::Element(element) = &mut arena.records[p[0]].kind else {
                         unreachable!("checked attribute target kind");
                     };
-                    element.attributes = attributes.into_attributes();
+                    element.attributes.replace_in_construction(
+                        attributes.into_attributes(),
+                        &mut arena.attribute_revision,
+                    );
                 }
                 // The associations are applied below, from what planning resolved.
                 Command::AttachShadow { .. }
