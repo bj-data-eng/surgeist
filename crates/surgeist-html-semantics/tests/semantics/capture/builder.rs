@@ -2348,3 +2348,192 @@ fn cache_clone_planning_preserves_absence_unknown_and_capture_qualification() {
         Err(HtmlCaptureError::ForeignCapture)
     );
 }
+
+// DOM "attach a shadow root" (dom.bs concept-attach-a-shadow-root, steps 3 and
+// 4; pinned capture references/dom-foundation--editor-capture-20261010--08dff0a4827f.md
+// line 3493 onward): step 3 consults the host's custom element definition and
+// throws when its disable shadow flag is set, before step 4 looks at an
+// existing shadow root.
+fn disabling_definition(name: &str, local: &str) -> HtmlCustomElementDefinition {
+    HtmlCustomElementDefinition::new(name.into(), local.into(), false, true)
+}
+
+#[test]
+fn a_disabling_definition_is_reported_before_an_existing_root() {
+    let mut b = HtmlCaptureBuilder::new(limits(), HtmlHostFactsRevision::fresh());
+    let reg = b
+        .add_registry(Some(vec![
+            disabling_definition("x-block", "div"),
+            disabling_definition("x-host", "x-host"),
+        ]))
+        .unwrap();
+    let d = document(&mut b, HtmlScriptingStatus::Disabled);
+    let customized_builtin = b
+        .add_element(
+            &d,
+            name(Namespace::html(), "div"),
+            OrderedAttributes::default(),
+            HtmlCapturedIsValue::Value("x-block".into()),
+            HtmlCaptureRegistryInput::Registry(reg.clone()),
+        )
+        .unwrap();
+    let autonomous = b
+        .add_element(
+            &d,
+            name(Namespace::html(), "x-host"),
+            OrderedAttributes::default(),
+            HtmlCapturedIsValue::Absent,
+            HtmlCaptureRegistryInput::Registry(reg.clone()),
+        )
+        .unwrap();
+    for host in [&customized_builtin, &autonomous] {
+        b.add_shadow_root(
+            &d,
+            host,
+            captured_shadow_properties(),
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    }
+    let c = b.finish().unwrap();
+    for (label, host) in [
+        ("customized built-in", &customized_builtin),
+        ("autonomous", &autonomous),
+    ] {
+        let id = c.element_id(&c.subject_id(host).unwrap()).unwrap();
+        assert_eq!(
+            c.shadow_attachment_status(&id).unwrap(),
+            HtmlShadowAttachmentStatus::DefinitionDisallows,
+            "{label} host with an existing root"
+        );
+    }
+}
+
+#[test]
+fn a_disabling_definition_is_reported_before_an_unknown_shadow_root_fact() {
+    let mut b = HtmlCaptureBuilder::new(limits(), HtmlHostFactsRevision::fresh());
+    let reg = b
+        .add_registry(Some(vec![disabling_definition("x-host", "x-host")]))
+        .unwrap();
+    let d = document(&mut b, HtmlScriptingStatus::Disabled);
+    let host = b
+        .add_element(
+            &d,
+            name(Namespace::html(), "x-host"),
+            OrderedAttributes::default(),
+            HtmlCapturedIsValue::Absent,
+            HtmlCaptureRegistryInput::Registry(reg),
+        )
+        .unwrap();
+    let c = b.finish().unwrap();
+    let id = c.element_id(&c.subject_id(&host).unwrap()).unwrap();
+    assert_eq!(
+        c.shadow_attachment_status(&id).unwrap(),
+        HtmlShadowAttachmentStatus::DefinitionDisallows
+    );
+}
+
+// HTML "start tag template" (html-source 147330-147332; pinned HTML capture
+// 877d6146487f): the parser sets the template's contents to the shadow root
+// attached to the declarative shadow host, which is the template's parent.
+fn finished_with_template_reference(
+    template_parent_first: bool,
+    template_parent: Parent,
+    root_host: Host,
+) -> Result<HtmlCapture, HtmlCaptureError> {
+    let mut b = HtmlCaptureBuilder::new(limits(), HtmlHostFactsRevision::fresh());
+    let d = document(&mut b, HtmlScriptingStatus::Disabled);
+    let declarative_host = element(&mut b, &d, Namespace::html(), "div");
+    let other = element(&mut b, &d, Namespace::html(), "p");
+    let template = element(&mut b, &d, Namespace::html(), "template");
+    let root = match root_host {
+        Host::Declarative => b
+            .add_shadow_root(
+                &d,
+                &declarative_host,
+                captured_shadow_properties(),
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap(),
+        Host::Other => b
+            .add_shadow_root(
+                &d,
+                &other,
+                captured_shadow_properties(),
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap(),
+        Host::Unknown => b
+            .add_shadow_fragment(
+                &d,
+                captured_shadow_properties(),
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap(),
+    };
+    let parent = match template_parent {
+        Parent::Declarative => Some(&declarative_host),
+        Parent::Other => Some(&other),
+        Parent::Unknown => None,
+    };
+    if template_parent_first && let Some(parent) = parent {
+        b.establish_children(parent, std::slice::from_ref(&template))
+            .unwrap();
+    }
+    b.establish_template_shadow_reference(&template, &root)
+        .unwrap();
+    if !template_parent_first && let Some(parent) = parent {
+        b.establish_children(parent, std::slice::from_ref(&template))
+            .unwrap();
+    }
+    b.finish()
+}
+#[derive(Clone, Copy, Debug)]
+enum Parent {
+    Declarative,
+    Other,
+    Unknown,
+}
+#[derive(Clone, Copy, Debug)]
+enum Host {
+    Declarative,
+    Other,
+    Unknown,
+}
+
+#[test]
+fn a_template_shadow_reference_must_be_hosted_by_the_templates_parent() {
+    for parent_first in [true, false] {
+        let result =
+            finished_with_template_reference(parent_first, Parent::Other, Host::Declarative);
+        assert!(
+            matches!(
+                result,
+                Err(HtmlCaptureError::InvalidTemplateContentsReference)
+            ),
+            "parent established first: {parent_first}: {:?}",
+            result.err()
+        );
+    }
+}
+
+#[test]
+fn a_template_shadow_reference_hosted_by_the_templates_parent_is_accepted() {
+    for parent_first in [true, false] {
+        finished_with_template_reference(parent_first, Parent::Declarative, Host::Declarative)
+            .unwrap_or_else(|e| panic!("parent established first: {parent_first}: {e:?}"));
+    }
+}
+
+#[test]
+fn an_unknown_parent_or_host_cannot_contradict_a_template_shadow_reference() {
+    for (parent, host) in [
+        (Parent::Unknown, Host::Declarative),
+        (Parent::Unknown, Host::Other),
+        (Parent::Declarative, Host::Unknown),
+        (Parent::Other, Host::Unknown),
+    ] {
+        finished_with_template_reference(true, parent, host)
+            .unwrap_or_else(|e| panic!("{parent:?} / {host:?}: {e:?}"));
+    }
+}
