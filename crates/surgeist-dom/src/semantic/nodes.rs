@@ -8,8 +8,10 @@
 //! it fills and every item it moves, and only then allocates. A lookup charges one step for each
 //! slot it examines. A key's probe seed is a fixed integer mix of the parts of
 //! its identity that its store assigns deterministically (slot and generation),
-//! never of the owner, which a process-wide counter assigns. The same content
-//! therefore charges the same work in every store, and in every process.
+//! never of the owner, which a process-wide counter assigns. Two snapshots whose
+//! nodes have the same slots and generations therefore charge the same work,
+//! whichever store and process holds them. Slots and generations follow a
+//! store's edit history, so the guarantee is per snapshot, not per content.
 //!
 //! A finished capture retains a [`Lookup`]: the `NodeId` table that built it
 //! and a dense table from each subject's ordinal to its entry. The ordinal
@@ -26,7 +28,8 @@ use crate::{DomRegistryId, NodeId};
 
 /// A key an index probes from a fixed seed. Equality compares the whole key;
 /// the seed only chooses where a probe starts, so it may leave parts of the
-/// identity out, and must be the same for the same content in any store.
+/// identity out, and must be the same for keys with the same slot and
+/// generation in any store.
 pub(super) trait ProbeKey: Copy + Eq {
     fn seed(self) -> u64;
 }
