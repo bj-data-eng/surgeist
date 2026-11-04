@@ -201,6 +201,38 @@ impl SessionStorage {
         }
         Ok(None)
     }
+    /// Whether inserting or removing `node`, a base element, leaves the document's first
+    /// base element with an `href` as it was, so that no search of the document is needed
+    /// (HTML 877d6146487f, the base element: the document base URL follows "the first base
+    /// element in tree order that has an href attribute"). A base without an `href` is never
+    /// that element, and the element does not change when one is added before or after it.
+    /// Inserting such a base is therefore no change. Removing one is no change either unless
+    /// the removed subtree held the first base with an `href`, which the document's recorded
+    /// first tells without a search: no first, or no record of one because the document has
+    /// no base facts, which stops the parse at the first `href` that could make one.
+    fn base_cannot_move_first(
+        &self,
+        c: &mut ParseControl,
+        node: usize,
+        document: usize,
+        detached: Option<usize>,
+    ) -> Result<bool, SessionError> {
+        if self.form_attribute(c, node, "href")?.is_some() {
+            return Ok(false);
+        }
+        if detached.is_none() {
+            return Ok(true);
+        }
+        let Some(slot) = self.base_document_slot(c, document)? else {
+            return Ok(true);
+        };
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        let Some(RetainedPayload::BaseDocument { first, .. }) = self.payloads.values.get(slot)
+        else {
+            return Err(latch_registry_row(c));
+        };
+        Ok(first.is_none())
+    }
     /// Removal's virtual detached subtree is passed through every topology read.
     /// Physical staging is not interpreted as destination ancestry.
     pub(super) fn base_change(
@@ -243,6 +275,9 @@ impl SessionStorage {
         // Ordinary document membership, never hosted/template/shadow contents.
         // During removal, find the next first in the old actual node document.
         if detached.is_none() && self.ordinary_root(c, node, None)? != document {
+            return Ok(());
+        }
+        if !href_changed && self.base_cannot_move_first(c, node, document, detached)? {
             return Ok(());
         }
         let first = self.first_base_href(c, document, detached)?;

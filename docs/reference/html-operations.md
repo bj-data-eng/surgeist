@@ -2694,6 +2694,34 @@ credits for each unit of a run grow with the length of the run, closed or not: 6
 each unit grow from 20,305 to 50,710 over the same lengths. A caller sizing `work_credits` for
 `textarea` content should use the figure for the longest run it admits.
 
+<a id="group-walk-cost"></a>
+
+Four operations walk the tree for each insertion, as their group definitions are written. The
+base element's search is skipped when the change cannot move the first base with an `href`; the
+other three are not indexed.
+
+- **Base.** A base without an `href` is never the first base with one, so inserting it needs no
+  search, and removing it needs none unless the removed subtree held the first. n bases without an
+  `href` cost 1.5 million, 3.0 million, 6.0 million and 12.0 million record visits at 500, 1,000,
+  2,000 and 4,000, where the search made them cost 2.4 million to 68.1 million, and the adoption agency
+  moving 4,000 of them costs 8.4 million where it cost 305.2 million. A base with an `href`, an
+  `href` change and the removal of a subtree while a first base with an `href` is recorded still
+  search the tree, from its start to the first base with an `href` outside the removed subtree.
+- **Checked named radios.** n checked radios of one name cost 196.7 million, 499.2 million, 1,423.8
+  million and 4,550.8 million work credits at 500, 1,000, 2,000 and 4,000 (7.1 million to 294.9
+  million record visits).
+- **Open details with a name.** n open details of distinct names cost 162.8 million, 409.0 million,
+  1,150.9 million and 3,642.7 million credits (5.2 million to 196.0 million visits).
+- **`template for`.** n empty elements after one another cost 90.5 million, 186.1 million, 394.4
+  million and 880.1 million credits (3.2 million to 67.6 million visits).
+
+The last three stay walks. Each group is the elements of one name in one tree, and for radios
+also one form owner, so an index would have to follow every move of an element between trees,
+every change of its form owner, name or type, and every clone, and keep a stopped parse's first
+reached charge where the walk puts it. None of that has been shown to leave the results and the
+charges as they are, so a caller admitting untrusted input sizes `work_credits` for the
+quadratic figures above.
+
 <a id="open-element-scope-cost"></a>
 
 Whether a `p` element is in button scope is asked for every start tag that closes a `p`, so it

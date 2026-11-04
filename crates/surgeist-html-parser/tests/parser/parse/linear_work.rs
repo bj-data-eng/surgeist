@@ -1497,7 +1497,7 @@ fn record_visits_the_adoption_agency_adds_by_moving_bases_without_an_href_at_mos
     // `</b>` makes the adoption agency move the children of the `p`, one removal and one insertion
     // for each base. With no base that has an href, none of them changes the first.
     assert_visits_each_doubling_at_most_two_point_two_times(
-        REPEAT_SIZES,
+        [512, 1_024, 2_048, 4_096],
         "bases moved by the adoption agency",
         |n| {
             let bases = "<base>".repeat(n);

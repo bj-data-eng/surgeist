@@ -1,6 +1,16 @@
 //! HTML877d #radio-button-group over the actual canonical input records.
 //! Each source trigger drains before its caller advances. Terminal prefixes retain
 //! progress in ConstructionEffects; no public resume, peer list or group cache.
+//!
+//! The walk visits every node of the checked radio's tree for each insertion, as the
+//! group definition is written, so n checked radios of one name cost record visits
+//! quadratic in n: 7.1 million at 500, 22.7 million at 1,000, 79.5 million at 2,000 and
+//! 294.9 million at 4,000. It stays a walk, with the same work in the same order. A group
+//! is the radios of one name, one tree and one form owner, so an index of the checked
+//! ones would have to follow every move of a radio between trees, every change of its
+//! form owner, name or type, and every clone, and a stopped parse reports the first
+//! charge it reached, which a walk fixes at a record and an index would not.
+//! (docs/reference/html-operations.md, "group-walk-cost")
 use super::*;
 
 #[derive(Clone, Copy)]
