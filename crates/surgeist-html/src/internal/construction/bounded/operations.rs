@@ -3150,3 +3150,32 @@ mod pairing_tests {
         assert_eq!(storage.len(), 1);
     }
 }
+
+#[cfg(test)]
+mod native_finish_tests {
+    use super::*;
+    use crate::internal::construction::{Builder, NativeRoot};
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    /// Publication validates the whole tree again. A tree it refuses is an expected condition for
+    /// a fallible publisher, so the native builder reports it and does not abort the caller. The
+    /// child below lost the parent link that its parent's child list still names, which is the
+    /// refusal the publication's own pass reports.
+    #[test]
+    fn finish_reports_a_tree_that_publication_refuses_and_never_panics() {
+        let mut builder = Builder::new(
+            HtmlConstructionLimits::new(4, 4, 0, 8, 3),
+            NativeRoot::Fragment,
+        )
+        .unwrap();
+        let root = builder.handle(0);
+        builder
+            .append(&root, HtmlNodeKind::Comment("c".into()))
+            .unwrap();
+        if let Some(storage) = builder.storage.as_mut() {
+            storage.arena.records[1].parent = None;
+        }
+        let outcome = catch_unwind(AssertUnwindSafe(|| builder.finish()));
+        assert!(outcome.is_ok(), "finish panicked on a refused publication");
+    }
+}
