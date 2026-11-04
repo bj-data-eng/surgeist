@@ -129,20 +129,16 @@ impl DomHtmlCapture {
             limits.language,
         )
         .map_err(DomHtmlCaptureError::Language)?;
-        // The table built for the assignments above also serves the blockers.
-        let mut nodes = super::nodes::LazyNodes::new(&self.entries, Some(subjects.into_table()));
         let input = super::modal::with_facts(
             super::control::native_input(&self.source, &self.entries, &mut control)?
                 .with_language_direction(language),
             &self.source,
             &self.capture,
-            &mut nodes,
+            &self.entries,
             inert_nodes,
             limits.inert,
             &mut control,
         )?;
-        let subjects =
-            super::nodes::Subjects::with_table(&self.entries, nodes.into_table(&mut control)?);
         let input = super::control::with_native_state(
             input,
             &self.source,
