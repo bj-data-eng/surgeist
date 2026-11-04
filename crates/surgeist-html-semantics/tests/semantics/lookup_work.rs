@@ -748,3 +748,49 @@ fn author_queries_of_one_tree_share_its_item_graph() {
         |_, properties| properties.to_vec(),
     );
 }
+
+/// Keeping a tree's graph for the rest of a batch must not raise the scratch a
+/// batch needs: eight graph queries of one tree run within the scratch cap that
+/// admits one, and the batch releases everything when it ends.
+#[test]
+fn a_held_item_graph_adds_nothing_to_the_scratch_peak_and_is_released() {
+    let (capture, items, _) = microdata_page(20);
+    let context = HtmlSemanticContext::new(
+        &capture,
+        capture.host_facts_revision().clone(),
+        HtmlSemanticContextInput::new(vec![]),
+        0,
+    )
+    .unwrap();
+    let requests = |count: usize| -> Vec<HtmlSemanticRequest> {
+        items[..count]
+            .iter()
+            .map(|item| HtmlSemanticRequest::new(item.clone(), HtmlSemanticQuery::MicrodataItem))
+            .collect()
+    };
+    let run = |limits: HtmlSemanticLimits, count: usize| {
+        let mut session = HtmlSemanticSession::new(
+            &capture,
+            &context,
+            HtmlValueInterpreter::new(10000),
+            limits,
+            HtmlSemanticCancellation::new(),
+        )
+        .unwrap();
+        let report = session.query(&requests(count));
+        (report, session.usage())
+    };
+    let (one, _) = run(roomy_limits(), 1);
+    let one = one.unwrap().usage();
+    assert!(one.peak_scratch_records() > 0);
+    let big = 1 << 40;
+    let capped = HtmlSemanticLimits::new(big, big, one.peak_scratch_records(), 0, big, big);
+    let (eight, after) = run(capped, 8);
+    let eight = eight.unwrap();
+    assert_eq!(
+        eight.usage().peak_scratch_records(),
+        one.peak_scratch_records()
+    );
+    assert_eq!(eight.usage().scratch_records(), 0);
+    assert_eq!(after.scratch_records(), 0);
+}

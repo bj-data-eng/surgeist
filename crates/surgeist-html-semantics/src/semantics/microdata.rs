@@ -430,7 +430,7 @@ impl<'a> HtmlSemanticSession<'a> {
         if !matches!(node.kind(), HtmlCapturedNodeKind::Document(_)) {
             return Ok(HtmlSemanticValue::Inapplicable);
         }
-        let graph = self.md_graph(id)?;
+        let graph = self.md_tree_graph(id)?;
         let mut frames = Vec::new();
         let mut contributors = Vec::new();
         let result = (|| {
@@ -496,7 +496,6 @@ impl<'a> HtmlSemanticSession<'a> {
         })();
         self.release_scratch(&frames);
         self.release_scratch(&contributors);
-        self.md_release_graph(&graph);
         result
     }
     pub(super) fn microdata_author(
@@ -647,7 +646,7 @@ impl<'a> HtmlSemanticSession<'a> {
         } else if names.raw().is_some() {
             match self.ordinary_tree_root(id)? {
                 Ok(root) => {
-                    let graph = self.md_graph(&root)?;
+                    let graph = self.md_tree_graph(&root)?;
                     let result = (|| {
                         let mut rows = Vec::new();
                         let mut received = false;
@@ -752,7 +751,6 @@ impl<'a> HtmlSemanticSession<'a> {
                         };
                         Ok((contribution, receivers))
                     })();
-                    self.md_release_graph(&graph);
                     (contribution, receivers) = result?;
                 }
                 Err(m) => {
@@ -1579,6 +1577,11 @@ struct Crawl {
     missing: Option<HtmlSemanticMissing>,
     revisit: HtmlMicrodataCondition<HtmlCaptureSubjectId>,
 }
+/// The item graph of one tree, shared by the graph queries of a batch.
+pub(super) struct TreeGraph {
+    root: HtmlCaptureSubjectId,
+    graph: Arc<Graph>,
+}
 struct Graph {
     items: Vec<HtmlCaptureSubjectId>,
     edges: Vec<(HtmlCaptureSubjectId, HtmlCaptureSubjectId)>,
@@ -1664,6 +1667,16 @@ impl UrlUse {
             Self::Identifier => 2,
             Self::Property => 3,
         }
+    }
+}
+impl HtmlSemanticQuery {
+    /// Whether the query reads the item graph of its tree, so a batch keeps the
+    /// graph for the query after it rather than building it again.
+    pub(super) fn uses_item_graph(self) -> bool {
+        matches!(
+            self,
+            Self::MicrodataItem | Self::MicrodataAuthor | Self::MicrodataDocumentAuthor
+        )
     }
 }
 impl<'a> HtmlSemanticSession<'a> {
@@ -2361,6 +2374,36 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         Ok(graph)
     }
+    /// The item graph of the tree rooted at `root`. The capture is immutable, so
+    /// a batch builds a tree's graph once, and each later query that reads it
+    /// charges one unit for finding it. A query of another tree, or of a kind
+    /// that does not read the graph, releases the held graph first, so the held
+    /// graph never adds to the scratch of a query that does not need it.
+    fn md_tree_graph(
+        &mut self,
+        root: &HtmlCaptureSubjectId,
+    ) -> Result<Arc<Graph>, HtmlSemanticFailure> {
+        if let Some(held) = &self.microdata_graph
+            && held.root == *root
+        {
+            let graph = held.graph.clone();
+            self.charge(1)?;
+            return Ok(graph);
+        }
+        self.md_drop_tree_graph();
+        let graph = Arc::new(self.md_graph(root)?);
+        self.microdata_graph = Some(TreeGraph {
+            root: root.clone(),
+            graph: graph.clone(),
+        });
+        Ok(graph)
+    }
+    /// Releases the held item graph and its scratch, if any.
+    pub(super) fn md_drop_tree_graph(&mut self) {
+        if let Some(held) = self.microdata_graph.take() {
+            self.md_release_graph(&held.graph);
+        }
+    }
     fn md_release_graph(&mut self, graph: &Graph) {
         self.release_scratch(&graph.items);
         self.release_scratch(&graph.edges);
@@ -2604,14 +2647,9 @@ impl<'a> HtmlSemanticSession<'a> {
         } else {
             match self.ordinary_tree_root(id)? {
                 Ok(root) => {
-                    let graph = self.md_graph(&root)?;
-                    let fresh = self.md_tokens(e, HtmlMicrodataTokenKind::ItemType);
-                    let types = match fresh {
-                        Ok(fresh) => self.md_type_context(id, fresh, Some(&graph)),
-                        Err(error) => Err(error),
-                    };
-                    self.md_release_graph(&graph);
-                    types?
+                    let graph = self.md_tree_graph(&root)?;
+                    let fresh = self.md_tokens(e, HtmlMicrodataTokenKind::ItemType)?;
+                    self.md_type_context(id, fresh, Some(&graph))?
                 }
                 Err(m) => HtmlMicrodataTypeContext {
                     typing: HtmlMicrodataTyping::Missing(m.clone()),
