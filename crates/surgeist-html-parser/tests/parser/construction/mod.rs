@@ -9,7 +9,7 @@ mod dialog;
 mod focus;
 mod input;
 mod link_history;
-mod meta_csp;
+pub(in crate::parser) mod meta_csp;
 mod meta_csp_accounting;
 mod meta_history;
 mod nonce;

@@ -195,31 +195,44 @@ impl SessionStorage {
         else {
             return Ok(None);
         };
-        for position in 0..self
+        let siblings = self
             .construction
             .node_at(parent)
-            .ok_or_else(|| latch_registry_row(c))?
-            .child_count()
+            .ok_or_else(|| latch_registry_row(c))?;
+        let count = siblings.child_count();
+        // The walk that reached `node` left its ordinal behind (a walk over
+        // the siblings of one parent asks for each in turn), so the search
+        // starts there and costs one step, not the siblings before it.
+        let mut ordinal = None;
+        if let Some(hinted) = c.sibling_hint(parent)
+            && hinted < count
         {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            let child = self
-                .construction
-                .node_at(parent)
-                .ok_or_else(|| latch_registry_row(c))?
-                .child_at(position)
-                .ok_or_else(|| latch_registry_row(c))?
-                .position();
-            if child == node {
-                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                return Ok(self
-                    .construction
-                    .node_at(parent)
-                    .ok_or_else(|| latch_registry_row(c))?
-                    .child_at(successor(c, position)?)
-                    .map(|node| node.position()));
+            if siblings.child_at(hinted).map(|child| child.position()) == Some(node) {
+                ordinal = Some(hinted);
             }
         }
-        Err(SessionError::WrongSibling)
+        if ordinal.is_none() {
+            for position in 0..count {
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                let child = siblings
+                    .child_at(position)
+                    .ok_or_else(|| latch_registry_row(c))?
+                    .position();
+                if child == node {
+                    ordinal = Some(position);
+                    break;
+                }
+            }
+        }
+        let ordinal = ordinal.ok_or(SessionError::WrongSibling)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        let following = successor(c, ordinal)?;
+        let next = siblings.child_at(following).map(|node| node.position());
+        if next.is_some() {
+            c.note_sibling(parent, following);
+        }
+        Ok(next)
     }
     fn find_markers(
         &self,

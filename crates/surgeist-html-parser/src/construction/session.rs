@@ -456,7 +456,10 @@ impl ParserArenaSession {
             construction,
             payloads,
             failed_text_append: _,
-            style_order: _,
+            style_order_floor: _,
+            main_tree_styleless: _,
+            style_subtree: _,
+            detached_order: _,
             meta_batches: _,
             #[cfg(test)]
                 cancel_after_text_append_chunk: _,

@@ -34,13 +34,13 @@ fn native_layout() -> HtmlCspArtifactLayout {
 fn allow(_: HtmlCspLayout) -> Result<(), Infallible> {
     Ok(())
 }
-struct Processor {
+pub(in crate::parser) struct Processor {
     authority: HtmlCspProcessorAuthority,
     profile: HtmlCspProcessorProfile,
-    calls: usize,
+    pub(in crate::parser) calls: usize,
 }
 impl Processor {
-    fn new() -> Self {
+    pub(in crate::parser) fn new() -> Self {
         let authority = HtmlCspProcessorAuthority::new_with(&mut allow).unwrap();
         let profile = authority.profile_with(1, &mut allow).unwrap();
         Self {
