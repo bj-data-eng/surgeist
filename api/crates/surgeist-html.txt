@@ -2546,7 +2546,7 @@ pub fn surgeist_html::bounded::construction::HtmlConstructionObservation<'a>::ac
 pub fn surgeist_html::bounded::construction::HtmlConstructionObservation<'a>::allocation(&self) -> core::option::Option<&surgeist_html::bounded::construction::HtmlConstructionAllocationSnapshot>
 pub struct surgeist_html::bounded::construction::HtmlConstructionOperation
 impl surgeist_html::bounded::construction::HtmlConstructionOperation
-pub fn surgeist_html::bounded::construction::HtmlConstructionOperation::abort(self) -> surgeist_html::bounded::construction::HtmlConstructionAbort
+pub fn surgeist_html::bounded::construction::HtmlConstructionOperation::abort(self) -> core::result::Result<surgeist_html::bounded::construction::HtmlConstructionAbort, surgeist_html::bounded::construction::HtmlConstructionRefusal<Self>>
 pub fn surgeist_html::bounded::construction::HtmlConstructionOperation::next_action(&mut self) -> core::result::Result<core::option::Option<surgeist_html::bounded::construction::HtmlConstructionAction<'_>>, surgeist_html::construction::HtmlConstructionError>
 pub fn surgeist_html::bounded::construction::HtmlConstructionOperation::try_ready(self) -> core::result::Result<surgeist_html::bounded::construction::HtmlConstructionReadyOperation, surgeist_html::bounded::construction::HtmlConstructionRefusal<Self>>
 pub struct surgeist_html::bounded::construction::HtmlConstructionReadyAttributeSlot<'a>
@@ -2558,8 +2558,8 @@ pub fn surgeist_html::bounded::construction::HtmlConstructionReadyInitialization
 pub fn surgeist_html::bounded::construction::HtmlConstructionReadyInitialization::commit(self) -> surgeist_html::bounded::construction::HtmlConstructionStorage
 pub struct surgeist_html::bounded::construction::HtmlConstructionReadyOperation
 impl surgeist_html::bounded::construction::HtmlConstructionReadyOperation
-pub fn surgeist_html::bounded::construction::HtmlConstructionReadyOperation::abort(self) -> surgeist_html::bounded::construction::HtmlConstructionAbort
-pub fn surgeist_html::bounded::construction::HtmlConstructionReadyOperation::commit(self) -> surgeist_html::bounded::construction::HtmlConstructionCommit
+pub fn surgeist_html::bounded::construction::HtmlConstructionReadyOperation::abort(self) -> core::result::Result<surgeist_html::bounded::construction::HtmlConstructionAbort, surgeist_html::bounded::construction::HtmlConstructionRefusal<Self>>
+pub fn surgeist_html::bounded::construction::HtmlConstructionReadyOperation::commit(self) -> core::result::Result<surgeist_html::bounded::construction::HtmlConstructionCommit, surgeist_html::bounded::construction::HtmlConstructionRefusal<Self>>
 pub struct surgeist_html::bounded::construction::HtmlConstructionRecovery
 impl surgeist_html::bounded::construction::HtmlConstructionRecovery
 pub fn surgeist_html::bounded::construction::HtmlConstructionRecovery::into_parts(self) -> (surgeist_html::bounded::construction::HtmlConstructionStorage, surgeist_html::bounded::construction::HtmlConstructionRetired)
@@ -2597,7 +2597,7 @@ pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::retire(sel
 pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::usage(&self) -> surgeist_html::construction::HtmlConstructionUsage
 pub struct surgeist_html::bounded::construction::HtmlConstructionTextAppend
 impl surgeist_html::bounded::construction::HtmlConstructionTextAppend
-pub fn surgeist_html::bounded::construction::HtmlConstructionTextAppend::abort(self) -> surgeist_html::bounded::construction::HtmlConstructionTextAppendCompletion
+pub fn surgeist_html::bounded::construction::HtmlConstructionTextAppend::abort(self) -> core::result::Result<surgeist_html::bounded::construction::HtmlConstructionTextAppendCompletion, surgeist_html::bounded::construction::HtmlConstructionRefusal<Self>>
 pub fn surgeist_html::bounded::construction::HtmlConstructionTextAppend::backing(&self) -> core::option::Option<&surgeist_html::values::DocumentString>
 pub fn surgeist_html::bounded::construction::HtmlConstructionTextAppend::begin(storage: surgeist_html::bounded::construction::HtmlConstructionStorage, node: surgeist_html::construction::HtmlBuilderNode, incoming: surgeist_html::values::DocumentString) -> Self
 pub fn surgeist_html::bounded::construction::HtmlConstructionTextAppend::capacity(&self) -> core::option::Option<surgeist_html::bounded::construction::HtmlConstructionTextAppendCapacity>
@@ -2630,7 +2630,7 @@ pub fn surgeist_html::bounded::construction::HtmlConstructionTextAppendObservati
 pub fn surgeist_html::bounded::construction::HtmlConstructionTextAppendObservation<'_>::preserves_original(&self) -> bool
 pub struct surgeist_html::bounded::construction::HtmlConstructionTextAppendReady
 impl surgeist_html::bounded::construction::HtmlConstructionTextAppendReady
-pub fn surgeist_html::bounded::construction::HtmlConstructionTextAppendReady::abort(self) -> surgeist_html::bounded::construction::HtmlConstructionTextAppendCompletion
+pub fn surgeist_html::bounded::construction::HtmlConstructionTextAppendReady::abort(self) -> core::result::Result<surgeist_html::bounded::construction::HtmlConstructionTextAppendCompletion, surgeist_html::bounded::construction::HtmlConstructionRefusal<Self>>
 pub fn surgeist_html::bounded::construction::HtmlConstructionTextAppendReady::commit(self) -> core::result::Result<surgeist_html::bounded::construction::HtmlConstructionTextAppendCompletion, surgeist_html::bounded::construction::HtmlConstructionRefusal<Self>>
 pub struct surgeist_html::bounded::construction::HtmlConstructionTextAppendWork
 pub surgeist_html::bounded::construction::HtmlConstructionTextAppendWork::atomic_layout_bytes: usize
@@ -4833,11 +4833,12 @@ pub surgeist_html::elements::link::HtmlRelKeyword::Tag
 pub surgeist_html::elements::link::HtmlRelKeyword::TermsOfService
 impl surgeist_html::elements::link::HtmlRelKeyword
 pub const surgeist_html::elements::link::HtmlRelKeyword::ALL: &'static [Self]
+pub fn surgeist_html::elements::link::HtmlRelKeyword::keyword(self) -> &'static str
+pub fn surgeist_html::elements::link::HtmlRelKeyword::space_token(self) -> surgeist_html::microsyntax::tokens::HtmlSpaceToken
+impl surgeist_html::elements::link::HtmlRelKeyword
 pub fn surgeist_html::elements::link::HtmlRelKeyword::body_ok(self) -> bool
 pub fn surgeist_html::elements::link::HtmlRelKeyword::effect(self, role: surgeist_html::elements::link::HtmlRelRole) -> core::option::Option<surgeist_html::elements::link::HtmlRelEffect>
-pub fn surgeist_html::elements::link::HtmlRelKeyword::keyword(self) -> &'static str
 pub fn surgeist_html::elements::link::HtmlRelKeyword::possible_supported_token(self, role: surgeist_html::elements::link::HtmlRelRole) -> bool
-pub fn surgeist_html::elements::link::HtmlRelKeyword::space_token(self) -> surgeist_html::microsyntax::tokens::HtmlSpaceToken
 pub enum surgeist_html::elements::link::HtmlRelLinks
 pub surgeist_html::elements::link::HtmlRelLinks::Declared
 pub surgeist_html::elements::link::HtmlRelLinks::ExtensionEffectsUnchecked
