@@ -8,7 +8,7 @@ use crate::{
         tokenizer::{
             Tokenizer,
             states::HtmlTokenizerState,
-            token::{Event, TagKind, TokenKind},
+            token::{Event, TokenKind},
         },
     },
 };
@@ -2239,8 +2239,8 @@ fn cancelled_prologue_keeps_caller_token_and_allows_original_owner_cleanup() {
 }
 
 #[test]
-fn prologue_diagnostic_cap_stops_before_implicit_creation_and_releases_retained_tag() {
-    use super::prologue::{DocumentPrologue, PrologueError};
+fn prologue_diagnostic_past_the_cap_is_dropped_and_creation_proceeds() {
+    use super::prologue::DocumentPrologue;
     let source = HtmlSource::utf8("<div id=x>");
     let caps = limits(100).into_builder().diagnostics(0).finish().unwrap();
     let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
@@ -2254,28 +2254,31 @@ fn prologue_diagnostic_cap_stops_before_implicit_creation_and_releases_retained_
     .unwrap();
     let mut engine = DocumentPrologue::new(&source, &mut c).unwrap();
     let mut input = Some(next_token(&mut tokenizer, &mut c));
-    assert!(matches!(
-        engine.process(&mut input, &mut c),
-        Err(PrologueError::Kernel(KernelError::Stop(
-            HtmlParseStop::LimitExceeded {
-                resource: HtmlParseResource::Diagnostics,
-                ..
-            }
-        )))
-    ));
-    assert!(input.is_none());
+    // The missing-doctype diagnostic is counted, not retained, and the
+    // implicit html element is created as it would be with room to retain it.
+    engine.process(&mut input, &mut c).unwrap();
+    assert_eq!(c.stop(), None);
     assert_eq!(
-        c.usage().resource(HtmlParseResource::ManagedNodes).current,
+        engine
+            .kernel()
+            .unwrap()
+            .session
+            .evidence(&mut c)
+            .unwrap()
+            .dropped(),
         1
     );
     assert_eq!(
-        c.usage().resource(HtmlParseResource::OpenElements).current,
+        c.usage().resource(HtmlParseResource::Diagnostics).current,
         0
     );
-    let stop = c.stop();
+    assert_eq!(
+        c.usage().resource(HtmlParseResource::ManagedNodes).current,
+        2
+    );
     tokenizer.release(&mut c).unwrap();
     engine.release(&mut c).unwrap();
-    assert_eq!(c.stop(), stop);
+    assert_eq!(c.stop(), None);
     assert_released(&c);
 }
 
@@ -3305,8 +3308,8 @@ fn eof_and_permitted_beforehead_endtags_create_head_with_exact_continuation_inpu
 }
 
 #[test]
-fn head_diagnostic_cap_preserves_pending_tag_first_stop_and_terminal_ownership() {
-    use super::head::{HeadError, HtmlInsertionMode};
+fn head_diagnostic_past_the_cap_is_dropped_and_the_tag_is_still_discarded() {
+    use super::head::HtmlInsertionMode;
     let source = HtmlSource::utf8("<!doctype html><html><head></oops>");
     let mut c = ParseControl::new(
         limits(100).into_builder().diagnostics(0).finish().unwrap(),
@@ -3314,39 +3317,15 @@ fn head_diagnostic_cap_preserves_pending_tag_first_stop_and_terminal_ownership()
     );
     let mut driver = head_stage(&source, &mut c);
     driver.step(&mut c).unwrap();
-    assert!(matches!(
-        driver.step(&mut c),
-        Err(HeadError::Kernel(KernelError::Stop(
-            HtmlParseStop::LimitExceeded {
-                resource: HtmlParseResource::Diagnostics,
-                ..
-            }
-        )))
-    ));
-    assert_eq!(
-        driver.state.as_ref().unwrap().mode,
-        HtmlInsertionMode::InHead
-    );
-    assert!(matches!(
-        &driver
-            .state
-            .as_ref()
-            .unwrap()
-            .pending
-            .as_ref()
-            .unwrap()
-            .payload,
-        super::prologue::Payload::Tag(Some(_))
-    ));
-    let first = c.stop();
-    let reads = c.usage().work(HtmlParseWorkCategory::InputUnitRead);
-    let writes = c.usage().work(HtmlParseWorkCategory::RecordWrite);
-    assert!(driver.step(&mut c).is_err());
-    assert_eq!(c.stop(), first);
-    assert_eq!(c.usage().work(HtmlParseWorkCategory::InputUnitRead), reads);
-    assert_eq!(c.usage().work(HtmlParseWorkCategory::RecordWrite), writes);
+    // The unexpected end tag is counted, not retained, and then ignored as the
+    // Standard directs for any parse error it can recover from.
+    driver.step(&mut c).unwrap();
+    let state = driver.state.as_ref().unwrap();
+    assert_eq!(state.mode, HtmlInsertionMode::InHead);
+    assert!(state.pending.is_none());
+    assert_eq!(state.before.kernel.session.observed_evidence().dropped(), 1);
+    assert_eq!(c.stop(), None);
     driver.release(&mut c).unwrap();
-    assert_eq!(c.stop(), first);
     assert_released(&c);
 }
 
@@ -4169,11 +4148,6 @@ fn standalone_script_resource_caps_retain_created_payloads_and_stop_without_part
             4,
         ),
         (limits(2), HtmlParseResource::OpenElements, 5),
-        (
-            limits(100).into_builder().diagnostics(0).finish().unwrap(),
-            HtmlParseResource::Diagnostics,
-            5,
-        ),
     ] {
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8("<!doctype html><script/>x</script>"),
@@ -4205,6 +4179,17 @@ fn standalone_script_resource_caps_retain_created_payloads_and_stop_without_part
         assert_eq!(driver.control.stop(), Some(stop));
         assert_released(&driver.control);
     }
+}
+
+#[test]
+fn standalone_script_diagnostic_past_the_cap_is_dropped_and_the_script_is_not_void() {
+    // 13.2.5.40 Self-closing start tag state on a non-void HTML element: one
+    // `non-void-html-element-start-tag-with-trailing-solidus` parse error.
+    assert_dropped_diagnostics_keep_the_tree(
+        || HtmlSource::utf8("<!doctype html><script/>x</script>"),
+        0,
+        1,
+    );
 }
 
 #[test]
@@ -4620,6 +4605,49 @@ pub(super) fn expected_outline(rows: &[(usize, &str)]) -> Vec<(usize, Vec<u16>)>
     rows.iter()
         .map(|(depth, value)| (*depth, value.encode_utf16().collect()))
         .collect()
+}
+
+/// A parse whose `Diagnostics` cap is below the number of parse errors the
+/// source raises completes with the tree of a parse that retains all of them,
+/// keeps the first `cap` diagnostics in parse order and counts the rest.
+/// `total` is the number of parse errors the Standard requires for `source`,
+/// derived by hand at each call.
+pub(super) fn assert_dropped_diagnostics_keep_the_tree(
+    source: impl Fn() -> HtmlSource,
+    cap: u64,
+    total: usize,
+) {
+    let parse = |cap| {
+        crate::HtmlDocumentParseRequest::offline(
+            source(),
+            limits(100)
+                .into_builder()
+                .diagnostics(cap)
+                .finish()
+                .unwrap(),
+        )
+        .parse()
+        .unwrap_or_else(|failure| {
+            panic!("cap {cap} must not stop the parse: {:?}", failure.reason())
+        })
+    };
+    let all = parse(1_000);
+    assert_eq!(all.diagnostics().len(), total, "parse errors of the source");
+    assert_eq!(all.diagnostics().dropped(), 0);
+    let capped = parse(cap);
+    let kept = total.min(cap as usize);
+    assert_eq!(capped.diagnostics().len(), kept);
+    assert_eq!(capped.diagnostics().dropped(), (total - kept) as u64);
+    let (all_view, capped_view) = (all.diagnostics(), capped.diagnostics());
+    for index in 0..kept {
+        let (full, _) = all_view.retained_record(index).unwrap().unwrap();
+        let (record, _) = capped_view.retained_record(index).unwrap().unwrap();
+        assert_eq!(record.kind(), full.kind(), "retained diagnostic {index}");
+    }
+    assert_eq!(
+        outline(capped.document().unwrap()),
+        outline(all.document().unwrap())
+    );
 }
 
 fn assert_pre_listing_self_closing_rule(
@@ -6040,40 +6068,42 @@ fn body_temporary_head_open_cap_failure_retains_obligation_and_created_raw_node_
 }
 
 #[test]
-fn body_null_diagnostic_cap_and_cancel_stop_without_successful_partial_continuation() {
+fn body_null_diagnostic_past_the_cap_is_dropped_and_cancel_still_stops_without_partial_continuation()
+ {
     let request = crate::HtmlDocumentParseRequest::offline(
         HtmlSource::utf8("<body>a\0b"),
         limits(100).into_builder().diagnostics(2).finish().unwrap(),
     );
-    // Missing-doctype and lexical NULL evidence consume two slots before
-    // the independent tree-construction NULL error.
+    // Missing-doctype and lexical NULL evidence fill the two slots, so the
+    // independent tree-construction NULL error is counted and dropped. The
+    // NULL is ignored exactly as when the diagnostic is retained.
     let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
-    let mut error = None;
-    for _ in 0..100 {
-        match driver.step() {
-            Ok(_) => {}
-            Err(value) => {
-                error = Some(value);
-                break;
-            }
-        }
-    }
-    assert!(error.is_some());
-    let stop = driver.control.stop().unwrap();
-    assert!(matches!(
-        stop,
-        HtmlParseStop::LimitExceeded {
-            resource: HtmlParseResource::Diagnostics,
-            ..
-        }
-    ));
-    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
-    assert!(state.body_runs.is_some());
-    assert!(state.body_run.is_some());
-    assert!(driver.step().is_err());
-    assert_eq!(driver.control.stop(), Some(stop));
-    driver.release().unwrap();
-    assert_released(&driver.control);
+    assert_eq!(
+        standalone_boundary(&mut driver),
+        super::head::HeadStep::Complete
+    );
+    assert_eq!(
+        driver
+            .head
+            .as_ref()
+            .unwrap()
+            .state
+            .as_ref()
+            .unwrap()
+            .before
+            .kernel
+            .session
+            .observed_evidence()
+            .dropped(),
+        1
+    );
+    let (mut c, mut frozen) = body_document(driver);
+    assert_eq!(
+        outline(frozen.document().unwrap()),
+        expected_outline(&[(0, "html"), (1, "head"), (1, "body"), (2, "#ab")])
+    );
+    frozen.release(&mut c).unwrap();
+    assert_released(&c);
     let request =
         crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8("<body><p>x"), limits(100));
     let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
@@ -7077,38 +7107,204 @@ fn formatting_noah_replay_keeps_each_retained_original_attribute_order() {
     assert_released(&c);
 }
 
+/// Every producer that appends a diagnostic, with a cap that drops some of its
+/// diagnostics: each work cut around each counted drop stops on work, leaves no
+/// storage behind and counts only the drops it paid for.
 #[test]
-fn formatting_nested_a_diagnostic_cap_stops_before_adoption_or_second_creation() {
-    let request = crate::HtmlDocumentParseRequest::offline(
-        HtmlSource::utf8("<!doctype html><a>1<a id=kept>2"),
-        limits(100).into_builder().diagnostics(0).finish().unwrap(),
-    );
-    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
-    let mut stopped = false;
-    for _ in 0..100 {
-        if driver.step().is_err() {
-            stopped = true;
-            break;
+fn work_cuts_around_every_dropped_diagnostic_stop_on_work_and_clean_up() {
+    use crate::{HtmlParseFailureReason, HtmlParseResource as R};
+    fn utf16_null_svg() -> HtmlSource {
+        HtmlSource::utf16(DocumentString::from_utf16(
+            "<!doctype html><svg>"
+                .encode_utf16()
+                .chain([0, 0])
+                .chain("</svg>".encode_utf16())
+                .collect::<Vec<_>>(),
+        ))
+    }
+    // A case's name, its source and the `Diagnostics` cap that drops some of it.
+    type Case = (&'static str, fn() -> HtmlSource, u64);
+    let cases: [Case; 16] = [
+        ("tokenizer", || HtmlSource::utf8("<!doctype html>< < <"), 0),
+        ("prologue", || HtmlSource::utf8("<div id=x>"), 0),
+        (
+            "head",
+            || HtmlSource::utf8("<!doctype html><html><head></oops>"),
+            0,
+        ),
+        ("body", || HtmlSource::utf8("<body>a\0b"), 2),
+        ("foreign", utf16_null_svg, 1),
+        (
+            "frameset",
+            || HtmlSource::utf8("<!doctype html><form><frameset>"),
+            0,
+        ),
+        (
+            "tables",
+            || HtmlSource::utf8("<!doctype html><table> a<tr>"),
+            1,
+        ),
+        (
+            "nested a",
+            || HtmlSource::utf8("<!doctype html><a>1<a id=kept>2"),
+            0,
+        ),
+        (
+            "button",
+            || HtmlSource::utf8("<!doctype html><button><p>A<button id=kept>"),
+            0,
+        ),
+        (
+            "form end",
+            || HtmlSource::utf8("<!doctype html><form id=f><div></form>"),
+            0,
+        ),
+        (
+            "nested form",
+            || HtmlSource::utf8("<!doctype html><form><p>1<form id=kept>"),
+            0,
+        ),
+        (
+            "after head template",
+            || HtmlSource::utf8("<!doctype html><head></head><template>x</template>"),
+            0,
+        ),
+        (
+            "script",
+            || HtmlSource::utf8("<!doctype html><script/>x</script>"),
+            0,
+        ),
+        // NULs in table text: the tree builder's own `NullInTable`.
+        (
+            "table NUL",
+            || HtmlSource::utf8("<!doctype html><table>\0\0"),
+            0,
+        ),
+        // Non-whitespace and NUL text in a frameset, one error per origin.
+        (
+            "frameset text",
+            || HtmlSource::utf8("<!doctype html><frameset>A \0\tB</frameset>"),
+            0,
+        ),
+        // The table case again with room for nothing, so the non-whitespace
+        // and anything-else table errors are dropped rather than retained.
+        (
+            "table text",
+            || HtmlSource::utf8("<!doctype html><table> a<tr>"),
+            0,
+        ),
+    ];
+    for (name, source, cap) in cases {
+        let limits_at = |work: u64| {
+            limits(100)
+                .into_builder()
+                .diagnostics(cap)
+                .work_credits(work)
+                .finish()
+                .unwrap()
+        };
+        // Where the public path counts each drop: the work credits in use right
+        // after the drop's four credits (the range check, then the visit and
+        // the write that count it) were paid.
+        crate::construction::evidence::DROP_MARKS.with(|marks| marks.borrow_mut().clear());
+        let parse_at = |work: u64| {
+            crate::HtmlDocumentParseRequest::offline(source(), limits_at(work))
+                .parse()
+                .map_err(Box::new)
+        };
+        let total = parse_at(100_000_000)
+            .unwrap()
+            .usage()
+            .resource(R::WorkCredits)
+            .current();
+        let marks = crate::construction::evidence::DROP_MARKS
+            .with(|marks| std::mem::take(&mut *marks.borrow_mut()));
+        assert!(!marks.is_empty(), "{name}: the case drops a diagnostic");
+        for (k, &mark) in marks.iter().enumerate() {
+            // Cut before, inside, exactly one short of, at and after the drop.
+            for work in mark.saturating_sub(6)..=mark + 3 {
+                let failure = match parse_at(work) {
+                    Ok(_) => {
+                        assert!(work >= total, "{name}: work {work} completes below {total}");
+                        continue;
+                    }
+                    Err(failure) => failure,
+                };
+                let HtmlParseFailureReason::Stop(first) = failure.reason() else {
+                    panic!("{name}: work {work}: {:?}", failure.reason());
+                };
+                assert!(
+                    matches!(
+                        first,
+                        HtmlParseStop::LimitExceeded {
+                            resource: HtmlParseResource::WorkCredits,
+                            limit,
+                            ..
+                        } if limit == work
+                    ),
+                    "{name}: work {work}: {first:?}"
+                );
+                assert_eq!(failure.cleanup_error(), None, "{name}: work {work}");
+                let after = failure
+                    .after_cleanup()
+                    .unwrap_or_else(|| panic!("{name}: work {work}: no cleanup evidence"));
+                for resource in [
+                    R::BufferedUtf16Units,
+                    R::TokenAttributes,
+                    R::AuxiliaryEntries,
+                    R::ManagedEdges,
+                    R::ManagedAttributes,
+                    R::ManagedUtf16Units,
+                    R::SourceMapPayloadUnits,
+                    R::DiagnosticPayloadUnits,
+                    R::ContextEffects,
+                    R::OpenElements,
+                ] {
+                    assert_eq!(
+                        after.resource(resource).current(),
+                        0,
+                        "{name}: work {work}: {resource:?}"
+                    );
+                }
+                // What remains is the committed diagnostic prefix and nothing
+                // for the dropped ones.
+                let kept = failure.diagnostics().map_or(0, |d| d.len()) as u64;
+                assert_eq!(
+                    after.resource(R::Diagnostics).current(),
+                    kept,
+                    "{name}: work {work}"
+                );
+                assert_eq!(
+                    after.resource(R::SourceMapEntries).current(),
+                    kept,
+                    "{name}: work {work}"
+                );
+                assert!(kept <= cap, "{name}: work {work}");
+                // A drop is counted exactly when its last credit is paid: every
+                // charge ending within the allowance succeeded before the
+                // first one that did not, so the drops counted are those
+                // marked at or below `work`, never one more.
+                let paid = marks.iter().filter(|&&m| m <= work).count() as u64;
+                assert_eq!(
+                    failure.diagnostics().map_or(0, |d| d.dropped()),
+                    paid,
+                    "{name}: drop {k} at work {work}"
+                );
+            }
         }
     }
-    assert!(stopped);
-    let first = driver.control.stop();
-    assert!(first.is_some());
-    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
-    assert_eq!(state.formatting.len(), 1);
-    assert_eq!(state.before.kernel.stack().unwrap().len(), 3);
-    assert!(state.formatting_pending.is_none());
-    let super::prologue::Payload::Tag(Some(tag)) = &state.pending.as_ref().unwrap().payload else {
-        panic!("original nested a input")
-    };
-    assert_eq!(
-        tag.attributes.as_slice()[0].value.value.text().code_units(),
-        "kept".encode_utf16().collect::<Vec<_>>()
+}
+
+#[test]
+fn formatting_nested_a_diagnostic_past_the_cap_is_dropped_before_adoption() {
+    // 13.2.6.4.7 "in body": an `a` start tag with an `a` in the list of active
+    // formatting elements is one parse error, then the adoption agency runs;
+    // the end of file with the open `a` is a second.
+    assert_dropped_diagnostics_keep_the_tree(
+        || HtmlSource::utf8("<!doctype html><a>1<a id=kept>2"),
+        0,
+        2,
     );
-    assert!(driver.step().is_err());
-    assert_eq!(driver.control.stop(), first);
-    driver.release().unwrap();
-    assert_released(&driver.control);
 }
 
 #[test]
@@ -7273,81 +7469,27 @@ fn ordinary_form_start_closes_the_paragraph_and_self_closing_does_not_close_the_
 }
 
 #[test]
-fn ordinary_form_end_diagnostic_cap_clears_pointer_before_error_but_keeps_stack_identity() {
-    let request = crate::HtmlDocumentParseRequest::offline(
-        HtmlSource::utf8("<!doctype html><form id=f><div></form>"),
-        limits(100).into_builder().diagnostics(0).finish().unwrap(),
+fn ordinary_form_end_diagnostic_past_the_cap_is_dropped_and_the_pointer_cleared() {
+    // 13.2.6.4.7 "in body": a `form` end tag whose node is not the current
+    // node is one parse error, the form element pointer being cleared first;
+    // the end of file with the open `div` is a second.
+    assert_dropped_diagnostics_keep_the_tree(
+        || HtmlSource::utf8("<!doctype html><form id=f><div></form>"),
+        0,
+        2,
     );
-    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
-    let mut failed = false;
-    for _ in 0..100 {
-        if driver.step().is_err() {
-            failed = true;
-            break;
-        }
-    }
-    assert!(failed);
-    let first = driver.control.stop();
-    assert!(first.is_some());
-    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
-    assert!(state.current_form.is_none());
-    assert_eq!(state.before.kernel.stack().unwrap().len(), 4);
-    let Payload::Tag(Some(tag)) = &state.pending.as_ref().unwrap().payload else {
-        panic!("real end form remains owned");
-    };
-    assert_eq!(tag.kind, TagKind::End);
-    assert_eq!(
-        tag.name.value.text().code_units(),
-        &[b'f' as u16, b'o' as u16, b'r' as u16, b'm' as u16]
-    );
-    assert!(driver.step().is_err());
-    assert_eq!(driver.control.stop(), first);
-    let mut retained = Some(driver);
-    assert!(StandaloneDocumentDriver::take_standalone_fixture(&mut retained).is_err());
-    let driver = retained.as_mut().unwrap();
-    driver.release().unwrap();
-    assert_eq!(driver.control.stop(), first);
-    assert_released(&driver.control);
 }
 
 #[test]
-fn ordinary_form_nested_diagnostic_cap_preserves_pointer_paragraph_and_original_tag() {
-    let request = crate::HtmlDocumentParseRequest::offline(
-        HtmlSource::utf8("<!doctype html><form><p>1<form id=kept>"),
-        limits(100).into_builder().diagnostics(0).finish().unwrap(),
+fn ordinary_form_nested_diagnostic_past_the_cap_is_dropped_and_the_tag_ignored() {
+    // 13.2.6.4.7 "in body": a `form` start tag with the form element pointer
+    // set is one parse error and the token is ignored; the end of file with
+    // the open `form` is a second.
+    assert_dropped_diagnostics_keep_the_tree(
+        || HtmlSource::utf8("<!doctype html><form><p>1<form id=kept>"),
+        0,
+        2,
     );
-    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
-    let mut failed = false;
-    for _ in 0..100 {
-        if driver.step().is_err() {
-            failed = true;
-            break;
-        }
-    }
-    assert!(failed);
-    let first = driver.control.stop();
-    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
-    assert!(state.current_form.is_some());
-    assert_eq!(state.before.kernel.stack().unwrap().len(), 4);
-    assert_eq!(
-        driver
-            .control
-            .usage()
-            .resource(HtmlParseResource::ManagedNodes)
-            .current,
-        8
-    );
-    let Payload::Tag(Some(tag)) = &state.pending.as_ref().unwrap().payload else {
-        panic!("real nested form remains owned");
-    };
-    assert_eq!(
-        tag.attributes.as_slice()[0].value.value.text().code_units(),
-        "kept".encode_utf16().collect::<Vec<_>>()
-    );
-    assert!(driver.step().is_err());
-    assert_eq!(driver.control.stop(), first);
-    driver.release().unwrap();
-    assert_released(&driver.control);
 }
 
 #[test]
@@ -8225,61 +8367,18 @@ fn structural_table_disposal_stop_after_vector_pop_keeps_nested_ticket_reachable
 }
 
 #[test]
-fn structural_table_diagnostic_caps_preserve_whole_batch_or_coherent_flush_prefix() {
-    // Document, doctype, html, head, body and table precede flush.
-    // Two diagnostics admit the first fostered whitespace text before stop.
-    for (cap, nodes) in [(0, 6), (1, 6), (2, 7)] {
-        let request = crate::HtmlDocumentParseRequest::offline(
-            HtmlSource::utf8("<!doctype html><table> a<tr>"),
-            limits(100)
-                .into_builder()
-                .diagnostics(cap)
-                .finish()
-                .unwrap(),
+fn structural_table_diagnostics_past_the_cap_are_dropped_inside_one_flush() {
+    // 13.2.6.4.9 "in table text": the pending " a" holds a non-whitespace
+    // character, one parse error; each of its two characters then takes the
+    // "in table" anything-else path, one parse error each; the end of file
+    // with the open `table` is a fourth. A cap of 0, 1, 2 or 3 splits that
+    // sequence, and the fostered text is the same for each.
+    for cap in [0, 1, 2, 3] {
+        assert_dropped_diagnostics_keep_the_tree(
+            || HtmlSource::utf8("<!doctype html><table> a<tr>"),
+            cap,
+            4,
         );
-        let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
-        let mut stopped = false;
-        for _ in 0..100 {
-            if driver.step().is_err() {
-                stopped = true;
-                break;
-            }
-        }
-        assert!(stopped);
-        let first = driver.control.stop().unwrap();
-        assert!(matches!(
-            first,
-            HtmlParseStop::LimitExceeded {
-                resource: HtmlParseResource::Diagnostics,
-                ..
-            }
-        ));
-        assert_eq!(
-            driver
-                .control
-                .usage()
-                .resource(HtmlParseResource::ManagedNodes)
-                .current,
-            nodes
-        );
-        assert!(
-            driver
-                .control
-                .usage()
-                .resource(HtmlParseResource::BufferedUtf16Units)
-                .current
-                > 0
-        );
-        let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
-        assert_eq!(state.mode, super::head::HtmlInsertionMode::InTableText);
-        assert!(matches!(
-            state.pending.as_ref().unwrap().payload,
-            Payload::Tag(Some(_))
-        ));
-        assert!(driver.step().is_err());
-        driver.release().unwrap();
-        assert_released(&driver.control);
-        assert_eq!(driver.control.stop(), Some(first));
     }
 }
 
@@ -8509,38 +8608,15 @@ fn listed_controls_fieldset_closes_p_and_button_scope_preserves_outer_ancestors(
 }
 
 #[test]
-fn listed_controls_nested_button_diagnostic_cap_retains_old_stack_and_original_tag() {
-    let request = crate::HtmlDocumentParseRequest::offline(
-        HtmlSource::utf8("<!doctype html><button><p>A<button id=kept>"),
-        limits(100).into_builder().diagnostics(0).finish().unwrap(),
+fn listed_controls_nested_button_diagnostic_past_the_cap_is_dropped_before_closing() {
+    // 13.2.6.4.7 "in body": a `button` start tag with a `button` in scope is
+    // one parse error, then the open button is closed and the new one
+    // inserted; the end of file with the open `button` is a second.
+    assert_dropped_diagnostics_keep_the_tree(
+        || HtmlSource::utf8("<!doctype html><button><p>A<button id=kept>"),
+        0,
+        2,
     );
-    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
-    let mut failed = false;
-    for _ in 0..100 {
-        if driver.step().is_err() {
-            failed = true;
-            break;
-        }
-    }
-    assert!(failed);
-    let first = driver.control.stop();
-    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
-    assert_eq!(state.before.kernel.stack().unwrap().len(), 4);
-    let Payload::Tag(Some(tag)) = &state.pending.as_ref().unwrap().payload else {
-        panic!("original nested button token");
-    };
-    assert_eq!(
-        tag.name.value.text().code_units(),
-        "button".encode_utf16().collect::<Vec<_>>()
-    );
-    assert_eq!(
-        tag.attributes.as_slice()[0].value.value.text().code_units(),
-        "kept".encode_utf16().collect::<Vec<_>>()
-    );
-    assert!(driver.step().is_err());
-    assert_eq!(driver.control.stop(), first);
-    driver.release().unwrap();
-    assert_released(&driver.control);
 }
 
 #[test]
@@ -9309,70 +9385,16 @@ fn frameset_selfclosing_acknowledgement_and_open_eof_follow_actual_stack() {
 }
 
 #[test]
-fn frameset_body_diagnostic_cap_stops_before_removal_or_stack_changes() {
-    let request = crate::HtmlDocumentParseRequest::offline(
-        HtmlSource::utf8("<!doctype html><form><frameset>"),
-        limits(100).into_builder().diagnostics(0).finish().unwrap(),
-    );
-    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
-    let error = (0..100)
-        .find_map(|_| driver.step().err())
-        .expect("frameset source error consumes diagnostic slot");
-    let stop = driver.control.stop().unwrap();
-    assert!(
-        matches!(
-            stop,
-            HtmlParseStop::LimitExceeded {
-                resource: HtmlParseResource::Diagnostics,
-                ..
-            }
-        ),
-        "{error:?}"
-    );
-    let state = driver.head.as_mut().unwrap().state.as_mut().unwrap();
-    assert_eq!(state.mode, super::head::HtmlInsertionMode::InBody);
-    assert_eq!(state.before.kernel.stack().unwrap().len(), 3);
-    assert!(state.current_form.is_some());
-    assert!(matches!(
-        state.pending.as_ref().unwrap().payload,
-        Payload::Tag(Some(_))
-    ));
-    // Document->doctype/html, html->head/body, body->form: removal has not
-    // committed the source's next operation after the rejected diagnostic.
-    assert_eq!(
-        driver
-            .control
-            .usage()
-            .resource(HtmlParseResource::ManagedEdges)
-            .current,
-        5
-    );
-    driver.release().unwrap();
-    assert_eq!(driver.control.stop(), Some(stop));
-    assert_released(&driver.control);
-    let request = crate::HtmlDocumentParseRequest::offline(
-        HtmlSource::utf8("<!doctype html><form><frameset></frameset>"),
-        limits(100).into_builder().diagnostics(1).finish().unwrap(),
-    );
-    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
-    assert_eq!(
-        standalone_boundary(&mut driver),
-        super::head::HeadStep::Complete
-    );
-    assert_eq!(
-        driver
-            .head
-            .as_ref()
-            .unwrap()
-            .state
-            .as_ref()
-            .unwrap()
-            .diagnostics()
-            .len(),
-        1
-    );
-    driver.release().unwrap();
-    assert_released(&driver.control);
+fn frameset_body_diagnostic_past_the_cap_is_dropped_before_the_body_is_replaced() {
+    // 13.2.6.4.7 "in body": a `frameset` start tag is a parse error before it
+    // replaces the body (frameset-ok is still "ok"). Without its end tag the
+    // end of file in "in frameset" with `frameset` current is a second.
+    for (literal, total) in [
+        ("<!doctype html><form><frameset>", 2),
+        ("<!doctype html><form><frameset></frameset>", 1),
+    ] {
+        assert_dropped_diagnostics_keep_the_tree(|| HtmlSource::utf8(literal), 0, total);
+    }
 }
 
 #[test]
@@ -9558,51 +9580,22 @@ fn frameset_exact_node_and_temporary_open_element_caps_preserve_terminal_owners(
 }
 
 #[test]
-fn frameset_partition_diagnostic_failure_retains_popped_run_and_all_origin_owners() {
-    let request = crate::HtmlDocumentParseRequest::offline(
-        HtmlSource::utf8("<!doctype html><frameset>A \0\tB</frameset>"),
-        limits(100).into_builder().diagnostics(0).finish().unwrap(),
-    );
-    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
-    let error = (0..100).find_map(|_| driver.step().err()).unwrap();
-    let stop = driver.control.stop().unwrap();
-    assert!(
-        matches!(
-            stop,
-            HtmlParseStop::LimitExceeded {
-                resource: HtmlParseResource::Diagnostics,
-                ..
-            }
-        ),
-        "{error:?}"
-    );
-    // Lexical NULL can exhaust this zero cap before the Text token is delivered.
-    // The ordinary nonwhite fixture below targets actual partition emission.
-    driver.release().unwrap();
-    assert_released(&driver.control);
-    let request = crate::HtmlDocumentParseRequest::offline(
-        HtmlSource::utf8("<!doctype html><frameset>A \tB</frameset>"),
-        limits(100).into_builder().diagnostics(0).finish().unwrap(),
-    );
-    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
-    assert!((0..100).find_map(|_| driver.step().err()).is_some());
-    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
-    assert!(state.body_runs.is_some());
-    assert!(state.body_run.is_some());
-    let stop = driver.control.stop().unwrap();
-    let before = driver.control.usage().clone();
-    assert!(driver.step().is_err());
-    driver.release().unwrap();
-    assert_eq!(driver.control.stop(), Some(stop));
-    for category in [
-        HtmlParseWorkCategory::InputUnitRead,
-        HtmlParseWorkCategory::StateStep,
-        HtmlParseWorkCategory::RecordWrite,
-        HtmlParseWorkCategory::CopyByte,
-    ] {
-        assert_eq!(driver.control.usage().work(category), before.work(category));
+fn frameset_partition_diagnostics_past_the_cap_are_dropped_per_origin() {
+    // 13.2.6.4.19 "in frameset": whitespace is inserted and every other
+    // character is a parse error and ignored. `A`, `B` and the NUL are three
+    // such errors, and the NUL also raises the tokenizer's own error.
+    for cap in [0, 1, 3] {
+        assert_dropped_diagnostics_keep_the_tree(
+            || HtmlSource::utf8("<!doctype html><frameset>A \0\tB</frameset>"),
+            cap,
+            4,
+        );
     }
-    assert_released(&driver.control);
+    assert_dropped_diagnostics_keep_the_tree(
+        || HtmlSource::utf8("<!doctype html><frameset>A \tB</frameset>"),
+        0,
+        2,
+    );
 }
 
 #[test]
@@ -12193,42 +12186,21 @@ fn foreign_local_control_spellings_have_no_html_metadata_and_keep_actual_namespa
 }
 
 #[test]
-fn foreign_null_diagnostic_limit_preserves_recovery_owner_and_terminal_cleanup() {
-    let source = HtmlSource::utf16(DocumentString::from_utf16(
-        "<!doctype html><svg>"
-            .encode_utf16()
-            .chain([0, 0])
-            .chain("</svg>".encode_utf16())
-            .collect::<Vec<_>>(),
-    ));
-    let request = crate::HtmlDocumentParseRequest::offline(
-        source,
-        limits(100).into_builder().diagnostics(1).finish().unwrap(),
-    );
-    let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
-    let _first = loop {
-        match driver.step() {
-            Err(error) => break error,
-            Ok(super::head::HeadStep::Boundary(_)) => panic!("diagnostic cap must stop"),
-            _ => {}
-        }
+fn foreign_null_diagnostics_past_the_cap_are_dropped_and_still_replace_with_fffd() {
+    // 13.2.6.5 "in foreign content", U+0000 is a parse error and becomes
+    // U+FFFD; the tokenizer raises its own error for each NUL as well.
+    let source = || {
+        HtmlSource::utf16(DocumentString::from_utf16(
+            "<!doctype html><svg>"
+                .encode_utf16()
+                .chain([0, 0])
+                .chain("</svg>".encode_utf16())
+                .collect::<Vec<_>>(),
+        ))
     };
-    let stop = driver.control.stop().unwrap();
-    assert!(matches!(
-        stop,
-        super::super::control::HtmlParseStop::LimitExceeded {
-            resource: HtmlParseResource::Diagnostics,
-            ..
-        }
-    ));
-    assert!(matches!(driver.step(), Err(StandaloneError::Stop(replay)) if replay == stop));
-    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
-    assert!(state.body_run.is_some());
-    assert!(state.whitespace_pending.is_none());
-    assert!(state.frameset_ok);
-    driver.release().unwrap();
-    assert_eq!(driver.control.stop(), Some(stop));
-    assert_released(&driver.control);
+    for cap in [0, 1, 3] {
+        assert_dropped_diagnostics_keep_the_tree(source, cap, 4);
+    }
 }
 
 #[test]
@@ -19363,58 +19335,14 @@ fn afterhead_template_cancel_and_one_short_work_precede_input_and_cleanup_do_no_
 }
 
 #[test]
-fn afterhead_template_diagnostic_refusal_precedes_temporary_head_and_template_effects() {
-    use super::head::HtmlInsertionMode;
-    let request = crate::HtmlDocumentParseRequest::offline(
-        HtmlSource::utf8("<!doctype html><head></head><template>x</template>"),
-        limits(100).into_builder().diagnostics(0).finish().unwrap(),
+fn afterhead_template_diagnostic_past_the_cap_is_dropped_before_the_temporary_head() {
+    // 13.2.6.4.6 "after head", a `template` start tag is one parse error; the
+    // head element pointer is pushed and the token processed "in head".
+    assert_dropped_diagnostics_keep_the_tree(
+        || HtmlSource::utf8("<!doctype html><head></head><template>x</template>"),
+        0,
+        1,
     );
-    let mut driver = super::entry::initialized_driver(&request);
-    let mut failed = false;
-    for _ in 0..100 {
-        if driver.step().is_err() {
-            failed = true;
-            break;
-        }
-    }
-    assert!(failed);
-    assert!(matches!(
-        driver.control.stop(),
-        Some(HtmlParseStop::LimitExceeded {
-            resource: HtmlParseResource::Diagnostics,
-            requested_delta: 1,
-            ..
-        })
-    ));
-    let state = driver.head.as_ref().unwrap().state.as_ref().unwrap();
-    assert_eq!(state.mode, HtmlInsertionMode::AfterHead);
-    assert!(state.temporary_head.is_none());
-    assert_eq!(state.template_modes.len(), 0);
-    assert_eq!(state.formatting.len(), 0);
-    assert_eq!(state.before.kernel.stack().unwrap().len(), 1);
-    assert!(state.diagnostics().is_empty());
-    let pending = state.pending.as_ref().unwrap();
-    assert_eq!((pending.source.start(), pending.source.end()), (28, 38));
-    assert!(matches!(pending.payload, Payload::Tag(Some(_))));
-    // No successful pair has been published; the original tag remains owned.
-    let first = driver.control.stop();
-    let at = driver.control.first_stop_usage().unwrap().clone();
-    let usage = driver.control.usage().clone();
-    assert!(driver.step().is_err());
-    assert_eq!(driver.control.usage(), &usage);
-    driver.release().unwrap();
-    assert_eq!(
-        driver
-            .control
-            .usage()
-            .resource(HtmlParseResource::WorkCredits)
-            .current,
-        usage.resource(HtmlParseResource::WorkCredits).current,
-        "terminal cleanup performs no useful work or capacity reservation"
-    );
-    assert_eq!(driver.control.stop(), first);
-    assert_eq!(driver.control.first_stop_usage(), Some(&at));
-    assert_released(&driver.control);
 }
 
 mod complete_hostile_scan {

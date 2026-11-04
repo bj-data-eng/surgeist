@@ -79,6 +79,21 @@ pub struct DiagnosticLocationInput<'a> {
     pub(crate) token: Option<HtmlParseTokenFamily>,
 }
 pub(super) struct EvidenceIdentity;
+#[cfg(test)]
+thread_local! {
+    /// The work credits in use right after each drop was counted, in order, on
+    /// this thread. A test clears it, parses, then reads where each drop landed.
+    pub(crate) static DROP_MARKS: std::cell::RefCell<Vec<u64>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+/// What became of one emitted diagnostic. The `Diagnostics` cap bounds
+/// retention, so a diagnostic past it is counted and dropped, not refused.
+pub(crate) enum DiagnosticAdmission {
+    /// The diagnostic is the next retained record; the identifier names it.
+    Retained(DiagnosticId),
+    /// The cap was already reached: the diagnostic was counted and not kept.
+    Dropped,
+}
 pub(crate) struct DiagnosticId {
     index: usize,
     owner: ControlIdentity,
@@ -96,6 +111,8 @@ pub(crate) struct ParseEvidence {
     identity_allocation: SharedAllocation<EvidenceIdentity>,
     records: OwnedVec<HtmlParseDiagnostic>,
     locations: OwnedVec<HtmlParseDiagnosticLocation>,
+    /// Diagnostics emitted after `records` reached the `Diagnostics` cap.
+    dropped: u64,
     pub(super) native: super::provenance::NativeProvenance,
     diagnostics_taken: bool,
 }
@@ -107,17 +124,41 @@ pub(crate) struct FailureDiagnosticEvidence {
     _identity_allocation: Option<SharedAllocation<EvidenceIdentity>>,
     records: OwnedVec<HtmlParseDiagnostic>,
     locations: OwnedVec<HtmlParseDiagnosticLocation>,
+    dropped: u64,
 }
 /// Fixed borrowed lender of committed diagnostics. It carries no execution authority,
 /// allocation ticket or native storage, and each observation uses constant work.
+///
+/// The `Diagnostics` limit bounds retention, not completion. The retained
+/// records are the first diagnostics the parse emitted, up to that limit, in
+/// the order it emitted them: the order of emission, not of source offset, since
+/// delayed recovery can report an earlier offset after a later one. A
+/// diagnostic emitted after the limit was reached is counted by
+/// [`Self::dropped`] and kept nowhere, so `len() + dropped()` is the number of
+/// diagnostics a parse of the same input retains under a limit that fits them
+/// all, and the retained records are that parse's first `len()` records.
 pub struct HtmlParseDiagnostics<'a> {
     records: &'a [HtmlParseDiagnostic],
     locations: &'a [HtmlParseDiagnosticLocation],
+    dropped: u64,
 }
 impl HtmlParseDiagnostics<'_> {
+    /// The number of retained diagnostics: the first ones the parse emitted.
     pub fn len(&self) -> usize {
         self.records.len()
     }
+    /// The number of diagnostics emitted after the `Diagnostics` limit was
+    /// reached and therefore not retained. Zero when every diagnostic fits.
+    ///
+    /// A caller that needs every diagnostic sets the limit high enough and
+    /// checks that this is zero.
+    pub fn dropped(&self) -> u64 {
+        self.dropped
+    }
+    /// Whether no diagnostic is retained. This reflects retained records only:
+    /// it is true when the `Diagnostics` limit is zero even though
+    /// [`Self::dropped`] counts every diagnostic the parse emitted. Check
+    /// `dropped() == 0` as well to learn that the parse emitted none.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -151,6 +192,7 @@ impl FailureDiagnosticEvidence {
         HtmlParseDiagnostics {
             records: self.records.as_slice(),
             locations: self.locations.as_slice(),
+            dropped: self.dropped,
         }
     }
 
@@ -207,6 +249,7 @@ impl ParseEvidence {
         HtmlParseDiagnostics {
             records: self.records.as_slice(),
             locations: self.locations.as_slice(),
+            dropped: self.dropped,
         }
     }
 
@@ -242,6 +285,7 @@ impl ParseEvidence {
             identity_allocation,
             records,
             locations,
+            dropped: 0,
             native,
             diagnostics_taken: false,
         })
@@ -253,9 +297,29 @@ impl ParseEvidence {
         context: HtmlParseDiagnosticContext,
         rule: HtmlParseDiagnosticRule,
         input: DiagnosticLocationInput<'_>,
-    ) -> Result<DiagnosticId, HtmlParseStop> {
+    ) -> Result<DiagnosticAdmission, HtmlParseStop> {
         let source = input.source;
+        // Ownership precedes every charge and the cap read, so a foreign
+        // controller is refused whether or not its own cap is reached.
+        self.records.require_owner(c)?;
+        self.locations.require_owner(c)?;
         c.require_source_range(source)?;
+        // The `Diagnostics` cap bounds retention only. Past it the diagnostic
+        // is counted, with the count charged before it is written, and nothing
+        // is allocated, so no other resource is touched either.
+        if c.diagnostics_retention_full() {
+            c.charge_dropped_diagnostic()?;
+            // Every drop was charged at least one work credit, and work credits
+            // never exceed `u64::MAX`, so the count cannot saturate.
+            self.dropped = self.dropped.saturating_add(1);
+            #[cfg(test)]
+            DROP_MARKS.with(|marks| {
+                marks
+                    .borrow_mut()
+                    .push(c.usage().resource(HtmlParseResource::WorkCredits).current)
+            });
+            return Ok(DiagnosticAdmission::Dropped);
+        }
         c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let index = self.records.len();
         let location = self.locations.len();
@@ -289,11 +353,11 @@ impl ParseEvidence {
             },
             source,
         )?;
-        Ok(DiagnosticId {
+        Ok(DiagnosticAdmission::Retained(DiagnosticId {
             index,
             owner,
             evidence,
-        })
+        }))
     }
     pub(crate) fn get<'a>(
         &'a self,
@@ -340,6 +404,12 @@ impl ParseEvidence {
             .get(index)
             .map(|record| (record, &self.locations.as_slice()[record.location]))
     }
+    /// The number of diagnostics emitted past the `Diagnostics` cap so far.
+    #[cfg(test)]
+    pub(crate) fn dropped(&self) -> u64 {
+        self.dropped
+    }
+
     #[cfg(test)]
     pub(crate) fn tokenizer_observation(&self, id: &DiagnosticId) -> TokenizerDiagnosticView<'_> {
         assert!(
@@ -393,6 +463,7 @@ impl ParseEvidence {
             identity_allocation,
             records,
             locations,
+            dropped,
             native,
             diagnostics_taken: _,
         } = evidence;
@@ -407,6 +478,7 @@ impl ParseEvidence {
             _identity_allocation: Some(identity_allocation),
             records,
             locations,
+            dropped,
         }))
     }
     pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
@@ -506,6 +578,7 @@ impl ParserArenaSession {
             _identity_allocation: None,
             records,
             locations,
+            dropped: mem::take(&mut evidence.dropped),
         })
     }
     /// Before reclamation, move only actual committed diagnostic ownership.
@@ -562,7 +635,7 @@ mod tests {
         c: &mut ParseControl,
         source: &HtmlSource,
         offset: usize,
-    ) -> Result<DiagnosticId, HtmlParseStop> {
+    ) -> Result<DiagnosticAdmission, HtmlParseStop> {
         e.append(
             c,
             HtmlParseDiagnosticKind::Tokenizer(HtmlTokenizerDiagnostic::UnexpectedNullCharacter),
@@ -581,6 +654,13 @@ mod tests {
             },
         )
     }
+    /// The identifier of a diagnostic the test knows the cap retains.
+    fn retained_id(admission: Result<DiagnosticAdmission, HtmlParseStop>) -> DiagnosticId {
+        match admission.unwrap() {
+            DiagnosticAdmission::Retained(id) => id,
+            DiagnosticAdmission::Dropped => panic!("the diagnostic was dropped"),
+        }
+    }
     fn owner(
         source: &HtmlSource,
         selected: crate::HtmlParseLimits,
@@ -596,7 +676,7 @@ mod tests {
         let source = HtmlSource::utf8("\0");
         let (mut c, mut evidence) = owner(&source, limits(100));
         evidence.initialize_native_source(&mut c, &source).unwrap();
-        let mut id = append(&mut evidence, &mut c, &source, 0).unwrap();
+        let mut id = retained_id(append(&mut evidence, &mut c, &source, 0));
         id.index = evidence.len();
         let stop = evidence.get(&mut c, &id).err().unwrap();
         assert_eq!(
@@ -692,24 +772,34 @@ mod tests {
                 for offset in 0..2 {
                     let result = append(&mut e, &mut c, &source, offset);
                     if offset as u64 >= cap {
-                        assert!(
-                            matches!(result,Err(HtmlParseStop::LimitExceeded {resource:r,..}) if r==resource)
-                        );
-                        assert_eq!(e.len(), offset);
-                        assert_eq!(e.locations.len(), offset);
+                        // Only the source-map cap is terminal. The diagnostics
+                        // cap bounds retention, so the diagnostic is counted.
+                        if resource == HtmlParseResource::Diagnostics {
+                            assert!(matches!(result, Ok(DiagnosticAdmission::Dropped)));
+                            assert_eq!(e.dropped, (offset as u64 - cap) + 1);
+                        } else {
+                            assert!(
+                                matches!(result, Err(HtmlParseStop::LimitExceeded { resource: r, .. }) if r == resource)
+                            );
+                        }
+                        assert_eq!(e.len(), cap.min(offset as u64) as usize);
+                        assert_eq!(e.locations.len(), e.len());
                         assert_eq!(
                             c.usage().resource(HtmlParseResource::Diagnostics).current,
-                            offset as u64
+                            e.len() as u64
                         );
                         assert_eq!(
                             c.usage()
                                 .resource(HtmlParseResource::SourceMapEntries)
                                 .current,
-                            offset as u64
+                            e.len() as u64
                         );
-                        break;
+                        if resource == HtmlParseResource::SourceMapEntries {
+                            break;
+                        }
+                        continue;
                     }
-                    let id = result.unwrap();
+                    let id = retained_id(result);
                     let (_, range) = e.get(&mut c, &id).unwrap();
                     assert_eq!((range.start(), range.end()), (offset, offset + 1));
                 }
@@ -880,6 +970,74 @@ mod tests {
     }
 
     #[test]
+    fn a_diagnostic_past_the_cap_is_counted_with_its_work_charged_before_the_count() {
+        let source = HtmlSource::utf8("\0\0\0");
+        let selected = limits(100).into_builder().diagnostics(1).finish().unwrap();
+        // Probe the exact cost of the dropped append on a control of its own.
+        let (mut probe, mut e) = owner(&source, selected);
+        retained_id(append(&mut e, &mut probe, &source, 0));
+        let before = probe.usage().clone();
+        assert!(matches!(
+            append(&mut e, &mut probe, &source, 1),
+            Ok(DiagnosticAdmission::Dropped)
+        ));
+        let after = probe.usage().clone();
+        let cost = after.resource(HtmlParseResource::WorkCredits).current
+            - before.resource(HtmlParseResource::WorkCredits).current;
+        // The range check (a visit and a provider call), then the visit of the
+        // retention state and the write of the counter.
+        assert_eq!(cost, 4);
+        assert_eq!(e.dropped, 1);
+        assert_eq!((e.len(), e.locations.len()), (1, 1));
+        // Nothing is reserved or retained for the dropped diagnostic.
+        for resource in [
+            HtmlParseResource::Diagnostics,
+            HtmlParseResource::SourceMapEntries,
+            HtmlParseResource::ManagedCapacityBytes,
+            HtmlParseResource::PeakTransientBytes,
+            HtmlParseResource::AtomicLayoutBytes,
+        ] {
+            assert_eq!(after.resource(resource), before.resource(resource));
+        }
+        assert!(matches!(
+            append(&mut e, &mut probe, &source, 2),
+            Ok(DiagnosticAdmission::Dropped)
+        ));
+        assert_eq!(e.dropped, 2);
+        e.release(&mut probe).unwrap();
+        assert_released(&probe);
+
+        // One short of that cost refuses the drop before it is counted.
+        for short in [false, true] {
+            let (mut c, mut e) = owner(&source, selected);
+            retained_id(append(&mut e, &mut c, &source, 0));
+            let available = selected.work_credits()
+                - c.usage().resource(HtmlParseResource::WorkCredits).current;
+            c.charge(
+                HtmlParseWorkCategory::StateStep,
+                available - cost + u64::from(short),
+            )
+            .unwrap();
+            let result = append(&mut e, &mut c, &source, 1);
+            if short {
+                assert!(matches!(
+                    result,
+                    Err(HtmlParseStop::LimitExceeded {
+                        resource: HtmlParseResource::WorkCredits,
+                        ..
+                    })
+                ));
+                assert_eq!(e.dropped, 0);
+            } else {
+                assert!(matches!(result, Ok(DiagnosticAdmission::Dropped)));
+                assert_eq!(e.dropped, 1);
+            }
+            e.release(&mut c).unwrap();
+            assert_released(&c);
+        }
+    }
+
+    #[test]
     fn cancelled_append_and_foreign_source_leave_the_real_prefix_unchanged() {
         let source = HtmlSource::utf8("\0\0");
         for cancel in [false, true] {
@@ -971,7 +1129,7 @@ mod tests {
         let source = HtmlSource::utf8("\0");
         let (mut c, mut first) = owner(&source, limits(100));
         let mut other = ParseEvidence::prepare(&mut c).unwrap();
-        let id = append(&mut first, &mut c, &source, 0).unwrap();
+        let id = retained_id(append(&mut first, &mut c, &source, 0));
         append(&mut other, &mut c, &source, 0).unwrap();
         assert!(matches!(
             other.get(&mut c, &id),
@@ -990,7 +1148,7 @@ mod tests {
     fn foreign_controller_cannot_read_or_extend_an_actual_store() {
         let source = HtmlSource::utf8("\0\0");
         let (mut c, mut e) = owner(&source, limits(100));
-        let id = append(&mut e, &mut c, &source, 0).unwrap();
+        let id = retained_id(append(&mut e, &mut c, &source, 0));
         let before = c.usage().clone();
         let mut foreign = ParseControl::new(limits(100), HtmlParseCancellation::new());
         foreign.admit_source(&source).unwrap();
@@ -1003,6 +1161,33 @@ mod tests {
         assert!(append(&mut e, &mut foreign, &source, 1).is_err());
         assert_eq!((e.len(), e.locations.len()), (1, 1));
         assert_eq!(c.usage(), &before);
+        e.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+
+    #[test]
+    fn a_foreign_controller_at_its_diagnostics_cap_is_refused_not_counted() {
+        let source = HtmlSource::utf8("\0\0");
+        let (mut c, mut e) = owner(&source, limits(100));
+        retained_id(append(&mut e, &mut c, &source, 0));
+        let before = c.usage().clone();
+        // The foreign controller's own cap is already reached, so a retained
+        // append would not be attempted: only the owner check can refuse it.
+        let zero = limits(100).into_builder().diagnostics(0).finish().unwrap();
+        let mut foreign = ParseControl::new(zero, HtmlParseCancellation::new());
+        foreign.admit_source(&source).unwrap();
+        let foreign_before = foreign.usage().clone();
+        assert_eq!(
+            append(&mut e, &mut foreign, &source, 1).err(),
+            Some(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::ForeignControl
+            ))
+        );
+        assert_eq!(e.dropped, 0);
+        assert_eq!((e.len(), e.locations.len()), (1, 1));
+        assert_eq!(c.usage(), &before);
+        assert_eq!(foreign.usage(), &foreign_before);
+        // The owner still counts its own drops afterwards.
         e.release(&mut c).unwrap();
         assert_released(&c);
     }
@@ -1054,7 +1239,7 @@ mod tests {
                         assert_eq!((location.start(), location.end()), (offset, offset + 1));
                     }
                 } else {
-                    let id = result.unwrap();
+                    let id = retained_id(result);
                     assert_eq!(id.index, 4);
                     assert_eq!(c.stop(), None);
                     assert_eq!((evidence.len(), evidence.locations.len()), (5, 5));
@@ -1585,6 +1770,7 @@ mod tests {
         let view = HtmlParseDiagnostics {
             records: &records,
             locations: &[],
+            dropped: 0,
         };
         assert_eq!(view.len(), 1);
         assert_eq!(

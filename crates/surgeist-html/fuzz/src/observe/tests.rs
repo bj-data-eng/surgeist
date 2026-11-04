@@ -147,3 +147,58 @@ fn balanced_recipes_reject_a_stop_on_a_cap_the_case_did_not_lower() {
         "{general:?}"
     );
 }
+
+#[test]
+fn retained_and_dropped_diagnostics_are_checked_against_the_configured_cap() {
+    // HTML 877d, 13.2.5.6 tag open state: `< ` is one parse error, and a
+    // document with no DOCTYPE adds the missing-doctype error of 13.2.6.4.1.
+    // Ten pairs are therefore eleven errors; a cap of three retains the first
+    // three and drops eight.
+    let descriptor = crate::UnicodeTarget::document().descriptor.clone();
+    let props = Props(&descriptor);
+    let mut caps = crate::codec::CAPS;
+    caps[DIAGNOSTICS_CAP] = 3;
+    let limits = crate::codec::limits(caps).expect("documented envelope");
+    let literal = "< ".repeat(10);
+    let text = UnicodeSource::Utf8(literal.clone());
+    let source = HtmlSource::utf8(literal);
+    let report = HtmlDocumentParseRequest::offline(source.clone(), limits)
+        .parse()
+        .expect("a diagnostics cap bounds retention, not the parse");
+    let spec = |diagnostics_cap: u64| {
+        let mut caps = caps;
+        caps[DIAGNOSTICS_CAP] = diagnostics_cap;
+        Spec {
+            fragment: false,
+            text: &text,
+            original: &source,
+            limits: &limits,
+            caps,
+            requested: HtmlParserScriptingMode::Disabled,
+            capture: None,
+            shadow_allowed: false,
+        }
+    };
+    let Ok(seen) = verify_report(&props, &spec(3), &report).unwrap() else {
+        panic!("the retention obeys the configured cap");
+    };
+    assert_eq!(seen.diagnostics.records.len(), 3);
+    assert_eq!(seen.diagnostics.dropped, 8);
+    // Dropped diagnostics under a larger configured cap mean the cap was not
+    // filled, which no correct parse produces.
+    let Err(outcome) = verify_report(&props, &spec(100), &report).unwrap() else {
+        panic!("a dropped diagnostic below the configured cap is a violation");
+    };
+    assert_eq!(
+        outcome.failure_key().and_then(FailureKey::discriminator),
+        Some("diagnostic-cap-retention")
+    );
+    // A retained count past the configured cap is a violation as well.
+    let Err(outcome) = verify_report(&props, &spec(2), &report).unwrap() else {
+        panic!("retaining more than the configured cap is a violation");
+    };
+    assert_eq!(
+        outcome.failure_key().and_then(FailureKey::discriminator),
+        Some("diagnostic-cap-retention")
+    );
+}

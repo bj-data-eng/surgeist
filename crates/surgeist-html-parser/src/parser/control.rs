@@ -1048,6 +1048,21 @@ impl ParseControl {
     ) -> Result<(), HtmlParseStop> {
         self.acquire_many(&[(resource, units)])
     }
+    /// Whether the retained diagnostics have reached the `Diagnostics` limit.
+    /// That limit bounds retention only: a diagnostic emitted while this holds
+    /// is dropped and counted, never refused, so the parse continues.
+    pub(crate) fn diagnostics_retention_full(&self) -> bool {
+        self.usage.resource(HtmlParseResource::Diagnostics).current
+            >= self.limits.copy(HtmlParseResource::Diagnostics)
+    }
+    /// Charges counting one dropped diagnostic, before the count is written:
+    /// one visit of the retention state and one write of the counter.
+    pub(crate) fn charge_dropped_diagnostic(&mut self) -> Result<(), HtmlParseStop> {
+        self.charge_many(&[
+            (HtmlParseWorkCategory::RecordVisit, 1),
+            (HtmlParseWorkCategory::RecordWrite, 1),
+        ])
+    }
     /// Coupled logical allocations admit atomically in resource precedence order.
     pub(crate) fn acquire_many(
         &mut self,
@@ -4439,8 +4454,11 @@ mod tests {
             0
         );
     }
+    // The raw controller keeps every storage resource terminal, `Diagnostics`
+    // included. Parsing does not acquire it past the cap: the evidence owner
+    // counts a dropped diagnostic instead (see `ParseEvidence::append`).
     #[test]
-    fn diagnostic_exhaustion_is_a_terminal_error() {
+    fn raw_controller_acquire_past_the_diagnostics_cap_is_a_terminal_error() {
         let mut limits = limits();
         limits = limits.into_builder().diagnostics(1).finish().unwrap();
         let mut control = ParseControl::new(limits, HtmlParseCancellation::new());

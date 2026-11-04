@@ -2110,6 +2110,18 @@ Constructing a request admits no source and produces no parse result. The caps
 describe logical storage, known allocation layouts and work credits, rather than
 wall-clock time, process memory or allocator headers.
 
+Exhausting a cap stops the parse with a typed failure, with one exception. The
+`diagnostics` cap bounds retention, not completion. A parse that emits more
+diagnostics than the cap retains the first ones, in emission order, counts every
+later one, and completes with the same tree, native values and associations as a
+parse whose cap fits them all. A report exposes the count as
+`diagnostics().dropped()`, a failure keeps the count reached before its stop, and
+`diagnostics().len() + diagnostics().dropped()` is the number of diagnostics the
+parse emitted. Counting a dropped diagnostic is charged against `work_credits`
+and reserves nothing else, so a dropped diagnostic can still be refused by an
+exhausted work cap. A caller that needs every diagnostic sets the cap high enough
+and checks that the dropped count is zero.
+
 <a id="semantic-query-work"></a>
 
 The `work` allowance of [HtmlSemanticLimits](../../crates/surgeist-html-semantics/src/semantics.rs)
@@ -2537,8 +2549,10 @@ reopen execution or alter that snapshot. Its
   `(0,0)` coordinate and independently retained last Image source, distinguishing
   absent from present-empty. Native attributes remain separately traversable.
 - `diagnostics()` lends committed record/location pairs in emission order,
-  including delayed errors whose source offsets go backwards. Recovery evidence
-  is not an author-conformance certificate.
+  including delayed errors whose source offsets go backwards. The `diagnostics`
+  cap bounds how many are retained: the retained pairs are the first emitted, and
+  `dropped()` counts the ones emitted after the cap was reached, which are kept
+  nowhere. Recovery evidence is not an author-conformance certificate.
 - `associations()` lends admitted fixed rows. Each `row(index)` lends its cause
   and a `destination()`: a current native destination, lexical occurrence with
   an optional part, omission, lexical end or cause. Current field destinations
@@ -3557,7 +3571,11 @@ or concatenation of phase-local lists.
 The [shared controller](../../crates/surgeist-html-parser/src/parser/control.rs) admits both record/location
 capacities, logical slots and fixed writes before either committed length
 changes. A rejected append retains the earlier complete prefix; prepared
-capacities remain charged until cleanup. Source and controller qualification
+capacities remain charged until cleanup. The `Diagnostics` cap is checked before
+any of that: a diagnostic emitted at the cap is not appended and is not offered
+to the tree builder as an event, but one visit and one write count it in the
+evidence owner (the source range check before it is also charged). The count
+survives into the completed report and a failed result alike. Source and controller qualification
 also applies to diagnostic receipts and readers. The existing work,
 cancellation, capacity and fixed-layout policy covers these private owners;
 this adds no allocator/RSS or linear-work guarantee.

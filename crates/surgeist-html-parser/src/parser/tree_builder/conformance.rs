@@ -3393,156 +3393,131 @@ mod reference_recovery {
         }
     }
     #[test]
-    fn reference_diagnostic_one_short_and_between_step_cancel_keep_exact_committed_prefix() {
+    fn reference_diagnostic_between_step_cancel_keeps_exact_committed_prefix() {
         use crate::parser::control::{HtmlParseStop, HtmlParseWorkCategory};
         use crate::parser::tree_builder::{
             StandaloneDocumentDriver, head::HeadStep, seal::OrdinaryInitializationOwner,
         };
-        for cancel_prefix in [false, true] {
-            let raw = if cancel_prefix {
-                "<!doctype html><p>é&#0;A&#xD800;</p>"
+        let raw = "<!doctype html><p>é&#0;A&#xD800;</p>";
+        for utf16 in [false, true] {
+            let source = if utf16 {
+                HtmlSource::utf16(DocumentString::from(raw))
             } else {
-                "<!doctype html><p>é&#0x</p>"
+                HtmlSource::utf8(raw)
             };
-            for utf16 in [false, true] {
-                let source = if utf16 {
-                    HtmlSource::utf16(DocumentString::from(raw))
-                } else {
-                    HtmlSource::utf8(raw)
-                };
-                let request = HtmlDocumentParseRequest::offline(
-                    source,
-                    super::super::tests::limits(1_000)
-                        .into_builder()
-                        .diagnostics(if cancel_prefix { 2 } else { 1 })
-                        .finish()
-                        .unwrap(),
+            let request = HtmlDocumentParseRequest::offline(
+                source,
+                super::super::tests::limits(1_000)
+                    .into_builder()
+                    .diagnostics(2)
+                    .finish()
+                    .unwrap(),
+            );
+            let identity = request.source().identity().clone();
+            let cancellation = request.cancellation().clone();
+            let mut owner = OrdinaryInitializationOwner::new(request);
+            {
+                let mut attempt = owner.begin().unwrap();
+                let mut driver = Some(attempt.take_driver().unwrap());
+                let mut stopped = false;
+                let mut prefix_committed = false;
+                for _ in 0..8 * raw.len() + 256 {
+                    match driver.as_mut().unwrap().step() {
+                        Ok(HeadStep::Consumed) => {
+                            if let Some((_, session, _)) =
+                                driver.as_mut().unwrap().standalone_parts()
+                                && session.retained_evidence().unwrap().diagnostics().len() == 1
+                            {
+                                assert!(!prefix_committed);
+                                prefix_committed = true;
+                                cancellation.cancel();
+                            }
+                        }
+                        Err(_) => {
+                            stopped = true;
+                            break;
+                        }
+                        other => panic!("expected recovery-prefix stop: {other:?}"),
+                    }
+                }
+                assert!(stopped);
+                assert!(prefix_committed);
+                let control = &driver.as_ref().unwrap().control;
+                let stop = control.stop().unwrap();
+                assert_eq!(stop, HtmlParseStop::Cancelled);
+                let first = control.first_stop_usage().unwrap().clone();
+                assert_eq!(first.resource(HtmlParseResource::Diagnostics).current, 1);
+                assert!(first.work(HtmlParseWorkCategory::InputUnitRead) > 0);
+                assert!(StandaloneDocumentDriver::take_completed(&mut driver).is_err());
+                assert!(driver.is_some());
+                let mut failed = StandaloneDocumentDriver::take_failed(&mut driver).unwrap();
+                assert!(driver.is_none());
+                assert_eq!(failed.stop(), stop);
+                assert_eq!(failed.at_stop(), &first);
+                assert_eq!(failed.source().identity(), &identity);
+                let diagnostics = failed.diagnostics().unwrap();
+                assert_eq!(diagnostics.len(), 1);
+                let (record, location) = diagnostics.retained_record(0).unwrap().unwrap();
+                let code = HtmlTokenizerDiagnostic::NullCharacterReference;
+                let (anchor, branch) = labels(code);
+                assert_eq!(record.kind(), HtmlParseDiagnosticKind::Tokenizer(code));
+                assert_eq!(
+                    record.context(),
+                    HtmlParseDiagnosticContext::Tokenizer {
+                        phase: HtmlTokenizerDiagnosticPhase::Tokenizer,
+                        state: HtmlTokenizerState::Data,
+                    }
                 );
-                let identity = request.source().identity().clone();
-                let cancellation = request.cancellation().clone();
-                let mut owner = OrdinaryInitializationOwner::new(request);
-                {
-                    let mut attempt = owner.begin().unwrap();
-                    let mut driver = Some(attempt.take_driver().unwrap());
-                    let mut stopped = false;
-                    let mut prefix_committed = false;
-                    for _ in 0..8 * raw.len() + 256 {
-                        match driver.as_mut().unwrap().step() {
-                            Ok(HeadStep::Consumed) => {
-                                if cancel_prefix
-                                    && let Some((_, session, _)) =
-                                        driver.as_mut().unwrap().standalone_parts()
-                                    && session.retained_evidence().unwrap().diagnostics().len() == 1
-                                {
-                                    assert!(!prefix_committed);
-                                    prefix_committed = true;
-                                    cancellation.cancel();
-                                }
-                            }
-                            Err(_) => {
-                                stopped = true;
-                                break;
-                            }
-                            other => panic!("expected recovery-prefix stop: {other:?}"),
-                        }
-                    }
-                    assert!(stopped);
-                    assert_eq!(prefix_committed, cancel_prefix);
-                    let control = &driver.as_ref().unwrap().control;
-                    let stop = control.stop().unwrap();
-                    if cancel_prefix {
-                        assert_eq!(stop, HtmlParseStop::Cancelled);
-                    } else {
-                        assert!(matches!(
-                            stop,
-                            HtmlParseStop::LimitExceeded {
-                                resource: HtmlParseResource::Diagnostics,
-                                requested_delta: 1,
-                                ..
-                            }
-                        ));
-                    }
-                    let first = control.first_stop_usage().unwrap().clone();
-                    assert_eq!(first.resource(HtmlParseResource::Diagnostics).current, 1);
-                    assert!(first.work(HtmlParseWorkCategory::InputUnitRead) > 0);
-                    assert!(StandaloneDocumentDriver::take_completed(&mut driver).is_err());
-                    assert!(driver.is_some());
-                    let mut failed = StandaloneDocumentDriver::take_failed(&mut driver).unwrap();
-                    assert!(driver.is_none());
-                    assert_eq!(failed.stop(), stop);
-                    assert_eq!(failed.at_stop(), &first);
-                    assert_eq!(failed.source().identity(), &identity);
-                    let diagnostics = failed.diagnostics().unwrap();
-                    assert_eq!(diagnostics.len(), 1);
-                    let (record, location) = diagnostics.retained_record(0).unwrap().unwrap();
-                    let code = if cancel_prefix {
-                        HtmlTokenizerDiagnostic::NullCharacterReference
-                    } else {
-                        HtmlTokenizerDiagnostic::MissingSemicolonAfterCharacterReference
-                    };
-                    let (anchor, branch) = labels(code);
-                    assert_eq!(record.kind(), HtmlParseDiagnosticKind::Tokenizer(code));
+                assert_eq!(record.severity(), HtmlParseDiagnosticSeverity::Recoverable);
+                assert_eq!(record.rule().anchor(), anchor);
+                assert_eq!(record.rule().branch(), branch);
+                assert_eq!(
+                    location.role(),
+                    HtmlParseDiagnosticLocationRole::InputFrontier
+                );
+                assert_eq!(location.token(), None);
+                assert_eq!(
+                    location.source_range(),
+                    &failed
+                        .source()
+                        .range(offset(raw, 19, utf16), offset(raw, 23, utf16),)
+                        .unwrap()
+                );
+                failed.release().unwrap();
+                for resource in [
+                    HtmlParseResource::ManagedEdges,
+                    HtmlParseResource::ManagedAttributes,
+                    HtmlParseResource::ManagedUtf16Units,
+                    HtmlParseResource::SourceMapEntries,
+                    HtmlParseResource::SourceMapPayloadUnits,
+                    HtmlParseResource::Diagnostics,
+                    HtmlParseResource::DiagnosticPayloadUnits,
+                    HtmlParseResource::AuxiliaryEntries,
+                    HtmlParseResource::BufferedUtf16Units,
+                    HtmlParseResource::TokenAttributes,
+                    HtmlParseResource::OpenElements,
+                    HtmlParseResource::ContextEffects,
+                    HtmlParseResource::ManagedCapacityBytes,
+                    HtmlParseResource::PeakTransientBytes,
+                ] {
                     assert_eq!(
-                        record.context(),
-                        HtmlParseDiagnosticContext::Tokenizer {
-                            phase: HtmlTokenizerDiagnosticPhase::Tokenizer,
-                            state: HtmlTokenizerState::Data,
-                        }
-                    );
-                    assert_eq!(record.severity(), HtmlParseDiagnosticSeverity::Recoverable);
-                    assert_eq!(record.rule().anchor(), anchor);
-                    assert_eq!(record.rule().branch(), branch);
-                    assert_eq!(
-                        location.role(),
-                        HtmlParseDiagnosticLocationRole::InputFrontier
-                    );
-                    assert_eq!(location.token(), None);
-                    assert_eq!(
-                        location.source_range(),
-                        &failed
-                            .source()
-                            .range(
-                                offset(raw, 19, utf16),
-                                offset(raw, if cancel_prefix { 23 } else { 22 }, utf16),
-                            )
-                            .unwrap()
-                    );
-                    failed.release().unwrap();
-                    for resource in [
-                        HtmlParseResource::ManagedEdges,
-                        HtmlParseResource::ManagedAttributes,
-                        HtmlParseResource::ManagedUtf16Units,
-                        HtmlParseResource::SourceMapEntries,
-                        HtmlParseResource::SourceMapPayloadUnits,
-                        HtmlParseResource::Diagnostics,
-                        HtmlParseResource::DiagnosticPayloadUnits,
-                        HtmlParseResource::AuxiliaryEntries,
-                        HtmlParseResource::BufferedUtf16Units,
-                        HtmlParseResource::TokenAttributes,
-                        HtmlParseResource::OpenElements,
-                        HtmlParseResource::ContextEffects,
-                        HtmlParseResource::ManagedCapacityBytes,
-                        HtmlParseResource::PeakTransientBytes,
-                    ] {
-                        assert_eq!(
-                            failed.retained_usage().resource(resource).current,
-                            0,
-                            "{resource:?}"
-                        );
-                    }
-                    assert_eq!(failed.at_stop(), &first);
-                    assert_eq!(failed.stop(), stop);
-                    // ManagedNodes is cumulative creation admission, not
-                    // reclaimable storage (release rejects this resource).
-                    assert_eq!(
-                        failed
-                            .retained_usage()
-                            .resource(HtmlParseResource::ManagedNodes),
-                        first.resource(HtmlParseResource::ManagedNodes)
+                        failed.retained_usage().resource(resource).current,
+                        0,
+                        "{resource:?}"
                     );
                 }
-                assert_eq!(owner.take_request().unwrap().source().identity(), &identity);
+                assert_eq!(failed.at_stop(), &first);
+                assert_eq!(failed.stop(), stop);
+                // ManagedNodes is cumulative creation admission, not
+                // reclaimable storage (release rejects this resource).
+                assert_eq!(
+                    failed
+                        .retained_usage()
+                        .resource(HtmlParseResource::ManagedNodes),
+                    first.resource(HtmlParseResource::ManagedNodes)
+                );
             }
+            assert_eq!(owner.take_request().unwrap().source().identity(), &identity);
         }
         // Exactly two diagnostics are admitted by the same ordinary request
         // contract; their independently expected order is checked above and
@@ -3565,6 +3540,39 @@ mod reference_recovery {
             );
             let output = report(request, None);
             assert_eq!(output.diagnostics().len(), reference.errors.len());
+        }
+    }
+
+    #[test]
+    fn reference_diagnostic_past_the_cap_is_dropped_and_counted_without_stopping() {
+        // `&#0x` is two parse errors in order (Numeric character reference end state): the
+        // missing semicolon after the digits, then the null reference.
+        for utf16 in [false, true] {
+            let raw = "<!doctype html><p>é&#0x</p>";
+            let source = if utf16 {
+                HtmlSource::utf16(DocumentString::from(raw))
+            } else {
+                HtmlSource::utf8(raw)
+            };
+            let request = HtmlDocumentParseRequest::offline(
+                source,
+                super::super::tests::limits(1_000)
+                    .into_builder()
+                    .diagnostics(1)
+                    .finish()
+                    .unwrap(),
+            );
+            let output = report(request, None);
+            let diagnostics = output.diagnostics();
+            assert_eq!(diagnostics.len(), 1);
+            assert_eq!(diagnostics.dropped(), 1);
+            let (record, _) = diagnostics.retained_record(0).unwrap().unwrap();
+            assert_eq!(
+                record.kind(),
+                HtmlParseDiagnosticKind::Tokenizer(
+                    HtmlTokenizerDiagnostic::MissingSemicolonAfterCharacterReference
+                )
+            );
         }
     }
 

@@ -69,6 +69,10 @@ impl<'a> LexerFixture<'a> {
             super::TokenizerPull::NeedInput => panic!("complete fixture cannot starve"),
         }
     }
+    /// The diagnostics dropped past the cap so far.
+    pub(crate) fn dropped(&self) -> u64 {
+        self.evidence.dropped()
+    }
     pub(crate) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         self.lexer.release(c)?;
         self.evidence.release(c)
@@ -725,7 +729,18 @@ fn run_with_limits(
     last: Option<&DocumentString>,
     caps: HtmlParseLimits,
 ) -> (Option<HtmlParseStop>, u64) {
+    let (stop, work, _) = run_with_limits_counting(source, state, last, caps);
+    (stop, work)
+}
+/// As [`run_with_limits`], also returning the diagnostics dropped past the cap.
+fn run_with_limits_counting(
+    source: &HtmlSource,
+    state: HtmlTokenizerState,
+    last: Option<&DocumentString>,
+    caps: HtmlParseLimits,
+) -> (Option<HtmlParseStop>, u64, u64) {
     let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+    let mut dropped = 0;
     if c.admit_source(source).is_ok()
         && let Ok(mut tokenizer) = LexerFixture::new(source, state, last, &mut c)
     {
@@ -745,6 +760,7 @@ fn run_with_limits(
                 }
             }
         }
+        dropped = tokenizer.dropped();
         tokenizer.release(&mut c).unwrap();
     }
     for resource in [
@@ -766,6 +782,7 @@ fn run_with_limits(
     (
         c.stop(),
         c.usage().resource(HtmlParseResource::WorkCredits).current,
+        dropped,
     )
 }
 #[test]
@@ -824,7 +841,6 @@ fn every_retained_tokenizer_domain_has_a_real_finite_failure() {
         HtmlParseResource::TokenAttributes,
         HtmlParseResource::AuxiliaryEntries,
         HtmlParseResource::SourceMapEntries,
-        HtmlParseResource::Diagnostics,
         HtmlParseResource::ManagedCapacityBytes,
         HtmlParseResource::PeakTransientBytes,
         HtmlParseResource::AtomicLayoutBytes,
@@ -847,9 +863,6 @@ fn every_retained_tokenizer_domain_has_a_real_finite_failure() {
             }
             HtmlParseResource::SourceMapEntries => {
                 caps = caps.into_builder().source_map_entries(0).finish().unwrap()
-            }
-            HtmlParseResource::Diagnostics => {
-                caps = caps.into_builder().diagnostics(0).finish().unwrap()
             }
             HtmlParseResource::ManagedCapacityBytes => {
                 caps = caps
@@ -875,6 +888,22 @@ fn every_retained_tokenizer_domain_has_a_real_finite_failure() {
             "{resource:?}"
         );
     }
+}
+#[test]
+fn the_diagnostics_cap_bounds_retention_and_never_stops_the_tokenizer() {
+    // `&zzz;` and the duplicate `x` are two tokenizer errors; the cap of zero
+    // retains neither and the run still completes with nothing leaked.
+    let source = HtmlSource::utf8("<a x='&zzz;' x='discard'>");
+    let caps = limits().into_builder().diagnostics(0).finish().unwrap();
+    let (stop, _, dropped) =
+        run_with_limits_counting(&source, HtmlTokenizerState::Data, None, caps);
+    assert_eq!(stop, None);
+    // The unknown named reference and the duplicate attribute are the two
+    // errors; an uncapped run drops none and the zero cap drops both.
+    let (_, _, uncapped_dropped) =
+        run_with_limits_counting(&source, HtmlTokenizerState::Data, None, limits());
+    assert_eq!(uncapped_dropped, 0);
+    assert_eq!(dropped, 2);
 }
 #[test]
 fn tree_state_selection_after_actual_start_tag_is_functional() {
@@ -1102,15 +1131,14 @@ fn input_diagnostics_and_reconsume_newline_origins_are_emitted_once() {
             HtmlTokenizerDiagnostic::ControlCharacterInInputStream
         ]
     );
+    // The cap bounds retention: with none retained the run still completes
+    // and counts the three input-stream errors it listed above.
     let mut caps = limits();
     caps = caps.into_builder().diagnostics(0).finish().unwrap();
-    assert!(matches!(
-        run_with_limits(&source, HtmlTokenizerState::Data, None, caps).0,
-        Some(HtmlParseStop::LimitExceeded {
-            resource: HtmlParseResource::Diagnostics,
-            ..
-        })
-    ));
+    let (stop, _, dropped) =
+        run_with_limits_counting(&source, HtmlTokenizerState::Data, None, caps);
+    assert_eq!(stop, None);
+    assert_eq!(dropped, 3);
 }
 #[test]
 fn duplicate_name_exit_at_eof_precedes_eof_in_tag() {
@@ -3865,7 +3893,21 @@ fn run_progressive_limits(
     Option<HtmlParseStop>,
     crate::parser::control::HtmlParseUsage,
 ) {
+    let (stop, usage, _) = run_progressive_limits_counting(source, caps);
+    (stop, usage)
+}
+/// As [`run_progressive_limits`], also returning the diagnostics dropped past
+/// the cap.
+fn run_progressive_limits_counting(
+    source: &HtmlSource,
+    caps: HtmlParseLimits,
+) -> (
+    Option<HtmlParseStop>,
+    crate::parser::control::HtmlParseUsage,
+    u64,
+) {
     let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
+    let mut dropped = 0;
     if c.admit_source(source).is_ok()
         && let Ok(mut evidence) = ParseEvidence::prepare(&mut c)
     {
@@ -3905,10 +3947,11 @@ fn run_progressive_limits(
             }
             lexer.release(&mut c).unwrap();
         }
+        dropped = evidence.dropped();
         evidence.release(&mut c).unwrap();
     }
     assert_storage_released(&c);
-    (c.stop(), c.usage().clone())
+    (c.stop(), c.usage().clone(), dropped)
 }
 #[test]
 fn progressive_real_work_and_storage_exact_one_short_keep_first_stop_and_cleanup() {
@@ -3944,6 +3987,16 @@ fn progressive_real_work_and_storage_exact_one_short_keep_first_stop_and_cleanup
     ] {
         let peak = usage.resource(resource).high_water;
         assert!(peak > 0, "{resource:?}");
+        if resource == HtmlParseResource::Diagnostics {
+            // Retention is bounded, never refused: one short drops a diagnostic.
+            let one_short = limits().into_builder().diagnostics(peak - 1);
+            let (stop, _, dropped) =
+                run_progressive_limits_counting(&source, one_short.finish().unwrap());
+            assert_eq!(stop, None);
+            // Exactly the diagnostic past the one-short cap is counted.
+            assert_eq!(dropped, 1);
+            continue;
+        }
         let with = |value| {
             let b = limits().into_builder();
             match resource {

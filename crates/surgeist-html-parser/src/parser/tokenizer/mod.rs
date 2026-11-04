@@ -14,7 +14,8 @@
 
 use crate::HtmlParseResource;
 use crate::construction::evidence::{
-    HtmlParseDiagnosticContext, HtmlParseDiagnosticKind, HtmlParseDiagnosticRule, ParseEvidence,
+    DiagnosticAdmission, HtmlParseDiagnosticContext, HtmlParseDiagnosticKind,
+    HtmlParseDiagnosticRule, ParseEvidence,
 };
 use crate::construction::provenance::{
     HtmlParseLexicalDisposition, HtmlParseLexicalKind, HtmlParseLexicalRole, LexicalRef,
@@ -926,7 +927,7 @@ impl<'source> Tokenizer<'source> {
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
     ) -> Result<(), HtmlParseStop> {
-        let id = evidence.append(
+        let admission = evidence.append(
             c,
             HtmlParseDiagnosticKind::Tokenizer(code),
             HtmlParseDiagnosticContext::Tokenizer {
@@ -943,7 +944,12 @@ impl<'source> Tokenizer<'source> {
                 token: None,
             },
         )?;
-        self.queue(Event::Diagnostic(id), c)
+        // A dropped diagnostic names no record, so the tree builder has none to
+        // validate and no event is queued.
+        match admission {
+            DiagnosticAdmission::Retained(id) => self.queue(Event::Diagnostic(id), c),
+            DiagnosticAdmission::Dropped => Ok(()),
+        }
     }
 
     fn emit(

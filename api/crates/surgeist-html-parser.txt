@@ -873,6 +873,7 @@ pub fn surgeist_html_parser::HtmlParseDiagnosticRule::anchor(&self) -> &'static 
 pub fn surgeist_html_parser::HtmlParseDiagnosticRule::branch(&self) -> &'static str
 pub struct surgeist_html_parser::HtmlParseDiagnostics<'a>
 impl surgeist_html_parser::HtmlParseDiagnostics<'_>
+pub fn surgeist_html_parser::HtmlParseDiagnostics<'_>::dropped(&self) -> u64
 pub fn surgeist_html_parser::HtmlParseDiagnostics<'_>::is_empty(&self) -> bool
 pub fn surgeist_html_parser::HtmlParseDiagnostics<'_>::len(&self) -> usize
 pub fn surgeist_html_parser::HtmlParseDiagnostics<'_>::retained_record(&self, index: usize) -> core::result::Result<core::option::Option<(&surgeist_html_parser::HtmlParseDiagnostic, &surgeist_html_parser::HtmlParseDiagnosticLocation)>, surgeist_html_parser::HtmlParseUnresolvedReference>

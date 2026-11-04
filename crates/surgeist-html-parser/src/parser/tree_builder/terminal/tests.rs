@@ -2382,6 +2382,8 @@ fn a_refused_evidence_take_leaves_the_flag_clear_so_a_retry_takes_it() {
 
 #[test]
 fn failed_evidence_retains_only_committed_prefix_and_actual_storage_tickets() {
+    // The cap keeps the missing-doctype diagnostic and drops the NUL errors
+    // after it; cancellation then stops the parse with that prefix committed.
     let limits = super::super::tests::limits(100)
         .into_builder()
         .diagnostics(1)
@@ -2389,19 +2391,28 @@ fn failed_evidence_retains_only_committed_prefix_and_actual_storage_tickets() {
         .unwrap();
     let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8("<table>\0"), limits);
     let mut driver = crate::parser::tree_builder::entry::initialized_driver(&request);
-    loop {
-        if driver.step().is_err() {
+    let mut counted = false;
+    for _ in 0..256 {
+        if let Some((_, session, _)) = driver.standalone_parts()
+            && session.retained_evidence().unwrap().dropped() > 0
+        {
+            counted = true;
             break;
         }
+        driver.step().unwrap();
     }
+    assert!(counted, "the second diagnostic is dropped and counted");
+    let dropped = driver
+        .standalone_parts()
+        .unwrap()
+        .1
+        .retained_evidence()
+        .unwrap()
+        .dropped();
+    request.cancellation().cancel();
+    assert!(driver.step().is_err());
     let stop = driver.control.stop().unwrap();
-    assert!(matches!(
-        stop,
-        HtmlParseStop::LimitExceeded {
-            resource: HtmlParseResource::Diagnostics,
-            ..
-        }
-    ));
+    assert_eq!(stop, HtmlParseStop::Cancelled);
     let before = driver.control.usage().clone();
     let polls = driver.control.owned_span_observation().polls;
     let mut input = Some(driver);
@@ -2456,6 +2467,11 @@ fn failed_evidence_retains_only_committed_prefix_and_actual_storage_tickets() {
     assert_eq!(failed.control.owned_span_observation().polls, polls);
     let evidence = failed.diagnostics().unwrap();
     assert_eq!(evidence.len(), 1);
+    assert_eq!(
+        evidence.dropped(),
+        dropped,
+        "cancellation drops nothing more"
+    );
     let (record, source) = evidence.retained_record(0).unwrap().unwrap();
     assert_eq!(
         record.kind,
@@ -3108,11 +3124,12 @@ fn unclosed_svg_script_stays_unprocessed_during_eof_pops() {
 #[test]
 fn failed_transfer_preserves_first_stop_usage_before_reference_scratch_cleanup() {
     // Missing doctype is the one retained diagnostic. The actual unknown
-    // named reference then reaches the next diagnostic cap while its
-    // literal text and reference-query scratch are still owned.
+    // named reference then buffers its literal text, and the buffer cap of
+    // eight units refuses the ninth while that text and the reference-query
+    // scratch are still owned.
     let limits = super::super::tests::limits(100)
         .into_builder()
-        .diagnostics(1)
+        .buffered_utf16_units(8)
         .finish()
         .unwrap();
     let request = HtmlDocumentParseRequest::offline(HtmlSource::utf8("<p>&bogus;"), limits);
@@ -3124,15 +3141,14 @@ fn failed_transfer_preserves_first_stop_usage_before_reference_scratch_cleanup()
             break;
         }
     }
-    assert!(stopped, "literal reference reaches the second diagnostic");
+    assert!(stopped, "the literal reference reaches the buffer cap");
     let first = driver.control.stop().unwrap();
     assert!(matches!(
         first,
         HtmlParseStop::LimitExceeded {
-            resource: HtmlParseResource::Diagnostics,
-            limit: 1,
-            current: 1,
-            requested_delta: 1,
+            resource: HtmlParseResource::BufferedUtf16Units,
+            limit: 8,
+            ..
         }
     ));
     let latched = driver.control.first_stop_usage().unwrap().clone();
