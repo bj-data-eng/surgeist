@@ -478,6 +478,10 @@ impl HtmlControlFacts {
             if validation.known(element)?.is_some() {
                 continue;
             }
+            // With no classifications there is nothing to look the subject up in.
+            if classifications.is_empty() {
+                continue;
+            }
             validation.charge(1)?;
             if let Some(position) = classified.position(&association.subject) {
                 validation.charge(1)?;
