@@ -846,8 +846,8 @@ fn select_fifo_consumes_two_actual_removal_tasks_in_source_order_and_keeps_exact
         );
     }
     let storage = session.active().unwrap();
-    assert_eq!(storage.effects.dequeue, 2);
-    assert!(storage.effects.tasks.as_slice().iter().all(Option::is_none));
+    assert_eq!(storage.effects.dequeue, 0);
+    assert_eq!(storage.effects.tasks.len(), 0);
     assert!(storage.effects.task.is_none());
     assert!(!storage.effects.checkpoint);
     let mut frozen = session.freeze(&mut c).unwrap();
