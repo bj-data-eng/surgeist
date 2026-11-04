@@ -1551,3 +1551,6 @@ impl<'a> HtmlSemanticSession<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod protocol_tests;

@@ -527,6 +527,22 @@ impl QueryControl<'_> {
     }
 }
 
+#[cfg(test)]
+impl Control {
+    pub(crate) fn for_tests(envelope: HtmlOptionValueEnvelope) -> Self {
+        Self::new(envelope)
+    }
+    pub(crate) fn temporary_bytes(&self) -> usize {
+        self.temporary.get().bytes
+    }
+}
+#[cfg(test)]
+impl<'a> QueryControl<'a> {
+    pub(crate) fn for_tests(control: &'a Control, cancel: &'a AtomicBool) -> Self {
+        Self { control, cancel }
+    }
+}
+
 enum Phase {
     Building(HtmlCaptureBuilder),
     Finished {

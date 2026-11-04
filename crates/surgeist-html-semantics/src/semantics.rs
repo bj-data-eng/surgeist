@@ -76,6 +76,8 @@ mod meta_author;
 pub use meta_author::*;
 mod link_relationships;
 mod meta_pragma;
+#[cfg(test)]
+mod scratch_accounting_tests;
 pub use link_relationships::*;
 pub use meta_pragma::*;
 mod image_map;

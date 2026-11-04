@@ -475,3 +475,45 @@ fn wrong_phase_query_does_not_consume_the_finished_query_attempt() {
         HtmlSemanticFact::OptionValue(HtmlSemanticValue::Known(_))
     ));
 }
+
+fn usage(bytes: usize, units: usize) -> HtmlOptionValueStorageUsage {
+    HtmlOptionValueStorageUsage { bytes, units }
+}
+
+/// Storage that was never added cannot be released: the held amount is not wrapped around.
+#[test]
+fn releasing_storage_that_was_never_added_does_not_wrap_the_held_amount() {
+    let control = Control::new(envelope());
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = control.release(usage(1, 0), false);
+    }));
+    assert!(outcome.is_ok(), "release must not panic");
+    assert_eq!(control.temporary.get(), usage(0, 0));
+}
+
+/// Moving storage that is not held as temporary storage is refused and changes nothing.
+#[test]
+fn transferring_storage_that_is_not_held_changes_nothing() {
+    let control = Control::new(envelope());
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = control.transfer(usage(8, 2));
+    }));
+    assert!(outcome.is_ok(), "transfer must not panic");
+    assert_eq!(control.temporary.get(), usage(0, 0));
+    assert_eq!(control.live.get(), usage(0, 0));
+}
+
+/// A transfer whose destination cannot represent the sum is refused as exhaustion, with the
+/// source still held.
+#[test]
+fn transferring_into_a_full_live_count_is_exhaustion_not_a_wrap() {
+    let control = Control::new(envelope());
+    control.live.set(usage(usize::MAX, 0));
+    control.temporary.set(usage(1, 0));
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = control.transfer(usage(1, 0));
+    }));
+    assert!(outcome.is_ok(), "transfer must not panic");
+    assert_eq!(control.live.get(), usage(usize::MAX, 0));
+    assert_eq!(control.temporary.get(), usage(1, 0));
+}
