@@ -38,19 +38,15 @@ impl HtmlAttributeStorage {
     /// This compares every pair of names, which is quadratic in the attribute count; it suits a
     /// bounded count. [`validate_indexed`](Self::validate_indexed) is linear.
     pub fn validate(self) -> HtmlAttributeValidation {
-        let phase = if self.attributes.len() < 2 {
-            Phase::Finished
-        } else {
-            Phase::Pair
-        };
+        let stage = (self.attributes.len() >= 2).then_some(Stage::Pairs);
         HtmlAttributeValidation {
             storage: self,
             duplicate: 1,
             first: 0,
-            phase,
+            phase: Phase::Pair,
             failure: None,
             indexed: None,
-            stage: Stage::Pairs,
+            stage,
             probe: None,
         }
     }
@@ -79,7 +75,7 @@ impl HtmlAttributeStorage {
             phase: Phase::Pair,
             failure: None,
             indexed: Some(index),
-            stage: Stage::Clear,
+            stage: Some(Stage::Clear),
             probe: None,
         }
     }
@@ -125,7 +121,6 @@ pub(crate) enum Phase {
     NamespaceUnit { offset: usize, len: usize },
     LocalLength,
     LocalUnit { offset: usize, len: usize },
-    Finished,
 }
 
 /// The exact next step's fixed work, before its operand read.
@@ -186,7 +181,8 @@ pub struct HtmlAttributeValidation {
     phase: Phase,
     failure: Option<HtmlAttributeValidationError>,
     indexed: Option<HtmlAttributeNameIndex>,
-    stage: Stage,
+    /// The next action's stage, or `None` once every comparison is made.
+    stage: Option<Stage>,
     /// The probe of the name being entered in the index.
     probe: Option<HtmlNameIndexProbe>,
 }
@@ -200,8 +196,11 @@ impl HtmlAttributeValidation {
         if let Some(error) = self.failure {
             return Err(error);
         }
-        Ok((!matches!(self.phase, Phase::Finished))
-            .then_some(HtmlAttributeValidationAction { validation: self }))
+        let stage = self.stage;
+        Ok(stage.map(|stage| HtmlAttributeValidationAction {
+            validation: self,
+            stage,
+        }))
     }
 
     /// Consumes a successfully completed cursor. A latched failure or an incomplete cursor refuses
@@ -233,7 +232,7 @@ impl HtmlAttributeValidation {
         if let Some(error) = self.failure {
             return Err(HtmlFinishFailure::new(self, error));
         }
-        if !matches!(self.phase, Phase::Finished) {
+        if self.stage.is_some() {
             return Err(HtmlFinishFailure::new(
                 self,
                 HtmlAttributeValidationError::NotReady,
@@ -263,11 +262,10 @@ impl HtmlAttributeValidation {
             self.first = 0;
             self.duplicate += 1;
         }
-        self.phase = if self.duplicate == self.storage.attributes.len() {
-            Phase::Finished
-        } else {
-            Phase::Pair
-        };
+        self.phase = Phase::Pair;
+        if self.duplicate == self.storage.attributes.len() {
+            self.stage = None;
+        }
     }
 
     fn duplicate(&mut self) -> Result<(), HtmlAttributeValidationError> {
@@ -298,11 +296,7 @@ impl HtmlAttributeValidation {
     /// Moves to the attribute after the one just placed in the index.
     fn next_attribute(&mut self) {
         self.duplicate += 1;
-        if self.duplicate == self.storage.attributes.len() {
-            self.phase = Phase::Finished;
-        } else {
-            self.stage = Stage::HashLength;
-        }
+        self.stage = (self.duplicate != self.storage.attributes.len()).then_some(Stage::HashLength);
     }
 
     fn names(&self) -> (&super::QualifiedName, &super::QualifiedName) {
@@ -317,6 +311,8 @@ impl HtmlAttributeValidation {
 #[derive(Debug)]
 pub struct HtmlAttributeValidationAction<'a> {
     validation: &'a mut HtmlAttributeValidation,
+    /// The stage this action performs, taken when the cursor announced it.
+    stage: Stage,
 }
 
 impl HtmlAttributeValidationAction<'_> {
@@ -324,7 +320,7 @@ impl HtmlAttributeValidationAction<'_> {
     pub fn layout(&self) -> HtmlAttributeValidationLayout {
         let validation = &*self.validation;
         let none = |layout: HtmlAttributeValidationLayout| layout;
-        match validation.stage {
+        match self.stage {
             Stage::Pairs | Stage::Compare { .. } => {
                 let layout = comparison_layout(validation.phase);
                 none(HtmlAttributeValidationLayout {
@@ -386,7 +382,7 @@ impl HtmlAttributeValidationAction<'_> {
     /// A duplicate is latched before returning its first refusal.
     pub fn advance(self) -> Result<(), HtmlAttributeValidationError> {
         let validation = self.validation;
-        match validation.stage {
+        match self.stage {
             Stage::Pairs => {
                 let (left, right) = validation.names();
                 match advance_comparison(
@@ -411,7 +407,7 @@ impl HtmlAttributeValidationAction<'_> {
                     if index.bind_storage().is_err() {
                         return validation.fail(HtmlAttributeValidationError::IndexUnavailable);
                     }
-                    validation.stage = Stage::HashLength;
+                    validation.stage = Some(Stage::HashLength);
                 }
                 Ok(())
             }
@@ -422,7 +418,7 @@ impl HtmlAttributeValidationAction<'_> {
                     .uri()
                     .map_or(0, DocumentString::len)
                     .saturating_add(name.local_name().len());
-                validation.stage = Stage::Hash { units };
+                validation.stage = Some(Stage::Hash { units });
                 Ok(())
             }
             Stage::Hash { .. } => {
@@ -435,7 +431,7 @@ impl HtmlAttributeValidationAction<'_> {
                     return validation.fail(HtmlAttributeValidationError::IndexUnavailable);
                 };
                 validation.probe = Some(probe);
-                validation.stage = Stage::Probe { tag: tag(hash) };
+                validation.stage = Some(Stage::Probe { tag: tag(hash) });
                 Ok(())
             }
             Stage::Probe { tag } => {
@@ -461,7 +457,7 @@ impl HtmlAttributeValidationAction<'_> {
                         (Occupant::Attribute(first), _) if first < validation.duplicate => {
                             validation.first = first;
                             validation.phase = Phase::Pair;
-                            validation.stage = Stage::Compare { tag };
+                            validation.stage = Some(Stage::Compare { tag });
                             Ok(())
                         }
                         _ => validation.fail(HtmlAttributeValidationError::IndexUnavailable),
@@ -486,7 +482,7 @@ impl HtmlAttributeValidationAction<'_> {
                     }
                     ComparisonStep::Different => {
                         validation.phase = Phase::Pair;
-                        validation.stage = Stage::Probe { tag };
+                        validation.stage = Some(Stage::Probe { tag });
                         Ok(())
                     }
                     ComparisonStep::Equal => validation.duplicate(),
@@ -548,9 +544,12 @@ pub(crate) fn comparison_layout(phase: Phase) -> HtmlAttributeValidationLayout {
             record_writes: 0,
             copied_bytes: 0,
         },
-        Phase::Finished => unreachable!("finished comparison has no action"),
     }
 }
+/// One step of the comparison of two expanded names. The answer is total: two names are equal
+/// exactly when both have the same namespace, or both have none, and the same local name, so a
+/// namespace phase for names that disagree on having one, or a unit past either name's end, is a
+/// difference, not a state to refuse.
 pub(crate) fn advance_comparison(
     phase: Phase,
     left_namespace: Option<&DocumentString>,
@@ -568,10 +567,10 @@ pub(crate) fn advance_comparison(
         Phase::NamespaceLength | Phase::LocalLength => {
             let namespace = matches!(phase, Phase::NamespaceLength);
             let (left, right) = if namespace {
-                (
-                    left_namespace.expect("checked namespace"),
-                    right_namespace.expect("checked namespace"),
-                )
+                let (Some(left), Some(right)) = (left_namespace, right_namespace) else {
+                    return Different;
+                };
+                (left, right)
             } else {
                 (left_local, right_local)
             };
@@ -598,14 +597,20 @@ pub(crate) fn advance_comparison(
         Phase::NamespaceUnit { offset, len } | Phase::LocalUnit { offset, len } => {
             let namespace = matches!(phase, Phase::NamespaceUnit { .. });
             let (left, right) = if namespace {
-                (
-                    left_namespace.expect("checked namespace"),
-                    right_namespace.expect("checked namespace"),
-                )
+                let (Some(left), Some(right)) = (left_namespace, right_namespace) else {
+                    return Different;
+                };
+                (left, right)
             } else {
                 (left_local, right_local)
             };
-            if left.code_units()[offset] != right.code_units()[offset] {
+            let (Some(left_unit), Some(right_unit)) = (
+                left.code_units().get(offset),
+                right.code_units().get(offset),
+            ) else {
+                return Different;
+            };
+            if left_unit != right_unit {
                 Different
             } else if offset + 1 == len {
                 if namespace {
@@ -625,7 +630,6 @@ pub(crate) fn advance_comparison(
                 })
             }
         }
-        Phase::Finished => unreachable!("finished comparison has no action"),
     }
 }
 
@@ -827,5 +831,70 @@ mod tests {
             "{pairwise} against {}",
             measured[2]
         );
+    }
+
+    /// Independent oracle: direct equality of the expanded names. Stepping the comparison to its
+    /// end agrees with it for every pair of names that collide often, in at most one step per
+    /// namespace unit, local unit and length, and a phase asked of names that do not have what it
+    /// reads is a difference.
+    #[test]
+    fn stepping_a_comparison_agrees_with_equality_of_expanded_names() {
+        const LOCALS: [&str; 6] = ["a", "A", "ab", "", "a\u{0}", "\u{ffff}"];
+        const NAMESPACES: [Option<&str>; 4] = [None, Some(""), Some("urn:n"), Some("urn:N")];
+        for left_namespace in NAMESPACES {
+            for right_namespace in NAMESPACES {
+                for left_local in LOCALS {
+                    for right_local in LOCALS {
+                        let namespace = |value: Option<&str>| value.map(DocumentString::from);
+                        let (left_ns, right_ns) =
+                            (namespace(left_namespace), namespace(right_namespace));
+                        let (left_local_name, right_local_name) = (
+                            DocumentString::from(left_local),
+                            DocumentString::from(right_local),
+                        );
+                        let mut phase = Phase::Pair;
+                        let equal = loop {
+                            match advance_comparison(
+                                phase,
+                                left_ns.as_ref(),
+                                &left_local_name,
+                                right_ns.as_ref(),
+                                &right_local_name,
+                            ) {
+                                ComparisonStep::Continue(next) => phase = next,
+                                ComparisonStep::Different => break false,
+                                ComparisonStep::Equal => break true,
+                            }
+                        };
+                        assert_eq!(
+                            equal,
+                            left_namespace == right_namespace && left_local == right_local,
+                            "{left_namespace:?} {left_local:?} against {right_namespace:?} {right_local:?}"
+                        );
+                    }
+                }
+            }
+        }
+        let some = DocumentString::from("urn:n");
+        let local = DocumentString::from("a");
+        for phase in [
+            Phase::NamespaceLength,
+            Phase::NamespaceUnit { offset: 0, len: 5 },
+        ] {
+            assert!(matches!(
+                advance_comparison(phase, Some(&some), &local, None, &local),
+                ComparisonStep::Different
+            ));
+        }
+        assert!(matches!(
+            advance_comparison(
+                Phase::LocalUnit { offset: 3, len: 4 },
+                None,
+                &local,
+                None,
+                &local
+            ),
+            ComparisonStep::Different
+        ));
     }
 }
