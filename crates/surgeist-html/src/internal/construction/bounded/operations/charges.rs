@@ -43,7 +43,7 @@ fn change(
     while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
         action.perform().unwrap().accept();
     }
-    match slots::operation(&mut operation).unwrap().commit() {
+    match slots::operation(&mut operation).unwrap().commit().unwrap() {
         HtmlConstructionCommit::Changed { storage, created } => (storage, created),
         HtmlConstructionCommit::Published { .. } => panic!("mutation published"),
     }
@@ -338,7 +338,7 @@ fn observe(storage: HtmlConstructionStorage, command: HtmlConstructionCommand) -
         .unwrap();
     let (record_writes, copied_bytes) = commit.expect("every operation ends in a Commit action");
     let HtmlConstructionCommit::Changed { storage, .. } =
-        slots::operation(&mut operation).unwrap().commit()
+        slots::operation(&mut operation).unwrap().commit().unwrap()
     else {
         panic!("mutation published");
     };

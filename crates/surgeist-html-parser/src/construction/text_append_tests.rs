@@ -598,7 +598,7 @@ fn characterization_a_reserve_below_the_initialized_length_is_a_capacity_mismatc
     );
     assert_eq!(stop, mismatch);
     assert_eq!(c.stop(), Some(mismatch));
-    let (owner, ..) = operation.take().unwrap().abort().into_parts();
+    let (owner, ..) = operation.take().unwrap().abort().unwrap().into_parts();
     storage.construction.owner = Some(owner);
     let value = match storage.construction.node_at(node.index).unwrap().kind() {
         HtmlNodeKind::Text(value) => value.clone(),
@@ -785,7 +785,7 @@ pub(crate) fn observed_capacity()
         observation.accept();
         capacity
     };
-    let (owner, ..) = operation.take().unwrap().abort().into_parts();
+    let (owner, ..) = operation.take().unwrap().abort().unwrap().into_parts();
     storage.construction.owner = Some(owner);
     session.release(&mut c).unwrap();
     storage_zero(&c);

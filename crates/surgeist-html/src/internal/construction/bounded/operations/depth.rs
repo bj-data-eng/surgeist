@@ -558,7 +558,7 @@ mod tests {
         }
         let HtmlConstructionCommit::Changed {
             storage, created, ..
-        } = slots::operation(&mut operation).unwrap().commit()
+        } = slots::operation(&mut operation).unwrap().commit().unwrap()
         else {
             panic!("mutation published")
         };
@@ -638,11 +638,11 @@ mod tests {
             }
         }
         if refused {
-            let (storage, _, _) = operation.take().unwrap().abort().into_parts();
+            let (storage, _, _) = operation.take().unwrap().abort().unwrap().into_parts();
             return (storage, false);
         }
         let HtmlConstructionCommit::Changed { storage, .. } =
-            slots::operation(&mut operation).unwrap().commit()
+            slots::operation(&mut operation).unwrap().commit().unwrap()
         else {
             panic!("mutation published")
         };

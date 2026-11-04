@@ -573,7 +573,8 @@ fn resolve(
 struct Plan {
     positions: [usize; 3],
     template: bool,
-    output_document: bool,
+    /// The mode of the Document that a publication roots in, or `None` for a fragment.
+    output_document: Option<HtmlDocumentMode>,
     /// How the commit updates the cached depths.
     depth: DepthPlan,
     link: bool,
@@ -882,28 +883,50 @@ impl HtmlConstructionOperation {
         }
     }
     /// Abandons the operation and returns its storage and command. If a publication had already
-    /// created the shared arena, it is reclaimed and the retirement evidence is returned.
-    pub fn abort(self) -> HtmlConstructionAbort {
-        let (storage, retired) = match self.owner {
+    /// created the shared arena, it is reclaimed and the retirement evidence is returned. The
+    /// publication was never handed out and its lease holds only a weak reference, so the arena
+    /// is uniquely owned; were another strong owner to hold it, the arena cannot be reclaimed and
+    /// the abort is refused with the shared-allocation error, handing the operation back unchanged.
+    #[expect(
+        clippy::result_large_err,
+        reason = "a refusal hands the complete owner back without boxing it"
+    )]
+    pub fn abort(self) -> Result<HtmlConstructionAbort, HtmlConstructionRefusal<Self>> {
+        let Self {
+            owner,
+            command,
+            phase,
+            failure,
+            plan,
+        } = self;
+        let (storage, retired) = match owner {
             StorageOwner::Mutable(storage) => (storage, None),
-            StorageOwner::Shared { arena, lease } => {
-                let snapshot = lease.snapshot;
-                drop(lease.arena);
-                // The publication was never handed out, and the lease holds only a weak
-                // reference, so the arena is uniquely owned.
-                let arena =
-                    Arc::try_unwrap(arena).expect("unescaped publication is uniquely owned");
-                (
+            StorageOwner::Shared { arena, lease } => match Arc::try_unwrap(arena) {
+                Ok(arena) => (
                     HtmlConstructionStorage { arena },
-                    Some(HtmlConstructionRetired { snapshot }),
-                )
-            }
+                    Some(HtmlConstructionRetired {
+                        snapshot: lease.snapshot,
+                    }),
+                ),
+                Err(arena) => {
+                    return Err(HtmlConstructionRefusal::new(
+                        Self {
+                            owner: StorageOwner::Shared { arena, lease },
+                            command,
+                            phase,
+                            failure,
+                            plan,
+                        },
+                        HtmlConstructionErrorKind::SharedAllocationAliased,
+                    ));
+                }
+            },
         };
-        HtmlConstructionAbort {
+        Ok(HtmlConstructionAbort {
             storage,
-            command: self.command,
+            command,
             retired,
-        }
+        })
     }
 }
 
@@ -1436,8 +1459,10 @@ impl HtmlConstructionOperation {
                     {
                         return Err(HtmlConstructionErrorKind::InvalidOutputRoot.into());
                     }
-                    plan.output_document =
-                        matches!(arena.records[a].kind, HtmlNodeKind::Document(_));
+                    plan.output_document = match arena.records[a].kind {
+                        HtmlNodeKind::Document(mode) => Some(mode),
+                        _ => None,
+                    };
                     return Ok(Phase::PublishReset(0));
                 }
             }
@@ -2267,34 +2292,89 @@ fn validate_record(arena: &Arena, index: usize) -> Result<(), HtmlConstructionEr
 
 impl HtmlConstructionReadyOperation {
     /// Abandons the ready operation and returns its storage and command. A ready publication
-    /// reclaims its arena and reports the retirement evidence.
-    pub fn abort(self) -> HtmlConstructionAbort {
-        self.operation.abort()
+    /// reclaims its arena and reports the retirement evidence. A publication whose arena another
+    /// owner holds cannot be reclaimed: the abort is refused with the shared-allocation error and
+    /// the ready operation is handed back unchanged.
+    #[expect(
+        clippy::result_large_err,
+        reason = "a refusal hands the complete owner back without boxing it"
+    )]
+    pub fn abort(self) -> Result<HtmlConstructionAbort, HtmlConstructionRefusal<Self>> {
+        let Self {
+            operation,
+            resolved,
+        } = self;
+        operation.abort().map_err(|refusal| {
+            let (operation, error) = refusal.into_parts();
+            HtmlConstructionRefusal::new(
+                Self {
+                    operation,
+                    resolved,
+                },
+                error,
+            )
+        })
     }
-    /// Applies only the fixed writes and owning moves described before readiness.
-    pub fn commit(self) -> HtmlConstructionCommit {
+    /// Applies only the fixed writes and owning moves described before readiness. An element
+    /// write whose target is no longer an element is refused with the wrong-node-kind error
+    /// before anything changes, which `try_ready` and the exclusively owned storage make
+    /// unreachable; the ready operation is handed back unchanged to abort.
+    #[expect(
+        clippy::result_large_err,
+        reason = "a refusal hands the complete owner back without boxing it"
+    )]
+    pub fn commit(self) -> Result<HtmlConstructionCommit, HtmlConstructionRefusal<Self>> {
         use HtmlConstructionCommand as Command;
-        let HtmlConstructionOperation {
-            owner,
-            command,
-            mut plan,
-            ..
-        } = self.operation;
-        let resolved = self.resolved;
+        let Self {
+            operation:
+                HtmlConstructionOperation {
+                    owner,
+                    command,
+                    phase,
+                    failure,
+                    mut plan,
+                },
+            resolved,
+        } = self;
         // `try_ready` paired the owner with the command: only a publication has shared its arena.
         let mut storage = match owner {
             StorageOwner::Shared { arena, lease } => {
                 let root = plan.positions[0];
-                let result = if plan.output_document {
-                    HtmlConstructionResult::Document(HtmlDocument { arena, root })
-                } else {
-                    HtmlConstructionResult::Fragment(HtmlFragment { arena, root })
+                let result = match plan.output_document {
+                    Some(mode) => {
+                        HtmlConstructionResult::Document(HtmlDocument { arena, root, mode })
+                    }
+                    None => HtmlConstructionResult::Fragment(HtmlFragment { arena, root }),
                 };
-                return HtmlConstructionCommit::Published { result, lease };
+                return Ok(HtmlConstructionCommit::Published { result, lease });
             }
             StorageOwner::Mutable(storage) => storage,
         };
-        let command = match command {
+        // The writes that go through an element's data come first, while nothing else has
+        // changed, so that a refusal hands the operation back exactly as it was ready.
+        let command = if plan.no_op {
+            Some(command)
+        } else {
+            match write_element(&mut storage.arena, plan.positions[0], plan.link, command) {
+                Ok(pending) => pending,
+                Err((command, error)) => {
+                    return Err(HtmlConstructionRefusal::new(
+                        Self {
+                            operation: HtmlConstructionOperation {
+                                owner: StorageOwner::Mutable(storage),
+                                command,
+                                phase,
+                                failure,
+                                plan,
+                            },
+                            resolved,
+                        },
+                        error,
+                    ));
+                }
+            }
+        };
+        let command = command.map(|command| match command {
             Command::CreateElement {
                 name,
                 attributes,
@@ -2307,7 +2387,7 @@ impl HtmlConstructionReadyOperation {
                 }),
             },
             command => command,
-        };
+        });
         let plan = &mut plan;
         let p = plan.positions;
         if !plan.no_op {
@@ -2316,7 +2396,7 @@ impl HtmlConstructionReadyOperation {
             // unchanged usage, and describe no write.
             let assigns_usage = !matches!(
                 command,
-                Command::ReserveRecords { .. } | Command::CheckChildTransfer { .. }
+                Some(Command::ReserveRecords { .. } | Command::CheckChildTransfer { .. })
             );
             // Depths move while the edges are the ones planning walked.
             plan.commit_depths(arena);
@@ -2324,115 +2404,97 @@ impl HtmlConstructionReadyOperation {
                 template_owner,
                 association,
             } = resolved;
-            match command {
-                // The element form was converted to `Create` above.
-                Command::CreateElement { .. } => {}
-                Command::ReserveRecords { .. } | Command::CheckChildTransfer { .. } => {}
-                Command::Create { kind } => {
-                    // A template's identity, staged for its contents, is what makes the created
-                    // element a template here.
-                    let mut record = Record::new(kind, None, 0);
-                    record.children = std::mem::take(&mut plan.new_children[0]);
-                    record.children_generation = plan.new_children_generations[0];
-                    if template_owner.is_some() {
-                        record.template_contents = Some(TemplateContents::Owned(p[0] + 1));
-                    }
-                    arena.records.push(record);
-                    if let Some(owner) = template_owner {
-                        let mut contents = Record::new(HtmlNodeKind::Fragment, None, 1);
-                        contents.children = std::mem::take(&mut plan.new_children[1]);
-                        contents.children_generation = plan.new_children_generations[1];
-                        contents.owner = Some(HtmlFragmentOwner::Template(owner));
-                        arena.records.push(contents);
-                        arena.populate(0);
-                        arena.populate(1);
-                    } else {
-                        arena.populate(0);
-                    }
-                }
-                Command::CreateDocument { mode } => {
-                    let mut record = Record::new(HtmlNodeKind::Document(mode), None, 0);
-                    // This actual admitted constructor issues original state;
-                    // generic raw kinds and later mode edits cannot issue it.
-                    record.document_focused_area_designation =
-                        Some(HtmlFocusedAreaDesignation::KnownNull);
-                    record.children = std::mem::take(&mut plan.new_children[0]);
-                    record.children_generation = plan.new_children_generations[0];
-                    arena.records.push(record);
-                    arena.populate(0);
-                }
-                Command::CreateFragment => {
-                    let mut record = Record::new(HtmlNodeKind::Fragment, None, 0);
-                    record.children = std::mem::take(&mut plan.new_children[0]);
-                    record.children_generation = plan.new_children_generations[0];
-                    arena.records.push(record);
-                    arena.populate(0);
-                }
-                Command::CreateShadowContents { properties } => {
-                    let mut record = Record::new(HtmlNodeKind::Fragment, None, 0);
-                    record.children = std::mem::take(&mut plan.new_children[0]);
-                    record.children_generation = plan.new_children_generations[0];
-                    record.shadow_properties = Some(properties);
-                    arena.records.push(record);
-                    arena.populate(0);
-                }
-                Command::Insert { .. } => {
-                    // The guard above the match proved these edits apply.
-                    plan.apply_order_edits(arena);
-                    arena.records[p[0]].parent = Some(p[1]);
-                }
-                Command::Detach { .. } => {
-                    plan.apply_order_edits(arena);
-                    arena.records[p[0]].parent = None;
-                }
-                Command::ReplaceContent { content, .. } => match content {
-                    HtmlConstructionContent::ElementName(name) => {
-                        let HtmlNodeKind::Element(element) = &mut arena.records[p[0]].kind else {
-                            unreachable!("checked element content kind");
-                        };
-                        element.name = name;
-                        if !plan.link {
-                            element.link_flags = None;
+            if let Some(command) = command {
+                match command {
+                    // The element form was converted to `Create` above.
+                    Command::CreateElement { .. } => {}
+                    Command::ReserveRecords { .. } | Command::CheckChildTransfer { .. } => {}
+                    Command::Create { kind } => {
+                        // A template's identity, staged for its contents, is what makes the created
+                        // element a template here.
+                        let mut record = Record::new(kind, None, 0);
+                        record.children = std::mem::take(&mut plan.new_children[0]);
+                        record.children_generation = plan.new_children_generations[0];
+                        if template_owner.is_some() {
+                            record.template_contents = Some(TemplateContents::Owned(p[0] + 1));
+                        }
+                        arena.records.push(record);
+                        if let Some(owner) = template_owner {
+                            let mut contents = Record::new(HtmlNodeKind::Fragment, None, 1);
+                            contents.children = std::mem::take(&mut plan.new_children[1]);
+                            contents.children_generation = plan.new_children_generations[1];
+                            contents.owner = Some(HtmlFragmentOwner::Template(owner));
+                            arena.records.push(contents);
+                            arena.populate(0);
+                            arena.populate(1);
+                        } else {
+                            arena.populate(0);
                         }
                     }
-                    HtmlConstructionContent::Text(value) => {
-                        arena.records[p[0]].kind = HtmlNodeKind::Text(value)
+                    Command::CreateDocument { mode } => {
+                        let mut record = Record::new(HtmlNodeKind::Document(mode), None, 0);
+                        // This actual admitted constructor issues original state;
+                        // generic raw kinds and later mode edits cannot issue it.
+                        record.document_focused_area_designation =
+                            Some(HtmlFocusedAreaDesignation::KnownNull);
+                        record.children = std::mem::take(&mut plan.new_children[0]);
+                        record.children_generation = plan.new_children_generations[0];
+                        arena.records.push(record);
+                        arena.populate(0);
                     }
-                    HtmlConstructionContent::Comment(value) => {
-                        arena.records[p[0]].kind = HtmlNodeKind::Comment(value)
+                    Command::CreateFragment => {
+                        let mut record = Record::new(HtmlNodeKind::Fragment, None, 0);
+                        record.children = std::mem::take(&mut plan.new_children[0]);
+                        record.children_generation = plan.new_children_generations[0];
+                        arena.records.push(record);
+                        arena.populate(0);
                     }
-                    HtmlConstructionContent::ProcessingInstruction(value) => {
-                        arena.records[p[0]].kind = HtmlNodeKind::ProcessingInstruction(value)
+                    Command::CreateShadowContents { properties } => {
+                        let mut record = Record::new(HtmlNodeKind::Fragment, None, 0);
+                        record.children = std::mem::take(&mut plan.new_children[0]);
+                        record.children_generation = plan.new_children_generations[0];
+                        record.shadow_properties = Some(properties);
+                        arena.records.push(record);
+                        arena.populate(0);
                     }
-                    HtmlConstructionContent::Doctype(value) => {
-                        arena.records[p[0]].kind = HtmlNodeKind::Doctype(value)
+                    Command::Insert { .. } => {
+                        // The guard above the match proved these edits apply.
+                        plan.apply_order_edits(arena);
+                        arena.records[p[0]].parent = Some(p[1]);
                     }
-                },
-                Command::ReplaceAttributes { attributes, .. } => {
-                    let HtmlNodeKind::Element(element) = &mut arena.records[p[0]].kind else {
-                        unreachable!("checked attribute target kind");
-                    };
-                    element.attributes.replace_in_construction(
-                        attributes.into_attributes(),
-                        &mut arena.attribute_revision,
-                    );
+                    Command::Detach { .. } => {
+                        plan.apply_order_edits(arena);
+                        arena.records[p[0]].parent = None;
+                    }
+                    Command::ReplaceContent { content, .. } => match content {
+                        // Written through the element above.
+                        HtmlConstructionContent::ElementName(_) => {}
+                        HtmlConstructionContent::Text(value) => {
+                            arena.records[p[0]].kind = HtmlNodeKind::Text(value)
+                        }
+                        HtmlConstructionContent::Comment(value) => {
+                            arena.records[p[0]].kind = HtmlNodeKind::Comment(value)
+                        }
+                        HtmlConstructionContent::ProcessingInstruction(value) => {
+                            arena.records[p[0]].kind = HtmlNodeKind::ProcessingInstruction(value)
+                        }
+                        HtmlConstructionContent::Doctype(value) => {
+                            arena.records[p[0]].kind = HtmlNodeKind::Doctype(value)
+                        }
+                    },
+                    // Written through the element above.
+                    Command::ReplaceAttributes { .. } | Command::SetLinkFlags { .. } => {}
+                    // The associations are applied below, from what planning resolved.
+                    Command::AttachShadow { .. }
+                    | Command::AttachTemplateShadow { .. }
+                    | Command::SetTemplateShadowContents { .. }
+                    | Command::ReassignTemplateContents { .. } => {}
+                    Command::SetDocumentMode { mode, .. } => {
+                        arena.records[p[0]].kind = HtmlNodeKind::Document(mode)
+                    }
+                    // A publication returned above, where its owner is shared.
+                    Command::Publish { .. } => {}
                 }
-                // The associations are applied below, from what planning resolved.
-                Command::AttachShadow { .. }
-                | Command::AttachTemplateShadow { .. }
-                | Command::SetTemplateShadowContents { .. }
-                | Command::ReassignTemplateContents { .. } => {}
-                Command::SetDocumentMode { mode, .. } => {
-                    arena.records[p[0]].kind = HtmlNodeKind::Document(mode)
-                }
-                Command::SetLinkFlags { flags, .. } => {
-                    let HtmlNodeKind::Element(element) = &mut arena.records[p[0]].kind else {
-                        unreachable!("checked link element");
-                    };
-                    element.link_flags = Some(flags);
-                }
-                // A publication returned above, where its owner is shared.
-                Command::Publish { .. } => {}
             }
             match association {
                 Association::None => {}
@@ -2476,10 +2538,66 @@ impl HtmlConstructionReadyOperation {
                 arena.usage = plan.usage;
             }
         }
-        HtmlConstructionCommit::Changed {
+        Ok(HtmlConstructionCommit::Changed {
             storage,
             created: plan.created.take(),
+        })
+    }
+}
+
+/// Applies the commands that write through an element's data. The command is handed back for the
+/// generic commit when it is any other, and with the wrong-node-kind error when the target is not
+/// an element, unchanged and with nothing written.
+fn write_element(
+    arena: &mut Arena,
+    position: usize,
+    link: bool,
+    command: HtmlConstructionCommand,
+) -> Result<Option<HtmlConstructionCommand>, (HtmlConstructionCommand, HtmlConstructionError)> {
+    use HtmlConstructionCommand as Command;
+    let Arena {
+        records,
+        attribute_revision,
+        ..
+    } = arena;
+    let element = match records.get_mut(position).map(|record| &mut record.kind) {
+        Some(HtmlNodeKind::Element(element)) => Some(element),
+        _ => None,
+    };
+    match (command, element) {
+        (
+            Command::ReplaceContent {
+                content: HtmlConstructionContent::ElementName(name),
+                ..
+            },
+            Some(element),
+        ) => {
+            element.name = name;
+            if !link {
+                element.link_flags = None;
+            }
+            Ok(None)
         }
+        (Command::ReplaceAttributes { attributes, .. }, Some(element)) => {
+            element
+                .attributes
+                .replace_in_construction(attributes.into_attributes(), attribute_revision);
+            Ok(None)
+        }
+        (Command::SetLinkFlags { flags, .. }, Some(element)) => {
+            element.link_flags = Some(flags);
+            Ok(None)
+        }
+        (
+            command @ (Command::ReplaceContent {
+                content: HtmlConstructionContent::ElementName(_),
+                ..
+            }
+            | Command::ReplaceAttributes { .. }
+            | Command::SetLinkFlags { .. }),
+            None,
+        ) => Err((command, HtmlConstructionErrorKind::WrongNodeKind.into())),
+        (command, _) => Ok(Some(command)),
     }
 }
 
@@ -2651,7 +2769,10 @@ mod reference_admission_tests {
             };
             action.perform().unwrap().accept();
         }
-        slots::operation(&mut Some(operation)).unwrap().commit()
+        slots::operation(&mut Some(operation))
+            .unwrap()
+            .commit()
+            .unwrap()
     }
 
     #[test]
@@ -2706,7 +2827,7 @@ mod publish_membership_tests {
         while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
             action.perform().unwrap().accept();
         }
-        match slots::operation(&mut operation).unwrap().commit() {
+        match slots::operation(&mut operation).unwrap().commit().unwrap() {
             HtmlConstructionCommit::Changed {
                 storage, created, ..
             } => (storage, created),
@@ -2769,14 +2890,14 @@ mod publish_membership_tests {
         };
         if result.is_ok() {
             let HtmlConstructionCommit::Published { result, lease } =
-                slots::operation(&mut operation).unwrap().commit()
+                slots::operation(&mut operation).unwrap().commit().unwrap()
             else {
                 panic!("publication produced mutation")
             };
             let recovery = slots::recover(&mut Some(result), &mut Some(lease)).unwrap();
             return (recovery.storage, Ok(()));
         }
-        (operation.unwrap().abort().storage, result)
+        (operation.unwrap().abort().unwrap().storage, result)
     }
 
     #[test]
@@ -2848,7 +2969,7 @@ mod order_commit_guard_tests {
             }
             let HtmlConstructionCommit::Changed {
                 storage, created, ..
-            } = slots::operation(&mut operation).unwrap().commit()
+            } = slots::operation(&mut operation).unwrap().commit().unwrap()
             else {
                 panic!("mutation published")
             };
@@ -3003,7 +3124,7 @@ mod order_commit_guard_tests {
                 operation.next_action().err(),
                 Some(HtmlConstructionErrorKind::CapacityMismatch.error())
             );
-            let storage = operation.abort().storage;
+            let storage = operation.abort().unwrap().storage;
             assert_eq!(storage.arena.records[0].children, children);
             assert_eq!(storage.arena.records[node].parent, None);
             assert_eq!(storage.usage(), usage);
@@ -3024,7 +3145,7 @@ mod order_commit_guard_tests {
                 refusal.reason(),
                 &HtmlConstructionErrorKind::CapacityMismatch.error()
             );
-            let storage = refusal.into_parts().0.abort().storage;
+            let storage = refusal.into_parts().0.abort().unwrap().storage;
             assert_eq!(storage.arena.records[0].children, children);
             assert_eq!(storage.arena.records[node].parent, None);
             assert_eq!(storage.usage(), usage);
@@ -3052,7 +3173,7 @@ mod order_commit_guard_tests {
                 failure.reason(),
                 &HtmlConstructionErrorKind::ParentChildConflict.error()
             );
-            let storage = operation.abort().storage;
+            let storage = operation.abort().unwrap().storage;
             assert_eq!(storage.arena.records[0].children, children);
             assert_eq!(storage.usage(), usage);
         }
@@ -3076,7 +3197,7 @@ mod order_commit_guard_tests {
                 refusal.reason(),
                 &HtmlConstructionErrorKind::ParentChildConflict.error()
             );
-            let storage = refusal.into_parts().0.abort().storage;
+            let storage = refusal.into_parts().0.abort().unwrap().storage;
             assert_eq!(storage.arena.records[0].children, children);
             let after: Vec<usize> = storage
                 .arena
@@ -3151,7 +3272,7 @@ mod pairing_tests {
             template_owner: None,
         };
         let HtmlConstructionCommit::Changed { storage, created } =
-            operation.try_ready().unwrap().commit()
+            operation.try_ready().unwrap().commit().unwrap()
         else {
             panic!("creation");
         };
@@ -3177,13 +3298,11 @@ mod native_finish_tests {
             NativeRoot::Fragment,
         )
         .unwrap();
-        let root = builder.handle(0);
+        let root = builder.root.clone();
         builder
             .append(&root, HtmlNodeKind::Comment("c".into()))
             .unwrap();
-        if let Some(storage) = builder.storage.as_mut() {
-            storage.arena.records[1].parent = None;
-        }
+        builder.storage.arena.records[1].parent = None;
         let outcome = catch_unwind(AssertUnwindSafe(|| builder.finish()));
         let Ok(result) = outcome else {
             panic!("finish panicked on a refused publication");
@@ -3196,8 +3315,6 @@ mod native_finish_tests {
 #[cfg(test)]
 mod unreachable_state_tests {
     use super::*;
-    use std::panic::{AssertUnwindSafe, catch_unwind};
-
     fn drive(
         storage: HtmlConstructionStorage,
         command: HtmlConstructionCommand,
@@ -3206,7 +3323,7 @@ mod unreachable_state_tests {
         while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
             action.perform().unwrap().accept();
         }
-        match slots::operation(&mut operation).unwrap().commit() {
+        match slots::operation(&mut operation).unwrap().commit().unwrap() {
             HtmlConstructionCommit::Changed {
                 storage, created, ..
             } => (storage, created),
@@ -3276,20 +3393,37 @@ mod unreachable_state_tests {
         operation.try_ready().unwrap()
     }
 
+    /// A write through an element whose target is no longer an element is refused with the
+    /// wrong-node-kind error. Nothing was written: the target is still the comment, and the
+    /// ready operation comes back to abort with its storage.
     #[test]
-    fn commit_of_an_element_write_does_not_panic_when_its_target_stopped_being_an_element() {
+    fn commit_refuses_an_element_write_whose_target_stopped_being_an_element() {
         for (local, write) in WRITES {
             let ready = ready_with_spoiled_target(local, write);
-            let outcome = catch_unwind(AssertUnwindSafe(move || ready.commit()));
+            let position = ready.operation.plan.positions[0];
+            let usage = ready.operation.arena().usage;
+            let Err(refusal) = ready.commit() else {
+                panic!("{local}: a write through an element whose target is a comment is refused");
+            };
+            assert!(refusal.reason().is_wrong_node_kind(), "{local}");
+            let (ready, _) = refusal.into_parts();
+            let (storage, _, _) = ready.abort().unwrap().into_parts();
             assert!(
-                outcome.is_ok(),
-                "{local}: a write through an element whose target is a comment must be refused"
+                matches!(
+                    storage.arena.records[position].kind,
+                    HtmlNodeKind::Comment(_)
+                ),
+                "{local}: nothing was written"
             );
+            assert_eq!(storage.usage(), usage, "{local}");
         }
     }
 
+    /// A publication whose arena another strong owner holds cannot be reclaimed: the abort is
+    /// refused with the shared-allocation error and hands the ready operation back, which then
+    /// aborts, with the retirement evidence of the publication, once the arena is alone again.
     #[test]
-    fn abort_of_a_publication_another_owner_holds_does_not_panic() {
+    fn abort_refuses_a_publication_another_owner_holds_and_succeeds_once_it_is_alone() {
         let (storage, root) = drive(empty(), HtmlConstructionCommand::CreateFragment);
         let mut operation = storage.prepare_finish(root.unwrap());
         while let Some(action) = operation.next_action().unwrap() {
@@ -3300,11 +3434,15 @@ mod unreachable_state_tests {
             panic!("a ready publication shares its arena");
         };
         let alias = Arc::clone(arena);
-        let outcome = catch_unwind(AssertUnwindSafe(move || ready.abort()));
-        assert!(
-            outcome.is_ok(),
-            "a publication another owner holds cannot be reclaimed and must be refused"
-        );
+        let Err(refusal) = ready.abort() else {
+            panic!("a publication another owner holds cannot be reclaimed");
+        };
+        assert!(refusal.reason().is_shared_allocation_aliased());
         drop(alias);
+        let (ready, _) = refusal.into_parts();
+        let (storage, command, retired) = ready.abort().unwrap().into_parts();
+        assert!(retired.is_some(), "the publication's arena is retired");
+        assert!(matches!(command, HtmlConstructionCommand::Publish { .. }));
+        assert_eq!(storage.len(), 1);
     }
 }

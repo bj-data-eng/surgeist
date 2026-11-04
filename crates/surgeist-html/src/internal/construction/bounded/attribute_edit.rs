@@ -2412,7 +2412,7 @@ mod tests {
             action.perform().unwrap().accept();
         }
         let HtmlConstructionCommit::Changed { storage, created } =
-            slots::operation(&mut operation).unwrap().commit()
+            slots::operation(&mut operation).unwrap().commit().unwrap()
         else {
             panic!("create")
         };
@@ -4122,7 +4122,7 @@ mod tests {
             action.perform().unwrap().accept();
         }
         let HtmlConstructionCommit::Changed { storage, .. } =
-            slots::operation(&mut operation).unwrap().commit()
+            slots::operation(&mut operation).unwrap().commit().unwrap()
         else {
             panic!("create")
         };
@@ -4200,7 +4200,7 @@ mod tests {
             action.perform().unwrap().accept();
         }
         let HtmlConstructionCommit::Changed { storage, .. } =
-            slots::operation(&mut operation).unwrap().commit()
+            slots::operation(&mut operation).unwrap().commit().unwrap()
         else {
             panic!("replace")
         };
@@ -4311,7 +4311,7 @@ mod tests {
                         action.perform().unwrap().accept();
                     }
                     let HtmlConstructionCommit::Changed { storage, .. } =
-                        slots::operation(&mut operation).unwrap().commit()
+                        slots::operation(&mut operation).unwrap().commit().unwrap()
                     else {
                         panic!("replace")
                     };

@@ -138,7 +138,7 @@ fn aborted_pending(
         }
     }
     let finished = operation.as_mut().unwrap().next_action().unwrap().is_none();
-    let (owner, command, retired) = operation.unwrap().abort().into_parts();
+    let (owner, command, retired) = operation.unwrap().abort().unwrap().into_parts();
     assert!(retired.is_none(), "a mutation has no publication to retire");
     (finished, owner, command)
 }
@@ -171,7 +171,7 @@ fn assert_rollback_at_every_action<P>(
     assert!(performed > 0, "a replacement is checked before it commits");
     // A ready operation holds the complete plan and still applies nothing.
     let (owner, command, probe) = fresh();
-    let (owner, returned, retired) = ready(owner, command).abort().into_parts();
+    let (owner, returned, retired) = ready(owner, command).abort().unwrap().into_parts();
     assert!(retired.is_none());
     unchanged(&owner, &probe, "aborted when ready");
     committed(&change(owner, returned).0, &probe);

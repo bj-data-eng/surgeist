@@ -547,22 +547,37 @@ impl SessionStorage {
             }
             Some(operation) if result.is_ok() => match operation.try_ready() {
                 Ok(ready) => match ready.commit() {
-                    Ok(completion) => completion,
+                    Ok(completion) => Some(completion),
                     Err(refusal) => {
                         // The target stopped being a text node: abort the ready append.
                         let (ready, error) = refusal.into_parts();
                         result = Err(construction_error(control, error));
-                        ready.abort()
+                        ready.abort().ok()
                     }
                 },
                 Err(refusal) => {
                     // Not ready after all: abort it like any other failure.
                     let (operation, error) = refusal.into_parts();
                     result = Err(construction_error(control, error));
-                    operation.abort()
+                    operation.abort().ok()
                 }
             },
-            Some(operation) => operation.abort(),
+            Some(operation) => operation.abort().ok(),
+        };
+        let Some(completion) = completion else {
+            // An abort the append refused cannot hand back the exclusive owner it holds, so the
+            // tickets are all that is left. The first stop stays the reported one.
+            let error = match result {
+                Err(error) => error,
+                Ok(()) => latch_registry_row(control),
+            };
+            let tickets = CommittedTickets {
+                pending: pending_allocation,
+                original: original_allocation,
+                discarded: None,
+            };
+            tickets.release(control);
+            return Err(error);
         };
         let (storage, handle, incoming, discarded) = completion.into_parts();
         self.construction.owner = Some(storage);
