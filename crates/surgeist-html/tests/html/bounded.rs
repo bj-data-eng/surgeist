@@ -1,8 +1,10 @@
 mod attribute_rules;
 mod attributes;
+mod input_list;
 mod local_rules;
 mod media;
 mod microdata;
 mod numeric;
 mod rel;
+mod submit_button;
 mod time_element;

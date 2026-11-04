@@ -32,6 +32,59 @@ pub(crate) enum Action {
     },
 }
 
+/// How one controller admits each observation of a borrowed capture pass.
+///
+/// A pass reports its observations as [`Action`]s, and every controller (the
+/// registry formation, the construction import and the controlled OptionValue
+/// capture) applies its own policy to the same stream. `action` is the one
+/// dispatch from an observation to a policy method, and each method must be
+/// implemented, so an observation added to the protocol cannot be left
+/// unhandled by a controller.
+pub(crate) trait ActionPolicy {
+    type Error;
+    /// `units` of finite work were done or are about to be.
+    fn on_work(&mut self, units: usize) -> Result<(), Self::Error>;
+    /// `entries` scratch records are about to be reserved.
+    fn on_reserve(&mut self, entries: usize) -> Result<(), Self::Error>;
+    /// A backing of `requested` bytes is about to be allocated.
+    fn on_storage_before(&mut self, requested: usize) -> Result<(), Self::Error>;
+    /// A backing of `old` bytes was replaced by one of `actual` bytes.
+    fn on_storage_after(
+        &mut self,
+        old: usize,
+        actual: usize,
+        retained: bool,
+    ) -> Result<(), Self::Error>;
+    /// `bytes` of temporary storage became part of the retained capture.
+    fn on_storage_transfer(&mut self, bytes: usize) -> Result<(), Self::Error>;
+    /// A prospective element-value payload of `bytes` and `units`.
+    fn on_element_values(
+        &mut self,
+        bytes: usize,
+        units: usize,
+        observed: bool,
+    ) -> Result<(), Self::Error>;
+    /// Routes one observation to its policy method.
+    fn action(&mut self, action: Action) -> Result<(), Self::Error> {
+        match action {
+            Action::Work(units) => self.on_work(units),
+            Action::Reserve { entries, .. } => self.on_reserve(entries),
+            Action::StorageBefore { requested } => self.on_storage_before(requested),
+            Action::StorageAfter {
+                old,
+                actual,
+                retained,
+            } => self.on_storage_after(old, actual, retained),
+            Action::StorageTransfer { bytes } => self.on_storage_transfer(bytes),
+            Action::ElementValues {
+                bytes,
+                units,
+                observed,
+            } => self.on_element_values(bytes, units, observed),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) enum Failure<E> {
     Admission(E),
@@ -279,6 +332,88 @@ mod tests {
     use surgeist_html::{construction::HtmlDocumentMode, values::DocumentString};
 
     use crate::*;
+
+    /// Records which policy method each observation reached, with its arguments.
+    #[derive(Default)]
+    struct Recorder(Vec<String>);
+    impl ActionPolicy for Recorder {
+        type Error = ();
+        fn on_work(&mut self, units: usize) -> Result<(), ()> {
+            self.0.push(format!("work {units}"));
+            Ok(())
+        }
+        fn on_reserve(&mut self, entries: usize) -> Result<(), ()> {
+            self.0.push(format!("reserve {entries}"));
+            Ok(())
+        }
+        fn on_storage_before(&mut self, requested: usize) -> Result<(), ()> {
+            self.0.push(format!("before {requested}"));
+            Ok(())
+        }
+        fn on_storage_after(
+            &mut self,
+            old: usize,
+            actual: usize,
+            retained: bool,
+        ) -> Result<(), ()> {
+            self.0.push(format!("after {old} {actual} {retained}"));
+            Ok(())
+        }
+        fn on_storage_transfer(&mut self, bytes: usize) -> Result<(), ()> {
+            self.0.push(format!("transfer {bytes}"));
+            Err(())
+        }
+        fn on_element_values(
+            &mut self,
+            bytes: usize,
+            units: usize,
+            observed: bool,
+        ) -> Result<(), ()> {
+            self.0.push(format!("values {bytes} {units} {observed}"));
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn every_observation_reaches_its_own_policy_method_with_its_arguments() {
+        let mut policy = Recorder::default();
+        for action in [
+            Action::Work(3),
+            Action::Reserve {
+                entries: 4,
+                record_bytes: 99,
+            },
+            Action::StorageBefore { requested: 5 },
+            Action::StorageAfter {
+                old: 6,
+                actual: 7,
+                retained: true,
+            },
+            Action::ElementValues {
+                bytes: 8,
+                units: 9,
+                observed: false,
+            },
+        ] {
+            policy.action(action).unwrap();
+        }
+        // A policy's refusal is returned as it is.
+        assert_eq!(
+            policy.action(Action::StorageTransfer { bytes: 10 }),
+            Err(())
+        );
+        assert_eq!(
+            policy.0,
+            [
+                "work 3",
+                "reserve 4",
+                "before 5",
+                "after 6 7 true",
+                "values 8 9 false",
+                "transfer 10"
+            ]
+        );
+    }
 
     #[test]
     fn controlled_record_growth_joins_external_mapping_and_the_full_old_bank() {

@@ -6,26 +6,9 @@ use surgeist_html::{
     values::{Attribute, DocumentString},
 };
 
-macro_rules! identity {
-    ($name:ident) => {
-        #[derive(Clone, Debug)]
-        pub struct $name(Arc<()>);
-        impl $name {
-            pub fn fresh() -> Self {
-                Self(Arc::new(()))
-            }
-        }
-        impl PartialEq for $name {
-            fn eq(&self, other: &Self) -> bool {
-                Arc::ptr_eq(&self.0, &other.0)
-            }
-        }
-        impl Eq for $name {}
-    };
-}
-identity!(HtmlRelUrlId);
-identity!(HtmlRelOriginId);
-identity!(HtmlRelSettingsId);
+identity!(HtmlRelUrlId, fresh);
+identity!(HtmlRelOriginId, fresh);
+identity!(HtmlRelSettingsId, fresh);
 /// Actual URL record identity and its producer revision, not a serialization.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlRelUrlKey {
@@ -63,18 +46,11 @@ impl HtmlRelNoopenerInput {
         target: DocumentString,
         limits: HtmlRelFactsLimits,
     ) -> Result<Self, HtmlRelFactsError> {
-        if capture.host_facts_revision() != expected_host {
-            return Err(HtmlRelFactsError::HostRevisionMismatch);
-        }
+        FactsAdmission::host(capture, expected_host)?;
         if &url.revision != expected_url {
             return Err(HtmlRelFactsError::UrlRevisionMismatch);
         }
-        let mut a = FactsAdmission {
-            limits,
-            records: 0,
-            bytes: 0,
-            work: 0,
-        };
+        let mut a = FactsAdmission::new(limits);
         a.work(1)?;
         if limits.records < 1 {
             return Err(HtmlRelFactsError::RecordLimit);

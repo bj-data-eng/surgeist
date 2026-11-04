@@ -10,6 +10,8 @@
 //! [input dimensions](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#input-img-dimensions)
 //! and [determine dimensions](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#determine-dimensions).
 
+use super::admission::{FactAdmission, FactError, fact_limits};
+use super::scan::ScanError;
 use super::*;
 use surgeist_html::bounded::numeric::{
     HtmlIntegerPrefixScanner, HtmlNumericMaterializationError, HtmlNumericMaterializationFailure,
@@ -17,9 +19,7 @@ use surgeist_html::bounded::numeric::{
 };
 use surgeist_html::microsyntax::numeric::{HtmlNonNegativeInteger, HtmlNonNegativeRational};
 use surgeist_html::{
-    attributes::HtmlInputType,
-    bounded::numeric::HtmlIntegerUnitStepError,
-    values::{Attribute, DocumentString},
+    attributes::HtmlInputType, bounded::numeric::HtmlIntegerUnitStepError, values::Attribute,
     vocabulary::KnownHtmlElement,
 };
 
@@ -353,32 +353,11 @@ impl HtmlImageContentBoxObservation {
     }
 }
 
-/// Incoming vector capacities, rational digit capacities and validation work.
-/// These bound fact admission, independently of the sole query ledger.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HtmlImageDimensionFactsLimits {
-    records: usize,
-    bytes: usize,
-    work: usize,
-}
-impl HtmlImageDimensionFactsLimits {
-    pub fn new(records: usize, bytes: usize, work: usize) -> Self {
-        Self {
-            records,
-            bytes,
-            work,
-        }
-    }
-    pub fn records(self) -> usize {
-        self.records
-    }
-    pub fn bytes(self) -> usize {
-        self.bytes
-    }
-    pub fn work(self) -> usize {
-        self.work
-    }
-}
+fact_limits!(
+    /// Incoming vector capacities, rational digit capacities and validation work.
+    /// These bound fact admission, independently of the sole query ledger.
+    HtmlImageDimensionFactsLimits
+);
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlImageDimensionFactsError {
     Capture(HtmlCaptureError),
@@ -400,6 +379,28 @@ pub enum HtmlImageDimensionFactsError {
     WorkLimit,
     RepresentationExhausted,
 }
+impl ScanError for HtmlImageDimensionFactsError {
+    fn representation_exhausted() -> Self {
+        Self::RepresentationExhausted
+    }
+    fn work_exceeded(_limit: usize, _required: usize) -> Self {
+        Self::WorkLimit
+    }
+    fn capture(error: HtmlCaptureError) -> Self {
+        Self::Capture(error)
+    }
+}
+impl FactError for HtmlImageDimensionFactsError {
+    fn host_revision_mismatch() -> Self {
+        Self::HostRevisionMismatch
+    }
+    fn record_limit() -> Self {
+        Self::RecordLimit
+    }
+    fn byte_limit() -> Self {
+        Self::ByteLimit
+    }
+}
 impl fmt::Display for HtmlImageDimensionFactsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self:?}")
@@ -420,48 +421,23 @@ pub struct HtmlImageDimensionFacts {
     limits: HtmlImageDimensionFactsLimits,
     validation_work: usize,
 }
-struct ImageAdmission {
-    work: usize,
-    limit: usize,
-}
-impl ImageAdmission {
-    fn charge(&mut self, n: usize) -> Result<(), HtmlImageDimensionFactsError> {
-        self.work = self
-            .work
-            .checked_add(n)
-            .ok_or(HtmlImageDimensionFactsError::RepresentationExhausted)?;
-        if self.work > self.limit {
-            Err(HtmlImageDimensionFactsError::WorkLimit)
-        } else {
-            Ok(())
-        }
-    }
-    fn role(
-        &mut self,
-        capture: &HtmlCapture,
-        subject: &HtmlCaptureSubjectId,
-    ) -> Result<HtmlImageDimensionRole, HtmlImageDimensionFactsError> {
-        self.charge(1)?;
-        let node = capture
-            .node(subject)
-            .map_err(HtmlImageDimensionFactsError::Capture)?;
-        let HtmlCapturedNodeKind::Element(e) = node.kind() else {
-            return Err(HtmlImageDimensionFactsError::RoleMismatch(subject.clone()));
-        };
-        let n = e
-            .name()
-            .local_name()
-            .len()
-            .checked_add(1)
-            .and_then(|n| n.checked_mul(KnownHtmlElement::ALL.len()))
-            .and_then(|n| n.checked_add(e.name().namespace().uri().map_or(0, DocumentString::len)))
-            .ok_or(HtmlImageDimensionFactsError::RepresentationExhausted)?;
-        self.charge(n)?;
-        match KnownHtmlElement::from_name(e.name()) {
-            Some(KnownHtmlElement::Img) => Ok(HtmlImageDimensionRole::Img),
-            Some(KnownHtmlElement::Input) => Ok(HtmlImageDimensionRole::Input),
-            _ => Err(HtmlImageDimensionFactsError::RoleMismatch(subject.clone())),
-        }
+type ImageAdmission = FactAdmission<HtmlImageDimensionFactsError>;
+fn image_role(
+    a: &mut ImageAdmission,
+    capture: &HtmlCapture,
+    subject: &HtmlCaptureSubjectId,
+) -> Result<HtmlImageDimensionRole, HtmlImageDimensionFactsError> {
+    let node = a.node(capture, subject)?;
+    let HtmlCapturedNodeKind::Element(e) = node.kind() else {
+        return Err(HtmlImageDimensionFactsError::RoleMismatch(subject.clone()));
+    };
+    let n = scan::recognition_envelope(e)
+        .ok_or(HtmlImageDimensionFactsError::RepresentationExhausted)?;
+    a.work(n)?;
+    match KnownHtmlElement::from_name(e.name()) {
+        Some(KnownHtmlElement::Img) => Ok(HtmlImageDimensionRole::Img),
+        Some(KnownHtmlElement::Input) => Ok(HtmlImageDimensionRole::Input),
+        _ => Err(HtmlImageDimensionFactsError::RoleMismatch(subject.clone())),
     }
 }
 fn measurement_bytes(
@@ -490,18 +466,15 @@ impl HtmlImageDimensionFacts {
         limits: HtmlImageDimensionFactsLimits,
     ) -> Result<Self, HtmlImageDimensionFactsError> {
         use HtmlImageDimensionFactsError as E;
-        if &host != capture.host_facts_revision() {
-            return Err(E::HostRevisionMismatch);
-        }
+        ImageAdmission::host(capture, &host)?;
+        let mut a = ImageAdmission::new(limits);
         let capacities = [expected.capacity(), resources.capacity(), boxes.capacity()];
         let records = capacities
             .into_iter()
             .try_fold(0usize, |n, v| n.checked_add(v))
             .ok_or(E::RepresentationExhausted)?;
-        if records > limits.records {
-            return Err(E::RecordLimit);
-        }
-        let mut bytes = expected
+        a.add_records(records)?;
+        let bytes = expected
             .capacity()
             .checked_mul(std::mem::size_of::<HtmlImageDimensionExpectation>())
             .and_then(|n| {
@@ -517,27 +490,18 @@ impl HtmlImageDimensionFacts {
                     .and_then(|v| n.checked_add(v))
             })
             .ok_or(E::RepresentationExhausted)?;
-        if bytes > limits.bytes {
-            return Err(E::ByteLimit);
-        }
+        a.add_bytes(bytes)?;
         if (!expected.is_empty() || !resources.is_empty()) && revision.resource.is_none() {
             return Err(E::ResourceRevisionMissing);
         }
-        let mut a = ImageAdmission {
-            work: 0,
-            limit: limits.work,
-        };
         for (i, e) in expected.iter().enumerate() {
-            if a.role(capture, &e.subject)? != e.role {
+            if image_role(&mut a, capture, &e.subject)? != e.role {
                 return Err(E::RoleMismatch(e.subject.clone()));
             }
-            for prior in &expected[..i] {
-                a.charge(1)?;
-                if prior.subject == e.subject {
-                    return Err(E::DuplicateSubject(e.subject.clone()));
-                }
+            if a.repeats(&expected[..i], 1, |prior| prior.subject == e.subject)? {
+                return Err(E::DuplicateSubject(e.subject.clone()));
             }
-            a.charge(1)?;
+            a.work(1)?;
             if e.operation
                 .as_ref()
                 .is_some_and(|op| op.role() != e.role || op.request() != e.request)
@@ -546,19 +510,18 @@ impl HtmlImageDimensionFacts {
             }
         }
         for (i, r) in resources.iter().enumerate() {
-            a.charge(1)?;
+            a.work(1)?;
             if revision.resource.as_ref() != Some(&r.revision) {
                 return Err(E::ResourceRevisionMismatch);
             }
-            for prior in &resources[..i] {
-                a.charge(1)?;
-                if prior.expected.subject == r.expected.subject {
-                    return Err(E::DuplicateSubject(r.expected.subject.clone()));
-                }
+            if a.repeats(&resources[..i], 1, |prior| {
+                prior.expected.subject == r.expected.subject
+            })? {
+                return Err(E::DuplicateSubject(r.expected.subject.clone()));
             }
             let mut binding = None;
             for e in &expected {
-                a.charge(1)?;
+                a.work(1)?;
                 if e.subject == r.expected.subject {
                     binding = Some(e);
                     break;
@@ -567,7 +530,7 @@ impl HtmlImageDimensionFacts {
             let Some(e) = binding else {
                 return Err(E::UnexpectedObservation(r.expected.subject.clone()));
             };
-            a.charge(1)?;
+            a.work(1)?;
             if e != &r.expected {
                 return Err(E::BindingMismatch(e.subject.clone()));
             }
@@ -583,7 +546,7 @@ impl HtmlImageDimensionFacts {
                 return Err(E::InvalidAvailability(e.subject.clone()));
             }
             if let Some(result) = &r.completed {
-                a.charge(1)?;
+                a.work(1)?;
                 if r.availability.available() != Some(true) {
                     return Err(E::InvalidAvailability(e.subject.clone()));
                 }
@@ -591,19 +554,15 @@ impl HtmlImageDimensionFacts {
                     return Err(E::InvalidOperation(e.subject.clone()));
                 }
                 for axis in [&result.width, &result.height] {
-                    a.charge(1)?;
-                    bytes = bytes
-                        .checked_add(measurement_bytes(axis)?)
-                        .ok_or(E::RepresentationExhausted)?;
+                    a.work(1)?;
+                    a.grow_bytes(measurement_bytes(axis)?)?;
                 }
             }
-            if bytes > limits.bytes {
-                return Err(E::ByteLimit);
-            }
+            a.check_bytes()?;
         }
         for (i, b) in boxes.iter().enumerate() {
-            a.role(capture, &b.subject)?;
-            a.charge(3)?;
+            image_role(&mut a, capture, &b.subject)?;
+            a.work(3)?;
             if &b.capture != capture.identity() {
                 return Err(E::CaptureMismatch);
             }
@@ -613,21 +572,14 @@ impl HtmlImageDimensionFacts {
             if revision.participation.as_ref() != Some(&b.revision) {
                 return Err(E::ParticipationRevisionMismatch);
             }
-            for prior in &boxes[..i] {
-                a.charge(1)?;
-                if prior.subject == b.subject {
-                    return Err(E::DuplicateSubject(b.subject.clone()));
-                }
+            if a.repeats(&boxes[..i], 1, |prior| prior.subject == b.subject)? {
+                return Err(E::DuplicateSubject(b.subject.clone()));
             }
             for axis in [&b.width, &b.height] {
-                a.charge(1)?;
-                bytes = bytes
-                    .checked_add(measurement_bytes(axis)?)
-                    .ok_or(E::RepresentationExhausted)?;
+                a.work(1)?;
+                a.grow_bytes(measurement_bytes(axis)?)?;
             }
-            if bytes > limits.bytes {
-                return Err(E::ByteLimit);
-            }
+            a.check_bytes()?;
         }
         Ok(Self {
             capture: capture.identity().clone(),
@@ -637,7 +589,7 @@ impl HtmlImageDimensionFacts {
             resources,
             boxes,
             limits,
-            validation_work: a.work,
+            validation_work: a.work_total(),
         })
     }
     pub fn capture(&self) -> &HtmlCaptureId {
@@ -664,12 +616,9 @@ impl HtmlImageDimensionFacts {
         natural: Option<&HtmlNaturalDimensions>,
     ) -> Result<(), HtmlImageDimensionFactsError> {
         use HtmlImageDimensionFactsError as E;
-        let mut a = ImageAdmission {
-            work: self.validation_work,
-            limit: self.limits.work,
-        };
+        let mut a = ImageAdmission::resume(self.limits, self.validation_work);
         if let Some(p) = participation {
-            a.charge(2)?;
+            a.work(2)?;
             if p.capture() != &self.capture {
                 return Err(E::CaptureMismatch);
             }
@@ -683,7 +632,7 @@ impl HtmlImageDimensionFacts {
             }
             for b in &self.boxes {
                 for f in p.facts() {
-                    a.charge(1)?;
+                    a.work(1)?;
                     if f.subject() == &b.subject
                         && (f.being_rendered() == Some(false)
                             || f.produces_css_box() == Some(false))
@@ -696,12 +645,12 @@ impl HtmlImageDimensionFacts {
         if let Some(n) = natural {
             for e in &self.expected {
                 for f in n.facts() {
-                    a.charge(1)?;
+                    a.work(1)?;
                     if f.subject() == &e.subject
                         && let (HtmlImageDimensionSelection::Selected(key), Some(other)) =
                             (&e.selection, f.resource())
                     {
-                        a.charge(1)?;
+                        a.work(1)?;
                         if key != other {
                             return Err(E::ContradictoryResource(e.subject.clone()));
                         }
@@ -715,7 +664,7 @@ impl HtmlImageDimensionFacts {
                 }
             }
         }
-        self.validation_work = a.work;
+        self.validation_work = a.work_total();
         Ok(())
     }
 }

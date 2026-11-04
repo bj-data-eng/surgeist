@@ -3,13 +3,7 @@
 //! Fragment queries follow HTML 877d6146487f §13.4 and §13.2.4–6. Captured
 //! availability describes producer evidence; it never advertises host execution.
 
-use std::{
-    collections::HashSet,
-    error::Error,
-    fmt,
-    hash::{Hash, Hasher},
-    sync::Arc,
-};
+use std::{collections::HashSet, error::Error, fmt, hash::Hash, sync::Arc};
 use surgeist_html::bounded::lexical::validate_custom_element_name;
 use surgeist_html::{
     construction::{HtmlDoctype, HtmlDocumentMode, HtmlShadowRootMode, HtmlShadowRootProperties},
@@ -33,38 +27,17 @@ pub use element_input::HtmlCaptureElementError;
 pub use registry::*;
 pub use storage::{HtmlCaptureRetainedStorageUsage, HtmlCaptureStorageError};
 
-macro_rules! identity {
-    ($name:ident, $doc:literal) => {
-        #[doc = $doc]
-        #[derive(Clone, Debug)]
-        pub struct $name(Arc<()>);
-        impl PartialEq for $name {
-            fn eq(&self, other: &Self) -> bool {
-                Arc::ptr_eq(&self.0, &other.0)
-            }
-        }
-        impl Eq for $name {}
-        impl Hash for $name {
-            fn hash<H: Hasher>(&self, state: &mut H) {
-                Arc::as_ptr(&self.0).hash(state);
-            }
-        }
-    };
-}
 identity!(
+    /// Opaque identity of one immutable capture, independent of equal content.
     HtmlCaptureId,
-    "Opaque identity of one immutable capture, independent of equal content."
+    hash
 );
 identity!(
+    /// Producer-issued identity of one coherent immutable host-fact revision.
     HtmlHostFactsRevision,
-    "Producer-issued identity of one coherent immutable host-fact revision."
+    fresh,
+    hash
 );
-impl HtmlHostFactsRevision {
-    /// Issues a distinct host-fact revision. Clone to reuse unchanged facts.
-    pub fn fresh() -> Self {
-        Self(Arc::new(()))
-    }
-}
 
 /// A subject qualified by its immutable capture; never a canonical DOM ID.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]

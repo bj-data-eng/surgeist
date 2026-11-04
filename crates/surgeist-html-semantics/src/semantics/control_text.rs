@@ -2,6 +2,7 @@
 //! DOM child/descendant text content preserves ordinary Text data. Setters,
 //! reset and establishing an output's actual default override are external.
 
+use super::scan::{ScanError, ScanMeter};
 use super::seen::Seen;
 use super::*;
 use surgeist_html::{values::DocumentString, vocabulary::KnownHtmlElement};
@@ -72,6 +73,17 @@ pub enum HtmlOutputDefaultError {
     DuplicateSubject(HtmlCaptureSubjectId),
     InapplicableSubject(HtmlCaptureSubjectId),
 }
+impl ScanError for HtmlOutputDefaultError {
+    fn representation_exhausted() -> Self {
+        Self::RepresentationExhausted
+    }
+    fn work_exceeded(limit: usize, required: usize) -> Self {
+        Self::ValidationWork { limit, required }
+    }
+    fn capture(error: HtmlCaptureError) -> Self {
+        Self::Capture(error)
+    }
+}
 impl fmt::Display for HtmlOutputDefaultError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self:?}")
@@ -104,42 +116,22 @@ impl HtmlOutputDefaultFacts {
                 required: records.capacity(),
             });
         }
-        let mut work = 0usize;
+        let mut meter = ScanMeter::new(0, limits.validation_work);
         let mut units = 0usize;
         let mut seen = Seen::new(
             records.len(),
-            |n| output_validation_charge(&mut work, limits.validation_work, n),
+            |n| meter.charge(n),
             HtmlOutputDefaultError::RepresentationExhausted,
         )?;
         for record in records.iter() {
-            output_validation_charge(&mut work, limits.validation_work, 1)?;
-            let node = capture
-                .node(&record.subject)
-                .map_err(HtmlOutputDefaultError::Capture)?;
+            let node = meter.node(capture, &record.subject)?;
             let HtmlCapturedNodeKind::Element(element) = node.kind() else {
                 return Err(HtmlOutputDefaultError::InapplicableSubject(
                     record.subject.clone(),
                 ));
             };
             // Finite admission for the same exact vocabulary recognition owner.
-            let envelope = element
-                .name()
-                .local_name()
-                .len()
-                .checked_add(1)
-                .and_then(|n| n.checked_mul(KnownHtmlElement::ALL.len()))
-                .and_then(|n| {
-                    n.checked_add(
-                        element
-                            .name()
-                            .namespace()
-                            .uri()
-                            .map_or(0, DocumentString::len),
-                    )
-                })
-                .ok_or(HtmlOutputDefaultError::RepresentationExhausted)?;
-            output_validation_charge(&mut work, limits.validation_work, envelope)?;
-            if KnownHtmlElement::from_name(element.name()) != Some(KnownHtmlElement::Output) {
+            if meter.known(element)? != Some(KnownHtmlElement::Output) {
                 return Err(HtmlOutputDefaultError::InapplicableSubject(
                     record.subject.clone(),
                 ));
@@ -149,7 +141,7 @@ impl HtmlOutputDefaultFacts {
                     record.subject.clone(),
                 ));
             }
-            output_validation_charge(&mut work, limits.validation_work, 1)?;
+            meter.charge(1)?;
             if let HtmlOutputDefaultValueOverride::Value(value) = &record.default_value_override {
                 units = units
                     .checked_add(value.len())
@@ -166,7 +158,7 @@ impl HtmlOutputDefaultFacts {
             capture: capture.identity().clone(),
             host_revision,
             records,
-            validation_work: work,
+            validation_work: meter.work(),
         })
     }
     pub fn capture(&self) -> &HtmlCaptureId {
@@ -188,21 +180,6 @@ impl HtmlOutputDefaultFacts {
         self.validation_work
     }
 }
-fn output_validation_charge(
-    work: &mut usize,
-    limit: usize,
-    amount: usize,
-) -> Result<(), HtmlOutputDefaultError> {
-    let required = work
-        .checked_add(amount)
-        .ok_or(HtmlOutputDefaultError::RepresentationExhausted)?;
-    if required > limit {
-        return Err(HtmlOutputDefaultError::ValidationWork { limit, required });
-    }
-    *work = required;
-    Ok(())
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlControlTextOrigin {
     ChildText,

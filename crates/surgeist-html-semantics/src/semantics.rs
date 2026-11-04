@@ -16,7 +16,9 @@
 //! default spellcheck policy are concrete capture-qualified inputs. Style, layout, focus and runtime state transitions
 //! remain with their producers; queries borrow one immutable capture.
 
+mod admission;
 mod context;
+mod scan;
 mod seen;
 pub use context::*;
 mod microdata;
@@ -1613,13 +1615,7 @@ impl<'a> HtmlSemanticSession<'a> {
     ) -> Result<Option<KnownHtmlElement>, HtmlSemanticFailure> {
         // Envelope covers every candidate spelling and all supplied-name units
         // before the existing vocabulary owner performs its bounded recognition.
-        let units = element.name().local_name().len();
-        let ns_units = element.name().namespace().uri().map_or(0, |s| s.len());
-        let envelope = units
-            .checked_add(1)
-            .and_then(|n| n.checked_mul(KnownHtmlElement::ALL.len()))
-            .and_then(|n| n.checked_add(ns_units));
-        let Some(envelope) = envelope else {
+        let Some(envelope) = scan::recognition_envelope(element) else {
             return Err(self.stop(HtmlSemanticFailureKind::RepresentationExhausted));
         };
         self.charge(envelope)?;
@@ -1680,27 +1676,14 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         element: &HtmlCapturedElement,
     ) -> Result<bool, HtmlSemanticFailure> {
-        self.namespace_is(element, "http://www.w3.org/1999/xhtml")
+        self.namespace_is(element, scan::HTML_NAMESPACE)
     }
     fn namespace_is(
         &mut self,
         element: &HtmlCapturedElement,
         expected: &str,
     ) -> Result<bool, HtmlSemanticFailure> {
-        self.charge(1)?;
-        let Some(uri) = element.name().namespace().uri() else {
-            return Ok(false);
-        };
-        if uri.len() != expected.len() {
-            return Ok(false);
-        }
-        for (unit, byte) in uri.code_units().iter().zip(expected.bytes()) {
-            self.charge(1)?;
-            if *unit != u16::from(byte) {
-                return Ok(false);
-            }
-        }
-        Ok(true)
+        scan::namespace_is_with(element, expected, |amount| self.charge(amount))
     }
     fn parent(
         &mut self,

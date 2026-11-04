@@ -1,6 +1,7 @@
 //! HTML 877d6146487f §3.2.6.2 and §3.2.6.4: exact language and directionality.
 //! Language tags are BCP 47-designated payloads, without validity or service claims.
 
+use super::scan::{ScanError, ScanMeter};
 use super::seen::Seen;
 use super::*;
 use crate::bidi::{BidiClass, bidi_class};
@@ -158,86 +159,46 @@ pub struct HtmlLanguageDirectionFacts {
     assignments: Vec<HtmlSlotAssignedNodes>,
 }
 
-struct LanguageValidation {
-    work: usize,
-    limit: usize,
+impl ScanError for HtmlLanguageDirectionError {
+    fn representation_exhausted() -> Self {
+        Self::RepresentationExhausted
+    }
+    fn work_exceeded(limit: usize, required: usize) -> Self {
+        Self::ValidationWork { limit, required }
+    }
+    fn capture(error: HtmlCaptureError) -> Self {
+        Self::Capture(error)
+    }
 }
-impl LanguageValidation {
-    fn charge(&mut self, amount: usize) -> Result<(), HtmlLanguageDirectionError> {
-        let required = self
-            .work
-            .checked_add(amount)
-            .ok_or(HtmlLanguageDirectionError::RepresentationExhausted)?;
-        if required > self.limit {
-            return Err(HtmlLanguageDirectionError::ValidationWork {
-                limit: self.limit,
-                required,
-            });
+type LanguageMeter = ScanMeter<HtmlLanguageDirectionError>;
+/// The shadow host of the slot's root and whether that root names its assignments.
+fn slot_host(
+    validation: &mut LanguageMeter,
+    capture: &HtmlCapture,
+    slot: &HtmlCaptureSubjectId,
+) -> Result<(HtmlCaptureSubjectId, bool), HtmlLanguageDirectionError> {
+    let mut current = slot.clone();
+    loop {
+        let node = validation.node(capture, &current)?;
+        if let HtmlCapturedNodeKind::Fragment(fragment) = node.kind()
+            && let HtmlCapturedFragmentKind::ShadowRoot(properties) = fragment.kind()
+        {
+            validation.charge(1)?;
+            let named = properties.properties().slot_assignment()
+                == surgeist_html::construction::HtmlSlotAssignment::Named;
+            return match node.host() {
+                Some(HtmlCapturedHost::Element(host)) => Ok((host.subject().clone(), named)),
+                _ => Err(HtmlLanguageDirectionError::UnavailableRelation(current)),
+            };
         }
-        self.work = required;
-        Ok(())
-    }
-    fn node<'a>(
-        &mut self,
-        capture: &'a HtmlCapture,
-        id: &HtmlCaptureSubjectId,
-    ) -> Result<HtmlCapturedNode<'a>, HtmlLanguageDirectionError> {
-        self.charge(1)?;
-        capture
-            .node(id)
-            .map_err(HtmlLanguageDirectionError::Capture)
-    }
-    fn known(
-        &mut self,
-        element: &HtmlCapturedElement,
-    ) -> Result<Option<KnownHtmlElement>, HtmlLanguageDirectionError> {
-        let amount = element
-            .name()
-            .local_name()
-            .len()
-            .checked_add(1)
-            .and_then(|n| n.checked_mul(KnownHtmlElement::ALL.len()))
-            .and_then(|n| {
-                n.checked_add(
-                    element
-                        .name()
-                        .namespace()
-                        .uri()
-                        .map_or(0, DocumentString::len),
-                )
-            })
-            .ok_or(HtmlLanguageDirectionError::RepresentationExhausted)?;
-        self.charge(amount)?;
-        Ok(KnownHtmlElement::from_name(element.name()))
-    }
-    fn slot_host(
-        &mut self,
-        capture: &HtmlCapture,
-        slot: &HtmlCaptureSubjectId,
-    ) -> Result<(HtmlCaptureSubjectId, bool), HtmlLanguageDirectionError> {
-        let mut current = slot.clone();
-        loop {
-            let node = self.node(capture, &current)?;
-            if let HtmlCapturedNodeKind::Fragment(fragment) = node.kind()
-                && let HtmlCapturedFragmentKind::ShadowRoot(properties) = fragment.kind()
-            {
-                self.charge(1)?;
-                let named = properties.properties().slot_assignment()
-                    == surgeist_html::construction::HtmlSlotAssignment::Named;
-                return match node.host() {
-                    Some(HtmlCapturedHost::Element(host)) => Ok((host.subject().clone(), named)),
-                    _ => Err(HtmlLanguageDirectionError::UnavailableRelation(current)),
-                };
+        validation.charge(1)?;
+        match node.parent() {
+            HtmlCapturedParent::Subject(parent) => current = parent,
+            HtmlCapturedParent::Unavailable => {
+                return Err(HtmlLanguageDirectionError::UnavailableRelation(current));
             }
-            self.charge(1)?;
-            match node.parent() {
-                HtmlCapturedParent::Subject(parent) => current = parent,
-                HtmlCapturedParent::Unavailable => {
-                    return Err(HtmlLanguageDirectionError::UnavailableRelation(current));
-                }
-                HtmlCapturedParent::Root => {
-                    return Err(HtmlLanguageDirectionError::InvalidSlot(slot.clone()));
-                }
+            HtmlCapturedParent::Root => {
+                return Err(HtmlLanguageDirectionError::InvalidSlot(slot.clone()));
             }
         }
     }
@@ -274,10 +235,7 @@ impl HtmlLanguageDirectionFacts {
                 required: records,
             });
         }
-        let mut validation = LanguageValidation {
-            work: 0,
-            limit: limits.validation_work,
-        };
+        let mut validation = LanguageMeter::new(0, limits.validation_work);
         let mut units = 0;
         let mut assigned_capacity = 0;
         let mut seen = Seen::new(
@@ -431,7 +389,7 @@ impl HtmlLanguageDirectionFacts {
             if nodes.is_empty() {
                 continue;
             }
-            let (host, named) = validation.slot_host(capture, &fact.slot)?;
+            let (host, named) = slot_host(&mut validation, capture, &fact.slot)?;
             let mut host_children = if named && !nodes.is_empty() {
                 let host_node = validation.node(capture, &host)?;
                 validation.charge(1)?;
@@ -616,7 +574,7 @@ impl<'a> HtmlSemanticSession<'a> {
                     });
                 }
                 if (self.html_namespace(element)?
-                    || self.language_namespace(element, "http://www.w3.org/2000/svg")?)
+                    || self.namespace_is(element, "http://www.w3.org/2000/svg")?)
                     && let Some(attribute) = self.attribute(element, "lang")?
                 {
                     self.interpreter
@@ -636,27 +594,6 @@ impl<'a> HtmlSemanticSession<'a> {
             let document = node.node_document();
             return self.language_fallback(document.subject());
         }
-    }
-
-    fn language_namespace(
-        &mut self,
-        element: &HtmlCapturedElement,
-        expected: &str,
-    ) -> Result<bool, HtmlSemanticFailure> {
-        self.charge(1)?;
-        let Some(uri) = element.name().namespace().uri() else {
-            return Ok(false);
-        };
-        if uri.len() != expected.len() {
-            return Ok(false);
-        }
-        for (unit, byte) in uri.code_units().iter().zip(expected.bytes()) {
-            self.charge(1)?;
-            if *unit != u16::from(byte) {
-                return Ok(false);
-            }
-        }
-        Ok(true)
     }
 
     fn language_parent(

@@ -2,6 +2,7 @@
 //! HTML 877d6146487f §4.10.2, §4.10.4, §4.10.5, §4.10.10 and §4.10.18.
 //! Host adapters establish history and current slots; queries execute no transitions.
 
+use super::scan::{ScanError, ScanMeter};
 use super::seen::Seen;
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
@@ -249,80 +250,32 @@ pub struct HtmlControlFacts {
     validation_work: usize,
     validation_limit: usize,
 }
-struct ControlValidation {
-    work: usize,
-    limit: usize,
+impl ScanError for HtmlControlFactsError {
+    fn representation_exhausted() -> Self {
+        Self::RepresentationExhausted
+    }
+    fn work_exceeded(limit: usize, required: usize) -> Self {
+        Self::ValidationWork { limit, required }
+    }
+    fn capture(error: HtmlCaptureError) -> Self {
+        Self::Capture(error)
+    }
 }
-impl ControlValidation {
-    fn root(
-        &mut self,
-        capture: &HtmlCapture,
-        subject: &HtmlCaptureSubjectId,
-    ) -> Result<Option<HtmlCaptureSubjectId>, HtmlControlFactsError> {
-        let mut current = subject.clone();
-        loop {
-            let node = self.node(capture, &current)?;
-            self.charge(1)?;
-            match node.parent() {
-                HtmlCapturedParent::Subject(parent) => current = parent,
-                HtmlCapturedParent::Root => return Ok(Some(current)),
-                HtmlCapturedParent::Unavailable => return Ok(None),
-            }
+/// The topmost ancestor of `subject`, or `None` when an ancestor is unavailable.
+fn validated_root(
+    validation: &mut ScanMeter<HtmlControlFactsError>,
+    capture: &HtmlCapture,
+    subject: &HtmlCaptureSubjectId,
+) -> Result<Option<HtmlCaptureSubjectId>, HtmlControlFactsError> {
+    let mut current = subject.clone();
+    loop {
+        let node = validation.node(capture, &current)?;
+        validation.charge(1)?;
+        match node.parent() {
+            HtmlCapturedParent::Subject(parent) => current = parent,
+            HtmlCapturedParent::Root => return Ok(Some(current)),
+            HtmlCapturedParent::Unavailable => return Ok(None),
         }
-    }
-    fn charge(&mut self, amount: usize) -> Result<(), HtmlControlFactsError> {
-        let required = self
-            .work
-            .checked_add(amount)
-            .ok_or(HtmlControlFactsError::RepresentationExhausted)?;
-        if required > self.limit {
-            return Err(HtmlControlFactsError::ValidationWork {
-                limit: self.limit,
-                required,
-            });
-        }
-        self.work = required;
-        Ok(())
-    }
-    fn node<'a>(
-        &mut self,
-        capture: &'a HtmlCapture,
-        id: &HtmlCaptureSubjectId,
-    ) -> Result<HtmlCapturedNode<'a>, HtmlControlFactsError> {
-        self.charge(1)?;
-        capture.node(id).map_err(HtmlControlFactsError::Capture)
-    }
-    fn kind(
-        &mut self,
-        element: &HtmlCapturedElement,
-    ) -> Result<Option<KnownHtmlElement>, HtmlControlFactsError> {
-        let amount = element
-            .name()
-            .local_name()
-            .len()
-            .checked_add(1)
-            .and_then(|n| n.checked_mul(KnownHtmlElement::ALL.len()))
-            .and_then(|n| n.checked_add(element.name().namespace().uri().map_or(0, |s| s.len())))
-            .ok_or(HtmlControlFactsError::RepresentationExhausted)?;
-        self.charge(amount)?;
-        Ok(KnownHtmlElement::from_name(element.name()))
-    }
-    fn html(&mut self, element: &HtmlCapturedElement) -> Result<bool, HtmlControlFactsError> {
-        self.charge(1)?;
-        let Some(uri) = element.name().namespace().uri() else {
-            return Ok(false);
-        };
-        let expected = "http://www.w3.org/1999/xhtml";
-        if uri.len() != expected.len() {
-            return Ok(false);
-        }
-        for (unit, byte) in uri.code_units().iter().zip(expected.bytes()) {
-            self.charge(1)?;
-            if *unit != u16::from(byte) {
-                return Ok(false);
-            }
-        }
-        Ok(true)
     }
 }
 impl HtmlControlFacts {
@@ -350,10 +303,7 @@ impl HtmlControlFacts {
                 required,
             });
         }
-        let mut validation = ControlValidation {
-            work: 0,
-            limit: limits.validation_work,
-        };
+        let mut validation = ScanMeter::new(0, limits.validation_work);
         let mut seen = Seen::new(
             associations.len(),
             |n| validation.charge(n),
@@ -367,9 +317,9 @@ impl HtmlControlFacts {
                     fact.subject.clone(),
                 ));
             };
-            if !validation.html(element)?
+            if !validation.html_namespace(element)?
                 || validation
-                    .kind(element)?
+                    .known(element)?
                     .is_some_and(|kind| HtmlNativeFormAssociationKind::from_element(kind).is_none())
             {
                 return Err(HtmlControlFactsError::InapplicableSubject(
@@ -386,15 +336,15 @@ impl HtmlControlFacts {
                 let HtmlCapturedNodeKind::Element(owner_element) = owner_node.kind() else {
                     return Err(HtmlControlFactsError::InvalidFormOwner(owner.clone()));
                 };
-                if validation.kind(owner_element)? != Some(KnownHtmlElement::Form) {
+                if validation.known(owner_element)? != Some(KnownHtmlElement::Form) {
                     return Err(HtmlControlFactsError::InvalidFormOwner(owner.clone()));
                 }
                 validation.charge(2)?;
                 if node.node_document() != owner_node.node_document() {
                     return Err(HtmlControlFactsError::CrossDocumentFormOwner(owner.clone()));
                 }
-                let subject_root = validation.root(capture, &fact.subject)?;
-                let owner_root = validation.root(capture, owner)?;
+                let subject_root = validated_root(&mut validation, capture, &fact.subject)?;
+                let owner_root = validated_root(&mut validation, capture, owner)?;
                 if let (Some(subject_root), Some(owner_root)) = (subject_root, owner_root)
                     && subject_root != owner_root
                 {
@@ -415,7 +365,7 @@ impl HtmlControlFacts {
                     fact.subject.clone(),
                 ));
             };
-            if validation.kind(element)? != Some(KnownHtmlElement::Input) {
+            if validation.known(element)? != Some(KnownHtmlElement::Input) {
                 return Err(HtmlControlFactsError::InapplicableSubject(
                     fact.subject.clone(),
                 ));
@@ -439,7 +389,7 @@ impl HtmlControlFacts {
                     fact.subject.clone(),
                 ));
             };
-            if validation.kind(element)? != Some(KnownHtmlElement::Option) {
+            if validation.known(element)? != Some(KnownHtmlElement::Option) {
                 return Err(HtmlControlFactsError::InapplicableSubject(
                     fact.subject.clone(),
                 ));
@@ -463,7 +413,7 @@ impl HtmlControlFacts {
                     fact.subject.clone(),
                 ));
             };
-            if validation.kind(element)? != Some(KnownHtmlElement::Textarea) {
+            if validation.known(element)? != Some(KnownHtmlElement::Textarea) {
                 return Err(HtmlControlFactsError::InapplicableSubject(
                     fact.subject.clone(),
                 ));
@@ -481,8 +431,8 @@ impl HtmlControlFacts {
             inputs,
             options,
             textareas,
-            validation_work: validation.work,
-            validation_limit: validation.limit,
+            validation_work: validation.work(),
+            validation_limit: validation.limit(),
         })
     }
     /// Complete the bounded context join using the constructor's remaining work.
@@ -491,10 +441,7 @@ impl HtmlControlFacts {
         capture: &HtmlCapture,
         classifications: &[HtmlCustomControlClassification],
     ) -> Result<Self, HtmlControlFactsError> {
-        let mut validation = ControlValidation {
-            work: self.validation_work,
-            limit: self.validation_limit,
-        };
+        let mut validation = ScanMeter::new(self.validation_work, self.validation_limit);
         for association in &self.associations {
             validation.charge(1)?;
             let node = validation.node(capture, &association.subject)?;
@@ -503,7 +450,7 @@ impl HtmlControlFacts {
                     association.subject.clone(),
                 ));
             };
-            if validation.kind(element)?.is_some() {
+            if validation.known(element)?.is_some() {
                 continue;
             }
             for classification in classifications {
@@ -521,7 +468,7 @@ impl HtmlControlFacts {
                 }
             }
         }
-        self.validation_work = validation.work;
+        self.validation_work = validation.work();
         Ok(self)
     }
     pub fn capture(&self) -> &HtmlCaptureId {
@@ -1262,21 +1209,8 @@ impl<'a> HtmlSemanticSession<'a> {
             self.charge(1)?;
             return Ok(None);
         }
-        if !matches!(
+        if !surgeist_html::bounded::attributes::input_list_applies(
             self.control_input_type(element)?,
-            HtmlInputType::Text
-                | HtmlInputType::Search
-                | HtmlInputType::Telephone
-                | HtmlInputType::Url
-                | HtmlInputType::Email
-                | HtmlInputType::Date
-                | HtmlInputType::Month
-                | HtmlInputType::Week
-                | HtmlInputType::Time
-                | HtmlInputType::LocalDateTime
-                | HtmlInputType::Number
-                | HtmlInputType::Range
-                | HtmlInputType::Color
         ) {
             self.charge(1)?;
             return Ok(None);

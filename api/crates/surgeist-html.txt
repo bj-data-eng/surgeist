@@ -962,6 +962,17 @@ impl core::error::Error for surgeist_html::attributes::microdata::HtmlMicrodataT
 pub fn surgeist_html::attributes::microdata::HtmlMicrodataTokenListError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_html::attributes::microdata::HtmlMicrodataTokenListError
 pub fn surgeist_html::attributes::microdata::HtmlMicrodataTokenListError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::attributes::microdata::HtmlMicrodataUrlSource
+pub surgeist_html::attributes::microdata::HtmlMicrodataUrlSource::Data
+pub surgeist_html::attributes::microdata::HtmlMicrodataUrlSource::Href
+pub surgeist_html::attributes::microdata::HtmlMicrodataUrlSource::Src
+impl surgeist_html::attributes::microdata::HtmlMicrodataUrlSource
+pub fn surgeist_html::attributes::microdata::HtmlMicrodataUrlSource::attribute(self) -> surgeist_html::vocabulary::KnownHtmlAttribute
+pub enum surgeist_html::attributes::microdata::HtmlMicrodataValueSource
+pub surgeist_html::attributes::microdata::HtmlMicrodataValueSource::Attribute(surgeist_html::vocabulary::KnownHtmlAttribute)
+pub surgeist_html::attributes::microdata::HtmlMicrodataValueSource::DatetimeValue
+pub surgeist_html::attributes::microdata::HtmlMicrodataValueSource::DescendantText
+pub surgeist_html::attributes::microdata::HtmlMicrodataValueSource::Url(surgeist_html::attributes::microdata::HtmlMicrodataUrlSource)
 pub struct surgeist_html::attributes::microdata::HtmlMicrodataToken
 impl surgeist_html::attributes::microdata::HtmlMicrodataToken
 pub fn surgeist_html::attributes::microdata::HtmlMicrodataToken::contains_dot_or_colon(&self) -> bool
@@ -980,6 +991,8 @@ pub fn surgeist_html::attributes::microdata::HtmlMicrodataTokenReport::processin
 pub fn surgeist_html::attributes::microdata::HtmlMicrodataTokenReport::raw(&self) -> core::option::Option<&surgeist_html::values::DocumentString>
 pub fn surgeist_html::attributes::microdata::HtmlMicrodataTokenReport::token_units(&self, index: usize) -> core::option::Option<&[u16]>
 pub fn surgeist_html::attributes::microdata::HtmlMicrodataTokenReport::tokens(&self) -> &[surgeist_html::attributes::microdata::HtmlMicrodataToken]
+pub fn surgeist_html::attributes::microdata::microdata_url_source(element: core::option::Option<surgeist_html::vocabulary::KnownHtmlElement>) -> core::option::Option<surgeist_html::attributes::microdata::HtmlMicrodataUrlSource>
+pub fn surgeist_html::attributes::microdata::microdata_value_source(element: core::option::Option<surgeist_html::vocabulary::KnownHtmlElement>) -> surgeist_html::attributes::microdata::HtmlMicrodataValueSource
 pub mod surgeist_html::attributes::modification
 pub enum surgeist_html::attributes::modification::HtmlModificationTimestamp<'a>
 pub surgeist_html::attributes::modification::HtmlModificationTimestamp::Date(&'a surgeist_html::microsyntax::temporal::HtmlDate)
@@ -2014,6 +2027,9 @@ pub surgeist_html::attributes::HtmlStandardCommand::TogglePopover
 impl surgeist_html::attributes::HtmlStandardCommand
 pub fn surgeist_html::attributes::HtmlStandardCommand::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::attributes::HtmlStandardCommand::into_attribute(self) -> surgeist_html::values::Attribute
+impl surgeist_html::attributes::HtmlStandardCommand
+pub fn surgeist_html::attributes::HtmlStandardCommand::is_valid_by_element_steps(self, target: core::option::Option<surgeist_html::vocabulary::KnownHtmlElement>) -> bool
+pub fn surgeist_html::attributes::HtmlStandardCommand::is_valid_for_every_html_element(self) -> bool
 pub enum surgeist_html::attributes::HtmlTrackKind
 pub surgeist_html::attributes::HtmlTrackKind::Captions
 pub surgeist_html::attributes::HtmlTrackKind::Chapters
@@ -2098,6 +2114,10 @@ impl core::error::Error for surgeist_html::bounded::attributes::HtmlAutocomplete
 pub fn surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError
 pub fn surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::bounded::attributes::HtmlButtonSubmitterFact
+pub surgeist_html::bounded::attributes::HtmlButtonSubmitterFact::CommandAttributePresent
+pub surgeist_html::bounded::attributes::HtmlButtonSubmitterFact::CommandforAttributePresent
+pub surgeist_html::bounded::attributes::HtmlButtonSubmitterFact::ParentIsSelect
 pub enum surgeist_html::bounded::attributes::HtmlEmbeddedDimensionApplicability
 pub surgeist_html::bounded::attributes::HtmlEmbeddedDimensionApplicability::Applicable
 pub surgeist_html::bounded::attributes::HtmlEmbeddedDimensionApplicability::DifferentContext
@@ -2182,9 +2202,12 @@ impl surgeist_html::bounded::attributes::HtmlWritingSuggestionsProcessing
 pub const fn surgeist_html::bounded::attributes::HtmlWritingSuggestionsProcessing::intrinsic(&self) -> core::option::Option<surgeist_html::attributes::HtmlWritingSuggestionsState>
 pub const fn surgeist_html::bounded::attributes::HtmlWritingSuggestionsProcessing::recognition(&self) -> surgeist_html::attributes::HtmlAttributeRecognition
 pub fn surgeist_html::bounded::attributes::autocomplete_materialization_work_bound(input_code_units: usize) -> core::option::Option<usize>
+pub fn surgeist_html::bounded::attributes::button_submitter_context_with<E>(state: surgeist_html::attributes::HtmlButtonTypeState, facts: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlButtonSubmitterFact) -> core::result::Result<bool, E>) -> core::result::Result<surgeist_html::attributes::HtmlButtonSubmitterContext, E>
 pub fn surgeist_html::bounded::attributes::crossorigin_processing_with<E>(raw: core::option::Option<&surgeist_html::values::DocumentString>, admit: impl core::ops::function::FnMut(surgeist_html::bounded::attributes::HtmlAttributeKeywordRead) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::attributes::HtmlCrossOriginState, E>
 pub fn surgeist_html::bounded::attributes::embedded_dimension_applicability(element: core::option::Option<surgeist_html::vocabulary::KnownHtmlElement>, context: core::option::Option<surgeist_html::bounded::attributes::HtmlEmbeddedDimensionApplicabilityContext>) -> surgeist_html::bounded::attributes::HtmlEmbeddedDimensionApplicability
+pub fn surgeist_html::bounded::attributes::input_list_applies(state: surgeist_html::attributes::HtmlInputType) -> bool
 pub fn surgeist_html::bounded::attributes::input_readonly_applies(state: surgeist_html::attributes::HtmlInputType) -> bool
+pub fn surgeist_html::bounded::attributes::input_submitter_context(state: surgeist_html::attributes::HtmlInputType) -> surgeist_html::attributes::HtmlButtonSubmitterContext
 pub fn surgeist_html::bounded::attributes::meta_language_token_with<E>(raw: &surgeist_html::values::DocumentString, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<core::ops::range::Range<usize>>, E>
 pub fn surgeist_html::bounded::attributes::meta_pragma_state_with<E>(raw: &surgeist_html::values::DocumentString, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::attributes::meta_pragma::HtmlMetaPragmaState>, E>
 pub fn surgeist_html::bounded::attributes::meta_referrer_policy_with<E>(raw: &surgeist_html::values::DocumentString, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<core::option::Option<surgeist_html::attributes::HtmlReferrerPolicy>, E>

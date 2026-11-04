@@ -1,4 +1,6 @@
 //! Capture-qualified HTML877d relationships; external definitions are finite facts.
+use super::admission::{FactAdmission, FactError, fact_limits, producer_revision};
+use super::scan::ScanError;
 use super::*;
 use surgeist_html::{
     microsyntax::tokens::HtmlSpaceToken,
@@ -18,44 +20,12 @@ use surgeist_html::elements::link::{
     HtmlRelEffect, HtmlRelKeyword, HtmlRelLinks, HtmlRelReport, HtmlRelRole, HtmlRelSpelling,
 };
 
-#[derive(Clone, Debug)]
-pub struct HtmlRelProducerId(Arc<()>);
-impl HtmlRelProducerId {
-    pub fn fresh() -> Self {
-        Self(Arc::new(()))
-    }
-}
-impl PartialEq for HtmlRelProducerId {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
-impl Eq for HtmlRelProducerId {}
-/// Actual producer/configuration/revision, independently expected by the caller.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct HtmlRelRevision {
-    producer: HtmlRelProducerId,
-    configuration: u64,
-    revision: u64,
-}
-impl HtmlRelRevision {
-    pub fn new(producer: HtmlRelProducerId, configuration: u64, revision: u64) -> Self {
-        Self {
-            producer,
-            configuration,
-            revision,
-        }
-    }
-    pub fn producer(&self) -> &HtmlRelProducerId {
-        &self.producer
-    }
-    pub fn configuration(&self) -> u64 {
-        self.configuration
-    }
-    pub fn revision(&self) -> u64 {
-        self.revision
-    }
-}
+identity!(HtmlRelProducerId, fresh);
+producer_revision!(
+    /// Actual producer/configuration/revision, independently expected by the caller.
+    HtmlRelRevision,
+    HtmlRelProducerId
+);
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct HtmlRelExpectedRevisions {
     registry: Option<HtmlRelRevision>,
@@ -112,19 +82,7 @@ impl HtmlRelExpectedRevisions {
         self.section.as_ref()
     }
 }
-#[derive(Clone, Debug)]
-pub struct HtmlRelDefinitionId(Arc<()>);
-impl HtmlRelDefinitionId {
-    pub fn fresh() -> Self {
-        Self(Arc::new(()))
-    }
-}
-impl PartialEq for HtmlRelDefinitionId {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
-impl Eq for HtmlRelDefinitionId {}
+identity!(HtmlRelDefinitionId, fresh);
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlRelDefinitionKey {
     identity: HtmlRelDefinitionId,
@@ -344,20 +302,10 @@ impl HtmlRelUrlGrammar {
         }
     }
 }
-/// Associated sections are source concepts that need not identify an Element.
-#[derive(Clone, Debug)]
-pub struct HtmlRelSectionId(Arc<()>);
-impl HtmlRelSectionId {
-    pub fn fresh() -> Self {
-        Self(Arc::new(()))
-    }
-}
-impl PartialEq for HtmlRelSectionId {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
-impl Eq for HtmlRelSectionId {}
+identity!(
+    /// Associated sections are source concepts that need not identify an Element.
+    HtmlRelSectionId, fresh
+);
 #[derive(Debug)]
 pub struct HtmlRelBookmarkSection {
     subject: HtmlCaptureSubjectId,
@@ -441,32 +389,11 @@ impl HtmlRelFactsInput {
         self
     }
 }
-/// Capacities bound incoming vector backing, including nested supported-token
-/// vectors. Bytes also reserve each retained UTF-16 backing reference's capacity.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HtmlRelFactsLimits {
-    records: usize,
-    bytes: usize,
-    work: usize,
-}
-impl HtmlRelFactsLimits {
-    pub fn new(records: usize, bytes: usize, work: usize) -> Self {
-        Self {
-            records,
-            bytes,
-            work,
-        }
-    }
-    pub fn records(self) -> usize {
-        self.records
-    }
-    pub fn bytes(self) -> usize {
-        self.bytes
-    }
-    pub fn work(self) -> usize {
-        self.work
-    }
-}
+fact_limits!(
+    /// Capacities bound incoming vector backing, including nested supported-token
+    /// vectors. Bytes also reserve each retained UTF-16 backing reference's capacity.
+    HtmlRelFactsLimits
+);
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlRelFactsError {
     SelectorBindingMismatch,
@@ -493,6 +420,28 @@ pub enum HtmlRelFactsError {
     InvalidSupportedToken,
     GrammarContradiction,
 }
+impl ScanError for HtmlRelFactsError {
+    fn representation_exhausted() -> Self {
+        Self::RepresentationExhausted
+    }
+    fn work_exceeded(_limit: usize, _required: usize) -> Self {
+        Self::WorkLimit
+    }
+    fn capture(error: HtmlCaptureError) -> Self {
+        Self::Capture(error)
+    }
+}
+impl FactError for HtmlRelFactsError {
+    fn host_revision_mismatch() -> Self {
+        Self::HostRevisionMismatch
+    }
+    fn record_limit() -> Self {
+        Self::RecordLimit
+    }
+    fn byte_limit() -> Self {
+        Self::ByteLimit
+    }
+}
 impl fmt::Display for HtmlRelFactsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self:?}")
@@ -505,46 +454,8 @@ pub struct HtmlRelFacts {
     host: HtmlHostFactsRevision,
     input: HtmlRelFactsInput,
 }
-struct FactsAdmission {
-    limits: HtmlRelFactsLimits,
-    records: usize,
-    bytes: usize,
-    work: usize,
-}
+type FactsAdmission = FactAdmission<HtmlRelFactsError>;
 impl FactsAdmission {
-    fn work(&mut self, n: usize) -> Result<(), HtmlRelFactsError> {
-        self.work = self
-            .work
-            .checked_add(n)
-            .ok_or(HtmlRelFactsError::RepresentationExhausted)?;
-        if self.work > self.limits.work {
-            Err(HtmlRelFactsError::WorkLimit)
-        } else {
-            Ok(())
-        }
-    }
-    fn vector<T>(&mut self, v: &Vec<T>) -> Result<(), HtmlRelFactsError> {
-        self.work(1)?;
-        self.records = self
-            .records
-            .checked_add(v.capacity())
-            .ok_or(HtmlRelFactsError::RepresentationExhausted)?;
-        self.bytes = self
-            .bytes
-            .checked_add(
-                v.capacity()
-                    .checked_mul(std::mem::size_of::<T>())
-                    .ok_or(HtmlRelFactsError::RepresentationExhausted)?,
-            )
-            .ok_or(HtmlRelFactsError::RepresentationExhausted)?;
-        if self.records > self.limits.records {
-            return Err(HtmlRelFactsError::RecordLimit);
-        }
-        if self.bytes > self.limits.bytes {
-            return Err(HtmlRelFactsError::ByteLimit);
-        }
-        Ok(())
-    }
     fn raw(&mut self, raw: &DocumentString) -> Result<(), HtmlRelFactsError> {
         self.work(1)?;
         let bytes = raw
@@ -555,15 +466,7 @@ impl FactsAdmission {
                 n.checked_add(std::mem::size_of::<Vec<u16>>() + 2 * std::mem::size_of::<usize>())
             })
             .ok_or(HtmlRelFactsError::RepresentationExhausted)?;
-        self.bytes = self
-            .bytes
-            .checked_add(bytes)
-            .ok_or(HtmlRelFactsError::RepresentationExhausted)?;
-        if self.bytes > self.limits.bytes {
-            Err(HtmlRelFactsError::ByteLimit)
-        } else {
-            Ok(())
-        }
+        self.add_bytes(bytes)
     }
     fn exact(&mut self, a: &DocumentString, b: &DocumentString) -> Result<bool, HtmlRelFactsError> {
         self.work(1)?;
@@ -632,19 +535,12 @@ impl FactsAdmission {
         capture: &HtmlCapture,
         id: &HtmlCaptureSubjectId,
     ) -> Result<HtmlRelRole, HtmlRelFactsError> {
-        self.work(1)?;
-        let node = capture.node(id).map_err(HtmlRelFactsError::Capture)?;
+        let node = self.node(capture, id)?;
         let HtmlCapturedNodeKind::Element(e) = node.kind() else {
             return Err(HtmlRelFactsError::InvalidRole);
         };
-        let envelope = e
-            .name()
-            .local_name()
-            .len()
-            .checked_add(1)
-            .and_then(|n| n.checked_mul(KnownHtmlElement::ALL.len()))
-            .and_then(|n| n.checked_add(e.name().namespace().uri().map_or(0, DocumentString::len)))
-            .ok_or(HtmlRelFactsError::RepresentationExhausted)?;
+        let envelope =
+            scan::recognition_envelope(e).ok_or(HtmlRelFactsError::RepresentationExhausted)?;
         self.work(envelope)?;
         HtmlRelRole::from_element(e.name()).ok_or(HtmlRelFactsError::InvalidRole)
     }
@@ -696,15 +592,8 @@ impl HtmlRelFacts {
         input: HtmlRelFactsInput,
         limits: HtmlRelFactsLimits,
     ) -> Result<Self, HtmlRelFactsError> {
-        if capture.host_facts_revision() != expected_host {
-            return Err(HtmlRelFactsError::HostRevisionMismatch);
-        }
-        let mut a = FactsAdmission {
-            limits,
-            records: 0,
-            bytes: 0,
-            work: 0,
-        };
+        FactsAdmission::host(capture, expected_host)?;
+        let mut a = FactsAdmission::new(limits);
         a.vector(&input.definitions)?;
         a.vector(&input.occurrences)?;
         a.vector(&input.supported)?;

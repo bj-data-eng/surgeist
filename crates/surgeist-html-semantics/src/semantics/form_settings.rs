@@ -3,10 +3,14 @@
 //! Intrinsic content reports and actual submit-button classification remain
 //! separate from IDL reflection, successful submission and execution effects.
 
+use super::control::{ControlResult, ControlStop};
 use super::*;
 use surgeist_html::attributes::{
-    HtmlAttributeReport, HtmlButtonSubmitterContext, HtmlButtonType, HtmlButtonTypeState,
-    HtmlFormEnctype, HtmlFormMethod, HtmlInputType,
+    HtmlAttributeReport, HtmlButtonSubmitterContext, HtmlButtonTypeState, HtmlFormEnctype,
+    HtmlFormMethod, HtmlInputType,
+};
+use surgeist_html::bounded::attributes::{
+    HtmlButtonSubmitterFact, button_submitter_context_with, input_submitter_context,
 };
 use surgeist_html::{
     attributes::HtmlBooleanAttribute, values::Attribute, vocabulary::KnownHtmlElement,
@@ -237,10 +241,9 @@ impl<'a> HtmlSemanticSession<'a> {
                 .ok_or_else(|| self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable))?;
             return Ok(SubmitterRole {
                 observation: HtmlSubmitterTypeObservation::Input(report),
-                submit_button: Ok(matches!(
-                    state,
-                    HtmlInputType::Submit | HtmlInputType::Image
-                )),
+                submit_button: Ok(
+                    input_submitter_context(state) == HtmlButtonSubmitterContext::SubmitButton
+                ),
             });
         }
         self.admit_intrinsic(element, raw, 3)?;
@@ -253,38 +256,49 @@ impl<'a> HtmlSemanticSession<'a> {
             .intrinsic()
             .copied()
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable))?;
-        let submit_button = match state {
-            HtmlButtonTypeState::Keyword(HtmlButtonType::Submit) => Ok(true),
-            HtmlButtonTypeState::Keyword(HtmlButtonType::Button | HtmlButtonType::Reset) => {
-                Ok(false)
-            }
-            HtmlButtonTypeState::Auto => {
-                if self.attribute(element, "command")?.is_some()
-                    || self.attribute(element, "commandfor")?.is_some()
-                {
-                    Ok(false)
-                } else {
-                    let node = self.node(subject)?;
-                    match self.parent(node)? {
-                        Err(missing) => Err(missing),
-                        Ok(None) => Ok(true),
-                        Ok(Some(parent)) => {
-                            let node = self.node(&parent)?;
-                            let is_select = match node.kind() {
-                                HtmlCapturedNodeKind::Element(parent) => {
-                                    self.known(parent)? == Some(KnownHtmlElement::Select)
-                                }
-                                _ => false,
-                            };
-                            Ok(!is_select)
-                        }
-                    }
-                }
-            }
+        let submit_button = match button_submitter_context_with(state, |fact| {
+            self.button_submitter_fact(subject, element, fact)
+        }) {
+            Ok(context) => Ok(context == HtmlButtonSubmitterContext::SubmitButton),
+            Err(ControlStop::Missing(missing)) => Err(missing),
+            Err(ControlStop::Failure(failure)) => return Err(failure),
         };
         Ok(SubmitterRole {
             observation: HtmlSubmitterTypeObservation::Button(report),
             submit_button,
+        })
+    }
+
+    /// Answers one fact of the button Auto rule from the capture, charging exactly the reads that
+    /// fact needs. A parent whose fact is missing stops the rule with that missing history.
+    fn button_submitter_fact(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+        element: &'a HtmlCapturedElement,
+        fact: HtmlButtonSubmitterFact,
+    ) -> ControlResult<bool> {
+        Ok(match fact {
+            HtmlButtonSubmitterFact::CommandAttributePresent => {
+                self.attribute(element, "command")?.is_some()
+            }
+            HtmlButtonSubmitterFact::CommandforAttributePresent => {
+                self.attribute(element, "commandfor")?.is_some()
+            }
+            HtmlButtonSubmitterFact::ParentIsSelect => {
+                let node = self.node(subject)?;
+                match self.parent(node)?.map_err(ControlStop::Missing)? {
+                    None => false,
+                    Some(parent) => {
+                        let node = self.node(&parent)?;
+                        match node.kind() {
+                            HtmlCapturedNodeKind::Element(parent) => {
+                                self.known(parent)? == Some(KnownHtmlElement::Select)
+                            }
+                            _ => false,
+                        }
+                    }
+                }
+            }
         })
     }
 }

@@ -1,5 +1,6 @@
 //! One finite registry-only capture, using the original capture owner.
 use super::*;
+use preflight::ActionPolicy;
 use std::mem::size_of;
 use surgeist_html::values::DocumentString;
 
@@ -115,36 +116,57 @@ impl Control {
     ) -> Result<(), HtmlEmptyGlobalRegistryError<E>> {
         step(units).map_err(HtmlEmptyGlobalRegistryError::Interrupted)
     }
-    fn action<E>(
+}
+/// The registry control paired with the caller's work step, applying the formation
+/// byte policy to a pass's observations.
+struct Formation<'a, E> {
+    control: &'a mut Control,
+    step: &'a mut dyn FnMut(usize) -> Result<(), E>,
+}
+impl<E> preflight::ActionPolicy for Formation<'_, E> {
+    type Error = HtmlEmptyGlobalRegistryError<E>;
+    fn on_work(&mut self, units: usize) -> Result<(), Self::Error> {
+        Control::step(&mut self.step, units)
+    }
+    fn on_reserve(&mut self, _entries: usize) -> Result<(), Self::Error> {
+        Control::step(&mut self.step, 0)
+    }
+    fn on_storage_before(&mut self, requested: usize) -> Result<(), Self::Error> {
+        Control::step(&mut self.step, 0)?;
+        let control = &mut *self.control;
+        control.admit(Control::plus(
+            Control::plus(control.fixed, control.backing)?,
+            requested,
+        )?)
+    }
+    fn on_storage_after(
         &mut self,
-        action: preflight::Action,
-        step: &mut impl FnMut(usize) -> Result<(), E>,
-    ) -> Result<(), HtmlEmptyGlobalRegistryError<E>> {
-        match action {
-            preflight::Action::Work(units) => Self::step(step, units),
-            preflight::Action::Reserve { .. } => Self::step(step, 0),
-            preflight::Action::StorageBefore { requested } => {
-                Self::step(step, 0)?;
-                self.admit(Self::plus(
-                    Self::plus(self.fixed, self.backing)?,
-                    requested,
-                )?)
-            }
-            preflight::Action::StorageAfter { old, actual, .. } => {
-                // The request was admitted before allocation. Record/check any
-                // extra exposed capacity before proceeding or publishing.
-                let replacement_peak = Self::plus(Self::plus(self.fixed, self.backing)?, actual)?;
-                self.backing = self
-                    .backing
-                    .checked_sub(old)
-                    .and_then(|n| n.checked_add(actual))
-                    .ok_or(HtmlEmptyGlobalRegistryError::RepresentationExhausted)?;
-                self.admit(replacement_peak)
-            }
-            preflight::Action::StorageTransfer { .. } | preflight::Action::ElementValues { .. } => {
-                Ok(())
-            }
-        }
+        old: usize,
+        actual: usize,
+        _retained: bool,
+    ) -> Result<(), Self::Error> {
+        // The request was admitted before allocation. Record/check any
+        // extra exposed capacity before proceeding or publishing.
+        let control = &mut *self.control;
+        let replacement_peak =
+            Control::plus(Control::plus(control.fixed, control.backing)?, actual)?;
+        control.backing = control
+            .backing
+            .checked_sub(old)
+            .and_then(|n| n.checked_add(actual))
+            .ok_or(HtmlEmptyGlobalRegistryError::RepresentationExhausted)?;
+        control.admit(replacement_peak)
+    }
+    fn on_storage_transfer(&mut self, _bytes: usize) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn on_element_values(
+        &mut self,
+        _bytes: usize,
+        _units: usize,
+        _observed: bool,
+    ) -> Result<(), Self::Error> {
+        Ok(())
     }
 }
 
@@ -209,7 +231,11 @@ impl HtmlCapture {
         // Pre-reserve the exact existing registry bank. The original add_registry
         // call then retains its complete validation path without another growth.
         preflight::reserve_storage(&mut builder.data.registries, 1, true, true, &mut |action| {
-            control.action(action, &mut step)
+            Formation {
+                control: &mut control,
+                step: &mut step,
+            }
+            .action(action)
         })
         .map_err(preflight_error)?;
         Control::step(&mut step, 1)?;
@@ -230,7 +256,11 @@ impl HtmlCapture {
             .map_err(HtmlEmptyGlobalRegistryError::Capture)?;
         builder
             .preflight_finish(&mut scratch, &mut |action| {
-                control.action(action, &mut step)
+                Formation {
+                    control: &mut control,
+                    step: &mut step,
+                }
+                .action(action)
             })
             .map_err(preflight_error)?;
         let retained =
@@ -266,6 +296,18 @@ mod tests {
     use super::*;
     use surgeist_html::values::DocumentString;
 
+    /// Applies one observation to the formation policy with a work step that never refuses.
+    fn action(
+        control: &mut Control,
+        action: preflight::Action,
+    ) -> Result<(), HtmlEmptyGlobalRegistryError<()>> {
+        Formation {
+            control,
+            step: &mut |_| Ok(()),
+        }
+        .action(action)
+    }
+
     #[test]
     fn requested_backing_is_admitted_before_growth_and_extra_capacity_is_checked() {
         let mut control = Control {
@@ -275,9 +317,9 @@ mod tests {
             peak: 0,
         };
         assert_eq!(
-            control.action(
-                preflight::Action::StorageBefore { requested: 20 },
-                &mut |_| Ok::<_, ()>(())
+            action(
+                &mut control,
+                preflight::Action::StorageBefore { requested: 20 }
             ),
             Err(HtmlEmptyGlobalRegistryError::FormationBytes {
                 limit: 119,
@@ -287,20 +329,20 @@ mod tests {
         assert_eq!(control.backing, 0);
         control.limit = 125;
         assert_eq!(
-            control.action(
-                preflight::Action::StorageBefore { requested: 20 },
-                &mut |_| Ok::<_, ()>(())
+            action(
+                &mut control,
+                preflight::Action::StorageBefore { requested: 20 }
             ),
             Ok(())
         );
         assert_eq!(
-            control.action(
+            action(
+                &mut control,
                 preflight::Action::StorageAfter {
                     old: 0,
                     actual: 30,
                     retained: true,
-                },
-                &mut |_| Ok::<_, ()>(())
+                }
             ),
             Err(HtmlEmptyGlobalRegistryError::FormationBytes {
                 limit: 125,

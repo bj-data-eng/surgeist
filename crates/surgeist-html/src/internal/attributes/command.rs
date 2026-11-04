@@ -17,6 +17,46 @@ keyword_type!(HtmlStandardCommand, Command, [
     /// The `show-modal` command: shows the targeted `dialog` element as a modal.
     ShowModal => "show-modal",
 ]);
+impl HtmlStandardCommand {
+    /// Whether a standard command is valid for every HTML element, without consulting the
+    /// target's local name.
+    ///
+    /// This is step 4 of "determine if a command is valid for a target" (HTML877d
+    /// `#determine-if-command-is-valid`, in `#the-button-element`): the Toggle Popover, Show
+    /// Popover and Hide Popover states return true before any element-specific steps run. Retained
+    /// capture: `references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md`,
+    /// the steps after "determine if a command is valid for a target".
+    ///
+    /// The match is exhaustive, so a new standard command must be classified here.
+    pub fn is_valid_for_every_html_element(self) -> bool {
+        match self {
+            Self::TogglePopover | Self::ShowPopover | Self::HidePopover => true,
+            Self::Close | Self::RequestClose | Self::ShowModal => false,
+        }
+    }
+
+    /// Whether the element-specific "is valid command steps" of the target's local name return
+    /// true for this standard command.
+    ///
+    /// These are steps 5 and 6 of "determine if a command is valid for a target" (HTML877d
+    /// `#determine-if-command-is-valid`, in `#the-button-element`), which run the target's own
+    /// "is valid command steps". The selected edition defines such steps only for `dialog`
+    /// (HTML877d `#the-dialog-element`, "is valid command steps"): the Close, Request Close and
+    /// Show Modal states return true and every other state returns false. `None` is a local name
+    /// the standard does not define steps for, so the result is false, as step 5 specifies.
+    ///
+    /// Callers ask `is_valid_for_every_html_element` first; this method does not repeat step 4.
+    /// The match is exhaustive, so a new standard command must be classified here.
+    pub fn is_valid_by_element_steps(self, target: Option<KnownHtmlElement>) -> bool {
+        match target {
+            Some(KnownHtmlElement::Dialog) => match self {
+                Self::Close | Self::RequestClose | Self::ShowModal => true,
+                Self::TogglePopover | Self::ShowPopover | Self::HidePopover => false,
+            },
+            _ => false,
+        }
+    }
+}
 keyword_type!(HtmlPopoverTargetAction, Popovertargetaction, [
     /// The `toggle` keyword, also selected by a missing or invalid value: show the target popover
     /// if hidden and hide it if shown.

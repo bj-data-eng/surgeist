@@ -1,4 +1,5 @@
 //! Controlled formation and one OptionValue read over an ordinary captured tree.
+use crate::capture::preflight::ActionPolicy;
 use crate::*;
 use std::mem::size_of;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -541,6 +542,83 @@ impl QueryControl<'_> {
     }
 }
 
+impl crate::capture::preflight::ActionPolicy for QueryControl<'_> {
+    type Error = HtmlOptionValueControlError;
+    fn on_work(&mut self, units: usize) -> Result<(), Self::Error> {
+        self.control.step(units, self.cancel)
+    }
+    fn on_reserve(&mut self, _entries: usize) -> Result<(), Self::Error> {
+        self.control.poll(self.cancel)
+    }
+    fn on_storage_before(&mut self, requested: usize) -> Result<(), Self::Error> {
+        self.control.poll(self.cancel)?;
+        self.control.admit(HtmlOptionValueStorageUsage {
+            bytes: requested,
+            units: 0,
+        })
+    }
+    fn on_storage_after(
+        &mut self,
+        old: usize,
+        actual: usize,
+        retained: bool,
+    ) -> Result<(), Self::Error> {
+        let control = self.control;
+        // Requested backing was admitted before allocation. An allocator
+        // may expose extra capacity; record it even on immediate refusal.
+        let outcome = control.admit(HtmlOptionValueStorageUsage {
+            bytes: actual,
+            units: 0,
+        });
+        control.observed(HtmlOptionValueStorageUsage {
+            bytes: actual,
+            units: 0,
+        })?;
+        let released = control.release(
+            HtmlOptionValueStorageUsage {
+                bytes: old,
+                units: 0,
+            },
+            retained,
+        );
+        let cell = if retained {
+            &control.live
+        } else {
+            &control.temporary
+        };
+        let held = cell.get().checked_add(HtmlOptionValueStorageUsage {
+            bytes: actual,
+            units: 0,
+        });
+        if let Ok(held) = held {
+            cell.set(held);
+        }
+        outcome.and(released).and(held.map(|_| ()))
+    }
+    fn on_storage_transfer(&mut self, bytes: usize) -> Result<(), Self::Error> {
+        self.control
+            .transfer(HtmlOptionValueStorageUsage { bytes, units: 0 })
+    }
+    fn on_element_values(
+        &mut self,
+        bytes: usize,
+        units: usize,
+        observed: bool,
+    ) -> Result<(), Self::Error> {
+        let control = self.control;
+        let payload = HtmlOptionValueStorageUsage { bytes, units };
+        let result = control
+            .poll(self.cancel)
+            .and_then(|()| control.admit(payload));
+        if observed {
+            // An actual destination capacity remains peak evidence even
+            // when it immediately exceeds the prospective allowance.
+            control.observed(payload)?;
+        }
+        result
+    }
+}
+
 #[cfg(test)]
 impl Control {
     pub(crate) fn for_tests(envelope: HtmlOptionValueEnvelope) -> Self {
@@ -575,75 +653,11 @@ pub struct HtmlControlledOptionValueCapture {
 }
 
 impl Control {
-    pub(crate) fn action(
-        &self,
-        action: crate::capture::preflight::Action,
-        cancel: &AtomicBool,
-    ) -> Result<(), HtmlOptionValueControlError> {
-        use crate::capture::preflight::Action;
-        match action {
-            Action::Work(work) => self.step(work, cancel),
-            Action::Reserve { .. } => self.poll(cancel),
-            Action::StorageBefore { requested } => {
-                self.poll(cancel)?;
-                self.admit(HtmlOptionValueStorageUsage {
-                    bytes: requested,
-                    units: 0,
-                })
-            }
-            Action::StorageAfter {
-                old,
-                actual,
-                retained,
-            } => {
-                // Requested backing was admitted before allocation. An allocator
-                // may expose extra capacity; record it even on immediate refusal.
-                let outcome = self.admit(HtmlOptionValueStorageUsage {
-                    bytes: actual,
-                    units: 0,
-                });
-                self.observed(HtmlOptionValueStorageUsage {
-                    bytes: actual,
-                    units: 0,
-                })?;
-                let released = self.release(
-                    HtmlOptionValueStorageUsage {
-                        bytes: old,
-                        units: 0,
-                    },
-                    retained,
-                );
-                let cell = if retained {
-                    &self.live
-                } else {
-                    &self.temporary
-                };
-                let held = cell.get().checked_add(HtmlOptionValueStorageUsage {
-                    bytes: actual,
-                    units: 0,
-                });
-                if let Ok(held) = held {
-                    cell.set(held);
-                }
-                outcome.and(released).and(held.map(|_| ()))
-            }
-            Action::StorageTransfer { bytes } => {
-                self.transfer(HtmlOptionValueStorageUsage { bytes, units: 0 })
-            }
-            Action::ElementValues {
-                bytes,
-                units,
-                observed,
-            } => {
-                let payload = HtmlOptionValueStorageUsage { bytes, units };
-                let result = self.poll(cancel).and_then(|()| self.admit(payload));
-                if observed {
-                    // An actual destination capacity remains peak evidence even
-                    // when it immediately exceeds the prospective allowance.
-                    self.observed(payload)?;
-                }
-                result
-            }
+    /// The query control that applies this storage policy under `cancel`.
+    fn query<'a>(&'a self, cancel: &'a AtomicBool) -> QueryControl<'a> {
+        QueryControl {
+            control: self,
+            cancel,
         }
     }
     /// Records temporary storage whose admission the caller has already decided.
@@ -858,7 +872,7 @@ impl HtmlControlledOptionValueCapture {
             mode,
             HtmlScriptingStatus::Disabled,
             HtmlCaptureRegistryInput::Null,
-            &mut |action| self.control.action(action, cancel),
+            &mut |action| self.control.query(cancel).action(action),
         );
         self.control.finish_add(result, Default::default())
     }
@@ -888,7 +902,7 @@ impl HtmlControlledOptionValueCapture {
                 attributes,
                 saved_is,
                 HtmlCaptureRegistryInput::Null,
-                &mut |action| self.control.action(action, cancel),
+                &mut |action| self.control.query(cancel).action(action),
             )
             .map_err(|error| {
                 // The failed helper has already dropped its unpublished storage.
@@ -927,7 +941,7 @@ impl HtmlControlledOptionValueCapture {
                 HtmlCapturedIsValue::Value(value.clone())
             }),
             HtmlCaptureRegistryInput::Null,
-            &mut |action| self.control.action(action, cancel),
+            &mut |action| self.control.query(cancel).action(action),
         );
         self.control.finish_add(result, payload)
     }
@@ -966,7 +980,7 @@ impl HtmlControlledOptionValueCapture {
             HtmlCapturedNodeKind::Comment(value.clone())
         };
         let result = builder.add_leaf_controlled(document, kind, value.len(), &mut |action| {
-            self.control.action(action, cancel)
+            self.control.query(cancel).action(action)
         });
         self.control.finish_add(result, payload)
     }
@@ -1042,7 +1056,7 @@ impl HtmlControlledOptionValueCapture {
             HtmlCapturedProcessingInstruction::controlled(target.clone(), data.clone()),
         );
         let result = builder.add_leaf_controlled(document, kind, units, &mut |action| {
-            self.control.action(action, cancel)
+            self.control.query(cancel).action(action)
         });
         self.control.finish_add(result, payload)
     }
@@ -1101,7 +1115,7 @@ impl HtmlControlledOptionValueCapture {
             system_id.cloned(),
         ));
         let result = builder.add_leaf_controlled(document, kind, units, &mut |action| {
-            self.control.action(action, cancel)
+            self.control.query(cancel).action(action)
         });
         self.control.finish_add(result, payload)
     }
@@ -1123,7 +1137,7 @@ impl HtmlControlledOptionValueCapture {
                 .failure(HtmlControlledOptionValueError::InvalidPhase));
         };
         let result = builder.establish_children_controlled(parent, children, &mut |action| {
-            self.control.action(action, cancel)
+            self.control.query(cancel).action(action)
         });
         self.control.finish_add(result, Default::default())
     }
@@ -1145,7 +1159,7 @@ impl HtmlControlledOptionValueCapture {
         let result = {
             let mut scratch = crate::capture::preflight::DepthScratch::new();
             builder.preflight_finish(&mut scratch, &mut |action| {
-                self.control.action(action, cancel)
+                self.control.query(cancel).action(action)
             })
         };
         self.control.clear_temporaries();
