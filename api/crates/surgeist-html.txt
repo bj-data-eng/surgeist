@@ -962,6 +962,17 @@ impl core::error::Error for surgeist_html::attributes::microdata::HtmlMicrodataT
 pub fn surgeist_html::attributes::microdata::HtmlMicrodataTokenListError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_html::attributes::microdata::HtmlMicrodataTokenListError
 pub fn surgeist_html::attributes::microdata::HtmlMicrodataTokenListError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::attributes::microdata::HtmlMicrodataUrlSource
+pub surgeist_html::attributes::microdata::HtmlMicrodataUrlSource::Data
+pub surgeist_html::attributes::microdata::HtmlMicrodataUrlSource::Href
+pub surgeist_html::attributes::microdata::HtmlMicrodataUrlSource::Src
+impl surgeist_html::attributes::microdata::HtmlMicrodataUrlSource
+pub fn surgeist_html::attributes::microdata::HtmlMicrodataUrlSource::attribute(self) -> surgeist_html::vocabulary::KnownHtmlAttribute
+pub enum surgeist_html::attributes::microdata::HtmlMicrodataValueSource
+pub surgeist_html::attributes::microdata::HtmlMicrodataValueSource::Attribute(surgeist_html::vocabulary::KnownHtmlAttribute)
+pub surgeist_html::attributes::microdata::HtmlMicrodataValueSource::DatetimeValue
+pub surgeist_html::attributes::microdata::HtmlMicrodataValueSource::DescendantText
+pub surgeist_html::attributes::microdata::HtmlMicrodataValueSource::Url(surgeist_html::attributes::microdata::HtmlMicrodataUrlSource)
 pub struct surgeist_html::attributes::microdata::HtmlMicrodataToken
 impl surgeist_html::attributes::microdata::HtmlMicrodataToken
 pub fn surgeist_html::attributes::microdata::HtmlMicrodataToken::contains_dot_or_colon(&self) -> bool
@@ -980,6 +991,8 @@ pub fn surgeist_html::attributes::microdata::HtmlMicrodataTokenReport::processin
 pub fn surgeist_html::attributes::microdata::HtmlMicrodataTokenReport::raw(&self) -> core::option::Option<&surgeist_html::values::DocumentString>
 pub fn surgeist_html::attributes::microdata::HtmlMicrodataTokenReport::token_units(&self, index: usize) -> core::option::Option<&[u16]>
 pub fn surgeist_html::attributes::microdata::HtmlMicrodataTokenReport::tokens(&self) -> &[surgeist_html::attributes::microdata::HtmlMicrodataToken]
+pub fn surgeist_html::attributes::microdata::microdata_url_source(element: core::option::Option<surgeist_html::vocabulary::KnownHtmlElement>) -> core::option::Option<surgeist_html::attributes::microdata::HtmlMicrodataUrlSource>
+pub fn surgeist_html::attributes::microdata::microdata_value_source(element: core::option::Option<surgeist_html::vocabulary::KnownHtmlElement>) -> surgeist_html::attributes::microdata::HtmlMicrodataValueSource
 pub mod surgeist_html::attributes::modification
 pub enum surgeist_html::attributes::modification::HtmlModificationTimestamp<'a>
 pub surgeist_html::attributes::modification::HtmlModificationTimestamp::Date(&'a surgeist_html::microsyntax::temporal::HtmlDate)

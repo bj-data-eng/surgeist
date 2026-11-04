@@ -28,6 +28,7 @@ mod meta_pragma;
 mod meta_processing;
 mod meter;
 mod microdata;
+mod microdata_value_source;
 mod modification;
 mod navigable_target;
 mod progress;

@@ -28,6 +28,92 @@ impl HtmlMicrodataTokenKind {
         }
     }
 }
+/// The content attribute from which a URL property element takes its property value.
+///
+/// Which attribute each element uses is the "property value" list of HTML877d `#values`; use
+/// [`microdata_url_source`] to select it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlMicrodataUrlSource {
+    /// The `src` attribute: `audio`, `embed`, `iframe`, `img`, `source`, `track` and `video`.
+    Src,
+    /// The `href` attribute: `a`, `area` and `link`.
+    Href,
+    /// The `data` attribute: `object`.
+    Data,
+}
+impl HtmlMicrodataUrlSource {
+    /// The known attribute that this source reads.
+    pub fn attribute(self) -> KnownHtmlAttribute {
+        match self {
+            Self::Src => KnownHtmlAttribute::Src,
+            Self::Href => KnownHtmlAttribute::Href,
+            Self::Data => KnownHtmlAttribute::Data,
+        }
+    }
+}
+
+/// Where an element's microdata property value comes from, when it does not create an item.
+///
+/// The cases follow the "property value" list of HTML877d `#values`, after its first case (an
+/// element with `itemscope` has the item it creates as its value, which needs the element's
+/// attributes and is not decided by the element alone). Use [`microdata_value_source`] to select
+/// the case for an element.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlMicrodataValueSource {
+    /// A URL property element: the encoding-parse-and-serialize result of the named attribute,
+    /// relative to the node document, or the empty string if it is absent or the parse fails.
+    Url(HtmlMicrodataUrlSource),
+    /// The value of the named attribute, or the empty string if there is none: `content` for
+    /// `meta`, and `value` for `data` and `meter`.
+    Attribute(KnownHtmlAttribute),
+    /// A `time` element: its datetime value (HTML877d `#datetime-value`), which is its `datetime`
+    /// attribute if it has one, or else its child text content.
+    DatetimeValue,
+    /// Any other element: its descendant text content.
+    DescendantText,
+}
+
+/// The attribute that makes an element a URL property element, or `None` for any other element.
+///
+/// The URL property elements are `a`, `area`, `audio`, `embed`, `iframe`, `img`, `link`,
+/// `object`, `source`, `track` and `video` (HTML877d `#url-property-elements`), and the attribute
+/// each reads is given by the "property value" list of HTML877d `#values`. Retained capture:
+/// `references/html-microdata--877d6146487f.md`, section 5.2.4 Values. `None` is also the
+/// result for an element name the vocabulary does not know.
+pub fn microdata_url_source(element: Option<KnownHtmlElement>) -> Option<HtmlMicrodataUrlSource> {
+    use KnownHtmlElement::*;
+    match element {
+        Some(Audio | Embed | Iframe | Img | Source | Track | Video) => {
+            Some(HtmlMicrodataUrlSource::Src)
+        }
+        Some(A | Area | Link) => Some(HtmlMicrodataUrlSource::Href),
+        Some(Object) => Some(HtmlMicrodataUrlSource::Data),
+        _ => None,
+    }
+}
+
+/// The source of the property value of an element without `itemscope`.
+///
+/// This is the "property value" list of HTML877d `#values` from its `meta` case on, with the
+/// URL property elements of HTML877d `#url-property-elements` and the datetime value of
+/// HTML877d `#datetime-value`. Retained capture: `references/html-microdata--877d6146487f.md`,
+/// section 5.2.4 Values. An element name the vocabulary does not know takes the final
+/// "otherwise" case, as the list specifies.
+pub fn microdata_value_source(element: Option<KnownHtmlElement>) -> HtmlMicrodataValueSource {
+    if let Some(url) = microdata_url_source(element) {
+        return HtmlMicrodataValueSource::Url(url);
+    }
+    match element {
+        Some(KnownHtmlElement::Meta) => {
+            HtmlMicrodataValueSource::Attribute(KnownHtmlAttribute::Content)
+        }
+        Some(KnownHtmlElement::Data | KnownHtmlElement::Meter) => {
+            HtmlMicrodataValueSource::Attribute(KnownHtmlAttribute::Value)
+        }
+        Some(KnownHtmlElement::Time) => HtmlMicrodataValueSource::DatetimeValue,
+        _ => HtmlMicrodataValueSource::DescendantText,
+    }
+}
 /// One occurrence in the original UTF-16 backing, not a normalized copy.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlMicrodataToken {

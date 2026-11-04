@@ -2,13 +2,16 @@
 //! External URL/vocabulary observations are supplied facts, never URL guesses.
 use super::*;
 use crate::HtmlCaptureDocumentId;
-use surgeist_html::attributes::microdata::{HtmlMicrodataTokenKind, HtmlMicrodataTokenReport};
+use surgeist_html::attributes::microdata::{
+    HtmlMicrodataTokenKind, HtmlMicrodataTokenReport, HtmlMicrodataUrlSource,
+    HtmlMicrodataValueSource, microdata_url_source, microdata_value_source,
+};
 use surgeist_html::{
     values::{
         Attribute, DocumentString, HtmlValueAdmissionError, HtmlValueInterpretationError,
         HtmlValueInterpreter,
     },
-    vocabulary::KnownHtmlElement,
+    vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
 
 #[cfg(test)]
@@ -341,7 +344,7 @@ impl<'a> HtmlSemanticSession<'a> {
                     return Err(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable));
                 };
                 let role = self.known(e)?;
-                self.md_boolean(Some(property_url_source(role).is_some()), token, id)
+                self.md_boolean(Some(microdata_url_source(role).is_some()), token, id)
             }
             Some(false) => HtmlMicrodataCondition::Satisfied,
             None => HtmlMicrodataCondition::Missing(self.md_missing(id)),
@@ -826,6 +829,13 @@ impl HtmlMicrodataRawSource {
         }
     }
 }
+fn raw_url_source(source: HtmlMicrodataUrlSource) -> HtmlMicrodataRawSource {
+    match source {
+        HtmlMicrodataUrlSource::Src => HtmlMicrodataRawSource::Src,
+        HtmlMicrodataUrlSource::Href => HtmlMicrodataRawSource::Href,
+        HtmlMicrodataUrlSource::Data => HtmlMicrodataRawSource::Data,
+    }
+}
 /// Exact captured current slot. Historical operation identity is separate.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlMicrodataRawBinding {
@@ -900,7 +910,7 @@ impl HtmlMicrodataRawBinding {
                 | HtmlMicrodataRawSource::Data
         ) {
             let role = KnownHtmlElement::from_name(element.name());
-            let expected = property_url_source(role);
+            let expected = microdata_url_source(role).map(raw_url_source);
             if expected != Some(source) {
                 return Err(HtmlMicrodataFactsError::WrongRole);
             }
@@ -1510,17 +1520,6 @@ impl HtmlMicrodataDocumentAuthor {
     }
 }
 
-fn property_url_source(role: Option<KnownHtmlElement>) -> Option<HtmlMicrodataRawSource> {
-    use KnownHtmlElement::*;
-    match role {
-        Some(Audio | Embed | Iframe | Img | Source | Track | Video) => {
-            Some(HtmlMicrodataRawSource::Src)
-        }
-        Some(A | Area | Link) => Some(HtmlMicrodataRawSource::Href),
-        Some(Object) => Some(HtmlMicrodataRawSource::Data),
-        _ => None,
-    }
-}
 struct Crawl {
     // Every admitted element is a proved membership witness even when another
     // branch prevents a complete ordered public collection.
@@ -2191,53 +2190,53 @@ impl<'a> HtmlSemanticSession<'a> {
             )));
         }
         let role = self.known(e)?;
-        if let Some(source) = property_url_source(role) {
-            let raw = self.md_attribute(e, source.local())?;
-            if raw.is_none() {
+        match microdata_value_source(role) {
+            HtmlMicrodataValueSource::Url(url) => {
+                let source = raw_url_source(url);
+                let raw = self.md_attribute(e, source.local())?;
+                if raw.is_none() {
+                    self.charge(1)?;
+                    return Ok(HtmlSemanticValue::Known(HtmlMicrodataValue::String(
+                        self.context.empty_language.clone(),
+                    )));
+                }
+                let Some(HtmlMicrodataUrlResult::Parsed(parsed)) =
+                    self.md_url(id, source, UrlUse::Property)?
+                else {
+                    return Ok(HtmlSemanticValue::Missing(self.md_missing(id)));
+                };
                 self.charge(1)?;
-                return Ok(HtmlSemanticValue::Known(HtmlMicrodataValue::String(
-                    self.context.empty_language.clone(),
-                )));
+                Ok(HtmlSemanticValue::Known(HtmlMicrodataValue::String(
+                    parsed
+                        .as_ref()
+                        .unwrap_or(&self.context.empty_language)
+                        .clone(),
+                )))
             }
-            let Some(HtmlMicrodataUrlResult::Parsed(parsed)) =
-                self.md_url(id, source, UrlUse::Property)?
-            else {
-                return Ok(HtmlSemanticValue::Missing(self.md_missing(id)));
-            };
-            self.charge(1)?;
-            return Ok(HtmlSemanticValue::Known(HtmlMicrodataValue::String(
-                parsed
-                    .as_ref()
-                    .unwrap_or(&self.context.empty_language)
-                    .clone(),
-            )));
-        }
-        let attr = match role {
-            Some(KnownHtmlElement::Meta) => Some("content"),
-            Some(KnownHtmlElement::Data | KnownHtmlElement::Meter) => Some("value"),
-            Some(KnownHtmlElement::Time) => Some("datetime"),
-            _ => None,
-        };
-        if let Some(local) = attr {
-            let raw = self.md_attribute(e, local)?;
-            if raw.is_some() || role != Some(KnownHtmlElement::Time) {
+            HtmlMicrodataValueSource::Attribute(attribute) => {
+                let raw = self.md_attribute(e, attribute.local_name())?;
                 self.charge(1)?;
-                return Ok(HtmlSemanticValue::Known(HtmlMicrodataValue::String(
+                Ok(HtmlSemanticValue::Known(HtmlMicrodataValue::String(
                     raw.map_or(&self.context.empty_language, Attribute::value)
                         .clone(),
-                )));
+                )))
             }
+            HtmlMicrodataValueSource::DatetimeValue => {
+                let raw = self.md_attribute(e, KnownHtmlAttribute::Datetime.local_name())?;
+                if let Some(raw) = raw {
+                    self.charge(1)?;
+                    return Ok(HtmlSemanticValue::Known(HtmlMicrodataValue::String(
+                        raw.value().clone(),
+                    )));
+                }
+                Ok(self
+                    .control_text_content(id, HtmlControlTextOrigin::ChildText)?
+                    .map(HtmlMicrodataValue::String))
+            }
+            HtmlMicrodataValueSource::DescendantText => Ok(self
+                .control_text_content(id, HtmlControlTextOrigin::DescendantText)?
+                .map(HtmlMicrodataValue::String)),
         }
-        Ok(self
-            .control_text_content(
-                id,
-                if role == Some(KnownHtmlElement::Time) {
-                    HtmlControlTextOrigin::ChildText
-                } else {
-                    HtmlControlTextOrigin::DescendantText
-                },
-            )?
-            .map(HtmlMicrodataValue::String))
     }
     pub(super) fn microdata_property(
         &mut self,
