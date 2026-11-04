@@ -1733,6 +1733,7 @@ pub fn surgeist_html_semantics::HtmlCaptureRetainedStorageUsage::utf16_extent(se
 pub struct surgeist_html_semantics::HtmlCaptureSubjectId
 impl surgeist_html_semantics::HtmlCaptureSubjectId
 pub fn surgeist_html_semantics::HtmlCaptureSubjectId::capture(&self) -> &surgeist_html_semantics::HtmlCaptureId
+pub fn surgeist_html_semantics::HtmlCaptureSubjectId::ordinal(&self) -> usize
 pub struct surgeist_html_semantics::HtmlCaptureUsage
 impl surgeist_html_semantics::HtmlCaptureUsage
 pub fn surgeist_html_semantics::HtmlCaptureUsage::attributes(self) -> usize

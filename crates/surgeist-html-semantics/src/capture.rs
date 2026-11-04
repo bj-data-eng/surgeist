@@ -77,8 +77,15 @@ impl HtmlCaptureSubjectId {
     pub fn capture(&self) -> &HtmlCaptureId {
         &self.capture
     }
-    /// Dense subject position within its capture, for capture-local indexes.
-    pub(crate) fn ordinal(&self) -> usize {
+    /// The dense position of this subject within its own capture: the first
+    /// subject added to a capture has position 0, and positions follow the order
+    /// subjects were added, without gaps. A position is meaningful only together
+    /// with [`capture`](Self::capture): subjects of different captures can share
+    /// one. It identifies no canonical DOM node, and it is not a stable identity
+    /// across captures. A consumer indexing by it compares `capture()` first, then
+    /// checks the entry it finds, because a position outside this capture's
+    /// subjects, or one that belongs to another capture, names no subject here.
+    pub fn ordinal(&self) -> usize {
         self.index
     }
 }
