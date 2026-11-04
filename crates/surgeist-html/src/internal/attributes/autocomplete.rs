@@ -276,8 +276,9 @@ enum StoragePurpose {
     Scratch,
 }
 
-/// One reservation owner used by both interpreter front doors. Standalone
-/// retains its ordinary infallible allocation contract, not a resource cap.
+/// One reservation owner used by both interpreter front doors. Both reserve with the fallible
+/// allocator and report a refusal; standalone sets no resource cap, so the allocator and the
+/// platform are its only limits.
 struct Materialization {
     limits: Option<HtmlAutocompleteMaterializationLimits>,
     usage: HtmlAutocompleteMaterializationUsage,
