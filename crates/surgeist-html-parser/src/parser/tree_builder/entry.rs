@@ -11,6 +11,7 @@ use surgeist_html::parsing::HtmlParserScriptingMode;
 pub(crate) enum EntryRejection {
     DocumentInitialization,
     ExecutionProfile,
+    InputBankRefused,
 }
 impl EntryRejection {
     pub(super) fn for_request(request: &HtmlDocumentParseRequest) -> Option<Self> {
@@ -20,6 +21,8 @@ impl EntryRejection {
             || request.allow_declarative_shadow_roots()
         {
             Some(Self::ExecutionProfile)
+        } else if request.input_bank_refused() {
+            Some(Self::InputBankRefused)
         } else {
             None
         }
@@ -28,6 +31,7 @@ impl EntryRejection {
         match self {
             Self::DocumentInitialization => StandaloneError::UnsupportedDocumentInitialization,
             Self::ExecutionProfile => StandaloneError::UnsupportedExecutionProfile,
+            Self::InputBankRefused => StandaloneError::InputBankRefused,
         }
     }
 }
@@ -240,6 +244,9 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             }
             Phase::Rejected(EntryRejection::ExecutionProfile) => {
                 return Err(StandaloneError::UnsupportedExecutionProfile);
+            }
+            Phase::Rejected(EntryRejection::InputBankRefused) => {
+                return Err(StandaloneError::InputBankRefused);
             }
             Phase::Failed => {
                 let driver = self.driver.as_mut().ok_or(StandaloneError::Consumed)?;

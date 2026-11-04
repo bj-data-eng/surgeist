@@ -445,6 +445,7 @@ fn ordinary_reason(e: &StandaloneError) -> HtmlParseFailureReason {
         }
         StandaloneError::Stop(_)
         | StandaloneError::Consumed
+        | StandaloneError::InputBankRefused
         | StandaloneError::TokenizerExhausted => {
             cause_reason(e.stop_cause(), HtmlParseEngineCondition::Ownership)
         }

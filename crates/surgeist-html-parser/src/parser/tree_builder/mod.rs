@@ -1125,6 +1125,8 @@ impl ConstructionCapability<'_> {
 pub(crate) enum StandaloneError {
     UnsupportedDocumentInitialization,
     UnsupportedExecutionProfile,
+    /// An input edit reached a bank execution also holds.
+    InputBankRefused,
     Stop(HtmlParseStop),
     Prologue(prologue::PrologueError),
     Head(head::HeadError),
@@ -1138,6 +1140,7 @@ impl std::fmt::Debug for StandaloneError {
                 f.write_str("UnsupportedDocumentInitialization")
             }
             Self::UnsupportedExecutionProfile => f.write_str("UnsupportedExecutionProfile"),
+            Self::InputBankRefused => f.write_str("InputBankRefused"),
             Self::Stop(error) => f.debug_tuple("Stop").field(error).finish(),
             Self::Prologue(error) => f.debug_tuple("Prologue").field(error).finish(),
             Self::Head(error) => f.debug_tuple("Head").field(error).finish(),
@@ -1171,7 +1174,9 @@ impl StandaloneError {
             Self::UnsupportedDocumentInitialization | Self::UnsupportedExecutionProfile => {
                 StopCause::Unsupported(HtmlParseUnsupportedState::Provenance)
             }
-            Self::Consumed | Self::TokenizerExhausted => StopCause::LostOwner,
+            Self::InputBankRefused | Self::Consumed | Self::TokenizerExhausted => {
+                StopCause::LostOwner
+            }
         }
     }
 }

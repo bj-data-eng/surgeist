@@ -375,6 +375,9 @@ impl FragmentInitialization {
         if self.begun {
             return Err(InitializationState::Consumed);
         }
+        if self.request.input_bank_refused() {
+            return Err(InitializationState::Failed);
+        }
         self.begun = true;
         Ok(FragmentInitializationAttempt {
             entry: FragmentEntry::new(&self.request, target),
@@ -1023,10 +1026,9 @@ mod tests {
                 .expect("the held bank stays the request's bank"),
             &held
         ));
-        let failure = refused
-            .parse()
-            .err()
-            .expect("a refused edit fails the parse");
+        let Err(failure) = refused.parse() else {
+            panic!("a refused edit fails the parse")
+        };
         assert_eq!(
             failure.reason(),
             HtmlParseFailureReason::Engine(HtmlParseEngineCondition::Ownership)
