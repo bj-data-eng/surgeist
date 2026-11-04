@@ -8,14 +8,16 @@
 //! 2.2 (a sweep with linear lookups multiplies it by about 2, a scanning one
 //! by about 4). Results do not change; the work is the whole difference.
 
-use super::constructor_work::{flat_page, inert_fact};
+use super::constructor_work::{big_builder, flat_page, html, inert_fact};
 use crate::semantics::support::assert_doubling_at_most_2_2;
 use surgeist_html::values::HtmlValueInterpreter;
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureSubjectId, HtmlDocumentFlatTreeRelation, HtmlFlatTreeProducerId,
-    HtmlFlatTreeRevision, HtmlInertFactLimits, HtmlInertFacts, HtmlSemanticCancellation,
-    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticLimits, HtmlSemanticQuery,
-    HtmlSemanticRequest, HtmlSemanticSession,
+    HtmlCapture, HtmlCaptureSubjectId, HtmlDocumentFlatTreeRelation, HtmlElementReferenceFact,
+    HtmlElementReferenceFacts, HtmlElementReferenceFactsLimits, HtmlElementReferenceKey,
+    HtmlExplicitElementReference, HtmlFlatTreeProducerId, HtmlFlatTreeRevision,
+    HtmlInertFactLimits, HtmlInertFacts, HtmlSemanticCancellation, HtmlSemanticContext,
+    HtmlSemanticContextInput, HtmlSemanticLimits, HtmlSemanticQuery, HtmlSemanticRequest,
+    HtmlSemanticSession,
 };
 
 const DOUBLINGS: [usize; 4] = [250, 500, 1000, 2000];
@@ -35,7 +37,7 @@ fn sweep_work(
 ) -> usize {
     let requests: Vec<_> = subjects
         .iter()
-        .map(|subject| HtmlSemanticRequest::new(subject.clone(), query.clone()))
+        .map(|subject| HtmlSemanticRequest::new(subject.clone(), query))
         .collect();
     let mut session = HtmlSemanticSession::new(
         capture,
@@ -87,4 +89,64 @@ fn inert_sweep(count: usize) -> usize {
 #[test]
 fn an_inertness_sweep_finds_each_flat_record_in_constant_work() {
     assert_doubling_at_most_2_2("inertness sweep", &DOUBLINGS, inert_sweep);
+}
+
+/// A document of `count` elements named `name`, all its children.
+fn flat_elements(name: &str, count: usize) -> (HtmlCapture, Vec<HtmlCaptureSubjectId>) {
+    let (mut b, d) = big_builder(count);
+    let elements: Vec<_> = (0..count).map(|_| html(&mut b, &d, name)).collect();
+    for element in &elements {
+        b.establish_children(element, &[]).unwrap();
+    }
+    b.establish_children(&d, &elements).unwrap();
+    let capture = b.finish().unwrap();
+    let ids = elements
+        .iter()
+        .map(|element| capture.subject_id(element).unwrap())
+        .collect();
+    (capture, ids)
+}
+
+fn element_reference_sweep(count: usize) -> usize {
+    let (capture, ids) = flat_elements("button", count);
+    let records: Vec<_> = ids
+        .iter()
+        .map(|id| {
+            HtmlElementReferenceFact::new(
+                id.clone(),
+                HtmlElementReferenceKey::CommandFor,
+                HtmlExplicitElementReference::Null,
+            )
+        })
+        .collect();
+    let capacity = records.capacity();
+    let facts = HtmlElementReferenceFacts::new(
+        &capture,
+        capture.host_facts_revision().clone(),
+        records,
+        HtmlElementReferenceFactsLimits::new(capacity, 1 << 40),
+    )
+    .unwrap();
+    let context = HtmlSemanticContext::new(
+        &capture,
+        capture.host_facts_revision().clone(),
+        HtmlSemanticContextInput::new(vec![]).with_element_references(facts),
+        0,
+    )
+    .unwrap();
+    sweep_work(
+        &capture,
+        &context,
+        &ids,
+        HtmlSemanticQuery::CommandForElement,
+    )
+}
+
+#[test]
+fn an_element_reference_sweep_finds_each_pointer_in_constant_work() {
+    assert_doubling_at_most_2_2(
+        "element reference sweep",
+        &DOUBLINGS,
+        element_reference_sweep,
+    );
 }

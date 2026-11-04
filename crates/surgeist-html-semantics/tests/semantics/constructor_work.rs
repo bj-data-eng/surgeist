@@ -126,7 +126,7 @@ pub fn least_work_unreported(label: &str, run: impl Fn(usize) -> Run) -> usize {
 // ---------------------------------------------------------------------------
 // Inert facts
 
-fn html(
+pub fn html(
     b: &mut HtmlCaptureBuilder,
     d: &HtmlCaptureBuilderSubject,
     name: &str,
