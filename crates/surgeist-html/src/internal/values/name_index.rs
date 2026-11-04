@@ -17,16 +17,21 @@
 //!   sequence, which carries the identity too. Nothing is removed, so a later lookup of a name
 //!   meets its entry before any empty slot.
 //!
-//! The hash key is random for each [`HtmlNameIndexHasher`], so no input can choose names that
-//! collide and the expected probes per lookup are constant. The consumer charges the hash of a
-//! name (one unit inspection per unit), each probe and each comparison.
+//! The hash key is chosen at random once per process and shared by every
+//! [`HtmlNameIndexHasher`], so no input can choose names that collide and the expected probes per
+//! lookup are constant, while the same input charges the same work every time within a process.
+//! Charge totals can differ between processes. The consumer charges the hash of a name (one unit
+//! inspection per unit), each probe and each comparison.
 
 use std::{
     error::Error,
     fmt,
     hash::{BuildHasher, RandomState},
     num::NonZeroUsize,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        OnceLock,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 /// The slot count of a name index, a power of two, with the number of entries it may hold.
@@ -62,7 +67,8 @@ impl HtmlNameIndexSlots {
     }
 }
 
-/// The key that hashes names for one index. It is random for each instance.
+/// The key that hashes names for an index: chosen at random once per process and shared by every
+/// hasher in it.
 #[derive(Clone, Debug)]
 pub struct HtmlNameIndexHasher {
     state: RandomState,
@@ -73,10 +79,11 @@ impl Default for HtmlNameIndexHasher {
     }
 }
 impl HtmlNameIndexHasher {
-    /// Creates a hasher with a random key.
+    /// Creates a hasher with the process's key.
     pub fn new() -> Self {
+        static KEY: OnceLock<RandomState> = OnceLock::new();
         Self {
-            state: RandomState::new(),
+            state: KEY.get_or_init(RandomState::new).clone(),
         }
     }
     /// The keyed hash of the exact UTF-16 code units of `name`.
@@ -468,6 +475,24 @@ impl<'a> HtmlNameIndexTable<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Charge totals depend on probe counts, which depend on the hash key. A process uses one
+    /// key, so the same input charges the same work every time within it, and a caller that
+    /// measures a parse's usage can repeat that parse under exactly those limits.
+    #[test]
+    fn every_hasher_in_a_process_hashes_a_name_alike() {
+        let name: Vec<u16> = "data-name".encode_utf16().collect();
+        let first = HtmlNameIndexHasher::new().hash(&name);
+        for _ in 0..8 {
+            assert_eq!(HtmlNameIndexHasher::new().hash(&name), first);
+            assert_eq!(HtmlNameIndexHasher::default().hash(&name), first);
+        }
+        let from_another_thread =
+            std::thread::spawn(move || HtmlNameIndexHasher::new().hash(&name))
+                .join()
+                .ok();
+        assert_eq!(from_another_thread, Some(first));
+    }
 
     fn storage(slots: HtmlNameIndexSlots) -> Vec<HtmlNameIndexSlot> {
         (0..slots.get())
