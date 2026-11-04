@@ -220,19 +220,7 @@ mod tests {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct HtmlMicrodataProviderId(Arc<()>);
-impl HtmlMicrodataProviderId {
-    pub fn fresh() -> Self {
-        Self(Arc::new(()))
-    }
-}
-impl PartialEq for HtmlMicrodataProviderId {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
-impl Eq for HtmlMicrodataProviderId {}
+identity!(HtmlMicrodataProviderId, fresh);
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlMicrodataProviderRevision {
     producer: HtmlMicrodataProviderId,
@@ -1028,20 +1016,10 @@ impl HtmlMicrodataUrlFact {
         })
     }
 }
-/// Opaque provider-declared vocabulary identity; no URL deconstruction.
-#[derive(Clone, Debug)]
-pub struct HtmlMicrodataVocabularyId(Arc<()>);
-impl HtmlMicrodataVocabularyId {
-    pub fn fresh() -> Self {
-        Self(Arc::new(()))
-    }
-}
-impl PartialEq for HtmlMicrodataVocabularyId {
-    fn eq(&self, o: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &o.0)
-    }
-}
-impl Eq for HtmlMicrodataVocabularyId {}
+identity!(
+    /// Opaque provider-declared vocabulary identity; no URL deconstruction.
+    HtmlMicrodataVocabularyId, fresh
+);
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlMicrodataTypeFact {
     binding: HtmlMicrodataRawBinding,

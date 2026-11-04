@@ -18,19 +18,7 @@ use surgeist_html::elements::link::{
     HtmlRelEffect, HtmlRelKeyword, HtmlRelLinks, HtmlRelReport, HtmlRelRole, HtmlRelSpelling,
 };
 
-#[derive(Clone, Debug)]
-pub struct HtmlRelProducerId(Arc<()>);
-impl HtmlRelProducerId {
-    pub fn fresh() -> Self {
-        Self(Arc::new(()))
-    }
-}
-impl PartialEq for HtmlRelProducerId {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
-impl Eq for HtmlRelProducerId {}
+identity!(HtmlRelProducerId, fresh);
 /// Actual producer/configuration/revision, independently expected by the caller.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlRelRevision {
@@ -112,19 +100,7 @@ impl HtmlRelExpectedRevisions {
         self.section.as_ref()
     }
 }
-#[derive(Clone, Debug)]
-pub struct HtmlRelDefinitionId(Arc<()>);
-impl HtmlRelDefinitionId {
-    pub fn fresh() -> Self {
-        Self(Arc::new(()))
-    }
-}
-impl PartialEq for HtmlRelDefinitionId {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
-impl Eq for HtmlRelDefinitionId {}
+identity!(HtmlRelDefinitionId, fresh);
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlRelDefinitionKey {
     identity: HtmlRelDefinitionId,
@@ -344,20 +320,10 @@ impl HtmlRelUrlGrammar {
         }
     }
 }
-/// Associated sections are source concepts that need not identify an Element.
-#[derive(Clone, Debug)]
-pub struct HtmlRelSectionId(Arc<()>);
-impl HtmlRelSectionId {
-    pub fn fresh() -> Self {
-        Self(Arc::new(()))
-    }
-}
-impl PartialEq for HtmlRelSectionId {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
-impl Eq for HtmlRelSectionId {}
+identity!(
+    /// Associated sections are source concepts that need not identify an Element.
+    HtmlRelSectionId, fresh
+);
 #[derive(Debug)]
 pub struct HtmlRelBookmarkSection {
     subject: HtmlCaptureSubjectId,

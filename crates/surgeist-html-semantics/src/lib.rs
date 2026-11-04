@@ -2,6 +2,8 @@
 #![forbid(unsafe_code)]
 #![deny(unfulfilled_lint_expectations)]
 
+#[macro_use]
+mod identity;
 mod base;
 mod bidi;
 mod capture;

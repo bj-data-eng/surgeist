@@ -6,26 +6,9 @@ use surgeist_html::{
     values::{Attribute, DocumentString},
 };
 
-macro_rules! identity {
-    ($name:ident) => {
-        #[derive(Clone, Debug)]
-        pub struct $name(Arc<()>);
-        impl $name {
-            pub fn fresh() -> Self {
-                Self(Arc::new(()))
-            }
-        }
-        impl PartialEq for $name {
-            fn eq(&self, other: &Self) -> bool {
-                Arc::ptr_eq(&self.0, &other.0)
-            }
-        }
-        impl Eq for $name {}
-    };
-}
-identity!(HtmlRelUrlId);
-identity!(HtmlRelOriginId);
-identity!(HtmlRelSettingsId);
+identity!(HtmlRelUrlId, fresh);
+identity!(HtmlRelOriginId, fresh);
+identity!(HtmlRelSettingsId, fresh);
 /// Actual URL record identity and its producer revision, not a serialization.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlRelUrlKey {

@@ -3,19 +3,7 @@ use super::*;
 use surgeist_html::bounded::media::{HtmlMediaField, media_field_matches};
 use surgeist_html::values::DocumentString;
 
-#[derive(Clone, Debug)]
-pub struct HtmlMediaProducerId(Arc<()>);
-impl HtmlMediaProducerId {
-    pub fn fresh() -> Self {
-        Self(Arc::new(()))
-    }
-}
-impl PartialEq for HtmlMediaProducerId {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
-impl Eq for HtmlMediaProducerId {}
+identity!(HtmlMediaProducerId, fresh);
 
 macro_rules! media_revision {
     ($name:ident) => {

@@ -211,26 +211,9 @@ impl HtmlDocumentIconCollection {
     }
 }
 
-macro_rules! icon_identity {
-    ($name:ident) => {
-        #[derive(Clone, Debug)]
-        pub struct $name(Arc<()>);
-        impl $name {
-            pub fn fresh() -> Self {
-                Self(Arc::new(()))
-            }
-        }
-        impl PartialEq for $name {
-            fn eq(&self, other: &Self) -> bool {
-                Arc::ptr_eq(&self.0, &other.0)
-            }
-        }
-        impl Eq for $name {}
-    };
-}
-icon_identity!(HtmlIconPresentationId);
-icon_identity!(HtmlIconResourceId);
-icon_identity!(HtmlIconExaminationId);
+identity!(HtmlIconPresentationId, fresh);
+identity!(HtmlIconResourceId, fresh);
+identity!(HtmlIconExaminationId, fresh);
 /// No universal icon score: policy and format observations belong to the caller.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlIconExpectedRevisions {

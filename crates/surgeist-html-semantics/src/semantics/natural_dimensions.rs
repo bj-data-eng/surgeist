@@ -13,34 +13,14 @@ use surgeist_html::bounded::numeric::{
 use surgeist_html::microsyntax::numeric::{HtmlNonNegativeInteger, HtmlNonNegativeRational};
 use surgeist_html::values::Attribute;
 
-/// Opaque identity of the producer of exact intrinsic CSS-pixel measurements.
-#[derive(Clone, Debug)]
-pub struct HtmlNaturalDimensionProducerId(Arc<()>);
-impl HtmlNaturalDimensionProducerId {
-    pub fn fresh() -> Self {
-        Self(Arc::new(()))
-    }
-}
-impl PartialEq for HtmlNaturalDimensionProducerId {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
-impl Eq for HtmlNaturalDimensionProducerId {}
-/// Selected resource identity, independent of URLs and unrelated numeric tokens.
-#[derive(Clone, Debug)]
-pub struct HtmlNaturalResourceId(Arc<()>);
-impl HtmlNaturalResourceId {
-    pub fn fresh() -> Self {
-        Self(Arc::new(()))
-    }
-}
-impl PartialEq for HtmlNaturalResourceId {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
-impl Eq for HtmlNaturalResourceId {}
+identity!(
+    /// Opaque identity of the producer of exact intrinsic CSS-pixel measurements.
+    HtmlNaturalDimensionProducerId, fresh
+);
+identity!(
+    /// Selected resource identity, independent of URLs and unrelated numeric tokens.
+    HtmlNaturalResourceId, fresh
+);
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlNaturalDimensionRevision {
     producer: HtmlNaturalDimensionProducerId,

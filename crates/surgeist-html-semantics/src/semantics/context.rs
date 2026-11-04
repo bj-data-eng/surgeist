@@ -25,30 +25,15 @@ impl HtmlCustomControlClassification {
     }
 }
 
-/// Identity of immutable supplied classifications; equal records do not imply identity.
-#[derive(Clone, Debug)]
-pub struct HtmlSemanticContextId(Arc<()>);
-impl PartialEq for HtmlSemanticContextId {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
-impl Eq for HtmlSemanticContextId {}
+identity!(
+    /// Identity of immutable supplied classifications; equal records do not imply identity.
+    HtmlSemanticContextId
+);
 
-/// Abstract producer identity, independent of Style, Layout or host types.
-#[derive(Clone, Debug)]
-pub struct HtmlParticipationProducerId(Arc<()>);
-impl HtmlParticipationProducerId {
-    pub fn fresh() -> Self {
-        Self(Arc::new(()))
-    }
-}
-impl PartialEq for HtmlParticipationProducerId {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
-impl Eq for HtmlParticipationProducerId {}
+identity!(
+    /// Abstract producer identity, independent of Style, Layout or host types.
+    HtmlParticipationProducerId, fresh
+);
 
 /// Exact computed-classification and CSS/SVG/equivalent box-production inputs.
 /// Configuration and revision tokens are supplied by the coordinating host.

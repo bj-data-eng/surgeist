@@ -10,20 +10,10 @@ use crate::{
 use std::{error::Error, fmt, sync::Arc};
 use surgeist_html::values::DocumentString;
 
-/// Identity of an external URL/CSP observation producer.
-#[derive(Clone, Debug)]
-pub struct HtmlBaseProducerId(Arc<()>);
-impl HtmlBaseProducerId {
-    pub fn fresh() -> Self {
-        Self(Arc::new(()))
-    }
-}
-impl PartialEq for HtmlBaseProducerId {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
-impl Eq for HtmlBaseProducerId {}
+identity!(
+    /// Identity of an external URL/CSP observation producer.
+    HtmlBaseProducerId, fresh
+);
 
 /// Every influencing external configuration, URL and policy revision.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -203,20 +193,10 @@ impl PartialEq for HtmlBaseUrlRecord {
 }
 impl Eq for HtmlBaseUrlRecord {}
 
-/// External character-encoding identity, independent of source coordinates.
-#[derive(Clone, Debug)]
-pub struct HtmlBaseEncoding(Arc<()>);
-impl HtmlBaseEncoding {
-    pub fn fresh() -> Self {
-        Self(Arc::new(()))
-    }
-}
-impl PartialEq for HtmlBaseEncoding {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
-impl Eq for HtmlBaseEncoding {}
+identity!(
+    /// External character-encoding identity, independent of source coordinates.
+    HtmlBaseEncoding, fresh
+);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlAboutBaseUrl {

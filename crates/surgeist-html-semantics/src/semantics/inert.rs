@@ -19,20 +19,10 @@ use surgeist_html::{
     vocabulary::KnownHtmlElement,
 };
 
-/// Identity of the actual immutable flat-relation producer.
-#[derive(Clone, Debug)]
-pub struct HtmlFlatTreeProducerId(Arc<()>);
-impl HtmlFlatTreeProducerId {
-    pub fn fresh() -> Self {
-        Self(Arc::new(()))
-    }
-}
-impl PartialEq for HtmlFlatTreeProducerId {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
-impl Eq for HtmlFlatTreeProducerId {}
+identity!(
+    /// Identity of the actual immutable flat-relation producer.
+    HtmlFlatTreeProducerId, fresh
+);
 
 /// The actual producer/configuration/revision key, independent of host state.
 #[derive(Clone, Debug, Eq, PartialEq)]

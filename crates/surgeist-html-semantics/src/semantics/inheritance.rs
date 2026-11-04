@@ -13,19 +13,7 @@ use surgeist_html::attributes::{
 };
 use surgeist_html::{attributes::HtmlBooleanAttribute, values::DocumentString};
 
-#[derive(Clone, Debug)]
-pub struct HtmlGlobalInheritanceProducerId(Arc<()>);
-impl HtmlGlobalInheritanceProducerId {
-    pub fn fresh() -> Self {
-        Self(Arc::new(()))
-    }
-}
-impl PartialEq for HtmlGlobalInheritanceProducerId {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
-impl Eq for HtmlGlobalInheritanceProducerId {}
+identity!(HtmlGlobalInheritanceProducerId, fresh);
 /// Actual joined document-state/policy producer configuration and revision.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlGlobalInheritanceRevision {
