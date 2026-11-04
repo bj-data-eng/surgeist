@@ -9,13 +9,19 @@
 
 use super::constructor_work::{Run, attributed, big_builder, least_work_unreported, rational};
 use crate::semantics::support::assert_doubling_at_most_2_2;
-use surgeist_html::{elements::link::HtmlRelKeyword, microsyntax::tokens::HtmlSpaceToken};
+use surgeist_html::{
+    construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
+    elements::link::HtmlRelKeyword,
+    microsyntax::tokens::HtmlSpaceToken,
+};
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureSubjectId, HtmlImageContentBoxObservation, HtmlImageDimensionCompleted,
-    HtmlImageDimensionExpectation, HtmlImageDimensionFacts, HtmlImageDimensionFactsError,
-    HtmlImageDimensionFactsLimits, HtmlImageDimensionMeasurement, HtmlImageDimensionOperationKey,
+    HtmlCapture, HtmlCaptureSubjectId, HtmlCapturedShadowProperties,
+    HtmlImageContentBoxObservation, HtmlImageDimensionCompleted, HtmlImageDimensionExpectation,
+    HtmlImageDimensionFacts, HtmlImageDimensionFactsError, HtmlImageDimensionFactsLimits,
+    HtmlImageDimensionMeasurement, HtmlImageDimensionOperationKey,
     HtmlImageDimensionResourceObservation, HtmlImageDimensionRevision, HtmlImageDimensionRole,
     HtmlImageDimensionSelection, HtmlImageSizingRevision, HtmlImgRequestState,
+    HtmlLanguageDirectionError, HtmlLanguageDirectionFacts, HtmlLanguageDirectionLimits,
     HtmlListParticipation, HtmlListParticipationFact, HtmlListParticipationRevision,
     HtmlMediaAttributeInput, HtmlMediaContextRevision, HtmlMediaEnvironmentRevision, HtmlMediaFact,
     HtmlMediaFacts, HtmlMediaFactsError, HtmlMediaFactsLimits, HtmlMediaGrammarAttestation,
@@ -29,7 +35,7 @@ use surgeist_html_semantics::{
     HtmlRelOriginId, HtmlRelProducerId, HtmlRelRegistryOccurrence, HtmlRelRegistryStatus,
     HtmlRelRevision, HtmlRelSameSiteObservation, HtmlRelSectionId, HtmlRelSettingsId,
     HtmlRelSupportedTokens, HtmlRelUrlGrammar, HtmlRelUrlId, HtmlRelUrlKey, HtmlRelUrlObservation,
-    HtmlSemanticContext, HtmlSemanticContextError, HtmlSemanticContextInput,
+    HtmlSemanticContext, HtmlSemanticContextError, HtmlSemanticContextInput, HtmlSlotAssignedNodes,
 };
 
 const DOUBLINGS: [usize; 4] = [100, 200, 400, 800];
@@ -760,4 +766,152 @@ fn join_total(count: usize) -> usize {
 #[test]
 fn image_dimension_joins_find_each_participation_and_natural_fact_in_work_linear_in_the_facts() {
     assert_doubling_at_most_2_2("image dimension joins", &DOUBLINGS, join_total);
+}
+
+/// A host with `children` text children and a shadow root of `slots` slots, in
+/// the given assignment mode: the slots and the text children.
+fn slotted(
+    mode: HtmlSlotAssignment,
+    slots: usize,
+    children: usize,
+) -> (
+    HtmlCapture,
+    Vec<HtmlCaptureSubjectId>,
+    Vec<HtmlCaptureSubjectId>,
+) {
+    let (mut b, d) = big_builder(slots + children + 4);
+    let host = attributed(&mut b, &d, "div", &[]);
+    let texts: Vec<_> = (0..children)
+        .map(|n| b.add_text(&d, format!("t{n}").as_str().into()).unwrap())
+        .collect();
+    b.establish_children(&host, &texts).unwrap();
+    let root = b
+        .add_shadow_root(
+            &d,
+            &host,
+            HtmlCapturedShadowProperties::new(
+                HtmlShadowRootProperties::new(
+                    HtmlShadowRootMode::Closed,
+                    mode,
+                    false,
+                    false,
+                    false,
+                ),
+                false,
+                false,
+                false,
+            ),
+            surgeist_html_semantics::HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    let slot_elements: Vec<_> = (0..slots)
+        .map(|_| attributed(&mut b, &d, "slot", &[]))
+        .collect();
+    for slot in &slot_elements {
+        b.establish_children(slot, &[]).unwrap();
+    }
+    b.establish_children(&root, &slot_elements).unwrap();
+    b.establish_children(&d, std::slice::from_ref(&host))
+        .unwrap();
+    let capture = b.finish().unwrap();
+    let id = |node| capture.subject_id(node).unwrap();
+    let slot_ids = slot_elements.iter().map(id).collect();
+    let text_ids = texts.iter().map(id).collect();
+    (capture, slot_ids, text_ids)
+}
+fn language_total(
+    capture: &HtmlCapture,
+    assignments: impl Fn() -> Vec<HtmlSlotAssignedNodes>,
+    assigned: usize,
+) -> usize {
+    least_work_unreported(
+        "language assignments",
+        |work| match HtmlLanguageDirectionFacts::new(
+            capture,
+            capture.host_facts_revision().clone(),
+            vec![],
+            vec![],
+            assignments(),
+            HtmlLanguageDirectionLimits::new(1 << 20, 2 * assigned, 1 << 20, work),
+        ) {
+            Ok(_) => Run::Admitted,
+            Err(HtmlLanguageDirectionError::ValidationWork { .. }) => Run::Refused { required: 0 },
+            Err(other) => panic!("fixture refused for another reason: {other:?}"),
+        },
+    )
+}
+
+#[test]
+fn nodes_assigned_to_one_slot_check_duplicates_in_work_linear_in_the_nodes() {
+    assert_doubling_at_most_2_2("one slot's nodes", &DOUBLINGS, |count| {
+        let (capture, slots, texts) = slotted(HtmlSlotAssignment::Named, 1, count);
+        language_total(
+            &capture,
+            || {
+                vec![HtmlSlotAssignedNodes::new(
+                    slots[0].clone(),
+                    Some(texts.clone()),
+                )]
+            },
+            count,
+        )
+    });
+}
+
+#[test]
+fn nodes_assigned_to_many_slots_check_duplicates_in_work_linear_in_the_nodes() {
+    assert_doubling_at_most_2_2("many slots' nodes", &DOUBLINGS, |count| {
+        let (capture, slots, texts) = slotted(HtmlSlotAssignment::Manual, count, count);
+        language_total(
+            &capture,
+            || {
+                slots
+                    .iter()
+                    .zip(&texts)
+                    .map(|(slot, text)| {
+                        HtmlSlotAssignedNodes::new(slot.clone(), Some(vec![text.clone()]))
+                    })
+                    .collect()
+            },
+            count,
+        )
+    });
+}
+
+#[test]
+fn a_node_assigned_twice_is_refused_wherever_the_other_assignment_is() {
+    let (capture, slots, texts) = slotted(HtmlSlotAssignment::Manual, 3, 3);
+    let make = |assignments| {
+        HtmlLanguageDirectionFacts::new(
+            &capture,
+            capture.host_facts_revision().clone(),
+            vec![],
+            vec![],
+            assignments,
+            HtmlLanguageDirectionLimits::new(100, 100, 100, 1 << 20),
+        )
+    };
+    let assign = |slot: usize, nodes: &[usize]| {
+        HtmlSlotAssignedNodes::new(
+            slots[slot].clone(),
+            Some(nodes.iter().map(|n| texts[*n].clone()).collect()),
+        )
+    };
+    assert!(make(vec![assign(0, &[0, 1]), assign(1, &[2]), assign(2, &[])]).is_ok());
+    // Twice within a slot, and once in an earlier slot.
+    for assignments in [
+        vec![assign(0, &[0, 1, 0])],
+        vec![assign(0, &[1]), assign(1, &[2]), assign(2, &[0, 1])],
+    ] {
+        assert!(matches!(
+            make(assignments),
+            Err(HtmlLanguageDirectionError::DuplicateAssignment(_))
+        ));
+    }
+    // A later slot's repeat of an earlier node is reported even though the
+    // earlier slot is the one with the node first.
+    match make(vec![assign(0, &[0]), assign(1, &[0])]) {
+        Err(HtmlLanguageDirectionError::DuplicateAssignment(id)) => assert_eq!(id, texts[0]),
+        other => panic!("{other:?}"),
+    }
 }
