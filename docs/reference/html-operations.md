@@ -2195,6 +2195,100 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
   also steps to the table (1, lookup 1, `K(5)`). The collection walk is the
   one above, stopping at the target: every collection row costs 2, the target
   included.
+- **TableModel** ([code](../../crates/surgeist-html-semantics/src/semantics/table.rs)).
+  Only the growth is stated; the charges that make it up are not pinned. Let
+  `C` be the cells, `W` the columns, `H` the rows, `S` the sum of the cells'
+  column spans and `L` the number of times a cell crosses a line of the header
+  indexes described below.
+  - *Placing the cells* costs `O(C log W + S + W + H)` plus the overlaps it
+    reports (and their sort into model order), however tall the cells are. The
+    next free column is a descent of a tree over the columns that keeps, for
+    each, the end row of the latest cell covering it, so a cell never costs
+    anything for the rows it crosses; a cell that grows downward (`rowspan=0`)
+    is given its height once, when its group ends. A new cell starts at a free
+    column, so the cells it overlaps start inside it and are found through the
+    cells anchored at each of its columns, each dropped from there once its end
+    row is reached.
+  - *Assigning headers* needs the row and column indexes only when the table
+    has a header cell; a table of data cells costs its placement and one read
+    of each cell's `headers` attribute. Cells that cross more than one row (or
+    column) are listed once for each run of rows they cross alike, runs
+    beginning wherever such a cell starts or ends, so a tall cell is not
+    recorded once per row; cells inside one row are listed with their row.
+    Let `L` be the number of times a tall cell crosses a run: tall cells that
+    span the same rows cross one run each, and `L` is quadratic only when
+    their row ranges are all different. The indexes cost `O(C log C + W + H +
+    L)` and are admitted from the spans as scratch records before they are
+    allocated.
+  - *The scans.* A cell without a `headers` attribute scans leftward each row
+    it crosses and upward each column. A scan costs a binary search, one visit
+    per header cell met that no earlier header of the scan hides, and one step
+    for each run of data cells, however long. A header is hidden when an
+    earlier header of the scan, after a data cell, crosses the same rows (or
+    columns): that is one stamp per extent, so a check is constant, and a scan
+    whose block is hidden skips to the nearest header that crosses other lines.
+    A cell is listed once for a principal cell by a stamp, and whether a cell is
+    empty is read once.
+  - *Sharing.* The rows of a run hold the same tall cells. One scan serves
+    every row of a run that has no cell of its own before the scanning cell and
+    no overlap; runs that differ only by cells that start at or after the
+    scanning cell, which a scan does not reach, count as one; and a row whose
+    own cells before the scanning cell all lie left of every tall cell it can
+    reach is that shared scan followed by a scan of its own cells alone, so a
+    first column of cells beside tall header cells costs the cells, not a scan
+    of the tall cells for each. Any other row is scanned on its own.
+  - *The fine bound.* Header assignment is `O((C + A + V + L) log C)`, where `A`
+    is the number of associations and `V` the number of unhidden headers
+    visited without being listed (a header that is no header of the scan's
+    kind, as `scope=col` is for a row scan), when no cells overlap and every
+    row (or column) with a cell of its own before a tall cell is shared as
+    above. It holds for a table of `n` by `n` cells whose headers are a first
+    row and first column, with or without a `tbody`; for tall header cells with
+    data cells between them beside later rows that hold their own cells to the
+    right, or to the left in a first column; for tall header cells whose row
+    ends all differ, which take quadratically many associations; and for a
+    column of `th` cells that each take every `th` above. The model work tests
+    pin these shapes.
+  - *The worst case* is the specification's own scan: for each cell, each row
+    it crosses is read across at most `W` columns and each column it crosses
+    down at most `H` rows, `O(sum over the cells of (height * W + width * H))`
+    slots with a logarithmic factor for each. The shapes that reach it are
+    these. A scan that meets many unhidden headers it does not list, such as a
+    column of `th` cells that all share rows with data cells, still visits
+    each. Headers whose extents alternate are hidden one at a time: each hidden
+    header is a visit, up to `W` for a cell (the tests keep the work per
+    `C * (W + H)` from growing). A row or column where cells share a slot is
+    scanned one slot at a time, `O(log)` per slot from the scanning cell to
+    the start of the line, and each such row is scanned on its own, so the
+    overlapping cells cost `O(W log)` for each row they cross. Rows whose own
+    cells lie among the tall cells, rather than left of them, are scanned on
+    their own: a tall cell crossing `h` such rows costs `h` scans of up to `W`
+    slots, and with many tall cells that is cubic in the size of the table.
+    A cell in a row group (or column group) tests only the header cells whose
+    `scope` names its group, found by index (by row, then the least column;
+    by column, then the least row) in `O(log + k)` for `k` hits, which are
+    listed before the empty headers among them are removed, so `k` counts those
+    too, after reading, once, the `scope` of every
+    header cell when the table has such groups: a table with a row or column
+    group is refused for a `scope` value that is too long to read on any header
+    cell, even one that no cell would otherwise have reached.
+  - The `headers` attribute is outside this bound: each token searches the
+    document, and each resolved token searches the cells.
+  - Everything the model needs beyond the retained records is scratch: the
+    placement tree, the per-column and per-cell placement records and the header
+    indexes are admitted as `ScratchRecords`, and released with the query. Every
+    table query therefore admits scratch records, where it admitted none before:
+    a table of one cell needs 11. A table whose cells overlap or cross many
+    lines can be refused for `ScratchRecords` where the retained model alone
+    would fit, and before `NestedOutputRecords`; `L` can be quadratic in the
+    cells with no association at all.
+  [The model work tests](../../crates/surgeist-html-semantics/tests/semantics/tables/model_work.rs)
+  pin the growth for `n` by `n` grids of data cells and of data cells under a
+  first row and column of header cells (outside and inside a `tbody`), for tall
+  cells beside later rows, and the work per association for staggered tall
+  header cells and for a stacked header column;
+  [the scan bounds tests](../../crates/surgeist-html-semantics/tests/semantics/tables/scan_bounds.rs)
+  pin the shapes above that are costly for the scans.
 - **FooterScope** ([code](../../crates/surgeist-html-semantics/src/semantics/footer.rs)),
   for two shapes. The query prefix, a lookup (1), `D` and `K(6)` come first.
   With a sectioning ancestor, each ancestor costs one parent step (1) and a

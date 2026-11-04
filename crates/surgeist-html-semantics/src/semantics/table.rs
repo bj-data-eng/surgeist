@@ -3,6 +3,14 @@
 
 mod collections;
 pub use collections::*;
+mod axes;
+mod headers;
+mod occupancy;
+mod placement;
+mod slots;
+use headers::HeaderMemo;
+use placement::{Footprint, Placement, Reach};
+use slots::{LeastTree, SlotAxis};
 
 use super::*;
 use crate::HtmlCapturedChildIds;
@@ -51,9 +59,6 @@ impl HtmlTableCell {
     }
     pub fn height(&self) -> usize {
         self.height
-    }
-    fn covers(&self, x: usize, y: usize) -> bool {
-        x >= self.x && x - self.x < self.width && y >= self.y && y - self.y < self.height
     }
 }
 
@@ -202,15 +207,67 @@ type TableResult<T> = Result<T, TableStop>;
 #[derive(Default)]
 struct Scratch<'a> {
     footers: Vec<HtmlCaptureSubjectId>,
-    downward: Vec<usize>,
+    placement: Placement,
     headers: Vec<usize>,
-    opaque: Vec<usize>,
+    /// Per header key, the scan it last hid headers of that key in.
+    stamps: Vec<usize>,
+    /// Per cell, the principal cell whose header list it last joined.
+    listed: Vec<usize>,
+    /// The keys of the headers in the current block.
     block: Vec<usize>,
     document: Vec<HtmlCapturedChildIds<'a>>,
-    /// Each cell's th scope state, read the first time header assignment
-    /// consults it. A cell's attributes do not change during a query, so one
-    /// resolution serves every header assignment that reaches the cell.
-    scopes: Vec<Option<HtmlTableHeaderScopeState>>,
+    memo: Vec<HeaderMemo>,
+    /// Lines of a scan that are scanned one at a time.
+    specials: Vec<usize>,
+    /// The header cells whose `scope` names a row group, and those whose
+    /// `scope` names a column group, in model order. Kept only for tables
+    /// that have such groups.
+    row_group_headers: Vec<usize>,
+    column_group_headers: Vec<usize>,
+    /// Over the row group headers, in model order, their columns; over the
+    /// column group headers, in order of column, their rows.
+    row_group_least: LeastTree,
+    column_group_least: LeastTree,
+    /// Which rows, then columns, hold a cell's top-left slot, and which rows
+    /// or columns begin a new line of an axis.
+    flags: Vec<bool>,
+    /// The lines of an axis under construction: how many cells cross each,
+    /// the cells in the order the lines list them, and the cells ordered by
+    /// column.
+    line_counts: Vec<usize>,
+    placed: Vec<usize>,
+    order: Vec<usize>,
+    column_counts: Vec<usize>,
+    columns: SlotAxis,
+    rows: SlotAxis,
+}
+impl Scratch<'_> {
+    /// Every capacity admitted for this query's scratch.
+    fn capacities(&self) -> impl Iterator<Item = usize> {
+        [
+            self.footers.capacity(),
+            self.headers.capacity(),
+            self.stamps.capacity(),
+            self.listed.capacity(),
+            self.row_group_least.nodes.capacity(),
+            self.column_group_least.nodes.capacity(),
+            self.block.capacity(),
+            self.document.capacity(),
+            self.memo.capacity(),
+            self.specials.capacity(),
+            self.row_group_headers.capacity(),
+            self.column_group_headers.capacity(),
+            self.flags.capacity(),
+            self.line_counts.capacity(),
+            self.placed.capacity(),
+            self.order.capacity(),
+            self.column_counts.capacity(),
+        ]
+        .into_iter()
+        .chain(self.placement.capacities())
+        .chain(self.columns.capacities())
+        .chain(self.rows.capacities())
+    }
 }
 /// The content attribute a span rule reads.
 fn table_span_attribute(rule: HtmlTableSpanRule) -> &'static str {
@@ -294,15 +351,7 @@ impl<'a> HtmlSemanticSession<'a> {
         let result = self.form_table(subject, document.subject(), &mut scratch);
         // Capacities were admitted together in the one session counter, so
         // their sum is representable. Cleanup does not poll the stopped gate.
-        for capacity in [
-            scratch.footers.capacity(),
-            scratch.downward.capacity(),
-            scratch.headers.capacity(),
-            scratch.opaque.capacity(),
-            scratch.block.capacity(),
-            scratch.document.capacity(),
-            scratch.scopes.capacity(),
-        ] {
+        for capacity in scratch.capacities() {
             self.release_scratch(capacity);
         }
         match result {
@@ -457,69 +506,25 @@ impl<'a> HtmlSemanticSession<'a> {
             },
         )
     }
-    fn table_grow(
-        &mut self,
-        model: &mut HtmlTableModel,
-        y: usize,
-        downward: &[usize],
-    ) -> TableResult<()> {
-        for index in downward {
-            self.charge(1)?;
-            let index = *index;
-            let height = self.table_add(y - model.cells[index].y, 1)?;
-            self.charge(1)?;
-            model.cells[index].height = height;
-        }
-        Ok(())
-    }
     fn table_end_group(
         &mut self,
         model: &mut HtmlTableModel,
         y: &mut usize,
-        downward: &mut Vec<usize>,
+        place: &mut Placement,
     ) -> TableResult<()> {
         while *y < model.height() {
-            self.table_grow(model, *y, downward)?;
+            self.table_grow(place, *y)?;
             self.charge(1)?;
             *y = self.table_add(*y, 1)?;
         }
-        self.charge(1)?;
-        downward.clear();
-        Ok(())
-    }
-    fn table_occupant(
-        &mut self,
-        model: &HtmlTableModel,
-        x: usize,
-        y: usize,
-    ) -> TableResult<Option<usize>> {
-        let mut occupant = None;
-        for (index, cell) in model.cells.iter().enumerate() {
-            self.charge(1)?;
-            if cell.covers(x, y) {
-                if occupant.is_some() {
-                    return Ok(None);
-                }
-                occupant = Some(index);
-            }
-        }
-        Ok(occupant)
-    }
-    fn table_occupied(&mut self, model: &HtmlTableModel, x: usize, y: usize) -> TableResult<bool> {
-        for cell in &model.cells {
-            self.charge(1)?;
-            if cell.covers(x, y) {
-                return Ok(true);
-            }
-        }
-        Ok(false)
+        self.table_settle(model, place)
     }
     fn table_row(
         &mut self,
         row: &HtmlCaptureSubjectId,
         model: &mut HtmlTableModel,
         y: &mut usize,
-        downward: &mut Vec<usize>,
+        place: &mut Placement,
     ) -> TableResult<()> {
         if model.height() == *y {
             let height = self.table_add(*y, 1)?;
@@ -527,17 +532,15 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         self.charge(1)?;
         model.rows[*y].source = Some(row.clone());
-        self.table_grow(model, *y, downward)?;
+        self.table_grow(place, *y)?;
         let mut children = self.table_children(row)?;
         let mut x = 0;
         while let Some((id, kind)) = self.table_next(&mut children)? {
             if !matches!(kind, Some(KnownHtmlElement::Td | KnownHtmlElement::Th)) {
                 continue;
             }
-            while x < model.width() && self.table_occupied(model, x, *y)? {
-                self.charge(1)?;
-                x = self.table_add(x, 1)?;
-            }
+            self.table_columns_ready(place, model.width())?;
+            x = self.table_first_free(place, x, *y, model.width())?;
             if x == model.width() {
                 let width = self.table_add(x, 1)?;
                 self.table_width(model, width, None)?;
@@ -552,22 +555,9 @@ impl<'a> HtmlSemanticSession<'a> {
             let bottom = self.table_add(*y, height)?;
             self.table_width(model, right, None)?;
             self.table_height(model, bottom)?;
-            for other in &model.cells {
-                self.charge(1)?;
-                let other_right = self.table_add(other.x, other.width)?;
-                let other_bottom = self.table_add(other.y, other.height)?;
-                if x < other_right && other.x < right && *y < other_bottom && other.y < bottom {
-                    self.table_push(
-                        &mut model.errors,
-                        HtmlTableModelError::Overlap {
-                            cell: id.clone(),
-                            other: other.subject.clone(),
-                            x: x.max(other.x),
-                            y: (*y).max(other.y),
-                        },
-                    )?;
-                }
-            }
+            self.table_columns_ready(place, model.width())?;
+            let footprint = Footprint { x, y: *y, right };
+            self.table_overlaps(model, &id, footprint, place)?;
             let index = model.cells.len();
             self.table_push(
                 &mut model.cells,
@@ -584,9 +574,12 @@ impl<'a> HtmlSemanticSession<'a> {
                     height,
                 },
             )?;
-            if grows {
-                self.table_scratch(downward, index)?;
-            }
+            let reach = if grows {
+                Reach::Growing
+            } else {
+                Reach::Until(bottom)
+            };
+            self.table_occupy(place, index, footprint, reach)?;
             x = right;
         }
         self.charge(1)?;
@@ -598,13 +591,13 @@ impl<'a> HtmlSemanticSession<'a> {
         group: &HtmlCaptureSubjectId,
         model: &mut HtmlTableModel,
         y: &mut usize,
-        downward: &mut Vec<usize>,
+        place: &mut Placement,
     ) -> TableResult<()> {
         let start = model.height();
         let mut children = self.table_children(group)?;
         while let Some((row, kind)) = self.table_next(&mut children)? {
             if kind == Some(KnownHtmlElement::Tr) {
-                self.table_row(&row, model, y, downward)?;
+                self.table_row(&row, model, y, place)?;
             }
         }
         if model.height() > start {
@@ -618,7 +611,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 },
             )?;
         }
-        self.table_end_group(model, y, downward)
+        self.table_end_group(model, y, place)
     }
     fn form_table(
         &mut self,
@@ -656,17 +649,17 @@ impl<'a> HtmlSemanticSession<'a> {
                 }
                 Some(KnownHtmlElement::Tr) => {
                     columns_phase = false;
-                    self.table_row(&id, &mut model, &mut y, &mut scratch.downward)?;
+                    self.table_row(&id, &mut model, &mut y, &mut scratch.placement)?;
                 }
                 Some(
                     KnownHtmlElement::Thead | KnownHtmlElement::Tbody | KnownHtmlElement::Tfoot,
                 ) => {
                     columns_phase = false;
-                    self.table_end_group(&mut model, &mut y, &mut scratch.downward)?;
+                    self.table_end_group(&mut model, &mut y, &mut scratch.placement)?;
                     if kind == Some(KnownHtmlElement::Tfoot) {
                         self.table_scratch(&mut scratch.footers, id)?;
                     } else {
-                        self.table_group(&id, &mut model, &mut y, &mut scratch.downward)?;
+                        self.table_group(&id, &mut model, &mut y, &mut scratch.placement)?;
                     }
                 }
                 _ => {}
@@ -674,376 +667,12 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         for footer in &scratch.footers {
             self.charge(1)?;
-            self.table_group(footer, &mut model, &mut y, &mut scratch.downward)?;
+            self.table_group(footer, &mut model, &mut y, &mut scratch.placement)?;
         }
-        for y in 0..model.height() {
-            let mut anchored = false;
-            for cell in &model.cells {
-                self.charge(1)?;
-                if cell.y == y {
-                    anchored = true;
-                    break;
-                }
-            }
-            if !anchored {
-                self.table_push(&mut model.errors, HtmlTableModelError::UnanchoredRow { y })?;
-            }
-        }
-        for x in 0..model.width() {
-            let mut anchored = false;
-            for cell in &model.cells {
-                self.charge(1)?;
-                if cell.x == x {
-                    anchored = true;
-                    break;
-                }
-            }
-            if !anchored {
-                self.table_push(
-                    &mut model.errors,
-                    HtmlTableModelError::UnanchoredColumn { x },
-                )?;
-            }
-        }
+        self.table_settle(&mut model, &mut scratch.placement)?;
+        self.table_unanchored(&mut model, &mut scratch.flags)?;
         self.table_headers(&mut model, document, scratch)?;
         self.poll()?;
         Ok(model)
-    }
-    /// The th scope state of cell `index`, resolved through the HTML-owned rule
-    /// the first time this query consults it and reused afterwards. The first
-    /// consultation admits the state table (one entry per cell) and the rule's
-    /// published bound for the raw value; later ones charge a single lookup.
-    fn table_scope(
-        &mut self,
-        model: &HtmlTableModel,
-        index: usize,
-        scopes: &mut Vec<Option<HtmlTableHeaderScopeState>>,
-    ) -> TableResult<HtmlTableHeaderScopeState> {
-        if scopes.len() != model.cells.len() {
-            self.reserve_scratch(scopes, model.cells.len())?;
-            self.charge(model.cells.len())?;
-            scopes.resize(model.cells.len(), None);
-        }
-        self.charge(1)?;
-        if let Some(state) = scopes[index] {
-            return Ok(state);
-        }
-        let element = self.table_element(&model.cells[index].subject)?;
-        let raw = self.table_raw(element, "scope")?;
-        let value = raw.map(Attribute::value);
-        self.table_charge_bound(th_scope_work_bound(value.map_or(0, DocumentString::len)))?;
-        let state = th_scope_state(value);
-        self.poll()?;
-        scopes[index] = Some(state);
-        Ok(state)
-    }
-    fn table_column_header(
-        &mut self,
-        model: &HtmlTableModel,
-        index: usize,
-        scopes: &mut Vec<Option<HtmlTableHeaderScopeState>>,
-    ) -> TableResult<bool> {
-        match self.table_scope(model, index, scopes)? {
-            HtmlTableHeaderScopeState::Keyword(HtmlTableHeaderScope::Column) => Ok(true),
-            HtmlTableHeaderScopeState::Auto => {
-                let header = &model.cells[index];
-                let bottom = self.table_add(header.y, header.height)?;
-                for cell in &model.cells {
-                    self.charge(1)?;
-                    if cell.kind == HtmlTableCellKind::Data
-                        && cell.y < bottom
-                        && header.y < self.table_add(cell.y, cell.height)?
-                    {
-                        return Ok(false);
-                    }
-                }
-                Ok(true)
-            }
-            _ => Ok(false),
-        }
-    }
-    fn table_row_header(
-        &mut self,
-        model: &HtmlTableModel,
-        index: usize,
-        scopes: &mut Vec<Option<HtmlTableHeaderScopeState>>,
-    ) -> TableResult<bool> {
-        match self.table_scope(model, index, scopes)? {
-            HtmlTableHeaderScopeState::Keyword(HtmlTableHeaderScope::Row) => Ok(true),
-            HtmlTableHeaderScopeState::Auto
-                if !self.table_column_header(model, index, scopes)? =>
-            {
-                let header = &model.cells[index];
-                let right = self.table_add(header.x, header.width)?;
-                for cell in &model.cells {
-                    self.charge(1)?;
-                    if cell.kind == HtmlTableCellKind::Data
-                        && cell.x < right
-                        && header.x < self.table_add(cell.x, cell.width)?
-                    {
-                        return Ok(false);
-                    }
-                }
-                Ok(true)
-            }
-            _ => Ok(false),
-        }
-    }
-    fn table_scan(
-        &mut self,
-        model: &HtmlTableModel,
-        principal: usize,
-        mut x: usize,
-        mut y: usize,
-        vertical: bool,
-        scratch: &mut Scratch<'a>,
-    ) -> TableResult<()> {
-        self.charge(1)?;
-        scratch.opaque.clear();
-        scratch.block.clear();
-        let mut in_block = model.cells[principal].kind == HtmlTableCellKind::Header;
-        if in_block {
-            self.table_scratch(&mut scratch.block, principal)?;
-        }
-        loop {
-            self.charge(1)?;
-            if vertical {
-                if y == 0 {
-                    break;
-                }
-                y -= 1;
-            } else {
-                if x == 0 {
-                    break;
-                }
-                x -= 1;
-            }
-            let Some(index) = self.table_occupant(model, x, y)? else {
-                continue;
-            };
-            let cell = &model.cells[index];
-            if cell.kind == HtmlTableCellKind::Header {
-                in_block = true;
-                self.table_scratch(&mut scratch.block, index)?;
-                let mut blocked = false;
-                for opaque in &scratch.opaque {
-                    self.charge(1)?;
-                    let opaque = *opaque;
-                    let old = &model.cells[opaque];
-                    if (vertical && old.x == cell.x && old.width == cell.width)
-                        || (!vertical && old.y == cell.y && old.height == cell.height)
-                    {
-                        blocked = true;
-                        break;
-                    }
-                }
-                if !blocked {
-                    blocked = if vertical {
-                        !self.table_column_header(model, index, &mut scratch.scopes)?
-                    } else {
-                        !self.table_row_header(model, index, &mut scratch.scopes)?
-                    };
-                }
-                if !blocked {
-                    self.table_scratch(&mut scratch.headers, index)?;
-                }
-            } else if in_block {
-                in_block = false;
-                for index in &scratch.block {
-                    self.charge(1)?;
-                    self.table_scratch(&mut scratch.opaque, *index)?;
-                }
-                self.charge(1)?;
-                scratch.block.clear();
-            }
-        }
-        Ok(())
-    }
-    fn table_id_match(&mut self, left: &[u16], right: &[u16]) -> TableResult<bool> {
-        self.charge(1)?;
-        if left.len() != right.len() {
-            return Ok(false);
-        }
-        for (a, b) in left.iter().zip(right) {
-            self.charge(2)?;
-            if a != b {
-                return Ok(false);
-            }
-        }
-        Ok(true)
-    }
-    fn table_find_id(
-        &mut self,
-        document: &HtmlCaptureSubjectId,
-        token: &[u16],
-        frames: &mut Vec<HtmlCapturedChildIds<'a>>,
-    ) -> TableResult<Option<HtmlCaptureSubjectId>> {
-        self.charge(1)?;
-        frames.clear();
-        let children = self.table_children(document)?;
-        self.table_scratch(frames, children)?;
-        while !frames.is_empty() {
-            self.charge(1)?;
-            let Some(id) = frames.last_mut().and_then(Iterator::next) else {
-                frames.pop();
-                continue;
-            };
-            let node = self.node(&id)?;
-            if let HtmlCapturedNodeKind::Element(element) = node.kind() {
-                let raw = self.table_raw(element, "id")?;
-                if let Some(raw) = raw
-                    && !raw.value().is_empty()
-                    && self.table_id_match(raw.value().code_units(), token)?
-                {
-                    return Ok(Some(id));
-                }
-            }
-            let children = self.table_children(&id)?;
-            if children.len() != 0 {
-                self.table_scratch(frames, children)?;
-            }
-        }
-        Ok(None)
-    }
-    fn table_empty(&mut self, model: &HtmlTableModel, index: usize) -> TableResult<bool> {
-        let mut children = self.table_children(&model.cells[index].subject)?;
-        loop {
-            self.charge(1)?;
-            let Some(id) = children.next() else {
-                return Ok(true);
-            };
-            match self.node(&id)?.kind() {
-                HtmlCapturedNodeKind::Element(_) => return Ok(false),
-                HtmlCapturedNodeKind::Text(text) => {
-                    for unit in text.code_units() {
-                        self.charge(1)?;
-                        if !is_ascii_whitespace(*unit) {
-                            return Ok(false);
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    fn table_headers(
-        &mut self,
-        model: &mut HtmlTableModel,
-        document: &HtmlCaptureSubjectId,
-        scratch: &mut Scratch<'a>,
-    ) -> TableResult<()> {
-        for principal in 0..model.cells.len() {
-            self.charge(1)?;
-            scratch.headers.clear();
-            let cell = &model.cells[principal];
-            let element = self.table_element(&cell.subject)?;
-            if let Some(raw) = self.table_raw(element, "headers")? {
-                let units = raw.value().code_units();
-                let mut position = 0;
-                while position < units.len() {
-                    self.charge(1)?;
-                    if is_ascii_whitespace(units[position]) {
-                        position += 1;
-                        continue;
-                    }
-                    let start = position;
-                    while position < units.len() {
-                        self.charge(1)?;
-                        if is_ascii_whitespace(units[position]) {
-                            break;
-                        }
-                        position += 1;
-                    }
-                    if let Some(id) = self.table_find_id(
-                        document,
-                        &units[start..position],
-                        &mut scratch.document,
-                    )? {
-                        for (index, cell) in model.cells.iter().enumerate() {
-                            self.charge(1)?;
-                            if cell.subject == id && index != principal {
-                                self.table_scratch(&mut scratch.headers, index)?;
-                                break;
-                            }
-                        }
-                    }
-                }
-            } else {
-                let right = self.table_add(cell.x, cell.width)?;
-                let bottom = self.table_add(cell.y, cell.height)?;
-                for y in cell.y..bottom {
-                    self.table_scan(model, principal, cell.x, y, false, scratch)?;
-                }
-                for x in cell.x..right {
-                    self.table_scan(model, principal, x, cell.y, true, scratch)?;
-                }
-                for group in &model.row_groups {
-                    self.charge(1)?;
-                    if cell.y >= group.y && cell.y - group.y < group.height {
-                        for (index, header) in model.cells.iter().enumerate() {
-                            self.charge(1)?;
-                            if header.kind == HtmlTableCellKind::Header
-                                && header.y >= group.y
-                                && header.y - group.y < group.height
-                                && header.x < right
-                                && header.y < bottom
-                                && self.table_scope(model, index, &mut scratch.scopes)?
-                                    == HtmlTableHeaderScopeState::Keyword(
-                                        HtmlTableHeaderScope::RowGroup,
-                                    )
-                            {
-                                self.table_scratch(&mut scratch.headers, index)?;
-                            }
-                        }
-                    }
-                }
-                for group in &model.column_groups {
-                    self.charge(1)?;
-                    if cell.x >= group.x && cell.x - group.x < group.width {
-                        for (index, header) in model.cells.iter().enumerate() {
-                            self.charge(1)?;
-                            if header.kind == HtmlTableCellKind::Header
-                                && header.x >= group.x
-                                && header.x - group.x < group.width
-                                && header.x < right
-                                && header.y < bottom
-                                && self.table_scope(model, index, &mut scratch.scopes)?
-                                    == HtmlTableHeaderScopeState::Keyword(
-                                        HtmlTableHeaderScope::ColumnGroup,
-                                    )
-                            {
-                                self.table_scratch(&mut scratch.headers, index)?;
-                            }
-                        }
-                    }
-                }
-            }
-            for (position, header) in scratch.headers.iter().enumerate() {
-                self.charge(1)?;
-                let header = *header;
-                if self.table_empty(model, header)? {
-                    continue;
-                }
-                let mut duplicate = false;
-                for earlier in &scratch.headers[..position] {
-                    self.charge(1)?;
-                    if *earlier == header {
-                        duplicate = true;
-                        break;
-                    }
-                }
-                if duplicate || header == principal {
-                    continue;
-                }
-                self.table_push(
-                    &mut model.headers,
-                    HtmlTableHeaderAssociation {
-                        cell: model.cells[principal].subject.clone(),
-                        header: model.cells[header].subject.clone(),
-                    },
-                )?;
-            }
-        }
-        Ok(())
     }
 }
