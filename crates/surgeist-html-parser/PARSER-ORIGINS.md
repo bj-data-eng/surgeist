@@ -757,8 +757,8 @@ The immutable report moves the original source and completed storage; terminal
 failure retains the original request and safe evidence without a partial tree.
 Public readers borrow fixed metadata, diagnostic and association records and
 qualified history rather than copying a parallel provenance schema. Internal
-helpers remain private; conformance observers, expected-data decoding and feeding
-fixtures remain test-only. The [overview](../../docs/reference/html-operations.md#decoded-unicode-parsing) records
+helpers remain private; conformance observers and expected-data decoding remain
+test-only. The [overview](../../docs/reference/html-operations.md#decoded-unicode-parsing) records
 supported profiles, explicit limits and exclusions. Original notices, source pins
 and historical incorporation hashes continue to identify their original inputs.
 
