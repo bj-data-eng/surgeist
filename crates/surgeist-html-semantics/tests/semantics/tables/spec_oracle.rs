@@ -275,6 +275,92 @@ fn table(rng: &mut Rng, dense: bool) -> Vec<Child> {
     children
 }
 
+/// A cell of a table whose tall cells have cells of their own among them: its
+/// content is mostly text, so that header lists are not mostly emptied, its
+/// `scope` is mostly one a scan consults, and it rarely has a `headers`
+/// attribute, which would keep it from scanning.
+fn plain_cell(rng: &mut Rng, ordinals: &mut Ordinals, th: bool) -> Cell {
+    let mut cell = cell(rng, false, ordinals);
+    cell.th = th;
+    cell.scope = th
+        .then(|| match rng.below(8) {
+            0..=2 => Some("row"),
+            3 | 4 => Some("col"),
+            5 => Some("auto"),
+            _ => None,
+        })
+        .flatten()
+        .map(String::from);
+    cell.colspan = rng.chance(10).then(|| (1 + rng.below(3)).to_string());
+    cell.rowspan = None;
+    cell.headers = rng.chance(25).then(String::new);
+    cell.alias = None;
+    cell.content = if rng.chance(6) {
+        Content::Empty
+    } else {
+        Content::Text
+    };
+    cell
+}
+
+/// A table in which tall cells (some `th` of the same rows, some ending sooner
+/// or growing to the end) are placed in the first row beside short cells, and
+/// each later row holds a few cells that land among the tall cells: where a
+/// tall cell ends, its column is free for the later rows' cells, and so are
+/// the columns the short cells of the first row left. Spans differ, so tall
+/// cells share rows, end at different rows, and cross the cells among them.
+fn tall_table(rng: &mut Rng) -> Vec<Child> {
+    let mut ordinals = Ordinals::default();
+    let rows = 3 + rng.below(7);
+    let mut first = Vec::new();
+    for _ in 0..3 + rng.below(7) {
+        let tall = rng.below(5) < 3;
+        let th = if tall { !rng.chance(3) } else { rng.chance(3) };
+        let mut cell = plain_cell(rng, &mut ordinals, th);
+        if tall {
+            cell.rowspan = Some(match rng.below(6) {
+                0 => "0".to_string(),
+                1 | 2 => rows.to_string(),
+                3 => rows.saturating_sub(1).to_string(),
+                _ => (2 + rng.below(rows)).to_string(),
+            });
+        }
+        first.push(cell);
+    }
+    let mut table_rows = vec![Row {
+        ordinal: 0,
+        cells: first,
+    }];
+    ordinals.rows = 1;
+    for _ in 1..rows {
+        let count = 1 + rng.below(3);
+        let cells = (0..count)
+            .map(|_| {
+                let th = rng.chance(4);
+                let mut cell = plain_cell(rng, &mut ordinals, th);
+                if rng.chance(12) {
+                    cell.rowspan = Some((2 + rng.below(3)).to_string());
+                }
+                cell
+            })
+            .collect();
+        table_rows.push(Row {
+            ordinal: ordinals.rows,
+            cells,
+        });
+        ordinals.rows += 1;
+    }
+    if rng.chance(3) {
+        vec![Child::Section {
+            ordinal: 0,
+            kind: "tbody",
+            rows: table_rows,
+        }]
+    } else {
+        table_rows.into_iter().map(Child::Row).collect()
+    }
+}
+
 // ---- The specification, literally ---------------------------------------
 
 #[derive(Clone, Debug)]
@@ -988,39 +1074,51 @@ fn agrees(actual: &[usize], expected: &Associated) -> bool {
     actual.get(..split) == Some(expected.ordered.as_slice()) && grouped == expected.grouped
 }
 
+/// Forms `description` and compares every part of its model and each cell's
+/// header list with the oracle's.
+fn check(case: usize, description: &[Child]) {
+    let (capture, root, subjects) = build(description);
+    let report = query(&capture, &root, limits()).0.unwrap();
+    let HtmlSemanticFact::TableModel(HtmlSemanticValue::Known(model)) = report.results()[0].fact()
+    else {
+        panic!(
+            "case {case}: expected a complete model, got {:?}: {description:#?}",
+            report.results()[0].fact()
+        );
+    };
+    let (expected, associated) = oracle(description);
+    assert_eq!(
+        read(&capture, &subjects, model),
+        expected,
+        "case {case}: {description:#?}"
+    );
+    let actual = read_headers(&subjects, &capture, model);
+    let none = Vec::new();
+    for (cell, expected) in &associated {
+        let found = actual.get(cell).unwrap_or(&none);
+        assert!(
+            agrees(found, expected),
+            "case {case}: cell {cell} has headers {found:?}, expected {expected:?}: {description:#?}"
+        );
+    }
+    assert!(
+        actual.keys().all(|cell| associated.contains_key(cell)),
+        "case {case}: headers for a cell that is not in the table"
+    );
+}
+
 #[test]
 fn seeded_random_tables_form_and_assign_headers_as_the_specification_says() {
     let mut rng = Rng(0x1733_0409);
     for case in 0..400 {
-        let description = table(&mut rng, case % 3 == 0);
-        let (capture, root, subjects) = build(&description);
-        let report = query(&capture, &root, limits()).0.unwrap();
-        let HtmlSemanticFact::TableModel(HtmlSemanticValue::Known(model)) =
-            report.results()[0].fact()
-        else {
-            panic!(
-                "case {case}: expected a complete model, got {:?}: {description:#?}",
-                report.results()[0].fact()
-            );
-        };
-        let (expected, associated) = oracle(&description);
-        assert_eq!(
-            read(&capture, &subjects, model),
-            expected,
-            "case {case}: {description:#?}"
-        );
-        let actual = read_headers(&subjects, &capture, model);
-        let none = Vec::new();
-        for (cell, expected) in &associated {
-            let found = actual.get(cell).unwrap_or(&none);
-            assert!(
-                agrees(found, expected),
-                "case {case}: cell {cell} has headers {found:?}, expected {expected:?}: {description:#?}"
-            );
-        }
-        assert!(
-            actual.keys().all(|cell| associated.contains_key(cell)),
-            "case {case}: headers for a cell that is not in the table"
-        );
+        check(case, &table(&mut rng, case % 3 == 0));
+    }
+}
+
+#[test]
+fn seeded_tables_of_tall_cells_with_cells_among_them_assign_headers_as_the_specification_says() {
+    let mut rng = Rng(0x1774_0411);
+    for case in 0..600 {
+        check(case, &tall_table(&mut rng));
     }
 }
