@@ -218,10 +218,11 @@ fn irregular_extents(n: usize) -> Measured {
 }
 
 #[test]
-fn separate_overlaps_are_found_without_visiting_the_others() {
-    assert_work_doubles_by_at_most("irregular extents", 260, SIZES, |n| {
-        irregular_extents(n).work
-    });
+fn separate_overlaps_cost_no_more_than_the_bound() {
+    // The rows of the overlaps are found by search, not by visiting every
+    // overlap; the cost that remains is the walk up the one column they share,
+    // within the bound of the cells times the columns and rows.
+    assert_work_per_bound_grows_by_at_most("irregular extents", 125, irregular_extents);
 }
 
 /// B5. A `td` and `n` `th` of scope `rowgroup`, which take no header of their

@@ -7,7 +7,7 @@
 //! long it is. A line where cells overlap is scanned one slot at a time, the
 //! slots with no occupant or several being skipped as the algorithm says.
 
-use super::slots::{self, Cover, Extent, LineSpan, List, SlotAxis, SlotEntry};
+use super::slots::{self, Cover, Extent, LeastTree, LineSpan, List, SlotAxis, SlotEntry};
 use super::*;
 
 /// What the header scans remember about one cell. A cell's attributes do not
@@ -38,6 +38,9 @@ struct Axes<'s> {
 /// is known of each header, and the finished lines.
 struct Scan<'s> {
     headers: &'s mut Vec<usize>,
+    /// A cell marked with `mark` is already in `headers`.
+    listed: &'s mut Vec<usize>,
+    mark: usize,
     /// A header whose key is stamped with `epoch` is hidden: an opaque header
     /// of this scan crosses the same lines.
     stamps: &'s mut Vec<usize>,
@@ -74,13 +77,19 @@ struct Target<'a> {
 struct Occupants<'a> {
     long: List<'a>,
     short: List<'a>,
+    /// The scan continues one that has gone through the long cells: its block
+    /// starts empty. Only short cells follow, whose extents no long cell
+    /// shares, so nothing from the long cells could hide or be hidden.
+    fresh: bool,
 }
 
 /// The header cells whose `scope` names a group, by kind.
 #[derive(Clone, Copy)]
 struct GroupHeaders<'s> {
     row_group: &'s [usize],
+    row_group_least: &'s LeastTree,
     column_group: &'s [usize],
+    column_group_least: &'s LeastTree,
 }
 
 impl<'a> HtmlSemanticSession<'a> {
@@ -208,6 +217,93 @@ impl<'a> HtmlSemanticSession<'a> {
             _ => Ok(false),
         }
     }
+    /// Adds `index` to the principal cell's header list unless it is there.
+    fn table_list(
+        &mut self,
+        model: &HtmlTableModel,
+        scan: &mut Scan<'_>,
+        index: usize,
+    ) -> TableResult<()> {
+        if scan.listed.len() != model.cells.len() {
+            self.charge(model.cells.len())?;
+            self.reserve_scratch(scan.listed, model.cells.len())?;
+            scan.listed.resize(model.cells.len(), 0);
+        }
+        self.charge(1)?;
+        if scan.listed.get(index) == Some(&scan.mark) {
+            return Ok(());
+        }
+        if let Some(mark) = scan.listed.get_mut(index) {
+            *mark = scan.mark;
+        }
+        self.table_scratch(scan.headers, index)
+    }
+    /// Collects into `out` the positions of `positions` whose start in the tree
+    /// is below `bound`, in ascending order.
+    fn table_collect_below(
+        &mut self,
+        tree: &LeastTree,
+        positions: LineSpan,
+        bound: usize,
+        out: &mut Vec<usize>,
+    ) -> TableResult<()> {
+        out.clear();
+        let mut matches = 0usize;
+        tree.visit_below(
+            positions,
+            bound,
+            &mut |work| self.charge(work).map_err(TableStop::from),
+            &mut |_| {
+                matches += 1;
+                Ok(())
+            },
+        )?;
+        self.reserve_scratch(out, matches)?;
+        tree.visit_below(
+            positions,
+            bound,
+            &mut |work| self.charge(work).map_err(TableStop::from),
+            &mut |position| {
+                out.push(position);
+                Ok(())
+            },
+        )
+    }
+    /// Builds the tree over a group's header cells from a leaf for each.
+    fn table_group_tree(
+        &mut self,
+        model: &HtmlTableModel,
+        cells: &[usize],
+        tree: &mut LeastTree,
+        leaf: impl Fn(&HtmlTableCell) -> usize,
+    ) -> TableResult<()> {
+        let size = LeastTree::leaves_for(cells.len());
+        let nodes = self.table_add(size, size)?;
+        self.charge(nodes)?;
+        tree.nodes.clear();
+        self.reserve_scratch(&mut tree.nodes, nodes)?;
+        tree.nodes.resize(nodes, usize::MAX);
+        for (position, index) in cells.iter().enumerate() {
+            self.charge(1)?;
+            if let (Some(cell), Some(slot)) =
+                (model.cells.get(*index), tree.nodes.get_mut(size + position))
+            {
+                *slot = leaf(cell);
+            }
+        }
+        for node in (1..size).rev() {
+            self.charge(1)?;
+            let least = tree
+                .nodes
+                .get(2 * node)
+                .zip(tree.nodes.get(2 * node + 1))
+                .map_or(usize::MAX, |(a, b)| *a.min(b));
+            if let Some(slot) = tree.nodes.get_mut(node) {
+                *slot = least;
+            }
+        }
+        Ok(())
+    }
     /// A data cell reached by a scan ends the header block it follows: the
     /// block's extents become opaque to earlier headers that cross the same
     /// lines.
@@ -253,7 +349,7 @@ impl<'a> HtmlSemanticSession<'a> {
             };
         }
         if !blocked {
-            self.table_scratch(scan.headers, index)?;
+            self.table_list(model, scan, index)?;
         }
         Ok(())
     }
@@ -340,7 +436,11 @@ impl<'a> HtmlSemanticSession<'a> {
                 let irregular = axis.irregular_at(start, &mut |work| {
                     self.charge(work).map_err(TableStop::from)
                 })?;
-                let cells = Occupants { long, short };
+                let cells = Occupants {
+                    long,
+                    short,
+                    fresh: false,
+                };
                 self.table_scan_line(model, scan, principal, target, cells, irregular)?;
                 continue;
             }
@@ -371,8 +471,20 @@ impl<'a> HtmlSemanticSession<'a> {
                     Ok(())
                 },
             )?;
-            for extent in &axis.irregular {
+            let begun = slots::leading_by(
+                axis.irregular.len(),
+                |index| {
+                    axis.irregular
+                        .get(index)
+                        .is_some_and(|extent| extent.end() <= here.start)
+                },
+                &mut |work| self.charge(work).map_err(TableStop::from),
+            )?;
+            for extent in axis.irregular.get(begun..).unwrap_or_default() {
                 self.charge(1)?;
+                if extent.start >= here.end() {
+                    break;
+                }
                 for line in extent.start.max(here.start)..extent.end().min(here.end()) {
                     self.table_scratch(scan.specials, line)?;
                 }
@@ -385,19 +497,30 @@ impl<'a> HtmlSemanticSession<'a> {
             self.charge(count.saturating_mul(1 + bits))?;
             scan.specials.sort_unstable();
             scan.specials.dedup();
+            // The leftmost long cell the scan can reach. A line whose short
+            // cells all lie left of it is the shared scan followed by a scan
+            // of its short cells alone.
+            let leftmost_long = long
+                .entries
+                .first()
+                .map(|entry| entry.start)
+                .filter(|start| *start < from);
             // The lines are taken top to bottom (or left to right), so that
             // headers are found in the order the specification lists them:
             // the shared scan stands in for the first line that has no cell of
-            // its own before the scanning cell.
+            // its own before the scanning cell, or only cells left of every
+            // long cell.
             let mut shared = Some(here.start);
+            let mut done = false;
             for position in 0..scan.specials.len() {
                 self.charge(1)?;
                 let line = scan.specials[position];
-                if let Some(first) = shared
+                if !done
+                    && let Some(first) = shared
                     && first < line
                 {
                     self.table_scan_shared(model, scan, principal, target, long)?;
-                    shared = None;
+                    done = true;
                 }
                 if shared == Some(line) {
                     shared = Some(line + 1);
@@ -406,10 +529,40 @@ impl<'a> HtmlSemanticSession<'a> {
                     axis.short_of(line, &mut |work| self.charge(work).map_err(TableStop::from))?;
                 let irregular = axis
                     .irregular_at(line, &mut |work| self.charge(work).map_err(TableStop::from))?;
-                let cells = Occupants { long, short };
-                self.table_scan_line(model, scan, principal, target, cells, irregular)?;
+                let before =
+                    slots::leading(short.entries, |entry| entry.start < from, &mut |work| {
+                        self.charge(work).map_err(TableStop::from)
+                    })?;
+                let trailing = !irregular
+                    && match (leftmost_long, before.checked_sub(1)) {
+                        (Some(least), Some(last)) => short
+                            .entries
+                            .get(last)
+                            .is_some_and(|entry| entry.start < least),
+                        _ => true,
+                    };
+                if trailing {
+                    if !done {
+                        self.table_scan_shared(model, scan, principal, target, long)?;
+                        done = true;
+                    }
+                    let cells = Occupants {
+                        long: List::EMPTY,
+                        short,
+                        fresh: true,
+                    };
+                    self.table_scan_line(model, scan, principal, target, cells, false)?;
+                } else {
+                    let cells = Occupants {
+                        long,
+                        short,
+                        fresh: false,
+                    };
+                    self.table_scan_line(model, scan, principal, target, cells, irregular)?;
+                }
             }
-            if let Some(first) = shared
+            if !done
+                && let Some(first) = shared
                 && first < here.end()
             {
                 self.table_scan_shared(model, scan, principal, target, long)?;
@@ -431,6 +584,7 @@ impl<'a> HtmlSemanticSession<'a> {
         let cells = Occupants {
             long,
             short: List::EMPTY,
+            fresh: false,
         };
         self.table_scan_line(model, scan, principal, target, cells, false)
     }
@@ -461,7 +615,7 @@ impl<'a> HtmlSemanticSession<'a> {
         self.charge(1)?;
         scan.epoch += 1;
         scan.block.clear();
-        scan.in_block = model.cells[principal].kind == HtmlTableCellKind::Header;
+        scan.in_block = !cells.fresh && model.cells[principal].kind == HtmlTableCellKind::Header;
         scan.live = scan.in_block;
         if scan.in_block {
             let Some(key) = principal_key else {
@@ -687,12 +841,14 @@ impl<'a> HtmlSemanticSession<'a> {
             document: frames,
             headers,
             stamps,
-            seen,
+            listed,
             block,
             memo,
             specials,
             row_group_headers,
             column_group_headers,
+            row_group_least,
+            column_group_least,
             columns,
             rows,
             ..
@@ -722,9 +878,26 @@ impl<'a> HtmlSemanticSession<'a> {
                 _ => {}
             }
         }
+        if !row_group_headers.is_empty() {
+            self.table_group_tree(model, row_group_headers, row_group_least, |cell| cell.x)?;
+        }
+        if !column_group_headers.is_empty() {
+            let count = column_group_headers.len();
+            let bits = count
+                .checked_ilog2()
+                .and_then(|bits| usize::try_from(bits).ok())
+                .unwrap_or(0);
+            self.charge(count.saturating_mul(1 + bits))?;
+            column_group_headers.sort_unstable_by_key(|index| (model.cells[*index].x, *index));
+            self.table_group_tree(model, column_group_headers, column_group_least, |cell| {
+                cell.y
+            })?;
+        }
         let group_headers = GroupHeaders {
             row_group: row_group_headers,
+            row_group_least,
             column_group: column_group_headers,
+            column_group_least,
         };
         let keys = rows.keys.len().max(columns.keys.len());
         self.charge(keys)?;
@@ -732,6 +905,8 @@ impl<'a> HtmlSemanticSession<'a> {
         stamps.resize(keys, 0);
         let mut scan = Scan {
             headers,
+            listed,
+            mark: 0,
             stamps,
             epoch: 0,
             block,
@@ -744,6 +919,7 @@ impl<'a> HtmlSemanticSession<'a> {
         for principal in 0..model.cells.len() {
             self.charge(1)?;
             scan.headers.clear();
+            scan.mark = principal + 1;
             let cell = &model.cells[principal];
             let (cell_x, cell_y) = (cell.x, cell.y);
             let element = self.table_element(&cell.subject)?;
@@ -770,7 +946,7 @@ impl<'a> HtmlSemanticSession<'a> {
                         for (index, cell) in model.cells.iter().enumerate() {
                             self.charge(1)?;
                             if cell.subject == id && index != principal {
-                                self.table_scratch(scan.headers, index)?;
+                                self.table_list(model, &mut scan, index)?;
                                 break;
                             }
                         }
@@ -789,24 +965,10 @@ impl<'a> HtmlSemanticSession<'a> {
                     Far { right, bottom },
                 )?;
             }
-            if !scan.headers.is_empty() && seen.len() != model.cells.len() {
-                self.charge(model.cells.len())?;
-                self.reserve_scratch(seen, model.cells.len())?;
-                seen.resize(model.cells.len(), 0);
-            }
             for position in 0..scan.headers.len() {
                 self.charge(1)?;
                 let header = scan.headers[position];
-                if self.table_empty_once(model, header, scan.memo)? {
-                    continue;
-                }
-                // Each cell is listed once for a principal cell: the first
-                // time it is found, and never the principal cell itself.
-                let first = seen.get(header).is_some_and(|mark| *mark != principal + 1);
-                if let Some(mark) = seen.get_mut(header) {
-                    *mark = principal + 1;
-                }
-                if !first || header == principal {
+                if header == principal || self.table_empty_once(model, header, scan.memo)? {
                     continue;
                 }
                 self.table_push(
@@ -859,10 +1021,17 @@ impl<'a> HtmlSemanticSession<'a> {
                 |i| model.cells[candidates[i]].y < limit,
                 &mut |work| self.charge(work).map_err(TableStop::from),
             )?;
-            for &index in candidates.get(first..last).unwrap_or_default() {
+            // The candidates in the group's rows and left of the far edge.
+            self.table_collect_below(
+                group_headers.row_group_least,
+                LineSpan { first, last },
+                far.right,
+                scan.specials,
+            )?;
+            for position in 0..scan.specials.len() {
                 self.charge(1)?;
-                if model.cells[index].x < far.right {
-                    self.table_scratch(scan.headers, index)?;
+                if let Some(index) = candidates.get(scan.specials[position]) {
+                    self.table_list(model, scan, *index)?;
                 }
             }
         }
@@ -877,17 +1046,43 @@ impl<'a> HtmlSemanticSession<'a> {
         )?;
         if let Some(group) = group.and_then(|index| model.column_groups.get(index)) {
             let candidates = group_headers.column_group;
-            let last = slots::leading_by(
+            let columns = group.x..group.x.saturating_add(group.width).min(far.right);
+            let first = slots::leading_by(
                 candidates.len(),
-                |i| model.cells[candidates[i]].y < far.bottom,
+                |i| model.cells[candidates[i]].x < columns.start,
                 &mut |work| self.charge(work).map_err(TableStop::from),
             )?;
-            for &index in candidates.get(..last).unwrap_or_default() {
+            let last = slots::leading_by(
+                candidates.len(),
+                |i| model.cells[candidates[i]].x < columns.end,
+                &mut |work| self.charge(work).map_err(TableStop::from),
+            )?;
+            // The candidates in the group's columns and above the far edge,
+            // listed in model order.
+            self.table_collect_below(
+                group_headers.column_group_least,
+                LineSpan { first, last },
+                far.bottom,
+                scan.specials,
+            )?;
+            for position in 0..scan.specials.len() {
                 self.charge(1)?;
-                let header = &model.cells[index];
-                if header.x >= group.x && header.x - group.x < group.width && header.x < far.right {
-                    self.table_scratch(scan.headers, index)?;
+                let at = scan.specials[position];
+                if let Some(index) = candidates.get(at) {
+                    scan.specials[position] = *index;
                 }
+            }
+            let count = scan.specials.len();
+            let bits = count
+                .checked_ilog2()
+                .and_then(|bits| usize::try_from(bits).ok())
+                .unwrap_or(0);
+            self.charge(count.saturating_mul(1 + bits))?;
+            scan.specials.sort_unstable();
+            for position in 0..scan.specials.len() {
+                self.charge(1)?;
+                let index = scan.specials[position];
+                self.table_list(model, scan, index)?;
             }
         }
         Ok(())

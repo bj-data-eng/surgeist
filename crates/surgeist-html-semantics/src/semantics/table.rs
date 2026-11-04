@@ -10,7 +10,7 @@ mod placement;
 mod slots;
 use headers::HeaderMemo;
 use placement::{Footprint, Placement, Reach};
-use slots::SlotAxis;
+use slots::{LeastTree, SlotAxis};
 
 use super::*;
 use crate::HtmlCapturedChildIds;
@@ -211,8 +211,8 @@ struct Scratch<'a> {
     headers: Vec<usize>,
     /// Per header key, the scan it last hid headers of that key in.
     stamps: Vec<usize>,
-    /// Per cell, the principal cell it last appeared in a header list of.
-    seen: Vec<usize>,
+    /// Per cell, the principal cell whose header list it last joined.
+    listed: Vec<usize>,
     /// The keys of the headers in the current block.
     block: Vec<usize>,
     document: Vec<HtmlCapturedChildIds<'a>>,
@@ -224,6 +224,10 @@ struct Scratch<'a> {
     /// that have such groups.
     row_group_headers: Vec<usize>,
     column_group_headers: Vec<usize>,
+    /// Over the row group headers, in model order, their columns; over the
+    /// column group headers, in order of column, their rows.
+    row_group_least: LeastTree,
+    column_group_least: LeastTree,
     /// Which rows, then columns, hold a cell's top-left slot, and which rows
     /// or columns begin a new line of an axis.
     flags: Vec<bool>,
@@ -244,7 +248,9 @@ impl Scratch<'_> {
             self.footers.capacity(),
             self.headers.capacity(),
             self.stamps.capacity(),
-            self.seen.capacity(),
+            self.listed.capacity(),
+            self.row_group_least.nodes.capacity(),
+            self.column_group_least.nodes.capacity(),
             self.block.capacity(),
             self.document.capacity(),
             self.memo.capacity(),
