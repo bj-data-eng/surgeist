@@ -1101,3 +1101,75 @@ fn captured_base_documents_and_frozen_rows_check_duplicates_in_work_linear_in_th
         })
     });
 }
+
+#[test]
+fn observations_are_duplicates_only_of_the_same_text_and_inputs() {
+    let revision = base_revision();
+    let fallback = base_url(&revision);
+    let first = HtmlBaseEncoding::fresh();
+    let second = HtmlBaseEncoding::fresh();
+    let observation = |raw: &str, encoding: &HtmlBaseEncoding| {
+        HtmlBaseParseObservation::new(
+            raw.into(),
+            fallback.clone(),
+            encoding.clone(),
+            revision.clone(),
+            HtmlBaseParseOutcome::Failure,
+        )
+        .unwrap()
+    };
+    let make = |observations| {
+        HtmlParseBaseFacts::new(
+            HtmlBaseDocumentFacts::new(
+                revision.clone(),
+                Some(fallback.clone()),
+                HtmlAboutBaseUrl::KnownNull,
+                false,
+                None,
+            )
+            .unwrap(),
+            observations,
+            HtmlBaseFactsLimits::new(100, 10000, 10000),
+        )
+    };
+    // The same text under another encoding, and other text under the same one.
+    assert!(
+        make(vec![
+            observation("a", &first),
+            observation("a", &second),
+            observation("b", &first)
+        ])
+        .is_ok()
+    );
+    assert!(matches!(
+        make(vec![
+            observation("a", &first),
+            observation("b", &first),
+            observation("a", &first)
+        ]),
+        Err(HtmlBaseFactsError::DuplicateObservation)
+    ));
+    let hyperlink = |raws: &[&str]| {
+        HtmlEncodingUrlParseFacts::new(
+            fallback.clone(),
+            first.clone(),
+            revision.clone(),
+            raws.iter()
+                .map(|raw| {
+                    HtmlEncodingUrlParseObservation::new(
+                        (*raw).into(),
+                        HtmlEncodingUrlParseOutcome::Failure,
+                    )
+                })
+                .collect(),
+            HtmlBaseFactsLimits::new(100, 10000, 10000),
+        )
+    };
+    assert!(hyperlink(&["a", "b", "ab", "ba"]).is_ok());
+    assert!(matches!(
+        hyperlink(&["a", "b", "a"]),
+        Err(HtmlEncodingUrlFactsError::Formation(
+            HtmlBaseFactsError::DuplicateObservation
+        ))
+    ));
+}

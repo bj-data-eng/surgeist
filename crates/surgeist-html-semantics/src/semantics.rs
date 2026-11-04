@@ -18,7 +18,7 @@
 
 mod admission;
 mod context;
-mod index;
+pub(crate) mod index;
 mod scan;
 mod seen;
 pub use context::*;

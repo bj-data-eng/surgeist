@@ -3,6 +3,7 @@
 //! URL parsing, serialization, record predicates and CSP truth are adapter
 //! attestations. This owner checks their qualification; it is no URL engine.
 
+use crate::semantics::index::{ContentChains, FactIndex};
 use crate::{
     HtmlCapture, HtmlCaptureDocumentId, HtmlCaptureError, HtmlCaptureId, HtmlCaptureSubjectId,
     HtmlCapturedNodeKind, HtmlHostFactsRevision,
@@ -435,6 +436,17 @@ impl Validation {
             validation_work: self.work,
         }
     }
+    /// `units` steps at once.
+    pub(crate) fn steps(&mut self, units: usize) -> Result<(), HtmlBaseFactsError> {
+        self.work = self
+            .work
+            .checked_add(units)
+            .ok_or(HtmlBaseFactsError::RepresentationExhausted)?;
+        if self.work > self.limits.validation_work {
+            return Err(HtmlBaseFactsError::WorkLimit);
+        }
+        Ok(())
+    }
     pub(crate) fn step(&mut self) -> Result<(), HtmlBaseFactsError> {
         self.work = self
             .work
@@ -597,6 +609,18 @@ impl HtmlParseBaseFacts {
             retained.url(url)?;
             v.string(url.serialization())?;
         }
+        // Observations are told apart by their raw text and by identities that
+        // cannot be hashed deterministically, so each is compared only with the
+        // earlier observations of the same raw text.
+        let mut chains = ContentChains::new(
+            observations.len(),
+            |n| v.steps(n),
+            HtmlBaseFactsError::RepresentationExhausted,
+        )?;
+        for observation in &observations {
+            v.steps(observation.raw.len())?;
+            chains.link(observation.raw.code_units());
+        }
         for (i, observation) in observations.iter().enumerate() {
             v.step()?;
             if observation.revision != document.revision {
@@ -610,8 +634,10 @@ impl HtmlParseBaseFacts {
                 retained.url(record)?;
                 v.string(record.serialization())?;
             }
-            for previous in &observations[..i] {
+            let mut earlier = chains.before(i);
+            while let Some(position) = earlier {
                 v.step()?;
+                let previous = &observations[position];
                 if previous.inputs_match(
                     &observation.fallback,
                     &observation.encoding,
@@ -620,6 +646,7 @@ impl HtmlParseBaseFacts {
                 {
                     return Err(HtmlBaseFactsError::DuplicateObservation);
                 }
+                earlier = chains.before(position);
             }
         }
         let usage = HtmlBaseFactsUsage {
@@ -744,6 +771,24 @@ impl HtmlCapturedBaseFacts {
             work: 0,
             units: 0,
         };
+        let mut document_index = FactIndex::new(
+            capture.identity(),
+            documents.len(),
+            |n| v.steps(n),
+            HtmlBaseFactsError::RepresentationExhausted,
+        )?;
+        for (position, row) in documents.iter().enumerate() {
+            document_index.enter(row.document.subject(), position);
+        }
+        let mut frozen_index = FactIndex::new(
+            capture.identity(),
+            frozen.len(),
+            |n| v.steps(n),
+            HtmlBaseFactsError::RepresentationExhausted,
+        )?;
+        for (position, row) in frozen.iter().enumerate() {
+            frozen_index.enter(&row.subject, position);
+        }
         for (i, row) in documents.iter().enumerate() {
             v.step()?;
             capture.document_id(row.document.subject())?;
@@ -752,11 +797,8 @@ impl HtmlCapturedBaseFacts {
             }
             // The row bank contains the Arc handle, not the ParseFacts payload.
             retained.graph(row.facts.retained_storage_usage())?;
-            for old in &documents[..i] {
-                v.step()?;
-                if old.document == row.document {
-                    return Err(HtmlBaseFactsError::DuplicateObservation);
-                }
+            if document_index.is_repeat(row.document.subject(), (), i) {
+                return Err(HtmlBaseFactsError::DuplicateObservation);
             }
         }
         for (i, row) in frozen.iter().enumerate() {
@@ -802,11 +844,8 @@ impl HtmlCapturedBaseFacts {
                 retained.graph(value.retained_storage_usage())?;
                 v.string(value.serialization())?;
             }
-            for old in &frozen[..i] {
-                v.step()?;
-                if old.subject == row.subject {
-                    return Err(HtmlBaseFactsError::DuplicateObservation);
-                }
+            if frozen_index.is_repeat(&row.subject, (), i) {
+                return Err(HtmlBaseFactsError::DuplicateObservation);
             }
         }
         let usage = HtmlBaseFactsUsage {

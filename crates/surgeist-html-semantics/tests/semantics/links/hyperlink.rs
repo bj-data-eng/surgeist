@@ -217,7 +217,10 @@ fn formation_charges_capacity_utf16_backing_and_exact_work() {
         formed.formation_usage().utf16_extent(),
         base.serialization().shared_code_units().capacity() + raw_extent
     );
-    assert_eq!(formed.formation_usage().validation_work(), 3);
+    // The base string 1, the chains of one observation 2 and the hash of its one
+    // unit 1, then the observation 1, its retained string 1 and its duplicate
+    // walk 0: 6 (it was 3 before the duplicate walk used chains).
+    assert_eq!(formed.formation_usage().validation_work(), 6);
     assert_eq!(
         resolve(&formed, &raw).retained_utf16_extent(),
         formed.formation_usage().utf16_extent()
@@ -240,11 +243,17 @@ fn formation_charges_capacity_utf16_backing_and_exact_work() {
             HtmlBaseFactsError::WorkLimit
         ))
     ));
+    assert!(matches!(
+        make(HtmlBaseFactsLimits::new(8, 1000, 5)),
+        Err(HtmlEncodingUrlFactsError::Formation(
+            HtmlBaseFactsError::WorkLimit
+        ))
+    ));
     assert!(
         make(HtmlBaseFactsLimits::new(
             8,
             base.serialization().shared_code_units().capacity() + raw_extent,
-            3
+            6
         ))
         .is_ok()
     );
