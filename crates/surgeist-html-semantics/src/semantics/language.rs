@@ -1,8 +1,8 @@
 //! HTML 877d6146487f §3.2.6.2 and §3.2.6.4: exact language and directionality.
 //! Language tags are BCP 47-designated payloads, without validity or service claims.
 
+use super::index::FactIndex;
 use super::scan::{ScanError, ScanMeter};
-use super::seen::Seen;
 use super::*;
 use crate::bidi::{BidiClass, bidi_class};
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
@@ -157,6 +157,9 @@ pub struct HtmlLanguageDirectionFacts {
     fallbacks: Vec<HtmlDocumentLanguageFallback>,
     current_values: Vec<HtmlControlCurrentValue>,
     assignments: Vec<HtmlSlotAssignedNodes>,
+    fallback_index: FactIndex,
+    current_value_index: FactIndex,
+    assignment_index: FactIndex,
 }
 
 impl ScanError for HtmlLanguageDirectionError {
@@ -238,12 +241,16 @@ impl HtmlLanguageDirectionFacts {
         let mut validation = LanguageMeter::new(0, limits.validation_work);
         let mut units = 0;
         let mut assigned_capacity = 0;
-        let mut seen = Seen::new(
+        let mut fallback_index = FactIndex::new(
+            capture.identity(),
             fallbacks.len(),
             |n| validation.charge(n),
             HtmlLanguageDirectionError::RepresentationExhausted,
         )?;
-        for fact in fallbacks.iter() {
+        for (position, fact) in fallbacks.iter().enumerate() {
+            fallback_index.enter(&fact.document, position);
+        }
+        for (position, fact) in fallbacks.iter().enumerate() {
             validation.charge(1)?;
             let node = validation.node(capture, &fact.document)?;
             if !matches!(node.kind(), HtmlCapturedNodeKind::Document(_)) {
@@ -252,7 +259,7 @@ impl HtmlLanguageDirectionFacts {
                     .document_id(&fact.document)
                     .map_err(HtmlLanguageDirectionError::Capture)?;
             }
-            if !seen.first(fact.document.ordinal()) {
+            if fallback_index.position(&fact.document) != Some(position) {
                 return Err(HtmlLanguageDirectionError::DuplicateSubject(
                     fact.document.clone(),
                 ));
@@ -271,12 +278,16 @@ impl HtmlLanguageDirectionFacts {
                 units = language_sum(units, tag.len())?;
             }
         }
-        let mut seen = Seen::new(
+        let mut current_value_index = FactIndex::new(
+            capture.identity(),
             current_values.len(),
             |n| validation.charge(n),
             HtmlLanguageDirectionError::RepresentationExhausted,
         )?;
-        for fact in current_values.iter() {
+        for (position, fact) in current_values.iter().enumerate() {
+            current_value_index.enter(&fact.subject, position);
+        }
+        for (position, fact) in current_values.iter().enumerate() {
             validation.charge(1)?;
             let node = validation.node(capture, &fact.subject)?;
             let HtmlCapturedNodeKind::Element(element) = node.kind() else {
@@ -347,7 +358,7 @@ impl HtmlLanguageDirectionFacts {
                     fact.subject.clone(),
                 ));
             }
-            if !seen.first(fact.subject.ordinal()) {
+            if current_value_index.position(&fact.subject) != Some(position) {
                 return Err(HtmlLanguageDirectionError::DuplicateSubject(
                     fact.subject.clone(),
                 ));
@@ -357,11 +368,15 @@ impl HtmlLanguageDirectionFacts {
                 units = language_sum(units, value.len())?;
             }
         }
-        let mut seen = Seen::new(
+        let mut assignment_index = FactIndex::new(
+            capture.identity(),
             assignments.len(),
             |n| validation.charge(n),
             HtmlLanguageDirectionError::RepresentationExhausted,
         )?;
+        for (position, fact) in assignments.iter().enumerate() {
+            assignment_index.enter(&fact.slot, position);
+        }
         for (index, fact) in assignments.iter().enumerate() {
             validation.charge(1)?;
             let node = validation.node(capture, &fact.slot)?;
@@ -371,7 +386,7 @@ impl HtmlLanguageDirectionFacts {
             if validation.known(element)? != Some(KnownHtmlElement::Slot) {
                 return Err(HtmlLanguageDirectionError::InvalidSlot(fact.slot.clone()));
             }
-            if !seen.first(fact.slot.ordinal()) {
+            if assignment_index.position(&fact.slot) != Some(index) {
                 return Err(HtmlLanguageDirectionError::DuplicateSubject(
                     fact.slot.clone(),
                 ));
@@ -466,6 +481,9 @@ impl HtmlLanguageDirectionFacts {
             fallbacks,
             current_values,
             assignments,
+            fallback_index,
+            current_value_index,
+            assignment_index,
         })
     }
     pub fn capture(&self) -> &HtmlCaptureId {
@@ -634,14 +652,11 @@ impl<'a> HtmlSemanticSession<'a> {
                 HtmlSemanticMissing::LanguageFallback(document.clone()),
             ));
         };
-        let mut found = None;
-        for fact in facts.fallbacks() {
-            self.charge(1)?;
-            if fact.document() == document {
-                found = Some(fact);
-                break;
-            }
-        }
+        self.charge(1)?;
+        let found = facts
+            .fallback_index
+            .position(document)
+            .map(|position| &facts.fallbacks[position]);
         let Some(fact) = found else {
             return Err(LanguageStop::Missing(
                 HtmlSemanticMissing::LanguageFallback(document.clone()),
@@ -793,13 +808,11 @@ impl<'a> HtmlSemanticSession<'a> {
         subject: &HtmlCaptureSubjectId,
     ) -> Result<Result<&'a DocumentString, HtmlSemanticMissing>, HtmlSemanticFailure> {
         if let Some(facts) = self.context.language_direction() {
-            for fact in facts.current_values() {
-                self.charge(1)?;
-                if fact.subject() == subject {
-                    return Ok(fact
-                        .value()
-                        .ok_or_else(|| HtmlSemanticMissing::CurrentValue(subject.clone())));
-                }
+            self.charge(1)?;
+            if let Some(position) = facts.current_value_index.position(subject) {
+                return Ok(facts.current_values[position]
+                    .value()
+                    .ok_or_else(|| HtmlSemanticMissing::CurrentValue(subject.clone())));
             }
         }
         Ok(Err(HtmlSemanticMissing::CurrentValue(subject.clone())))
@@ -810,13 +823,11 @@ impl<'a> HtmlSemanticSession<'a> {
         subject: &HtmlCaptureSubjectId,
     ) -> LanguageResult<&'a [HtmlCaptureSubjectId]> {
         if let Some(facts) = self.context.language_direction() {
-            for fact in facts.assignments() {
-                self.charge(1)?;
-                if fact.slot() == subject {
-                    return fact.nodes().ok_or_else(|| {
-                        LanguageStop::Missing(HtmlSemanticMissing::SlotAssignment(subject.clone()))
-                    });
-                }
+            self.charge(1)?;
+            if let Some(position) = facts.assignment_index.position(subject) {
+                return facts.assignments[position].nodes().ok_or_else(|| {
+                    LanguageStop::Missing(HtmlSemanticMissing::SlotAssignment(subject.clone()))
+                });
             }
         }
         Err(LanguageStop::Missing(HtmlSemanticMissing::SlotAssignment(
