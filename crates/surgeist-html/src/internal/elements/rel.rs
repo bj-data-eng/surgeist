@@ -1142,3 +1142,53 @@ impl HtmlValueInterpreter {
             .expect("completed ordinary rel"))
     }
 }
+
+#[cfg(test)]
+mod ordinary_allocation_tests {
+    use crate::internal::amortized::fault;
+    use crate::values::{Attribute, HtmlValueInterpreter, OrderedAttributes};
+    use crate::vocabulary::{KnownHtmlAttribute, KnownHtmlElement};
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    /// A refused allocation is an expected condition of a fallible allocator, so the standalone
+    /// operation reports it as its error. It must neither abort the caller by panicking nor claim
+    /// a report for storage it could not reserve.
+    #[test]
+    fn a_refused_reservation_is_an_error_and_never_a_panic() {
+        let interpreter = HtmlValueInterpreter::new(1_000);
+        let element = KnownHtmlElement::Link.qualified_name();
+        let attributes = OrderedAttributes::new([Attribute::new(
+            KnownHtmlAttribute::Rel.qualified_name(),
+            "alternate stylesheet author bookmark canonical help icon license next",
+        )])
+        .unwrap();
+        let counting = fault::count_only();
+        let baseline = interpreter
+            .rel_with_attributes(&element, &attributes)
+            .unwrap();
+        let requests = fault::requests();
+        drop(counting);
+        assert_eq!(baseline.occurrences().len(), 9);
+        assert!(requests >= 2, "{requests} reservation requests");
+        for refuse_from in 1..=requests {
+            let _armed = fault::arm(refuse_from);
+            let outcome = catch_unwind(AssertUnwindSafe(|| {
+                interpreter.rel_with_attributes(&element, &attributes)
+            }));
+            let verdict = match &outcome {
+                Err(_) => "panicked",
+                Ok(Ok(_)) => "reported success",
+                Ok(Err(_)) => "returned an error",
+            };
+            assert_eq!(
+                verdict, "returned an error",
+                "reservation {refuse_from} of {requests} refused"
+            );
+        }
+        let _armed = fault::arm(requests + 1);
+        let report = interpreter
+            .rel_with_attributes(&element, &attributes)
+            .unwrap();
+        assert_eq!(report, baseline);
+    }
+}

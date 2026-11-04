@@ -319,6 +319,12 @@ impl Materialization {
         }
         self.check_growth(growth, bytes, purpose)?;
         let before = values.capacity();
+        #[cfg(test)]
+        if crate::internal::amortized::fault::refuses_next_reservation() {
+            return Err(E::Allocation {
+                requested_bytes: bytes,
+            });
+        }
         if self.limits.is_some() {
             values
                 .try_reserve_exact(needed - values.len())
@@ -2093,5 +2099,92 @@ mod controlled_tests {
             12
         );
         assert_eq!(autocomplete_materialization_work_bound(usize::MAX), None);
+    }
+}
+
+#[cfg(test)]
+mod ordinary_allocation_tests {
+    use super::*;
+    use crate::internal::amortized::fault;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    fn raw(value: &str) -> Attribute {
+        Attribute::new(KnownHtmlAttribute::Autocomplete.qualified_name(), value)
+    }
+
+    /// A refused allocation is an expected condition of a fallible allocator, so the standalone
+    /// operation reports it as its error. It must neither abort the caller by panicking nor claim
+    /// a report for storage it could not reserve.
+    #[test]
+    fn a_refused_reservation_is_an_error_and_never_a_panic() {
+        let interpreter = HtmlValueInterpreter::new(200);
+        let name = KnownHtmlElement::Textarea.qualified_name();
+        let attribute = raw("section-a shipping home tel webauthn");
+        let counting = fault::count_only();
+        let baseline = interpreter
+            .control_autocomplete(&name, Some(&attribute))
+            .unwrap();
+        let requests = fault::requests();
+        drop(counting);
+        assert!(requests >= 2, "{requests} reservation requests");
+        for refuse_from in 1..=requests {
+            let _armed = fault::arm(refuse_from);
+            let outcome = catch_unwind(AssertUnwindSafe(|| {
+                interpreter.control_autocomplete(&name, Some(&attribute))
+            }));
+            let verdict = match &outcome {
+                Err(_) => "panicked",
+                Ok(Ok(_)) => "reported success",
+                Ok(Err(_)) => "returned an error",
+            };
+            assert_eq!(
+                verdict, "returned an error",
+                "reservation {refuse_from} of {requests} refused"
+            );
+        }
+        let _armed = fault::arm(requests + 1);
+        let report = interpreter
+            .control_autocomplete(&name, Some(&attribute))
+            .unwrap();
+        assert_eq!(report, baseline);
+    }
+
+    /// The input-state entry point shares the storage policy, so it reports the same refusal.
+    #[test]
+    fn a_refused_reservation_for_an_input_is_an_error_and_never_a_panic() {
+        let interpreter = HtmlValueInterpreter::new(200);
+        let name = KnownHtmlElement::Input.qualified_name();
+        let attribute = raw("section-a shipping home tel webauthn");
+        let counting = fault::count_only();
+        let baseline = interpreter
+            .control_autocomplete_for_input(&name, Some(&attribute), HtmlInputType::Text)
+            .unwrap();
+        let requests = fault::requests();
+        drop(counting);
+        assert!(requests >= 2, "{requests} reservation requests");
+        for refuse_from in 1..=requests {
+            let _armed = fault::arm(refuse_from);
+            let outcome = catch_unwind(AssertUnwindSafe(|| {
+                interpreter.control_autocomplete_for_input(
+                    &name,
+                    Some(&attribute),
+                    HtmlInputType::Text,
+                )
+            }));
+            let verdict = match &outcome {
+                Err(_) => "panicked",
+                Ok(Ok(_)) => "reported success",
+                Ok(Err(_)) => "returned an error",
+            };
+            assert_eq!(
+                verdict, "returned an error",
+                "reservation {refuse_from} of {requests} refused"
+            );
+        }
+        let _armed = fault::arm(requests + 1);
+        let report = interpreter
+            .control_autocomplete_for_input(&name, Some(&attribute), HtmlInputType::Text)
+            .unwrap();
+        assert_eq!(report, baseline);
     }
 }

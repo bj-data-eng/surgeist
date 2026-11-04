@@ -46,6 +46,10 @@ pub(crate) fn reserve_amortized<T>(values: &mut Vec<T>) -> Result<(), TryReserve
 /// `reserve_to` call after the first, with the first's resulting capacity, so a fallback in the
 /// first lowers the second's target.
 pub(crate) fn reserve_to<T>(values: &mut Vec<T>, target: usize) -> Result<(), TryReserveError> {
+    #[cfg(test)]
+    if fault::refuses_next_reservation() {
+        return Err(fault::refusal());
+    }
     if target > values.capacity() {
         let growth = target.saturating_sub(values.len());
         if growth > 1 && values.try_reserve_exact(growth).is_ok() {
@@ -57,6 +61,68 @@ pub(crate) fn reserve_to<T>(values: &mut Vec<T>, target: usize) -> Result<(), Tr
         return values.try_reserve_exact(1);
     }
     Ok(())
+}
+
+/// A deterministic allocator refusal for the reservations of the crate's own storage.
+///
+/// The real allocator cannot be made to refuse a small request, so a test arms this thread's
+/// counter and the reservation helpers fail the chosen request, and every later one, with the
+/// error a refused allocation reports. Nothing outside tests can arm it.
+#[cfg(test)]
+pub(crate) mod fault {
+    use std::cell::Cell;
+    use std::collections::TryReserveError;
+
+    thread_local! {
+        static REFUSE_FROM: Cell<Option<usize>> = const { Cell::new(None) };
+        static REQUESTS: Cell<usize> = const { Cell::new(0) };
+    }
+
+    /// Disarms the counter when dropped, even if the test panics.
+    pub(crate) struct Armed;
+    impl Drop for Armed {
+        fn drop(&mut self) {
+            REFUSE_FROM.with(|cell| cell.set(None));
+        }
+    }
+
+    /// Counts requests from zero. The `refuse_from`-th request (one-based) and every later one is
+    /// refused.
+    pub(crate) fn arm(refuse_from: usize) -> Armed {
+        REQUESTS.with(|cell| cell.set(0));
+        REFUSE_FROM.with(|cell| cell.set(Some(refuse_from)));
+        Armed
+    }
+
+    /// Counts requests from zero and refuses none.
+    pub(crate) fn count_only() -> Armed {
+        arm(usize::MAX)
+    }
+
+    /// The requests made since the counter was armed.
+    pub(crate) fn requests() -> usize {
+        REQUESTS.with(Cell::get)
+    }
+
+    /// Counts one request and reports whether it is refused.
+    pub(crate) fn refuses_next_reservation() -> bool {
+        let Some(from) = REFUSE_FROM.with(Cell::get) else {
+            return false;
+        };
+        let request = REQUESTS.with(|cell| {
+            cell.set(cell.get() + 1);
+            cell.get()
+        });
+        request >= from
+    }
+
+    /// The error of a refused allocation.
+    pub(crate) fn refusal() -> TryReserveError {
+        match Vec::<u8>::new().try_reserve(usize::MAX) {
+            Err(error) => error,
+            Ok(()) => unreachable!("a request of usize::MAX bytes always overflows"),
+        }
+    }
 }
 
 #[cfg(test)]
