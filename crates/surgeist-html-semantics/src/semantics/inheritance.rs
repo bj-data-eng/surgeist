@@ -220,8 +220,11 @@ impl HtmlGlobalInheritanceFacts {
             work: 0,
             limit: limits.validation_work,
         };
-        let mut seen = Seen::new(design_modes.len())
-            .map_err(|_| HtmlGlobalInheritanceError::RepresentationExhausted)?;
+        let mut seen = Seen::new(
+            design_modes.len(),
+            |n| validation.charge(n),
+            HtmlGlobalInheritanceError::RepresentationExhausted,
+        )?;
         for fact in design_modes.iter() {
             let node = validation.node(capture, &fact.document)?;
             validation.charge(1)?;
@@ -236,8 +239,11 @@ impl HtmlGlobalInheritanceFacts {
                 ));
             }
         }
-        let mut seen = Seen::new(spellcheck_defaults.len())
-            .map_err(|_| HtmlGlobalInheritanceError::RepresentationExhausted)?;
+        let mut seen = Seen::new(
+            spellcheck_defaults.len(),
+            |n| validation.charge(n),
+            HtmlGlobalInheritanceError::RepresentationExhausted,
+        )?;
         for fact in spellcheck_defaults.iter() {
             let node = validation.node(capture, &fact.subject)?;
             validation.charge(1)?;

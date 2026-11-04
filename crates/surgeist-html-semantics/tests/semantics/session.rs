@@ -2536,7 +2536,7 @@ fn global_producer_keys_and_actual_document_payloads_qualify_complete_and_termin
                 state,
             )],
             vec![],
-            HtmlGlobalInheritanceLimits::new(1, 2),
+            HtmlGlobalInheritanceLimits::new(1, 3),
         )
         .unwrap();
         let cx = HtmlSemanticContext::new(

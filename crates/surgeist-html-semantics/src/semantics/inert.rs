@@ -331,8 +331,11 @@ impl HtmlInertFacts {
             work: 0,
             limit: limits.validation_work,
         };
-        let mut seen =
-            Seen::new(nodes.len()).map_err(|_| HtmlInertFactError::RepresentationExhausted)?;
+        let mut seen = Seen::new(
+            nodes.len(),
+            |n| validation.charge(n),
+            HtmlInertFactError::RepresentationExhausted,
+        )?;
         for (index, fact) in nodes.iter().enumerate() {
             let node = validation.node(capture, &fact.subject)?;
             if !seen.first(fact.subject.ordinal()) {
@@ -452,8 +455,11 @@ impl HtmlInertFacts {
                 current = parent.clone();
             }
         }
-        let mut seen =
-            Seen::new(documents.len()).map_err(|_| HtmlInertFactError::RepresentationExhausted)?;
+        let mut seen = Seen::new(
+            documents.len(),
+            |n| validation.charge(n),
+            HtmlInertFactError::RepresentationExhausted,
+        )?;
         for fact in documents.iter() {
             validation.charge(1)?;
             capture

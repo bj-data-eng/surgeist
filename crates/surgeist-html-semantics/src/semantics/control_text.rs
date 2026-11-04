@@ -106,8 +106,11 @@ impl HtmlOutputDefaultFacts {
         }
         let mut work = 0usize;
         let mut units = 0usize;
-        let mut seen = Seen::new(records.len())
-            .map_err(|_| HtmlOutputDefaultError::RepresentationExhausted)?;
+        let mut seen = Seen::new(
+            records.len(),
+            |n| output_validation_charge(&mut work, limits.validation_work, n),
+            HtmlOutputDefaultError::RepresentationExhausted,
+        )?;
         for record in records.iter() {
             output_validation_charge(&mut work, limits.validation_work, 1)?;
             let node = capture

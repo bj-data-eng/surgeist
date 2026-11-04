@@ -280,8 +280,11 @@ impl HtmlLanguageDirectionFacts {
         };
         let mut units = 0;
         let mut assigned_capacity = 0;
-        let mut seen = Seen::new(fallbacks.len())
-            .map_err(|_| HtmlLanguageDirectionError::RepresentationExhausted)?;
+        let mut seen = Seen::new(
+            fallbacks.len(),
+            |n| validation.charge(n),
+            HtmlLanguageDirectionError::RepresentationExhausted,
+        )?;
         for fact in fallbacks.iter() {
             validation.charge(1)?;
             let node = validation.node(capture, &fact.document)?;
@@ -310,8 +313,11 @@ impl HtmlLanguageDirectionFacts {
                 units = language_sum(units, tag.len())?;
             }
         }
-        let mut seen = Seen::new(current_values.len())
-            .map_err(|_| HtmlLanguageDirectionError::RepresentationExhausted)?;
+        let mut seen = Seen::new(
+            current_values.len(),
+            |n| validation.charge(n),
+            HtmlLanguageDirectionError::RepresentationExhausted,
+        )?;
         for fact in current_values.iter() {
             validation.charge(1)?;
             let node = validation.node(capture, &fact.subject)?;
@@ -393,8 +399,11 @@ impl HtmlLanguageDirectionFacts {
                 units = language_sum(units, value.len())?;
             }
         }
-        let mut seen = Seen::new(assignments.len())
-            .map_err(|_| HtmlLanguageDirectionError::RepresentationExhausted)?;
+        let mut seen = Seen::new(
+            assignments.len(),
+            |n| validation.charge(n),
+            HtmlLanguageDirectionError::RepresentationExhausted,
+        )?;
         for (index, fact) in assignments.iter().enumerate() {
             validation.charge(1)?;
             let node = validation.node(capture, &fact.slot)?;

@@ -153,8 +153,11 @@ impl HtmlElementReferenceFacts {
             work = required;
             Ok(())
         };
-        let mut seen = Seen::new(records.len())
-            .map_err(|_| HtmlElementReferenceFactsError::RepresentationExhausted)?;
+        let mut seen = Seen::new(
+            records.len(),
+            |n| charge(n),
+            HtmlElementReferenceFactsError::RepresentationExhausted,
+        )?;
         for fact in records.iter() {
             charge(2)?; // record and source lookup
             let node = capture

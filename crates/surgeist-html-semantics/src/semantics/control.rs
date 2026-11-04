@@ -354,8 +354,11 @@ impl HtmlControlFacts {
             work: 0,
             limit: limits.validation_work,
         };
-        let mut seen = Seen::new(associations.len())
-            .map_err(|_| HtmlControlFactsError::RepresentationExhausted)?;
+        let mut seen = Seen::new(
+            associations.len(),
+            |n| validation.charge(n),
+            HtmlControlFactsError::RepresentationExhausted,
+        )?;
         for fact in associations.iter() {
             validation.charge(1)?;
             let node = validation.node(capture, &fact.subject)?;
@@ -399,8 +402,11 @@ impl HtmlControlFacts {
                 }
             }
         }
-        let mut seen =
-            Seen::new(inputs.len()).map_err(|_| HtmlControlFactsError::RepresentationExhausted)?;
+        let mut seen = Seen::new(
+            inputs.len(),
+            |n| validation.charge(n),
+            HtmlControlFactsError::RepresentationExhausted,
+        )?;
         for fact in inputs.iter() {
             validation.charge(1)?;
             let node = validation.node(capture, &fact.subject)?;
@@ -420,8 +426,11 @@ impl HtmlControlFacts {
                 ));
             }
         }
-        let mut seen =
-            Seen::new(options.len()).map_err(|_| HtmlControlFactsError::RepresentationExhausted)?;
+        let mut seen = Seen::new(
+            options.len(),
+            |n| validation.charge(n),
+            HtmlControlFactsError::RepresentationExhausted,
+        )?;
         for fact in options.iter() {
             validation.charge(1)?;
             let node = validation.node(capture, &fact.subject)?;
@@ -441,8 +450,11 @@ impl HtmlControlFacts {
                 ));
             }
         }
-        let mut seen = Seen::new(textareas.len())
-            .map_err(|_| HtmlControlFactsError::RepresentationExhausted)?;
+        let mut seen = Seen::new(
+            textareas.len(),
+            |n| validation.charge(n),
+            HtmlControlFactsError::RepresentationExhausted,
+        )?;
         for fact in textareas.iter() {
             validation.charge(1)?;
             let node = validation.node(capture, &fact.subject)?;
