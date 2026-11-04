@@ -17,12 +17,12 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
     ) -> Result<NotificationDomain, SessionError> {
-        for payload in &self.payloads.values {
+        if let Some(slot) = self.payloads.joined(c, node, Join::Details)? {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::Details {
+            if let Some(RetainedPayload::Details {
                 node: Some(owner),
                 notification,
-            } = payload
+            }) = self.payloads.values.get(slot)
                 && *owner == node
             {
                 c.charge(
@@ -472,6 +472,39 @@ mod tests {
     }
     fn zero(c: &ParseControl) {
         super::super::tests::storage_zero(c);
+    }
+
+    #[test]
+    fn a_join_naming_another_row_leaves_the_details_domain_unavailable() {
+        let request = request("<details>");
+        let (mut c, mut session, proof) = super::super::tests::fresh_script_owner(&request);
+        let root = session.root(&mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
+        let node = detail(&mut session, &mut c, &mut lexer, &proof, &root);
+        let storage = session.active_mut().unwrap();
+        assert!(matches!(
+            storage.details_domain(&mut c, node.index),
+            Ok(NotificationDomain::ClosedOwned)
+        ));
+        let good = storage.payloads.node_joins[node.index];
+        // Row 0 is not a details row.
+        *storage.payloads.node_joins[node.index]
+            .rows
+            .get_mut(Join::Details) = Some(joined_cell(0).unwrap());
+        assert!(matches!(
+            storage.details_domain(&mut c, node.index),
+            Ok(NotificationDomain::Unavailable)
+        ));
+        assert!(
+            storage
+                .require_details_notification(&mut c, node.index)
+                .is_err()
+        );
+        storage.payloads.node_joins[node.index] = good;
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        zero(&c);
     }
 
     #[test]

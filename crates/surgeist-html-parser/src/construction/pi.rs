@@ -28,9 +28,10 @@ impl PendingField {
         }
     }
     fn release(self, c: &mut ParseControl) -> Result<(), SessionError> {
-        self.buffer.release(c)?;
-        self.maps.release(c)?;
-        Ok(())
+        // Both owners are released; the buffer's failure is returned first.
+        let buffer = self.buffer.release(c).map_err(SessionError::from);
+        let maps = self.maps.release(c).map_err(SessionError::from);
+        buffer.and(maps)
     }
 }
 impl SessionStorage {
@@ -75,6 +76,9 @@ impl SessionStorage {
             return Err(latch_registry_row(c));
         };
         *bound = Some(node);
+        self.payloads
+            .join_row(map)
+            .map_err(|_| latch_registry_row(c))?;
         Ok(())
     }
 
@@ -116,6 +120,7 @@ impl SessionStorage {
             data_len,
         ));
         let mut table: Option<OwnedVec<NameSlot>> = None;
+        let mut origins = provenance::PiOriginWalk::new(node);
         let result = (|| {
             while let Some(action) = cursor.action() {
                 payload_write::<HtmlParsePendingAssociationCursor>(c, 1)?;
@@ -169,7 +174,7 @@ impl SessionStorage {
                         )?;
                         self.pi_piece_origins(
                             c,
-                            node,
+                            &mut origins,
                             start..end,
                             begin..pending.buffer.len(),
                             reference,
@@ -335,15 +340,22 @@ impl SessionStorage {
             Ok(())
         })();
         // Only actual transient owners are reclaimed after a fixed terminal stop.
+        // Every release runs; the first one that fails is the error returned.
+        let mut released = Ok(());
         if let Some(field) = name {
-            field.release(c)?;
+            released = field.release(c);
         }
         if let Some(field) = value {
-            field.release(c)?;
+            let next = field.release(c);
+            released = released.and(next);
         }
         if let Some(bank) = table {
-            bank.release(c)?;
+            let next = bank.release(c).map_err(SessionError::from);
+            released = released.and(next);
         }
+        let next = origins.release(c);
+        released = released.and(next);
+        released?;
         result
     }
     fn commit_pi_pair(
@@ -442,13 +454,16 @@ impl SessionStorage {
         node: usize,
         name: &str,
     ) -> Result<Option<&'a DocumentString>, SessionError> {
-        for payload in &self.payloads.values {
+        if let Some(slot) = self
+            .payloads
+            .joined(c, node, Join::ProcessingInstructionAttributes)?
+        {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::PiAttributes {
+            if let Some(RetainedPayload::PiAttributes {
                 node: Some(bound),
                 values,
                 ready,
-            } = payload
+            }) = self.payloads.values.get(slot)
                 && *bound == node
             {
                 if !ready {

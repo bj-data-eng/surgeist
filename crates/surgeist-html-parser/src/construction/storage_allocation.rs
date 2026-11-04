@@ -390,6 +390,9 @@ impl SessionStorage {
                         return Err(latch_registry_row(control));
                     };
                     *bound = Some(node.index);
+                    self.payloads
+                        .join_row(metadata)
+                        .map_err(|_| latch_registry_row(control))?;
                 }
                 OrderedCreation::Input {
                     input,
@@ -462,6 +465,7 @@ impl SessionStorage {
                 .map_err(|_| latch_registry_row(control))?;
             control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let mut remaining = count;
+            let mut last_name_slot = None;
             while let Some(attribute) = attributes.try_pop(control)? {
                 let (local, local_ticket) = match self.register_text(control, attribute.name) {
                     Ok(value) => value,
@@ -470,6 +474,7 @@ impl SessionStorage {
                         return Err(error);
                     }
                 };
+                last_name_slot.get_or_insert(local_ticket);
                 let (value, value_ticket) = self.register_text(control, attribute.value)?;
                 let Some(RetainedPayload::Attributes(Some(AttributeStorage::Building {
                     values,
@@ -551,6 +556,13 @@ impl SessionStorage {
             )?;
 
             self.construction.retire_name_index(control)?;
+            // The strings are registered last attribute first, as in the unordered
+            // creation, once the merges that forget the layout are done.
+            if let Some(slot) = last_name_slot {
+                self.payloads
+                    .record_attribute_strings(node.index, slot)
+                    .map_err(|_| latch_registry_row(control))?;
+            }
             match creation {
                 OrderedCreation::Details { .. } => {}
                 OrderedCreation::Input { input, .. } => {

@@ -54,12 +54,12 @@ fn state_at(
     c: &mut ParseControl,
     node: usize,
 ) -> Result<(usize, SvgScriptState), SessionError> {
-    for (slot, payload) in payloads.values.iter().enumerate() {
+    if let Some(slot) = payloads.joined(c, node, Join::SvgScript)? {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        if let RetainedPayload::SvgScript {
+        if let Some(RetainedPayload::SvgScript {
             node: Some(bound),
             state,
-        } = payload
+        }) = payloads.values.get(slot)
             && *bound == node
         {
             c.charge(
@@ -112,6 +112,9 @@ impl SessionStorage {
             return Err(latch_registry_row(c));
         };
         *bound = Some(node);
+        self.payloads
+            .join_row(slot)
+            .map_err(|_| latch_registry_row(c))?;
         Ok(())
     }
     /// Effect frames already own readiness; the same sealed domain and source
@@ -679,6 +682,7 @@ mod tests {
             .unwrap()
             .svg_state_at(&mut c, node.index)
             .unwrap();
+        session.active_mut().unwrap().payloads.unjoin_for_test(slot);
         let RetainedPayload::SvgScript { node: bound, .. } =
             &mut session.active_mut().unwrap().payloads.values[slot]
         else {
@@ -704,6 +708,48 @@ mod tests {
                 .map(|node| node.position())
                 .is_none()
         );
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
+    #[test]
+    fn a_join_naming_another_row_is_not_the_state_of_an_svg_script() {
+        let request = request("<script>");
+        let (mut c, mut session, proof) = fresh_script_owner(&request);
+        let root = session.root(&mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
+        let node = script(&mut session, &mut c, &mut lexer, &root, &proof);
+        let storage = session.active_mut().unwrap();
+        let (slot, _) = storage.svg_state_at(&mut c, node.index).unwrap();
+        let good = storage.payloads.node_joins[node.index];
+        // Row 0 is not an SVG script row.
+        *storage.payloads.node_joins[node.index]
+            .rows
+            .get_mut(Join::SvgScript) = Some(joined_cell(0).unwrap());
+        assert_eq!(
+            storage.svg_state_at(&mut c, node.index).err(),
+            Some(SessionError::SvgScriptMetadataUnavailable)
+        );
+        // A script row bound to another record is not this record's state either.
+        let RetainedPayload::SvgScript { node: bound, .. } = &mut storage.payloads.values[slot]
+        else {
+            unreachable!()
+        };
+        *bound = Some(node.index + 1);
+        *storage.payloads.node_joins[node.index]
+            .rows
+            .get_mut(Join::SvgScript) = Some(joined_cell(slot).unwrap());
+        assert_eq!(
+            storage.svg_state_at(&mut c, node.index).err(),
+            Some(SessionError::SvgScriptMetadataUnavailable)
+        );
+        let RetainedPayload::SvgScript { node: bound, .. } = &mut storage.payloads.values[slot]
+        else {
+            unreachable!()
+        };
+        *bound = Some(node.index);
+        storage.payloads.node_joins[node.index] = good;
         lexer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
         storage_zero(&c);

@@ -19838,14 +19838,29 @@ mod complete_hostile_scan {
 
     #[test]
     fn long_pi_has_typed_finite_work_refusal_and_real_cleanup() {
-        let (raw, _) = input(Scan::LongPi);
+        // Work on a processing instruction is linear in its length, about 1,300
+        // credits for each unit, so the 100,000,000 credits are spent about half
+        // way through a data field of 160,000 units.
+        let raw = format!("<!doctype html><p>P</p><?q {}?>", "b".repeat(160_000));
+        // Room for the source map and the copies of the data, so that only the work credits stop it.
+        let roomy = limits(100)
+            .into_builder()
+            .source_units(1_000_000)
+            .source_map_entries(1_000_000)
+            .source_map_payload_units(1_000_000)
+            .managed_utf16_units(1_000_000)
+            .buffered_utf16_units(1_000_000)
+            .managed_capacity_bytes(1_000_000_000)
+            .peak_transient_bytes(1_000_000_000)
+            .finish()
+            .unwrap();
         for utf16 in [false, true] {
             let source = if utf16 {
                 HtmlSource::utf16(DocumentString::from(raw.as_str()))
             } else {
                 HtmlSource::utf8(raw.clone())
             };
-            let request = crate::HtmlDocumentParseRequest::offline(source.clone(), limits(100));
+            let request = crate::HtmlDocumentParseRequest::offline(source.clone(), roomy);
             let mut driver = entry::initialized_driver(&request);
             let result = (0..1000)
                 .find_map(|_| match driver.step() {
@@ -19857,7 +19872,8 @@ mod complete_hostile_scan {
             let first = driver.control.first_stop_usage().cloned();
             let usage = driver.control.usage().clone();
             println!(
-                "4K PI utf16={utf16} result={result:?} reads={} inspect={} copy={} capacity={}",
+                "long PI utf16={utf16} result={result:?} credits={} reads={} inspect={} copy={} capacity={}",
+                usage.resource(HtmlParseResource::WorkCredits).current,
                 usage.work(HtmlParseWorkCategory::InputUnitRead),
                 usage.work(HtmlParseWorkCategory::InspectByte),
                 usage.work(HtmlParseWorkCategory::CopyByte),

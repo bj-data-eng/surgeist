@@ -11,6 +11,8 @@ use super::*;
 /// that exists, and registry rows are appended but never removed or reordered
 /// while the registry is live; rows of a joined kind are never replaced, so a
 /// join always names a row of its kind (the callers still check what they get).
+/// A processing instruction's data string is the one string row joined: it is
+/// bound to its record once, and every pseudo-attribute piece looks it up.
 #[derive(Clone, Copy)]
 pub(super) struct NodeJoins {
     pub(super) text: Option<NonZeroU32>,
@@ -47,6 +49,14 @@ pub(super) enum Join {
     /// The `StyleOrder` row listing the style elements of the tree the record
     /// roots, while it is current; see `SessionStorage::style_order_floor`.
     StyleOrder,
+    /// The string row holding a processing instruction's data.
+    ProcessingInstructionData,
+    /// The pseudo-attribute map of a processing instruction.
+    ProcessingInstructionAttributes,
+    /// The state of an SVG `script` element.
+    SvgScript,
+    /// The notification domain of a `details` element.
+    Details,
 }
 
 impl Join {
@@ -59,7 +69,7 @@ impl Join {
     }
 }
 
-const JOIN_COUNT: usize = Join::StyleOrder as usize + 1;
+const JOIN_COUNT: usize = Join::Details as usize + 1;
 
 /// One value per [`Join`]; a lookup cannot be out of range.
 type JoinTable<T> = Table<Join, T, JOIN_COUNT>;
@@ -83,6 +93,10 @@ slots!(Join, JOIN_COUNT, {
     LookupRegistry => 15,
     StyleOccurrence => 16,
     StyleOrder => 17,
+    ProcessingInstructionData => 18,
+    ProcessingInstructionAttributes => 19,
+    SvgScript => 20,
+    Details => 21,
 });
 
 /// Cells hold a registry slot plus one in 32 bits; a slot beyond that is
