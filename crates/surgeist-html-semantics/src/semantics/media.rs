@@ -213,13 +213,11 @@ impl<'a> HtmlSemanticSession<'a> {
         let Some(facts) = self.context.media.as_ref() else {
             return Ok(None);
         };
-        for fact in facts.facts() {
-            self.charge(1)?;
-            if fact.input().subject() == subject {
-                return Ok(Some(fact));
-            }
-        }
-        Ok(None)
+        self.charge(1)?;
+        Ok(facts
+            .subjects
+            .position(subject)
+            .map(|position| &facts.facts()[position]))
     }
     pub(super) fn media_attribute_rules(
         &mut self,

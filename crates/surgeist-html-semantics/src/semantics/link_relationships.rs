@@ -1,5 +1,6 @@
 //! Capture-qualified HTML877d relationships; external definitions are finite facts.
 use super::admission::{FactAdmission, FactError, fact_limits, producer_revision};
+use super::index::FactIndex;
 use super::scan::ScanError;
 use super::*;
 use surgeist_html::{
@@ -585,6 +586,13 @@ impl FactsAdmission {
         }
     }
 }
+/// What tells the grammar observations of one element apart.
+fn grammar_key(input: HtmlRelGrammarInput) -> (usize, usize, usize) {
+    match input {
+        HtmlRelGrammarInput::Href => (0, 0, 0),
+        HtmlRelGrammarInput::ExtensionOccurrence { start, end } => (1, start, end),
+    }
+}
 impl HtmlRelFacts {
     pub fn new(
         capture: &HtmlCapture,
@@ -638,14 +646,20 @@ impl HtmlRelFacts {
                 }
             }
         }
+        let mut occurrence_index = FactIndex::new(
+            capture.identity(),
+            input.occurrences.len(),
+            |n| a.work(n),
+            HtmlRelFactsError::RepresentationExhausted,
+        )?;
+        for (position, o) in input.occurrences.iter().enumerate() {
+            occurrence_index.enter_bound(&o.subject, (o.start, o.end), position);
+        }
         for (i, o) in input.occurrences.iter().enumerate() {
             a.raw(&o.raw)?;
             a.occurrence(capture, &o.subject, &o.raw, o.start, o.end)?;
-            for prior in &input.occurrences[..i] {
-                a.work(3)?;
-                if prior.subject == o.subject && prior.start == o.start && prior.end == o.end {
-                    return Err(HtmlRelFactsError::DuplicateObservation);
-                }
+            if occurrence_index.is_repeat(&o.subject, (o.start, o.end), i) {
+                return Err(HtmlRelFactsError::DuplicateObservation);
             }
             if let RegistryOccurrence::Definition { key, synonym } = &o.state {
                 let mut found = None;
@@ -678,14 +692,20 @@ impl HtmlRelFacts {
                 }
             }
         }
+        let mut supported_index = FactIndex::new(
+            capture.identity(),
+            input.supported.len(),
+            |n| a.work(n),
+            HtmlRelFactsError::RepresentationExhausted,
+        )?;
+        for (position, o) in input.supported.iter().enumerate() {
+            supported_index.enter(&o.subject, position);
+        }
         for (i, o) in input.supported.iter().enumerate() {
             let role = a.role(capture, &o.subject)?;
             a.vector(&o.tokens)?;
-            for prior in &input.supported[..i] {
-                a.work(1)?;
-                if prior.subject == o.subject {
-                    return Err(HtmlRelFactsError::DuplicateObservation);
-                }
+            if supported_index.is_repeat(&o.subject, (), i) {
+                return Err(HtmlRelFactsError::DuplicateObservation);
             }
             for (j, &token) in o.tokens.iter().enumerate() {
                 a.work(1)?;
@@ -700,14 +720,20 @@ impl HtmlRelFacts {
                 }
             }
         }
+        let mut grammar_index = FactIndex::new(
+            capture.identity(),
+            input.grammar.len(),
+            |n| a.work(n),
+            HtmlRelFactsError::RepresentationExhausted,
+        )?;
+        for (position, o) in input.grammar.iter().enumerate() {
+            grammar_index.enter_bound(&o.subject, grammar_key(o.input), position);
+        }
         for (i, o) in input.grammar.iter().enumerate() {
             a.role(capture, &o.subject)?;
             a.raw(&o.raw)?;
-            for prior in &input.grammar[..i] {
-                a.work(2)?;
-                if prior.subject == o.subject && prior.input == o.input {
-                    return Err(HtmlRelFactsError::DuplicateObservation);
-                }
+            if grammar_index.is_repeat(&o.subject, grammar_key(o.input), i) {
+                return Err(HtmlRelFactsError::DuplicateObservation);
             }
             match o.input {
                 HtmlRelGrammarInput::ExtensionOccurrence { start, end } => {
@@ -741,13 +767,19 @@ impl HtmlRelFacts {
                 }
             }
         }
+        let mut section_index = FactIndex::new(
+            capture.identity(),
+            input.sections.len(),
+            |n| a.work(n),
+            HtmlRelFactsError::RepresentationExhausted,
+        )?;
+        for (position, o) in input.sections.iter().enumerate() {
+            section_index.enter(&o.subject, position);
+        }
         for (i, o) in input.sections.iter().enumerate() {
             a.role(capture, &o.subject)?;
-            for prior in &input.sections[..i] {
-                a.work(1)?;
-                if prior.subject == o.subject {
-                    return Err(HtmlRelFactsError::DuplicateObservation);
-                }
+            if section_index.is_repeat(&o.subject, (), i) {
+                return Err(HtmlRelFactsError::DuplicateObservation);
             }
         }
         noopener::validate(&input, capture, &mut a)?;

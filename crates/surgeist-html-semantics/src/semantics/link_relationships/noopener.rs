@@ -1,4 +1,5 @@
 //! Pure HTML877d noopener invocation over qualified actual URL/settings facts.
+use super::super::index::SubjectChains;
 use super::*;
 use surgeist_html::{
     bounded::rel::{HtmlRelInputs, HtmlRelInterpretation, HtmlRelMeter, HtmlRelReservation},
@@ -141,6 +142,26 @@ pub(super) fn validate(
 ) -> Result<(), HtmlRelFactsError> {
     a.vector(&input.urls)?;
     a.vector(&input.same_site)?;
+    // Observations are told apart by their subject and an opaque URL identity,
+    // so each is compared only with the others of its subject.
+    let mut url_chains = SubjectChains::new(
+        capture.identity(),
+        input.urls.len(),
+        |n| a.work(n),
+        HtmlRelFactsError::RepresentationExhausted,
+    )?;
+    for o in &input.urls {
+        url_chains.link(&o.subject);
+    }
+    let mut same_site_chains = SubjectChains::new(
+        capture.identity(),
+        input.same_site.len(),
+        |n| a.work(n),
+        HtmlRelFactsError::RepresentationExhausted,
+    )?;
+    for o in &input.same_site {
+        same_site_chains.link(&o.subject);
+    }
     for (i, o) in input.urls.iter().enumerate() {
         if a.role(capture, &o.subject)? == HtmlRelRole::Link {
             return Err(HtmlRelFactsError::InvalidRole);
@@ -149,11 +170,13 @@ pub(super) fn validate(
         if input.revisions.url.as_ref() != Some(&o.url.revision) {
             return Err(HtmlRelFactsError::UrlRevisionMismatch);
         }
-        for prior in &input.urls[..i] {
+        let mut earlier = url_chains.before(i);
+        while let Some(position) = earlier {
             a.work(2)?;
-            if prior.subject == o.subject && prior.url == o.url {
+            if input.urls[position].url == o.url {
                 return Err(HtmlRelFactsError::DuplicateObservation);
             }
+            earlier = url_chains.before(position);
         }
     }
     for (i, o) in input.same_site.iter().enumerate() {
@@ -164,22 +187,27 @@ pub(super) fn validate(
         if input.revisions.url.as_ref() != Some(&o.url.revision) {
             return Err(HtmlRelFactsError::UrlRevisionMismatch);
         }
-        for prior in &input.same_site[..i] {
+        let mut earlier = same_site_chains.before(i);
+        while let Some(position) = earlier {
             a.work(2)?;
-            if prior.subject == o.subject && prior.url == o.url {
+            if input.same_site[position].url == o.url {
                 return Err(HtmlRelFactsError::DuplicateObservation);
             }
+            earlier = same_site_chains.before(position);
         }
         let mut matched = false;
-        for url in &input.urls {
+        let mut candidate = url_chains.latest(&o.subject);
+        while let Some(position) = candidate {
             a.work(3)?;
-            if url.subject == o.subject && url.url == o.url {
+            let url = &input.urls[position];
+            if url.url == o.url {
                 if let HtmlRelBlobEntry::NonNull { environment_origin } = &url.blob {
                     a.work(1)?;
                     matched = environment_origin == &o.blob_origin
                 }
                 break;
             }
+            candidate = url_chains.before(position);
         }
         if !matched {
             return Err(HtmlRelFactsError::UrlBindingMismatch);

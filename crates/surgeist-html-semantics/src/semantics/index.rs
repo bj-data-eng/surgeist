@@ -52,6 +52,51 @@ impl<K: Hash + Eq> FactIndex<K> {
         }
     }
 
+    /// Enters the fact at `position` as the latest for `subject` and `key`,
+    /// returning the position it replaces. A subject of another capture is not
+    /// entered.
+    pub(crate) fn enter_latest(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+        key: K,
+        position: usize,
+    ) -> Option<usize> {
+        if subject.capture() == &self.capture {
+            self.positions.insert((subject.ordinal(), key), position)
+        } else {
+            None
+        }
+    }
+
+    /// Removes the entry of `subject` and `key`, when it has one.
+    pub(crate) fn forget_bound(&mut self, subject: &HtmlCaptureSubjectId, key: K) {
+        if subject.capture() == &self.capture {
+            self.positions.remove(&(subject.ordinal(), key));
+        }
+    }
+
+    /// Moves the entry of `subject` and `key` to `position`, when it has one.
+    pub(crate) fn move_bound(&mut self, subject: &HtmlCaptureSubjectId, key: K, position: usize) {
+        if subject.capture() == &self.capture
+            && let Some(at) = self.positions.get_mut(&(subject.ordinal(), key))
+        {
+            *at = position;
+        }
+    }
+
+    /// Whether an earlier fact than the one at `position` is entered for `subject`
+    /// and `key`, which is what makes that fact a duplicate of it. The fact at
+    /// `position` must itself have been entered.
+    pub(crate) fn is_repeat(
+        &self,
+        subject: &HtmlCaptureSubjectId,
+        key: K,
+        position: usize,
+    ) -> bool {
+        self.bound_position(subject, key)
+            .is_some_and(|first| first != position)
+    }
+
     /// The position of the first fact entered for `subject` and `key`.
     pub(crate) fn bound_position(&self, subject: &HtmlCaptureSubjectId, key: K) -> Option<usize> {
         if subject.capture() == &self.capture {
@@ -71,5 +116,108 @@ impl FactIndex {
     /// As [`bound_position`](Self::bound_position) for facts bound to a subject alone.
     pub(crate) fn position(&self, subject: &HtmlCaptureSubjectId) -> Option<usize> {
         self.bound_position(subject, ())
+    }
+}
+
+/// Facts grouped by subject, each fact linked to the previous fact of its
+/// subject, for a check that compares only facts of one subject.
+///
+/// A check that compared each fact with every earlier one takes work quadratic
+/// in the facts, but the facts it can match all share a subject, and the
+/// grouping reaches those alone. A keyed index would need a deterministic key
+/// for what the check compares besides the subject, and that may be an opaque
+/// identity. The chains are sized once by the number of facts.
+#[derive(Debug)]
+pub(crate) struct SubjectChains {
+    latest: FactIndex,
+    before: Vec<Option<usize>>,
+}
+
+impl SubjectChains {
+    /// Charges the fill of `facts` entries twice through `charge` (the latest
+    /// fact of each subject and the link of each fact), then allocates room for
+    /// them; `exhausted` is the producer's refusal when allocation fails.
+    pub(crate) fn new<E: Clone>(
+        capture: &HtmlCaptureId,
+        facts: usize,
+        mut charge: impl FnMut(usize) -> Result<(), E>,
+        exhausted: E,
+    ) -> Result<Self, E> {
+        let latest = FactIndex::new(capture, facts, &mut charge, exhausted.clone())?;
+        charge(facts)?;
+        let mut before = Vec::new();
+        before.try_reserve(facts).map_err(|_| exhausted)?;
+        Ok(Self { latest, before })
+    }
+
+    /// Links the next fact, which must be the one at position `self.len()`.
+    pub(crate) fn link(&mut self, subject: &HtmlCaptureSubjectId) {
+        let position = self.before.len();
+        let previous = self.latest.enter_latest(subject, (), position);
+        self.before.push(previous);
+    }
+
+    /// The latest fact of `subject`.
+    pub(crate) fn latest(&self, subject: &HtmlCaptureSubjectId) -> Option<usize> {
+        self.latest.position(subject)
+    }
+
+    /// The fact of the same subject before the one at `position`.
+    pub(crate) fn before(&self, position: usize) -> Option<usize> {
+        self.before.get(position).copied().flatten()
+    }
+}
+
+/// A deterministic hash of code units: FNV-1a over each unit. It orders
+/// nothing and decides nothing by itself: equal strings share it, and unequal
+/// ones that share it are told apart by comparing them.
+pub(crate) fn content_hash(units: &[u16]) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    for unit in units {
+        hash ^= u64::from(*unit);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    hash
+}
+
+/// Strings grouped by their [`content_hash`], each linked to the previous string
+/// of its hash, for a check that compares only strings that can be equal.
+///
+/// A check that compared each string with every earlier one takes work
+/// quadratic in them, and the strings it can match all share a hash.
+#[derive(Debug)]
+pub(crate) struct ContentChains {
+    latest: HashMap<u64, usize>,
+    before: Vec<Option<usize>>,
+}
+
+impl ContentChains {
+    /// Charges the fill of `strings` entries twice through `charge` (the latest
+    /// string of each hash and the link of each string), then allocates room
+    /// for them; `exhausted` is the producer's refusal when allocation fails.
+    pub(crate) fn new<E: Clone>(
+        strings: usize,
+        mut charge: impl FnMut(usize) -> Result<(), E>,
+        exhausted: E,
+    ) -> Result<Self, E> {
+        charge(strings)?;
+        charge(strings)?;
+        let mut latest = HashMap::new();
+        latest.try_reserve(strings).map_err(|_| exhausted.clone())?;
+        let mut before = Vec::new();
+        before.try_reserve(strings).map_err(|_| exhausted)?;
+        Ok(Self { latest, before })
+    }
+
+    /// Links the next string, which must be the one at position `self.len()`.
+    pub(crate) fn link(&mut self, units: &[u16]) {
+        let position = self.before.len();
+        let previous = self.latest.insert(content_hash(units), position);
+        self.before.push(previous);
+    }
+
+    /// The string with the same hash before the one at `position`.
+    pub(crate) fn before(&self, position: usize) -> Option<usize> {
+        self.before.get(position).copied().flatten()
     }
 }

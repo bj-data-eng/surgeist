@@ -21,11 +21,16 @@ use surgeist_html_semantics::{
     HtmlFlatTreeRevision, HtmlFormAssociation, HtmlFormAssociationState,
     HtmlGlobalInheritanceFacts, HtmlGlobalInheritanceLimits, HtmlGlobalInheritanceProducerId,
     HtmlGlobalInheritanceRevision, HtmlInertFactLimits, HtmlInertFacts, HtmlInputControlState,
-    HtmlLanguageDirectionFacts, HtmlLanguageDirectionLimits, HtmlMicrodataFacts,
+    HtmlLanguageDirectionFacts, HtmlLanguageDirectionLimits, HtmlListParticipation,
+    HtmlListParticipationFact, HtmlListParticipationRevision, HtmlMediaAttributeInput,
+    HtmlMediaContextRevision, HtmlMediaEnvironmentRevision, HtmlMediaFact, HtmlMediaFacts,
+    HtmlMediaFactsLimits, HtmlMediaGrammarRevision, HtmlMediaProducerId, HtmlMicrodataFacts,
     HtmlMicrodataPropertyFact, HtmlMicrodataPropertyPermission, HtmlMicrodataProviderId,
     HtmlMicrodataProviderRevision, HtmlMicrodataRawBinding, HtmlMicrodataRawSource,
     HtmlMicrodataRevision, HtmlMicrodataTypeFact, HtmlMicrodataUrlFact, HtmlMicrodataUrlOperation,
-    HtmlMicrodataUrlResult, HtmlMicrodataVocabularyId, HtmlOptionControlState, HtmlPragmaLanguage,
+    HtmlMicrodataUrlResult, HtmlMicrodataVocabularyId, HtmlOptionControlState,
+    HtmlOutputDefaultFact, HtmlOutputDefaultFacts, HtmlOutputDefaultLimits,
+    HtmlOutputDefaultValueOverride, HtmlParticipationProducerId, HtmlPragmaLanguage,
     HtmlProtocolLanguage, HtmlScriptingStatus, HtmlSemanticCancellation, HtmlSemanticContext,
     HtmlSemanticContextInput, HtmlSemanticLimits, HtmlSemanticQuery, HtmlSemanticRequest,
     HtmlSemanticSession, HtmlSlotAssignedNodes, HtmlSpellcheckDefaultBehavior,
@@ -821,4 +826,127 @@ fn a_custom_disabledness_sweep_finds_each_classification_in_constant_work() {
         &DOUBLINGS,
         custom_disabledness_sweep,
     );
+}
+
+fn participation_sweep(count: usize) -> usize {
+    let (capture, ids) = flat_elements("li", count);
+    let revision = HtmlListParticipationRevision::new(
+        HtmlParticipationProducerId::fresh(),
+        1,
+        2,
+        HtmlParticipationProducerId::fresh(),
+        3,
+        4,
+    );
+    // Listed in the reverse order, so that scanning for a subject is not cheap.
+    let facts = ids
+        .iter()
+        .rev()
+        .map(|id| HtmlListParticipationFact::new(id.clone(), Some(true), Some(true), Some(true)))
+        .collect();
+    let participation =
+        HtmlListParticipation::new(&capture, revision.clone(), facts, 8 * count).unwrap();
+    let context = HtmlSemanticContext::new(
+        &capture,
+        capture.host_facts_revision().clone(),
+        HtmlSemanticContextInput::new(vec![])
+            .with_list_participation(revision, Some(participation)),
+        0,
+    )
+    .unwrap();
+    sweep_work(&capture, &context, &ids, HtmlSemanticQuery::ListOwner)
+}
+
+fn output_default_sweep(count: usize) -> usize {
+    let (capture, ids) = flat_elements("output", count);
+    let records = ids
+        .iter()
+        .rev()
+        .map(|id| HtmlOutputDefaultFact::new(id.clone(), HtmlOutputDefaultValueOverride::Null))
+        .collect();
+    let facts = HtmlOutputDefaultFacts::new(
+        &capture,
+        capture.host_facts_revision().clone(),
+        records,
+        HtmlOutputDefaultLimits::new(8 * count, 1 << 20, 1 << 40),
+    )
+    .unwrap();
+    let context = HtmlSemanticContext::new(
+        &capture,
+        capture.host_facts_revision().clone(),
+        HtmlSemanticContextInput::new(vec![]).with_output_defaults(facts),
+        0,
+    )
+    .unwrap();
+    sweep_work(
+        &capture,
+        &context,
+        &ids,
+        HtmlSemanticQuery::OutputDefaultValue,
+    )
+}
+
+fn media_external_sweep(count: usize) -> usize {
+    let (mut b, d) = big_builder(count);
+    let styles: Vec<_> = (0..count)
+        .map(|_| attributed(&mut b, &d, "style", &[("media", "screen")]))
+        .collect();
+    for style in &styles {
+        b.establish_children(style, &[]).unwrap();
+    }
+    b.establish_children(&d, &styles).unwrap();
+    let capture = b.finish().unwrap();
+    let ids: Vec<_> = styles
+        .iter()
+        .map(|style| capture.subject_id(style).unwrap())
+        .collect();
+    let revision = HtmlMediaContextRevision::new(
+        HtmlMediaGrammarRevision::new(HtmlMediaProducerId::fresh(), 1, 2),
+        HtmlMediaEnvironmentRevision::new(HtmlMediaProducerId::fresh(), 3, 4),
+    );
+    let facts = ids
+        .iter()
+        .rev()
+        .map(|id| {
+            HtmlMediaFact::new(
+                HtmlMediaAttributeInput::new(&capture, id.clone(), 0).unwrap(),
+                None,
+                None,
+            )
+        })
+        .collect();
+    let facts = HtmlMediaFacts::new(
+        &capture,
+        capture.host_facts_revision().clone(),
+        revision.clone(),
+        facts,
+        HtmlMediaFactsLimits::new(8 * count, 1 << 30, 1 << 40),
+    )
+    .unwrap();
+    let context = HtmlSemanticContext::new(
+        &capture,
+        capture.host_facts_revision().clone(),
+        HtmlSemanticContextInput::new(vec![]).with_media(revision, Some(facts)),
+        0,
+    )
+    .unwrap();
+    sweep_work(
+        &capture,
+        &context,
+        &ids,
+        HtmlSemanticQuery::MediaAttributeRules,
+    )
+}
+
+#[test]
+fn a_participation_sweep_finds_each_fact_in_constant_work() {
+    assert_doubling_at_most_2_2("participation sweep", &DOUBLINGS, participation_sweep);
+}
+#[test]
+fn an_output_default_sweep_finds_each_record_in_constant_work() {
+    assert_doubling_at_most_2_2("output default sweep", &DOUBLINGS, output_default_sweep);
+}
+#[test]
+fn a_media_sweep_finds_each_external_fact_in_constant_work() {
+    assert_doubling_at_most_2_2("media external sweep", &DOUBLINGS, media_external_sweep);
 }

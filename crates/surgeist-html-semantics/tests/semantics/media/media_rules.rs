@@ -1220,7 +1220,7 @@ fn incoming_facts_actual_storage_and_validation_work_have_exact_boundaries() {
             c.host_facts_revision().clone(),
             rev.clone(),
             vec![f.clone()],
-            HtmlMediaFactsLimits::new(1, bytes, 66)
+            HtmlMediaFactsLimits::new(1, bytes, 68)
         )
         .is_ok()
     );
@@ -1230,7 +1230,7 @@ fn incoming_facts_actual_storage_and_validation_work_have_exact_boundaries() {
             c.host_facts_revision().clone(),
             rev.clone(),
             vec![f.clone()],
-            HtmlMediaFactsLimits::new(1, bytes - 1, 66)
+            HtmlMediaFactsLimits::new(1, bytes - 1, 68)
         ),
         Err(HtmlMediaFactsError::ByteLimit)
     ));
@@ -1240,7 +1240,7 @@ fn incoming_facts_actual_storage_and_validation_work_have_exact_boundaries() {
             c.host_facts_revision().clone(),
             rev.clone(),
             vec![f.clone()],
-            HtmlMediaFactsLimits::new(1, bytes, 65)
+            HtmlMediaFactsLimits::new(1, bytes, 67)
         ),
         Err(HtmlMediaFactsError::WorkLimit)
     ));

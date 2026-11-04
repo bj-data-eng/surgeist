@@ -129,6 +129,8 @@ pub struct HtmlListParticipation {
     capture: HtmlCaptureId,
     revision: HtmlListParticipationRevision,
     pub(super) facts: Vec<HtmlListParticipationFact>,
+    /// Where each subject's fact sits.
+    pub(super) index: FactIndex,
 }
 impl HtmlListParticipation {
     /// Retains the supplied vector, validating membership and uniqueness under
@@ -145,11 +147,22 @@ impl HtmlListParticipation {
                 retained_capacity: facts.capacity(),
             });
         }
+        // Sized by the facts, which the capacity check above bounds, never by
+        // the capture; the check is ordinary construction without a work budget.
+        let mut index = FactIndex::new(
+            capture.identity(),
+            facts.len(),
+            |_| Ok(()),
+            HtmlSemanticContextError::Capture(HtmlCaptureError::RepresentationExhausted),
+        )?;
+        for (position, fact) in facts.iter().enumerate() {
+            index.enter(&fact.subject, position);
+        }
         for (i, fact) in facts.iter().enumerate() {
             capture
                 .element_id(&fact.subject)
                 .map_err(HtmlSemanticContextError::Capture)?;
-            if facts[..i].iter().any(|other| other.subject == fact.subject) {
+            if index.is_repeat(&fact.subject, (), i) {
                 return Err(HtmlSemanticContextError::DuplicateSubject(
                     fact.subject.clone(),
                 ));
@@ -164,6 +177,7 @@ impl HtmlListParticipation {
             capture: capture.identity().clone(),
             revision,
             facts,
+            index,
         })
     }
     pub fn capture(&self) -> &HtmlCaptureId {

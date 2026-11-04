@@ -867,6 +867,9 @@ pub surgeist_html_semantics::HtmlMicrodataRawSource::ItemId
 pub surgeist_html_semantics::HtmlMicrodataRawSource::ItemPropToken(usize)
 pub surgeist_html_semantics::HtmlMicrodataRawSource::ItemTypeToken(usize)
 pub surgeist_html_semantics::HtmlMicrodataRawSource::Src
+pub enum surgeist_html_semantics::HtmlMicrodataTokenSource
+pub surgeist_html_semantics::HtmlMicrodataTokenSource::ItemProp
+pub surgeist_html_semantics::HtmlMicrodataTokenSource::ItemType
 pub enum surgeist_html_semantics::HtmlMicrodataTyping
 pub surgeist_html_semantics::HtmlMicrodataTyping::Cyclic
 pub surgeist_html_semantics::HtmlMicrodataTyping::Missing(surgeist_html_semantics::HtmlSemanticMissing)
@@ -2643,6 +2646,7 @@ impl surgeist_html_semantics::HtmlMicrodataRawBinding
 pub fn surgeist_html_semantics::HtmlMicrodataRawBinding::new(capture: &surgeist_html_semantics::HtmlCapture, subject: surgeist_html_semantics::HtmlCaptureSubjectId, source: surgeist_html_semantics::HtmlMicrodataRawSource, max_raw_units: usize) -> core::result::Result<Self, surgeist_html_semantics::HtmlMicrodataFactsError>
 pub fn surgeist_html_semantics::HtmlMicrodataRawBinding::source(&self) -> surgeist_html_semantics::HtmlMicrodataRawSource
 pub fn surgeist_html_semantics::HtmlMicrodataRawBinding::subject(&self) -> &surgeist_html_semantics::HtmlCaptureSubjectId
+pub fn surgeist_html_semantics::HtmlMicrodataRawBinding::tokens(capture: &surgeist_html_semantics::HtmlCapture, subject: &surgeist_html_semantics::HtmlCaptureSubjectId, source: surgeist_html_semantics::HtmlMicrodataTokenSource, max_raw_units: usize) -> core::result::Result<alloc::vec::Vec<Self>, surgeist_html_semantics::HtmlMicrodataFactsError>
 pub fn surgeist_html_semantics::HtmlMicrodataRawBinding::units(&self) -> &[u16]
 pub struct surgeist_html_semantics::HtmlMicrodataReceiverCheck
 impl surgeist_html_semantics::HtmlMicrodataReceiverCheck

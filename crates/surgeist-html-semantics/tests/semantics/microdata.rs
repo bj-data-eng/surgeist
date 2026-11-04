@@ -16,9 +16,10 @@ use surgeist_html_semantics::{
     HtmlMicrodataCondition, HtmlMicrodataDocumentAuthor, HtmlMicrodataFacts,
     HtmlMicrodataFactsError, HtmlMicrodataItem, HtmlMicrodataProperty, HtmlMicrodataPropertyFact,
     HtmlMicrodataPropertyPermission, HtmlMicrodataProviderId, HtmlMicrodataProviderRevision,
-    HtmlMicrodataRawBinding, HtmlMicrodataRawSource, HtmlMicrodataRevision, HtmlMicrodataTypeFact,
-    HtmlMicrodataTyping, HtmlMicrodataUrlFact, HtmlMicrodataUrlOperation, HtmlMicrodataUrlResult,
-    HtmlMicrodataValue, HtmlMicrodataVocabularyId, HtmlSemanticCancellation, HtmlSemanticContext,
+    HtmlMicrodataRawBinding, HtmlMicrodataRawSource, HtmlMicrodataRevision,
+    HtmlMicrodataTokenSource, HtmlMicrodataTypeFact, HtmlMicrodataTyping, HtmlMicrodataUrlFact,
+    HtmlMicrodataUrlOperation, HtmlMicrodataUrlResult, HtmlMicrodataValue,
+    HtmlMicrodataVocabularyId, HtmlSemanticCancellation, HtmlSemanticContext,
     HtmlSemanticContextError, HtmlSemanticContextInput, HtmlSemanticFact, HtmlSemanticFailureKind,
     HtmlSemanticLimits, HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport,
     HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUnsupported,
@@ -2528,5 +2529,43 @@ fn type_and_property_facts_are_duplicates_only_of_the_same_token_receiver_and_or
             ],
         ),
         Err(HtmlMicrodataFactsError::Duplicate)
+    ));
+}
+
+#[test]
+fn token_bindings_cover_each_token_and_refuse_a_missing_or_oversized_attribute() {
+    let (c, id) = single(
+        "div",
+        &[("itemscope", ""), ("itemtype", "https://a/T  https://b/U")],
+    );
+    let bindings =
+        HtmlMicrodataRawBinding::tokens(&c, &id, HtmlMicrodataTokenSource::ItemType, 100).unwrap();
+    // Two tokens with the doubled space between them skipped; each is the
+    // binding that naming its position would make.
+    assert_eq!(bindings.len(), 2);
+    for (index, binding) in bindings.iter().enumerate() {
+        assert_eq!(
+            binding,
+            &HtmlMicrodataRawBinding::new(
+                &c,
+                id.clone(),
+                HtmlMicrodataRawSource::ItemTypeToken(index),
+                100
+            )
+            .unwrap()
+        );
+    }
+    assert_eq!(
+        bindings[1].units(),
+        "https://b/U".encode_utf16().collect::<Vec<_>>()
+    );
+    // No itemprop attribute, and an attribute over the raw limit.
+    assert!(matches!(
+        HtmlMicrodataRawBinding::tokens(&c, &id, HtmlMicrodataTokenSource::ItemProp, 100),
+        Err(HtmlMicrodataFactsError::MissingRaw)
+    ));
+    assert!(matches!(
+        HtmlMicrodataRawBinding::tokens(&c, &id, HtmlMicrodataTokenSource::ItemType, 5),
+        Err(HtmlMicrodataFactsError::Attribute(_))
     ));
 }

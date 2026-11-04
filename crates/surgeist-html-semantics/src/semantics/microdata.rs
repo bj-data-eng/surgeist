@@ -54,6 +54,75 @@ mod tests {
         });
     }
 
+    /// Binding every token of an attribute one at a time splits the attribute
+    /// once per token, which is quadratic in them; binding them together splits
+    /// it once, and yields the same bindings.
+    #[test]
+    fn binding_all_tokens_together_splits_the_attribute_once() {
+        let names: Vec<String> = (0..50).map(|n| format!("t{n}")).collect();
+        let raw = names.join(" ");
+        let mut b = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(10, 100, 10, 10_000, 10, 0, 0, 16_777_216),
+            crate::HtmlHostFactsRevision::fresh(),
+        );
+        let d = b
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Unavailable,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        let e = b
+            .add_element(
+                &d,
+                surgeist_html::values::QualifiedName::new(
+                    surgeist_html::values::Namespace::html(),
+                    None,
+                    "span",
+                ),
+                OrderedAttributes::new([Attribute::new(
+                    surgeist_html::values::QualifiedName::new(
+                        surgeist_html::values::Namespace::none(),
+                        None,
+                        "itemprop",
+                    ),
+                    raw.as_str(),
+                )])
+                .unwrap(),
+                HtmlCapturedIsValue::Unavailable,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        b.establish_children(&e, &[]).unwrap();
+        b.establish_children(&d, std::slice::from_ref(&e)).unwrap();
+        let capture = b.finish().unwrap();
+        let subject = capture.subject_id(&e).unwrap();
+        let before = TOKENIZATIONS.get();
+        let together = HtmlMicrodataRawBinding::tokens(
+            &capture,
+            &subject,
+            HtmlMicrodataTokenSource::ItemProp,
+            1000,
+        )
+        .unwrap();
+        assert_eq!(TOKENIZATIONS.get() - before, 1);
+        let before = TOKENIZATIONS.get();
+        let one_by_one: Vec<_> = (0..50)
+            .map(|n| {
+                HtmlMicrodataRawBinding::new(
+                    &capture,
+                    subject.clone(),
+                    HtmlMicrodataRawSource::ItemPropToken(n),
+                    1000,
+                )
+                .unwrap()
+            })
+            .collect();
+        assert_eq!(TOKENIZATIONS.get() - before, 50);
+        assert_eq!(together, one_by_one);
+        assert_eq!(together[7].units(), "t7".encode_utf16().collect::<Vec<_>>());
+    }
+
     #[test]
     fn original_cancellation_after_token_and_item_edge_commit_is_atomic_and_reclaims_scratch() {
         for stage in [CancellationStage::Token, CancellationStage::Edge] {
@@ -838,38 +907,81 @@ pub struct HtmlMicrodataRawBinding {
     start: usize,
     end: usize,
 }
+/// Which token attribute [`HtmlMicrodataRawBinding::tokens`] binds.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlMicrodataTokenSource {
+    ItemType,
+    ItemProp,
+}
+#[cfg(test)]
+thread_local! {
+    /// How many times an attribute has been split into tokens, to show that a
+    /// batch of bindings splits it once.
+    static TOKENIZATIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+/// Splits `raw` into the tokens of `kind` through the interpreter.
+fn md_binding_tokens(
+    interpreter: &HtmlValueInterpreter,
+    kind: HtmlMicrodataTokenKind,
+    raw: &DocumentString,
+) -> Result<HtmlMicrodataTokenReport, HtmlMicrodataFactsError> {
+    #[cfg(test)]
+    TOKENIZATIONS.with(|count| count.set(count.get() + 1));
+    interpreter
+        .microdata_tokens(kind, Some(raw))
+        .map_err(HtmlMicrodataFactsError::Attribute)
+}
+/// The element, its node and its no-namespace attribute `local`.
+fn md_binding_slot<'a>(
+    capture: &'a HtmlCapture,
+    subject: &HtmlCaptureSubjectId,
+    local: &str,
+) -> Result<
+    (
+        HtmlCapturedNode<'a>,
+        &'a HtmlCapturedElement,
+        &'a DocumentString,
+    ),
+    HtmlMicrodataFactsError,
+> {
+    let node = capture
+        .node(subject)
+        .map_err(HtmlMicrodataFactsError::Capture)?;
+    let HtmlCapturedNodeKind::Element(element) = node.kind() else {
+        return Err(HtmlMicrodataFactsError::WrongRole);
+    };
+    if element.name().namespace() != &surgeist_html::values::Namespace::html() {
+        return Err(HtmlMicrodataFactsError::WrongRole);
+    }
+    let raw = element
+        .attributes()
+        .iter()
+        .find(|a| {
+            a.name().namespace().uri().is_none()
+                && a.name()
+                    .local_name()
+                    .code_units()
+                    .iter()
+                    .copied()
+                    .eq(local.encode_utf16())
+        })
+        .ok_or(HtmlMicrodataFactsError::MissingRaw)?
+        .value();
+    Ok((node, element, raw))
+}
 impl HtmlMicrodataRawBinding {
     /// Checks the actual no-namespace slot and canonical token boundary. Ordinary
-    /// bounded construction; this is not a semantic-session work budget.
+    /// bounded construction; this is not a semantic-session work budget. Every
+    /// call splits the whole attribute, so binding all the tokens of one
+    /// attribute through this takes work quadratic in them; use
+    /// [`tokens`](Self::tokens) for that.
     pub fn new(
         capture: &HtmlCapture,
         subject: HtmlCaptureSubjectId,
         source: HtmlMicrodataRawSource,
         max_raw_units: usize,
     ) -> Result<Self, HtmlMicrodataFactsError> {
-        let node = capture
-            .node(&subject)
-            .map_err(HtmlMicrodataFactsError::Capture)?;
-        let HtmlCapturedNodeKind::Element(element) = node.kind() else {
-            return Err(HtmlMicrodataFactsError::WrongRole);
-        };
-        if element.name().namespace() != &surgeist_html::values::Namespace::html() {
-            return Err(HtmlMicrodataFactsError::WrongRole);
-        }
-        let raw = element
-            .attributes()
-            .iter()
-            .find(|a| {
-                a.name().namespace().uri().is_none()
-                    && a.name()
-                        .local_name()
-                        .code_units()
-                        .iter()
-                        .copied()
-                        .eq(source.local().encode_utf16())
-            })
-            .ok_or(HtmlMicrodataFactsError::MissingRaw)?
-            .value();
+        let (node, element, raw) = md_binding_slot(capture, &subject, source.local())?;
         let interpreter = HtmlValueInterpreter::new(max_raw_units);
         interpreter
             .admit_attribute_raw(Some(raw))
@@ -882,9 +994,7 @@ impl HtmlMicrodataRawBinding {
                 } else {
                     HtmlMicrodataTokenKind::ItemProp
                 };
-                let report = interpreter
-                    .microdata_tokens(kind, Some(raw))
-                    .map_err(HtmlMicrodataFactsError::Attribute)?;
+                let report = md_binding_tokens(&interpreter, kind, raw)?;
                 let t = report
                     .tokens()
                     .get(index)
@@ -915,6 +1025,51 @@ impl HtmlMicrodataRawBinding {
             start,
             end,
         })
+    }
+    /// The bindings of every token of `subject`'s `itemtype` or `itemprop`
+    /// attribute, in token order, each as [`new`](Self::new) would make it for
+    /// that token. The attribute is split once, so the work is linear in its
+    /// tokens where binding them one at a time is quadratic.
+    pub fn tokens(
+        capture: &HtmlCapture,
+        subject: &HtmlCaptureSubjectId,
+        source: HtmlMicrodataTokenSource,
+        max_raw_units: usize,
+    ) -> Result<Vec<Self>, HtmlMicrodataFactsError> {
+        let (local, kind) = match source {
+            HtmlMicrodataTokenSource::ItemType => ("itemtype", HtmlMicrodataTokenKind::ItemType),
+            HtmlMicrodataTokenSource::ItemProp => ("itemprop", HtmlMicrodataTokenKind::ItemProp),
+        };
+        let (node, _, raw) = md_binding_slot(capture, subject, local)?;
+        let interpreter = HtmlValueInterpreter::new(max_raw_units);
+        interpreter
+            .admit_attribute_raw(Some(raw))
+            .map_err(|error| HtmlMicrodataFactsError::Attribute(error.into()))?;
+        let report = md_binding_tokens(&interpreter, kind, raw)?;
+        let mut bindings = Vec::new();
+        bindings
+            .try_reserve_exact(report.tokens().len())
+            .map_err(|_| HtmlMicrodataFactsError::Limit)?;
+        for (index, t) in report.tokens().iter().enumerate() {
+            bindings.push(Self {
+                capture: capture.identity().clone(),
+                host: capture.host_facts_revision().clone(),
+                document: node.node_document(),
+                subject: subject.clone(),
+                source: match source {
+                    HtmlMicrodataTokenSource::ItemType => {
+                        HtmlMicrodataRawSource::ItemTypeToken(index)
+                    }
+                    HtmlMicrodataTokenSource::ItemProp => {
+                        HtmlMicrodataRawSource::ItemPropToken(index)
+                    }
+                },
+                raw: raw.clone(),
+                start: t.start(),
+                end: t.end(),
+            });
+        }
+        Ok(bindings)
     }
     pub fn subject(&self) -> &HtmlCaptureSubjectId {
         &self.subject

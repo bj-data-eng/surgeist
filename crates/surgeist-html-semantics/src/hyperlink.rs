@@ -1,6 +1,7 @@
 //! Shared encoding-parse observations for actual Document-relative URL parsing.
 //! A/Area history and Meta refresh consume the same qualified bank. No URL parser,
 //! CSP selection, navigable, resource effect or second URL identity is created.
+use crate::semantics::index::ContentChains;
 use crate::{
     HtmlBaseEncoding, HtmlBaseFactsError, HtmlBaseFactsLimits, HtmlBaseFactsRevision,
     HtmlBaseFactsUsage, HtmlBaseRetainedStorageUsage, HtmlBaseUrlRecord,
@@ -104,6 +105,17 @@ impl HtmlEncodingUrlParseFacts {
         )?;
         retained.url(&base)?;
         v.retained_string(base.serialization())?;
+        // Observations are told apart by their raw text, so each is compared
+        // only with the earlier observations of the same hash of it.
+        let mut chains = ContentChains::new(
+            observations.len(),
+            |n| v.steps(n),
+            HtmlBaseFactsError::RepresentationExhausted,
+        )?;
+        for observation in &observations {
+            v.steps(observation.raw.len())?;
+            chains.link(observation.raw.code_units());
+        }
         for (i, observation) in observations.iter().enumerate() {
             v.step()?;
             retained.string(&observation.raw)?;
@@ -115,11 +127,13 @@ impl HtmlEncodingUrlParseFacts {
                 retained.url(record)?;
                 v.retained_string(record.serialization())?;
             }
-            for previous in &observations[..i] {
+            let mut earlier = chains.before(i);
+            while let Some(position) = earlier {
                 v.step()?;
-                if v.equal(&previous.raw, &observation.raw)? {
+                if v.equal(&observations[position].raw, &observation.raw)? {
                     return Err(HtmlBaseFactsError::DuplicateObservation.into());
                 }
+                earlier = chains.before(position);
             }
         }
         let usage = v.usage(observations.capacity());
