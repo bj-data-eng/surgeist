@@ -16,11 +16,11 @@ use surgeist_html_semantics::{
     HtmlImageDimensionFactsLimits, HtmlImageDimensionMeasurement, HtmlImageDimensionOperationKey,
     HtmlImageDimensionResourceObservation, HtmlImageDimensionRevision, HtmlImageDimensionRole,
     HtmlImageDimensionSelection, HtmlImageSizingRevision, HtmlImgRequestState,
-    HtmlListParticipationRevision, HtmlMediaAttributeInput, HtmlMediaContextRevision,
-    HtmlMediaEnvironmentRevision, HtmlMediaFact, HtmlMediaFacts, HtmlMediaFactsError,
-    HtmlMediaFactsLimits, HtmlMediaGrammarAttestation, HtmlMediaGrammarOutcome,
-    HtmlMediaGrammarRevision, HtmlMediaMatchAttestation, HtmlMediaMatchOutcome,
-    HtmlMediaProducerId, HtmlNaturalDimensionAxis, HtmlNaturalDimensionFact,
+    HtmlListParticipation, HtmlListParticipationFact, HtmlListParticipationRevision,
+    HtmlMediaAttributeInput, HtmlMediaContextRevision, HtmlMediaEnvironmentRevision, HtmlMediaFact,
+    HtmlMediaFacts, HtmlMediaFactsError, HtmlMediaFactsLimits, HtmlMediaGrammarAttestation,
+    HtmlMediaGrammarOutcome, HtmlMediaGrammarRevision, HtmlMediaMatchAttestation,
+    HtmlMediaMatchOutcome, HtmlMediaProducerId, HtmlNaturalDimensionAxis, HtmlNaturalDimensionFact,
     HtmlNaturalDimensionFactsError, HtmlNaturalDimensionLimits, HtmlNaturalDimensionProducerId,
     HtmlNaturalDimensionRevision, HtmlNaturalDimensions, HtmlNaturalResourceId,
     HtmlNaturalResourceKey, HtmlParticipationProducerId, HtmlRelBlobEntry, HtmlRelBookmarkSection,
@@ -29,6 +29,7 @@ use surgeist_html_semantics::{
     HtmlRelOriginId, HtmlRelProducerId, HtmlRelRegistryOccurrence, HtmlRelRegistryStatus,
     HtmlRelRevision, HtmlRelSameSiteObservation, HtmlRelSectionId, HtmlRelSettingsId,
     HtmlRelSupportedTokens, HtmlRelUrlGrammar, HtmlRelUrlId, HtmlRelUrlKey, HtmlRelUrlObservation,
+    HtmlSemanticContext, HtmlSemanticContextError, HtmlSemanticContextInput,
 };
 
 const DOUBLINGS: [usize; 4] = [100, 200, 400, 800];
@@ -649,4 +650,114 @@ fn rel_url_observations_of_one_subject_bind_by_url_and_refuse_equal_ones() {
         .unwrap_err(),
         HtmlRelFactsError::DuplicateObservation
     );
+}
+
+/// Image dimension facts joined with participation and natural dimension facts,
+/// for `count` images, each with a content box, listed in the reverse order in
+/// the facts they are joined with so that finding one by scanning is not cheap.
+fn join_total(count: usize) -> usize {
+    let (capture, ids) = page("img", &[], count);
+    let natural_revision =
+        HtmlNaturalDimensionRevision::new(HtmlNaturalDimensionProducerId::fresh(), 5, 6);
+    let participation_revision = HtmlListParticipationRevision::new(
+        HtmlParticipationProducerId::fresh(),
+        1,
+        2,
+        HtmlParticipationProducerId::fresh(),
+        3,
+        4,
+    );
+    let keys: Vec<_> = ids
+        .iter()
+        .map(|_| HtmlNaturalResourceKey::new(HtmlNaturalResourceId::fresh(), 14, 15))
+        .collect();
+    let known = |n: &str, d: &str| HtmlImageDimensionMeasurement::Known(rational(n, d));
+    least_work_unreported("image dimension joins", |work| {
+        let expected = ids
+            .iter()
+            .zip(&keys)
+            .map(|(id, key)| {
+                HtmlImageDimensionExpectation::new(
+                    id.clone(),
+                    HtmlImageDimensionRole::Img,
+                    HtmlImageDimensionSelection::Selected(key.clone()),
+                    11,
+                    None,
+                )
+            })
+            .collect();
+        let boxes = ids
+            .iter()
+            .map(|id| {
+                HtmlImageContentBoxObservation::new(
+                    capture.identity().clone(),
+                    capture.host_facts_revision().clone(),
+                    id.clone(),
+                    participation_revision.clone(),
+                    known("7", "1"),
+                    known("9", "2"),
+                )
+            })
+            .collect();
+        let image_revision = HtmlImageDimensionRevision::new(
+            Some(natural_revision.clone()),
+            Some(participation_revision.clone()),
+        );
+        let image = match HtmlImageDimensionFacts::new(
+            &capture,
+            capture.host_facts_revision().clone(),
+            image_revision.clone(),
+            expected,
+            vec![],
+            boxes,
+            HtmlImageDimensionFactsLimits::new(16 * count, 1 << 30, work),
+        ) {
+            Ok(image) => image,
+            Err(HtmlImageDimensionFactsError::WorkLimit) => return Run::Refused { required: 0 },
+            Err(other) => panic!("fixture refused for another reason: {other:?}"),
+        };
+        let participation = HtmlListParticipation::new(
+            &capture,
+            participation_revision.clone(),
+            ids.iter()
+                .rev()
+                .map(|id| HtmlListParticipationFact::new(id.clone(), None, Some(true), Some(true)))
+                .collect(),
+            16 * count,
+        )
+        .unwrap();
+        let natural = HtmlNaturalDimensions::new(
+            &capture,
+            capture.host_facts_revision().clone(),
+            natural_revision.clone(),
+            ids.iter()
+                .zip(&keys)
+                .rev()
+                .map(|(id, key)| HtmlNaturalDimensionFact::selection(id.clone(), Some(key.clone())))
+                .collect(),
+            vec![],
+            HtmlNaturalDimensionLimits::new(16 * count, 1 << 30, 1 << 40),
+        )
+        .unwrap();
+        match HtmlSemanticContext::new(
+            &capture,
+            capture.host_facts_revision().clone(),
+            HtmlSemanticContextInput::new(vec![])
+                .with_list_participation(participation_revision.clone(), Some(participation))
+                .with_natural_dimensions(natural_revision.clone(), Some(natural))
+                .with_image_dimensions(image_revision, Some(image)),
+            0,
+        ) {
+            Ok(_) => Run::Admitted,
+            Err(HtmlSemanticContextError::ImageDimensionsFacts(
+                HtmlImageDimensionFactsError::WorkLimit,
+            )) => Run::Refused { required: 0 },
+            Err(other) => panic!("fixture refused for another reason: {other:?}"),
+        }
+    })
+}
+
+#[test]
+fn image_dimension_joins_find_each_participation_and_natural_fact_in_work_linear_in_the_facts() {
+    assert_doubling_at_most_2_2("image dimension joins", &DOUBLINGS, join_total);
 }
