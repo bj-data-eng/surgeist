@@ -323,3 +323,56 @@ fn recovery_duration_charge_grows_linearly_with_component_count() {
         );
     }
 }
+
+/// Total work charged to interpret `text` through both phases, and the recovered seconds.
+fn interpretation_work_and_seconds(text: &str) -> (usize, String) {
+    let raw = DocumentString::from(text);
+    let mut owner = Some(Interpretation::new(&raw, HtmlValueInterpreter::new(raw.len())).unwrap());
+    let (work, _) = drive(owner.as_mut().unwrap());
+    let report = Interpretation::try_finish(&mut owner).unwrap();
+    let HtmlValueRecoveryState::Value(HtmlMachineReadableTime::Duration(duration)) =
+        report.recovery()
+    else {
+        panic!(
+            "expected a recovered duration for a string of {} units",
+            raw.len()
+        );
+    };
+    assert_eq!(duration.seconds().fractional_digits(), None);
+    (
+        work,
+        duration
+            .seconds()
+            .integer_part()
+            .decimal_digits()
+            .to_owned(),
+    )
+}
+
+/// "parse a duration string" (foundations capture lines 3350-3430) steps 8.6-8.13 add every
+/// component to the running total, and a unit may repeat (step 8 has no uniqueness rule). The
+/// first token is the `digits` nines and the first `1`, 10^(digits+1) - 9, and the other
+/// `components - 1` tokens add one each, so the total is 10^(digits+1) + components - 10. The
+/// controlled interpretation must charge one long number and many short components in work that
+/// grows with the input, not with the product of the number's length and the component count.
+#[test]
+fn recovery_duration_charge_grows_linearly_with_a_long_first_number() {
+    let mut charges = Vec::new();
+    for digits in [1_200_usize, 2_400, 4_800, 9_600] {
+        let components = digits / 3;
+        let text = format!("{}{}", "9".repeat(digits), "1s".repeat(components));
+        let (work, seconds) = interpretation_work_and_seconds(&text);
+        let tail = (components - 10).to_string();
+        let expected = format!("1{}{}", "0".repeat(digits + 1 - tail.len()), tail);
+        assert_eq!(seconds, expected);
+        charges.push(work);
+    }
+    for pair in charges.windows(2) {
+        assert!(
+            pair[1] * 10 <= pair[0] * 22,
+            "doubling the first number and the component count grew the charge from {} to {}: {charges:?}",
+            pair[0],
+            pair[1]
+        );
+    }
+}
