@@ -2297,21 +2297,24 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
   - *Explicit `headers` tokens* cost `O(V + N log N * I + T log N)` for `V`
     the nodes of the document, `N` the elements with a non-empty `id`, `I` the
     longest such `id` in units and `T` the units of all tokens, plus
-    `O(C log C)` for the cells. The first
-    token walks the ordinary tree from the document once and indexes every
-    non-empty `id` by value, ties in tree order, so the first element wins; each
-    token is then a binary search, and the element it finds is looked up among
-    the cells by capture ordinal. The sort and the lookups are charged before
-    they run, and the entries are admitted as `ScratchRecords` as they are
-    pushed. A table with no non-empty `headers` token never walks the document.
+    `O(C log C)` for the cells. The first non-empty token builds the whole
+    index: one walk of the ordinary tree from the document in tree order, with
+    every non-empty `id` entered by value (ties in tree order, so the first
+    element wins), and the cells by capture ordinal. Each token is then a
+    binary search of the IDs, and the element it finds is looked up among the
+    cells. The entries and cells are admitted as `ScratchRecords` as they are
+    pushed; the sort is charged as `N log N * (I + 1)` before it runs (the
+    convention of the column-group sort, an estimate of its comparisons rather
+    than a strict upper bound on them) and each lookup before it runs. A table
+    with no non-empty `headers` token never walks the document.
     The walk ends where a search from the root for an absent ID would: at an
     element whose `id` the interpreter refuses, or at a node whose ordered
-    children are unknown. That stop is kept, not raised, and answers (as the
+    children are unknown. That stop is kept, not raised: it answers (as the
     refusal or the missing children) only the tokens that no earlier element
-    owns, so a token matched before it still resolves. The walk itself is now
-    charged once, in full up to that stop, even if every token is owned by an
-    early element; a document whose nodes after the last owner exceed the work
-    limit is refused where a search for each token would have fit.
+    owns, and a token owned before it resolves. The walk is charged in full up
+    to that stop whether or not an early element owns every token, so a
+    document whose nodes after the last owner exceed the work limit is refused
+    even when every token is owned early.
   - Everything the model needs beyond the retained records is scratch: the
     placement tree, the per-column and per-cell placement records and the header
     indexes are admitted as `ScratchRecords`, and released with the query. Every

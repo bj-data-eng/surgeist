@@ -8,7 +8,7 @@ mod headers;
 mod occupancy;
 mod placement;
 mod slots;
-use headers::{HeaderMemo, IdIndex};
+use headers::{HeaderMemo, IdTargets};
 use placement::{Footprint, Placement, Reach};
 use slots::{LeastTree, SlotAxis};
 
@@ -216,10 +216,8 @@ struct Scratch<'a> {
     /// The keys of the headers in the current block.
     block: Vec<usize>,
     document: Vec<HtmlCapturedChildIds<'a>>,
-    /// The IDs of the document, found when the first `headers` token needs
-    /// them, and the cells by capture ordinal.
-    ids: IdIndex<'a>,
-    cells: Vec<(usize, usize)>,
+    /// What resolves `headers` tokens, built when the first one needs it.
+    targets: Option<IdTargets<'a>>,
     memo: Vec<HeaderMemo>,
     /// Lines of a scan that are scanned one at a time.
     specials: Vec<usize>,
@@ -257,8 +255,7 @@ impl Scratch<'_> {
             self.column_group_least.nodes.capacity(),
             self.block.capacity(),
             self.document.capacity(),
-            self.ids.capacity(),
-            self.cells.capacity(),
+            self.targets.as_ref().map_or(0, IdTargets::capacity),
             self.memo.capacity(),
             self.specials.capacity(),
             self.row_group_headers.capacity(),

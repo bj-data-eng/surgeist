@@ -42,19 +42,27 @@ enum IdStop {
     Refused(HtmlValueAdmissionError),
 }
 
-/// The IDs of a document, sorted by value with ties in tree order, and what
-/// ends a search for an absent ID. Built on the first `headers` token.
-#[derive(Default)]
-pub(super) struct IdIndex<'a> {
-    ready: bool,
-    entries: Vec<IdEntry<'a>>,
-    stop: Option<IdStop>,
+/// A cell of the model: the capture ordinal of its subject and its index.
+#[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+struct CellSlot {
+    ordinal: usize,
+    cell: usize,
 }
 
-impl IdIndex<'_> {
-    /// The capacity admitted for the entries.
+/// What resolves a `headers` token: the IDs of a document, sorted by value
+/// with ties in tree order, and what ends a search for an absent ID; and the
+/// cells of the model by capture ordinal. Built whole on the first token.
+#[derive(Default)]
+pub(super) struct IdTargets<'a> {
+    entries: Vec<IdEntry<'a>>,
+    stop: Option<IdStop>,
+    cells: Vec<CellSlot>,
+}
+
+impl IdTargets<'_> {
+    /// The capacity admitted for the entries and the cells.
     pub(super) fn capacity(&self) -> usize {
-        self.entries.capacity()
+        self.entries.capacity() + self.cells.capacity()
     }
 }
 
@@ -808,15 +816,14 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         document: &HtmlCaptureSubjectId,
         frames: &mut Vec<HtmlCapturedChildIds<'a>>,
-        ids: &mut IdIndex<'a>,
+        targets: &mut IdTargets<'a>,
     ) -> TableResult<()> {
-        ids.ready = true;
         self.charge(1)?;
         frames.clear();
         match self.table_children(document) {
             Ok(children) => self.table_scratch(frames, children)?,
             Err(TableStop::Missing(missing)) => {
-                ids.stop = Some(IdStop::Missing(missing));
+                targets.stop = Some(IdStop::Missing(missing));
                 return Ok(());
             }
             Err(failure) => return Err(failure),
@@ -836,7 +843,7 @@ impl<'a> HtmlSemanticSession<'a> {
                     .interpreter
                     .admit_attribute_raw(raw.map(Attribute::value))
                 {
-                    ids.stop = Some(IdStop::Refused(error));
+                    targets.stop = Some(IdStop::Refused(error));
                     break;
                 }
                 if let Some(raw) = raw
@@ -845,7 +852,7 @@ impl<'a> HtmlSemanticSession<'a> {
                     let value = raw.value().code_units();
                     longest = longest.max(value.len());
                     self.table_scratch(
-                        &mut ids.entries,
+                        &mut targets.entries,
                         IdEntry {
                             value,
                             ordinal: id.ordinal(),
@@ -862,7 +869,7 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                 }
                 Err(TableStop::Missing(missing)) => {
-                    ids.stop = Some(IdStop::Missing(missing));
+                    targets.stop = Some(IdStop::Missing(missing));
                     break;
                 }
                 Err(failure) => return Err(failure),
@@ -871,9 +878,10 @@ impl<'a> HtmlSemanticSession<'a> {
         frames.clear();
         // Tree order breaks ties, so the first equal entry is the first
         // element; each comparison reads up to the longest ID.
-        let count = ids.entries.len();
+        let count = targets.entries.len();
         self.table_charge_product(&[count, table_log2(count), longest + 1])?;
-        ids.entries
+        targets
+            .entries
             .sort_unstable_by(|a, b| a.value.cmp(b.value).then(a.order.cmp(&b.order)));
         Ok(())
     }
@@ -882,28 +890,49 @@ impl<'a> HtmlSemanticSession<'a> {
     fn table_index_cells(
         &mut self,
         model: &HtmlTableModel,
-        cells: &mut Vec<(usize, usize)>,
+        cells: &mut Vec<CellSlot>,
     ) -> TableResult<()> {
-        for (index, cell) in model.cells.iter().enumerate() {
-            self.table_scratch(cells, (cell.subject.ordinal(), index))?;
+        for (cell, model_cell) in model.cells.iter().enumerate() {
+            let ordinal = model_cell.subject.ordinal();
+            self.table_scratch(cells, CellSlot { ordinal, cell })?;
         }
         self.table_charge_product(&[cells.len(), table_log2(cells.len())])?;
         cells.sort_unstable();
         Ok(())
+    }
+    /// Builds the index of a `headers` token's targets whole. A failure
+    /// releases what was admitted for it, so a half-built index is never kept.
+    fn table_index_targets(
+        &mut self,
+        model: &HtmlTableModel,
+        document: &HtmlCaptureSubjectId,
+        frames: &mut Vec<HtmlCapturedChildIds<'a>>,
+    ) -> TableResult<IdTargets<'a>> {
+        let mut targets = IdTargets::default();
+        let result = self
+            .table_index_ids(document, frames, &mut targets)
+            .and_then(|()| self.table_index_cells(model, &mut targets.cells));
+        match result {
+            Ok(()) => Ok(targets),
+            Err(stop) => {
+                self.release_scratch(targets.capacity());
+                Err(stop)
+            }
+        }
     }
     /// The cell of the model that the first element with this ID is, if that
     /// element is a cell of it. What a search from the root would reach before
     /// a match decides the token if there is none.
     fn table_find_cell(
         &mut self,
-        ids: &IdIndex<'a>,
-        cells: &[(usize, usize)],
+        targets: &IdTargets<'a>,
         token: &[u16],
     ) -> TableResult<Option<usize>> {
-        self.table_charge_product(&[table_log2(ids.entries.len()) + 1, token.len() + 1])?;
-        let at = ids.entries.partition_point(|entry| entry.value < token);
-        let Some(entry) = ids.entries.get(at).filter(|entry| entry.value == token) else {
-            return match &ids.stop {
+        let entries = &targets.entries;
+        self.table_charge_product(&[table_log2(entries.len()) + 1, token.len() + 1])?;
+        let at = entries.partition_point(|entry| entry.value < token);
+        let Some(entry) = entries.get(at).filter(|entry| entry.value == token) else {
+            return match &targets.stop {
                 None => Ok(None),
                 Some(IdStop::Missing(missing)) => Err(TableStop::Missing(missing.clone())),
                 Some(IdStop::Refused(error)) => {
@@ -911,11 +940,12 @@ impl<'a> HtmlSemanticSession<'a> {
                 }
             };
         };
+        let cells = &targets.cells;
         self.charge(table_log2(cells.len()) + 1)?;
         Ok(cells
-            .binary_search_by_key(&entry.ordinal, |&(ordinal, _)| ordinal)
+            .binary_search_by_key(&entry.ordinal, |slot| slot.ordinal)
             .ok()
-            .map(|at| cells[at].1))
+            .map(|at| cells[at].cell))
     }
     fn table_empty(&mut self, model: &HtmlTableModel, index: usize) -> TableResult<bool> {
         let mut children = self.table_children(&model.cells[index].subject)?;
@@ -963,8 +993,7 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let Scratch {
             document: frames,
-            ids,
-            cells,
+            targets,
             headers,
             stamps,
             listed,
@@ -1066,15 +1095,14 @@ impl<'a> HtmlSemanticSession<'a> {
                         }
                         position += 1;
                     }
-                    if !ids.ready {
-                        self.table_index_ids(document, frames, ids)?;
-                        self.table_index_cells(model, cells)?;
-                    }
-                    if let Some(index) =
-                        self.table_find_cell(ids, cells, &units[start..position])?
-                        && index != principal
+                    let index = match targets {
+                        Some(index) => index,
+                        None => targets.insert(self.table_index_targets(model, document, frames)?),
+                    };
+                    if let Some(found) = self.table_find_cell(index, &units[start..position])?
+                        && found != principal
                     {
-                        self.table_list(model, &mut scan, index)?;
+                        self.table_list(model, &mut scan, found)?;
                     }
                 }
             } else if any_header {
