@@ -604,9 +604,14 @@ fn microdata_type_sweep(count: usize) -> usize {
     sweep_work(&capture, &context, &ids, HtmlSemanticQuery::MicrodataAuthor)
 }
 
-/// One property element naming `count` properties of the item around it, with a
-/// URL fact and a permission fact for each name.
-fn microdata_property_sweep(count: usize) -> usize {
+/// The work that the URL fact and the permission fact of each of `count` names
+/// add to one property element naming `count` properties of the item around it.
+/// The names themselves cost a little more than linear work whatever the facts,
+/// so the difference with the same query without facts isolates the lookups.
+fn microdata_property_fact_work(count: usize) -> usize {
+    microdata_property_names(count, true) - microdata_property_names(count, false)
+}
+fn microdata_property_names(count: usize, with_facts: bool) -> usize {
     let names: Vec<String> = (0..count).map(|n| format!("n{n}")).collect();
     let raw = names.join(" ");
     let (mut b, d) = big_builder(4);
@@ -624,10 +629,11 @@ fn microdata_property_sweep(count: usize) -> usize {
     );
     let (url, vocabulary) = (provider(), provider());
     let source = |n: usize| HtmlMicrodataRawSource::ItemPropToken(n);
-    let urls = (0..count)
+    let facts = if with_facts { count } else { 0 };
+    let urls = (0..facts)
         .map(|n| absolute_url(&capture, &url, &property, source(n)))
         .collect();
-    let properties = (0..count)
+    let properties = (0..facts)
         .map(|n| {
             HtmlMicrodataPropertyFact::new(
                 &capture,
@@ -665,6 +671,6 @@ fn a_property_with_many_names_finds_each_url_and_permission_fact_in_constant_wor
     assert_doubling_at_most_2_2(
         "microdata property names",
         &[100, 200, 400, 800],
-        microdata_property_sweep,
+        microdata_property_fact_work,
     );
 }
