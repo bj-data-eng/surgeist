@@ -218,6 +218,24 @@ impl ConstructionEffects {
         self.frames.release(c)?;
         self.tasks.release(c)
     }
+    /// Releases the spent slots of a queue whose tasks all ran, so the queue
+    /// holds only what is outstanding. The dequeue cursor follows every pop.
+    pub(super) fn compact_drained(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
+        // The common drain finds nothing to release and charges nothing for it.
+        if self.tasks.len() == 0 {
+            self.dequeue = 0;
+            return Ok(());
+        }
+        while let Some(slot) = self.tasks.try_pop(c)? {
+            self.dequeue = self.tasks.len();
+            if slot.is_some() {
+                // A task that never ran must not be dropped with its cause.
+                return Err(latch_registry_row(c));
+            }
+        }
+        self.dequeue = 0;
+        Ok(())
+    }
     pub(super) fn enqueue(
         &mut self,
         c: &mut ParseControl,
@@ -996,6 +1014,7 @@ impl ParserArenaSession {
                 c.require_identity(&storage.control)?;
                 c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                 if storage.effects.dequeue == storage.effects.tasks.len() {
+                    storage.effects.compact_drained(c)?;
                     if let Some(cause) = &return_cause {
                         storage
                             .evidence

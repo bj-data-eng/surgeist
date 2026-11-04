@@ -48,25 +48,14 @@ impl OrdinaryInitialization {
     /// cleanup is implied. Only this consumer admits its actual fixed carrier.
     #[cfg(test)]
     pub(crate) fn begin(&mut self) -> Result<InitializationAttempt<'_>, StandaloneError> {
-        self.begin_for(super::parse::InitializationTarget::Native, false)
+        self.begin_for(super::parse::InitializationTarget::Native)
     }
     pub(super) fn begin_report(&mut self) -> Result<InitializationAttempt<'_>, StandaloneError> {
-        self.begin_for(
-            super::parse::InitializationTarget::Report,
-            #[cfg(test)]
-            false,
-        )
-    }
-    #[cfg(test)]
-    pub(crate) fn begin_progressive(
-        &mut self,
-    ) -> Result<InitializationAttempt<'_>, StandaloneError> {
-        self.begin_for(super::parse::InitializationTarget::Native, true)
+        self.begin_for(super::parse::InitializationTarget::Report)
     }
     fn begin_for(
         &mut self,
         target: super::parse::InitializationTarget,
-        #[cfg(test)] progressive: bool,
     ) -> Result<InitializationAttempt<'_>, StandaloneError> {
         match self.phase {
             InitializationPhase::Rejected(reason) => return Err(reason.error()),
@@ -76,17 +65,7 @@ impl OrdinaryInitialization {
         self.phase = InitializationPhase::Executing;
         let request = &self.request;
         Ok(InitializationAttempt {
-            entry: {
-                #[cfg(test)]
-                let entry = if progressive {
-                    super::entry::OrdinaryDocumentEntry::owned_progressive(request)
-                } else {
-                    super::entry::OrdinaryDocumentEntry::owned(request, target)
-                };
-                #[cfg(not(test))]
-                let entry = super::entry::OrdinaryDocumentEntry::owned(request, target);
-                entry
-            },
+            entry: super::entry::OrdinaryDocumentEntry::owned(request, target),
             request,
             failure: &mut self.failure,
             phase: &mut self.phase,
@@ -253,14 +232,6 @@ impl OrdinaryInitializationOwner {
     }
     pub(crate) fn begin(&mut self) -> Result<InitializationAttempt<'_>, StandaloneError> {
         self.held.as_mut().ok_or(StandaloneError::Consumed)?.begin()
-    }
-    pub(crate) fn begin_progressive(
-        &mut self,
-    ) -> Result<InitializationAttempt<'_>, StandaloneError> {
-        self.held
-            .as_mut()
-            .ok_or(StandaloneError::Consumed)?
-            .begin_progressive()
     }
     pub(crate) fn failure(&self) -> Option<super::entry::InitializationFailure> {
         self.held.as_ref()?.failure()

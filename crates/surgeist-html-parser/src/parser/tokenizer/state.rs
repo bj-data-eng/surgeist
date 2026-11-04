@@ -69,13 +69,6 @@ impl Tokenizer<'_> {
             2,
             c,
         )?;
-        self.save_proof_range(
-            ProofRole::LessThan,
-            self.current.start(),
-            self.current.end(),
-            c,
-        )?;
-        self.save_single_proof(SingleProof::Start, self.current.start(), c)?;
         self.start = self.current.start();
         self.less_than = self.current.clone();
         let lexical =
@@ -97,28 +90,16 @@ impl Tokenizer<'_> {
         c: &mut ParseControl,
         cdata_allowed: bool,
         evidence: &mut ParseEvidence,
-    ) -> Result<StepProgress, HtmlParseStop> {
+    ) -> Result<(), HtmlParseStop> {
         // These lookahead states examine the next input without consuming a
         // mismatching character. The indexed cursor charges each repeated read.
         if self.state == MarkupDeclaration {
-            if match self.consume_ascii(b"--", false, c, evidence)? {
-                AsciiMatch::Matched => true,
-                AsciiMatch::Mismatched => false,
-                AsciiMatch::NeedInput => return Ok(StepProgress::NeedInput),
-            } {
+            if self.consume_ascii(b"--", false, c, evidence)? {
                 self.create_comment(c)?;
                 self.set_state(CommentStart, c)?;
-            } else if match self.consume_ascii(b"DOCTYPE", true, c, evidence)? {
-                AsciiMatch::Matched => true,
-                AsciiMatch::Mismatched => false,
-                AsciiMatch::NeedInput => return Ok(StepProgress::NeedInput),
-            } {
+            } else if self.consume_ascii(b"DOCTYPE", true, c, evidence)? {
                 self.set_state(Doctype, c)?;
-            } else if match self.consume_ascii(b"[CDATA[", false, c, evidence)? {
-                AsciiMatch::Matched => true,
-                AsciiMatch::Mismatched => false,
-                AsciiMatch::NeedInput => return Ok(StepProgress::NeedInput),
-            } {
+            } else if self.consume_ascii(b"[CDATA[", false, c, evidence)? {
                 if cdata_allowed {
                     self.set_state(Cdata, c)?;
                 } else {
@@ -151,42 +132,26 @@ impl Tokenizer<'_> {
                 self.create_comment(c)?;
                 self.set_state(BogusComment, c)?;
             }
-            return Ok(StepProgress::Advanced);
+            return Ok(());
         }
         if self.state == AfterDoctypeName {
-            if match self.consume_ascii(b"PUBLIC", true, c, evidence)? {
-                AsciiMatch::Matched => true,
-                AsciiMatch::Mismatched => false,
-                AsciiMatch::NeedInput => return Ok(StepProgress::NeedInput),
-            } {
+            if self.consume_ascii(b"PUBLIC", true, c, evidence)? {
                 self.set_state(AfterDoctypeKeyword(Public), c)?;
-                return Ok(StepProgress::Advanced);
+                return Ok(());
             }
-            if match self.consume_ascii(b"SYSTEM", true, c, evidence)? {
-                AsciiMatch::Matched => true,
-                AsciiMatch::Mismatched => false,
-                AsciiMatch::NeedInput => return Ok(StepProgress::NeedInput),
-            } {
+            if self.consume_ascii(b"SYSTEM", true, c, evidence)? {
                 self.set_state(AfterDoctypeKeyword(System), c)?;
-                return Ok(StepProgress::Advanced);
+                return Ok(());
             }
-        }
-        if self.cursor.is_progressive()
-            && matches!(
-                self.cursor.poll_peek(c)?,
-                super::super::input::InputPoll::NeedInput
-            )
-        {
-            return Ok(StepProgress::NeedInput);
         }
         let Some(p) = self.read(c, evidence)? else {
             self.eof(c, evidence)?;
-            return Ok(StepProgress::Advanced);
+            return Ok(());
         };
         self.retain_lexical_syntax(p, c, evidence)?;
         match self.state {
             Data => match p {
-                0x26 => self.character_reference(false, c)?,
+                0x26 => self.character_reference(false, c, evidence)?,
                 0x3C => {
                     self.mark_less_than(c, evidence)?;
                     self.set_state(TagOpen, c)?;
@@ -205,7 +170,7 @@ impl Tokenizer<'_> {
                 }
             }
             Raw(kind) => match p {
-                0x26 if kind == Rcdata => self.character_reference(false, c)?,
+                0x26 if kind == Rcdata => self.character_reference(false, c, evidence)?,
                 0x3C => {
                     self.mark_less_than(c, evidence)?;
                     if kind == ScriptEscaped(DoubleEscaped) {
@@ -224,7 +189,6 @@ impl Tokenizer<'_> {
             },
             TagOpen => match p {
                 0x21 => {
-                    self.save_single_proof(SingleProof::Declaration, self.current.end(), c)?;
                     self.set_state(MarkupDeclaration, c)?;
                 }
                 0x2F => {
@@ -522,7 +486,7 @@ impl Tokenizer<'_> {
                 }
                 _ if q == Unquoted && space(p) => self.set_state(BeforeAttributeName, c)?,
                 0x3E if q == Unquoted => self.emit_tag(c, evidence)?,
-                0x26 => self.character_reference(true, c)?,
+                0x26 => self.character_reference(true, c, evidence)?,
                 0 => {
                     self.error(UnexpectedNullCharacter, c, evidence)?;
                     self.attribute_value(
@@ -926,7 +890,7 @@ impl Tokenizer<'_> {
             }
             MarkupDeclaration => return Err(c.fail_invariant(HtmlParseInvariant::TokenizerState)),
         }
-        Ok(StepProgress::Advanced)
+        Ok(())
     }
     fn eof(
         &mut self,

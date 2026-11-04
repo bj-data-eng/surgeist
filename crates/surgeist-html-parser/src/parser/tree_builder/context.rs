@@ -849,7 +849,7 @@ pub(crate) fn initialized_driver(request: &HtmlFragmentParseRequest) -> ContextF
 pub(super) mod tests {
     use super::ownership::FragmentInitialization;
     use super::*;
-    use crate::construction::native_view::NativeKind;
+    use crate::construction::tests::native_view::NativeKind;
     use crate::*;
     use surgeist_html::elements::native::HtmlCustomElementState;
     use surgeist_html::{
@@ -899,7 +899,6 @@ pub(super) mod tests {
     pub(super) fn complete(driver: &mut ContextFragmentDriver<'_>) {
         for _ in 0..1000 {
             match driver.step().unwrap() {
-                HeadStep::NeedInput => panic!("complete fragment cannot starve"),
                 HeadStep::Consumed => {}
                 HeadStep::Complete => return,
                 HeadStep::Boundary(boundary) => panic!("unexpected real boundary {boundary:?}"),
@@ -1525,10 +1524,7 @@ pub(super) mod tests {
                 if driver.head.as_ref().unwrap().state.as_ref().unwrap().mode == expected {
                     break;
                 }
-                assert!(!matches!(
-                    driver.step().unwrap(),
-                    HeadStep::Complete | HeadStep::NeedInput
-                ));
+                assert!(!matches!(driver.step().unwrap(), HeadStep::Complete));
             }
             let state = driver.head.as_mut().unwrap().state.as_mut().unwrap();
             assert_eq!(state.mode, expected, "reached {source}");
@@ -1589,9 +1585,9 @@ pub(super) mod tests {
                 };
                 if is_root || is_output {
                     assert!(row.source.is_none());
-                    assert_eq!(cause.operation, HtmlParseConstructionOperation::Captured);
-                    assert!(cause.source.is_none());
-                    let captured = cause.captured.as_ref().unwrap();
+                    assert_eq!(cause.operation(), HtmlParseConstructionOperation::Captured);
+                    assert!(cause.source().is_none());
+                    let captured = cause.captured().unwrap();
                     assert_eq!(captured.role, HtmlParseCapturedCauseRole::FragmentBootstrap);
                     assert_eq!(&captured.capture, request.context().capture().identity());
                     assert_eq!(
@@ -1647,8 +1643,8 @@ pub(super) mod tests {
                 let (row, cause) = rows.row(cursor).unwrap().unwrap();
                 if is_x {
                     node_trigger = Some((
-                        cause.operation,
-                        cause.source.as_ref().map(|range| {
+                        cause.operation(),
+                        cause.source().as_ref().map(|range| {
                             (
                                 range.source() == request.source().identity(),
                                 range.start(),
@@ -1660,12 +1656,12 @@ pub(super) mod tests {
                 if matches!(
                     row.destination,
                     NativeDestination::Field(StringLocation::Namespace(_))
-                ) && cause.captured.as_ref().is_some_and(|captured| {
+                ) && cause.captured().as_ref().is_some_and(|captured| {
                     captured.role == HtmlParseCapturedCauseRole::ContextNamespace
                 }) {
                     captured_namespace = row.source.is_none()
-                        && cause.source.is_none()
-                        && cause.captured.as_ref().unwrap().capture
+                        && cause.source().is_none()
+                        && cause.captured().as_ref().unwrap().capture
                             == *request.context().capture().identity()
                         && row.start == 0
                         && row.end == "urn:actual:context".len();
@@ -2668,8 +2664,9 @@ pub(super) mod tests {
             .contents;
         let mut view = session.native_view(&mut driver.control).unwrap();
         assert!(view.same_node(&shadow, &effect.contents).unwrap());
-        let Some(crate::construction::native_view::NativeFragmentOwner::CapturedShadowHost(actual)) =
-            view.fragment_owner(&effect.contents).unwrap()
+        let Some(crate::construction::tests::native_view::NativeFragmentOwner::CapturedShadowHost(
+            actual,
+        )) = view.fragment_owner(&effect.contents).unwrap()
         else {
             panic!("actual retained capture host")
         };
@@ -2944,7 +2941,7 @@ pub(super) mod tests {
         assert!(view.same_node(&shadow.contents, &effect.contents).unwrap());
         assert_eq!(shadow.properties.mode(), HtmlShadowRootMode::Open);
         assert!(shadow.properties.clonable());
-        let Some(crate::construction::native_view::NativeFragmentOwner::ShadowHost(owner)) =
+        let Some(crate::construction::tests::native_view::NativeFragmentOwner::ShadowHost(owner)) =
             view.fragment_owner(&effect.contents).unwrap()
         else {
             panic!("actual shadow backlink")
@@ -3057,7 +3054,7 @@ pub(super) mod tests {
     }
     fn units(
         view: &mut crate::construction::NativeView<'_>,
-        value: &crate::construction::native_view::NativeString<'_>,
+        value: &crate::construction::tests::native_view::NativeString<'_>,
     ) -> Vec<u16> {
         (0..value.len())
             .map(|i| view.unit(value, i).unwrap().unwrap())
@@ -5084,7 +5081,7 @@ pub(super) mod tests {
 #[cfg(test)]
 mod owned_fragment_details_tests {
     use super::*;
-    use crate::construction::native_view::{NativeKind, NativeString, NativeView};
+    use crate::construction::tests::native_view::{NativeKind, NativeString, NativeView};
     use surgeist_html::construction::HtmlShadowRootMode;
 
     #[derive(Debug, PartialEq)]
@@ -5500,7 +5497,7 @@ mod owned_fragment_details_effect_tests {
     ) -> Vec<(Vec<u16>, Vec<u16>)> {
         fn units(
             view: &mut NativeView<'_>,
-            text: crate::construction::native_view::NativeString<'_>,
+            text: crate::construction::tests::native_view::NativeString<'_>,
         ) -> Vec<u16> {
             (0..text.len())
                 .map(|i| view.unit(&text, i).unwrap().unwrap())

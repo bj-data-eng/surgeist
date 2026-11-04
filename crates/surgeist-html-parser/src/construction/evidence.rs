@@ -1584,9 +1584,6 @@ mod tests {
                         exhausted = true;
                         break;
                     }
-                    crate::parser::tokenizer::TokenizerPull::NeedInput => {
-                        panic!("complete fixture cannot starve")
-                    }
                 };
                 match &event {
                     Event::Diagnostic(id) => {

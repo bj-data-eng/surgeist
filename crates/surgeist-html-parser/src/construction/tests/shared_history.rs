@@ -1124,7 +1124,7 @@ fn source_less_append_lineage_visits_scale_with_retained_records_not_intervals_t
         let evidence = session.active().unwrap().evidence.as_ref().unwrap();
         let view = evidence.associations().unwrap();
         assert_eq!(view.len(), count + 2 + 2 * count - 1 + 1);
-        assert!((0..2 * count - 1).all(|index| view.cause(index).unwrap().source.is_none()));
+        assert!((0..2 * count - 1).all(|index| view.cause(index).unwrap().source().is_none()));
         let rows: Vec<_> = (0..view.len())
             .map(|index| view.row(index).unwrap())
             .collect();

@@ -34,7 +34,7 @@ use super::{
         ControlIdentity, HtmlParseInvariant, HtmlParseStop, HtmlParseWorkCategory, OwnedVec,
         ParseControl, WORK_QUANTUM,
     },
-    input::{AsciiComparison, AsciiMatch, InputCursor, InputRead},
+    input::{AsciiComparison, InputCursor, InputRead},
 };
 use crate::{HtmlSource, HtmlSourceRange};
 use states::{HtmlTokenizerIdentifier, HtmlTokenizerState};
@@ -243,102 +243,7 @@ fn release_attributes(
 /// This is an internal seam, not a public token stream or parsing report.
 pub(crate) enum TokenizerPull {
     Event(Event),
-    NeedInput,
     Exhausted,
-}
-#[derive(Clone, Copy, PartialEq)]
-enum StepProgress {
-    Advanced,
-    NeedInput,
-}
-#[derive(Clone, Copy)]
-enum ProofRole {
-    LessThan,
-    Slash,
-    Attribute,
-    Reference,
-}
-/// Anchors that retain one boundary proof, not a start/end pair.
-#[derive(Clone, Copy)]
-enum SingleProof {
-    Start,
-    Declaration,
-    AttributeEnd,
-}
-/// Only finite grammar-owned anchors are retained, never a source-boundary map.
-struct TokenizerProofs {
-    current: (
-        crate::source::ConsumedSourceBoundary,
-        crate::source::ConsumedSourceBoundary,
-    ),
-    previous: (
-        crate::source::ConsumedSourceBoundary,
-        crate::source::ConsumedSourceBoundary,
-    ),
-    start: crate::source::ConsumedSourceBoundary,
-    less_than: (
-        crate::source::ConsumedSourceBoundary,
-        crate::source::ConsumedSourceBoundary,
-    ),
-    slash: (
-        crate::source::ConsumedSourceBoundary,
-        crate::source::ConsumedSourceBoundary,
-    ),
-    pending: (
-        crate::source::ConsumedSourceBoundary,
-        crate::source::ConsumedSourceBoundary,
-        crate::source::ConsumedSourceBoundary,
-    ),
-    declaration: crate::source::ConsumedSourceBoundary,
-    attribute: (
-        crate::source::ConsumedSourceBoundary,
-        crate::source::ConsumedSourceBoundary,
-    ),
-    reference: (
-        crate::source::ConsumedSourceBoundary,
-        crate::source::ConsumedSourceBoundary,
-    ),
-}
-impl TokenizerProofs {
-    fn find(
-        &self,
-        offset: usize,
-        c: &mut ParseControl,
-    ) -> Result<crate::source::ConsumedSourceBoundary, HtmlParseStop> {
-        for proof in [
-            &self.current.0,
-            &self.current.1,
-            &self.previous.0,
-            &self.previous.1,
-            &self.start,
-            &self.less_than.0,
-            &self.less_than.1,
-            &self.slash.0,
-            &self.slash.1,
-            &self.pending.0,
-            &self.pending.1,
-            &self.pending.2,
-            &self.declaration,
-            &self.attribute.0,
-            &self.attribute.1,
-            &self.reference.0,
-            &self.reference.1,
-        ] {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            c.charge(
-                HtmlParseWorkCategory::InspectByte,
-                size_of::<usize>() as u64,
-            )?;
-            if proof.offset() == offset {
-                c.charge(
-                    HtmlParseWorkCategory::CopyByte,
-                    size_of::<crate::source::ConsumedSourceBoundary>() as u64,
-                )?;
-                return Ok(proof.clone());
-            }
-        }
-        Err(c.fail_invariant(HtmlParseInvariant::TokenizerState))
-    }
 }
 pub(crate) struct Tokenizer<'source> {
     owner: ControlIdentity,
@@ -363,8 +268,6 @@ pub(crate) struct Tokenizer<'source> {
     pending_len: usize,
     done: bool,
     lexical: Option<LexicalRef>,
-    proofs: Option<TokenizerProofs>,
-    reference: Option<char_ref::ReferenceContinuation>,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum TokenizerHandoffError {
@@ -411,10 +314,6 @@ impl<'source> Tokenizer<'source> {
         {
             return Err(TokenizerHandoffError::ActiveDraft);
         }
-        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        if self.reference.is_some() {
-            return Err(TokenizerHandoffError::ActiveDraft);
-        }
         Ok(())
     }
     /// Returns the qualified next position without decoding a next item. The
@@ -442,60 +341,8 @@ impl<'source> Tokenizer<'source> {
         last_start: Option<&DocumentString>,
         c: &mut ParseControl,
     ) -> Result<Self, HtmlParseStop> {
-        Self::create(
-            source,
-            state,
-            last_start,
-            #[cfg(test)]
-            false,
-            c,
-        )
-    }
-    #[cfg(test)]
-    pub(crate) fn progressive(
-        source: &'source HtmlSource,
-        state: HtmlTokenizerState,
-        last_start: Option<&DocumentString>,
-        c: &mut ParseControl,
-    ) -> Result<Self, HtmlParseStop> {
-        Self::create(source, state, last_start, true, c)
-    }
-    fn create(
-        source: &'source HtmlSource,
-        state: HtmlTokenizerState,
-        last_start: Option<&DocumentString>,
-        #[cfg(test)] progressive: bool,
-        c: &mut ParseControl,
-    ) -> Result<Self, HtmlParseStop> {
         c.require_source(source)?;
-        #[cfg(test)]
-        let cursor = if progressive {
-            InputCursor::progressive(source, c)?
-        } else {
-            InputCursor::new(source, c)?
-        };
-        #[cfg(not(test))]
         let cursor = InputCursor::new(source, c)?;
-        #[cfg(test)]
-        let proofs = if progressive {
-            let pair = cursor.consumed_span(c)?.expect("actual progressive span");
-            admit_record_write(size_of::<TokenizerProofs>(), 10, c)?;
-            Some(TokenizerProofs {
-                current: pair.clone(),
-                previous: pair.clone(),
-                start: pair.0.clone(),
-                less_than: pair.clone(),
-                slash: pair.clone(),
-                pending: (pair.0.clone(), pair.0.clone(), pair.1.clone()),
-                declaration: pair.0.clone(),
-                attribute: pair.clone(),
-                reference: pair,
-            })
-        } else {
-            None
-        };
-        #[cfg(not(test))]
-        let proofs = None;
         let temporary = DraftText::new(c)?;
         let mut name = Utf16Buffer::new(c)?;
         if let Some(last) = last_start
@@ -505,15 +352,7 @@ impl<'source> Tokenizer<'source> {
             temporary.release(c)?;
             return Err(stop);
         }
-        #[cfg(test)]
-        let range = if progressive {
-            cursor.next_anchor(c)
-        } else {
-            cursor.checked_range(0, 0, c)
-        };
-        #[cfg(not(test))]
-        let range = cursor.checked_range(0, 0, c);
-        let range = match range {
+        let range = match cursor.checked_range(0, 0, c) {
             Ok(range) => range,
             Err(stop) => {
                 name.release(c)?;
@@ -547,8 +386,6 @@ impl<'source> Tokenizer<'source> {
             pending_len: 0,
             done: false,
             lexical: None,
-            proofs,
-            reference: None,
         })
     }
     /// The tree owner supplies the actual adjusted-current-node namespace fact
@@ -562,18 +399,7 @@ impl<'source> Tokenizer<'source> {
         c.require_identity(&self.owner)?;
         while self.pending_len == 0 && !self.done {
             c.charge(HtmlParseWorkCategory::StateStep, 1)?;
-            let progress = if self.reference.is_some() {
-                self.resume_reference(c, evidence)?
-            } else {
-                self.step(c, cdata_allowed, evidence)?
-            };
-            if progress == StepProgress::NeedInput {
-                c.checkpoint()?;
-                if self.pending_len == 0 {
-                    return Ok(TokenizerPull::NeedInput);
-                }
-                break;
-            }
+            self.step(c, cdata_allowed, evidence)?;
         }
         c.checkpoint()?;
         let Some(remaining) = self.pending_len.checked_sub(1) else {
@@ -607,18 +433,6 @@ impl<'source> Tokenizer<'source> {
             None => Err(c.fail_invariant(HtmlParseInvariant::TokenizerState)),
         }
     }
-    #[cfg(test)]
-    pub(crate) fn make_available(
-        &mut self,
-        through: usize,
-        c: &mut ParseControl,
-    ) -> Result<(), HtmlParseStop> {
-        self.cursor.make_available(through, c)
-    }
-    #[cfg(test)]
-    pub(crate) fn seal_input(&mut self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
-        self.cursor.seal_input(c)
-    }
     /// Applied only between pulls by the concrete tree algorithm.
     pub(crate) fn set_state(
         &mut self,
@@ -631,9 +445,6 @@ impl<'source> Tokenizer<'source> {
         Ok(())
     }
     pub(crate) fn release(mut self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
-        if let Some(reference) = self.reference {
-            reference.release(c)?;
-        }
         self.temporary.release(c)?;
         self.last_start.release(c)?;
         if let Some(t) = self.tag {
@@ -662,125 +473,14 @@ impl<'source> Tokenizer<'source> {
         end: usize,
         c: &mut ParseControl,
     ) -> Result<HtmlSourceRange, HtmlParseStop> {
-        if self.proofs.is_some() {
-            let start = self.boundary_proof(start, c)?;
-            let end = self.boundary_proof(end, c)?;
-            self.cursor.range_between(&start, &end, c)
-        } else {
-            self.cursor.checked_range(start, end, c)
-        }
-    }
-    fn boundary_proof(
-        &self,
-        offset: usize,
-        c: &mut ParseControl,
-    ) -> Result<crate::source::ConsumedSourceBoundary, HtmlParseStop> {
-        self.proofs
-            .as_ref()
-            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
-            .find(offset, c)
-    }
-    fn sync_proofs(&mut self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
-        let Some(p) = self.proofs.as_mut() else {
-            return Ok(());
-        };
-        if let Some(pair) = self.cursor.consumed_span(c)? {
-            admit_record_write(
-                const { 4 * size_of::<crate::source::ConsumedSourceBoundary>() },
-                2,
-                c,
-            )?;
-            p.previous = p.current.clone();
-            p.current = pair;
-        }
-        Ok(())
-    }
-    fn save_proof_range(
-        &mut self,
-        role: ProofRole,
-        start: usize,
-        end: usize,
-        c: &mut ParseControl,
-    ) -> Result<(), HtmlParseStop> {
-        let Some(p) = self.proofs.as_mut() else {
-            return Ok(());
-        };
-        let a = p.find(start, c)?;
-        let b = p.find(end, c)?;
-        admit_record_write(
-            const { 2 * size_of::<crate::source::ConsumedSourceBoundary>() },
-            1,
-            c,
-        )?;
-        match role {
-            ProofRole::LessThan => p.less_than = (a, b),
-            ProofRole::Slash => p.slash = (a, b),
-            ProofRole::Attribute => p.attribute = (a, b),
-            ProofRole::Reference => p.reference = (a, b),
-        }
-        Ok(())
-    }
-    /// Retains the pending syntax range together with the current start.
-    fn save_syntax_proof(
-        &mut self,
-        start: usize,
-        end: usize,
-        c: &mut ParseControl,
-    ) -> Result<(), HtmlParseStop> {
-        let Some(p) = self.proofs.as_mut() else {
-            return Ok(());
-        };
-        let a = p.find(start, c)?;
-        let b = p.find(end, c)?;
-        let middle = p.find(self.current.start(), c)?;
-        admit_record_write(
-            const { 3 * size_of::<crate::source::ConsumedSourceBoundary>() },
-            1,
-            c,
-        )?;
-        p.pending = (a, middle, b);
-        Ok(())
-    }
-    /// Retains one proved boundary of a progressive tokenizer; a complete
-    /// tokenizer keeps no proofs.
-    fn save_single_proof(
-        &mut self,
-        role: SingleProof,
-        offset: usize,
-        c: &mut ParseControl,
-    ) -> Result<(), HtmlParseStop> {
-        if !self.cursor.is_progressive() {
-            return Ok(());
-        }
-        let p = self
-            .proofs
-            .as_mut()
-            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
-        let proof = p.find(offset, c)?;
-        admit_record_write(size_of::<crate::source::ConsumedSourceBoundary>(), 1, c)?;
-        match role {
-            SingleProof::Start => p.start = proof,
-            SingleProof::Declaration => p.declaration = proof,
-            SingleProof::AttributeEnd => p.attribute.1 = proof,
-        }
-        Ok(())
+        self.cursor.checked_range(start, end, c)
     }
     fn read(
         &mut self,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
     ) -> Result<Option<u32>, HtmlParseStop> {
-        let read = if self.cursor.is_progressive() {
-            match self.cursor.poll_consume(c)? {
-                super::input::InputPoll::Ready(read) => read,
-                super::input::InputPoll::NeedInput => {
-                    return Err(c.fail_invariant(HtmlParseInvariant::InputCursorState));
-                }
-            }
-        } else {
-            self.cursor.consume(c)?
-        };
-        self.sync_proofs(c)?;
+        let read = self.cursor.consume(c)?;
         match read {
             InputRead::Character(ch) => {
                 if ch.source() != &self.current {
@@ -861,18 +561,11 @@ impl<'source> Tokenizer<'source> {
     }
     fn remember_slash(&mut self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         admit_record_write(size_of::<HtmlSourceRange>(), 1, c)?;
-        self.save_proof_range(
-            ProofRole::Slash,
-            self.current.start(),
-            self.current.end(),
-            c,
-        )?;
         self.slash = self.current.clone();
         Ok(())
     }
     fn remember_current_syntax(&mut self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         admit_record_write(size_of::<HtmlSourceRange>(), 1, c)?;
-        self.save_syntax_proof(self.current.start(), self.current.end(), c)?;
         self.pending_syntax = self.current.clone();
         Ok(())
     }
@@ -882,7 +575,6 @@ impl<'source> Tokenizer<'source> {
         c: &mut ParseControl,
     ) -> Result<(), HtmlParseStop> {
         admit_record_write(size_of::<HtmlSourceRange>(), 1, c)?;
-        self.save_syntax_proof(source.start(), source.end(), c)?;
         self.pending_syntax = source;
         Ok(())
     }
@@ -1119,12 +811,6 @@ impl<'source> Tokenizer<'source> {
         evidence: &mut ParseEvidence,
     ) -> Result<(), HtmlParseStop> {
         self.finish_attribute(c, evidence)?;
-        self.save_proof_range(
-            ProofRole::Attribute,
-            self.current.start(),
-            self.current.end(),
-            c,
-        )?;
         let lexical = evidence.lexical_begin(
             c,
             &self.current,
@@ -1314,7 +1000,6 @@ impl<'source> Tokenizer<'source> {
         Ok(())
     }
     fn attribute_end(&mut self, end: usize, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
-        self.save_single_proof(SingleProof::AttributeEnd, end, c)?;
         if let Some(t) = &mut self.tag
             && let Some(a) = &mut t.attribute
         {
@@ -1599,25 +1284,13 @@ impl<'source> Tokenizer<'source> {
         insensitive: bool,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<AsciiMatch, HtmlParseStop> {
+    ) -> Result<bool, HtmlParseStop> {
         let comparison = if insensitive {
             AsciiComparison::Insensitive
         } else {
             AsciiComparison::Sensitive
         };
-        let lookahead = if self.cursor.is_progressive() {
-            self.cursor.poll_matches_ascii(bytes, comparison, c)?
-        } else {
-            let lookahead = self.cursor.matches_ascii(bytes, comparison, c)?;
-            super::input::Lookahead {
-                result: if lookahead.result {
-                    AsciiMatch::Matched
-                } else {
-                    AsciiMatch::Mismatched
-                },
-                examined: lookahead.examined,
-            }
-        };
+        let lookahead = self.cursor.matches_ascii(bytes, comparison, c)?;
         // Report the next input character's stream error before the mismatch
         // is acted on. The pinned standard sets no relative order between
         // input-stream and tokenizer errors; this is the smallest rule
@@ -1632,9 +1305,8 @@ impl<'source> Tokenizer<'source> {
                 evidence,
             )?;
         }
-        let matched = lookahead.result;
-        if matched != AsciiMatch::Matched {
-            return Ok(matched);
+        if !lookahead.result {
+            return Ok(false);
         }
         for _ in bytes {
             c.charge(HtmlParseWorkCategory::StateStep, 1)?;
@@ -1650,7 +1322,7 @@ impl<'source> Tokenizer<'source> {
                 )?;
             }
         }
-        Ok(AsciiMatch::Matched)
+        Ok(true)
     }
     fn raw_fallback(
         &mut self,

@@ -84,8 +84,8 @@ pub enum HtmlParseInvariant {
     ZeroSizedStorage,
     /// A stopped parse has no source binding where one was admitted.
     MissingSource,
-    /// The input cursor (decoded input, position, checkpoint, pending-input
-    /// poll or consumed boundary) is in a state its own contract excludes.
+    /// The input cursor (decoded input, position or checkpoint) is in a state
+    /// its own contract excludes.
     InputCursorState,
     /// A value, ticket or capacity owned under one parse controller was
     /// presented to another.

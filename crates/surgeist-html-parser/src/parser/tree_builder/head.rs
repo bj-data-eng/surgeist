@@ -123,7 +123,6 @@ pub enum HtmlParseConstructionBoundary {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum HeadStep {
-    NeedInput,
     Consumed,
     Complete,
     Boundary(HtmlParseConstructionBoundary),
@@ -671,9 +670,6 @@ impl<'source> HeadStage<'source> {
             match pulled {
                 super::super::tokenizer::TokenizerPull::Event(event) => {
                     state.lexical_pending = Some(event)
-                }
-                super::super::tokenizer::TokenizerPull::NeedInput => {
-                    return Ok(HeadStep::NeedInput);
                 }
                 super::super::tokenizer::TokenizerPull::Exhausted => {
                     return Err(HeadError::TokenizerExhausted);
@@ -2521,7 +2517,7 @@ mod event_retention_tests {
         assert!(input.is_none());
         assert_eq!(complete.diagnostics().unwrap().len(), 32);
         {
-            use crate::construction::native_view::NativeKind;
+            use crate::construction::tests::native_view::NativeKind;
             let mut view = complete.native_view().unwrap();
             let root = view.root().unwrap();
             let html = view.child_at(&root, 1).unwrap().unwrap();

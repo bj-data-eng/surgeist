@@ -3673,8 +3673,8 @@ diagnostic expectations; the remaining corpus error metadata is unverified.
 Selected [character-reference recovery literals](../../crates/surgeist-html-parser/src/parser/tree_builder/conformance.rs)
 check decimal and hexadecimal NULL, invalid scalars, C1/control and noncharacter
 diagnostics, semicolon-error ordering, failed numeric rewind, unknown names and
-the attribute exception. Both UTF-8 and UTF-16 inputs run whole, at every two-part
-cut and unit at a time against independent typed records and output intervals.
+the attribute exception. Both UTF-8 and UTF-16 inputs run whole against independent typed
+records and output intervals.
 Supplementary and two-code-point replacements retain exact overlapping source
 maps; attribute literals also check retained lexical quotes. A
 [public reader witness](../../crates/surgeist-html-parser/tests/parser/parse/reports.rs) checks the same source identities,
@@ -3688,8 +3688,7 @@ check the [five pinned PI states](../../references/html-language-syntax-parser--
 through the same completed evidence owner. They distinguish preserved target
 case, skipped data whitespace, literal ampersands and NULL data, question-mark
 fallback, both closing forms, reserved or invalid targets recovered as comments,
-and abandoned drafts with no native PI at EOF. UTF-8 and UTF-16 cases run whole,
-at every two-part cut and one unit at a time; paired and isolated-surrogate data
+and abandoned drafts with no native PI at EOF. UTF-8 and UTF-16 cases run whole; paired and isolated-surrogate data
 and CRLF retain separate original-source and output intervals. Lexical target,
 data, opening/closing syntax, whitespace and EOF anchors remain available with
 all applicable reverse results. A [public witness](../../crates/surgeist-html-parser/tests/parser/parse/reports.rs) checks
@@ -3712,25 +3711,23 @@ complete diagnostic coverage or whole HTML parser conformance.
 The [origin record](../../crates/surgeist-html-parser/PARSER-ORIGINS.md#ordered-private-parse-evidence) distinguishes
 this Surgeist-owned storage and consumer from the adapted parser emitters.
 
-<a id="private-feeding-continuation"></a>
+<a id="private-ordinary-completion"></a>
 
-The internal ordinary driver can progressively expose an existing
-immutable source through the [input cursor](../../crates/surgeist-html-parser/src/parser/input.rs), then explicitly
-seal it. `NeedInput` preserves the actual tokenizer, pending character reference
-and construction owner until more source becomes available. It does not mean EOF
-or restart parsing. Decoding, preprocessing and source ranges retain their original
-UTF-8 or UTF-16 coordinates; the original source is admitted once through the same
-controller. Advance, seal and step share the existing terminal-stop policy, and
-retries after a stop preserve its usage snapshot.
+The internal ordinary driver parses a complete, immutable source through the
+[input cursor](../../crates/surgeist-html-parser/src/parser/input.rs). A position at
+the end of the source is EOF; the cursor never reports a missing frontier, and
+the tokenizer decodes a character reference in one pass over fixed storage, so
+no pending reference is retained between pulls. Decoding, preprocessing and
+source ranges retain their original UTF-8 or UTF-16 coordinates; the original
+source is admitted once through the same controller, and a stop is terminal.
 
-The [literal partition tests](../../crates/surgeist-html-parser/src/parser/tree_builder/tests.rs) cover every cut
-and unit-at-a-time exposure for selected ordinary constructions. Completed
-observations check native trees, retained qualified attribute order, exact ordered
-diagnostic ranges, and selected text/attribute/comment provenance, including
-fostered text, template contents and selectedcontent copies. These selected
-observations do not certify every provenance row or every HTML construction.
-The input remains wholly owned and immutable; this private mechanism does not
-provide a public streaming API, transport buffers or fragment feeding.
+The [completed-input tests](../../crates/surgeist-html-parser/src/parser/tree_builder/tests.rs)
+check native trees, retained qualified attribute order, exact ordered diagnostic
+ranges, and selected text/attribute/comment provenance for selected ordinary
+constructions, including fostered text, template contents and selectedcontent
+copies. These selected observations do not certify every provenance row or every
+HTML construction. The input remains wholly owned and immutable; there is no
+public streaming API, transport buffer or fragment feeding.
 
 <a id="private-conformance-observation"></a>
 
@@ -3738,7 +3735,7 @@ The [selected conformance coverage matrix](../../crates/surgeist-html-parser/doc
 defining clauses, actual contexts and independent expectations to their tests,
 with corpus selections, capability exclusions and measurement qualifications.
 
-The test-compiled [completed native observer](../../crates/surgeist-html-parser/src/construction/native_view.rs)
+The test-compiled [completed native observer](../../crates/surgeist-html-parser/src/construction/tests/native_view.rs)
 lends the whole successfully completed ordinary owner described above. It borrows
 qualified native records and UTF-16 units through the same controller; it does
 not freeze, clone backing, extract an incomplete arena or manufacture a public
@@ -3765,14 +3762,11 @@ reason.
 
 All 111 ordinary template cases run through both UTF-8 and UTF-16 inputs. Case
 109 runs separately through the actual template-context fragment owner in both
-encodings, comparing its output root and associated template contents. Selected
-template transitions (81, 94, 100, 108, 110–112) also run at every two-part cut
-and with unit-at-a-time exposure, for 670 progressive ordinary runs. The
+encodings, comparing its output root and associated template contents. The
 AfterHead template cases retain the saved head as their insertion parent while
 removing that exact temporary head identity from the open-element stack.
 
-All 16 comments cases run through both encodings, every two-part cut and
-unit-at-a-time exposure. Source-qualified literal expectations compare 27 typed
+All 16 comments cases run through both encodings. Source-qualified literal expectations compare 27 typed
 diagnostics in chronology with their rule, context, token and source ranges.
 Additional UTF-16 inputs cover isolated surrogates, surrogate pairs and CRLF.
 The nested-template EOF case separately checks two distinct diagnostic
@@ -3798,7 +3792,7 @@ expectations exercise that distinction. The corpus doctype dump also collapses
 absent and empty identifiers, so source supplements disambiguate actual parser
 creation without erasing native null/empty fields. The selected typed diagnostic
 expectations above do not certify all retained `#errors` and `#new-errors`
-metadata. Scripting-Enabled replay and progressive fragment feeding remain
+metadata. Scripting-Enabled replay and fragment feeding remain
 unexecuted here; newer HTML disagreements require source-qualified expectations
 before expansion.
 

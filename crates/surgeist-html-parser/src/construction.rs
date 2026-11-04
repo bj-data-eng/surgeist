@@ -68,16 +68,12 @@ mod effects;
 pub(crate) use effects::{fault_effect_drain, take_effect_fault};
 pub(crate) mod fragment_document;
 #[cfg(test)]
-mod link_history;
-#[cfg(test)]
 pub(crate) use context::ParserDocumentReference;
 use context::{DocumentRef, FragmentContextStorage};
 pub(crate) mod evidence;
 use evidence::ParseEvidence;
 mod foreign;
 pub(crate) mod history;
-#[cfg(test)]
-pub(crate) mod native_view;
 mod pi;
 mod radio;
 mod range;
@@ -106,14 +102,14 @@ mod tree_root;
 pub use completion::{HtmlParseCompletion, HtmlParseDocumentState, HtmlParseReadiness};
 use effects::ConstructionEffects;
 pub(crate) use foreign::ForeignNamespace;
-#[cfg(test)]
-pub(crate) use native_view::NativeView;
 use select::SelectMetadata;
 pub use svg::HtmlParseSvgScriptOrigin;
 pub(crate) use svg::SvgScriptState;
 pub(crate) use template::{CreationContext, CreationLocation};
 #[cfg(test)]
 pub(crate) use template::{ParserDocument, TemplateState};
+#[cfg(test)]
+pub(crate) use tests::native_view::NativeView;
 
 mod cleanup;
 mod formatting_creation;
@@ -262,4 +258,4 @@ fn exact_ascii(
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

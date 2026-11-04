@@ -4,7 +4,6 @@
 use super::control::{
     ControlIdentity, HtmlParseInvariant, HtmlParseStop, HtmlParseWorkCategory, ParseControl,
 };
-use crate::source::{ConsumedBoundaryAdvance, ConsumedSourceBoundary};
 #[cfg(test)]
 use crate::{HtmlParseCancellation, HtmlParseLimits, HtmlParseResource};
 use crate::{HtmlSource, HtmlSourceId, HtmlSourceRange};
@@ -66,20 +65,6 @@ pub(crate) enum InputRead {
     Eof(HtmlSourceRange),
 }
 
-/// A source-availability edge is neither a saved character nor EOF.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum InputPoll {
-    Ready(InputRead),
-    NeedInput,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum AsciiMatch {
-    Matched,
-    Mismatched,
-    NeedInput,
-}
-
 /// The input-stream error of the next input character, committed by an ASCII
 /// lookahead that stopped at it. That character is the one the examining state
 /// decides on, so its record is committed with the lookahead, ahead of the
@@ -99,34 +84,9 @@ pub(crate) struct Lookahead<T> {
     pub(crate) examined: Option<ExaminedDiagnostic>,
 }
 
-enum InputAvailability {
-    Complete,
-    #[cfg(test)]
-    Progressive {
-        through: usize,
-        sealed: bool,
-        boundary: ConsumedSourceBoundary,
-        current_span: Option<(ConsumedSourceBoundary, ConsumedSourceBoundary)>,
-    },
-}
-
 struct DecodedRaw {
     code_point: CodePoint,
     end: usize,
-    boundary: Option<ConsumedSourceBoundary>,
-}
-
-enum RawPoll {
-    Ready(Option<DecodedRaw>),
-    NeedInput,
-}
-
-enum DecodedPoll {
-    Ready {
-        read: InputRead,
-        _boundary: Option<ConsumedSourceBoundary>,
-    },
-    NeedInput,
 }
 
 impl InputRead {
@@ -154,16 +114,6 @@ pub(crate) struct InputCheckpoint {
     reconsume: bool,
 }
 
-/// The progressive marker additionally retains an actual consumed boundary.
-/// Keeping it distinct leaves the existing whole-source marker and its fees
-/// unchanged; neither marker owns availability or a second progress frontier.
-#[cfg(test)]
-pub(crate) struct ProgressiveInputCheckpoint {
-    checkpoint: InputCheckpoint,
-    boundary: ConsumedSourceBoundary,
-    current_span: Option<(ConsumedSourceBoundary, ConsumedSourceBoundary)>,
-}
-
 pub(crate) struct InputCursor<'source> {
     owner: ControlIdentity,
     source: &'source HtmlSource,
@@ -177,7 +127,6 @@ pub(crate) struct InputCursor<'source> {
     /// below the frontier carries no record, so replay and rewind cannot
     /// duplicate errors.
     processed_through: usize,
-    availability: InputAvailability,
     #[cfg(test)]
     cancel_after_consumed: Option<(usize, crate::HtmlParseCancellation)>,
 }
@@ -200,91 +149,9 @@ impl<'source> InputCursor<'source> {
             current: None,
             reconsume: false,
             processed_through: 0,
-            availability: InputAvailability::Complete,
             #[cfg(test)]
             cancel_after_consumed: None,
         })
-    }
-
-    /// Owns visibility of one original immutable source. This private producer
-    /// does not itself provide tokenizer continuation or parser feeding.
-    #[cfg(test)]
-    pub(crate) fn progressive(
-        source: &'source HtmlSource,
-        control: &mut ParseControl,
-    ) -> Result<Self, HtmlParseStop> {
-        control.require_source(source)?;
-        control.charge(
-            HtmlParseWorkCategory::CopyByte,
-            size_of::<ControlIdentity>() as u64,
-        )?;
-        control.charge(
-            HtmlParseWorkCategory::CopyByte,
-            size_of::<ConsumedSourceBoundary>() as u64,
-        )?;
-        control.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
-        Ok(Self {
-            owner: control.identity(),
-            source,
-            position: 0,
-            current: None,
-            reconsume: false,
-            processed_through: 0,
-            availability: InputAvailability::Progressive {
-                through: 0,
-                sealed: false,
-                boundary: source.initial_consumed_boundary(),
-                current_span: None,
-            },
-            #[cfg(test)]
-            cancel_after_consumed: None,
-        })
-    }
-
-    /// Advances a contiguous visible prefix; it does not inspect the endpoint.
-    /// Already-valid UTF-8 may be made available a byte at a time.
-    #[cfg(test)]
-    pub(crate) fn make_available(
-        &mut self,
-        through: usize,
-        control: &mut ParseControl,
-    ) -> Result<(), HtmlParseStop> {
-        control.require_identity(&self.owner)?;
-        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let InputAvailability::Progressive {
-            through: old,
-            sealed,
-            ..
-        } = &mut self.availability
-        else {
-            return Err(control.fail_invariant(HtmlParseInvariant::InputCursorState));
-        };
-        if *sealed || through < *old || through > self.source.len() {
-            return Err(control.fail_invariant(HtmlParseInvariant::InputCursorState));
-        }
-        control.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
-        *old = through;
-        Ok(())
-    }
-
-    /// Only full availability can be final. Exhausting an unsealed prefix is
-    /// NeedInput, including a prefix containing the whole supplied source.
-    #[cfg(test)]
-    pub(crate) fn seal_input(&mut self, control: &mut ParseControl) -> Result<(), HtmlParseStop> {
-        control.require_identity(&self.owner)?;
-        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let InputAvailability::Progressive {
-            through, sealed, ..
-        } = &mut self.availability
-        else {
-            return Err(control.fail_invariant(HtmlParseInvariant::InputCursorState));
-        };
-        if *sealed || *through != self.source.len() {
-            return Err(control.fail_invariant(HtmlParseInvariant::InputCursorState));
-        }
-        control.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
-        *sealed = true;
-        Ok(())
     }
 
     pub(crate) fn position(&self, control: &mut ParseControl) -> Result<usize, HtmlParseStop> {
@@ -296,7 +163,6 @@ impl<'source> InputCursor<'source> {
     pub(crate) fn peek(&self, control: &mut ParseControl) -> Result<InputRead, HtmlParseStop> {
         control.require_identity(&self.owner)?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        self.require_complete(control)?;
         if self.reconsume {
             return self.saved_current(control);
         }
@@ -309,83 +175,19 @@ impl<'source> InputCursor<'source> {
     ) -> Result<InputRead, HtmlParseStop> {
         control.require_identity(&self.owner)?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        self.require_complete(control)?;
         let read = if self.reconsume {
             self.saved_current(control)?
         } else {
             self.decode_at(self.position, control)?
         };
-        self.commit_read(
-            read,
-            #[cfg(test)]
-            None,
-            control,
-        )
-    }
-
-    pub(crate) fn poll_peek(&self, control: &mut ParseControl) -> Result<InputPoll, HtmlParseStop> {
-        control.require_identity(&self.owner)?;
-        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        if self.reconsume {
-            return self.saved_current(control).map(InputPoll::Ready);
-        }
-        match self.decode_poll_at(self.position, self.boundary(), control)? {
-            DecodedPoll::Ready { read, .. } => Ok(InputPoll::Ready(read.without_record())),
-            DecodedPoll::NeedInput => Ok(InputPoll::NeedInput),
-        }
-    }
-
-    pub(crate) fn poll_consume(
-        &mut self,
-        control: &mut ParseControl,
-    ) -> Result<InputPoll, HtmlParseStop> {
-        control.require_identity(&self.owner)?;
-        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let decoded = if self.reconsume {
-            DecodedPoll::Ready {
-                read: self.saved_current(control)?,
-                _boundary: None,
-            }
-        } else {
-            self.decode_poll_at(self.position, self.boundary(), control)?
-        };
-        match decoded {
-            DecodedPoll::Ready {
-                read,
-                #[cfg(test)]
-                    _boundary: boundary,
-                ..
-            } => self
-                .commit_read(
-                    read,
-                    #[cfg(test)]
-                    boundary,
-                    control,
-                )
-                .map(InputPoll::Ready),
-            DecodedPoll::NeedInput => Ok(InputPoll::NeedInput),
-        }
+        self.commit_read(read, control)
     }
 
     fn commit_read(
         &mut self,
         mut read: InputRead,
-        #[cfg(test)] boundary: Option<ConsumedSourceBoundary>,
         control: &mut ParseControl,
     ) -> Result<InputRead, HtmlParseStop> {
-        #[cfg(test)]
-        let span = if let Some(end) = boundary.as_ref() {
-            control.charge(
-                HtmlParseWorkCategory::CopyByte,
-                (2 * size_of::<ConsumedSourceBoundary>()) as u64,
-            )?;
-            Some((
-                self.boundary().expect("actual progressive start").clone(),
-                end.clone(),
-            ))
-        } else {
-            None
-        };
         let end = match &read {
             InputRead::Character(character) => character.source.end(),
             InputRead::Eof(range) => range.end(),
@@ -398,25 +200,6 @@ impl<'source> InputCursor<'source> {
             size_of::<InputRead>() as u64,
         )?;
         control.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
-        #[cfg(test)]
-        if span.is_some() {
-            control.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
-        }
-        #[cfg(test)]
-        if let InputAvailability::Progressive {
-            boundary: current, ..
-        } = &mut self.availability
-            && let Some(boundary) = boundary
-        {
-            *current = boundary;
-        }
-        #[cfg(test)]
-        if let InputAvailability::Progressive { current_span, .. } = &mut self.availability {
-            // A reconsume has no new proof and preserves the saved span.
-            if let Some(span) = span {
-                *current_span = Some(span);
-            }
-        }
         self.current = Some(read.clone().without_record());
         self.position = end;
         self.processed_through = self.processed_through.max(end);
@@ -443,33 +226,11 @@ impl<'source> InputCursor<'source> {
     ) -> Result<InputCheckpoint, HtmlParseStop> {
         control.require_identity(&self.owner)?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        self.require_complete(control)?;
         control.charge(
             HtmlParseWorkCategory::CopyByte,
             size_of::<InputCheckpoint>() as u64,
         )?;
         Ok(self.checkpoint())
-    }
-
-    #[cfg(test)]
-    pub(crate) fn mark_progressive(
-        &self,
-        control: &mut ParseControl,
-    ) -> Result<ProgressiveInputCheckpoint, HtmlParseStop> {
-        control.require_identity(&self.owner)?;
-        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let Some(boundary) = self.boundary() else {
-            return Err(control.fail_invariant(HtmlParseInvariant::InputCursorState));
-        };
-        control.charge(
-            HtmlParseWorkCategory::CopyByte,
-            size_of::<ProgressiveInputCheckpoint>() as u64,
-        )?;
-        Ok(ProgressiveInputCheckpoint {
-            checkpoint: self.checkpoint(),
-            boundary: boundary.clone(),
-            current_span: self.current_span().cloned(),
-        })
     }
 
     fn checkpoint(&self) -> InputCheckpoint {
@@ -490,7 +251,6 @@ impl<'source> InputCursor<'source> {
         control.require_identity(&self.owner)?;
         control.require_identity(&mark.owner)?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        self.require_complete(control)?;
         if mark.source != *self.source.identity() || mark.position > self.position {
             return Err(control.fail_invariant(HtmlParseInvariant::InputCursorState));
         }
@@ -502,43 +262,6 @@ impl<'source> InputCursor<'source> {
         self.position = mark.position;
         self.current = mark.current.clone();
         self.reconsume = mark.reconsume;
-        Ok(())
-    }
-
-    #[cfg(test)]
-    pub(crate) fn rewind_progressive(
-        &mut self,
-        mark: &ProgressiveInputCheckpoint,
-        control: &mut ParseControl,
-    ) -> Result<(), HtmlParseStop> {
-        control.require_identity(&self.owner)?;
-        control.require_identity(&mark.checkpoint.owner)?;
-        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        if self.boundary().is_none()
-            || mark.checkpoint.source != *self.source.identity()
-            || mark.checkpoint.position > self.position
-            || mark.boundary.offset() != mark.checkpoint.position
-        {
-            return Err(control.fail_invariant(HtmlParseInvariant::InputCursorState));
-        }
-        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        self.source
-            .require_consumed_boundary(&mark.boundary)
-            .map_err(|_| control.fail_invariant(HtmlParseInvariant::InputCursorState))?;
-        control.charge(
-            HtmlParseWorkCategory::CopyByte,
-            size_of::<ProgressiveInputCheckpoint>() as u64,
-        )?;
-        control.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
-        self.position = mark.checkpoint.position;
-        self.current = mark.checkpoint.current.clone();
-        self.reconsume = mark.checkpoint.reconsume;
-        if let InputAvailability::Progressive { boundary, .. } = &mut self.availability {
-            *boundary = mark.boundary.clone();
-        }
-        if let InputAvailability::Progressive { current_span, .. } = &mut self.availability {
-            *current_span = mark.current_span.clone();
-        }
         Ok(())
     }
 
@@ -555,7 +278,6 @@ impl<'source> InputCursor<'source> {
     ) -> Result<Lookahead<bool>, HtmlParseStop> {
         control.require_identity(&self.owner)?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        self.require_complete(control)?;
         let mut position = self.position;
         let mut replay = self.reconsume;
         for (index, &byte) in expected.iter().enumerate() {
@@ -601,84 +323,6 @@ impl<'source> InputCursor<'source> {
         })
     }
 
-    /// An available matching prefix cannot decide a mismatch. This lookahead
-    /// does not consume; like [`Self::matches_ascii`] it commits the stream
-    /// error of a mismatching next input character.
-    pub(crate) fn poll_matches_ascii(
-        &mut self,
-        expected: &[u8],
-        comparison: AsciiComparison,
-        control: &mut ParseControl,
-    ) -> Result<Lookahead<AsciiMatch>, HtmlParseStop> {
-        control.require_identity(&self.owner)?;
-        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let mut position = self.position;
-        let mut replay = self.reconsume;
-        if self.boundary().is_some() {
-            control.charge(
-                HtmlParseWorkCategory::CopyByte,
-                size_of::<ConsumedSourceBoundary>() as u64,
-            )?;
-        }
-        let mut boundary = self.boundary().cloned();
-        for (index, expected) in expected.iter().enumerate() {
-            control.charge(HtmlParseWorkCategory::InspectByte, 1)?;
-            let byte = *expected;
-            if !byte.is_ascii() {
-                return Err(control.fail_invariant(HtmlParseInvariant::InputCursorState));
-            }
-            let read = if replay {
-                replay = false;
-                self.saved_current(control)?
-            } else {
-                match self.decode_poll_at(position, boundary.as_ref(), control)? {
-                    DecodedPoll::NeedInput => {
-                        return Ok(Lookahead {
-                            result: AsciiMatch::NeedInput,
-                            examined: None,
-                        });
-                    }
-                    DecodedPoll::Ready {
-                        read,
-                        _boundary: end,
-                    } => {
-                        boundary = end;
-                        read
-                    }
-                }
-            };
-            let InputRead::Character(character) = read else {
-                return Ok(Lookahead {
-                    result: AsciiMatch::Mismatched,
-                    examined: None,
-                });
-            };
-            position = character.source.end();
-            control.charge(
-                HtmlParseWorkCategory::InspectByte,
-                size_of::<CodePoint>() as u64,
-            )?;
-            let value = character.code_point.value();
-            let equal = value <= 0x7F && {
-                let actual = value as u8;
-                match comparison {
-                    AsciiComparison::Sensitive => actual == byte,
-                    AsciiComparison::Insensitive => actual.eq_ignore_ascii_case(&byte),
-                }
-            };
-            if !equal {
-                return Ok(Lookahead {
-                    result: AsciiMatch::Mismatched,
-                    examined: self.commit_examined(&character, index == 0),
-                });
-            }
-        }
-        Ok(Lookahead {
-            result: AsciiMatch::Matched,
-            examined: None,
-        })
-    }
-
     /// Commits the stream diagnostic of the next input character a lookahead
     /// stopped at, once. A character already processed by an earlier traversal
     /// or lookahead reports nothing, so no replay can emit it twice. Later
@@ -713,42 +357,6 @@ impl<'source> InputCursor<'source> {
             .ok_or_else(|| control.fail_invariant(HtmlParseInvariant::InputCursorState))
     }
 
-    pub(crate) fn is_progressive(&self) -> bool {
-        match self.availability {
-            InputAvailability::Complete => false,
-            #[cfg(test)]
-            InputAvailability::Progressive { .. } => true,
-        }
-    }
-    fn current_span(&self) -> Option<&(ConsumedSourceBoundary, ConsumedSourceBoundary)> {
-        match &self.availability {
-            #[cfg(test)]
-            InputAvailability::Progressive { current_span, .. } => current_span.as_ref(),
-            InputAvailability::Complete => None,
-        }
-    }
-    /// Actual saved decoded endpoints, including the preprocessed CRLF span.
-    pub(crate) fn consumed_span(
-        &self,
-        c: &mut ParseControl,
-    ) -> Result<Option<(ConsumedSourceBoundary, ConsumedSourceBoundary)>, HtmlParseStop> {
-        c.require_identity(&self.owner)?;
-        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        // Only a progressive cursor has a boundary, so the same match decides
-        // whether there is a span and supplies the boundary it falls back to.
-        let Some(boundary) = self.boundary() else {
-            return Ok(None);
-        };
-        c.charge(
-            HtmlParseWorkCategory::CopyByte,
-            const { 2 * size_of::<ConsumedSourceBoundary>() } as u64,
-        )?;
-        Ok(Some(
-            self.current_span()
-                .cloned()
-                .unwrap_or_else(|| (boundary.clone(), boundary.clone())),
-        ))
-    }
     /// A test-only synchronization point on actual consumed progress. The
     /// original handle is polled by the existing input-read admission path.
     #[cfg(test)]
@@ -767,24 +375,13 @@ impl<'source> InputCursor<'source> {
         self.cancel_after_consumed = Some((through, cancellation));
         Ok(())
     }
-    /// Does not decode a next item; safe even at an unavailable frontier.
+    /// Does not decode a next item.
     pub(crate) fn next_anchor(
         &self,
         c: &mut ParseControl,
     ) -> Result<HtmlSourceRange, HtmlParseStop> {
         c.require_identity(&self.owner)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        if let Some(boundary) = self.boundary() {
-            let next = if self.reconsume {
-                &self
-                    .current_span()
-                    .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::InputCursorState))?
-                    .0
-            } else {
-                boundary
-            };
-            return self.proven_range(next, next, c);
-        }
         let position = if self.reconsume {
             match self
                 .current
@@ -799,31 +396,6 @@ impl<'source> InputCursor<'source> {
         };
         self.checked_range(position, position, c)
     }
-    pub(crate) fn range_between(
-        &self,
-        start: &ConsumedSourceBoundary,
-        end: &ConsumedSourceBoundary,
-        c: &mut ParseControl,
-    ) -> Result<HtmlSourceRange, HtmlParseStop> {
-        c.require_identity(&self.owner)?;
-        self.proven_range(start, end, c)
-    }
-    fn boundary(&self) -> Option<&ConsumedSourceBoundary> {
-        match &self.availability {
-            InputAvailability::Complete => None,
-            #[cfg(test)]
-            InputAvailability::Progressive { boundary, .. } => Some(boundary),
-        }
-    }
-
-    fn require_complete(&self, control: &mut ParseControl) -> Result<(), HtmlParseStop> {
-        if matches!(self.availability, InputAvailability::Complete) {
-            Ok(())
-        } else {
-            Err(control.fail_invariant(HtmlParseInvariant::InputCursorState))
-        }
-    }
-
     /// Produces an exact supplied-input range through this cursor's owner.
     /// Arbitrary offsets require a separately admitted start-boundary check:
     /// the safe source provider stops after an invalid start, whereas the shared
@@ -840,7 +412,6 @@ impl<'source> InputCursor<'source> {
         control.require_identity(&self.owner)?;
         control.require_source(self.source)?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        self.require_complete(control)?;
         if start > end || end > self.source.len() {
             return Err(control.fail_invariant(HtmlParseInvariant::InputCursorState));
         }
@@ -861,63 +432,29 @@ impl<'source> InputCursor<'source> {
         position: usize,
         control: &mut ParseControl,
     ) -> Result<InputRead, HtmlParseStop> {
-        match self.decode_poll_at(position, None, control)? {
-            DecodedPoll::Ready { read, .. } => Ok(read),
-            DecodedPoll::NeedInput => {
-                Err(control.fail_invariant(HtmlParseInvariant::InputCursorState))
-            }
-        }
-    }
-
-    fn decode_poll_at(
-        &self,
-        position: usize,
-        start: Option<&ConsumedSourceBoundary>,
-        control: &mut ParseControl,
-    ) -> Result<DecodedPoll, HtmlParseStop> {
         // Test synchronization fires only after actual committed progress and
-        // before the existing charged read/poll. It adds no production poll.
+        // before the existing charged read. It adds no production poll.
         #[cfg(test)]
         if let Some((through, cancellation)) = &self.cancel_after_consumed
             && self.position >= *through
         {
             cancellation.cancel();
         }
-        let raw = match self.read_raw_at(position, start, control)? {
-            RawPoll::NeedInput => return Ok(DecodedPoll::NeedInput),
-            RawPoll::Ready(raw) => raw,
-        };
         let Some(DecodedRaw {
             mut code_point,
             mut end,
-            mut boundary,
-        }) = raw
+        }) = self.read_raw_at(position, control)?
         else {
-            let range = match start {
-                Some(start) => self.proven_range(start, start, control)?,
-                None => self.range(position, position, control)?,
-            };
-            if start.is_some() {
-                control.charge(
-                    HtmlParseWorkCategory::CopyByte,
-                    size_of::<ConsumedSourceBoundary>() as u64,
-                )?;
-            }
-            return Ok(DecodedPoll::Ready {
-                read: InputRead::Eof(range),
-                _boundary: start.cloned(),
-            });
+            return Ok(InputRead::Eof(self.range(position, position, control)?));
         };
         control.charge(
             HtmlParseWorkCategory::InspectByte,
             size_of::<CodePoint>() as u64,
         )?;
         let preprocessing = if code_point.value() == 0x0D {
-            let was_crlf = match self.read_raw_at(end, boundary.as_ref(), control)? {
-                RawPoll::NeedInput => return Ok(DecodedPoll::NeedInput),
-                RawPoll::Ready(Some(next)) if next.code_point.value() == 0x0A => {
+            let was_crlf = match self.read_raw_at(end, control)? {
+                Some(next) if next.code_point.value() == 0x0A => {
                     end = next.end;
-                    boundary = next.boundary;
                     true
                 }
                 _ => false,
@@ -936,76 +473,12 @@ impl<'source> InputCursor<'source> {
             }
             .map(PreprocessingRecord::Diagnostic)
         };
-        let source = match (start, boundary.as_ref()) {
-            (Some(start), Some(end)) => self.proven_range(start, end, control)?,
-            (None, None) => self.range(position, end, control)?,
-            _ => return Err(control.fail_invariant(HtmlParseInvariant::InputCursorState)),
-        };
-        Ok(DecodedPoll::Ready {
-            read: InputRead::Character(InputCharacter {
-                code_point,
-                source,
-                preprocessing,
-            }),
-            _boundary: boundary,
-        })
-    }
-
-    fn proven_range(
-        &self,
-        start: &ConsumedSourceBoundary,
-        end: &ConsumedSourceBoundary,
-        control: &mut ParseControl,
-    ) -> Result<HtmlSourceRange, HtmlParseStop> {
-        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        control.charge(
-            HtmlParseWorkCategory::CopyByte,
-            size_of::<HtmlSourceRange>() as u64,
-        )?;
-        self.source
-            .range_between_consumed_boundaries(start, end)
-            .map_err(|_| control.fail_invariant(HtmlParseInvariant::InputCursorState))
-    }
-
-    fn prove_raw_end(
-        &self,
-        start: &ConsumedSourceBoundary,
-        code_point: CodePoint,
-        through: usize,
-        control: &mut ParseControl,
-    ) -> Result<ConsumedSourceBoundary, HtmlParseStop> {
-        control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        control.charge(
-            HtmlParseWorkCategory::InspectByte,
-            size_of::<CodePoint>() as u64,
-        )?;
-        control.charge(
-            HtmlParseWorkCategory::CopyByte,
-            size_of::<ConsumedBoundaryAdvance>() as u64,
-        )?;
-        control.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
-        let advance = self
-            .source
-            .prepare_consumed_boundary(start, code_point.value(), through)
-            .map_err(|_| control.fail_invariant(HtmlParseInvariant::InputCursorState))?;
-        control.charge(
-            HtmlParseWorkCategory::InspectByte,
-            advance.comparison_bytes() as u64,
-        )?;
-        control.charge(
-            HtmlParseWorkCategory::CopyByte,
-            size_of::<ConsumedSourceBoundary>() as u64,
-        )?;
-        control.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
-        // Last fallible admission immediately precedes the bounded source
-        // comparison. A denied call performs none of those payload reads.
-        control.charge(
-            HtmlParseWorkCategory::InputUnitRead,
-            advance.source_reads() as u64,
-        )?;
-        self.source
-            .complete_consumed_boundary(advance)
-            .map_err(|_| control.fail_invariant(HtmlParseInvariant::InputCursorState))
+        let source = self.range(position, end, control)?;
+        Ok(InputRead::Character(InputCharacter {
+            code_point,
+            source,
+            preprocessing,
+        }))
     }
 
     fn range(
@@ -1015,7 +488,6 @@ impl<'source> InputCursor<'source> {
         control: &mut ParseControl,
     ) -> Result<HtmlSourceRange, HtmlParseStop> {
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        self.require_complete(control)?;
         control.charge(
             HtmlParseWorkCategory::CopyByte,
             size_of::<HtmlSourceRange>() as u64,
@@ -1038,35 +510,17 @@ impl<'source> InputCursor<'source> {
             .map_err(|_| control.fail_invariant(HtmlParseInvariant::InputCursorState))
     }
 
+    /// The next scalar at `position` and where it ends, or `None` at the end
+    /// of the whole supplied source.
     fn read_raw_at(
         &self,
         position: usize,
-        start: Option<&ConsumedSourceBoundary>,
         control: &mut ParseControl,
-    ) -> Result<RawPoll, HtmlParseStop> {
+    ) -> Result<Option<DecodedRaw>, HtmlParseStop> {
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let (through, sealed) = match self.availability {
-            InputAvailability::Complete => (self.source.len(), true),
-            #[cfg(test)]
-            InputAvailability::Progressive {
-                through, sealed, ..
-            } => (through, sealed),
-        };
-        if start.map(ConsumedSourceBoundary::offset) != self.boundary().map(|_| position) {
-            return Err(control.fail_invariant(HtmlParseInvariant::InputCursorState));
-        }
-        if let Some(start) = start {
-            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            self.source
-                .require_consumed_boundary(start)
-                .map_err(|_| control.fail_invariant(HtmlParseInvariant::InputCursorState))?;
-        }
+        let through = self.source.len();
         if position == through {
-            return Ok(if sealed {
-                RawPoll::Ready(None)
-            } else {
-                RawPoll::NeedInput
-            });
+            return Ok(None);
         }
         if position > through {
             return Err(control.fail_invariant(HtmlParseInvariant::InputCursorState));
@@ -1090,9 +544,6 @@ impl<'source> InputCursor<'source> {
             else {
                 return Err(control.fail_invariant(HtmlParseInvariant::InputCursorState));
             };
-            if end > through {
-                return Ok(RawPoll::NeedInput);
-            }
             // The immutable source is already-valid UTF-8. Decode each byte
             // exactly once, with no str slicing or iterator boundary/payload
             // rereads hidden behind the advertised physical-read counter.
@@ -1106,15 +557,10 @@ impl<'source> InputCursor<'source> {
                 }
                 value = (value << 6) | u32::from(continuation & 0x3F);
             }
-            let code_point = CodePoint(value);
-            let boundary = start
-                .map(|start| self.prove_raw_end(start, code_point, through, control))
-                .transpose()?;
-            return Ok(RawPoll::Ready(Some(DecodedRaw {
-                code_point,
+            return Ok(Some(DecodedRaw {
+                code_point: CodePoint(value),
                 end,
-                boundary,
-            })));
+            }));
         }
         let Some(text) = self.source.as_utf16() else {
             return Err(control.fail_invariant(HtmlParseInvariant::InputCursorState));
@@ -1132,11 +578,9 @@ impl<'source> InputCursor<'source> {
         let Some(next) = position.checked_add(1) else {
             return Err(control.fail_invariant(HtmlParseInvariant::InputCursorState));
         };
-        let lead = (0xD800..=0xDBFF).contains(&first);
-        if lead && let Some(&second) = rest.first() {
-            if next >= through {
-                return Ok(RawPoll::NeedInput);
-            }
+        if (0xD800..=0xDBFF).contains(&first)
+            && let Some(&second) = rest.first()
+        {
             control.charge(HtmlParseWorkCategory::InputUnitRead, 1)?;
             if (0xDC00..=0xDFFF).contains(&second) {
                 let Some(end) = next.checked_add(1) else {
@@ -1146,29 +590,16 @@ impl<'source> InputCursor<'source> {
                 // each offset from the range start is its low ten bits.
                 let value = ((u32::from(first & 0x3FF) << 10) | u32::from(second & 0x3FF))
                     .saturating_add(0x10000);
-                let code_point = CodePoint(value);
-                let boundary = start
-                    .map(|start| self.prove_raw_end(start, code_point, through, control))
-                    .transpose()?;
-                return Ok(RawPoll::Ready(Some(DecodedRaw {
-                    code_point,
+                return Ok(Some(DecodedRaw {
+                    code_point: CodePoint(value),
                     end,
-                    boundary,
-                })));
+                }));
             }
         }
-        if lead && next == through && !sealed {
-            return Ok(RawPoll::NeedInput);
-        }
-        let code_point = CodePoint(u32::from(first));
-        let boundary = start
-            .map(|start| self.prove_raw_end(start, code_point, through, control))
-            .transpose()?;
-        Ok(RawPoll::Ready(Some(DecodedRaw {
-            code_point,
+        Ok(Some(DecodedRaw {
+            code_point: CodePoint(u32::from(first)),
             end: next,
-            boundary,
-        })))
+        }))
     }
 }
 
@@ -1215,644 +646,6 @@ mod tests {
             InputRead::Character(character) => character,
             InputRead::Eof(_) => panic!("expected supplied character"),
         }
-    }
-
-    fn ready_character(poll: InputPoll) -> InputCharacter {
-        match poll {
-            InputPoll::Ready(read) => character(read),
-            InputPoll::NeedInput => panic!("expected available character"),
-        }
-    }
-
-    #[test]
-    fn unsealed_end_waits_and_final_seal_yields_only_genuine_eof() {
-        for source in [HtmlSource::utf8(""), HtmlSource::utf8("a")] {
-            let mut control = control(&source);
-            let mut cursor = InputCursor::progressive(&source, &mut control).unwrap();
-            assert_eq!(
-                cursor.poll_peek(&mut control).unwrap(),
-                InputPoll::NeedInput
-            );
-            assert_eq!(
-                cursor.poll_consume(&mut control).unwrap(),
-                InputPoll::NeedInput
-            );
-            assert_eq!(
-                control.usage().work(HtmlParseWorkCategory::InputUnitRead),
-                0
-            );
-            cursor.make_available(source.len(), &mut control).unwrap();
-            if !source.is_empty() {
-                let read = ready_character(cursor.poll_consume(&mut control).unwrap());
-                assert_eq!(read.code_point().value(), 0x61);
-                assert_eq!(read.source(), &source.range(0, 1).unwrap());
-            }
-            assert_eq!(
-                cursor.poll_consume(&mut control).unwrap(),
-                InputPoll::NeedInput
-            );
-            assert_eq!(cursor.current.is_some(), !source.is_empty());
-            cursor.seal_input(&mut control).unwrap();
-            let before = control.usage().work(HtmlParseWorkCategory::InputUnitRead);
-            let eof = InputPoll::Ready(InputRead::Eof(
-                source.range(source.len(), source.len()).unwrap(),
-            ));
-            assert_eq!(cursor.poll_consume(&mut control).unwrap(), eof);
-            cursor.reconsume(&mut control).unwrap();
-            assert_eq!(cursor.poll_peek(&mut control).unwrap(), eof);
-            assert_eq!(cursor.poll_consume(&mut control).unwrap(), eof);
-            assert_eq!(
-                control.usage().work(HtmlParseWorkCategory::InputUnitRead),
-                before
-            );
-        }
-    }
-
-    #[test]
-    fn utf8_interior_frontiers_wait_without_hidden_continuation_reads() {
-        for (text, scalar, width) in [("¢x", 0xA2, 2), ("€x", 0x20AC, 3), ("🙂x", 0x1F642, 4)]
-        {
-            let source = HtmlSource::utf8(text);
-            let mut control = control(&source);
-            let mut cursor = InputCursor::progressive(&source, &mut control).unwrap();
-            for through in 1..width {
-                cursor.make_available(through, &mut control).unwrap();
-                let before = control.usage().work(HtmlParseWorkCategory::InputUnitRead);
-                assert_eq!(
-                    cursor.poll_consume(&mut control).unwrap(),
-                    InputPoll::NeedInput
-                );
-                // The available first byte establishes width; no continuation
-                // or exclusive-end byte is inspected before full availability.
-                assert_eq!(
-                    control.usage().work(HtmlParseWorkCategory::InputUnitRead) - before,
-                    1
-                );
-                assert_eq!(cursor.position, 0);
-                assert_eq!(cursor.current, None);
-                assert_eq!(cursor.processed_through, 0);
-            }
-            cursor.make_available(width, &mut control).unwrap();
-            let before = control.usage().work(HtmlParseWorkCategory::InputUnitRead);
-            let read = ready_character(cursor.poll_consume(&mut control).unwrap());
-            assert_eq!(read.code_point().value(), scalar);
-            assert_eq!(read.source(), &source.range(0, width).unwrap());
-            // Each available payload byte is decoded once and compared once
-            // to prove the consumed boundary. The next hidden 'x' is not read.
-            assert_eq!(
-                control.usage().work(HtmlParseWorkCategory::InputUnitRead) - before,
-                2 * width as u64
-            );
-            assert_eq!(cursor.boundary().unwrap().offset(), width);
-            assert_eq!(
-                cursor.poll_consume(&mut control).unwrap(),
-                InputPoll::NeedInput
-            );
-        }
-    }
-
-    #[test]
-    fn ascii_frontier_range_is_proved_without_reading_the_hidden_endpoint() {
-        let source = HtmlSource::utf8("ab");
-        let mut control = control(&source);
-        let mut cursor = InputCursor::progressive(&source, &mut control).unwrap();
-        cursor.make_available(1, &mut control).unwrap();
-        let read = ready_character(cursor.poll_consume(&mut control).unwrap());
-        assert_eq!(read.source(), &source.range(0, 1).unwrap());
-        assert_eq!(read.code_point().value(), 0x61);
-        assert_eq!(
-            control.usage().work(HtmlParseWorkCategory::InputUnitRead),
-            2
-        );
-        let before = control.usage().work(HtmlParseWorkCategory::InputUnitRead);
-        let anchor = cursor
-            .proven_range(
-                cursor.boundary().unwrap(),
-                cursor.boundary().unwrap(),
-                &mut control,
-            )
-            .unwrap();
-        assert_eq!(anchor, source.range(1, 1).unwrap());
-        assert_eq!(
-            control.usage().work(HtmlParseWorkCategory::InputUnitRead),
-            before
-        );
-    }
-
-    #[test]
-    fn utf16_pairs_wait_and_isolated_surrogates_keep_literal_records() {
-        for (units, scalar, end, record) in [
-            (vec![0xD83D, 0xDE42], 0x1F642, 2, None),
-            (
-                vec![0xD800, 0x61],
-                0xD800,
-                1,
-                Some(PreprocessingRecord::Diagnostic(InputDiagnostic::Surrogate)),
-            ),
-        ] {
-            let source = HtmlSource::utf16(DocumentString::from_utf16(units));
-            let mut control = control(&source);
-            let mut cursor = InputCursor::progressive(&source, &mut control).unwrap();
-            cursor.make_available(1, &mut control).unwrap();
-            assert_eq!(
-                cursor.poll_consume(&mut control).unwrap(),
-                InputPoll::NeedInput
-            );
-            assert_eq!(
-                control.usage().work(HtmlParseWorkCategory::InputUnitRead),
-                1
-            );
-            assert_eq!(cursor.position, 0);
-            cursor.make_available(2, &mut control).unwrap();
-            let read = ready_character(cursor.poll_consume(&mut control).unwrap());
-            assert_eq!(read.code_point().value(), scalar);
-            assert_eq!(read.source(), &source.range(0, end).unwrap());
-            assert_eq!(read.preprocessing(), record);
-        }
-        let source = HtmlSource::utf16(DocumentString::from_utf16(vec![0xD800]));
-        let mut control = control(&source);
-        let mut cursor = InputCursor::progressive(&source, &mut control).unwrap();
-        cursor.make_available(1, &mut control).unwrap();
-        assert_eq!(
-            cursor.poll_consume(&mut control).unwrap(),
-            InputPoll::NeedInput
-        );
-        cursor.seal_input(&mut control).unwrap();
-        let read = ready_character(cursor.poll_consume(&mut control).unwrap());
-        assert_eq!(read.code_point().value(), 0xD800);
-        assert_eq!(read.source(), &source.range(0, 1).unwrap());
-        assert_eq!(
-            read.preprocessing(),
-            Some(PreprocessingRecord::Diagnostic(InputDiagnostic::Surrogate))
-        );
-    }
-
-    #[test]
-    fn cr_frontiers_preserve_crlf_and_do_not_consume_a_non_lf_successor() {
-        for source in [
-            HtmlSource::utf8("\r\nx"),
-            HtmlSource::utf16(DocumentString::from("\r\nx")),
-        ] {
-            let mut control = control(&source);
-            let mut cursor = InputCursor::progressive(&source, &mut control).unwrap();
-            cursor.make_available(1, &mut control).unwrap();
-            assert_eq!(
-                cursor.poll_peek(&mut control).unwrap(),
-                InputPoll::NeedInput
-            );
-            assert_eq!(
-                cursor.poll_consume(&mut control).unwrap(),
-                InputPoll::NeedInput
-            );
-            assert_eq!(cursor.processed_through, 0);
-            cursor.make_available(2, &mut control).unwrap();
-            let peek = ready_character(cursor.poll_peek(&mut control).unwrap());
-            assert_eq!(peek.preprocessing(), None);
-            let read = ready_character(cursor.poll_consume(&mut control).unwrap());
-            assert_eq!(read.code_point().value(), 0x0A);
-            assert_eq!(read.source(), &source.range(0, 2).unwrap());
-            assert_eq!(
-                read.preprocessing(),
-                Some(PreprocessingRecord::Newline { was_crlf: true })
-            );
-        }
-        for text in ["\rx", "\r"] {
-            let source = HtmlSource::utf8(text);
-            let mut control = control(&source);
-            let mut cursor = InputCursor::progressive(&source, &mut control).unwrap();
-            cursor.make_available(1, &mut control).unwrap();
-            assert_eq!(
-                cursor.poll_consume(&mut control).unwrap(),
-                InputPoll::NeedInput
-            );
-            cursor.make_available(source.len(), &mut control).unwrap();
-            if text.len() == 1 {
-                cursor.seal_input(&mut control).unwrap();
-            }
-            let read = ready_character(cursor.poll_consume(&mut control).unwrap());
-            assert_eq!(read.source(), &source.range(0, 1).unwrap());
-            assert_eq!(
-                read.preprocessing(),
-                Some(PreprocessingRecord::Newline { was_crlf: false })
-            );
-            assert_eq!(cursor.position, 1);
-            if text.len() == 2 {
-                assert_eq!(
-                    ready_character(cursor.poll_consume(&mut control).unwrap())
-                        .code_point()
-                        .value(),
-                    0x78
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn ascii_lookahead_distinguishes_matching_prefix_from_established_mismatch() {
-        let source = HtmlSource::utf8("Doctype!");
-        let mut control = control(&source);
-        let mut cursor = InputCursor::progressive(&source, &mut control).unwrap();
-        assert_eq!(
-            cursor
-                .poll_matches_ascii(b"", AsciiComparison::Sensitive, &mut control)
-                .unwrap()
-                .result,
-            AsciiMatch::Matched
-        );
-        cursor.make_available(2, &mut control).unwrap();
-        assert_eq!(
-            cursor
-                .poll_matches_ascii(b"DOCTYPE", AsciiComparison::Insensitive, &mut control)
-                .unwrap()
-                .result,
-            AsciiMatch::NeedInput
-        );
-        assert_eq!(
-            cursor
-                .poll_matches_ascii(b"Dx", AsciiComparison::Sensitive, &mut control)
-                .unwrap()
-                .result,
-            AsciiMatch::Mismatched
-        );
-        cursor.make_available(7, &mut control).unwrap();
-        assert_eq!(
-            cursor
-                .poll_matches_ascii(b"DOCTYPE", AsciiComparison::Insensitive, &mut control)
-                .unwrap()
-                .result,
-            AsciiMatch::Matched
-        );
-        assert_eq!(
-            cursor
-                .poll_matches_ascii(b"DOCTYPE!", AsciiComparison::Insensitive, &mut control)
-                .unwrap()
-                .result,
-            AsciiMatch::NeedInput
-        );
-        assert_eq!(cursor.position, 0);
-        assert_eq!(cursor.current, None);
-        assert_eq!(cursor.processed_through, 0);
-        cursor.make_available(8, &mut control).unwrap();
-        cursor.seal_input(&mut control).unwrap();
-        assert_eq!(
-            cursor
-                .poll_matches_ascii(b"DOCTYPE!!", AsciiComparison::Insensitive, &mut control)
-                .unwrap()
-                .result,
-            AsciiMatch::Mismatched
-        );
-        cursor.poll_consume(&mut control).unwrap();
-        cursor.reconsume(&mut control).unwrap();
-        assert_eq!(
-            cursor
-                .poll_matches_ascii(b"Do", AsciiComparison::Sensitive, &mut control)
-                .unwrap()
-                .result,
-            AsciiMatch::Matched
-        );
-        assert_eq!(cursor.position, 1);
-        assert!(cursor.reconsume);
-    }
-
-    #[test]
-    fn progressive_rewind_keeps_visibility_and_suppresses_duplicate_preprocessing() {
-        let source = HtmlSource::utf16(DocumentString::from_utf16(vec![
-            0xFEFF, 0xD800, 0x61, 0xFEFF,
-        ]));
-        let mut control = control(&source);
-        let mut cursor = InputCursor::progressive(&source, &mut control).unwrap();
-        let start = cursor.mark_progressive(&mut control).unwrap();
-        cursor.make_available(3, &mut control).unwrap();
-        assert_eq!(
-            ready_character(cursor.poll_consume(&mut control).unwrap())
-                .code_point()
-                .value(),
-            0xFEFF
-        );
-        let surrogate = ready_character(cursor.poll_consume(&mut control).unwrap());
-        assert_eq!(
-            surrogate.preprocessing(),
-            Some(PreprocessingRecord::Diagnostic(InputDiagnostic::Surrogate))
-        );
-        cursor.make_available(4, &mut control).unwrap();
-        cursor.rewind_progressive(&start, &mut control).unwrap();
-        assert_eq!(cursor.boundary().unwrap().offset(), 0);
-        assert_eq!(cursor.processed_through, 2);
-        assert_eq!(
-            ready_character(cursor.poll_consume(&mut control).unwrap())
-                .code_point()
-                .value(),
-            0xFEFF
-        );
-        let replayed = ready_character(cursor.poll_consume(&mut control).unwrap());
-        assert_eq!(replayed.code_point().value(), 0xD800);
-        assert_eq!(replayed.preprocessing(), None);
-        assert_eq!(
-            ready_character(cursor.poll_consume(&mut control).unwrap())
-                .code_point()
-                .value(),
-            0x61
-        );
-        assert_eq!(
-            ready_character(cursor.poll_consume(&mut control).unwrap())
-                .code_point()
-                .value(),
-            0xFEFF
-        );
-        assert_eq!(
-            cursor.poll_consume(&mut control).unwrap(),
-            InputPoll::NeedInput
-        );
-    }
-
-    #[test]
-    fn invalid_frontier_transitions_stop_without_partial_mutation() {
-        for operation in 0..4 {
-            let source = HtmlSource::utf8("ab");
-            let mut control = control(&source);
-            let mut cursor = InputCursor::progressive(&source, &mut control).unwrap();
-            cursor.make_available(1, &mut control).unwrap();
-            let result = match operation {
-                0 => cursor.make_available(0, &mut control),
-                1 => cursor.make_available(3, &mut control),
-                2 => cursor.seal_input(&mut control),
-                _ => cursor.peek(&mut control).map(|_| ()),
-            };
-            let stop = HtmlParseStop::InternalInvariant(HtmlParseInvariant::InputCursorState);
-            assert_eq!(result, Err(stop));
-            assert_eq!(cursor.position, 0);
-            assert_eq!(cursor.current, None);
-            assert_eq!(cursor.poll_consume(&mut control), Err(stop));
-            assert_eq!(cursor.make_available(2, &mut control), Err(stop));
-            assert!(matches!(
-                cursor.availability,
-                InputAvailability::Progressive {
-                    through: 1,
-                    sealed: false,
-                    ..
-                }
-            ));
-        }
-        let source = HtmlSource::utf8("a");
-        let mut control = control(&source);
-        let mut cursor = InputCursor::progressive(&source, &mut control).unwrap();
-        cursor.make_available(1, &mut control).unwrap();
-        cursor.seal_input(&mut control).unwrap();
-        assert_eq!(
-            cursor.make_available(1, &mut control),
-            Err(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::InputCursorState
-            ))
-        );
-        assert!(matches!(
-            cursor.availability,
-            InputAvailability::Progressive {
-                through: 1,
-                sealed: true,
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn paused_cancellation_and_foreign_controls_preserve_first_stop_and_visibility() {
-        let source = HtmlSource::utf8("a");
-        let cancellation = HtmlParseCancellation::new();
-        let mut owner = ParseControl::new(limits(), cancellation.clone());
-        owner.admit_source(&source).unwrap();
-        let mut cursor = InputCursor::progressive(&source, &mut owner).unwrap();
-        assert_eq!(
-            cursor.poll_consume(&mut owner).unwrap(),
-            InputPoll::NeedInput
-        );
-        let before = owner.usage().clone();
-        cancellation.cancel();
-        assert_eq!(
-            cursor.make_available(1, &mut owner),
-            Err(HtmlParseStop::Cancelled)
-        );
-        assert_eq!(
-            cursor.poll_consume(&mut owner),
-            Err(HtmlParseStop::Cancelled)
-        );
-        assert_eq!(cursor.seal_input(&mut owner), Err(HtmlParseStop::Cancelled));
-        assert_eq!(
-            owner.usage().resource(HtmlParseResource::WorkCredits),
-            before.resource(HtmlParseResource::WorkCredits)
-        );
-        assert!(matches!(
-            cursor.availability,
-            InputAvailability::Progressive {
-                through: 0,
-                sealed: false,
-                ..
-            }
-        ));
-        let mut foreign = control(&source);
-        let before = foreign.usage().clone();
-        assert_eq!(
-            cursor.make_available(1, &mut foreign),
-            Err(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::ForeignControl
-            ))
-        );
-        assert_eq!(
-            foreign.usage().resource(HtmlParseResource::WorkCredits),
-            before.resource(HtmlParseResource::WorkCredits)
-        );
-        assert_eq!(
-            foreign.usage().work(HtmlParseWorkCategory::InputUnitRead),
-            0
-        );
-    }
-
-    #[test]
-    fn progressive_proof_and_commit_admissions_have_exact_independent_budgets() {
-        let source = HtmlSource::utf8("ab");
-        let entry = 1
-            + size_of::<ControlIdentity>() as u64
-            + size_of::<ConsumedSourceBoundary>() as u64
-            + 1;
-        let available = 2; // One frontier visit and one admitted frontier write.
-        let proof_prefix = 12
-            + size_of::<ConsumedBoundaryAdvance>() as u64
-            + size_of::<ConsumedSourceBoundary>() as u64;
-        // Retaining the actual current start/end costs two proved-boundary
-        // copies and one additional persistent span write, before commit.
-        let complete = 20
-            + size_of::<ConsumedBoundaryAdvance>() as u64
-            + 3 * size_of::<ConsumedSourceBoundary>() as u64
-            + size_of::<HtmlSourceRange>() as u64
-            + size_of::<InputRead>() as u64;
-        for (extra, success, reads) in [
-            (proof_prefix, false, 1),
-            (complete - 1, false, 2),
-            (complete, true, 2),
-        ] {
-            let caps = limits()
-                .into_builder()
-                .work_credits(entry + available + extra)
-                .finish()
-                .unwrap();
-            let mut control = ParseControl::new(caps, HtmlParseCancellation::new());
-            control.admit_source(&source).unwrap();
-            let mut cursor = InputCursor::progressive(&source, &mut control).unwrap();
-            cursor.make_available(1, &mut control).unwrap();
-            let result = cursor.poll_consume(&mut control);
-            assert_eq!(
-                control.usage().work(HtmlParseWorkCategory::InputUnitRead),
-                reads
-            );
-            if success {
-                let read = ready_character(result.unwrap());
-                assert_eq!(read.code_point().value(), 0x61);
-                assert_eq!(cursor.position, 1);
-                assert_eq!(control.stop(), None);
-            } else {
-                let stop = HtmlParseStop::LimitExceeded {
-                    resource: HtmlParseResource::WorkCredits,
-                    limit: caps.work_credits(),
-                    current: caps.work_credits(),
-                    requested_delta: 1,
-                };
-                assert_eq!(result, Err(stop));
-                assert_eq!(cursor.position, 0);
-                assert_eq!(cursor.current, None);
-                assert_eq!(cursor.processed_through, 0);
-                assert_eq!(cursor.boundary().unwrap().offset(), 0);
-                assert_eq!(cursor.poll_consume(&mut control), Err(stop));
-            }
-            assert_eq!(
-                control
-                    .usage()
-                    .resource(HtmlParseResource::WorkCredits)
-                    .current,
-                caps.work_credits()
-            );
-        }
-    }
-
-    #[test]
-    fn frontier_and_progressive_marker_one_short_admissions_are_atomic() {
-        let source = HtmlSource::utf8("ab");
-        let entry = 1
-            + size_of::<ControlIdentity>() as u64
-            + size_of::<ConsumedSourceBoundary>() as u64
-            + 1;
-        for (extra, success) in [(1, false), (2, true)] {
-            let caps = limits()
-                .into_builder()
-                .work_credits(entry + extra)
-                .finish()
-                .unwrap();
-            let mut control = ParseControl::new(caps, HtmlParseCancellation::new());
-            control.admit_source(&source).unwrap();
-            let mut cursor = InputCursor::progressive(&source, &mut control).unwrap();
-            let result = cursor.make_available(1, &mut control);
-            if success {
-                assert_eq!(result, Ok(()));
-            } else {
-                let stop = HtmlParseStop::LimitExceeded {
-                    resource: HtmlParseResource::WorkCredits,
-                    limit: caps.work_credits(),
-                    current: caps.work_credits(),
-                    requested_delta: 1,
-                };
-                assert_eq!(result, Err(stop));
-                assert_eq!(cursor.make_available(2, &mut control), Err(stop));
-            }
-            assert!(
-                matches!(cursor.availability, InputAvailability::Progressive { through, sealed: false, .. } if through == usize::from(success))
-            );
-            assert_eq!(
-                control.usage().work(HtmlParseWorkCategory::InputUnitRead),
-                0
-            );
-            assert_eq!(
-                control
-                    .usage()
-                    .resource(HtmlParseResource::SourceUnits)
-                    .current,
-                2
-            );
-        }
-        let marker_bytes = size_of::<ProgressiveInputCheckpoint>() as u64;
-        for (extra, success) in [(marker_bytes, false), (1 + marker_bytes, true)] {
-            let caps = limits()
-                .into_builder()
-                .work_credits(entry + extra)
-                .finish()
-                .unwrap();
-            let mut control = ParseControl::new(caps, HtmlParseCancellation::new());
-            control.admit_source(&source).unwrap();
-            let cursor = InputCursor::progressive(&source, &mut control).unwrap();
-            let result = cursor.mark_progressive(&mut control);
-            if success {
-                let marker = result.unwrap();
-                assert_eq!(marker.checkpoint.position, 0);
-                assert_eq!(marker.boundary.offset(), 0);
-                assert_eq!(control.stop(), None);
-            } else {
-                assert!(matches!(result, Err(HtmlParseStop::LimitExceeded {
-                    resource: HtmlParseResource::WorkCredits,
-                    requested_delta,
-                    ..
-                }) if requested_delta == marker_bytes));
-            }
-            assert_eq!(cursor.position, 0);
-            assert_eq!(cursor.current, None);
-            assert_eq!(
-                control.usage().work(HtmlParseWorkCategory::InputUnitRead),
-                0
-            );
-        }
-    }
-
-    #[test]
-    fn progressive_ranges_and_markers_cannot_use_whole_source_shortcuts() {
-        let source = HtmlSource::utf8("a");
-        for operation in 0..4 {
-            let mut control = control(&source);
-            let mut cursor = InputCursor::progressive(&source, &mut control).unwrap();
-            let stop = HtmlParseStop::InternalInvariant(HtmlParseInvariant::InputCursorState);
-            let result = match operation {
-                0 => cursor.checked_range(0, 1, &mut control).map(|_| ()),
-                1 => cursor.mark(&mut control).map(|_| ()),
-                2 => cursor.consume(&mut control).map(|_| ()),
-                _ => cursor
-                    .matches_ascii(b"a", AsciiComparison::Sensitive, &mut control)
-                    .map(|_| ()),
-            };
-            assert_eq!(result, Err(stop));
-            assert_eq!(cursor.poll_consume(&mut control), Err(stop));
-            assert_eq!(
-                control.usage().work(HtmlParseWorkCategory::InputUnitRead),
-                0
-            );
-            assert_eq!(cursor.position, 0);
-        }
-        let mut owner = control(&source);
-        let cursor = InputCursor::progressive(&source, &mut owner).unwrap();
-        let marker = cursor.mark_progressive(&mut owner).unwrap();
-        let mut foreign = control(&source);
-        let mut other = InputCursor::progressive(&source, &mut foreign).unwrap();
-        let before = foreign.usage().clone();
-        assert_eq!(
-            other.rewind_progressive(&marker, &mut foreign),
-            Err(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::ForeignControl
-            ))
-        );
-        assert_eq!(
-            foreign.usage().resource(HtmlParseResource::WorkCredits),
-            before.resource(HtmlParseResource::WorkCredits)
-        );
-        assert_eq!(
-            foreign.usage().work(HtmlParseWorkCategory::InputUnitRead),
-            0
-        );
-        assert_eq!(other.position, 0);
-        assert_eq!(owner.stop(), None);
     }
 
     #[test]
@@ -2659,26 +1452,56 @@ mod tests {
     }
 
     #[test]
-    fn a_frontier_beyond_the_source_stops_instead_of_indexing_past_the_end() {
+    fn ascii_lookahead_over_a_whole_source_matches_a_prefix_and_mismatches_at_its_end() {
+        fn check(
+            cursor: &mut InputCursor<'_>,
+            control: &mut ParseControl,
+            expected: &[u8],
+            comparison: AsciiComparison,
+        ) -> bool {
+            cursor
+                .matches_ascii(expected, comparison, control)
+                .unwrap()
+                .result
+        }
+        let source = HtmlSource::utf8("Doctype!");
+        let mut control = control(&source);
+        let mut cursor = InputCursor::new(&source, &mut control).unwrap();
+        let sensitive = AsciiComparison::Sensitive;
+        let insensitive = AsciiComparison::Insensitive;
+        assert!(check(&mut cursor, &mut control, b"", sensitive));
+        assert!(check(&mut cursor, &mut control, b"DOCTYPE", insensitive));
+        assert!(!check(&mut cursor, &mut control, b"Dx", sensitive));
+        assert!(check(&mut cursor, &mut control, b"DOCTYPE!", insensitive));
+        // Past the end of the source the lookahead reaches end of input.
+        assert!(!check(&mut cursor, &mut control, b"DOCTYPE!!", insensitive));
+        assert_eq!(cursor.position, 0);
+        assert_eq!(cursor.current, None);
+        assert_eq!(cursor.processed_through, 0);
+        cursor.consume(&mut control).unwrap();
+        cursor.reconsume(&mut control).unwrap();
+        assert!(check(&mut cursor, &mut control, b"Do", sensitive));
+        assert_eq!(cursor.position, 1);
+        assert!(cursor.reconsume);
+    }
+
+    #[test]
+    fn a_position_beyond_the_source_stops_instead_of_indexing_past_the_end() {
         for source in [
             HtmlSource::utf8("ab"),
             HtmlSource::utf16(DocumentString::from_utf16(vec![0x61, 0x62])),
         ] {
             let mut control = control(&source);
-            let mut cursor = InputCursor::progressive(&source, &mut control).unwrap();
-            cursor.make_available(source.len(), &mut control).unwrap();
+            let mut cursor = InputCursor::new(&source, &mut control).unwrap();
             for _ in 0..2 {
-                ready_character(cursor.poll_consume(&mut control).unwrap());
+                cursor.consume(&mut control).unwrap();
             }
-            // The private frontier claims more input than the source holds.
-            let InputAvailability::Progressive { through, .. } = &mut cursor.availability else {
-                panic!("progressive cursor");
-            };
-            *through = source.len() + 98;
+            // The private position claims more input than the source holds.
+            cursor.position = source.len() + 98;
             let stop = HtmlParseStop::InternalInvariant(HtmlParseInvariant::InputCursorState);
-            assert_eq!(cursor.poll_consume(&mut control), Err(stop));
+            assert_eq!(cursor.consume(&mut control), Err(stop));
             assert_eq!(control.stop(), Some(stop));
-            assert_eq!(cursor.position, 2);
+            assert_eq!(cursor.position, source.len() + 98);
             for resource in [
                 HtmlParseResource::BufferedUtf16Units,
                 HtmlParseResource::AuxiliaryEntries,

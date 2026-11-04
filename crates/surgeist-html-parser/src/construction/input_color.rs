@@ -859,13 +859,13 @@ mod tests {
                         let header = view.header(view.group(index).unwrap()).unwrap();
                         if matches!(&header.body, history::HtmlParseHistoryBody::Leaf(leaf) if leaf.units() == [118,97,108,117,101])
                             && header.units == 5
-                            && header.cause.original_node == Some(node.index)
-                            && header.cause.operation
+                            && header.cause.original_node() == Some(node.index)
+                            && header.cause.operation()
                                 == provenance::HtmlParseConstructionOperation::Replacement
                         {
                             generated_name = true;
                             assert_eq!(
-                                header.cause.source.as_ref().unwrap().source(),
+                                header.cause.source().as_ref().unwrap().source(),
                                 request.source().identity()
                             );
                             let mut scratch =

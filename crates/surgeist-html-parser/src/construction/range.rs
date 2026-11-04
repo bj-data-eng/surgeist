@@ -55,6 +55,9 @@ pub(super) struct RangeIngressCancellation {
     pub(super) token: crate::HtmlParseCancellation,
 }
 
+/// The bytes that name which machine runs: a one-byte tag.
+const MACHINE_TAG_BYTES: usize = mem::size_of::<u8>();
+#[cfg(test)]
 #[derive(Clone, Copy, Debug)]
 enum MachineKind {
     Ingress,
@@ -62,140 +65,123 @@ enum MachineKind {
     Lattice,
     Midpoint,
 }
+/// The one numeric cursor a staged computation is running.
 #[derive(Clone, Copy, Debug)]
-struct Machine {
-    kind: MachineKind,
-    ingress: Option<HtmlFiniteDecimalIngressCursor>,
-    best: Option<HtmlBestFiniteNumberCursor>,
-    lattice: Option<HtmlRangeLatticeCursor>,
-    midpoint: Option<HtmlRangeMidpointCursor>,
+pub(super) enum Machine {
+    Ingress(HtmlFiniteDecimalIngressCursor),
+    Best(HtmlBestFiniteNumberCursor),
+    Lattice(HtmlRangeLatticeCursor),
+    Midpoint(HtmlRangeMidpointCursor),
 }
 impl Machine {
-    fn ingress(cursor: HtmlFiniteDecimalIngressCursor) -> Self {
-        Self {
-            kind: MachineKind::Ingress,
-            ingress: Some(cursor),
-            best: None,
-            lattice: None,
-            midpoint: None,
+    #[cfg(test)]
+    fn kind(&self) -> MachineKind {
+        match self {
+            Self::Ingress(_) => MachineKind::Ingress,
+            Self::Best(_) => MachineKind::Best,
+            Self::Lattice(_) => MachineKind::Lattice,
+            Self::Midpoint(_) => MachineKind::Midpoint,
         }
     }
-    fn best(cursor: HtmlBestFiniteNumberCursor) -> Self {
-        Self {
-            kind: MachineKind::Best,
-            ingress: None,
-            best: Some(cursor),
-            lattice: None,
-            midpoint: None,
+    fn ingress(&self) -> Option<&HtmlFiniteDecimalIngressCursor> {
+        match self {
+            Self::Ingress(cursor) => Some(cursor),
+            _ => None,
         }
     }
-    fn lattice(cursor: HtmlRangeLatticeCursor) -> Self {
-        Self {
-            kind: MachineKind::Lattice,
-            ingress: None,
-            best: None,
-            lattice: Some(cursor),
-            midpoint: None,
+    fn best(&self) -> Option<&HtmlBestFiniteNumberCursor> {
+        match self {
+            Self::Best(cursor) => Some(cursor),
+            _ => None,
         }
     }
-    fn midpoint(cursor: HtmlRangeMidpointCursor) -> Self {
-        Self {
-            kind: MachineKind::Midpoint,
-            ingress: None,
-            best: None,
-            lattice: None,
-            midpoint: Some(cursor),
+    fn lattice(&self) -> Option<&HtmlRangeLatticeCursor> {
+        match self {
+            Self::Lattice(cursor) => Some(cursor),
+            _ => None,
+        }
+    }
+    fn midpoint(&self) -> Option<&HtmlRangeMidpointCursor> {
+        match self {
+            Self::Midpoint(cursor) => Some(cursor),
+            _ => None,
         }
     }
     fn request(&self) -> Option<HtmlRangeNumericRequest> {
-        match self.kind {
-            MachineKind::Ingress => self.ingress.as_ref()?.request(),
-            MachineKind::Best => self.best.as_ref()?.request(),
-            MachineKind::Lattice => self.lattice.as_ref()?.request(),
-            MachineKind::Midpoint => self.midpoint.as_ref()?.request(),
+        match self {
+            Self::Ingress(cursor) => cursor.request(),
+            Self::Best(cursor) => cursor.request(),
+            Self::Lattice(cursor) => cursor.request(),
+            Self::Midpoint(cursor) => cursor.request(),
         }
     }
     fn headers(&self) -> Option<HtmlRangeNumericHeaders> {
-        match self.kind {
-            MachineKind::Ingress => self
-                .ingress
-                .as_ref()
-                .map(HtmlFiniteDecimalIngressCursor::headers),
-            MachineKind::Best => self.best.as_ref().map(HtmlBestFiniteNumberCursor::headers),
+        match self {
+            Self::Ingress(cursor) => Some(cursor.headers()),
+            Self::Best(cursor) => Some(cursor.headers()),
             _ => None,
         }
     }
     fn receiver_bytes(&self) -> usize {
-        match self.kind {
-            MachineKind::Ingress => mem::size_of::<HtmlFiniteDecimalIngressCursor>(),
-            MachineKind::Best => mem::size_of::<HtmlBestFiniteNumberCursor>(),
-            MachineKind::Lattice => mem::size_of::<HtmlRangeLatticeCursor>(),
-            MachineKind::Midpoint => mem::size_of::<HtmlRangeMidpointCursor>(),
+        match self {
+            Self::Ingress(_) => mem::size_of::<HtmlFiniteDecimalIngressCursor>(),
+            Self::Best(_) => mem::size_of::<HtmlBestFiniteNumberCursor>(),
+            Self::Lattice(_) => mem::size_of::<HtmlRangeLatticeCursor>(),
+            Self::Midpoint(_) => mem::size_of::<HtmlRangeMidpointCursor>(),
         }
     }
     fn reply(&mut self, reply: HtmlRangeNumericReply) -> Result<(), HtmlRangeNumericError> {
-        match self.kind {
-            MachineKind::Ingress => self
-                .ingress
-                .as_mut()
-                .ok_or(HtmlRangeNumericError::Integrity)?
-                .reply(reply),
-            MachineKind::Best => self
-                .best
-                .as_mut()
-                .ok_or(HtmlRangeNumericError::Integrity)?
-                .reply(reply),
-            MachineKind::Lattice => self
-                .lattice
-                .as_mut()
-                .ok_or(HtmlRangeNumericError::Integrity)?
-                .reply(reply),
-            MachineKind::Midpoint => self
-                .midpoint
-                .as_mut()
-                .ok_or(HtmlRangeNumericError::Integrity)?
-                .reply(reply),
+        match self {
+            Self::Ingress(cursor) => cursor.reply(reply),
+            Self::Best(cursor) => cursor.reply(reply),
+            Self::Lattice(cursor) => cursor.reply(reply),
+            Self::Midpoint(cursor) => cursor.reply(reply),
         }
     }
 }
-pub(super) struct RangeStaging {
+/// The buffers every numeric computation of one staging shares.
+pub(super) struct RangeScratch {
     buffers: ScratchTable<OwnedVec<u8>>,
     output: Option<Utf16Buffer>,
-    machine: Option<Machine>,
-    generated: Option<OriginGroupRef>,
     source: usize,
 }
-impl RangeStaging {
+/// A staged Range computation: idle until the first numeric machine starts,
+/// then running the machine that last started.
+#[expect(
+    clippy::large_enum_variant,
+    reason = "one staging exists per session and is held inline; boxing would add an unaccounted allocation"
+)]
+pub(super) enum RangeStaging {
+    Idle(RangeScratch),
+    Running {
+        scratch: RangeScratch,
+        machine: Machine,
+    },
+}
+impl std::ops::Deref for RangeStaging {
+    type Target = RangeScratch;
+    fn deref(&self) -> &RangeScratch {
+        match self {
+            Self::Idle(scratch) | Self::Running { scratch, .. } => scratch,
+        }
+    }
+}
+impl std::ops::DerefMut for RangeStaging {
+    fn deref_mut(&mut self) -> &mut RangeScratch {
+        match self {
+            Self::Idle(scratch) | Self::Running { scratch, .. } => scratch,
+        }
+    }
+}
+impl RangeScratch {
     #[cfg(test)]
-    pub(super) fn owned_cells(&self) -> usize {
+    fn owned_cells(&self) -> usize {
         self.buffers.as_array().iter().map(OwnedVec::len).sum()
     }
     #[cfg(test)]
-    pub(super) fn right_cache_extent(&self) -> (usize, usize) {
+    fn right_cache_extent(&self) -> (usize, usize) {
         let buffer = self.buffers.get(HtmlRangeScratchRole::Right);
         (buffer.len(), buffer.capacity())
-    }
-    #[cfg(test)]
-    pub(super) fn ingress_fixture_state(
-        &self,
-    ) -> (
-        usize,
-        &[u8],
-        usize,
-        usize,
-        Option<&HtmlFiniteDecimalIngressCursor>,
-    ) {
-        (
-            self.source,
-            self.buffers
-                .get(HtmlRangeScratchRole::Coefficient)
-                .as_slice(),
-            self.buffers.get(HtmlRangeScratchRole::Right).len(),
-            self.buffers.get(HtmlRangeScratchRole::Trial).len(),
-            self.machine
-                .as_ref()
-                .and_then(|machine| machine.ingress.as_ref()),
-        )
     }
     fn new(c: &mut ParseControl, source: usize) -> Result<Self, SessionError> {
         Ok(Self {
@@ -210,12 +196,10 @@ impl RangeStaging {
                 OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?,
             ]),
             output: Some(Utf16Buffer::new(c)?),
-            machine: None,
-            generated: None,
             source,
         })
     }
-    pub(super) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
+    fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
         for buffer in self.buffers.into_array() {
             buffer.release(c)?;
         }
@@ -256,6 +240,63 @@ impl RangeStaging {
         Ok(())
     }
 }
+impl RangeStaging {
+    fn new(c: &mut ParseControl, source: usize) -> Result<Self, SessionError> {
+        RangeScratch::new(c, source).map(Self::Idle)
+    }
+    pub(super) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
+        match self {
+            Self::Idle(scratch) | Self::Running { scratch, .. } => scratch.release(c),
+        }
+    }
+    /// The machine of the last started computation, if any started.
+    fn machine(&self) -> Option<&Machine> {
+        match self {
+            Self::Idle(_) => None,
+            Self::Running { machine, .. } => Some(machine),
+        }
+    }
+    fn machine_mut(&mut self) -> Option<&mut Machine> {
+        match self {
+            Self::Idle(_) => None,
+            Self::Running { machine, .. } => Some(machine),
+        }
+    }
+    /// Starts `machine` over the same scratch. Nothing fallible happens
+    /// between taking the scratch and returning the new phase.
+    fn start(self, machine: Machine) -> Self {
+        let (Self::Idle(scratch) | Self::Running { scratch, .. }) = self;
+        Self::Running { scratch, machine }
+    }
+    #[cfg(test)]
+    pub(super) fn owned_cells(&self) -> usize {
+        RangeScratch::owned_cells(self)
+    }
+    #[cfg(test)]
+    pub(super) fn right_cache_extent(&self) -> (usize, usize) {
+        RangeScratch::right_cache_extent(self)
+    }
+    #[cfg(test)]
+    pub(super) fn ingress_fixture_state(
+        &self,
+    ) -> (
+        usize,
+        &[u8],
+        usize,
+        usize,
+        Option<&HtmlFiniteDecimalIngressCursor>,
+    ) {
+        (
+            self.source,
+            self.buffers
+                .get(HtmlRangeScratchRole::Coefficient)
+                .as_slice(),
+            self.buffers.get(HtmlRangeScratchRole::Right).len(),
+            self.buffers.get(HtmlRangeScratchRole::Trial).len(),
+            self.machine().and_then(Machine::ingress),
+        )
+    }
+}
 fn numeric_failure(c: &mut ParseControl, error: HtmlRangeNumericError) -> SessionError {
     match error {
         HtmlRangeNumericError::Representation => c
@@ -281,6 +322,21 @@ impl SessionStorage {
             None => Err(latch_registry_row(c)),
         }
     }
+    /// Starts the next numeric machine over the staged buffers.
+    /// The caller has qualified the staging in the same step.
+    fn start_machine(
+        &mut self,
+        c: &mut ParseControl,
+        machine: Machine,
+    ) -> Result<(), SessionError> {
+        let stage = self
+            .effects
+            .range
+            .take()
+            .ok_or_else(|| latch_registry_row(c))?;
+        self.effects.range = Some(stage.start(machine));
+        Ok(())
+    }
     fn execute_range(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
         loop {
             c.require_identity(&self.control)?;
@@ -289,7 +345,7 @@ impl SessionStorage {
                 HtmlParseWorkCategory::InspectByte,
                 const {
                     (mem::size_of::<Option<HtmlRangeNumericRequest>>()
-                        + mem::size_of::<MachineKind>()
+                        + MACHINE_TAG_BYTES
                         + mem::size_of::<usize>()) as u64
                 },
             )?;
@@ -298,13 +354,8 @@ impl SessionStorage {
                 .range
                 .as_ref()
                 .ok_or_else(|| latch_registry_row(c))?;
-            let Some(request) = stage
-                .machine
-                .as_ref()
-                .ok_or_else(|| integrity(c))?
-                .request()
-            else {
-                let expected = stage.machine.as_ref().and_then(Machine::headers);
+            let Some(request) = stage.machine().ok_or_else(|| integrity(c))?.request() else {
+                let expected = stage.machine().and_then(Machine::headers);
                 if let Some(expected) = expected {
                     let actual = stage.headers(c)?;
                     if expected != actual {
@@ -457,16 +508,14 @@ impl SessionStorage {
             payload_write::<HtmlRangeNumericReply>(c, 1)?;
             let receiver = self
                 .range_stage(c)?
-                .machine
-                .as_ref()
+                .machine()
                 .ok_or_else(|| integrity(c))?
                 .receiver_bytes();
             c.admit_atomic_layout(receiver)?;
             c.charge(HtmlParseWorkCategory::CopyByte, receiver as u64)?;
             c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
             self.range_stage(c)?
-                .machine
-                .as_mut()
+                .machine_mut()
                 .ok_or_else(|| integrity(c))?
                 .reply(reply)
                 .map_err(|error| numeric_failure(c, error))?;
@@ -492,10 +541,9 @@ impl SessionStorage {
                             .range
                             .as_ref()
                             .unwrap()
-                            .machine
-                            .as_ref()
+                            .machine()
                             .unwrap()
-                            .kind,
+                            .kind(),
                         MachineKind::Ingress
                     );
                     if ingress {
@@ -595,14 +643,10 @@ impl SessionStorage {
             .map_err(|error| numeric_failure(c, error))?;
         payload_write::<Option<Machine>>(c, 1)?;
         stage.source = source;
-        stage.machine = Some(Machine::ingress(cursor));
+        self.start_machine(c, Machine::Ingress(cursor))?;
         self.execute_range(c)?;
         let stage = self.range_stage(c)?;
-        let Some(cursor) = stage
-            .machine
-            .as_ref()
-            .and_then(|machine| machine.ingress.as_ref())
-        else {
+        let Some(cursor) = stage.machine().and_then(Machine::ingress) else {
             return Err(integrity(c));
         };
         match cursor.result().ok_or_else(|| integrity(c))? {
@@ -776,13 +820,10 @@ impl SessionStorage {
                     )
                     .map_err(|_| integrity(c))?;
                     payload_write::<Option<Machine>>(c, 1)?;
-                    self.range_stage(c)?.machine = Some(Machine::midpoint(cursor));
+                    self.range_stage(c)?;
+                    self.start_machine(c, Machine::Midpoint(cursor))?;
                     self.execute_range(c)?;
-                    let Some(cursor) = self
-                        .range_stage(c)?
-                        .machine
-                        .as_ref()
-                        .and_then(|machine| machine.midpoint.as_ref())
+                    let Some(cursor) = self.range_stage(c)?.machine().and_then(Machine::midpoint)
                     else {
                         return Err(integrity(c));
                     };
@@ -917,13 +958,10 @@ impl SessionStorage {
                     )
                     .map_err(|_| integrity(c))?;
                     payload_write::<Option<Machine>>(c, 1)?;
-                    self.range_stage(c)?.machine = Some(Machine::lattice(cursor));
+                    self.range_stage(c)?;
+                    self.start_machine(c, Machine::Lattice(cursor))?;
                     self.execute_range(c)?;
-                    let Some(cursor) = self
-                        .range_stage(c)?
-                        .machine
-                        .as_ref()
-                        .and_then(|machine| machine.lattice.as_ref())
+                    let Some(cursor) = self.range_stage(c)?.machine().and_then(Machine::lattice)
                     else {
                         return Err(integrity(c));
                     };
@@ -978,7 +1016,7 @@ impl SessionStorage {
         let cursor = HtmlBestFiniteNumberCursor::new(f64::from_bits(bits), headers)
             .map_err(|error| numeric_failure(c, error))?;
         payload_write::<Option<Machine>>(c, 1)?;
-        stage.machine = Some(Machine::best(cursor));
+        self.start_machine(c, Machine::Best(cursor))?;
         self.execute_range(c)?;
         let units = self
             .range_stage(c)?
@@ -986,12 +1024,7 @@ impl SessionStorage {
             .as_ref()
             .ok_or_else(|| integrity(c))?
             .len();
-        let Some(cursor) = self
-            .range_stage(c)?
-            .machine
-            .as_ref()
-            .and_then(|machine| machine.best.as_ref())
-        else {
+        let Some(cursor) = self.range_stage(c)?.machine().and_then(Machine::best) else {
             return Err(integrity(c));
         };
         if cursor.result() != Some(units) {
@@ -999,11 +1032,11 @@ impl SessionStorage {
         }
         payload_write::<Option<OriginGroupRef>>(c, 1)?;
         let group = self.prepare_range_group(c, units, computation)?;
-        self.range_stage(c)?.generated = Some(group);
+        // The staging is re-qualified before the generated group is parked.
+        self.range_stage(c)?;
         payload_write::<Option<Utf16Buffer>>(c, 1)?;
         payload_write::<Option<OriginGroupRef>>(c, 1)?;
         let stage = self.range_stage(c)?;
-        let group = stage.generated.take().ok_or_else(|| integrity(c))?;
         let output = stage.output.take().ok_or_else(|| integrity(c))?;
         let value = output.freeze(c)?;
         let (native, next) = self.register_group_string_owned(c, value, Some(group))?;
@@ -1142,7 +1175,7 @@ mod absent_owner_tests {
         let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
         let storage = session.active_mut().unwrap();
         storage.effects.range = Some(RangeStaging::new(&mut c, 0).unwrap());
-        assert!(storage.effects.range.as_ref().unwrap().machine.is_none());
+        assert!(storage.effects.range.as_ref().unwrap().machine().is_none());
         assert_eq!(
             storage.execute_range(&mut c),
             Err(SessionError::Stop(state))

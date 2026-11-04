@@ -222,8 +222,7 @@ on error recovery (tables, foster parenting, formatting-element misnesting,
 implied paragraph ends); the token lane reaches that recovery under the generic
 contracts only, and the Unicode literals state a few recovery trees. There is no
 progressive feed or chunk-partition target: the public parse front doors take one
-whole source, and the parser's feed operations are private, so their exclusion and
-their private tests are unchanged. No target runs scripting, image resources or
+whole source, and the parser has no feed operation. No target runs scripting, image resources or
 an enabled-scripting fragment.
 
 ## Capture import
@@ -389,17 +388,6 @@ The work directory must be outside the source. The default 4 KiB input ceiling
 and 1,024 stored entries are too small for these targets; the entry quota may not
 exceed 100,000 (the tool rejects more with "invalid bounded storage quotas").
 
-Parser feed partitions have no public operation, so no target here exercises
-them. The parser's own private tests do, and this branch's source passes them:
-`cargo +1.97.0 test --offline --locked -j 1 -p surgeist-html-parser --lib feed`
-ran 11 tests: 10 passed, 1 ignored (the explicit
-`comparative_feed::artifact_tool::comparison_artifact_tool`). The modules are
-`parser::tree_builder::conformance::{comparative_feed, pi_recovery,
-reference_recovery, comment_diagnostic_corpus (with table_recovery_diagnostics
-and template_corpus)}` and `construction::text_append_tests`; their names state
-"every cut and unit feed" for processing instructions, references, comments,
-templates and table recovery.
-
 ## Native authoring
 
 The separate `surgeist-html::native-authoring` target uses the actual public
@@ -486,8 +474,8 @@ Remaining #1139 obligations include UTF8/UTF16 paired semantic projections with
 independently mapped coordinates, full metadata/history/reverse-query properties,
 semantic query families over captured results, source-qualified unsupported
 families, existing corpus/full-path conformance and separately measured
-scaling/memory work. Private progressive ordinary feeding and fragment-feeding
-exclusions are unchanged; existing private feed/corpus tests remain independent.
+scaling/memory work. The parser has no progressive or fragment feeding;
+existing private corpus tests remain independent.
 This package certifies no whole HTML contribution or issue closure. Framework
 child contracts #1141–1146 were completed at integration; parent #1140 and HTML
 #1139 remain owning work.

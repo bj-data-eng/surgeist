@@ -181,6 +181,7 @@ impl SessionStorage {
             #[cfg(test)]
             RootKind::Fragment => HtmlNodeKind::Fragment,
         };
+        let root_is_document = matches!(kind, HtmlNodeKind::Document(_));
         let allocated = payload_write::<Option<FormEffects>>(control, 1)
             .and_then(|()| session.allocate_native(control, kind, false, 0, 0));
         if let Err(error) = allocated {
@@ -189,14 +190,9 @@ impl SessionStorage {
             let _ = session.release(control);
             return Err(error);
         }
-        if matches!(
-            session
-                .construction
-                .node_at(0)
-                .ok_or_else(|| latch_registry_row(control))?
-                .kind(),
-            HtmlNodeKind::Document(_)
-        ) {
+        // The root just allocated has the kind `root` names; nothing is looked up
+        // that could fail while the session is live and unreleased.
+        if root_is_document {
             let facts = (|| {
                 let prepared = session.prepare_payload_slot_owned(control)?;
                 session

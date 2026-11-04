@@ -260,7 +260,7 @@ fn external_weak_preservation_and_detached_append_keep_current_ticket_and_histor
 }
 
 #[test]
-fn increasing_whole_and_progressive_unicode_entity_feeds_have_linear_append_copy_and_lookup_work() {
+fn increasing_whole_unicode_entity_feeds_have_linear_append_copy_and_lookup_work() {
     use crate::parser::tokenizer::{
         Tokenizer, TokenizerPull, states::HtmlTokenizerState, token::Event,
     };
@@ -291,7 +291,7 @@ fn increasing_whole_and_progressive_unicode_entity_feeds_have_linear_append_copy
                     spans.map(|(a, b, c, d)| (out + a, out + b, raw + c, raw + d))
                 })
                 .collect();
-            for progressive in [false, true] {
+            {
                 // Bounds cover the actual lexical atoms/groups/causes and
                 // registry cells for this finite source, without product changes.
                 let n = source.len() as u64;
@@ -309,122 +309,75 @@ fn increasing_whole_and_progressive_unicode_entity_feeds_have_linear_append_copy
                 let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
                 session.initialize_parse_evidence(&mut c, &source).unwrap();
                 let root = session.root(&mut c).unwrap();
-                let mut lexer = if progressive {
-                    Tokenizer::progressive(&source, HtmlTokenizerState::Data, None, &mut c).unwrap()
-                } else {
-                    Tokenizer::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap()
-                };
-                let cuts: Vec<_> = if !progressive {
-                    vec![source.len()]
-                } else if utf16 {
-                    (1..=source.len()).collect()
-                } else {
-                    "A&amp;🙂\r\n"
-                        .repeat(repetitions)
-                        .char_indices()
-                        .map(|(start, ch)| start + ch.len_utf8())
-                        .collect()
-                };
+                let mut lexer =
+                    Tokenizer::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
                 let mut texts = 0u64;
                 let (mut copies, mut visits, mut lookup_visits, mut relocation_bound) =
                     (0u64, 0u64, 0u64, 0usize);
                 let mut node: Option<ParserNode> = None;
                 let mut old_capacity = 0;
                 let mut old_address = 0;
-                let mut exhausted = false;
-                for (step, cut) in cuts
-                    .iter()
-                    .copied()
-                    .enumerate()
-                    .chain(std::iter::once((cuts.len(), source.len())))
-                {
-                    if progressive {
-                        if step == cuts.len() {
-                            lexer.seal_input(&mut c).unwrap();
-                        } else {
-                            lexer.make_available(cut, &mut c).unwrap();
-                        }
-                    } else if step != 0 {
-                        break;
-                    }
-                    loop {
-                        let pull = lexer
-                            .next(
-                                &mut c,
-                                false,
-                                session.active_mut().unwrap().evidence.as_mut().unwrap(),
-                            )
-                            .unwrap();
-                        match pull {
-                            TokenizerPull::NeedInput => {
-                                assert!(progressive && step < cuts.len());
-                                break;
-                            }
-                            TokenizerPull::Exhausted => {
-                                exhausted = true;
-                                break;
-                            }
-                            TokenizerPull::Event(Event::Token(event)) => {
-                                match event.into_token(&mut c).unwrap().kind {
-                                    TokenKind::Text(text) => {
-                                        let before_copy =
-                                            c.usage().work(HtmlParseWorkCategory::CopyByte);
-                                        let before_visits =
-                                            c.usage().work(HtmlParseWorkCategory::RecordVisit);
-                                        let inserted = session
-                                            .insert_text(&mut c, &root, None, &mut Some(text), None)
-                                            .unwrap()
-                                            .unwrap();
-                                        copies += c.usage().work(HtmlParseWorkCategory::CopyByte)
-                                            - before_copy;
-                                        visits +=
-                                            c.usage().work(HtmlParseWorkCategory::RecordVisit)
-                                                - before_visits;
-                                        if let Some(old) = &node {
-                                            assert_eq!(inserted._node.index, old.index);
-                                        }
-                                        node = Some(inserted._node);
-                                        texts += 1;
-                                        let node = node.as_ref().unwrap();
-                                        let storage = session.active().unwrap();
-                                        let HtmlNodeKind::Text(value) = storage
-                                            .construction
-                                            .node_at(node.index)
-                                            .unwrap()
-                                            .kind()
-                                        else {
-                                            panic!("text")
-                                        };
-                                        let capacity = value.shared_code_units().capacity();
-                                        let address = value.code_units().as_ptr() as usize;
-                                        if old_capacity != 0
-                                            && (capacity != old_capacity || address != old_address)
-                                        {
-                                            relocation_bound += 2 * old_capacity;
-                                        }
-                                        old_capacity = capacity;
-                                        old_address = address;
-                                        let before =
-                                            c.usage().work(HtmlParseWorkCategory::RecordVisit);
-                                        storage
-                                            .field_slot(&mut c, StringLocation::Text(node.index))
-                                            .unwrap();
-                                        lookup_visits +=
-                                            c.usage().work(HtmlParseWorkCategory::RecordVisit)
-                                                - before;
+                // The loop ends only when the whole source is exhausted.
+                loop {
+                    let pull = lexer
+                        .next(
+                            &mut c,
+                            false,
+                            session.active_mut().unwrap().evidence.as_mut().unwrap(),
+                        )
+                        .unwrap();
+                    match pull {
+                        TokenizerPull::Exhausted => break,
+                        TokenizerPull::Event(Event::Token(event)) => {
+                            match event.into_token(&mut c).unwrap().kind {
+                                TokenKind::Text(text) => {
+                                    let before_copy =
+                                        c.usage().work(HtmlParseWorkCategory::CopyByte);
+                                    let before_visits =
+                                        c.usage().work(HtmlParseWorkCategory::RecordVisit);
+                                    let inserted = session
+                                        .insert_text(&mut c, &root, None, &mut Some(text), None)
+                                        .unwrap()
+                                        .unwrap();
+                                    copies += c.usage().work(HtmlParseWorkCategory::CopyByte)
+                                        - before_copy;
+                                    visits += c.usage().work(HtmlParseWorkCategory::RecordVisit)
+                                        - before_visits;
+                                    if let Some(old) = &node {
+                                        assert_eq!(inserted._node.index, old.index);
                                     }
-                                    TokenKind::Eof => {}
-                                    _ => panic!("text-only source"),
+                                    node = Some(inserted._node);
+                                    texts += 1;
+                                    let node = node.as_ref().unwrap();
+                                    let storage = session.active().unwrap();
+                                    let HtmlNodeKind::Text(value) =
+                                        storage.construction.node_at(node.index).unwrap().kind()
+                                    else {
+                                        panic!("text")
+                                    };
+                                    let capacity = value.shared_code_units().capacity();
+                                    let address = value.code_units().as_ptr() as usize;
+                                    if old_capacity != 0
+                                        && (capacity != old_capacity || address != old_address)
+                                    {
+                                        relocation_bound += 2 * old_capacity;
+                                    }
+                                    old_capacity = capacity;
+                                    old_address = address;
+                                    let before = c.usage().work(HtmlParseWorkCategory::RecordVisit);
+                                    storage
+                                        .field_slot(&mut c, StringLocation::Text(node.index))
+                                        .unwrap();
+                                    lookup_visits +=
+                                        c.usage().work(HtmlParseWorkCategory::RecordVisit) - before;
                                 }
+                                TokenKind::Eof => {}
+                                _ => panic!("text-only source"),
                             }
-                            TokenizerPull::Event(event) => event.release(&mut c).unwrap(),
                         }
-                    }
-                    if exhausted {
-                        break;
+                        TokenizerPull::Event(event) => event.release(&mut c).unwrap(),
                     }
                 }
-                assert!(exhausted);
                 let node = node.unwrap();
                 assert_eq!(native_text(&session, &node), expected);
                 assert_eq!(
@@ -474,7 +427,7 @@ fn increasing_whole_and_progressive_unicode_entity_feeds_have_linear_append_copy
                     2 * expected.len() as u64
                 );
                 eprintln!(
-                    "append-feed reps={repetitions} utf16={utf16} progressive={progressive} texts={texts} copied={copies} visits={visits} lookup={lookup_visits} capacity={old_capacity} relocation_bound={relocation_bound}"
+                    "append-feed reps={repetitions} utf16={utf16} texts={texts} copied={copies} visits={visits} lookup={lookup_visits} capacity={old_capacity} relocation_bound={relocation_bound}"
                 );
                 lexer.release(&mut c).unwrap();
                 session.release(&mut c).unwrap();

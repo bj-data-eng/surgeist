@@ -1125,6 +1125,8 @@ impl ConstructionCapability<'_> {
 pub(crate) enum StandaloneError {
     UnsupportedDocumentInitialization,
     UnsupportedExecutionProfile,
+    /// An input edit reached a bank execution also holds.
+    InputBankRefused,
     Stop(HtmlParseStop),
     Prologue(prologue::PrologueError),
     Head(head::HeadError),
@@ -1138,6 +1140,7 @@ impl std::fmt::Debug for StandaloneError {
                 f.write_str("UnsupportedDocumentInitialization")
             }
             Self::UnsupportedExecutionProfile => f.write_str("UnsupportedExecutionProfile"),
+            Self::InputBankRefused => f.write_str("InputBankRefused"),
             Self::Stop(error) => f.debug_tuple("Stop").field(error).finish(),
             Self::Prologue(error) => f.debug_tuple("Prologue").field(error).finish(),
             Self::Head(error) => f.debug_tuple("Head").field(error).finish(),
@@ -1171,7 +1174,9 @@ impl StandaloneError {
             Self::UnsupportedDocumentInitialization | Self::UnsupportedExecutionProfile => {
                 StopCause::Unsupported(HtmlParseUnsupportedState::Provenance)
             }
-            Self::Consumed | Self::TokenizerExhausted => StopCause::LostOwner,
+            Self::InputBankRefused | Self::Consumed | Self::TokenizerExhausted => {
+                StopCause::LostOwner
+            }
         }
     }
 }
@@ -1254,64 +1259,6 @@ impl<'source> StandaloneDocumentDriver<'source> {
             error.stop_cause().latch(&mut self.control);
         }
     }
-    #[cfg(test)]
-    pub(crate) fn make_available(&mut self, through: usize) -> Result<(), StandaloneError> {
-        let result = self.make_available_inner(through);
-        self.retain_terminal_failure(&result);
-        result
-    }
-    #[cfg(test)]
-    fn make_available_inner(&mut self, through: usize) -> Result<(), StandaloneError> {
-        self.control.require_source(self.source)?;
-        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        if let Some(head) = &mut self.head {
-            head.require(&mut self.control)?;
-            self.control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-            head.state
-                .as_mut()
-                .ok_or(StandaloneError::Consumed)?
-                .tokenizer
-                .as_mut()
-                .ok_or(StandaloneError::Consumed)?
-                .make_available(through, &mut self.control)?;
-        } else {
-            self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            self.tokenizer
-                .as_mut()
-                .ok_or(StandaloneError::Consumed)?
-                .make_available(through, &mut self.control)?;
-        }
-        Ok(())
-    }
-    #[cfg(test)]
-    pub(crate) fn seal_input(&mut self) -> Result<(), StandaloneError> {
-        let result = self.seal_input_inner();
-        self.retain_terminal_failure(&result);
-        result
-    }
-    #[cfg(test)]
-    fn seal_input_inner(&mut self) -> Result<(), StandaloneError> {
-        self.control.require_source(self.source)?;
-        self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        if let Some(head) = &mut self.head {
-            head.require(&mut self.control)?;
-            self.control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-            head.state
-                .as_mut()
-                .ok_or(StandaloneError::Consumed)?
-                .tokenizer
-                .as_mut()
-                .ok_or(StandaloneError::Consumed)?
-                .seal_input(&mut self.control)?;
-        } else {
-            self.control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            self.tokenizer
-                .as_mut()
-                .ok_or(StandaloneError::Consumed)?
-                .seal_input(&mut self.control)?;
-        }
-        Ok(())
-    }
     fn step_inner(
         &mut self,
         service: &mut Option<&mut dyn crate::meta_csp::Service>,
@@ -1360,9 +1307,6 @@ impl<'source> StandaloneDocumentDriver<'source> {
                     .next(c, false, evidence)?;
                 match pulled {
                     super::tokenizer::TokenizerPull::Event(event) => self.event = Some(event),
-                    super::tokenizer::TokenizerPull::NeedInput => {
-                        return Ok(head::HeadStep::NeedInput);
-                    }
                     super::tokenizer::TokenizerPull::Exhausted => {
                         return Err(StandaloneError::TokenizerExhausted);
                     }

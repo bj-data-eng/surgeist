@@ -66,6 +66,11 @@ impl<'source> FragmentEntry<'source> {
         target: super::super::parse::InitializationTarget,
     ) -> Result<(), FragmentExecutionError> {
         let request = driver.request;
+        // An input edit reached a bank execution also holds: no parse may run
+        // on this request, whichever route entered it.
+        if request.input_bank_refused() {
+            return Err(FragmentExecutionError::Consumed);
+        }
         let c = &mut driver.control;
         c.admit_source(request.source())?;
         target.admit(c)?;
@@ -1008,6 +1013,28 @@ mod tests {
             .work_credits(work)
             .finish()
             .unwrap()
+    }
+    #[test]
+    fn a_fragment_edit_of_a_bank_execution_also_holds_changes_nothing_and_fails_the_parse() {
+        use crate::{HtmlParseEngineCondition, HtmlParseFailureReason};
+        let shared = request("x")
+            .with_encoding_url_facts(Vec::new())
+            .share_associated_inputs();
+        let held = std::sync::Arc::clone(shared.shared_associated_inputs().unwrap());
+        let refused = shared.with_encoding_url_facts(Vec::new());
+        assert!(std::sync::Arc::ptr_eq(
+            refused
+                .shared_associated_inputs()
+                .expect("the held bank stays the request's bank"),
+            &held
+        ));
+        let Err(failure) = refused.parse() else {
+            panic!("a refused edit fails the parse")
+        };
+        assert_eq!(
+            failure.reason(),
+            HtmlParseFailureReason::Engine(HtmlParseEngineCondition::Ownership)
+        );
     }
     fn with_limits(source: &str, limits: HtmlParseLimits) -> HtmlFragmentParseRequest {
         let original = request(source);

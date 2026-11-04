@@ -104,13 +104,17 @@ enum DocumentContext {
 }
 
 /// The supplied observation banks, in exactly one of two states. They are
-/// edited only while the caller builds the request, and then shared once with
-/// execution, so no edit can ever need to copy a bank that execution also holds
-/// and a request can never carry both an editable and a shared bank.
+/// edited while the caller builds the request, and then shared once with
+/// execution. A request never carries both an editable and a shared bank; an
+/// edit that reaches a bank execution also holds changes nothing: the request
+/// keeps the held bank and refuses to start a parse.
 #[derive(Debug)]
 enum InputBank {
     Building(Option<crate::construction::associated::Inputs>),
     Shared(Option<std::sync::Arc<crate::construction::associated::Inputs>>),
+    /// An edit reached a shared bank that execution also holds. The bank is
+    /// exactly the one held; the edit was dropped and is reported at entry.
+    Refused(std::sync::Arc<crate::construction::associated::Inputs>),
 }
 impl Default for InputBank {
     fn default() -> Self {
@@ -118,50 +122,53 @@ impl Default for InputBank {
     }
 }
 impl InputBank {
-    /// Applies a builder's edit. The builders consume a request, and a parse
-    /// owner never hands a request back to a builder, so only a building bank
-    /// is edited here. A shared bank that nothing else holds reopens for the
-    /// edit; one that execution also holds is left as it is.
+    /// Applies a builder's edit. A shared bank that nothing else holds reopens
+    /// for the edit. One that execution also holds is neither edited nor
+    /// copied: the request is marked refused, so the parse that would run on
+    /// it fails with the ownership defect instead of silently ignoring the
+    /// edit.
     fn edited(self, edit: impl FnOnce(&mut crate::construction::associated::Inputs)) -> Self {
         let mut bank = match self {
             Self::Building(bank) => bank.unwrap_or_default(),
             Self::Shared(None) => Default::default(),
             Self::Shared(Some(shared)) => match std::sync::Arc::try_unwrap(shared) {
                 Ok(bank) => bank,
-                Err(shared) => return Self::unedited(shared),
+                Err(held) => return Self::Refused(held),
             },
+            Self::Refused(held) => return Self::Refused(held),
         };
         edit(&mut bank);
         Self::Building(Some(bank))
     }
-    /// The edit found a bank that execution also holds. No public path leads
-    /// here, so tests fail loudly; a release build leaves the bank alone.
-    fn unedited(shared: std::sync::Arc<crate::construction::associated::Inputs>) -> Self {
-        #[cfg(test)]
-        panic!("an input edit reached a bank that execution also holds: {shared:?}");
-        #[cfg(not(test))]
-        Self::Shared(Some(shared))
+    fn is_refused(&self) -> bool {
+        matches!(self, Self::Refused(_))
     }
     /// Ends editing: a supplied bank becomes the one execution shares.
     fn share(self) -> Self {
-        Self::Shared(self.into_shared())
+        match self {
+            refused @ Self::Refused(_) => refused,
+            other => Self::Shared(other.into_shared()),
+        }
     }
     fn inputs(&self) -> Option<&crate::construction::associated::Inputs> {
         match self {
             Self::Building(bank) => bank.as_ref(),
             Self::Shared(bank) => bank.as_deref(),
+            Self::Refused(held) => Some(held),
         }
     }
     fn shared(&self) -> Option<&std::sync::Arc<crate::construction::associated::Inputs>> {
         match self {
             Self::Building(_) => None,
             Self::Shared(bank) => bank.as_ref(),
+            Self::Refused(held) => Some(held),
         }
     }
     fn into_shared(self) -> Option<std::sync::Arc<crate::construction::associated::Inputs>> {
         match self {
             Self::Building(bank) => bank.map(std::sync::Arc::new),
             Self::Shared(bank) => bank,
+            Self::Refused(held) => Some(held),
         }
     }
 }
@@ -365,6 +372,10 @@ impl HtmlDocumentParseRequest {
     pub(crate) fn share_associated_inputs(mut self) -> Self {
         self.associated = std::mem::take(&mut self.associated).share();
         self
+    }
+    /// An input edit reached a bank execution also holds, so no parse may run.
+    pub(crate) fn input_bank_refused(&self) -> bool {
+        self.associated.is_refused()
     }
     /// Exact supplied source, including its immutable identity and coordinates.
     pub fn source(&self) -> &HtmlSource {
@@ -626,6 +637,10 @@ impl HtmlFragmentParseRequest {
         self.associated = std::mem::take(&mut self.associated).share();
         self
     }
+    /// An input edit reached a bank execution also holds, so no parse may run.
+    pub(crate) fn input_bank_refused(&self) -> bool {
+        self.associated.is_refused()
+    }
     pub fn with_base_facts(
         mut self,
         facts: crate::HtmlCapturedBaseFacts,
@@ -841,6 +856,32 @@ mod tests {
             std::sync::Arc::as_ptr(seen),
             shared.associated_inputs().unwrap()
         ));
+    }
+
+    #[test]
+    fn an_edit_of_a_bank_execution_also_holds_changes_nothing_and_fails_the_parse() {
+        use crate::{HtmlParseEngineCondition, HtmlParseFailureReason};
+        let shared = HtmlDocumentParseRequest::offline(HtmlSource::utf8(""), limits(6, 1))
+            .with_encoding_url_facts(Vec::new())
+            .share_associated_inputs();
+        let held = std::sync::Arc::clone(shared.shared_associated_inputs().unwrap());
+        let refused = shared.with_encoding_url_facts(Vec::new());
+        // Nothing was edited and nothing was copied: the request still names
+        // the bank execution holds.
+        assert!(std::sync::Arc::ptr_eq(
+            refused
+                .shared_associated_inputs()
+                .expect("the held bank stays the request's bank"),
+            &held
+        ));
+        // The refusal is a typed defect of the parse, never a silent success.
+        let Err(failure) = refused.parse() else {
+            panic!("a refused edit fails the parse")
+        };
+        assert_eq!(
+            failure.reason(),
+            HtmlParseFailureReason::Engine(HtmlParseEngineCondition::Ownership)
+        );
     }
 
     #[test]

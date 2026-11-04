@@ -25,14 +25,14 @@ mod data;
 
 /// A nonempty, at-most-two-scalar replacement from the normative table.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ReferenceValue {
+pub(crate) enum ReferenceValue {
     One(char),
     Two(char, char),
 }
 
 /// Exact membership and strict continuation are separate observations.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum NameLookup {
+pub(crate) enum NameLookup {
     Unknown,
     Prefix,
     Complete {
@@ -232,6 +232,124 @@ pub(super) fn c1_replacement(
         admit_result::<Option<char>>(control)?;
         Ok(None)
     }
+}
+
+/// The scalar a numeric reference of `value` stands for. Zero, values past
+/// U+10FFFF and surrogates become U+FFFD; the C1 range maps through the table.
+/// Diagnostics for these cases belong to the tokenizer.
+pub(crate) fn numeric_scalar(
+    value: u32,
+    control: &mut ParseControl,
+) -> Result<char, HtmlParseStop> {
+    let scalar = match value {
+        0 | 0x11_0000.. | 0xD800..=0xDFFF => Some('\u{FFFD}'),
+        _ => c1_replacement(value, control)?.or_else(|| char::from_u32(value)),
+    };
+    scalar.ok_or_else(|| control.fail_invariant(HtmlParseInvariant::TokenizerState))
+}
+
+/// The value of an ASCII digit of a numeric reference: decimal digits and, in
+/// a hexadecimal reference, the letters A-F in either case.
+pub(crate) fn numeric_digit(point: u32, radix: u32) -> Option<u32> {
+    u8::try_from(point)
+        .ok()
+        .and_then(|byte| char::from(byte).to_digit(radix))
+}
+
+/// Appends one digit to the value of a numeric reference, saturating at one
+/// past the last code point, which every later digit keeps.
+pub(crate) fn accumulate_digit(value: u32, radix: u32, digit: u32) -> u32 {
+    value
+        .checked_mul(radix)
+        .and_then(|value| value.checked_add(digit))
+        .filter(|&value| value <= 0x11_0000)
+        .unwrap_or(0x11_0000)
+}
+
+pub(crate) const MAX_NAME_POINTS: usize = {
+    let mut longest = 0;
+    let mut index = 0;
+    while index < data::NAMED_REFERENCES.len() {
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "evaluated at compile time with index below the table length: an index out of range fails the build"
+        )]
+        let name = data::NAMED_REFERENCES[index].0;
+        if name.len() > longest {
+            longest = name.len();
+        }
+        index += 1;
+    }
+    longest
+};
+
+/// What the source spelling of one character reference stands for: the
+/// ampersand through the optional semicolon of a numeric reference, or the
+/// ampersand and a table name. `None` when the spelling is neither. This
+/// reads the same table and numeric rules the tokenizer applies; it adds no
+/// second resolver and allocates nothing.
+pub(crate) fn decode_spelling(
+    spelling: impl IntoIterator<Item = u32>,
+    control: &mut ParseControl,
+) -> Result<Option<ReferenceValue>, HtmlParseStop> {
+    control.checkpoint()?;
+    let mut points = spelling.into_iter();
+    let mut read = |control: &mut ParseControl| -> Result<Option<u32>, HtmlParseStop> {
+        let next = points.next();
+        if next.is_some() {
+            control.charge(HtmlParseWorkCategory::InspectByte, size_of::<u32>() as u64)?;
+        }
+        Ok(next)
+    };
+    if read(control)? != Some(0x26) {
+        return Ok(None);
+    }
+    let Some(first) = read(control)? else {
+        return Ok(None);
+    };
+    if first != 0x23 {
+        let mut query = [0_u32; MAX_NAME_POINTS];
+        let mut length = 0;
+        let mut next = Some(first);
+        while let Some(point) = next {
+            let Some(slot) = query.get_mut(length) else {
+                return Ok(None);
+            };
+            *slot = point;
+            length = length.saturating_add(1);
+            next = read(control)?;
+        }
+        let Some(name) = query.get(..length) else {
+            return Err(control.fail_invariant(HtmlParseInvariant::TokenizerState));
+        };
+        return Ok(match lookup_name(name, control)? {
+            NameLookup::Complete { value, .. } => Some(value),
+            NameLookup::Prefix | NameLookup::Unknown => None,
+        });
+    }
+    let mut point = read(control)?;
+    let hex = matches!(point, Some(0x58 | 0x78));
+    if hex {
+        point = read(control)?;
+    }
+    let radix = if hex { 16 } else { 10 };
+    let mut value = 0_u32;
+    let mut digits = false;
+    while let Some(digit) = point.and_then(|point| numeric_digit(point, radix)) {
+        digits = true;
+        value = accumulate_digit(value, radix, digit);
+        point = read(control)?;
+    }
+    if !digits {
+        return Ok(None);
+    }
+    if point == Some(0x3B) {
+        point = read(control)?;
+    }
+    if point.is_some() {
+        return Ok(None);
+    }
+    numeric_scalar(value, control).map(|scalar| Some(ReferenceValue::One(scalar)))
 }
 
 #[cfg(test)]

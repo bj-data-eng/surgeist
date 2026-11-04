@@ -11,6 +11,7 @@ use surgeist_html::parsing::HtmlParserScriptingMode;
 pub(crate) enum EntryRejection {
     DocumentInitialization,
     ExecutionProfile,
+    InputBankRefused,
 }
 impl EntryRejection {
     pub(super) fn for_request(request: &HtmlDocumentParseRequest) -> Option<Self> {
@@ -20,6 +21,8 @@ impl EntryRejection {
             || request.allow_declarative_shadow_roots()
         {
             Some(Self::ExecutionProfile)
+        } else if request.input_bank_refused() {
+            Some(Self::InputBankRefused)
         } else {
             None
         }
@@ -28,6 +31,7 @@ impl EntryRejection {
         match self {
             Self::DocumentInitialization => StandaloneError::UnsupportedDocumentInitialization,
             Self::ExecutionProfile => StandaloneError::UnsupportedExecutionProfile,
+            Self::InputBankRefused => StandaloneError::InputBankRefused,
         }
     }
 }
@@ -58,39 +62,18 @@ impl<'source> OrdinaryDocumentEntry<'source> {
     #[cfg(test)]
     pub(crate) fn new(request: &'source HtmlDocumentParseRequest) -> Self {
         request.require_inputs_reach_execution();
-        Self::create(
-            request,
-            false,
-            super::parse::InitializationTarget::Native,
-            false,
-        )
+        Self::create(request, false, super::parse::InitializationTarget::Native)
     }
     pub(super) fn owned(
         request: &'source HtmlDocumentParseRequest,
         target: super::parse::InitializationTarget,
     ) -> Self {
-        Self::create(
-            request,
-            true,
-            target,
-            #[cfg(test)]
-            false,
-        )
-    }
-    #[cfg(test)]
-    pub(super) fn owned_progressive(request: &'source HtmlDocumentParseRequest) -> Self {
-        Self::create(
-            request,
-            true,
-            super::parse::InitializationTarget::Native,
-            true,
-        )
+        Self::create(request, true, target)
     }
     fn create(
         request: &'source HtmlDocumentParseRequest,
         owned: bool,
         target: super::parse::InitializationTarget,
-        #[cfg(test)] progressive: bool,
     ) -> Self {
         if let Some(reason) = EntryRejection::for_request(request) {
             return Self {
@@ -116,14 +99,7 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             failed_evidence: None,
             evidence_taken: false,
         };
-        let phase = match Self::prepare(
-            &mut driver,
-            request,
-            owned,
-            target,
-            #[cfg(test)]
-            progressive,
-        ) {
+        let phase = match Self::prepare(&mut driver, request, owned, target) {
             Ok(()) => Phase::Ready,
             Err(error) => {
                 // Resource/cancellation failure already owns the first stop. An
@@ -148,7 +124,6 @@ impl<'source> OrdinaryDocumentEntry<'source> {
         request: &HtmlDocumentParseRequest,
         owned: bool,
         target: super::parse::InitializationTarget,
-        #[cfg(test)] progressive: bool,
     ) -> Result<(), StandaloneError> {
         let c = &mut driver.control;
         // Preserve source-admission precedence and use actual compiled layouts.
@@ -194,15 +169,7 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             crate::parser::control::OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         lexical.require_owner(c)?;
         driver.lexical = Some(lexical);
-        #[cfg(test)]
-        let make = if progressive {
-            crate::parser::tokenizer::Tokenizer::progressive
-        } else {
-            crate::parser::tokenizer::Tokenizer::new
-        };
-        #[cfg(not(test))]
-        let make = crate::parser::tokenizer::Tokenizer::new;
-        driver.tokenizer = Some(make(
+        driver.tokenizer = Some(crate::parser::tokenizer::Tokenizer::new(
             driver.source,
             crate::parser::tokenizer::states::HtmlTokenizerState::Data,
             None,
@@ -277,6 +244,9 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             }
             Phase::Rejected(EntryRejection::ExecutionProfile) => {
                 return Err(StandaloneError::UnsupportedExecutionProfile);
+            }
+            Phase::Rejected(EntryRejection::InputBankRefused) => {
+                return Err(StandaloneError::InputBankRefused);
             }
             Phase::Failed => {
                 let driver = self.driver.as_mut().ok_or(StandaloneError::Consumed)?;

@@ -1,9 +1,9 @@
 //! Explicit opt-in tool for the comparison artifact and phase timings.
 //!
-//! The artifact adapter needs the crate-private progressive driver and the
-//! sealed report constructors, which only the test harness can reach, so the
-//! tool is an ignored harness entry rather than a binary or example (both would
-//! be limited to the public API, which has no progressive feed). The ordinary
+//! The artifact adapter needs the crate-private driver and the sealed report
+//! constructors, which only the test harness can reach, so the tool is an
+//! ignored harness entry rather than a binary or example (both would be
+//! limited to the public API). The ordinary
 //! test run never executes it; the assertion test in the parent module owns
 //! the correctness contract.
 //!
@@ -18,7 +18,7 @@
 //! Phase timings and per-case rows go to stderr (`FEED_PHASE`, `FEED_CASE`).
 //! Without the environment variable no artifact is written.
 use super::super::{Kind, Name, Projection};
-use super::{Phases, literals, scalar_feed};
+use super::{Phases, complete_feed, literals};
 
 use std::{io::Write, time::Instant};
 use surgeist_html::construction::HtmlDocumentMode;
@@ -117,27 +117,25 @@ impl Phases for Timing {
 fn comparison_artifact_tool() {
     let literals = literals();
     let mut encoded = Vec::from(&b"SGHTML-COMPARE\0\x01"[..]);
-    number(&mut encoded, literals.len() * 2);
+    number(&mut encoded, literals.len());
     for l in &literals {
-        for width in [1, 7] {
-            let mut timing = Timing {
-                family: l.name,
-                clock: Instant::now(),
-            };
-            let (cuts, report, actual) = scalar_feed(l, width, &mut timing);
-            encode(&mut encoded, &actual);
-            let rows = report.associations();
-            eprintln!(
-                "FEED_CASE family={} width={width} source={} cuts={cuts:?} native={} d1={} groups={} diagnostics={} usage={:?}",
-                l.name,
-                report.source().len(),
-                actual.nodes.len(),
-                rows.len(),
-                report.history_view().len(),
-                report.diagnostics().len(),
-                report.usage()
-            );
-        }
+        let mut timing = Timing {
+            family: l.name,
+            clock: Instant::now(),
+        };
+        let (report, actual) = complete_feed(l, &mut timing);
+        encode(&mut encoded, &actual);
+        let rows = report.associations();
+        eprintln!(
+            "FEED_CASE family={} source={} native={} d1={} groups={} diagnostics={} usage={:?}",
+            l.name,
+            report.source().len(),
+            actual.nodes.len(),
+            rows.len(),
+            report.history_view().len(),
+            report.diagnostics().len(),
+            report.usage()
+        );
     }
     // Optional standard-library artifact output; no path or Rust source from
     // ignored working material is named or read by this tool.

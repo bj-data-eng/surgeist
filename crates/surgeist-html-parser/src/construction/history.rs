@@ -125,27 +125,24 @@ fn qualify(
             HtmlParseWorkCategory::InspectByte,
             mem::size_of::<ConstructionCause>() as u64,
         )?;
-        if let Some(range) = &cause.source {
+        if let Some(range) = cause.source() {
             source_range(c, data.source, range)?;
         }
         if cause
-            .original_cause
+            .original_cause()
             .is_some_and(|original| original >= index)
-            || cause.trigger.is_some_and(|trigger| trigger >= index)
+            || cause.trigger().is_some_and(|trigger| trigger >= index)
             || cause
-                .original
+                .original()
                 .is_some_and(|group| group >= data.groups.len())
             || cause
-                .incoming
+                .incoming()
                 .is_some_and(|group| group >= data.groups.len())
         {
             return Err(SessionError::WrongToken);
         }
-        if let Some(range) = cause.computation {
-            if cause.operation != provenance::HtmlParseConstructionOperation::Replacement {
-                return Err(SessionError::WrongToken);
-            }
-            provenance::validate_input_computation(c, range, data.groups, index)?;
+        if let Some(computation) = cause.computation() {
+            provenance::validate_input_computation(c, *computation, data.groups, index)?;
         }
         // Captured qualifications were established by the sealed ingress;
         // captured facts remain nonlexical and do not acquire a source range.
@@ -161,7 +158,7 @@ fn qualify(
         {
             return Err(SessionError::WrongToken);
         }
-        if let Some(range) = group_cause.computation {
+        if let Some(range) = group_cause.computation() {
             for edge in range.edges() {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 if edge.is_some_and(|edge| edge.group >= index) {
@@ -1222,7 +1219,7 @@ mod tests {
             let header = view.header(view.group(final_index).unwrap()).unwrap();
             assert_eq!(header.units, 128);
             assert_eq!(
-                header.cause.operation,
+                header.cause.operation(),
                 provenance::HtmlParseConstructionOperation::Copy
             );
             assert!(header.retirement.is_none());
@@ -1252,7 +1249,7 @@ mod tests {
             }
             let header = view.header(view.group(empty_index).unwrap()).unwrap();
             assert_eq!(
-                header.cause.operation,
+                header.cause.operation(),
                 provenance::HtmlParseConstructionOperation::SourceIndependent
             );
             let HtmlParseHistoryBody::Leaf(empty) = header.body else {
@@ -1301,7 +1298,7 @@ mod tests {
             let ranged_causes = data
                 .causes
                 .iter()
-                .filter(|cause| cause.source.is_some())
+                .filter(|cause| cause.source().is_some())
                 .count() as u64;
             // AB: three headers + two Concat child-header reads, two leaf slot
             // visits + two require_document_string visits, two origin reads.
@@ -1772,10 +1769,10 @@ mod tests {
                 let HtmlParseHistoryBody::Leaf(leaf) = header.body else {
                     continue;
                 };
-                if header.cause.operation
+                if header.cause.operation()
                     == provenance::HtmlParseConstructionOperation::SourceIndependent
                 {
-                    assert!(header.cause.source.is_none() && header.cause.captured.is_none());
+                    assert!(header.cause.source().is_none() && header.cause.captured().is_none());
                     assert!(leaf.origins().is_empty());
                     if leaf.units() == [112] {
                         saw_name = true;
@@ -1890,8 +1887,8 @@ mod tests {
         {
             let view = owner.view();
             let header = view.header(view.group(before).unwrap()).unwrap();
-            assert!(header.cause.source.is_none());
-            let captured = header.cause.captured.as_ref().unwrap();
+            assert!(header.cause.source().is_none());
+            let captured = header.cause.captured().unwrap();
             assert_eq!(&captured.capture, request.context().capture().identity());
             assert_eq!(
                 &captured.host_revision,

@@ -4,7 +4,7 @@ use crate::{
     HtmlDocumentParseRequest, HtmlParseResource, HtmlSource,
     construction::{
         ParserNode,
-        native_view::{NativeKind, NativeString, NativeView},
+        tests::native_view::{NativeKind, NativeString, NativeView},
     },
 };
 use surgeist_html::construction::HtmlDocumentMode;

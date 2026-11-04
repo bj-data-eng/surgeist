@@ -445,6 +445,7 @@ fn ordinary_reason(e: &StandaloneError) -> HtmlParseFailureReason {
         }
         StandaloneError::Stop(_)
         | StandaloneError::Consumed
+        | StandaloneError::InputBankRefused
         | StandaloneError::TokenizerExhausted => {
             cause_reason(e.stop_cause(), HtmlParseEngineCondition::Ownership)
         }
@@ -541,18 +542,9 @@ fn ordinary_attempt(
             cause = Some(e.stop_cause());
         }
     }
-    // The parse functions give the tokenizer the complete source, which never
-    // starves it, so a request for more input is a fault of the parser.
     while reason.is_none() {
         match driver.step_with_meta_csp(&mut service) {
             Ok(HeadStep::Consumed) => {}
-            Ok(HeadStep::NeedInput) => {
-                reason = Some(HtmlParseFailureReason::Engine(
-                    HtmlParseEngineCondition::Tokenizer,
-                ));
-                cause = Some(StopCause::LostOwner);
-                break;
-            }
             Ok(HeadStep::Complete) => break,
             Ok(HeadStep::Boundary(b)) => {
                 reason = Some(HtmlParseFailureReason::UnsupportedConstruction(b));
@@ -740,18 +732,10 @@ fn fragment_attempt(owner: &mut FragmentInitialization) -> FragmentAttempt {
                 return FragmentAttempt::Initialization(why, refused);
             }
         };
-    // A fragment source is complete, which never starves the tokenizer, so a
-    // request for more input is a fault of the parser.
     let mut cause = None;
     let why = loop {
         match driver.step() {
             Ok(HeadStep::Consumed) => {}
-            Ok(HeadStep::NeedInput) => {
-                cause = Some(StopCause::LostOwner);
-                break Some(HtmlParseFailureReason::Engine(
-                    HtmlParseEngineCondition::Tokenizer,
-                ));
-            }
             Ok(HeadStep::Complete) => break None,
             Ok(HeadStep::Boundary(b)) => {
                 cause = Some(StopCause::Unsupported(
