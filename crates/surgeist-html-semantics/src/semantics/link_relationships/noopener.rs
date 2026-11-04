@@ -314,11 +314,9 @@ impl<'a> HtmlSemanticSession<'a> {
         owner
             .interpret(&mut meter)
             .map_err(|error| meter.session.rel_action_failure(error))?;
-        let local = owner.finish().map_err(|_| {
-            meter
-                .session
-                .stop(HtmlSemanticFailureKind::RepresentationExhausted)
-        })?;
+        let local = owner
+            .finish()
+            .map_err(|failure| meter.session.rel_interpretation_failure(*failure.cause()))?;
         let mut no_opener = false;
         let mut opener = false;
         let mut unknown = false;

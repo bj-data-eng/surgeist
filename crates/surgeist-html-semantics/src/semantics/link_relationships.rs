@@ -11,8 +11,8 @@ use crate::HtmlCaptureDocumentId;
 pub use noopener::*;
 pub use selectors::*;
 use surgeist_html::bounded::rel::{
-    HtmlRelActionError, HtmlRelInputs, HtmlRelInterpretation, HtmlRelMeter, HtmlRelRefinement,
-    HtmlRelReservation,
+    HtmlRelActionError, HtmlRelInputs, HtmlRelInterpretation, HtmlRelInterpretationError,
+    HtmlRelMeter, HtmlRelRefinement, HtmlRelReservation,
 };
 use surgeist_html::elements::link::{
     HtmlRelEffect, HtmlRelKeyword, HtmlRelLinks, HtmlRelReport, HtmlRelRole, HtmlRelSpelling,
@@ -1046,10 +1046,17 @@ impl<'a> HtmlSemanticSession<'a> {
     ) -> HtmlSemanticFailure {
         match error {
             HtmlRelActionError::Admission(error) => error,
-            HtmlRelActionError::Protocol(_) => {
-                self.stop(HtmlSemanticFailureKind::RepresentationExhausted)
-            }
+            HtmlRelActionError::Protocol(error) => self.rel_interpretation_failure(error),
         }
+    }
+    /// The terminal failure of a rel owner that refused a step: an unrepresentable size is
+    /// exhaustion, a failed reservation is an allocation failure, and any other cause is a step
+    /// requested out of the owner's protocol.
+    fn rel_interpretation_failure(
+        &mut self,
+        error: HtmlRelInterpretationError,
+    ) -> HtmlSemanticFailure {
+        self.stop(rel_failure_kind(error))
     }
     fn rel_missing(
         subject: &HtmlCaptureSubjectId,
@@ -1266,7 +1273,7 @@ impl<'a> HtmlSemanticSession<'a> {
         };
         local
             .begin_refinement()
-            .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+            .map_err(|error| self.rel_interpretation_failure(error))?;
         for extension in &extensions {
             let refinement = if let Some(keyword) = extension.standard {
                 HtmlRelRefinement::Standard(keyword)
@@ -1290,7 +1297,7 @@ impl<'a> HtmlSemanticSession<'a> {
             .map_err(|error| self.rel_action_failure(error))?;
         let local = local
             .finish()
-            .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+            .map_err(|failure| self.rel_interpretation_failure(*failure.cause()))?;
         for extension in &mut extensions {
             self.charge(2)?;
             if extension.standard.is_some() {
@@ -1549,6 +1556,17 @@ impl<'a> HtmlSemanticSession<'a> {
             HtmlSemanticValue::Inapplicable => Ok(HtmlSemanticValue::Inapplicable),
             HtmlSemanticValue::Unsupported(u) => Ok(HtmlSemanticValue::Unsupported(u)),
         }
+    }
+}
+
+/// The failure kind of a rel owner's refusal.
+fn rel_failure_kind(error: HtmlRelInterpretationError) -> HtmlSemanticFailureKind {
+    if error.is_representation_exhausted() {
+        HtmlSemanticFailureKind::RepresentationExhausted
+    } else if error.is_allocation_failed() {
+        HtmlSemanticFailureKind::AllocationFailed
+    } else {
+        HtmlSemanticFailureKind::ProtocolViolated
     }
 }
 

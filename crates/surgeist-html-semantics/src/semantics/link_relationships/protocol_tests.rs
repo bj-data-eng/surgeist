@@ -46,3 +46,22 @@ fn a_rel_owner_asked_out_of_order_is_a_protocol_violation_not_exhaustion() {
     let failure = session.rel_action_failure(HtmlRelActionError::Protocol(early_refinement));
     assert_eq!(failure.kind(), &HtmlSemanticFailureKind::ProtocolViolated);
 }
+
+/// Every cause a driver can provoke by taking a step out of the owner's protocol maps to the
+/// protocol breach, whether the owner refuses a step or refuses to finish.
+#[test]
+fn every_out_of_order_rel_step_maps_to_a_protocol_violation() {
+    let new = || HtmlRelInterpretation::new(HtmlRelInputs::new(Some(HtmlRelRole::Link)));
+    let mut owner = new();
+    let wrong_phase = owner.begin_refinement().unwrap_err();
+    assert!(wrong_phase.is_wrong_phase());
+    let not_ready = new().finish().unwrap_err();
+    assert!(not_ready.cause().is_not_ready());
+    let wrong_phase_read = new().occurrences().unwrap_err();
+    for error in [wrong_phase, *not_ready.cause(), wrong_phase_read] {
+        assert_eq!(
+            rel_failure_kind(error),
+            HtmlSemanticFailureKind::ProtocolViolated
+        );
+    }
+}
