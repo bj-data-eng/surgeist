@@ -882,6 +882,28 @@ fn work_of_nested_template_elements_at_most_doubles_with_their_number() {
 }
 
 #[test]
+fn work_of_nested_divs_with_text_at_most_doubles_with_their_number() {
+    // Pinned HTML 877d6146487f section 13.2.6.4.7, "A start tag whose tag name is one of: address,
+    // ..., div, ...": "If the stack of open elements has a p element in button scope, then close
+    // a p element." No `p` is open and no scope boundary is, so the answer is no for every
+    // `div`. Deciding it must not examine the whole stack of open elements each time.
+    assert_measures_at_most_two_point_two_times(
+        [250, 500, 1_000, 2_000],
+        |n| format!("<!doctype html>{}", "<div>y".repeat(n)),
+        &[WORK_OUTSIDE_RESERVATION, VISIT_WORK],
+    );
+}
+
+#[test]
+fn work_of_nested_divs_without_text_at_most_doubles_with_their_number() {
+    assert_measures_at_most_two_point_two_times(
+        [250, 500, 1_000, 2_000],
+        |n| format!("<!doctype html>{}", "<div>".repeat(n)),
+        &[WORK_OUTSIDE_RESERVATION, VISIT_WORK],
+    );
+}
+
+#[test]
 fn work_of_repeated_formatting_elements_with_an_attribute_at_most_doubles_with_their_number() {
     assert_each_doubling_costs_at_most_two_point_two_times(LONG_RUN_SIZES, |n| {
         format!("<!doctype html><p>{}", "<b a=i>".repeat(n))
