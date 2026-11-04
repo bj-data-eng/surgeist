@@ -320,56 +320,92 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         Ok(Ok(None))
     }
+    /// Whether `target` is a descendant of an ancestor of `source`, going from
+    /// `source` to its ordinary parent and, at a shadow root, to its host. The
+    /// ancestors of the target are collected once and sorted, so each ancestor of
+    /// the source is found among them by search: the work is that of the two
+    /// chains, not of every pair of their elements.
+    ///
+    /// A source without ancestors has no scope. A target without ancestors is no
+    /// strict descendant of any. Unavailable ancestry on the target's side, which
+    /// ends what can be known of its ancestors, is reported before unavailable
+    /// ancestry on the source's side, as the first the walk meets.
     fn reference_scope(
         &mut self,
         source: &HtmlCaptureSubjectId,
         target: &HtmlCaptureSubjectId,
     ) -> Result<Result<bool, HtmlSemanticMissing>, HtmlSemanticFailure> {
-        let mut source_current = source.clone();
-        let mut first_missing = None;
+        let first = match self.reference_shadow_parent(source)? {
+            Ok(Some(ancestor)) => ancestor,
+            Ok(None) => return Ok(Ok(false)),
+            Err(missing) => {
+                // A target with no ordinary ancestors cannot satisfy the strict
+                // descendant relation, even with unknown source data.
+                let target_node = self.node(target)?;
+                if self.parent(target_node)? == Ok(None) {
+                    return Ok(Ok(false));
+                }
+                return Ok(Err(missing));
+            }
+        };
+        let mut ancestors = Vec::new();
+        let result = self.reference_scope_among(first, target, &mut ancestors);
+        self.release_scratch(&ancestors);
+        result
+    }
+    fn reference_scope_among(
+        &mut self,
+        first: HtmlCaptureSubjectId,
+        target: &HtmlCaptureSubjectId,
+        ancestors: &mut Vec<usize>,
+    ) -> Result<Result<bool, HtmlSemanticMissing>, HtmlSemanticFailure> {
+        let mut target_missing = None;
+        let mut current = target.clone();
         loop {
-            let ancestor = match self.reference_shadow_parent(&source_current)? {
-                Ok(Some(ancestor)) => ancestor,
-                Ok(None) => break,
-                Err(missing) => {
-                    first_missing.get_or_insert(missing);
-                    // A target with no ordinary ancestors cannot satisfy the
-                    // strict descendant relation, even with unknown source data.
-                    let target_node = self.node(target)?;
-                    if self.parent(target_node)? == Ok(None) {
+            let node = self.node(&current)?;
+            match self.parent(node)? {
+                Ok(Some(parent)) => {
+                    self.reserve_scratch(ancestors, 1)?;
+                    self.charge(1)?;
+                    ancestors.push(parent.ordinal());
+                    current = parent;
+                }
+                Ok(None) => {
+                    if ancestors.is_empty() {
                         return Ok(Ok(false));
                     }
                     break;
                 }
-            };
-            let mut target_current = target.clone();
-            let mut saw_target_ancestor = false;
-            loop {
-                let node = self.node(&target_current)?;
-                match self.parent(node)? {
-                    Ok(Some(parent)) => {
-                        saw_target_ancestor = true;
-                        self.charge(1)?;
-                        if parent == ancestor {
-                            return Ok(Ok(true));
-                        }
-                        target_current = parent;
-                    }
-                    Ok(None) => {
-                        if !saw_target_ancestor {
-                            return Ok(Ok(false));
-                        }
-                        break;
-                    }
-                    Err(missing) => {
-                        first_missing.get_or_insert(missing);
-                        break;
-                    }
+                Err(missing) => {
+                    target_missing = Some(missing);
+                    break;
                 }
             }
-            source_current = ancestor;
         }
-        Ok(match first_missing {
+        let bits = (usize::BITS - ancestors.len().leading_zeros()) as usize;
+        let sort = ancestors
+            .len()
+            .checked_mul(bits)
+            .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+        self.charge(sort)?;
+        ancestors.sort_unstable();
+        let mut source_missing = None;
+        let mut ancestor = first;
+        loop {
+            self.charge(bits)?;
+            if ancestors.binary_search(&ancestor.ordinal()).is_ok() {
+                return Ok(Ok(true));
+            }
+            match self.reference_shadow_parent(&ancestor)? {
+                Ok(Some(next)) => ancestor = next,
+                Ok(None) => break,
+                Err(missing) => {
+                    source_missing = Some(missing);
+                    break;
+                }
+            }
+        }
+        Ok(match target_missing.or(source_missing) {
             Some(missing) => Err(missing),
             None => Ok(false),
         })
