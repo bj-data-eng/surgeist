@@ -755,6 +755,77 @@ fn reading_character_references_holds_no_auxiliary_entries_of_its_own() {
         assert_eq!(peak(&raw), ordinary, "{:?}", &raw[..raw.len().min(40)]);
     }
 }
+/// A stop inside a character reference leaves nothing accounted. Cancellation
+/// is requested after each decoded position of references that read a named
+/// table entry, a legacy entry without its semicolon, an unknown name and a
+/// numeric one, and every work credit below the full cost is refused in turn.
+#[test]
+fn a_stop_inside_a_character_reference_is_the_first_stop_and_leaves_no_storage() {
+    for raw in [
+        "&NotEqualTilde;",
+        "&amp",
+        "&notit;",
+        "&zzz;",
+        "&#x41",
+        "<a x='&amp'>",
+        "<a x=&NotEqualTilde;>",
+    ] {
+        let source = HtmlSource::utf8(raw);
+        let mut cancelled = 0;
+        for through in 0..=source.len() {
+            let cancellation = HtmlParseCancellation::new();
+            let mut c = ParseControl::new(limits(), cancellation.clone());
+            c.admit_source(&source).unwrap();
+            let mut fixture =
+                LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
+            cancel_after_consumed(&mut fixture.lexer, through, cancellation, &mut c).unwrap();
+            loop {
+                match fixture.next(&mut c, true) {
+                    Ok(Some(event)) => event.release(&mut c).unwrap(),
+                    Ok(None) => break,
+                    Err(first) => {
+                        cancelled += 1;
+                        assert_eq!(first, HtmlParseStop::Cancelled, "{raw:?} after {through}");
+                        assert_eq!(c.stop(), Some(first));
+                        let at_stop = c.first_stop_usage().unwrap().clone();
+                        assert!(
+                            matches!(fixture.next(&mut c, true), Err(second) if second == first)
+                        );
+                        assert_eq!(c.first_stop_usage(), Some(&at_stop));
+                        break;
+                    }
+                }
+            }
+            fixture.release(&mut c).unwrap();
+            assert_storage_released(&c);
+        }
+        assert!(cancelled > 0, "{raw:?} was never cancelled");
+        let (stop, work) = run_with_limits(&source, HtmlTokenizerState::Data, None, limits());
+        assert_eq!(stop, None);
+        for credits in 0..work {
+            let (stop, _) = run_with_limits(
+                &source,
+                HtmlTokenizerState::Data,
+                None,
+                limits()
+                    .into_builder()
+                    .work_credits(credits)
+                    .finish()
+                    .unwrap(),
+            );
+            assert!(
+                matches!(
+                    stop,
+                    Some(HtmlParseStop::LimitExceeded {
+                        resource: HtmlParseResource::WorkCredits,
+                        ..
+                    })
+                ),
+                "{raw:?} with {credits} of {work} credits: {stop:?}"
+            );
+        }
+    }
+}
 fn run_with_limits(
     source: &HtmlSource,
     state: HtmlTokenizerState,
