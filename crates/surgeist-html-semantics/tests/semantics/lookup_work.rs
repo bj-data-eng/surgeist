@@ -9,32 +9,32 @@
 //! by about 4). Results do not change; the work is the whole difference.
 
 use super::constructor_work::{attributed, big_builder, flat_page, html, inert_fact, shadow_root};
-use crate::semantics::support::assert_doubling_at_most_2_2;
+use crate::semantics::support::{assert_doubling_at_most_2_2, builder_with};
 use surgeist_html::construction::HtmlDocumentMode;
 use surgeist_html::values::HtmlValueInterpreter;
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlControlCurrentValue,
-    HtmlControlFacts, HtmlControlFactsLimits, HtmlCustomControlClassification, HtmlDesignMode,
-    HtmlDocumentDesignModeFact, HtmlDocumentFlatTreeRelation, HtmlDocumentLanguageFallback,
-    HtmlElementReferenceFact, HtmlElementReferenceFacts, HtmlElementReferenceFactsLimits,
-    HtmlElementReferenceKey, HtmlExplicitElementReference, HtmlFlatTreeProducerId,
-    HtmlFlatTreeRevision, HtmlFormAssociation, HtmlFormAssociationState,
-    HtmlGlobalInheritanceFacts, HtmlGlobalInheritanceLimits, HtmlGlobalInheritanceProducerId,
-    HtmlGlobalInheritanceRevision, HtmlInertFactLimits, HtmlInertFacts, HtmlInputControlState,
-    HtmlLanguageDirectionFacts, HtmlLanguageDirectionLimits, HtmlListParticipation,
-    HtmlListParticipationFact, HtmlListParticipationRevision, HtmlMediaAttributeInput,
-    HtmlMediaContextRevision, HtmlMediaEnvironmentRevision, HtmlMediaFact, HtmlMediaFacts,
-    HtmlMediaFactsLimits, HtmlMediaGrammarRevision, HtmlMediaProducerId, HtmlMicrodataFacts,
-    HtmlMicrodataPropertyFact, HtmlMicrodataPropertyPermission, HtmlMicrodataProviderId,
-    HtmlMicrodataProviderRevision, HtmlMicrodataRawBinding, HtmlMicrodataRawSource,
-    HtmlMicrodataRevision, HtmlMicrodataTypeFact, HtmlMicrodataUrlFact, HtmlMicrodataUrlOperation,
-    HtmlMicrodataUrlResult, HtmlMicrodataVocabularyId, HtmlOptionControlState,
-    HtmlOutputDefaultFact, HtmlOutputDefaultFacts, HtmlOutputDefaultLimits,
-    HtmlOutputDefaultValueOverride, HtmlParticipationProducerId, HtmlPragmaLanguage,
-    HtmlProtocolLanguage, HtmlScriptingStatus, HtmlSemanticCancellation, HtmlSemanticContext,
-    HtmlSemanticContextInput, HtmlSemanticLimits, HtmlSemanticQuery, HtmlSemanticRequest,
-    HtmlSemanticSession, HtmlSlotAssignedNodes, HtmlSpellcheckDefaultBehavior,
-    HtmlSpellcheckDefaultFact, HtmlTextareaControlState,
+    HtmlCapture, HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput,
+    HtmlCaptureSubjectId, HtmlControlCurrentValue, HtmlControlFacts, HtmlControlFactsLimits,
+    HtmlCustomControlClassification, HtmlDesignMode, HtmlDocumentDesignModeFact,
+    HtmlDocumentFlatTreeRelation, HtmlDocumentLanguageFallback, HtmlElementReferenceFact,
+    HtmlElementReferenceFacts, HtmlElementReferenceFactsLimits, HtmlElementReferenceKey,
+    HtmlExplicitElementReference, HtmlFlatTreeProducerId, HtmlFlatTreeRevision,
+    HtmlFormAssociation, HtmlFormAssociationState, HtmlGlobalInheritanceFacts,
+    HtmlGlobalInheritanceLimits, HtmlGlobalInheritanceProducerId, HtmlGlobalInheritanceRevision,
+    HtmlInertFactLimits, HtmlInertFacts, HtmlInputControlState, HtmlLanguageDirectionFacts,
+    HtmlLanguageDirectionLimits, HtmlListParticipation, HtmlListParticipationFact,
+    HtmlListParticipationRevision, HtmlMediaAttributeInput, HtmlMediaContextRevision,
+    HtmlMediaEnvironmentRevision, HtmlMediaFact, HtmlMediaFacts, HtmlMediaFactsLimits,
+    HtmlMediaGrammarRevision, HtmlMediaProducerId, HtmlMicrodataFacts, HtmlMicrodataPropertyFact,
+    HtmlMicrodataPropertyPermission, HtmlMicrodataProviderId, HtmlMicrodataProviderRevision,
+    HtmlMicrodataRawBinding, HtmlMicrodataRawSource, HtmlMicrodataRevision, HtmlMicrodataTypeFact,
+    HtmlMicrodataUrlFact, HtmlMicrodataUrlOperation, HtmlMicrodataUrlResult,
+    HtmlMicrodataVocabularyId, HtmlOptionControlState, HtmlOutputDefaultFact,
+    HtmlOutputDefaultFacts, HtmlOutputDefaultLimits, HtmlOutputDefaultValueOverride,
+    HtmlParticipationProducerId, HtmlPragmaLanguage, HtmlProtocolLanguage, HtmlScriptingStatus,
+    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticLimits,
+    HtmlSemanticQuery, HtmlSemanticRequest, HtmlSemanticSession, HtmlSlotAssignedNodes,
+    HtmlSpellcheckDefaultBehavior, HtmlSpellcheckDefaultFact, HtmlTextareaControlState,
 };
 
 const DOUBLINGS: [usize; 4] = [250, 500, 1000, 2000];
@@ -949,4 +949,105 @@ fn an_output_default_sweep_finds_each_record_in_constant_work() {
 #[test]
 fn a_media_sweep_finds_each_external_fact_in_constant_work() {
     assert_doubling_at_most_2_2("media external sweep", &DOUBLINGS, media_external_sweep);
+}
+
+/// `count` untyped microdata items, all children of the document, swept by item
+/// query: the graph of the tree is built once for the batch, so what grows is
+/// the type walk of each item, which costs the items and edges above it (none).
+fn item_type_sweep(count: usize) -> usize {
+    let (mut b, d) = big_builder(count);
+    let items: Vec<_> = (0..count)
+        .map(|_| attributed(&mut b, &d, "div", &[("itemscope", "")]))
+        .collect();
+    for item in &items {
+        b.establish_children(item, &[]).unwrap();
+    }
+    b.establish_children(&d, &items).unwrap();
+    let capture = b.finish().unwrap();
+    let ids: Vec<_> = items
+        .iter()
+        .map(|item| capture.subject_id(item).unwrap())
+        .collect();
+    let context = HtmlSemanticContext::new(
+        &capture,
+        capture.host_facts_revision().clone(),
+        HtmlSemanticContextInput::new(vec![]),
+        0,
+    )
+    .unwrap();
+    sweep_work(&capture, &context, &ids, HtmlSemanticQuery::MicrodataItem)
+}
+
+#[test]
+fn an_item_sweep_walks_the_types_above_each_item_in_work_of_that_walk() {
+    assert_doubling_at_most_2_2("item type sweep", &DOUBLINGS, item_type_sweep);
+}
+
+/// Two chains of `depth` nested elements below the document: a button at the
+/// bottom of the first has a reference to a `div` at the bottom of the second.
+/// They share only the document, so no ancestor of the button but that one is an
+/// ancestor of the target.
+fn reference_scope_work(depth: usize) -> usize {
+    let (mut b, d) = builder_with(HtmlCaptureLimits::new(
+        2 * depth + 10,
+        8 * depth + 100,
+        100,
+        40 * depth + 100_000,
+        2 * depth + 10,
+        0,
+        0,
+        16_777_216,
+    ));
+    let chain = |b: &mut HtmlCaptureBuilder, last: &str| {
+        let elements: Vec<_> = (0..depth)
+            .map(|n| html(b, &d, if n + 1 == depth { last } else { "div" }))
+            .collect();
+        for pair in elements.windows(2) {
+            b.establish_children(&pair[0], std::slice::from_ref(&pair[1]))
+                .unwrap();
+        }
+        b.establish_children(&elements[depth - 1], &[]).unwrap();
+        (elements[0].clone(), elements[depth - 1].clone())
+    };
+    let (first_top, button) = chain(&mut b, "button");
+    let (second_top, target) = chain(&mut b, "div");
+    b.establish_children(&d, &[first_top, second_top]).unwrap();
+    let capture = b.finish().unwrap();
+    let (button, target) = (
+        capture.subject_id(&button).unwrap(),
+        capture.subject_id(&target).unwrap(),
+    );
+    let facts = HtmlElementReferenceFacts::new(
+        &capture,
+        capture.host_facts_revision().clone(),
+        vec![HtmlElementReferenceFact::new(
+            button.clone(),
+            HtmlElementReferenceKey::CommandFor,
+            HtmlExplicitElementReference::Element(target),
+        )],
+        HtmlElementReferenceFactsLimits::new(8, 1 << 40),
+    )
+    .unwrap();
+    let context = HtmlSemanticContext::new(
+        &capture,
+        capture.host_facts_revision().clone(),
+        HtmlSemanticContextInput::new(vec![]).with_element_references(facts),
+        0,
+    )
+    .unwrap();
+    sweep_work(
+        &capture,
+        &context,
+        std::slice::from_ref(&button),
+        HtmlSemanticQuery::CommandForElement,
+    )
+}
+
+#[test]
+fn a_reference_scope_check_walks_each_chain_of_ancestors_once() {
+    assert_doubling_at_most_2_2(
+        "reference scope",
+        &[100, 200, 400, 800],
+        reference_scope_work,
+    );
 }
