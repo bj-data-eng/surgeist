@@ -172,39 +172,25 @@ fn write_quotient(input: &[u8], divisor: NonZeroU32, output: &mut Vec<u8>) -> u3
     remainder as u32
 }
 
-/// Takes ownership of a metered digit buffer as a string without a second allocation. It reports
-/// the first byte that is not an ASCII digit, with its offset, as the digits error the controlled
-/// operations already carry. Writers push only ASCII digits, so no valid operation reaches it.
+/// Takes ownership of a metered digit buffer as a string without a second allocation. It scans the
+/// bytes once for the first one that is not an ASCII digit and reports it, with its offset, as the
+/// digits error the controlled operations already carry; a buffer of digits alone is valid UTF-8,
+/// so the move into a string follows. Writers push only ASCII digits, so no valid operation
+/// reaches the error.
 fn ascii_digit_string(bytes: Vec<u8>) -> Result<String, HtmlDecimalDigitsError> {
     #[cfg(test)]
     count_digit_steps(bytes.len());
-    let first_non_digit = |bytes: &[u8]| {
-        bytes
-            .iter()
-            .enumerate()
-            .find(|(_, byte)| !byte.is_ascii_digit())
-            .map(|(offset, byte)| HtmlDecimalDigitsError::NonAsciiDigit {
-                code_unit_offset: offset,
-                code_unit: u16::from(*byte),
-            })
+    let non_digit = |offset: usize, bytes: &[u8]| HtmlDecimalDigitsError::NonAsciiDigit {
+        code_unit_offset: offset,
+        code_unit: bytes.get(offset).map_or(0, |byte| u16::from(*byte)),
     };
-    match String::from_utf8(bytes) {
-        Ok(digits) => match first_non_digit(digits.as_bytes()) {
-            None => Ok(digits),
-            Some(error) => Err(error),
-        },
-        // A byte that is not UTF-8 is not an ASCII digit either, so the first non-digit exists;
-        // the error is reported from the same byte scan.
-        Err(rejected) => {
-            let bytes = rejected.into_bytes();
-            Err(
-                first_non_digit(&bytes).unwrap_or(HtmlDecimalDigitsError::NonAsciiDigit {
-                    code_unit_offset: bytes.len(),
-                    code_unit: 0,
-                }),
-            )
-        }
+    if let Some(offset) = bytes.iter().position(|byte| !byte.is_ascii_digit()) {
+        return Err(non_digit(offset, &bytes));
     }
+    String::from_utf8(bytes).map_err(|rejected| {
+        let offset = rejected.utf8_error().valid_up_to();
+        non_digit(offset, rejected.as_bytes())
+    })
 }
 
 /// Builds the string of an unmetered writer's digit buffer. These writers already grow ordinary
@@ -4142,8 +4128,7 @@ mod tests {
         }
     }
 
-    /// The predecessor shape of a decimal string keeps its length except when a lone leading one
-    /// drops out, and the pivot is the last digit that is not zero.
+    /// A digit buffer is a string of ASCII digits, and the first other byte is reported with its offset.
     #[test]
     fn digit_buffers_report_the_first_byte_that_is_not_an_ascii_digit() {
         assert_eq!(
@@ -4171,6 +4156,8 @@ mod tests {
         }
     }
 
+    /// The predecessor shape of a decimal string keeps its length except when a lone leading one
+    /// drops out, and the pivot is the last digit that is not zero.
     #[test]
     fn predecessor_shape_matches_the_decremented_digits() {
         for value in [1_u128, 2, 9, 10, 11, 100, 101, 1000, 1999, 120_000] {
