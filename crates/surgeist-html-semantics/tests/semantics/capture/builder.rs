@@ -1607,19 +1607,22 @@ fn shadow_status_uses_internal_is_slot_and_definition_without_execution() {
     let c = b.finish().unwrap();
     let id = |h| c.element_id(&c.subject_id(h).unwrap()).unwrap();
     assert_eq!(
-        c.shadow_attachment_status(&id(&blocked)).unwrap(),
+        c.shadow_attachment_status(&id(&blocked), HtmlShadowRootMode::Open)
+            .unwrap(),
         HtmlShadowAttachmentStatus::DefinitionDisallows
     );
     assert_eq!(
-        c.shadow_attachment_status(&id(&allowed)).unwrap(),
+        c.shadow_attachment_status(&id(&allowed), HtmlShadowRootMode::Open)
+            .unwrap(),
         HtmlShadowAttachmentStatus::Allowed
     );
     assert_eq!(
-        c.shadow_attachment_status(&id(&null)).unwrap(),
+        c.shadow_attachment_status(&id(&null), HtmlShadowRootMode::Open)
+            .unwrap(),
         HtmlShadowAttachmentStatus::Allowed
     );
     assert!(matches!(
-        c.shadow_attachment_status(&id(&unknown_is)),
+        c.shadow_attachment_status(&id(&unknown_is), HtmlShadowRootMode::Open),
         Err(HtmlCaptureError::MissingFact {
             fact: HtmlCaptureFact::IsValue,
             ..
@@ -1659,8 +1662,9 @@ fn closed_shadow_presence_and_hosted_registry_require_no_captured_children() {
     let c = b.finish().unwrap();
     let host_id = c.element_id(&c.subject_id(&host).unwrap()).unwrap();
     assert_eq!(
-        c.shadow_attachment_status(&host_id).unwrap(),
-        HtmlShadowAttachmentStatus::ExistingRoot
+        c.shadow_attachment_status(&host_id, HtmlShadowRootMode::Closed)
+            .unwrap(),
+        HtmlShadowAttachmentStatus::DeclarativeRootReused
     );
     let sid = c.subject_id(&shadow).unwrap();
     assert!(matches!(
@@ -1716,18 +1720,20 @@ fn missing_shadow_facts_are_not_absence_and_irrelevant_facts_are_not_required() 
     let c = b.finish().unwrap();
     let id = |h| c.element_id(&c.subject_id(h).unwrap()).unwrap();
     assert!(matches!(
-        c.shadow_attachment_status(&id(&unknown)),
+        c.shadow_attachment_status(&id(&unknown), HtmlShadowRootMode::Open),
         Err(HtmlCaptureError::MissingFact {
             fact: HtmlCaptureFact::ShadowRoot,
             ..
         })
     ));
     assert_eq!(
-        c.shadow_attachment_status(&id(&foreign)).unwrap(),
+        c.shadow_attachment_status(&id(&foreign), HtmlShadowRootMode::Open)
+            .unwrap(),
         HtmlShadowAttachmentStatus::InvalidHost
     );
     assert_eq!(
-        c.shadow_attachment_status(&id(&invalid)).unwrap(),
+        c.shadow_attachment_status(&id(&invalid), HtmlShadowRootMode::Open)
+            .unwrap(),
         HtmlShadowAttachmentStatus::InvalidHost
     );
     // Inert context selection does not need a shadow decision or complete children.
@@ -2402,7 +2408,8 @@ fn a_disabling_definition_is_reported_before_an_existing_root() {
     ] {
         let id = c.element_id(&c.subject_id(host).unwrap()).unwrap();
         assert_eq!(
-            c.shadow_attachment_status(&id).unwrap(),
+            c.shadow_attachment_status(&id, HtmlShadowRootMode::Open)
+                .unwrap(),
             HtmlShadowAttachmentStatus::DefinitionDisallows,
             "{label} host with an existing root"
         );
@@ -2428,112 +2435,158 @@ fn a_disabling_definition_is_reported_before_an_unknown_shadow_root_fact() {
     let c = b.finish().unwrap();
     let id = c.element_id(&c.subject_id(&host).unwrap()).unwrap();
     assert_eq!(
-        c.shadow_attachment_status(&id).unwrap(),
+        c.shadow_attachment_status(&id, HtmlShadowRootMode::Open)
+            .unwrap(),
         HtmlShadowAttachmentStatus::DefinitionDisallows
     );
 }
 
-// HTML "start tag template" (html-source 147330-147332; pinned HTML capture
-// 877d6146487f): the parser sets the template's contents to the shadow root
-// attached to the declarative shadow host, which is the template's parent.
-fn finished_with_template_reference(
-    template_parent_first: bool,
-    template_parent: Parent,
-    root_host: Host,
-) -> Result<HtmlCapture, HtmlCaptureError> {
+// A template's shadow reference is independent of its ordinary position. HTML
+// never inserts a template whose contents became the declarative host's root
+// (html-source 147330-147332; pinned parser capture, template start tag steps
+// 7.11.2 to 7.11.6), and the DOM lets a retained template be inserted under any
+// element, so the template's parent may be the host, another element, nothing
+// or unknown, whatever the root's host is.
+#[derive(Clone, Copy, Debug)]
+enum TemplatePosition {
+    UnderHost,
+    UnderOtherElement,
+    Root,
+    Unknown,
+}
+#[derive(Clone, Copy, Debug)]
+enum RootHost {
+    Declarative,
+    Other,
+    Unknown,
+}
+
+#[test]
+fn a_template_shadow_reference_does_not_depend_on_the_templates_position() {
+    for position in [
+        TemplatePosition::UnderHost,
+        TemplatePosition::UnderOtherElement,
+        TemplatePosition::Root,
+        TemplatePosition::Unknown,
+    ] {
+        for root_host in [RootHost::Declarative, RootHost::Other, RootHost::Unknown] {
+            for position_first in [true, false] {
+                let mut b = HtmlCaptureBuilder::new(limits(), HtmlHostFactsRevision::fresh());
+                let d = document(&mut b, HtmlScriptingStatus::Disabled);
+                let declarative_host = element(&mut b, &d, Namespace::html(), "div");
+                let other = element(&mut b, &d, Namespace::html(), "p");
+                let template = element(&mut b, &d, Namespace::html(), "template");
+                let properties = captured_shadow_properties();
+                let root = match root_host {
+                    RootHost::Declarative => b.add_shadow_root(
+                        &d,
+                        &declarative_host,
+                        properties,
+                        HtmlCaptureRegistryInput::Null,
+                    ),
+                    RootHost::Other => {
+                        b.add_shadow_root(&d, &other, properties, HtmlCaptureRegistryInput::Null)
+                    }
+                    RootHost::Unknown => {
+                        b.add_shadow_fragment(&d, properties, HtmlCaptureRegistryInput::Null)
+                    }
+                }
+                .unwrap();
+                let place = |b: &mut HtmlCaptureBuilder| match position {
+                    TemplatePosition::UnderHost => b
+                        .establish_children(&declarative_host, std::slice::from_ref(&template))
+                        .unwrap(),
+                    TemplatePosition::UnderOtherElement => b
+                        .establish_children(&other, std::slice::from_ref(&template))
+                        .unwrap(),
+                    TemplatePosition::Root => b.establish_root(&template).unwrap(),
+                    TemplatePosition::Unknown => {}
+                };
+                if position_first {
+                    place(&mut b);
+                }
+                b.establish_template_shadow_reference(&template, &root)
+                    .unwrap();
+                if !position_first {
+                    place(&mut b);
+                }
+                let c = b.finish().unwrap_or_else(|e| {
+                    panic!("{position:?}, root of {root_host:?}, {position_first}: {e:?}")
+                });
+                let node = c.node(&c.subject_id(&template).unwrap()).unwrap();
+                assert_eq!(
+                    node.template_contents_kind(),
+                    Some(HtmlTemplateContentsKind::ShadowReference)
+                );
+            }
+        }
+    }
+}
+
+// Step 4.2 throws when the existing root is not declarative or its mode is not
+// the requested mode; otherwise steps 4.3 to 4.5 reuse the root and return.
+#[test]
+fn an_existing_root_is_reused_only_when_declarative_and_of_the_requested_mode() {
     let mut b = HtmlCaptureBuilder::new(limits(), HtmlHostFactsRevision::fresh());
     let d = document(&mut b, HtmlScriptingStatus::Disabled);
-    let declarative_host = element(&mut b, &d, Namespace::html(), "div");
-    let other = element(&mut b, &d, Namespace::html(), "p");
-    let template = element(&mut b, &d, Namespace::html(), "template");
-    let root = match root_host {
-        Host::Declarative => b
-            .add_shadow_root(
-                &d,
-                &declarative_host,
-                captured_shadow_properties(),
-                HtmlCaptureRegistryInput::Null,
-            )
-            .unwrap(),
-        Host::Other => b
-            .add_shadow_root(
-                &d,
-                &other,
-                captured_shadow_properties(),
-                HtmlCaptureRegistryInput::Null,
-            )
-            .unwrap(),
-        Host::Unknown => b
-            .add_shadow_fragment(
-                &d,
-                captured_shadow_properties(),
-                HtmlCaptureRegistryInput::Null,
-            )
-            .unwrap(),
-    };
-    let parent = match template_parent {
-        Parent::Declarative => Some(&declarative_host),
-        Parent::Other => Some(&other),
-        Parent::Unknown => None,
-    };
-    if template_parent_first && let Some(parent) = parent {
-        b.establish_children(parent, std::slice::from_ref(&template))
-            .unwrap();
-    }
-    b.establish_template_shadow_reference(&template, &root)
-        .unwrap();
-    if !template_parent_first && let Some(parent) = parent {
-        b.establish_children(parent, std::slice::from_ref(&template))
-            .unwrap();
-    }
-    b.finish()
-}
-#[derive(Clone, Copy, Debug)]
-enum Parent {
-    Declarative,
-    Other,
-    Unknown,
-}
-#[derive(Clone, Copy, Debug)]
-enum Host {
-    Declarative,
-    Other,
-    Unknown,
-}
-
-#[test]
-fn a_template_shadow_reference_must_be_hosted_by_the_templates_parent() {
-    for parent_first in [true, false] {
-        let result =
-            finished_with_template_reference(parent_first, Parent::Other, Host::Declarative);
-        assert!(
-            matches!(
-                result,
-                Err(HtmlCaptureError::InvalidTemplateContentsReference)
-            ),
-            "parent established first: {parent_first}: {:?}",
-            result.err()
-        );
-    }
-}
-
-#[test]
-fn a_template_shadow_reference_hosted_by_the_templates_parent_is_accepted() {
-    for parent_first in [true, false] {
-        finished_with_template_reference(parent_first, Parent::Declarative, Host::Declarative)
-            .unwrap_or_else(|e| panic!("parent established first: {parent_first}: {e:?}"));
-    }
-}
-
-#[test]
-fn an_unknown_parent_or_host_cannot_contradict_a_template_shadow_reference() {
-    for (parent, host) in [
-        (Parent::Unknown, Host::Declarative),
-        (Parent::Unknown, Host::Other),
-        (Parent::Declarative, Host::Unknown),
-        (Parent::Other, Host::Unknown),
+    let mut hosts = Vec::new();
+    for (declarative, mode) in [
+        (true, HtmlShadowRootMode::Open),
+        (true, HtmlShadowRootMode::Closed),
+        (false, HtmlShadowRootMode::Open),
+        (false, HtmlShadowRootMode::Closed),
     ] {
-        finished_with_template_reference(true, parent, host)
-            .unwrap_or_else(|e| panic!("{parent:?} / {host:?}: {e:?}"));
+        let host = element(&mut b, &d, Namespace::html(), "div");
+        b.add_shadow_root(
+            &d,
+            &host,
+            HtmlCapturedShadowProperties::new(
+                HtmlShadowRootProperties::new(mode, HtmlSlotAssignment::Named, false, false, false),
+                declarative,
+                false,
+                false,
+            ),
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+        hosts.push((host, declarative, mode));
     }
+    let c = b.finish().unwrap();
+    for (host, declarative, existing) in &hosts {
+        let id = c.element_id(&c.subject_id(host).unwrap()).unwrap();
+        for requested in [HtmlShadowRootMode::Open, HtmlShadowRootMode::Closed] {
+            let expected = if *declarative && *existing == requested {
+                HtmlShadowAttachmentStatus::DeclarativeRootReused
+            } else {
+                HtmlShadowAttachmentStatus::ExistingRootDisallows
+            };
+            assert_eq!(
+                c.shadow_attachment_status(&id, requested).unwrap(),
+                expected,
+                "declarative {declarative}, existing {existing:?}, requested {requested:?}"
+            );
+        }
+    }
+}
+
+// Steps 1 and 2 precede step 4: an invalid host with a root is still invalid.
+#[test]
+fn an_invalid_host_is_reported_before_its_existing_root() {
+    let mut b = HtmlCaptureBuilder::new(limits(), HtmlHostFactsRevision::fresh());
+    let d = document(&mut b, HtmlScriptingStatus::Disabled);
+    let host = element(&mut b, &d, Namespace::html(), "input");
+    b.add_shadow_root(
+        &d,
+        &host,
+        captured_shadow_properties(),
+        HtmlCaptureRegistryInput::Null,
+    )
+    .unwrap();
+    let c = b.finish().unwrap();
+    let id = c.element_id(&c.subject_id(&host).unwrap()).unwrap();
+    assert_eq!(
+        c.shadow_attachment_status(&id, HtmlShadowRootMode::Closed)
+            .unwrap(),
+        HtmlShadowAttachmentStatus::InvalidHost
+    );
 }
