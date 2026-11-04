@@ -940,6 +940,7 @@ pub surgeist_html_semantics::HtmlOptionValueControlError::LimitExceeded
 pub surgeist_html_semantics::HtmlOptionValueControlError::LimitExceeded::limit: u64
 pub surgeist_html_semantics::HtmlOptionValueControlError::LimitExceeded::required: u64
 pub surgeist_html_semantics::HtmlOptionValueControlError::LimitExceeded::resource: surgeist_html_semantics::HtmlOptionValueResource
+pub surgeist_html_semantics::HtmlOptionValueControlError::ProtocolViolated
 pub surgeist_html_semantics::HtmlOptionValueControlError::RepresentationExhausted
 impl core::error::Error for surgeist_html_semantics::HtmlOptionValueControlError
 impl core::fmt::Display for surgeist_html_semantics::HtmlOptionValueControlError
