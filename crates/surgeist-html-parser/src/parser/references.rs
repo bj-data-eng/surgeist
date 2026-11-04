@@ -298,7 +298,7 @@ pub(crate) fn decode_spelling(
                 return Ok(None);
             };
             *slot = point;
-            length += 1;
+            length = length.saturating_add(1);
             next = read(control)?;
         }
         let Some(name) = query.get(..length) else {
