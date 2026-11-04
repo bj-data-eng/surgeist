@@ -337,17 +337,13 @@ impl HtmlHyperlinkUrlSnapshot {
         // These exact immutable three backings were checked during resolution.
         // Reusing that invariant keeps one cached word instead of enlarging
         // every inline captured Element merely for derived usage readback.
-        self.raw
-            .shared_code_units()
-            .capacity()
-            .checked_add(self.base.serialization().shared_code_units().capacity())
-            .and_then(|n| {
-                n.checked_add(
-                    self.url()
-                        .map_or(0, |r| r.serialization().shared_code_units().capacity()),
-                )
-            })
-            .expect("qualified snapshot retained extent was checked")
+        // Each backing is a `u16` allocation of at most `isize::MAX` bytes, so each capacity is at
+        // most `isize::MAX / 2` and the sum of three is below `usize::MAX`: it cannot overflow.
+        self.raw.shared_code_units().capacity()
+            + self.base.serialization().shared_code_units().capacity()
+            + self
+                .url()
+                .map_or(0, |r| r.serialization().shared_code_units().capacity())
     }
 }
 

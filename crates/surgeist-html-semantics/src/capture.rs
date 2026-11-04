@@ -778,6 +778,53 @@ pub enum HtmlCapturedNodeKind {
     Doctype(HtmlDoctype),
 }
 impl HtmlCapturedNodeKind {
+    /// The Document payload, or the wrong-kind refusal that `require` gives.
+    fn document(&self) -> Result<&HtmlCapturedDocument, HtmlCaptureError> {
+        match self {
+            Self::Document(document) => Ok(document),
+            other => Err(other.wrong_kind(HtmlCaptureSubjectKind::Document)),
+        }
+    }
+    fn document_mut(&mut self) -> Result<&mut HtmlCapturedDocument, HtmlCaptureError> {
+        match self {
+            Self::Document(document) => Ok(document),
+            other => Err(other.wrong_kind(HtmlCaptureSubjectKind::Document)),
+        }
+    }
+    /// The Element payload, or the wrong-kind refusal that `require` gives.
+    fn element(&self) -> Result<&HtmlCapturedElement, HtmlCaptureError> {
+        match self {
+            Self::Element(element) => Ok(element),
+            other => Err(other.wrong_kind(HtmlCaptureSubjectKind::Element)),
+        }
+    }
+    fn element_mut(&mut self) -> Result<&mut HtmlCapturedElement, HtmlCaptureError> {
+        match self {
+            Self::Element(element) => Ok(element),
+            other => Err(other.wrong_kind(HtmlCaptureSubjectKind::Element)),
+        }
+    }
+    /// The Fragment payload, or the wrong-kind refusal that `require` gives.
+    fn fragment(&self) -> Result<&HtmlCapturedFragment, HtmlCaptureError> {
+        match self {
+            Self::Fragment(fragment) => Ok(fragment),
+            other => Err(other.wrong_kind(HtmlCaptureSubjectKind::Fragment)),
+        }
+    }
+    fn fragment_mut(&mut self) -> Result<&mut HtmlCapturedFragment, HtmlCaptureError> {
+        match self {
+            Self::Fragment(fragment) => Ok(fragment),
+            other => Err(other.wrong_kind(HtmlCaptureSubjectKind::Fragment)),
+        }
+    }
+    fn wrong_kind(&self, expected: HtmlCaptureSubjectKind) -> HtmlCaptureError {
+        HtmlCaptureError::WrongKind {
+            expected,
+            actual: self.subject_kind(),
+        }
+    }
+}
+impl HtmlCapturedNodeKind {
     fn subject_kind(&self) -> HtmlCaptureSubjectKind {
         match self {
             Self::Document(_) => HtmlCaptureSubjectKind::Document,
@@ -981,9 +1028,7 @@ impl HtmlCaptureBuilder {
         };
         let usage = self.admit(0, relations, 0, units, 0, 0)?;
         step().map_err(Error::Interrupted)?;
-        let HtmlCapturedNodeKind::Element(element) = &mut self.data.records[index].kind else {
-            unreachable!()
-        };
+        let element = self.data.records[index].kind.element_mut()?;
         element.hyperlink_url = Some(state);
         self.data.usage = usage;
         Ok(())
@@ -1006,9 +1051,7 @@ impl HtmlCaptureBuilder {
         if element.link_history.is_some() {
             return Err(HtmlCaptureError::LinkHistoryAlreadyEstablished);
         }
-        let HtmlCapturedNodeKind::Element(element) = &mut self.data.records[index].kind else {
-            unreachable!()
-        };
+        let element = self.data.records[index].kind.element_mut()?;
         element.link_history = Some(history);
         Ok(())
     }
@@ -1249,9 +1292,7 @@ impl HtmlCaptureBuilder {
     ) -> Result<(), HtmlCaptureError> {
         let index = self.index(document)?;
         self.require(index, HtmlCaptureSubjectKind::Document)?;
-        let HtmlCapturedNodeKind::Document(facts) = &mut self.data.records[index].kind else {
-            unreachable!("qualified document")
-        };
+        let facts = self.data.records[index].kind.document_mut()?;
         if facts.image_support != HtmlImageSupport::Unavailable {
             return Err(HtmlCaptureError::DocumentFactsAlreadyEstablished);
         }
@@ -1269,9 +1310,7 @@ impl HtmlCaptureBuilder {
     ) -> Result<(), HtmlCaptureError> {
         let index = self.index(entry_document)?;
         self.require(index, HtmlCaptureSubjectKind::Document)?;
-        let HtmlCapturedNodeKind::Document(facts) = &mut self.data.records[index].kind else {
-            unreachable!("qualified document")
-        };
+        let facts = self.data.records[index].kind.document_mut()?;
         if facts.parser_creation_image_support != HtmlImageSupport::Unavailable {
             return Err(HtmlCaptureError::DocumentFactsAlreadyEstablished);
         }
@@ -1290,9 +1329,7 @@ impl HtmlCaptureBuilder {
     ) -> Result<(), HtmlCaptureError> {
         let index = self.index(document)?;
         self.require(index, HtmlCaptureSubjectKind::Document)?;
-        let HtmlCapturedNodeKind::Document(current) = &self.data.records[index].kind else {
-            unreachable!("qualified document")
-        };
+        let current = self.data.records[index].kind.document()?;
         if current.template_facts_established {
             return Err(HtmlCaptureError::DocumentFactsAlreadyEstablished);
         }
@@ -1302,9 +1339,7 @@ impl HtmlCaptureBuilder {
             HtmlCaptureTemplateCacheInput::Document(owner) => {
                 let owner = self.index(&owner)?;
                 self.require(owner, HtmlCaptureSubjectKind::Document)?;
-                let HtmlCapturedNodeKind::Document(facts) = &self.data.records[owner].kind else {
-                    unreachable!("qualified cache document")
-                };
+                let facts = self.data.records[owner].kind.document()?;
                 if role != HtmlTemplateDocumentRole::Ordinary
                     || facts.template_role != HtmlTemplateDocumentRole::InertTemplate
                     || owner == index
@@ -1325,9 +1360,7 @@ impl HtmlCaptureBuilder {
             0,
             0,
         )?;
-        let HtmlCapturedNodeKind::Document(current) = &mut self.data.records[index].kind else {
-            unreachable!("qualified document")
-        };
+        let current = self.data.records[index].kind.document_mut()?;
         current.class = class;
         current.template_role = role;
         current.template_cache = cache;
@@ -1343,9 +1376,7 @@ impl HtmlCaptureBuilder {
     ) -> Result<(), HtmlCaptureError> {
         let index = self.index(subject)?;
         self.require(index, HtmlCaptureSubjectKind::Element)?;
-        let HtmlCapturedNodeKind::Element(element) = &self.data.records[index].kind else {
-            unreachable!()
-        };
+        let element = self.data.records[index].kind.element()?;
         if !surgeist_html::bounded::security::is_nonce_element(element.name()) {
             return Err(HtmlCaptureError::NonceInapplicable);
         }
@@ -1353,9 +1384,7 @@ impl HtmlCaptureBuilder {
             return Err(HtmlCaptureError::NonceAlreadyEstablished);
         }
         let usage = self.admit(0, 0, 0, value.len(), 0, 0)?;
-        let HtmlCapturedNodeKind::Element(element) = &mut self.data.records[index].kind else {
-            unreachable!()
-        };
+        let element = self.data.records[index].kind.element_mut()?;
         element.nonce = HtmlCapturedNonce::Value(value);
         self.data.usage = usage;
         Ok(())
@@ -1368,9 +1397,7 @@ impl HtmlCaptureBuilder {
     ) -> Result<(), HtmlCaptureError> {
         let index = self.index(subject)?;
         self.require(index, HtmlCaptureSubjectKind::Document)?;
-        let HtmlCapturedNodeKind::Document(document) = &mut self.data.records[index].kind else {
-            unreachable!()
-        };
+        let document = self.data.records[index].kind.document_mut()?;
         if document.nonce_environment_established {
             return Err(HtmlCaptureError::NonceAlreadyEstablished);
         }
@@ -1692,9 +1719,7 @@ impl HtmlCaptureBuilder {
     ) -> Result<(), HtmlCaptureError> {
         let index = self.index(subject)?;
         self.require(index, HtmlCaptureSubjectKind::Element)?;
-        let HtmlCapturedNodeKind::Element(element) = &self.data.records[index].kind else {
-            unreachable!()
-        };
+        let element = self.data.records[index].kind.element()?;
         if element.custom_context.is_some() {
             return Err(HtmlCaptureError::CustomElementContextAlreadyEstablished);
         }
@@ -1753,9 +1778,7 @@ impl HtmlCaptureBuilder {
             0,
             0,
         )?;
-        let HtmlCapturedNodeKind::Element(element) = &mut self.data.records[index].kind else {
-            unreachable!()
-        };
+        let element = self.data.records[index].kind.element_mut()?;
         element.custom_context = Some(CustomElementContext { state, definition });
         self.data.usage = usage;
         Ok(())
@@ -2169,9 +2192,7 @@ impl HtmlCaptureBuilder {
     ) -> Result<(), HtmlCaptureError> {
         let i = self.index(fragment)?;
         self.require(i, HtmlCaptureSubjectKind::Fragment)?;
-        let HtmlCapturedNodeKind::Fragment(f) = &mut self.data.records[i].kind else {
-            unreachable!()
-        };
+        let f = self.data.records[i].kind.fragment_mut()?;
         if f.host != Association::Unavailable {
             return Err(HtmlCaptureError::FragmentAlreadyHosted);
         }
@@ -2187,9 +2208,7 @@ impl HtmlCaptureBuilder {
     ) -> Result<(), HtmlCaptureError> {
         let i = self.index(element)?;
         self.require(i, HtmlCaptureSubjectKind::Element)?;
-        let HtmlCapturedNodeKind::Element(e) = &mut self.data.records[i].kind else {
-            unreachable!()
-        };
+        let e = self.data.records[i].kind.element_mut()?;
         if e.shadow != Association::Unavailable {
             return Err(HtmlCaptureError::AssociationAlreadyEstablished);
         }
@@ -2232,9 +2251,7 @@ impl HtmlCaptureBuilder {
         let f = self.index(fragment)?;
         self.require(t, HtmlCaptureSubjectKind::Element)?;
         self.require(f, HtmlCaptureSubjectKind::Fragment)?;
-        let HtmlCapturedNodeKind::Element(e) = &self.data.records[t].kind else {
-            unreachable!()
-        };
+        let e = self.data.records[t].kind.element()?;
         preflight::work(admit, name_units(&e.name)?)?;
         if !html(&e.name, "template") {
             return Err(preflight::Failure::Capture(
@@ -2246,9 +2263,7 @@ impl HtmlCaptureBuilder {
                 HtmlCaptureError::AssociationAlreadyEstablished,
             ));
         }
-        let HtmlCapturedNodeKind::Fragment(fragment) = &self.data.records[f].kind else {
-            unreachable!()
-        };
+        let fragment = self.data.records[f].kind.fragment()?;
         if fragment.host != Association::Unavailable {
             return Err(preflight::Failure::Capture(
                 HtmlCaptureError::FragmentAlreadyHosted,
@@ -2262,13 +2277,9 @@ impl HtmlCaptureBuilder {
         let usage = self.admit(0, 3, 0, 0, 0, 0)?;
         let plan = self.edge_depths_controlled(f, t, admit)?;
         reserve(&mut self.data.records[t].dependents, 1)?;
-        let HtmlCapturedNodeKind::Element(e) = &mut self.data.records[t].kind else {
-            unreachable!()
-        };
+        let e = self.data.records[t].kind.element_mut()?;
         e.template = TemplateAssociation::Owned(f);
-        let HtmlCapturedNodeKind::Fragment(frag) = &mut self.data.records[f].kind else {
-            unreachable!()
-        };
+        let frag = self.data.records[f].kind.fragment_mut()?;
         frag.host = Association::Index(t);
         self.data.records[t].dependents.push(f);
         self.data.usage = usage;
@@ -2290,25 +2301,19 @@ impl HtmlCaptureBuilder {
         let f = self.index(contents)?;
         self.require(t, HtmlCaptureSubjectKind::Element)?;
         self.require(f, HtmlCaptureSubjectKind::Fragment)?;
-        let HtmlCapturedNodeKind::Element(element) = &self.data.records[t].kind else {
-            unreachable!()
-        };
+        let element = self.data.records[t].kind.element()?;
         if !html(&element.name, "template") {
             return Err(HtmlCaptureError::NotHtmlTemplate);
         }
         if element.template != TemplateAssociation::Unavailable {
             return Err(HtmlCaptureError::AssociationAlreadyEstablished);
         }
-        let HtmlCapturedNodeKind::Fragment(fragment) = &self.data.records[f].kind else {
-            unreachable!()
-        };
+        let fragment = self.data.records[f].kind.fragment()?;
         if !matches!(fragment.kind, HtmlCapturedFragmentKind::ShadowRoot(_)) {
             return Err(HtmlCaptureError::InvalidTemplateContentsReference);
         }
         let usage = self.admit(0, 1, 0, 0, 0, 0)?;
-        let HtmlCapturedNodeKind::Element(element) = &mut self.data.records[t].kind else {
-            unreachable!()
-        };
+        let element = self.data.records[t].kind.element_mut()?;
         element.template = TemplateAssociation::ShadowReference(f);
         self.data.usage = usage;
         Ok(())
@@ -2357,9 +2362,7 @@ impl HtmlCaptureBuilder {
         self.require(document, HtmlCaptureSubjectKind::Document)?;
         let h = self.index(host)?;
         self.require(h, HtmlCaptureSubjectKind::Element)?;
-        let HtmlCapturedNodeKind::Element(e) = &self.data.records[h].kind else {
-            unreachable!()
-        };
+        let e = self.data.records[h].kind.element()?;
         if e.shadow != Association::Unavailable {
             return Err(HtmlCaptureError::AssociationAlreadyEstablished);
         }
@@ -2398,9 +2401,7 @@ impl HtmlCaptureBuilder {
         });
         let top = &mut self.data.records[root].depth.height;
         *top = (*top).max(depth);
-        let HtmlCapturedNodeKind::Element(e) = &mut self.data.records[h].kind else {
-            unreachable!()
-        };
+        let e = self.data.records[h].kind.element_mut()?;
         e.shadow = Association::Index(i);
         self.data.records[h].dependents.push(i);
         usage.depth = usage.depth.max(depth);
@@ -2758,8 +2759,8 @@ impl HtmlCapture {
         local: &'a DocumentString,
         is_value: Option<&'a DocumentString>,
     ) -> Result<HtmlDefinitionLookupCursor<'a>, HtmlCaptureError> {
-        let (id, definitions) = match registry {
-            HtmlCapturedRegistry::Null => (None, &[][..]),
+        let source = match registry {
+            HtmlCapturedRegistry::Null => LookupSource::Null,
             HtmlCapturedRegistry::Unavailable => {
                 return Err(HtmlCaptureError::MissingFact {
                     subject: None,
@@ -2773,19 +2774,19 @@ impl HtmlCapture {
                         return Err(HtmlCaptureError::UnavailableDefinitions(id.clone()));
                     }
                 };
-                (Some(id), definitions)
+                LookupSource::Registry { id, definitions }
             }
         };
+        let ready = matches!(source, LookupSource::Null).then_some(None);
         Ok(HtmlDefinitionLookupCursor {
-            registry: id,
-            definitions,
+            source,
             local,
             is_value,
-            phase: 0,
+            phase: LookupPhase::Local,
             record: 0,
             field: 0,
             offset: None,
-            ready: if id.is_none() { Some(None) } else { None },
+            ready,
         })
     }
     pub fn definitions(
@@ -2861,9 +2862,7 @@ impl HtmlCapture {
         element: &HtmlCaptureElementId,
     ) -> Result<Option<bool>, HtmlCaptureError> {
         let node = self.node(element.subject())?;
-        let HtmlCapturedNodeKind::Element(element) = node.kind() else {
-            unreachable!()
-        };
+        let element = node.kind().element()?;
         Ok(match element.shadow {
             Association::Absent => Some(false),
             Association::Index(_) => Some(true),
@@ -2886,9 +2885,7 @@ impl HtmlCapture {
         mode: HtmlShadowRootMode,
     ) -> Result<HtmlShadowAttachmentStatus, HtmlCaptureError> {
         let node = self.node(&element.0)?;
-        let HtmlCapturedNodeKind::Element(e) = node.kind() else {
-            unreachable!()
-        };
+        let e = node.kind().element()?;
         let custom_name = validate_custom_element_name(e.name.local_name()).is_ok();
         let ordinary_host = [
             "article",
@@ -3033,6 +3030,12 @@ pub struct HtmlFragmentContext {
     context_document: HtmlCaptureDocumentId,
     nearest_form: Option<HtmlCaptureElementId>,
     root_registry: HtmlCapturedRegistry,
+    /// What the context element and its Document contribute, read once from the immutable capture
+    /// when the context was selected.
+    context_name: QualifiedName,
+    context_html_integration_point: bool,
+    document_mode: HtmlDocumentMode,
+    scripting: HtmlScriptingStatus,
 }
 impl HtmlFragmentContext {
     pub fn element(
@@ -3088,6 +3091,12 @@ impl HtmlFragmentContext {
         let target_document = target_node.node_document();
         let context_document = capture.node(&context.0)?.node_document();
         let nearest_form = capture.nearest_form(&context)?;
+        let element = capture.node(&context.0)?.kind().element()?;
+        let context_name = element.name.clone();
+        let context_html_integration_point =
+            surgeist_html::parsing::is_html_integration_point(&element.name, &element.attributes);
+        let document = capture.node(&context_document.0)?.kind().document()?;
+        let (document_mode, scripting) = (document.mode, document.scripting);
         Ok(Self {
             capture: capture.clone(),
             target,
@@ -3096,6 +3105,10 @@ impl HtmlFragmentContext {
             context_document,
             nearest_form,
             root_registry,
+            context_name,
+            context_html_integration_point,
+            document_mode,
+            scripting,
         })
     }
     pub fn capture(&self) -> &HtmlCapture {
@@ -3119,26 +3132,11 @@ impl HtmlFragmentContext {
     pub fn root_registry(&self) -> &HtmlCapturedRegistry {
         &self.root_registry
     }
-    fn element_values(&self) -> &HtmlCapturedElement {
-        let HtmlCapturedNodeKind::Element(e) = &self.capture.0.records[self.context.0.index].kind
-        else {
-            unreachable!()
-        };
-        e
-    }
-    fn document_values(&self) -> &HtmlCapturedDocument {
-        let HtmlCapturedNodeKind::Document(d) =
-            &self.capture.0.records[self.context_document.0.index].kind
-        else {
-            unreachable!()
-        };
-        d
-    }
     pub fn document_mode(&self) -> HtmlDocumentMode {
-        self.document_values().mode
+        self.document_mode
     }
     pub fn scripting_status(&self) -> HtmlScriptingStatus {
-        self.document_values().scripting
+        self.scripting
     }
     /// Resolves §13.4's context override and this independent parser's capability.
     /// Disabled context forces Disabled before execution admission; enabled
@@ -3166,14 +3164,13 @@ impl HtmlFragmentContext {
         }
     }
     pub fn is_template(&self) -> bool {
-        html(&self.element_values().name, "template")
+        html(&self.context_name, "template")
     }
     pub fn is_mathml_text_integration_point(&self) -> bool {
-        surgeist_html::parsing::is_mathml_text_integration_point(&self.element_values().name)
+        surgeist_html::parsing::is_mathml_text_integration_point(&self.context_name)
     }
     pub fn is_html_integration_point(&self) -> bool {
-        let element = self.element_values();
-        surgeist_html::parsing::is_html_integration_point(&element.name, &element.attributes)
+        self.context_html_integration_point
     }
     /// Initial tokenizer choice derives from context identity and effective mode.
     pub fn initial_tokenizer_state(
@@ -3182,28 +3179,44 @@ impl HtmlFragmentContext {
     ) -> Result<HtmlFragmentTokenizerState, HtmlCaptureError> {
         let mode = self.resolve_scripting_mode(requested)?;
         Ok(surgeist_html::parsing::fragment_tokenizer_state(
-            &self.element_values().name,
+            &self.context_name,
             mode,
         ))
     }
     /// Resets initial insertion mode with the single internal root replaced by context.
     /// Captured ancestor templates/tables are not put on the parser's open stack.
     pub fn initial_insertion_mode(&self) -> HtmlFragmentInsertionMode {
-        surgeist_html::parsing::fragment_insertion_mode(&self.element_values().name)
+        surgeist_html::parsing::fragment_insertion_mode(&self.context_name)
     }
 }
 /// Allocation-free ordered lookup. Every action is admitted before `step`;
 /// comparison headers cost one, each pair two, and Ready transfer one.
 pub struct HtmlDefinitionLookupCursor<'a> {
-    registry: Option<&'a HtmlCaptureRegistryId>,
-    definitions: &'a [HtmlCustomElementDefinition],
+    source: LookupSource<'a>,
     local: &'a DocumentString,
     is_value: Option<&'a DocumentString>,
-    phase: u8,
+    phase: LookupPhase<'a>,
     record: usize,
     field: u8,
     offset: Option<usize>,
     ready: Option<Option<usize>>,
+}
+/// Where a lookup reads definitions from: a null registry has none to find, and a registry
+/// keeps its identity together with its definitions.
+#[derive(Clone, Copy)]
+enum LookupSource<'a> {
+    Null,
+    Registry {
+        id: &'a HtmlCaptureRegistryId,
+        definitions: &'a [HtmlCustomElementDefinition],
+    },
+}
+/// The name a pass compares with: the local name first, then the `is` value, which exists only
+/// when one was supplied.
+#[derive(Clone, Copy)]
+enum LookupPhase<'a> {
+    Local,
+    Is(&'a DocumentString),
 }
 /// One admitted lookup step; only `Ready(Some(_))` shares a registry identity.
 pub enum HtmlDefinitionLookupStep {
@@ -3227,31 +3240,38 @@ impl HtmlDefinitionLookupCursor<'_> {
     }
     /// Performs the next comparison or ready transfer after caller admission.
     pub fn step(&mut self) -> HtmlDefinitionLookupStep {
+        let LookupSource::Registry { id, definitions } = self.source else {
+            // A null registry has no definitions, so nothing is found in it.
+            self.ready = Some(None);
+            return HtmlDefinitionLookupStep::Ready(None);
+        };
         if let Some(record) = self.ready {
             return HtmlDefinitionLookupStep::Ready(record.map(|record_index| {
                 HtmlCaptureDefinitionId {
-                    registry: self.registry.expect("selected record has registry").clone(),
+                    registry: id.clone(),
                     record_index,
                 }
             }));
         }
-        if self.record == self.definitions.len() {
-            if self.phase == 0 && self.is_value.is_some() {
-                self.phase = 1;
-                self.record = 0;
-            } else {
-                self.ready = Some(None);
+        if self.record == definitions.len() {
+            match (self.phase, self.is_value) {
+                (LookupPhase::Local, Some(is_value)) => {
+                    self.phase = LookupPhase::Is(is_value);
+                    self.record = 0;
+                }
+                (LookupPhase::Local, None) | (LookupPhase::Is(_), _) => {
+                    self.ready = Some(None);
+                }
             }
             return HtmlDefinitionLookupStep::Searching;
         }
-        let d = &self.definitions[self.record];
+        let d = &definitions[self.record];
         let (left, right) = if self.field == 0 {
             (
                 &d.name,
-                if self.phase == 0 {
-                    self.local
-                } else {
-                    self.is_value.expect("second phase has is")
+                match self.phase {
+                    LookupPhase::Local => self.local,
+                    LookupPhase::Is(is_value) => is_value,
                 },
             )
         } else {

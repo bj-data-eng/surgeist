@@ -289,12 +289,12 @@ impl HtmlCaptureBuilder {
             .capacity()
             .checked_mul(size_of::<Attribute>())
             .ok_or(HtmlCaptureError::RepresentationExhausted)?;
-        let pending = add(
-            extent.bytes,
-            actual_rows
-                .checked_sub(row_bytes)
-                .expect("reserved announced attributes"),
-        )?;
+        // The reservation holds at least the announced rows; a smaller backing is an allocation
+        // that did not deliver what it was asked for.
+        let spare_rows = actual_rows
+            .checked_sub(row_bytes)
+            .ok_or(FormFailure::AllocationFailed)?;
+        let pending = add(extent.bytes, spare_rows)?;
         step(preflight::Action::ElementValues {
             bytes: pending,
             units: extent.retained_units,

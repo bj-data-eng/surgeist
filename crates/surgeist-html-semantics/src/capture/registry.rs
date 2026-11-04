@@ -78,13 +78,14 @@ impl<E: Error + 'static> Error for HtmlEmptyGlobalRegistryError<E> {
     }
 }
 
-// Real inline owners, conservatively live for the complete synchronous call.
-// The builder includes CaptureData/identity/Vec headers; scratch includes all
-// four empty finish banks. The optional handle is the original builder handle.
+// The layout of the real inline owners, conservatively live for the complete synchronous call:
+// admission prices `size_of::<Workspace>()`, and the call itself holds the three as locals. The
+// builder includes CaptureData/identity/Vec headers; scratch includes all four empty finish
+// banks. The optional handle is the original builder handle.
 struct Workspace {
-    builder: Option<HtmlCaptureBuilder>,
-    scratch: preflight::DepthScratch,
-    registry: Option<HtmlCaptureBuilderRegistry>,
+    _builder: HtmlCaptureBuilder,
+    _scratch: preflight::DepthScratch,
+    _registry: Option<HtmlCaptureBuilderRegistry>,
 }
 
 struct Control {
@@ -199,15 +200,11 @@ impl HtmlCapture {
             peak: 0,
         };
         control.admit(fixed)?;
-        let mut workspace = Workspace {
-            builder: Some(HtmlCaptureBuilder::new(
-                HtmlCaptureLimits::new(0, 0, 0, 0, 0, 1, 0, 16 * 1024 * 1024),
-                host_revision,
-            )),
-            scratch: preflight::DepthScratch::new(),
-            registry: None,
-        };
-        let builder = workspace.builder.as_mut().expect("actual builder");
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(0, 0, 0, 0, 0, 1, 0, 16 * 1024 * 1024),
+            host_revision,
+        );
+        let mut scratch = preflight::DepthScratch::new();
         builder.enable_controlled_storage();
         // Pre-reserve the exact existing registry bank. The original add_registry
         // call then retains its complete validation path without another growth.
@@ -224,20 +221,15 @@ impl HtmlCapture {
             Control::plus(fixed, control.backing)?,
             registry_call_headers,
         )?)?;
-        workspace.registry = Some(
-            builder
-                .add_registry(Some(Vec::new()))
-                .map_err(HtmlEmptyGlobalRegistryError::Capture)?,
-        );
+        let registry = builder
+            .add_registry(Some(Vec::new()))
+            .map_err(HtmlEmptyGlobalRegistryError::Capture)?;
         Control::step(&mut step, 1)?;
         builder
-            .establish_registry_scope(
-                workspace.registry.as_ref().expect("actual registry"),
-                HtmlRegistryScope::Global,
-            )
+            .establish_registry_scope(&registry, HtmlRegistryScope::Global)
             .map_err(HtmlEmptyGlobalRegistryError::Capture)?;
         builder
-            .preflight_finish(&mut workspace.scratch, &mut |action| {
+            .preflight_finish(&mut scratch, &mut |action| {
                 control.action(action, &mut step)
             })
             .map_err(preflight_error)?;
@@ -257,9 +249,9 @@ impl HtmlCapture {
         control.admit(required)?;
         let registry = HtmlCaptureRegistryId {
             capture: builder.data.identity.clone(),
-            index: workspace.registry.as_ref().expect("actual registry").index,
+            index: registry.index,
         };
-        let capture = workspace.builder.take().expect("actual builder").publish();
+        let capture = builder.publish();
         Ok(HtmlEmptyGlobalRegistryCapture {
             capture,
             registry,
