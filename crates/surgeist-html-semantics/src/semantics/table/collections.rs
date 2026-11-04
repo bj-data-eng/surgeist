@@ -57,10 +57,16 @@ impl HtmlTableCellCollection {
         self.cells.is_empty()
     }
 }
+/// A collection of a table: its rows in header, body, footer order, or one that lists a single
+/// parent's children directly in source order.
 #[derive(Clone, Copy)]
 enum Collection {
-    Bodies,
     Rows,
+    Direct(DirectCollection),
+}
+#[derive(Clone, Copy)]
+enum DirectCollection {
+    Bodies,
     SectionRows,
     Cells,
 }
@@ -71,7 +77,7 @@ enum RowPhase {
     Foot,
 }
 enum CollectionProjection<'t> {
-    Snapshot(Vec<HtmlCaptureSubjectId>),
+    Snapshot(&'t mut Vec<HtmlCaptureSubjectId>),
     Target {
         subject: &'t HtmlCaptureSubjectId,
         index: usize,
@@ -151,9 +157,11 @@ impl<'a> HtmlSemanticSession<'a> {
         );
         let (container, collection) = match query {
             TableIndex::Cell if parent_kind == Some(KnownHtmlElement::Tr) => {
-                (parent, Collection::Cells)
+                (parent, Collection::Direct(DirectCollection::Cells))
             }
-            TableIndex::SectionRow if section => (parent, Collection::SectionRows),
+            TableIndex::SectionRow if section => {
+                (parent, Collection::Direct(DirectCollection::SectionRows))
+            }
             TableIndex::Row | TableIndex::SectionRow
                 if parent_kind == Some(KnownHtmlElement::Table) =>
             {
@@ -196,7 +204,7 @@ impl<'a> HtmlSemanticSession<'a> {
         subject: &HtmlCaptureSubjectId,
     ) -> Result<HtmlSemanticValue<HtmlTableBodyCollection>, HtmlSemanticFailure> {
         Ok(self
-            .table_collection(subject, Collection::Bodies)?
+            .table_collection(subject, Collection::Direct(DirectCollection::Bodies))?
             .map(|bodies| HtmlTableBodyCollection { bodies }))
     }
     pub(in crate::semantics) fn table_rows(
@@ -212,7 +220,7 @@ impl<'a> HtmlSemanticSession<'a> {
         subject: &HtmlCaptureSubjectId,
     ) -> Result<HtmlSemanticValue<HtmlTableRowCollection>, HtmlSemanticFailure> {
         Ok(self
-            .table_collection(subject, Collection::SectionRows)?
+            .table_collection(subject, Collection::Direct(DirectCollection::SectionRows))?
             .map(|rows| HtmlTableRowCollection { rows }))
     }
     pub(in crate::semantics) fn table_row_cells(
@@ -220,7 +228,7 @@ impl<'a> HtmlSemanticSession<'a> {
         subject: &HtmlCaptureSubjectId,
     ) -> Result<HtmlSemanticValue<HtmlTableCellCollection>, HtmlSemanticFailure> {
         Ok(self
-            .table_collection(subject, Collection::Cells)?
+            .table_collection(subject, Collection::Direct(DirectCollection::Cells))?
             .map(|cells| HtmlTableCellCollection { cells }))
     }
     fn table_collection(
@@ -239,23 +247,26 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let kind = self.known(element)?;
         let applicable = match collection {
-            Collection::Bodies | Collection::Rows => kind == Some(KnownHtmlElement::Table),
-            Collection::SectionRows => matches!(
+            Collection::Rows | Collection::Direct(DirectCollection::Bodies) => {
+                kind == Some(KnownHtmlElement::Table)
+            }
+            Collection::Direct(DirectCollection::SectionRows) => matches!(
                 kind,
                 Some(KnownHtmlElement::Thead | KnownHtmlElement::Tbody | KnownHtmlElement::Tfoot)
             ),
-            Collection::Cells => kind == Some(KnownHtmlElement::Tr),
+            Collection::Direct(DirectCollection::Cells) => kind == Some(KnownHtmlElement::Tr),
         };
         if !applicable {
             return Ok(HtmlSemanticValue::Inapplicable);
         }
-        let mut projection = CollectionProjection::Snapshot(Vec::new());
-        let result = self.table_collection_project(subject, collection, &mut projection);
+        let mut ids = Vec::new();
+        let result = self.table_collection_project(
+            subject,
+            collection,
+            &mut CollectionProjection::Snapshot(&mut ids),
+        );
         match result {
-            Ok(()) => match projection {
-                CollectionProjection::Snapshot(ids) => Ok(HtmlSemanticValue::Known(ids)),
-                _ => unreachable!("snapshot projection was constructed above"),
-            },
+            Ok(()) => Ok(HtmlSemanticValue::Known(ids)),
             Err(TableStop::Missing(missing)) => Ok(HtmlSemanticValue::Missing(missing)),
             Err(TableStop::Failure(failure)) => Err(failure),
         }
@@ -266,10 +277,9 @@ impl<'a> HtmlSemanticSession<'a> {
         collection: Collection,
         projection: &mut CollectionProjection<'_>,
     ) -> TableResult<()> {
-        if matches!(collection, Collection::Rows) {
-            self.table_collection_rows(subject, projection)
-        } else {
-            self.table_collection_direct(subject, collection, projection)
+        match collection {
+            Collection::Rows => self.table_collection_rows(subject, projection),
+            Collection::Direct(direct) => self.table_collection_direct(subject, direct, projection),
         }
     }
     fn table_collection_emit(
@@ -303,19 +313,18 @@ impl<'a> HtmlSemanticSession<'a> {
     fn table_collection_direct(
         &mut self,
         subject: &HtmlCaptureSubjectId,
-        collection: Collection,
+        collection: DirectCollection,
         projection: &mut CollectionProjection<'_>,
     ) -> TableResult<()> {
         let mut children = self.table_children(subject)?;
         while let Some((id, kind)) = self.table_next(&mut children)? {
             self.charge(1)?;
             let keep = match collection {
-                Collection::Bodies => kind == Some(KnownHtmlElement::Tbody),
-                Collection::SectionRows => kind == Some(KnownHtmlElement::Tr),
-                Collection::Cells => {
+                DirectCollection::Bodies => kind == Some(KnownHtmlElement::Tbody),
+                DirectCollection::SectionRows => kind == Some(KnownHtmlElement::Tr),
+                DirectCollection::Cells => {
                     matches!(kind, Some(KnownHtmlElement::Td | KnownHtmlElement::Th))
                 }
-                Collection::Rows => unreachable!("table rows have a separate source order"),
             };
             if keep && self.table_collection_emit(projection, id)? {
                 return Ok(());

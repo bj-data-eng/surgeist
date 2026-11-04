@@ -1182,9 +1182,8 @@ impl<'a> HtmlSemanticSession<'a> {
                 } else {
                     false
                 };
-                let owner = match form_owner_lookup(raw.is_some(), connected) {
-                    HtmlFormOwnerLookup::FirstId => {
-                        let raw = raw.expect("first-ID rule requires actual form attribute");
+                let owner = match (form_owner_lookup(raw.is_some(), connected), raw) {
+                    (HtmlFormOwnerLookup::FirstId, Some(raw)) => {
                         let root = self.control_root(subject)?;
                         let candidate = if raw.value().is_empty() {
                             None
@@ -1204,7 +1203,13 @@ impl<'a> HtmlSemanticSession<'a> {
                             None
                         }
                     }
-                    HtmlFormOwnerLookup::NearestAncestor => self.control_nearest_form(subject)?,
+                    // The first-ID rule is selected only for an actual form attribute.
+                    (HtmlFormOwnerLookup::FirstId, None) => {
+                        return Err(self.stop(HtmlSemanticFailureKind::ProtocolViolated).into());
+                    }
+                    (HtmlFormOwnerLookup::NearestAncestor, _) => {
+                        self.control_nearest_form(subject)?
+                    }
                 };
                 self.charge(1)?;
                 Ok(Some(HtmlFormOwner {

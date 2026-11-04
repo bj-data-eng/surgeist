@@ -566,6 +566,8 @@ impl HtmlDocumentIconInput {
 pub struct HtmlDocumentIconChoice {
     input: HtmlDocumentIconInput,
     index: usize,
+    /// The selected observation's resource, read once when the choice was formed.
+    resource: HtmlIconResourceKey,
     rejections: Vec<HtmlIconRejectionRecord>,
 }
 impl HtmlDocumentIconChoice {
@@ -573,10 +575,7 @@ impl HtmlDocumentIconChoice {
         &self.input.data.collection.candidates[self.index]
     }
     pub fn resource(&self) -> &HtmlIconResourceKey {
-        self.input.data.observations[self.index]
-            .resource
-            .as_ref()
-            .expect("selected suitable observation owns an actual resource key")
+        &self.resource
     }
     pub fn input(&self) -> &HtmlDocumentIconInput {
         &self.input
@@ -750,7 +749,8 @@ impl<'a> HtmlSemanticSession<'a> {
                 .media_rules
                 .processing()
             else {
-                unreachable!("formed actual Link")
+                // Formation admitted only `link` candidates, so this is a defect here.
+                return Err(self.stop(HtmlSemanticFailureKind::ProtocolViolated));
             };
             self.charge(1)?;
             let gate = rules.external_resource_gate();
@@ -835,9 +835,19 @@ impl<'a> HtmlSemanticSession<'a> {
             }
             if let Some(index) = selected {
                 self.charge(1)?;
+                // Ordering admits only suitable members, and a suitable observation owns a key.
+                let Some(resource) = input
+                    .data
+                    .observations
+                    .get(index)
+                    .and_then(|observation| observation.resource.clone())
+                else {
+                    return Err(self.stop(HtmlSemanticFailureKind::ProtocolViolated));
+                };
                 return Ok(HtmlSemanticValue::Known(Some(HtmlDocumentIconChoice {
                     input: input.clone(),
                     index,
+                    resource,
                     rejections,
                 })));
             }
@@ -953,7 +963,8 @@ impl<'a> HtmlSemanticSession<'a> {
                 }));
             }
         }
-        unreachable!("canonical attribute lookup returns actual field")
+        // The attribute lookup returns one of this element's own fields.
+        Err(self.stop(HtmlSemanticFailureKind::ProtocolViolated))
     }
     fn selector_membership(
         &mut self,
@@ -1180,7 +1191,12 @@ impl<'a> HtmlSemanticSession<'a> {
                                     HtmlSemanticValue::Missing(m) => {
                                         return Ok(HtmlSemanticValue::Missing(m));
                                     }
-                                    _ => unreachable!("actual link media role"),
+                                    // A `link` element has a media role.
+                                    _ => {
+                                        return Err(
+                                            self.stop(HtmlSemanticFailureKind::ProtocolViolated)
+                                        );
+                                    }
                                 };
                                 let mut dimensions: Vec<HtmlIconSizeOccurrence> = Vec::new();
                                 let mut first_invalid = None;
@@ -1203,10 +1219,9 @@ impl<'a> HtmlSemanticSession<'a> {
                                                     self.charge(HtmlIconSizeCursor::STEP_WORK)?;
                                                     grammar.step();
                                                 }
-                                                let declaration = match grammar
-                                                    .result()
-                                                    .expect("complete canonical sizes token")
-                                                {
+                                                let declaration = match grammar.result().ok_or_else(
+                                                    || self.stop(HtmlSemanticFailureKind::ProtocolViolated),
+                                                )? {
                                                     Ok(HtmlIconSizeShape::Scalable) => {
                                                         HtmlIconSizeDeclaration::Scalable
                                                     }
@@ -1294,9 +1309,9 @@ impl<'a> HtmlSemanticSession<'a> {
                                     };
                                 let candidate = HtmlIconDeclaration {
                                     subject: subject.clone(),
-                                    rel: self
-                                        .icon_field(element, rel)?
-                                        .expect("icon membership proves rel"),
+                                    rel: self.icon_field(element, rel)?.ok_or_else(|| {
+                                        self.stop(HtmlSemanticFailureKind::ProtocolViolated)
+                                    })?,
                                     type_hint: self.icon_field(element, type_hint)?,
                                     media: self.icon_field(element, media)?,
                                     sizes: self.icon_field(element, sizes)?,

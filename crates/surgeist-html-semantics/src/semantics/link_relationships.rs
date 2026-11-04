@@ -659,8 +659,9 @@ impl FactsAdmission {
         self.role(capture, id)?;
         self.work(1)?;
         let node = capture.node(id).map_err(HtmlRelFactsError::Capture)?;
+        // `role` above refused anything but an element, so this is the same refusal.
         let HtmlCapturedNodeKind::Element(e) = node.kind() else {
-            unreachable!()
+            return Err(HtmlRelFactsError::InvalidRole);
         };
         let Some(actual) = self.attr(e, "rel")? else {
             return Err(HtmlRelFactsError::RawMismatch);
@@ -827,8 +828,9 @@ impl HtmlRelFacts {
                     let node = capture
                         .node(&o.subject)
                         .map_err(HtmlRelFactsError::Capture)?;
+                    // `role` above refused anything but an element, so this is the same refusal.
                     let HtmlCapturedNodeKind::Element(e) = node.kind() else {
-                        unreachable!()
+                        return Err(HtmlRelFactsError::InvalidRole);
                     };
                     let actual = a.attr(e, "href")?.ok_or(HtmlRelFactsError::RawMismatch)?;
                     if !a.exact(actual, &o.raw)? {
@@ -1095,10 +1097,10 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let role = self.known(element)?.and_then(HtmlRelRole::from_known);
         self.charge(1)?;
-        if role.is_none() {
+        let Some(role) = role else {
             return Ok(HtmlSemanticValue::Inapplicable);
-        }
-        let as_destination = if role == Some(HtmlRelRole::Link) {
+        };
+        let as_destination = if role == HtmlRelRole::Link {
             let raw = self.attribute(element, "as")?;
             self.admit_intrinsic(element, raw, 13)?;
             self.interpreter
@@ -1109,7 +1111,7 @@ impl<'a> HtmlSemanticSession<'a> {
         } else {
             None
         };
-        let inputs = HtmlRelInputs::new(role)
+        let inputs = HtmlRelInputs::new(Some(role))
             .with_rel(slots[0])
             .with_rev(slots[1])
             .with_href(slots[2])
@@ -1122,13 +1124,12 @@ impl<'a> HtmlSemanticSession<'a> {
         local
             .interpret(&mut RelControl { session: self })
             .map_err(|error| self.rel_action_failure(error))?;
-        let role = role.expect("checked actual role");
         let facts = self.context.rel_facts.as_ref();
         let document = self.node(subject)?.node_document();
         let mut extensions = Vec::new();
         for (i, token) in local
             .occurrences()
-            .expect("interpreted occurrences")
+            .map_err(|error| self.rel_interpretation_failure(error))?
             .iter()
             .enumerate()
         {
@@ -1209,8 +1210,8 @@ impl<'a> HtmlSemanticSession<'a> {
             }
             let units = local
                 .occurrence_units(i)
-                .expect("interpreted owner")
-                .expect("actual occurrence");
+                .map_err(|error| self.rel_interpretation_failure(error))?
+                .ok_or_else(|| self.stop(HtmlSemanticFailureKind::ProtocolViolated))?;
             let mut colon = false;
             for unit in units {
                 self.charge(1)?;
@@ -1357,13 +1358,14 @@ impl<'a> HtmlSemanticSession<'a> {
                 association,
             });
         }
-        let translation = if local.alternate()
-            != surgeist_html::elements::link::HtmlRelAlternate::Representation
-            || slots[7].is_none()
-        {
-            HtmlSemanticValue::Inapplicable
-        } else {
-            self.rel_translation(subject, slots[7].expect("selected hreflang"))?
+        let translation = match slots[7] {
+            Some(hreflang)
+                if local.alternate()
+                    == surgeist_html::elements::link::HtmlRelAlternate::Representation =>
+            {
+                self.rel_translation(subject, hreflang)?
+            }
+            _ => HtmlSemanticValue::Inapplicable,
         };
         let mut href_grammar = None;
         if let Some(facts) = facts {
@@ -1433,12 +1435,13 @@ impl<'a> HtmlSemanticSession<'a> {
         let implicit_render_blocking = if role != HtmlRelRole::Link {
             HtmlSemanticValue::Inapplicable
         } else if stylesheet {
-            match &history {
-                HtmlSemanticValue::Known(h) => {
-                    HtmlSemanticValue::Known(h.created_by_node_document_parser())
-                }
-                HtmlSemanticValue::Missing(m) => HtmlSemanticValue::Missing(m.clone()),
-                _ => unreachable!(),
+            // A `link` element: its history is a known fact or a missing one, as read above.
+            match element.link_history() {
+                Some(h) => HtmlSemanticValue::Known(h.created_by_node_document_parser()),
+                None => HtmlSemanticValue::Missing(Self::rel_missing(
+                    subject,
+                    HtmlRelMissingFact::LinkHistory,
+                )),
             }
         } else if unresolved {
             HtmlSemanticValue::Missing(Self::rel_missing(subject, HtmlRelMissingFact::Registry))

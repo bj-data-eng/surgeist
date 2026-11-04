@@ -56,10 +56,26 @@ struct SelectWalkResult {
     first_option: Option<SelectFirstOption>,
     missing_summary: SelectMissingSummary,
 }
+/// The selected options met so far, counted no further than "several".
+#[derive(Default)]
+enum SelectedMembers {
+    #[default]
+    None,
+    One(HtmlCaptureSubjectId),
+    Several,
+}
+impl SelectedMembers {
+    /// Takes one more selected option into account.
+    fn record(&mut self, id: HtmlCaptureSubjectId) {
+        *self = match self {
+            Self::None => Self::One(id),
+            Self::One(_) | Self::Several => Self::Several,
+        };
+    }
+}
 #[derive(Default)]
 struct SelectMissingSummary {
-    selected_count: u8,
-    sole_selected: Option<HtmlCaptureSubjectId>,
+    selected: SelectedMembers,
     missing: Option<HtmlSemanticMissing>,
     first_unknown: bool,
     selected_nonplaceholder: bool,
@@ -74,24 +90,26 @@ struct SelectFrame<'a> {
 }
 
 impl<'a> HtmlSemanticSession<'a> {
+    /// The element when it is the `kind` this query applies to, and otherwise the value that
+    /// answers the query without a walk.
     fn select_applicable<T>(
         &mut self,
         subject: &HtmlCaptureSubjectId,
         kind: KnownHtmlElement,
-    ) -> Result<Option<HtmlSemanticValue<T>>, HtmlSemanticFailure> {
+    ) -> Result<Result<&'a HtmlCapturedElement, HtmlSemanticValue<T>>, HtmlSemanticFailure> {
         let node = self.node(subject)?;
         let HtmlCapturedNodeKind::Element(element) = node.kind() else {
-            return Ok(Some(HtmlSemanticValue::Inapplicable));
+            return Ok(Err(HtmlSemanticValue::Inapplicable));
         };
         if !self.html_namespace(element)? {
-            return Ok(Some(HtmlSemanticValue::Unsupported(
+            return Ok(Err(HtmlSemanticValue::Unsupported(
                 HtmlSemanticUnsupported::ForeignNamespace,
             )));
         }
         Ok(if self.known(element)? == Some(kind) {
-            None
+            Ok(element)
         } else {
-            Some(HtmlSemanticValue::Inapplicable)
+            Err(HtmlSemanticValue::Inapplicable)
         })
     }
 
@@ -99,7 +117,7 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         subject: &HtmlCaptureSubjectId,
     ) -> Result<HtmlSemanticValue<HtmlOptionCollection>, HtmlSemanticFailure> {
-        if let Some(value) = self.select_applicable(subject, KnownHtmlElement::Select)? {
+        if let Err(value) = self.select_applicable(subject, KnownHtmlElement::Select)? {
             return Ok(value);
         }
         Ok(self
@@ -110,7 +128,7 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         subject: &HtmlCaptureSubjectId,
     ) -> Result<HtmlSemanticValue<HtmlOptionCollection>, HtmlSemanticFailure> {
-        if let Some(value) = self.select_applicable(subject, KnownHtmlElement::Select)? {
+        if let Err(value) = self.select_applicable(subject, KnownHtmlElement::Select)? {
             return Ok(value);
         }
         Ok(self
@@ -121,7 +139,7 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         subject: &HtmlCaptureSubjectId,
     ) -> Result<HtmlSemanticValue<Option<usize>>, HtmlSemanticFailure> {
-        if let Some(value) = self.select_applicable(subject, KnownHtmlElement::Select)? {
+        if let Err(value) = self.select_applicable(subject, KnownHtmlElement::Select)? {
             return Ok(value);
         }
         Ok(self
@@ -132,7 +150,7 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         subject: &HtmlCaptureSubjectId,
     ) -> Result<HtmlSemanticValue<usize>, HtmlSemanticFailure> {
-        if let Some(value) = self.select_applicable(subject, KnownHtmlElement::Option)? {
+        if let Err(value) = self.select_applicable(subject, KnownHtmlElement::Option)? {
             return Ok(value);
         }
         match self.nearest_select(subject)? {
@@ -148,7 +166,7 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         subject: &HtmlCaptureSubjectId,
     ) -> Result<HtmlSemanticValue<HtmlOptionFormOwner>, HtmlSemanticFailure> {
-        if let Some(value) = self.select_applicable(subject, KnownHtmlElement::Option)? {
+        if let Err(value) = self.select_applicable(subject, KnownHtmlElement::Option)? {
             return Ok(value);
         }
         match self.nearest_select(subject)? {
@@ -178,7 +196,7 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         subject: &HtmlCaptureSubjectId,
     ) -> Result<HtmlSemanticValue<Option<HtmlCaptureSubjectId>>, HtmlSemanticFailure> {
-        if let Some(value) = self.select_applicable(subject, KnownHtmlElement::Select)? {
+        if let Err(value) = self.select_applicable(subject, KnownHtmlElement::Select)? {
             return Ok(value);
         }
         Ok(self
@@ -190,13 +208,12 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         subject: &HtmlCaptureSubjectId,
     ) -> Result<HtmlSemanticValue<Option<HtmlCaptureSubjectId>>, HtmlSemanticFailure> {
-        if let Some(value) = self.select_applicable(subject, KnownHtmlElement::Select)? {
-            return Ok(value);
-        }
-        let node = self.node(subject)?;
-        let HtmlCapturedNodeKind::Element(element) = node.kind() else {
-            unreachable!("select_applicable established an element");
+        let element = match self.select_applicable(subject, KnownHtmlElement::Select)? {
+            Ok(element) => element,
+            Err(value) => return Ok(value),
         };
+        // The element is read once more, and charged once more.
+        self.charge(1)?;
         // The source consumes Boolean presence, not its authored spelling.
         if self.attribute(element, "required")?.is_none() {
             return Ok(HtmlSemanticValue::Known(None));
@@ -265,13 +282,12 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         subject: &HtmlCaptureSubjectId,
     ) -> Result<HtmlSemanticValue<bool>, HtmlSemanticFailure> {
-        if let Some(value) = self.select_applicable(subject, KnownHtmlElement::Select)? {
-            return Ok(value);
-        }
-        let node = self.node(subject)?;
-        let HtmlCapturedNodeKind::Element(element) = node.kind() else {
-            unreachable!("select_applicable established an element");
+        let element = match self.select_applicable(subject, KnownHtmlElement::Select)? {
+            Ok(element) => element,
+            Err(value) => return Ok(value),
         };
+        // The element is read once more, and charged once more.
+        self.charge(1)?;
         if self.attribute(element, "required")?.is_none() {
             return Ok(HtmlSemanticValue::Known(false));
         }
@@ -285,15 +301,19 @@ impl<'a> HtmlSemanticSession<'a> {
         };
         let summary = result.missing_summary;
         self.charge(1)?;
-        if summary.selected_count >= 2 || summary.selected_nonplaceholder {
+        if summary.selected_nonplaceholder {
             return Ok(HtmlSemanticValue::Known(false));
         }
-        if summary.selected_count == 0 {
-            return Ok(match summary.missing {
-                Some(missing) => HtmlSemanticValue::Missing(missing),
-                None => HtmlSemanticValue::Known(true),
-            });
-        }
+        let sole_selected = match summary.selected {
+            SelectedMembers::Several => return Ok(HtmlSemanticValue::Known(false)),
+            SelectedMembers::None => {
+                return Ok(match summary.missing {
+                    Some(missing) => HtmlSemanticValue::Missing(missing),
+                    None => HtmlSemanticValue::Known(true),
+                });
+            }
+            SelectedMembers::One(sole_selected) => sole_selected,
+        };
         // A selected member and no placeholder proves false even when another
         // option's selectedness or a subtree remains unavailable. Reuse the
         // full placeholder owner, including all intermediate admissions.
@@ -302,7 +322,7 @@ impl<'a> HtmlSemanticSession<'a> {
         Ok(match placeholder {
             HtmlSemanticValue::Known(None) => HtmlSemanticValue::Known(false),
             HtmlSemanticValue::Known(Some(placeholder)) => {
-                if summary.sole_selected.as_ref() != Some(&placeholder) {
+                if sole_selected != placeholder {
                     HtmlSemanticValue::Known(false)
                 } else if let Some(missing) = summary.missing {
                     HtmlSemanticValue::Missing(missing)
@@ -315,12 +335,8 @@ impl<'a> HtmlSemanticSession<'a> {
                 // known nonempty selected value is a sufficient false witness
                 // even when firstness or another placeholder fact is unknown.
                 // Earlier witnesses intentionally skip this value readback.
-                let selected = summary
-                    .sole_selected
-                    .as_ref()
-                    .expect("one selected member retains its identity");
                 let value =
-                    self.option_readback(selected, HtmlOptionReadbackOrigin::ValueAttribute)?;
+                    self.option_readback(&sole_selected, HtmlOptionReadbackOrigin::ValueAttribute)?;
                 self.charge(1)?;
                 match value {
                     HtmlSemanticValue::Known(value) if !value.value().is_empty() => {
@@ -384,9 +400,8 @@ impl<'a> HtmlSemanticSession<'a> {
             inside_optgroup: false,
         });
         let mut index = 0usize;
-        while !frames.is_empty() {
+        while let Some(frame) = frames.last_mut() {
             self.charge(1)?;
-            let frame = frames.last_mut().expect("nonempty frame stack");
             let inside_optgroup = frame.inside_optgroup;
             let Some(id) = frame.children.next() else {
                 self.charge(1)?;
@@ -411,14 +426,15 @@ impl<'a> HtmlSemanticSession<'a> {
                         match self.control_flag(&id, HtmlControlFlag::Selectedness)? {
                             HtmlSemanticValue::Known(true) => {
                                 self.charge(1)?;
-                                result.missing_summary.selected_count += 1;
-                                result.missing_summary.sole_selected = Some(id.clone());
+                                result.missing_summary.selected.record(id.clone());
                                 // Optgroup ancestry or an encountered predecessor excludes
                                 // a placeholder even when a gap obscures the first identity.
                                 result.missing_summary.selected_nonplaceholder =
                                     inside_optgroup || index > 0;
-                                if result.missing_summary.selected_count == 2
-                                    || result.missing_summary.selected_nonplaceholder
+                                if matches!(
+                                    result.missing_summary.selected,
+                                    SelectedMembers::Several
+                                ) || result.missing_summary.selected_nonplaceholder
                                 {
                                     return Ok(HtmlSemanticValue::Known(result));
                                 }

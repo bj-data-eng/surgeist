@@ -599,8 +599,10 @@ impl<'a> HtmlSemanticSession<'a> {
         {
             HtmlDimensionPair::InvalidAuthoredInputs
         } else {
-            let w = w.as_ref().expect("valid specified width");
-            let h = h.as_ref().expect("valid specified height");
+            // Both dimensions are present and valid here, so both integers were read.
+            let (Some(w), Some(h)) = (w.as_ref(), h.as_ref()) else {
+                return Err(self.stop(HtmlSemanticFailureKind::ProtocolViolated));
+            };
             if w.is_zero() && h.is_zero() {
                 HtmlDimensionPair::Conforming(HtmlDimensionTolerance::BothZero)
             } else if absent {
@@ -816,7 +818,8 @@ impl<'a> HtmlSemanticSession<'a> {
             let hn_digits =
                 self.natural_product(HtmlNaturalDigits::integer(h), n_digits, &mut hn)?;
             // This fixed checked operand is not a scan over caller scratch.
-            let two = HtmlNaturalDigits::try_little(&[2]).expect("fixed canonical digit");
+            let two = HtmlNaturalDigits::try_little(&[2])
+                .map_err(|_| self.stop(HtmlSemanticFailureKind::ProtocolViolated))?;
             let a_digits = self.natural_product(wd_digits, two, &mut a)?;
             let b_digits = self.natural_product(hn_digits, two, &mut b)?;
             let mut comparison = HtmlNaturalComparison::new(a_digits, b_digits);

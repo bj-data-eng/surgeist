@@ -52,41 +52,37 @@ impl<'a> HtmlSemanticSession<'a> {
             self.charge(1)?;
             let Some(id) = children.next() else { break };
             let child = self.node(&id)?;
-            if matches!(child.kind(), HtmlCapturedNodeKind::Element(_)) {
+            if let HtmlCapturedNodeKind::Element(element) = child.kind() {
                 self.charge(1)?;
                 if root.is_some() {
                     return Ok(HtmlSemanticValue::Unsupported(
                         HtmlSemanticUnsupported::AmbiguousDocumentElement,
                     ));
                 }
-                root = Some(child);
+                root = Some((child, element));
             }
         }
-        if let Some(root) = root {
-            let HtmlCapturedNodeKind::Element(element) = root.kind() else {
-                unreachable!()
+        if let Some((root, element)) = root
+            && self.namespace_is(element, "http://www.w3.org/2000/svg")?
+            && self.title_local_is(element, b"svg")?
+        {
+            self.charge(1)?;
+            let HtmlCapturedChildren::Complete(mut children) = root.children() else {
+                return Ok(HtmlSemanticValue::Missing(
+                    HtmlSemanticMissing::OrderedChildren(root.id()),
+                ));
             };
-            if self.namespace_is(element, "http://www.w3.org/2000/svg")?
-                && self.title_local_is(element, b"svg")?
-            {
+            loop {
                 self.charge(1)?;
-                let HtmlCapturedChildren::Complete(mut children) = root.children() else {
-                    return Ok(HtmlSemanticValue::Missing(
-                        HtmlSemanticMissing::OrderedChildren(root.id()),
-                    ));
+                let Some(id) = children.next() else {
+                    return self.document_title_empty();
                 };
-                loop {
-                    self.charge(1)?;
-                    let Some(id) = children.next() else {
-                        return self.document_title_empty();
-                    };
-                    let child = self.node(&id)?;
-                    if let HtmlCapturedNodeKind::Element(element) = child.kind()
-                        && self.namespace_is(element, "http://www.w3.org/2000/svg")?
-                        && self.title_local_is(element, b"title")?
-                    {
-                        return self.document_title_selected(id);
-                    }
+                let child = self.node(&id)?;
+                if let HtmlCapturedNodeKind::Element(element) = child.kind()
+                    && self.namespace_is(element, "http://www.w3.org/2000/svg")?
+                    && self.title_local_is(element, b"title")?
+                {
+                    return self.document_title_selected(id);
                 }
             }
         }
@@ -140,10 +136,9 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         id: HtmlCaptureSubjectId,
     ) -> Result<HtmlSemanticValue<HtmlDocumentTitle>, HtmlSemanticFailure> {
-        let raw = match self.control_text_content(&id, HtmlControlTextOrigin::ChildText)? {
-            HtmlSemanticValue::Known(raw) => raw,
-            HtmlSemanticValue::Missing(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
-            HtmlSemanticValue::Inapplicable | HtmlSemanticValue::Unsupported(_) => unreachable!(),
+        let raw = match self.control_text_or_missing(&id, HtmlControlTextOrigin::ChildText)? {
+            Ok(raw) => raw,
+            Err(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
         };
         let mut units = Vec::new();
         let mut pending_space = false;

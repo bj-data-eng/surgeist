@@ -146,9 +146,9 @@ impl<'a> HtmlSemanticSession<'a> {
             self.charge(1)?;
             frames.push(children);
         }
-        while !frames.is_empty() {
+        while let Some(frame) = frames.last_mut() {
             self.charge(1)?;
-            let Some(id) = frames.last_mut().expect("nonempty frame stack").next() else {
+            let Some(id) = frame.next() else {
                 self.charge(1)?;
                 frames.pop();
                 continue;

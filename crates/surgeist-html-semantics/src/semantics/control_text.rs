@@ -292,6 +292,18 @@ impl<'a> HtmlSemanticSession<'a> {
         subject: &HtmlCaptureSubjectId,
         origin: HtmlControlTextOrigin,
     ) -> Result<HtmlSemanticValue<DocumentString>, HtmlSemanticFailure> {
+        Ok(match self.control_text_or_missing(subject, origin)? {
+            Ok(text) => HtmlSemanticValue::Known(text),
+            Err(missing) => HtmlSemanticValue::Missing(missing),
+        })
+    }
+    /// The text content, or the missing evidence that stopped it: the query has no other
+    /// outcome, which callers that need only these two can rely on.
+    pub(super) fn control_text_or_missing(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+        origin: HtmlControlTextOrigin,
+    ) -> Result<Result<DocumentString, HtmlSemanticMissing>, HtmlSemanticFailure> {
         let mut frames = Vec::new();
         let result = self.control_text_content_inner(subject, origin, &mut frames);
         self.release_scratch(&frames);
@@ -302,13 +314,11 @@ impl<'a> HtmlSemanticSession<'a> {
         subject: &HtmlCaptureSubjectId,
         origin: HtmlControlTextOrigin,
         frames: &mut Vec<HtmlCapturedChildIds<'a>>,
-    ) -> Result<HtmlSemanticValue<DocumentString>, HtmlSemanticFailure> {
+    ) -> Result<Result<DocumentString, HtmlSemanticMissing>, HtmlSemanticFailure> {
         let node = self.node(subject)?;
         self.charge(1)?;
         let HtmlCapturedChildren::Complete(mut children) = node.children() else {
-            return Ok(HtmlSemanticValue::Missing(
-                HtmlSemanticMissing::OrderedChildren(subject.clone()),
-            ));
+            return Ok(Err(HtmlSemanticMissing::OrderedChildren(subject.clone())));
         };
         let mut units = Vec::new();
         if origin == HtmlControlTextOrigin::ChildText {
@@ -329,9 +339,9 @@ impl<'a> HtmlSemanticSession<'a> {
                 self.charge(1)?;
                 frames.push(children);
             }
-            while !frames.is_empty() {
+            while let Some(frame) = frames.last_mut() {
                 self.charge(1)?;
-                let Some(id) = frames.last_mut().expect("nonempty frame stack").next() else {
+                let Some(id) = frame.next() else {
                     self.charge(1)?;
                     frames.pop();
                     continue;
@@ -347,9 +357,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 ) {
                     self.charge(1)?;
                     let HtmlCapturedChildren::Complete(children) = node.children() else {
-                        return Ok(HtmlSemanticValue::Missing(
-                            HtmlSemanticMissing::OrderedChildren(id),
-                        ));
+                        return Ok(Err(HtmlSemanticMissing::OrderedChildren(id)));
                     };
                     if children.len() != 0 {
                         self.reserve_scratch(frames, 1)?;
@@ -360,7 +368,7 @@ impl<'a> HtmlSemanticSession<'a> {
             }
         }
         self.charge(1)?;
-        Ok(HtmlSemanticValue::Known(if units.is_empty() {
+        Ok(Ok(if units.is_empty() {
             self.context.empty_language().clone()
         } else {
             // Move the admitted variable buffer; only the fixed Arc wrapper is created.

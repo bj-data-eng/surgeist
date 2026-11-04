@@ -431,6 +431,10 @@ impl<'a> HtmlSemanticSession<'a> {
         let Some(target) = target else {
             return Ok(HtmlMetaRefreshLexical::Rejected);
         };
+        // The shared syntax reports the delay digits before it reports a target.
+        let Some(delay) = delay else {
+            return Err(self.stop(HtmlSemanticFailureKind::ProtocolViolated));
+        };
         let target = match target {
             HtmlMetaRefreshSyntaxTarget::DocumentUrl => HtmlMetaRefreshTarget::DocumentUrl,
             HtmlMetaRefreshSyntaxTarget::UrlString(range) => {
@@ -442,7 +446,7 @@ impl<'a> HtmlSemanticSession<'a> {
             }
         };
         Ok(HtmlMetaRefreshLexical::Parsed(HtmlMetaRefreshValue {
-            delay: delay.expect("shared syntax admits the delay before a target"),
+            delay,
             target,
         }))
     }

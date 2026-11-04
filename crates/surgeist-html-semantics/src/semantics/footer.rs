@@ -19,6 +19,11 @@ pub enum HtmlFooterScope {
     },
 }
 
+/// What ended a document body search without an answer.
+enum BodyStop {
+    Missing(HtmlSemanticMissing),
+    Unsupported(HtmlSemanticUnsupported),
+}
 impl HtmlSemanticSession<'_> {
     pub(super) fn footer_scope(
         &mut self,
@@ -62,12 +67,11 @@ impl HtmlSemanticSession<'_> {
         self.charge(1)?;
         let document = node.node_document();
         let body = match self.footer_document_body(document.subject())? {
-            HtmlSemanticValue::Known(body) => body,
-            HtmlSemanticValue::Missing(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
-            HtmlSemanticValue::Unsupported(reason) => {
+            Ok(body) => body,
+            Err(BodyStop::Missing(missing)) => return Ok(HtmlSemanticValue::Missing(missing)),
+            Err(BodyStop::Unsupported(reason)) => {
                 return Ok(HtmlSemanticValue::Unsupported(reason));
             }
-            HtmlSemanticValue::Inapplicable => unreachable!(),
         };
         self.charge(1)?;
         Ok(HtmlSemanticValue::Known(HtmlFooterScope::DocumentBody {
@@ -82,15 +86,15 @@ impl HtmlSemanticSession<'_> {
     fn footer_document_body(
         &mut self,
         document: &HtmlCaptureSubjectId,
-    ) -> Result<HtmlSemanticValue<Option<HtmlCaptureSubjectId>>, HtmlSemanticFailure> {
+    ) -> Result<Result<Option<HtmlCaptureSubjectId>, BodyStop>, HtmlSemanticFailure> {
         let node = self.node(document)?;
         self.charge(1)?;
         let mut children = match node.children() {
             HtmlCapturedChildren::Complete(children) => children,
             HtmlCapturedChildren::Unavailable => {
-                return Ok(HtmlSemanticValue::Missing(
+                return Ok(Err(BodyStop::Missing(
                     HtmlSemanticMissing::OrderedChildren(document.clone()),
-                ));
+                )));
             }
         };
         let mut html = None;
@@ -98,39 +102,36 @@ impl HtmlSemanticSession<'_> {
             self.charge(1)?;
             let Some(child) = children.next() else { break };
             let node = self.node(&child)?;
-            if matches!(node.kind(), HtmlCapturedNodeKind::Element(_)) {
+            if let HtmlCapturedNodeKind::Element(element) = node.kind() {
                 self.charge(1)?;
                 if html.is_some() {
-                    return Ok(HtmlSemanticValue::Unsupported(
+                    return Ok(Err(BodyStop::Unsupported(
                         HtmlSemanticUnsupported::AmbiguousDocumentElement,
-                    ));
+                    )));
                 }
-                html = Some(child);
+                html = Some((child, element));
             }
         }
-        let Some(html) = html else {
-            return Ok(HtmlSemanticValue::Known(None));
+        let Some((html, element)) = html else {
+            return Ok(Ok(None));
         };
         let node = self.node(&html)?;
-        let HtmlCapturedNodeKind::Element(element) = node.kind() else {
-            unreachable!()
-        };
         if self.known(element)? != Some(KnownHtmlElement::Html) {
-            return Ok(HtmlSemanticValue::Known(None));
+            return Ok(Ok(None));
         }
         self.charge(1)?;
         let mut children = match node.children() {
             HtmlCapturedChildren::Complete(children) => children,
             HtmlCapturedChildren::Unavailable => {
-                return Ok(HtmlSemanticValue::Missing(
+                return Ok(Err(BodyStop::Missing(
                     HtmlSemanticMissing::OrderedChildren(html),
-                ));
+                )));
             }
         };
         loop {
             self.charge(1)?;
             let Some(child) = children.next() else {
-                return Ok(HtmlSemanticValue::Known(None));
+                return Ok(Ok(None));
             };
             let node = self.node(&child)?;
             if let HtmlCapturedNodeKind::Element(element) = node.kind()
@@ -143,7 +144,7 @@ impl HtmlSemanticSession<'_> {
                             &[102, 114, 97, 109, 101, 115, 101, 116],
                         )?))
             {
-                return Ok(HtmlSemanticValue::Known(Some(child)));
+                return Ok(Ok(Some(child)));
             }
         }
     }

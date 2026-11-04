@@ -2622,7 +2622,9 @@ impl<'a> HtmlSemanticSession<'a> {
                             | HtmlSemanticQuery::FirstManifest
                             | HtmlSemanticQuery::DocumentIcon
                             | HtmlSemanticQuery::NextDocumentIcon => {
-                                unreachable!("dispatched before node classification")
+                                // The document-level queries were dispatched above; a
+                                // request that reaches here would be a defect in this match.
+                                return Err(self.stop(HtmlSemanticFailureKind::ProtocolViolated));
                             }
                             HtmlSemanticQuery::MicrodataItem => {
                                 HtmlSemanticFact::MicrodataItem(if foreign {
@@ -3219,7 +3221,9 @@ impl<'a> HtmlSemanticSession<'a> {
                         | HtmlSemanticQuery::FirstManifest
                         | HtmlSemanticQuery::DocumentIcon
                         | HtmlSemanticQuery::NextDocumentIcon => {
-                            unreachable!("dispatched before node classification")
+                            // The document-level queries were dispatched above; a
+                            // request that reaches here would be a defect in this match.
+                            return Err(self.stop(HtmlSemanticFailureKind::ProtocolViolated));
                         }
                         HtmlSemanticQuery::MicrodataItem => {
                             HtmlSemanticFact::MicrodataItem(HtmlSemanticValue::Inapplicable)

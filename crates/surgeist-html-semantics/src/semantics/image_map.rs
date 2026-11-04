@@ -234,9 +234,13 @@ impl<'a> HtmlSemanticSession<'a> {
                     // When both phases need a name, their slice is identical:
                     // leading # is the first #. Reuse this one comparison.
                     let suffix = if need_processing {
-                        reference.processing_name_units().expect("processing Name")
+                        reference.processing_name_units()
                     } else {
-                        reference.author_name_units().expect("leading hash")
+                        reference.author_name_units()
+                    };
+                    // A phase needs a name only when its clause produced one.
+                    let Some(suffix) = suffix else {
+                        return Err(self.stop(HtmlSemanticFailureKind::ProtocolViolated));
                     };
                     let name_matches = if let Some(name) = self.attribute(element, "name")? {
                         self.charge(1)?;
