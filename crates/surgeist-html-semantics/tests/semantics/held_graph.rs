@@ -314,6 +314,9 @@ fn a_held_graph_is_released_when_the_next_query_is_of_another_tree() {
 /// stopped. By hand: the first document holds two untyped items, each with one
 /// property element, so its graph holds 2 items and 2 (item, property) pairs and
 /// no edge, and a graph vector reserves exactly one record per push: 4 records.
+/// The first item's type walk built the index of the graph that the second
+/// would reuse: 2 item keys, no incoming edge, 3 starts, 2 path flags and 2
+/// epoch marks, 9 records, so the failure records 4 + 9 = 13.
 #[test]
 fn a_failed_batch_of_graph_queries_leaves_no_scratch_and_records_the_held_graph() {
     let p = page();
@@ -337,7 +340,7 @@ fn a_failed_batch_of_graph_queries_leaves_no_scratch_and_records_the_held_graph(
         }
     ));
     assert_eq!(usage.scratch_records(), 0, "the session releases the graph");
-    assert_eq!(failure.usage().scratch_records(), 4);
+    assert_eq!(failure.usage().scratch_records(), 13);
 }
 
 /// An untyped item whose `itemref` names 31 ids, then ten untyped items of
@@ -394,17 +397,17 @@ fn crawl_heavy_page() -> (Page, HtmlCaptureSubjectId) {
     (page, subject)
 }
 
-/// A single untyped item query holds its tree's graph while it crawls the item,
-/// as the batch needs it for the next item, where the previous code had released
-/// it before the crawl. Its peak is therefore at most the graph's G records
-/// above what it was, G + crawl where it was max(G + type context, crawl). On
-/// this page, where G = 41, the graph-building crawl of the same item already
-/// reached the peak (measured 106 before the graph was held and 106 after), so
-/// the rise is 0. A rise is bounded by G and appears only if the item's own crawl
-/// needed more scratch than building the graph did.
+/// A single untyped item query holds its tree's graph, and the index of the
+/// graph that its type walk uses, while it crawls the item, as the batch needs
+/// them for the next item, where the previous code had released the graph before
+/// the crawl. Its peak is therefore at most the G records of the graph and the T
+/// records of that index above what it was. On this page G = 41 (11 items and 30
+/// pairs) and T = 4 * 11 + 0 + 1 = 45 (keys, starts, path flags and epoch marks of
+/// the 11 items), and the peak went from 106 before the graph was held to 121,
+/// a rise of 15, within the bound of G + T = 86.
 #[test]
 fn a_single_item_query_peak_is_at_most_the_graph_above_its_previous_peak() {
     let (page, item) = crawl_heavy_page();
     let peak = peak_of(&page, &request(&item, HtmlSemanticQuery::MicrodataItem));
-    assert_eq!(peak, 106);
+    assert_eq!(peak, 121);
 }

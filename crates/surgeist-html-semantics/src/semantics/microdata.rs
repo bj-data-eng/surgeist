@@ -1744,6 +1744,27 @@ struct Crawl {
 pub(super) struct TreeGraph {
     root: HtmlCaptureSubjectId,
     graph: Arc<Graph>,
+    /// What walking the type paths of the graph's items needs, built by the first
+    /// such walk and kept with the graph.
+    typing: Option<TypingIndex>,
+}
+/// What walking the type paths above the items of one graph needs, built once
+/// for the graph so that the walk of an item costs the items and edges above it
+/// and not the whole graph.
+#[derive(Default)]
+struct TypingIndex {
+    /// The item ordinals with their positions, sorted by ordinal.
+    keys: Vec<(usize, usize)>,
+    /// `incoming[start[k]..start[k + 1]]` holds, in edge order, `(k, edge
+    /// ordinal, receiver)` for every edge that ends at item `k`.
+    incoming: Vec<(usize, usize, usize)>,
+    start: Vec<usize>,
+    /// Which items the walk in progress has on its path; all false between walks.
+    on_path: Vec<bool>,
+    /// The receiver epoch in which each item was last entered.
+    explored: Vec<usize>,
+    /// The last receiver epoch used; it only grows.
+    epoch: usize,
 }
 struct Graph {
     items: Vec<HtmlCaptureSubjectId>,
@@ -2550,8 +2571,9 @@ impl<'a> HtmlSemanticSession<'a> {
     /// scratch than its largest query alone, with one exception, which is
     /// listed in the operations reference: an untyped item query holds the graph
     /// while it crawls the item, where the graph used to be released before the
-    /// crawl, so that query's peak is at most the graph's records above what it
-    /// was (G + crawl where it was max(G + type context, crawl)).
+    /// crawl, so that query's peak is at most the graph's records G and those of
+    /// its type-walk index T above what it was (G + T + crawl where it was
+    /// max(G + type context, crawl)).
     ///
     /// The graph is behind an `Arc` only so a query can read it while the
     /// session, which owns the held slot, stays mutably borrowed for charging.
@@ -2571,6 +2593,7 @@ impl<'a> HtmlSemanticSession<'a> {
         self.microdata_graph = Some(TreeGraph {
             root: root.clone(),
             graph: graph.clone(),
+            typing: None,
         });
         Ok(graph)
     }
@@ -2578,6 +2601,83 @@ impl<'a> HtmlSemanticSession<'a> {
     pub(super) fn md_drop_tree_graph(&mut self) {
         if let Some(held) = self.microdata_graph.take() {
             self.md_release_graph(&held.graph);
+            if let Some(typing) = &held.typing {
+                self.md_release_typing(typing);
+            }
+        }
+    }
+    /// The typing index of `graph`: the one the held graph keeps, taken out for
+    /// the walk (and then `true`, for putting back), or a new one built from the
+    /// graph's items and edges, which is kept if `graph` is the held graph.
+    fn md_graph_typing(
+        &mut self,
+        graph: &Arc<Graph>,
+    ) -> Result<(TypingIndex, bool), HtmlSemanticFailure> {
+        let held = self
+            .microdata_graph
+            .as_ref()
+            .is_some_and(|held| Arc::ptr_eq(&held.graph, graph));
+        if held
+            && let Some(typing) = self
+                .microdata_graph
+                .as_mut()
+                .and_then(|held| held.typing.take())
+        {
+            self.charge(1)?;
+            return Ok((typing, true));
+        }
+        Ok((self.md_build_typing(&graph.items, &graph.edges)?, held))
+    }
+    /// Puts a typing index taken from the held graph back with it, or releases
+    /// it when `graph` is no longer the held graph.
+    fn md_return_typing(&mut self, graph: &Arc<Graph>, typing: TypingIndex, held: bool) {
+        if held
+            && let Some(slot) = self
+                .microdata_graph
+                .as_mut()
+                .filter(|slot| Arc::ptr_eq(&slot.graph, graph))
+        {
+            slot.typing = Some(typing);
+            return;
+        }
+        self.md_release_typing(&typing);
+    }
+    fn md_release_typing(&mut self, typing: &TypingIndex) {
+        self.release_scratch(&typing.keys);
+        self.release_scratch(&typing.incoming);
+        self.release_scratch(&typing.start);
+        self.release_scratch(&typing.on_path);
+        self.release_scratch(&typing.explored);
+    }
+    fn md_build_typing(
+        &mut self,
+        items: &[HtmlCaptureSubjectId],
+        edges: &[(HtmlCaptureSubjectId, HtmlCaptureSubjectId)],
+    ) -> Result<TypingIndex, HtmlSemanticFailure> {
+        let mut typing = TypingIndex::default();
+        let built = (|| {
+            self.md_edge_index(
+                items,
+                edges,
+                EdgeEnd::To,
+                &mut typing.keys,
+                &mut typing.incoming,
+                &mut typing.start,
+            )?;
+            self.reserve_scratch(&mut typing.on_path, items.len())?;
+            self.charge(items.len())?;
+            typing.on_path.resize(items.len(), false);
+            self.reserve_scratch(&mut typing.explored, items.len())?;
+            self.charge(items.len())?;
+            typing.explored.resize(items.len(), 0usize);
+            Ok(())
+        })();
+        match built {
+            Ok(()) => Ok(typing),
+            Err(failure) => {
+                self.md_release_typing(&typing);
+                Err(failure)
+            }
         }
     }
     fn md_release_graph(&mut self, graph: &Graph) {
@@ -2650,62 +2750,49 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         id: &HtmlCaptureSubjectId,
         own: HtmlMicrodataTokenReport,
-        graph: Option<&Graph>,
+        graph: Option<&Arc<Graph>>,
     ) -> Result<HtmlMicrodataTypeContext, HtmlSemanticFailure> {
         // Every edge endpoint is a graph item, so a subject outside the items
         // (beneath unavailable children) has no receivers; it is walked alone
         // and the graph's coverage gap is still reported below.
-        let mut in_graph = false;
+        let single = [id.clone()];
+        let mut graph_index = None;
         if let Some(graph) = graph {
-            for item in &graph.items {
-                self.charge(1)?;
-                if item == id {
-                    in_graph = true;
-                    break;
-                }
+            let (index, held) = self.md_graph_typing(graph)?;
+            self.charge(md_log2(index.keys.len()))?;
+            if index
+                .keys
+                .binary_search_by_key(&id.ordinal(), |&(ordinal, _)| ordinal)
+                .is_ok()
+            {
+                graph_index = Some((index, held));
+            } else {
+                self.md_return_typing(graph, index, held);
             }
         }
-        let (items, edges): (&[HtmlCaptureSubjectId], &[_]) = match graph {
-            Some(graph) if in_graph => (&graph.items, &graph.edges),
-            _ => (std::slice::from_ref(id), &[]),
-        };
+        let (mut ix, held, items): (TypingIndex, bool, &[HtmlCaptureSubjectId]) =
+            match (&graph, graph_index) {
+                (Some(graph), Some((index, held))) => (index, held, &graph.items),
+                _ => (self.md_build_typing(&single, &[])?, false, &single),
+            };
         let mut paths = Vec::new();
-        let mut keys = Vec::new();
-        let mut incoming = Vec::new();
-        let mut start = Vec::new();
         // Relevant types come from each item for which the subject is a
         // property's value, so every immediate receiver keeps its own paths.
         // Above a receiver each item is entered once: further routes to the
         // same ancestor are that receiver's own context, not another one. With
         // the incoming index and per-item flags, each receiver's walk touches
-        // every item and edge at most once.
-        let mut on_path = Vec::new();
-        let mut explored = Vec::new();
+        // only the items and edges above it.
         let mut path = Vec::new();
         let mut frames = Vec::new();
         let mut cycle = None;
         let result = (|| {
-            self.md_edge_index(
-                items,
-                edges,
-                EdgeEnd::To,
-                &mut keys,
-                &mut incoming,
-                &mut start,
-            )?;
-            self.reserve_scratch(&mut on_path, items.len())?;
-            self.charge(items.len())?;
-            on_path.resize(items.len(), false);
-            self.reserve_scratch(&mut explored, items.len())?;
-            self.charge(items.len())?;
-            explored.resize(items.len(), 0usize);
-            // Explored marks carry the receiver epoch, so a new receiver starts
-            // its own exploration without clearing the flags.
-            let mut epoch = 0usize;
-            let subject = self.md_position(&keys, id)?;
-            on_path[subject] = true;
+            // Explored marks carry the receiver epoch, which continues across
+            // the queries that share the index, so a new receiver starts its own
+            // exploration without clearing the flags.
+            let subject = self.md_position(&ix.keys, id)?;
+            ix.on_path[subject] = true;
             self.md_push(&mut path, subject)?;
-            self.md_push(&mut frames, (subject, start[subject], false))?;
+            self.md_push(&mut frames, (subject, ix.start[subject], false))?;
             while let Some(&(current, next, entered)) = frames.last() {
                 self.charge(1)?;
                 let index = frames.len() - 1;
@@ -2741,7 +2828,7 @@ impl<'a> HtmlSemanticSession<'a> {
                         });
                         self.charge(2)?;
                         frames.pop();
-                        on_path[current] = false;
+                        ix.on_path[current] = false;
                         path.pop();
                         continue;
                     }
@@ -2749,29 +2836,29 @@ impl<'a> HtmlSemanticSession<'a> {
                     frames[index].2 = true;
                 }
                 self.charge(1)?;
-                if next < start[current + 1] {
-                    let parent = incoming[next].2;
+                if next < ix.start[current + 1] {
+                    let parent = ix.incoming[next].2;
                     frames[index].1 = next + 1;
-                    if on_path[parent] {
+                    if ix.on_path[parent] {
                         cycle.get_or_insert(items[parent].clone());
                         continue;
                     }
                     if path.len() == 1 {
                         // A new immediate receiver starts its own exploration.
                         self.charge(1)?;
-                        epoch += 1;
+                        ix.epoch += 1;
                     }
-                    if explored[parent] == epoch {
+                    if ix.explored[parent] == ix.epoch {
                         continue;
                     }
-                    explored[parent] = epoch;
-                    on_path[parent] = true;
+                    ix.explored[parent] = ix.epoch;
+                    ix.on_path[parent] = true;
                     self.md_push(&mut path, parent)?;
-                    self.md_push(&mut frames, (parent, start[parent], false))?;
+                    self.md_push(&mut frames, (parent, ix.start[parent], false))?;
                 } else {
                     self.charge(2)?;
                     frames.pop();
-                    on_path[current] = false;
+                    ix.on_path[current] = false;
                     path.pop();
                 }
             }
@@ -2796,14 +2883,18 @@ impl<'a> HtmlSemanticSession<'a> {
                 cycle,
             })
         })();
-        self.release_scratch(&keys);
-        self.release_scratch(&incoming);
-        self.release_scratch(&start);
-        self.release_scratch(&on_path);
-        self.release_scratch(&explored);
         self.release_scratch(&path);
         self.release_scratch(&frames);
-        result
+        match (&graph, result) {
+            (Some(graph), Ok(context)) if held => {
+                self.md_return_typing(graph, ix, held);
+                Ok(context)
+            }
+            (_, result) => {
+                self.md_release_typing(&ix);
+                result
+            }
+        }
     }
     pub(super) fn microdata_item(
         &mut self,
