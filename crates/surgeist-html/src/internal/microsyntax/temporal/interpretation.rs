@@ -2,7 +2,7 @@
 use super::*;
 use crate::internal::microsyntax::numeric::{
     HtmlIntegerUnitStep, HtmlNumericMaterializationError, HtmlNumericMaterializationFailure,
-    HtmlNumericMaterialized,
+    HtmlNumericMaterialized, decimal_total::HtmlDecimalTotal,
 };
 use crate::{
     internal::values::interpretation::HtmlValueAdmissionError,
@@ -252,6 +252,7 @@ struct Running<'raw> {
 }
 #[derive(Debug)]
 enum DurationStage<'raw> {
+    /// The authored total starts at an allocated zero; the recovery total starts empty.
     Zero(BorrowedDurationPlan<'raw>),
     Initialize(BorrowedDurationPlan<'raw>),
     Next {
@@ -262,6 +263,8 @@ enum DurationStage<'raw> {
     Scale(Running<'raw>),
     Accumulate(Running<'raw>),
     Advance(Running<'raw>),
+    /// The recovery total is read out once every component is added.
+    Finish(BorrowedDurationPlan<'raw>),
 }
 type Report = HtmlValueReport<HtmlTimeElementValue, HtmlMachineReadableTime>;
 
@@ -286,6 +289,9 @@ pub struct HtmlTimeElementInterpretation<'raw> {
     // belong to no single stage.
     integers: [Option<HtmlNonNegativeInteger>; 5],
     decimals: [Option<HtmlNonNegativeDecimal>; 3],
+    /// The recovery duration's running total, which no scratch slot holds: adding a component
+    /// visits that component's digits, not the total's.
+    total: HtmlDecimalTotal,
     millisecond: u16,
     within_cycle: u32,
     adjustment: i8,
@@ -308,6 +314,7 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
             recovery: Err(HtmlTemporalError::InvalidSyntax),
             integers: std::array::from_fn(|_| None),
             decimals: std::array::from_fn(|_| None),
+            total: HtmlDecimalTotal::default(),
             millisecond: 0,
             within_cycle: 0,
             adjustment: 0,
@@ -494,9 +501,15 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                     K::Materialization,
                     exhausted(if self.phase == TemporalPhase::Author {
                         self.integer(0)?.added_to_work_bound(self.integer(2)?)
+                    } else if self.total.carry_pending() {
+                        self.total.carried_work_bound()
                     } else {
-                        self.decimal(0)?.added_to_work_bound(self.decimal(2)?)
+                        self.total.added_work_bound(self.decimal(2)?)
                     })?,
+                ),
+                DurationStage::Finish(_) => (
+                    K::Materialization,
+                    exhausted(self.total.finished_work_bound())?,
                 ),
             },
             Stage::Poll => (K::Poll, 0),
@@ -512,6 +525,7 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
     fn complete_phase(&mut self) {
         self.integers = std::array::from_fn(|_| None);
         self.decimals = std::array::from_fn(|_| None);
+        self.total = HtmlDecimalTotal::default();
         if self.phase == TemporalPhase::Author {
             self.phase = TemporalPhase::Recovery;
             self.alternative = 0;
@@ -587,7 +601,12 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                     self.stage = Stage::Global(GlobalStage::Year(global))
                 }
                 BorrowedTemporalPlan::Duration(plan) => {
-                    self.stage = Stage::Duration(DurationStage::Zero(plan));
+                    // The recovery total starts empty, which needs no allocation.
+                    self.stage = Stage::Duration(if self.phase == TemporalPhase::Author {
+                        DurationStage::Zero(plan)
+                    } else {
+                        DurationStage::Initialize(plan)
+                    });
                 }
                 plan => self.stage = Stage::YearRead(plan),
             },
@@ -858,15 +877,10 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
     ) -> Result<(), HtmlTimeElementInterpretationError> {
         let next = match step {
             DurationStage::Zero(plan) => {
-                let zero = materialized(
+                self.integers[0] = Some(materialized(
                     HtmlNonNegativeInteger::try_from_u32(0, digits, bytes),
                     observed,
-                )?;
-                if self.phase == TemporalPhase::Author {
-                    self.integers[0] = Some(zero);
-                } else {
-                    self.decimals[0] = Some(zero.into());
-                }
+                )?);
                 DurationStage::Initialize(plan)
             }
             DurationStage::Initialize(plan) => DurationStage::Next {
@@ -885,9 +899,7 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                         );
                         self.author(HtmlTimeElementValue::Duration(value));
                     } else {
-                        let value =
-                            plan.assemble_recovery(self.decimals[0].take().ok_or_else(invalid)?);
-                        self.recovery(HtmlMachineReadableTime::Duration(value));
+                        self.stage = Stage::Duration(DurationStage::Finish(plan));
                     }
                     return Ok(());
                 };
@@ -947,14 +959,28 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                             .try_added_to(self.integer(2)?, digits, bytes),
                         observed,
                     )?);
+                    DurationStage::Advance(running)
                 } else {
-                    self.decimals[0] = Some(materialized(
-                        self.decimal(0)?
-                            .try_added_to(self.decimal(2)?, digits, bytes),
-                        observed,
-                    )?);
+                    // A carry too long for one step stays pending, and the next step walks on.
+                    let result = if self.total.carry_pending() {
+                        self.total.try_carried(digits, bytes)
+                    } else {
+                        let addend = self.decimals[2].as_ref().ok_or_else(invalid)?;
+                        self.total.try_added_to(addend, digits, bytes)
+                    };
+                    materialized(result, observed)?;
+                    if self.total.carry_pending() {
+                        DurationStage::Accumulate(running)
+                    } else {
+                        DurationStage::Advance(running)
+                    }
                 }
-                DurationStage::Advance(running)
+            }
+            DurationStage::Finish(plan) => {
+                let seconds = materialized(self.total.try_finished(digits, bytes), observed)?;
+                let value = plan.assemble_recovery(seconds);
+                self.recovery(HtmlMachineReadableTime::Duration(value));
+                return Ok(());
             }
             DurationStage::Advance(running) => {
                 if self.phase == TemporalPhase::Author && running.component.scale() == Some(1) {

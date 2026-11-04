@@ -172,8 +172,12 @@ component's digits into per-place column sums (carries resolved once, when the
 value is read) instead of rebuilding the running decimal; its work is linear in
 the input however long the first number or fraction is. The controlled
 interpretation charges each duration recognition step `16 * units consumed + 256`
-(it previously charged the whole unread remainder), which is linear in total;
-its exact staged accumulation still charges each addition by the accumulated size.
+(it previously charged the whole unread remainder), which is linear in total. It
+keeps the recovery total in canonical digits, so each addition visits the added
+component's digits and the places its carry crosses, walked a bounded chunk per
+charged step, and a final charged step reads the total out. The digit limit fails
+at the addition whose canonical sum first needs one digit more; the work is
+linear in the input however long the first number or fraction is.
 
 Temporal recovery returns separate parsed values where the source accepts a
 wider domain. Exact decimal seconds retain arbitrary admitted fractional
