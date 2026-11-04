@@ -3,7 +3,7 @@
 use super::*;
 use surgeist_html::bounded::media::{
     HtmlMediaActionError, HtmlMediaField, HtmlMediaFieldMatch, HtmlMediaInterpretation,
-    match_media_field,
+    HtmlMediaInterpretationError, match_media_field,
 };
 use surgeist_html::{
     attributes::media::{HtmlMediaAttributeReport, HtmlMediaElementRole},
@@ -180,10 +180,16 @@ impl<'a> HtmlSemanticSession<'a> {
     ) -> HtmlSemanticFailure {
         match error {
             HtmlMediaActionError::Admission(error) => error,
-            HtmlMediaActionError::Protocol(_) => {
-                self.stop(HtmlSemanticFailureKind::RepresentationExhausted)
-            }
+            HtmlMediaActionError::Protocol(error) => self.media_interpretation_failure(error),
         }
+    }
+    /// The terminal failure of a media owner that refused a step: an unrepresentable size is
+    /// exhaustion, and any other cause is a step requested out of the owner's protocol.
+    fn media_interpretation_failure(
+        &mut self,
+        error: HtmlMediaInterpretationError,
+    ) -> HtmlSemanticFailure {
+        self.stop(media_failure_kind(error))
     }
     fn media_select(
         &mut self,
@@ -240,7 +246,7 @@ impl<'a> HtmlSemanticSession<'a> {
             .map_err(|error| self.media_action_failure(error))?;
         if !owner
             .is_html_namespace()
-            .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?
+            .map_err(|error| self.media_interpretation_failure(error))?
         {
             return Ok(HtmlSemanticValue::Unsupported(
                 HtmlSemanticUnsupported::ForeignNamespace,
@@ -251,7 +257,7 @@ impl<'a> HtmlSemanticSession<'a> {
             .map_err(|error| self.media_action_failure(error))?;
         let Some(role) = owner
             .role()
-            .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?
+            .map_err(|error| self.media_interpretation_failure(error))?
         else {
             return Ok(HtmlSemanticValue::Inapplicable);
         };
@@ -259,7 +265,7 @@ impl<'a> HtmlSemanticSession<'a> {
             let selected = self.media_select(element, HtmlMediaField::Name)?;
             owner
                 .supply_matched_name(selected)
-                .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+                .map_err(|error| self.media_interpretation_failure(error))?;
             owner
                 .admit_name(|name| {
                     self.charge(1)?;
@@ -271,7 +277,7 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         owner
             .begin_value()
-            .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+            .map_err(|error| self.media_interpretation_failure(error))?;
         while owner.value_action() != Ok(HtmlMediaCursorAction::Complete) {
             owner
                 .advance_value(|work| self.charge(work))
@@ -279,7 +285,7 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let value = owner
             .value()
-            .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+            .map_err(|error| self.media_interpretation_failure(error))?;
         let raw = owner.raw();
         let external = if raw.is_some() {
             self.media_external(subject)?
@@ -375,7 +381,7 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     let theme = owner
                         .theme_color()
-                        .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+                        .map_err(|error| self.media_interpretation_failure(error))?;
                     let processing = if theme {
                         let uniqueness = if let Some(raw) = raw {
                             self.theme_media_uniqueness(subject, raw.value(), &mut frames)?
@@ -401,7 +407,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 .map_err(|error| self.media_action_failure(error))?;
             let report = owner
                 .finish()
-                .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
+                .map_err(|failure| self.media_interpretation_failure(*failure.cause()))?;
             data.push(MediaReadbackData {
                 local: report,
                 grammar,
@@ -456,9 +462,12 @@ impl<'a> HtmlSemanticSession<'a> {
             HtmlSourceMediaContext::Picture => {}
             _ => return Ok(HtmlPictureSourceRequirement::NotApplicable),
         }
+        // The context found a picture parent. A parent the capture no longer yields leaves the
+        // requirement as for any source that is not inside a picture.
         let parent = match self.parent(node)? {
             Ok(Some(id)) => self.node(&id)?,
-            _ => unreachable!("known picture ordinary parent"),
+            Ok(None) => return Ok(HtmlPictureSourceRequirement::NotApplicable),
+            Err(gap) => return Ok(HtmlPictureSourceRequirement::Missing(gap)),
         };
         let children = match parent.children() {
             HtmlCapturedChildren::Complete(children) => children,
@@ -562,5 +571,41 @@ impl<'a> HtmlSemanticSession<'a> {
             HtmlThemeColorMediaUniqueness::Unique { document: root },
             HtmlThemeColorMediaUniqueness::Missing,
         ))
+    }
+}
+
+/// The failure kind of a media owner's refusal: an unrepresentable size is exhaustion, and every
+/// other cause is a step requested out of the owner's protocol.
+fn media_failure_kind(error: HtmlMediaInterpretationError) -> HtmlSemanticFailureKind {
+    if error.is_representation_exhausted() {
+        HtmlSemanticFailureKind::RepresentationExhausted
+    } else {
+        HtmlSemanticFailureKind::ProtocolViolated
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use surgeist_html::values::{Namespace, QualifiedName};
+
+    /// A step requested before its input exists breaks the owner's protocol; it is reported as
+    /// such, and not as a size that cannot be represented.
+    #[test]
+    fn an_owner_asked_out_of_order_is_a_protocol_violation_not_exhaustion() {
+        let name = QualifiedName::new(Namespace::html(), None, "link");
+        let owner = HtmlMediaInterpretation::<QualifiedName, Attribute>::from_matched(&name, None);
+        for error in [
+            owner.is_html_namespace().unwrap_err(),
+            owner.role().unwrap_err(),
+            owner.value().unwrap_err(),
+            owner.theme_color().unwrap_err(),
+        ] {
+            assert!(error.is_not_ready());
+            assert_eq!(
+                media_failure_kind(error),
+                HtmlSemanticFailureKind::ProtocolViolated
+            );
+        }
     }
 }
