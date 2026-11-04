@@ -35,6 +35,33 @@ pub struct HtmlOptionValueStorageUsage {
     pub(crate) units: usize,
 }
 impl HtmlOptionValueStorageUsage {
+    /// The sum, or exhaustion when either component is not representable.
+    fn checked_add(self, other: Self) -> Result<Self, HtmlOptionValueControlError> {
+        Ok(Self {
+            bytes: self
+                .bytes
+                .checked_add(other.bytes)
+                .ok_or(HtmlOptionValueControlError::RepresentationExhausted)?,
+            units: self
+                .units
+                .checked_add(other.units)
+                .ok_or(HtmlOptionValueControlError::RepresentationExhausted)?,
+        })
+    }
+    /// What remains after returning `other`, or a protocol breach when more is returned than is
+    /// held in either component.
+    fn checked_sub(self, other: Self) -> Result<Self, HtmlOptionValueControlError> {
+        Ok(Self {
+            bytes: self
+                .bytes
+                .checked_sub(other.bytes)
+                .ok_or(HtmlOptionValueControlError::ProtocolViolated)?,
+            units: self
+                .units
+                .checked_sub(other.units)
+                .ok_or(HtmlOptionValueControlError::ProtocolViolated)?,
+        })
+    }
     pub fn retained_bytes(self) -> usize {
         self.bytes
     }
@@ -59,6 +86,10 @@ pub enum HtmlOptionValueControlError {
         required: u64,
     },
     RepresentationExhausted,
+    /// The session returned storage it never took from this execution, or moved storage it did not
+    /// hold. Valid captures and valid use never reach this cause; it reports a defect in this
+    /// crate's accounting.
+    ProtocolViolated,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -136,10 +167,16 @@ impl Error for HtmlControlledOptionValueFailure {
     }
 }
 
+/// Reads and writes one counter.
+///
+/// The counters are atomics so that a session reaching `Control` through `&Control` stays `Sync`,
+/// which keeps `HtmlSemanticSession` `Send + Sync`. They are not for concurrent mutation: one
+/// thread drives a session and its owner at a time, and every thread hand-off already
+/// synchronizes. `Relaxed` is sufficient because no counter orders any other memory access and
+/// each is read only by the thread that drives the execution.
 trait Counter<T> {
     fn get(&self) -> T;
     fn set(&self, value: T);
-    fn replace(&self, value: T) -> T;
 }
 impl Counter<u64> for AtomicU64 {
     fn get(&self) -> u64 {
@@ -148,9 +185,6 @@ impl Counter<u64> for AtomicU64 {
     fn set(&self, value: u64) {
         self.store(value, Ordering::Relaxed);
     }
-    fn replace(&self, value: u64) -> u64 {
-        self.swap(value, Ordering::Relaxed)
-    }
 }
 impl Counter<usize> for AtomicUsize {
     fn get(&self) -> usize {
@@ -158,9 +192,6 @@ impl Counter<usize> for AtomicUsize {
     }
     fn set(&self, value: usize) {
         self.store(value, Ordering::Relaxed);
-    }
-    fn replace(&self, value: usize) -> usize {
-        self.swap(value, Ordering::Relaxed)
     }
 }
 struct StorageCounter {
@@ -245,7 +276,6 @@ pub(crate) struct Control {
     start: AtomicU64,
     envelope: EnvelopeCounter,
     semantic: SemanticCounter,
-    scratch_bytes: AtomicUsize,
     #[cfg(test)]
     cancel_after: AtomicU64,
 }
@@ -259,7 +289,6 @@ impl Control {
             start: AtomicU64::new(0),
             envelope: EnvelopeCounter::new(envelope),
             semantic: SemanticCounter::new(),
-            scratch_bytes: AtomicUsize::new(0),
             #[cfg(test)]
             cancel_after: AtomicU64::new(u64::MAX),
         }
@@ -293,7 +322,9 @@ impl Control {
                     .map_err(|_| HtmlOptionValueControlError::RepresentationExhausted)?,
             )
             .ok_or(HtmlOptionValueControlError::RepresentationExhausted)?;
-        let spent = next - self.start.get();
+        let spent = next
+            .checked_sub(self.start.get())
+            .ok_or(HtmlOptionValueControlError::ProtocolViolated)?;
         if spent > self.envelope.get().work {
             return Err(HtmlOptionValueControlError::LimitExceeded {
                 resource: HtmlOptionValueResource::Work,
@@ -382,24 +413,23 @@ impl Control {
         } else {
             &self.temporary
         };
-        let old = cell.get();
-        cell.set(HtmlOptionValueStorageUsage {
-            bytes: old.bytes + value.bytes,
-            units: old.units + value.units,
-        });
+        cell.set(cell.get().checked_add(value)?);
         Ok(())
     }
-    pub(crate) fn release(&self, value: HtmlOptionValueStorageUsage, retained: bool) {
+    /// Returns storage that an earlier `add` took. Returning more than is held changes nothing and
+    /// is a protocol breach.
+    pub(crate) fn release(
+        &self,
+        value: HtmlOptionValueStorageUsage,
+        retained: bool,
+    ) -> Result<(), HtmlOptionValueControlError> {
         let cell = if retained {
             &self.live
         } else {
             &self.temporary
         };
-        let old = cell.get();
-        cell.set(HtmlOptionValueStorageUsage {
-            bytes: old.bytes - value.bytes,
-            units: old.units - value.units,
-        });
+        cell.set(cell.get().checked_sub(value)?);
+        Ok(())
     }
     fn begin(
         &self,
@@ -469,32 +499,16 @@ impl QueryControl<'_> {
         let new = Self::bank(actual, size, resource)?;
         let outcome = self.control.admit(new);
         self.control.observed(new)?;
-        self.control
+        let released = self
+            .control
             .release(Self::bank(old, size, resource)?, false);
-        let previous = self.control.temporary.get();
-        self.control.temporary.set(HtmlOptionValueStorageUsage {
-            bytes: previous
-                .bytes
-                .checked_add(new.bytes)
-                .ok_or(HtmlOptionValueControlError::RepresentationExhausted)?,
-            units: previous
-                .units
-                .checked_add(new.units)
-                .ok_or(HtmlOptionValueControlError::RepresentationExhausted)?,
-        });
-        if resource == HtmlSemanticResource::ScratchRecords {
-            self.control.scratch_bytes.set(new.bytes);
-        }
-        outcome
+        let held = self.control.hold_temporary(new);
+        outcome.and(released).and(held)
     }
-    pub(crate) fn release_scratch(self) {
-        self.control.release(
-            HtmlOptionValueStorageUsage {
-                bytes: self.control.scratch_bytes.replace(0),
-                units: 0,
-            },
-            false,
-        );
+    /// Returns the backing of scratch vectors that `after_growth` recorded, in bytes.
+    pub(crate) fn release_scratch(self, bytes: usize) -> Result<(), HtmlOptionValueControlError> {
+        self.control
+            .release(HtmlOptionValueStorageUsage { bytes, units: 0 }, false)
     }
     pub(crate) fn string_copy(
         self,
@@ -527,6 +541,22 @@ impl QueryControl<'_> {
     }
 }
 
+#[cfg(test)]
+impl Control {
+    pub(crate) fn for_tests(envelope: HtmlOptionValueEnvelope) -> Self {
+        Self::new(envelope)
+    }
+    pub(crate) fn temporary_bytes(&self) -> usize {
+        self.temporary.get().bytes
+    }
+}
+#[cfg(test)]
+impl<'a> QueryControl<'a> {
+    pub(crate) fn for_tests(control: &'a Control, cancel: &'a AtomicBool) -> Self {
+        Self { control, cancel }
+    }
+}
+
 enum Phase {
     Building(HtmlCaptureBuilder),
     Finished {
@@ -534,7 +564,6 @@ enum Phase {
         report: Option<HtmlSemanticReport>,
         failure: Option<HtmlControlledOptionValueError>,
     },
-    Moving,
 }
 
 /// One controlled ordinary capture and one original OptionValue query.
@@ -577,7 +606,7 @@ impl Control {
                     bytes: actual,
                     units: 0,
                 })?;
-                self.release(
+                let released = self.release(
                     HtmlOptionValueStorageUsage {
                         bytes: old,
                         units: 0,
@@ -589,19 +618,17 @@ impl Control {
                 } else {
                     &self.temporary
                 };
-                let previous = cell.get();
-                cell.set(HtmlOptionValueStorageUsage {
-                    bytes: previous
-                        .bytes
-                        .checked_add(actual)
-                        .ok_or(HtmlOptionValueControlError::RepresentationExhausted)?,
-                    units: previous.units,
+                let held = cell.get().checked_add(HtmlOptionValueStorageUsage {
+                    bytes: actual,
+                    units: 0,
                 });
-                outcome
+                if let Ok(held) = held {
+                    cell.set(held);
+                }
+                outcome.and(released).and(held.map(|_| ()))
             }
             Action::StorageTransfer { bytes } => {
-                self.transfer(HtmlOptionValueStorageUsage { bytes, units: 0 });
-                Ok(())
+                self.transfer(HtmlOptionValueStorageUsage { bytes, units: 0 })
             }
             Action::ElementValues {
                 bytes,
@@ -619,13 +646,126 @@ impl Control {
             }
         }
     }
-    fn transfer(&self, value: HtmlOptionValueStorageUsage) {
-        self.release(value, false);
-        let previous = self.live.get();
-        self.live.set(HtmlOptionValueStorageUsage {
-            bytes: previous.bytes + value.bytes,
-            units: previous.units + value.units,
-        });
+    /// Records temporary storage whose admission the caller has already decided.
+    fn hold_temporary(
+        &self,
+        value: HtmlOptionValueStorageUsage,
+    ) -> Result<(), HtmlOptionValueControlError> {
+        self.temporary.set(self.temporary.get().checked_add(value)?);
+        Ok(())
+    }
+    /// Moves temporary storage into the retained total. Either both counts change or neither does.
+    fn transfer(
+        &self,
+        value: HtmlOptionValueStorageUsage,
+    ) -> Result<(), HtmlOptionValueControlError> {
+        let temporary = self.temporary.get().checked_sub(value)?;
+        let live = self.live.get().checked_add(value)?;
+        self.temporary.set(temporary);
+        self.live.set(live);
+        Ok(())
+    }
+    fn capture_failure(
+        &self,
+        failure: crate::capture::preflight::Failure<HtmlOptionValueControlError>,
+    ) -> HtmlControlledOptionValueFailure {
+        use crate::capture::preflight::Failure;
+        self.failure(match failure {
+            Failure::Admission(error) => HtmlControlledOptionValueError::Control(error),
+            Failure::Capture(error) => HtmlControlledOptionValueError::Capture(error),
+            Failure::AllocationFailed => HtmlControlledOptionValueError::AllocationFailed,
+        })
+    }
+    fn payload_failure(
+        &self,
+        error: HtmlCaptureStorageError<HtmlOptionValueControlError>,
+    ) -> HtmlControlledOptionValueFailure {
+        self.failure(HtmlControlledOptionValueError::Control(match error {
+            HtmlCaptureStorageError::Interrupted(error) => error,
+            HtmlCaptureStorageError::RepresentationExhausted => {
+                HtmlOptionValueControlError::RepresentationExhausted
+            }
+        }))
+    }
+    #[expect(
+        clippy::result_large_err,
+        reason = "Refusal preserves the original qualified error and complete usage without allocation."
+    )]
+    fn add_payload(
+        &self,
+        usage: HtmlCaptureRetainedStorageUsage,
+    ) -> Result<HtmlOptionValueStorageUsage, HtmlControlledOptionValueFailure> {
+        let payload = HtmlOptionValueStorageUsage {
+            bytes: usage.retained_bytes(),
+            units: usage.utf16_extent(),
+        };
+        self.add(payload, false)
+            .map_err(|e| self.failure(HtmlControlledOptionValueError::Control(e)))?;
+        Ok(payload)
+    }
+    #[expect(
+        clippy::result_large_err,
+        reason = "Refusal preserves the original qualified error and complete usage without allocation."
+    )]
+    fn string(
+        &self,
+        value: &DocumentString,
+        cancel: &AtomicBool,
+    ) -> Result<HtmlOptionValueStorageUsage, HtmlControlledOptionValueFailure> {
+        let usage =
+            crate::capture::storage::option_value_string(value, &mut || self.step(1, cancel))
+                .map_err(|e| self.payload_failure(e))?;
+        self.add_payload(usage)
+    }
+    #[expect(
+        clippy::result_large_err,
+        reason = "Refusal preserves the original qualified error and complete usage without allocation."
+    )]
+    fn finish_add<T>(
+        &self,
+        result: Result<T, crate::capture::preflight::Failure<HtmlOptionValueControlError>>,
+        payload: HtmlOptionValueStorageUsage,
+    ) -> Result<T, HtmlControlledOptionValueFailure> {
+        let transferred = if result.is_ok() {
+            self.transfer(payload)
+        } else {
+            Ok(())
+        };
+        self.clear_temporaries();
+        let value = result.map_err(|e| self.capture_failure(e))?;
+        transferred.map_err(|e| self.failure(HtmlControlledOptionValueError::Control(e)))?;
+        Ok(value)
+    }
+    #[expect(
+        clippy::result_large_err,
+        reason = "Refusal preserves the original qualified error and complete usage without allocation."
+    )]
+    fn strings(
+        &self,
+        values: &[Option<&DocumentString>],
+        cancel: &AtomicBool,
+    ) -> Result<HtmlOptionValueStorageUsage, HtmlControlledOptionValueFailure> {
+        let result = (|| {
+            let mut payload = HtmlOptionValueStorageUsage::default();
+            for value in values.iter().flatten() {
+                let next = self.string(value, cancel)?;
+                payload.bytes = payload.bytes.checked_add(next.bytes).ok_or_else(|| {
+                    self.failure(HtmlControlledOptionValueError::Control(
+                        HtmlOptionValueControlError::RepresentationExhausted,
+                    ))
+                })?;
+                payload.units = payload.units.checked_add(next.units).ok_or_else(|| {
+                    self.failure(HtmlControlledOptionValueError::Control(
+                        HtmlOptionValueControlError::RepresentationExhausted,
+                    ))
+                })?;
+            }
+            Ok(payload)
+        })();
+        if result.is_err() {
+            self.clear_temporaries();
+        }
+        result
     }
     fn clear_temporaries(&self) {
         self.temporary.set(Default::default());
@@ -675,14 +815,13 @@ impl HtmlControlledOptionValueCapture {
     pub fn report(&self) -> Option<&HtmlSemanticReport> {
         match &self.phase {
             Phase::Finished { report, .. } => report.as_ref(),
-            Phase::Building(_) | Phase::Moving => None,
+            Phase::Building(_) => None,
         }
     }
     pub fn capture_usage(&self) -> HtmlCaptureUsage {
         match &self.phase {
             Phase::Building(builder) => builder.usage(),
             Phase::Finished { capture, .. } => capture.usage(),
-            Phase::Moving => unreachable!(),
         }
     }
     #[expect(
@@ -698,77 +837,6 @@ impl HtmlControlledOptionValueCapture {
             self.control
                 .failure(HtmlControlledOptionValueError::Control(e))
         })
-    }
-    fn capture_failure(
-        &self,
-        failure: crate::capture::preflight::Failure<HtmlOptionValueControlError>,
-    ) -> HtmlControlledOptionValueFailure {
-        use crate::capture::preflight::Failure;
-        self.control.failure(match failure {
-            Failure::Admission(error) => HtmlControlledOptionValueError::Control(error),
-            Failure::Capture(error) => HtmlControlledOptionValueError::Capture(error),
-            Failure::AllocationFailed => HtmlControlledOptionValueError::AllocationFailed,
-        })
-    }
-    fn payload_failure(
-        &self,
-        error: HtmlCaptureStorageError<HtmlOptionValueControlError>,
-    ) -> HtmlControlledOptionValueFailure {
-        self.control
-            .failure(HtmlControlledOptionValueError::Control(match error {
-                HtmlCaptureStorageError::Interrupted(error) => error,
-                HtmlCaptureStorageError::RepresentationExhausted => {
-                    HtmlOptionValueControlError::RepresentationExhausted
-                }
-            }))
-    }
-    #[expect(
-        clippy::result_large_err,
-        reason = "Refusal preserves the original qualified error and complete usage without allocation."
-    )]
-    fn add_payload(
-        &self,
-        usage: HtmlCaptureRetainedStorageUsage,
-    ) -> Result<HtmlOptionValueStorageUsage, HtmlControlledOptionValueFailure> {
-        let payload = HtmlOptionValueStorageUsage {
-            bytes: usage.retained_bytes(),
-            units: usage.utf16_extent(),
-        };
-        self.control.add(payload, false).map_err(|e| {
-            self.control
-                .failure(HtmlControlledOptionValueError::Control(e))
-        })?;
-        Ok(payload)
-    }
-    #[expect(
-        clippy::result_large_err,
-        reason = "Refusal preserves the original qualified error and complete usage without allocation."
-    )]
-    fn string(
-        &self,
-        value: &DocumentString,
-        cancel: &AtomicBool,
-    ) -> Result<HtmlOptionValueStorageUsage, HtmlControlledOptionValueFailure> {
-        let usage = crate::capture::storage::option_value_string(value, &mut || {
-            self.control.step(1, cancel)
-        })
-        .map_err(|e| self.payload_failure(e))?;
-        self.add_payload(usage)
-    }
-    #[expect(
-        clippy::result_large_err,
-        reason = "Refusal preserves the original qualified error and complete usage without allocation."
-    )]
-    fn finish_add<T>(
-        &self,
-        result: Result<T, crate::capture::preflight::Failure<HtmlOptionValueControlError>>,
-        payload: HtmlOptionValueStorageUsage,
-    ) -> Result<T, HtmlControlledOptionValueFailure> {
-        if result.is_ok() {
-            self.control.transfer(payload);
-        }
-        self.control.clear_temporaries();
-        result.map_err(|e| self.capture_failure(e))
     }
     #[expect(
         clippy::result_large_err,
@@ -792,7 +860,7 @@ impl HtmlControlledOptionValueCapture {
             HtmlCaptureRegistryInput::Null,
             &mut |action| self.control.action(action, cancel),
         );
-        self.finish_add(result, Default::default())
+        self.control.finish_add(result, Default::default())
     }
     #[expect(
         clippy::result_large_err,
@@ -808,7 +876,7 @@ impl HtmlControlledOptionValueCapture {
         cancel: &AtomicBool,
     ) -> Result<HtmlCaptureBuilderSubject, HtmlControlledOptionValueFailure> {
         self.begin(envelope, cancel)?;
-        let Phase::Building(builder) = &self.phase else {
+        let Phase::Building(builder) = &mut self.phase else {
             return Err(self
                 .control
                 .failure(HtmlControlledOptionValueError::InvalidPhase));
@@ -850,10 +918,7 @@ impl HtmlControlledOptionValueCapture {
                     },
                 })
             })?;
-        let payload = self.add_payload(formed.usage)?;
-        let Phase::Building(builder) = &mut self.phase else {
-            unreachable!()
-        };
+        let payload = self.control.add_payload(formed.usage)?;
         let result = builder.add_element_controlled(
             document,
             formed.name,
@@ -864,7 +929,7 @@ impl HtmlControlledOptionValueCapture {
             HtmlCaptureRegistryInput::Null,
             &mut |action| self.control.action(action, cancel),
         );
-        self.finish_add(result, payload)
+        self.control.finish_add(result, payload)
     }
     #[expect(
         clippy::result_large_err,
@@ -879,7 +944,7 @@ impl HtmlControlledOptionValueCapture {
         cancel: &AtomicBool,
     ) -> Result<HtmlCaptureBuilderSubject, HtmlControlledOptionValueFailure> {
         self.begin(envelope, cancel)?;
-        let Phase::Building(builder) = &self.phase else {
+        let Phase::Building(builder) = &mut self.phase else {
             return Err(self
                 .control
                 .failure(HtmlControlledOptionValueError::InvalidPhase));
@@ -894,19 +959,16 @@ impl HtmlControlledOptionValueCapture {
                 self.control
                     .failure(HtmlControlledOptionValueError::Capture(e))
             })?;
-        let payload = self.string(value, cancel)?;
+        let payload = self.control.string(value, cancel)?;
         let kind = if text {
             HtmlCapturedNodeKind::Text(value.clone())
         } else {
             HtmlCapturedNodeKind::Comment(value.clone())
         };
-        let Phase::Building(builder) = &mut self.phase else {
-            unreachable!()
-        };
         let result = builder.add_leaf_controlled(document, kind, value.len(), &mut |action| {
             self.control.action(action, cancel)
         });
-        self.finish_add(result, payload)
+        self.control.finish_add(result, payload)
     }
     #[expect(
         clippy::result_large_err,
@@ -947,7 +1009,7 @@ impl HtmlControlledOptionValueCapture {
         cancel: &AtomicBool,
     ) -> Result<HtmlCaptureBuilderSubject, HtmlControlledOptionValueFailure> {
         self.begin(envelope, cancel)?;
-        let Phase::Building(builder) = &self.phase else {
+        let Phase::Building(builder) = &mut self.phase else {
             return Err(self
                 .control
                 .failure(HtmlControlledOptionValueError::InvalidPhase));
@@ -962,7 +1024,7 @@ impl HtmlControlledOptionValueCapture {
                 self.control
                     .failure(HtmlControlledOptionValueError::Capture(e))
             })?;
-        let payload = self.strings(&[Some(target), Some(data)], cancel)?;
+        let payload = self.control.strings(&[Some(target), Some(data)], cancel)?;
         let units = target.len().checked_add(data.len()).ok_or_else(|| {
             self.control
                 .failure(HtmlControlledOptionValueError::Control(
@@ -979,46 +1041,10 @@ impl HtmlControlledOptionValueCapture {
         let kind = HtmlCapturedNodeKind::ProcessingInstruction(
             HtmlCapturedProcessingInstruction::controlled(target.clone(), data.clone()),
         );
-        let Phase::Building(builder) = &mut self.phase else {
-            unreachable!()
-        };
         let result = builder.add_leaf_controlled(document, kind, units, &mut |action| {
             self.control.action(action, cancel)
         });
-        self.finish_add(result, payload)
-    }
-    #[expect(
-        clippy::result_large_err,
-        reason = "Refusal preserves the original qualified error and complete usage without allocation."
-    )]
-    fn strings(
-        &self,
-        values: &[Option<&DocumentString>],
-        cancel: &AtomicBool,
-    ) -> Result<HtmlOptionValueStorageUsage, HtmlControlledOptionValueFailure> {
-        let result = (|| {
-            let mut payload = HtmlOptionValueStorageUsage::default();
-            for value in values.iter().flatten() {
-                let next = self.string(value, cancel)?;
-                payload.bytes = payload.bytes.checked_add(next.bytes).ok_or_else(|| {
-                    self.control
-                        .failure(HtmlControlledOptionValueError::Control(
-                            HtmlOptionValueControlError::RepresentationExhausted,
-                        ))
-                })?;
-                payload.units = payload.units.checked_add(next.units).ok_or_else(|| {
-                    self.control
-                        .failure(HtmlControlledOptionValueError::Control(
-                            HtmlOptionValueControlError::RepresentationExhausted,
-                        ))
-                })?;
-            }
-            Ok(payload)
-        })();
-        if result.is_err() {
-            self.control.clear_temporaries();
-        }
-        result
+        self.control.finish_add(result, payload)
     }
     #[expect(
         clippy::result_large_err,
@@ -1034,7 +1060,7 @@ impl HtmlControlledOptionValueCapture {
         cancel: &AtomicBool,
     ) -> Result<HtmlCaptureBuilderSubject, HtmlControlledOptionValueFailure> {
         self.begin(envelope, cancel)?;
-        let Phase::Building(builder) = &self.phase else {
+        let Phase::Building(builder) = &mut self.phase else {
             return Err(self
                 .control
                 .failure(HtmlControlledOptionValueError::InvalidPhase));
@@ -1049,7 +1075,9 @@ impl HtmlControlledOptionValueCapture {
                 self.control
                     .failure(HtmlControlledOptionValueError::Capture(e))
             })?;
-        let payload = self.strings(&[Some(name), public_id, system_id], cancel)?;
+        let payload = self
+            .control
+            .strings(&[Some(name), public_id, system_id], cancel)?;
         let units = name
             .len()
             .checked_add(public_id.map_or(0, DocumentString::len))
@@ -1072,13 +1100,10 @@ impl HtmlControlledOptionValueCapture {
             public_id.cloned(),
             system_id.cloned(),
         ));
-        let Phase::Building(builder) = &mut self.phase else {
-            unreachable!()
-        };
         let result = builder.add_leaf_controlled(document, kind, units, &mut |action| {
             self.control.action(action, cancel)
         });
-        self.finish_add(result, payload)
+        self.control.finish_add(result, payload)
     }
     #[expect(
         clippy::result_large_err,
@@ -1100,7 +1125,7 @@ impl HtmlControlledOptionValueCapture {
         let result = builder.establish_children_controlled(parent, children, &mut |action| {
             self.control.action(action, cancel)
         });
-        self.finish_add(result, Default::default())
+        self.control.finish_add(result, Default::default())
     }
     #[expect(
         clippy::result_large_err,
@@ -1112,7 +1137,7 @@ impl HtmlControlledOptionValueCapture {
         cancel: &AtomicBool,
     ) -> Result<(), HtmlControlledOptionValueFailure> {
         self.begin(envelope, cancel)?;
-        let Phase::Building(builder) = &self.phase else {
+        let Phase::Building(builder) = &mut self.phase else {
             return Err(self
                 .control
                 .failure(HtmlControlledOptionValueError::InvalidPhase));
@@ -1124,7 +1149,7 @@ impl HtmlControlledOptionValueCapture {
             })
         };
         self.control.clear_temporaries();
-        result.map_err(|e| self.capture_failure(e))?;
+        result.map_err(|e| self.control.capture_failure(e))?;
         self.control.step(1, cancel).map_err(|e| {
             self.control
                 .failure(HtmlControlledOptionValueError::Control(e))
@@ -1141,11 +1166,8 @@ impl HtmlControlledOptionValueCapture {
                 self.control
                     .failure(HtmlControlledOptionValueError::Control(e))
             })?;
-        let Phase::Building(builder) = std::mem::replace(&mut self.phase, Phase::Moving) else {
-            unreachable!()
-        };
         self.phase = Phase::Finished {
-            capture: builder.publish(),
+            capture: builder.publish_taking(),
             report: None,
             failure: None,
         };
@@ -1184,16 +1206,19 @@ impl HtmlControlledOptionValueCapture {
             }
             return Err(error);
         }
+        // The one match proves a Finished owner with no report and no failure, and it keeps the
+        // slots for the outcome, so nothing re-matches the phase afterwards.
         let Phase::Finished {
             capture,
-            report: None,
-            failure: None,
-        } = &self.phase
+            report: report_slot @ None,
+            failure: failure_slot @ None,
+        } = &mut self.phase
         else {
             return Err(self
                 .control
                 .failure(HtmlControlledOptionValueError::InvalidPhase));
         };
+        let capture = &*capture;
         let result = (|| {
             // These empty-input constructors perform fixed work. All variable
             // work remains in the original session. Three qualification payload
@@ -1285,46 +1310,32 @@ impl HtmlControlledOptionValueCapture {
                     }
                     Ok::<_, HtmlOptionValueControlError>(value)
                 })();
-                let storage = match storage {
-                    Ok(storage) => storage,
-                    Err(error) => {
-                        let error = HtmlControlledOptionValueError::Control(error);
-                        let Phase::Finished { failure, .. } = &mut self.phase else {
-                            unreachable!()
-                        };
-                        *failure = Some(error.clone());
-                        self.control.clear_temporaries();
-                        return Err(self.control.failure(error));
-                    }
-                };
-                self.control.transfer(storage);
+                // The storage moves into the retained total only after it was measured.
+                let stored = storage.and_then(|storage| self.control.transfer(storage));
+                if let Err(error) = stored {
+                    let error = HtmlControlledOptionValueError::Control(error);
+                    *failure_slot = Some(error.clone());
+                    self.control.clear_temporaries();
+                    return Err(self.control.failure(error));
+                }
                 self.control.clear_temporaries();
-                let Phase::Finished { report: slot, .. } = &mut self.phase else {
-                    unreachable!()
-                };
-                *slot = Some(report);
-                let Phase::Finished {
-                    report: Some(report),
-                    ..
-                } = &self.phase
-                else {
-                    unreachable!()
-                };
-                Ok(report)
+                Ok(&*report_slot.insert(report))
             }
             Err(error) => {
+                // The query's failure is the first one and holds the sticky slot before any
+                // accounting below runs; a later breach is kept only if the slot were empty.
+                failure_slot.get_or_insert_with(|| error.clone());
                 if let HtmlControlledOptionValueError::Semantic(failure) = &error
                     && failure.qualification().is_some()
-                {
-                    self.control.transfer(HtmlOptionValueStorageUsage {
+                    && let Err(breach) = self.control.transfer(HtmlOptionValueStorageUsage {
                         bytes: size_of::<HtmlSemanticQualification>(),
                         units: 0,
-                    });
+                    })
+                {
+                    // A refusal moved nothing, so it cannot corrupt the counts.
+                    failure_slot
+                        .get_or_insert_with(|| HtmlControlledOptionValueError::Control(breach));
                 }
-                let Phase::Finished { failure: slot, .. } = &mut self.phase else {
-                    unreachable!()
-                };
-                *slot = Some(error.clone());
                 self.control.clear_temporaries();
                 Err(self.control.failure(error))
             }

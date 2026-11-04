@@ -27,33 +27,34 @@ impl HtmlDetailsNameGroup {
     }
 }
 impl<'a> HtmlSemanticSession<'a> {
-    fn details_role(
+    /// The element when it is the `expected` HTML element, and otherwise the value that answers
+    /// the query without further reading.
+    fn details_role<T>(
         &mut self,
         subject: &HtmlCaptureSubjectId,
         expected: KnownHtmlElement,
-    ) -> Result<HtmlSemanticValue<()>, HtmlSemanticFailure> {
+    ) -> Result<Result<&'a HtmlCapturedElement, HtmlSemanticValue<T>>, HtmlSemanticFailure> {
         let node = self.node(subject)?;
         let HtmlCapturedNodeKind::Element(element) = node.kind() else {
-            return Ok(HtmlSemanticValue::Inapplicable);
+            return Ok(Err(HtmlSemanticValue::Inapplicable));
         };
         if !self.html_namespace(element)? {
-            return Ok(HtmlSemanticValue::Unsupported(
+            return Ok(Err(HtmlSemanticValue::Unsupported(
                 HtmlSemanticUnsupported::ForeignNamespace,
-            ));
+            )));
         }
         Ok(if self.known(element)? == Some(expected) {
-            HtmlSemanticValue::Known(())
+            Ok(element)
         } else {
-            HtmlSemanticValue::Inapplicable
+            Err(HtmlSemanticValue::Inapplicable)
         })
     }
     pub(super) fn details_summary(
         &mut self,
         subject: &HtmlCaptureSubjectId,
     ) -> Result<HtmlSemanticValue<Option<HtmlCaptureSubjectId>>, HtmlSemanticFailure> {
-        match self.details_role(subject, KnownHtmlElement::Details)? {
-            HtmlSemanticValue::Known(()) => {}
-            value => return Ok(value.map(|()| None)),
+        if let Err(value) = self.details_role(subject, KnownHtmlElement::Details)? {
+            return Ok(value);
         }
         Ok(
             match self.first_html_element_child(subject, KnownHtmlElement::Summary)? {
@@ -66,9 +67,8 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         subject: &HtmlCaptureSubjectId,
     ) -> Result<HtmlSemanticValue<bool>, HtmlSemanticFailure> {
-        match self.details_role(subject, KnownHtmlElement::Summary)? {
-            HtmlSemanticValue::Known(()) => {}
-            value => return Ok(value.map(|()| false)),
+        if let Err(value) = self.details_role(subject, KnownHtmlElement::Summary)? {
+            return Ok(value);
         }
         let node = self.node(subject)?;
         let parent = match self.parent(node)? {
@@ -76,9 +76,11 @@ impl<'a> HtmlSemanticSession<'a> {
             Ok(None) => return Ok(HtmlSemanticValue::Known(false)),
             Err(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
         };
-        match self.details_role(&parent, KnownHtmlElement::Details)? {
-            HtmlSemanticValue::Known(()) => {}
-            _ => return Ok(HtmlSemanticValue::Known(false)),
+        if self
+            .details_role::<bool>(&parent, KnownHtmlElement::Details)?
+            .is_err()
+        {
+            return Ok(HtmlSemanticValue::Known(false));
         }
         Ok(
             match self.first_html_element_child(&parent, KnownHtmlElement::Summary)? {
@@ -94,25 +96,19 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         subject: &HtmlCaptureSubjectId,
     ) -> Result<HtmlSemanticValue<HtmlDetailsNameGroup>, HtmlSemanticFailure> {
-        match self.details_role(subject, KnownHtmlElement::Details)? {
-            HtmlSemanticValue::Known(()) => {}
-            HtmlSemanticValue::Inapplicable => return Ok(HtmlSemanticValue::Inapplicable),
-            HtmlSemanticValue::Unsupported(value) => {
-                return Ok(HtmlSemanticValue::Unsupported(value));
-            }
-            HtmlSemanticValue::Missing(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
-        }
-        let node = self.node(subject)?;
-        let HtmlCapturedNodeKind::Element(element) = node.kind() else {
-            unreachable!("details role established element");
+        let element = match self.details_role(subject, KnownHtmlElement::Details)? {
+            Ok(element) => element,
+            Err(value) => return Ok(value),
         };
+        // The element is read once more, and charged once more.
+        self.charge(1)?;
         let name = self.attribute(element, "name")?;
         self.interpreter
             .admit_attribute_raw(name.map(Attribute::value))
             .map_err(|e| self.stop(HtmlSemanticFailureKind::Attribute(e)))?;
         let mut frames = Vec::new();
         let result = self.details_group_inner(subject, name, &mut frames);
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         result
     }
     fn details_group_inner(
@@ -123,12 +119,7 @@ impl<'a> HtmlSemanticSession<'a> {
     ) -> Result<HtmlSemanticValue<HtmlDetailsNameGroup>, HtmlSemanticFailure> {
         let mut members = Vec::new();
         self.charge(1)?;
-        if name.is_none_or(|a| a.value().is_empty()) {
-            self.reserve_nested_output(&mut members, 1)?;
-            self.charge(1)?;
-            members.push(subject.clone());
-        } else {
-            let name_value = name.expect("nonempty selected name").value();
+        if let Some(name_value) = name.map(Attribute::value).filter(|value| !value.is_empty()) {
             let root = match self.ordinary_tree_root(subject)? {
                 Ok(root) => root,
                 Err(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
@@ -157,6 +148,10 @@ impl<'a> HtmlSemanticSession<'a> {
                     Err(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
                 };
             }
+        } else {
+            self.reserve_nested_output(&mut members, 1)?;
+            self.charge(1)?;
+            members.push(subject.clone());
         }
         self.charge(1)?;
         Ok(HtmlSemanticValue::Known(HtmlDetailsNameGroup {

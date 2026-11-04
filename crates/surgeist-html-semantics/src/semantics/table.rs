@@ -245,31 +245,31 @@ struct Scratch<'a> {
 }
 impl Scratch<'_> {
     /// Every capacity admitted for this query's scratch.
-    fn capacities(&self) -> impl Iterator<Item = usize> {
+    fn backings(&self) -> impl Iterator<Item = ScratchBacking> {
         [
-            self.footers.capacity(),
-            self.headers.capacity(),
-            self.stamps.capacity(),
-            self.listed.capacity(),
-            self.row_group_least.nodes.capacity(),
-            self.column_group_least.nodes.capacity(),
-            self.block.capacity(),
-            self.document.capacity(),
-            self.targets.as_ref().map_or(0, IdTargets::capacity),
-            self.memo.capacity(),
-            self.specials.capacity(),
-            self.row_group_headers.capacity(),
-            self.column_group_headers.capacity(),
-            self.flags.capacity(),
-            self.line_counts.capacity(),
-            self.placed.capacity(),
-            self.order.capacity(),
-            self.column_counts.capacity(),
+            ScratchBacking::of(&self.footers),
+            ScratchBacking::of(&self.headers),
+            ScratchBacking::of(&self.stamps),
+            ScratchBacking::of(&self.listed),
+            ScratchBacking::of(&self.row_group_least.nodes),
+            ScratchBacking::of(&self.column_group_least.nodes),
+            ScratchBacking::of(&self.block),
+            ScratchBacking::of(&self.document),
+            ScratchBacking::of(&self.memo),
+            ScratchBacking::of(&self.specials),
+            ScratchBacking::of(&self.row_group_headers),
+            ScratchBacking::of(&self.column_group_headers),
+            ScratchBacking::of(&self.flags),
+            ScratchBacking::of(&self.line_counts),
+            ScratchBacking::of(&self.placed),
+            ScratchBacking::of(&self.order),
+            ScratchBacking::of(&self.column_counts),
         ]
         .into_iter()
-        .chain(self.placement.capacities())
-        .chain(self.columns.capacities())
-        .chain(self.rows.capacities())
+        .chain(self.targets.iter().flat_map(IdTargets::backings))
+        .chain(self.placement.backings())
+        .chain(self.columns.backings())
+        .chain(self.rows.backings())
     }
 }
 /// The content attribute a span rule reads.
@@ -354,8 +354,8 @@ impl<'a> HtmlSemanticSession<'a> {
         let result = self.form_table(subject, document.subject(), &mut scratch);
         // Capacities were admitted together in the one session counter, so
         // their sum is representable. Cleanup does not poll the stopped gate.
-        for capacity in scratch.capacities() {
-            self.release_scratch(capacity);
+        for backing in scratch.backings() {
+            self.release_scratch_backing(backing);
         }
         match result {
             Ok(model) => Ok(HtmlSemanticValue::Known(model)),

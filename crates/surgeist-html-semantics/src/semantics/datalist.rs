@@ -36,7 +36,7 @@ impl<'a> HtmlSemanticSession<'a> {
         };
         let mut frames = Vec::new();
         let result = self.datalist_options_inner(subject, filter, &mut frames);
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         result
     }
 
@@ -62,9 +62,9 @@ impl<'a> HtmlSemanticSession<'a> {
         self.reserve_scratch(frames, 1)?;
         self.charge(1)?;
         frames.push(children);
-        while !frames.is_empty() {
+        while let Some(frame) = frames.last_mut() {
             self.charge(1)?;
-            let Some(id) = frames.last_mut().expect("nonempty frame stack").next() else {
+            let Some(id) = frame.next() else {
                 self.charge(1)?;
                 frames.pop();
                 continue;

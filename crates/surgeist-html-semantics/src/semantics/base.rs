@@ -6,6 +6,12 @@ use surgeist_html::{
     vocabulary::KnownHtmlElement,
 };
 
+/// The first `base` element that has the requested attribute, with its element read once.
+struct FirstBase<'a> {
+    node: HtmlCapturedNode<'a>,
+    element: &'a HtmlCapturedElement,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlDocumentBaseUrl {
     value: HtmlBaseUrlRecord,
@@ -158,7 +164,8 @@ impl<'a> HtmlSemanticSession<'a> {
             HtmlSemanticQuery::FormSubmissionTarget => Ok(HtmlSemanticFact::FormSubmissionTarget(
                 self.submission_target(node)?,
             )),
-            _ => unreachable!("base_fact is dispatched only for the four base/target operations"),
+            // Only the base and target operations are dispatched here.
+            _ => Err(self.stop(HtmlSemanticFailureKind::ProtocolViolated)),
         }
     }
 
@@ -167,11 +174,17 @@ impl<'a> HtmlSemanticSession<'a> {
         subject: HtmlCaptureSubjectId,
         fact: HtmlBaseMissing,
     ) -> Result<HtmlSemanticValue<T>, HtmlSemanticFailure> {
+        Ok(HtmlSemanticValue::Missing(
+            self.base_missing_fact(subject, fact)?,
+        ))
+    }
+    fn base_missing_fact(
+        &mut self,
+        subject: HtmlCaptureSubjectId,
+        fact: HtmlBaseMissing,
+    ) -> Result<HtmlSemanticMissing, HtmlSemanticFailure> {
         self.charge(1)?;
-        Ok(HtmlSemanticValue::Missing(HtmlSemanticMissing::Base {
-            subject,
-            fact,
-        }))
+        Ok(HtmlSemanticMissing::Base { subject, fact })
     }
 
     fn base_local(
@@ -213,7 +226,7 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         document: HtmlCapturedNode<'a>,
         attribute: &str,
-    ) -> Result<HtmlSemanticValue<Option<HtmlCapturedNode<'a>>>, HtmlSemanticFailure> {
+    ) -> Result<Result<Option<FirstBase<'a>>, HtmlSemanticMissing>, HtmlSemanticFailure> {
         let mut frames = Vec::new();
         let result = (|| {
             let mut node = document;
@@ -223,16 +236,16 @@ impl<'a> HtmlSemanticSession<'a> {
                     && self.base_local(element, b"base")?
                     && self.attribute(element, attribute)?.is_some()
                 {
-                    return Ok(HtmlSemanticValue::Known(Some(node)));
+                    return Ok(Ok(Some(FirstBase { node, element })));
                 }
                 node = match self.ordinary_tree_next(node, &mut frames)? {
                     Ok(Some(id)) => self.node(&id)?,
-                    Ok(None) => return Ok(HtmlSemanticValue::Known(None)),
-                    Err(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
+                    Ok(None) => return Ok(Ok(None)),
+                    Err(missing) => return Ok(Err(missing)),
                 };
             }
         })();
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         result
     }
 
@@ -241,25 +254,20 @@ impl<'a> HtmlSemanticSession<'a> {
         document: HtmlCapturedNode<'a>,
     ) -> Result<HtmlSemanticValue<HtmlDocumentBaseUrl>, HtmlSemanticFailure> {
         let first = match self.first_base(document, "href")? {
-            HtmlSemanticValue::Known(first) => first,
-            HtmlSemanticValue::Missing(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
-            _ => unreachable!("first_base returns a qualified selection or missing topology"),
+            Ok(first) => first,
+            Err(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
         };
         if let Some(first) = first {
-            let id = first.id();
+            let id = first.node.id();
             if let Some(facts) = &self.context.base_facts {
                 for row in &facts.frozen {
                     self.charge(1)?;
                     if row.subject == id {
                         let Some(value) = &row.value else { break };
                         self.charge(3)?;
+                        // With a present frozen record, the selection is that record.
                         return Ok(HtmlSemanticValue::Known(HtmlDocumentBaseUrl {
-                            value: crate::select_document_base(
-                                None,
-                                crate::HtmlDocumentFirstBase::Present(Some(value)),
-                            )
-                            .expect("present frozen record")
-                            .clone(),
+                            value: value.clone(),
                             base_element: Some(id),
                             frozen_revision: Some(row.frozen_revision.clone()),
                         }));
@@ -339,17 +347,22 @@ impl<'a> HtmlSemanticSession<'a> {
         subject: HtmlCaptureSubjectId,
         document: crate::HtmlCaptureDocumentId,
         raw: &DocumentString,
-    ) -> Result<HtmlSemanticValue<&'a crate::HtmlBaseParseOutcome>, HtmlSemanticFailure> {
+    ) -> Result<Result<&'a crate::HtmlBaseParseOutcome, HtmlSemanticMissing>, HtmlSemanticFailure>
+    {
         let Some(facts) = self.base_environment(&document)? else {
-            return self.base_missing(subject, HtmlBaseMissing::DocumentFacts);
+            return Ok(Err(
+                self.base_missing_fact(subject, HtmlBaseMissing::DocumentFacts)?
+            ));
         };
         let environment = facts.document();
         let fallback = match environment.fallback() {
             Ok(value) => value,
-            Err(missing) => return self.base_missing(subject, missing),
+            Err(missing) => return Ok(Err(self.base_missing_fact(subject, missing)?)),
         };
         let Some(encoding) = environment.encoding() else {
-            return self.base_missing(subject, HtmlBaseMissing::CharacterEncoding);
+            return Ok(Err(
+                self.base_missing_fact(subject, HtmlBaseMissing::CharacterEncoding)?
+            ));
         };
         for observation in facts.observations() {
             self.charge(1)?;
@@ -367,11 +380,14 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                 }
                 if equal {
-                    return Ok(HtmlSemanticValue::Known(observation.outcome()));
+                    return Ok(Ok(observation.outcome()));
                 }
             }
         }
-        self.base_missing(subject, HtmlBaseMissing::ParseObservation)
+        Ok(Err(self.base_missing_fact(
+            subject,
+            HtmlBaseMissing::ParseObservation,
+        )?))
     }
 
     fn base_href(
@@ -390,7 +406,7 @@ impl<'a> HtmlSemanticSession<'a> {
         self.charge(1)?;
         let result = self.parse_base_value(node.id(), node.node_document(), raw)?;
         match result {
-            HtmlSemanticValue::Known(outcome) => {
+            Ok(outcome) => {
                 self.charge(2)?;
                 let parsed = match outcome {
                     crate::HtmlBaseParseOutcome::Failure => None,
@@ -401,8 +417,7 @@ impl<'a> HtmlSemanticSession<'a> {
                     parsed,
                 }))
             }
-            HtmlSemanticValue::Missing(missing) => Ok(HtmlSemanticValue::Missing(missing)),
-            _ => unreachable!("parse_base_value returns an observation or missing external facts"),
+            Err(missing) => Ok(HtmlSemanticValue::Missing(missing)),
         }
     }
 
@@ -466,22 +481,21 @@ impl<'a> HtmlSemanticSession<'a> {
         let document = node.node_document();
         let document = self.node(document.subject())?;
         match self.first_base(document, "target")? {
-            HtmlSemanticValue::Known(Some(base)) => {
-                let HtmlCapturedNodeKind::Element(element) = base.kind() else {
-                    unreachable!()
+            Ok(Some(base)) => {
+                // The selected base has this attribute, and it is immutable.
+                let Some(raw) = self.attribute(base.element, "target")? else {
+                    return Err(self.stop(HtmlSemanticFailureKind::ProtocolViolated));
                 };
-                let raw = self
-                    .attribute(element, "target")?
-                    .expect("selected base has immutable target")
-                    .value();
-                self.target_result(Some(raw), HtmlTargetOrigin::DocumentBase(base.id()))
-                    .map(HtmlSemanticValue::Known)
+                self.target_result(
+                    Some(raw.value()),
+                    HtmlTargetOrigin::DocumentBase(base.node.id()),
+                )
+                .map(HtmlSemanticValue::Known)
             }
-            HtmlSemanticValue::Known(None) => self
+            Ok(None) => self
                 .target_result(None, HtmlTargetOrigin::NoTarget)
                 .map(HtmlSemanticValue::Known),
-            HtmlSemanticValue::Missing(missing) => Ok(HtmlSemanticValue::Missing(missing)),
-            _ => unreachable!(),
+            Err(missing) => Ok(HtmlSemanticValue::Missing(missing)),
         }
     }
 

@@ -60,9 +60,12 @@ pub(super) struct IdTargets<'a> {
 }
 
 impl IdTargets<'_> {
-    /// The capacity admitted for the entries and the cells.
-    pub(super) fn capacity(&self) -> usize {
-        self.entries.capacity() + self.cells.capacity()
+    /// The backing admitted for the entries and the cells.
+    pub(super) fn backings(&self) -> [ScratchBacking; 2] {
+        [
+            ScratchBacking::of(&self.entries),
+            ScratchBacking::of(&self.cells),
+        ]
     }
 }
 
@@ -915,7 +918,9 @@ impl<'a> HtmlSemanticSession<'a> {
         match result {
             Ok(()) => Ok(targets),
             Err(stop) => {
-                self.release_scratch(targets.capacity());
+                for backing in targets.backings() {
+                    self.release_scratch_backing(backing);
+                }
                 Err(stop)
             }
         }

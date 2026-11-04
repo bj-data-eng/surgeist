@@ -562,8 +562,8 @@ impl<'a> HtmlSemanticSession<'a> {
             }
             Ok(matched)
         })();
-        self.release_scratch(names.capacity());
-        self.release_scratch(table.capacity());
+        self.release_scratch(&names);
+        self.release_scratch(&table);
         result
     }
     fn template_end(
@@ -729,7 +729,7 @@ impl<'a> HtmlSemanticSession<'a> {
                     .unwrap_or(HtmlTemplateForSelection::NoMatch),
             })
         })();
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         outcome.map(HtmlSemanticValue::Known)
     }
 }

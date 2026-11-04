@@ -123,7 +123,7 @@ impl<'a> HtmlSemanticSession<'a> {
     ) -> Result<HtmlSemanticValue<DocumentString>, HtmlSemanticFailure> {
         let mut frames = Vec::new();
         let result = self.html_aware_option_text_inner(subject, &mut frames);
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         result
     }
 
@@ -146,9 +146,9 @@ impl<'a> HtmlSemanticSession<'a> {
             self.charge(1)?;
             frames.push(children);
         }
-        while !frames.is_empty() {
+        while let Some(frame) = frames.last_mut() {
             self.charge(1)?;
-            let Some(id) = frames.last_mut().expect("nonempty frame stack").next() else {
+            let Some(id) = frame.next() else {
                 self.charge(1)?;
                 frames.pop();
                 continue;

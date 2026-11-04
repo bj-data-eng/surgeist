@@ -90,7 +90,15 @@ impl HtmlSemanticSession<'_> {
                     match self.summary_for_parent_details(subject)? {
                         HtmlSemanticValue::Known(true) => 0,
                         HtmlSemanticValue::Known(false) => -1,
-                        other => return Ok(other.map(|_| unreachable!("known predicate handled"))),
+                        HtmlSemanticValue::Missing(missing) => {
+                            return Ok(HtmlSemanticValue::Missing(missing));
+                        }
+                        HtmlSemanticValue::Inapplicable => {
+                            return Ok(HtmlSemanticValue::Inapplicable);
+                        }
+                        HtmlSemanticValue::Unsupported(reason) => {
+                            return Ok(HtmlSemanticValue::Unsupported(reason));
+                        }
                     }
                 }
                 _ => {

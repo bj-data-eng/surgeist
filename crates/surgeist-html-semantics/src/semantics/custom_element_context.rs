@@ -126,24 +126,27 @@ impl<'a> HtmlSemanticSession<'a> {
                             break selected;
                         }
                     };
-                    if let Some(id) = &selected {
-                        self.charge(1)?;
-                        let d = self
-                            .capture
-                            .definition(id)
-                            .map_err(|error| self.stop(HtmlSemanticFailureKind::Capture(error)))?;
-                        if self.control_equal(d.name(), raw.value())?
-                            && self.control_equal(d.local_name(), element.name().local_name())?
-                            && !self.control_equal(d.name(), d.local_name())?
-                        {
-                            HtmlIsDefinitionRequirement::Matched(
-                                selected.expect("checked selected identity"),
-                            )
-                        } else {
-                            HtmlIsDefinitionRequirement::NoMatchingCustomizedDefinition { selected }
+                    match selected {
+                        Some(id) => {
+                            self.charge(1)?;
+                            let d = self.capture.definition(&id).map_err(|error| {
+                                self.stop(HtmlSemanticFailureKind::Capture(error))
+                            })?;
+                            if self.control_equal(d.name(), raw.value())?
+                                && self
+                                    .control_equal(d.local_name(), element.name().local_name())?
+                                && !self.control_equal(d.name(), d.local_name())?
+                            {
+                                HtmlIsDefinitionRequirement::Matched(id)
+                            } else {
+                                HtmlIsDefinitionRequirement::NoMatchingCustomizedDefinition {
+                                    selected: Some(id),
+                                }
+                            }
                         }
-                    } else {
-                        HtmlIsDefinitionRequirement::NoMatchingCustomizedDefinition { selected }
+                        None => HtmlIsDefinitionRequirement::NoMatchingCustomizedDefinition {
+                            selected: None,
+                        },
                     }
                 }
             }
@@ -176,8 +179,9 @@ impl<'a> HtmlSemanticSession<'a> {
                             HtmlIsAutonomousRequirement::Allowed
                         }
                     }
+                    // Capture refuses a Custom element whose definition is known null.
                     HtmlCapturedCustomElementDefinition::Null => {
-                        unreachable!("capture rejects Custom with known null")
+                        return Err(self.stop(HtmlSemanticFailureKind::ProtocolViolated));
                     }
                 }
             }

@@ -92,20 +92,16 @@ impl HtmlSemanticSession<'_> {
                 HtmlTimeElementDescendantAuthorState::NotRequired,
             )
         } else {
-            let raw = match self.control_text_content(subject, HtmlControlTextOrigin::ChildText)? {
-                HtmlSemanticValue::Known(raw) => raw,
-                HtmlSemanticValue::Missing(missing) => {
-                    return Ok(HtmlSemanticValue::Missing(missing));
-                }
-                HtmlSemanticValue::Inapplicable => return Ok(HtmlSemanticValue::Inapplicable),
-                HtmlSemanticValue::Unsupported(reason) => {
-                    return Ok(HtmlSemanticValue::Unsupported(reason));
-                }
-            };
+            let raw =
+                match self.control_text_or_missing(subject, HtmlControlTextOrigin::ChildText)? {
+                    Ok(raw) => raw,
+                    Err(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
+                };
             let node = self.node(subject)?;
             self.charge(1)?;
+            // The text selection above read these children as complete.
             let HtmlCapturedChildren::Complete(mut children) = node.children() else {
-                unreachable!("the same immutable child sequence was complete for text selection")
+                return Err(self.stop(HtmlSemanticFailureKind::ProtocolViolated));
             };
             let mut descendants = HtmlTimeElementDescendantAuthorState::Conforming;
             loop {

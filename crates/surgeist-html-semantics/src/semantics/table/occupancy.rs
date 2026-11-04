@@ -16,6 +16,7 @@
 //! children, which raising (a floor, no ceiling) and clearing (ceiling zero)
 //! compose into.
 
+use super::super::ScratchBacking;
 use super::slots::Charge;
 
 #[cfg(test)]
@@ -70,12 +71,12 @@ impl Occupancy {
         leaves.saturating_mul(2)
     }
 
-    /// The capacities of the three node arrays, as admitted.
-    pub(super) fn capacities(&self) -> [usize; 3] {
+    /// The backing of the three node arrays, as admitted.
+    pub(super) fn backings(&self) -> [ScratchBacking; 3] {
         [
-            self.low.capacity(),
-            self.floor.capacity(),
-            self.ceil.capacity(),
+            ScratchBacking::of(&self.low),
+            ScratchBacking::of(&self.floor),
+            ScratchBacking::of(&self.ceil),
         ]
     }
 

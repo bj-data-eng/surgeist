@@ -76,6 +76,8 @@ mod meta_author;
 pub use meta_author::*;
 mod link_relationships;
 mod meta_pragma;
+#[cfg(test)]
+mod scratch_accounting_tests;
 pub use link_relationships::*;
 pub use meta_pragma::*;
 mod image_map;
@@ -1367,6 +1369,32 @@ pub struct HtmlSemanticSession<'a> {
     #[cfg(test)]
     template_cancellation: Option<(template::CancellationPoint, HtmlSemanticCancellation)>,
 }
+/// The backing lent to scratch vectors: the records it has room for and the bytes that is. Releasing
+/// it returns exactly what the reservations took, so every live vector is tracked separately from
+/// the others.
+#[derive(Clone, Copy, Default)]
+struct ScratchBacking {
+    records: usize,
+    bytes: usize,
+}
+impl ScratchBacking {
+    /// The backing of `values`. A vector's room in bytes always fits in `usize`, so the saturating
+    /// product is exact; were it ever wrong, the release it feeds would refuse as unmatched.
+    fn of<T>(values: &Vec<T>) -> Self {
+        Self {
+            records: values.capacity(),
+            bytes: values.capacity().saturating_mul(std::mem::size_of::<T>()),
+        }
+    }
+    /// This backing and `records` more records of `record_size` bytes each, or `None` when the sum
+    /// is not representable.
+    fn grown(self, records: usize, record_size: usize) -> Option<Self> {
+        Some(Self {
+            records: self.records.checked_add(records)?,
+            bytes: self.bytes.checked_add(records.checked_mul(record_size)?)?,
+        })
+    }
+}
 #[derive(Clone, Copy)]
 enum HtmlParticipationField {
     ListItem,
@@ -2015,7 +2043,10 @@ impl<'a> HtmlSemanticSession<'a> {
         let parent_result = self
             .option_control
             .map(|control| control.after_growth(capacity, actual_capacity, record_size, resource));
-        let actual_growth = actual_capacity - before;
+        // Reserving never shrinks a vector.
+        let actual_growth = actual_capacity
+            .checked_sub(before)
+            .ok_or_else(|| self.stop(HtmlSemanticFailureKind::ProtocolViolated))?;
         let actual = retained
             .checked_add(actual_growth)
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
@@ -2069,12 +2100,26 @@ impl<'a> HtmlSemanticSession<'a> {
             HtmlSemanticResource::NestedOutputRecords,
         )
     }
-    fn release_scratch(&mut self, capacity: usize) {
-        // Only capacities previously recorded by reserve_scratch are released.
-        // Cleanup is unconditional, including after a sticky terminal stop.
-        self.usage.scratch_records -= capacity;
-        if let Some(control) = self.option_control {
-            control.release_scratch();
+    /// Returns the backing of one scratch vector that `reserve_scratch` grew.
+    fn release_scratch<T>(&mut self, values: &Vec<T>) {
+        self.release_scratch_backing(ScratchBacking::of(values));
+    }
+    /// Returns scratch backing. Only backing previously recorded by `reserve_scratch` is released.
+    /// Cleanup is unconditional, including after a sticky terminal stop, so a release that matches
+    /// no reservation cannot fail the cleanup that called it: it becomes the sticky terminal stop
+    /// instead, leaves the counts as they were, and the next charge reports it unless an earlier
+    /// failure already holds the slot.
+    fn release_scratch_backing(&mut self, backing: ScratchBacking) {
+        let Some(remaining) = self.usage.scratch_records.checked_sub(backing.records) else {
+            // Nothing was returned on either side, so both counts stay as they were.
+            self.stop(HtmlSemanticFailureKind::ProtocolViolated);
+            return;
+        };
+        self.usage.scratch_records = remaining;
+        if let Some(control) = self.option_control
+            && let Err(error) = control.release_scratch(backing.bytes)
+        {
+            self.stop(HtmlSemanticFailureKind::ControlledOptionValue(error));
         }
     }
 
@@ -2391,15 +2436,15 @@ impl<'a> HtmlSemanticSession<'a> {
             }
             Ok(None)
         })();
-        self.release_scratch(stack.capacity());
+        self.release_scratch(&stack);
         match outcome {
             Ok(None) => Ok(HtmlSemanticValue::Known(items)),
             Ok(Some(missing)) => {
-                self.release_scratch(items.capacity());
+                self.release_scratch(&items);
                 Ok(HtmlSemanticValue::Missing(missing))
             }
             Err(error) => {
-                self.release_scratch(items.capacity());
+                self.release_scratch(&items);
                 Err(error)
             }
         }
@@ -2442,7 +2487,7 @@ impl<'a> HtmlSemanticSession<'a> {
         match self.owned_items(subject, true)? {
             HtmlSemanticValue::Known(items) => {
                 let result = self.count_owned_li(&items).map(HtmlSemanticValue::Known);
-                self.release_scratch(items.capacity());
+                self.release_scratch(&items);
                 result
             }
             HtmlSemanticValue::Missing(missing) => Ok(HtmlSemanticValue::Missing(missing)),
@@ -2497,7 +2542,7 @@ impl<'a> HtmlSemanticSession<'a> {
             }
             Err(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable))
         })();
-        self.release_scratch(items.capacity());
+        self.release_scratch(&items);
         outcome
     }
     /// Requests are retained in input order, including duplicates. Any terminal
@@ -2580,7 +2625,9 @@ impl<'a> HtmlSemanticSession<'a> {
                             | HtmlSemanticQuery::FirstManifest
                             | HtmlSemanticQuery::DocumentIcon
                             | HtmlSemanticQuery::NextDocumentIcon => {
-                                unreachable!("dispatched before node classification")
+                                // The document-level queries were dispatched above; a
+                                // request that reaches here would be a defect in this match.
+                                return Err(self.stop(HtmlSemanticFailureKind::ProtocolViolated));
                             }
                             HtmlSemanticQuery::MicrodataItem => {
                                 HtmlSemanticFact::MicrodataItem(if foreign {
@@ -3177,7 +3224,9 @@ impl<'a> HtmlSemanticSession<'a> {
                         | HtmlSemanticQuery::FirstManifest
                         | HtmlSemanticQuery::DocumentIcon
                         | HtmlSemanticQuery::NextDocumentIcon => {
-                            unreachable!("dispatched before node classification")
+                            // The document-level queries were dispatched above; a
+                            // request that reaches here would be a defect in this match.
+                            return Err(self.stop(HtmlSemanticFailureKind::ProtocolViolated));
                         }
                         HtmlSemanticQuery::MicrodataItem => {
                             HtmlSemanticFact::MicrodataItem(HtmlSemanticValue::Inapplicable)

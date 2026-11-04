@@ -69,7 +69,7 @@ impl<'a> HtmlSemanticSession<'a> {
         let uniqueness = if let Some(raw) = raw.filter(|a| !a.value().is_empty()) {
             let mut frames = Vec::new();
             let result = self.id_uniqueness(subject, raw.value(), &mut frames);
-            self.release_scratch(frames.capacity());
+            self.release_scratch(&frames);
             result?
         } else {
             HtmlIdUniqueness::NoId

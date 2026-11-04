@@ -74,7 +74,7 @@ impl<'a> HtmlSemanticSession<'a> {
         let uniqueness = if let Some(raw) = raw {
             let mut frames = Vec::new();
             let result = self.form_name_uniqueness(subject, raw.value(), &mut frames);
-            self.release_scratch(frames.capacity());
+            self.release_scratch(&frames);
             result?
         } else {
             HtmlFormNameUniqueness::NoSpecifiedName

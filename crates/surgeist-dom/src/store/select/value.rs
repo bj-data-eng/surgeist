@@ -192,6 +192,7 @@ impl Draft {
             HtmlOptionValueControlError::RepresentationExhausted => {
                 DomError::RepresentationExhausted
             }
+            HtmlOptionValueControlError::ProtocolViolated => DomError::SelectProtocol,
             HtmlOptionValueControlError::LimitExceeded { resource, .. } => {
                 let limits = self
                     .source_limits
@@ -509,6 +510,19 @@ mod tests {
             assert_eq!(lease.snapshot().stamp(), before.stamp());
         }
         (boundary, result)
+    }
+
+    /// The producer's accounting refused storage it never took, a defect in the producer: the
+    /// store reports it as a select protocol breach, not as exhaustion or a resource limit.
+    #[test]
+    fn a_producer_accounting_breach_is_a_select_protocol_error() {
+        let (dom, _, _, _) = fixture();
+        let cancel = AtomicBool::new(false);
+        let draft = Draft::new(&dom, Arc::new(crate::batch::BatchIdentity), &cancel).unwrap();
+        assert_eq!(
+            draft.option_value_control_error(HtmlOptionValueControlError::ProtocolViolated),
+            DomError::SelectProtocol
+        );
     }
 
     #[test]

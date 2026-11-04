@@ -279,21 +279,38 @@ impl HtmlCommandValidity {
     }
 }
 
+/// An explicit reference whose slot was actually observed, so it is never `Unavailable`.
+enum ActualReference<'a> {
+    Null,
+    Element(&'a HtmlCaptureSubjectId),
+}
+impl ActualReference<'_> {
+    fn state(&self) -> HtmlExplicitElementReference {
+        match self {
+            Self::Null => HtmlExplicitElementReference::Null,
+            Self::Element(target) => HtmlExplicitElementReference::Element((*target).clone()),
+        }
+    }
+}
 impl<'a> HtmlSemanticSession<'a> {
     fn explicit_reference(
         &mut self,
         subject: &HtmlCaptureSubjectId,
         key: HtmlElementReferenceKey,
-    ) -> Result<Result<&'a HtmlExplicitElementReference, HtmlSemanticMissing>, HtmlSemanticFailure>
-    {
+    ) -> Result<Result<ActualReference<'a>, HtmlSemanticMissing>, HtmlSemanticFailure> {
         if let Some(facts) = self.context.element_references() {
             for fact in facts.records() {
                 self.charge(1)?;
-                if fact.subject() == subject
-                    && fact.key() == key
-                    && fact.state() != &HtmlExplicitElementReference::Unavailable
-                {
-                    return Ok(Ok(fact.state()));
+                if fact.subject() == subject && fact.key() == key {
+                    match fact.state() {
+                        HtmlExplicitElementReference::Unavailable => {}
+                        HtmlExplicitElementReference::Null => {
+                            return Ok(Ok(ActualReference::Null));
+                        }
+                        HtmlExplicitElementReference::Element(target) => {
+                            return Ok(Ok(ActualReference::Element(target)));
+                        }
+                    }
                 }
             }
         }
@@ -400,10 +417,7 @@ impl<'a> HtmlSemanticSession<'a> {
             Err(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
         };
         let (target, origin) = match state {
-            HtmlExplicitElementReference::Unavailable => {
-                unreachable!("checked actual state lookup")
-            }
-            HtmlExplicitElementReference::Element(target) => {
+            ActualReference::Element(target) => {
                 let scoped = match self.reference_scope(subject, target)? {
                     Ok(v) => v,
                     Err(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
@@ -413,7 +427,7 @@ impl<'a> HtmlSemanticSession<'a> {
                     HtmlElementReferenceOrigin::ExplicitPointer,
                 )
             }
-            HtmlExplicitElementReference::Null => {
+            ActualReference::Null => {
                 let mut frames = Vec::new();
                 let outcome = (|| {
                     if raw.is_none_or(|a| a.value().is_empty()) {
@@ -429,7 +443,7 @@ impl<'a> HtmlSemanticSession<'a> {
                         Err(ControlStop::Failure(failure)) => Err(failure),
                     }
                 })();
-                self.release_scratch(frames.capacity());
+                self.release_scratch(&frames);
                 let target = match outcome? {
                     Ok(target) => target,
                     Err(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
@@ -440,7 +454,7 @@ impl<'a> HtmlSemanticSession<'a> {
         self.charge(1)?;
         Ok(HtmlSemanticValue::Known(HtmlAssociatedElement {
             raw: raw.cloned(),
-            state: state.clone(),
+            state: state.state(),
             target,
             origin,
         }))

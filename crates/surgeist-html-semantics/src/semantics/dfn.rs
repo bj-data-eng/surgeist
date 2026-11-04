@@ -73,19 +73,17 @@ impl<'a> HtmlSemanticSession<'a> {
                     eligible = false;
                     break;
                 }
-                HtmlCapturedNodeKind::Element(_) => {
+                HtmlCapturedNodeKind::Element(element) => {
                     self.charge(1)?;
-                    single_element = Some(child);
+                    single_element = Some((child, element));
                 }
                 _ => {}
             }
         }
-        if eligible && let Some(child) = single_element {
-            let child_node = self.node(&child)?;
+        if eligible && let Some((child, abbr)) = single_element {
+            // The child is read once more, and charged once more, before its name is known.
+            self.node(&child)?;
             self.charge(1)?;
-            let HtmlCapturedNodeKind::Element(abbr) = child_node.kind() else {
-                unreachable!("the same immutable child was an Element");
-            };
             if self.known(abbr)? == Some(KnownHtmlElement::Abbr) {
                 let title = self.attribute(abbr, "title")?;
                 self.charge(1)?;
