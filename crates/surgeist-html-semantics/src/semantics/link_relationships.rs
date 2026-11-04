@@ -1289,7 +1289,8 @@ impl<'a> HtmlSemanticSession<'a> {
         local
             .refresh(&mut RelControl { session: self })
             .map_err(|error| self.rel_action_failure(error))?;
-        let local = HtmlRelInterpretation::try_finish(&mut Some(local))
+        let local = local
+            .finish()
             .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
         for extension in &mut extensions {
             self.charge(2)?;

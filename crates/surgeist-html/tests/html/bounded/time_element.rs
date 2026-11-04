@@ -9,8 +9,27 @@ use surgeist_html::{
         },
     },
     microsyntax::temporal::{HtmlMachineReadableTime, HtmlTimeElementValue},
-    values::{DocumentString, HtmlValueAuthorState, HtmlValueInterpreter, HtmlValueRecoveryState},
+    values::{
+        DocumentString, HtmlValueAuthorState, HtmlValueInterpreter, HtmlValueRecoveryState,
+        HtmlValueReport,
+    },
 };
+
+/// Finishes the owner in `slot`. A refused finish hands the owner back, so it returns to the slot
+/// for the test to keep driving, and success leaves the slot empty.
+fn try_finish<'a>(
+    slot: &mut Option<Interpretation<'a>>,
+) -> Result<
+    HtmlValueReport<HtmlTimeElementValue, HtmlMachineReadableTime>,
+    HtmlTimeElementInterpretationError,
+> {
+    let owner = slot.take().expect("an owner to finish");
+    owner.finish().map_err(|failure| {
+        let (owner, cause) = failure.into_parts();
+        *slot = Some(owner);
+        cause
+    })
+}
 
 fn drive(owner: &mut Interpretation<'_>) -> (usize, usize) {
     let mut work = 0;
@@ -33,11 +52,7 @@ fn drive(owner: &mut Interpretation<'_>) -> (usize, usize) {
 fn early_finish_and_refused_guard_preserve_exact_raw_and_pending_recognition() {
     let raw = DocumentString::from_utf16([49, 0xd800, 0, 50]);
     let mut owner = Some(Interpretation::new(&raw, HtmlValueInterpreter::new(raw.len())).unwrap());
-    assert!(
-        Interpretation::try_finish(&mut owner)
-            .unwrap_err()
-            .is_not_ready()
-    );
+    assert!(try_finish(&mut owner).unwrap_err().is_not_ready());
     let before = owner
         .as_mut()
         .unwrap()
@@ -58,11 +73,6 @@ fn early_finish_and_refused_guard_preserve_exact_raw_and_pending_recognition() {
     );
     assert!(std::ptr::eq(owner.as_ref().unwrap().raw(), &raw));
     assert!(std::ptr::eq(owner.take().unwrap().abort(), &raw));
-    assert!(
-        Interpretation::try_finish(&mut owner)
-            .unwrap_err()
-            .is_consumed()
-    );
 }
 
 #[test]
@@ -84,11 +94,7 @@ fn publication_requires_admitted_report_assembly_after_all_attempts() {
         capacity += step.capacity_bytes();
         step.outcome().unwrap();
     }
-    assert!(
-        Interpretation::try_finish(&mut owner)
-            .unwrap_err()
-            .is_not_ready()
-    );
+    assert!(try_finish(&mut owner).unwrap_err().is_not_ready());
     assert!(std::ptr::eq(owner.as_ref().unwrap().raw(), &raw));
     let action = owner.as_mut().unwrap().next_action().unwrap().unwrap();
     assert_eq!(action.layout().kind(), Kind::ReportAssembly);
@@ -102,7 +108,7 @@ fn publication_requires_admitted_report_assembly_after_all_attempts() {
     assert_eq!(work, 5821);
     assert_eq!(numeric, 2);
     assert_eq!(capacity, 2);
-    let report = Interpretation::try_finish(&mut owner).unwrap();
+    let report = try_finish(&mut owner).unwrap();
     assert!(owner.is_none());
     assert_eq!(report.raw(), Some(&raw));
     assert!(
@@ -131,7 +137,7 @@ fn all_ten_authored_alternatives_preserve_their_processing_discriminators() {
         let mut owner =
             Some(Interpretation::new(&raw, HtmlValueInterpreter::new(raw.len())).unwrap());
         drive(owner.as_mut().unwrap());
-        let report = Interpretation::try_finish(&mut owner).unwrap();
+        let report = try_finish(&mut owner).unwrap();
         let author = match report.author() {
             HtmlValueAuthorState::Valid(HtmlTimeElementValue::Month(_)) => 0,
             HtmlValueAuthorState::Valid(HtmlTimeElementValue::Date(_)) => 1,
@@ -170,7 +176,7 @@ fn recovery_keeps_exact_fraction_duration_sum_and_offset_day_carry() {
             Some(Interpretation::new(&raw, HtmlValueInterpreter::new(raw.len())).unwrap());
         let (_, capacity) = drive(owner.as_mut().unwrap());
         assert!(capacity > 0);
-        let report = Interpretation::try_finish(&mut owner).unwrap();
+        let report = try_finish(&mut owner).unwrap();
         match report.recovery() {
             HtmlValueRecoveryState::Value(HtmlMachineReadableTime::Time(value)) => {
                 assert!(matches!(report.author(), HtmlValueAuthorState::Invalid(_)));
@@ -211,7 +217,7 @@ fn failed_fraction_retains_owner_and_observes_earlier_capacity_once() {
             HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded { required: 5, .. }
         ))
     ));
-    assert_eq!(Interpretation::try_finish(&mut owner).unwrap_err(), error);
+    assert_eq!(try_finish(&mut owner).unwrap_err(), error);
     assert!(matches!(owner.as_mut().unwrap().next_action(), Err(actual) if actual == error));
     assert!(std::ptr::eq(owner.as_ref().unwrap().raw(), &raw));
     assert!(std::ptr::eq(owner.take().unwrap().abort(), &raw));
@@ -236,11 +242,6 @@ fn caller_cancellation_at_each_action_recovers_raw_without_a_partial_report() {
         }
         // The caller's stop performs no next operation; recover the retained raw.
         assert!(std::ptr::eq(owner.take().unwrap().abort(), &raw));
-        assert!(
-            Interpretation::try_finish(&mut owner)
-                .unwrap_err()
-                .is_consumed()
-        );
     }
 }
 
@@ -269,7 +270,7 @@ fn raw_admission_and_processing_digit_limits_preserve_the_original_operand() {
             }
         ))
     ));
-    assert_eq!(Interpretation::try_finish(&mut owner).unwrap_err(), error);
+    assert_eq!(try_finish(&mut owner).unwrap_err(), error);
     assert!(std::ptr::eq(owner.take().unwrap().abort(), &raw));
 }
 
@@ -279,7 +280,7 @@ fn completed_invalid_syntax_is_a_report_without_processing_failure_or_allocation
     let mut owner = Some(Interpretation::new(&raw, HtmlValueInterpreter::new(raw.len())).unwrap());
     let (_, capacity) = drive(owner.as_mut().unwrap());
     assert_eq!(capacity, 0);
-    let report = Interpretation::try_finish(&mut owner).unwrap();
+    let report = try_finish(&mut owner).unwrap();
     assert!(matches!(report.author(), HtmlValueAuthorState::Invalid(_)));
     assert!(matches!(
         report.recovery(),
@@ -296,7 +297,7 @@ fn interpretation_work(text: &str) -> usize {
     let raw = DocumentString::from(text);
     let mut owner = Some(Interpretation::new(&raw, HtmlValueInterpreter::new(raw.len())).unwrap());
     let (work, _) = drive(owner.as_mut().unwrap());
-    let report = Interpretation::try_finish(&mut owner).unwrap();
+    let report = try_finish(&mut owner).unwrap();
     assert!(matches!(
         report.recovery(),
         HtmlValueRecoveryState::Value(HtmlMachineReadableTime::Duration(_))
@@ -329,7 +330,7 @@ fn interpretation_work_and_seconds(text: &str) -> (usize, String) {
     let raw = DocumentString::from(text);
     let mut owner = Some(Interpretation::new(&raw, HtmlValueInterpreter::new(raw.len())).unwrap());
     let (work, _) = drive(owner.as_mut().unwrap());
-    let report = Interpretation::try_finish(&mut owner).unwrap();
+    let report = try_finish(&mut owner).unwrap();
     let HtmlValueRecoveryState::Value(HtmlMachineReadableTime::Duration(duration)) =
         report.recovery()
     else {
@@ -598,7 +599,7 @@ fn controlled_report(
     let raw = DocumentString::from(text);
     let mut owner = Some(Interpretation::new(&raw, HtmlValueInterpreter::new(raw.len())).unwrap());
     drive(owner.as_mut().unwrap());
-    Interpretation::try_finish(&mut owner).unwrap()
+    try_finish(&mut owner).unwrap()
 }
 
 /// Checks `text` against the ordinary path and the literal algorithm.
@@ -785,7 +786,7 @@ fn digit_limited_failure(
     for steps in 0..100_000 {
         let action = owner.as_mut().unwrap().next_action().unwrap().unwrap();
         if let Err(error) = action.advance(max_digits, usize::MAX).outcome() {
-            assert_eq!(Interpretation::try_finish(&mut owner).unwrap_err(), error);
+            assert_eq!(try_finish(&mut owner).unwrap_err(), error);
             return (steps, error);
         }
     }
@@ -819,7 +820,7 @@ fn a_running_duration_total_fails_at_the_addition_that_exceeds_the_digit_limit()
     while let Some(action) = owner.as_mut().unwrap().next_action().unwrap() {
         action.advance(400, usize::MAX).outcome().unwrap();
     }
-    let report = Interpretation::try_finish(&mut owner).unwrap();
+    let report = try_finish(&mut owner).unwrap();
     assert!(matches!(
         report.recovery(),
         HtmlValueRecoveryState::Value(HtmlMachineReadableTime::Duration(_))

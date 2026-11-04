@@ -141,18 +141,12 @@ impl HtmlSemanticSession<'_> {
         raw: &DocumentString,
     ) -> Result<HtmlValueReport<HtmlTimeElementValue, HtmlMachineReadableTime>, HtmlSemanticFailure>
     {
-        let mut owner = Some(
-            HtmlTimeElementInterpretation::new(raw, self.interpreter)
-                .map_err(|error| self.stop(HtmlSemanticFailureKind::Attribute(error)))?,
-        );
+        let mut owner = HtmlTimeElementInterpretation::new(raw, self.interpreter)
+            .map_err(|error| self.stop(HtmlSemanticFailureKind::Attribute(error)))?;
         loop {
-            let action = owner
-                .as_mut()
-                .expect("retained time interpretation")
-                .next_action()
-                .map_err(|error| {
-                    self.time_interpretation_error(error, self.usage.allocated_bytes)
-                })?;
+            let action = owner.next_action().map_err(|error| {
+                self.time_interpretation_error(error, self.usage.allocated_bytes)
+            })?;
             let Some(action) = action else {
                 break;
             };
@@ -175,8 +169,9 @@ impl HtmlSemanticSession<'_> {
                 self.poll()?;
             }
         }
-        HtmlTimeElementInterpretation::try_finish(&mut owner)
-            .map_err(|error| self.time_interpretation_error(error, self.usage.allocated_bytes))
+        owner.finish().map_err(|failure| {
+            self.time_interpretation_error(*failure.cause(), self.usage.allocated_bytes)
+        })
     }
 
     fn time_interpretation_error(

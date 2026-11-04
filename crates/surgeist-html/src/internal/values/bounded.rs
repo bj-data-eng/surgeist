@@ -3,6 +3,7 @@
 use super::attribute_name_index::{
     CLEAR_CHUNK, HtmlAttributeNameIndex, Occupant, entry, occupant, tag,
 };
+use super::finish::HtmlFinishFailure;
 use super::name_index::{HtmlNameIndex, HtmlNameIndexProbe, HtmlNameIndexSlot, HtmlNameIndexStep};
 use super::{Attribute, DocumentString, OrderedAttributes};
 use std::{error::Error, fmt, mem::size_of, sync::Arc};
@@ -90,8 +91,6 @@ impl HtmlAttributeStorage {
 pub enum HtmlAttributeValidationError {
     /// The original cursor still has comparisons to perform.
     NotReady,
-    /// The supplied owner slot is empty.
-    Consumed,
     /// Prefixes and values are excluded from this exact expanded-name identity.
     Duplicate {
         /// The index of the earlier attribute that owns the expanded name.
@@ -108,7 +107,6 @@ impl fmt::Display for HtmlAttributeValidationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NotReady => formatter.write_str("attribute validation is incomplete"),
-            Self::Consumed => formatter.write_str("attribute validation owner was consumed"),
             Self::IndexUnavailable => formatter.write_str("attribute name index is unavailable"),
             Self::Duplicate { first, duplicate } => write!(
                 formatter,
@@ -206,38 +204,46 @@ impl HtmlAttributeValidation {
             .then_some(HtmlAttributeValidationAction { validation: self }))
     }
 
-    /// Takes only a successfully completed cursor; refusals retain the owner.
+    /// Consumes a successfully completed cursor. A latched failure or an incomplete cursor refuses
+    /// the finish and hands the cursor back unchanged.
     /// This transition performs no comparisons, allocation or backing clone. A name index that
-    /// was not taken is dropped; [`try_finish_with_index`](Self::try_finish_with_index) gives it
-    /// back.
-    pub fn try_finish(
-        owner: &mut Option<Self>,
-    ) -> Result<HtmlValidatedAttributes, HtmlAttributeValidationError> {
-        Self::try_finish_with_index(owner).map(|(validated, _)| validated)
+    /// was not taken is dropped; [`finish_with_index`](Self::finish_with_index) gives it back.
+    #[expect(
+        clippy::result_large_err,
+        reason = "a refusal hands the complete owner back without boxing it"
+    )]
+    pub fn finish(
+        self,
+    ) -> Result<HtmlValidatedAttributes, HtmlFinishFailure<Self, HtmlAttributeValidationError>>
+    {
+        self.finish_with_index().map(|(validated, _)| validated)
     }
 
-    /// As [`try_finish`](Self::try_finish), and the name index too if it was not taken.
-    pub fn try_finish_with_index(
-        owner: &mut Option<Self>,
+    /// As [`finish`](Self::finish), and the name index too if it was not taken.
+    #[expect(
+        clippy::result_large_err,
+        reason = "a refusal hands the complete owner back without boxing it"
+    )]
+    pub fn finish_with_index(
+        self,
     ) -> Result<
         (HtmlValidatedAttributes, Option<HtmlAttributeNameIndex>),
-        HtmlAttributeValidationError,
+        HtmlFinishFailure<Self, HtmlAttributeValidationError>,
     > {
-        let validation = owner
-            .as_ref()
-            .ok_or(HtmlAttributeValidationError::Consumed)?;
-        if let Some(error) = validation.failure {
-            return Err(error);
+        if let Some(error) = self.failure {
+            return Err(HtmlFinishFailure::new(self, error));
         }
-        if !matches!(validation.phase, Phase::Finished) {
-            return Err(HtmlAttributeValidationError::NotReady);
+        if !matches!(self.phase, Phase::Finished) {
+            return Err(HtmlFinishFailure::new(
+                self,
+                HtmlAttributeValidationError::NotReady,
+            ));
         }
-        let validation = owner.take().expect("checked occupied validation owner");
         Ok((
             HtmlValidatedAttributes {
-                storage: validation.storage,
+                storage: self.storage,
             },
-            validation.indexed,
+            self.indexed,
         ))
     }
 
@@ -275,7 +281,7 @@ impl HtmlAttributeValidation {
 
     /// Takes back the name index that `validate_indexed` was given, whatever its contents.
     /// A cursor given none returns `None`. [`abort`](Self::abort) and
-    /// [`try_finish`](Self::try_finish) drop an index that was not taken; their `_with_index`
+    /// [`finish`](Self::finish) drop an index that was not taken; their `_with_index`
     /// variants give it back.
     pub fn take_index(&mut self) -> Option<HtmlAttributeNameIndex> {
         self.indexed.take()
@@ -784,8 +790,7 @@ mod tests {
         let index = validation.take_index().expect("the cursor held the index");
         assert_eq!(index.capacity(), capacity, "validation never reallocates");
         assert!(validation.take_index().is_none());
-        let mut owner = Some(validation);
-        assert!(HtmlAttributeValidation::try_finish(&mut owner).is_ok());
+        assert!(validation.finish().is_ok());
     }
 
     #[test]

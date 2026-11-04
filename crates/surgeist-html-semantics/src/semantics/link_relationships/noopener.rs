@@ -309,15 +309,12 @@ impl<'a> HtmlSemanticSession<'a> {
             session: self,
             capacity: 0,
         };
-        let mut owner = Some(HtmlRelInterpretation::new(
-            HtmlRelInputs::new(Some(role)).with_rel(rel).with_rev(rev),
-        ));
+        let mut owner =
+            HtmlRelInterpretation::new(HtmlRelInputs::new(Some(role)).with_rel(rel).with_rev(rev));
         owner
-            .as_mut()
-            .expect("retained owner")
             .interpret(&mut meter)
             .map_err(|error| meter.session.rel_action_failure(error))?;
-        let local = HtmlRelInterpretation::try_finish(&mut owner).map_err(|_| {
+        let local = owner.finish().map_err(|_| {
             meter
                 .session
                 .stop(HtmlSemanticFailureKind::RepresentationExhausted)

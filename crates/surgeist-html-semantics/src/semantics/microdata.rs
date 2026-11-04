@@ -1677,18 +1677,11 @@ impl<'a> HtmlSemanticSession<'a> {
         use surgeist_html::bounded::microdata::{
             HtmlMicrodataTokenActionError, HtmlMicrodataTokenInterpretation,
         };
-        let mut owner = Some(HtmlMicrodataTokenInterpretation::new(kind, raw));
-        loop {
-            // Only `try_finish` below takes the owner, so it is retained here.
-            let Some(active) = owner.as_mut() else {
-                return Err(self.stop(HtmlSemanticFailureKind::IntrinsicUnavailable));
-            };
-            let Some(action) = active
-                .next_action()
-                .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?
-            else {
-                break;
-            };
+        let mut owner = HtmlMicrodataTokenInterpretation::new(kind, raw);
+        while let Some(action) = owner
+            .next_action()
+            .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?
+        {
             let step = action.advance(self).map_err(|error| match error {
                 HtmlMicrodataTokenActionError::Admission(error) => error,
                 HtmlMicrodataTokenActionError::Protocol(_) => {
@@ -1702,7 +1695,8 @@ impl<'a> HtmlSemanticSession<'a> {
             #[cfg(not(test))]
             let _ = step;
         }
-        HtmlMicrodataTokenInterpretation::try_finish(&mut owner)
+        owner
+            .finish()
             .map_err(|_| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))
     }
     /// Charge a product of record counts, refusing an unrepresentable one.

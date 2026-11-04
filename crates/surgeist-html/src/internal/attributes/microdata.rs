@@ -1,6 +1,7 @@
 //! HTML §5.2 exact token observations; URL, vocabulary and tree proof are separate.
 use super::*;
 use crate::internal::microsyntax::tokens::HtmlSpaceToken;
+use crate::internal::values::finish::HtmlFinishFailure;
 
 /// Which of the three microdata token-list attributes is being read (HTML877d #encoding-microdata).
 /// The kind decides the attribute name and the nonemptiness and duplicate rules that apply.
@@ -223,7 +224,8 @@ impl HtmlMicrodataTokenInterpretation<'_> {
                     | HtmlMicrodataTokenActionError::Protocol(error) => ordinary(error),
                 })?;
         }
-        Self::try_finish(&mut Some(self)).map_err(ordinary)
+        self.finish()
+            .map_err(|failure| ordinary(failure.into_parts().1))
     }
 }
 
@@ -237,7 +239,6 @@ pub struct HtmlMicrodataTokenInterpretationError {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum HtmlMicrodataTokenInterpretationErrorKind {
-    Consumed,
     NotReady,
     Stopped,
     ReservationNotPerformed,
@@ -260,13 +261,6 @@ impl From<HtmlMicrodataTokenInterpretationErrorKind> for HtmlMicrodataTokenInter
 }
 
 impl HtmlMicrodataTokenInterpretationError {
-    /// Whether the cause is: microdata token interpretation was already consumed.
-    pub fn is_consumed(&self) -> bool {
-        matches!(
-            self.kind,
-            HtmlMicrodataTokenInterpretationErrorKind::Consumed
-        )
-    }
     /// Whether the cause is: microdata token interpretation has an unfinished step.
     pub fn is_not_ready(&self) -> bool {
         matches!(
@@ -314,9 +308,6 @@ impl HtmlMicrodataTokenInterpretationError {
 impl std::fmt::Display for HtmlMicrodataTokenInterpretationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.kind {
-            HtmlMicrodataTokenInterpretationErrorKind::Consumed => {
-                f.write_str("microdata token interpretation was already consumed")
-            }
             HtmlMicrodataTokenInterpretationErrorKind::NotReady => {
                 f.write_str("microdata token interpretation has an unfinished step")
             }
@@ -488,7 +479,7 @@ pub enum HtmlMicrodataTokenStep {
     Continue,
     /// One more token record was committed to the unpublished vector.
     TokenCommitted,
-    /// The report is assembled; collect it with `try_finish`.
+    /// The report is assembled; collect it with `finish`.
     Complete,
 }
 
@@ -622,7 +613,7 @@ impl<'raw> HtmlMicrodataTokenInterpretation<'raw> {
             report: None,
         }
     }
-    /// Abandons the interpretation. Later calls to `next_action` and `try_finish` report the
+    /// Abandons the interpretation. Later calls to `next_action` and `finish` report the
     /// stopped cause, and the partial tokens are never published.
     pub fn stop(&mut self) {
         self.phase = Phase::Stopped;
@@ -644,24 +635,36 @@ impl<'raw> HtmlMicrodataTokenInterpretation<'raw> {
             _ => Ok(Some(HtmlMicrodataTokenAction { owner: self })),
         }
     }
-    /// Takes the finished report out of `slot`, leaving `None`.
+    /// Consumes the interpretation and returns its finished report.
     ///
-    /// Returns the consumed cause when `slot` is already empty, the stopped cause after `stop`, and
-    /// the not-ready cause while actions remain. On every error the interpretation stays in `slot`.
-    pub fn try_finish(
-        slot: &mut Option<Self>,
-    ) -> Result<HtmlMicrodataTokenReport, HtmlMicrodataTokenInterpretationError> {
-        let owner = slot
-            .as_ref()
-            .ok_or(HtmlMicrodataTokenInterpretationErrorKind::Consumed)?;
-        match owner.phase {
-            Phase::Ready => Ok(slot
-                .take()
-                .expect("checked owner")
-                .report
-                .expect("assembled report")),
-            Phase::Stopped => Err(HtmlMicrodataTokenInterpretationErrorKind::Stopped.error()),
-            _ => Err(HtmlMicrodataTokenInterpretationErrorKind::NotReady.error()),
+    /// A stopped interpretation is refused with the stopped cause and one with actions remaining
+    /// with the not-ready cause. Either refusal hands the interpretation back unchanged.
+    #[expect(
+        clippy::result_large_err,
+        reason = "a refusal hands the complete owner back without boxing it"
+    )]
+    pub fn finish(
+        mut self,
+    ) -> Result<
+        HtmlMicrodataTokenReport,
+        HtmlFinishFailure<Self, HtmlMicrodataTokenInterpretationError>,
+    > {
+        match self.phase {
+            Phase::Ready => match self.report.take() {
+                Some(report) => Ok(report),
+                None => Err(HtmlFinishFailure::new(
+                    self,
+                    HtmlMicrodataTokenInterpretationErrorKind::NotReady,
+                )),
+            },
+            Phase::Stopped => Err(HtmlFinishFailure::new(
+                self,
+                HtmlMicrodataTokenInterpretationErrorKind::Stopped,
+            )),
+            _ => Err(HtmlFinishFailure::new(
+                self,
+                HtmlMicrodataTokenInterpretationErrorKind::NotReady,
+            )),
         }
     }
     /// The symbol at `index` of the token occupying `start..end`.
@@ -922,11 +925,6 @@ mod cause_tests {
     fn every_cause_has_its_message_and_exactly_one_matching_predicate() {
         type Predicate = fn(&HtmlMicrodataTokenInterpretationError) -> bool;
         let cases: Vec<(HtmlMicrodataTokenInterpretationError, &str, Predicate)> = vec![
-            (
-                HtmlMicrodataTokenInterpretationErrorKind::Consumed.error(),
-                "microdata token interpretation was already consumed",
-                HtmlMicrodataTokenInterpretationError::is_consumed,
-            ),
             (
                 HtmlMicrodataTokenInterpretationErrorKind::NotReady.error(),
                 "microdata token interpretation has an unfinished step",

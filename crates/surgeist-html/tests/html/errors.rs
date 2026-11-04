@@ -17,6 +17,7 @@ use surgeist_html::bounded::{
     },
 };
 use surgeist_html::{
+    attributes::microdata::HtmlMicrodataTokenKind,
     attributes::{
         HtmlAttributeConformanceError, HtmlAttributeContextConformanceError,
         accept::HtmlAcceptSpecifierError,
@@ -57,12 +58,13 @@ use surgeist_html::{
         DocumentString, HtmlCustomElementNameError, HtmlValueAdmissionError, HtmlValueFailure,
         HtmlValueInterpreter, HtmlValueRepresentationError, HtmlValueSyntaxError,
     },
+    vocabulary::KnownHtmlElement,
 };
 
 use surgeist_html::bounded::{
     media::{HtmlMediaActionError, HtmlMediaInterpretation},
     microdata::{HtmlMicrodataTokenActionError, HtmlMicrodataTokenInterpretation},
-    rel::{HtmlRelActionError, HtmlRelInterpretation},
+    rel::{HtmlRelActionError, HtmlRelInputs, HtmlRelInterpretation},
     temporal::HtmlTimeElementInterpretation,
 };
 use surgeist_html::{
@@ -1099,34 +1101,53 @@ fn construction_limit_refusals_report_the_resource_limit_and_attempted_total() {
 }
 
 #[test]
-fn consumed_interpretations_report_which_interpretation_was_consumed() {
-    let mut rel: Option<HtmlRelInterpretation<'static>> = None;
-    let error = HtmlRelInterpretation::try_finish(&mut rel).expect_err("empty slot");
-    assert!(error.is_consumed());
-    assert!(!error.is_not_ready());
-    assert_eq!(message(&error), "rel interpretation was already consumed");
-
-    let mut media: Option<HtmlMediaInterpretation<'static, QualifiedName, Attribute>> = None;
-    let error = HtmlMediaInterpretation::try_finish(&mut media).expect_err("empty slot");
-    assert!(error.is_consumed());
-    assert_eq!(message(&error), "media interpretation was already consumed");
-
-    let mut microdata: Option<HtmlMicrodataTokenInterpretation<'static>> = None;
-    let error =
-        HtmlMicrodataTokenInterpretation::try_finish(&mut microdata).expect_err("empty slot");
-    assert!(error.is_consumed());
+fn unfinished_interpretations_refuse_their_finish_and_hand_the_owner_back() {
+    let rel = HtmlRelInterpretation::new(HtmlRelInputs::new(None));
+    let refusal = rel.finish().expect_err("not interpreted");
+    assert!(refusal.cause().is_not_ready());
     assert_eq!(
-        message(&error),
-        "microdata token interpretation was already consumed"
+        message(refusal.cause()),
+        "rel interpretation has an unfinished step"
+    );
+    assert_eq!(
+        message(&refusal),
+        "finish refused: rel interpretation has an unfinished step"
+    );
+    assert_eq!(
+        cause(&refusal).as_deref(),
+        Some("rel interpretation has an unfinished step")
+    );
+    let (rel, _) = refusal.into_parts();
+    assert!(rel.abort().role().is_none());
+
+    let element = KnownHtmlElement::Style.qualified_name();
+    let media: HtmlMediaInterpretation<'_, QualifiedName, Attribute> =
+        HtmlMediaInterpretation::from_matched(&element, None);
+    let refusal = media.finish().expect_err("not assembled");
+    assert!(refusal.cause().is_not_ready());
+    assert_eq!(
+        message(refusal.cause()),
+        "media interpretation has an unfinished step"
     );
 
-    let mut time: Option<HtmlTimeElementInterpretation<'static>> = None;
-    let error = HtmlTimeElementInterpretation::try_finish(&mut time).expect_err("empty slot");
-    assert!(error.is_consumed());
-    assert!(error.processing_failure().is_none());
+    let raw = DocumentString::from("a b");
+    let microdata =
+        HtmlMicrodataTokenInterpretation::new(HtmlMicrodataTokenKind::ItemProp, Some(&raw));
+    let refusal = microdata.finish().expect_err("tokens remain");
+    assert!(refusal.cause().is_not_ready());
     assert_eq!(
-        message(&error),
-        "time-element interpretation was already consumed"
+        message(refusal.cause()),
+        "microdata token interpretation has an unfinished step"
+    );
+
+    let time =
+        HtmlTimeElementInterpretation::new(&raw, HtmlValueInterpreter::new(16)).expect("admitted");
+    let refusal = time.finish().expect_err("not recognized");
+    assert!(refusal.cause().is_not_ready());
+    assert!(refusal.cause().processing_failure().is_none());
+    assert_eq!(
+        message(refusal.cause()),
+        "time-element interpretation has an unfinished step"
     );
 }
 
@@ -1204,8 +1225,11 @@ fn owned_causes_convert_into_their_wrapping_error() {
 #[test]
 fn action_errors_distinguish_the_callers_refusal_from_protocol_misuse() {
     let admission = refused_admission();
-    let mut rel: Option<HtmlRelInterpretation<'static>> = None;
-    let protocol = HtmlRelInterpretation::try_finish(&mut rel).expect_err("empty slot");
+    let protocol = HtmlRelInterpretation::new(HtmlRelInputs::new(None))
+        .finish()
+        .expect_err("not interpreted")
+        .into_parts()
+        .1;
 
     let refused: HtmlRelActionError<HtmlValueAdmissionError> =
         HtmlRelActionError::Admission(admission);
@@ -1222,7 +1246,7 @@ fn action_errors_distinguish_the_callers_refusal_from_protocol_misuse() {
     );
     assert_eq!(
         cause(&misused).as_deref(),
-        Some("rel interpretation was already consumed")
+        Some("rel interpretation has an unfinished step")
     );
 
     let refused: HtmlMediaActionError<HtmlValueAdmissionError> =

@@ -63,8 +63,7 @@ fn initial_only_finish_preserves_original_ranges_aliases_and_alternate_styleshee
             .with_title(Some(&title)),
     );
     assert_eq!(owner.occurrences().unwrap()[2].duplicate_of(), Some(0));
-    let mut slot = Some(owner);
-    let report = HtmlRelInterpretation::try_finish(&mut slot).unwrap();
+    let report = owner.finish().unwrap();
     assert_eq!(report.alternate(), HtmlRelAlternate::StylesheetModifier);
     assert_eq!(
         report.alternate_stylesheet_title_author(),
@@ -79,11 +78,6 @@ fn initial_only_finish_preserves_original_ranges_aliases_and_alternate_styleshee
         report.rel().unwrap().shared_code_units(),
         rel.shared_code_units()
     ));
-    assert!(
-        HtmlRelInterpretation::try_finish(&mut slot)
-            .unwrap_err()
-            .is_consumed()
-    );
 }
 #[test]
 fn checked_refinement_rejects_wrong_source_spelling_order_and_extension_effect_without_admission() {
@@ -149,14 +143,12 @@ fn checked_refinement_rejects_wrong_source_spelling_order_and_extension_effect_w
     assert!(
         matches!(owner.refine(0, HtmlRelRefinement::NoEffect, &mut meter), Err(HtmlRelActionError::Protocol(ref e)) if e.is_out_of_order_refinement())
     );
-    let mut slot = Some(owner);
-    assert!(
-        HtmlRelInterpretation::try_finish(&mut slot)
-            .unwrap_err()
-            .is_not_ready()
-    );
-    slot.as_mut().unwrap().refresh(&mut meter).unwrap();
-    let report = HtmlRelInterpretation::try_finish(&mut slot).unwrap();
+    // A refinement that was not refreshed is refused as not ready and handed back.
+    let refusal = owner.finish().unwrap_err();
+    assert!(refusal.cause().is_not_ready());
+    let (mut owner, _) = refusal.into_parts();
+    owner.refresh(&mut meter).unwrap();
+    let report = owner.finish().unwrap();
     assert_eq!(report.alternate(), HtmlRelAlternate::StylesheetModifier);
     assert!(report.occurrences()[1].registry_resolved());
     assert_eq!(
@@ -191,7 +183,7 @@ fn refresh_uses_original_type_title_and_image_preload_operands() {
         )
         .unwrap();
     owner.refresh(&mut Meter::default()).unwrap();
-    let report = HtmlRelInterpretation::try_finish(&mut Some(owner)).unwrap();
+    let report = owner.finish().unwrap();
     assert_eq!(report.alternate(), HtmlRelAlternate::Feed);
     assert!(report.image_source_preload_context());
 }
@@ -217,61 +209,50 @@ fn every_refresh_admission_failure_hides_report_and_occurrences_including_after_
     // aggregate write admission, then the image-preload context admission.
     assert_eq!(count.work, [12, 12, 12, 44, 5, 5, 5, 5, 3]);
     for i in 0..count.work.len() {
-        let mut owner = Some(make());
+        let mut owner = make();
         let mut meter = Meter {
             fail_at: Some(i),
             ..Meter::default()
         };
         assert_eq!(
-            owner.as_mut().unwrap().refresh(&mut meter),
+            owner.refresh(&mut meter),
             Err(HtmlRelActionError::Admission("original stop"))
         );
-        assert!(
-            HtmlRelInterpretation::try_finish(&mut owner)
-                .unwrap_err()
-                .is_stopped()
-        );
+        let refusal = owner.finish().unwrap_err();
+        assert!(refusal.cause().is_stopped());
+        let owner = refusal.into_parts().0;
         assert!(matches!(
-            owner.as_ref().unwrap().occurrences(),
+            owner.occurrences(),
             Err(ref error) if error.is_stopped()
         ));
-        let inputs = owner.take().unwrap().abort();
+        let inputs = owner.abort();
         assert!(std::ptr::eq(inputs.rel().unwrap(), &raw));
     }
 }
 #[test]
 fn initial_error_retains_raw_and_actual_reservation_and_between_action_stop_is_terminal() {
     let raw = DocumentString::from_utf16([120, 0xd800]);
-    let mut slot = Some(HtmlRelInterpretation::new(
+    let mut owner = HtmlRelInterpretation::new(
         HtmlRelInputs::new(Some(HtmlRelRole::Anchor)).with_rel(Some(&raw)),
-    ));
+    );
     let mut meter = Meter {
         fail_reserve: true,
         ..Meter::default()
     };
     assert_eq!(
-        slot.as_mut().unwrap().interpret(&mut meter),
+        owner.interpret(&mut meter),
         Err(HtmlRelActionError::Admission("original reserve stop"))
     );
     assert!(meter.reservations[0].1 >= 1);
-    assert!(
-        HtmlRelInterpretation::try_finish(&mut slot)
-            .unwrap_err()
-            .is_stopped()
-    );
+    let refusal = owner.finish().unwrap_err();
+    assert!(refusal.cause().is_stopped());
     assert!(std::ptr::eq(
-        slot.take().unwrap().abort().rel().unwrap(),
+        refusal.into_parts().0.abort().rel().unwrap(),
         &raw
     ));
-    let mut owner = Some(interpreted(
-        HtmlRelInputs::new(Some(HtmlRelRole::Anchor)).with_rel(Some(&raw)),
-    ));
-    owner.as_mut().unwrap().stop();
-    assert!(
-        HtmlRelInterpretation::try_finish(&mut owner)
-            .unwrap_err()
-            .is_stopped()
-    );
+    let mut owner = interpreted(HtmlRelInputs::new(Some(HtmlRelRole::Anchor)).with_rel(Some(&raw)));
+    owner.stop();
+    assert!(owner.finish().unwrap_err().cause().is_stopped());
 }
 
 /// Answers every reservation and counts the reservations that changed the occurrence vector's

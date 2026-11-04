@@ -1,5 +1,6 @@
 //! One retained local relationship interpretation and its checked refinement.
 use super::*;
+use crate::internal::values::finish::HtmlFinishFailure;
 
 /// The explicit original operands, independent of captured-tree qualification.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -127,7 +128,6 @@ pub struct HtmlRelInterpretationError {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum HtmlRelInterpretationErrorKind {
-    Consumed,
     NotReady,
     Stopped,
     WrongPhase,
@@ -157,10 +157,6 @@ impl From<HtmlRelInterpretationErrorKind> for HtmlRelInterpretationError {
 }
 
 impl HtmlRelInterpretationError {
-    /// Whether the cause is: rel interpretation was already consumed.
-    pub fn is_consumed(&self) -> bool {
-        matches!(self.kind, HtmlRelInterpretationErrorKind::Consumed)
-    }
     /// Whether the cause is: rel interpretation has an unfinished step.
     pub fn is_not_ready(&self) -> bool {
         matches!(self.kind, HtmlRelInterpretationErrorKind::NotReady)
@@ -236,9 +232,6 @@ impl HtmlRelInterpretationError {
 impl std::fmt::Display for HtmlRelInterpretationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.kind {
-            HtmlRelInterpretationErrorKind::Consumed => {
-                f.write_str("rel interpretation was already consumed")
-            }
             HtmlRelInterpretationErrorKind::NotReady => {
                 f.write_str("rel interpretation has an unfinished step")
             }
@@ -626,7 +619,7 @@ impl<'raw> HtmlRelInterpretation<'raw> {
         result
     }
     /// Abandons the interpretation. Every later action fails with the stopped cause, and
-    /// `try_finish` reports it. Partial backing is released when the owner drops.
+    /// `finish` reports it. Partial backing is released when the owner drops.
     pub fn stop(&mut self) {
         self.phase = Phase::Stopped;
     }
@@ -634,20 +627,27 @@ impl<'raw> HtmlRelInterpretation<'raw> {
     pub fn abort(self) -> HtmlRelInputs<'raw> {
         self.inputs
     }
-    /// Takes the finished report out of `slot`. It succeeds when the interpretation is interpreted
-    /// or refreshed, and then leaves `None` in the slot. An empty slot fails with the consumed
-    /// cause, a stopped interpretation with the stopped cause, and one mid-refinement with the
-    /// not-ready cause; in those failures the slot keeps its owner.
-    pub fn try_finish(
-        slot: &mut Option<Self>,
-    ) -> Result<HtmlRelReport, HtmlRelInterpretationError> {
-        let owner = slot
-            .as_ref()
-            .ok_or(HtmlRelInterpretationErrorKind::Consumed)?;
-        match owner.phase {
-            Phase::Interpreted | Phase::Refreshed => Ok(slot.take().expect("checked owner").report),
-            Phase::Stopped => Err(HtmlRelInterpretationErrorKind::Stopped.error()),
-            _ => Err(HtmlRelInterpretationErrorKind::NotReady.error()),
+    /// Consumes the interpretation and returns its finished report. It succeeds when the
+    /// interpretation is interpreted or refreshed. A stopped interpretation is refused with the
+    /// stopped cause and one mid-refinement with the not-ready cause; either refusal hands the
+    /// interpretation back unchanged.
+    #[expect(
+        clippy::result_large_err,
+        reason = "a refusal hands the complete owner back without boxing it"
+    )]
+    pub fn finish(
+        self,
+    ) -> Result<HtmlRelReport, HtmlFinishFailure<Self, HtmlRelInterpretationError>> {
+        match self.phase {
+            Phase::Interpreted | Phase::Refreshed => Ok(self.report),
+            Phase::Stopped => Err(HtmlFinishFailure::new(
+                self,
+                HtmlRelInterpretationErrorKind::Stopped,
+            )),
+            _ => Err(HtmlFinishFailure::new(
+                self,
+                HtmlRelInterpretationErrorKind::NotReady,
+            )),
         }
     }
 }
@@ -687,7 +687,8 @@ impl HtmlRelInterpretation<'_> {
                     ordinary(error)
                 }
             })?;
-        Self::try_finish(&mut Some(self)).map_err(ordinary)
+        self.finish()
+            .map_err(|failure| ordinary(failure.into_parts().1))
     }
 }
 
@@ -783,11 +784,6 @@ mod cause_tests {
     fn every_cause_has_its_message_and_exactly_one_matching_predicate() {
         type Predicate = fn(&HtmlRelInterpretationError) -> bool;
         let cases: Vec<(HtmlRelInterpretationError, &str, Predicate)> = vec![
-            (
-                HtmlRelInterpretationErrorKind::Consumed.error(),
-                "rel interpretation was already consumed",
-                HtmlRelInterpretationError::is_consumed,
-            ),
             (
                 HtmlRelInterpretationErrorKind::NotReady.error(),
                 "rel interpretation has an unfinished step",

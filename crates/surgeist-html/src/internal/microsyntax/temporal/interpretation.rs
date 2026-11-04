@@ -5,6 +5,7 @@ use crate::internal::microsyntax::numeric::{
     HtmlNumericMaterialized,
     decimal_total::{HtmlDecimalTotal, HtmlDecimalTotalError},
 };
+use crate::internal::values::finish::HtmlFinishFailure;
 use crate::{
     internal::values::interpretation::HtmlValueAdmissionError,
     internal::values::interpretation::HtmlValueInterpreter,
@@ -20,7 +21,6 @@ pub struct HtmlTimeElementInterpretationError {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum HtmlTimeElementInterpretationErrorKind {
     NotReady,
-    Consumed,
     RepresentationExhausted,
     Processing(HtmlNumericMaterializationError),
     InvalidRecognizedPlan,
@@ -43,10 +43,6 @@ impl HtmlTimeElementInterpretationError {
     /// Whether the cause is: time-element interpretation has an unfinished step.
     pub fn is_not_ready(&self) -> bool {
         matches!(self.kind, HtmlTimeElementInterpretationErrorKind::NotReady)
-    }
-    /// Whether the cause is: time-element interpretation was already consumed.
-    pub fn is_consumed(&self) -> bool {
-        matches!(self.kind, HtmlTimeElementInterpretationErrorKind::Consumed)
     }
     /// Whether the cause is: time-element interpretation size cannot be represented on this platform.
     pub fn is_representation_exhausted(&self) -> bool {
@@ -76,9 +72,6 @@ impl std::fmt::Display for HtmlTimeElementInterpretationError {
         match &self.kind {
             HtmlTimeElementInterpretationErrorKind::NotReady => {
                 f.write_str("time-element interpretation has an unfinished step")
-            }
-            HtmlTimeElementInterpretationErrorKind::Consumed => {
-                f.write_str("time-element interpretation was already consumed")
             }
             HtmlTimeElementInterpretationErrorKind::RepresentationExhausted => f.write_str(
                 "time-element interpretation size cannot be represented on this platform",
@@ -200,7 +193,7 @@ enum Stage<'raw> {
     Duration(DurationStage<'raw>),
     Poll,
     Report,
-    /// The published report, which only `try_finish` takes.
+    /// The published report, which only `finish` takes.
     Done(Report),
 }
 type Global<'raw> = BorrowedGlobalDateTime<'raw>;
@@ -356,31 +349,30 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
             layout,
         }))
     }
-    /// Publishes only a completed report; every refusal retains Some.
-    pub fn try_finish(
-        owner: &mut Option<Self>,
+    /// Consumes the interpretation and publishes its completed report. A latched failure or an
+    /// unfinished step refuses the finish and hands the interpretation back unchanged.
+    #[expect(
+        clippy::result_large_err,
+        reason = "a refusal hands the complete owner back without boxing it"
+    )]
+    pub fn finish(
+        self,
     ) -> Result<
         HtmlValueReport<HtmlTimeElementValue, HtmlMachineReadableTime>,
-        HtmlTimeElementInterpretationError,
+        HtmlFinishFailure<Self, HtmlTimeElementInterpretationError>,
     > {
-        let current = owner
-            .as_ref()
-            .ok_or(HtmlTimeElementInterpretationErrorKind::Consumed)?;
-        if let Some(error) = current.failure {
-            return Err(error);
+        if let Some(error) = self.failure {
+            return Err(HtmlFinishFailure::new(self, error));
         }
-        if !matches!(current.stage, Stage::Done(_)) {
-            return Err(HtmlTimeElementInterpretationErrorKind::NotReady.error());
-        }
-        match owner.take() {
-            Some(Self {
+        match self {
+            Self {
                 stage: Stage::Done(report),
                 ..
-            }) => Ok(report),
-            other => {
-                *owner = other;
-                Err(HtmlTimeElementInterpretationErrorKind::NotReady.error())
-            }
+            } => Ok(report),
+            other => Err(HtmlFinishFailure::new(
+                other,
+                HtmlTimeElementInterpretationErrorKind::NotReady,
+            )),
         }
     }
     // The registers are filled by the stage that precedes each reader, in the order that
@@ -1134,11 +1126,6 @@ mod cause_tests {
                 HtmlTimeElementInterpretationErrorKind::NotReady.error(),
                 "time-element interpretation has an unfinished step",
                 HtmlTimeElementInterpretationError::is_not_ready,
-            ),
-            (
-                HtmlTimeElementInterpretationErrorKind::Consumed.error(),
-                "time-element interpretation was already consumed",
-                HtmlTimeElementInterpretationError::is_consumed,
             ),
             (
                 HtmlTimeElementInterpretationErrorKind::RepresentationExhausted.error(),
