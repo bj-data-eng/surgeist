@@ -662,3 +662,95 @@ fn tall_headers_of_two_extents_hidden_by_two_data_cells_cost_those_cells_in_each
         );
     }
 }
+
+/// Rows that fill fewer of the first row's gaps than it did cost the cells
+/// they hold, not the tall headers they cross.
+///
+/// HTML 877d, internal algorithm for scanning and assigning header cells,
+/// steps 4 and 9. Row 0 holds `m` times a tall `th` (`rowspan="n"`,
+/// `scope="row"`) and a `td`, one more such `th`, then `p` tall `td` (`n`
+/// rows), the principal cells. Each of the `n - 1` rows after holds one `td`,
+/// which lands in the first gap, beside the first `th`. Every cell but the
+/// tall `td` carries `headers=""`, which assigns it no header and keeps it
+/// from scanning. There are `2m + p + n` cells and `2m + 1 + p` columns.
+///
+/// A principal reads each of its `n` rows leftward. Row 0: the last `th` is
+/// taken; the `td` of the last gap ends its block, which makes it opaque, and
+/// hides the `th` before it, of the same rows, and every one beyond. Row `r`
+/// after: the gaps but the first hold no cell, so the `m` `th` after the first
+/// share one block, and none is opaque; all are taken, and then the row's `td`
+/// ends the block and hides the first `th`. The `th` after the first are `m`
+/// in all, and the principals' own columns hold tall data cells, which end no
+/// block of a header. Each principal takes those `m` `th` once, however many
+/// rows give them: `p * m` associations in all.
+fn fewer_gaps_work(n: usize, m: usize, p: usize) -> (usize, usize, usize) {
+    let span = n.to_string();
+    let work = associated_work(
+        |b, d| {
+            let table = element(b, d, "table", &[]);
+            let tall = |b: &mut surgeist_html_semantics::HtmlCaptureBuilder| {
+                cell(
+                    b,
+                    d,
+                    "th",
+                    &[("scope", "row"), ("rowspan", &span), ("headers", "")],
+                )
+            };
+            let mut first = Vec::new();
+            for _ in 0..m {
+                first.push(tall(b));
+                first.push(cell(b, d, "td", &[("headers", "")]));
+            }
+            first.push(tall(b));
+            for _ in 0..p {
+                first.push(cell(b, d, "td", &[("rowspan", &span)]));
+            }
+            let mut trs = Vec::new();
+            let row = element(b, d, "tr", &[]);
+            b.establish_children(&row, &first).unwrap();
+            trs.push(row);
+            for _ in 1..n {
+                let row = element(b, d, "tr", &[]);
+                let td = cell(b, d, "td", &[("headers", "")]);
+                b.establish_children(&row, &[td]).unwrap();
+                trs.push(row);
+            }
+            b.establish_children(&table, &trs).unwrap();
+            table
+        },
+        (2 * m + 1 + p, n),
+        2 * m + p + n,
+        p * m,
+    );
+    (2 * m + p + n, p * m, work)
+}
+
+#[test]
+fn rows_that_fill_only_the_first_gap_cost_the_input_and_the_associations() {
+    let measured: Vec<_> = [100, 200, 400, 800]
+        .into_iter()
+        .map(|n| fewer_gaps_work(n, n, 1))
+        .collect();
+    for pair in measured.windows(2) {
+        assert!(
+            pair[1].2 * 10 <= pair[0].2 * 22,
+            "{} cells and {} associations cost {} but {} and {} cost {} \
+             (input and associations x2 may cost at most x2.2)",
+            pair[0].0,
+            pair[0].1,
+            pair[0].2,
+            pair[1].0,
+            pair[1].1,
+            pair[1].2,
+        );
+    }
+}
+
+#[test]
+fn many_principals_over_rows_that_fill_only_the_first_gap_cost_the_input_and_the_associations() {
+    let measured: Vec<_> = [50, 100, 200, 400]
+        .into_iter()
+        .map(|n| fewer_gaps_work(n, n, n))
+        .collect();
+    assert_work_follows_input_and_associations("fewer gaps, many principals", &measured);
+}
