@@ -7124,7 +7124,7 @@ fn work_cuts_around_every_dropped_diagnostic_stop_on_work_and_clean_up() {
     }
     // A case's name, its source and the `Diagnostics` cap that drops some of it.
     type Case = (&'static str, fn() -> HtmlSource, u64);
-    let cases: [Case; 13] = [
+    let cases: [Case; 16] = [
         ("tokenizer", || HtmlSource::utf8("<!doctype html>< < <"), 0),
         ("prologue", || HtmlSource::utf8("<div id=x>"), 0),
         (
@@ -7172,6 +7172,25 @@ fn work_cuts_around_every_dropped_diagnostic_stop_on_work_and_clean_up() {
         (
             "script",
             || HtmlSource::utf8("<!doctype html><script/>x</script>"),
+            0,
+        ),
+        // NULs in table text: the tree builder's own `NullInTable`.
+        (
+            "table NUL",
+            || HtmlSource::utf8("<!doctype html><table>\0\0"),
+            0,
+        ),
+        // Non-whitespace and NUL text in a frameset, one error per origin.
+        (
+            "frameset text",
+            || HtmlSource::utf8("<!doctype html><frameset>A \0\tB</frameset>"),
+            0,
+        ),
+        // The table case again with room for nothing, so the non-whitespace
+        // and anything-else table errors are dropped rather than retained.
+        (
+            "table text",
+            || HtmlSource::utf8("<!doctype html><table> a<tr>"),
             0,
         ),
     ];
