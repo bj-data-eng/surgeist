@@ -72,7 +72,18 @@ fn facts(
     revision: HtmlHostFactsRevision,
     document: HtmlConstructionCaptureDocument,
 ) -> HtmlConstructionCaptureFacts {
+    facts_with(source, revision, document, &[])
+}
+/// The facts of the closure of the source's root and of the `extra` nodes, which
+/// the caller names whether or not the root reaches them.
+fn facts_with(
+    source: &HtmlConstructionResult,
+    revision: HtmlHostFactsRevision,
+    document: HtmlConstructionCaptureDocument,
+    extra: &[HtmlNodeId],
+) -> HtmlConstructionCaptureFacts {
     let mut ids = Vec::new();
+    ids.extend(extra.iter().cloned());
     let mut pending = vec![root(source)];
     while let Some(id) = pending.pop() {
         if ids.contains(&id) {
@@ -771,6 +782,41 @@ fn nonzero_document_root_omits_detached_records_and_retains_actual_mode() {
         panic!("document")
     };
     assert_eq!(value.mode(), HtmlDocumentMode::Quirks);
+}
+/// Facts that name a node the import never reaches are a producer's mistake, for
+/// example facts keyed to a different root, and are refused rather than ignored.
+#[test]
+fn facts_naming_a_node_outside_the_imported_closure_are_refused() {
+    use surgeist_html::bounded::construction::HtmlConstructionCommand as C;
+    let (owner, detached) = create(storage(), C::CreateFragment);
+    let (owner, doc) = create(
+        owner,
+        C::CreateDocument {
+            mode: HtmlDocumentMode::Quirks,
+        },
+    );
+    let detached = owner.result_id(&detached).unwrap();
+    let source = publish(owner, doc);
+    let (builder, revision) = new_builder();
+    let facts = facts_with(
+        &source,
+        revision,
+        HtmlConstructionCaptureDocument::ResultDocument,
+        std::slice::from_ref(&detached),
+    );
+    let refused = import(
+        builder,
+        source,
+        facts,
+        adapter_limits(),
+        HtmlSemanticCancellation::new(),
+    )
+    .map(|_| ())
+    .unwrap_err();
+    assert_eq!(
+        refused.reason(),
+        &HtmlConstructionCaptureError::OutsideImportedClosure
+    );
 }
 #[test]
 fn unowned_shadow_reference_cycle_imports_once_without_fabricating_host_or_depth() {
