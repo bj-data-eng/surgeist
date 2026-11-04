@@ -1706,8 +1706,8 @@ input limits, selected Unicode basis and influencing external revisions.
 All `HtmlSource*`, `HtmlDocumentParseRequest`, `HtmlFragmentParseRequest`,
 `HtmlParse*`, tokenizer and insertion-mode diagnostics currently reexported in
 `lib.rs` move to parser, except shared local decision enums listed above and the
-external base-fact model assigned to semantics. `ConsumedSourceBoundary` and
-preprocessing machinery remain parser-private. UTF-8 source ranges use byte
+external base-fact model assigned to semantics. Preprocessing machinery
+remains parser-private. UTF-8 source ranges use byte
 coordinates; UTF-16 ranges use code-unit coordinates, with source identity and
 coordinate basis preserved together. Native construction has no invented source
 identity or provenance.
