@@ -617,14 +617,18 @@ impl HtmlSemanticContext {
                 retained_capacity: classifications.capacity(),
             });
         }
-        for (i, fact) in classifications.iter().enumerate() {
+        // The subjects seen so far, sized by the classifications, which the
+        // capacity check above bounds, never by the capture.
+        let mut classified = std::collections::HashSet::new();
+        classified
+            .try_reserve(classifications.len())
+            .map_err(|_| HtmlCaptureError::RepresentationExhausted)
+            .map_err(HtmlSemanticContextError::Capture)?;
+        for fact in &classifications {
             capture
                 .element_id(&fact.subject)
                 .map_err(HtmlSemanticContextError::Capture)?;
-            if classifications[..i]
-                .iter()
-                .any(|other| other.subject == fact.subject)
-            {
+            if !classified.insert(fact.subject.ordinal()) {
                 return Err(HtmlSemanticContextError::DuplicateSubject(
                     fact.subject.clone(),
                 ));

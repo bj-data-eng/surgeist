@@ -29,19 +29,6 @@ impl DomSlotSemanticLimits {
     }
 }
 impl DomHtmlCapture {
-    fn slot_subject(
-        &self,
-        control: &mut Control<'_>,
-        node: NodeId,
-    ) -> Result<HtmlCaptureSubjectId, DomHtmlCaptureError> {
-        for entry in &self.entries {
-            control.charge(1)?;
-            if entry.node == node {
-                return Ok(entry.subject.clone());
-            }
-        }
-        Err(DomHtmlCaptureError::UnmappedSubject)
-    }
     /// Installs real canonical stored assignments and current flat relations
     /// once for reuse by this capture's ordinary HTML semantic queries.
     /// Actual canonical control facts are rebuilt into the same context;
@@ -58,6 +45,7 @@ impl DomHtmlCapture {
             cancellation: cancel,
         };
         control.charge(1)?;
+        let subjects = super::nodes::Subjects::new(&self.entries, &mut control)?;
         let mut assignments = Vec::new();
         let mut inert_nodes = Vec::new();
         for entry in &self.entries {
@@ -67,7 +55,7 @@ impl DomHtmlCapture {
                 let mut nodes = Vec::new();
                 for assigned in slot.assigned_nodes() {
                     control.reserve(&mut nodes, 1)?;
-                    nodes.push(self.slot_subject(&mut control, *assigned)?);
+                    nodes.push(subjects.subject(&mut control, *assigned)?);
                 }
                 control.reserve(&mut assignments, 1)?;
                 assignments.push(HtmlSlotAssignedNodes::new(
@@ -104,7 +92,7 @@ impl DomHtmlCapture {
                     crate::DomFlatRelation::Excluded => HtmlDocumentFlatTreeRelation::Excluded,
                     crate::DomFlatRelation::Root => HtmlDocumentFlatTreeRelation::Root,
                     crate::DomFlatRelation::Parent(parent) => HtmlDocumentFlatTreeRelation::Parent(
-                        self.slot_subject(&mut control, parent)?,
+                        subjects.subject(&mut control, parent)?,
                     ),
                 };
                 control.reserve(&mut inert_nodes, 1)?;
@@ -155,7 +143,7 @@ impl DomHtmlCapture {
             input,
             &self.source,
             &self.capture,
-            &self.entries,
+            &subjects,
             &mut control,
             self.output_default_units,
         )?;
@@ -171,7 +159,7 @@ impl DomHtmlCapture {
             input,
             &self.source,
             &self.capture,
-            &self.entries,
+            &subjects,
             &mut control,
             policy.map(|p| (p, self.base_work)),
         )?;

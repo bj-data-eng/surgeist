@@ -2,6 +2,7 @@
 //! HTML 877d6146487f §4.10.2, §4.10.4, §4.10.5, §4.10.10 and §4.10.18.
 //! Host adapters establish history and current slots; queries execute no transitions.
 
+use super::seen::Seen;
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
 use surgeist_html::attributes::{HtmlAttributeReport, HtmlInputType};
@@ -353,7 +354,12 @@ impl HtmlControlFacts {
             work: 0,
             limit: limits.validation_work,
         };
-        for (index, fact) in associations.iter().enumerate() {
+        let mut seen = Seen::new(
+            associations.len(),
+            |n| validation.charge(n),
+            HtmlControlFactsError::RepresentationExhausted,
+        )?;
+        for fact in associations.iter() {
             validation.charge(1)?;
             let node = validation.node(capture, &fact.subject)?;
             let HtmlCapturedNodeKind::Element(element) = node.kind() else {
@@ -370,13 +376,10 @@ impl HtmlControlFacts {
                     fact.subject.clone(),
                 ));
             }
-            for previous in &associations[..index] {
-                validation.charge(1)?;
-                if previous.subject == fact.subject {
-                    return Err(HtmlControlFactsError::DuplicateSubject(
-                        fact.subject.clone(),
-                    ));
-                }
+            if !seen.first(fact.subject.ordinal()) {
+                return Err(HtmlControlFactsError::DuplicateSubject(
+                    fact.subject.clone(),
+                ));
             }
             if let HtmlFormAssociationState::EstablishedCurrent(Some(owner)) = &fact.state {
                 let owner_node = validation.node(capture, owner)?;
@@ -399,7 +402,12 @@ impl HtmlControlFacts {
                 }
             }
         }
-        for (index, fact) in inputs.iter().enumerate() {
+        let mut seen = Seen::new(
+            inputs.len(),
+            |n| validation.charge(n),
+            HtmlControlFactsError::RepresentationExhausted,
+        )?;
+        for fact in inputs.iter() {
             validation.charge(1)?;
             let node = validation.node(capture, &fact.subject)?;
             let HtmlCapturedNodeKind::Element(element) = node.kind() else {
@@ -412,16 +420,18 @@ impl HtmlControlFacts {
                     fact.subject.clone(),
                 ));
             }
-            for previous in &inputs[..index] {
-                validation.charge(1)?;
-                if previous.subject == fact.subject {
-                    return Err(HtmlControlFactsError::DuplicateSubject(
-                        fact.subject.clone(),
-                    ));
-                }
+            if !seen.first(fact.subject.ordinal()) {
+                return Err(HtmlControlFactsError::DuplicateSubject(
+                    fact.subject.clone(),
+                ));
             }
         }
-        for (index, fact) in options.iter().enumerate() {
+        let mut seen = Seen::new(
+            options.len(),
+            |n| validation.charge(n),
+            HtmlControlFactsError::RepresentationExhausted,
+        )?;
+        for fact in options.iter() {
             validation.charge(1)?;
             let node = validation.node(capture, &fact.subject)?;
             let HtmlCapturedNodeKind::Element(element) = node.kind() else {
@@ -434,16 +444,18 @@ impl HtmlControlFacts {
                     fact.subject.clone(),
                 ));
             }
-            for previous in &options[..index] {
-                validation.charge(1)?;
-                if previous.subject == fact.subject {
-                    return Err(HtmlControlFactsError::DuplicateSubject(
-                        fact.subject.clone(),
-                    ));
-                }
+            if !seen.first(fact.subject.ordinal()) {
+                return Err(HtmlControlFactsError::DuplicateSubject(
+                    fact.subject.clone(),
+                ));
             }
         }
-        for (index, fact) in textareas.iter().enumerate() {
+        let mut seen = Seen::new(
+            textareas.len(),
+            |n| validation.charge(n),
+            HtmlControlFactsError::RepresentationExhausted,
+        )?;
+        for fact in textareas.iter() {
             validation.charge(1)?;
             let node = validation.node(capture, &fact.subject)?;
             let HtmlCapturedNodeKind::Element(element) = node.kind() else {
@@ -456,13 +468,10 @@ impl HtmlControlFacts {
                     fact.subject.clone(),
                 ));
             }
-            for previous in &textareas[..index] {
-                validation.charge(1)?;
-                if previous.subject == fact.subject {
-                    return Err(HtmlControlFactsError::DuplicateSubject(
-                        fact.subject.clone(),
-                    ));
-                }
+            if !seen.first(fact.subject.ordinal()) {
+                return Err(HtmlControlFactsError::DuplicateSubject(
+                    fact.subject.clone(),
+                ));
             }
         }
         Ok(Self {
