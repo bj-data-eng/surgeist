@@ -311,7 +311,7 @@ pub fn big_builder(subjects: usize) -> (HtmlCaptureBuilder, HtmlCaptureBuilderSu
     builder_with(HtmlCaptureLimits::new(
         subjects + 10,
         4 * subjects + 100,
-        100,
+        subjects + 100,
         40 * subjects + 100000,
         100,
         0,
@@ -429,7 +429,7 @@ fn inert_roots_work_is_near_linear_in_the_documents() {
 // ---------------------------------------------------------------------------
 // Language and direction facts
 
-fn attributed(
+pub fn attributed(
     b: &mut HtmlCaptureBuilder,
     d: &HtmlCaptureBuilderSubject,
     name: &str,
@@ -447,7 +447,7 @@ fn attributed(
     )
     .unwrap()
 }
-fn shadow_root(
+pub fn shadow_root(
     b: &mut HtmlCaptureBuilder,
     d: &HtmlCaptureBuilderSubject,
     host: &HtmlCaptureBuilderSubject,

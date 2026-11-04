@@ -8,18 +8,22 @@
 //! 2.2 (a sweep with linear lookups multiplies it by about 2, a scanning one
 //! by about 4). Results do not change; the work is the whole difference.
 
-use super::constructor_work::{big_builder, flat_page, html, inert_fact};
+use super::constructor_work::{attributed, big_builder, flat_page, html, inert_fact, shadow_root};
 use crate::semantics::support::assert_doubling_at_most_2_2;
+use surgeist_html::construction::HtmlDocumentMode;
 use surgeist_html::values::HtmlValueInterpreter;
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureSubjectId, HtmlControlFacts, HtmlControlFactsLimits,
-    HtmlCustomControlClassification, HtmlDocumentFlatTreeRelation, HtmlElementReferenceFact,
+    HtmlCapture, HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlControlCurrentValue,
+    HtmlControlFacts, HtmlControlFactsLimits, HtmlCustomControlClassification,
+    HtmlDocumentFlatTreeRelation, HtmlDocumentLanguageFallback, HtmlElementReferenceFact,
     HtmlElementReferenceFacts, HtmlElementReferenceFactsLimits, HtmlElementReferenceKey,
     HtmlExplicitElementReference, HtmlFlatTreeProducerId, HtmlFlatTreeRevision,
     HtmlFormAssociation, HtmlFormAssociationState, HtmlInertFactLimits, HtmlInertFacts,
-    HtmlInputControlState, HtmlOptionControlState, HtmlSemanticCancellation, HtmlSemanticContext,
-    HtmlSemanticContextInput, HtmlSemanticLimits, HtmlSemanticQuery, HtmlSemanticRequest,
-    HtmlSemanticSession, HtmlTextareaControlState,
+    HtmlInputControlState, HtmlLanguageDirectionFacts, HtmlLanguageDirectionLimits,
+    HtmlOptionControlState, HtmlPragmaLanguage, HtmlProtocolLanguage, HtmlScriptingStatus,
+    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticLimits,
+    HtmlSemanticQuery, HtmlSemanticRequest, HtmlSemanticSession, HtmlSlotAssignedNodes,
+    HtmlTextareaControlState,
 };
 
 const DOUBLINGS: [usize; 4] = [250, 500, 1000, 2000];
@@ -277,4 +281,141 @@ fn a_control_state_sweep_finds_each_state_in_constant_work() {
             true,
         )
     });
+}
+
+fn language_context(
+    capture: &HtmlCapture,
+    fallbacks: Vec<HtmlDocumentLanguageFallback>,
+    values: Vec<HtmlControlCurrentValue>,
+    assignments: Vec<HtmlSlotAssignedNodes>,
+) -> HtmlSemanticContext {
+    let records = fallbacks.capacity() + values.capacity() + assignments.capacity();
+    let facts = HtmlLanguageDirectionFacts::new(
+        capture,
+        capture.host_facts_revision().clone(),
+        fallbacks,
+        values,
+        assignments,
+        HtmlLanguageDirectionLimits::new(records, 0, 1 << 20, 1 << 40),
+    )
+    .unwrap();
+    HtmlSemanticContext::new(
+        capture,
+        capture.host_facts_revision().clone(),
+        HtmlSemanticContextInput::new(vec![]).with_language_direction(facts),
+        0,
+    )
+    .unwrap()
+}
+
+/// `count` documents, each holding one `div`, with a language fallback each.
+fn language_fallback_sweep(count: usize) -> usize {
+    let (mut b, first) = big_builder(2 * count);
+    let mut documents = vec![first];
+    for _ in 1..count {
+        documents.push(
+            b.add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Unavailable,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap(),
+        );
+    }
+    let divs: Vec<_> = documents.iter().map(|d| html(&mut b, d, "div")).collect();
+    for (document, div) in documents.iter().zip(&divs) {
+        b.establish_children(div, &[]).unwrap();
+        b.establish_children(document, std::slice::from_ref(div))
+            .unwrap();
+    }
+    let capture = b.finish().unwrap();
+    let fallbacks = documents
+        .iter()
+        .map(|d| {
+            HtmlDocumentLanguageFallback::new(
+                capture.subject_id(d).unwrap(),
+                HtmlPragmaLanguage::Tag("en".into()),
+                HtmlProtocolLanguage::Absent,
+            )
+        })
+        .collect();
+    let context = language_context(&capture, fallbacks, vec![], vec![]);
+    let ids: Vec<_> = divs
+        .iter()
+        .map(|div| capture.subject_id(div).unwrap())
+        .collect();
+    sweep_work(&capture, &context, &ids, HtmlSemanticQuery::Language)
+}
+
+fn current_value_sweep(count: usize) -> usize {
+    let (mut b, d) = big_builder(count);
+    let areas: Vec<_> = (0..count)
+        .map(|_| attributed(&mut b, &d, "textarea", &[("required", "")]))
+        .collect();
+    for area in &areas {
+        b.establish_children(area, &[]).unwrap();
+    }
+    b.establish_children(&d, &areas).unwrap();
+    let capture = b.finish().unwrap();
+    let ids: Vec<_> = areas
+        .iter()
+        .map(|area| capture.subject_id(area).unwrap())
+        .collect();
+    let values = ids
+        .iter()
+        .map(|id| HtmlControlCurrentValue::new(id.clone(), Some("typed".into())))
+        .collect();
+    let context = language_context(&capture, vec![], values, vec![]);
+    sweep_work(
+        &capture,
+        &context,
+        &ids,
+        HtmlSemanticQuery::TextareaValueMissing,
+    )
+}
+
+/// `count` `dir=auto` slots of one shadow root, each with an empty assignment.
+fn slot_assignment_sweep(count: usize) -> usize {
+    let (mut b, d) = big_builder(count + 2);
+    let host = html(&mut b, &d, "div");
+    let root = shadow_root(&mut b, &d, &host);
+    let slots: Vec<_> = (0..count)
+        .map(|_| attributed(&mut b, &d, "slot", &[("dir", "auto")]))
+        .collect();
+    for slot in &slots {
+        b.establish_children(slot, &[]).unwrap();
+    }
+    b.establish_children(&root, &slots).unwrap();
+    let capture = b.finish().unwrap();
+    let ids: Vec<_> = slots
+        .iter()
+        .map(|slot| capture.subject_id(slot).unwrap())
+        .collect();
+    let assignments = ids
+        .iter()
+        .map(|id| HtmlSlotAssignedNodes::new(id.clone(), Some(vec![])))
+        .collect();
+    let context = language_context(&capture, vec![], vec![], assignments);
+    sweep_work(&capture, &context, &ids, HtmlSemanticQuery::Directionality)
+}
+
+#[test]
+fn a_language_sweep_finds_each_document_fallback_in_constant_work() {
+    assert_doubling_at_most_2_2(
+        "language fallback sweep",
+        &DOUBLINGS,
+        language_fallback_sweep,
+    );
+}
+#[test]
+fn a_current_value_sweep_finds_each_control_value_in_constant_work() {
+    assert_doubling_at_most_2_2("current value sweep", &DOUBLINGS, current_value_sweep);
+}
+#[test]
+fn a_directionality_sweep_finds_each_slot_assignment_in_constant_work() {
+    assert_doubling_at_most_2_2(
+        "slot assignment sweep",
+        &[500, 1000, 2000, 4000],
+        slot_assignment_sweep,
+    );
 }
