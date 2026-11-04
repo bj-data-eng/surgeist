@@ -528,10 +528,10 @@ impl HtmlSemanticContext {
             HtmlSemanticContextError::MediaCaptureMismatch,
             HtmlSemanticContextError::MediaHostRevisionMismatch,
         )?;
-        if let Some(facts) = &media {
-            if media_revision.as_ref() != Some(facts.revision()) {
-                return Err(HtmlSemanticContextError::MediaRevisionMismatch);
-            }
+        if let Some(facts) = &media
+            && media_revision.as_ref() != Some(facts.revision())
+        {
+            return Err(HtmlSemanticContextError::MediaRevisionMismatch);
         }
         if microdata
             .as_ref()
@@ -546,10 +546,10 @@ impl HtmlSemanticContext {
             HtmlSemanticContextError::BaseCaptureMismatch,
             HtmlSemanticContextError::BaseHostRevisionMismatch,
         )?;
-        if let Some(facts) = &base_facts {
-            if base_revision.as_ref() != Some(facts.revision()) {
-                return Err(HtmlSemanticContextError::BaseRevisionMismatch);
-            }
+        if let Some(facts) = &base_facts
+            && base_revision.as_ref() != Some(facts.revision())
+        {
+            return Err(HtmlSemanticContextError::BaseRevisionMismatch);
         }
         qualify(
             rel_facts.as_ref(),
@@ -558,10 +558,10 @@ impl HtmlSemanticContext {
             HtmlSemanticContextError::LinkRelationshipsCaptureMismatch,
             HtmlSemanticContextError::LinkRelationshipsHostRevisionMismatch,
         )?;
-        if let Some(facts) = &rel_facts {
-            if facts.revisions() != &rel_revisions {
-                return Err(HtmlSemanticContextError::LinkRelationshipsRevisionMismatch);
-            }
+        if let Some(facts) = &rel_facts
+            && facts.revisions() != &rel_revisions
+        {
+            return Err(HtmlSemanticContextError::LinkRelationshipsRevisionMismatch);
         }
         qualify(
             image_dimensions.as_ref(),
@@ -590,10 +590,10 @@ impl HtmlSemanticContext {
             HtmlSemanticContextError::NaturalDimensionsCaptureMismatch,
             HtmlSemanticContextError::NaturalDimensionsHostRevisionMismatch,
         )?;
-        if let Some(facts) = &natural_dimensions {
-            if natural_dimension_revision.as_ref() != Some(facts.revision()) {
-                return Err(HtmlSemanticContextError::NaturalDimensionsRevisionMismatch);
-            }
+        if let Some(facts) = &natural_dimensions
+            && natural_dimension_revision.as_ref() != Some(facts.revision())
+        {
+            return Err(HtmlSemanticContextError::NaturalDimensionsRevisionMismatch);
         }
         qualify(
             global_inheritance.as_ref(),
@@ -602,10 +602,10 @@ impl HtmlSemanticContext {
             HtmlSemanticContextError::GlobalInheritanceCaptureMismatch,
             HtmlSemanticContextError::GlobalInheritanceHostRevisionMismatch,
         )?;
-        if let Some(facts) = &global_inheritance {
-            if global_inheritance_revision.as_ref() != Some(facts.revision()) {
-                return Err(HtmlSemanticContextError::GlobalInheritanceRevisionMismatch);
-            }
+        if let Some(facts) = &global_inheritance
+            && global_inheritance_revision.as_ref() != Some(facts.revision())
+        {
+            return Err(HtmlSemanticContextError::GlobalInheritanceRevisionMismatch);
         }
         qualify(
             inert.as_ref(),
@@ -614,10 +614,10 @@ impl HtmlSemanticContext {
             HtmlSemanticContextError::InertCaptureMismatch,
             HtmlSemanticContextError::InertHostRevisionMismatch,
         )?;
-        if let Some(facts) = &inert {
-            if inert_revision.as_ref() != Some(facts.flat_revision()) {
-                return Err(HtmlSemanticContextError::InertRevisionMismatch);
-            }
+        if let Some(facts) = &inert
+            && inert_revision.as_ref() != Some(facts.flat_revision())
+        {
+            return Err(HtmlSemanticContextError::InertRevisionMismatch);
         }
         qualify(
             output_defaults.as_ref(),
