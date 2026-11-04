@@ -8,6 +8,8 @@ mod nodes;
 mod plan;
 mod slot;
 pub use slot::DomSlotSemanticLimits;
+#[cfg(test)]
+mod lookup_work;
 
 use std::{
     convert::Infallible,
@@ -260,7 +262,11 @@ impl DomHtmlCapture {
         let mapped = self
             .entries
             .iter()
-            .find(|e| e.node == node)
+            .find(|e| {
+                #[cfg(test)]
+                lookup_work::visit();
+                e.node == node
+            })
             .map(|e| e.subject.clone())
             .ok_or(DomHtmlCaptureError::UnmappedSubject);
         // Preserve the ordinary wrong-document diagnostic for unmapped nodes,
@@ -274,7 +280,11 @@ impl DomHtmlCapture {
         self.capture.node(subject)?;
         self.entries
             .iter()
-            .find(|e| &e.subject == subject)
+            .find(|e| {
+                #[cfg(test)]
+                lookup_work::visit();
+                &e.subject == subject
+            })
             .map(|e| e.node)
             .ok_or(DomHtmlCaptureError::UnmappedSubject)
     }
