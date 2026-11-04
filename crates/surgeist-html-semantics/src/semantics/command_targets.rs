@@ -155,7 +155,7 @@ impl HtmlElementReferenceFacts {
         };
         let mut seen = Seen::new(
             records.len(),
-            |n| charge(n),
+            &mut charge,
             HtmlElementReferenceFactsError::RepresentationExhausted,
         )?;
         for fact in records.iter() {
