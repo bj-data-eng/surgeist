@@ -844,6 +844,19 @@ mod tests {
     }
 
     #[test]
+    fn an_edit_of_a_bank_execution_also_holds_lands_in_the_request_and_not_in_the_held_bank() {
+        let held = std::sync::Arc::new(crate::construction::associated::Inputs::default());
+        let reached = InputBank::Shared(Some(std::sync::Arc::clone(&held)))
+            .edited(|bank| bank.encoding_urls = Vec::new());
+        // The edit is not lost: the request carries its own editable bank, and
+        // the bank execution holds is exactly the one it was given.
+        assert!(reached.shared().is_none());
+        let edited = reached.inputs().expect("the edit made a bank");
+        assert!(!std::ptr::eq(edited, std::sync::Arc::as_ptr(&held)));
+        assert_eq!(std::sync::Arc::strong_count(&held), 1);
+    }
+
+    #[test]
     fn an_edit_after_sharing_reopens_a_bank_nothing_else_holds() {
         let shared = HtmlDocumentParseRequest::offline(HtmlSource::utf8(""), limits(6, 1))
             .with_encoding_url_facts(Vec::new())
