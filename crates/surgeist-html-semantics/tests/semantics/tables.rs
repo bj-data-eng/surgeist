@@ -1,6 +1,7 @@
 mod admitted_work;
 mod caption;
 mod collections;
+mod explicit_headers;
 mod indices;
 mod model_work;
 mod scan_bounds;
