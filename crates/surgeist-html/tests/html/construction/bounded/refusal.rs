@@ -44,7 +44,7 @@ fn a_refused_operation_keeps_its_command_and_pending_actions() {
     }
     assert!(performed > 0, "no action had run before the refusal");
     let HtmlConstructionCommit::Changed { storage, created } =
-        operation.try_ready().unwrap().commit()
+        operation.try_ready().unwrap().commit().unwrap()
     else {
         panic!("creation");
     };
@@ -75,7 +75,7 @@ fn a_failed_operation_refuses_with_its_latched_cause_and_still_aborts_to_its_sto
     let refusal = operation.try_ready().unwrap_err();
     assert_eq!(refusal.reason(), failure.reason());
     let (operation, _) = refusal.into_parts();
-    let (storage, command, retired) = operation.abort().into_parts();
+    let (storage, command, retired) = operation.abort().unwrap().into_parts();
     assert_eq!(storage.len(), 1);
     assert!(matches!(command, HtmlConstructionCommand::Insert { .. }));
     assert!(retired.is_none());
@@ -94,7 +94,7 @@ fn a_refused_text_append_returns_its_operands() {
     expect_not_ready(&refusal);
     let (mut append, _) = refusal.into_parts();
     assert!(append.next_action().unwrap().is_some());
-    let (owner, _node, incoming, discarded) = append.abort().into_parts();
+    let (owner, _node, incoming, discarded) = append.abort().unwrap().into_parts();
     assert_eq!(incoming.code_units(), [0x63, 0x64]);
     assert!(discarded.is_none());
     assert_eq!(owner.len(), 1);

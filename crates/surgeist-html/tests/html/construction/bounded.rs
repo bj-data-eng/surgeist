@@ -50,7 +50,7 @@ fn change(
     storage: HtmlConstructionStorage,
     command: HtmlConstructionCommand,
 ) -> (HtmlConstructionStorage, Option<HtmlBuilderNode>) {
-    match ready(storage, command).commit() {
+    match ready(storage, command).commit().unwrap() {
         HtmlConstructionCommit::Changed { storage, created } => (storage, created),
         _ => panic!("mutation produced publication"),
     }
@@ -86,7 +86,10 @@ fn publish(
     storage: HtmlConstructionStorage,
     root: HtmlBuilderNode,
 ) -> (HtmlConstructionResult, HtmlConstructionLease) {
-    match ready(storage, HtmlConstructionCommand::Publish { root }).commit() {
+    match ready(storage, HtmlConstructionCommand::Publish { root })
+        .commit()
+        .unwrap()
+    {
         HtmlConstructionCommit::Published { result, lease } => (result, lease),
         _ => panic!("publication produced mutation"),
     }
@@ -118,7 +121,7 @@ fn refuse(
         expected
     ));
     assert!(matches!(slots::operation(&mut owner), Err(error) if error == expected));
-    owner.unwrap().abort().into_parts().0
+    owner.unwrap().abort().unwrap().into_parts().0
 }
 
 /// What the actions of one driven operation describe, excluding the
@@ -181,7 +184,7 @@ fn driven(
         action.perform().unwrap().accept();
     }
     let ready = slots::operation(&mut operation).unwrap();
-    let HtmlConstructionCommit::Changed { storage, .. } = ready.commit() else {
+    let HtmlConstructionCommit::Changed { storage, .. } = ready.commit().unwrap() else {
         panic!("mutation produced publication")
     };
     (storage, work)
@@ -246,7 +249,7 @@ fn append_amortized(
         observation.accept();
     }
     let HtmlConstructionCommit::Changed { storage, .. } =
-        slots::operation(&mut operation).unwrap().commit()
+        slots::operation(&mut operation).unwrap().commit().unwrap()
     else {
         panic!("mutation produced publication")
     };
@@ -398,7 +401,7 @@ fn interrupted_append_reserve_returns_the_tree_and_keeps_the_grown_order_bank() 
     assert_eq!((grown.capacity(), grown.initialized_len()), (8, 1));
     assert_ne!(grown.id(), before.id());
     assert!(grown.id().same_owner_role(before.id()));
-    let (owner, command, wrapper) = operation.unwrap().abort().into_parts();
+    let (owner, command, wrapper) = operation.unwrap().abort().unwrap().into_parts();
     assert!(matches!(command, HtmlConstructionCommand::Insert { .. }));
     assert!(wrapper.is_none());
     assert_eq!(owner.usage(), usage);
@@ -427,7 +430,7 @@ fn interrupted_append_reserve_returns_the_tree_and_keeps_the_grown_order_bank() 
         action.perform().unwrap().accept();
     }
     let HtmlConstructionCommit::Changed { storage: owner, .. } =
-        slots::operation(&mut operation).unwrap().commit()
+        slots::operation(&mut operation).unwrap().commit().unwrap()
     else {
         panic!()
     };
@@ -496,7 +499,7 @@ fn refused_append_reserve_reports_the_unchanged_bank_and_latches_the_first_failu
         break before;
     };
     assert_eq!(failure.capacity(), 1);
-    let owner = operation.unwrap().abort().into_parts().0;
+    let owner = operation.unwrap().abort().unwrap().into_parts().0;
     assert_eq!(owner.usage(), usage);
     // A capacity no provider can supply returns the unchanged bank report.
     let mut operation = Some(owner.prepare(HtmlConstructionCommand::Insert {
@@ -527,7 +530,7 @@ fn refused_append_reserve_reports_the_unchanged_bank_and_latches_the_first_failu
         operation.as_mut().unwrap().next_action().err().as_ref(),
         cause::ALLOCATION_FAILED
     ));
-    let owner = operation.unwrap().abort().into_parts().0;
+    let owner = operation.unwrap().abort().unwrap().into_parts().0;
     assert_eq!(owner.usage(), usage);
     assert_eq!(owner.node(&root).unwrap().child_count(), 1);
     assert!(owner.node(&b).unwrap().parent().is_none());
@@ -550,7 +553,7 @@ fn capacity_is_only_accepted_by_a_described_geometric_reserve() {
         slots::operation(&mut operation).err().as_ref(),
         cause::CAPACITY_MISMATCH
     ));
-    let owner = operation.unwrap().abort().into_parts().0;
+    let owner = operation.unwrap().abort().unwrap().into_parts().0;
     assert_eq!(owner.len(), 2);
 }
 
@@ -588,7 +591,7 @@ fn append_cycle_refuses_before_any_child_order_growth() {
         }
     };
     assert_eq!(error, cause::CYCLE);
-    let owner = operation.unwrap().abort().into_parts().0;
+    let owner = operation.unwrap().abort().unwrap().into_parts().0;
     assert!(owner.node(&outer).unwrap().parent().is_none());
 }
 
@@ -640,7 +643,7 @@ fn initialization_and_observations_cannot_be_skipped_or_promoted_after_refusal()
         slots::operation(&mut operation).err().as_ref(),
         cause::OPERATION_NOT_READY
     ));
-    let (retained, command, retired) = operation.unwrap().abort().into_parts();
+    let (retained, command, retired) = operation.unwrap().abort().unwrap().into_parts();
     assert!(retained.is_empty());
     assert!(matches!(command, HtmlConstructionCommand::CreateFragment));
     assert!(retired.is_none());
@@ -679,7 +682,7 @@ fn reserve_observation_retains_actual_capacity_and_original_payload_on_abort() {
         }
         action.perform().unwrap().accept();
     }
-    let (storage, command, _) = owner.unwrap().abort().into_parts();
+    let (storage, command, _) = owner.unwrap().abort().unwrap().into_parts();
     assert_eq!(storage.usage().nodes(), 0);
     let HtmlConstructionCommand::Create {
         kind: HtmlNodeKind::Text(text),
@@ -977,11 +980,11 @@ fn aborted_after(
     for _ in 0..performed {
         match operation.as_mut().unwrap().next_action().unwrap() {
             Some(action) => action.perform().unwrap().accept(),
-            None => return (true, operation.unwrap().abort().into_parts().0),
+            None => return (true, operation.unwrap().abort().unwrap().into_parts().0),
         }
     }
     let finished = operation.as_mut().unwrap().next_action().unwrap().is_none();
-    let (owner, command, wrapper) = operation.unwrap().abort().into_parts();
+    let (owner, command, wrapper) = operation.unwrap().abort().unwrap().into_parts();
     assert!(!matches!(command, HtmlConstructionCommand::Publish { .. }));
     assert!(wrapper.is_none());
     (finished, owner)
@@ -1090,7 +1093,7 @@ fn record_layout_exhaustion_refuses_before_provider_growth_and_preserves_existin
         }
         action.perform().unwrap().accept();
     }
-    let owner = sizing.abort().into_parts().0;
+    let owner = sizing.abort().unwrap().into_parts().0;
     let additional = (isize::MAX as usize) / size + 1;
     let owner = refuse(
         owner,
@@ -1120,7 +1123,7 @@ fn retained_pending_child_report_survives_abort_and_recreate_without_reusing_ide
             break report;
         }
     };
-    let (owner, _, _) = operation.unwrap().abort().into_parts();
+    let (owner, _, _) = operation.unwrap().abort().unwrap().into_parts();
     assert_eq!(old.role(), HtmlConstructionAllocationRole::Children);
     assert_eq!(old.child_position(), Some(1));
     assert!(owner.node_at(1).is_none());
@@ -1143,7 +1146,7 @@ fn retained_pending_child_report_survives_abort_and_recreate_without_reusing_ide
         storage: owner,
         created,
         ..
-    } = slots::operation(&mut operation).unwrap().commit()
+    } = slots::operation(&mut operation).unwrap().commit().unwrap()
     else {
         panic!("creation")
     };
@@ -1219,7 +1222,7 @@ fn grown_child_order_bank_never_reissues_retired_identity_after_abort() {
     assert_ne!(grown.id(), previous.id());
     assert!(grown.id().same_owner_role(previous.id()));
     assert!(grown.capacity() > previous.capacity());
-    let (owner, _, _) = operation.unwrap().abort().into_parts();
+    let (owner, _, _) = operation.unwrap().abort().unwrap().into_parts();
     assert_eq!(children_snapshot(&owner, &root), std::slice::from_ref(&a));
     assert!(owner.node(&b).unwrap().parent().is_none());
     // The retry finds the grown bank and requests no growth.
@@ -1236,7 +1239,7 @@ fn grown_child_order_bank_never_reissues_retired_identity_after_abort() {
         action.perform().unwrap().accept();
     }
     let HtmlConstructionCommit::Changed { storage: owner, .. } =
-        slots::operation(&mut operation).unwrap().commit()
+        slots::operation(&mut operation).unwrap().commit().unwrap()
     else {
         panic!()
     };
@@ -1317,7 +1320,7 @@ fn already_correct_insertions_change_no_order_and_allocate_nothing() {
         }
         assert!(preflight);
         let HtmlConstructionCommit::Changed { storage: owner, .. } =
-            slots::operation(&mut operation).unwrap().commit()
+            slots::operation(&mut operation).unwrap().commit().unwrap()
         else {
             panic!()
         };
@@ -1375,7 +1378,7 @@ fn self_reference_validates_parent_before_noop_and_valid_noop_has_no_allocation(
         action.perform().unwrap().accept();
     }
     let HtmlConstructionCommit::Changed { storage: owner, .. } =
-        slots::operation(&mut operation).unwrap().commit()
+        slots::operation(&mut operation).unwrap().commit().unwrap()
     else {
         panic!()
     };
@@ -1414,7 +1417,7 @@ fn element_creation_installs_supplied_link_history_only_in_atomic_ready_commit()
             storage: owner,
             created: Some(link),
             ..
-        } = ready.commit()
+        } = ready.commit().unwrap()
         else {
             panic!()
         };
@@ -1478,7 +1481,7 @@ fn invalid_link_history_refuses_before_providers_and_recovers_exact_element_inpu
             slots::operation(&mut operation).err().as_ref(),
             cause::WRONG_NODE_KIND
         ));
-        let (owner, command, _) = operation.unwrap().abort().into_parts();
+        let (owner, command, _) = operation.unwrap().abort().unwrap().into_parts();
         assert_eq!(owner.len(), 0);
         let HtmlConstructionCommand::CreateElement {
             name,
@@ -1527,7 +1530,7 @@ fn interrupted_element_creation_returns_original_command_without_publishing_a_no
         slots::operation(&mut operation).err().as_ref(),
         cause::OPERATION_NOT_READY
     ));
-    let (owner, command, _) = operation.unwrap().abort().into_parts();
+    let (owner, command, _) = operation.unwrap().abort().unwrap().into_parts();
     assert_eq!(owner.len(), 1);
     assert_eq!(owner.position(&root), Ok(0));
     assert!(owner.node_at(1).is_none());

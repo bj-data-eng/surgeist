@@ -395,9 +395,7 @@ fn aborting_a_pending_operation_whose_owner_was_taken_reports_the_registry_row()
     let operation = pending.operation.take().unwrap();
     assert_registry_row(owner.abort_pending(&mut control, pending), &control);
     // The operation was never consumed, so aborting it returns the storage.
-    owner
-        .restore_aborted(&mut control, operation.abort())
-        .unwrap();
+    owner.abort_operation(&mut control, operation).unwrap();
     drained(owner, &mut control);
 }
 

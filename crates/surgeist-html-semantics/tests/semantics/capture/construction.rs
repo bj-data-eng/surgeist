@@ -687,7 +687,7 @@ fn command(
     while let Some(action) = value.next_action().unwrap() {
         action.perform().unwrap().accept();
     }
-    value.try_ready().unwrap().commit()
+    value.try_ready().unwrap().commit().unwrap()
 }
 fn change(
     storage: surgeist_html::bounded::construction::HtmlConstructionStorage,

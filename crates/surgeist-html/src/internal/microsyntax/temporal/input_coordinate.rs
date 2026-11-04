@@ -14,6 +14,8 @@ use crate::{
 };
 use std::{error::Error, fmt, num::NonZeroU32};
 
+const DAYS_IN_WEEK: NonZeroU32 = NonZeroU32::MIN.saturating_add(6);
+
 fn epoch_milliseconds(ordinal: HtmlNonNegativeInteger) -> HtmlSignedDecimal {
     HtmlSignedDecimal::integer_difference(ordinal, 719162_u128.into()).multiplied_by(86400000)
 }
@@ -36,28 +38,99 @@ pub enum HtmlInputTemporalCoordinateUnit {
 /// allocator-failure recovery; raw admission remains the interpreter's task.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlInputTemporalCoordinate {
-    state: HtmlInputType,
+    state: TemporalState,
     value: HtmlSignedDecimal,
+}
+
+/// The five input states that define a temporal string-to-number conversion.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TemporalState {
+    Date,
+    Month,
+    Week,
+    Time,
+    LocalDateTime,
+}
+impl TemporalState {
+    fn of(state: HtmlInputType) -> Option<Self> {
+        Some(match state {
+            HtmlInputType::Date => Self::Date,
+            HtmlInputType::Month => Self::Month,
+            HtmlInputType::Week => Self::Week,
+            HtmlInputType::Time => Self::Time,
+            HtmlInputType::LocalDateTime => Self::LocalDateTime,
+            _ => return None,
+        })
+    }
+    fn input_type(self) -> HtmlInputType {
+        match self {
+            Self::Date => HtmlInputType::Date,
+            Self::Month => HtmlInputType::Month,
+            Self::Week => HtmlInputType::Week,
+            Self::Time => HtmlInputType::Time,
+            Self::LocalDateTime => HtmlInputType::LocalDateTime,
+        }
+    }
+    /// The defining clause, the scale factor, the default step and the default step base.
+    fn definition(self) -> (&'static str, u32, u32, i128) {
+        macro_rules! source {
+            ($anchor:literal) => { concat!("https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#", $anchor) };
+        }
+        match self {
+            Self::Date => (
+                source!("date-state-(type=date):concept-input-value-string-number"),
+                86400000,
+                1,
+                0,
+            ),
+            Self::Month => (
+                source!("month-state-(type=month):concept-input-value-string-number"),
+                1,
+                1,
+                0,
+            ),
+            Self::Week => (
+                source!("week-state-(type=week):concept-input-value-string-number"),
+                604800000,
+                1,
+                -259200000,
+            ),
+            Self::Time => (
+                source!("time-state-(type=time):concept-input-value-string-number"),
+                1000,
+                60,
+                0,
+            ),
+            Self::LocalDateTime => (
+                source!(
+                    "local-date-and-time-state-(type=datetime-local):concept-input-value-string-number"
+                ),
+                1000,
+                60,
+                0,
+            ),
+        }
+    }
 }
 
 impl HtmlInputTemporalCoordinate {
     /// Actual source fallback without requiring successful content conversion.
     pub(crate) fn default_step_base_for(state: HtmlInputType) -> Option<Self> {
-        let (_, _, _, base) = Self::definition_for(state)?;
+        let state = TemporalState::of(state)?;
         Some(Self {
             state,
-            value: HtmlInteger::from(base).into(),
+            value: HtmlInteger::from(state.definition().3).into(),
         })
     }
 
     /// Returns the input state whose conversion produced this quantity.
     pub fn state(&self) -> HtmlInputType {
-        self.state
+        self.state.input_type()
     }
 
     /// Returns the state's coordinate unit.
     pub fn unit(&self) -> HtmlInputTemporalCoordinateUnit {
-        if self.state == HtmlInputType::Month {
+        if self.state == TemporalState::Month {
             HtmlInputTemporalCoordinateUnit::Months
         } else {
             HtmlInputTemporalCoordinateUnit::Milliseconds
@@ -95,7 +168,7 @@ impl HtmlInputTemporalCoordinate {
 
     /// Reports HTML's periodic domain designation; only Time has this property.
     pub fn has_periodic_domain(&self) -> bool {
-        self.state == HtmlInputType::Time
+        self.state == TemporalState::Time
     }
 
     /// Returns the exact scaled default step in coordinate units.
@@ -125,48 +198,7 @@ impl HtmlInputTemporalCoordinate {
     }
 
     fn definition(&self) -> (&'static str, u32, u32, i128) {
-        Self::definition_for(self.state).expect("only temporal producers construct coordinates")
-    }
-
-    fn definition_for(state: HtmlInputType) -> Option<(&'static str, u32, u32, i128)> {
-        macro_rules! source {
-            ($anchor:literal) => { concat!("https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#", $anchor) };
-        }
-        Some(match state {
-            HtmlInputType::Date => (
-                source!("date-state-(type=date):concept-input-value-string-number"),
-                86400000,
-                1,
-                0,
-            ),
-            HtmlInputType::Month => (
-                source!("month-state-(type=month):concept-input-value-string-number"),
-                1,
-                1,
-                0,
-            ),
-            HtmlInputType::Week => (
-                source!("week-state-(type=week):concept-input-value-string-number"),
-                604800000,
-                1,
-                -259200000,
-            ),
-            HtmlInputType::Time => (
-                source!("time-state-(type=time):concept-input-value-string-number"),
-                1000,
-                60,
-                0,
-            ),
-            HtmlInputType::LocalDateTime => (
-                source!(
-                    "local-date-and-time-state-(type=datetime-local):concept-input-value-string-number"
-                ),
-                1000,
-                60,
-                0,
-            ),
-            _ => return None,
-        })
+        self.state.definition()
     }
 }
 
@@ -186,7 +218,7 @@ impl HtmlDate {
     /// UTC midnight, ignoring leap seconds as specified by the Date state.
     pub fn input_coordinate(&self) -> HtmlInputTemporalCoordinate {
         HtmlInputTemporalCoordinate {
-            state: HtmlInputType::Date,
+            state: TemporalState::Date,
             value: epoch_milliseconds(gregorian_ordinal(self)),
         }
     }
@@ -195,16 +227,13 @@ impl HtmlDate {
 impl HtmlMonth {
     /// Returns signed whole months from January 1970, without a year cap.
     pub fn input_coordinate(&self) -> HtmlInputTemporalCoordinate {
-        let preceding = self
+        let ordinal = self
             .year
-            .value
-            .decremented()
-            .expect("HTML years are positive");
-        let ordinal = preceding
+            .preceding_years()
             .multiplied_by(12)
             .added_to(&u128::from(self.month - 1).into());
         HtmlInputTemporalCoordinate {
-            state: HtmlInputType::Month,
+            state: TemporalState::Month,
             value: HtmlSignedDecimal::integer_difference(ordinal, 23628_u128.into()),
         }
     }
@@ -214,9 +243,15 @@ impl HtmlWeek {
     /// Returns signed milliseconds to Monday of this ISO week from 1970-01-01
     /// UTC midnight, ignoring leap seconds. Week 1 contains January 4.
     pub fn input_coordinate(&self) -> HtmlInputTemporalCoordinate {
-        let january_four = HtmlDate::new(self.year.clone(), 1, 4).expect("January 4 exists");
+        let january_four = HtmlDate {
+            month: HtmlMonth {
+                year: self.year.clone(),
+                month: 1,
+            },
+            day: 4,
+        };
         let ordinal = gregorian_ordinal(&january_four);
-        let monday_offset = ordinal.remainder(NonZeroU32::new(7).expect("7 is nonzero"));
+        let monday_offset = ordinal.remainder(DAYS_IN_WEEK);
         // January 4's ordinal is at least three. Its containing Monday cannot
         // precede ordinal zero because year 1 begins on Monday.
         let week_one =
@@ -227,7 +262,7 @@ impl HtmlWeek {
             .integer_part()
             .added_to(&u128::from(u32::from(self.week - 1) * 7).into());
         HtmlInputTemporalCoordinate {
-            state: HtmlInputType::Week,
+            state: TemporalState::Week,
             value: epoch_milliseconds(monday),
         }
     }
@@ -241,7 +276,7 @@ impl HtmlParsedTime {
         )
         .into();
         HtmlInputTemporalCoordinate {
-            state: HtmlInputType::Time,
+            state: TemporalState::Time,
             value: HtmlSignedDecimal::from_magnitude(
                 seconds.added_to(&self.second).multiplied_by(1000),
                 false,
@@ -257,7 +292,7 @@ impl HtmlParsedLocalDateTime {
         let date = self.date.input_coordinate();
         let time = self.time.input_coordinate();
         HtmlInputTemporalCoordinate {
-            state: HtmlInputType::LocalDateTime,
+            state: TemporalState::LocalDateTime,
             value: date.value.added_to(&time.value),
         }
     }

@@ -314,13 +314,22 @@ fn text_of_mut(storage: &mut HtmlConstructionStorage, index: usize) -> Option<&m
     }
 }
 /// Removes initialized tail from a reused native backing. The tail qualification proved the
-/// backing exclusively held, so this truncates in place. Were another holder ever to exist, the
-/// record's own text still returns to its original length, on a copy that leaves the other holder
-/// what it saw.
-fn truncate_tail(storage: &mut HtmlConstructionStorage, index: usize, old_len: usize) {
-    if let Some(value) = text_of_mut(storage, index) {
-        Arc::make_mut(value.construction_backing_mut()).truncate(old_len);
-    }
+/// backing exclusively held, so this truncates in place. Were another holder to share it, a copy
+/// would be an allocation nothing metered, so the truncation is refused with the
+/// shared-allocation error and nothing changes. A record that is no longer text has no tail to
+/// remove.
+fn truncate_tail(
+    storage: &mut HtmlConstructionStorage,
+    index: usize,
+    old_len: usize,
+) -> Result<(), HtmlConstructionError> {
+    let Some(value) = text_of_mut(storage, index) else {
+        return Ok(());
+    };
+    let backing = Arc::get_mut(value.construction_backing_mut())
+        .ok_or(HtmlConstructionErrorKind::SharedAllocationAliased)?;
+    backing.truncate(old_len);
+    Ok(())
 }
 
 impl HtmlConstructionTextAppend {
@@ -516,29 +525,45 @@ impl HtmlConstructionTextAppend {
     /// A distinct pending copy keeps all initialized units for its actual ticket's
     /// stopped retention and disposal. Neither copy nor tail becomes native-visible.
     /// Successful growth is retained and remains visible in actual capacity.
-    pub fn abort(mut self) -> HtmlConstructionTextAppendCompletion {
-        let discarded = match self.progress {
-            Progress::InPlace { target, step } => {
-                if step.tail_is_exclusive() {
-                    truncate_tail(&mut self.storage, target.index, target.old_len);
-                }
-                None
+    ///
+    /// A backing that another holder shares cannot be truncated without an unmetered copy; the
+    /// abort is then refused with the shared-allocation error and the append is handed back
+    /// unchanged.
+    #[expect(
+        clippy::result_large_err,
+        reason = "a refusal hands the complete owner back without boxing it"
+    )]
+    pub fn abort(
+        mut self,
+    ) -> Result<HtmlConstructionTextAppendCompletion, HtmlConstructionRefusal<Self>> {
+        let truncated = match &self.progress {
+            Progress::InPlace { target, step } if step.tail_is_exclusive() => {
+                truncate_tail(&mut self.storage, target.index, target.old_len)
             }
             Progress::ReadyInPlace(target) => {
-                truncate_tail(&mut self.storage, target.index, target.old_len);
-                None
+                truncate_tail(&mut self.storage, target.index, target.old_len)
             }
+            _ => Ok(()),
+        };
+        if let Err(error) = truncated {
+            return Err(HtmlConstructionRefusal::new(self, error));
+        }
+        let discarded = match self.progress {
             Progress::Prefix { copy, .. }
             | Progress::Preserved { copy, .. }
             | Progress::ReadyPreserved { copy, .. } => Some(copy),
-            Progress::Inspect | Progress::Select(_) | Progress::Initialize(_) => None,
+            Progress::InPlace { .. }
+            | Progress::ReadyInPlace(_)
+            | Progress::Inspect
+            | Progress::Select(_)
+            | Progress::Initialize(_) => None,
         };
-        HtmlConstructionTextAppendCompletion {
+        Ok(HtmlConstructionTextAppendCompletion {
             storage: self.storage,
             node: self.node,
             incoming: self.incoming,
             discarded,
-        }
+        })
     }
 }
 /// The action the append is about to issue, which carries what its description needs.
@@ -1002,21 +1027,31 @@ impl HtmlConstructionTextAppendObservation<'_> {
 }
 impl HtmlConstructionTextAppendReady {
     /// Abandons the ready append and returns its operands. Any separate preserved copy is returned
-    /// for retirement.
-    pub fn abort(mut self) -> HtmlConstructionTextAppendCompletion {
+    /// for retirement. A backing that another holder shares cannot be truncated without an
+    /// unmetered copy; the abort is then refused with the shared-allocation error and the append
+    /// is handed back unchanged.
+    #[expect(
+        clippy::result_large_err,
+        reason = "a refusal hands the complete owner back without boxing it"
+    )]
+    pub fn abort(
+        mut self,
+    ) -> Result<HtmlConstructionTextAppendCompletion, HtmlConstructionRefusal<Self>> {
+        if let ReadyBacking::InPlace { old_len } = self.backing
+            && let Err(error) = truncate_tail(&mut self.storage, self.index, old_len)
+        {
+            return Err(HtmlConstructionRefusal::new(self, error));
+        }
         let discarded = match self.backing {
-            ReadyBacking::InPlace { old_len } => {
-                truncate_tail(&mut self.storage, self.index, old_len);
-                None
-            }
+            ReadyBacking::InPlace { .. } => None,
             ReadyBacking::Preserved(copy) => Some(copy),
         };
-        HtmlConstructionTextAppendCompletion {
+        Ok(HtmlConstructionTextAppendCompletion {
             storage: self.storage,
             node: self.node,
             incoming: self.incoming,
             discarded,
-        }
+        })
     }
     /// Only prepaid owning moves and fixed usage writes; no payload copy. A target that is no
     /// longer a text node is refused, which `try_ready` checked and the exclusively owned storage
@@ -1072,7 +1107,7 @@ mod tests {
             storage,
             created: Some(node),
             ..
-        } = slots::operation(&mut operation).unwrap().commit()
+        } = slots::operation(&mut operation).unwrap().commit().unwrap()
         else {
             panic!("created actual node")
         };
@@ -1270,7 +1305,7 @@ mod tests {
             owner.next_action(),
             Err(ref error) if error.kind == HtmlConstructionErrorKind::OperationNotReady
         ));
-        let (storage, node, incoming, discarded) = owner.abort().into_parts();
+        let (storage, node, incoming, discarded) = owner.abort().unwrap().into_parts();
         assert!(discarded.is_none());
         assert_eq!(incoming.len(), 300);
         assert_eq!(text(&storage, &node), [u16::from(b'x')]);
@@ -1297,7 +1332,7 @@ mod tests {
             .unwrap()
             .accept();
         assert_eq!(owner.capacity().unwrap().initialized_len(), 128);
-        let (storage, node, _, pending) = owner.abort().into_parts();
+        let (storage, node, _, pending) = owner.abort().unwrap().into_parts();
         assert_eq!(text(&storage, &node), history.code_units());
         let pending = pending.expect("actual pending allocation");
         assert_eq!(pending.code_units(), vec![0xffff; 128]);
@@ -1330,9 +1365,12 @@ mod tests {
             }
             let actual = owner.capacity().unwrap();
             let completion = if complete_tail {
-                slots::text_append(&mut Some(owner)).unwrap().abort()
+                slots::text_append(&mut Some(owner))
+                    .unwrap()
+                    .abort()
+                    .unwrap()
             } else {
-                owner.abort()
+                owner.abort().unwrap()
             };
             let (storage, node, incoming, pending) = completion.into_parts();
             assert_eq!(text(&storage, &node), vec![0xffff; 300]);
@@ -1411,7 +1449,7 @@ mod tests {
                 owner.next_action().unwrap().unwrap().perform(None),
                 Err(ref error) if error.kind == HtmlConstructionErrorKind::SharedAllocationAliased
             ));
-            let (storage, node, _, discarded) = owner.abort().into_parts();
+            let (storage, node, _, discarded) = owner.abort().unwrap().into_parts();
             assert_eq!(text(&storage, &node), [1, 2, 3]);
             assert_eq!(storage.usage().utf16_units(), 3);
             assert!(discarded.is_none());
@@ -1430,7 +1468,7 @@ mod tests {
             owner.next_action().unwrap().unwrap().perform(None),
             Err(ref error) if error.kind == HtmlConstructionErrorKind::ForeignBuilder
         ));
-        let (storage, _, incoming, discarded) = owner.abort().into_parts();
+        let (storage, _, incoming, discarded) = owner.abort().unwrap().into_parts();
         assert_eq!(storage.usage(), usage);
         assert_eq!(incoming.code_units(), [u16::from(b'x')]);
         assert!(discarded.is_none());
@@ -1439,7 +1477,7 @@ mod tests {
             owner.next_action().unwrap().unwrap().perform(None),
             Err(ref error) if error.kind == HtmlConstructionErrorKind::WrongNodeKind
         ));
-        assert_eq!(owner.abort().into_parts().0.usage(), usage);
+        assert_eq!(owner.abort().unwrap().into_parts().0.usage(), usage);
     }
 
     #[test]
@@ -1475,7 +1513,7 @@ mod tests {
                 action.perform(Some(9)).unwrap().accept();
                 assert!(owner.capacity().unwrap().capacity() >= 9);
             }
-            let (storage, node, _, discarded) = owner.abort().into_parts();
+            let (storage, node, _, discarded) = owner.abort().unwrap().into_parts();
             assert_eq!(text(&storage, &node), [1; 8]);
             assert_eq!(storage.usage().utf16_units(), 8);
             assert!(discarded.is_none());
@@ -1502,13 +1540,13 @@ mod tests {
             }
             let mut owner = Some(owner);
             let completion = if accept {
-                slots::text_append(&mut owner).unwrap().abort()
+                slots::text_append(&mut owner).unwrap().abort().unwrap()
             } else {
                 assert!(matches!(
                     slots::text_append(&mut owner),
                     Err(ref error) if error.kind == HtmlConstructionErrorKind::OperationNotReady
                 ));
-                owner.take().unwrap().abort()
+                owner.take().unwrap().abort().unwrap()
             };
             let (storage, node, _, discarded) = completion.into_parts();
             assert_eq!(text(&storage, &node), [u16::from(b'x')]);
@@ -1517,11 +1555,13 @@ mod tests {
         }
     }
 
-    /// The abort restores the original length of the record's own text. The qualification found the
-    /// backing exclusive, so nothing outside the append can hold it; were something to, the tail
-    /// it wrote must still not stay in the record, and the other holder keeps what it saw.
+    /// The abort restores the original length of the record's own text in place. The qualification
+    /// found the backing exclusive, so nothing outside the append can hold it; were something to,
+    /// truncating would need a copy that nothing metered, so the abort is refused, hands the
+    /// append back with the shared backing and the other holder's view untouched, and succeeds
+    /// once the backing is exclusive again.
     #[test]
-    fn abort_restores_the_original_length_when_the_backing_has_another_holder() {
+    fn abort_refuses_a_backing_another_holder_shares_and_succeeds_once_it_is_alone() {
         let mut units = Vec::with_capacity(8);
         units.push(u16::from(b'x'));
         let (storage, node) = make(HtmlNodeKind::Text(DocumentString::from_shared_code_units(
@@ -1540,11 +1580,25 @@ mod tests {
         let mut owner = Some(owner);
         let ready = slots::text_append(&mut owner).unwrap();
         let holder = text_of(&ready.storage, ready.index).unwrap().clone();
-        let (storage, node, _, discarded) = ready.abort().into_parts();
+        let Err(refusal) = ready.abort() else {
+            panic!("a shared backing cannot be truncated without a copy");
+        };
+        assert!(refusal.reason().is_shared_allocation_aliased());
+        let (ready, _) = refusal.into_parts();
+        assert_eq!(
+            text_of(&ready.storage, ready.index)
+                .unwrap()
+                .code_units()
+                .as_ptr(),
+            holder.code_units().as_ptr(),
+            "no copy was made"
+        );
+        assert_eq!(holder.len(), 3, "the other holder keeps what it saw");
+        drop(holder);
+        let (storage, node, _, discarded) = ready.abort().unwrap().into_parts();
         assert!(discarded.is_none());
         assert_eq!(text(&storage, &node), [u16::from(b'x')]);
         assert_eq!(storage.usage().utf16_units(), 1);
-        assert_eq!(holder.len(), 3, "the other holder keeps what it saw");
     }
 
     /// A ready append whose target is no longer a text node cannot commit. The commit refuses and
@@ -1577,7 +1631,7 @@ mod tests {
             let (_, discarded) = {
                 let (ready, _) = refusal.into_parts();
                 assert_eq!(ready.storage.usage(), usage, "no usage was written");
-                let (storage, _, incoming, discarded) = ready.abort().into_parts();
+                let (storage, _, incoming, discarded) = ready.abort().unwrap().into_parts();
                 assert_eq!(incoming, DocumentString::from("y"));
                 (storage, discarded)
             };

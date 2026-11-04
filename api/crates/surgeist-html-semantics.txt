@@ -1254,6 +1254,7 @@ pub surgeist_html_semantics::HtmlSemanticFailureKind::LimitExceeded::limit: usiz
 pub surgeist_html_semantics::HtmlSemanticFailureKind::LimitExceeded::required: usize
 pub surgeist_html_semantics::HtmlSemanticFailureKind::LimitExceeded::resource: surgeist_html_semantics::HtmlSemanticResource
 pub surgeist_html_semantics::HtmlSemanticFailureKind::NoopenerRequestMismatch
+pub surgeist_html_semantics::HtmlSemanticFailureKind::ProtocolViolated
 pub surgeist_html_semantics::HtmlSemanticFailureKind::RelationshipSelectorRequestMismatch
 pub surgeist_html_semantics::HtmlSemanticFailureKind::RepresentationExhausted
 pub enum surgeist_html_semantics::HtmlSemanticMissing

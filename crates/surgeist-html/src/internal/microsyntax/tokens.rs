@@ -35,12 +35,114 @@ impl HtmlSpaceToken {
         &self.value
     }
 
-    /// A declared keyword: nonempty ASCII with no whitespace. Each keyword table that uses this
-    /// constructor has a test that validates every entry through [`HtmlSpaceToken::new`].
-    pub(crate) fn declared_keyword(keyword: &'static str) -> Self {
+    /// The token of a declared keyword, which the compiler already proved to be one.
+    pub(crate) fn declared(keyword: DeclaredKeyword) -> Self {
         Self {
-            value: DocumentString::from(keyword),
+            value: DocumentString::from(keyword.as_str()),
         }
+    }
+
+    /// The code units of this token, as a proven token's units.
+    pub(crate) fn units(&self) -> TokenUnits<'_> {
+        TokenUnits {
+            units: self.value.code_units(),
+        }
+    }
+}
+
+/// A keyword written as a string literal that is one space token: nonempty ASCII with no
+/// whitespace. The only way to build one is [`declared_keyword!`], which checks the literal while
+/// compiling, so a keyword table cannot hold a spelling that is not a token.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct DeclaredKeyword(&'static str);
+
+impl DeclaredKeyword {
+    /// The keyword, or `None` when the spelling is empty, not ASCII, or contains whitespace. It is
+    /// public to the crate for [`declared_keyword!`] alone, which evaluates it in a constant.
+    pub(crate) const fn checked(spelling: &'static str) -> Option<Self> {
+        let bytes = spelling.as_bytes();
+        if bytes.is_empty() {
+            return None;
+        }
+        let mut index = 0;
+        while index < bytes.len() {
+            let byte = bytes[index];
+            if !byte.is_ascii() || is_ascii_whitespace_byte(byte) {
+                return None;
+            }
+            index += 1;
+        }
+        Some(Self(spelling))
+    }
+
+    /// The keyword's spelling.
+    pub(crate) const fn as_str(self) -> &'static str {
+        self.0
+    }
+
+    /// A token for this keyword, written into a vector that `reserve` has sized. The reservation
+    /// is the caller's metered one; the copy adds nothing else.
+    pub(crate) fn copy<E>(
+        self,
+        reserve: impl FnOnce(&mut Vec<u16>, usize) -> Result<(), E>,
+    ) -> Result<HtmlSpaceToken, E> {
+        let mut units = Vec::new();
+        reserve(&mut units, self.0.len())?;
+        units.extend(self.0.bytes().map(u16::from));
+        Ok(HtmlSpaceToken {
+            value: DocumentString::from_utf16(units),
+        })
+    }
+}
+
+/// ASCII whitespace as a constant predicate, for the compile-time check of declared keywords. It is
+/// the same set as [`is_ascii_whitespace`].
+const fn is_ascii_whitespace_byte(byte: u8) -> bool {
+    matches!(byte, 0x09 | 0x0A | 0x0C | 0x0D | 0x20)
+}
+
+/// Builds a [`DeclaredKeyword`] from a string literal, failing to compile when the literal is not
+/// one space token.
+macro_rules! declared_keyword {
+    ($spelling:literal) => {
+        const {
+            match $crate::internal::microsyntax::tokens::DeclaredKeyword::checked($spelling) {
+                Some(keyword) => keyword,
+                None => panic!("a declared keyword is one nonempty ASCII space token"),
+            }
+        }
+    };
+}
+pub(crate) use declared_keyword;
+
+/// The code units of one space token that a splitter or a token proved: nonempty, with no ASCII
+/// whitespace. A copy of them is a token without a second check.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct TokenUnits<'a> {
+    units: &'a [u16],
+}
+
+impl TokenUnits<'_> {
+    /// A token with these units, ASCII lowercased when `lowercase` is set, written into a vector
+    /// that `reserve` has sized. Lowercasing maps ASCII letters to ASCII letters, so it keeps a
+    /// token nonempty and free of whitespace.
+    pub(crate) fn copy<E>(
+        self,
+        lowercase: bool,
+        reserve: impl FnOnce(&mut Vec<u16>, usize) -> Result<(), E>,
+    ) -> Result<HtmlSpaceToken, E> {
+        let mut units = Vec::new();
+        reserve(&mut units, self.units.len())?;
+        units.extend(self.units.iter().map(|&unit| {
+            if lowercase {
+                ascii_lowercase(unit)
+            } else {
+                unit
+            }
+        }));
+        Ok(HtmlSpaceToken {
+            value: DocumentString::from_utf16(units),
+        })
     }
 }
 
@@ -469,6 +571,11 @@ pub(crate) fn split_space_tokens(input: &DocumentString) -> HtmlSpaceSeparatedTo
     }))
 }
 
+/// The tokens of `input` split on ASCII whitespace, each as the proven units of one token.
+pub(crate) fn space_tokens(input: &DocumentString) -> impl Iterator<Item = TokenUnits<'_>> + Clone {
+    space_token_slices(input).map(|units| TokenUnits { units })
+}
+
 /// Shared Infra token boundaries for ordinary and controlled materialization.
 pub(crate) fn space_token_slices(input: &DocumentString) -> impl Iterator<Item = &[u16]> + Clone {
     SpaceTokenSlices(HtmlSpaceTokenCursor::new(input.code_units()))
@@ -697,6 +804,50 @@ pub(crate) fn split_comma_tokens(input: &DocumentString) -> HtmlCommaSeparatedTo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The constant whitespace predicate is the one the token checks use, for every byte.
+    #[test]
+    fn declared_keyword_whitespace_is_the_ascii_whitespace_set() {
+        for byte in 0..=u8::MAX {
+            assert_eq!(
+                is_ascii_whitespace_byte(byte),
+                is_ascii_whitespace(u16::from(byte)),
+                "{byte:#x}"
+            );
+        }
+    }
+
+    /// A spelling is a declared keyword exactly when it is a space token of ASCII.
+    #[test]
+    fn declared_keyword_check_agrees_with_the_space_token_grammar() {
+        for spelling in [
+            "",
+            " ",
+            "a b",
+            "a\tb",
+            "a\nb",
+            "a\u{c}b",
+            "a\rb",
+            "a",
+            "dns-prefetch",
+            "x\u{e9}",
+            "x\u{a0}",
+            "\0",
+            "ab\u{2003}",
+        ] {
+            let ascii_token = spelling.is_ascii() && HtmlSpaceToken::new(spelling).is_ok();
+            assert_eq!(
+                DeclaredKeyword::checked(spelling).is_some(),
+                ascii_token,
+                "{spelling:?}"
+            );
+        }
+        let keyword = declared_keyword!("home");
+        assert_eq!(
+            HtmlSpaceToken::declared(keyword),
+            HtmlSpaceToken::new("home").unwrap()
+        );
+    }
 
     #[test]
     fn admitted_space_token_storage_transfers_without_variable_reallocation() {

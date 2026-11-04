@@ -817,7 +817,30 @@ impl ConstructionOwner {
         let Some(operation) = pending.operation.take() else {
             return Err(latch_registry_row(control));
         };
-        self.restore_aborted(control, operation.abort())
+        self.abort_operation(control, operation)
+    }
+    /// Abandons an operation and takes back its storage. An abort the operation refuses cannot
+    /// return the storage; the invariant is all that can be reported.
+    fn abort_operation(
+        &mut self,
+        control: &mut ParseControl,
+        operation: HtmlConstructionOperation,
+    ) -> Result<(), SessionError> {
+        match operation.abort() {
+            Ok(aborted) => self.restore_aborted(control, aborted),
+            Err(_) => Err(latch_registry_row(control)),
+        }
+    }
+    /// As `abort_operation`, for an operation whose every action was accepted.
+    fn abort_ready(
+        &mut self,
+        control: &mut ParseControl,
+        ready: HtmlConstructionReadyOperation,
+    ) -> Result<(), SessionError> {
+        match ready.abort() {
+            Ok(aborted) => self.restore_aborted(control, aborted),
+            Err(_) => Err(latch_registry_row(control)),
+        }
     }
     fn restore_aborted(
         &mut self,
@@ -869,7 +892,25 @@ impl ConstructionOwner {
         mut pending: PendingConstruction,
     ) -> Result<Option<HtmlBuilderNode>, SessionError> {
         let ready = self.ready_pending(control, &mut pending)?;
-        self.adopt_mutation(control, ready.commit())
+        let committed = self.commit_ready(control, ready)?;
+        self.adopt_mutation(control, committed)
+    }
+    /// Commits a ready operation. A commit the operation refuses hands it back, and it is
+    /// aborted, which returns its storage.
+    fn commit_ready(
+        &mut self,
+        control: &mut ParseControl,
+        ready: HtmlConstructionReadyOperation,
+    ) -> Result<HtmlConstructionCommit, SessionError> {
+        match ready.commit() {
+            Ok(committed) => Ok(committed),
+            Err(refusal) => {
+                let (ready, reason) = refusal.into_parts();
+                let error = construction_error(control, reason);
+                self.abort_ready(control, ready)?;
+                Err(error)
+            }
+        }
     }
     /// The ready operation once every observation was accepted. An operation
     /// that is not ready is aborted, which returns its storage.
@@ -886,7 +927,7 @@ impl ConstructionOwner {
             Err(refusal) => {
                 let (operation, reason) = refusal.into_parts();
                 let error = construction_error(control, reason);
-                self.restore_aborted(control, operation.abort())?;
+                self.abort_operation(control, operation)?;
                 Err(error)
             }
         }
@@ -897,7 +938,8 @@ impl ConstructionOwner {
         pending: PendingConstruction,
         requests: &[(HtmlParseResource, u64)],
     ) -> Result<HtmlConstructionCommit, SessionError> {
-        Ok(self.prepare_pending(control, pending, requests)?.commit())
+        let ready = self.prepare_pending(control, pending, requests)?;
+        self.commit_ready(control, ready)
     }
     fn prepare_pending(
         &mut self,

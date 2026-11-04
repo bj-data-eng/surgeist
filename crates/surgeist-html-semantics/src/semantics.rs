@@ -1312,6 +1312,10 @@ pub enum HtmlSemanticFailureKind {
     },
     RepresentationExhausted,
     AllocationFailed,
+    /// A value owner this session drives refused a step that the session's own driver took out of
+    /// the owner's protocol. Valid captures and valid use never reach this cause; it reports a
+    /// defect in this crate, as `ProtocolViolated` does for the value interpretations.
+    ProtocolViolated,
     Capture(HtmlCaptureError),
     ContextCaptureMismatch,
     Attribute(HtmlValueAdmissionError),

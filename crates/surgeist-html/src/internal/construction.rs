@@ -1073,16 +1073,23 @@ impl<'a> HtmlNode<'a> {
             .template_contents
             .map(|contents| self.arena.id(contents.position()))
     }
-    /// Native declarative shadow association, if supplied.
+    /// Native declarative shadow association, if supplied. A declarative shadow root is the
+    /// association whose contents carry shadow properties, and publication refuses any `shadow`
+    /// relation whose contents lack them (`validate_record`, `InvalidShadowAssociation`), so a
+    /// published tree has no association that this answers with `None`.
     pub fn declarative_shadow_root(self) -> Option<HtmlDeclarativeShadowRoot<'a>> {
         let relation = self.arena.records[self.index].shadow.as_ref()?;
+        // A declarative shadow root is an association whose contents carry shadow properties.
+        let properties = self
+            .arena
+            .records
+            .get(relation.contents.index)?
+            .shadow_properties
+            .as_ref()?;
         Some(HtmlDeclarativeShadowRoot {
             host: &relation.host,
             contents: &relation.contents,
-            properties: self.arena.records[relation.contents.index]
-                .shadow_properties
-                .as_ref()
-                .expect("shadow association targets explicit shadow contents"),
+            properties,
         })
     }
     /// Distinguishes an owning template association from a shadow reference.
@@ -1111,6 +1118,8 @@ impl<'a> HtmlNode<'a> {
 pub struct HtmlDocument {
     arena: Arc<Arena>,
     root: usize,
+    /// The mode the published root Document had, which an immutable arena cannot change.
+    mode: HtmlDocumentMode,
 }
 impl HtmlDocument {
     /// Begins bounded native document construction with an explicit mode.
@@ -1131,10 +1140,7 @@ impl HtmlDocument {
     }
     /// Explicit document mode, unaffected by authored doctype text.
     pub fn mode(&self) -> HtmlDocumentMode {
-        match self.arena.records[self.root].kind {
-            HtmlNodeKind::Document(mode) => mode,
-            _ => unreachable!("document constructor owns root kind"),
-        }
+        self.mode
     }
     /// Looks up a node, explicitly rejecting foreign-result identities.
     pub fn node(&self, id: &HtmlNodeId) -> Result<HtmlNode<'_>, ForeignHtmlResult> {
@@ -1205,8 +1211,8 @@ enum NativeRoot {
 
 /// Prepares `command` on `storage`, drives it to its ready state and commits it. The storage comes
 /// back on every outcome, so a refused step never loses what the builder owns. It is absent only
-/// when the command published, which no native mutation does and which the lease could not hand
-/// back.
+/// when the command published, which no native mutation does, or when an abort was refused, which
+/// a mutation's unshared storage cannot be; the first failure is reported either way.
 fn drive_native(
     storage: bounded::HtmlConstructionStorage,
     command: bounded::operations::HtmlConstructionCommand,
@@ -1225,22 +1231,32 @@ fn drive_native(
         Ok::<_, HtmlConstructionError>(())
     })();
     if let Err(error) = driven {
-        return (Some(operation.abort().into_parts().0), Err(error));
+        return (
+            operation.abort().ok().map(|abort| abort.into_parts().0),
+            Err(error),
+        );
     }
     match ready_or_recover(operation) {
-        Err((storage, error)) => (Some(storage), Err(error)),
+        Err((storage, error)) => (storage, Err(error)),
         Ok(ready) => match ready.commit() {
-            bounded::operations::HtmlConstructionCommit::Changed { storage, created } => {
+            Ok(bounded::operations::HtmlConstructionCommit::Changed { storage, created }) => {
                 (Some(storage), Ok(created))
             }
             // A publication moves the arena into its shared result. Native commands never publish;
             // were one to, the sole owner takes the storage back through its lease.
-            bounded::operations::HtmlConstructionCommit::Published { result, lease } => (
+            Ok(bounded::operations::HtmlConstructionCommit::Published { result, lease }) => (
                 bounded::HtmlConstructionLease::try_recover(result, lease)
                     .ok()
                     .map(|recovery| recovery.into_parts().0),
                 Err(HtmlConstructionErrorKind::OperationNotReady.into()),
             ),
+            Err(refusal) => {
+                let (ready, error) = refusal.into_parts();
+                (
+                    ready.abort().ok().map(|abort| abort.into_parts().0),
+                    Err(error),
+                )
+            }
         },
     }
 }
@@ -1255,22 +1271,30 @@ fn ready_or_recover(
     operation: bounded::operations::HtmlConstructionOperation,
 ) -> Result<
     bounded::operations::HtmlConstructionReadyOperation,
-    (bounded::HtmlConstructionStorage, HtmlConstructionError),
+    (
+        Option<bounded::HtmlConstructionStorage>,
+        HtmlConstructionError,
+    ),
 > {
     operation.try_ready().map_err(|refusal| {
         let (operation, error) = refusal.into_parts();
-        (operation.abort().into_parts().0, error)
+        (
+            operation.abort().ok().map(|abort| abort.into_parts().0),
+            error,
+        )
     })
 }
 
 #[derive(Debug)]
 struct Builder {
-    storage: Option<bounded::HtmlConstructionStorage>,
+    storage: bounded::HtmlConstructionStorage,
+    /// The root issued when the builder was created, which the storage keeps for its life.
+    root: HtmlBuilderNode,
     limits: HtmlConstructionLimits,
 }
 impl Builder {
     fn storage(&self) -> &bounded::HtmlConstructionStorage {
-        self.storage.as_ref().expect("native storage retained")
+        &self.storage
     }
     fn new(
         limits: HtmlConstructionLimits,
@@ -1284,25 +1308,20 @@ impl Builder {
             .try_ready()
             .map_err(|refusal| refusal.into_parts().1)?
             .commit();
-        let mut builder = Self {
-            storage: Some(storage),
-            limits,
-        };
-        builder.admit(1, 0, 0, 0, 0)?;
+        admit(&storage, limits, 1, 0, 0, 0, 0)?;
         let command = match root {
             NativeRoot::Document(mode) => {
                 bounded::operations::HtmlConstructionCommand::CreateDocument { mode }
             }
             NativeRoot::Fragment => bounded::operations::HtmlConstructionCommand::CreateFragment,
         };
-        builder.apply(command)?;
-        Ok(builder)
-    }
-    fn handle(&self, index: usize) -> HtmlBuilderNode {
-        self.storage()
-            .node_at(index)
-            .expect("retained native position")
-            .handle()
+        let (storage, outcome) = drive_native(storage, command);
+        let root = outcome?.ok_or(HtmlConstructionErrorKind::OperationNotReady)?;
+        Ok(Self {
+            storage: storage.ok_or(HtmlConstructionErrorKind::OperationNotReady)?,
+            root,
+            limits,
+        })
     }
     fn index(&self, node: &HtmlBuilderNode) -> Result<usize, HtmlConstructionError> {
         self.storage().position(node)
@@ -1315,67 +1334,40 @@ impl Builder {
         units: usize,
         depth: usize,
     ) -> Result<HtmlConstructionUsage, HtmlConstructionError> {
-        let add = |left: usize, right| {
-            left.checked_add(right)
-                .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)
-        };
-        let next = HtmlConstructionUsage {
-            nodes: add(self.storage().usage().nodes, nodes)?,
-            edges: add(self.storage().usage().edges, edges)?,
-            attributes: add(self.storage().usage().attributes, attributes)?,
-            utf16_units: add(self.storage().usage().utf16_units, units)?,
-            depth: self.storage().usage().depth.max(depth),
-        };
-        for (resource, limit, attempted) in [
-            (
-                HtmlConstructionResource::Nodes,
-                self.limits.nodes,
-                next.nodes,
-            ),
-            (
-                HtmlConstructionResource::Edges,
-                self.limits.edges,
-                next.edges,
-            ),
-            (
-                HtmlConstructionResource::Attributes,
-                self.limits.attributes,
-                next.attributes,
-            ),
-            (
-                HtmlConstructionResource::Utf16Units,
-                self.limits.utf16_units,
-                next.utf16_units,
-            ),
-            (
-                HtmlConstructionResource::Depth,
-                self.limits.depth,
-                next.depth,
-            ),
-        ] {
-            if attempted > limit {
-                return Err(HtmlConstructionErrorKind::LimitExceeded {
-                    resource,
-                    limit,
-                    attempted,
-                }
-                .into());
-            }
-        }
-        Ok(next)
+        admit(
+            self.storage(),
+            self.limits,
+            nodes,
+            edges,
+            attributes,
+            units,
+            depth,
+        )
     }
 
+    /// Runs `command` on the storage. The storage moves into the operation and comes back on every
+    /// outcome. The empty arena of the same identity stands in meanwhile; it stays only if the
+    /// operation could not hand the storage back, which no native command can cause, and every
+    /// handle then reports an unknown node.
     fn apply(
         &mut self,
         command: bounded::operations::HtmlConstructionCommand,
     ) -> Result<Option<HtmlBuilderNode>, HtmlConstructionError> {
-        let storage = self
-            .storage
-            .take()
-            .ok_or(HtmlConstructionErrorKind::OperationNotReady)?;
+        let vacated = self.storage.vacated();
+        let storage = std::mem::replace(&mut self.storage, vacated);
         let (storage, outcome) = drive_native(storage, command);
-        self.storage = storage;
+        if let Some(storage) = storage {
+            self.storage = storage;
+        }
         outcome
+    }
+    /// As `apply`, for a command that creates a record.
+    fn apply_creating(
+        &mut self,
+        command: bounded::operations::HtmlConstructionCommand,
+    ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
+        self.apply(command)?
+            .ok_or_else(|| HtmlConstructionErrorKind::OperationNotReady.into())
     }
     fn depth(&self, index: usize) -> Result<usize, HtmlConstructionError> {
         Ok(self.storage().native_depth(index))
@@ -1386,10 +1378,7 @@ impl Builder {
         kind: HtmlNodeKind,
     ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
         let parent_position = self.index(parent)?;
-        let parent_view = self
-            .storage()
-            .node_at(parent_position)
-            .expect("checked parent");
+        let parent_view = self.storage().node(parent)?;
         if !matches!(
             parent_view.kind(),
             HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment | HtmlNodeKind::Element(_)
@@ -1414,17 +1403,14 @@ impl Builder {
         )?;
         let previous_usage = self.storage().usage();
         let previous_len = self.storage().len();
-        let created = self
-            .apply(bounded::operations::HtmlConstructionCommand::Create { kind })?
-            .expect("created native record");
+        let created =
+            self.apply_creating(bounded::operations::HtmlConstructionCommand::Create { kind })?;
         if let Err(error) = self.apply(bounded::operations::HtmlConstructionCommand::Insert {
             node: created.clone(),
             parent: parent.clone(),
             before: None,
         }) {
             self.storage
-                .as_mut()
-                .expect("refused insert retains storage")
                 .rollback_native_append(previous_len, previous_usage);
             return Err(error);
         }
@@ -1446,7 +1432,7 @@ impl Builder {
         properties: HtmlShadowRootProperties,
     ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
         let host_position = self.index(host)?;
-        let view = self.storage().node_at(host_position).expect("checked host");
+        let view = self.storage().node(host)?;
         if !matches!(view.kind(), HtmlNodeKind::Element(_)) {
             return Err(HtmlConstructionErrorKind::ShadowHostMustBeElement.into());
         }
@@ -1460,18 +1446,14 @@ impl Builder {
         self.admit(1, 1, 0, 0, depth)?;
         let previous_usage = self.storage().usage();
         let previous_len = self.storage().len();
-        let contents = self
-            .apply(
-                bounded::operations::HtmlConstructionCommand::CreateShadowContents { properties },
-            )?
-            .expect("created shadow contents");
+        let contents = self.apply_creating(
+            bounded::operations::HtmlConstructionCommand::CreateShadowContents { properties },
+        )?;
         if let Err(error) = self.apply(bounded::operations::HtmlConstructionCommand::AttachShadow {
             host: host.clone(),
             contents: contents.clone(),
         }) {
             self.storage
-                .as_mut()
-                .expect("refused association retains storage")
                 .rollback_native_append(previous_len, previous_usage);
             return Err(error);
         }
@@ -1480,16 +1462,13 @@ impl Builder {
     /// Publishes the whole arena. The builder is consumed: a refusal here means the tree failed
     /// the publication's own validation, which the append steps are meant to make impossible, so
     /// no half-published builder is worth keeping.
-    fn finish(mut self) -> Result<Arc<Arena>, HtmlConstructionError> {
-        let storage = self
+    fn finish(self) -> Result<bounded::HtmlConstructionResult, HtmlConstructionError> {
+        let root = self
             .storage
-            .take()
-            .ok_or(HtmlConstructionErrorKind::OperationNotReady)?;
-        let root = storage
             .node_at(0)
             .ok_or(HtmlConstructionErrorKind::UnknownNode)?
             .handle();
-        let mut operation = storage.prepare_finish(root);
+        let mut operation = self.storage.prepare_finish(root);
         while let Some(action) = operation.next_action()? {
             action
                 .perform()
@@ -1500,16 +1479,66 @@ impl Builder {
             .try_ready()
             .map_err(|refusal| refusal.into_parts().1)?
             .commit()
+            .map_err(|refusal| refusal.into_parts().1)?
         {
             bounded::operations::HtmlConstructionCommit::Published { result, lease } => {
                 drop(lease);
-                Ok(result.into_arena().0)
+                Ok(result)
             }
             bounded::operations::HtmlConstructionCommit::Changed { .. } => {
                 Err(HtmlConstructionErrorKind::OperationNotReady.into())
             }
         }
     }
+}
+
+/// The usage after adding the given amounts to `storage`'s, if every limit still holds.
+fn admit(
+    storage: &bounded::HtmlConstructionStorage,
+    limits: HtmlConstructionLimits,
+    nodes: usize,
+    edges: usize,
+    attributes: usize,
+    units: usize,
+    depth: usize,
+) -> Result<HtmlConstructionUsage, HtmlConstructionError> {
+    let add = |left: usize, right| {
+        left.checked_add(right)
+            .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)
+    };
+    let usage = storage.usage();
+    let next = HtmlConstructionUsage {
+        nodes: add(usage.nodes, nodes)?,
+        edges: add(usage.edges, edges)?,
+        attributes: add(usage.attributes, attributes)?,
+        utf16_units: add(usage.utf16_units, units)?,
+        depth: usage.depth.max(depth),
+    };
+    for (resource, limit, attempted) in [
+        (HtmlConstructionResource::Nodes, limits.nodes, next.nodes),
+        (HtmlConstructionResource::Edges, limits.edges, next.edges),
+        (
+            HtmlConstructionResource::Attributes,
+            limits.attributes,
+            next.attributes,
+        ),
+        (
+            HtmlConstructionResource::Utf16Units,
+            limits.utf16_units,
+            next.utf16_units,
+        ),
+        (HtmlConstructionResource::Depth, limits.depth, next.depth),
+    ] {
+        if attempted > limit {
+            return Err(HtmlConstructionErrorKind::LimitExceeded {
+                resource,
+                limit,
+                attempted,
+            }
+            .into());
+        }
+    }
+    Ok(next)
 }
 
 /// A bounded append-only native document authoring session.
@@ -1527,7 +1556,7 @@ macro_rules! authoring_methods {
     () => {
         /// Root handle issued by this builder.
         pub fn root(&self) -> HtmlBuilderNode {
-            self.builder.handle(0)
+            self.builder.root.clone()
         }
         /// Current admitted usage; rejected appends never change it.
         pub fn usage(&self) -> HtmlConstructionUsage {
@@ -1613,10 +1642,12 @@ impl HtmlDocumentBuilder {
     /// Publication validates the whole tree again. A refusal returns the cause and ends the
     /// session; the append steps keep the tree valid, so none is known to occur.
     pub fn finish(self) -> Result<HtmlDocument, HtmlConstructionError> {
-        Ok(HtmlDocument {
-            arena: self.builder.finish()?,
-            root: 0,
-        })
+        match self.builder.finish()? {
+            bounded::HtmlConstructionResult::Document(document) => Ok(document),
+            bounded::HtmlConstructionResult::Fragment(_) => {
+                Err(HtmlConstructionErrorKind::InvalidOutputRoot.into())
+            }
+        }
     }
 }
 impl HtmlFragmentBuilder {
@@ -1626,10 +1657,12 @@ impl HtmlFragmentBuilder {
     /// Publication validates the whole tree again. A refusal returns the cause and ends the
     /// session; the append steps keep the tree valid, so none is known to occur.
     pub fn finish(self) -> Result<HtmlFragment, HtmlConstructionError> {
-        Ok(HtmlFragment {
-            arena: self.builder.finish()?,
-            root: 0,
-        })
+        match self.builder.finish()? {
+            bounded::HtmlConstructionResult::Fragment(fragment) => Ok(fragment),
+            bounded::HtmlConstructionResult::Document(_) => {
+                Err(HtmlConstructionErrorKind::InvalidOutputRoot.into())
+            }
+        }
     }
 }
 
@@ -1649,17 +1682,18 @@ mod tests {
         .unwrap();
         let usage = builder.storage().usage();
         let records = builder.storage().len();
-        let storage = builder.storage.take().unwrap();
+        let vacated = builder.storage.vacated();
+        let storage = std::mem::replace(&mut builder.storage, vacated);
         let operation =
             storage.prepare(bounded::operations::HtmlConstructionCommand::CreateFragment);
-        let Err((storage, error)) = ready_or_recover(operation) else {
+        let Err((Some(storage), error)) = ready_or_recover(operation) else {
             panic!("an undriven operation is not ready");
         };
         assert!(error.is_operation_not_ready());
         assert_eq!((storage.usage(), storage.len()), (usage, records));
-        builder.storage = Some(storage);
+        builder.storage = storage;
         // The builder keeps working with the recovered storage.
-        let root = builder.handle(0);
+        let root = builder.root.clone();
         builder
             .append(&root, HtmlNodeKind::Comment("c".into()))
             .unwrap();
@@ -1800,7 +1834,7 @@ mod tests {
         for (label, kind, attributes, units) in cases {
             let append = |limits: HtmlConstructionLimits| {
                 let mut builder = Builder::new(limits, NativeRoot::Fragment).unwrap();
-                let root = builder.handle(0);
+                let root = builder.root.clone();
                 let result = builder.append(&root, kind.clone());
                 (result.map(|_| ()), builder.storage().usage())
             };

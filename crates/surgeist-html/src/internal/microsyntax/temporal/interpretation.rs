@@ -615,7 +615,9 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                 self.stage = Stage::YearAssemble(plan);
             }
             Stage::YearAssemble(plan) => {
-                let year = year_of(plan)?.assemble(self.integers[0].take().ok_or_else(invalid)?);
+                let year = year_of(plan)?
+                    .assemble(self.integers[0].take().ok_or_else(invalid)?)
+                    .map_err(|_| invalid())?;
                 match plan {
                     BorrowedTemporalPlan::Month(p) => {
                         if self.phase == TemporalPhase::Author {
@@ -739,7 +741,8 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                 let date = local_date.assemble(
                     local_date
                         .year()
-                        .assemble(self.integers[1].take().ok_or_else(invalid)?),
+                        .assemble(self.integers[1].take().ok_or_else(invalid)?)
+                        .map_err(|_| invalid())?,
                 );
                 GlobalStage::PrecedingYear(Dated { plan, date })
             }
