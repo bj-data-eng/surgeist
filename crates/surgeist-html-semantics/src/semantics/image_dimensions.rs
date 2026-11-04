@@ -653,12 +653,10 @@ impl HtmlImageDimensionFacts {
                 return Err(E::ParticipationRevisionMismatch);
             }
             for b in &self.boxes {
-                for f in p.facts() {
-                    a.work(1)?;
-                    if f.subject() == &b.subject
-                        && (f.being_rendered() == Some(false)
-                            || f.produces_css_box() == Some(false))
-                    {
+                a.work(1)?;
+                if let Some(position) = p.index.position(&b.subject) {
+                    let f = &p.facts[position];
+                    if f.being_rendered() == Some(false) || f.produces_css_box() == Some(false) {
                         return Err(E::ContradictoryBox(b.subject.clone()));
                     }
                 }
@@ -666,19 +664,18 @@ impl HtmlImageDimensionFacts {
         }
         if let Some(n) = natural {
             for e in &self.expected {
-                for f in n.facts() {
-                    a.work(1)?;
-                    if f.subject() == &e.subject
-                        && let (HtmlImageDimensionSelection::Selected(key), Some(other)) =
-                            (&e.selection, f.resource())
+                a.work(1)?;
+                if let Some(position) = n.index.position(&e.subject) {
+                    let f = &n.facts()[position];
+                    if let (HtmlImageDimensionSelection::Selected(key), Some(other)) =
+                        (&e.selection, f.resource())
                     {
                         a.work(1)?;
                         if key != other {
                             return Err(E::ContradictoryResource(e.subject.clone()));
                         }
                     }
-                    if f.subject() == &e.subject
-                        && matches!(e.selection, HtmlImageDimensionSelection::KnownNone)
+                    if matches!(e.selection, HtmlImageDimensionSelection::KnownNone)
                         && f.resource().is_some()
                     {
                         return Err(E::ContradictoryResource(e.subject.clone()));

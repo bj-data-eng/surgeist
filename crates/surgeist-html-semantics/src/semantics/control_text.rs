@@ -2,8 +2,8 @@
 //! DOM child/descendant text content preserves ordinary Text data. Setters,
 //! reset and establishing an output's actual default override are external.
 
+use super::index::FactIndex;
 use super::scan::{ScanError, ScanMeter};
-use super::seen::Seen;
 use super::*;
 use surgeist_html::{values::DocumentString, vocabulary::KnownHtmlElement};
 
@@ -98,6 +98,7 @@ pub struct HtmlOutputDefaultFacts {
     capture: HtmlCaptureId,
     host_revision: HtmlHostFactsRevision,
     records: Vec<HtmlOutputDefaultFact>,
+    index: FactIndex,
     validation_work: usize,
 }
 impl HtmlOutputDefaultFacts {
@@ -118,12 +119,16 @@ impl HtmlOutputDefaultFacts {
         }
         let mut meter = ScanMeter::new(0, limits.validation_work);
         let mut units = 0usize;
-        let mut seen = Seen::new(
+        let mut index = FactIndex::new(
+            capture.identity(),
             records.len(),
             |n| meter.charge(n),
             HtmlOutputDefaultError::RepresentationExhausted,
         )?;
-        for record in records.iter() {
+        for (position, record) in records.iter().enumerate() {
+            index.enter(&record.subject, position);
+        }
+        for (position, record) in records.iter().enumerate() {
             let node = meter.node(capture, &record.subject)?;
             let HtmlCapturedNodeKind::Element(element) = node.kind() else {
                 return Err(HtmlOutputDefaultError::InapplicableSubject(
@@ -136,7 +141,7 @@ impl HtmlOutputDefaultFacts {
                     record.subject.clone(),
                 ));
             }
-            if !seen.first(record.subject.ordinal()) {
+            if index.position(&record.subject) != Some(position) {
                 return Err(HtmlOutputDefaultError::DuplicateSubject(
                     record.subject.clone(),
                 ));
@@ -158,6 +163,7 @@ impl HtmlOutputDefaultFacts {
             capture: capture.identity().clone(),
             host_revision,
             records,
+            index,
             validation_work: meter.work(),
         })
     }
@@ -172,10 +178,10 @@ impl HtmlOutputDefaultFacts {
     }
     /// Admitted construction work, useful when selecting a finite producer cap.
     ///
-    /// Each record charges 1 for its subject lookup, the vocabulary envelope
-    /// `(local-name units + 1) * KnownHtmlElement::ALL.len() + namespace units`,
-    /// 1 for every earlier record compared for a duplicate, and 1 for the
-    /// override check.
+    /// The index of the records charges 1 for each, and each record charges 1 for
+    /// its subject lookup, the vocabulary envelope
+    /// `(local-name units + 1) * KnownHtmlElement::ALL.len() + namespace units`
+    /// and 1 for the override check.
     pub fn validation_work(&self) -> usize {
         self.validation_work
     }
@@ -226,14 +232,11 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let origin = if requested == HtmlControlTextOrigin::OutputDefaultOverride {
             if let Some(facts) = self.context.output_defaults() {
-                let mut selected = None;
-                for record in facts.records() {
-                    self.charge(1)?;
-                    if record.subject() == subject {
-                        selected = Some(record.default_value_override());
-                        break;
-                    }
-                }
+                self.charge(1)?;
+                let selected = facts
+                    .index
+                    .position(subject)
+                    .map(|position| facts.records[position].default_value_override());
                 match selected {
                     Some(HtmlOutputDefaultValueOverride::Value(value)) => {
                         self.charge(1)?;

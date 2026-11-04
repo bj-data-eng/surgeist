@@ -1010,7 +1010,8 @@ fn fact_families_charge_their_pinned_totals() {
     // of the observations 1; the expected selection 1; the observation 1, its
     // revision test 1 and two axes 2; the join of the selection charges 1,
     // probes the observations 1 and checks the observation 1: 10.
-    // Media: the index of the facts 3, then per fact 64 + 1 + 1: 3 + 3 * 66.
+    // Media: an index of the facts by attribute 3 and one by subject 3, then per
+    // fact 64 + 1 + 1: 6 + 3 * 66.
     // Image dimensions: an index each of the expectations, resources and boxes
     // 3; the expectation resolves its element (1 + 4A + 28) and charges 1; the
     // resource charges 1, probes its binding 1, compares it 1, completes 1 and
@@ -1044,7 +1045,7 @@ fn fact_families_charge_their_pinned_totals() {
         totals,
         [
             10,
-            3 + 3 * 66,
+            6 + 3 * 66,
             7 + (7 + 4 * r) + (9 + 6 * r) + 3 * (53 + 5 * a) + walks + 3 + (1 + 7 + 2 + 11),
             73 + 8 * a,
         ]

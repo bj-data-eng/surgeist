@@ -225,6 +225,8 @@ pub struct HtmlMediaFacts {
     host: HtmlHostFactsRevision,
     revision: HtmlMediaContextRevision,
     facts: Vec<HtmlMediaFact>,
+    /// The first fact of each subject.
+    pub(super) subjects: FactIndex,
 }
 impl HtmlMediaFacts {
     pub fn new(
@@ -250,8 +252,15 @@ impl HtmlMediaFacts {
             |n| a.work(n),
             E::RepresentationExhausted,
         )?;
+        let mut subjects = FactIndex::new(
+            capture.identity(),
+            facts.len(),
+            |n| a.work(n),
+            E::RepresentationExhausted,
+        )?;
         for (i, fact) in facts.iter().enumerate() {
             inputs.enter_bound(&fact.input.subject, fact.input.ordinal, i);
+            subjects.enter(&fact.input.subject, i);
         }
         for (i, fact) in facts.iter().enumerate() {
             // Fixed role, namespace and field comparisons in raw(): ≤64 units.
@@ -282,6 +291,7 @@ impl HtmlMediaFacts {
             host,
             revision,
             facts,
+            subjects,
         })
     }
     pub fn capture(&self) -> &HtmlCaptureId {

@@ -2272,19 +2272,17 @@ impl<'a> HtmlSemanticSession<'a> {
         field: HtmlParticipationField,
     ) -> Result<Result<bool, HtmlSemanticMissing>, HtmlSemanticFailure> {
         if let Some(input) = &self.context.participation {
-            for fact in &input.facts {
+            self.charge(1)?;
+            if let Some(position) = input.index.position(subject) {
+                let fact = &input.facts[position];
                 self.charge(1)?;
-                if &fact.subject == subject {
-                    self.charge(1)?;
-                    let value = match field {
-                        HtmlParticipationField::ListItem => fact.computed_list_item,
-                        HtmlParticipationField::Rendered => fact.being_rendered,
-                        HtmlParticipationField::CssBox => fact.produces_css_box,
-                    };
-                    if let Some(value) = value {
-                        return Ok(Ok(value));
-                    }
-                    break;
+                let value = match field {
+                    HtmlParticipationField::ListItem => fact.computed_list_item,
+                    HtmlParticipationField::Rendered => fact.being_rendered,
+                    HtmlParticipationField::CssBox => fact.produces_css_box,
+                };
+                if let Some(value) = value {
+                    return Ok(Ok(value));
                 }
             }
         }

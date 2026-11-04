@@ -222,6 +222,8 @@ pub struct HtmlNaturalDimensions {
     host_revision: HtmlHostFactsRevision,
     revision: HtmlNaturalDimensionRevision,
     facts: Vec<HtmlNaturalDimensionFact>,
+    /// Where each subject's fact sits in `facts`.
+    pub(super) index: FactIndex,
 }
 impl HtmlNaturalDimensions {
     pub fn new(
@@ -325,6 +327,7 @@ impl HtmlNaturalDimensions {
             host_revision,
             revision,
             facts: expected,
+            index: expected_index,
         })
     }
     pub fn capture(&self) -> &HtmlCaptureId {
