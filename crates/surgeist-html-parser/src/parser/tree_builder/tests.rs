@@ -19815,12 +19815,13 @@ mod complete_hostile_scan {
     #[test]
     fn long_pi_has_typed_finite_work_refusal_and_real_cleanup() {
         // Work on a processing instruction is linear in its length, about 1,300
-        // credits for each unit, so only a data field of tens of thousands of
-        // units exhausts the 100,000,000 credits.
-        let raw = format!("<!doctype html><p>P</p><?q {}?>", "b".repeat(80_000));
+        // credits for each unit, so the 100,000,000 credits are spent about half
+        // way through a data field of 160,000 units.
+        let raw = format!("<!doctype html><p>P</p><?q {}?>", "b".repeat(160_000));
         // Room for the source map and the copies of the data, so that only the work credits stop it.
         let roomy = limits(100)
             .into_builder()
+            .source_units(1_000_000)
             .source_map_entries(1_000_000)
             .source_map_payload_units(1_000_000)
             .managed_utf16_units(1_000_000)

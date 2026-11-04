@@ -72,3 +72,78 @@ fn a_piece_that_starts_before_the_end_of_the_previous_one_is_mapped_from_the_fir
         ]
     );
 }
+
+/// Runs `check` on a parsed processing instruction `<?marker a='b'?>`, then releases everything.
+fn with_instruction(check: impl FnOnce(&mut ParseControl, &mut ParserArenaSession, usize)) {
+    use crate::parser::tokenizer::{states::HtmlTokenizerState, tests::LexerFixture};
+    let source = crate::HtmlSource::utf8("<?marker a='b'?>");
+    let mut c = control();
+    c.admit_source(&source).unwrap();
+    let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
+    session.initialize_parse_evidence(&mut c, &source).unwrap();
+    let mut lexer = LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
+    let TokenKind::ProcessingInstruction { target, data } = lexical_kind(&mut lexer, &mut c) else {
+        panic!("literal PI");
+    };
+    let node = session
+        .allocate_processing_instruction(&mut c, &mut Some((target, data)), None)
+        .unwrap();
+    check(&mut c, &mut session, node.index);
+    lexer.release(&mut c).unwrap();
+    session.release(&mut c).unwrap();
+}
+
+#[test]
+fn a_join_naming_a_row_of_another_kind_is_not_the_data_of_a_processing_instruction() {
+    with_instruction(|c, session, node| {
+        let storage = session.active_mut().unwrap();
+        let slot = storage
+            .field_slot(c, StringLocation::ProcessingInstructionData(node))
+            .unwrap();
+        // The target row is a string too, but it is not bound as the data.
+        let target = storage
+            .field_slot(c, StringLocation::ProcessingInstructionTarget(node))
+            .unwrap();
+        let good = storage.payloads.node_joins[node];
+        *storage.payloads.node_joins[node]
+            .rows
+            .get_mut(Join::ProcessingInstructionData) = Some(joined_cell(target).unwrap());
+        assert_eq!(
+            storage.field_slot(c, StringLocation::ProcessingInstructionData(node)),
+            Err(SessionError::WrongToken)
+        );
+        // A row that is not a string at all is refused the same way.
+        *storage.payloads.node_joins[node]
+            .rows
+            .get_mut(Join::ProcessingInstructionData) = Some(joined_cell(0).unwrap());
+        assert_eq!(
+            storage.field_slot(c, StringLocation::ProcessingInstructionData(node)),
+            Err(SessionError::WrongToken)
+        );
+        storage.payloads.node_joins[node] = good;
+        assert_eq!(
+            storage.field_slot(c, StringLocation::ProcessingInstructionData(node)),
+            Ok(slot)
+        );
+    });
+}
+
+#[test]
+fn a_join_naming_another_row_is_not_the_attribute_map_of_a_processing_instruction() {
+    with_instruction(|c, session, node| {
+        let storage = session.active_mut().unwrap();
+        assert_eq!(
+            storage.pi_attribute(c, node, "a").unwrap(),
+            Some(&surgeist_html::values::DocumentString::from("b"))
+        );
+        let good = storage.payloads.node_joins[node];
+        *storage.payloads.node_joins[node]
+            .rows
+            .get_mut(Join::ProcessingInstructionAttributes) = Some(joined_cell(0).unwrap());
+        assert_eq!(
+            storage.pi_attribute(c, node, "a").err(),
+            Some(SessionError::ProcessingInstructionMapUnavailable)
+        );
+        storage.payloads.node_joins[node] = good;
+    });
+}

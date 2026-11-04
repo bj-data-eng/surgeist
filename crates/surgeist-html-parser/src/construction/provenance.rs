@@ -1592,7 +1592,8 @@ impl SessionStorage {
             });
         }
         let PiOriginState::Walking(resume) = &mut walk.state else {
-            return Ok(());
+            // Both other states returned or became `Walking` above.
+            return Err(latch_registry_row(c));
         };
         let mut first = None;
         let mut last = None;

@@ -712,6 +712,48 @@ mod tests {
         session.release(&mut c).unwrap();
         storage_zero(&c);
     }
+    #[test]
+    fn a_join_naming_another_row_is_not_the_state_of_an_svg_script() {
+        let request = request("<script>");
+        let (mut c, mut session, proof) = fresh_script_owner(&request);
+        let root = session.root(&mut c).unwrap();
+        let mut lexer =
+            LexerFixture::new(request.source(), HtmlTokenizerState::Data, None, &mut c).unwrap();
+        let node = script(&mut session, &mut c, &mut lexer, &root, &proof);
+        let storage = session.active_mut().unwrap();
+        let (slot, _) = storage.svg_state_at(&mut c, node.index).unwrap();
+        let good = storage.payloads.node_joins[node.index];
+        // Row 0 is not an SVG script row.
+        *storage.payloads.node_joins[node.index]
+            .rows
+            .get_mut(Join::SvgScript) = Some(joined_cell(0).unwrap());
+        assert_eq!(
+            storage.svg_state_at(&mut c, node.index).err(),
+            Some(SessionError::SvgScriptMetadataUnavailable)
+        );
+        // A script row bound to another record is not this record's state either.
+        let RetainedPayload::SvgScript { node: bound, .. } = &mut storage.payloads.values[slot]
+        else {
+            unreachable!()
+        };
+        *bound = Some(node.index + 1);
+        *storage.payloads.node_joins[node.index]
+            .rows
+            .get_mut(Join::SvgScript) = Some(joined_cell(slot).unwrap());
+        assert_eq!(
+            storage.svg_state_at(&mut c, node.index).err(),
+            Some(SessionError::SvgScriptMetadataUnavailable)
+        );
+        let RetainedPayload::SvgScript { node: bound, .. } = &mut storage.payloads.values[slot]
+        else {
+            unreachable!()
+        };
+        *bound = Some(node.index);
+        storage.payloads.node_joins[node.index] = good;
+        lexer.release(&mut c).unwrap();
+        session.release(&mut c).unwrap();
+        storage_zero(&c);
+    }
     fn flag_cost() -> u64 {
         let request = request("<script>");
         let (mut c, mut session, proof) = fresh_script_owner(&request);

@@ -347,7 +347,7 @@ impl SessionStorage {
         node: usize,
         container: usize,
         position: usize,
-    ) -> Result<Option<[Option<usize>; 4]>, SessionError> {
+    ) -> Result<Option<[usize; 2]>, SessionError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let attributes = element_record(&self.construction, c, node)?
             .attributes()
@@ -368,19 +368,34 @@ impl SessionStorage {
             return Ok(None);
         };
         c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
-        let located = |slot: usize, expected: StringLocation| {
-            matches!(
-                self.payloads.values.get(slot),
-                Some(RetainedPayload::String { location, .. }) if same_location(*location, expected)
-            )
-        };
-        if located(name, StringLocation::AttributeName(container, position))
-            && located(value, StringLocation::AttributeValue(container, position))
+        if self.row_located(name, StringLocation::AttributeName(container, position))
+            && self.row_located(value, StringLocation::AttributeValue(container, position))
         {
-            Ok(Some([Some(name), Some(value), None, None]))
+            Ok(Some([name, value]))
         } else {
             Ok(None)
         }
+    }
+    /// The rows a scan of the registry finds for the attribute at `position`
+    /// of `container`, indexed as name, value, namespace and prefix.
+    #[cfg(test)]
+    fn scanned_attribute_rows(&self, container: usize, position: usize) -> [Option<usize>; 4] {
+        let mut rows = [None; 4];
+        for (slot, payload) in self.payloads.values.iter().enumerate() {
+            if let RetainedPayload::String { location, .. } = payload {
+                let which = match *location {
+                    StringLocation::AttributeName(o, p) if o == container && p == position => 0,
+                    StringLocation::AttributeValue(o, p) if o == container && p == position => 1,
+                    StringLocation::AttributeNamespace(o, p) if o == container && p == position => {
+                        2
+                    }
+                    StringLocation::AttributePrefix(o, p) if o == container && p == position => 3,
+                    _ => continue,
+                };
+                rows[which] = Some(slot);
+            }
+        }
+        rows
     }
     pub(super) fn replace_registered_attribute(
         &mut self,
@@ -399,13 +414,19 @@ impl SessionStorage {
             // boundary; old source history retires while that owner is exclusive.
             payload_write::<[StringLocation; 6]>(c, 6)?;
             let mut old_slots = [None; 4];
-            if let Some(hinted) = self.hinted_attribute_rows(c, node, container, position)? {
-                for (old, hinted) in old_slots.iter_mut().zip(hinted) {
-                    if hinted.is_some() {
-                        payload_write::<Option<usize>>(c, 1)?;
-                        *old = hinted;
+            if let Some([name, value]) = self.hinted_attribute_rows(c, node, container, position)? {
+                for (which, slot) in [(0, name), (1, value)] {
+                    payload_write::<Option<usize>>(c, 1)?;
+                    if let Some(old) = old_slots.get_mut(which) {
+                        *old = Some(slot);
                     }
                 }
+                #[cfg(test)]
+                assert_eq!(
+                    old_slots,
+                    self.scanned_attribute_rows(container, position),
+                    "a verified hint names the rows a scan finds"
+                );
             } else {
                 for (slot, payload) in self.payloads.values.iter().enumerate() {
                     c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -478,6 +499,129 @@ impl SessionStorage {
         self.association_attribute_hook(c, node, position)?;
         Ok(())
     }
+    /// Where the name rows of the attributes from `index` on sit, as the slot of
+    /// the last attribute's name, when creation's layout still holds for all of
+    /// them: each name and value row is verified by its location, and none of
+    /// the attributes has a namespace or prefix row. `None` sends the removal to
+    /// the registry scan, which finds the same rows.
+    fn removal_layout(
+        &self,
+        c: &mut ParseControl,
+        node: usize,
+        container: usize,
+        index: usize,
+    ) -> Result<Option<usize>, SessionError> {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        let attributes = element_record(&self.construction, c, node)?
+            .attributes()
+            .as_slice();
+        let count = attributes.len();
+        let Some(last) = count.checked_sub(1) else {
+            return Ok(None);
+        };
+        let Some(last_name) = self
+            .payloads
+            .attribute_value_candidate(node, count, last)
+            .and_then(|value| value.checked_sub(1))
+        else {
+            return Ok(None);
+        };
+        for position in index..count {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
+            let Some(attribute) = attributes.get(position) else {
+                return Ok(None);
+            };
+            if attribute.name().namespace().uri().is_some() || attribute.name().prefix().is_some() {
+                return Ok(None);
+            }
+            let Some([name, value]) = attribute_row_slots(last_name, count, position) else {
+                return Ok(None);
+            };
+            if !(self.row_located(name, StringLocation::AttributeName(container, position))
+                && self.row_located(value, StringLocation::AttributeValue(container, position)))
+            {
+                return Ok(None);
+            }
+        }
+        #[cfg(test)]
+        {
+            let mut expected: Vec<usize> = Vec::new();
+            for (slot, payload) in self.payloads.values.iter().enumerate() {
+                if let RetainedPayload::String { location, .. } = payload
+                    && let StringLocation::AttributeName(owner, position)
+                    | StringLocation::AttributeValue(owner, position)
+                    | StringLocation::AttributeNamespace(owner, position)
+                    | StringLocation::AttributePrefix(owner, position) = *location
+                    && owner == container
+                    && position >= index
+                {
+                    expected.push(slot);
+                }
+            }
+            let mut hinted: Vec<usize> = (index..count)
+                .flat_map(|position| attribute_row_slots(last_name, count, position).unwrap())
+                .collect();
+            hinted.sort_unstable();
+            assert_eq!(
+                hinted, expected,
+                "a verified layout names the rows a scan finds"
+            );
+        }
+        Ok(Some(last_name))
+    }
+    fn row_located(&self, slot: usize, expected: StringLocation) -> bool {
+        matches!(
+            self.payloads.values.get(slot),
+            Some(RetainedPayload::String { location, .. }) if same_location(*location, expected)
+        )
+    }
+    /// Rebinds the string row at `slot`, if it belongs to the attributes of
+    /// `container`, for the removal of the attribute at `index`, and records
+    /// that the registry up to it has been walked.
+    fn rebind_removed_attribute_row(
+        &mut self,
+        c: &mut ParseControl,
+        slot: usize,
+        container: usize,
+        index: usize,
+    ) -> Result<(), SessionError> {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        payload_write::<StringLocation>(c, 1)?;
+        payload_write::<usize>(c, 1)?;
+        if let Some(RetainedPayload::String { location, .. }) = self.payloads.values.get_mut(slot) {
+            // The constructor rebuilds the same location kind at its new
+            // position, so no second match can disagree with the first.
+            let (owner, position, rebuild): (usize, usize, fn(usize, usize) -> StringLocation) =
+                match *location {
+                    StringLocation::AttributeName(o, p) => (o, p, StringLocation::AttributeName),
+                    StringLocation::AttributeValue(o, p) => (o, p, StringLocation::AttributeValue),
+                    StringLocation::AttributeNamespace(o, p) => {
+                        (o, p, StringLocation::AttributeNamespace)
+                    }
+                    StringLocation::AttributePrefix(o, p) => {
+                        (o, p, StringLocation::AttributePrefix)
+                    }
+                    _ => (usize::MAX, 0, StringLocation::AttributeName),
+                };
+            if owner == container {
+                *location = if position == index {
+                    StringLocation::Detached
+                } else {
+                    rebuild(
+                        owner,
+                        position.saturating_sub(usize::from(position > index)),
+                    )
+                };
+            }
+        }
+        let Some(RetainedPayload::Attributes(Some(AttributeStorage::Removing { rebound, .. }))) =
+            self.payloads.values.get_mut(container)
+        else {
+            return Err(latch_registry_row(c));
+        };
+        *rebound = slot.saturating_add(1);
+        Ok(())
+    }
     pub(super) fn remove_managed_field(
         &mut self,
         c: &mut ParseControl,
@@ -523,6 +667,7 @@ impl SessionStorage {
         let Some((index, style_effect)) = selected else {
             return Ok(());
         };
+        let layout = self.removal_layout(c, node, container, index)?;
         payload_write::<Option<AttributeStorage>>(c, 2)?;
         let Some(RetainedPayload::Attributes(storage)) = self.payloads.values.get_mut(container)
         else {
@@ -552,11 +697,20 @@ impl SessionStorage {
         });
         // Historical destinations stay at the original slot. Retire their
         // original groups before any location is rebound, preserving the cause.
-        for slot in 0..self.payloads.values.len() {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if matches!(self.payloads.row(c, slot)?, RetainedPayload::String { location: StringLocation::AttributeName(owner, position) | StringLocation::AttributeValue(owner, position) | StringLocation::AttributeNamespace(owner, position) | StringLocation::AttributePrefix(owner, position), .. } if *owner == container && *position == index)
+        if let Some(last_name) = layout {
+            for slot in
+                attribute_row_slots(last_name, len, index).ok_or_else(|| latch_registry_row(c))?
             {
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                 self.retire_field_group(c, slot)?;
+            }
+        } else {
+            for slot in 0..self.payloads.values.len() {
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                if matches!(self.payloads.row(c, slot)?, RetainedPayload::String { location: StringLocation::AttributeName(owner, position) | StringLocation::AttributeValue(owner, position) | StringLocation::AttributeNamespace(owner, position) | StringLocation::AttributePrefix(owner, position), .. } if *owner == container && *position == index)
+                {
+                    self.retire_field_group(c, slot)?;
+                }
             }
         }
         let Some(last) = len.checked_sub(1) else {
@@ -566,49 +720,21 @@ impl SessionStorage {
             self.edit_removing_attribute(c, node, container, Some(position))?;
         }
         self.edit_removing_attribute(c, node, container, None)?;
-        for slot in 0..self.payloads.values.len() {
-            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            payload_write::<StringLocation>(c, 1)?;
-            payload_write::<usize>(c, 1)?;
-            if let Some(RetainedPayload::String { location, .. }) =
-                self.payloads.values.get_mut(slot)
-            {
-                // The constructor rebuilds the same location kind at its new
-                // position, so no second match can disagree with the first.
-                let (owner, position, rebuild): (usize, usize, fn(usize, usize) -> StringLocation) =
-                    match *location {
-                        StringLocation::AttributeName(o, p) => {
-                            (o, p, StringLocation::AttributeName)
-                        }
-                        StringLocation::AttributeValue(o, p) => {
-                            (o, p, StringLocation::AttributeValue)
-                        }
-                        StringLocation::AttributeNamespace(o, p) => {
-                            (o, p, StringLocation::AttributeNamespace)
-                        }
-                        StringLocation::AttributePrefix(o, p) => {
-                            (o, p, StringLocation::AttributePrefix)
-                        }
-                        _ => (usize::MAX, 0, StringLocation::AttributeName),
-                    };
-                if owner == container {
-                    *location = if position == index {
-                        StringLocation::Detached
-                    } else {
-                        rebuild(
-                            owner,
-                            position.saturating_sub(usize::from(position > index)),
-                        )
-                    };
+        if let Some(last_name) = layout {
+            // The rows that can change are those of the attributes from `index`
+            // on, and creation registered the last attribute first, so their
+            // registry order is by descending position.
+            for position in (index..len).rev() {
+                for slot in attribute_row_slots(last_name, len, position)
+                    .ok_or_else(|| latch_registry_row(c))?
+                {
+                    self.rebind_removed_attribute_row(c, slot, container, index)?;
                 }
             }
-            let Some(RetainedPayload::Attributes(Some(AttributeStorage::Removing {
-                rebound, ..
-            }))) = self.payloads.values.get_mut(container)
-            else {
-                return Err(latch_registry_row(c));
-            };
-            *rebound = slot.saturating_add(1);
+        } else {
+            for slot in 0..self.payloads.values.len() {
+                self.rebind_removed_attribute_row(c, slot, container, index)?;
+            }
         }
         payload_write::<Option<AttributeStorage>>(c, 2)?;
         payload_write::<usize>(c, 2)?;
@@ -867,4 +993,18 @@ impl ParserArenaSession {
             Err(error) => Err(super::latch_effect_fault(c, error)),
         }
     }
+}
+
+/// The registry slots of the name and value of the attribute at `position` of
+/// an element of `count` attributes, as creation registered them: the last
+/// attribute's name at `last_name`, its value after it, then the previous
+/// attribute's name and value, and so on.
+fn attribute_row_slots(last_name: usize, count: usize, position: usize) -> Option<[usize; 2]> {
+    let name = last_name.checked_add(
+        count
+            .checked_sub(1)?
+            .checked_sub(position)?
+            .checked_mul(2)?,
+    )?;
+    Some([name, name.checked_add(1)?])
 }

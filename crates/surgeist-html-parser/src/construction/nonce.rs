@@ -142,19 +142,27 @@ impl SessionStorage {
         }
         // Ordered installation may still have an active field redirect; select the
         // real installed value backing through its existing ownership lender.
-        let known = registered.filter(|&slot| {
-            matches!(
-                self.payloads.values.get(slot),
-                Some(RetainedPayload::String { value, .. })
-                    if Arc::ptr_eq(value.shared_code_units(), attribute.value().shared_code_units())
-            )
-        });
-        let source = match known {
-            Some(slot) => {
-                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        let mut known = None;
+        if let Some(slot) = registered {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            if let Some(RetainedPayload::String { value, .. }) = self.payloads.values.get(slot) {
                 c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-                slot
+                if Arc::ptr_eq(
+                    value.shared_code_units(),
+                    attribute.value().shared_code_units(),
+                ) {
+                    #[cfg(test)]
+                    assert_eq!(
+                        self.payloads.first_string_sharing(attribute.value()),
+                        Some(slot),
+                        "a verified registered row names the row a scan finds"
+                    );
+                    known = Some(slot);
+                }
             }
+        }
+        let source = match known {
+            Some(slot) => slot,
             None => self.attribute_value_slot(c, node, position)?,
         };
         let raw = self.copy_raw_field(c, source)?;
@@ -1162,6 +1170,47 @@ mod tests {
         session.release(&mut c).unwrap();
         super::super::tests::storage_zero(&c);
         assert!(c.stop().is_none());
+    }
+    #[test]
+    fn an_alias_of_an_old_attribute_string_between_edits_is_refused_at_the_freeze_preflight() {
+        let (mut c, mut session, node, _) = fixture();
+        // The first edit audits every row registered so far.
+        let value = supplied(&mut c, &[66]);
+        session
+            .active_mut()
+            .unwrap()
+            .set_nonce_content(&mut c, node.index, Some(value))
+            .unwrap();
+        // The `type` value is a row registered before that edit.
+        let alias = {
+            let HtmlNodeKind::Element(element) = session
+                .active()
+                .unwrap()
+                .construction
+                .node_at(node.index)
+                .expect("retained construction position")
+                .kind()
+            else {
+                panic!("input element")
+            };
+            element.attributes().as_slice()[0].value().clone()
+        };
+        // The second edit audits only what was registered since, so it succeeds;
+        // the audit of every row at the completed-freeze preflight is the backstop.
+        let value = supplied(&mut c, &[67]);
+        session
+            .active_mut()
+            .unwrap()
+            .set_nonce_content(&mut c, node.index, Some(value))
+            .unwrap();
+        assert_eq!(
+            session.preflight_completed_freeze(&mut c),
+            Err(SessionError::AliasedPayload)
+        );
+        assert!(session.active().is_ok());
+        drop(alias);
+        session.release(&mut c).unwrap();
+        super::super::tests::storage_zero(&c);
     }
     fn connected_request() -> crate::HtmlFragmentParseRequest {
         use crate::*;
