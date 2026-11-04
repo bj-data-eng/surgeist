@@ -2294,8 +2294,30 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
     header cell when the table has such groups: a table with a row or column
     group is refused for a `scope` value that is too long to read on any header
     cell, even one that no cell would otherwise have reached.
-  - The `headers` attribute is outside this bound: each token searches the
-    document, and each resolved token searches the cells.
+  - *Explicit `headers` tokens* cost `O(V + A + N log N * I + T log (N + C))`
+    for `V` the nodes of the document, `A` the attributes the walk reads (each
+    element's attributes are read to find its `id`, and charged per
+    attribute), `N` the elements with a non-empty `id`, `I` the longest such
+    `id` in units, `T` the units of all tokens (each token is a search of the
+    IDs and, if found, of the cells), and `C` the cells, plus `O(C log C)` to
+    sort them. The first non-empty token builds the whole
+    index: one walk of the ordinary tree from the document in tree order, with
+    every non-empty `id` entered by value (ties in tree order, so the first
+    element wins), and the cells by capture ordinal. Each token is then a
+    binary search of the IDs, and the element it finds is looked up among the
+    cells. The entries and cells are admitted as `ScratchRecords` as they are
+    pushed; the sort is charged as `N log N * (I + 1)` before it runs (the
+    convention of the column-group sort, an estimate of its comparisons rather
+    than a strict upper bound on them) and each lookup before it runs. A table
+    with no non-empty `headers` token never walks the document.
+    The walk ends where a search from the root for an absent ID would: at an
+    element whose `id` the interpreter refuses, or at a node whose ordered
+    children are unknown. That stop is kept, not raised: it answers (as the
+    refusal or the missing children) only the tokens that no earlier element
+    owns, and a token owned before it resolves. The walk is charged in full up
+    to that stop whether or not an early element owns every token, so a
+    document whose nodes after the last owner exceed the work limit is refused
+    even when every token is owned early.
   - Everything the model needs beyond the retained records is scratch: the
     placement tree, the per-column and per-cell placement records and the header
     indexes are admitted as `ScratchRecords`, and released with the query. Every
@@ -2309,6 +2331,10 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
   first row and column of header cells (outside and inside a `tbody`), for tall
   cells beside later rows, and the work per association for staggered tall
   header cells and for a stacked header column;
+  [the explicit headers tests](../../crates/surgeist-html-semantics/tests/semantics/tables/explicit_headers.rs)
+  pin the growth for an `n` by `n` grid in which every data cell names a header
+  by ID, and the cells named by duplicate, unknown, self-referring and outside
+  IDs;
   [the scan bounds tests](../../crates/surgeist-html-semantics/tests/semantics/tables/scan_bounds.rs)
   pin the shapes above that are costly for the scans.
 - **FooterScope** ([code](../../crates/surgeist-html-semantics/src/semantics/footer.rs)),

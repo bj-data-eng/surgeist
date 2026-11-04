@@ -22,7 +22,9 @@
 //! groups, column groups and the row and column sources are ordered too.
 //!
 //! Spans are written 0 to 9 and as garbage, scopes in every spelling, and the
-//! `headers` attribute names cells, a caption that shares an id, and unknown
+//! `headers` attribute names cells, a caption that shares an id, elements
+//! outside the table that own an id before or after its cells, cells that
+//! repeat another's id, ids and tokens that differ only in case, and unknown
 //! ids; cells are empty, blank, text or hold an element. Every element of a
 //! kind carries its position in tree order as its ordinal.
 
@@ -62,6 +64,10 @@ enum Content {
 #[derive(Clone, Debug)]
 struct Cell {
     ordinal: usize,
+    /// The cell takes the id of the cell with this ordinal (any, in tree
+    /// order, before or after its own) instead of its own: ids repeat, and the
+    /// first element in the document with an id decides it.
+    alias: Option<usize>,
     th: bool,
     colspan: Option<String>,
     rowspan: Option<String>,
@@ -72,7 +78,7 @@ struct Cell {
 
 impl Cell {
     fn id(&self) -> String {
-        format!("c{}", self.ordinal)
+        format!("c{}", self.alias.unwrap_or(self.ordinal))
     }
 }
 
@@ -106,6 +112,12 @@ enum Child {
         rows: Vec<Row>,
     },
     Other,
+    /// An element outside the table, in the document before it or after it,
+    /// that owns an id a cell may name.
+    Outside {
+        id: String,
+        after: bool,
+    },
 }
 
 /// Counters for the ordinals of each element kind.
@@ -148,7 +160,7 @@ fn cell(rng: &mut Rng, dense: bool, ordinals: &mut Ordinals) -> Cell {
                 if rng.chance(5) {
                     "missing".to_string()
                 } else {
-                    format!("c{}", rng.below(30))
+                    format!("{}{}", if rng.chance(6) { 'C' } else { 'c' }, rng.below(30))
                 }
             })
             .collect();
@@ -158,6 +170,7 @@ fn cell(rng: &mut Rng, dense: bool, ordinals: &mut Ordinals) -> Cell {
     ordinals.cells += 1;
     Cell {
         ordinal,
+        alias: rng.chance(10).then(|| rng.below(30)),
         th,
         colspan: span(rng, dense),
         rowspan: span(rng, dense),
@@ -186,6 +199,14 @@ fn row(rng: &mut Rng, dense: bool, ordinals: &mut Ordinals) -> Row {
 fn table(rng: &mut Rng, dense: bool) -> Vec<Child> {
     let mut children = Vec::new();
     let mut ordinals = Ordinals::default();
+    if rng.chance(6) {
+        // The first element in the document with an id may lie before the
+        // table, and then no cell of the table has it.
+        children.push(Child::Outside {
+            id: format!("{}{}", if rng.chance(3) { 'C' } else { 'c' }, rng.below(30)),
+            after: false,
+        });
+    }
     if rng.chance(3) {
         // A caption may take an id a cell later claims: the first element in
         // the document with the id is then not a cell.
@@ -243,6 +264,13 @@ fn table(rng: &mut Rng, dense: bool) -> Vec<Child> {
                 cols: Vec::new(),
             });
         }
+    }
+    if rng.chance(6) {
+        // After the table, an element with an id never takes it from a cell.
+        children.push(Child::Outside {
+            id: format!("{}{}", if rng.chance(3) { 'C' } else { 'c' }, rng.below(30)),
+            after: true,
+        });
     }
     children
 }
@@ -481,7 +509,7 @@ impl Oracle {
                         self.process_row_group(*ordinal, rows);
                     }
                 }
-                Child::Colgroup { .. } | Child::Other => {}
+                Child::Colgroup { .. } | Child::Other | Child::Outside { .. } => {}
             }
         }
         for (ordinal, rows) in pending {
@@ -692,7 +720,7 @@ fn oracle(table: &[Child]) -> (Expected, BTreeMap<usize, Associated>) {
     let mut o = Oracle::default();
     for child in table {
         let rows: Vec<&Row> = match child {
-            Child::Caption { id: Some(id), .. } => {
+            Child::Caption { id: Some(id), .. } | Child::Outside { id, .. } => {
                 o.ids.push((id.clone(), None));
                 Vec::new()
             }
@@ -800,8 +828,18 @@ fn build(table: &[Child]) -> (HtmlCapture, Subject, Subjects) {
     let root = element(&mut b, &d, "table", &[]);
     let mut subjects = Subjects::default();
     let mut children = Vec::new();
+    let (mut before, mut after) = (Vec::new(), Vec::new());
     for child in table {
         match child {
+            Child::Outside { id, after: later } => {
+                let e = element(&mut b, &d, "div", &[("id", id)]);
+                b.establish_children(&e, &[]).unwrap();
+                if *later {
+                    after.push(e)
+                } else {
+                    before.push(e)
+                }
+            }
             Child::Caption { id, .. } => {
                 let attrs: Vec<(&str, &str)> =
                     id.as_deref().map(|i| ("id", i)).into_iter().collect();
@@ -843,8 +881,9 @@ fn build(table: &[Child]) -> (HtmlCapture, Subject, Subjects) {
     }
     b.establish_children(&root, &children).unwrap();
     // The document lists the table, so an id search can complete.
-    b.establish_children(&d, std::slice::from_ref(&root))
-        .unwrap();
+    before.push(root.clone());
+    before.extend(after);
+    b.establish_children(&d, &before).unwrap();
     (b.finish().unwrap(), root, subjects)
 }
 
