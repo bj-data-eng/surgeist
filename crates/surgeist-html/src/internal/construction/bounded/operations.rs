@@ -826,7 +826,9 @@ impl HtmlConstructionOperation {
     }
     /// Consumes a ready operation. Returns the latched failure, or the not-ready error before the
     /// last action was accepted; either way the operation is handed back unchanged, so the caller
-    /// can abort it and recover the storage and command.
+    /// can abort it and recover the storage and command. An operation whose planned order edits no
+    /// longer find their places in the storage is refused with the cause the commit action gives
+    /// (`CapacityMismatch` or `ParentChildConflict`).
     #[expect(
         clippy::result_large_err,
         reason = "a refusal hands the complete owner back without boxing it"
@@ -854,6 +856,15 @@ impl HtmlConstructionOperation {
                 self,
                 HtmlConstructionErrorKind::OperationNotReady,
             ));
+        }
+        // The commit applies its order edits exactly where planning located them. The operation owns
+        // the storage exclusively until it commits, so what holds here holds then, and a state that
+        // fails is refused while the operation can still be handed back.
+        if self.plan.edits_order
+            && !self.plan.no_op
+            && let Err(error) = self.plan.check_order_edits(self.arena())
+        {
+            return Err(HtmlConstructionRefusal::new(self, error));
         }
         let staged = std::mem::take(&mut self.plan.staged);
         match resolve(&self.command, staged, self.plan.old_contents) {
@@ -2299,14 +2310,6 @@ impl HtmlConstructionReadyOperation {
         };
         let plan = &mut plan;
         let p = plan.positions;
-        if plan.edits_order && !plan.no_op && plan.check_order_edits(&storage.arena).is_err() {
-            // The Commit action refuses this state first; were it ever reached,
-            // no write may land, so the parent link and the lists cannot diverge.
-            return HtmlConstructionCommit::Changed {
-                storage,
-                created: plan.created.take(),
-            };
-        }
         if !plan.no_op {
             let arena = &mut storage.arena;
             // A reservation and a transfer check assign nothing, not even the

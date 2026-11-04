@@ -2631,7 +2631,7 @@ pub fn surgeist_html::bounded::construction::HtmlConstructionTextAppendObservati
 pub struct surgeist_html::bounded::construction::HtmlConstructionTextAppendReady
 impl surgeist_html::bounded::construction::HtmlConstructionTextAppendReady
 pub fn surgeist_html::bounded::construction::HtmlConstructionTextAppendReady::abort(self) -> surgeist_html::bounded::construction::HtmlConstructionTextAppendCompletion
-pub fn surgeist_html::bounded::construction::HtmlConstructionTextAppendReady::commit(self) -> surgeist_html::bounded::construction::HtmlConstructionTextAppendCompletion
+pub fn surgeist_html::bounded::construction::HtmlConstructionTextAppendReady::commit(self) -> core::result::Result<surgeist_html::bounded::construction::HtmlConstructionTextAppendCompletion, surgeist_html::bounded::construction::HtmlConstructionRefusal<Self>>
 pub struct surgeist_html::bounded::construction::HtmlConstructionTextAppendWork
 pub surgeist_html::bounded::construction::HtmlConstructionTextAppendWork::atomic_layout_bytes: usize
 pub surgeist_html::bounded::construction::HtmlConstructionTextAppendWork::copied_bytes: usize
