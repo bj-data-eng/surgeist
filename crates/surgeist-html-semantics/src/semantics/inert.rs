@@ -1,11 +1,14 @@
 //! HTML 877d6146487f §6.3–6.3.2 inert attributes and document modal blocking,
 //! and the #the-button-element rule for a select's first button.
 //!
-//! DOM owns document flattening (CSS Shadow 50337328484f §4.1). Excluded
-//! document membership does not establish detached semantic inert ancestry:
-//! inherited detached results remain explicitly unavailable until a separately
-//! sourced DOM producer supplies that capability. Runtime owns modal transitions
-//! and inert interaction effects; only the current blocking subject escapes.
+//! DOM owns document flattening (CSS Shadow 50337328484f §4.1). A node the
+//! document flat tree excludes is no node's flat-tree descendant, so an
+//! ancestor's `inert` attribute never reaches it; only modal blocking can, and
+//! only while the node is known to be connected. Excluded detached nodes have no
+//! defined flat tree: inherited detached results remain explicitly unavailable
+//! until a separately sourced DOM producer supplies that capability. Runtime
+//! owns modal transitions and inert interaction effects; only the current
+//! blocking subject escapes.
 
 use super::seen::Seen;
 use super::*;
@@ -607,10 +610,18 @@ impl<'a> HtmlSemanticSession<'a> {
                     });
                 }
                 HtmlDocumentFlatTreeRelation::Excluded => {
-                    return Ok(if blocker.is_some() && connected == Some(true) {
-                        HtmlSemanticValue::Known(true)
-                    } else {
-                        HtmlSemanticValue::Missing(HtmlSemanticMissing::InertAncestry(current))
+                    // Known exclusion from the document flat tree: no flat-tree
+                    // ancestor exists, so no ancestor attribute applies. A
+                    // connected node is inert exactly when a modal dialog
+                    // blocks the document. Without known connectedness the
+                    // exclusion may be detachment, for which no flat tree is
+                    // defined.
+                    return Ok(match (blocker, connected) {
+                        (Some(_), Some(true)) => HtmlSemanticValue::Known(true),
+                        (None, Some(true)) => HtmlSemanticValue::Known(false),
+                        _ => {
+                            HtmlSemanticValue::Missing(HtmlSemanticMissing::InertAncestry(current))
+                        }
                     });
                 }
                 HtmlDocumentFlatTreeRelation::Unavailable => {

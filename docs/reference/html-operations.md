@@ -914,8 +914,19 @@ source is inherited through the document flat tree, described next.
 connectedness to the document's actual blocking modal dialog. The producer owns
 flattening and modal transitions. Only the topmost blocking dialog escapes
 inherited inertness; an element's own inert attribute still applies. Unavailable
-or excluded ancestry remains missing evidence unless a local fact proves the
-result. The supplement and query share finite validation and session work
+ancestry remains missing evidence unless a local fact proves the result.
+
+An `inert` attribute makes its element and the element's flat-tree descendants
+inert ([the inert attribute](../../references/html-language-host-facts--877d6146487f--2dd822df9d5e.md#the-inert-attribute)),
+and the flat tree is built from the document's root element
+([CSS Shadow flattening](../../references/selectors-execution-css-shadow-1--editor-capture-20261010--b02c47a6b167.md#flattening)).
+A node the producer reports as excluded is therefore no node's flat-tree
+descendant, and no ancestor's attribute applies to it. A connected excluded node
+is inert exactly when a modal dialog blocks its document, because modal blocking
+reaches every connected node outside the blocking subject's flat tree; when the
+document is unblocked it is not inert. Without known connectedness, or when the
+node is detached, no flat tree is defined for it and the result remains missing
+evidence. The supplement and query share finite validation and session work
 limits, and reports retain its exact producer/configuration revision.
 
 <a id="shared-intrinsic-control-rules"></a>
