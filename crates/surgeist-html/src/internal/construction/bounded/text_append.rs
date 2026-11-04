@@ -1513,4 +1513,34 @@ mod tests {
             assert!(discarded.is_none());
         }
     }
+
+    /// The abort restores the original length of the record's own text. The qualification found the
+    /// backing exclusive, so nothing outside the append can hold it; were something to, the tail
+    /// it wrote must still not stay in the record, and the other holder keeps what it saw.
+    #[test]
+    fn abort_restores_the_original_length_when_the_backing_has_another_holder() {
+        let mut units = Vec::with_capacity(8);
+        units.push(u16::from(b'x'));
+        let (storage, node) = make(HtmlNodeKind::Text(DocumentString::from_shared_code_units(
+            Arc::new(units),
+        )));
+        let mut owner =
+            HtmlConstructionTextAppend::begin(storage, node, DocumentString::from("yz"));
+        drive_to(&mut owner, Phase::Commit);
+        owner
+            .next_action()
+            .unwrap()
+            .unwrap()
+            .perform(None)
+            .unwrap()
+            .accept();
+        let mut owner = Some(owner);
+        let ready = slots::text_append(&mut owner).unwrap();
+        let holder = text_of(&ready.storage, ready.index).unwrap().clone();
+        let (storage, node, _, discarded) = ready.abort().into_parts();
+        assert!(discarded.is_none());
+        assert_eq!(text(&storage, &node), [u16::from(b'x')]);
+        assert_eq!(storage.usage().utf16_units(), 1);
+        assert_eq!(holder.len(), 3, "the other holder keeps what it saw");
+    }
 }
