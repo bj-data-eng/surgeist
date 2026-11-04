@@ -41,7 +41,10 @@ pub enum HtmlParseResource {
     SourceMapEntries,
     /// Live source-map UTF-16 payload units.
     SourceMapPayloadUnits,
-    /// Retained required diagnostics; exhaustion is terminal.
+    /// Retained diagnostics. Unlike every other domain this bounds retention,
+    /// not completion: a diagnostic emitted once the cap is reached is counted
+    /// in [`HtmlParseDiagnostics::dropped`](crate::HtmlParseDiagnostics::dropped)
+    /// and not kept, and the parse continues. The count is charged as work.
     Diagnostics,
     /// Live diagnostic UTF-16 payload units.
     DiagnosticPayloadUnits,
@@ -185,7 +188,8 @@ impl HtmlParseLimits {
     pub fn source_map_payload_units(&self) -> u64 {
         *self.values.get(HtmlParseResource::SourceMapPayloadUnits)
     }
-    /// Returns the diagnostics cap.
+    /// Returns the diagnostics cap, the number of diagnostics a result retains.
+    /// Further diagnostics are counted, not refused.
     pub fn diagnostics(&self) -> u64 {
         *self.values.get(HtmlParseResource::Diagnostics)
     }
@@ -281,7 +285,11 @@ impl HtmlParseLimitsBuilder {
             .get_mut(HtmlParseResource::SourceMapPayloadUnits) = Some(cap);
         self
     }
-    /// Supplies the diagnostics cap.
+    /// Supplies the diagnostics cap: the number of diagnostics a result
+    /// retains, the first ones the parse emitted. Reaching it does not stop the
+    /// parse; each further diagnostic is counted and dropped. A caller that
+    /// needs every diagnostic sets it high enough and checks that
+    /// [`HtmlParseDiagnostics::dropped`](crate::HtmlParseDiagnostics::dropped) is zero.
     pub fn diagnostics(mut self, cap: u64) -> Self {
         *self.values.get_mut(HtmlParseResource::Diagnostics) = Some(cap);
         self

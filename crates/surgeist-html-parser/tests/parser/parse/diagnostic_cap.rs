@@ -92,7 +92,7 @@ fn parse(
     kind: Kind,
     input: &str,
     limits: HtmlParseLimits,
-) -> Result<HtmlParseReport, surgeist_html_parser::HtmlParseFailure> {
+) -> Result<HtmlParseReport, Box<surgeist_html_parser::HtmlParseFailure>> {
     let source = HtmlSource::utf8(input);
     match kind {
         Kind::Document => HtmlDocumentParseRequest::offline(source, limits).parse(),
@@ -106,6 +106,7 @@ fn parse(
         .unwrap()
         .parse(),
     }
+    .map_err(Box::new)
 }
 
 fn with_cap(cap: u64) -> HtmlParseLimits {
@@ -117,7 +118,7 @@ type Retained = (
     HtmlParseDiagnosticKind,
     &'static str,
     &'static str,
-    surgeist_html_parser::HtmlSourceRange,
+    (usize, usize),
 );
 
 fn retained(report: &HtmlParseReport) -> Vec<Retained> {
@@ -129,7 +130,10 @@ fn retained(report: &HtmlParseReport) -> Vec<Retained> {
                 record.kind(),
                 record.rule().anchor(),
                 record.rule().branch(),
-                location.source_range().clone(),
+                (
+                    location.source_range().start(),
+                    location.source_range().end(),
+                ),
             )
         })
         .collect()
@@ -217,6 +221,7 @@ fn a_parse_with_more_errors_than_the_cap_completes_with_the_uncapped_tree() {
             assert_eq!(all.len(), required, "{name}: derived error count");
         }
         let total = all.len();
+        assert_eq!(full.diagnostics().dropped(), 0, "{name}: nothing dropped");
         assert!(total > 8, "{name}: needs more errors than the caps below");
         let expected_tree = tree(&full);
         for cap in [0, 1, 2, 7, total / 2, total - 1, total, total + 1] {
@@ -228,6 +233,11 @@ fn a_parse_with_more_errors_than_the_cap_completes_with_the_uncapped_tree() {
             });
             let kept = retained(&report);
             assert_eq!(kept.len(), total.min(cap), "{name}: cap {cap}");
+            assert_eq!(
+                report.diagnostics().dropped(),
+                (total - kept.len()) as u64,
+                "{name}: cap {cap} counts exactly the diagnostics it did not retain"
+            );
             assert!(
                 kept.iter().eq(all.iter().take(cap)),
                 "{name}: cap {cap} retains the first diagnostics in parse order"
@@ -314,4 +324,30 @@ fn another_resource_still_stops_a_capped_parse() {
         .finish()
         .unwrap();
     parse(Kind::Document, &input, exact).unwrap();
+}
+
+#[test]
+fn a_failure_keeps_the_prefix_and_the_dropped_count_reached_before_the_stop() {
+    let input = "< ".repeat(64);
+    let complete = parse(Kind::Document, &input, with_cap(3)).unwrap();
+    let used = complete
+        .usage()
+        .resource(HtmlParseResource::WorkCredits)
+        .current();
+    let cut = limits_builder()
+        .diagnostics(3)
+        .work_credits(used / 2)
+        .finish()
+        .unwrap();
+    let failure = parse(Kind::Document, &input, cut).unwrap_err();
+    let diagnostics = failure.diagnostics().expect("diagnostics were initialized");
+    assert_eq!(diagnostics.len(), 3);
+    assert!(
+        diagnostics.dropped() > 0,
+        "errors past the cap were counted"
+    );
+    assert!(
+        diagnostics.dropped() < complete.diagnostics().dropped(),
+        "fewer errors were reached than in the complete parse"
+    );
 }

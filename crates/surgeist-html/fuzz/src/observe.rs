@@ -290,10 +290,24 @@ fn range(source: &HtmlSource, range: &HtmlSourceRange) -> bool {
         .range(range.start(), range.end())
         .is_ok_and(|r| r == *range)
 }
+/// The retained diagnostics of a result and how many the `Diagnostics` cap
+/// dropped. The cap bounds retention, so the dropped count is part of what a
+/// published result must keep immutable.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ObservedDiagnostics {
+    records: Vec<Diagnostic>,
+    dropped: u64,
+}
+/// Whether `observed` obeys the configured `Diagnostics` cap: no more than the
+/// cap is retained, and a dropped diagnostic means the cap was filled.
+fn within_diagnostics_cap(observed: &ObservedDiagnostics, cap: u64) -> bool {
+    let retained = observed.records.len() as u64;
+    retained <= cap && (observed.dropped == 0 || retained == cap)
+}
 pub(crate) fn diagnostics(
     source: &HtmlSource,
     d: HtmlParseDiagnostics<'_>,
-) -> std::result::Result<Vec<Diagnostic>, &'static str> {
+) -> std::result::Result<ObservedDiagnostics, &'static str> {
     if d.len() > MAX_ROWS {
         return Err("diagnostic-limit");
     }
@@ -316,7 +330,10 @@ pub(crate) fn diagnostics(
             token: l.token(),
         });
     }
-    Ok(out)
+    Ok(ObservedDiagnostics {
+        records: out,
+        dropped: d.dropped(),
+    })
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct Cause {
@@ -640,6 +657,9 @@ const RESOURCE_ORDER: [HtmlParseResource; 19] = [
     HtmlParseResource::WorkCredits,
 ];
 
+/// The index of the `Diagnostics` cap in the configured caps.
+const DIAGNOSTICS_CAP: usize = 10;
+
 /// The request-side facts a parse result must preserve.
 pub(crate) struct Spec<'a> {
     pub(crate) fragment: bool,
@@ -657,7 +677,7 @@ pub(crate) struct Spec<'a> {
 /// later immutability comparison.
 pub(crate) struct Verified {
     pub(crate) nodes: Vec<NativeNode>,
-    pub(crate) diagnostics: Vec<Diagnostic>,
+    pub(crate) diagnostics: ObservedDiagnostics,
     pub(crate) rows: Vec<Association>,
 }
 /// How a failed parse is classified when it is not an expected bounded stop.
@@ -711,6 +731,15 @@ pub(crate) fn verify_report(
         Ok(d) => d,
         Err(key) => return props.failure(2, key, "typed diagnostic range").map(Err),
     };
+    if !within_diagnostics_cap(&diagnostics, spec.caps[DIAGNOSTICS_CAP]) {
+        return props
+            .failure(
+                2,
+                "diagnostic-cap-retention",
+                "retained and dropped diagnostics disagree with the configured cap",
+            )
+            .map(Err);
+    }
     let rows = match associations(report) {
         Ok(r) => r,
         Err(key) => return props.failure(2, key, "native D1 range").map(Err),
@@ -769,10 +798,30 @@ pub(crate) fn verify_failure(
     if f.cleanup_error().is_some() {
         return props.failure(3, "cleanup-error", "typed cleanup engine error");
     }
-    if let Some(d) = f.diagnostics()
-        && let Err(key) = diagnostics(f.source(), d)
+    if let Some(d) = f.diagnostics() {
+        match diagnostics(f.source(), d) {
+            Err(key) => return props.failure(2, key, "failure diagnostic range"),
+            Ok(observed) if !within_diagnostics_cap(&observed, spec.caps[DIAGNOSTICS_CAP]) => {
+                return props.failure(
+                    2,
+                    "diagnostic-cap-retention",
+                    "retained and dropped diagnostics disagree with the configured cap",
+                );
+            }
+            Ok(_) => {}
+        }
+    }
+    // The `Diagnostics` cap bounds retention only: no parse stops on it.
+    if let HtmlParseFailureReason::Stop(HtmlParseStop::LimitExceeded {
+        resource: HtmlParseResource::Diagnostics,
+        ..
+    }) = f.reason()
     {
-        return props.failure(2, key, "failure diagnostic range");
+        return props.failure(
+            3,
+            "diagnostic-cap-terminal",
+            "the diagnostics cap stopped a parse instead of bounding retention",
+        );
     }
     let failure_diags = f
         .diagnostics()
@@ -996,7 +1045,7 @@ pub(crate) fn evaluate(target: &UnicodeTarget, case: &UnicodeCase) -> Result<Cas
             };
             if let Lane::Literal(id) = case.lane
                 && (!check_literal(id, &seen.nodes)
-                    || !literal_evidence(id, &report, &seen.rows, &seen.diagnostics))
+                    || !literal_evidence(id, &report, &seen.rows, &seen.diagnostics.records))
             {
                 return props.failure(
                     5,

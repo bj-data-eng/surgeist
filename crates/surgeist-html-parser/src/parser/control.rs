@@ -1048,6 +1048,21 @@ impl ParseControl {
     ) -> Result<(), HtmlParseStop> {
         self.acquire_many(&[(resource, units)])
     }
+    /// Whether the retained diagnostics have reached the `Diagnostics` limit.
+    /// That limit bounds retention only: a diagnostic emitted while this holds
+    /// is dropped and counted, never refused, so the parse continues.
+    pub(crate) fn diagnostics_retention_full(&self) -> bool {
+        self.usage.resource(HtmlParseResource::Diagnostics).current
+            >= self.limits.copy(HtmlParseResource::Diagnostics)
+    }
+    /// Charges counting one dropped diagnostic, before the count is written:
+    /// one visit of the retention state and one write of the counter.
+    pub(crate) fn charge_dropped_diagnostic(&mut self) -> Result<(), HtmlParseStop> {
+        self.charge_many(&[
+            (HtmlParseWorkCategory::RecordVisit, 1),
+            (HtmlParseWorkCategory::RecordWrite, 1),
+        ])
+    }
     /// Coupled logical allocations admit atomically in resource precedence order.
     pub(crate) fn acquire_many(
         &mut self,

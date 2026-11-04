@@ -824,7 +824,6 @@ fn every_retained_tokenizer_domain_has_a_real_finite_failure() {
         HtmlParseResource::TokenAttributes,
         HtmlParseResource::AuxiliaryEntries,
         HtmlParseResource::SourceMapEntries,
-        HtmlParseResource::Diagnostics,
         HtmlParseResource::ManagedCapacityBytes,
         HtmlParseResource::PeakTransientBytes,
         HtmlParseResource::AtomicLayoutBytes,
@@ -847,9 +846,6 @@ fn every_retained_tokenizer_domain_has_a_real_finite_failure() {
             }
             HtmlParseResource::SourceMapEntries => {
                 caps = caps.into_builder().source_map_entries(0).finish().unwrap()
-            }
-            HtmlParseResource::Diagnostics => {
-                caps = caps.into_builder().diagnostics(0).finish().unwrap()
             }
             HtmlParseResource::ManagedCapacityBytes => {
                 caps = caps
@@ -875,6 +871,17 @@ fn every_retained_tokenizer_domain_has_a_real_finite_failure() {
             "{resource:?}"
         );
     }
+}
+#[test]
+fn the_diagnostics_cap_bounds_retention_and_never_stops_the_tokenizer() {
+    // `&zzz;` and the duplicate `x` are two tokenizer errors; the cap of zero
+    // retains neither and the run still completes with nothing leaked.
+    let source = HtmlSource::utf8("<a x='&zzz;' x='discard'>");
+    let caps = limits().into_builder().diagnostics(0).finish().unwrap();
+    assert_eq!(
+        run_with_limits(&source, HtmlTokenizerState::Data, None, caps).0,
+        None
+    );
 }
 #[test]
 fn tree_state_selection_after_actual_start_tag_is_functional() {
@@ -1102,15 +1109,13 @@ fn input_diagnostics_and_reconsume_newline_origins_are_emitted_once() {
             HtmlTokenizerDiagnostic::ControlCharacterInInputStream
         ]
     );
+    // The cap bounds retention: with none retained the run still completes.
     let mut caps = limits();
     caps = caps.into_builder().diagnostics(0).finish().unwrap();
-    assert!(matches!(
+    assert_eq!(
         run_with_limits(&source, HtmlTokenizerState::Data, None, caps).0,
-        Some(HtmlParseStop::LimitExceeded {
-            resource: HtmlParseResource::Diagnostics,
-            ..
-        })
-    ));
+        None
+    );
 }
 #[test]
 fn duplicate_name_exit_at_eof_precedes_eof_in_tag() {
@@ -3944,6 +3949,15 @@ fn progressive_real_work_and_storage_exact_one_short_keep_first_stop_and_cleanup
     ] {
         let peak = usage.resource(resource).high_water;
         assert!(peak > 0, "{resource:?}");
+        if resource == HtmlParseResource::Diagnostics {
+            // Retention is bounded, never refused: one short drops a diagnostic.
+            let one_short = limits().into_builder().diagnostics(peak - 1);
+            assert_eq!(
+                run_progressive_limits(&source, one_short.finish().unwrap()).0,
+                None
+            );
+            continue;
+        }
         let with = |value| {
             let b = limits().into_builder();
             match resource {
