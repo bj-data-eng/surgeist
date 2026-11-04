@@ -1319,8 +1319,10 @@ impl HtmlAutocompleteReport {
 }
 
 /// The control an applicable verdict names, or `None` with the verdict no longer applicable. A
-/// verdict is only `Applicable` together with its known element: a missing element, or an element
-/// that does not fit the supplied input state, makes it a different context.
+/// verdict is only `Applicable` together with its known element. The rule covers `input`, `select`
+/// and `textarea` alone (HTML 877d), so an element that is none of them is a different element, as
+/// `applies` reports for any other; an element that does not fit the supplied input state is a
+/// different context.
 fn applicable_control(
     applicability: &mut HtmlAttributeApplicability,
     known: Option<KnownHtmlElement>,
@@ -1330,8 +1332,12 @@ fn applicable_control(
         return None;
     }
     match known {
+        None => {
+            *applicability = HtmlAttributeApplicability::DifferentElement;
+            None
+        }
         Some(known) if state.is_none() || known == KnownHtmlElement::Input => Some(known),
-        _ => {
+        Some(_) => {
             *applicability = HtmlAttributeApplicability::DifferentContext;
             None
         }
@@ -1734,9 +1740,10 @@ impl HtmlValueInterpreter {
         if let Some(state) = state {
             input.supplied_context = SuppliedContext::Input(state);
         }
-        // The applicable verdict is kept only with the known control it names. A supplied input
-        // state fits an `input` alone, and the rule covers no unknown element, so every other
-        // element is written back as a different context and the report agrees with what follows.
+        // The applicable verdict is kept only with the known control it names. The rule covers no
+        // unknown element, so one is written back as a different element, and a supplied input
+        // state fits an `input` alone, so another control is a different context; the report
+        // then agrees with what follows.
         let Some(known) = applicable_control(
             &mut input.applicability,
             KnownHtmlElement::from_name(element),
@@ -1812,13 +1819,13 @@ mod controlled_tests {
                 None,
                 A::DifferentContext,
             ),
-            (A::Applicable, None, None, None, A::DifferentContext),
+            (A::Applicable, None, None, None, A::DifferentElement),
             (
                 A::Applicable,
                 None,
                 Some(HtmlInputType::Text),
                 None,
-                A::DifferentContext,
+                A::DifferentElement,
             ),
             (
                 A::DifferentElement,
