@@ -11,6 +11,7 @@
 //! blocking subject escapes.
 
 use super::admission::producer_revision;
+use super::index::FactIndex;
 use super::scan::{ScanError, ScanMeter};
 use super::seen::Seen;
 use super::*;
@@ -224,13 +225,25 @@ fn inert_connection(
         }
     }
 }
-/// The recorded fact of `id`, charging 1 per fact examined.
+/// The recorded fact of `id`, charging 1 for the probe of the index.
 fn inert_node_lookup<'a>(
     validation: &mut InertMeter,
     nodes: &'a [HtmlInertNodeFact],
+    index: &FactIndex,
     id: &HtmlCaptureSubjectId,
 ) -> Result<Option<&'a HtmlInertNodeFact>, HtmlInertFactError> {
-    validation.fact(nodes, |fact| &fact.subject, id)
+    validation.charge(1)?;
+    Ok(index.position(id).map(|position| &nodes[position]))
+}
+/// What a walk up the flat parents has learned about a record.
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum FlatWalk {
+    /// No walk has reached the record.
+    Unreached,
+    /// The walk in progress has passed through the record.
+    Passing,
+    /// The chain above the record is known to end without a cycle.
+    Ends,
 }
 impl HtmlInertFacts {
     /// Moves finite supplied capacities. Partial coverage is permitted and remains
@@ -261,14 +274,34 @@ impl HtmlInertFacts {
             });
         }
         let mut validation = InertMeter::new(0, limits.validation_work);
-        let mut seen = Seen::new(
+        let mut index = FactIndex::new(
+            capture.identity(),
             nodes.len(),
             |n| validation.charge(n),
             HtmlInertFactError::RepresentationExhausted,
         )?;
-        for (index, fact) in nodes.iter().enumerate() {
+        let mut flat_roots = 0;
+        for (position, fact) in nodes.iter().enumerate() {
+            index.enter(&fact.subject, position);
+            if fact.relation == HtmlDocumentFlatTreeRelation::Root {
+                flat_roots += 1;
+            }
+        }
+        // The documents that already have a flat root.
+        let mut rooted = Seen::new(
+            flat_roots,
+            |n| validation.charge(n),
+            HtmlInertFactError::RepresentationExhausted,
+        )?;
+        validation.charge(nodes.len())?;
+        let mut walks = Vec::new();
+        walks
+            .try_reserve(nodes.len())
+            .map_err(|_| HtmlInertFactError::RepresentationExhausted)?;
+        walks.resize(nodes.len(), FlatWalk::Unreached);
+        for (position, fact) in nodes.iter().enumerate() {
             let node = validation.node(capture, &fact.subject)?;
-            if !seen.first(fact.subject.ordinal()) {
+            if index.position(&fact.subject) != Some(position) {
                 return Err(HtmlInertFactError::DuplicateSubject(fact.subject.clone()));
             }
             let connection = inert_connection(&mut validation, capture, &fact.subject)?;
@@ -307,17 +340,9 @@ impl HtmlInertFacts {
                             fact.subject.clone(),
                         ));
                     }
-                    for previous in &nodes[..index] {
-                        validation.charge(1)?;
-                        if previous.relation == HtmlDocumentFlatTreeRelation::Root {
-                            let previous_node = validation.node(capture, &previous.subject)?;
-                            validation.charge(1)?;
-                            if previous_node.node_document() == node.node_document() {
-                                return Err(HtmlInertFactError::InvalidFlatRoot(
-                                    fact.subject.clone(),
-                                ));
-                            }
-                        }
+                    validation.charge(1)?;
+                    if !rooted.first(node.node_document().subject().ordinal()) {
+                        return Err(HtmlInertFactError::InvalidFlatRoot(fact.subject.clone()));
                     }
                 }
                 HtmlDocumentFlatTreeRelation::Parent(parent) => {
@@ -352,7 +377,9 @@ impl HtmlInertFacts {
                             parent.clone(),
                         ));
                     }
-                    if let Some(parent_fact) = inert_node_lookup(&mut validation, &nodes, parent)? {
+                    if let Some(parent_fact) =
+                        inert_node_lookup(&mut validation, &nodes, &index, parent)?
+                    {
                         if parent_fact.connected == Some(false) {
                             return Err(HtmlInertFactError::ContradictoryConnectedness(
                                 parent.clone(),
@@ -368,22 +395,43 @@ impl HtmlInertFacts {
                 HtmlDocumentFlatTreeRelation::Unavailable
                 | HtmlDocumentFlatTreeRelation::Excluded => {}
             }
-            let mut current = fact.subject.clone();
-            // Every complete link resolves to a unique record. More than the
-            // record count cannot occur without revisiting a record (a cycle).
-            for traversed in 0..=nodes.len() {
-                let Some(current_fact) = inert_node_lookup(&mut validation, &nodes, &current)?
-                else {
+            // The chain above this record, which can only be shorter than the
+            // records. A hop to a record the walk is passing through closes a cycle;
+            // a hop to a record whose chain is known to end ends this one too.
+            let mut at = position;
+            loop {
+                validation.charge(1)?;
+                match walks[at] {
+                    FlatWalk::Ends => break,
+                    FlatWalk::Passing => {
+                        return Err(HtmlInertFactError::FlatCycle(fact.subject.clone()));
+                    }
+                    FlatWalk::Unreached => walks[at] = FlatWalk::Passing,
+                }
+                let HtmlDocumentFlatTreeRelation::Parent(parent) = &nodes[at].relation else {
                     break;
                 };
                 validation.charge(1)?;
-                let HtmlDocumentFlatTreeRelation::Parent(parent) = &current_fact.relation else {
+                let Some(next) = index.position(parent) else {
                     break;
                 };
-                if traversed == nodes.len() {
-                    return Err(HtmlInertFactError::FlatCycle(fact.subject.clone()));
+                at = next;
+            }
+            // Every record the walk passed has a chain that ends.
+            let mut at = position;
+            loop {
+                if walks[at] == FlatWalk::Ends {
+                    break;
                 }
-                current = parent.clone();
+                validation.charge(1)?;
+                walks[at] = FlatWalk::Ends;
+                let HtmlDocumentFlatTreeRelation::Parent(parent) = &nodes[at].relation else {
+                    break;
+                };
+                let Some(next) = index.position(parent) else {
+                    break;
+                };
+                at = next;
             }
         }
         let mut seen = Seen::new(
@@ -416,7 +464,8 @@ impl HtmlInertFacts {
                         blocker.clone(),
                     ));
                 }
-                if let Some(blocker_fact) = inert_node_lookup(&mut validation, &nodes, blocker)?
+                if let Some(blocker_fact) =
+                    inert_node_lookup(&mut validation, &nodes, &index, blocker)?
                     && blocker_fact.connected == Some(false)
                 {
                     return Err(HtmlInertFactError::DisconnectedBlockingDialog(

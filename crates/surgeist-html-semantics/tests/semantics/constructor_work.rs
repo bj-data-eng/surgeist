@@ -216,15 +216,15 @@ fn inert_fact(
 }
 
 /// The smallest facts: one unavailable record. By hand, from the constructor:
-/// the duplicate set for one record costs 1; the record's node lookup 1; its
-/// connection walk visits the element (lookup 1, kind test 1, parent step 1) and
-/// then the document (lookup 1, kind test 1) for 5; the relation test 1; the
-/// flat-chain walk finds the record (1 fact examined) and reads its relation
-/// (1) before stopping at a non-parent; the duplicate set for no documents
-/// costs 0. No connectedness was supplied, so there is no comparison to charge:
-/// 1 + 1 + 5 + 1 + 1 + 1 = 10.
+/// the index of the records costs 1 to fill; the set of documents with a flat
+/// root 0; the walk marks 1; the record's node lookup 1; its connection walk
+/// visits the element (lookup 1, kind test 1, parent step 1) and then the
+/// document (lookup 1, kind test 1) for 5; the relation test 1; the walk up its
+/// flat parents reads the record (1) and, as a non-parent ends it, marks it
+/// (1); the set for no documents costs 0. No connectedness was supplied, so
+/// there is no comparison to charge: 1 + 1 + 1 + 5 + 1 + 1 + 1 = 11.
 #[test]
-fn one_unavailable_record_charges_ten() {
+fn one_unavailable_record_charges_eleven() {
     let p = page();
     let total = least_work("one unavailable record", |work| {
         inert_run(
@@ -238,7 +238,7 @@ fn one_unavailable_record_charges_ten() {
             work,
         )
     });
-    assert_eq!(total, 10);
+    assert_eq!(total, 11);
 }
 
 fn page_nodes(p: &Page) -> Vec<HtmlInertNodeFact> {
@@ -275,31 +275,34 @@ fn a_page_of_roots_parents_and_a_modal_blocker_charges_its_pinned_total() {
     let total = least_work("page", |work| {
         inert_run(&p.capture, page_nodes(&p), documents(), work)
     });
-    // The same records without the modal fact charge the record scan alone.
+    // The same records without the modal fact.
     let nodes_only = least_work("page nodes", |work| {
         inert_run(&p.capture, page_nodes(&p), vec![], work)
     });
     // By hand, with `A` the size of the element vocabulary (a recognition of an
     // element name costs (name units + 1) * A + 28 for the HTML namespace).
-    // Records, in order, each charge a node lookup (1), the connection walk
-    // (3 per element up to the document, then 2), the supplied-connectedness
-    // check (1 when both sides are known), the relation test (1) and the
-    // relation's own checks, then the flat chain walk (a lookup of the record
-    // by position in the list, plus 1, per hop):
-    //   html  (root):          1 + 5 + 1 + 1 + 2                       = 10
+    // Filling the index of records, the set of documents with a flat root (one
+    // here) and the walk marks costs 5 + 1 + 5 = 11. Records, in order, each
+    // charge a node lookup (1), the connection walk (3 per element up to the
+    // document, then 2), the supplied-connectedness check (1 when both sides
+    // are known), the relation test (1) and the relation's own checks, where a
+    // probe of the index costs 1:
+    //   html  (root):          1 + 5 + 1 + 1 + (1 + 1 + 1)             = 11
     //   body  (child of html): 1 + 8 + 1 + 1 + (1 + 1 + 5 + 1)         = 19
-    //   dialog (child of body):1 + 11 + 1 + 1 + (1 + 1 + 8 + 2)        = 26
-    //   div   (child of body): the same                                = 26
+    //   dialog (child of body):1 + 11 + 1 + 1 + (1 + 1 + 8 + 1)        = 25
+    //   div   (child of body): the same                                = 25
     //   span  (excluded):      1 + 11 + 1                              = 13
-    // chains: html 2, body 3 + 2, dialog 4 + 3 + 2, div 5 + 3 + 2, span 6 = 32
-    // and 5 for the duplicate set: 94 + 32 + 5 = 131.
-    assert_eq!(nodes_only, 131);
-    // The modal fact adds 1 for its duplicate set and 1 for its record, a node
-    // lookup (1), the dialog recognition (7A + 28), the document test (1), the
-    // dialog's connection walk (11) and its record lookup (3).
+    // The walk up the flat parents reads and marks each record it reaches
+    // once, then follows to a record known to end its chain: html 1 + 1,
+    // body 3 + 1 (it reads body, follows to html, reads it, then marks body),
+    // dialog 4, div 4, span 1 + 1 = 16.
+    assert_eq!(nodes_only, 11 + 93 + 16);
+    // The modal fact adds 1 for its set of documents and 1 for its record, a
+    // node lookup (1), the dialog recognition (7A + 28), the document test (1),
+    // the dialog's connection walk (11) and its record lookup (1).
     assert_eq!(
         total,
-        131 + 1 + 1 + 1 + 7 * KnownHtmlElement::ALL.len() + 28 + 1 + 11 + 3
+        nodes_only + 1 + 1 + 1 + 7 * KnownHtmlElement::ALL.len() + 28 + 1 + 11 + 1
     );
 }
 

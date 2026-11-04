@@ -18,6 +18,7 @@
 
 mod admission;
 mod context;
+mod index;
 mod scan;
 mod seen;
 pub use context::*;
