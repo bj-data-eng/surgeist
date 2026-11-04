@@ -1,5 +1,6 @@
 //! Concrete CSS producer attestations for one exact captured HTML media field.
 use super::admission::{FactAdmission, FactError, fact_limits, producer_revision};
+use super::index::FactIndex;
 use super::scan::ScanError;
 use super::*;
 use surgeist_html::bounded::media::{HtmlMediaField, media_field_matches};
@@ -243,6 +244,15 @@ impl HtmlMediaFacts {
                 .checked_mul(std::mem::size_of::<HtmlMediaFact>())
                 .ok_or(E::RepresentationExhausted)?,
         )?;
+        let mut inputs = FactIndex::new(
+            capture.identity(),
+            facts.len(),
+            |n| a.work(n),
+            E::RepresentationExhausted,
+        )?;
+        for (i, fact) in facts.iter().enumerate() {
+            inputs.enter_bound(&fact.input.subject, fact.input.ordinal, i);
+        }
         for (i, fact) in facts.iter().enumerate() {
             // Fixed role, namespace and field comparisons in raw(): ≤64 units.
             a.work(64)?;
@@ -263,7 +273,7 @@ impl HtmlMediaFacts {
             {
                 return Err(E::MatchRevisionMismatch);
             }
-            if a.repeats(&facts[..i], 1, |prior| prior.input == fact.input)? {
+            if inputs.is_repeat(&fact.input.subject, fact.input.ordinal, i) {
                 return Err(E::DuplicateInput(fact.input.clone()));
             }
         }

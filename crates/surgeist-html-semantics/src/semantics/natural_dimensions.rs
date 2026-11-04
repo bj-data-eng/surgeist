@@ -6,6 +6,7 @@
 //! the adapter's responsibility; exact rationals are the supported API domain.
 
 use super::admission::{FactAdmission, FactError, fact_limits};
+use super::index::FactIndex;
 use super::scan::ScanError;
 use super::*;
 use std::cmp::Ordering as CmpOrdering;
@@ -244,11 +245,32 @@ impl HtmlNaturalDimensions {
                 .checked_mul(std::mem::size_of::<HtmlNaturalDimensionFact>())
                 .ok_or(E::RepresentationExhausted)?,
         )?;
-        for facts in [&expected, &observations] {
+        let mut expected_index = FactIndex::new(
+            capture.identity(),
+            expected.len(),
+            |n| a.work(n),
+            E::RepresentationExhausted,
+        )?;
+        let mut observed_index = FactIndex::new(
+            capture.identity(),
+            observations.len(),
+            |n| a.work(n),
+            E::RepresentationExhausted,
+        )?;
+        for (position, fact) in expected.iter().enumerate() {
+            expected_index.enter(&fact.subject, position);
+        }
+        for (position, fact) in observations.iter().enumerate() {
+            observed_index.enter(&fact.subject, position);
+        }
+        for (facts, index) in [
+            (&expected, &expected_index),
+            (&observations, &observed_index),
+        ] {
             for (i, fact) in facts.iter().enumerate() {
                 a.work(1)?;
                 capture.element_id(&fact.subject).map_err(E::Capture)?;
-                if a.repeats(&facts[..i], 1, |prior| prior.subject == fact.subject)? {
+                if index.is_repeat(&fact.subject, (), i) {
                     return Err(E::DuplicateSubject(fact.subject.clone()));
                 }
                 if let Some((w, h)) = fact.axes() {
@@ -277,15 +299,8 @@ impl HtmlNaturalDimensions {
             if matches!(fact.state, NaturalObservation::Observed { .. }) {
                 return Err(E::InvalidExpectedSelection);
             }
-            let mut found = None;
-            for (i, observation) in observations.iter().enumerate() {
-                a.work(1)?;
-                if observation.subject == fact.subject {
-                    found = Some(i);
-                    break;
-                }
-            }
-            if let Some(i) = found {
+            a.work(1)?;
+            if let Some(i) = observed_index.position(&fact.subject) {
                 a.work(1)?;
                 if !matches!(observations[i].state, NaturalObservation::Observed { .. }) {
                     return Err(E::InvalidObservation);
@@ -293,7 +308,13 @@ impl HtmlNaturalDimensions {
                 if fact.state.key() != observations[i].state.key() {
                     return Err(E::ResourceMismatch(fact.subject.clone()));
                 }
-                fact.state = observations.swap_remove(i).state;
+                let taken = observations.swap_remove(i);
+                observed_index.forget_bound(&taken.subject, ());
+                fact.state = taken.state;
+                // The last observation took the removed one's place.
+                if let Some(moved) = observations.get(i) {
+                    observed_index.move_bound(&moved.subject, (), i);
+                }
             }
         }
         if let Some(extra) = observations.first() {

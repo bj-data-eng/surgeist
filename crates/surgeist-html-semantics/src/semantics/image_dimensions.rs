@@ -11,6 +11,7 @@
 //! and [determine dimensions](https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#determine-dimensions).
 
 use super::admission::{FactAdmission, FactError, fact_limits};
+use super::index::FactIndex;
 use super::scan::ScanError;
 use super::*;
 use surgeist_html::bounded::numeric::{
@@ -494,11 +495,20 @@ impl HtmlImageDimensionFacts {
         if (!expected.is_empty() || !resources.is_empty()) && revision.resource.is_none() {
             return Err(E::ResourceRevisionMissing);
         }
+        let mut expected_index = FactIndex::new(
+            capture.identity(),
+            expected.len(),
+            |n| a.work(n),
+            E::RepresentationExhausted,
+        )?;
+        for (position, e) in expected.iter().enumerate() {
+            expected_index.enter(&e.subject, position);
+        }
         for (i, e) in expected.iter().enumerate() {
             if image_role(&mut a, capture, &e.subject)? != e.role {
                 return Err(E::RoleMismatch(e.subject.clone()));
             }
-            if a.repeats(&expected[..i], 1, |prior| prior.subject == e.subject)? {
+            if expected_index.is_repeat(&e.subject, (), i) {
                 return Err(E::DuplicateSubject(e.subject.clone()));
             }
             a.work(1)?;
@@ -509,24 +519,27 @@ impl HtmlImageDimensionFacts {
                 return Err(E::InvalidOperation(e.subject.clone()));
             }
         }
+        let mut resource_index = FactIndex::new(
+            capture.identity(),
+            resources.len(),
+            |n| a.work(n),
+            E::RepresentationExhausted,
+        )?;
+        for (position, r) in resources.iter().enumerate() {
+            resource_index.enter(&r.expected.subject, position);
+        }
         for (i, r) in resources.iter().enumerate() {
             a.work(1)?;
             if revision.resource.as_ref() != Some(&r.revision) {
                 return Err(E::ResourceRevisionMismatch);
             }
-            if a.repeats(&resources[..i], 1, |prior| {
-                prior.expected.subject == r.expected.subject
-            })? {
+            if resource_index.is_repeat(&r.expected.subject, (), i) {
                 return Err(E::DuplicateSubject(r.expected.subject.clone()));
             }
-            let mut binding = None;
-            for e in &expected {
-                a.work(1)?;
-                if e.subject == r.expected.subject {
-                    binding = Some(e);
-                    break;
-                }
-            }
+            a.work(1)?;
+            let binding = expected_index
+                .position(&r.expected.subject)
+                .map(|position| &expected[position]);
             let Some(e) = binding else {
                 return Err(E::UnexpectedObservation(r.expected.subject.clone()));
             };
@@ -560,6 +573,15 @@ impl HtmlImageDimensionFacts {
             }
             a.check_bytes()?;
         }
+        let mut box_index = FactIndex::new(
+            capture.identity(),
+            boxes.len(),
+            |n| a.work(n),
+            E::RepresentationExhausted,
+        )?;
+        for (position, b) in boxes.iter().enumerate() {
+            box_index.enter(&b.subject, position);
+        }
         for (i, b) in boxes.iter().enumerate() {
             image_role(&mut a, capture, &b.subject)?;
             a.work(3)?;
@@ -572,7 +594,7 @@ impl HtmlImageDimensionFacts {
             if revision.participation.as_ref() != Some(&b.revision) {
                 return Err(E::ParticipationRevisionMismatch);
             }
-            if a.repeats(&boxes[..i], 1, |prior| prior.subject == b.subject)? {
+            if box_index.is_repeat(&b.subject, (), i) {
                 return Err(E::DuplicateSubject(b.subject.clone()));
             }
             for axis in [&b.width, &b.height] {

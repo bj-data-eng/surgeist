@@ -1006,23 +1006,24 @@ fn fact_families_charge_their_pinned_totals() {
     ];
     let a = KnownHtmlElement::ALL.len();
     let r = HtmlRelKeyword::ALL.len();
-    // By hand. Natural dimensions: the expected selection 1; the observation 1,
-    // its revision test 1 and two axes 2; the join of the selection charges 1,
-    // looks up its observation 1 and checks it 1: 8.
-    // Media: per fact 64 + 1 + 1 and one comparison per earlier fact: 3 * 66 + 0 + 1 + 2.
-    // Image dimensions: the expectation resolves its element (1 + 4A + 28) and
-    // charges 1; the resource charges 1, finds its binding 1, compares it 1,
-    // completes 1 and measures two axes 2; the content box resolves its element
-    // (1 + 4A + 28), charges 3 and measures two axes 2: 70 + 8A.
+    // By hand. Natural dimensions: the index of the expected selections 1 and
+    // of the observations 1; the expected selection 1; the observation 1, its
+    // revision test 1 and two axes 2; the join of the selection charges 1,
+    // probes the observations 1 and checks the observation 1: 10.
+    // Media: the index of the facts 3, then per fact 64 + 1 + 1: 3 + 3 * 66.
+    // Image dimensions: an index each of the expectations, resources and boxes
+    // 3; the expectation resolves its element (1 + 4A + 28) and charges 1; the
+    // resource charges 1, probes its binding 1, compares it 1, completes 1 and
+    // measures two axes 2; the content box resolves its element (1 + 4A + 28),
+    // charges 3 and measures two axes 2: 73 + 8A.
     // Link relationships: five vectors and two more for URL observations 7; the
     // definitions "ext" (1 + 1 + 5 + 4R) and "other" (1 + 1 + 1 + 1 + 5 + 6R),
     // each keyword costing one more than the definition's units; then each of
     // three occurrences of the `form`: 1, a node lookup 1, its recognition
     // (5A + 28), 1, the `rel` attribute lookup 8, the raw comparison 14 and the
     // token walk (1 + 4 per step of the HTML tokenizer to the occurrence's
-    // token); the second and third compare with the earlier occurrences at 3
-    // each (3 + 6); the two defined occurrences look up their definition (1,
-    // 2) and compare spelling (7, 11).
+    // token); the index of the occurrences 3; the two defined occurrences look
+    // up their definition (1, 2) and compare spelling (7, 11).
     let raw: Vec<u16> = "ext other zzz".encode_utf16().collect();
     let walk = |start: usize, end: usize| {
         let mut work = HtmlSpaceTokenCursor::BEGIN_WORK;
@@ -1042,10 +1043,10 @@ fn fact_families_charge_their_pinned_totals() {
     assert_eq!(
         totals,
         [
-            8,
-            3 * 66 + 1 + 2,
-            7 + (7 + 4 * r) + (9 + 6 * r) + 3 * (53 + 5 * a) + walks + (3 + 6) + (1 + 7 + 2 + 11),
-            70 + 8 * a,
+            10,
+            3 + 3 * 66,
+            7 + (7 + 4 * r) + (9 + 6 * r) + 3 * (53 + 5 * a) + walks + 3 + (1 + 7 + 2 + 11),
+            73 + 8 * a,
         ]
     );
 }

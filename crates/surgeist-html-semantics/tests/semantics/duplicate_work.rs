@@ -401,3 +401,252 @@ fn rel_same_site_observations_bind_to_urls_and_check_duplicates_in_work_linear_i
         })
     });
 }
+
+// ---------------------------------------------------------------------------
+// The refusals themselves do not change when duplicates are found through an
+// index: these hold for the previous pairwise checks as well.
+
+#[test]
+fn natural_dimension_facts_report_the_first_extra_observation_in_removal_order() {
+    // Joining takes each expected selection's observation out of the list by
+    // swapping the last one into its place, so the extras that remain are in
+    // that order: A is taken from position 2, which moves E2 there; B from
+    // position 0, which moves E2 again, leaving [E2, E1].
+    let (capture, ids) = page("img", &[], 4);
+    let [a, b, e1, e2] = [&ids[0], &ids[1], &ids[2], &ids[3]];
+    let revision =
+        HtmlNaturalDimensionRevision::new(HtmlNaturalDimensionProducerId::fresh(), 7, 17);
+    let key = || HtmlNaturalResourceKey::new(HtmlNaturalResourceId::fresh(), 11, 13);
+    let (key_a, key_b, key_1, key_2) = (key(), key(), key(), key());
+    let observation = |id: &HtmlCaptureSubjectId, key: &HtmlNaturalResourceKey| {
+        HtmlNaturalDimensionFact::observation(
+            id.clone(),
+            revision.clone(),
+            key.clone(),
+            HtmlNaturalDimensionAxis::KnownPresent(rational("3", "2")),
+            HtmlNaturalDimensionAxis::KnownPresent(rational("5", "1")),
+        )
+    };
+    let result = HtmlNaturalDimensions::new(
+        &capture,
+        capture.host_facts_revision().clone(),
+        revision.clone(),
+        vec![
+            HtmlNaturalDimensionFact::selection(a.clone(), Some(key_a.clone())),
+            HtmlNaturalDimensionFact::selection(b.clone(), Some(key_b.clone())),
+        ],
+        vec![
+            observation(b, &key_b),
+            observation(e1, &key_1),
+            observation(a, &key_a),
+            observation(e2, &key_2),
+        ],
+        HtmlNaturalDimensionLimits::new(100, 1 << 30, 1 << 20),
+    );
+    assert!(
+        matches!(&result, Err(HtmlNaturalDimensionFactsError::UnexpectedObservation(id)) if id == e2),
+        "{result:?}"
+    );
+}
+
+#[test]
+fn rel_observations_of_one_subject_are_duplicates_only_when_their_keys_agree() {
+    let (capture, ids) = page("a", &[("rel", "ext ext"), ("href", "x")], 2);
+    let make = |input| {
+        HtmlRelFacts::new(
+            &capture,
+            capture.host_facts_revision(),
+            input,
+            HtmlRelFactsLimits::new(1000, 1 << 20, 1 << 20),
+        )
+    };
+    let key = HtmlRelDefinitionKey::new(HtmlRelDefinitionId::fresh(), 1);
+    let definition = || {
+        HtmlRelDefinition::extension(
+            key.clone(),
+            HtmlSpaceToken::new("ext").unwrap(),
+            HtmlRelRegistryStatus::Proposed,
+            HtmlRelExtensionEffect::NotAllowed,
+            HtmlRelExtensionEffect::Hyperlink,
+            HtmlRelExtensionEffect::Hyperlink,
+        )
+    };
+    let occurrence = |id: &HtmlCaptureSubjectId, range: std::ops::Range<usize>| {
+        HtmlRelRegistryOccurrence::definition(id.clone(), "ext ext".into(), range, key.clone())
+    };
+    // Two tokens of one attribute, and the same token of two elements, differ.
+    assert!(
+        make(HtmlRelFactsInput::new().with_registry(
+            rel_revision(),
+            vec![definition()],
+            vec![
+                occurrence(&ids[0], 0..3),
+                occurrence(&ids[0], 4..7),
+                occurrence(&ids[1], 0..3),
+            ],
+        ))
+        .is_ok()
+    );
+    assert_eq!(
+        make(HtmlRelFactsInput::new().with_registry(
+            rel_revision(),
+            vec![definition()],
+            vec![
+                occurrence(&ids[0], 0..3),
+                occurrence(&ids[1], 4..7),
+                occurrence(&ids[0], 0..3),
+            ],
+        ))
+        .unwrap_err(),
+        HtmlRelFactsError::DuplicateObservation
+    );
+    let tokens = |id: &HtmlCaptureSubjectId| {
+        HtmlRelSupportedTokens::new(id.clone(), vec![HtmlRelKeyword::NoOpener])
+    };
+    assert!(
+        make(
+            HtmlRelFactsInput::new()
+                .with_supported_tokens(rel_revision(), vec![tokens(&ids[0]), tokens(&ids[1])])
+        )
+        .is_ok()
+    );
+    assert_eq!(
+        make(HtmlRelFactsInput::new().with_supported_tokens(
+            rel_revision(),
+            vec![tokens(&ids[0]), tokens(&ids[1]), tokens(&ids[0])]
+        ))
+        .unwrap_err(),
+        HtmlRelFactsError::DuplicateObservation
+    );
+    let grammar = |id: &HtmlCaptureSubjectId| {
+        HtmlRelUrlGrammar::new(id.clone(), HtmlRelGrammarInput::Href, "x".into(), true)
+    };
+    assert!(
+        make(
+            HtmlRelFactsInput::new()
+                .with_url_grammar(rel_revision(), vec![grammar(&ids[0]), grammar(&ids[1])])
+        )
+        .is_ok()
+    );
+    assert_eq!(
+        make(
+            HtmlRelFactsInput::new()
+                .with_url_grammar(rel_revision(), vec![grammar(&ids[1]), grammar(&ids[1])])
+        )
+        .unwrap_err(),
+        HtmlRelFactsError::DuplicateObservation
+    );
+    let section = |id: &HtmlCaptureSubjectId| {
+        HtmlRelBookmarkSection::new(id.clone(), HtmlRelSectionId::fresh())
+    };
+    assert_eq!(
+        make(HtmlRelFactsInput::new().with_bookmark_sections(
+            rel_revision(),
+            vec![section(&ids[0]), section(&ids[1]), section(&ids[0])]
+        ))
+        .unwrap_err(),
+        HtmlRelFactsError::DuplicateObservation
+    );
+}
+
+#[test]
+fn rel_url_observations_of_one_subject_bind_by_url_and_refuse_equal_ones() {
+    let (capture, ids) = page("form", &[("rel", "ext")], 2);
+    let make = |input| {
+        HtmlRelFacts::new(
+            &capture,
+            capture.host_facts_revision(),
+            input,
+            HtmlRelFactsLimits::new(1000, 1 << 20, 1 << 20),
+        )
+    };
+    let revision = rel_revision();
+    let origin = HtmlRelOriginId::fresh();
+    let settings = HtmlRelSettingsId::fresh();
+    let (first, second) = (
+        HtmlRelUrlKey::new(HtmlRelUrlId::fresh(), revision.clone()),
+        HtmlRelUrlKey::new(HtmlRelUrlId::fresh(), revision.clone()),
+    );
+    let url = |id: &HtmlCaptureSubjectId, key: &HtmlRelUrlKey, origin: &HtmlRelOriginId| {
+        HtmlRelUrlObservation::new(
+            id.clone(),
+            key.clone(),
+            HtmlRelBlobEntry::NonNull {
+                environment_origin: origin.clone(),
+            },
+        )
+    };
+    let same_site = |id: &HtmlCaptureSubjectId, key: &HtmlRelUrlKey| {
+        HtmlRelSameSiteObservation::new(
+            id.clone(),
+            key.clone(),
+            settings.clone(),
+            origin.clone(),
+            HtmlRelOriginId::fresh(),
+            true,
+        )
+    };
+    // One element with two URLs: each same-site observation finds its own.
+    assert!(
+        make(
+            HtmlRelFactsInput::new()
+                .with_url_records(
+                    revision.clone(),
+                    vec![
+                        url(&ids[0], &first, &origin),
+                        url(&ids[0], &second, &origin),
+                        url(&ids[1], &first, &origin),
+                    ]
+                )
+                .with_settings(
+                    revision.clone(),
+                    vec![
+                        same_site(&ids[0], &second),
+                        same_site(&ids[0], &first),
+                        same_site(&ids[1], &first),
+                    ]
+                )
+        )
+        .is_ok()
+    );
+    assert_eq!(
+        make(HtmlRelFactsInput::new().with_url_records(
+            revision.clone(),
+            vec![
+                url(&ids[0], &first, &origin),
+                url(&ids[1], &first, &origin),
+                url(&ids[0], &first, &origin),
+            ]
+        ))
+        .unwrap_err(),
+        HtmlRelFactsError::DuplicateObservation
+    );
+    // A URL of another element does not bind the observation.
+    assert_eq!(
+        make(
+            HtmlRelFactsInput::new()
+                .with_url_records(revision.clone(), vec![url(&ids[1], &first, &origin)])
+                .with_settings(revision.clone(), vec![same_site(&ids[0], &first)])
+        )
+        .unwrap_err(),
+        HtmlRelFactsError::UrlBindingMismatch
+    );
+    assert_eq!(
+        make(
+            HtmlRelFactsInput::new()
+                .with_url_records(
+                    revision.clone(),
+                    vec![
+                        url(&ids[0], &first, &origin),
+                        url(&ids[1], &second, &origin)
+                    ]
+                )
+                .with_settings(
+                    revision,
+                    vec![same_site(&ids[0], &first), same_site(&ids[0], &first)]
+                )
+        )
+        .unwrap_err(),
+        HtmlRelFactsError::DuplicateObservation
+    );
+}

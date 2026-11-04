@@ -4,10 +4,11 @@
 //!
 //! Each family admits its incoming vectors under the same three limits (record
 //! capacity, retained bytes and validation work), checks the same host revision,
-//! and rejects duplicate facts with a charged scan. They differ in what a fact
-//! must satisfy, so the engine owns only the shared accounting and leaves each
-//! constructor's checks and their order to the family. Every primitive reports
-//! the family's own error, and none charges after it fails.
+//! and rejects duplicate facts through an index of the facts' subjects, filled at
+//! a charge of one unit per fact. They differ in what a fact must satisfy, so
+//! the engine owns only the shared accounting and leaves each constructor's
+//! checks and their order to the family. Every primitive reports the family's own
+//! error, and none charges after it fails.
 
 use super::scan::{ScanError, ScanMeter};
 use super::*;
@@ -213,22 +214,6 @@ impl<E: FactError> FactAdmission<E> {
         self.check_records()?;
         self.check_bytes()
     }
-    /// Whether any earlier fact in `prior` satisfies `duplicate`, charging `cost`
-    /// for each one examined, before it is examined, and stopping at the first.
-    pub(super) fn repeats<T>(
-        &mut self,
-        prior: &[T],
-        cost: usize,
-        mut duplicate: impl FnMut(&T) -> bool,
-    ) -> Result<bool, E> {
-        for earlier in prior {
-            self.work(cost)?;
-            if duplicate(earlier) {
-                return Ok(true);
-            }
-        }
-        Ok(false)
-    }
 }
 
 #[cfg(test)]
@@ -333,41 +318,6 @@ mod tests {
         assert_eq!(d.add_records(1), Err(Refusal::Exhausted));
         d.grow_bytes(usize::MAX).unwrap();
         assert_eq!(d.add_bytes(1), Err(Refusal::Exhausted));
-    }
-
-    #[test]
-    fn repeats_charges_before_each_comparison_and_stops_at_the_first_match() {
-        let prior = [1, 2, 3, 2];
-        let mut compared = Vec::new();
-        let mut a = admission(0, 0, 100);
-        let found = a
-            .repeats(&prior, 3, |value| {
-                compared.push(*value);
-                *value == 2
-            })
-            .unwrap();
-        assert!(found);
-        assert_eq!(compared, [1, 2]);
-        assert_eq!(a.work_total(), 6);
-        let mut none = admission(0, 0, 100);
-        assert!(!none.repeats(&prior, 1, |value| *value == 9).unwrap());
-        assert_eq!(none.work_total(), 4);
-    }
-
-    #[test]
-    fn repeats_stops_at_the_work_limit_before_comparing() {
-        let mut compared = 0;
-        let mut a = admission(0, 0, 4);
-        let result = a.repeats(&[1, 2, 3], 2, |_| {
-            compared += 1;
-            false
-        });
-        assert_eq!(result, Err(Refusal::Work));
-        assert_eq!(
-            compared, 2,
-            "the third comparison was refused before it ran"
-        );
-        assert_eq!(a.work_total(), 4);
     }
 
     #[test]
