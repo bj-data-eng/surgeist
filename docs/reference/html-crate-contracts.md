@@ -194,7 +194,13 @@ edges, correct template/shadow endpoints, single owning associations, root
 restrictions, cycles and reciprocal parent/child links. Ordinary template contents
 and local shadow attachment are owning associations. A declarative template's
 contents reference to a shadow fragment is non-owning and independently checked;
-it is not an ordinary child or a second owner. A transition either commits a coherent
+it is not an ordinary child or a second owner. The reference is also independent
+of the template's ordinary position: a template whose contents became a declarative
+host's root is never inserted by the parser (parser template start tag steps, lines
+4026 to 4042 of the [retained syntax reference](../../references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md)),
+and the DOM lets a retained template be inserted under any element, so its parent
+may be the host, another element or nothing, and neither the construction import
+nor the capture builder relates it to the root's host. A transition either commits a coherent
 generic state or leaves the prior logical state unchanged. Each committed
 attribute slot is such a transition; a complete incremental attribute group does
 not roll back its already committed prefix on a later stop. Any reserved capacity

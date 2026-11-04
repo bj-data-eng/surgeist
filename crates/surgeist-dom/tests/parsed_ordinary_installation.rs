@@ -1969,6 +1969,68 @@ fn contextual_complete_capture_backing_has_exact_and_one_short_historical_admiss
     }
 }
 
+// A shadow reference is independent of the template's ordinary position: HTML
+// never inserts the template after a successful declarative attach
+// (html-source 147330-147332) and the DOM lets a retained template be inserted
+// under any element, so an ordinary capture must accept it below an element
+// that is not the root's host.
+#[test]
+fn a_shadow_reference_template_below_an_unrelated_element_is_captured() {
+    let (mut dom, capture, document, host) = fragment_fixture("div");
+    let report = fragment_report(
+        &capture,
+        host,
+        HtmlSource::utf8("<template shadowrootmode=open><b>S</b></template>"),
+        true,
+    );
+    let result = dom
+        .install_parsed_html_fragment(report, &capture, limits(), &AtomicBool::new(false))
+        .unwrap();
+    let template = element(&result, "template");
+    let shadow = result
+        .snapshot()
+        .node(host)
+        .unwrap()
+        .hosted_shadow_root()
+        .unwrap();
+    let mut batch = DomBatch::new();
+    let unrelated = batch.create_element_ns(document.node(), Namespace::html(), "p");
+    batch.insert_before(&unrelated, host, None);
+    batch.insert_before(template, &unrelated, None);
+    let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    let unrelated = commit.created(&unrelated).unwrap().unwrap();
+    let recapture = dom
+        .snapshot()
+        .html_capture(
+            document,
+            None,
+            surgeist_html_semantics::HtmlCaptureLimits::new(
+                1024, 4096, 4096, 1_000_000, 1024, 0, 0, 16_777_216,
+            ),
+            DomHtmlCaptureLimits::new(1024, 1_000_000),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+    let captured_template = recapture
+        .capture()
+        .node(&recapture.subject(template).unwrap())
+        .unwrap();
+    assert_eq!(
+        captured_template.template_contents_kind(),
+        Some(surgeist_html::construction::HtmlTemplateContentsKind::ShadowReference)
+    );
+    assert_eq!(
+        captured_template.parent(),
+        surgeist_html_semantics::HtmlCapturedParent::Subject(recapture.subject(unrelated).unwrap())
+    );
+    let Some(surgeist_html_semantics::HtmlCapturedTemplateContents::Present(root)) =
+        captured_template.template_contents()
+    else {
+        panic!("actual shadow reference required")
+    };
+    assert_eq!(recapture.node(root.subject()).unwrap(), shadow);
+}
+
 #[test]
 fn declarative_template_reference_does_not_own_adopted_destroyed_or_cloned_contents() {
     for destroy_template in [false, true] {

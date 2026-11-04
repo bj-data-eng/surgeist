@@ -901,6 +901,83 @@ fn shadow_reference_reaches_external_subtree_and_only_its_supplemental_host() {
     ));
     assert!(children(node(&result, &shadow)).is_empty());
 }
+// A template's shadow reference is independent of the template's ordinary
+// position (html-source 147330-147332; the DOM lets a retained template be
+// inserted under any element): the template below an element that is not the
+// root's host still imports and finishes.
+#[test]
+fn a_template_below_an_unrelated_element_keeps_its_shadow_reference() {
+    use surgeist_html::bounded::construction::HtmlConstructionCommand as C;
+    let (owner, selected) = create(storage(), C::CreateFragment);
+    let (owner, parent) = create(owner, create_element("p"));
+    let (owner, template) = create(owner, create_element("template"));
+    let (owner, host) = create(owner, create_element("div"));
+    let (owner, shadow) = create(
+        owner,
+        C::CreateShadowContents {
+            properties: properties(),
+        },
+    );
+    let (owner, _) = change(
+        owner,
+        C::Insert {
+            node: parent.clone(),
+            parent: selected.clone(),
+            before: None,
+        },
+    );
+    let (owner, _) = change(
+        owner,
+        C::Insert {
+            node: template.clone(),
+            parent: parent.clone(),
+            before: None,
+        },
+    );
+    let (owner, _) = change(
+        owner,
+        C::AttachTemplateShadow {
+            template: template.clone(),
+            host: host.clone(),
+            contents: shadow.clone(),
+        },
+    );
+    let parent = owner.result_id(&parent).unwrap();
+    let template = owner.result_id(&template).unwrap();
+    let host = owner.result_id(&host).unwrap();
+    let shadow = owner.result_id(&shadow).unwrap();
+    let source = publish(owner, selected);
+    let (mut builder, revision) = new_builder();
+    let document = external_document(&mut builder);
+    let facts = facts(
+        &source,
+        revision,
+        HtmlConstructionCaptureDocument::Existing(document),
+    );
+    let result = import(
+        builder,
+        source,
+        facts,
+        adapter_limits(),
+        HtmlSemanticCancellation::new(),
+    )
+    .unwrap()
+    .finish()
+    .unwrap();
+    let subject = |id: &HtmlNodeId| result.mapping().subject(id, result.capture()).unwrap();
+    assert_eq!(
+        node(&result, &template).template_contents_kind(),
+        Some(HtmlTemplateContentsKind::ShadowReference)
+    );
+    assert_eq!(
+        node(&result, &template).parent(),
+        HtmlCapturedParent::Subject(subject(&parent))
+    );
+    assert!(matches!(
+        node(&result, &shadow).host(),
+        Some(HtmlCapturedHost::Element(h)) if h.subject() == &subject(&host)
+    ));
+}
 #[test]
 fn revision_foreign_ids_duplicate_roles_and_missing_shadow_facts_are_typed_refusals() {
     let source = HtmlConstructionResult::Fragment(

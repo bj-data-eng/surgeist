@@ -12,7 +12,7 @@ use std::{
 };
 use surgeist_html::bounded::lexical::validate_custom_element_name;
 use surgeist_html::{
-    construction::{HtmlDoctype, HtmlDocumentMode, HtmlShadowRootProperties},
+    construction::{HtmlDoctype, HtmlDocumentMode, HtmlShadowRootMode, HtmlShadowRootProperties},
     elements::native::HtmlCustomElementState,
     parsing::{HtmlFragmentInsertionMode, HtmlFragmentTokenizerState, HtmlParserScriptingMode},
     security::nonce::{
@@ -2270,6 +2270,10 @@ impl HtmlCaptureBuilder {
     }
     /// Records a non-owning template reference to existing shadow contents.
     /// The target's host, ordinary parent, depth and owning dependents are unchanged.
+    /// The reference is independent of the template's ordinary position: HTML
+    /// never inserts a template whose contents became the declarative host's
+    /// root, and the DOM lets a retained template be inserted under any element,
+    /// so its parent may be the host, another element or nothing.
     pub fn establish_template_shadow_reference(
         &mut self,
         template: &HtmlCaptureBuilderSubject,
@@ -2847,11 +2851,19 @@ impl HtmlCapture {
         })
     }
 
-    /// Determines source shadow-attachment eligibility from captured facts only.
-    /// Invalid host names need no unrelated registry or shadow subtree facts.
+    /// Answers DOM "attach a shadow root" (steps 1 to 4) for `element` and a
+    /// request for a root of `mode`, from captured facts only.
+    ///
+    /// The steps are consulted in specification order and only the facts the
+    /// first reached step needs are required: an invalid host needs no registry
+    /// or shadow facts, and a disabling definition is reported before the
+    /// host's shadow root is read. The request's other inputs (delegates focus,
+    /// serializable, slot assignment, clonable and registry) take part in no
+    /// step that can fail, so they are not parameters.
     pub fn shadow_attachment_status(
         &self,
         element: &HtmlCaptureElementId,
+        mode: HtmlShadowRootMode,
     ) -> Result<HtmlShadowAttachmentStatus, HtmlCaptureError> {
         let node = self.node(&element.0)?;
         let HtmlCapturedNodeKind::Element(e) = node.kind() else {
@@ -2880,35 +2892,70 @@ impl HtmlCapture {
         ]
         .iter()
         .any(|n| exact(e.name.local_name(), n));
+        // Steps 1 and 2.
         if !namespace(e.name.namespace(), "http://www.w3.org/1999/xhtml")
             || !(custom_name || ordinary_host)
         {
             return Ok(HtmlShadowAttachmentStatus::InvalidHost);
         }
-        match e.shadow {
-            Association::Index(_) => return Ok(HtmlShadowAttachmentStatus::ExistingRoot),
-            Association::Unavailable => {
-                return Err(HtmlCaptureError::MissingFact {
-                    subject: Some(element.0.clone()),
-                    fact: HtmlCaptureFact::ShadowRoot,
-                });
-            }
-            Association::Absent => {}
-        }
-        let registry = node.lookup_registry();
-        if matches!(registry, HtmlCapturedRegistry::Null)
-            || (!custom_name && matches!(e.is_value, HtmlCapturedIsValue::Absent))
+        // Step 3: a matching definition with disable shadow set throws. Its
+        // condition is a valid custom element name or a non-null `is` value.
+        if (custom_name || !matches!(e.is_value, HtmlCapturedIsValue::Absent))
+            && self.definition_disables_shadow(element, node, custom_name)?
         {
-            return Ok(HtmlShadowAttachmentStatus::Allowed);
+            return Ok(HtmlShadowAttachmentStatus::DefinitionDisallows);
+        }
+        // Step 4: an existing shadow root is either rejected or reused.
+        match e.shadow {
+            Association::Absent => Ok(HtmlShadowAttachmentStatus::Allowed),
+            Association::Unavailable => Err(HtmlCaptureError::MissingFact {
+                subject: Some(element.0.clone()),
+                fact: HtmlCaptureFact::ShadowRoot,
+            }),
+            Association::Index(root) => {
+                let Some(HtmlCapturedNodeKind::Fragment(HtmlCapturedFragment {
+                    kind: HtmlCapturedFragmentKind::ShadowRoot(current),
+                    ..
+                })) = self.0.records.get(root).map(|record| &record.kind)
+                else {
+                    return Err(HtmlCaptureError::MissingFact {
+                        subject: Some(element.0.clone()),
+                        fact: HtmlCaptureFact::ShadowRoot,
+                    });
+                };
+                Ok(
+                    if !current.declarative() || current.properties().mode() != mode {
+                        HtmlShadowAttachmentStatus::ExistingRootDisallows
+                    } else {
+                        HtmlShadowAttachmentStatus::DeclarativeRootReused
+                    },
+                )
+            }
+        }
+    }
+    /// Step 3.1 and 3.2: looks up the host's definition in its own registry,
+    /// first by local name and then by `is` value, and reads its disable shadow.
+    fn definition_disables_shadow(
+        &self,
+        element: &HtmlCaptureElementId,
+        node: HtmlCapturedNode<'_>,
+        custom_name: bool,
+    ) -> Result<bool, HtmlCaptureError> {
+        let HtmlCapturedNodeKind::Element(e) = node.kind() else {
+            return Ok(false);
+        };
+        let registry = node.lookup_registry();
+        if matches!(registry, HtmlCapturedRegistry::Null) {
+            return Ok(false);
         }
         if custom_name
             && let Some(d) =
                 self.lookup_definition(&registry, e.name.namespace(), e.name.local_name(), None)?
         {
-            return Ok(definition_shadow_status(d));
+            return Ok(d.disable_shadow);
         }
         let is_value = match &e.is_value {
-            HtmlCapturedIsValue::Absent => return Ok(HtmlShadowAttachmentStatus::Allowed),
+            HtmlCapturedIsValue::Absent => return Ok(false),
             HtmlCapturedIsValue::Value(value) => value,
             HtmlCapturedIsValue::Unavailable => {
                 return Err(HtmlCaptureError::MissingFact {
@@ -2924,27 +2971,30 @@ impl HtmlCapture {
                 e.name.local_name(),
                 Some(is_value),
             )?
-            .map_or(
-                HtmlShadowAttachmentStatus::Allowed,
-                definition_shadow_status,
-            ))
+            .is_some_and(|d| d.disable_shadow))
     }
 }
 
-/// Source-derived eligibility, independent of the request's declarative permission.
+/// DOM "attach a shadow root" outcome for one host and requested mode, in
+/// specification step order. `Allowed` creates a new root (step 5 onward,
+/// which cannot fail); the other variants are the reached early exits.
+///
+/// Both `Allowed` and `DeclarativeRootReused` mean the attach does not throw:
+/// `Allowed` creates a root, while `DeclarativeRootReused` reuses the existing
+/// one (steps 4.3 to 4.5). The remaining variants are the throwing outcomes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlShadowAttachmentStatus {
+    /// Steps 1 to 4 pass and the host has no shadow root.
     Allowed,
-    ExistingRoot,
+    /// Step 1 or 2: the host is not an HTML-namespace element with a valid shadow host name.
     InvalidHost,
+    /// Step 3.2: the host's definition has disable shadow set.
     DefinitionDisallows,
-}
-fn definition_shadow_status(d: &HtmlCustomElementDefinition) -> HtmlShadowAttachmentStatus {
-    if d.disable_shadow {
-        HtmlShadowAttachmentStatus::DefinitionDisallows
-    } else {
-        HtmlShadowAttachmentStatus::Allowed
-    }
+    /// Step 4.2: the existing root is not declarative or its mode differs from the request.
+    ExistingRootDisallows,
+    /// Step 4.3 to 4.5: the existing root is declarative and has the requested mode,
+    /// so the algorithm empties it, clears its declarative flag and returns.
+    DeclarativeRootReused,
 }
 /// A checked target of the fragment algorithm, not an imported output wrapper.
 #[derive(Clone, Debug, Eq, PartialEq)]

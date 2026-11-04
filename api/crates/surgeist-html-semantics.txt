@@ -1438,8 +1438,9 @@ pub surgeist_html_semantics::HtmlSemanticValue::Missing(surgeist_html_semantics:
 pub surgeist_html_semantics::HtmlSemanticValue::Unsupported(surgeist_html_semantics::HtmlSemanticUnsupported)
 pub enum surgeist_html_semantics::HtmlShadowAttachmentStatus
 pub surgeist_html_semantics::HtmlShadowAttachmentStatus::Allowed
+pub surgeist_html_semantics::HtmlShadowAttachmentStatus::DeclarativeRootReused
 pub surgeist_html_semantics::HtmlShadowAttachmentStatus::DefinitionDisallows
-pub surgeist_html_semantics::HtmlShadowAttachmentStatus::ExistingRoot
+pub surgeist_html_semantics::HtmlShadowAttachmentStatus::ExistingRootDisallows
 pub surgeist_html_semantics::HtmlShadowAttachmentStatus::InvalidHost
 pub enum surgeist_html_semantics::HtmlSourceMediaContext
 pub surgeist_html_semantics::HtmlSourceMediaContext::MediaElement
@@ -1646,7 +1647,7 @@ pub fn surgeist_html_semantics::HtmlCapture::nearest_form(&self, element: &surge
 pub fn surgeist_html_semantics::HtmlCapture::node(&self, id: &surgeist_html_semantics::HtmlCaptureSubjectId) -> core::result::Result<surgeist_html_semantics::HtmlCapturedNode<'_>, surgeist_html_semantics::HtmlCaptureError>
 pub fn surgeist_html_semantics::HtmlCapture::registry_id(&self, handle: &surgeist_html_semantics::HtmlCaptureBuilderRegistry) -> core::result::Result<surgeist_html_semantics::HtmlCaptureRegistryId, surgeist_html_semantics::HtmlCaptureError>
 pub fn surgeist_html_semantics::HtmlCapture::registry_scope(&self, registry: &surgeist_html_semantics::HtmlCaptureRegistryId) -> core::result::Result<surgeist_html_semantics::HtmlRegistryScope, surgeist_html_semantics::HtmlCaptureError>
-pub fn surgeist_html_semantics::HtmlCapture::shadow_attachment_status(&self, element: &surgeist_html_semantics::HtmlCaptureElementId) -> core::result::Result<surgeist_html_semantics::HtmlShadowAttachmentStatus, surgeist_html_semantics::HtmlCaptureError>
+pub fn surgeist_html_semantics::HtmlCapture::shadow_attachment_status(&self, element: &surgeist_html_semantics::HtmlCaptureElementId, mode: surgeist_html::internal::construction::HtmlShadowRootMode) -> core::result::Result<surgeist_html_semantics::HtmlShadowAttachmentStatus, surgeist_html_semantics::HtmlCaptureError>
 pub fn surgeist_html_semantics::HtmlCapture::shadow_presence(&self, element: &surgeist_html_semantics::HtmlCaptureElementId) -> core::result::Result<core::option::Option<bool>, surgeist_html_semantics::HtmlCaptureError>
 pub fn surgeist_html_semantics::HtmlCapture::subject_id(&self, handle: &surgeist_html_semantics::HtmlCaptureBuilderSubject) -> core::result::Result<surgeist_html_semantics::HtmlCaptureSubjectId, surgeist_html_semantics::HtmlCaptureError>
 pub fn surgeist_html_semantics::HtmlCapture::template_document_cache(&self, document: &surgeist_html_semantics::HtmlCaptureDocumentId) -> core::result::Result<surgeist_html_semantics::HtmlCapturedTemplateCache, surgeist_html_semantics::HtmlCaptureError>
