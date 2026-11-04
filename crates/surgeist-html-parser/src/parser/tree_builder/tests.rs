@@ -7107,6 +7107,175 @@ fn formatting_noah_replay_keeps_each_retained_original_attribute_order() {
     assert_released(&c);
 }
 
+/// Every producer that appends a diagnostic, with a cap that drops some of its
+/// diagnostics: each work cut around each counted drop stops on work, leaves no
+/// storage behind and counts only the drops it paid for.
+#[test]
+fn work_cuts_around_every_dropped_diagnostic_stop_on_work_and_clean_up() {
+    use crate::{HtmlParseFailureReason, HtmlParseResource as R};
+    fn utf16_null_svg() -> HtmlSource {
+        HtmlSource::utf16(DocumentString::from_utf16(
+            "<!doctype html><svg>"
+                .encode_utf16()
+                .chain([0, 0])
+                .chain("</svg>".encode_utf16())
+                .collect::<Vec<_>>(),
+        ))
+    }
+    // A case's name, its source and the `Diagnostics` cap that drops some of it.
+    type Case = (&'static str, fn() -> HtmlSource, u64);
+    let cases: [Case; 13] = [
+        ("tokenizer", || HtmlSource::utf8("<!doctype html>< < <"), 0),
+        ("prologue", || HtmlSource::utf8("<div id=x>"), 0),
+        (
+            "head",
+            || HtmlSource::utf8("<!doctype html><html><head></oops>"),
+            0,
+        ),
+        ("body", || HtmlSource::utf8("<body>a\0b"), 2),
+        ("foreign", utf16_null_svg, 1),
+        (
+            "frameset",
+            || HtmlSource::utf8("<!doctype html><form><frameset>"),
+            0,
+        ),
+        (
+            "tables",
+            || HtmlSource::utf8("<!doctype html><table> a<tr>"),
+            1,
+        ),
+        (
+            "nested a",
+            || HtmlSource::utf8("<!doctype html><a>1<a id=kept>2"),
+            0,
+        ),
+        (
+            "button",
+            || HtmlSource::utf8("<!doctype html><button><p>A<button id=kept>"),
+            0,
+        ),
+        (
+            "form end",
+            || HtmlSource::utf8("<!doctype html><form id=f><div></form>"),
+            0,
+        ),
+        (
+            "nested form",
+            || HtmlSource::utf8("<!doctype html><form><p>1<form id=kept>"),
+            0,
+        ),
+        (
+            "after head template",
+            || HtmlSource::utf8("<!doctype html><head></head><template>x</template>"),
+            0,
+        ),
+        (
+            "script",
+            || HtmlSource::utf8("<!doctype html><script/>x</script>"),
+            0,
+        ),
+    ];
+    for (name, source, cap) in cases {
+        let limits_at = |work: u64| {
+            limits(100)
+                .into_builder()
+                .diagnostics(cap)
+                .work_credits(work)
+                .finish()
+                .unwrap()
+        };
+        // Where the public path counts each drop: the work credits in use right
+        // after the drop's four credits (the range check, then the visit and
+        // the write that count it) were paid.
+        crate::construction::evidence::DROP_MARKS.with(|marks| marks.borrow_mut().clear());
+        let parse_at = |work: u64| {
+            crate::HtmlDocumentParseRequest::offline(source(), limits_at(work))
+                .parse()
+                .map_err(Box::new)
+        };
+        let total = parse_at(100_000_000)
+            .unwrap()
+            .usage()
+            .resource(R::WorkCredits)
+            .current();
+        let marks = crate::construction::evidence::DROP_MARKS
+            .with(|marks| std::mem::take(&mut *marks.borrow_mut()));
+        assert!(!marks.is_empty(), "{name}: the case drops a diagnostic");
+        for (k, &mark) in marks.iter().enumerate() {
+            // Cut before, inside, exactly one short of, at and after the drop.
+            for work in mark.saturating_sub(6)..=mark + 3 {
+                let failure = match parse_at(work) {
+                    Ok(_) => {
+                        assert!(work >= total, "{name}: work {work} completes below {total}");
+                        continue;
+                    }
+                    Err(failure) => failure,
+                };
+                let HtmlParseFailureReason::Stop(first) = failure.reason() else {
+                    panic!("{name}: work {work}: {:?}", failure.reason());
+                };
+                assert!(
+                    matches!(
+                        first,
+                        HtmlParseStop::LimitExceeded {
+                            resource: HtmlParseResource::WorkCredits,
+                            limit,
+                            ..
+                        } if limit == work
+                    ),
+                    "{name}: work {work}: {first:?}"
+                );
+                assert_eq!(failure.cleanup_error(), None, "{name}: work {work}");
+                let after = failure
+                    .after_cleanup()
+                    .unwrap_or_else(|| panic!("{name}: work {work}: no cleanup evidence"));
+                for resource in [
+                    R::BufferedUtf16Units,
+                    R::TokenAttributes,
+                    R::AuxiliaryEntries,
+                    R::ManagedEdges,
+                    R::ManagedAttributes,
+                    R::ManagedUtf16Units,
+                    R::SourceMapPayloadUnits,
+                    R::DiagnosticPayloadUnits,
+                    R::ContextEffects,
+                    R::OpenElements,
+                ] {
+                    assert_eq!(
+                        after.resource(resource).current(),
+                        0,
+                        "{name}: work {work}: {resource:?}"
+                    );
+                }
+                // What remains is the committed diagnostic prefix and nothing
+                // for the dropped ones.
+                let kept = failure.diagnostics().map_or(0, |d| d.len()) as u64;
+                assert_eq!(
+                    after.resource(R::Diagnostics).current(),
+                    kept,
+                    "{name}: work {work}"
+                );
+                assert_eq!(
+                    after.resource(R::SourceMapEntries).current(),
+                    kept,
+                    "{name}: work {work}"
+                );
+                assert!(kept <= cap, "{name}: work {work}");
+                // A drop is counted exactly when its last credit is paid: every
+                // charge ending within the allowance succeeded before the
+                // first one that did not, so the drops counted are those
+                // marked at or below `work`, never one more.
+                let paid = marks.iter().filter(|&&m| m <= work).count() as u64;
+                assert_eq!(
+                    failure.diagnostics().map_or(0, |d| d.dropped()),
+                    paid,
+                    "{name}: drop {k} at work {work}"
+                );
+            }
+        }
+    }
+}
+
 #[test]
 fn formatting_nested_a_diagnostic_past_the_cap_is_dropped_before_adoption() {
     // 13.2.6.4.7 "in body": an `a` start tag with an `a` in the list of active

@@ -28,7 +28,7 @@ use surgeist_html::{
 };
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlFragmentParseRequest, HtmlParseDiagnosticKind, HtmlParseLimits,
-    HtmlParseReport, HtmlParseResource, HtmlSource,
+    HtmlParseMetadataStep, HtmlParseReport, HtmlParseResource, HtmlSource,
 };
 
 /// Renders every node below `parent`, with its kind, in document order.
@@ -45,6 +45,9 @@ fn render<'a>(
             HtmlNodeKind::Element(element) => {
                 let name = String::from_utf16_lossy(element.name().local_name().code_units());
                 out.push_str(&format!("{pad}<{name}>\n"));
+                for attribute in element.attributes().as_slice() {
+                    out.push_str(&format!("{pad}  @{attribute:?}\n"));
+                }
                 if let Some(contents) = node.template_contents() {
                     out.push_str(&format!("{pad}  content\n"));
                     render(lookup, lookup(&contents), depth + 2, out);
@@ -340,6 +343,28 @@ fn a_failure_keeps_the_prefix_and_the_dropped_count_reached_before_the_stop() {
         .finish()
         .unwrap();
     let failure = parse(Kind::Document, &input, cut).unwrap_err();
+    assert_eq!(failure.cleanup_error(), None);
+    let after = failure.after_cleanup().expect("cleanup evidence");
+    for resource in [
+        HtmlParseResource::BufferedUtf16Units,
+        HtmlParseResource::TokenAttributes,
+        HtmlParseResource::AuxiliaryEntries,
+        HtmlParseResource::ManagedEdges,
+        HtmlParseResource::ManagedAttributes,
+        HtmlParseResource::ManagedUtf16Units,
+        HtmlParseResource::OpenElements,
+    ] {
+        assert_eq!(after.resource(resource).current(), 0, "{resource:?}");
+    }
+    // Only the three committed diagnostics stay owned; the dropped ones never
+    // held storage.
+    assert_eq!(after.resource(HtmlParseResource::Diagnostics).current(), 3);
+    assert_eq!(
+        after
+            .resource(HtmlParseResource::SourceMapEntries)
+            .current(),
+        3
+    );
     let diagnostics = failure.diagnostics().expect("diagnostics were initialized");
     assert_eq!(diagnostics.len(), 3);
     assert!(
@@ -350,4 +375,72 @@ fn a_failure_keeps_the_prefix_and_the_dropped_count_reached_before_the_stop() {
         diagnostics.dropped() < complete.diagnostics().dropped(),
         "fewer errors were reached than in the complete parse"
     );
+}
+
+/// Everything a report publishes beyond the tree and the diagnostics: the
+/// attributes of every element, every association row (the source map of each
+/// text, attribute and node to the source range and origin it came from) and
+/// the control metadata with its form owners.
+fn published(report: &HtmlParseReport) -> String {
+    let mut out = tree(report);
+    let rows = report.associations();
+    for index in 0..rows.len() {
+        let row = rows.row(index).unwrap().unwrap();
+        out.push_str(&format!(
+            "row {index}: source {:?} origin {:?} {}..{} {:?}\n",
+            row.source().map(|range| (range.start(), range.end())),
+            row.origin_kind(),
+            row.start(),
+            row.end(),
+            row.relation()
+        ));
+    }
+    let name = |node: &HtmlNode<'_>| match node.kind() {
+        HtmlNodeKind::Element(element) => {
+            String::from_utf16_lossy(element.name().local_name().code_units())
+        }
+        other => format!("{other:?}"),
+    };
+    let mut metadata = report.metadata();
+    loop {
+        match metadata.advance() {
+            HtmlParseMetadataStep::Record(record) => out.push_str(&format!(
+                "record {} owner {:?} input {:?} textarea {:?}\n",
+                name(&record.node()),
+                record
+                    .form_owner()
+                    .map(|owner| owner.map(|owner| name(&owner))),
+                record.input_raw_value(),
+                record.textarea_raw_value()
+            )),
+            HtmlParseMetadataStep::Skipped => {}
+            HtmlParseMetadataStep::Complete => break,
+            HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
+        }
+    }
+    out
+}
+
+#[test]
+fn a_capped_parse_publishes_the_attributes_associations_and_metadata_of_an_uncapped_one() {
+    // Parse errors: the missing doctype, six `< ` pairs, the unknown named
+    // reference and the null reference, so every cap below drops some.
+    let input = "<form id=f><input type=hidden value=x name=n><label for=n>L &amp; M</label>\
+<textarea>A&amp;B</textarea><select><option selected>Q</option></select></form>\
+< < < < < < &bogus; &#0;<p id=z class=\"a b\">t &amp; u</p>";
+    let full = parse(Kind::Document, input, with_cap(100_000)).unwrap();
+    let total = full.diagnostics().len();
+    assert!(total >= 9, "{total} parse errors");
+    let expected = published(&full);
+    assert!(expected.contains("row "), "associations are published");
+    assert!(
+        expected.contains("record input owner Some(Some(\"form\"))"),
+        "{expected}"
+    );
+    for cap in [0, 1, 4, total as u64 - 1] {
+        let capped = parse(Kind::Document, input, with_cap(cap)).unwrap();
+        assert_eq!(capped.diagnostics().len(), cap as usize);
+        assert_eq!(capped.diagnostics().dropped(), (total as u64) - cap);
+        assert_eq!(published(&capped), expected, "cap {cap}");
+    }
 }

@@ -79,6 +79,13 @@ pub struct DiagnosticLocationInput<'a> {
     pub(crate) token: Option<HtmlParseTokenFamily>,
 }
 pub(super) struct EvidenceIdentity;
+#[cfg(test)]
+thread_local! {
+    /// The work credits in use right after each drop was counted, in order, on
+    /// this thread. A test clears it, parses, then reads where each drop landed.
+    pub(crate) static DROP_MARKS: std::cell::RefCell<Vec<u64>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
 /// What became of one emitted diagnostic. The `Diagnostics` cap bounds
 /// retention, so a diagnostic past it is counted and dropped, not refused.
 pub(crate) enum DiagnosticAdmission {
@@ -148,6 +155,10 @@ impl HtmlParseDiagnostics<'_> {
     pub fn dropped(&self) -> u64 {
         self.dropped
     }
+    /// Whether no diagnostic is retained. This reflects retained records only:
+    /// it is true when the `Diagnostics` limit is zero even though
+    /// [`Self::dropped`] counts every diagnostic the parse emitted. Check
+    /// `dropped() == 0` as well to learn that the parse emitted none.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -288,6 +299,10 @@ impl ParseEvidence {
         input: DiagnosticLocationInput<'_>,
     ) -> Result<DiagnosticAdmission, HtmlParseStop> {
         let source = input.source;
+        // Ownership precedes every charge and the cap read, so a foreign
+        // controller is refused whether or not its own cap is reached.
+        self.records.require_owner(c)?;
+        self.locations.require_owner(c)?;
         c.require_source_range(source)?;
         // The `Diagnostics` cap bounds retention only. Past it the diagnostic
         // is counted, with the count charged before it is written, and nothing
@@ -297,6 +312,12 @@ impl ParseEvidence {
             // Every drop was charged at least one work credit, and work credits
             // never exceed `u64::MAX`, so the count cannot saturate.
             self.dropped = self.dropped.saturating_add(1);
+            #[cfg(test)]
+            DROP_MARKS.with(|marks| {
+                marks
+                    .borrow_mut()
+                    .push(c.usage().resource(HtmlParseResource::WorkCredits).current)
+            });
             return Ok(DiagnosticAdmission::Dropped);
         }
         c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
@@ -388,6 +409,7 @@ impl ParseEvidence {
     pub(crate) fn dropped(&self) -> u64 {
         self.dropped
     }
+
     #[cfg(test)]
     pub(crate) fn tokenizer_observation(&self, id: &DiagnosticId) -> TokenizerDiagnosticView<'_> {
         assert!(
@@ -1139,6 +1161,33 @@ mod tests {
         assert!(append(&mut e, &mut foreign, &source, 1).is_err());
         assert_eq!((e.len(), e.locations.len()), (1, 1));
         assert_eq!(c.usage(), &before);
+        e.release(&mut c).unwrap();
+        assert_released(&c);
+    }
+
+    #[test]
+    fn a_foreign_controller_at_its_diagnostics_cap_is_refused_not_counted() {
+        let source = HtmlSource::utf8("\0\0");
+        let (mut c, mut e) = owner(&source, limits(100));
+        retained_id(append(&mut e, &mut c, &source, 0));
+        let before = c.usage().clone();
+        // The foreign controller's own cap is already reached, so a retained
+        // append would not be attempted: only the owner check can refuse it.
+        let zero = limits(100).into_builder().diagnostics(0).finish().unwrap();
+        let mut foreign = ParseControl::new(zero, HtmlParseCancellation::new());
+        foreign.admit_source(&source).unwrap();
+        let foreign_before = foreign.usage().clone();
+        assert_eq!(
+            append(&mut e, &mut foreign, &source, 1).err(),
+            Some(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::ForeignControl
+            ))
+        );
+        assert_eq!(e.dropped, 0);
+        assert_eq!((e.len(), e.locations.len()), (1, 1));
+        assert_eq!(c.usage(), &before);
+        assert_eq!(foreign.usage(), &foreign_before);
+        // The owner still counts its own drops afterwards.
         e.release(&mut c).unwrap();
         assert_released(&c);
     }

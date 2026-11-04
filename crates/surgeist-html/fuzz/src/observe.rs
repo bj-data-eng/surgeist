@@ -657,8 +657,20 @@ const RESOURCE_ORDER: [HtmlParseResource; 19] = [
     HtmlParseResource::WorkCredits,
 ];
 
-/// The index of the `Diagnostics` cap in the configured caps.
-const DIAGNOSTICS_CAP: usize = 10;
+/// The index of the `Diagnostics` cap in the configured caps: its position in
+/// `RESOURCE_ORDER`, so a reordered resource list cannot silently point at
+/// another cap. A list without it fails to build.
+const DIAGNOSTICS_CAP: usize = {
+    let mut index = 0;
+    while index < RESOURCE_ORDER.len() {
+        if RESOURCE_ORDER[index] as usize == HtmlParseResource::Diagnostics as usize {
+            break;
+        }
+        index += 1;
+    }
+    assert!(index < RESOURCE_ORDER.len());
+    index
+};
 
 /// The request-side facts a parse result must preserve.
 pub(crate) struct Spec<'a> {

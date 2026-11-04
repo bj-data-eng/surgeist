@@ -4454,8 +4454,11 @@ mod tests {
             0
         );
     }
+    // The raw controller keeps every storage resource terminal, `Diagnostics`
+    // included. Parsing does not acquire it past the cap: the evidence owner
+    // counts a dropped diagnostic instead (see `ParseEvidence::append`).
     #[test]
-    fn diagnostic_exhaustion_is_a_terminal_error() {
+    fn raw_controller_acquire_past_the_diagnostics_cap_is_a_terminal_error() {
         let mut limits = limits();
         limits = limits.into_builder().diagnostics(1).finish().unwrap();
         let mut control = ParseControl::new(limits, HtmlParseCancellation::new());
