@@ -1561,9 +1561,11 @@ adapter establishes complete ordered children only for each actually traversed
 ordinary/owning closure; supplemental owner records retain unavailable unrelated
 relations. Detached records outside this closure and its required supplemental
 records are excluded; requesting their mapping returns
-`OutsideImportedClosure`. It clones immutable name/attribute/string backing
-without UTF-8 conversion, re-normalization or serialization. A mapping entry
-retains the original `HtmlNodeId`; source identity is never equated to capture
+`OutsideImportedClosure`. A fact entry that names such a node is refused with the
+same error after the traversal and before any record is built, because the
+producer keyed it to a node the import never reaches; it is never ignored. The
+import clones immutable name/attribute/string backing without UTF-8 conversion,
+re-normalization or serialization. A mapping entry retains the original `HtmlNodeId`; source identity is never equated to capture
 subject identity.
 
 `HtmlConstructionCaptureLimits::new(mapping_entries, scratch_entries, work)`

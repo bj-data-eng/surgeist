@@ -1055,7 +1055,9 @@ an actual Element pointer remain distinct. The checked supplement bounds moved
 record capacity and validation work; caller allocation is outside those limits.
 `CommandForElement` and `PopoverTargetAssociatedElement` retain raw
 content and the selecting branch. An explicit pointer must satisfy the source
-scope relation; an out-of-scope pointer returns null without an ID fallback.
+scope relation, which collects the ordinary ancestors of the pointer's target once
+and admits them as scratch records (up to the target's depth), released with the
+query; an out-of-scope pointer returns null without an ID fallback.
 Only a known null pointer enters exact ID lookup in the ordinary tree, selecting
 the first matching element, including foreign elements. Unknown influencing
 relationships remain missing information.
@@ -3330,16 +3332,23 @@ query of that tree charges one unit to find it instead of building it again. The
 held graph's records stay in `ScratchRecords`, so it is released when a query of
 another tree builds its graph, when a query of a kind that does not read it
 begins, before an author query reserves its id index, before an item with its own
-types reserves any scratch, and when the batch ends or fails; a batch then needs
+types reserves any scratch, and when the batch ends or fails; the type walk index
+alone is released before the document author query builds its cycle index and
+before an author query walks a typed receiver with an index of its own; a batch then needs
 no more scratch than its largest query alone, and a batch leaves none behind. The
-graph is not kept between batches. One peak changes: an untyped item query holds
-the graph while it crawls the item, where the graph used to be released first, so
-its peak is at most the graph's records (items, item-property pairs and edges)
-above what it was, `G + crawl` where it was `max(G + type context, crawl)`.
-Measured on a document whose first item carries an `itemref` of 31 ids and is
-followed by ten items of three properties each (G = 41), the peak is 106 records
-before and after, because building the graph already crawled the item. A failure that stops a batch after a graph query of the same tree records
-that graph's scratch in its usage. Per-query fact lookups (microdata URL, type and
+graph is not kept between batches. The first type walk of a graph's items also
+builds, and the held graph keeps, an index of the graph's items and edges, so
+that the walk of one item costs the items and edges above it and not the whole
+graph: `4 * items + edges + 1` records (T), counted in `ScratchRecords` like the
+graph's items, item-property pairs and edges (G). One peak changes: an untyped
+item query holds the graph and that index while it crawls the item, where the
+graph used to be released first, so its peak is at most G + T records above what
+it was, `G + T + crawl` where it was `max(G + type context, crawl)`. Measured on
+a document whose first item carries an `itemref` of 31 ids and is followed by ten
+items of three properties each (G = 41, T = 45), the peak was 106 records before
+the graph was held and is 121 now, a rise of 15. A failure that stops a batch
+after a graph query of the same tree records that graph's and index's scratch in
+its usage. Per-query fact lookups (microdata URL, type and
 property facts, and the control, inert, language, element-reference, design-mode
 and spellcheck facts) charge one unit for the probe of an index by subject, in
 place of one unit for each fact examined.

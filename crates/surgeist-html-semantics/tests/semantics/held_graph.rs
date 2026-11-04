@@ -39,12 +39,18 @@ struct Page {
     typed: HtmlCaptureSubjectId,
     /// An input whose form owner is found by its `form` attribute.
     input: HtmlCaptureSubjectId,
+    /// The first document.
+    document: HtmlCaptureSubjectId,
+    /// In a sixth document: an untyped item with a property element, and beside
+    /// it an item with its own type holding a property element.
+    mixed_item: HtmlCaptureSubjectId,
+    typed_prop: HtmlCaptureSubjectId,
 }
 
 fn page() -> Page {
     let (mut b, first) = big_builder(300);
     let mut documents = vec![first];
-    for _ in 0..4 {
+    for _ in 0..5 {
         documents.push(
             b.add_document(
                 HtmlDocumentMode::NoQuirks,
@@ -121,6 +127,23 @@ fn page() -> Page {
     let input = leaf(&mut b, &documents[4], "input", &[("form", "f")]);
     b.establish_children(&documents[4], &[form, input.clone()])
         .unwrap();
+    // Document 5: an untyped item and an item with its own type, each with a
+    // property element.
+    let mixed_prop = leaf(&mut b, &documents[5], "span", &[("itemprop", "a")]);
+    let mixed_item = attributed(&mut b, &documents[5], "div", &[("itemscope", "")]);
+    b.establish_children(&mixed_item, std::slice::from_ref(&mixed_prop))
+        .unwrap();
+    let typed_prop = leaf(&mut b, &documents[5], "span", &[("itemprop", "b")]);
+    let typed_holder = attributed(
+        &mut b,
+        &documents[5],
+        "div",
+        &[("itemscope", ""), ("itemtype", "https://vocab.example/T")],
+    );
+    b.establish_children(&typed_holder, std::slice::from_ref(&typed_prop))
+        .unwrap();
+    b.establish_children(&documents[5], &[mixed_item.clone(), typed_holder])
+        .unwrap();
     let capture = b.finish().unwrap();
     let id = |node| capture.subject_id(node).unwrap();
     let facts = HtmlControlFacts::new(
@@ -151,6 +174,9 @@ fn page() -> Page {
         prop_ref: id(&prop_ref),
         typed: id(&typed),
         input: id(&input),
+        document: id(&documents[0]),
+        mixed_item: id(&mixed_item),
+        typed_prop: id(&typed_prop),
         capture,
         context,
     }
@@ -296,6 +322,9 @@ fn a_held_graph_is_released_when_the_next_query_is_of_another_tree() {
         prop_ref: capture.subject_id(&items[0]).unwrap(),
         typed: capture.subject_id(&items[0]).unwrap(),
         input: capture.subject_id(&items[0]).unwrap(),
+        document: capture.subject_id(&first).unwrap(),
+        mixed_item: capture.subject_id(&items[0]).unwrap(),
+        typed_prop: capture.subject_id(&items[0]).unwrap(),
         capture,
         context,
     };
@@ -314,6 +343,9 @@ fn a_held_graph_is_released_when_the_next_query_is_of_another_tree() {
 /// stopped. By hand: the first document holds two untyped items, each with one
 /// property element, so its graph holds 2 items and 2 (item, property) pairs and
 /// no edge, and a graph vector reserves exactly one record per push: 4 records.
+/// The first item's type walk built the index of the graph that the second
+/// would reuse: 2 item keys, no incoming edge, 3 starts, 2 path flags and 2
+/// epoch marks, 9 records, so the failure records 4 + 9 = 13.
 #[test]
 fn a_failed_batch_of_graph_queries_leaves_no_scratch_and_records_the_held_graph() {
     let p = page();
@@ -337,7 +369,7 @@ fn a_failed_batch_of_graph_queries_leaves_no_scratch_and_records_the_held_graph(
         }
     ));
     assert_eq!(usage.scratch_records(), 0, "the session releases the graph");
-    assert_eq!(failure.usage().scratch_records(), 4);
+    assert_eq!(failure.usage().scratch_records(), 13);
 }
 
 /// An untyped item whose `itemref` names 31 ids, then ten untyped items of
@@ -388,23 +420,129 @@ fn crawl_heavy_page() -> (Page, HtmlCaptureSubjectId) {
         prop_ref: subject.clone(),
         typed: subject.clone(),
         input: subject.clone(),
+        document: subject.clone(),
+        mixed_item: subject.clone(),
+        typed_prop: subject.clone(),
         capture,
         context,
     };
     (page, subject)
 }
 
-/// A single untyped item query holds its tree's graph while it crawls the item,
-/// as the batch needs it for the next item, where the previous code had released
-/// it before the crawl. Its peak is therefore at most the graph's G records
-/// above what it was, G + crawl where it was max(G + type context, crawl). On
-/// this page, where G = 41, the graph-building crawl of the same item already
-/// reached the peak (measured 106 before the graph was held and 106 after), so
-/// the rise is 0. A rise is bounded by G and appears only if the item's own crawl
-/// needed more scratch than building the graph did.
+/// A single untyped item query holds its tree's graph, and the index of the
+/// graph that its type walk uses, while it crawls the item, as the batch needs
+/// them for the next item, where the previous code had released the graph before
+/// the crawl. Its peak is therefore at most the G records of the graph and the T
+/// records of that index above what it was. On this page G = 41 (11 items and 30
+/// pairs) and T = 4 * 11 + 0 + 1 = 45 (keys, starts, path flags and epoch marks of
+/// the 11 items), and the peak went from 106 before the graph was held to 121,
+/// a rise of 15, within the bound of G + T = 86.
 #[test]
 fn a_single_item_query_peak_is_at_most_the_graph_above_its_previous_peak() {
     let (page, item) = crawl_heavy_page();
     let peak = peak_of(&page, &request(&item, HtmlSemanticQuery::MicrodataItem));
-    assert_eq!(peak, 106);
+    assert_eq!(peak, 121);
+}
+
+#[test]
+fn a_held_type_walk_index_is_released_before_the_document_author_builds_its_own() {
+    let p = page();
+    assert_pair_fits(
+        "item then document author",
+        &p,
+        request(&p.item, HtmlSemanticQuery::MicrodataItem),
+        request(&p.document, HtmlSemanticQuery::MicrodataDocumentAuthor),
+    );
+}
+
+#[test]
+fn a_held_type_walk_index_is_released_before_a_typed_receiver_builds_its_own() {
+    let p = page();
+    assert_pair_fits(
+        "untyped item then property of a typed item",
+        &p,
+        request(&p.mixed_item, HtmlSemanticQuery::MicrodataItem),
+        request(&p.typed_prop, HtmlSemanticQuery::MicrodataAuthor),
+    );
+}
+
+/// A refusal at any charge of the second of two item queries of one tree, where
+/// the first left the graph and its type walk index held, leaves the session
+/// with no scratch: whatever the refused charge was about to use, including the
+/// index taken out of the held graph, is released.
+#[test]
+fn a_refusal_at_any_charge_of_a_later_item_query_releases_the_held_index() {
+    let p = page();
+    let queries = [
+        request(&p.item, HtmlSemanticQuery::MicrodataItem),
+        request(&p.other_item, HtmlSemanticQuery::MicrodataItem),
+    ];
+    let (first, _) = run(&p, roomy_limits(), &queries[..1]);
+    let first = first.unwrap().usage().work();
+    let (both, _) = run(&p, roomy_limits(), &queries);
+    let both = both.unwrap().usage().work();
+    assert!(both > first);
+    let big = 1 << 40;
+    for limit in first..both {
+        let limits = HtmlSemanticLimits::new(limit, big, big, 0, big, big);
+        let (result, usage) = run(&p, limits, &queries);
+        let failure = result.unwrap_err();
+        assert!(
+            matches!(
+                failure.kind(),
+                HtmlSemanticFailureKind::LimitExceeded {
+                    resource: HtmlSemanticResource::Work,
+                    ..
+                }
+            ),
+            "work limit {limit}: {failure:?}"
+        );
+        assert_eq!(usage.scratch_records(), 0, "work limit {limit}");
+    }
+}
+
+/// An item that no graph query enumerates (it sits beneath an element whose
+/// children are unavailable) has no receivers, so asking for its types must not
+/// build the index of every item of the document to learn that.
+#[test]
+fn an_item_outside_the_graph_does_not_build_the_index_of_the_graph() {
+    let items = 30;
+    let (mut b, d) = big_builder(items + 10);
+    let mut children = Vec::new();
+    for _ in 0..items {
+        let item = attributed(&mut b, &d, "div", &[("itemscope", "")]);
+        b.establish_children(&item, &[]).unwrap();
+        children.push(item);
+    }
+    let holder = attributed(&mut b, &d, "div", &[]);
+    let inner = attributed(&mut b, &d, "div", &[("itemscope", "")]);
+    b.establish_children(&inner, &[]).unwrap();
+    b.establish_parent(&inner, &holder).unwrap();
+    children.push(holder);
+    b.establish_children(&d, &children).unwrap();
+    let capture = b.finish().unwrap();
+    let context = HtmlSemanticContext::new(
+        &capture,
+        capture.host_facts_revision().clone(),
+        HtmlSemanticContextInput::new(vec![]),
+        0,
+    )
+    .unwrap();
+    let inner = capture.subject_id(&inner).unwrap();
+    let (report, _) = {
+        let mut session = HtmlSemanticSession::new(
+            &capture,
+            &context,
+            HtmlValueInterpreter::new(10000),
+            roomy_limits(),
+            HtmlSemanticCancellation::new(),
+        )
+        .unwrap();
+        let report = session.query(&[request(&inner, HtmlSemanticQuery::MicrodataItem)]);
+        (report, session.usage())
+    };
+    let peak = report.unwrap().usage().peak_scratch_records();
+    // The index of the 30 items alone is 4 * 30 + 1 = 121 records, on top of
+    // their 30 in the graph.
+    assert!(peak < 4 * items, "peak {peak}");
 }

@@ -54,6 +54,103 @@ mod tests {
         });
     }
 
+    /// Cancelling at any charge of a later item query, where an earlier one left
+    /// the graph and its type walk index held, leaves the session with no
+    /// scratch.
+    #[test]
+    fn cancellation_at_any_charge_of_a_later_item_query_releases_the_held_index() {
+        let mut b = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(40, 400, 40, 10_000, 10, 0, 0, 16_777_216),
+            crate::HtmlHostFactsRevision::fresh(),
+        );
+        let d = b
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Unavailable,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        let items: Vec<_> = (0..3)
+            .map(|_| {
+                let item = b
+                    .add_element(
+                        &d,
+                        surgeist_html::values::QualifiedName::new(
+                            surgeist_html::values::Namespace::html(),
+                            None,
+                            "div",
+                        ),
+                        OrderedAttributes::new([Attribute::new(
+                            surgeist_html::values::QualifiedName::new(
+                                surgeist_html::values::Namespace::none(),
+                                None,
+                                "itemscope",
+                            ),
+                            "",
+                        )])
+                        .unwrap(),
+                        HtmlCapturedIsValue::Unavailable,
+                        HtmlCaptureRegistryInput::Null,
+                    )
+                    .unwrap();
+                b.establish_children(&item, &[]).unwrap();
+                item
+            })
+            .collect();
+        b.establish_children(&d, &items).unwrap();
+        let capture = b.finish().unwrap();
+        let context = crate::HtmlSemanticContext::new(
+            &capture,
+            capture.host_facts_revision().clone(),
+            crate::HtmlSemanticContextInput::new(vec![]),
+            0,
+        )
+        .unwrap();
+        let requests: Vec<_> = items[..2]
+            .iter()
+            .map(|item| {
+                HtmlSemanticRequest::new(
+                    capture.subject_id(item).unwrap(),
+                    HtmlSemanticQuery::MicrodataItem,
+                )
+            })
+            .collect();
+        let big = 1 << 40;
+        let limits = HtmlSemanticLimits::new(big, big, big, 0, big, big);
+        let session = |cancellation: HtmlSemanticCancellation| {
+            HtmlSemanticSession::new(
+                &capture,
+                &context,
+                HtmlValueInterpreter::new(10000),
+                limits,
+                cancellation,
+            )
+            .unwrap()
+        };
+        let first = session(HtmlSemanticCancellation::new())
+            .query(&requests[..1])
+            .unwrap()
+            .usage()
+            .work();
+        let both = session(HtmlSemanticCancellation::new())
+            .query(&requests)
+            .unwrap()
+            .usage()
+            .work();
+        for at in first..both {
+            let cancellation = HtmlSemanticCancellation::new();
+            let mut s = session(cancellation.clone());
+            s.cancel_at_work = Some((at, cancellation));
+            let failure = s.query(&requests).unwrap_err();
+            assert_eq!(
+                failure.kind(),
+                &HtmlSemanticFailureKind::Cancelled,
+                "at {at}"
+            );
+            assert_eq!(s.usage().scratch_records(), 0, "cancelled at work {at}");
+        }
+    }
+
     /// Binding every token of an attribute one at a time splits the attribute
     /// once per token, which is quadratic in them; binding them together splits
     /// it once, and yields the same bindings.
@@ -500,6 +597,9 @@ impl<'a> HtmlSemanticSession<'a> {
             return Ok(HtmlSemanticValue::Inapplicable);
         }
         let graph = self.md_tree_graph(id)?;
+        // The cycles build an index of their own; the type walk index held with
+        // the graph is not read here.
+        self.md_drop_typing();
         let mut frames = Vec::new();
         let mut contributors = Vec::new();
         let result = (|| {
@@ -737,6 +837,11 @@ impl<'a> HtmlSemanticSession<'a> {
                             };
                             let own = self.md_tokens(re, HtmlMicrodataTokenKind::ItemType)?;
                             let inherited = own.tokens().is_empty();
+                            if !inherited {
+                                // A typed receiver is walked alone with an index of
+                                // its own, so none is held beside it.
+                                self.md_drop_typing();
+                            }
                             let context = self.md_type_context(
                                 receiver,
                                 own,
@@ -1744,6 +1849,30 @@ struct Crawl {
 pub(super) struct TreeGraph {
     root: HtmlCaptureSubjectId,
     graph: Arc<Graph>,
+    /// What walking the type paths of the graph's items needs, built by the first
+    /// such walk and kept with the graph.
+    typing: Option<TypingIndex>,
+}
+/// What walking the type paths above the items of one graph needs, built once
+/// for the graph so that the walk of an item costs the items and edges above it
+/// and not the whole graph.
+#[derive(Default)]
+struct TypingIndex {
+    /// The item ordinals with their positions, sorted by ordinal.
+    keys: Vec<(usize, usize)>,
+    /// `incoming[start[k]..start[k + 1]]` holds, in edge order, `(k, edge
+    /// ordinal, receiver)` for every edge that ends at item `k`.
+    incoming: Vec<(usize, usize, usize)>,
+    start: Vec<usize>,
+    /// Which items the walk in progress has on its path; all false between walks.
+    on_path: Vec<bool>,
+    /// The receiver epoch in which each item was last entered.
+    explored: Vec<usize>,
+    /// The last receiver epoch used; it only grows.
+    epoch: usize,
+    /// Whether everything but `keys` is built: the keys answer whether a subject
+    /// is an item of the graph, which settles that it has no receivers.
+    complete: bool,
 }
 struct Graph {
     items: Vec<HtmlCaptureSubjectId>,
@@ -2550,8 +2679,9 @@ impl<'a> HtmlSemanticSession<'a> {
     /// scratch than its largest query alone, with one exception, which is
     /// listed in the operations reference: an untyped item query holds the graph
     /// while it crawls the item, where the graph used to be released before the
-    /// crawl, so that query's peak is at most the graph's records above what it
-    /// was (G + crawl where it was max(G + type context, crawl)).
+    /// crawl, so that query's peak is at most the graph's records G and those of
+    /// its type-walk index T above what it was (G + T + crawl where it was
+    /// max(G + type context, crawl)).
     ///
     /// The graph is behind an `Arc` only so a query can read it while the
     /// session, which owns the held slot, stays mutably borrowed for charging.
@@ -2571,6 +2701,7 @@ impl<'a> HtmlSemanticSession<'a> {
         self.microdata_graph = Some(TreeGraph {
             root: root.clone(),
             graph: graph.clone(),
+            typing: None,
         });
         Ok(graph)
     }
@@ -2578,7 +2709,129 @@ impl<'a> HtmlSemanticSession<'a> {
     pub(super) fn md_drop_tree_graph(&mut self) {
         if let Some(held) = self.microdata_graph.take() {
             self.md_release_graph(&held.graph);
+            if let Some(typing) = &held.typing {
+                self.md_release_typing(typing);
+            }
         }
+    }
+    /// The typing index of `graph` with at least its keys: the one the held graph
+    /// keeps, taken out for the walk (and then `true`, for putting back), or a new
+    /// one with the keys of the graph's items, which is kept if `graph` is the
+    /// held graph.
+    fn md_graph_typing(
+        &mut self,
+        graph: &Arc<Graph>,
+    ) -> Result<(TypingIndex, bool), HtmlSemanticFailure> {
+        let held = self
+            .microdata_graph
+            .as_ref()
+            .is_some_and(|held| Arc::ptr_eq(&held.graph, graph));
+        if held
+            && self
+                .microdata_graph
+                .as_ref()
+                .is_some_and(|held| held.typing.is_some())
+        {
+            // Charged before the index leaves the held graph, so a refusal here
+            // leaves it there to be released with the graph.
+            self.charge(1)?;
+            let typing = self
+                .microdata_graph
+                .as_mut()
+                .and_then(|held| held.typing.take())
+                .ok_or_else(|| self.stop(HtmlSemanticFailureKind::ProtocolViolated))?;
+            return Ok((typing, true));
+        }
+        let mut typing = TypingIndex::default();
+        match self.md_item_keys(&graph.items, &mut typing.keys) {
+            Ok(()) => Ok((typing, held)),
+            Err(failure) => {
+                self.md_release_typing(&typing);
+                Err(failure)
+            }
+        }
+    }
+    /// Builds what `typing` lacks beyond its keys for the walks of `graph`.
+    /// A refusal leaves `typing` for the caller to release.
+    fn md_complete_graph_typing(
+        &mut self,
+        graph: &Graph,
+        typing: &mut TypingIndex,
+    ) -> Result<(), HtmlSemanticFailure> {
+        self.md_complete_typing(&graph.items, &graph.edges, typing)
+    }
+    /// Puts a typing index taken from the held graph back with it, or releases
+    /// it when `graph` is no longer the held graph.
+    fn md_return_typing(&mut self, graph: &Arc<Graph>, typing: TypingIndex, held: bool) {
+        if held
+            && let Some(slot) = self
+                .microdata_graph
+                .as_mut()
+                .filter(|slot| Arc::ptr_eq(&slot.graph, graph))
+        {
+            slot.typing = Some(typing);
+            return;
+        }
+        self.md_release_typing(&typing);
+    }
+    /// Releases the type walk index the held graph keeps, and not the graph, for
+    /// a query that reserves scratch of its own and does not read the index.
+    fn md_drop_typing(&mut self) {
+        if let Some(typing) = self
+            .microdata_graph
+            .as_mut()
+            .and_then(|held| held.typing.take())
+        {
+            self.md_release_typing(&typing);
+        }
+    }
+    fn md_release_typing(&mut self, typing: &TypingIndex) {
+        self.release_scratch(&typing.keys);
+        self.release_scratch(&typing.incoming);
+        self.release_scratch(&typing.start);
+        self.release_scratch(&typing.on_path);
+        self.release_scratch(&typing.explored);
+    }
+    /// A complete index of `items` and `edges`, released if building it is refused.
+    fn md_build_typing(
+        &mut self,
+        items: &[HtmlCaptureSubjectId],
+        edges: &[(HtmlCaptureSubjectId, HtmlCaptureSubjectId)],
+    ) -> Result<TypingIndex, HtmlSemanticFailure> {
+        let mut typing = TypingIndex::default();
+        let built = self
+            .md_item_keys(items, &mut typing.keys)
+            .and_then(|()| self.md_complete_typing(items, edges, &mut typing));
+        match built {
+            Ok(()) => Ok(typing),
+            Err(failure) => {
+                self.md_release_typing(&typing);
+                Err(failure)
+            }
+        }
+    }
+    fn md_complete_typing(
+        &mut self,
+        items: &[HtmlCaptureSubjectId],
+        edges: &[(HtmlCaptureSubjectId, HtmlCaptureSubjectId)],
+        typing: &mut TypingIndex,
+    ) -> Result<(), HtmlSemanticFailure> {
+        self.md_edge_index_from_keys(
+            items,
+            edges,
+            EdgeEnd::To,
+            &typing.keys,
+            &mut typing.incoming,
+            &mut typing.start,
+        )?;
+        self.reserve_scratch(&mut typing.on_path, items.len())?;
+        self.charge(items.len())?;
+        typing.on_path.resize(items.len(), false);
+        self.reserve_scratch(&mut typing.explored, items.len())?;
+        self.charge(items.len())?;
+        typing.explored.resize(items.len(), 0usize);
+        typing.complete = true;
+        Ok(())
     }
     fn md_release_graph(&mut self, graph: &Graph) {
         self.release_scratch(&graph.items);
@@ -2615,6 +2868,15 @@ impl<'a> HtmlSemanticSession<'a> {
         index: &mut Vec<(usize, usize, usize)>,
         start: &mut Vec<usize>,
     ) -> Result<(), HtmlSemanticFailure> {
+        self.md_item_keys(items, keys)?;
+        self.md_edge_index_from_keys(items, edges, by, keys, index, start)
+    }
+    /// The ordinals of `items` with their positions, sorted by ordinal.
+    fn md_item_keys(
+        &mut self,
+        items: &[HtmlCaptureSubjectId],
+        keys: &mut Vec<(usize, usize)>,
+    ) -> Result<(), HtmlSemanticFailure> {
         self.reserve_scratch(keys, items.len())?;
         for (position, item) in items.iter().enumerate() {
             self.charge(1)?;
@@ -2622,6 +2884,18 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         self.md_charge_product(&[items.len(), md_log2(items.len())])?;
         keys.sort_unstable();
+        Ok(())
+    }
+    /// As [`md_edge_index`](Self::md_edge_index) over keys already built.
+    fn md_edge_index_from_keys(
+        &mut self,
+        items: &[HtmlCaptureSubjectId],
+        edges: &[(HtmlCaptureSubjectId, HtmlCaptureSubjectId)],
+        by: EdgeEnd,
+        keys: &[(usize, usize)],
+        index: &mut Vec<(usize, usize, usize)>,
+        start: &mut Vec<usize>,
+    ) -> Result<(), HtmlSemanticFailure> {
         self.reserve_scratch(index, edges.len())?;
         for (ordinal, (from, to)) in edges.iter().enumerate() {
             let from = self.md_position(keys, from)?;
@@ -2650,62 +2924,60 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         id: &HtmlCaptureSubjectId,
         own: HtmlMicrodataTokenReport,
-        graph: Option<&Graph>,
+        graph: Option<&Arc<Graph>>,
     ) -> Result<HtmlMicrodataTypeContext, HtmlSemanticFailure> {
         // Every edge endpoint is a graph item, so a subject outside the items
         // (beneath unavailable children) has no receivers; it is walked alone
         // and the graph's coverage gap is still reported below.
-        let mut in_graph = false;
+        let single = [id.clone()];
+        let mut graph_index = None;
         if let Some(graph) = graph {
-            for item in &graph.items {
-                self.charge(1)?;
-                if item == id {
-                    in_graph = true;
-                    break;
+            let (mut index, held) = self.md_graph_typing(graph)?;
+            let found = match self.charge(md_log2(index.keys.len())) {
+                Ok(()) => index
+                    .keys
+                    .binary_search_by_key(&id.ordinal(), |&(ordinal, _)| ordinal)
+                    .is_ok(),
+                Err(failure) => {
+                    self.md_release_typing(&index);
+                    return Err(failure);
                 }
+            };
+            if !found {
+                // The subject has no receivers; only the keys were needed.
+                self.md_return_typing(graph, index, held);
+            } else if index.complete {
+                graph_index = Some((index, held));
+            } else if let Err(failure) = self.md_complete_graph_typing(graph, &mut index) {
+                self.md_release_typing(&index);
+                return Err(failure);
+            } else {
+                graph_index = Some((index, held));
             }
         }
-        let (items, edges): (&[HtmlCaptureSubjectId], &[_]) = match graph {
-            Some(graph) if in_graph => (&graph.items, &graph.edges),
-            _ => (std::slice::from_ref(id), &[]),
-        };
+        let (mut ix, held, items): (TypingIndex, bool, &[HtmlCaptureSubjectId]) =
+            match (&graph, graph_index) {
+                (Some(graph), Some((index, held))) => (index, held, &graph.items),
+                _ => (self.md_build_typing(&single, &[])?, false, &single),
+            };
         let mut paths = Vec::new();
-        let mut keys = Vec::new();
-        let mut incoming = Vec::new();
-        let mut start = Vec::new();
         // Relevant types come from each item for which the subject is a
         // property's value, so every immediate receiver keeps its own paths.
         // Above a receiver each item is entered once: further routes to the
         // same ancestor are that receiver's own context, not another one. With
         // the incoming index and per-item flags, each receiver's walk touches
-        // every item and edge at most once.
-        let mut on_path = Vec::new();
-        let mut explored = Vec::new();
+        // only the items and edges above it.
         let mut path = Vec::new();
         let mut frames = Vec::new();
         let mut cycle = None;
         let result = (|| {
-            self.md_edge_index(
-                items,
-                edges,
-                EdgeEnd::To,
-                &mut keys,
-                &mut incoming,
-                &mut start,
-            )?;
-            self.reserve_scratch(&mut on_path, items.len())?;
-            self.charge(items.len())?;
-            on_path.resize(items.len(), false);
-            self.reserve_scratch(&mut explored, items.len())?;
-            self.charge(items.len())?;
-            explored.resize(items.len(), 0usize);
-            // Explored marks carry the receiver epoch, so a new receiver starts
-            // its own exploration without clearing the flags.
-            let mut epoch = 0usize;
-            let subject = self.md_position(&keys, id)?;
-            on_path[subject] = true;
+            // Explored marks carry the receiver epoch, which continues across
+            // the queries that share the index, so a new receiver starts its own
+            // exploration without clearing the flags.
+            let subject = self.md_position(&ix.keys, id)?;
+            ix.on_path[subject] = true;
             self.md_push(&mut path, subject)?;
-            self.md_push(&mut frames, (subject, start[subject], false))?;
+            self.md_push(&mut frames, (subject, ix.start[subject], false))?;
             while let Some(&(current, next, entered)) = frames.last() {
                 self.charge(1)?;
                 let index = frames.len() - 1;
@@ -2741,7 +3013,7 @@ impl<'a> HtmlSemanticSession<'a> {
                         });
                         self.charge(2)?;
                         frames.pop();
-                        on_path[current] = false;
+                        ix.on_path[current] = false;
                         path.pop();
                         continue;
                     }
@@ -2749,29 +3021,29 @@ impl<'a> HtmlSemanticSession<'a> {
                     frames[index].2 = true;
                 }
                 self.charge(1)?;
-                if next < start[current + 1] {
-                    let parent = incoming[next].2;
+                if next < ix.start[current + 1] {
+                    let parent = ix.incoming[next].2;
                     frames[index].1 = next + 1;
-                    if on_path[parent] {
+                    if ix.on_path[parent] {
                         cycle.get_or_insert(items[parent].clone());
                         continue;
                     }
                     if path.len() == 1 {
                         // A new immediate receiver starts its own exploration.
                         self.charge(1)?;
-                        epoch += 1;
+                        ix.epoch += 1;
                     }
-                    if explored[parent] == epoch {
+                    if ix.explored[parent] == ix.epoch {
                         continue;
                     }
-                    explored[parent] = epoch;
-                    on_path[parent] = true;
+                    ix.explored[parent] = ix.epoch;
+                    ix.on_path[parent] = true;
                     self.md_push(&mut path, parent)?;
-                    self.md_push(&mut frames, (parent, start[parent], false))?;
+                    self.md_push(&mut frames, (parent, ix.start[parent], false))?;
                 } else {
                     self.charge(2)?;
                     frames.pop();
-                    on_path[current] = false;
+                    ix.on_path[current] = false;
                     path.pop();
                 }
             }
@@ -2796,14 +3068,18 @@ impl<'a> HtmlSemanticSession<'a> {
                 cycle,
             })
         })();
-        self.release_scratch(&keys);
-        self.release_scratch(&incoming);
-        self.release_scratch(&start);
-        self.release_scratch(&on_path);
-        self.release_scratch(&explored);
         self.release_scratch(&path);
         self.release_scratch(&frames);
-        result
+        match (&graph, result) {
+            (Some(graph), Ok(context)) if held => {
+                self.md_return_typing(graph, ix, held);
+                Ok(context)
+            }
+            (_, result) => {
+                self.md_release_typing(&ix);
+                result
+            }
+        }
     }
     pub(super) fn microdata_item(
         &mut self,

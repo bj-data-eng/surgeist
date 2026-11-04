@@ -1374,6 +1374,10 @@ pub struct HtmlSemanticSession<'a> {
     microdata_graph: Option<microdata::TreeGraph>,
     #[cfg(test)]
     template_cancellation: Option<(template::CancellationPoint, HtmlSemanticCancellation)>,
+    /// Test scheduling only: cancel the original handle at the first poll once
+    /// this much work is admitted, whichever charge that is.
+    #[cfg(test)]
+    cancel_at_work: Option<(usize, HtmlSemanticCancellation)>,
 }
 /// The backing lent to scratch vectors: the records it has room for and the bytes that is. Releasing
 /// it returns exactly what the reservations took, so every live vector is tracked separately from
@@ -1458,6 +1462,8 @@ impl<'a> HtmlSemanticSession<'a> {
             microdata_graph: None,
             #[cfg(test)]
             template_cancellation: None,
+            #[cfg(test)]
+            cancel_at_work: None,
         })
     }
     pub fn usage(&self) -> HtmlSemanticUsage {
@@ -1579,6 +1585,12 @@ impl<'a> HtmlSemanticSession<'a> {
             control
                 .poll()
                 .map_err(|e| self.stop(HtmlSemanticFailureKind::ControlledOptionValue(e)))?;
+        }
+        #[cfg(test)]
+        if let Some((at, handle)) = &self.cancel_at_work
+            && self.usage.work >= *at
+        {
+            handle.cancel();
         }
         if self.cancellation.is_cancelled() {
             return Err(self.stop(HtmlSemanticFailureKind::Cancelled));

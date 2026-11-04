@@ -918,6 +918,15 @@ fn traverse<'a>(
         }
         control.poll()?;
     }
+    // A fact keyed to a node the traversal never reached would be ignored, and a
+    // fact keyed to the wrong node never reported. The imported nodes are known
+    // now, so each fact must name one of them.
+    for entry in &facts.nodes {
+        control.work(1)?;
+        if node_index.get(&entry.node, control)?.is_none() {
+            return Err(HtmlConstructionCaptureError::OutsideImportedClosure);
+        }
+    }
     // All independent records precede hosted shadow records. Each read/clone is
     // admitted; names/strings/attributes keep their exact shared UTF-16 backing.
     for shadow_pass in [false, true] {
