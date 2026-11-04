@@ -422,6 +422,10 @@ pub enum DomError {
     InvalidLimit(DomResource),
     AllocationFailed,
     RepresentationExhausted,
+    /// The processing-instruction pseudo-attribute driver and its cursor disagree about the
+    /// committed names or the cursor's own replies. A driver that answers only what the cursor asks
+    /// cannot produce it.
+    PseudoAttributeCursor(surgeist_html::bounded::lexical::HtmlPiPseudoAttributeError),
     OwnerIdentityExhausted,
     RevisionExhausted,
     ViewTransitionsUninitialized,
