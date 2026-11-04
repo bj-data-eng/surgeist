@@ -5,6 +5,8 @@
 //! This is no loader, geometry or decoding operation. Producer truth remains
 //! the adapter's responsibility; exact rationals are the supported API domain.
 
+use super::admission::{FactAdmission, FactError, fact_limits};
+use super::scan::ScanError;
 use super::*;
 use std::cmp::Ordering as CmpOrdering;
 use surgeist_html::bounded::numeric::{
@@ -159,34 +161,13 @@ impl HtmlNaturalDimensionFact {
         }
     }
 }
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-/// Producer admission, separate from the semantic query ledger. Records bounds
-/// the sum of incoming vector capacities; bytes includes both vector backing
-/// and all incoming rational String capacities. Work bounds record visits,
-/// qualification, duplicate comparisons and subject-join comparisons.
-pub struct HtmlNaturalDimensionLimits {
-    records: usize,
-    bytes: usize,
-    work: usize,
-}
-impl HtmlNaturalDimensionLimits {
-    pub fn new(records: usize, bytes: usize, work: usize) -> Self {
-        Self {
-            records,
-            bytes,
-            work,
-        }
-    }
-    pub fn records(self) -> usize {
-        self.records
-    }
-    pub fn bytes(self) -> usize {
-        self.bytes
-    }
-    pub fn work(self) -> usize {
-        self.work
-    }
-}
+fact_limits!(
+    /// Producer admission, separate from the semantic query ledger. Records bounds
+    /// the sum of incoming vector capacities; bytes includes both vector backing
+    /// and all incoming rational String capacities. Work bounds record visits,
+    /// qualification, duplicate comparisons and subject-join comparisons.
+    HtmlNaturalDimensionLimits
+);
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlNaturalDimensionFactsError {
     Capture(HtmlCaptureError),
@@ -201,6 +182,28 @@ pub enum HtmlNaturalDimensionFactsError {
     ByteLimit,
     WorkLimit,
     RepresentationExhausted,
+}
+impl ScanError for HtmlNaturalDimensionFactsError {
+    fn representation_exhausted() -> Self {
+        Self::RepresentationExhausted
+    }
+    fn work_exceeded(_limit: usize, _required: usize) -> Self {
+        Self::WorkLimit
+    }
+    fn capture(error: HtmlCaptureError) -> Self {
+        Self::Capture(error)
+    }
+}
+impl FactError for HtmlNaturalDimensionFactsError {
+    fn host_revision_mismatch() -> Self {
+        Self::HostRevisionMismatch
+    }
+    fn record_limit() -> Self {
+        Self::RecordLimit
+    }
+    fn byte_limit() -> Self {
+        Self::ByteLimit
+    }
 }
 impl fmt::Display for HtmlNaturalDimensionFactsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -229,80 +232,61 @@ impl HtmlNaturalDimensions {
         limits: HtmlNaturalDimensionLimits,
     ) -> Result<Self, HtmlNaturalDimensionFactsError> {
         use HtmlNaturalDimensionFactsError as E;
-        if &host_revision != capture.host_facts_revision() {
-            return Err(E::HostRevisionMismatch);
-        }
+        FactAdmission::<E>::host(capture, &host_revision)?;
+        let mut a = FactAdmission::<E>::new(limits);
         let records = expected
             .capacity()
             .checked_add(observations.capacity())
             .ok_or(E::RepresentationExhausted)?;
-        if records > limits.records {
-            return Err(E::RecordLimit);
-        }
-        let mut bytes = records
-            .checked_mul(std::mem::size_of::<HtmlNaturalDimensionFact>())
-            .ok_or(E::RepresentationExhausted)?;
-        let mut work = 0usize;
-        let mut charge = || {
-            work = work.checked_add(1).ok_or(E::RepresentationExhausted)?;
-            if work > limits.work {
-                Err(E::WorkLimit)
-            } else {
-                Ok(())
-            }
-        };
+        a.add_records(records)?;
+        a.grow_bytes(
+            records
+                .checked_mul(std::mem::size_of::<HtmlNaturalDimensionFact>())
+                .ok_or(E::RepresentationExhausted)?,
+        )?;
         for facts in [&expected, &observations] {
             for (i, fact) in facts.iter().enumerate() {
-                charge()?;
+                a.work(1)?;
                 capture.element_id(&fact.subject).map_err(E::Capture)?;
-                for prior in &facts[..i] {
-                    charge()?;
-                    if prior.subject == fact.subject {
-                        return Err(E::DuplicateSubject(fact.subject.clone()));
-                    }
+                if a.repeats(&facts[..i], 1, |prior| prior.subject == fact.subject)? {
+                    return Err(E::DuplicateSubject(fact.subject.clone()));
                 }
                 if let Some((w, h)) = fact.axes() {
                     if let NaturalObservation::Observed {
                         revision: actual, ..
                     } = &fact.state
                     {
-                        charge()?;
+                        a.work(1)?;
                         if actual != &revision {
                             return Err(E::SelectionRevisionMismatch(fact.subject.clone()));
                         }
                     }
                     for axis in [w, h] {
-                        charge()?;
+                        a.work(1)?;
                         if let HtmlNaturalDimensionAxis::KnownPresent(v) = axis {
-                            bytes = bytes
-                                .checked_add(v.retained_bytes().ok_or(E::RepresentationExhausted)?)
-                                .ok_or(E::RepresentationExhausted)?;
+                            a.grow_bytes(v.retained_bytes().ok_or(E::RepresentationExhausted)?)?;
                         }
                     }
                 }
-                if bytes > limits.bytes {
-                    return Err(E::ByteLimit);
-                }
+                a.check_bytes()?;
             }
         }
-        if bytes > limits.bytes {
-            return Err(E::ByteLimit);
-        }
+        a.check_bytes()?;
         for fact in &mut expected {
-            charge()?;
+            a.work(1)?;
             if matches!(fact.state, NaturalObservation::Observed { .. }) {
                 return Err(E::InvalidExpectedSelection);
             }
             let mut found = None;
             for (i, observation) in observations.iter().enumerate() {
-                charge()?;
+                a.work(1)?;
                 if observation.subject == fact.subject {
                     found = Some(i);
                     break;
                 }
             }
             if let Some(i) = found {
-                charge()?;
+                a.work(1)?;
                 if !matches!(observations[i].state, NaturalObservation::Observed { .. }) {
                     return Err(E::InvalidObservation);
                 }

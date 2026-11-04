@@ -1,40 +1,14 @@
 //! Concrete CSS producer attestations for one exact captured HTML media field.
+use super::admission::{FactAdmission, FactError, fact_limits, producer_revision};
+use super::scan::ScanError;
 use super::*;
 use surgeist_html::bounded::media::{HtmlMediaField, media_field_matches};
 use surgeist_html::values::DocumentString;
 
 identity!(HtmlMediaProducerId, fresh);
 
-macro_rules! media_revision {
-    ($name:ident) => {
-        #[derive(Clone, Debug, Eq, PartialEq)]
-        pub struct $name {
-            producer: HtmlMediaProducerId,
-            configuration: u64,
-            revision: u64,
-        }
-        impl $name {
-            pub fn new(producer: HtmlMediaProducerId, configuration: u64, revision: u64) -> Self {
-                Self {
-                    producer,
-                    configuration,
-                    revision,
-                }
-            }
-            pub fn producer(&self) -> &HtmlMediaProducerId {
-                &self.producer
-            }
-            pub fn configuration(&self) -> u64 {
-                self.configuration
-            }
-            pub fn revision(&self) -> u64 {
-                self.revision
-            }
-        }
-    };
-}
-media_revision!(HtmlMediaGrammarRevision);
-media_revision!(HtmlMediaEnvironmentRevision);
+producer_revision!(HtmlMediaGrammarRevision, HtmlMediaProducerId);
+producer_revision!(HtmlMediaEnvironmentRevision, HtmlMediaProducerId);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlMediaContextRevision {
@@ -200,30 +174,7 @@ impl HtmlMediaFact {
         self.matching.as_ref()
     }
 }
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HtmlMediaFactsLimits {
-    records: usize,
-    bytes: usize,
-    work: usize,
-}
-impl HtmlMediaFactsLimits {
-    pub fn new(records: usize, bytes: usize, work: usize) -> Self {
-        Self {
-            records,
-            bytes,
-            work,
-        }
-    }
-    pub fn records(self) -> usize {
-        self.records
-    }
-    pub fn bytes(self) -> usize {
-        self.bytes
-    }
-    pub fn work(self) -> usize {
-        self.work
-    }
-}
+fact_limits!(HtmlMediaFactsLimits);
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlMediaFactsError {
     Capture(HtmlCaptureError),
@@ -236,6 +187,28 @@ pub enum HtmlMediaFactsError {
     ByteLimit,
     WorkLimit,
     RepresentationExhausted,
+}
+impl ScanError for HtmlMediaFactsError {
+    fn representation_exhausted() -> Self {
+        Self::RepresentationExhausted
+    }
+    fn work_exceeded(_limit: usize, _required: usize) -> Self {
+        Self::WorkLimit
+    }
+    fn capture(error: HtmlCaptureError) -> Self {
+        Self::Capture(error)
+    }
+}
+impl FactError for HtmlMediaFactsError {
+    fn host_revision_mismatch() -> Self {
+        Self::HostRevisionMismatch
+    }
+    fn record_limit() -> Self {
+        Self::RecordLimit
+    }
+    fn byte_limit() -> Self {
+        Self::ByteLimit
+    }
 }
 impl fmt::Display for HtmlMediaFactsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -261,34 +234,20 @@ impl HtmlMediaFacts {
         limits: HtmlMediaFactsLimits,
     ) -> Result<Self, HtmlMediaFactsError> {
         use HtmlMediaFactsError as E;
-        if &host != capture.host_facts_revision() {
-            return Err(E::HostRevisionMismatch);
-        }
-        if facts.capacity() > limits.records {
-            return Err(E::RecordLimit);
-        }
-        if facts
-            .capacity()
-            .checked_mul(std::mem::size_of::<HtmlMediaFact>())
-            .ok_or(E::RepresentationExhausted)?
-            > limits.bytes
-        {
-            return Err(E::ByteLimit);
-        }
-        let mut work = 0usize;
-        let mut charge = |amount: usize| {
-            work = work.checked_add(amount).ok_or(E::RepresentationExhausted)?;
-            if work > limits.work {
-                Err(E::WorkLimit)
-            } else {
-                Ok(())
-            }
-        };
+        FactAdmission::<E>::host(capture, &host)?;
+        let mut a = FactAdmission::<E>::new(limits);
+        a.add_records(facts.capacity())?;
+        a.add_bytes(
+            facts
+                .capacity()
+                .checked_mul(std::mem::size_of::<HtmlMediaFact>())
+                .ok_or(E::RepresentationExhausted)?,
+        )?;
         for (i, fact) in facts.iter().enumerate() {
             // Fixed role, namespace and field comparisons in raw(): ≤64 units.
-            charge(64)?;
+            a.work(64)?;
             fact.input.raw(capture)?;
-            charge(1)?;
+            a.work(1)?;
             if fact
                 .grammar
                 .as_ref()
@@ -296,7 +255,7 @@ impl HtmlMediaFacts {
             {
                 return Err(E::GrammarRevisionMismatch);
             }
-            charge(1)?;
+            a.work(1)?;
             if fact
                 .matching
                 .as_ref()
@@ -304,11 +263,8 @@ impl HtmlMediaFacts {
             {
                 return Err(E::MatchRevisionMismatch);
             }
-            for prior in &facts[..i] {
-                charge(1)?;
-                if prior.input == fact.input {
-                    return Err(E::DuplicateInput(fact.input.clone()));
-                }
+            if a.repeats(&facts[..i], 1, |prior| prior.input == fact.input)? {
+                return Err(E::DuplicateInput(fact.input.clone()));
             }
         }
         Ok(Self {

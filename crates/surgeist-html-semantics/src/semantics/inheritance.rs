@@ -3,6 +3,7 @@
 //! state transitions are executed. Ordinary and shadow-host traversal remain
 //! distinct where the selected algorithms require them.
 
+use super::admission::producer_revision;
 use super::scan::{ScanError, ScanMeter};
 use super::seen::Seen;
 use super::*;
@@ -14,35 +15,11 @@ use surgeist_html::attributes::{
 use surgeist_html::{attributes::HtmlBooleanAttribute, values::DocumentString};
 
 identity!(HtmlGlobalInheritanceProducerId, fresh);
-/// Actual joined document-state/policy producer configuration and revision.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct HtmlGlobalInheritanceRevision {
-    producer: HtmlGlobalInheritanceProducerId,
-    configuration: u64,
-    revision: u64,
-}
-impl HtmlGlobalInheritanceRevision {
-    pub fn new(
-        producer: HtmlGlobalInheritanceProducerId,
-        configuration: u64,
-        revision: u64,
-    ) -> Self {
-        Self {
-            producer,
-            configuration,
-            revision,
-        }
-    }
-    pub fn producer(&self) -> &HtmlGlobalInheritanceProducerId {
-        &self.producer
-    }
-    pub fn configuration(&self) -> u64 {
-        self.configuration
-    }
-    pub fn revision(&self) -> u64 {
-        self.revision
-    }
-}
+producer_revision!(
+    /// Actual joined document-state/policy producer configuration and revision.
+    HtmlGlobalInheritanceRevision,
+    HtmlGlobalInheritanceProducerId
+);
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlDesignMode {
     Enabled,

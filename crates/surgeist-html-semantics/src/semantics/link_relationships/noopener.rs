@@ -46,18 +46,11 @@ impl HtmlRelNoopenerInput {
         target: DocumentString,
         limits: HtmlRelFactsLimits,
     ) -> Result<Self, HtmlRelFactsError> {
-        if capture.host_facts_revision() != expected_host {
-            return Err(HtmlRelFactsError::HostRevisionMismatch);
-        }
+        FactsAdmission::host(capture, expected_host)?;
         if &url.revision != expected_url {
             return Err(HtmlRelFactsError::UrlRevisionMismatch);
         }
-        let mut a = FactsAdmission {
-            limits,
-            records: 0,
-            bytes: 0,
-            work: 0,
-        };
+        let mut a = FactsAdmission::new(limits);
         a.work(1)?;
         if limits.records < 1 {
             return Err(HtmlRelFactsError::RecordLimit);

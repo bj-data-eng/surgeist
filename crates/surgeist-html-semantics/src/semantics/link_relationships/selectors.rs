@@ -57,12 +57,9 @@ fn selector_admission(
     if bytes > limits.bytes {
         return Err(HtmlRelFactsError::ByteLimit);
     }
-    let mut a = FactsAdmission {
-        limits,
-        records: 1,
-        bytes,
-        work: 0,
-    };
+    let mut a = FactsAdmission::new(limits);
+    a.records = 1;
+    a.bytes = bytes;
     a.work(1)?;
     Ok(a)
 }
@@ -410,20 +407,8 @@ impl HtmlDocumentIconInput {
             }
             // Canonical media readback owns its own nested fixed record.
             let (records, bytes) = declaration.media_rules.owned_backing();
-            a.records = a
-                .records
-                .checked_add(records)
-                .ok_or(HtmlRelFactsError::RepresentationExhausted)?;
-            if a.records > a.limits.records {
-                return Err(HtmlRelFactsError::RecordLimit);
-            }
-            a.bytes = a
-                .bytes
-                .checked_add(bytes)
-                .ok_or(HtmlRelFactsError::RepresentationExhausted)?;
-            if a.bytes > a.limits.bytes {
-                return Err(HtmlRelFactsError::ByteLimit);
-            }
+            a.add_records(records)?;
+            a.add_bytes(bytes)?;
             let mut count = 0;
             for observation in &observations {
                 a.work(1)?;

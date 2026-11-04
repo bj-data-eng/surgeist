@@ -10,6 +10,7 @@
 //! owns modal transitions and inert interaction effects; only the current
 //! blocking subject escapes.
 
+use super::admission::producer_revision;
 use super::scan::{ScanError, ScanMeter};
 use super::seen::Seen;
 use super::*;
@@ -24,31 +25,11 @@ identity!(
     HtmlFlatTreeProducerId, fresh
 );
 
-/// The actual producer/configuration/revision key, independent of host state.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct HtmlFlatTreeRevision {
-    producer: HtmlFlatTreeProducerId,
-    configuration: u64,
-    revision: u64,
-}
-impl HtmlFlatTreeRevision {
-    pub fn new(producer: HtmlFlatTreeProducerId, configuration: u64, revision: u64) -> Self {
-        Self {
-            producer,
-            configuration,
-            revision,
-        }
-    }
-    pub fn producer(&self) -> &HtmlFlatTreeProducerId {
-        &self.producer
-    }
-    pub fn configuration(&self) -> u64 {
-        self.configuration
-    }
-    pub fn revision(&self) -> u64 {
-        self.revision
-    }
-}
+producer_revision!(
+    /// The actual producer/configuration/revision key, independent of host state.
+    HtmlFlatTreeRevision,
+    HtmlFlatTreeProducerId
+);
 
 /// Document flat-tree membership supplied by DOM, rather than an ordinary parent.
 /// Known exclusion is not empty inert ancestry, including for detached nodes.

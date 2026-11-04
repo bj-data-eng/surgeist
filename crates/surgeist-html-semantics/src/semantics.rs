@@ -16,6 +16,7 @@
 //! default spellcheck policy are concrete capture-qualified inputs. Style, layout, focus and runtime state transitions
 //! remain with their producers; queries borrow one immutable capture.
 
+mod admission;
 mod context;
 mod scan;
 mod seen;
