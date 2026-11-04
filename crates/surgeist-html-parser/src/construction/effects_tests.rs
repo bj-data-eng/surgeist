@@ -859,7 +859,8 @@ fn select_fifo_consumes_two_actual_removal_tasks_in_source_order_and_keeps_exact
 fn a_drained_removal_queue_holds_no_auxiliary_entries_however_many_removals_passed() {
     // Each removal of the selected option changes selectedness and queues one
     // update of its select. The checkpoint runs it, so nothing is outstanding
-    // between removals and the queue must not remember the ones that ran.
+    // between removals and the queue must release the entries of the tasks
+    // it ran instead of remembering them for the rest of the parse.
     const OPTIONS: usize = 40;
     let mut source = String::from("<body><select><selectedcontent></selectedcontent>");
     for _ in 0..OPTIONS {
@@ -884,27 +885,22 @@ fn a_drained_removal_queue_holds_no_auxiliary_entries_however_many_removals_pass
     let request =
         crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8(source.as_str()), wide);
     let (mut c, mut session, proof, nodes) = graph(&request);
-    let mut held = Vec::new();
     for index in 0..OPTIONS {
         let option = named(&nodes, "option", index);
         update(&mut session, &mut c, &option);
         session.remove(&mut c, &option, Some(&proof)).unwrap();
-        let queued = session.active().unwrap().effects.tasks.len()
-            - session.active().unwrap().effects.dequeue;
-        assert_eq!(queued, 1, "removal {index} queues one select update");
         session
             .perform_intrinsic_checkpoint(&mut c, &proof)
             .unwrap();
-        held.push(
-            c.usage()
-                .resource(HtmlParseResource::AuxiliaryEntries)
-                .current,
+        // Each queue slot holds one auxiliary entry until the queue releases it.
+        let queue = &session.active().unwrap().effects.tasks;
+        assert_eq!(
+            queue.len(),
+            0,
+            "the queue still holds {} spent slots after removal {index} drained it",
+            queue.len()
         );
     }
-    assert!(
-        held.iter().all(|&entries| entries == held[0]),
-        "auxiliary entries after each drained removal: {held:?}"
-    );
     let mut frozen = session.freeze(&mut c).unwrap();
     frozen.release(&mut c).unwrap();
     storage_zero(&c);
