@@ -15,6 +15,7 @@
 use crate::semantics::support::builder_with;
 use surgeist_html::{
     bounded::lexical::{HtmlSpaceTokenCursor, HtmlSpaceTokenStep},
+    construction::HtmlDocumentMode,
     construction::{HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment},
     elements::link::HtmlRelKeyword,
     microsyntax::{
@@ -51,7 +52,8 @@ use surgeist_html_semantics::{
     HtmlPragmaLanguage, HtmlProtocolLanguage, HtmlRelDefinition, HtmlRelDefinitionId,
     HtmlRelDefinitionKey, HtmlRelExtensionEffect, HtmlRelFacts, HtmlRelFactsError,
     HtmlRelFactsInput, HtmlRelFactsLimits, HtmlRelProducerId, HtmlRelRegistryOccurrence,
-    HtmlRelRegistryStatus, HtmlRelRevision, HtmlSlotAssignedNodes, HtmlTextareaControlState,
+    HtmlRelRegistryStatus, HtmlRelRevision, HtmlScriptingStatus, HtmlSlotAssignedNodes,
+    HtmlTextareaControlState,
 };
 
 /// How a constructor run ended at one work limit.
@@ -299,6 +301,141 @@ fn a_page_of_roots_parents_and_a_modal_blocker_charges_its_pinned_total() {
         total,
         131 + 1 + 1 + 1 + 7 * KnownHtmlElement::ALL.len() + 28 + 1 + 11 + 3
     );
+}
+
+/// Every doubling must at most multiply a total that is linear in the number of
+/// facts by 2.2; a scan of the earlier facts for each fact multiplies it by 4.
+pub fn assert_doubling_at_most_2_2(label: &str, sizes: &[usize], work: impl Fn(usize) -> usize) {
+    let totals: Vec<usize> = sizes.iter().map(|size| work(*size)).collect();
+    for (pair, totals) in sizes.windows(2).zip(totals.windows(2)) {
+        assert!(
+            totals[1] * 10 <= totals[0] * 22,
+            "{label}: {} facts charged {} but {} facts charged {}: more than 2.2 times",
+            pair[0],
+            totals[0],
+            pair[1],
+            totals[1]
+        );
+    }
+}
+
+fn big_builder(subjects: usize) -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
+    builder_with(HtmlCaptureLimits::new(
+        subjects + 10,
+        4 * subjects + 100,
+        100,
+        40 * subjects + 100000,
+        100,
+        0,
+        0,
+        16_777_216,
+    ))
+}
+
+/// A capture whose document holds an `html` element with `count - 1` `div`
+/// children. The capture tree is flat, so only the supplied relations are deep.
+fn flat_page(count: usize) -> (HtmlCapture, Vec<HtmlCaptureSubjectId>) {
+    let (mut b, d) = big_builder(count);
+    let root = html(&mut b, &d, "html");
+    let divs: Vec<_> = (1..count).map(|_| html(&mut b, &d, "div")).collect();
+    for div in &divs {
+        b.establish_children(div, &[]).unwrap();
+    }
+    b.establish_children(&root, &divs).unwrap();
+    b.establish_children(&d, std::slice::from_ref(&root))
+        .unwrap();
+    let capture = b.finish().unwrap();
+    let mut ids = vec![capture.subject_id(&root).unwrap()];
+    ids.extend(divs.iter().map(|div| capture.subject_id(div).unwrap()));
+    (capture, ids)
+}
+fn inert_total(label: &str, capture: &HtmlCapture, records: &[HtmlInertNodeFact]) -> usize {
+    least_work(label, |work| {
+        inert_run(capture, records.to_vec(), vec![], work)
+    })
+}
+/// `count` records whose flat parents form one chain: the first is the flat
+/// root and each later one is the flat child of the record before it.
+fn chain_total(count: usize) -> usize {
+    let (capture, ids) = flat_page(count);
+    let mut records = vec![inert_fact(
+        &ids[0],
+        Some(true),
+        HtmlDocumentFlatTreeRelation::Root,
+    )];
+    for pair in ids.windows(2) {
+        records.push(inert_fact(
+            &pair[1],
+            Some(true),
+            HtmlDocumentFlatTreeRelation::Parent(pair[0].clone()),
+        ));
+    }
+    inert_total("flat chain", &capture, &records)
+}
+/// `count` records that are all flat children of the first, the flat root.
+fn fan_total(count: usize) -> usize {
+    let (capture, ids) = flat_page(count);
+    let mut records = vec![inert_fact(
+        &ids[0],
+        Some(true),
+        HtmlDocumentFlatTreeRelation::Root,
+    )];
+    for id in &ids[1..] {
+        records.push(inert_fact(
+            id,
+            Some(true),
+            HtmlDocumentFlatTreeRelation::Parent(ids[0].clone()),
+        ));
+    }
+    inert_total("flat fan", &capture, &records)
+}
+/// `count` documents, each with an `html` element that is its flat root.
+fn roots_total(count: usize) -> usize {
+    let (mut b, first) = big_builder(2 * count);
+    let mut documents = vec![first];
+    for _ in 1..count {
+        documents.push(
+            b.add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Unavailable,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap(),
+        );
+    }
+    let roots: Vec<_> = documents.iter().map(|d| html(&mut b, d, "html")).collect();
+    for (document, root) in documents.iter().zip(&roots) {
+        b.establish_children(root, &[]).unwrap();
+        b.establish_children(document, std::slice::from_ref(root))
+            .unwrap();
+    }
+    let capture = b.finish().unwrap();
+    let records: Vec<_> = roots
+        .iter()
+        .map(|root| {
+            inert_fact(
+                &capture.subject_id(root).unwrap(),
+                Some(true),
+                HtmlDocumentFlatTreeRelation::Root,
+            )
+        })
+        .collect();
+    inert_total("flat roots", &capture, &records)
+}
+
+const DOUBLINGS: [usize; 4] = [40, 80, 160, 320];
+
+#[test]
+fn inert_chain_work_is_near_linear_in_the_records() {
+    assert_doubling_at_most_2_2("inert chain", &DOUBLINGS, chain_total);
+}
+#[test]
+fn inert_fan_work_is_near_linear_in_the_records() {
+    assert_doubling_at_most_2_2("inert fan", &DOUBLINGS, fan_total);
+}
+#[test]
+fn inert_roots_work_is_near_linear_in_the_documents() {
+    assert_doubling_at_most_2_2("inert roots", &DOUBLINGS, roots_total);
 }
 
 // ---------------------------------------------------------------------------
