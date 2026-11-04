@@ -377,6 +377,22 @@ impl HtmlLanguageDirectionFacts {
         for (position, fact) in assignments.iter().enumerate() {
             assignment_index.enter(&fact.slot, position);
         }
+        // The nodes assigned so far, whichever slot they are assigned to. A node
+        // is assigned at most once, so the set never holds more than the nodes
+        // supplied nor more than the capacity admitted below.
+        validation.charge(assignments.len())?;
+        let mut supplied = 0;
+        for fact in &assignments {
+            if let Some(nodes) = &fact.nodes {
+                supplied = language_sum(supplied, nodes.len())?;
+            }
+        }
+        let mut assigned_nodes = FactIndex::new(
+            capture.identity(),
+            supplied.min(limits.assigned_nodes),
+            |n| validation.charge(n),
+            HtmlLanguageDirectionError::RepresentationExhausted,
+        )?;
         for (index, fact) in assignments.iter().enumerate() {
             validation.charge(1)?;
             let node = validation.node(capture, &fact.slot)?;
@@ -415,7 +431,7 @@ impl HtmlLanguageDirectionFacts {
             } else {
                 None
             };
-            for (node_index, assigned) in nodes.iter().enumerate() {
+            for assigned in nodes.iter() {
                 validation.charge(1)?;
                 let node = validation.node(capture, assigned)?;
                 if !matches!(
@@ -432,26 +448,10 @@ impl HtmlLanguageDirectionFacts {
                         assigned.clone(),
                     ));
                 }
-                for previous in &nodes[..node_index] {
-                    validation.charge(1)?;
-                    if previous == assigned {
-                        return Err(HtmlLanguageDirectionError::DuplicateAssignment(
-                            assigned.clone(),
-                        ));
-                    }
-                }
-                for previous in &assignments[..index] {
-                    validation.charge(1)?;
-                    if let Some(previous_nodes) = &previous.nodes {
-                        for previous in previous_nodes {
-                            validation.charge(1)?;
-                            if previous == assigned {
-                                return Err(HtmlLanguageDirectionError::DuplicateAssignment(
-                                    assigned.clone(),
-                                ));
-                            }
-                        }
-                    }
+                if assigned_nodes.enter_latest(assigned, (), 0).is_some() {
+                    return Err(HtmlLanguageDirectionError::DuplicateAssignment(
+                        assigned.clone(),
+                    ));
                 }
                 if let Some(children) = &mut host_children {
                     loop {

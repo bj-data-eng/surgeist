@@ -594,9 +594,12 @@ fn language_facts_charge_their_pinned_totals() {
     // a lookup 1 and the recognition of the element name; the textarea
     // (9 units: 9A + 28) and its value 1, the input (6A + 28) with its `type`
     // attribute scan (1 + 4), its type recognition envelope (18A + 5K + 92 + 87).
-    // Assignments: duplicate set 2; the first slot charges 1, a lookup 1, the
+    // Assignments: duplicate set 2; the pass counting the supplied nodes 2 and
+    // the set of assigned nodes 2; the first slot charges 1, a lookup 1, the
     // recognition (5A + 28), the host search (4), the host children (2) and its
-    // two nodes (4 and 5); the second slot, empty, charges 1 + 1 + 5A + 28.
+    // two nodes (4 each: a lookup, its parent and its place among the children,
+    // the set costing nothing more); the second slot, empty, charges
+    // 1 + 1 + 5A + 28.
     let a = KnownHtmlElement::ALL.len();
     let k = KnownHtmlAttribute::ALL.len();
     assert_eq!(
@@ -604,8 +607,8 @@ fn language_facts_charge_their_pinned_totals() {
         [
             5,
             247 + 33 * a + 5 * k,
-            77 + 10 * a,
-            5 + 247 + 33 * a + 5 * k + 77 + 10 * a
+            80 + 10 * a,
+            5 + 247 + 33 * a + 5 * k + 80 + 10 * a
         ]
     );
 }
