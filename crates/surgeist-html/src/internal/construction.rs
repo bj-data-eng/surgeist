@@ -1119,7 +1119,7 @@ impl HtmlDocument {
         mode: HtmlDocumentMode,
     ) -> Result<HtmlDocumentBuilder, HtmlConstructionError> {
         Ok(HtmlDocumentBuilder {
-            builder: Builder::new(limits, HtmlNodeKind::Document(mode))?,
+            builder: Builder::new(limits, NativeRoot::Document(mode))?,
         })
     }
     /// Document root.
@@ -1161,7 +1161,7 @@ impl HtmlFragment {
         limits: HtmlConstructionLimits,
     ) -> Result<HtmlFragmentBuilder, HtmlConstructionError> {
         Ok(HtmlFragmentBuilder {
-            builder: Builder::new(limits, HtmlNodeKind::Fragment)?,
+            builder: Builder::new(limits, NativeRoot::Fragment)?,
         })
     }
     /// Fragment root, whose children are the fragment's ordinary output.
@@ -1196,6 +1196,69 @@ fn fragment_view(
     )
 }
 
+/// The root a native builder creates: the closed set of kinds that can be published.
+#[derive(Clone, Copy, Debug)]
+enum NativeRoot {
+    Document(HtmlDocumentMode),
+    Fragment,
+}
+
+/// Prepares `command` on `storage`, drives it to its ready state and commits it. The storage comes
+/// back on every outcome, so a refused step never loses what the builder owns. It is absent only
+/// when the command published, which no native mutation does and which the lease could not hand
+/// back.
+fn drive_native(
+    storage: bounded::HtmlConstructionStorage,
+    command: bounded::operations::HtmlConstructionCommand,
+) -> (
+    Option<bounded::HtmlConstructionStorage>,
+    Result<Option<HtmlBuilderNode>, HtmlConstructionError>,
+) {
+    let mut operation = storage.prepare(command);
+    let driven = (|| {
+        while let Some(action) = operation.next_action()? {
+            action
+                .perform()
+                .map_err(|failure| failure.into_parts().0)?
+                .accept();
+        }
+        Ok::<_, HtmlConstructionError>(())
+    })();
+    if let Err(error) = driven {
+        return (Some(operation.abort().into_parts().0), Err(error));
+    }
+    match ready_or_recover(operation) {
+        Err((storage, error)) => (Some(storage), Err(error)),
+        Ok(ready) => match ready.commit() {
+            bounded::operations::HtmlConstructionCommit::Changed { storage, created } => {
+                (Some(storage), Ok(created))
+            }
+            // A publication moves the arena into its shared result. Native commands never publish;
+            // were one to, the sole owner takes the storage back through its lease.
+            bounded::operations::HtmlConstructionCommit::Published { result, lease } => (
+                bounded::HtmlConstructionLease::try_recover(result, lease)
+                    .ok()
+                    .map(|recovery| recovery.into_parts().0),
+                Err(HtmlConstructionErrorKind::OperationNotReady.into()),
+            ),
+        },
+    }
+}
+
+/// Readies a driven operation. A refusal aborts the operation the refusal hands back and returns
+/// its storage with the cause, so no storage is dropped on the error path.
+fn ready_or_recover(
+    operation: bounded::operations::HtmlConstructionOperation,
+) -> Result<
+    bounded::operations::HtmlConstructionReadyOperation,
+    (bounded::HtmlConstructionStorage, HtmlConstructionError),
+> {
+    operation.try_ready().map_err(|refusal| {
+        let (operation, error) = refusal.into_parts();
+        (operation.abort().into_parts().0, error)
+    })
+}
+
 #[derive(Debug)]
 struct Builder {
     storage: Option<bounded::HtmlConstructionStorage>,
@@ -1207,7 +1270,7 @@ impl Builder {
     }
     fn new(
         limits: HtmlConstructionLimits,
-        kind: HtmlNodeKind,
+        root: NativeRoot,
     ) -> Result<Self, HtmlConstructionError> {
         let mut initialization = bounded::HtmlConstructionStorage::begin();
         while let Some(action) = initialization.next_action()? {
@@ -1222,12 +1285,11 @@ impl Builder {
             limits,
         };
         builder.admit(1, 0, 0, 0, 0)?;
-        let command = match kind {
-            HtmlNodeKind::Document(mode) => {
+        let command = match root {
+            NativeRoot::Document(mode) => {
                 bounded::operations::HtmlConstructionCommand::CreateDocument { mode }
             }
-            HtmlNodeKind::Fragment => bounded::operations::HtmlConstructionCommand::CreateFragment,
-            _ => unreachable!("native root kind"),
+            NativeRoot::Fragment => bounded::operations::HtmlConstructionCommand::CreateFragment,
         };
         builder.apply(command)?;
         Ok(builder)
@@ -1303,35 +1365,13 @@ impl Builder {
         &mut self,
         command: bounded::operations::HtmlConstructionCommand,
     ) -> Result<Option<HtmlBuilderNode>, HtmlConstructionError> {
-        let storage = self.storage.take().expect("native storage retained");
-        let mut operation = storage.prepare(command);
-        let result = (|| -> Result<_, HtmlConstructionError> {
-            while let Some(action) = operation.next_action()? {
-                action
-                    .perform()
-                    .map_err(|failure| failure.into_parts().0)?
-                    .accept();
-            }
-            Ok::<_, HtmlConstructionError>(())
-        })();
-        if let Err(error) = result {
-            let (storage, _, _) = operation.abort().into_parts();
-            self.storage = Some(storage);
-            return Err(error);
-        }
-        match operation
-            .try_ready()
-            .map_err(|refusal| refusal.into_parts().1)?
-            .commit()
-        {
-            bounded::operations::HtmlConstructionCommit::Changed { storage, created } => {
-                self.storage = Some(storage);
-                Ok(created)
-            }
-            bounded::operations::HtmlConstructionCommit::Published { .. } => {
-                unreachable!("native mutation is not publication")
-            }
-        }
+        let storage = self
+            .storage
+            .take()
+            .ok_or(HtmlConstructionErrorKind::OperationNotReady)?;
+        let (storage, outcome) = drive_native(storage, command);
+        self.storage = storage;
+        outcome
     }
     fn depth(&self, index: usize) -> Result<usize, HtmlConstructionError> {
         Ok(self.storage().native_depth(index))
@@ -1580,6 +1620,34 @@ impl HtmlFragmentBuilder {
 mod tests {
     use super::*;
 
+    /// An operation refused at its ready transition returns the storage it was prepared on, with
+    /// the cause, instead of dropping it with the operation. The undriven operation is the refused
+    /// state: it has pending actions, so it is not ready.
+    #[test]
+    fn a_refused_ready_transition_returns_the_storage_and_the_cause() {
+        let mut builder = Builder::new(
+            HtmlConstructionLimits::new(4, 4, 0, 8, 2),
+            NativeRoot::Fragment,
+        )
+        .unwrap();
+        let usage = builder.storage().usage();
+        let records = builder.storage().len();
+        let storage = builder.storage.take().unwrap();
+        let operation =
+            storage.prepare(bounded::operations::HtmlConstructionCommand::CreateFragment);
+        let Err((storage, error)) = ready_or_recover(operation) else {
+            panic!("an undriven operation is not ready");
+        };
+        assert!(error.is_operation_not_ready());
+        assert_eq!((storage.usage(), storage.len()), (usage, records));
+        builder.storage = Some(storage);
+        // The builder keeps working with the recovered storage.
+        let root = builder.handle(0);
+        builder
+            .append(&root, HtmlNodeKind::Comment("c".into()))
+            .unwrap();
+    }
+
     #[test]
     fn unqualified_document_record_readback_is_not_a_node_kind_constant() {
         let arena = Arena {
@@ -1714,7 +1782,7 @@ mod tests {
         ];
         for (label, kind, attributes, units) in cases {
             let append = |limits: HtmlConstructionLimits| {
-                let mut builder = Builder::new(limits, HtmlNodeKind::Fragment).unwrap();
+                let mut builder = Builder::new(limits, NativeRoot::Fragment).unwrap();
                 let root = builder.handle(0);
                 let result = builder.append(&root, kind.clone());
                 (result.map(|_| ()), builder.storage().usage())
