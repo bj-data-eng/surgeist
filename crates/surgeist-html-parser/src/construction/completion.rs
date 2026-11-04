@@ -305,6 +305,7 @@ mod tests {
             let limits = super::super::tests::limits()
                 .into_builder()
                 .auxiliary_entries(initial + allowance)
+                .active_formatting_entries(initial + allowance)
                 .finish()
                 .unwrap();
             let mut c = ParseControl::new(limits, crate::HtmlParseCancellation::new());

@@ -525,6 +525,7 @@ fn associated_explicit_input_policy_is_reestablished_in_the_new_closed_environme
         .buffered_utf16_units(100)
         .token_attributes(100)
         .auxiliary_entries(100_000)
+        .active_formatting_entries(100_000)
         .managed_nodes(100)
         .managed_edges(100)
         .managed_attributes(100)

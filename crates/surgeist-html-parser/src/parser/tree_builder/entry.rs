@@ -602,6 +602,7 @@ mod tests {
             limits()
                 .into_builder()
                 .auxiliary_entries(2)
+                .active_formatting_entries(2)
                 .finish()
                 .unwrap(),
         );

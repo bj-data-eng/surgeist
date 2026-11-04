@@ -2104,7 +2104,7 @@ Capture building uses ordinary allocation and logical limits. The private
 fragment consumer consults unavailable facts only when they influence its
 source branch; unused template facts are not global prerequisites.
 
-`HtmlParseLimits::builder` requires all nineteen finite caps explicitly; zero
+`HtmlParseLimits::builder` requires all twenty finite caps explicitly; zero
 is valid, and no default or unlimited sentinel is supplied. `finish` checks
 representation before a request can retain the configuration.
 `HtmlDocumentParseRequest` configures offline Disabled parsing or retains a
@@ -2492,7 +2492,7 @@ failures retain the original source identity and UTF-8-byte or UTF-16-unit
 coordinates, independently of preprocessing and recovered native text. Public
 transport streaming, incremental fragment feeding and byte decoding are separate.
 
-All nineteen limits are explicit. This small synchronous document uses finite
+All twenty limits are explicit. This small synchronous document uses finite
 storage, layout and work limits rather than a default or unlimited cap:
 
 ```rust
@@ -2516,6 +2516,7 @@ let limits = HtmlParseLimits::builder()
     .diagnostic_payload_units(16_384)
     .context_effects(256)
     .open_elements(128)
+    .active_formatting_entries(256)
     .tree_depth(128)
     .managed_capacity_bytes(16_777_216)
     .peak_transient_bytes(33_554_432)
@@ -2692,6 +2693,26 @@ top to their target or boundary, so a token that asks one costs work in proporti
 elements above the nearest boundary; the walk reads an entry's class and no longer compares its
 namespace and name. Nested `<div>y` repeated 2,000 times costs 216,171,077 work credits, down
 from 714,777,157, and 4,000 times costs 431,654,206, twice as much.
+
+<a id="active-formatting-list-cost"></a>
+
+The list of active formatting elements has its own limit, `active_formatting_entries`, which
+counts each entry, markers included, as `HtmlParseResource::ActiveFormattingEntries`. Its
+entries used to count against `auxiliary_entries`, which the tokenizer's event buffer, the
+pending whitespace and table text, the template modes and the stack's index lists also use, so
+a long list could refuse the parse for all of them. The Noah's Ark check that runs for each
+formatting start tag compares it with every entry back to the last marker, as the standard
+words it ([HTML 13.2.4.3](../../references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md)),
+so start tags whose attributes all differ cost work quadratic in their number: after `<p>`,
+`<b a=i0>`, `<b a=i1>` and so on repeated 500, 1,000, 2,000 and 4,000 times cost 92,508,868,
+218,407,732, 576,420,879 and 1,718,453,019 work credits (11.7 million, 44.0 million, 173.9
+million and 691.9 million record visits). Start tags with equal attributes are linear, because
+the check removes the earliest of three equal entries and the list stays at three. The scan stays
+literal: an index that answered how many entries equal the new one would have to hold a table
+keyed by name and attribute set and keep it exact through the erasures, replacements and marker
+clears the list undergoes, and that has not been shown to leave the results and the order of the
+charges unchanged. A caller that admits untrusted input sizes `work_credits` for the quadratic
+case, or lowers `active_formatting_entries`, which stops the parse at that many entries.
 
 <a id="private-context-fragments"></a>
 

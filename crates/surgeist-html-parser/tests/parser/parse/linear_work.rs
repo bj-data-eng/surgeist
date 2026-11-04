@@ -48,6 +48,7 @@ pub(super) fn roomy_limits() -> HtmlParseLimits {
         .buffered_utf16_units(1_000_000)
         .token_attributes(1_000_000)
         .auxiliary_entries(100_000_000)
+        .active_formatting_entries(100_000_000)
         .managed_nodes(1_000_000)
         .managed_edges(1_000_000)
         .managed_attributes(1_000_000)

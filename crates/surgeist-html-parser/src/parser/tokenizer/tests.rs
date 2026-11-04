@@ -247,6 +247,7 @@ fn limits() -> HtmlParseLimits {
         .buffered_utf16_units(100_000)
         .token_attributes(10_000)
         .auxiliary_entries(1_000_000)
+        .active_formatting_entries(1_000_000)
         .managed_nodes(100_000)
         .managed_edges(100_000)
         .managed_attributes(100_000)
@@ -962,7 +963,12 @@ fn every_retained_tokenizer_domain_has_a_real_finite_failure() {
                 caps = caps.into_builder().token_attributes(0).finish().unwrap()
             }
             HtmlParseResource::AuxiliaryEntries => {
-                caps = caps.into_builder().auxiliary_entries(0).finish().unwrap()
+                caps = caps
+                    .into_builder()
+                    .auxiliary_entries(0)
+                    .active_formatting_entries(0)
+                    .finish()
+                    .unwrap()
             }
             HtmlParseResource::SourceMapEntries => {
                 caps = caps.into_builder().source_map_entries(0).finish().unwrap()
@@ -1377,7 +1383,12 @@ fn consumer_transfer_releases_outer_slot_and_preserves_nested_payload() {
 fn token_slot_admission_failure_releases_prepared_exact_text() {
     let source = HtmlSource::utf8("a");
     let mut cap = limits();
-    cap = cap.into_builder().auxiliary_entries(0).finish().unwrap();
+    cap = cap
+        .into_builder()
+        .auxiliary_entries(0)
+        .active_formatting_entries(0)
+        .finish()
+        .unwrap();
     // The runner verifies every retained resource has returned to zero.
     let (stop, _) = run_with_limits(&source, HtmlTokenizerState::Data, None, cap);
     assert!(matches!(
@@ -2875,6 +2886,7 @@ fn radix_name_storage_growth_submits_bounded_layouts_for_unique_prefixes_and_dup
         let caps = limits()
             .into_builder()
             .auxiliary_entries(expected_branches as u64)
+            .active_formatting_entries(expected_branches as u64)
             .managed_capacity_bytes(capacity_budget)
             .peak_transient_bytes(capacity_budget)
             .atomic_layout_bytes(capacity_budget)
@@ -3123,6 +3135,7 @@ fn name_growth_admits_the_doubled_target_and_retains_a_refused_one_short_failure
         let caps = limits()
             .into_builder()
             .auxiliary_entries(17)
+            .active_formatting_entries(17)
             .managed_capacity_bytes(slots * bytes)
             .peak_transient_bytes(48 * bytes)
             .atomic_layout_bytes(32 * bytes)
@@ -3387,6 +3400,7 @@ fn long_comment_origin_storage_submits_bounded_layouts_with_exact_literal_mappin
             .buffered_utf16_units(n)
             .token_attributes(0)
             .auxiliary_entries(8)
+            .active_formatting_entries(8)
             .source_map_entries(2 * n + 16)
             .source_map_payload_units(0)
             .diagnostics(0)

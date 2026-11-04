@@ -427,6 +427,7 @@ fn body_partition_actual_origin_and_run_slots_require_their_coexisting_caps() {
                 .into_builder()
                 .source_map_entries(maps)
                 .auxiliary_entries(auxiliary)
+                .active_formatting_entries(auxiliary)
                 .finish()
                 .unwrap(),
             HtmlParseCancellation::new(),

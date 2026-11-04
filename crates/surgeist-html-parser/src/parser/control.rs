@@ -3106,6 +3106,7 @@ mod tests {
         let caps = limits()
             .into_builder()
             .auxiliary_entries(5)
+            .active_formatting_entries(5)
             .finish()
             .unwrap();
         let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
@@ -3187,6 +3188,7 @@ mod tests {
             .buffered_utf16_units(1_000)
             .token_attributes(1_000)
             .auxiliary_entries(1_000)
+            .active_formatting_entries(1_000)
             .managed_nodes(1_000)
             .managed_edges(1_000)
             .managed_attributes(1_000)
@@ -3574,6 +3576,7 @@ mod tests {
             .buffered_utf16_units(1_000_000)
             .token_attributes(1_000)
             .auxiliary_entries(1_000)
+            .active_formatting_entries(1_000)
             .managed_nodes(1_000)
             .managed_edges(1_000)
             .managed_attributes(1_000)
@@ -3641,6 +3644,7 @@ mod tests {
         let caps = limits()
             .into_builder()
             .auxiliary_entries(1)
+            .active_formatting_entries(1)
             .finish()
             .unwrap();
         let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
@@ -4090,17 +4094,18 @@ mod tests {
             .diagnostic_payload_units(12)
             .context_effects(13)
             .open_elements(14)
-            .tree_depth(15)
-            .managed_capacity_bytes(16)
-            .peak_transient_bytes(17)
-            .atomic_layout_bytes(18)
-            .work_credits(19)
+            .active_formatting_entries(15)
+            .tree_depth(16)
+            .managed_capacity_bytes(17)
+            .peak_transient_bytes(18)
+            .atomic_layout_bytes(19)
+            .work_credits(20)
             .finish()
             .unwrap();
         assert_eq!(
             limits.values().into_array(),
             [
-                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
             ]
         );
     }

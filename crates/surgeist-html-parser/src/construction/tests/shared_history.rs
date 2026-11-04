@@ -869,6 +869,7 @@ fn append_series_retains_unique_leaves_plus_current_output_at_every_sample() {
                 // All fixture causes lack source, so the closure is empty.
                 // Only N256 changes; smaller caps/work limits stay fixed.
                 .auxiliary_entries((8 * count + 2) as u64)
+                .active_formatting_entries((8 * count + 2) as u64)
                 .finish()
                 .unwrap()
         } else {

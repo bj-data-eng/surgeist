@@ -1719,6 +1719,7 @@ mod tests {
             .managed_nodes(1_000_000)
             .managed_edges(1_000_000)
             .auxiliary_entries(100_000_000)
+            .active_formatting_entries(100_000_000)
             .finish()
             .unwrap();
         let mut c = ParseControl::new(limits, crate::HtmlParseCancellation::new());

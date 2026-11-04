@@ -1380,6 +1380,7 @@ mod tests {
                 crate::parser::tree_builder::tests::limits(100)
                     .into_builder()
                     .auxiliary_entries(cap)
+                    .active_formatting_entries(cap)
                     .finish()
                     .unwrap(),
                 crate::HtmlParseCancellation::new(),
@@ -2168,6 +2169,7 @@ mod tests {
                 crate::parser::tree_builder::tests::limits(100)
                     .into_builder()
                     .auxiliary_entries(cap)
+                    .active_formatting_entries(cap)
                     .finish()
                     .unwrap(),
                 crate::HtmlParseCancellation::new(),
@@ -2271,6 +2273,7 @@ mod tests {
                 crate::parser::tree_builder::tests::limits(100)
                     .into_builder()
                     .auxiliary_entries(cap)
+                    .active_formatting_entries(cap)
                     .finish()
                     .unwrap(),
                 crate::HtmlParseCancellation::new(),

@@ -208,6 +208,7 @@ fn actual_payload_registry_capacity_and_uninitialized_slot_failure_are_reclaimab
     let caps = limits()
         .into_builder()
         .auxiliary_entries(2)
+        .active_formatting_entries(2)
         .finish()
         .unwrap();
     let mut c = ParseControl::new(caps, HtmlParseCancellation::new());

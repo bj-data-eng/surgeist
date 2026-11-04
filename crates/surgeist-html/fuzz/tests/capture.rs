@@ -2,7 +2,7 @@
 use surgeist_fuzz::{engine, *};
 use surgeist_html_fuzz::{MarkupCase, MarkupTarget};
 
-const ENVELOPE: [u64; 19] = [
+const ENVELOPE: [u64; 20] = [
     100_000,
     100_000,
     10_000,
@@ -17,6 +17,7 @@ const ENVELOPE: [u64; 19] = [
     100_000,
     100_000,
     100,
+    1_000_000,
     100_000,
     100_000_000,
     100_000_000,
@@ -221,7 +222,7 @@ fn reduction_keeps_the_plan_and_proposes_checked_smaller_cases() {
     assert!(proposals.len() >= 3);
     for r in &proposals {
         let bytes = t.encode(r).unwrap();
-        assert_eq!(&bytes[162..168], &t.encode(&c).unwrap()[162..168]);
+        assert_eq!(&bytes[170..176], &t.encode(&c).unwrap()[170..176]);
         assert_eq!(t.decode(&bytes).unwrap(), *r);
         assert_ne!(t.evaluate(r).unwrap().kind(), OutcomeKind::Failure);
     }

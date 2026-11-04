@@ -908,6 +908,7 @@ mod tests {
             .buffered_utf16_units(1000)
             .token_attributes(100)
             .auxiliary_entries(100_000)
+            .active_formatting_entries(100_000)
             .managed_nodes(1000)
             .managed_edges(1000)
             .managed_attributes(1000)

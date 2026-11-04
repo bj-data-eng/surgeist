@@ -634,8 +634,8 @@ fn literal_evidence(
     true
 }
 
-/// `HtmlParseResource` in the order of the nineteen configured caps.
-const RESOURCE_ORDER: [HtmlParseResource; 19] = [
+/// `HtmlParseResource` in the order of the twenty configured caps.
+const RESOURCE_ORDER: [HtmlParseResource; 20] = [
     HtmlParseResource::SourceUnits,
     HtmlParseResource::BufferedUtf16Units,
     HtmlParseResource::TokenAttributes,
@@ -650,6 +650,7 @@ const RESOURCE_ORDER: [HtmlParseResource; 19] = [
     HtmlParseResource::DiagnosticPayloadUnits,
     HtmlParseResource::ContextEffects,
     HtmlParseResource::OpenElements,
+    HtmlParseResource::ActiveFormattingEntries,
     HtmlParseResource::TreeDepth,
     HtmlParseResource::ManagedCapacityBytes,
     HtmlParseResource::PeakTransientBytes,
@@ -679,7 +680,7 @@ pub(crate) struct Spec<'a> {
     pub(crate) original: &'a HtmlSource,
     pub(crate) limits: &'a HtmlParseLimits,
     /// The configured caps in `HtmlParseResource` order.
-    pub(crate) caps: [u64; 19],
+    pub(crate) caps: [u64; 20],
     pub(crate) requested: HtmlParserScriptingMode,
     pub(crate) capture: Option<&'a surgeist_html_semantics::HtmlCaptureId>,
     /// Declarative shadow permission selected for the fragment request.

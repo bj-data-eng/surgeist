@@ -417,6 +417,7 @@ fn image_metadata_admission_failure_preserves_original_tag_and_arena_before_take
         limits()
             .into_builder()
             .auxiliary_entries(22)
+            .active_formatting_entries(22)
             .finish()
             .unwrap(),
         HtmlParseCancellation::new(),
@@ -852,6 +853,7 @@ fn image_creation_actual_metadata_slot_has_exact_auxiliary_admission_and_termina
             limits()
                 .into_builder()
                 .auxiliary_entries(cap)
+                .active_formatting_entries(cap)
                 .finish()
                 .unwrap(),
             HtmlParseCancellation::new(),

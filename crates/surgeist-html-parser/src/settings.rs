@@ -13,7 +13,7 @@ use std::{
     },
 };
 
-pub(crate) const RESOURCE_COUNT: usize = 19;
+pub(crate) const RESOURCE_COUNT: usize = 20;
 /// One value per [`HtmlParseResource`]; a lookup cannot be out of range.
 pub(crate) type ResourceTable<T> = Table<HtmlParseResource, T, RESOURCE_COUNT>;
 
@@ -52,6 +52,12 @@ pub enum HtmlParseResource {
     ContextEffects,
     /// Live open-element stack slots.
     OpenElements,
+    /// Live entries of the list of active formatting elements, markers
+    /// included. The list has its own domain so that a long run of formatting
+    /// elements cannot exhaust the `AuxiliaryEntries` that the tokenizer's
+    /// event buffer, pending whitespace and table text, template modes and the
+    /// stack's index lists share.
+    ActiveFormattingEntries,
     /// Maximum association-aware construction ancestry.
     TreeDepth,
     /// Live known owned capacity bytes, excluding external source/capture.
@@ -79,6 +85,7 @@ pub(crate) const RESOURCES: [HtmlParseResource; RESOURCE_COUNT] = [
     HtmlParseResource::DiagnosticPayloadUnits,
     HtmlParseResource::ContextEffects,
     HtmlParseResource::OpenElements,
+    HtmlParseResource::ActiveFormattingEntries,
     HtmlParseResource::TreeDepth,
     HtmlParseResource::ManagedCapacityBytes,
     HtmlParseResource::PeakTransientBytes,
@@ -101,11 +108,12 @@ slots!(HtmlParseResource, RESOURCE_COUNT, {
     DiagnosticPayloadUnits => 11,
     ContextEffects => 12,
     OpenElements => 13,
-    TreeDepth => 14,
-    ManagedCapacityBytes => 15,
-    PeakTransientBytes => 16,
-    AtomicLayoutBytes => 17,
-    WorkCredits => 18,
+    ActiveFormattingEntries => 14,
+    TreeDepth => 15,
+    ManagedCapacityBytes => 16,
+    PeakTransientBytes => 17,
+    AtomicLayoutBytes => 18,
+    WorkCredits => 19,
 });
 // `RESOURCES` lists every resource once, in discriminant order.
 #[expect(
@@ -122,7 +130,7 @@ const _: () = {
 
 impl HtmlParseResource {
     pub(crate) fn storage(self) -> bool {
-        (self as usize) > 0 && (self as usize) < 14
+        (self as usize) > 0 && (self as usize) < 15
     }
 }
 
@@ -133,7 +141,7 @@ pub struct HtmlParseLimits {
     values: ResourceTable<u64>,
 }
 impl HtmlParseLimits {
-    /// Starts construction with all nineteen required caps absent.
+    /// Starts construction with all twenty required caps absent.
     pub fn builder() -> HtmlParseLimitsBuilder {
         HtmlParseLimitsBuilder {
             values: ResourceTable::filled(None),
@@ -204,6 +212,10 @@ impl HtmlParseLimits {
     /// Returns the open elements cap.
     pub fn open_elements(&self) -> u64 {
         *self.values.get(HtmlParseResource::OpenElements)
+    }
+    /// Returns the active formatting entries cap.
+    pub fn active_formatting_entries(&self) -> u64 {
+        *self.values.get(HtmlParseResource::ActiveFormattingEntries)
     }
     /// Returns the tree depth cap.
     pub fn tree_depth(&self) -> u64 {
@@ -309,6 +321,13 @@ impl HtmlParseLimitsBuilder {
     /// Supplies the open elements cap.
     pub fn open_elements(mut self, cap: u64) -> Self {
         *self.values.get_mut(HtmlParseResource::OpenElements) = Some(cap);
+        self
+    }
+    /// Supplies the active formatting entries cap.
+    pub fn active_formatting_entries(mut self, cap: u64) -> Self {
+        *self
+            .values
+            .get_mut(HtmlParseResource::ActiveFormattingEntries) = Some(cap);
         self
     }
     /// Supplies the tree depth cap.

@@ -185,7 +185,9 @@ fn retained_after_each_prepared_slot(
             let capped = match resource {
                 HtmlParseResource::WorkCredits => builder.work_credits(used),
                 HtmlParseResource::ManagedCapacityBytes => builder.managed_capacity_bytes(used),
-                _ => builder.auxiliary_entries(used),
+                _ => builder
+                    .auxiliary_entries(used)
+                    .active_formatting_entries(used),
             }
             .finish()
             .unwrap();

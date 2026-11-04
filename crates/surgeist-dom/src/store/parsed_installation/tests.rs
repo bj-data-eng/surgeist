@@ -18,6 +18,7 @@ fn parser_limits() -> HtmlParseLimits {
         .buffered_utf16_units(4096)
         .token_attributes(256)
         .auxiliary_entries(100_000)
+        .active_formatting_entries(100_000)
         .managed_nodes(256)
         .managed_edges(512)
         .managed_attributes(512)

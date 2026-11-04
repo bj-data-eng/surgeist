@@ -22,6 +22,7 @@ fn limits() -> HtmlParseLimits {
     limits_builder()
         .token_attributes(100_000)
         .auxiliary_entries(100_000)
+        .active_formatting_entries(100_000)
         .finish()
         .unwrap()
 }

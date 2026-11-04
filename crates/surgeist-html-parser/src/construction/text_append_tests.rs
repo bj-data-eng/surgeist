@@ -299,6 +299,7 @@ fn increasing_whole_unicode_entity_feeds_have_linear_append_copy_and_lookup_work
                     .into_builder()
                     .source_units(n)
                     .auxiliary_entries(32 * n + 64)
+                    .active_formatting_entries(32 * n + 64)
                     .source_map_entries(32 * n + 64)
                     .managed_capacity_bytes(32_768 * n + 1024)
                     .peak_transient_bytes(65_536 * n + 2048)

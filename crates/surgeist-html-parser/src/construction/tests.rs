@@ -367,6 +367,7 @@ pub(super) fn limits() -> HtmlParseLimits {
         .buffered_utf16_units(1_000)
         .token_attributes(1_000)
         .auxiliary_entries(1_000)
+        .active_formatting_entries(1_000)
         .managed_nodes(1_000)
         .managed_edges(1_000)
         .managed_attributes(1_000)

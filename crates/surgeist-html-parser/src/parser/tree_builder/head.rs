@@ -373,7 +373,7 @@ impl<'source> HeadStage<'source> {
             .ok_or(HeadError::MissingTokenizer)?
             .validate_head_handoff(source, c)?;
         let mut lexical = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
-        let mut formatting = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
+        let mut formatting = OwnedVec::new(HtmlParseResource::ActiveFormattingEntries)?;
         lexical.require_owner(c)?;
         formatting.require_owner(c)?;
         let table = super::tables::TableCharacters::new(c)?;
@@ -581,7 +581,7 @@ impl<'source> HeadStage<'source> {
         )?;
         release_fixture_vector(
             &mut state.formatting,
-            HtmlParseResource::AuxiliaryEntries,
+            HtmlParseResource::ActiveFormattingEntries,
             c,
         )?;
         release_fixture_vector(
@@ -2297,6 +2297,12 @@ mod event_retention_tests {
                     .current
                     + 1,
             )
+            .active_formatting_entries(
+                baseline
+                    .resource(HtmlParseResource::AuxiliaryEntries)
+                    .current
+                    + 1,
+            )
             .finish()
             .unwrap();
         let request = HtmlDocumentParseRequest::offline(source.clone(), caps);
@@ -2396,6 +2402,11 @@ mod event_retention_tests {
         let caps = limits(100)
             .into_builder()
             .auxiliary_entries(
+                baseline
+                    .resource(HtmlParseResource::AuxiliaryEntries)
+                    .high_water,
+            )
+            .active_formatting_entries(
                 baseline
                     .resource(HtmlParseResource::AuxiliaryEntries)
                     .high_water,

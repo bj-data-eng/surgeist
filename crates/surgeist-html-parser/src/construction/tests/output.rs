@@ -269,6 +269,7 @@ fn output_metadata_slots_reject_before_lexical_take_with_exact_auxiliary_boundar
             limits()
                 .into_builder()
                 .auxiliary_entries(cap)
+                .active_formatting_entries(cap)
                 .finish()
                 .unwrap(),
             HtmlParseCancellation::new(),

@@ -363,6 +363,7 @@ mod tests {
                 .buffered_utf16_units(0)
                 .token_attributes(0)
                 .auxiliary_entries(0)
+                .active_formatting_entries(0)
                 .managed_nodes(0)
                 .managed_edges(0)
                 .managed_attributes(0)

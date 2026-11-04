@@ -24,7 +24,7 @@ struct Cap {
     get: fn(&HtmlParseLimits) -> u64,
     maximum: u64,
 }
-fn caps() -> [Cap; 19] {
+fn caps() -> [Cap; 20] {
     [
         Cap {
             resource: HtmlParseResource::SourceUnits,
@@ -111,6 +111,12 @@ fn caps() -> [Cap; 19] {
             maximum: isize::MAX as u64,
         },
         Cap {
+            resource: HtmlParseResource::ActiveFormattingEntries,
+            set: HtmlParseLimitsBuilder::active_formatting_entries,
+            get: HtmlParseLimits::active_formatting_entries,
+            maximum: isize::MAX as u64,
+        },
+        Cap {
             resource: HtmlParseResource::TreeDepth,
             set: HtmlParseLimitsBuilder::tree_depth,
             get: HtmlParseLimits::tree_depth,
@@ -160,7 +166,7 @@ fn each_cap_is_required_and_named_getters_preserve_all_values() {
             HtmlParseResource::SourceUnits
         ))
     );
-    for missing in 0..19 {
+    for missing in 0..20 {
         let builder = caps().into_iter().enumerate().fold(
             HtmlParseLimits::builder(),
             |builder, (index, cap)| {

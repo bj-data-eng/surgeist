@@ -1196,6 +1196,7 @@ mod tests {
         let limits = crate::parser::tree_builder::tests::limits(1000)
             .into_builder()
             .auxiliary_entries(0)
+            .active_formatting_entries(0)
             .finish()
             .unwrap();
         let mut c = ParseControl::new(limits, crate::HtmlParseCancellation::new());
@@ -1457,6 +1458,7 @@ mod tests {
         let limits = crate::parser::tree_builder::tests::limits(1000)
             .into_builder()
             .auxiliary_entries(1)
+            .active_formatting_entries(1)
             .finish()
             .unwrap();
         let mut c = ParseControl::new(limits, cancellation.clone());

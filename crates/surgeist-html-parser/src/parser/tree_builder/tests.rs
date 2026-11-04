@@ -24,6 +24,7 @@ pub(crate) fn limits(open: u64) -> HtmlParseLimits {
         .buffered_utf16_units(100_000)
         .token_attributes(10_000)
         .auxiliary_entries(1_000_000)
+        .active_formatting_entries(1_000_000)
         .managed_nodes(100_000)
         .managed_edges(100_000)
         .managed_attributes(100_000)
@@ -14132,7 +14133,9 @@ fn svg_script_actual_slot_layout_and_stack_caps_have_exact_and_one_short_termina
             let cap = exact - u64::from(short);
             let builder = limits(100).into_builder();
             let caps = match resource {
-                HtmlParseResource::AuxiliaryEntries => builder.auxiliary_entries(cap),
+                HtmlParseResource::AuxiliaryEntries => builder
+                    .auxiliary_entries(cap)
+                    .active_formatting_entries(cap),
                 HtmlParseResource::AtomicLayoutBytes => builder.atomic_layout_bytes(cap),
                 HtmlParseResource::OpenElements => builder.open_elements(cap),
                 _ => unreachable!(),
@@ -14904,7 +14907,9 @@ fn ordinary_checkbox_actual_work_and_storage_boundaries_stop_once_and_release_ev
                 R::WorkCredits => builder.work_credits(cap),
                 R::ManagedUtf16Units => builder.managed_utf16_units(cap),
                 R::ManagedCapacityBytes => builder.managed_capacity_bytes(cap),
-                R::AuxiliaryEntries => builder.auxiliary_entries(cap),
+                R::AuxiliaryEntries => builder
+                    .auxiliary_entries(cap)
+                    .active_formatting_entries(cap),
                 R::SourceMapEntries => builder.source_map_entries(cap),
                 _ => unreachable!(),
             }
@@ -15194,6 +15199,7 @@ fn ordinary_comment_diagnostics_retain_bounded_event_layouts() {
             .buffered_utf16_units(64 * room)
             .token_attributes(0)
             .auxiliary_entries(64 * room)
+            .active_formatting_entries(64 * room)
             .managed_nodes(8)
             .managed_edges(8)
             .managed_attributes(0)

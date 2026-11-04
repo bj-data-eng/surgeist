@@ -58,7 +58,7 @@ fn work_cut(
     HtmlParseCancellation,
 ) {
     let mut caps = crate::codec::CAPS;
-    caps[18] = cap;
+    caps[19] = cap;
     let limits = crate::codec::limits(caps).expect("documented envelope");
     let source = HtmlSource::utf8("<!DOCTYPE html><p>a</p><p>b</p>".to_owned());
     let request = HtmlDocumentParseRequest::offline(source.clone(), limits);
@@ -77,7 +77,7 @@ fn balanced_recipes_accept_only_a_stop_at_the_configured_cap() {
     let text = UnicodeSource::Utf8("<!DOCTYPE html><p>a</p><p>b</p>".to_owned());
     let spec = |work_cap: u64| {
         let mut caps = crate::codec::CAPS;
-        caps[18] = work_cap;
+        caps[19] = work_cap;
         Spec {
             fragment: false,
             text: &text,

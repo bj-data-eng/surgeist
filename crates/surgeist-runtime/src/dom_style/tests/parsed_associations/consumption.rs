@@ -21,6 +21,7 @@ pub(super) fn parsing() -> HtmlParseLimits {
         .buffered_utf16_units(100_000)
         .token_attributes(10_000)
         .auxiliary_entries(1_000_000)
+        .active_formatting_entries(1_000_000)
         .managed_nodes(100_000)
         .managed_edges(100_000)
         .managed_attributes(100_000)

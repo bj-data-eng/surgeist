@@ -16,6 +16,7 @@ fn limits() -> HtmlParseLimits {
         .source_units(1_000)
         .token_attributes(1_000)
         .auxiliary_entries(100_000)
+        .active_formatting_entries(100_000)
         .managed_nodes(1_000)
         .managed_edges(1_000)
         .managed_attributes(1_000)
@@ -293,4 +294,111 @@ fn ordinary_text_depth_exact_and_one_short_are_independent_of_open_elements() {
             3
         );
     }
+}
+
+/// Four formatting start tags whose attributes all differ, so none matches
+/// another and HTML §13.2.4.3's list of active formatting elements ("push onto
+/// the list of active formatting elements that element", after the Noah's Ark
+/// clause that removes the earliest of three identical entries) holds four
+/// entries, with no marker, once the last has been read.
+const FOUR_FORMATTING: &str = "<!doctype html><p><b a=1><b a=2><b a=3><b a=4>";
+/// The same tags with `span`, which is no formatting element, so the list
+/// stays empty.
+const FOUR_SPANS: &str = "<!doctype html><p><span a=1><span a=2><span a=3><span a=4>";
+
+#[test]
+fn active_formatting_entries_are_counted_exactly_under_their_own_cap() {
+    for utf16 in [false, true] {
+        let report = HtmlDocumentParseRequest::offline(
+            source(FOUR_FORMATTING, utf16),
+            limits()
+                .into_builder()
+                .active_formatting_entries(4)
+                .finish()
+                .unwrap(),
+        )
+        .parse()
+        .unwrap();
+        let entries = report
+            .usage()
+            .resource(HtmlParseResource::ActiveFormattingEntries);
+        assert_eq!(entries.high_water(), 4);
+        assert_eq!(entries.current(), 0);
+        limit_failure(
+            HtmlDocumentParseRequest::offline(
+                source(FOUR_FORMATTING, utf16),
+                limits()
+                    .into_builder()
+                    .active_formatting_entries(3)
+                    .finish()
+                    .unwrap(),
+            ),
+            HtmlParseResource::ActiveFormattingEntries,
+            3,
+            3,
+        );
+    }
+}
+
+#[test]
+fn a_zero_active_formatting_entries_cap_refuses_only_the_first_formatting_element() {
+    let zero = || {
+        limits()
+            .into_builder()
+            .active_formatting_entries(0)
+            .finish()
+            .unwrap()
+    };
+    // No span is a formatting element, so nothing is ever listed.
+    let report = HtmlDocumentParseRequest::offline(source(FOUR_SPANS, false), zero())
+        .parse()
+        .unwrap();
+    assert_eq!(
+        report
+            .usage()
+            .resource(HtmlParseResource::ActiveFormattingEntries)
+            .high_water(),
+        0
+    );
+    limit_failure(
+        HtmlDocumentParseRequest::offline(source(FOUR_FORMATTING, false), zero()),
+        HtmlParseResource::ActiveFormattingEntries,
+        0,
+        0,
+    );
+}
+
+#[test]
+fn a_limits_builder_without_the_active_formatting_entries_cap_names_it_as_missing() {
+    let error = limits_builder_without_formatting().finish().unwrap_err();
+    assert_eq!(
+        error,
+        surgeist_html_parser::HtmlParseLimitsError::MissingResource(
+            HtmlParseResource::ActiveFormattingEntries
+        )
+    );
+}
+
+/// Every cap but the active formatting entries.
+fn limits_builder_without_formatting() -> surgeist_html_parser::HtmlParseLimitsBuilder {
+    HtmlParseLimits::builder()
+        .source_units(1)
+        .buffered_utf16_units(1)
+        .token_attributes(1)
+        .auxiliary_entries(1)
+        .managed_nodes(1)
+        .managed_edges(1)
+        .managed_attributes(1)
+        .managed_utf16_units(1)
+        .source_map_entries(1)
+        .source_map_payload_units(1)
+        .diagnostics(1)
+        .diagnostic_payload_units(1)
+        .context_effects(1)
+        .open_elements(1)
+        .tree_depth(1)
+        .managed_capacity_bytes(1)
+        .peak_transient_bytes(1)
+        .atomic_layout_bytes(1)
+        .work_credits(1)
 }

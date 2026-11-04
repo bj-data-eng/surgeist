@@ -31,15 +31,15 @@ Canonical revision 1 is little endian:
 | 4 | target: 0 document, 1 fragment |
 | 5 | source: 0 valid UTF8, 1 exact UTF16 |
 | 6..8 | lane and literal ID; nonliteral ID must be zero |
-| 8..160 | nineteen u64 parser caps in `HtmlParseResource` order |
-| 160..164 | u32 UTF8 byte count or UTF16 unit count |
-| 164..end | exactly that payload, with no trailing bytes |
+| 8..168 | twenty u64 parser caps in `HtmlParseResource` order |
+| 168..172 | u32 UTF8 byte count or UTF16 unit count |
+| 172..end | exactly that payload, with no trailing bytes |
 
 Lanes are 0 arbitrary/general, 1 pre-cancelled, 2 nonempty source denial,
 3 work denial, 4 independent literal (ID 0..8), 5 missing captured scripting.
 The two denial lanes keep other caps at the documented generous envelope;
 literals require their exact input and that envelope. General cases can lower
-any cap through the checked constructor. A case always preserves all nineteen
+any cap through the checked constructor. A case always preserves all twenty
 explicit caps; zero is valid and there is no unlimited sentinel.
 
 The fragment tag denotes one closed captured recipe: a real div root in an
@@ -157,7 +157,7 @@ engines, workers and reduction unchanged.
 
 Canonical `HMK1` is little endian: magic, mode (document or fragment), source
 (UTF-8 or exact UTF-16), document prologue or fragment context, document shell
-or declarative-shadow permission, body kind, a cancelled-before-parse flag, nineteen
+or declarative-shadow permission, body kind, a cancelled-before-parse flag, twenty
 u64 parser caps (the same envelope as the Unicode targets), then the body with no
 trailing bytes. A body is either a balanced recipe or free-form token soup. Every
 tag, table index, piece and count is checked before use; isolated surrogates are

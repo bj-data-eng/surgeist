@@ -335,6 +335,7 @@ fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded()
     let caps = limits()
         .into_builder()
         .auxiliary_entries(staged + 5)
+        .active_formatting_entries(staged + 5)
         .finish()
         .unwrap();
     let (mut c, mut session, node, mut tokenizer) = textarea_owner(&source, caps);
@@ -421,7 +422,9 @@ fn textarea_raw_and_metadata_slots_are_admitted_before_lexical_take() {
         let source = crate::HtmlSource::utf8("<textarea>");
         let mut builder = limits().into_builder();
         if let Some(cap) = cap {
-            builder = builder.auxiliary_entries(cap);
+            builder = builder
+                .auxiliary_entries(cap)
+                .active_formatting_entries(cap);
         }
         let mut c = ParseControl::new(builder.finish().unwrap(), HtmlParseCancellation::new());
         c.admit_source(&source).unwrap();
