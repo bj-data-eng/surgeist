@@ -3813,3 +3813,132 @@ pub(super) fn copy_generated_input_value(
         }
     }
 }
+
+/// A character-reference origin is checked against what its source text
+/// stands for in the pinned decoding table, not only for being non-empty.
+#[cfg(test)]
+mod character_reference_origin_tests {
+    use super::*;
+    use crate::{HtmlParseCancellation, HtmlSource};
+
+    /// `(output start, output end, source start, source end)` per origin.
+    type Atom = (usize, usize, usize, usize);
+
+    fn validate(source: &HtmlSource, output: &[u16], atoms: &[Atom]) -> Result<(), SessionError> {
+        let mut c = ParseControl::new(
+            crate::parser::tree_builder::tests::limits(100),
+            HtmlParseCancellation::new(),
+        );
+        c.admit_source(source).unwrap();
+        let mut evidence = ParseEvidence::prepare(&mut c).unwrap();
+        evidence.initialize_native_source(&mut c, source).unwrap();
+        let mut origins = OwnedVec::new(HtmlParseResource::SourceMapEntries).unwrap();
+        for &(start, end, begin, finish) in atoms {
+            origins
+                .try_push(
+                    &mut c,
+                    HtmlParseTextOrigin {
+                        start,
+                        end,
+                        source: source.range(begin, finish).unwrap(),
+                        kind: HtmlParseOriginKind::CharacterReference,
+                    },
+                )
+                .unwrap();
+        }
+        let group = evidence
+            .retain_group(&mut c, origins, output.len())
+            .unwrap();
+        let result = evidence.validate_field(&mut c, output, &group);
+        drop(group);
+        evidence.release(&mut c).unwrap();
+        result
+    }
+    fn units(text: &str) -> Vec<u16> {
+        text.encode_utf16().collect()
+    }
+    fn accepts(source: &str, output: &str, atoms: &[Atom]) {
+        let result = validate(&HtmlSource::utf8(source), &units(output), atoms);
+        assert!(result.is_ok(), "{source:?} -> {output:?}: {result:?}");
+    }
+    fn refuses(source: &str, output: &str, atoms: &[Atom]) {
+        let result = validate(&HtmlSource::utf8(source), &units(output), atoms);
+        assert!(
+            matches!(result, Err(SessionError::WrongToken)),
+            "{source:?} -> {output:?}: {result:?}"
+        );
+    }
+
+    #[test]
+    fn a_named_reference_yields_the_scalar_the_table_assigns_it() {
+        accepts("&amp;", "&", &[(0, 1, 0, 5)]);
+        accepts("&amp", "&", &[(0, 1, 0, 4)]);
+        accepts("&AElig;", "\u{c6}", &[(0, 1, 0, 7)]);
+        accepts("&Afr;", "\u{1d504}", &[(0, 2, 0, 5)]);
+    }
+    #[test]
+    fn a_named_reference_attached_to_another_output_is_refused() {
+        refuses("&amp;", "<", &[(0, 1, 0, 5)]);
+        refuses("&lt;", "&", &[(0, 1, 0, 4)]);
+        refuses("&Afr;", "A", &[(0, 1, 0, 5)]);
+    }
+    #[test]
+    fn a_name_the_table_lacks_is_refused() {
+        refuses("&ampx;", "&", &[(0, 1, 0, 6)]);
+        refuses("&;", "&", &[(0, 1, 0, 2)]);
+        refuses("&", "&", &[(0, 1, 0, 1)]);
+        // Table names are case-sensitive and `&AMP;` is its own entry.
+        accepts("&AMP;", "&", &[(0, 1, 0, 5)]);
+        refuses("&Amp;", "&", &[(0, 1, 0, 5)]);
+    }
+    #[test]
+    fn a_two_scalar_reference_pairs_its_origins_with_the_scalars_in_order() {
+        // `&NotEqualTilde;` is U+2242 U+0338.
+        let atoms = [(0, 1, 0, 15), (1, 2, 0, 15)];
+        accepts("&NotEqualTilde;", "\u{2242}\u{338}", &atoms);
+        refuses("&NotEqualTilde;", "\u{338}\u{2242}", &atoms);
+        refuses("&NotEqualTilde;", "\u{2242}\u{2242}", &atoms);
+        refuses("&NotEqualTilde;", "\u{2242}", &[(0, 1, 0, 15)]);
+    }
+    #[test]
+    fn a_numeric_reference_yields_the_scalar_the_standard_assigns_it() {
+        accepts("&#65;", "A", &[(0, 1, 0, 5)]);
+        accepts("&#x41;", "A", &[(0, 1, 0, 6)]);
+        accepts("&#X41", "A", &[(0, 1, 0, 5)]);
+        accepts("&#x1D504;", "\u{1d504}", &[(0, 2, 0, 9)]);
+        // Null, surrogates and values past U+10FFFF become U+FFFD.
+        accepts("&#0;", "\u{fffd}", &[(0, 1, 0, 4)]);
+        accepts("&#xD800;", "\u{fffd}", &[(0, 1, 0, 8)]);
+        accepts("&#x110000;", "\u{fffd}", &[(0, 1, 0, 10)]);
+        accepts("&#99999999999999999999;", "\u{fffd}", &[(0, 1, 0, 23)]);
+        // The C1 range maps through the Windows-1252 table; unassigned stay.
+        accepts("&#128;", "\u{20ac}", &[(0, 1, 0, 6)]);
+        accepts("&#x81;", "\u{81}", &[(0, 1, 0, 6)]);
+        // Carriage return by reference is not a newline normalization.
+        accepts("&#13;", "\r", &[(0, 1, 0, 5)]);
+    }
+    #[test]
+    fn a_numeric_reference_attached_to_another_output_is_refused() {
+        refuses("&#65;", "B", &[(0, 1, 0, 5)]);
+        refuses("&#128;", "\u{80}", &[(0, 1, 0, 6)]);
+        refuses("&#0;", "\0", &[(0, 1, 0, 4)]);
+        refuses("&#xD800;", "\u{d7ff}", &[(0, 1, 0, 8)]);
+    }
+    #[test]
+    fn a_malformed_numeric_spelling_is_refused() {
+        refuses("&#;", "\u{fffd}", &[(0, 1, 0, 3)]);
+        refuses("&#x;", "\u{fffd}", &[(0, 1, 0, 4)]);
+        refuses("&#65x;", "A", &[(0, 1, 0, 6)]);
+        refuses("&#65;;", "A", &[(0, 1, 0, 6)]);
+        refuses("&#xG;", "A", &[(0, 1, 0, 5)]);
+    }
+    #[test]
+    fn a_utf16_source_is_decoded_like_a_utf8_one() {
+        let source = HtmlSource::utf16(DocumentString::from("a&amp;b"));
+        assert!(validate(&source, &units("&"), &[(0, 1, 1, 6)]).is_ok());
+        assert!(matches!(
+            validate(&source, &units("<"), &[(0, 1, 1, 6)]),
+            Err(SessionError::WrongToken)
+        ));
+    }
+}
