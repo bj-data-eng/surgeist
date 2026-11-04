@@ -3,6 +3,7 @@ mod caption;
 mod collections;
 mod indices;
 mod model_work;
+mod scan_bounds;
 mod scope_work;
 mod sections;
 mod slot_index;
