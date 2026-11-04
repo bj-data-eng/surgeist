@@ -1,5 +1,5 @@
-//! Defining test of actual ordinary progressive input against independent
-//! native literals. The tests here assert only; they print no timing and write
+//! Defining test of actual ordinary complete input against independent native
+//! literals. The tests here assert only; they print no timing and write
 //! no artifact. The comparison-artifact and phase-timing output lives in
 //! [`artifact_tool`], an explicit opt-in tool.
 //! No benchmark crate, ignored Rust source, other parser or live sink is used.
@@ -158,19 +158,6 @@ fn literals() -> Vec<Literal> {
     });
     result
 }
-fn scalar_cuts(raw: &str, width: usize, utf16: bool) -> Vec<usize> {
-    let mut offset = 0;
-    let ends: Vec<_> = raw
-        .chars()
-        .map(|c| {
-            offset += if utf16 { c.len_utf16() } else { c.len_utf8() };
-            offset
-        })
-        .collect();
-    ends.chunks(width)
-        .map(|part| *part.last().unwrap())
-        .collect()
-}
 /// Receives the usage reached at the end of each construction phase. The tool
 /// times phases through it; the tests pass [`Silent`], which measures nothing.
 trait Phases {
@@ -180,7 +167,7 @@ struct Silent;
 impl Phases for Silent {
     fn phase(&mut self, _: &'static str, _: &dyn std::fmt::Debug) {}
 }
-fn report(l: &Literal, cuts: &[usize], utf16: bool, phases: &mut dyn Phases) -> HtmlParseReport {
+fn report(l: &Literal, utf16: bool, phases: &mut dyn Phases) -> HtmlParseReport {
     use super::super::{report::HtmlParseReport, seal::SealedOrdinaryConstruction};
     let source = if utf16 {
         HtmlSource::utf16(DocumentString::from(l.input.as_str()))
@@ -191,7 +178,7 @@ fn report(l: &Literal, cuts: &[usize], utf16: bool, phases: &mut dyn Phases) -> 
     let request = HtmlDocumentParseRequest::offline(source, super::super::tests::limits(10_000));
     let cancellation = request.cancellation().clone();
     let parts = {
-        let mut completed = super::comment_diagnostic_corpus::completed_at_cuts(&request, cuts);
+        let mut completed = super::comment_diagnostic_corpus::completed(&request);
         phases.phase("initialization_and_driver", &completed.usage().unwrap());
         completed.prepare_native_associations().unwrap();
         phases.phase("associations", &completed.usage().unwrap());
@@ -207,27 +194,22 @@ fn report(l: &Literal, cuts: &[usize], utf16: bool, phases: &mut dyn Phases) -> 
     cancellation.cancel();
     report
 }
-/// One scalar-feed case: the literal parsed with `width`-scalar chunks, its
-/// report, and the report's native projection, already compared with the
-/// literal's independent expectation.
-fn scalar_feed(
-    l: &Literal,
-    width: usize,
-    phases: &mut dyn Phases,
-) -> (Vec<usize>, HtmlParseReport, Projection) {
-    let cuts = scalar_cuts(&l.input, width, false);
-    let report = report(l, &cuts, false, phases);
+/// One complete-input case: the literal parsed whole, its report, and the
+/// report's native projection, already compared with the literal's independent
+/// expectation.
+fn complete_feed(l: &Literal, phases: &mut dyn Phases) -> (HtmlParseReport, Projection) {
+    let report = report(l, false, phases);
     let document = report.document().unwrap();
     assert_eq!(document.mode(), HtmlDocumentMode::NoQuirks);
     let actual = project(document).unwrap();
-    assert_eq!(actual, l.expected, "{} scalar{width}", l.name);
-    (cuts, report, actual)
+    assert_eq!(actual, l.expected, "{}", l.name);
+    (report, actual)
 }
 #[test]
-fn ordinary_scalar_feeds_keep_independent_native_literals_and_sourced_associations() {
+fn ordinary_complete_input_keeps_independent_native_literals_and_sourced_associations() {
     for l in literals() {
-        for width in [1, 7] {
-            let (_, report, _) = scalar_feed(&l, width, &mut Silent);
+        {
+            let (report, _) = complete_feed(&l, &mut Silent);
             let rows = report.associations();
             let mut sourced = 0;
             let mut ranges = Vec::new();
@@ -243,20 +225,20 @@ fn ordinary_scalar_feeds_keep_independent_native_literals_and_sourced_associatio
                 assert_eq!(
                     l.input.matches(token).count(),
                     1,
-                    "{} scalar{width}: {token:?} is unique in the input",
+                    "{}: {token:?} is unique in the input",
                     l.name
                 );
                 let start = l.input.find(token).unwrap();
                 assert!(
                     ranges.contains(&(start, start + token.len())),
-                    "{} scalar{width}: no association row has exactly the source range {start}..{} of {token:?}",
+                    "{}: no association row has exactly the source range {start}..{} of {token:?}",
                     l.name,
                     start + token.len()
                 );
             }
             assert!(
                 sourced >= l.min_sourced_rows,
-                "{} scalar{width}: {sourced} sourced rows, at least {} expected",
+                "{}: {sourced} sourced rows, at least {} expected",
                 l.name,
                 l.min_sourced_rows
             );
@@ -264,20 +246,13 @@ fn ordinary_scalar_feeds_keep_independent_native_literals_and_sourced_associatio
     }
 }
 #[test]
-fn utf16_scalar_and_pair_unit_feeds_keep_the_same_literal_outputs_and_source() {
+fn utf16_complete_input_keeps_the_same_literal_outputs_and_source() {
     for l in literals() {
-        for width in [1, 7] {
-            let report = report(&l, &scalar_cuts(&l.input, width, true), true, &mut Silent);
-            assert_eq!(project(report.document().unwrap()).unwrap(), l.expected);
-            assert_eq!(
-                report.source().as_utf16().unwrap().code_units(),
-                units(&l.input)
-            );
-        }
-        if l.name == "Unicode" {
-            let raw = units(&l.input);
-            let report = report(&l, &(0..=raw.len()).collect::<Vec<_>>(), true, &mut Silent);
-            assert_eq!(project(report.document().unwrap()).unwrap(), l.expected);
-        }
+        let report = report(&l, true, &mut Silent);
+        assert_eq!(project(report.document().unwrap()).unwrap(), l.expected);
+        assert_eq!(
+            report.source().as_utf16().unwrap().code_units(),
+            units(&l.input)
+        );
     }
 }

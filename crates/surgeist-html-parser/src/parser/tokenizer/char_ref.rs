@@ -11,179 +11,14 @@
 // d7232d746d3112f08926d169591576bd12fe2fdf. Concrete cursor checkpoints,
 // checked reference queries and source-qualified emissions replace its sink.
 
-#[cfg(test)]
-use super::super::input::ProgressiveInputCheckpoint;
 use super::super::{
-    input::{InputCheckpoint, InputPoll},
-    references::{self, NameLookup, ReferenceValue},
+    input::InputCheckpoint,
+    references::{self, MAX_NAME_POINTS, NameLookup, ReferenceValue},
 };
 use super::*;
 use token::HtmlTokenizerDiagnostic::*;
 
-enum ReferenceMark {
-    Complete(InputCheckpoint),
-    #[cfg(test)]
-    Progressive(ProgressiveInputCheckpoint),
-}
-#[derive(Clone, Copy)]
-enum ReferencePhase {
-    Start,
-    Named,
-    Decide,
-    Follow,
-    Ambiguous,
-    NumericStart,
-    NumericDigits,
-    NumericEnd,
-}
-/// Actual grammar-local owners survive an availability edge without replay.
-pub(super) struct ReferenceContinuation {
-    attribute: bool,
-    amp: HtmlSourceRange,
-    initial: ReferenceMark,
-    query: OwnedVec<u32>,
-    longest: Option<(ReferenceValue, bool, ReferenceMark)>,
-    replacement: Option<ReferenceValue>,
-    semicolon: bool,
-    phase: ReferencePhase,
-    hex: bool,
-    digits: bool,
-    value: u32,
-    literal: Option<DraftText>,
-    end: usize,
-}
-impl ReferenceContinuation {
-    pub(super) fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
-        self.query.release(c)?;
-        if let Some(literal) = self.literal {
-            literal.release(c)?;
-        }
-        Ok(())
-    }
-    fn phase(&mut self, phase: ReferencePhase, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
-        admit_record_write(size_of::<ReferencePhase>(), 1, c)?;
-        self.phase = phase;
-        Ok(())
-    }
-}
-#[cfg(test)]
-impl ReferenceContinuation {
-    /// Test hook: a literal scan is under way, but its draft owner is absent.
-    pub(super) fn force_ambiguous_without_literal(&mut self) {
-        self.phase = ReferencePhase::Ambiguous;
-        self.attribute = false;
-    }
-    /// Test hook: a longest match is being applied, but none was recorded.
-    pub(super) fn force_follow_without_replacement(&mut self) {
-        self.phase = ReferencePhase::Follow;
-        self.attribute = false;
-        self.semicolon = true;
-        self.replacement = None;
-    }
-}
 impl Tokenizer<'_> {
-    fn reference_mark(&self, c: &mut ParseControl) -> Result<ReferenceMark, HtmlParseStop> {
-        #[cfg(test)]
-        if self.cursor.is_progressive() {
-            return Ok(ReferenceMark::Progressive(self.cursor.mark_progressive(c)?));
-        }
-        Ok(ReferenceMark::Complete(self.cursor.mark(c)?))
-    }
-    fn reference_rewind(
-        &mut self,
-        mark: &ReferenceMark,
-        c: &mut ParseControl,
-    ) -> Result<(), HtmlParseStop> {
-        match mark {
-            ReferenceMark::Complete(mark) => self.cursor.rewind(mark, c)?,
-            #[cfg(test)]
-            ReferenceMark::Progressive(mark) => self.cursor.rewind_progressive(mark, c)?,
-        }
-        self.sync_proofs(c)
-    }
-    fn reference_peek(&self, c: &mut ParseControl) -> Result<InputPoll, HtmlParseStop> {
-        if self.cursor.is_progressive() {
-            self.cursor.poll_peek(c)
-        } else {
-            self.cursor.peek(c).map(InputPoll::Ready)
-        }
-    }
-    pub(super) fn character_reference(
-        &mut self,
-        attribute: bool,
-        c: &mut ParseControl,
-    ) -> Result<(), HtmlParseStop> {
-        self.save_proof_range(
-            ProofRole::Reference,
-            self.current.start(),
-            self.current.end(),
-            c,
-        )?;
-        let initial = self.reference_mark(c)?;
-        let query = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
-        admit_record_write(
-            const { size_of::<ReferenceContinuation>() + size_of::<Option<ReferenceContinuation>>() },
-            2,
-            c,
-        )?;
-        self.reference = Some(ReferenceContinuation {
-            attribute,
-            amp: self.current.clone(),
-            initial,
-            query,
-            longest: None,
-            replacement: None,
-            semicolon: false,
-            phase: ReferencePhase::Start,
-            hex: false,
-            digits: false,
-            value: 0,
-            literal: None,
-            end: self.current.end(),
-        });
-        Ok(())
-    }
-    pub(super) fn resume_reference(
-        &mut self,
-        c: &mut ParseControl,
-        evidence: &mut ParseEvidence,
-    ) -> Result<StepProgress, HtmlParseStop> {
-        admit_record_write(
-            const { size_of::<Option<ReferenceContinuation>>() + size_of::<ReferenceContinuation>() },
-            2,
-            c,
-        )?;
-        let mut reference = self
-            .reference
-            .take()
-            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
-        let result = self.reference_steps(&mut reference, c, evidence);
-        match result {
-            Ok(false) => {
-                if let Err(stop) = admit_record_write(
-                    const {
-                        size_of::<Option<ReferenceContinuation>>()
-                            + size_of::<ReferenceContinuation>()
-                    },
-                    2,
-                    c,
-                ) {
-                    reference.release(c)?;
-                    return Err(stop);
-                }
-                self.reference = Some(reference);
-                Ok(StepProgress::NeedInput)
-            }
-            Ok(true) => {
-                reference.release(c)?;
-                Ok(StepProgress::Advanced)
-            }
-            Err(stop) => {
-                reference.release(c)?;
-                Err(stop)
-            }
-        }
-    }
     fn reference_point(
         &mut self,
         point: u32,
@@ -199,348 +34,332 @@ impl Tokenizer<'_> {
             self.emit_point(point, source, kind, c, evidence)
         }
     }
-    fn reference_steps(
+    /// Decodes the character reference whose ampersand was just consumed. The
+    /// whole source is available, so the decision is made here in one pass:
+    /// the name being read lives in fixed storage on this frame, the longest
+    /// table name needs no more than the table bounds, and only the text a
+    /// failed reference leaves behind is retained, as the token's own text.
+    pub(super) fn character_reference(
         &mut self,
-        r: &mut ReferenceContinuation,
+        attribute: bool,
         c: &mut ParseControl,
         evidence: &mut ParseEvidence,
-    ) -> Result<bool, HtmlParseStop> {
+    ) -> Result<(), HtmlParseStop> {
+        let amp = self.current.clone();
+        let initial = self.cursor.mark(c)?;
+        c.charge(HtmlParseWorkCategory::StateStep, 1)?;
+        match self.cursor.peek(c)? {
+            InputRead::Character(ch) if ch.code_point().value() == 0x23 => {
+                self.read(c, evidence)?;
+                self.numeric_reference(attribute, &amp, &initial, c, evidence)
+            }
+            InputRead::Character(ch) if alnum(ch.code_point().value()) => {
+                self.named_reference(attribute, &amp, &initial, c, evidence)
+            }
+            _ => self.reference_point(
+                0x26,
+                attribute,
+                &amp,
+                HtmlParseOriginKind::Literal,
+                c,
+                evidence,
+            ),
+        }
+    }
+    fn named_reference(
+        &mut self,
+        attribute: bool,
+        amp: &HtmlSourceRange,
+        initial: &InputCheckpoint,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<(), HtmlParseStop> {
+        let mut query = [0_u32; MAX_NAME_POINTS];
+        let mut length = 0;
+        let mut longest: Option<(ReferenceValue, bool, InputCheckpoint)> = None;
         loop {
             c.charge(HtmlParseWorkCategory::StateStep, 1)?;
-            match r.phase {
-                ReferencePhase::Start => {
-                    let read = match self.reference_peek(c)? {
-                        InputPoll::NeedInput => return Ok(false),
-                        InputPoll::Ready(read) => read,
-                    };
-                    match read {
-                        InputRead::Character(ch) if ch.code_point().value() == 0x23 => {
-                            self.read(c, evidence)?;
-                            r.phase(ReferencePhase::NumericStart, c)?;
-                        }
-                        InputRead::Character(ch) if alnum(ch.code_point().value()) => {
-                            r.phase(ReferencePhase::Named, c)?
-                        }
-                        _ => {
-                            self.reference_point(
-                                0x26,
-                                r.attribute,
-                                &r.amp,
-                                HtmlParseOriginKind::Literal,
-                                c,
-                                evidence,
-                            )?;
-                            return Ok(true);
-                        }
+            let InputRead::Character(ch) = self.cursor.peek(c)? else {
+                break;
+            };
+            let p = ch.code_point().value();
+            if !(alnum(p) || p == 0x3B) {
+                break;
+            }
+            self.read(c, evidence)?;
+            // A query as long as the longest table name is complete or
+            // unknown, never a prefix, so the loop ends before it overflows.
+            let Some(slot) = query.get_mut(length) else {
+                return Err(c.fail_invariant(HtmlParseInvariant::TokenizerState));
+            };
+            *slot = p;
+            length = length.saturating_add(1);
+            let Some(name) = query.get(..length) else {
+                return Err(c.fail_invariant(HtmlParseInvariant::TokenizerState));
+            };
+            match references::lookup_name(name, c)? {
+                NameLookup::Complete {
+                    value,
+                    can_continue,
+                } => {
+                    let mark = self.cursor.mark(c)?;
+                    longest = Some((value, p == 0x3B, mark));
+                    if !can_continue {
+                        break;
                     }
                 }
-                ReferencePhase::Named => {
-                    let read = match self.reference_peek(c)? {
-                        InputPoll::NeedInput => return Ok(false),
-                        InputPoll::Ready(read) => read,
-                    };
-                    let InputRead::Character(ch) = read else {
-                        r.phase(ReferencePhase::Decide, c)?;
-                        continue;
-                    };
-                    let p = ch.code_point().value();
-                    if !(alnum(p) || p == 0x3B) {
-                        r.phase(ReferencePhase::Decide, c)?;
-                        continue;
-                    }
-                    self.read(c, evidence)?;
-                    r.query.try_push_geometric(c, p)?;
-                    match references::lookup_name(r.query.as_slice(), c)? {
-                        NameLookup::Complete {
-                            value,
-                            can_continue,
-                        } => {
-                            let mark = self.reference_mark(c)?;
-                            admit_record_write(
-                                size_of::<Option<(ReferenceValue, bool, ReferenceMark)>>(),
-                                1,
-                                c,
-                            )?;
-                            r.longest = Some((value, p == 0x3B, mark));
-                            if !can_continue {
-                                r.phase(ReferencePhase::Decide, c)?;
-                            }
-                        }
-                        NameLookup::Prefix => {}
-                        NameLookup::Unknown => r.phase(ReferencePhase::Decide, c)?,
-                    }
-                }
-                ReferencePhase::Decide => {
-                    if let Some((value, semicolon, mark)) = &r.longest {
-                        self.reference_rewind(mark, c)?;
-                        admit_record_write(
-                            const { size_of::<Option<ReferenceValue>>() + size_of::<bool>() },
-                            2,
-                            c,
-                        )?;
-                        r.replacement = Some(*value);
-                        r.semicolon = *semicolon;
-                        r.phase(ReferencePhase::Follow, c)?;
-                    } else {
-                        self.reference_rewind(&r.initial, c)?;
-                        let mut literal = DraftText::new(c)?;
-                        let added = if r.attribute {
-                            self.attribute_value(0x26, HtmlParseOriginKind::Literal, &r.amp, c)
-                        } else {
-                            literal.push(0x26, &r.amp, HtmlParseOriginKind::Literal, c)
-                        };
-                        if let Err(stop) = added {
-                            literal.release(c)?;
-                            return Err(stop);
-                        }
-                        if let Err(stop) = admit_record_write(size_of::<Option<DraftText>>(), 1, c)
-                        {
-                            literal.release(c)?;
-                            return Err(stop);
-                        }
-                        r.literal = Some(literal);
-                        r.phase(ReferencePhase::Ambiguous, c)?;
-                    }
-                }
-                ReferencePhase::Follow => {
-                    if r.attribute && !r.semicolon {
-                        let read = match self.reference_peek(c)? {
-                            InputPoll::NeedInput => return Ok(false),
-                            InputPoll::Ready(read) => read,
-                        };
-                        if matches!(read,InputRead::Character(ref ch) if alnum(ch.code_point().value())||ch.code_point().value()==0x3D)
-                        {
-                            self.reference_rewind(&r.initial, c)?;
-                            self.reference_point(
-                                0x26,
-                                true,
-                                &r.amp,
-                                HtmlParseOriginKind::Literal,
-                                c,
-                                evidence,
-                            )?;
-                            return Ok(true);
-                        }
-                    }
-                    let source = self.range(r.amp.start(), self.cursor.position(c)?, c)?;
-                    self.set_current(&source, c)?;
-                    if !r.semicolon {
-                        self.error(MissingSemicolonAfterCharacterReference, c, evidence)?;
-                    }
-                    let value = r
-                        .replacement
-                        .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
-                    if r.attribute {
-                        match value {
-                            ReferenceValue::One(a) => self.reference_point(
-                                u32::from(a),
-                                true,
-                                &source,
-                                HtmlParseOriginKind::CharacterReference,
-                                c,
-                                evidence,
-                            )?,
-                            ReferenceValue::Two(a, b) => {
-                                self.reference_point(
-                                    u32::from(a),
-                                    true,
-                                    &source,
-                                    HtmlParseOriginKind::CharacterReference,
-                                    c,
-                                    evidence,
-                                )?;
-                                self.reference_point(
-                                    u32::from(b),
-                                    true,
-                                    &source,
-                                    HtmlParseOriginKind::CharacterReference,
-                                    c,
-                                    evidence,
-                                )?;
-                            }
-                        }
-                    } else {
-                        let text = DraftText::build(c, |text, c| {
-                            match value {
-                                ReferenceValue::One(a) => text.push(
-                                    u32::from(a),
-                                    &source,
-                                    HtmlParseOriginKind::CharacterReference,
-                                    c,
-                                )?,
-                                ReferenceValue::Two(a, b) => {
-                                    text.push(
-                                        u32::from(a),
-                                        &source,
-                                        HtmlParseOriginKind::CharacterReference,
-                                        c,
-                                    )?;
-                                    text.push(
-                                        u32::from(b),
-                                        &source,
-                                        HtmlParseOriginKind::CharacterReference,
-                                        c,
-                                    )?;
-                                }
-                            }
-                            Ok(())
-                        })?;
-                        self.emit(
-                            TokenKind::Text(text),
-                            source.start(),
-                            source.end(),
-                            c,
-                            evidence,
-                        )?;
-                    }
-                    return Ok(true);
-                }
-                ReferencePhase::Ambiguous => {
-                    let read = match self.reference_peek(c)? {
-                        InputPoll::NeedInput => return Ok(false),
-                        InputPoll::Ready(read) => read,
-                    };
-                    if let InputRead::Character(ch) = read {
-                        let p = ch.code_point().value();
-                        if alnum(p) {
-                            self.read(c, evidence)?;
-                            admit_record_write(size_of::<usize>(), 1, c)?;
-                            r.end = self.current.end();
-                            if r.attribute {
-                                self.attribute_value(
-                                    p,
-                                    self.current_kind,
-                                    &self.current.clone(),
-                                    c,
-                                )?;
-                            } else {
-                                r.literal
-                                    .as_mut()
-                                    .ok_or_else(|| {
-                                        c.fail_invariant(HtmlParseInvariant::TokenizerState)
-                                    })?
-                                    .push(p, &self.current, self.current_kind, c)?;
-                            }
-                            continue;
-                        }
-                        if p == 0x3B {
-                            self.set_current(ch.source(), c)?;
-                            self.error(UnknownNamedCharacterReference, c, evidence)?;
-                        }
-                    }
-                    if !r.attribute {
-                        admit_record_write(size_of::<Option<DraftText>>(), 1, c)?;
-                        let text = r
-                            .literal
-                            .take()
-                            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
-                            .freeze(c)?;
-                        self.emit(TokenKind::Text(text), r.amp.start(), r.end, c, evidence)?;
-                    }
-                    return Ok(true);
-                }
-                ReferencePhase::NumericStart => {
-                    let read = match self.reference_peek(c)? {
-                        InputPoll::NeedInput => return Ok(false),
-                        InputPoll::Ready(read) => read,
-                    };
-                    admit_record_write(size_of::<bool>(), 1, c)?;
-                    r.hex = matches!(read,InputRead::Character(ref ch) if matches!(ch.code_point().value(),0x58|0x78));
-                    if r.hex {
-                        self.read(c, evidence)?;
-                    }
-                    r.phase(ReferencePhase::NumericDigits, c)?;
-                }
-                ReferencePhase::NumericDigits => {
-                    let read = match self.reference_peek(c)? {
-                        InputPoll::NeedInput => return Ok(false),
-                        InputPoll::Ready(read) => read,
-                    };
-                    if let InputRead::Character(ch) = read {
-                        let p = ch.code_point().value();
-                        // ASCII decimal digits and, in a hexadecimal reference,
-                        // the letters A-F in either case.
-                        let digit = u8::try_from(p).ok().and_then(|byte| {
-                            char::from(byte).to_digit(if r.hex { 16 } else { 10 })
-                        });
-                        if let Some(digit) = digit {
-                            self.read(c, evidence)?;
-                            admit_record_write(
-                                const { size_of::<bool>() + size_of::<u32>() },
-                                2,
-                                c,
-                            )?;
-                            r.digits = true;
-                            r.value = r
-                                .value
-                                .checked_mul(if r.hex { 16 } else { 10 })
-                                .and_then(|v| v.checked_add(digit))
-                                .filter(|&v| v <= 0x110000)
-                                .unwrap_or(0x110000);
-                            continue;
-                        }
-                    }
-                    r.phase(ReferencePhase::NumericEnd, c)?;
-                }
-                ReferencePhase::NumericEnd => {
-                    if !r.digits {
-                        let source = self.range(r.amp.start(), self.cursor.position(c)?, c)?;
-                        self.set_current(&source, c)?;
-                        self.error(AbsenceOfDigitsInNumericCharacterReference, c, evidence)?;
-                        self.reference_rewind(&r.initial, c)?;
+                NameLookup::Prefix => {}
+                NameLookup::Unknown => break,
+            }
+        }
+        c.charge(HtmlParseWorkCategory::StateStep, 1)?;
+        let Some((value, semicolon, mark)) = longest else {
+            self.cursor.rewind(initial, c)?;
+            return self.unknown_reference(attribute, amp, c, evidence);
+        };
+        self.cursor.rewind(&mark, c)?;
+        c.charge(HtmlParseWorkCategory::StateStep, 1)?;
+        if attribute && !semicolon {
+            let follows = matches!(
+                self.cursor.peek(c)?,
+                InputRead::Character(ref ch)
+                    if alnum(ch.code_point().value()) || ch.code_point().value() == 0x3D
+            );
+            if follows {
+                self.cursor.rewind(initial, c)?;
+                return self.reference_point(
+                    0x26,
+                    true,
+                    amp,
+                    HtmlParseOriginKind::Literal,
+                    c,
+                    evidence,
+                );
+            }
+        }
+        let source = self.range(amp.start(), self.cursor.position(c)?, c)?;
+        self.set_current(&source, c)?;
+        if !semicolon {
+            self.error(MissingSemicolonAfterCharacterReference, c, evidence)?;
+        }
+        if attribute {
+            match value {
+                ReferenceValue::One(a) => self.reference_point(
+                    u32::from(a),
+                    true,
+                    &source,
+                    HtmlParseOriginKind::CharacterReference,
+                    c,
+                    evidence,
+                ),
+                ReferenceValue::Two(a, b) => {
+                    for point in [a, b] {
                         self.reference_point(
-                            0x26,
-                            r.attribute,
-                            &r.amp,
-                            HtmlParseOriginKind::Literal,
+                            u32::from(point),
+                            true,
+                            &source,
+                            HtmlParseOriginKind::CharacterReference,
                             c,
                             evidence,
                         )?;
-                        return Ok(true);
                     }
-                    let read = match self.reference_peek(c)? {
-                        InputPoll::NeedInput => return Ok(false),
-                        InputPoll::Ready(read) => read,
-                    };
-                    let semicolon = matches!(read,InputRead::Character(ref ch) if ch.code_point().value()==0x3B);
-                    if semicolon {
-                        self.read(c, evidence)?;
-                    }
-                    let source = self.range(r.amp.start(), self.cursor.position(c)?, c)?;
-                    self.set_current(&source, c)?;
-                    if !semicolon {
-                        self.error(MissingSemicolonAfterCharacterReference, c, evidence)?;
-                    }
-                    match r.value {
-                        0 => self.error(NullCharacterReference, c, evidence)?,
-                        0x110000.. => {
-                            self.error(CharacterReferenceOutsideUnicodeRange, c, evidence)?;
-                        }
-                        0xD800..=0xDFFF => self.error(SurrogateCharacterReference, c, evidence)?,
-                        value => {
-                            if (0xFDD0..=0xFDEF).contains(&value) || value & 0xFFFF >= 0xFFFE {
-                                self.error(NoncharacterCharacterReference, c, evidence)?;
-                            }
-                            if value == 0x0D
-                                || ((value <= 0x1F || (0x7F..=0x9F).contains(&value))
-                                    && !matches!(value, 9 | 10 | 12 | 32))
-                            {
-                                self.error(ControlCharacterReference, c, evidence)?;
-                            }
-                        }
-                    }
-                    let value = u32::from(references::numeric_scalar(r.value, c)?);
-                    self.reference_point(
-                        value,
-                        r.attribute,
+                    Ok(())
+                }
+            }
+        } else {
+            let text = DraftText::build(c, |text, c| {
+                match value {
+                    ReferenceValue::One(a) => text.push(
+                        u32::from(a),
                         &source,
                         HtmlParseOriginKind::CharacterReference,
                         c,
-                        evidence,
-                    )?;
-                    return Ok(true);
+                    )?,
+                    ReferenceValue::Two(a, b) => {
+                        for point in [a, b] {
+                            text.push(
+                                u32::from(point),
+                                &source,
+                                HtmlParseOriginKind::CharacterReference,
+                                c,
+                            )?;
+                        }
+                    }
+                }
+                Ok(())
+            })?;
+            self.emit(
+                TokenKind::Text(text),
+                source.start(),
+                source.end(),
+                c,
+                evidence,
+            )
+        }
+    }
+    /// An ampersand and alphanumerics that name no table entry stay literal,
+    /// and a semicolon that ends them reports the unknown reference.
+    fn unknown_reference(
+        &mut self,
+        attribute: bool,
+        amp: &HtmlSourceRange,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<(), HtmlParseStop> {
+        // An attribute value takes its characters directly; a text reference
+        // retains them as the text of the token it emits.
+        let mut literal = if attribute {
+            None
+        } else {
+            Some(DraftText::new(c)?)
+        };
+        match self.unknown_reference_steps(amp, &mut literal, c, evidence) {
+            Ok(end) => {
+                let Some(literal) = literal else {
+                    return Ok(());
+                };
+                let text = literal.freeze(c)?;
+                self.emit(TokenKind::Text(text), amp.start(), end, c, evidence)
+            }
+            Err(stop) => {
+                if let Some(literal) = literal {
+                    literal.release(c)?;
+                }
+                Err(stop)
+            }
+        }
+    }
+    fn unknown_reference_steps(
+        &mut self,
+        amp: &HtmlSourceRange,
+        literal: &mut Option<DraftText>,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<usize, HtmlParseStop> {
+        match literal {
+            Some(literal) => literal.push(0x26, amp, HtmlParseOriginKind::Literal, c)?,
+            None => self.attribute_value(0x26, HtmlParseOriginKind::Literal, amp, c)?,
+        }
+        let mut end = amp.end();
+        loop {
+            c.charge(HtmlParseWorkCategory::StateStep, 1)?;
+            let InputRead::Character(ch) = self.cursor.peek(c)? else {
+                return Ok(end);
+            };
+            let p = ch.code_point().value();
+            if alnum(p) {
+                self.read(c, evidence)?;
+                end = self.current.end();
+                match literal {
+                    Some(literal) => {
+                        literal.push(p, &self.current, self.current_kind, c)?;
+                    }
+                    None => {
+                        self.attribute_value(p, self.current_kind, &self.current.clone(), c)?;
+                    }
+                }
+                continue;
+            }
+            if p == 0x3B {
+                self.set_current(ch.source(), c)?;
+                self.error(UnknownNamedCharacterReference, c, evidence)?;
+            }
+            return Ok(end);
+        }
+    }
+    fn numeric_reference(
+        &mut self,
+        attribute: bool,
+        amp: &HtmlSourceRange,
+        initial: &InputCheckpoint,
+        c: &mut ParseControl,
+        evidence: &mut ParseEvidence,
+    ) -> Result<(), HtmlParseStop> {
+        c.charge(HtmlParseWorkCategory::StateStep, 1)?;
+        let hex = matches!(
+            self.cursor.peek(c)?,
+            InputRead::Character(ref ch) if matches!(ch.code_point().value(), 0x58 | 0x78)
+        );
+        if hex {
+            self.read(c, evidence)?;
+        }
+        let radix = if hex { 16 } else { 10 };
+        let mut value = 0_u32;
+        let mut digits = false;
+        loop {
+            c.charge(HtmlParseWorkCategory::StateStep, 1)?;
+            let InputRead::Character(ch) = self.cursor.peek(c)? else {
+                break;
+            };
+            // ASCII decimal digits and, in a hexadecimal reference, the
+            // letters A-F in either case.
+            let Some(digit) = u8::try_from(ch.code_point().value())
+                .ok()
+                .and_then(|byte| char::from(byte).to_digit(radix))
+            else {
+                break;
+            };
+            self.read(c, evidence)?;
+            digits = true;
+            value = value
+                .checked_mul(radix)
+                .and_then(|v| v.checked_add(digit))
+                .filter(|&v| v <= 0x110000)
+                .unwrap_or(0x110000);
+        }
+        c.charge(HtmlParseWorkCategory::StateStep, 1)?;
+        if !digits {
+            let source = self.range(amp.start(), self.cursor.position(c)?, c)?;
+            self.set_current(&source, c)?;
+            self.error(AbsenceOfDigitsInNumericCharacterReference, c, evidence)?;
+            self.cursor.rewind(initial, c)?;
+            return self.reference_point(
+                0x26,
+                attribute,
+                amp,
+                HtmlParseOriginKind::Literal,
+                c,
+                evidence,
+            );
+        }
+        let semicolon = matches!(
+            self.cursor.peek(c)?,
+            InputRead::Character(ref ch) if ch.code_point().value() == 0x3B
+        );
+        if semicolon {
+            self.read(c, evidence)?;
+        }
+        let source = self.range(amp.start(), self.cursor.position(c)?, c)?;
+        self.set_current(&source, c)?;
+        if !semicolon {
+            self.error(MissingSemicolonAfterCharacterReference, c, evidence)?;
+        }
+        match value {
+            0 => self.error(NullCharacterReference, c, evidence)?,
+            0x110000.. => {
+                self.error(CharacterReferenceOutsideUnicodeRange, c, evidence)?;
+            }
+            0xD800..=0xDFFF => self.error(SurrogateCharacterReference, c, evidence)?,
+            value => {
+                if (0xFDD0..=0xFDEF).contains(&value) || value & 0xFFFF >= 0xFFFE {
+                    self.error(NoncharacterCharacterReference, c, evidence)?;
+                }
+                if value == 0x0D
+                    || ((value <= 0x1F || (0x7F..=0x9F).contains(&value))
+                        && !matches!(value, 9 | 10 | 12 | 32))
+                {
+                    self.error(ControlCharacterReference, c, evidence)?;
                 }
             }
         }
+        let scalar = u32::from(references::numeric_scalar(value, c)?);
+        self.reference_point(
+            scalar,
+            attribute,
+            &source,
+            HtmlParseOriginKind::CharacterReference,
+            c,
+            evidence,
+        )
     }
 }

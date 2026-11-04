@@ -123,7 +123,6 @@ pub enum HtmlParseConstructionBoundary {
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum HeadStep {
-    NeedInput,
     Consumed,
     Complete,
     Boundary(HtmlParseConstructionBoundary),
@@ -671,9 +670,6 @@ impl<'source> HeadStage<'source> {
             match pulled {
                 super::super::tokenizer::TokenizerPull::Event(event) => {
                     state.lexical_pending = Some(event)
-                }
-                super::super::tokenizer::TokenizerPull::NeedInput => {
-                    return Ok(HeadStep::NeedInput);
                 }
                 super::super::tokenizer::TokenizerPull::Exhausted => {
                     return Err(HeadError::TokenizerExhausted);

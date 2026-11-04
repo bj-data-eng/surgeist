@@ -33,7 +33,7 @@ mod pi_recovery {
         close: Option<usize>,
         errors: Vec<(HtmlTokenizerDiagnostic, HtmlTokenizerState, usize, usize)>,
     }
-    fn check_surrogate_data(cuts: Option<&[usize]>) {
+    fn check_surrogate_data() {
         // UTF16 source positions: A23, D80024, CRLF25..27, pair27..29,
         // DC0029, delimiter30..32. PI data appends NULL/non-scalars as read;
         // input-stream surrogate errors are separate from PI target recovery.
@@ -43,7 +43,7 @@ mod pi_recovery {
         let source = HtmlSource::utf16(DocumentString::from_utf16(raw.clone()));
         let identity = source.identity().clone();
         let request = HtmlDocumentParseRequest::offline(source, super::super::tests::limits(1_000));
-        let report = report(request, cuts);
+        let report = report(request);
         assert_eq!(report.source().identity(), &identity);
         assert_eq!(report.source().as_utf16().unwrap().code_units(), raw);
         let document = report.document().unwrap();
@@ -187,12 +187,8 @@ mod pi_recovery {
         assert_eq!(reverse, expected);
     }
     #[test]
-    fn pi_utf16_non_scalars_pair_and_crlf_keep_exact_data_at_every_feed_boundary() {
-        check_surrogate_data(None);
-        for cut in 0..=37 {
-            check_surrogate_data(Some(&[cut]));
-        }
-        check_surrogate_data(Some(&(0..=37).collect::<Vec<_>>()));
+    fn pi_utf16_non_scalars_pair_and_crlf_keep_exact_data() {
+        check_surrogate_data();
     }
     fn cases() -> Vec<Case> {
         use HtmlTokenizerDiagnostic as D;
@@ -416,7 +412,7 @@ mod pi_recovery {
             _ => unreachable!("finite literal PI conditions"),
         }
     }
-    fn check(case: &Case, utf16: bool, cuts: Option<&[usize]>) {
+    fn check(case: &Case, utf16: bool) {
         let raw = format!(
             "<!doctype html><p>é{}{}",
             case.raw,
@@ -434,7 +430,7 @@ mod pi_recovery {
         let identity = source.identity().clone();
         let request = HtmlDocumentParseRequest::offline(source, super::super::tests::limits(1_000));
         let cancellation = request.cancellation().clone();
-        let report = report(request, cuts);
+        let report = report(request);
         let usage = report.usage().clone();
         cancellation.cancel();
         assert_eq!(report.source().identity(), &identity);
@@ -780,32 +776,7 @@ mod pi_recovery {
     fn pi_recovery_and_eof_keep_literal_native_records_and_original_field_delimiters() {
         for case in cases() {
             for utf16 in [false, true] {
-                check(&case, utf16, None);
-            }
-        }
-    }
-    #[test]
-    fn pi_recovery_every_cut_and_unit_feed_keeps_independent_chronology_and_source_atoms() {
-        for case in cases() {
-            for utf16 in [false, true] {
-                let raw = format!(
-                    "<!doctype html><p>é{}{}",
-                    case.raw,
-                    if matches!(case.native, Native::None) {
-                        ""
-                    } else {
-                        "Z</p>"
-                    }
-                );
-                let len = if utf16 {
-                    raw.encode_utf16().count()
-                } else {
-                    raw.len()
-                };
-                for cut in 0..=len {
-                    check(&case, utf16, Some(&[cut]));
-                }
-                check(&case, utf16, Some(&(0..=len).collect::<Vec<_>>()));
+                check(&case, utf16);
             }
         }
     }
@@ -1910,7 +1881,7 @@ fn check(
             match driver.as_mut().expect("actual driver owned").step()? {
                 super::head::HeadStep::Consumed => {}
                 super::head::HeadStep::Complete => break,
-                super::head::HeadStep::NeedInput | super::head::HeadStep::Boundary(_) => {
+                super::head::HeadStep::Boundary(_) => {
                     return Err(super::StandaloneError::Head(
                         super::head::HeadError::IncompleteCompletion,
                     ));
@@ -2795,7 +2766,7 @@ mod tests {
 
 #[cfg(test)]
 mod reference_recovery {
-    use super::comment_diagnostic_corpus::{completed, completed_at_cuts, completed_driver};
+    use super::comment_diagnostic_corpus::{completed, completed_driver};
     use crate::parser::tree_builder::{report::HtmlParseReport, seal::SealedOrdinaryConstruction};
     use crate::*;
     use surgeist_html::{
@@ -2991,15 +2962,9 @@ mod reference_recovery {
         assert_eq!(consumed, units);
         raw.len()
     }
-    pub(super) fn report(
-        request: HtmlDocumentParseRequest,
-        cuts: Option<&[usize]>,
-    ) -> HtmlParseReport {
+    pub(super) fn report(request: HtmlDocumentParseRequest) -> HtmlParseReport {
         let parts = {
-            let mut output = match cuts {
-                Some(cuts) => completed_at_cuts(&request, cuts),
-                None => completed(&request),
-            };
+            let mut output = completed(&request);
             output.prepare_native_associations().unwrap();
             output.freeze_parts().unwrap()
         };
@@ -3007,7 +2972,7 @@ mod reference_recovery {
             Some(SealedOrdinaryConstruction::take(&mut Some(request), &mut Some(parts)).unwrap());
         HtmlParseReport::take_document(&mut owner).unwrap()
     }
-    fn check(reference: &Reference, utf16: bool, cuts: Option<&[usize]>) {
+    fn check(reference: &Reference, utf16: bool) {
         let raw = format!("<!doctype html><p>é{}</p>", reference.raw);
         let source = if utf16 {
             HtmlSource::utf16(DocumentString::from(raw.as_str()))
@@ -3017,7 +2982,7 @@ mod reference_recovery {
         let identity = source.identity().clone();
         let request = HtmlDocumentParseRequest::offline(source, super::super::tests::limits(1_000));
         let cancel = request.cancellation().clone();
-        let report = report(request, cuts);
+        let report = report(request);
         let usage = report.usage().clone();
         cancel.cancel();
         assert_eq!(report.source().identity(), &identity);
@@ -3176,31 +3141,13 @@ mod reference_recovery {
     fn reference_recovery_keeps_literal_typed_records_and_exact_utf8_utf16_output_spans() {
         for reference in references() {
             for utf16 in [false, true] {
-                check(&reference, utf16, None);
-            }
-        }
-    }
-    #[test]
-    fn reference_recovery_every_cut_and_unit_feed_uses_independent_records_and_output_atoms() {
-        for reference in references() {
-            for utf16 in [false, true] {
-                let raw = format!("<!doctype html><p>é{}</p>", reference.raw);
-                let length = if utf16 {
-                    raw.encode_utf16().count()
-                } else {
-                    raw.len()
-                };
-                for cut in 0..=length {
-                    check(&reference, utf16, Some(&[cut]));
-                }
-                check(&reference, utf16, Some(&(0..=length).collect::<Vec<_>>()));
+                check(&reference, utf16);
             }
         }
     }
 
     #[test]
-    fn attribute_reference_exception_keeps_literal_quotes_and_two_output_value_atoms_at_every_cut()
-    {
+    fn attribute_reference_exception_keeps_literal_quotes_and_two_output_value_atoms() {
         use HtmlParseOriginKind::{CharacterReference as R, Literal as L};
         let raw = "<!doctype html><p x='é&notit; &amp= &amp; &NotEqualTilde;' y='&#0'>Z</p>";
         // The ambiguous-ampersand exception keeps notit/amp= literally in an
@@ -3214,16 +3161,7 @@ mod reference_recovery {
             (18, 19, 21, 36, R),
         ]);
         for utf16 in [false, true] {
-            let length = if utf16 {
-                raw.encode_utf16().count()
-            } else {
-                raw.len()
-            };
-            let partitions: Vec<Option<Vec<usize>>> = std::iter::once(None)
-                .chain((0..=length).map(|cut| Some(vec![cut])))
-                .chain(std::iter::once(Some((0..=length).collect())))
-                .collect();
-            for cuts in partitions {
+            {
                 let source = if utf16 {
                     HtmlSource::utf16(DocumentString::from(raw))
                 } else {
@@ -3233,7 +3171,7 @@ mod reference_recovery {
                     HtmlDocumentParseRequest::offline(source, super::super::tests::limits(1_000));
                 let identity = request.source().identity().clone();
                 let cancel = request.cancellation().clone();
-                let output = report(request, cuts.as_deref());
+                let output = report(request);
                 let usage = output.usage().clone();
                 cancel.cancel();
                 let document = output.document().unwrap();
@@ -3540,7 +3478,7 @@ mod reference_recovery {
                     .finish()
                     .unwrap(),
             );
-            let output = report(request, None);
+            let output = report(request);
             assert_eq!(output.diagnostics().len(), reference.errors.len());
         }
     }
@@ -3564,7 +3502,7 @@ mod reference_recovery {
                     .finish()
                     .unwrap(),
             );
-            let output = report(request, None);
+            let output = report(request);
             let diagnostics = output.diagnostics();
             assert_eq!(diagnostics.len(), 1);
             assert_eq!(diagnostics.dropped(), 1);
@@ -4540,7 +4478,6 @@ mod whole_source_comparisons {
                 match driver.as_mut().unwrap().step().unwrap() {
                     HeadStep::Consumed => {}
                     HeadStep::Complete => break,
-                    HeadStep::NeedInput => panic!("sealed ordinary source requested more input"),
                     HeadStep::Boundary(b) => panic!("unexpected ordinary boundary {b:?}"),
                 }
             }
@@ -5931,87 +5868,6 @@ mod comment_diagnostic_corpus {
         completed.release().unwrap();
     }
 
-    // HTML877d preprocessing/comment rules, paired with the unchanged source
-    // selection above. Feed availability is a real cursor operation, never a
-    // prefix request or a tree derived from another parser execution.
-    pub(super) fn completed_at_cuts<'a>(
-        request: &'a HtmlDocumentParseRequest,
-        cuts: &[usize],
-    ) -> CompletedStandaloneDocument<'a> {
-        let mut entry = super::super::entry::OrdinaryDocumentEntry::owned_progressive(request);
-        let mut driver = Some(match entry.take_driver() {
-            Ok(driver) => driver,
-            Err(error) => {
-                entry.release_failure().unwrap();
-                panic!("progressive initialization: {error:?}");
-            }
-        });
-        let result = (|| {
-            for through in cuts
-                .iter()
-                .copied()
-                .chain(std::iter::once(request.source().len()))
-            {
-                let active = driver.as_mut().unwrap();
-                active.make_available(through)?;
-                let mut waiting = false;
-                for _ in 0..(8 * request.source().len() + 256) {
-                    match active.step()? {
-                        HeadStep::Consumed => {}
-                        HeadStep::NeedInput => {
-                            waiting = true;
-                            break;
-                        }
-                        _ => {
-                            return Err(super::super::StandaloneError::Head(
-                                super::super::head::HeadError::IncompleteCompletion,
-                            ));
-                        }
-                    }
-                }
-                if !waiting {
-                    return Err(super::super::StandaloneError::Head(
-                        super::super::head::HeadError::IncompleteCompletion,
-                    ));
-                }
-                assert!(active.control.stop().is_none());
-                // Even a fully visible unsealed source is not completion.
-                assert!(StandaloneDocumentDriver::take_completed(&mut driver).is_err());
-                assert!(driver.is_some());
-                assert!(driver.as_ref().unwrap().control.stop().is_none());
-            }
-            driver.as_mut().unwrap().seal_input()?;
-            for _ in 0..(8 * request.source().len() + 256) {
-                match driver.as_mut().unwrap().step()? {
-                    HeadStep::Consumed => {}
-                    HeadStep::Complete => {
-                        return StandaloneDocumentDriver::take_completed(&mut driver);
-                    }
-                    _ => {
-                        return Err(super::super::StandaloneError::Head(
-                            super::super::head::HeadError::IncompleteCompletion,
-                        ));
-                    }
-                }
-            }
-            Err(super::super::StandaloneError::Head(
-                super::super::head::HeadError::IncompleteCompletion,
-            ))
-        })();
-        match result {
-            Ok(completed) => {
-                assert!(driver.is_none());
-                completed
-            }
-            Err(error) => {
-                let active = driver.as_mut().unwrap();
-                active.release().unwrap();
-                super::super::tests::assert_released(&active.control);
-                panic!("progressive execution: {error:?}");
-            }
-        }
-    }
-
     fn check_completed_comment(
         mut completed: CompletedStandaloneDocument<'_>,
         request: &HtmlDocumentParseRequest,
@@ -6069,7 +5925,7 @@ mod comment_diagnostic_corpus {
     }
 
     #[test]
-    fn comments01_utf8_utf16_every_cut_and_unit_feed_keep_literal_trees_and_typed_diagnostics() {
+    fn comments01_utf8_utf16_keep_literal_trees_and_typed_diagnostics() {
         let (_, raw) = DATA
             .iter()
             .find(|(name, _)| *name == "comments01.dat")
@@ -6102,23 +5958,6 @@ mod comment_diagnostic_corpus {
                 );
                 check_completed_comment(
                     completed(&request),
-                    &request,
-                    &tree,
-                    selected(fixture.ordinal),
-                );
-                for cut in 0..=request.source().len() {
-                    let request = make_request();
-                    check_completed_comment(
-                        completed_at_cuts(&request, &[cut]),
-                        &request,
-                        &tree,
-                        selected(fixture.ordinal),
-                    );
-                }
-                let request = make_request();
-                let cuts: Vec<_> = (0..=request.source().len()).collect();
-                check_completed_comment(
-                    completed_at_cuts(&request, &cuts),
                     &request,
                     &tree,
                     selected(fixture.ordinal),
@@ -6230,81 +6069,12 @@ mod comment_diagnostic_corpus {
     }
 
     #[test]
-    fn comment_utf16_surrogate_crlf_pair_and_end_bang_keep_exact_evidence_across_all_cuts() {
+    fn comment_utf16_surrogate_crlf_pair_and_end_bang_keep_exact_evidence() {
         let tree = unicode_comment_tree();
         let request = unicode_comment_request();
         let mut complete = completed(&request);
         check_unicode_comment_origins(&mut complete, request.source());
         check_completed_comment(complete, &request, &tree, UNICODE_COMMENT_DIAGNOSTICS);
-        for cut in 0..=29 {
-            let request = unicode_comment_request();
-            let mut complete = completed_at_cuts(&request, &[cut]);
-            check_unicode_comment_origins(&mut complete, request.source());
-            check_completed_comment(complete, &request, &tree, UNICODE_COMMENT_DIAGNOSTICS);
-        }
-        let request = unicode_comment_request();
-        let cuts: Vec<_> = (0..=29).collect();
-        let mut complete = completed_at_cuts(&request, &cuts);
-        check_unicode_comment_origins(&mut complete, request.source());
-        check_completed_comment(complete, &request, &tree, UNICODE_COMMENT_DIAGNOSTICS);
-    }
-
-    #[test]
-    fn comment_feed_cancel_after_committed_prologue_keeps_first_stop_and_real_cleanup() {
-        let request = HtmlDocumentParseRequest::offline(
-            HtmlSource::utf8("FOO<!-- BAR --!>BAZ"),
-            super::super::tests::limits(1_000),
-        );
-        let mut entry = super::super::entry::OrdinaryDocumentEntry::owned_progressive(&request);
-        let mut driver = Some(entry.take_driver().unwrap());
-        driver.as_mut().unwrap().make_available(3).unwrap();
-        let mut waiting = false;
-        for _ in 0..256 {
-            match driver.as_mut().unwrap().step().unwrap() {
-                HeadStep::Consumed => {}
-                HeadStep::NeedInput => {
-                    waiting = true;
-                    break;
-                }
-                other => panic!("partial comment source: {other:?}"),
-            }
-        }
-        assert!(waiting);
-        assert!(StandaloneDocumentDriver::take_completed(&mut driver).is_err());
-        let active = driver.as_mut().unwrap();
-        let before = active.control.usage().clone();
-        request.cancellation().cancel();
-        assert!(matches!(
-            active.make_available(request.source().len()),
-            Err(super::super::StandaloneError::Stop(
-                HtmlParseStop::Cancelled
-            ))
-        ));
-        let first = active.control.first_stop_usage().unwrap().clone();
-        assert_eq!(first, before);
-        assert!(matches!(
-            active.seal_input(),
-            Err(super::super::StandaloneError::Stop(
-                HtmlParseStop::Cancelled
-            ))
-        ));
-        assert_eq!(active.control.usage(), &first);
-        assert_eq!(active.control.first_stop_usage(), Some(&first));
-        let mut failed = StandaloneDocumentDriver::take_failed(&mut driver).unwrap();
-        assert!(driver.is_none());
-        let diagnostics = failed.diagnostics().unwrap();
-        assert_eq!(diagnostics.len(), 1);
-        let (record, location) = diagnostics.retained_record(0).unwrap().unwrap();
-        assert_eq!(record.kind, FOO.kind);
-        assert_eq!(record.context, FOO.context);
-        assert_eq!(record.rule, FOO.rule);
-        assert_eq!(record.severity, HtmlParseDiagnosticSeverity::Recoverable);
-        assert_eq!(location.role, FOO.role);
-        assert_eq!(location.token, FOO.token);
-        assert_eq!(location.source, request.source().range(0, 1).unwrap());
-        failed.release().unwrap();
-        zero_storage(failed.retained_usage());
-        assert_eq!(failed.at_stop(), &first);
     }
 
     // Template corpus selection is separate from the ordinary comment consumer.
@@ -6854,7 +6624,7 @@ mod comment_diagnostic_corpus {
         }
 
         #[test]
-        fn template_transitions_every_cut_and_unit_feed_match_independent_trees() {
+        fn template_transitions_match_independent_trees() {
             let fixtures = fixtures();
             for ordinal in [81, 94, 100, 108, 110, 111, 112] {
                 let fixture = &fixtures[ordinal - 1];
@@ -6864,14 +6634,8 @@ mod comment_diagnostic_corpus {
                         source(fixture.input, utf16),
                         super::super::super::tests::limits(1_000),
                     );
-                    for cut in 0..=request.source().len() {
-                        check_completed_tree(completed_at_cuts(&request, &[cut]), &expected)
-                            .unwrap_or_else(|e| {
-                                panic!("template/{ordinal}, utf16={utf16}, cut={cut}: {e}")
-                            });
-                    }
-                    let cuts: Vec<_> = (0..=request.source().len()).collect();
-                    check_completed_tree(completed_at_cuts(&request, &cuts), &expected).unwrap();
+                    check_completed_tree(completed(&request), &expected)
+                        .unwrap_or_else(|e| panic!("template/{ordinal}, utf16={utf16}: {e}"));
                 }
             }
         }
@@ -6904,13 +6668,6 @@ mod comment_diagnostic_corpus {
                 );
                 check_completed_comment(
                     completed(&request),
-                    &request,
-                    &tree,
-                    &expected_diagnostics,
-                );
-                let cuts: Vec<_> = (0..=request.source().len()).collect();
-                check_completed_comment(
-                    completed_at_cuts(&request, &cuts),
                     &request,
                     &tree,
                     &expected_diagnostics,
@@ -7126,7 +6883,7 @@ mod comment_diagnostic_corpus {
                 _ => unreachable!("four source-selected table diagnostic cases"),
             }
         }
-        fn check_cases(progressive: bool) {
+        fn check_cases() {
             let (_, raw) = DATA
                 .iter()
                 .find(|(name, _)| *name == "tables01.dat")
@@ -7172,41 +6929,18 @@ mod comment_diagnostic_corpus {
                             crate::HtmlSourceCoordinates::Utf8Bytes
                         }
                     );
-                    if progressive {
-                        for cut in 0..=input.len() {
-                            let request = make_request();
-                            check_completed_comment(
-                                completed_at_cuts(&request, &[cut]),
-                                &request,
-                                &expected_tree,
-                                selected(ordinal),
-                            );
-                        }
-                        let cuts: Vec<_> = (0..=input.len()).collect();
-                        check_completed_comment(
-                            completed_at_cuts(&request, &cuts),
-                            &request,
-                            &expected_tree,
-                            selected(ordinal),
-                        );
-                    } else {
-                        check_completed_comment(
-                            completed(&request),
-                            &request,
-                            &expected_tree,
-                            selected(ordinal),
-                        );
-                    }
+                    check_completed_comment(
+                        completed(&request),
+                        &request,
+                        &expected_tree,
+                        selected(ordinal),
+                    );
                 }
             }
         }
         #[test]
         fn table_recovery_literal_diagnostics_complete_utf8_utf16() {
-            check_cases(false);
-        }
-        #[test]
-        fn table_recovery_literal_diagnostics_every_cut_and_unit_feed() {
-            check_cases(true);
+            check_cases();
         }
     }
 }

@@ -219,10 +219,10 @@ cargo clippy --offline --locked -j 1 -p surgeist-html-parser --all-targets -- -F
 python3 crates/surgeist-html-parser/tools/generate_character_references.py --check
 ```
 
-An opt-in tool prints scalar-feed phase timings and, when
+An opt-in tool prints phase timings of complete-input parses and, when
 `SURGEIST_COMPARISON_ARTIFACT` names a file, writes the comparison artifact.
-It needs the crate-private progressive driver, so it is an ignored test-harness
-entry that no ordinary test run executes:
+It needs the crate-private driver, so it is an ignored test-harness entry that
+no ordinary test run executes:
 
 ```sh
 SURGEIST_COMPARISON_ARTIFACT=/absolute/path/artifact.bin \

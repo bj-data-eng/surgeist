@@ -248,7 +248,7 @@ pub(crate) fn numeric_scalar(
     scalar.ok_or_else(|| control.fail_invariant(HtmlParseInvariant::TokenizerState))
 }
 
-const MAX_NAME_POINTS: usize = {
+pub(crate) const MAX_NAME_POINTS: usize = {
     let mut longest = 0;
     let mut index = 0;
     while index < data::NAMED_REFERENCES.len() {

@@ -120,12 +120,10 @@ available after a terminal stop. Original parser algorithms are reorganized
 between dispatch, state, token and reference modules without importing upstream
 packaging or public provider interfaces.
 
-The private progressive-availability cursor and retained reference continuation
-are Surgeist-authored adaptations over that same immutable source. They preserve
-the actual tokenizer and construction owners across `NeedInput`, with explicit
-sealing and original source coordinates, rather than restoring Tendril streams
-or reparsing source prefixes. Their literal partition tests are authored locally;
-the original incorporation checkpoints above remain historical.
+The tokenizer reads a complete, immutable source through the indexed input
+cursor and decodes each character reference in one pass over fixed storage
+bounded by the longest name of the pinned table. The original incorporation
+checkpoints above remain historical.
 
 Behavior is reconciled with
 [HTML §13.2.5](../../references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md),

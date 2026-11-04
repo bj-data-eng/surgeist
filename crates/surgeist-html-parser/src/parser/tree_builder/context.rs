@@ -899,7 +899,6 @@ pub(super) mod tests {
     pub(super) fn complete(driver: &mut ContextFragmentDriver<'_>) {
         for _ in 0..1000 {
             match driver.step().unwrap() {
-                HeadStep::NeedInput => panic!("complete fragment cannot starve"),
                 HeadStep::Consumed => {}
                 HeadStep::Complete => return,
                 HeadStep::Boundary(boundary) => panic!("unexpected real boundary {boundary:?}"),
@@ -1525,10 +1524,7 @@ pub(super) mod tests {
                 if driver.head.as_ref().unwrap().state.as_ref().unwrap().mode == expected {
                     break;
                 }
-                assert!(!matches!(
-                    driver.step().unwrap(),
-                    HeadStep::Complete | HeadStep::NeedInput
-                ));
+                assert!(!matches!(driver.step().unwrap(), HeadStep::Complete));
             }
             let state = driver.head.as_mut().unwrap().state.as_mut().unwrap();
             assert_eq!(state.mode, expected, "reached {source}");
