@@ -2270,20 +2270,36 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
   - *Sharing.* The rows of a run hold the same tall cells. One scan serves
     every row of a run that has no cell of its own before the scanning cell and
     no overlap; runs that differ only by cells that start at or after the
-    scanning cell, which a scan does not reach, count as one; and a row whose
-    own cells before the scanning cell all lie left of every tall cell it can
-    reach is that shared scan followed by a scan of its own cells alone, so a
-    first column of cells beside tall header cells costs the cells, not a scan
-    of the tall cells for each. Any other row is scanned on its own.
-  - *The fine bound.* Header assignment is `O((C + A + V + L) log C)`, where `A`
-    is the number of associations and `V` the number of unhidden headers
+    scanning cell, which a scan does not reach, count as one. A row with cells
+    of its own before the scanning cell does not repeat that scan either. A
+    header of its own never changes which tall headers the row takes, and a
+    data cell of its own changes it only by ending a block of tall headers, so
+    that the nearer of two tall headers of the same rows hides the other
+    (HTML 877d §4.9.12.2, the internal algorithm for scanning and assigning
+    header cells, step 9). The first such row is scanned in full, noting the
+    data cells of its own that made a tall header opaque before the scan met
+    another tall header hidden by it (each start once, so at most one for each
+    header the scan visited). Every later row that has a data cell at each of
+    those starts takes no tall header that row did not, and so costs a search
+    for each noted cell and a visit for each header of its own that it reads: the
+    nearest and those next to it, up to the first data cell between two, tall
+    or not. A first column of cells beside tall header cells, and cells of
+    each row between tall header cells that cross the same rows, therefore
+    cost the cells, not a scan of the tall cells for each. A row that lacks a
+    noted cell, or that is not regular, is scanned on its own.
+  - *The fine bound.* Header assignment is `O((C + A + V + L + R) log C)`, where
+    `A` is the number of associations, `V` the number of unhidden headers
     visited without being listed (a header that is no header of the scan's
-    kind, as `scope=col` is for a row scan), when no cells overlap and every
-    row (or column) with a cell of its own before a tall cell is shared as
-    above. It holds for a table of `n` by `n` cells whose headers are a first
-    row and first column, with or without a `tbody`; for tall header cells with
-    data cells between them beside later rows that hold their own cells to the
-    right, or to the left in a first column; for tall header cells whose row
+    kind, as `scope=col` is for a row scan) and `R` the sum, over the times a
+    cell crosses a row (or column) that has a cell of its own before it, of one
+    and the cells noted for the first such row it crosses (each is searched
+    for in the row), when no cells overlap and each such row has the noted
+    cells of the first such row, as above. It holds for a table of `n` by `n` cells whose headers are
+    a first row and first column, with or without a `tbody`; for tall header
+    cells with data cells between them beside later rows that hold their own
+    cells to the right, or to the left in a first column; for tall header
+    cells of the same rows with a cell of each later row between them, which
+    take the headers beyond the cell once; for tall header cells whose row
     ends all differ, which take quadratically many associations; and for a
     column of `th` cells that each take every `th` above. The model work tests
     pin these shapes.
@@ -2299,9 +2315,11 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
     scanned one slot at a time, `O(log)` per slot from the scanning cell to
     the start of the line, and each such row is scanned on its own, so the
     overlapping cells cost `O(W log)` for each row they cross. Rows whose own
-    cells lie among the tall cells, rather than left of them, are scanned on
-    their own: a tall cell crossing `h` such rows costs `h` scans of up to `W`
-    slots, and with many tall cells that is cubic in the size of the table.
+    data cells differ among the tall header cells from those of the first such
+    row (they lack one the first row had between two tall headers of the same
+    rows) are scanned on their own: a tall cell crossing `h` such rows costs
+    `h` scans of up to `W` slots, and with many tall cells that is cubic in
+    the size of the table.
     A cell in a row group (or column group) tests only the header cells whose
     `scope` names its group, found by index (by row, then the least column;
     by column, then the least row) in `O(log + k)` for `k` hits, which are
@@ -2335,8 +2353,10 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
     document whose nodes after the last owner exceed the work limit is refused
     even when every token is owned early.
   - Everything the model needs beyond the retained records is scratch: the
-    placement tree, the per-column and per-cell placement records and the header
-    indexes are admitted as `ScratchRecords`, and released with the query. Every
+    placement tree, the per-column and per-cell placement records, the header
+    indexes and, once a row among tall cells is scanned in full, a note for
+    each header extent and for each data cell that hid a tall header are
+    admitted as `ScratchRecords`, and released with the query. Every
     table query therefore admits scratch records, where it admitted none before:
     a table of one cell needs 11. A table whose cells overlap or cross many
     lines can be refused for `ScratchRecords` where the retained model alone
@@ -2345,8 +2365,12 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
   [The model work tests](../../crates/surgeist-html-semantics/tests/semantics/tables/model_work.rs)
   pin the growth for `n` by `n` grids of data cells and of data cells under a
   first row and column of header cells (outside and inside a `tbody`), for tall
-  cells beside later rows, and the work per association for staggered tall
-  header cells and for a stacked header column;
+  cells beside later rows, for tall header cells with a cell of each row among
+  them, and the work per association for staggered tall header cells and for a
+  stacked header column; [the shared scans
+  tests](../../crates/surgeist-html-semantics/tests/semantics/tables/shared_scans.rs)
+  pin the header lists of rows with cells among tall cells, by hand and for
+  both orientations;
   [the explicit headers tests](../../crates/surgeist-html-semantics/tests/semantics/tables/explicit_headers.rs)
   pin the growth for an `n` by `n` grid in which every data cell names a header
   by ID, and the cells named by duplicate, unknown, self-referring and outside

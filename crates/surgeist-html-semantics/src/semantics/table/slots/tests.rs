@@ -43,6 +43,7 @@ fn line(rng: &mut Rng, count: usize, width: usize, overlap: bool) -> Vec<SlotEnt
             cell,
             reach,
             header,
+            data: None,
             key: None,
             differs: None,
         });
@@ -204,6 +205,7 @@ fn short_entry(start: usize, cell: usize) -> SlotEntry {
         cell,
         reach: start + 1,
         header: None,
+        data: None,
         key: None,
         differs: None,
     }
@@ -361,6 +363,7 @@ fn a_list_finds_the_nearest_header_at_or_before_a_position() {
             reach: position + 1,
             // Table indexes: a header at table index 11 (list position 1).
             header: [None, Some(11), Some(11), Some(13)][position],
+            data: None,
             key: None,
             differs: None,
         })
@@ -374,6 +377,33 @@ fn a_list_finds_the_nearest_header_at_or_before_a_position() {
     assert_eq!(list.header_at(2), Some(1));
     assert_eq!(list.header_at(3), Some(3));
     assert_eq!(list.header_at(9), None);
+}
+
+#[test]
+fn a_list_finds_the_nearest_data_cell_at_or_before_a_position() {
+    let entries: Vec<SlotEntry> = (0..4)
+        .map(|position| SlotEntry {
+            start: position,
+            end: position + 1,
+            cell: position,
+            reach: position + 1,
+            header: None,
+            // Table indexes: data cells at table index 11 (list position 1)
+            // and 13 (list position 3).
+            data: [None, Some(11), Some(11), Some(13)][position],
+            key: None,
+            differs: None,
+        })
+        .collect();
+    let list = List {
+        entries: &entries,
+        first: 10,
+    };
+    assert_eq!(list.data_at(0), None);
+    assert_eq!(list.data_at(1), Some(1));
+    assert_eq!(list.data_at(2), Some(1));
+    assert_eq!(list.data_at(3), Some(3));
+    assert_eq!(list.data_at(9), None);
 }
 
 #[test]
@@ -398,6 +428,7 @@ fn headers_crossing_other_lines_are_found_past_those_crossing_the_same_ones() {
             cell: position,
             reach: position + 1,
             header: *header,
+            data: None,
             key: Some(*key),
             differs: *differs,
         })

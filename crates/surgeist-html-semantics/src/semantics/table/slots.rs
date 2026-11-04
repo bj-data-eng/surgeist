@@ -37,6 +37,9 @@ pub(super) struct SlotEntry {
     /// Index in the axis' entry table of the nearest header cell at or before
     /// this entry in its line.
     pub(super) header: Option<usize>,
+    /// Index in the axis' entry table of the nearest data cell at or before
+    /// this entry in its line.
+    pub(super) data: Option<usize>,
     /// For a header, which lines it crosses, as the position of that extent
     /// among the axis' header extents. A scan hides a header behind an earlier
     /// header that crosses the same lines, so this is what is compared.
@@ -95,6 +98,16 @@ impl<'a> List<'a> {
             .header?
             .checked_sub(self.first)
             .filter(|header| *header <= position)
+    }
+
+    /// The position in the list of the nearest data cell at or before
+    /// `position`.
+    pub(super) fn data_at(&self, position: usize) -> Option<usize> {
+        self.entries
+            .get(position)?
+            .data?
+            .checked_sub(self.first)
+            .filter(|data| *data <= position)
     }
 }
 
