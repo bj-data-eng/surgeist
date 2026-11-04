@@ -800,10 +800,10 @@ fn element_reference_facts_charge_their_pinned_total() {
 // natural dimensions. Their refusals do not carry the totals, so these pin the
 // least admitting work limit only.
 
-fn integer(digits: &str) -> HtmlNonNegativeInteger {
+pub fn integer(digits: &str) -> HtmlNonNegativeInteger {
     HtmlNonNegativeInteger::from_decimal_digits(&digits.into()).unwrap()
 }
-fn rational(numerator: &str, denominator: &str) -> HtmlNonNegativeRational {
+pub fn rational(numerator: &str, denominator: &str) -> HtmlNonNegativeRational {
     HtmlNonNegativeRational::new(integer(numerator), integer(denominator)).unwrap()
 }
 fn element_page(names: &[(&str, &[(&str, &str)])]) -> (HtmlCapture, Vec<HtmlCaptureSubjectId>) {

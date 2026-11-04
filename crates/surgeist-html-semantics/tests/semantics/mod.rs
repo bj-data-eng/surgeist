@@ -6,6 +6,7 @@ mod base;
 mod capture;
 mod constructor_work;
 mod controls;
+mod duplicate_work;
 mod elements;
 mod global;
 mod held_graph;
