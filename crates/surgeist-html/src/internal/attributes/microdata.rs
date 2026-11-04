@@ -176,46 +176,54 @@ impl HtmlMicrodataTokenList {
     }
 }
 impl HtmlValueInterpreter {
-    /// Whole raw cap precedes scanning. Ordinary allocation; no semantic work budget.
+    /// Whole raw cap precedes scanning. Storage is reserved with the fallible allocator and no
+    /// semantic work budget applies: a refused reservation returns
+    /// [`HtmlValueInterpretationError::AllocationFailed`].
     pub fn microdata_tokens(
         &self,
         kind: HtmlMicrodataTokenKind,
         raw: Option<&DocumentString>,
-    ) -> Result<HtmlMicrodataTokenReport, HtmlValueAdmissionError> {
+    ) -> Result<HtmlMicrodataTokenReport, HtmlValueInterpretationError> {
         self.admit_attribute_raw(raw)?;
-        use crate::internal::attributes::microdata::{
-            HtmlMicrodataTokenInterpretation, HtmlMicrodataTokenMeter,
-            HtmlMicrodataTokenReservation,
-        };
-        struct Ordinary;
-        impl HtmlMicrodataTokenMeter for Ordinary {
-            type Error = std::convert::Infallible;
-            fn work(&mut self, _: usize) -> Result<(), Self::Error> {
-                Ok(())
-            }
-            fn reserve(
-                &mut self,
-                reservation: &mut HtmlMicrodataTokenReservation<'_>,
-            ) -> Result<(), Self::Error> {
-                reservation
-                    .try_reserve()
-                    .expect("ordinary microdata allocation");
-                Ok(())
-            }
-        }
-        let mut owner = Some(HtmlMicrodataTokenInterpretation::new(kind, raw));
-        while let Some(action) = owner
-            .as_mut()
-            .expect("retained owner")
-            .next_action()
-            .expect("ordinary protocol")
-        {
+        HtmlMicrodataTokenInterpretation::new(kind, raw).run_unmetered()
+    }
+}
+
+/// The meter of the standalone operation. It admits all work and every reservation, so the only
+/// refusals are the allocator's and the platform's, which it hands back as the engine's own error.
+struct UnmeteredTokens;
+impl HtmlMicrodataTokenMeter for UnmeteredTokens {
+    type Error = HtmlMicrodataTokenInterpretationError;
+    fn work(&mut self, _: usize) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn reserve(
+        &mut self,
+        reservation: &mut HtmlMicrodataTokenReservation<'_>,
+    ) -> Result<(), Self::Error> {
+        reservation.try_reserve()
+    }
+}
+/// The standalone operation's cause for an engine failure.
+fn ordinary(error: HtmlMicrodataTokenInterpretationError) -> HtmlValueInterpretationError {
+    HtmlValueInterpretationError::from_engine(
+        error.is_allocation_failed(),
+        error.is_representation_exhausted(),
+    )
+}
+impl HtmlMicrodataTokenInterpretation<'_> {
+    /// Runs the interpretation to its report with a meter that admits everything. This is the one
+    /// driver of the standalone operation.
+    fn run_unmetered(mut self) -> Result<HtmlMicrodataTokenReport, HtmlValueInterpretationError> {
+        while let Some(action) = self.next_action().map_err(ordinary)? {
             action
-                .advance(&mut Ordinary)
-                .expect("ordinary microdata execution");
+                .advance(&mut UnmeteredTokens)
+                .map_err(|error| match error {
+                    HtmlMicrodataTokenActionError::Admission(error)
+                    | HtmlMicrodataTokenActionError::Protocol(error) => ordinary(error),
+                })?;
         }
-        Ok(HtmlMicrodataTokenInterpretation::try_finish(&mut owner)
-            .expect("completed ordinary interpretation"))
+        Self::try_finish(&mut Some(self)).map_err(ordinary)
     }
 }
 
@@ -990,10 +998,13 @@ mod ordinary_allocation_tests {
             let verdict = match &outcome {
                 Err(_) => "panicked",
                 Ok(Ok(_)) => "reported success",
-                Ok(Err(_)) => "returned an error",
+                Ok(Err(HtmlValueInterpretationError::AllocationFailed)) => {
+                    "returned the allocation error"
+                }
+                Ok(Err(_)) => "returned another error",
             };
             assert_eq!(
-                verdict, "returned an error",
+                verdict, "returned the allocation error",
                 "reservation {refuse_from} of {requests} refused"
             );
         }

@@ -20,6 +20,7 @@ use crate::{
     internal::values::DocumentString, internal::values::Namespace, internal::values::QualifiedName,
     internal::values::custom_names::HtmlCustomElementNameError,
     internal::values::interpretation::HtmlValueAdmissionError,
+    internal::values::interpretation::HtmlValueInterpretationError,
     internal::values::interpretation::HtmlValueInterpreter, vocabulary::KnownHtmlAttribute,
     vocabulary::KnownHtmlElement,
 };

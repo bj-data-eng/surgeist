@@ -325,15 +325,11 @@ impl Materialization {
                 requested_bytes: bytes,
             });
         }
-        if self.limits.is_some() {
-            values
-                .try_reserve_exact(needed - values.len())
-                .map_err(|_| E::Allocation {
-                    requested_bytes: bytes,
-                })?;
-        } else {
-            values.reserve_exact(needed - values.len());
-        }
+        values
+            .try_reserve_exact(needed - values.len())
+            .map_err(|_| E::Allocation {
+                requested_bytes: bytes,
+            })?;
         self.observe_growth(
             values.capacity() - before,
             std::mem::size_of::<T>(),
@@ -1647,7 +1643,7 @@ impl HtmlValueInterpreter {
         &self,
         element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
-    ) -> Result<HtmlAutocompleteReport, HtmlValueAdmissionError> {
+    ) -> Result<HtmlAutocompleteReport, HtmlValueInterpretationError> {
         self.control_autocomplete_with_state(element, raw, None)
     }
     /// Actual input state selects mantle, author group and processing domain.
@@ -1657,7 +1653,7 @@ impl HtmlValueInterpreter {
         element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         state: HtmlInputType,
-    ) -> Result<HtmlAutocompleteReport, HtmlValueAdmissionError> {
+    ) -> Result<HtmlAutocompleteReport, HtmlValueInterpretationError> {
         self.control_autocomplete_with_state(element, raw, Some(state))
     }
     fn control_autocomplete_with_state(
@@ -1665,17 +1661,23 @@ impl HtmlValueInterpreter {
         element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         state: Option<HtmlInputType>,
-    ) -> Result<HtmlAutocompleteReport, HtmlValueAdmissionError> {
-        let result =
-            self.materialize_autocomplete(element, raw, state, &mut Materialization::new(None));
-        match result {
-            Ok(report) => Ok(report),
-            Err(HtmlAutocompleteMaterializationError::RawAdmission(error)) => Err(error),
-            // Standalone has no allocation-limit result contract. Its ordinary
-            // reserve policy already panics/aborts on representation/allocation
-            // failure, as the previous infallible materialization did.
-            Err(error) => panic!("standalone autocomplete storage exhausted: {error:?}"),
-        }
+    ) -> Result<HtmlAutocompleteReport, HtmlValueInterpretationError> {
+        self.materialize_autocomplete(element, raw, state, &mut Materialization::new(None))
+            .map_err(|error| match error {
+                HtmlAutocompleteMaterializationError::RawAdmission(error) => error.into(),
+                HtmlAutocompleteMaterializationError::Allocation { .. } => {
+                    HtmlValueInterpretationError::AllocationFailed
+                }
+                HtmlAutocompleteMaterializationError::Representation => {
+                    HtmlValueInterpretationError::RepresentationExhausted
+                }
+                // Allowances belong to the controlled operation; this one sets none.
+                HtmlAutocompleteMaterializationError::BytesLimit { .. }
+                | HtmlAutocompleteMaterializationError::OutputLimit { .. }
+                | HtmlAutocompleteMaterializationError::ScratchLimit { .. } => {
+                    HtmlValueInterpretationError::ProtocolViolated
+                }
+            })
     }
 
     /// Materializes the actual attribute's grammar and processing observations
@@ -2135,10 +2137,13 @@ mod ordinary_allocation_tests {
             let verdict = match &outcome {
                 Err(_) => "panicked",
                 Ok(Ok(_)) => "reported success",
-                Ok(Err(_)) => "returned an error",
+                Ok(Err(HtmlValueInterpretationError::AllocationFailed)) => {
+                    "returned the allocation error"
+                }
+                Ok(Err(_)) => "returned another error",
             };
             assert_eq!(
-                verdict, "returned an error",
+                verdict, "returned the allocation error",
                 "reservation {refuse_from} of {requests} refused"
             );
         }
@@ -2174,10 +2179,13 @@ mod ordinary_allocation_tests {
             let verdict = match &outcome {
                 Err(_) => "panicked",
                 Ok(Ok(_)) => "reported success",
-                Ok(Err(_)) => "returned an error",
+                Ok(Err(HtmlValueInterpretationError::AllocationFailed)) => {
+                    "returned the allocation error"
+                }
+                Ok(Err(_)) => "returned another error",
             };
             assert_eq!(
-                verdict, "returned an error",
+                verdict, "returned the allocation error",
                 "reservation {refuse_from} of {requests} refused"
             );
         }

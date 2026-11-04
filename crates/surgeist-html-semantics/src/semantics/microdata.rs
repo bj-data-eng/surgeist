@@ -4,7 +4,10 @@ use super::*;
 use crate::HtmlCaptureDocumentId;
 use surgeist_html::attributes::microdata::{HtmlMicrodataTokenKind, HtmlMicrodataTokenReport};
 use surgeist_html::{
-    values::{Attribute, DocumentString, HtmlValueAdmissionError, HtmlValueInterpreter},
+    values::{
+        Attribute, DocumentString, HtmlValueAdmissionError, HtmlValueInterpretationError,
+        HtmlValueInterpreter,
+    },
     vocabulary::KnownHtmlElement,
 };
 
@@ -870,7 +873,7 @@ impl HtmlMicrodataRawBinding {
         let interpreter = HtmlValueInterpreter::new(max_raw_units);
         interpreter
             .admit_attribute_raw(Some(raw))
-            .map_err(HtmlMicrodataFactsError::Attribute)?;
+            .map_err(|error| HtmlMicrodataFactsError::Attribute(error.into()))?;
         let (start, end) = match source {
             HtmlMicrodataRawSource::ItemTypeToken(index)
             | HtmlMicrodataRawSource::ItemPropToken(index) => {
@@ -1177,7 +1180,7 @@ impl HtmlMicrodataPropertyFact {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlMicrodataFactsError {
     Capture(HtmlCaptureError),
-    Attribute(HtmlValueAdmissionError),
+    Attribute(HtmlValueInterpretationError),
     WrongRole,
     MissingRaw,
     TokenIndex,

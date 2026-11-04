@@ -8,7 +8,7 @@ pub(crate) mod controlled;
 use crate::internal::values::semantic_input::{attributes_iter, find_attribute};
 use crate::{
     internal::attributes::link_destination::HtmlLinkDestination, internal::values::DocumentString,
-    internal::values::interpretation::HtmlValueAdmissionError,
+    internal::values::interpretation::HtmlValueInterpretationError,
     internal::values::interpretation::HtmlValueInterpreter, vocabulary::KnownHtmlElement,
 };
 use crate::{
@@ -1086,12 +1086,14 @@ pub(crate) fn is_exact_feed_type(raw: &DocumentString) -> bool {
 }
 impl HtmlValueInterpreter {
     /// Ordinary local values with per-original-attribute admission. No contextual,
-    /// registry, aggregate memory/work or cancellation certificate is supplied.
+    /// registry, aggregate memory/work or cancellation certificate is supplied. Storage is reserved
+    /// with the fallible allocator: a refusal returns
+    /// [`HtmlValueInterpretationError::AllocationFailed`].
     pub fn rel_with_attributes(
         &self,
         element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         attributes: &(impl crate::internal::values::semantic_input::HtmlAttributesInput + ?Sized),
-    ) -> Result<HtmlRelReport, HtmlValueAdmissionError> {
+    ) -> Result<HtmlRelReport, HtmlValueInterpretationError> {
         let get = |name: &str| {
             attributes_iter(attributes)
                 .find(|a| {
@@ -1132,20 +1134,14 @@ impl HtmlValueInterpreter {
         }
         input.role = HtmlRelRole::from_element(element);
         input.as_destination = self.link_as(element, as_attribute)?.intrinsic().copied();
-        let mut owner = Some(controlled::HtmlRelInterpretation::new(input));
-        owner
-            .as_mut()
-            .expect("retained owner")
-            .interpret(&mut controlled::OrdinaryRelMeter)
-            .expect("ordinary rel interpretation");
-        Ok(controlled::HtmlRelInterpretation::try_finish(&mut owner)
-            .expect("completed ordinary rel"))
+        controlled::HtmlRelInterpretation::new(input).run_unmetered()
     }
 }
 
 #[cfg(test)]
 mod ordinary_allocation_tests {
     use crate::internal::amortized::fault;
+    use crate::values::HtmlValueInterpretationError;
     use crate::values::{Attribute, HtmlValueInterpreter, OrderedAttributes};
     use crate::vocabulary::{KnownHtmlAttribute, KnownHtmlElement};
     use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -1178,10 +1174,13 @@ mod ordinary_allocation_tests {
             let verdict = match &outcome {
                 Err(_) => "panicked",
                 Ok(Ok(_)) => "reported success",
-                Ok(Err(_)) => "returned an error",
+                Ok(Err(HtmlValueInterpretationError::AllocationFailed)) => {
+                    "returned the allocation error"
+                }
+                Ok(Err(_)) => "returned another error",
             };
             assert_eq!(
-                verdict, "returned an error",
+                verdict, "returned the allocation error",
                 "reservation {refuse_from} of {requests} refused"
             );
         }

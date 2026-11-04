@@ -658,15 +658,36 @@ pub fn classify_rel<M: HtmlRelMeter>(
 ) -> Result<(Option<HtmlRelKeyword>, HtmlRelSpelling), HtmlRelActionError<M::Error>> {
     super::classify(units, &mut Meter(meter))
 }
-pub(super) struct OrdinaryRelMeter;
-impl HtmlRelMeter for OrdinaryRelMeter {
-    type Error = std::convert::Infallible;
+/// The meter of the standalone operation. It admits all work and every reservation, so the only
+/// refusals are the allocator's and the platform's, which it hands back as the engine's own error.
+struct UnmeteredRel;
+impl HtmlRelMeter for UnmeteredRel {
+    type Error = HtmlRelInterpretationError;
     fn work(&mut self, _: usize) -> Result<(), Self::Error> {
         Ok(())
     }
     fn reserve(&mut self, guard: &mut HtmlRelReservation<'_>) -> Result<(), Self::Error> {
-        guard.try_reserve().expect("ordinary rel allocation");
-        Ok(())
+        guard.try_reserve()
+    }
+}
+/// The standalone operation's cause for an engine failure.
+fn ordinary(error: HtmlRelInterpretationError) -> HtmlValueInterpretationError {
+    HtmlValueInterpretationError::from_engine(
+        error.is_allocation_failed(),
+        error.is_representation_exhausted(),
+    )
+}
+impl HtmlRelInterpretation<'_> {
+    /// Runs the interpretation to its report with a meter that admits everything. This is the one
+    /// driver of the standalone operation.
+    pub(super) fn run_unmetered(mut self) -> Result<HtmlRelReport, HtmlValueInterpretationError> {
+        self.interpret(&mut UnmeteredRel)
+            .map_err(|error| match error {
+                HtmlRelActionError::Admission(error) | HtmlRelActionError::Protocol(error) => {
+                    ordinary(error)
+                }
+            })?;
+        Self::try_finish(&mut Some(self)).map_err(ordinary)
     }
 }
 

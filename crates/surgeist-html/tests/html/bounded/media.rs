@@ -8,7 +8,9 @@ use surgeist_html::{
         HtmlMediaNameSupply, match_media_field,
     },
     elements::media::{HtmlMediaCursorAction, HtmlMediaValueClass, HtmlMetaMediaPlacement},
-    values::{Attribute, HtmlValueInterpreter, Namespace, QualifiedName},
+    values::{
+        Attribute, HtmlValueInterpretationError, HtmlValueInterpreter, Namespace, QualifiedName,
+    },
     vocabulary::KnownHtmlElement,
 };
 fn matched<'a>(a: &'a Attribute, field: HtmlMediaField) -> HtmlMediaFieldMatch<'a, Attribute> {
@@ -252,6 +254,9 @@ fn ordinary_both_raw_caps_precede_foreign_namespace_and_non_meta_shortcuts() {
         let error = HtmlValueInterpreter::new(1)
             .media_for_meta(&element, Some(&media), Some(&name))
             .unwrap_err();
+        let HtmlValueInterpretationError::Admission(error) = error else {
+            panic!("expected the admission refusal, got {error:?}");
+        };
         assert_eq!((error.capacity(), error.required()), (1, 4));
     }
 }
