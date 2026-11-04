@@ -156,7 +156,8 @@ struct Scan<'s> {
     /// the keys stamped with the scan's `epoch`.
     closed: &'s mut Vec<usize>,
     /// The starts of the short data cells that made opaque a header of the
-    /// long cells that the scan noting then reached again hidden.
+    /// long cells that the scan noting then reached again hidden; once the
+    /// scan ends, each start once, in ascending order.
     window: &'s mut Vec<usize>,
     /// Whether the scan in progress notes the window.
     noting: bool,
@@ -669,6 +670,16 @@ impl<'a> HtmlSemanticSession<'a> {
                 let scanned = self.table_scan_line(model, scan, principal, target, cells, false);
                 scan.noting = false;
                 scanned?;
+                // Each start once: alternating extents note one start many
+                // times, and every line that shares the scan searches for each.
+                let count = scan.window.len();
+                let bits = count
+                    .checked_ilog2()
+                    .and_then(|bits| usize::try_from(bits).ok())
+                    .unwrap_or(0);
+                self.charge(count.saturating_mul(1 + bits))?;
+                scan.window.sort_unstable();
+                scan.window.dedup();
                 if scan.window.is_empty() {
                     base = true;
                 } else {

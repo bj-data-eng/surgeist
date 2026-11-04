@@ -2278,10 +2278,10 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
     (HTML 877d §4.9.12.2, the internal algorithm for scanning and assigning
     header cells, step 9). The first such row is scanned in full, noting the
     data cells of its own that made a tall header opaque before the scan met
-    another tall header hidden by it (one note for each visit that found a
-    header hidden). Every later row that has a data cell at each of those
-    starts takes no tall header that row did not, and so costs a search for
-    each noted cell and a visit for each header of its own that it reads: the
+    another tall header hidden by it (each start once, so at most one for each
+    header the scan visited). Every later row that has a data cell at each of
+    those starts takes no tall header that row did not, and so costs a search
+    for each noted cell and a visit for each header of its own that it reads: the
     nearest and those next to it, up to the first data cell between two, tall
     or not. A first column of cells beside tall header cells, and cells of
     each row between tall header cells that cross the same rows, therefore
@@ -2290,10 +2290,11 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
   - *The fine bound.* Header assignment is `O((C + A + V + L + R) log C)`, where
     `A` is the number of associations, `V` the number of unhidden headers
     visited without being listed (a header that is no header of the scan's
-    kind, as `scope=col` is for a row scan) and `R` the number of times a cell
-    crosses a row (or column) that has a cell of its own before it, when no
-    cells overlap and each such row has the noted cells of the first such
-    row, as above. It holds for a table of `n` by `n` cells whose headers are
+    kind, as `scope=col` is for a row scan) and `R` the sum, over the times a
+    cell crosses a row (or column) that has a cell of its own before it, of one
+    and the cells noted for the first such row it crosses (each is searched
+    for in the row), when no cells overlap and each such row has the noted
+    cells of the first such row, as above. It holds for a table of `n` by `n` cells whose headers are
     a first row and first column, with or without a `tbody`; for tall header
     cells with data cells between them beside later rows that hold their own
     cells to the right, or to the left in a first column; for tall header
