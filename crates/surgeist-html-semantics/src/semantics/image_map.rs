@@ -39,7 +39,7 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let mut frames = Vec::new();
         let result = self.map_areas_inner(node, &mut frames);
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         result
     }
     fn map_areas_inner(
@@ -185,7 +185,7 @@ impl<'a> HtmlSemanticSession<'a> {
         let result = self.usemap_inner(subject, raw, reference, &mut frames);
         // Only current scratch is released. Cumulative allocated bytes and peak
         // remain recorded, including allocation overshoot and terminal failure.
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         result
     }
     fn usemap_inner(

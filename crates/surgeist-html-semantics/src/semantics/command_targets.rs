@@ -429,7 +429,7 @@ impl<'a> HtmlSemanticSession<'a> {
                         Err(ControlStop::Failure(failure)) => Err(failure),
                     }
                 })();
-                self.release_scratch(frames.capacity());
+                self.release_scratch(&frames);
                 let target = match outcome? {
                     Ok(target) => target,
                     Err(missing) => return Ok(HtmlSemanticValue::Missing(missing)),

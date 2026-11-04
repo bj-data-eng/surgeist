@@ -213,7 +213,7 @@ pub(super) fn validate(
 }
 struct ScratchControl<'s, 'a> {
     session: &'s mut HtmlSemanticSession<'a>,
-    capacity: usize,
+    backing: ScratchBacking,
 }
 impl HtmlRelMeter for ScratchControl<'_, '_> {
     type Error = HtmlSemanticFailure;
@@ -234,13 +234,24 @@ impl HtmlRelMeter for ScratchControl<'_, '_> {
                 Ok(guard.capacity())
             },
         );
-        self.capacity += guard.capacity() - before;
+        // A refusal already holds its failure slot; the backing is still recorded when it can be.
+        let Some(growth) = guard.capacity().checked_sub(before) else {
+            return result.and(Err(self
+                .session
+                .stop(HtmlSemanticFailureKind::ProtocolViolated)));
+        };
+        let Some(backing) = self.backing.grown(growth, guard.record_size()) else {
+            return result.and(Err(self
+                .session
+                .stop(HtmlSemanticFailureKind::RepresentationExhausted)));
+        };
+        self.backing = backing;
         result
     }
 }
 impl Drop for ScratchControl<'_, '_> {
     fn drop(&mut self) {
-        self.session.release_scratch(self.capacity)
+        self.session.release_scratch_backing(self.backing)
     }
 }
 impl<'a> HtmlSemanticSession<'a> {
@@ -307,7 +318,7 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let mut meter = ScratchControl {
             session: self,
-            capacity: 0,
+            backing: ScratchBacking::default(),
         };
         let mut owner =
             HtmlRelInterpretation::new(HtmlRelInputs::new(Some(role)).with_rel(rel).with_rev(rev));

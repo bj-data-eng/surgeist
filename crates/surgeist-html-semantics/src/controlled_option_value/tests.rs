@@ -69,7 +69,9 @@ fn setup_is_admitted_before_owner_formation_and_failure_keeps_spent_work() {
 #[test]
 fn controlled_allocation_attempt_failure_keeps_its_distinct_cause() {
     let (owner, _, _) = build();
-    let error = owner.capture_failure(crate::capture::preflight::Failure::AllocationFailed);
+    let error = owner
+        .control
+        .capture_failure(crate::capture::preflight::Failure::AllocationFailed);
     assert_eq!(
         error.kind(),
         &HtmlControlledOptionValueError::AllocationFailed
@@ -480,40 +482,59 @@ fn usage(bytes: usize, units: usize) -> HtmlOptionValueStorageUsage {
     HtmlOptionValueStorageUsage { bytes, units }
 }
 
-/// Storage that was never added cannot be released: the held amount is not wrapped around.
+/// Storage that was never added cannot be released: the refusal is a protocol breach and the held
+/// amount is neither changed nor wrapped around.
 #[test]
-fn releasing_storage_that_was_never_added_does_not_wrap_the_held_amount() {
+fn releasing_storage_that_was_never_added_is_a_protocol_violation() {
     let control = Control::new(envelope());
-    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _ = control.release(usage(1, 0), false);
-    }));
-    assert!(outcome.is_ok(), "release must not panic");
+    assert_eq!(
+        control.release(usage(1, 0), false),
+        Err(HtmlOptionValueControlError::ProtocolViolated)
+    );
+    assert_eq!(control.temporary.get(), usage(0, 0));
+    control.temporary.set(usage(4, 1));
+    assert_eq!(
+        control.release(usage(4, 2), false),
+        Err(HtmlOptionValueControlError::ProtocolViolated)
+    );
+    assert_eq!(control.temporary.get(), usage(4, 1));
+    assert_eq!(control.release(usage(4, 1), false), Ok(()));
     assert_eq!(control.temporary.get(), usage(0, 0));
 }
 
 /// Moving storage that is not held as temporary storage is refused and changes nothing.
 #[test]
-fn transferring_storage_that_is_not_held_changes_nothing() {
+fn transferring_storage_that_is_not_held_is_a_protocol_violation() {
     let control = Control::new(envelope());
-    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _ = control.transfer(usage(8, 2));
-    }));
-    assert!(outcome.is_ok(), "transfer must not panic");
+    assert_eq!(
+        control.transfer(usage(8, 2)),
+        Err(HtmlOptionValueControlError::ProtocolViolated)
+    );
     assert_eq!(control.temporary.get(), usage(0, 0));
     assert_eq!(control.live.get(), usage(0, 0));
 }
 
-/// A transfer whose destination cannot represent the sum is refused as exhaustion, with the
-/// source still held.
+/// A transfer whose destination cannot represent the sum is exhaustion, with the source still held.
 #[test]
 fn transferring_into_a_full_live_count_is_exhaustion_not_a_wrap() {
     let control = Control::new(envelope());
     control.live.set(usage(usize::MAX, 0));
     control.temporary.set(usage(1, 0));
-    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _ = control.transfer(usage(1, 0));
-    }));
-    assert!(outcome.is_ok(), "transfer must not panic");
+    assert_eq!(
+        control.transfer(usage(1, 0)),
+        Err(HtmlOptionValueControlError::RepresentationExhausted)
+    );
     assert_eq!(control.live.get(), usage(usize::MAX, 0));
     assert_eq!(control.temporary.get(), usage(1, 0));
+}
+
+/// Held storage moves from temporary to retained custody without changing the total.
+#[test]
+fn transferring_held_storage_moves_it_to_the_retained_total() {
+    let control = Control::new(envelope());
+    control.temporary.set(usage(10, 3));
+    control.live.set(usage(5, 1));
+    assert_eq!(control.transfer(usage(4, 2)), Ok(()));
+    assert_eq!(control.temporary.get(), usage(6, 1));
+    assert_eq!(control.live.get(), usage(9, 3));
 }

@@ -20,7 +20,7 @@ impl<'a> HtmlSemanticSession<'a> {
         let node = self.node(subject)?;
         let mut frames = Vec::new();
         let result = self.address_descendants(node, &mut frames);
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         result
     }
 

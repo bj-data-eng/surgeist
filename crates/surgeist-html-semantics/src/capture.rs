@@ -2422,6 +2422,19 @@ impl HtmlCaptureBuilder {
         HtmlCapture(Arc::new(self.data))
     }
 
+    /// Publishes the assembled data from a builder the caller owns only by reference. The records
+    /// move into the capture and the builder keeps the shared identities, so it is a spent shell
+    /// that the caller replaces or drops at once and never assembles into again.
+    pub(crate) fn publish_taking(&mut self) -> HtmlCapture {
+        HtmlCapture(Arc::new(CaptureData {
+            identity: self.data.identity.clone(),
+            host_revision: self.data.host_revision.clone(),
+            records: std::mem::take(&mut self.data.records),
+            registries: std::mem::take(&mut self.data.registries),
+            usage: self.data.usage,
+        }))
+    }
+
     /// Validates borrowed data before the caller moves it into the immutable wrapper.
     /// Admission failure retains this exact builder and the caller's actual scratch.
     pub(crate) fn preflight_finish<E>(

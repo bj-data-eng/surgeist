@@ -112,7 +112,7 @@ impl<'a> HtmlSemanticSession<'a> {
             .map_err(|e| self.stop(HtmlSemanticFailureKind::Attribute(e)))?;
         let mut frames = Vec::new();
         let result = self.details_group_inner(subject, name, &mut frames);
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         result
     }
     fn details_group_inner(

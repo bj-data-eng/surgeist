@@ -65,16 +65,16 @@ pub(super) struct Placement {
 }
 
 impl Placement {
-    /// Every capacity admitted for this placement's scratch.
-    pub(super) fn capacities(&self) -> [usize; 9] {
-        let [low, floor, ceil] = self.occupancy.capacities();
+    /// Every backing admitted for this placement's scratch.
+    pub(super) fn backings(&self) -> [ScratchBacking; 9] {
+        let [low, floor, ceil] = self.occupancy.backings();
         [
-            self.downward.capacity(),
-            self.anchors.capacity(),
-            self.links.capacity(),
-            self.reaches.capacity(),
-            self.hits.capacity(),
-            self.overlaps.capacity(),
+            ScratchBacking::of(&self.downward),
+            ScratchBacking::of(&self.anchors),
+            ScratchBacking::of(&self.links),
+            ScratchBacking::of(&self.reaches),
+            ScratchBacking::of(&self.hits),
+            ScratchBacking::of(&self.overlaps),
             low,
             floor,
             ceil,

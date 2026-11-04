@@ -101,7 +101,7 @@ impl<'a> HtmlSemanticSession<'a> {
             };
             let mut frames = Vec::new();
             let uniqueness = self.map_name_uniqueness(subject, raw.value(), &mut frames);
-            self.release_scratch(frames.capacity());
+            self.release_scratch(&frames);
             let uniqueness = uniqueness?;
             self.charge(4)?;
             (id.cloned(), relation, uniqueness)

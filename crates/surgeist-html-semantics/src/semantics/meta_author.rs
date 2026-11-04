@@ -145,7 +145,7 @@ impl<'a> HtmlSemanticSession<'a> {
             self.charge(1)
                 .map(|()| HtmlMetaCharsetUniqueness::NotRequired)
         };
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         let charset_uniqueness = result?;
         let mut data = Vec::new();
         self.reserve_nested_output(&mut data, 1)?;

@@ -417,7 +417,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 data,
             }))
         })();
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         result
     }
     fn source_media_context(

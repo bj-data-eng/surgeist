@@ -123,7 +123,7 @@ impl<'a> HtmlSemanticSession<'a> {
     ) -> Result<HtmlSemanticValue<DocumentString>, HtmlSemanticFailure> {
         let mut frames = Vec::new();
         let result = self.html_aware_option_text_inner(subject, &mut frames);
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         result
     }
 

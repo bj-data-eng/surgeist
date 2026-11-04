@@ -192,6 +192,7 @@ impl Draft {
             HtmlOptionValueControlError::RepresentationExhausted => {
                 DomError::RepresentationExhausted
             }
+            HtmlOptionValueControlError::ProtocolViolated => DomError::SelectProtocol,
             HtmlOptionValueControlError::LimitExceeded { resource, .. } => {
                 let limits = self
                     .source_limits

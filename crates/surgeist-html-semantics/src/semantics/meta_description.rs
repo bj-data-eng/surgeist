@@ -96,7 +96,7 @@ impl<'a> HtmlSemanticSession<'a> {
             .map_err(|e| self.stop(HtmlSemanticFailureKind::Attribute(e)))?;
         let mut frames = Vec::new();
         let result = self.meta_description_uniqueness(subject, &mut frames);
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         let uniqueness = result?;
         let mut data = Vec::new();
         self.reserve_nested_output(&mut data, 1)?;

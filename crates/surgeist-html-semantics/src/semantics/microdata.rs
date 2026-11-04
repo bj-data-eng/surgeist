@@ -422,12 +422,12 @@ impl<'a> HtmlSemanticSession<'a> {
                 HtmlMicrodataCondition::Missing,
             ))
         })();
-        self.release_scratch(keys.capacity());
-        self.release_scratch(outgoing.capacity());
-        self.release_scratch(start.capacity());
-        self.release_scratch(visited.capacity());
-        self.release_scratch(on_path.capacity());
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&keys);
+        self.release_scratch(&outgoing);
+        self.release_scratch(&start);
+        self.release_scratch(&visited);
+        self.release_scratch(&on_path);
+        self.release_scratch(&frames);
         result
     }
     pub(super) fn microdata_document_author(
@@ -502,8 +502,8 @@ impl<'a> HtmlSemanticSession<'a> {
                 orphans,
             }))
         })();
-        self.release_scratch(frames.capacity());
-        self.release_scratch(contributors.capacity());
+        self.release_scratch(&frames);
+        self.release_scratch(&contributors);
         self.md_release_graph(&graph);
         result
     }
@@ -1772,7 +1772,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 HtmlSemanticValue::Known(None)
             })
         })();
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         result
     }
     /// Collect the IDs of the ordinary tree at `root` once, visiting elements
@@ -1831,7 +1831,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 .sort_unstable_by(|a, b| a.value.cmp(b.value).then(a.order.cmp(&b.order)));
             Ok(())
         })();
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         if let Err(error) = result {
             self.md_release_id_index(&index);
             return Err(error);
@@ -1839,7 +1839,7 @@ impl<'a> HtmlSemanticSession<'a> {
         Ok(index)
     }
     fn md_release_id_index(&mut self, index: &IdIndex<'a>) {
-        self.release_scratch(index.entries.capacity());
+        self.release_scratch(&index.entries);
     }
     /// The answer `md_find_id(root, units)` gives for the indexed tree.
     fn md_lookup_id(
@@ -1872,7 +1872,7 @@ impl<'a> HtmlSemanticSession<'a> {
             self.md_release_id_index(index);
         }
         if let Some(index) = &indexes.positions {
-            self.release_scratch(index.positions.capacity());
+            self.release_scratch(&index.positions);
         }
     }
     /// Record tree-order positions over the ordinary walk from `root`.
@@ -1907,9 +1907,9 @@ impl<'a> HtmlSemanticSession<'a> {
             index.positions.sort_unstable();
             Ok(())
         })();
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         if let Err(error) = result {
-            self.release_scratch(index.positions.capacity());
+            self.release_scratch(&index.positions);
             return Err(error);
         }
         Ok(index)
@@ -1991,7 +1991,7 @@ impl<'a> HtmlSemanticSession<'a> {
             Ok(())
         })();
         if let Some(index) = &local {
-            self.release_scratch(index.positions.capacity());
+            self.release_scratch(&index.positions);
         }
         result
     }
@@ -2117,8 +2117,8 @@ impl<'a> HtmlSemanticSession<'a> {
                 revisit: error,
             })
         })();
-        self.release_scratch(pending.capacity());
-        self.release_scratch(entries.capacity());
+        self.release_scratch(&pending);
+        self.release_scratch(&entries);
         result
     }
     fn md_url(
@@ -2317,7 +2317,7 @@ impl<'a> HtmlSemanticSession<'a> {
             }
             Ok(())
         })();
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         self.md_release_crawl_indexes(&indexes);
         if let Err(error) = result {
             self.md_release_graph(&graph);
@@ -2326,9 +2326,9 @@ impl<'a> HtmlSemanticSession<'a> {
         Ok(graph)
     }
     fn md_release_graph(&mut self, graph: &Graph) {
-        self.release_scratch(graph.items.capacity());
-        self.release_scratch(graph.edges.capacity());
-        self.release_scratch(graph.properties.capacity());
+        self.release_scratch(&graph.items);
+        self.release_scratch(&graph.edges);
+        self.release_scratch(&graph.properties);
     }
     /// Capture-local position of a graph item, found by binary search over the
     /// item ordinals collected once per query.
@@ -2541,13 +2541,13 @@ impl<'a> HtmlSemanticSession<'a> {
                 cycle,
             })
         })();
-        self.release_scratch(keys.capacity());
-        self.release_scratch(incoming.capacity());
-        self.release_scratch(start.capacity());
-        self.release_scratch(on_path.capacity());
-        self.release_scratch(explored.capacity());
-        self.release_scratch(path.capacity());
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&keys);
+        self.release_scratch(&incoming);
+        self.release_scratch(&start);
+        self.release_scratch(&on_path);
+        self.release_scratch(&explored);
+        self.release_scratch(&path);
+        self.release_scratch(&frames);
         result
     }
     pub(super) fn microdata_item(

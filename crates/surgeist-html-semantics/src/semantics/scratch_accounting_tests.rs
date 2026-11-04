@@ -56,7 +56,7 @@ fn releasing_scratch_that_was_never_reserved_is_a_protocol_violation() {
     let c = capture();
     let cx = context(&c);
     let mut s = session(&c, &cx);
-    s.release_scratch(5);
+    s.release_scratch(&Vec::<u64>::with_capacity(5));
     assert_eq!(s.usage().scratch_records(), 0);
     assert_eq!(
         s.failure().map(HtmlSemanticFailure::kind),
@@ -77,7 +77,7 @@ fn releasing_more_scratch_than_was_reserved_keeps_the_reserved_count() {
     let mut frames: Vec<u64> = Vec::new();
     s.reserve_scratch(&mut frames, 4).unwrap();
     let reserved = frames.capacity();
-    s.release_scratch(reserved + 1);
+    s.release_scratch(&Vec::<u64>::with_capacity(reserved + 1));
     assert_eq!(s.usage().scratch_records(), reserved);
     assert_eq!(
         s.failure().map(HtmlSemanticFailure::kind),
@@ -104,9 +104,9 @@ fn a_controlled_execution_tracks_every_live_scratch_vector() {
     let first_bytes = first.capacity() * size_of::<u64>();
     let second_bytes = second.capacity() * size_of::<u64>();
     assert_eq!(control.temporary_bytes(), first_bytes + second_bytes);
-    s.release_scratch(first.capacity());
+    s.release_scratch(&first);
     assert_eq!(control.temporary_bytes(), second_bytes);
-    s.release_scratch(second.capacity());
+    s.release_scratch(&second);
     assert_eq!(control.temporary_bytes(), 0);
     assert_eq!(s.usage().scratch_records(), 0);
 }

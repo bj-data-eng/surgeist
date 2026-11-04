@@ -848,16 +848,8 @@ impl<'a> HtmlSemanticSession<'a> {
             }
             Ok(HtmlDimensionPair::Nonconforming)
         })();
-        for capacity in [
-            n.capacity(),
-            d.capacity(),
-            wd.capacity(),
-            hn.capacity(),
-            a.capacity(),
-            b.capacity(),
-            delta.capacity(),
-        ] {
-            self.release_scratch(capacity);
+        for scratch in [&n, &d, &wd, &hn, &a, &b, &delta] {
+            self.release_scratch(scratch);
         }
         result
     }
@@ -962,7 +954,7 @@ mod tests {
                     e
                 }
             };
-            s.release_scratch(out.capacity());
+            s.release_scratch(&out);
             assert_eq!(err.kind(), &HtmlSemanticFailureKind::Cancelled);
             assert_eq!(s.usage().scratch_records(), 0);
             assert_eq!(s.poll().unwrap_err(), err);

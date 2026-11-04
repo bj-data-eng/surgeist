@@ -36,7 +36,7 @@ impl<'a> HtmlSemanticSession<'a> {
         };
         let mut frames = Vec::new();
         let result = self.datalist_options_inner(subject, filter, &mut frames);
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         result
     }
 

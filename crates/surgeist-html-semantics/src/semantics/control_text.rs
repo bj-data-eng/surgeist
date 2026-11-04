@@ -294,7 +294,7 @@ impl<'a> HtmlSemanticSession<'a> {
     ) -> Result<HtmlSemanticValue<DocumentString>, HtmlSemanticFailure> {
         let mut frames = Vec::new();
         let result = self.control_text_content_inner(subject, origin, &mut frames);
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         result
     }
     fn control_text_content_inner(

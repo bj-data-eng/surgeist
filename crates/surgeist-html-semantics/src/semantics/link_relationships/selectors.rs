@@ -1042,7 +1042,7 @@ impl<'a> HtmlSemanticSession<'a> {
         frames: Vec<HtmlCapturedChildIds<'a>>,
         outcome: Result<T, HtmlSemanticFailure>,
     ) -> Result<T, HtmlSemanticFailure> {
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         drop(frames);
         if outcome.is_err()
             && let Some(first) = self.failure.as_mut()

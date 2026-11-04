@@ -92,7 +92,7 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let mut frames = Vec::new();
         let result = self.document_title_html(document, &mut frames);
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         result
     }
 

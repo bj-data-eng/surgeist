@@ -14,6 +14,8 @@
 //! caller and pays for a step before taking it, so a refusal leaves the work
 //! undone.
 
+use super::super::ScratchBacking;
+
 #[cfg(test)]
 mod tests;
 
@@ -178,20 +180,20 @@ pub(super) struct SlotAxis {
 }
 
 impl SlotAxis {
-    /// Every capacity admitted for this axis' records.
-    pub(super) fn capacities(&self) -> impl Iterator<Item = usize> {
+    /// Every backing admitted for this axis' records.
+    pub(super) fn backings(&self) -> impl Iterator<Item = ScratchBacking> {
         [
-            self.breaks.capacity(),
-            self.runs.capacity(),
-            self.long.capacity(),
-            self.short_lines.capacity(),
-            self.short.capacity(),
-            self.short_least.nodes.capacity(),
-            self.run_least.nodes.capacity(),
-            self.data.starts.capacity(),
-            self.data.reach.capacity(),
-            self.irregular.capacity(),
-            self.keys.capacity(),
+            ScratchBacking::of(&self.breaks),
+            ScratchBacking::of(&self.runs),
+            ScratchBacking::of(&self.long),
+            ScratchBacking::of(&self.short_lines),
+            ScratchBacking::of(&self.short),
+            ScratchBacking::of(&self.short_least.nodes),
+            ScratchBacking::of(&self.run_least.nodes),
+            ScratchBacking::of(&self.data.starts),
+            ScratchBacking::of(&self.data.reach),
+            ScratchBacking::of(&self.irregular),
+            ScratchBacking::of(&self.keys),
         ]
         .into_iter()
     }

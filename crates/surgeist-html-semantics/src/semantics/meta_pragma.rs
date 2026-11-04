@@ -255,7 +255,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 ))
             }
         };
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         let (uniqueness, charset_conflict) = result?;
         let mut data = Vec::new();
         self.reserve_nested_output(&mut data, 1)?;

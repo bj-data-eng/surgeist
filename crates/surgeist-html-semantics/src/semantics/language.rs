@@ -750,7 +750,7 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let mut tasks = Vec::new();
         let result = self.direction_inner(subject, &mut tasks);
-        self.release_scratch(tasks.capacity());
+        self.release_scratch(&tasks);
         match result {
             Ok(value) => Ok(HtmlSemanticValue::Known(value)),
             Err(LanguageStop::Missing(missing)) => Ok(HtmlSemanticValue::Missing(missing)),

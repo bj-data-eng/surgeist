@@ -90,7 +90,7 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let mut frames = Vec::new();
         let result = self.default_button_inner(form, &mut frames);
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         match result {
             Ok(value) => Ok(HtmlSemanticValue::Known(value)),
             Err(DefaultStop::Missing(missing)) => Ok(HtmlSemanticValue::Missing(missing)),
@@ -157,7 +157,7 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let mut frames = Vec::new();
         let result = self.default_blockers_inner(form, &mut frames);
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         match result {
             Ok(blocking_fields) => {
                 self.charge(1)?;

@@ -232,7 +232,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 };
             }
         })();
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         result
     }
 

@@ -347,7 +347,7 @@ impl<'a> HtmlSemanticSession<'a> {
     ) -> Result<HtmlSemanticValue<SelectWalkResult>, HtmlSemanticFailure> {
         let mut frames = Vec::new();
         let result = self.walk_select_inner(subject, mode, &mut frames);
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         result
     }
 

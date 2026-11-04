@@ -779,7 +779,7 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let mut frames = Vec::new();
         let result = self.listed_walk(subject, filter, retain, &mut frames);
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         match result {
             Ok(value) => Ok(HtmlSemanticValue::Known(value)),
             Err(ControlStop::Missing(missing)) => Ok(HtmlSemanticValue::Missing(missing)),
@@ -1129,7 +1129,7 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let mut scratch = Vec::new();
         let result = self.control_form_owner_inner(subject, element, &mut scratch);
-        self.release_scratch(scratch.capacity());
+        self.release_scratch(&scratch);
         match result {
             Ok(Some(value)) => Ok(HtmlSemanticValue::Known(value)),
             Ok(None) => Ok(HtmlSemanticValue::Inapplicable),
@@ -1233,7 +1233,7 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let mut frames = Vec::new();
         let result = self.input_suggestions_source_inner(subject, element, &mut frames);
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         match result {
             Ok(value) => Ok(HtmlSemanticValue::Known(value)),
             Err(ControlStop::Missing(missing)) => Ok(HtmlSemanticValue::Missing(missing)),
@@ -1315,7 +1315,7 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let mut scratch = Vec::new();
         let result = self.control_label_inner(subject, element, &mut scratch);
-        self.release_scratch(scratch.capacity());
+        self.release_scratch(&scratch);
         match result {
             Ok(value) => Ok(HtmlSemanticValue::Known(value)),
             Err(ControlStop::Missing(missing)) => Ok(HtmlSemanticValue::Missing(missing)),
@@ -1433,7 +1433,7 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let mut frames = Vec::new();
         let result = self.control_labels_inner(subject, element, &mut frames);
-        self.release_scratch(frames.capacity());
+        self.release_scratch(&frames);
         match result {
             Ok(value) => Ok(value),
             Err(ControlStop::Missing(missing)) => Ok(HtmlSemanticValue::Missing(missing)),
@@ -1547,7 +1547,7 @@ impl<'a> HtmlSemanticSession<'a> {
             self.charge(1)?;
             Ok(associated.as_ref() == Some(target))
         })();
-        self.release_scratch(scratch.capacity());
+        self.release_scratch(&scratch);
         result
     }
 
