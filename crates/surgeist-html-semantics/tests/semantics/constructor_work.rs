@@ -1110,11 +1110,10 @@ fn the_control_classification_join_charges_its_pinned_total() {
     // By hand, with `A` the size of the element vocabulary. The constructor:
     // duplicate set 3, then per association 1, a lookup 1, the HTML namespace
     // test 29 and the recognition of the 3-unit name (4A + 28). The join then
-    // charges per association 1, a lookup 1 and the recognition (4A + 28), and
-    // examines the classifications in their reverse order: 3 for the first
-    // association, 2 for the second and 1 for the third, plus 1 for each match.
+    // charges per association 1, a lookup 1 and the recognition (4A + 28), then
+    // 1 for the probe of the classification index and 1 for the match.
     let a = KnownHtmlElement::ALL.len();
     let constructor = 3 + 3 * (1 + 1 + 29 + 4 * a + 28);
-    let join = 3 * (1 + 1 + 4 * a + 28) + (3 + 2 + 1) + 3;
+    let join = 3 * (1 + 1 + 4 * a + 28 + 1 + 1);
     assert_eq!(least_work("context join", join_run), constructor + join);
 }

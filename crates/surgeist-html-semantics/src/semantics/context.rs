@@ -1,5 +1,6 @@
 //! Admission and immutable identity of capture-qualified semantic inputs.
 
+use super::index::FactIndex;
 use super::*;
 use surgeist_html::values::DocumentString;
 
@@ -347,6 +348,7 @@ pub struct HtmlSemanticContext {
     capture: HtmlCaptureId,
     pub(super) host_revision: HtmlHostFactsRevision,
     pub(super) classifications: Vec<HtmlCustomControlClassification>,
+    classified: FactIndex,
     pub(super) participation_revision: Option<HtmlListParticipationRevision>,
     pub(super) participation: Option<HtmlListParticipation>,
     language_direction: Option<HtmlLanguageDirectionFacts>,
@@ -661,25 +663,27 @@ impl HtmlSemanticContext {
                 retained_capacity: classifications.capacity(),
             });
         }
-        // The subjects seen so far, sized by the classifications, which the
+        // Where each classification sits, sized by the classifications, which the
         // capacity check above bounds, never by the capture.
-        let mut classified = std::collections::HashSet::new();
-        classified
-            .try_reserve(classifications.len())
-            .map_err(|_| HtmlCaptureError::RepresentationExhausted)
-            .map_err(HtmlSemanticContextError::Capture)?;
-        for fact in &classifications {
+        let mut classified = FactIndex::new(
+            capture.identity(),
+            classifications.len(),
+            |_| Ok(()),
+            HtmlSemanticContextError::Capture(HtmlCaptureError::RepresentationExhausted),
+        )?;
+        for (position, fact) in classifications.iter().enumerate() {
             capture
                 .element_id(&fact.subject)
                 .map_err(HtmlSemanticContextError::Capture)?;
-            if !classified.insert(fact.subject.ordinal()) {
+            if classified.position(&fact.subject).is_some() {
                 return Err(HtmlSemanticContextError::DuplicateSubject(
                     fact.subject.clone(),
                 ));
             }
+            classified.enter(&fact.subject, position);
         }
         let controls = controls
-            .map(|facts| facts.validate_classifications(capture, &classifications))
+            .map(|facts| facts.validate_classifications(capture, &classified, &classifications))
             .transpose()
             .map_err(|error| match error {
                 HtmlControlFactsError::ContradictoryCustomControlAssociation(subject) => {
@@ -700,6 +704,7 @@ impl HtmlSemanticContext {
             capture: capture.identity().clone(),
             host_revision,
             classifications,
+            classified,
             participation_revision,
             participation,
             language_direction,
@@ -740,6 +745,15 @@ impl HtmlSemanticContext {
     }
     pub fn classifications(&self) -> &[HtmlCustomControlClassification] {
         &self.classifications
+    }
+    /// The classification of `subject`, found through the index.
+    pub(super) fn classification(
+        &self,
+        subject: &HtmlCaptureSubjectId,
+    ) -> Option<&HtmlCustomControlClassification> {
+        self.classified
+            .position(subject)
+            .map(|position| &self.classifications[position])
     }
     pub fn participation_revision(&self) -> Option<&HtmlListParticipationRevision> {
         self.participation_revision.as_ref()
