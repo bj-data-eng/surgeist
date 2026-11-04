@@ -4158,4 +4158,44 @@ mod tests {
         assert!(result.is_err(), "x repeats the first storage's x");
         drop(second);
     }
+
+    #[test]
+    fn an_indexed_append_notices_attributes_replaced_by_an_operation() {
+        let (mut storage, _) = make_storage(Vec::new());
+        let mut index = new_index(16);
+        let mut admitted = Admitted::default();
+        for name in ["a", "b", "c"] {
+            let (next, back, result) =
+                append_in_new_edit(storage, index, attribute(name, "v"), &mut admitted);
+            result.unwrap();
+            storage = next;
+            index = back;
+        }
+        // The operation replaces the whole list with another of the same length.
+        let element = storage.node_at(0).unwrap().handle();
+        let replacement =
+            OrderedAttributes::new(["x", "y", "z"].map(|name| attribute(name, "w"))).unwrap();
+        let mut operation = Some(storage.prepare(HtmlConstructionCommand::ReplaceAttributes {
+            element,
+            attributes: replacement.into(),
+        }));
+        while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
+            action.perform().unwrap().accept();
+        }
+        let HtmlConstructionCommit::Changed { storage, .. } =
+            slots::operation(&mut operation).unwrap().commit()
+        else {
+            panic!("replace")
+        };
+        // The index still names a, b and c, so x is found only by rebuilding it.
+        let (_, _, result) = append_in_new_edit(storage, index, attribute("x", "v"), &mut admitted);
+        assert_eq!(
+            result,
+            Err(HtmlConstructionErrorKind::DuplicateAttribute {
+                first: 0,
+                duplicate: 3
+            }
+            .error())
+        );
+    }
 }
