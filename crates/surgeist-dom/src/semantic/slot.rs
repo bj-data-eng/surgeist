@@ -141,12 +141,8 @@ impl DomHtmlCapture {
             limits.inert,
             &mut control,
         )?;
-        let subjects = super::nodes::Subjects::with_table(
-            &self.entries,
-            nodes
-                .into_table()
-                .ok_or(DomHtmlCaptureError::UnmappedSubject)?,
-        );
+        let subjects =
+            super::nodes::Subjects::with_table(&self.entries, nodes.into_table(&mut control)?);
         let input = super::control::with_native_state(
             input,
             &self.source,

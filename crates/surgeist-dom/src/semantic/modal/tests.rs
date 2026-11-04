@@ -312,3 +312,49 @@ fn partial_modal_rows_obey_adapter_bounds_producer_capacity_work_and_cancellatio
     assert_eq!(context.inert().unwrap().documents().len(), 1);
     assert_eq!(source.document(document).unwrap().stamp(), captured.basis());
 }
+
+#[test]
+fn documents_without_a_top_layer_dialog_build_no_node_table_and_charge_no_lookup() {
+    // Neither an unavailable history nor a Document with no managed list has a
+    // Dialog to look up, so no table is built and the work is the same whether
+    // or not the caller supplied one.
+    for disposition in 0..2 {
+        let (mut dom, document, _) = fixture();
+        let state =
+            (disposition == 0).then_some(crate::dialog::DocumentInteractiveState::Unavailable);
+        crate::store::set_modal_fixture_state(&mut dom, document, state, &AtomicBool::new(false))
+            .unwrap();
+        let source = dom.snapshot();
+        let captured = capture(&source, document);
+        let cancel = AtomicBool::new(false);
+        let run = |supplied: bool| {
+            let mut measure = Control {
+                limits: DomHtmlCaptureLimits::new(64, 1_000_000),
+                work: 0,
+                cancellation: &cancel,
+            };
+            let table = nodes::Table::over(&mut measure, &captured.entries).unwrap();
+            let mut lazy = nodes::LazyNodes::new(&captured.entries, supplied.then_some(table));
+            let mut control = Control {
+                limits: DomHtmlCaptureLimits::new(64, 1_000_000),
+                work: 0,
+                cancellation: &cancel,
+            };
+            with_facts(
+                HtmlSemanticContextInput::new(Vec::new()),
+                &source,
+                captured.capture(),
+                &mut lazy,
+                Vec::new(),
+                HtmlInertFactLimits::new(8, 1_000_000),
+                &mut control,
+            )
+            .unwrap();
+            (control.work, lazy.built())
+        };
+        let (built_on_demand, built) = run(false);
+        let (supplied, _) = run(true);
+        assert!(!built);
+        assert_eq!(built_on_demand, supplied);
+    }
+}

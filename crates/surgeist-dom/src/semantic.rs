@@ -942,10 +942,8 @@ impl DomSnapshot {
             &mut control,
         )?;
         // A modal blocker lookup that needed the node table has already built it.
-        let subjects = match nodes.into_table() {
-            Some(table) => nodes::Subjects::with_table(&entries, table),
-            None => nodes::Subjects::new(&entries, &mut control)?,
-        };
+        let table = nodes.into_table(&mut control)?;
+        let subjects = nodes::Subjects::with_table(&entries, table);
         let input = control::with_native_state(
             input,
             self,

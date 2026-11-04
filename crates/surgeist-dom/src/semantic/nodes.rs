@@ -6,7 +6,10 @@
 //! than four slots for each admitted subject once it holds more than two. Growing
 //! admits the item count against the adapter's subject limit, charges every slot
 //! it fills and every item it moves, and only then allocates. A lookup charges one step for each
-//! slot it examines. The hash is fixed, so charged work is reproducible.
+//! slot it examines. A key's probe seed is a fixed integer mix of the parts of
+//! its identity that its store assigns deterministically (slot and generation),
+//! never of the owner, which a process-wide counter assigns. The same content
+//! therefore charges the same work in every store, and in every process.
 //!
 //! A finished capture retains a [`Lookup`]: the `NodeId` table that built it
 //! and a dense table from each subject's ordinal to its entry. The ordinal
@@ -14,21 +17,46 @@
 //! and charged before it allocates, so a lookup by node or by subject is a
 //! constant number of steps.
 
-use std::{
-    collections::hash_map::DefaultHasher,
-    convert::Infallible,
-    hash::{Hash, Hasher},
-    num::NonZeroUsize,
-};
+use std::{convert::Infallible, num::NonZeroUsize};
 
 use surgeist_html_semantics::HtmlCaptureSubjectId;
 
 use super::{Control, DomHtmlCaptureError, DomHtmlCaptureResource, Entry};
-use crate::NodeId;
+use crate::{DomRegistryId, NodeId};
+
+/// A key an index probes from a fixed seed. Equality compares the whole key;
+/// the seed only chooses where a probe starts, so it may leave parts of the
+/// identity out, and must be the same for the same content in any store.
+pub(super) trait ProbeKey: Copy + Eq {
+    fn seed(self) -> u64;
+}
+
+/// The finalizer of splitmix64: a fixed, well-mixed integer function.
+fn finalize(mut value: u64) -> u64 {
+    value = (value ^ (value >> 30)).wrapping_mul(0xbf58_476d_1ce4_b9d9_u64);
+    value = (value ^ (value >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb_u64);
+    value ^ (value >> 31)
+}
+
+/// Slot and generation only: the owner is a process-wide counter's value.
+fn seed_of(slot: usize, generation: u64) -> u64 {
+    finalize(finalize(slot as u64) ^ generation)
+}
+
+impl ProbeKey for NodeId {
+    fn seed(self) -> u64 {
+        seed_of(self.slot, self.generation)
+    }
+}
+impl ProbeKey for DomRegistryId {
+    fn seed(self) -> u64 {
+        seed_of(self.slot, self.generation)
+    }
+}
 
 /// An item an index can find by its key.
 pub(super) trait Keyed {
-    type Key: Copy + Eq + Hash;
+    type Key: ProbeKey;
     fn key(&self) -> Self::Key;
 }
 impl Keyed for Entry {
@@ -53,10 +81,8 @@ enum Probed {
     Exhausted,
 }
 
-fn start<K: Hash>(key: K, mask: usize) -> usize {
-    let mut hasher = DefaultHasher::new();
-    key.hash(&mut hasher);
-    (hasher.finish() & mask as u64) as usize
+fn start<K: ProbeKey>(key: K, mask: usize) -> usize {
+    (key.seed() & mask as u64) as usize
 }
 
 impl Table {
@@ -295,9 +321,21 @@ impl<'a> LazyNodes<'a> {
             .and_then(|position| entries.get(position)))
     }
 
-    /// The table, if one was supplied or built.
-    pub(super) fn into_table(self) -> Option<Table> {
-        self.table
+    /// Whether a table exists: supplied, or built by a lookup.
+    #[cfg(test)]
+    pub(super) fn built(&self) -> bool {
+        self.table.is_some()
+    }
+
+    /// The table, built now if nothing supplied or needed one.
+    pub(super) fn into_table(
+        self,
+        control: &mut Control<'_>,
+    ) -> Result<Table, DomHtmlCaptureError> {
+        match self.table {
+            Some(table) => Ok(table),
+            None => Table::over(control, self.entries),
+        }
     }
 }
 
@@ -335,10 +373,25 @@ impl Lookup {
         entries: &[Entry],
         control: &mut Control<'_>,
     ) -> Result<Self, DomHtmlCaptureError> {
+        let count = entries.len();
+        // Admit the extent, then charge the fill, before anything allocates.
+        control.charge(1)?;
+        if count > control.limits.subjects {
+            return Err(DomHtmlCaptureError::ResourceLimit {
+                resource: DomHtmlCaptureResource::Subjects,
+                limit: control.limits.subjects,
+            });
+        }
+        count
+            .checked_mul(std::mem::size_of::<Option<NonZeroUsize>>())
+            .filter(|bytes| *bytes <= isize::MAX as usize)
+            .ok_or(DomHtmlCaptureError::RepresentationExhausted)?;
+        control.charge(count)?;
         let mut subjects: Vec<Option<NonZeroUsize>> = Vec::new();
-        control.reserve(&mut subjects, entries.len())?;
-        control.charge(entries.len())?;
-        subjects.resize(entries.len(), None);
+        subjects
+            .try_reserve_exact(count)
+            .map_err(|_| DomHtmlCaptureError::AllocationFailed)?;
+        subjects.resize(count, None);
         for (position, entry) in entries.iter().enumerate() {
             control.charge(1)?;
             let slot = subjects
@@ -733,5 +786,68 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn duplicate_keys_resolve_to_the_first_position() {
+        let ids = nodes(3);
+        let items = [Item(ids[0]), Item(ids[0]), Item(ids[1])];
+        let cancel = AtomicBool::new(false);
+        let mut control = control(&cancel, 8);
+        let table = Table::over(&mut control, &items).unwrap();
+        assert_eq!(table.get(&mut control, &items, ids[0]).unwrap(), Some(0));
+        assert_eq!(table.get(&mut control, &items, ids[1]).unwrap(), Some(2));
+        assert_eq!(table.get(&mut control, &items, ids[2]).unwrap(), None);
+    }
+
+    #[test]
+    fn lazy_nodes_build_on_the_first_lookup_only_and_supplied_tables_never_build() {
+        let (_capture, entries) = capture_entries(12);
+        let cancel = AtomicBool::new(false);
+        let cost = |nodes: &[NodeId]| {
+            let mut measure = control(&cancel, 12);
+            let table = Table::over(&mut measure, &entries).unwrap();
+            let build = measure.work;
+            let mut lookups = Vec::new();
+            for node in nodes {
+                let before = measure.work;
+                table.get(&mut measure, &entries, *node).unwrap();
+                lookups.push(measure.work - before);
+            }
+            (build, lookups)
+        };
+        let wanted = [entries[3].node, entries[9].node];
+        let (build, lookups) = cost(&wanted);
+
+        let mut lazy = LazyNodes::new(&entries, None);
+        assert!(!lazy.built());
+        let mut control = control(&cancel, 12);
+        assert!(lazy.entry(&mut control, wanted[0]).unwrap().is_some());
+        assert!(lazy.built());
+        assert_eq!(control.work, build + lookups[0]);
+        let before = control.work;
+        assert!(lazy.entry(&mut control, wanted[1]).unwrap().is_some());
+        assert_eq!(control.work - before, lookups[1]);
+        let before = control.work;
+        lazy.into_table(&mut control).unwrap();
+        assert_eq!(control.work, before);
+
+        let (table, mut supplied_control) = {
+            let mut c = self::control(&cancel, 12);
+            (
+                Table::over(&mut c, &entries).unwrap(),
+                self::control(&cancel, 12),
+            )
+        };
+        let mut supplied = LazyNodes::new(&entries, Some(table));
+        assert!(supplied.built());
+        supplied.entry(&mut supplied_control, wanted[0]).unwrap();
+        assert_eq!(supplied_control.work, lookups[0]);
+        // Without any lookup, finishing builds the table once and charges it.
+        let mut idle_control = self::control(&cancel, 12);
+        LazyNodes::new(&entries, None)
+            .into_table(&mut idle_control)
+            .unwrap();
+        assert_eq!(idle_control.work, build);
     }
 }

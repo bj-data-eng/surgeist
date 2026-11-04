@@ -175,8 +175,23 @@ fn resolving_each_registry_twice_takes_steps_linear_in_the_registries() {
     assert_linear("registry resolution", &sizes, &counts);
 }
 
+/// What finding the modal blocker of each of `n` Documents charged.
+struct ModalRun {
+    /// The work charged by the lookups, including the table build if one ran.
+    work: usize,
+    /// The work building the node table over the same entries charges.
+    build: usize,
+    /// Whether a node table existed after the lookups, supplied or built.
+    built: bool,
+}
+
 /// The work charged to find the modal blocker of each of `n` Documents.
 fn modal_work(n: usize) -> usize {
+    modal_run(n, false).work
+}
+
+/// Runs the blocker lookups with the node table built on demand, or supplied.
+fn modal_run(n: usize, supplied: bool) -> ModalRun {
     let cancel = AtomicBool::new(false);
     let limits = DomLimits::new(2 * n + 8, 1 << 20, 8 * n + 64, 0, 0, 1, 65536, names()).unwrap();
     let mut dom = Dom::new(limits).unwrap();
@@ -264,11 +279,18 @@ fn modal_work(n: usize) -> usize {
         work: 0,
         cancellation: &cancel,
     };
+    let mut measure = Control {
+        limits: DomHtmlCaptureLimits::new(2 * n + 8, 1 << 40),
+        work: 0,
+        cancellation: &cancel,
+    };
+    let table = nodes::Table::over(&mut measure, &entries).unwrap();
+    let mut lazy = nodes::LazyNodes::new(&entries, supplied.then_some(table));
     let input = modal::with_facts(
         HtmlSemanticContextInput::new(Vec::new()),
         &source,
         &captured,
-        &mut nodes::LazyNodes::new(&entries, None),
+        &mut lazy,
         Vec::new(),
         surgeist_html_semantics::HtmlInertFactLimits::new(2 * n + 8, 1 << 30),
         &mut control,
@@ -291,7 +313,11 @@ fn modal_work(n: usize) -> usize {
             )
         );
     }
-    control.work
+    ModalRun {
+        work: control.work,
+        build: measure.work,
+        built: lazy.built(),
+    }
 }
 
 #[test]
@@ -431,4 +457,14 @@ fn the_work_of_registry_resolution_does_not_depend_on_the_stores_made_before_it(
 #[test]
 fn the_work_of_modal_blocker_lookups_does_not_depend_on_the_stores_made_before_it() {
     assert_owner_independent("modal work", || modal_work(100));
+}
+
+#[test]
+fn the_node_table_for_blocker_lookups_is_built_once_on_the_first_dialog() {
+    let built_here = modal_run(32, false);
+    let supplied = modal_run(32, true);
+    assert!(built_here.built && supplied.built);
+    // Supplying the table removes exactly the one build, however many
+    // Documents looked their blocker up.
+    assert_eq!(built_here.work - supplied.work, built_here.build);
 }
