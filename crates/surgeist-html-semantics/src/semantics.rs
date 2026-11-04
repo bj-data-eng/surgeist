@@ -370,6 +370,18 @@ pub enum HtmlSemanticQuery {
     DocumentTitle,
     Meter,
     Progress,
+    /// Whether the node is inert (HTML 877d6146487f #inert-subtrees). Sources are
+    /// the node's own `inert` attribute, the rule that a `button` that is the
+    /// first child which is an element of a `select` is inert
+    /// (#the-button-element; ordinary-tree children, and the button itself only),
+    /// the `inert` attribute of a flat-tree ancestor, and the document's modal
+    /// blocking dialog. The first two need no host supplement.
+    ///
+    /// A node the supplied flat relation excludes has no flat-tree ancestor, so
+    /// no ancestor attribute applies (#the-inert-attribute). If it is known to be
+    /// connected, it is inert exactly when a modal dialog blocks its document
+    /// (#blocked-by-a-modal-dialog); if it is detached or its connectedness is
+    /// unknown, no flat tree is defined and the result is missing evidence.
     Inertness,
     FormOwner,
     CommandForElement,

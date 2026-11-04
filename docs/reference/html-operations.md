@@ -899,12 +899,34 @@ fallbacks, actual current control values and ordered assigned-slot nodes.
 Its finite retention and validation caps are explicit. Missing facts remain
 unavailable; known empty assignments are distinct from missing assignments.
 
+Inertness has three sources. An element's own `inert` attribute applies to
+itself. A `button` that is the first child which is an element of a `select` is
+inert ([the button element](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#the-button-element)).
+The HTML crate owns that rule through the staged `bounded::select::HtmlSelectButton`
+and `HtmlSelectChildButton` types; semantics supplies only the ordinary-tree parent and first element child, so
+text and comment siblings never precede that child and flat-tree edges never
+decide it. The sentence marks the button itself and names no descendants, and it
+needs no flat-tree or modal supplement; unavailable parent or ordered children
+remain missing evidence unless another source proves the result. The third
+source is inherited through the document flat tree, described next.
+
 `HtmlInertFacts` joins actual flat-tree membership, parent relations and
 connectedness to the document's actual blocking modal dialog. The producer owns
 flattening and modal transitions. Only the topmost blocking dialog escapes
 inherited inertness; an element's own inert attribute still applies. Unavailable
-or excluded ancestry remains missing evidence unless a local fact proves the
-result. The supplement and query share finite validation and session work
+ancestry remains missing evidence unless a local fact proves the result.
+
+An `inert` attribute makes its element and the element's flat-tree descendants
+inert ([the inert attribute](../../references/html-language-host-facts--877d6146487f--2dd822df9d5e.md#the-inert-attribute)),
+and the flat tree is built from the document's root element
+([CSS Shadow flattening](../../references/selectors-execution-css-shadow-1--editor-capture-20261010--b02c47a6b167.md#flattening)).
+A node the producer reports as excluded is therefore no node's flat-tree
+descendant, and no ancestor's attribute applies to it. A connected excluded node
+is inert exactly when a modal dialog blocks its document, because modal blocking
+reaches every connected node outside the blocking subject's flat tree; when the
+document is unblocked it is not inert. Without known connectedness, or when the
+node is detached, no flat tree is defined for it and the result remains missing
+evidence. The supplement and query share finite validation and session work
 limits, and reports retain its exact producer/configuration revision.
 
 <a id="shared-intrinsic-control-rules"></a>

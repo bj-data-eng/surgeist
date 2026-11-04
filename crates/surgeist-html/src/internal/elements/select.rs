@@ -548,6 +548,48 @@ pub fn select_option_rule(
     }
 }
 
+/// A `button` element: the first stage of HTML877d #the-button-element's rule "If a button
+/// element is the first child which is an element of a select element, then it is inert"
+/// (forms capture line 7399). Constructed only from a button's known kind.
+///
+/// The rule is staged so an adapter reads each operand only after the earlier ones hold:
+/// [`HtmlSelectButton::new`], then [`HtmlSelectButton::child_of`] with the ordinary-tree parent's
+/// kind, then [`HtmlSelectChildButton::is_inert`] with the first-element-child fact. "Child" is the
+/// DOM ordinary-tree child, never a flat-tree child, so a slot or shadow edge never supplies the
+/// parent. The rule marks the button itself and names no descendants.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlSelectButton(());
+impl HtmlSelectButton {
+    /// The button stage for a node whose known element kind is `kind` (`None` for any other node
+    /// or element), or `None` when it is not a `button`.
+    pub const fn new(kind: Option<KnownHtmlElement>) -> Option<Self> {
+        match kind {
+            Some(KnownHtmlElement::Button) => Some(Self(())),
+            _ => None,
+        }
+    }
+    /// The select-child stage when the button's ordinary-tree parent has known element kind
+    /// `parent` (`None` for any other node or element), or `None` when it is not a `select`.
+    pub const fn child_of(self, parent: Option<KnownHtmlElement>) -> Option<HtmlSelectChildButton> {
+        match parent {
+            Some(KnownHtmlElement::Select) => Some(HtmlSelectChildButton(())),
+            _ => None,
+        }
+    }
+}
+
+/// A `button` that is a child of a `select`; whether it is the first element child decides the
+/// rule (see [`HtmlSelectButton`]).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlSelectChildButton(());
+impl HtmlSelectChildButton {
+    /// Whether the button is inert: true exactly when it is the first element among its parent's
+    /// children. Text and comment siblings are not elements and do not precede it.
+    pub const fn is_inert(self, is_first_element_child: bool) -> bool {
+        is_first_element_child
+    }
+}
+
 /// Action for one established option ancestor, after own disabled presence.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlOptionDisabledAncestor {

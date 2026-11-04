@@ -3471,6 +3471,13 @@ pub struct surgeist_html::bounded::select::HtmlOptionSelectAncestors
 impl surgeist_html::bounded::select::HtmlOptionSelectAncestors
 pub fn surgeist_html::bounded::select::HtmlOptionSelectAncestors::finish_complete(&mut self) -> surgeist_html::bounded::select::HtmlOptionSelectAncestorAction
 pub fn surgeist_html::bounded::select::HtmlOptionSelectAncestors::observe(&mut self, kind: core::option::Option<surgeist_html::vocabulary::KnownHtmlElement>) -> surgeist_html::bounded::select::HtmlOptionSelectAncestorAction
+pub struct surgeist_html::bounded::select::HtmlSelectButton(_)
+impl surgeist_html::bounded::select::HtmlSelectButton
+pub const fn surgeist_html::bounded::select::HtmlSelectButton::child_of(self, parent: core::option::Option<surgeist_html::vocabulary::KnownHtmlElement>) -> core::option::Option<surgeist_html::bounded::select::HtmlSelectChildButton>
+pub const fn surgeist_html::bounded::select::HtmlSelectButton::new(kind: core::option::Option<surgeist_html::vocabulary::KnownHtmlElement>) -> core::option::Option<Self>
+pub struct surgeist_html::bounded::select::HtmlSelectChildButton(_)
+impl surgeist_html::bounded::select::HtmlSelectChildButton
+pub const fn surgeist_html::bounded::select::HtmlSelectChildButton::is_inert(self, is_first_element_child: bool) -> bool
 pub struct surgeist_html::bounded::select::HtmlSelectCursor
 impl surgeist_html::bounded::select::HtmlSelectCursor
 pub fn surgeist_html::bounded::select::HtmlSelectCursor::action(&self) -> surgeist_html::bounded::select::HtmlSelectAction
