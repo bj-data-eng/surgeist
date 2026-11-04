@@ -38,30 +38,113 @@
 //! The headers a line takes are therefore the long headers that no data cell
 //! of the long cells and no short data cell of the line hides, and the short
 //! headers that no data cell of the long cells and no short header of the line
-//! hides, in the order of the stream. Scanning the lines of a segment in
-//! order, then:
+//! hides, in the order of the stream.
+//!
+//! For one extent (a *key*) let `c_1 > c_2 > ...` be the starts of its long
+//! headers below the scanning cell, `c_1` the first (the scanning cell itself,
+//! if it is a header of that extent), and let a header be a *candidate* when no
+//! data cell of the long cells lies between it and `c_1`. By (1), a regular
+//! line takes a candidate `c_j` (that is a header of the scan's kind) exactly
+//! when it has no short data cell starting between `c_j` and `c_1`; call it
+//! *reaching* `c_j`. So a line takes a prefix of the candidates of an extent:
+//! those nearer than its nearest short data cell below `c_1`. A candidate that
+//! the line does not take is *hidden* by that data cell.
+//!
+//! Scanning the lines of a segment in order, then:
 //!
 //! - The *shared scan*, of the long cells alone, stands in for the first line
-//!   with no short cell before the scanning cell. By (2) it lists every long
-//!   header any line could, and later lines add no long header to it.
-//! - The first other line is scanned in full. It notes the short data cells
-//!   that made opaque a long header which the scan then reached hidden (the
-//!   `window`). A long header the scan skips (`table_scan_line`) is hidden by
-//!   one it reached, so if no short data cell hid a header the scan reached,
-//!   then none hid any, and by (1) the line lists what the shared scan does:
-//!   with an empty window it stands in for the shared scan.
-//! - A later line that has a data cell at each start of the window has every
-//!   short data cell that hid a long header in that line, so by (2) it takes
-//!   no long header that line did not; the list has them already, and only
-//!   its own headers can be new. By (1) and (3) they are the short header
-//!   nearest the scanning cell and the short headers next to it in the line,
-//!   up to the first data cell between two, long or short, each taken when it
-//!   is a header of the scan's kind (`table_scan_blocks`).
-//! - Any other line, and any line where cells share a slot, is scanned in
-//!   full.
+//!   with no short cell before the scanning cell. By (2) it takes every
+//!   candidate any line could, and later lines add no long header to it.
+//! - A regular line with cells of its own is scanned in full unless it meets
+//!   the *requirements*. A scan in full notes, for each extent, the start `N`
+//!   of the first candidate it reaches hidden (the nearest the line did not
+//!   take) and `C`, the start of the first header of the extent that it
+//!   reaches, when the data cell that last made the extent opaque was a short
+//!   one. If the first hidden candidate was hidden by a data cell of the long
+//!   cells, no candidate beyond it is a candidate, and nothing is noted. The
+//!   scan reaches the first header of every extent, and a header it skips
+//!   after a hidden one is hidden by the same data cell, so `N` is at or
+//!   after every candidate of the extent the line did not take.
+//! - A requirement `(N, C)` is met by a line that has a short data cell
+//!   starting between `N` and `C`. *Lemma A*: if a line meets the requirement
+//!   of every extent that has one, the line takes no candidate that is not
+//!   taken. For an untaken candidate `c` of an extent lies at or beyond `N` (by
+//!   the invariant below), so the data cell between `N` and `C` is between `c`
+//!   and `C`, and by (1) it hides `c`. Only its own headers are then new, and
+//!   by (1) and (3) they are the short header nearest the scanning cell and
+//!   the short headers next to it in the line, up to the first data cell
+//!   between two, long or short, each taken when it is a header of the scan's
+//!   kind (`table_scan_blocks`).
+//! - *Invariant*: for each extent that has an untaken candidate there is a
+//!   requirement whose `N` is at or after every untaken candidate. It holds
+//!   after the first line scanned in full, by what the scan notes. *Lemma B*:
+//!   it holds after any line scanned in full, if each requirement is replaced
+//!   by `(min(N, N'), C)` when the line noted `(N', C)` for the extent, and
+//!   dropped when the line noted none. A candidate is untaken after the line
+//!   only if it was untaken before and the line hid it; the first is at or
+//!   after `N` and the second at or after `N'`, so it lies at or beyond
+//!   `min(N, N')`. If the line noted nothing for the extent, it took every
+//!   candidate (or none is one), so none is untaken. An extent with no
+//!   requirement has no untaken candidate, and none is added for it.
+//! - With no requirement left the shared scan has been done by the lines
+//!   scanned in full, and every regular line adds only its own headers.
+//! - Any line where cells share a slot is scanned in full and changes nothing.
+//!
+//! The order is the specification's: the lists are merged keeping the first of
+//! each header, a line adds to it the headers it takes that no line before took
+//! (the long ones when it was scanned in full, in the stream order) and its own
+//! headers in the stream order; a line that meets the requirements takes no
+//! long header that is new.
 
 use super::slots::{self, Cover, Extent, LeastTree, LineSpan, List, SlotAxis, SlotEntry};
 use super::*;
+
+/// What a scan that notes the data cells hiding tall headers remembers about
+/// one header extent (a key). Each field is valid for the keys stamped with
+/// the scan's epoch, as the field says.
+#[derive(Clone, Copy)]
+pub(super) struct KeyNote {
+    /// The start of the short data cell that last made headers of the key
+    /// opaque, or `usize::MAX` when a data cell of the long cells did.
+    closed: usize,
+    /// The epoch of the scan that reached a header of the key, and the start of
+    /// the first (the nearest to the scanning cell).
+    seen: usize,
+    first: usize,
+    /// The epoch of the scan that reached a header of the key hidden, which
+    /// noted it.
+    noted: usize,
+}
+
+impl KeyNote {
+    const NONE: Self = Self {
+        closed: usize::MAX,
+        seen: 0,
+        first: 0,
+        noted: 0,
+    };
+}
+
+/// A header a scan reaches: its cell, its key, where it starts, and whether
+/// it is one of the long cells.
+#[derive(Clone, Copy)]
+struct Reached {
+    cell: usize,
+    key: usize,
+    start: usize,
+    long: bool,
+}
+
+/// A requirement for a line to share the scan of the long cells: the nearest
+/// header of the key that is still unlisted (`least`) is hidden for a line
+/// that has a short data cell starting between it and the first header of the
+/// key (`right`).
+#[derive(Clone, Copy)]
+pub(super) struct Need {
+    key: usize,
+    least: usize,
+    right: usize,
+}
 
 /// What the header scans remember about one cell. A cell's attributes do not
 /// change during a query, so each is resolved the first time a header
@@ -150,16 +233,14 @@ struct Scan<'s> {
     memo: &'s mut Vec<HeaderMemo>,
     /// The lines of a scan that must be scanned one at a time.
     specials: &'s mut Vec<usize>,
-    /// Per header key, the start of the short data cell that last made headers
-    /// of that key opaque, or `usize::MAX` when a data cell of the long cells
-    /// did. Kept only by a scan that is noting the window, and then valid for
-    /// the keys stamped with the scan's `epoch`.
-    closed: &'s mut Vec<usize>,
-    /// The starts of the short data cells that made opaque a header of the
-    /// long cells that the scan noting then reached again hidden; once the
-    /// scan ends, each start once, in ascending order.
-    window: &'s mut Vec<usize>,
-    /// Whether the scan in progress notes the window.
+    /// Per header key, what a scan that is noting remembers.
+    closed: &'s mut Vec<KeyNote>,
+    /// The requirements a line must meet to share the scan of the long cells,
+    /// at most one for each key, in ascending order of key.
+    window: &'s mut Vec<Need>,
+    /// The requirements the scan in progress notes.
+    notes: &'s mut Vec<Need>,
+    /// Whether the scan in progress notes requirements.
     noting: bool,
     axes: Axes<'s>,
     in_block: bool,
@@ -429,10 +510,10 @@ impl<'a> HtmlSemanticSession<'a> {
             {
                 *stamp = scan.epoch;
                 if scan.noting {
-                    let Some(closed) = scan.closed.get_mut(*key) else {
+                    let Some(note) = scan.closed.get_mut(*key) else {
                         return Err(self.stop(HtmlSemanticFailureKind::ProtocolViolated).into());
                     };
-                    *closed = short.unwrap_or(usize::MAX);
+                    note.closed = short.unwrap_or(usize::MAX);
                 }
             }
         }
@@ -443,27 +524,44 @@ impl<'a> HtmlSemanticSession<'a> {
     /// A header cell reached by a scan joins the current block, and is a
     /// header of the principal cell unless an opaque header that crosses the
     /// same lines hides it or it is not a header of the scan's kind. A scan
-    /// that notes the window notes, for a header of the long cells that is
-    /// hidden, the short data cell that made its extent opaque.
+    /// that notes requirements notes, for the first header of the long cells
+    /// of an extent that it reaches hidden, the short data cell that made the
+    /// extent opaque, if one did, with `start` the start of the header.
     fn table_reach_header(
         &mut self,
         model: &HtmlTableModel,
         scan: &mut Scan<'_>,
-        index: usize,
-        key: usize,
+        reached: Reached,
         vertical: bool,
-        long: bool,
     ) -> TableResult<()> {
+        let Reached {
+            cell: index,
+            key,
+            start,
+            long,
+        } = reached;
         scan.in_block = true;
         self.table_scratch(scan.block, key)?;
         self.charge(1)?;
         let mut blocked = scan.stamps.get(key) == Some(&scan.epoch);
-        if blocked && scan.noting && long {
-            let Some(closed) = scan.closed.get(key).copied() else {
+        if scan.noting && long {
+            let Some(note) = scan.closed.get_mut(key) else {
                 return Err(self.stop(HtmlSemanticFailureKind::ProtocolViolated).into());
             };
-            if closed != usize::MAX && scan.window.last() != Some(&closed) {
-                self.table_scratch(scan.window, closed)?;
+            if note.seen != scan.epoch {
+                note.seen = scan.epoch;
+                note.first = start;
+            }
+            if blocked && note.noted != scan.epoch {
+                note.noted = scan.epoch;
+                let need = Need {
+                    key,
+                    least: start,
+                    right: note.first,
+                };
+                if note.closed != usize::MAX {
+                    self.table_scratch(scan.notes, need)?;
+                }
             }
         }
         if !blocked {
@@ -487,9 +585,9 @@ impl<'a> HtmlSemanticSession<'a> {
     /// lines differ only by their short cells and by overlaps. The lines with
     /// no short cell before the principal cell, however many, are scanned once;
     /// a line where two cells share a slot is scanned on its own; and a line
-    /// with short cells shares the first such line's scan of the long cells
-    /// when it has the data cells that scan noted (see the module
-    /// documentation), and is otherwise scanned on its own.
+    /// with short cells shares the scans of the long cells of the lines
+    /// scanned in full before it when it meets their requirements (see the
+    /// module documentation), and is otherwise scanned on its own.
     fn table_scan_axis(
         &mut self,
         model: &HtmlTableModel,
@@ -627,12 +725,13 @@ impl<'a> HtmlSemanticSession<'a> {
             // `base` says that every header of the long cells that any line
             // lists has been listed: by the shared scan, which stands in for
             // the first line that has no cell of its own before the scanning
-            // cell, or by a regular line scanned in full that noted no short
-            // data cell. Then a regular line adds only the headers of its own
-            // cells (`table_scan_blocks`). `kept` says that `window` holds the
-            // short data cells the first regular line scanned in full noted:
-            // a regular line with a data cell at each lists no header of the
-            // long cells that line did not list.
+            // cell, or by regular lines scanned in full that left no
+            // requirement. Then a regular line adds only the headers of its
+            // own cells (`table_scan_blocks`). Otherwise `window` holds the
+            // requirements of the long headers not yet listed, and a regular
+            // line that meets them all lists no header of the long cells that
+            // is not listed (see the module documentation); any other regular
+            // line is scanned in full and its requirements refresh them.
             let mut shared = Some(here.start);
             let mut base = false;
             let mut kept = false;
@@ -654,32 +753,23 @@ impl<'a> HtmlSemanticSession<'a> {
                 let irregular = axis
                     .irregular_at(line, &mut |work| self.charge(work).map_err(TableStop::from))?;
                 let cells = Occupants { long, short };
-                if !irregular && (base || (kept && self.table_holds_data(short, scan.window)?)) {
+                if irregular {
+                    self.table_scan_line(model, scan, principal, target, cells, true)?;
+                    continue;
+                }
+                if base || (kept && self.table_meets_needs(short, scan.window)?) {
                     self.table_scan_blocks(model, scan, target, cells)?;
                     continue;
                 }
-                if irregular || kept {
-                    self.table_scan_line(model, scan, principal, target, cells, irregular)?;
-                    continue;
-                }
-                // The first line to be scanned in full: note which short data
-                // cells of it made a header of the long cells hide another.
+                // A line to be scanned in full: note which short data cells of
+                // it made a header of the long cells hide another.
                 self.table_closed_ready(scan)?;
-                scan.window.clear();
+                scan.notes.clear();
                 scan.noting = true;
                 let scanned = self.table_scan_line(model, scan, principal, target, cells, false);
                 scan.noting = false;
                 scanned?;
-                // Each start once: alternating extents note one start many
-                // times, and every line that shares the scan searches for each.
-                let count = scan.window.len();
-                let bits = count
-                    .checked_ilog2()
-                    .and_then(|bits| usize::try_from(bits).ok())
-                    .unwrap_or(0);
-                self.charge(count.saturating_mul(1 + bits))?;
-                scan.window.sort_unstable();
-                scan.window.dedup();
+                self.table_refresh_needs(scan, kept)?;
                 if scan.window.is_empty() {
                     base = true;
                 } else {
@@ -713,27 +803,72 @@ impl<'a> HtmlSemanticSession<'a> {
         self.table_scan_line(model, scan, principal, target, cells, false)
     }
 
-    /// Admits the per-key notes of the closing data cells, on first use.
+    /// Admits the per-key notes of a scan that notes, on first use.
     fn table_closed_ready(&mut self, scan: &mut Scan<'_>) -> TableResult<()> {
         if scan.closed.len() != scan.stamps.len() {
             self.charge(scan.stamps.len())?;
             self.reserve_scratch(scan.closed, scan.stamps.len())?;
-            scan.closed.resize(scan.stamps.len(), usize::MAX);
+            scan.closed.resize(scan.stamps.len(), KeyNote::NONE);
         }
         Ok(())
     }
 
-    /// Whether `short` has a data cell starting at each start of `window`.
-    fn table_holds_data(&mut self, short: List<'_>, window: &[usize]) -> TableResult<bool> {
-        for start in window {
+    /// Replaces the requirements of the lines that share a scan, once a line
+    /// has been scanned in full and noted its own. `refresh` says that there
+    /// are requirements already, which a key keeps only if the line noted it
+    /// too, with the nearer of the two unlisted headers: a key the line noted
+    /// no requirement for has all its headers listed by the line, and one the
+    /// requirements did not have is already listed.
+    fn table_refresh_needs(&mut self, scan: &mut Scan<'_>, refresh: bool) -> TableResult<()> {
+        let count = scan.notes.len();
+        let bits = count
+            .checked_ilog2()
+            .and_then(|bits| usize::try_from(bits).ok())
+            .unwrap_or(0);
+        self.charge(count.saturating_mul(1 + bits))?;
+        scan.notes.sort_unstable_by_key(|need| need.key);
+        if !refresh {
+            core::mem::swap(scan.window, scan.notes);
+            return Ok(());
+        }
+        let mut kept = 0;
+        let mut noted = 0;
+        for position in 0..scan.window.len() {
             self.charge(1)?;
-            let at = slots::leading(short.entries, |entry| entry.start < *start, &mut |work| {
-                self.charge(work).map_err(TableStop::from)
-            })?;
-            let held = short
-                .entries
-                .get(at)
-                .is_some_and(|entry| entry.start == *start && entry.key.is_none());
+            let old = scan.window[position];
+            while scan.notes.get(noted).is_some_and(|need| need.key < old.key) {
+                self.charge(1)?;
+                noted += 1;
+            }
+            let Some(new) = scan.notes.get(noted).filter(|need| need.key == old.key) else {
+                continue;
+            };
+            let merged = Need {
+                least: old.least.min(new.least),
+                ..old
+            };
+            scan.window[kept] = merged;
+            kept += 1;
+        }
+        scan.window.truncate(kept);
+        Ok(())
+    }
+
+    /// Whether `short` has, for each requirement, a data cell starting between
+    /// the header and the first header of its key.
+    fn table_meets_needs(&mut self, short: List<'_>, needs: &[Need]) -> TableResult<bool> {
+        for need in needs {
+            self.charge(1)?;
+            let before = slots::leading(
+                short.entries,
+                |entry| entry.start < need.right,
+                &mut |work| self.charge(work).map_err(TableStop::from),
+            )?;
+            let held = before
+                .checked_sub(1)
+                .and_then(|last| short.data_at(last))
+                .and_then(|data| short.entries.get(data))
+                .is_some_and(|entry| entry.start > need.least);
             if !held {
                 return Ok(false);
             }
@@ -852,6 +987,13 @@ impl<'a> HtmlSemanticSession<'a> {
                     .into());
             };
             self.table_scratch(scan.block, key)?;
+            if scan.noting {
+                let Some(note) = scan.closed.get_mut(key) else {
+                    return Err(self.stop(HtmlSemanticFailureKind::ProtocolViolated).into());
+                };
+                note.seen = scan.epoch;
+                note.first = from;
+            }
         }
         if irregular {
             let mut slot = from;
@@ -879,7 +1021,17 @@ impl<'a> HtmlSemanticSession<'a> {
                             .stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
                             .into());
                     };
-                    self.table_reach_header(model, scan, index, key, vertical, false)?;
+                    self.table_reach_header(
+                        model,
+                        scan,
+                        Reached {
+                            cell: index,
+                            key,
+                            start: slot,
+                            long: false,
+                        },
+                        vertical,
+                    )?;
                 } else {
                     self.table_end_block(scan, None)?;
                 }
@@ -931,7 +1083,17 @@ impl<'a> HtmlSemanticSession<'a> {
                         .stop(HtmlSemanticFailureKind::IntrinsicUnavailable)
                         .into());
                 };
-                self.table_reach_header(model, scan, nearest.cell, key, vertical, long)?;
+                self.table_reach_header(
+                    model,
+                    scan,
+                    Reached {
+                        cell: nearest.cell,
+                        key,
+                        start: nearest.start,
+                        long,
+                    },
+                    vertical,
+                )?;
                 bound = nearest.start;
                 if scan.live {
                     continue;
@@ -1188,6 +1350,7 @@ impl<'a> HtmlSemanticSession<'a> {
             specials,
             closed,
             window,
+            notes,
             row_group_headers,
             column_group_headers,
             row_group_least,
@@ -1257,6 +1420,7 @@ impl<'a> HtmlSemanticSession<'a> {
             specials,
             closed,
             window,
+            notes,
             noting: false,
             axes: Axes { rows, columns },
             in_block: false,

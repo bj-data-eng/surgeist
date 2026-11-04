@@ -361,6 +361,77 @@ fn tall_table(rng: &mut Rng) -> Vec<Child> {
     }
 }
 
+/// A table in which the first row alternates tall cells and the short cells
+/// that leave gaps among them, then ends with tall data cells, and each later
+/// row fills the first gaps (a row fills free columns from the left): a
+/// random number of them, sometimes fewer each row, so that rows fill fewer
+/// gaps than the first, and than each other, and the data cells of a row that
+/// lie nearest the tall data cells differ from row to row. Some cells span
+/// two rows or columns, so that some rows have cells that share a slot.
+fn gap_table(rng: &mut Rng) -> Vec<Child> {
+    let mut ordinals = Ordinals::default();
+    let rows = 3 + rng.below(7);
+    let gaps = 2 + rng.below(6);
+    let tall_span = |rng: &mut Rng| match rng.below(8) {
+        0 => rows.saturating_sub(1).to_string(),
+        1 => "0".to_string(),
+        _ => rows.to_string(),
+    };
+    let mut first = Vec::new();
+    for _ in 0..gaps {
+        let th = !rng.chance(5);
+        let mut tall = plain_cell(rng, &mut ordinals, th);
+        tall.rowspan = Some(tall_span(rng));
+        tall.headers = rng.chance(4).then(String::new);
+        first.push(tall);
+        let th = rng.chance(5);
+        let mut gap = plain_cell(rng, &mut ordinals, th);
+        gap.headers = rng.chance(2).then(String::new);
+        first.push(gap);
+    }
+    if rng.chance(2) {
+        let mut tall = plain_cell(rng, &mut ordinals, true);
+        tall.rowspan = Some(tall_span(rng));
+        first.push(tall);
+    }
+    for _ in 0..1 + rng.below(2) {
+        let mut tall = plain_cell(rng, &mut ordinals, false);
+        tall.rowspan = Some(tall_span(rng));
+        tall.headers = None;
+        first.push(tall);
+    }
+    let mut table_rows = vec![Row {
+        ordinal: 0,
+        cells: first,
+    }];
+    ordinals.rows = 1;
+    let staircase = rng.chance(3);
+    for later in 1..rows {
+        let count = if staircase {
+            gaps.saturating_sub(later - 1)
+        } else {
+            rng.below(gaps + 2)
+        };
+        let cells = (0..count)
+            .map(|_| {
+                let th = rng.chance(4);
+                let mut cell = plain_cell(rng, &mut ordinals, th);
+                cell.headers = rng.chance(3).then(String::new);
+                if rng.chance(20) {
+                    cell.rowspan = Some((2 + rng.below(3)).to_string());
+                }
+                cell
+            })
+            .collect();
+        table_rows.push(Row {
+            ordinal: ordinals.rows,
+            cells,
+        });
+        ordinals.rows += 1;
+    }
+    table_rows.into_iter().map(Child::Row).collect()
+}
+
 // ---- The specification, literally ---------------------------------------
 
 #[derive(Clone, Debug)]
@@ -1120,5 +1191,13 @@ fn seeded_tables_of_tall_cells_with_cells_among_them_assign_headers_as_the_speci
     let mut rng = Rng(0x1774_0411);
     for case in 0..600 {
         check(case, &tall_table(&mut rng));
+    }
+}
+
+#[test]
+fn seeded_tables_of_rows_filling_fewer_gaps_assign_headers_as_the_specification_says() {
+    let mut rng = Rng(0x1774_0b12);
+    for case in 0..800 {
+        check(case, &gap_table(&mut rng));
     }
 }
