@@ -457,14 +457,16 @@ pub enum HtmlCaptureSubjectKind {
     ProcessingInstruction,
     Doctype,
 }
-/// Refusal of an edge operation whose work the caller meters. An interruption
-/// is the caller's own first refusal, returned without translation.
+/// Refusal of a capture operation whose work the caller meters: establishing an
+/// edge, or walking to the nearest form. An interruption is the caller's own
+/// first refusal, returned without translation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlCaptureEdgeError<E> {
-    /// The builder refused the edge itself, for example as a cycle or beyond
-    /// a capture limit.
+    /// The capture refused the operation itself, for example an edge as a cycle
+    /// or beyond a capture limit, or a walk through unavailable ancestry.
     Capture(HtmlCaptureError),
-    /// The caller's step refused to continue; the edge was not established.
+    /// The caller's step refused to continue; an edge was not established and a
+    /// walk ended without an answer.
     Interrupted(E),
 }
 impl<E> From<HtmlCaptureError> for HtmlCaptureEdgeError<E> {

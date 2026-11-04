@@ -1055,7 +1055,9 @@ an actual Element pointer remain distinct. The checked supplement bounds moved
 record capacity and validation work; caller allocation is outside those limits.
 `CommandForElement` and `PopoverTargetAssociatedElement` retain raw
 content and the selecting branch. An explicit pointer must satisfy the source
-scope relation; an out-of-scope pointer returns null without an ID fallback.
+scope relation, which collects the ordinary ancestors of the pointer's target once
+and admits them as scratch records (up to the target's depth), released with the
+query; an out-of-scope pointer returns null without an ID fallback.
 Only a known null pointer enters exact ID lookup in the ordinary tree, selecting
 the first matching element, including foreign elements. Unknown influencing
 relationships remain missing information.
@@ -3330,7 +3332,9 @@ query of that tree charges one unit to find it instead of building it again. The
 held graph's records stay in `ScratchRecords`, so it is released when a query of
 another tree builds its graph, when a query of a kind that does not read it
 begins, before an author query reserves its id index, before an item with its own
-types reserves any scratch, and when the batch ends or fails; a batch then needs
+types reserves any scratch, and when the batch ends or fails; the type walk index
+alone is released before the document author query builds its cycle index and
+before an author query walks a typed receiver with an index of its own; a batch then needs
 no more scratch than its largest query alone, and a batch leaves none behind. The
 graph is not kept between batches. The first type walk of a graph's items also
 builds, and the held graph keeps, an index of the graph's items and edges, so
