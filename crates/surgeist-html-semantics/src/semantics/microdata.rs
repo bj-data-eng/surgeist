@@ -595,6 +595,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     // place of one scan of the tree per token. The pass is
                     // charged before the first token, so a query whose tokens
                     // match early can reach a work or scratch limit sooner.
+                    // A graph held for the batch is not read here, and the
+                    // index must not be reserved on top of it.
+                    self.md_drop_tree_graph();
                     let index = self.md_id_index(&root)?;
                     let checked = (|| {
                         let mut references = references;
@@ -1210,6 +1213,11 @@ fn raw_source_key(source: HtmlMicrodataRawSource) -> RawSourceKey {
 }
 /// What identifies a property fact within its subject: the name token, the
 /// receiving item and the optional own-type origin.
+///
+/// The receiver and origin are keyed by capture position without a capture
+/// check: `HtmlMicrodataPropertyFact::new` has already required both to be
+/// subjects of the capture its binding belongs to, and a session's subjects all
+/// come from one capture, so positions cannot collide across captures here.
 fn property_key(fact: &HtmlMicrodataPropertyFact) -> (usize, usize, Option<usize>) {
     (
         raw_source_key(fact.binding.source).1,
@@ -2376,9 +2384,22 @@ impl<'a> HtmlSemanticSession<'a> {
     }
     /// The item graph of the tree rooted at `root`. The capture is immutable, so
     /// a batch builds a tree's graph once, and each later query that reads it
-    /// charges one unit for finding it. A query of another tree, or of a kind
-    /// that does not read the graph, releases the held graph first, so the held
-    /// graph never adds to the scratch of a query that does not need it.
+    /// charges one unit for finding it.
+    ///
+    /// The held graph keeps its scratch accounted, so it is released as soon as
+    /// the batch could need that scratch for something else: when a query of
+    /// another tree builds its graph, when a query of a kind that does not read
+    /// the graph begins, before a graph-kind query reserves scratch it does not
+    /// read the graph for (an author query's id index, an item's own types), when
+    /// the batch ends, and when it fails. A batch therefore never needs more
+    /// scratch than its largest query alone, with one exception, which is
+    /// listed in the operations reference: an untyped item query holds the graph
+    /// while it crawls the item, where the graph used to be released before the
+    /// crawl, so that query's peak is at most the graph's records above what it
+    /// was (G + crawl where it was max(G + type context, crawl)).
+    ///
+    /// The graph is behind an `Arc` only so a query can read it while the
+    /// session, which owns the held slot, stays mutably borrowed for charging.
     fn md_tree_graph(
         &mut self,
         root: &HtmlCaptureSubjectId,
@@ -2642,6 +2663,9 @@ impl<'a> HtmlSemanticSession<'a> {
         let own_types = self.md_tokens(e, HtmlMicrodataTokenKind::ItemType)?;
         let top_level = self.md_attribute(e, "itemprop")?.is_none();
         let types = if !own_types.tokens().is_empty() {
+            // The item's own types need no graph, so a graph held for the batch
+            // is released before this query reserves any scratch.
+            self.md_drop_tree_graph();
             let fresh = self.md_tokens(e, HtmlMicrodataTokenKind::ItemType)?;
             self.md_type_context(id, fresh, None)?
         } else {
