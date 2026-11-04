@@ -390,22 +390,11 @@ impl ParseEvidence {
                     HtmlParseWorkCategory::InspectByte,
                     mem::size_of::<ConstructionCause>() as u64,
                 )?;
-                let mut has_source = cause.source.is_some();
-                if let Some(source) = &cause.source {
+                let mut has_source = cause.source().is_some();
+                if let Some(source) = cause.source() {
                     c.require_source_range(source)?;
                 }
-                let trigger = if matches!(
-                    cause.operation,
-                    HtmlParseConstructionOperation::Merge
-                        | HtmlParseConstructionOperation::Copy
-                        | HtmlParseConstructionOperation::Replay
-                        | HtmlParseConstructionOperation::Replacement
-                ) {
-                    cause.trigger
-                } else {
-                    None
-                };
-                for prior in [cause.original_cause, trigger] {
+                for prior in [cause.original_cause(), cause.semantic_trigger()] {
                     c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     if let Some(prior) = prior {
                         if prior >= index {
@@ -414,7 +403,7 @@ impl ParseEvidence {
                         has_source |= Self::spatial_reachable(c, &reachable, prior)?;
                     }
                 }
-                for group in [cause.original, cause.incoming] {
+                for group in [cause.original(), cause.incoming()] {
                     c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
                     if let Some(group) = group {
                         let cause = {
@@ -435,14 +424,14 @@ impl ParseEvidence {
                         has_source |= Self::spatial_reachable(c, &reachable, cause)?;
                     }
                 }
-                if let Some(computation) = cause.computation {
+                if let Some(computation) = cause.computation() {
                     validate_input_computation(
                         c,
-                        computation,
+                        *computation,
                         self.native.groups.as_slice(),
                         index,
                     )?;
-                    let operands = match computation {
+                    let operands = match *computation {
                         InputValueComputation::Range(range) => {
                             range.operands.map(RangeOperand::edge).into_array()
                         }
@@ -670,7 +659,7 @@ impl ParseEvidence {
                     HtmlParseWorkCategory::InspectByte,
                     mem::size_of::<ConstructionCause>() as u64,
                 )?;
-                if emit && let Some(source) = &cause.source {
+                if emit && let Some(source) = cause.source() {
                     c.require_source_range(source)?;
                     payload_write::<NativeAssociation>(c, 1)?;
                     c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
@@ -701,14 +690,15 @@ impl ParseEvidence {
                     .get(link.cause)
                     .ok_or_else(|| latch_registry_row(c))?;
                 payload_write::<(HtmlParseConstructionOperation, [Option<usize>; 4])>(c, 1)?;
+                // Chronological Token.trigger is retained in fixed history only.
                 let (operation, original, incoming, original_cause, trigger) = (
-                    cause.operation,
-                    cause.original,
-                    cause.incoming,
-                    cause.original_cause,
-                    cause.trigger,
+                    cause.operation(),
+                    cause.original(),
+                    cause.incoming(),
+                    cause.original_cause(),
+                    cause.semantic_trigger(),
                 );
-                if let Some(InputValueComputation::Range(range)) = cause.computation {
+                if let Some(InputValueComputation::Range(range)) = cause.computation().copied() {
                     payload_write::<RangeComputation>(c, 1)?;
                     for role in [
                         HtmlParseRangeOperandRole::Minimum,
@@ -732,7 +722,7 @@ impl ParseEvidence {
                         }
                     }
                 }
-                if let Some(InputValueComputation::Color(color)) = cause.computation {
+                if let Some(InputValueComputation::Color(color)) = cause.computation().copied() {
                     payload_write::<ColorComputation>(c, 1)?;
                     for role in [
                         HtmlParseColorOperandRole::Alpha,
@@ -769,14 +759,6 @@ impl ParseEvidence {
                 } else {
                     None
                 };
-                // Chronological Token.trigger is retained in fixed history only.
-                let semantic_trigger = matches!(
-                    operation,
-                    HtmlParseConstructionOperation::Merge
-                        | HtmlParseConstructionOperation::Copy
-                        | HtmlParseConstructionOperation::Replay
-                        | HtmlParseConstructionOperation::Replacement
-                );
                 let mut trigger_start = link.start;
                 if !link.historical
                     && let Some(GroupBody::Concat { offset, .. }) = body
@@ -786,7 +768,7 @@ impl ParseEvidence {
                         .checked_add(offset)
                         .ok_or(SessionError::WrongToken)?;
                 }
-                if semantic_trigger && let Some(cause) = trigger {
+                if let Some(cause) = trigger {
                     self.push_spatial_cause(
                         c,
                         &mut pending,
@@ -1044,7 +1026,7 @@ impl ParseEvidence {
                 .as_slice()
                 .get(index)
                 .ok_or_else(|| latch_registry_row(c))?;
-            if let Some(source) = &cause.source {
+            if let Some(source) = cause.source() {
                 c.require_source_range(source)?;
             }
             payload_write::<NativeAssociation>(c, 1)?;
@@ -1055,7 +1037,7 @@ impl ParseEvidence {
                 destination: NativeDestination::Cause(index),
                 start: 0,
                 end: 0,
-                source: cause.source.clone(),
+                source: cause.source().cloned(),
                 kind: None,
                 cause: index,
             };
@@ -1297,9 +1279,9 @@ mod tests {
                 if original == left.index && incoming == right.index && actual == offset)
             );
             let fixed = &evidence.native.causes.as_slice()[header.cause];
-            assert_eq!(fixed.operation, HtmlParseConstructionOperation::Merge);
+            assert_eq!(fixed.operation(), HtmlParseConstructionOperation::Merge);
             assert_eq!(
-                (fixed.original, fixed.incoming, fixed.trigger),
+                (fixed.original(), fixed.incoming(), fixed.trigger()),
                 (Some(left.index), Some(right.index), Some(cause.index))
             );
         }
@@ -1758,7 +1740,7 @@ mod tests {
             matches!(evidence.require_group(&copied).unwrap().body, GroupBody::Alias { original } if original == ab.index)
         );
         assert_eq!(
-            evidence.native.causes.as_slice()[incoming_cause].trigger,
+            evidence.native.causes.as_slice()[incoming_cause].trigger(),
             Some(copy_trigger.index)
         );
         evidence.release(&mut c).unwrap();
@@ -1916,7 +1898,7 @@ mod tests {
         let b = spatial_leaf(&mut evidence, &mut c, &source, 1..2);
         let ca = evidence.require_group(&a).unwrap().cause;
         let cb = evidence.require_group(&b).unwrap().cause;
-        assert_eq!(evidence.native.causes.as_slice()[cb].trigger, Some(ca));
+        assert_eq!(evidence.native.causes.as_slice()[cb].trigger(), Some(ca));
         spatial_project(&mut evidence, &mut c, &[(7, &a), (8, &b)]);
         let rows = spatial_rows(&evidence);
         evidence.release(&mut c).unwrap();
@@ -1975,9 +1957,9 @@ mod tests {
         let rows = spatial_rows(evidence);
         let cause =
             &evidence.native.causes.as_slice()[evidence.require_group(&group).unwrap().cause];
-        assert_eq!(cause.operation, HtmlParseConstructionOperation::Replay);
-        assert_eq!(cause.original_cause, Some(original.index));
-        assert_eq!(cause.trigger, Some(trigger.index));
+        assert_eq!(cause.operation(), HtmlParseConstructionOperation::Replay);
+        assert_eq!(cause.original_cause(), Some(original.index));
+        assert_eq!(cause.trigger(), Some(trigger.index));
         session.release(&mut c).unwrap();
         crate::parser::tree_builder::tests::assert_released(&c);
         assert_eq!(
@@ -2078,11 +2060,11 @@ mod tests {
             let reset_cause =
                 &evidence.native.causes.as_slice()[evidence.require_group(&reset).unwrap().cause];
             assert_eq!(
-                reset_cause.operation,
+                reset_cause.operation(),
                 HtmlParseConstructionOperation::Replacement
             );
-            assert_eq!(reset_cause.original, Some(old_id));
-            let actual_incoming = reset_cause.incoming.unwrap();
+            assert_eq!(reset_cause.original(), Some(old_id));
+            let actual_incoming = reset_cause.incoming().unwrap();
             session.release(&mut c).unwrap();
             crate::parser::tree_builder::tests::assert_released(&c);
             assert_eq!(rows.len(), 3);
@@ -2208,9 +2190,9 @@ mod tests {
             for (group, original) in [(&once, a.index), (&twice, once.index)] {
                 let cause = &evidence.native.causes.as_slice()
                     [evidence.require_group(group).unwrap().cause];
-                assert_eq!(cause.operation, HtmlParseConstructionOperation::Copy);
-                assert_eq!(cause.original, Some(original));
-                assert_eq!(cause.trigger, Some(trigger.index));
+                assert_eq!(cause.operation(), HtmlParseConstructionOperation::Copy);
+                assert_eq!(cause.original(), Some(original));
+                assert_eq!(cause.trigger(), Some(trigger.index));
             }
             if cap == 23 {
                 assert_eq!(
@@ -2501,7 +2483,7 @@ mod tests {
         let header = evidence.require_group(&group).unwrap();
         assert!(matches!(header.body, GroupBody::Leaf { .. }));
         assert_eq!(
-            evidence.native.causes.as_slice()[header.cause].operation,
+            evidence.native.causes.as_slice()[header.cause].operation(),
             HtmlParseConstructionOperation::Replacement
         );
         assert!(
@@ -2643,7 +2625,7 @@ mod tests {
             let cause =
                 &evidence.native.causes.as_slice()[evidence.require_group(&group).unwrap().cause];
             assert_eq!(
-                (cause.operation, cause.original, cause.trigger),
+                (cause.operation(), cause.original(), cause.trigger()),
                 (
                     HtmlParseConstructionOperation::Copy,
                     Some(prior),

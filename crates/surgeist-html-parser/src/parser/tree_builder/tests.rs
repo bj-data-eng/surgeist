@@ -16204,32 +16204,32 @@ fn progressive_completed_native_evidence(
             }
             group_index = Some(group);
             let cause_index = row.cause;
-            assert_eq!(cause.operation, expected.operation);
+            assert_eq!(cause.operation(), expected.operation);
             if expected.operation == HtmlParseConstructionOperation::Copy {
-                let original = cause.original.unwrap();
-                assert!(cause.source.is_none());
+                let original = cause.original().unwrap();
+                assert!(cause.source().is_none());
                 let group = rows.group(group).unwrap().unwrap();
                 assert!(
                     matches!(group.body, GroupBody::Alias { original: actual } if actual == original)
                 );
             } else if expected.operation == HtmlParseConstructionOperation::Replay {
-                let original = cause.original_cause.unwrap();
-                assert!(cause.source.is_none());
-                assert!(cause.rule.is_none() && cause.family.is_none());
+                let original = cause.original_cause().unwrap();
+                assert!(cause.source().is_none());
+                assert!(cause.rule().is_none() && cause.family().is_none());
                 let original = rows.cause_at(original).unwrap().unwrap();
-                assert_eq!(original.operation, HtmlParseConstructionOperation::Token);
-                assert_eq!(original.rule, Some(expected.rule));
-                assert_eq!(original.family, Some(expected.family));
-                let cause_source = original.source.as_ref().unwrap();
+                assert_eq!(original.operation(), HtmlParseConstructionOperation::Token);
+                assert_eq!(original.rule(), Some(expected.rule));
+                assert_eq!(original.family(), Some(expected.family));
+                let cause_source = original.source().unwrap();
                 assert_eq!(cause_source.source(), source.identity());
                 assert_eq!(
                     (cause_source.start(), cause_source.end()),
                     (source_start, source_end)
                 );
             } else {
-                assert_eq!(cause.rule, Some(expected.rule));
-                assert_eq!(cause.family, Some(expected.family));
-                let cause_source = cause.source.as_ref().unwrap();
+                assert_eq!(cause.rule(), Some(expected.rule));
+                assert_eq!(cause.family(), Some(expected.family));
+                let cause_source = cause.source().unwrap();
                 assert_eq!(cause_source.source(), source.identity());
                 assert!(cause_source.start() <= source_start && cause_source.end() >= source_end);
             }

@@ -231,20 +231,231 @@ impl InputValueComputation {
     }
 }
 
-pub(crate) struct ConstructionCause {
-    pub(crate) operation: HtmlParseConstructionOperation,
-    pub(crate) source: Option<crate::HtmlSourceRange>,
-    pub(crate) captured: Option<CapturedConstructionContext>,
-    pub(crate) rule: Option<HtmlParserRule>,
-    pub(crate) family: Option<evidence::HtmlParseTokenFamily>,
-    pub(crate) original_cause: Option<usize>,
-    pub(crate) retired_destination: Option<StringLocation>,
-    pub(crate) original_node: Option<usize>,
-    pub(crate) intended_parent: Option<usize>,
-    pub(crate) original: Option<usize>,
-    pub(crate) incoming: Option<usize>,
-    pub(crate) trigger: Option<usize>,
-    pub(crate) computation: Option<InputValueComputation>,
+/// The subject a copy cause names: an origin group duplicated into an alias,
+/// or the node whose clone owns the copied fields.
+#[derive(Clone, Copy)]
+pub(crate) enum CopySubject {
+    Group(usize),
+    Node(usize),
+}
+/// What a replacement cause replaced, by the operation that issued it.
+pub(crate) enum ReplacementSubject {
+    /// A field reset to the group `incoming`, after the optional `original`.
+    Reset {
+        original: Option<usize>,
+        incoming: usize,
+    },
+    /// A generated field replacing the group `original`.
+    Rewrite { original: usize },
+    /// A private attribute mutation of one node, optionally from a source range.
+    AttributeChange {
+        node: usize,
+        source: Option<crate::HtmlSourceRange>,
+    },
+    /// A generated form-control value, with the decisions that produced it.
+    Computed(InputValueComputation),
+}
+/// Why a construction fact exists. Each variant carries exactly the fields its
+/// operation owns, so a field belonging to another operation cannot be set.
+/// `trigger` names the cause that was current when this one was issued.
+pub(crate) enum ConstructionCause {
+    SourceIndependent,
+    Request,
+    /// The source range is recorded when the occurrence is classified.
+    Lexical {
+        source: Option<crate::HtmlSourceRange>,
+    },
+    Token {
+        source: crate::HtmlSourceRange,
+        rule: HtmlParserRule,
+        family: evidence::HtmlParseTokenFamily,
+        trigger: Option<usize>,
+    },
+    Merge {
+        original: usize,
+        incoming: usize,
+        trigger: Option<usize>,
+    },
+    Copy {
+        subject: CopySubject,
+        trigger: Option<usize>,
+    },
+    Replacement {
+        subject: ReplacementSubject,
+        trigger: Option<usize>,
+    },
+    Retirement {
+        group: usize,
+        destination: StringLocation,
+        trigger: Option<usize>,
+    },
+    Replay {
+        original_cause: Option<usize>,
+        intended_parent: Option<usize>,
+        trigger: Option<usize>,
+    },
+    Captured {
+        context: CapturedConstructionContext,
+        trigger: Option<usize>,
+    },
+}
+impl ConstructionCause {
+    pub(crate) fn operation(&self) -> HtmlParseConstructionOperation {
+        match self {
+            Self::SourceIndependent => HtmlParseConstructionOperation::SourceIndependent,
+            Self::Request => HtmlParseConstructionOperation::Request,
+            Self::Lexical { .. } => HtmlParseConstructionOperation::Lexical,
+            Self::Token { .. } => HtmlParseConstructionOperation::Token,
+            Self::Merge { .. } => HtmlParseConstructionOperation::Merge,
+            Self::Copy { .. } => HtmlParseConstructionOperation::Copy,
+            Self::Replacement { .. } => HtmlParseConstructionOperation::Replacement,
+            Self::Retirement { .. } => HtmlParseConstructionOperation::Retirement,
+            Self::Replay { .. } => HtmlParseConstructionOperation::Replay,
+            Self::Captured { .. } => HtmlParseConstructionOperation::Captured,
+        }
+    }
+    pub(crate) fn source(&self) -> Option<&crate::HtmlSourceRange> {
+        match self {
+            Self::Lexical { source } => source.as_ref(),
+            Self::Token { source, .. } => Some(source),
+            Self::Replacement {
+                subject: ReplacementSubject::AttributeChange { source, .. },
+                ..
+            } => source.as_ref(),
+            _ => None,
+        }
+    }
+    pub(crate) fn rule(&self) -> Option<HtmlParserRule> {
+        match self {
+            Self::Token { rule, .. } => Some(*rule),
+            _ => None,
+        }
+    }
+    pub(crate) fn family(&self) -> Option<evidence::HtmlParseTokenFamily> {
+        match self {
+            Self::Token { family, .. } => Some(*family),
+            _ => None,
+        }
+    }
+    pub(crate) fn captured(&self) -> Option<&CapturedConstructionContext> {
+        match self {
+            Self::Captured { context, .. } => Some(context),
+            _ => None,
+        }
+    }
+    pub(crate) fn computation(&self) -> Option<&InputValueComputation> {
+        match self {
+            Self::Replacement {
+                subject: ReplacementSubject::Computed(computation),
+                ..
+            } => Some(computation),
+            _ => None,
+        }
+    }
+    /// Lets a test corrupt the decisions of a published computation.
+    #[cfg(test)]
+    pub(crate) fn computation_mut(&mut self) -> Option<&mut InputValueComputation> {
+        match self {
+            Self::Replacement {
+                subject: ReplacementSubject::Computed(computation),
+                ..
+            } => Some(computation),
+            _ => None,
+        }
+    }
+    pub(crate) fn retired_destination(&self) -> Option<StringLocation> {
+        match self {
+            Self::Retirement { destination, .. } => Some(*destination),
+            _ => None,
+        }
+    }
+    pub(crate) fn original_cause(&self) -> Option<usize> {
+        match self {
+            Self::Replay { original_cause, .. } => *original_cause,
+            _ => None,
+        }
+    }
+    pub(crate) fn intended_parent(&self) -> Option<usize> {
+        match self {
+            Self::Replay {
+                intended_parent, ..
+            } => *intended_parent,
+            _ => None,
+        }
+    }
+    pub(crate) fn original_node(&self) -> Option<usize> {
+        match self {
+            Self::Copy {
+                subject: CopySubject::Node(node),
+                ..
+            }
+            | Self::Replacement {
+                subject: ReplacementSubject::AttributeChange { node, .. },
+                ..
+            } => Some(*node),
+            _ => None,
+        }
+    }
+    /// The group this cause replaced, merged, copied or retired.
+    pub(crate) fn original(&self) -> Option<usize> {
+        match self {
+            Self::Merge { original, .. }
+            | Self::Copy {
+                subject: CopySubject::Group(original),
+                ..
+            }
+            | Self::Replacement {
+                subject: ReplacementSubject::Rewrite { original },
+                ..
+            }
+            | Self::Retirement {
+                group: original, ..
+            } => Some(*original),
+            Self::Replacement {
+                subject: ReplacementSubject::Reset { original, .. },
+                ..
+            } => *original,
+            Self::Replacement {
+                subject: ReplacementSubject::Computed(computation),
+                ..
+            } => computation.original().map(|edge| edge.group),
+            _ => None,
+        }
+    }
+    pub(crate) fn incoming(&self) -> Option<usize> {
+        match self {
+            Self::Merge { incoming, .. }
+            | Self::Replacement {
+                subject: ReplacementSubject::Reset { incoming, .. },
+                ..
+            } => Some(*incoming),
+            _ => None,
+        }
+    }
+    /// The cause current at issue time, including a token's chronology.
+    pub(crate) fn trigger(&self) -> Option<usize> {
+        match self {
+            Self::SourceIndependent | Self::Request | Self::Lexical { .. } => None,
+            Self::Token { trigger, .. }
+            | Self::Merge { trigger, .. }
+            | Self::Copy { trigger, .. }
+            | Self::Replacement { trigger, .. }
+            | Self::Retirement { trigger, .. }
+            | Self::Replay { trigger, .. }
+            | Self::Captured { trigger, .. } => *trigger,
+        }
+    }
+    /// The trigger that lineage follows. A token's chronological trigger,
+    /// a retirement's and a capture's stay in the fixed history only.
+    pub(crate) fn semantic_trigger(&self) -> Option<usize> {
+        match self {
+            Self::Merge { trigger, .. }
+            | Self::Copy { trigger, .. }
+            | Self::Replay { trigger, .. }
+            | Self::Replacement { trigger, .. } => *trigger,
+            _ => None,
+        }
+    }
 }
 pub(crate) struct OriginGroup {
     pub(crate) body: GroupBody,
@@ -1183,20 +1394,9 @@ impl ParseEvidence {
         let (units, original) = (group.units, original.index);
         let cause = self.append_cause(
             c,
-            ConstructionCause {
-                operation: HtmlParseConstructionOperation::Copy,
-                source: None,
-                captured: None,
-                rule: None,
-                family: None,
-                original_cause: None,
-                retired_destination: None,
-                original_node: None,
-                intended_parent: None,
-                original: Some(original),
-                incoming: None,
+            ConstructionCause::Copy {
+                subject: CopySubject::Group(original),
                 trigger: self.native.current,
-                computation: None,
             },
         )?;
         let index = self.native.groups.len();
@@ -1234,24 +1434,7 @@ impl ParseEvidence {
         }
         payload_write::<Option<crate::HtmlSource>>(c, 1)?;
         c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
-        let cause = self.append_cause(
-            c,
-            ConstructionCause {
-                operation: HtmlParseConstructionOperation::Request,
-                source: None,
-                captured: None,
-                rule: None,
-                family: None,
-                original_cause: None,
-                retired_destination: None,
-                original_node: None,
-                intended_parent: None,
-                original: None,
-                incoming: None,
-                trigger: None,
-                computation: None,
-            },
-        )?;
+        let cause = self.append_cause(c, ConstructionCause::Request)?;
         payload_write::<Option<usize>>(c, 1)?;
         self.native.source = Some(source.clone());
         self.native.current = Some(cause);
@@ -1275,20 +1458,11 @@ impl ParseEvidence {
         c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         let index = self.append_cause(
             c,
-            ConstructionCause {
-                operation: HtmlParseConstructionOperation::Token,
-                source: Some(trigger.source.clone()),
-                captured: None,
-                rule: Some(trigger.rule),
-                family: Some(trigger.family),
-                original_cause: None,
-                retired_destination: None,
-                original_node: None,
-                intended_parent: None,
-                original: None,
-                incoming: None,
+            ConstructionCause::Token {
+                source: trigger.source.clone(),
+                rule: trigger.rule,
+                family: trigger.family,
                 trigger: self.native.current,
-                computation: None,
             },
         )?;
         let result = self.cause_ref(index, c)?;
@@ -1300,24 +1474,7 @@ impl ParseEvidence {
         if let Some(cause) = self.native.current {
             return Ok(cause);
         }
-        self.append_cause(
-            c,
-            ConstructionCause {
-                operation: HtmlParseConstructionOperation::SourceIndependent,
-                source: None,
-                captured: None,
-                rule: None,
-                family: None,
-                original_cause: None,
-                retired_destination: None,
-                original_node: None,
-                intended_parent: None,
-                original: None,
-                incoming: None,
-                trigger: None,
-                computation: None,
-            },
-        )
+        self.append_cause(c, ConstructionCause::SourceIndependent)
     }
     pub(super) fn retain_group(
         &mut self,
@@ -1406,24 +1563,7 @@ impl ParseEvidence {
         c: &mut ParseControl,
         units: usize,
     ) -> Result<OriginGroupRef, SessionError> {
-        let cause = self.append_cause(
-            c,
-            ConstructionCause {
-                operation: HtmlParseConstructionOperation::SourceIndependent,
-                source: None,
-                captured: None,
-                rule: None,
-                family: None,
-                original_cause: None,
-                retired_destination: None,
-                original_node: None,
-                intended_parent: None,
-                original: None,
-                incoming: None,
-                trigger: None,
-                computation: None,
-            },
-        )?;
+        let cause = self.append_cause(c, ConstructionCause::SourceIndependent)?;
         let index = self.native.groups.len();
         let reference = self.group_ref(index, c)?;
         self.native.groups.reserve_geometric(c, 1)?;
@@ -1465,20 +1605,10 @@ impl ParseEvidence {
         }
         let cause = self.append_cause(
             c,
-            ConstructionCause {
-                operation: HtmlParseConstructionOperation::Merge,
-                source: None,
-                captured: None,
-                rule: None,
-                family: None,
-                original_cause: None,
-                retired_destination: None,
-                original_node: None,
-                intended_parent: None,
-                original: Some(old.index),
-                incoming: Some(incoming.index),
+            ConstructionCause::Merge {
+                original: old.index,
+                incoming: incoming.index,
                 trigger: self.native.current,
-                computation: None,
             },
         )?;
         let index = self.native.groups.len();
@@ -1751,20 +1881,10 @@ impl SessionStorage {
         };
         let cause = evidence.append_cause(
             c,
-            ConstructionCause {
-                operation: HtmlParseConstructionOperation::Replay,
-                source: None,
-                captured: None,
-                rule: None,
-                family: None,
+            ConstructionCause::Replay {
                 original_cause: original,
-                retired_destination: None,
-                original_node: None,
                 intended_parent,
-                original: None,
-                incoming: None,
                 trigger: evidence.native.current,
-                computation: None,
             },
         )?;
         payload_write::<Option<usize>>(c, 1)?;
@@ -1817,20 +1937,12 @@ impl SessionStorage {
             .transpose()?;
         let cause = evidence.append_cause(
             c,
-            ConstructionCause {
-                operation: HtmlParseConstructionOperation::Replacement,
-                source: None,
-                captured: None,
-                rule: None,
-                family: None,
-                original_cause: None,
-                retired_destination: None,
-                original_node: None,
-                intended_parent: None,
-                original,
-                incoming: Some(incoming.index),
+            ConstructionCause::Replacement {
+                subject: ReplacementSubject::Reset {
+                    original,
+                    incoming: incoming.index,
+                },
                 trigger: evidence.native.current,
-                computation: None,
             },
         )?;
         let index = evidence.native.groups.len();
@@ -1894,20 +2006,10 @@ impl SessionStorage {
         let index = group.index;
         let cause = evidence.append_cause(
             c,
-            ConstructionCause {
-                operation: HtmlParseConstructionOperation::Retirement,
-                source: None,
-                captured: None,
-                rule: None,
-                family: None,
-                original_cause: None,
-                retired_destination: Some(location),
-                original_node: None,
-                intended_parent: None,
-                original: Some(index),
-                incoming: None,
+            ConstructionCause::Retirement {
+                group: index,
+                destination: location,
                 trigger: evidence.native.current,
-                computation: None,
             },
         )?;
         payload_write::<Option<usize>>(c, 1)?;
@@ -2063,14 +2165,11 @@ impl ParseEvidence {
                         mem::size_of::<ConstructionCause>() as u64,
                     )?;
                     let value = cause
-                        .computation
+                        .computation()
                         .ok_or(SessionError::OriginSplitUnavailable)?;
-                    if cause.operation != HtmlParseConstructionOperation::Replacement {
-                        return Err(SessionError::WrongToken);
-                    }
                     validate_input_computation(
                         c,
-                        value,
+                        *value,
                         self.native.groups.as_slice(),
                         header.cause,
                     )?;
@@ -2277,20 +2376,9 @@ impl SessionStorage {
         c.admit_atomic_layout(mem::size_of::<RetainedPayload>())?;
         let cause = evidence.append_cause(
             c,
-            ConstructionCause {
-                operation: HtmlParseConstructionOperation::Replacement,
-                source: None,
-                captured: None,
-                rule: None,
-                family: None,
-                original_cause: None,
-                retired_destination: None,
-                original_node: None,
-                intended_parent: None,
-                original: computation.original().map(|edge| edge.group),
-                incoming: None,
+            ConstructionCause::Replacement {
+                subject: ReplacementSubject::Computed(computation),
                 trigger: evidence.native.current,
-                computation: Some(computation),
             },
         )?;
         let index = evidence.native.groups.len();
@@ -2368,20 +2456,11 @@ impl ParseEvidence {
         self.require_group(original)?;
         self.append_cause(
             c,
-            ConstructionCause {
-                operation: HtmlParseConstructionOperation::Replacement,
-                source: None,
-                captured: None,
-                rule: None,
-                family: None,
-                original_cause: None,
-                retired_destination: None,
-                original_node: None,
-                intended_parent: None,
-                original: Some(original.index),
-                incoming: None,
+            ConstructionCause::Replacement {
+                subject: ReplacementSubject::Rewrite {
+                    original: original.index,
+                },
                 trigger: self.native.current,
-                computation: None,
             },
         )
     }
@@ -3118,20 +3197,9 @@ impl ParseEvidence {
         };
         let index = self.append_cause(
             c,
-            ConstructionCause {
-                operation: HtmlParseConstructionOperation::Captured,
-                source: None,
-                captured: Some(captured),
-                rule: None,
-                family: None,
-                original_cause: None,
-                retired_destination: None,
-                original_node: None,
-                intended_parent: None,
-                original: None,
-                incoming: None,
+            ConstructionCause::Captured {
+                context: captured,
                 trigger: self.native.current,
-                computation: None,
             },
         )?;
         let reference = self.cause_ref(index, c)?;
@@ -3237,20 +3305,9 @@ impl SessionStorage {
         let previous = evidence.current_cause(c)?;
         let index = evidence.append_cause(
             c,
-            ConstructionCause {
-                operation: HtmlParseConstructionOperation::Copy,
-                source: None,
-                captured: None,
-                rule: None,
-                family: None,
-                original_cause: None,
-                retired_destination: None,
-                original_node: Some(source),
-                intended_parent: None,
-                original: None,
-                incoming: None,
+            ConstructionCause::Copy {
+                subject: CopySubject::Node(source),
                 trigger: evidence.native.current,
-                computation: None,
             },
         )?;
         payload_write::<Option<usize>>(c, 1)?;
@@ -3274,20 +3331,12 @@ impl SessionStorage {
         payload_write::<Option<crate::HtmlSourceRange>>(c, 1)?;
         let index = evidence.append_cause(
             c,
-            ConstructionCause {
-                operation: HtmlParseConstructionOperation::Replacement,
-                source: source.cloned(),
-                captured: None,
-                rule: None,
-                family: None,
-                original_cause: None,
-                retired_destination: None,
-                original_node: Some(node),
-                intended_parent: None,
-                original: None,
-                incoming: None,
+            ConstructionCause::Replacement {
+                subject: ReplacementSubject::AttributeChange {
+                    node,
+                    source: source.cloned(),
+                },
                 trigger: evidence.native.current,
-                computation: None,
             },
         )?;
         payload_write::<Option<usize>>(c, 1)?;
@@ -3435,9 +3484,9 @@ mod captured_tests {
         let header = evidence.require_group(&group).unwrap();
         assert_eq!(header.units, 26);
         let cause = &evidence.native.causes.as_slice()[header.cause];
-        assert_eq!(cause.operation, HtmlParseConstructionOperation::Captured);
-        assert!(cause.source.is_none());
-        let retained = cause.captured.as_ref().unwrap();
+        assert_eq!(cause.operation(), HtmlParseConstructionOperation::Captured);
+        assert!(cause.source().is_none());
+        let retained = cause.captured().unwrap();
         assert_eq!(&retained.capture, capture.identity());
         assert_eq!(retained.host_revision, revision);
         assert_eq!(&retained.context, context.context_element());
@@ -3445,7 +3494,7 @@ mod captured_tests {
         assert_eq!(&retained.context_document, context.context_document());
         assert_eq!(&retained.target_document, context.target_document());
         assert_eq!(retained.role, HtmlParseCapturedCauseRole::ContextNamespace);
-        assert_eq!(cause.trigger, Some(bootstrap.index));
+        assert_eq!(cause.trigger(), Some(bootstrap.index));
         assert_eq!(evidence.native.causes.len(), 2);
         assert!(matches!(
             evidence.retain_captured_namespace(
@@ -3658,9 +3707,9 @@ mod merge_cleanup_tests {
         let header = evidence.require_group(&merged).unwrap();
         assert_eq!(header.units, 2);
         let cause = &evidence.native.causes.as_slice()[header.cause];
-        assert_eq!(cause.operation, HtmlParseConstructionOperation::Merge);
+        assert_eq!(cause.operation(), HtmlParseConstructionOperation::Merge);
         assert_eq!(
-            (cause.original, cause.incoming),
+            (cause.original(), cause.incoming()),
             (Some(old.index), Some(incoming.index))
         );
         assert_eq!(

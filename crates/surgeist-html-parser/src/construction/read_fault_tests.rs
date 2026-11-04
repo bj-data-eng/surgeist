@@ -339,25 +339,38 @@ fn a_reverse_query_reaching_an_unresolvable_row_faults_and_stays_faulted() {
 
 // ---- the cause and what it links ----
 
-/// The cause of the first sourced row, corrupted by `edit`, and the row.
+/// The first sourced row, whose cause is replaced by `corrupted`: a cause of
+/// the kind that owns the corrupted link, naming something the report lacks.
 fn corrupted_cause(
     report: &mut crate::HtmlParseReport,
-    edit: impl FnOnce(&mut provenance::ConstructionCause),
+    corrupted: provenance::ConstructionCause,
 ) -> usize {
     let index = first_sourced_row(report);
     let cause = history(report).rows_for_test()[index].cause;
-    edit(&mut history(report).evidence_mut().causes_for_test()[cause]);
+    history(report).evidence_mut().causes_for_test()[cause] = corrupted;
     index
 }
 
 #[test]
 fn a_cause_naming_a_missing_cause_reports_it_from_the_link_readers() {
+    use provenance::ConstructionCause as Cause;
     for field in ["original_cause", "trigger"] {
         let mut report = parse("<p>A&amp;B");
-        let index = corrupted_cause(&mut report, |cause| match field {
-            "original_cause" => cause.original_cause = Some(usize::MAX),
-            _ => cause.trigger = Some(usize::MAX),
-        });
+        let index = corrupted_cause(
+            &mut report,
+            match field {
+                "original_cause" => Cause::Replay {
+                    original_cause: Some(usize::MAX),
+                    intended_parent: None,
+                    trigger: None,
+                },
+                _ => Cause::Replay {
+                    original_cause: None,
+                    intended_parent: None,
+                    trigger: Some(usize::MAX),
+                },
+            },
+        );
         let cause = report.associations().row(index).unwrap().unwrap().cause();
         let result = match field {
             "original_cause" => cause.original_cause(),
@@ -369,12 +382,23 @@ fn a_cause_naming_a_missing_cause_reports_it_from_the_link_readers() {
 
 #[test]
 fn a_cause_naming_a_missing_node_reports_it_from_the_node_readers() {
+    use provenance::{ConstructionCause as Cause, CopySubject};
     for field in ["original_node", "intended_parent"] {
         let mut report = parse("<p>A&amp;B");
-        let index = corrupted_cause(&mut report, |cause| match field {
-            "original_node" => cause.original_node = Some(usize::MAX),
-            _ => cause.intended_parent = Some(usize::MAX),
-        });
+        let index = corrupted_cause(
+            &mut report,
+            match field {
+                "original_node" => Cause::Copy {
+                    subject: CopySubject::Node(usize::MAX),
+                    trigger: None,
+                },
+                _ => Cause::Replay {
+                    original_cause: None,
+                    intended_parent: Some(usize::MAX),
+                    trigger: None,
+                },
+            },
+        );
         let cause = report.associations().row(index).unwrap().unwrap().cause();
         let result = match field {
             "original_node" => cause.original_node(),
@@ -386,12 +410,23 @@ fn a_cause_naming_a_missing_node_reports_it_from_the_node_readers() {
 
 #[test]
 fn a_cause_naming_a_missing_group_reports_it_from_the_group_readers() {
+    use provenance::{ConstructionCause as Cause, CopySubject};
     for field in ["original", "incoming"] {
         let mut report = parse("<p>A&amp;B");
-        let index = corrupted_cause(&mut report, |cause| match field {
-            "original" => cause.original = Some(usize::MAX),
-            _ => cause.incoming = Some(usize::MAX),
-        });
+        let index = corrupted_cause(
+            &mut report,
+            match field {
+                "original" => Cause::Copy {
+                    subject: CopySubject::Group(usize::MAX),
+                    trigger: None,
+                },
+                _ => Cause::Merge {
+                    original: 0,
+                    incoming: usize::MAX,
+                    trigger: None,
+                },
+            },
+        );
         let cause = report.associations().row(index).unwrap().unwrap().cause();
         let result = match field {
             "original" => cause.original_group(),
@@ -414,9 +449,14 @@ fn a_cause_naming_an_unresolvable_retired_destination_reports_it() {
     ];
     for (name, location, kind) in cases {
         let mut report = parse("<p>A&amp;B");
-        let index = corrupted_cause(&mut report, |cause| {
-            cause.retired_destination = Some(location);
-        });
+        let index = corrupted_cause(
+            &mut report,
+            provenance::ConstructionCause::Retirement {
+                group: 0,
+                destination: location,
+                trigger: None,
+            },
+        );
         let cause = report.associations().row(index).unwrap().unwrap().cause();
         assert_eq!(
             cause.retired_destination().err(),
@@ -430,9 +470,14 @@ fn a_cause_naming_an_unresolvable_retired_destination_reports_it() {
 fn a_detached_retired_destination_is_an_answer_not_a_fault() {
     use crate::construction::StringLocation as Location;
     let mut report = parse("<p>A&amp;B");
-    let index = corrupted_cause(&mut report, |cause| {
-        cause.retired_destination = Some(Location::Detached);
-    });
+    let index = corrupted_cause(
+        &mut report,
+        provenance::ConstructionCause::Retirement {
+            group: 0,
+            destination: Location::Detached,
+            trigger: None,
+        },
+    );
     let cause = report.associations().row(index).unwrap().unwrap().cause();
     assert!(matches!(
         cause.retired_destination(),
@@ -516,7 +561,7 @@ fn computation_group(
     let causes = history(report).evidence_mut().causes_for_test();
     let cause = causes
         .iter()
-        .position(|cause| cause.computation.is_some_and(&select))
+        .position(|cause| cause.computation().copied().is_some_and(&select))
         .expect("a cause with this computation");
     let group = first_group(report, |g| g.cause == cause);
     (cause, group)
@@ -534,7 +579,7 @@ fn a_range_computation_naming_a_missing_original_or_operand_reports_it() {
         cause: usize::MAX,
     };
     let Some(provenance::InputValueComputation::Range(range)) =
-        &mut history(&mut report).evidence_mut().causes_for_test()[cause].computation
+        &mut history(&mut report).evidence_mut().causes_for_test()[cause].computation_mut()
     else {
         panic!("a Range computation")
     };
@@ -564,7 +609,7 @@ fn a_color_computation_naming_a_missing_group_reports_it() {
         cause: usize::MAX,
     };
     let Some(provenance::InputValueComputation::Color(color)) =
-        &mut history(&mut report).evidence_mut().causes_for_test()[cause].computation
+        &mut history(&mut report).evidence_mut().causes_for_test()[cause].computation_mut()
     else {
         panic!("a Color computation")
     };

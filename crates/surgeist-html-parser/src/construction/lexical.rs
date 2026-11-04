@@ -227,24 +227,7 @@ impl ParseEvidence {
             .map(|parent| self.require_lexical(c, parent))
             .transpose()?;
         let cause = self
-            .append_cause(
-                c,
-                ConstructionCause {
-                    operation: HtmlParseConstructionOperation::Lexical,
-                    source: None,
-                    captured: None,
-                    rule: None,
-                    family: None,
-                    original_cause: None,
-                    retired_destination: None,
-                    original_node: None,
-                    intended_parent: None,
-                    original: None,
-                    incoming: None,
-                    trigger: None,
-                    computation: None,
-                },
-            )
+            .append_cause(c, ConstructionCause::Lexical { source: None })
             .map_err(|error| match error {
                 SessionError::Stop(stop) => stop,
                 _ => c.fail_invariant(HtmlParseInvariant::RegistryRow),
@@ -461,6 +444,11 @@ impl ParseEvidence {
             .occurrences
             .get_mut(occurrence, c)?
             .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::RegistryRow))?;
+        // Only a lexical cause records a classified range; any other cause here
+        // is a registry defect, not a cause to relabel.
+        let ConstructionCause::Lexical { source: classified } = cause else {
+            return Err(c.fail_invariant(HtmlParseInvariant::RegistryRow));
+        };
         c.charge(
             HtmlParseWorkCategory::CopyByte,
             const {
@@ -472,7 +460,7 @@ impl ParseEvidence {
         )?;
         c.charge(HtmlParseWorkCategory::RecordWrite, 2)?;
         c.charge(HtmlParseWorkCategory::ProviderCall, 2)?;
-        cause.source = Some(source.clone());
+        *classified = Some(source.clone());
         record.source = source.clone();
         record.kind = kind;
         record.disposition = disposition;

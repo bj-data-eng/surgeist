@@ -1589,9 +1589,9 @@ pub(super) mod tests {
                 };
                 if is_root || is_output {
                     assert!(row.source.is_none());
-                    assert_eq!(cause.operation, HtmlParseConstructionOperation::Captured);
-                    assert!(cause.source.is_none());
-                    let captured = cause.captured.as_ref().unwrap();
+                    assert_eq!(cause.operation(), HtmlParseConstructionOperation::Captured);
+                    assert!(cause.source().is_none());
+                    let captured = cause.captured().unwrap();
                     assert_eq!(captured.role, HtmlParseCapturedCauseRole::FragmentBootstrap);
                     assert_eq!(&captured.capture, request.context().capture().identity());
                     assert_eq!(
@@ -1647,8 +1647,8 @@ pub(super) mod tests {
                 let (row, cause) = rows.row(cursor).unwrap().unwrap();
                 if is_x {
                     node_trigger = Some((
-                        cause.operation,
-                        cause.source.as_ref().map(|range| {
+                        cause.operation(),
+                        cause.source().as_ref().map(|range| {
                             (
                                 range.source() == request.source().identity(),
                                 range.start(),
@@ -1660,12 +1660,12 @@ pub(super) mod tests {
                 if matches!(
                     row.destination,
                     NativeDestination::Field(StringLocation::Namespace(_))
-                ) && cause.captured.as_ref().is_some_and(|captured| {
+                ) && cause.captured().as_ref().is_some_and(|captured| {
                     captured.role == HtmlParseCapturedCauseRole::ContextNamespace
                 }) {
                     captured_namespace = row.source.is_none()
-                        && cause.source.is_none()
-                        && cause.captured.as_ref().unwrap().capture
+                        && cause.source().is_none()
+                        && cause.captured().as_ref().unwrap().capture
                             == *request.context().capture().identity()
                         && row.start == 0
                         && row.end == "urn:actual:context".len();

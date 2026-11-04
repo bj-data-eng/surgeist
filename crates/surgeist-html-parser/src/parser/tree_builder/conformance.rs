@@ -5251,11 +5251,11 @@ mod whole_source_comparisons {
             // merge/retirement and contextual Token predecessor links.
             let mut causes = 0;
             while let Some(cause) = view.cause(causes) {
-                if let Some(source) = &cause.source {
+                if let Some(source) = &cause.source() {
                     check_range(owner.source(), source, (source.start(), source.end()));
                 }
-                if cause.operation == HtmlParseConstructionOperation::Token {
-                    assert!(cause.trigger.is_some());
+                if cause.operation() == HtmlParseConstructionOperation::Token {
+                    assert!(cause.trigger().is_some());
                 }
                 causes += 1;
             }
@@ -5272,10 +5272,10 @@ mod whole_source_comparisons {
                         incoming,
                         offset,
                     } => {
-                        assert_eq!(cause.operation, HtmlParseConstructionOperation::Merge);
-                        assert!(cause.source.is_none());
+                        assert_eq!(cause.operation(), HtmlParseConstructionOperation::Merge);
+                        assert!(cause.source().is_none());
                         assert_eq!(
-                            (cause.original, cause.incoming),
+                            (cause.original(), cause.incoming()),
                             (Some(original), Some(incoming))
                         );
                         let left = view.group(original).unwrap();
@@ -5285,9 +5285,12 @@ mod whole_source_comparisons {
                         assert!(original < index && incoming < index);
                         assert!(matches!(right.body, GroupBody::Leaf { .. }));
                         let leaf_cause = view.cause(right.cause).unwrap();
-                        assert_eq!(leaf_cause.operation, HtmlParseConstructionOperation::Token);
-                        assert_eq!(cause.trigger, Some(right.cause));
-                        let range = leaf_cause.source.as_ref().unwrap();
+                        assert_eq!(
+                            leaf_cause.operation(),
+                            HtmlParseConstructionOperation::Token
+                        );
+                        assert_eq!(cause.trigger(), Some(right.cause));
+                        let range = leaf_cause.source().unwrap();
                         leaves.push((
                             incoming,
                             right.cause,
@@ -5297,16 +5300,16 @@ mod whole_source_comparisons {
                         ));
                         let retired = view.cause(left.retirement.unwrap()).unwrap();
                         assert_eq!(
-                            retired.operation,
+                            retired.operation(),
                             HtmlParseConstructionOperation::Retirement
                         );
-                        assert_eq!(retired.original, Some(original));
+                        assert_eq!(retired.original(), Some(original));
                         merged += 1;
                         index = original;
                     }
                     GroupBody::Leaf { .. } => {
-                        assert_eq!(cause.operation, HtmlParseConstructionOperation::Token);
-                        let range = cause.source.as_ref().unwrap();
+                        assert_eq!(cause.operation(), HtmlParseConstructionOperation::Token);
+                        let range = cause.source().unwrap();
                         leaves.push((
                             index,
                             group.cause,

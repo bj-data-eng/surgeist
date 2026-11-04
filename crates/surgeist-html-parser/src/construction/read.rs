@@ -209,20 +209,19 @@ pub(crate) fn prepare_public_readers(
     for index in 0..view.causes_len() {
         record::<ConstructionCause>(c)?;
         let cause = view.cause(index).ok_or(SessionError::WrongToken)?;
-        for i in [cause.original_node, cause.intended_parent]
+        for i in [cause.original_node(), cause.intended_parent()]
             .into_iter()
             .flatten()
         {
             node(records, c, i)?;
         }
-        if let Some(value) = cause.retired_destination {
-            if cause.operation != provenance::HtmlParseConstructionOperation::Retirement {
-                return Err(SessionError::WrongToken);
-            }
-            let group = cause.original.ok_or(SessionError::WrongToken)?;
+        if let provenance::ConstructionCause::Retirement {
+            group, destination, ..
+        } = cause
+        {
             record::<provenance::OriginGroup>(c)?;
             if view
-                .group(group)
+                .group(*group)
                 .is_none_or(|g| g.retirement != Some(index))
             {
                 return Err(SessionError::WrongToken);
@@ -230,7 +229,7 @@ pub(crate) fn prepare_public_readers(
             // The original issuer established this ordinal before removal or
             // transfer. Capacity is only a retained-storage sanity bound;
             // the canonical retirement relation above proves field history.
-            retired_location(storage, records, c, value)?;
+            retired_location(storage, records, c, *destination)?;
         }
     }
     for index in 0..view.lexical_occurrences_len() {
@@ -761,7 +760,7 @@ impl<'a> HtmlParseCause<'a> {
     }
 
     pub fn color_computation(&self) -> Option<HtmlParseColorComputation<'a>> {
-        match self.cause.computation.as_ref()? {
+        match self.cause.computation()? {
             provenance::InputValueComputation::Color(value) => Some(HtmlParseColorComputation {
                 history: self.history,
                 value,
@@ -770,7 +769,7 @@ impl<'a> HtmlParseCause<'a> {
         }
     }
     pub fn range_computation(&self) -> Option<HtmlParseRangeComputation<'a>> {
-        match self.cause.computation.as_ref()? {
+        match self.cause.computation()? {
             provenance::InputValueComputation::Range(value) => Some(HtmlParseRangeComputation {
                 history: self.history,
                 value,
@@ -779,35 +778,35 @@ impl<'a> HtmlParseCause<'a> {
         }
     }
     pub fn operation(&self) -> provenance::HtmlParseConstructionOperation {
-        self.cause.operation
+        self.cause.operation()
     }
     pub fn source(&self) -> Option<&'a crate::HtmlSourceRange> {
-        self.cause.source.as_ref()
+        self.cause.source()
     }
     pub fn rule(&self) -> Option<provenance::HtmlParserRule> {
-        self.cause.rule
+        self.cause.rule()
     }
     pub fn token(&self) -> Option<evidence::HtmlParseTokenFamily> {
-        self.cause.family
+        self.cause.family()
     }
     fn linked(&self, index: Option<usize>) -> Result<Option<Self>, HtmlParseUnresolvedReference> {
         index.map(|i| cause_of(self.history, i)).transpose()
     }
     pub fn original_cause(&self) -> Result<Option<Self>, HtmlParseUnresolvedReference> {
-        self.linked(self.cause.original_cause)
+        self.linked(self.cause.original_cause())
     }
     pub fn trigger(&self) -> Result<Option<Self>, HtmlParseUnresolvedReference> {
-        self.linked(self.cause.trigger)
+        self.linked(self.cause.trigger())
     }
     pub fn original_node(&self) -> Result<Option<HtmlNode<'a>>, HtmlParseUnresolvedReference> {
         self.cause
-            .original_node
+            .original_node()
             .map(|i| self.history.native_node(i))
             .transpose()
     }
     pub fn intended_parent(&self) -> Result<Option<HtmlNode<'a>>, HtmlParseUnresolvedReference> {
         self.cause
-            .intended_parent
+            .intended_parent()
             .map(|i| self.history.native_node(i))
             .transpose()
     }
@@ -815,7 +814,7 @@ impl<'a> HtmlParseCause<'a> {
         &self,
     ) -> Result<Option<HtmlParseOriginGroup<'a>>, HtmlParseUnresolvedReference> {
         self.cause
-            .original
+            .original()
             .map(|i| group_of(self.history, i))
             .transpose()
     }
@@ -823,20 +822,19 @@ impl<'a> HtmlParseCause<'a> {
         &self,
     ) -> Result<Option<HtmlParseOriginGroup<'a>>, HtmlParseUnresolvedReference> {
         self.cause
-            .incoming
+            .incoming()
             .map(|i| group_of(self.history, i))
             .transpose()
     }
     pub fn captured(&self) -> Option<HtmlParseCapturedCause<'a>> {
         self.cause
-            .captured
-            .as_ref()
+            .captured()
             .map(|value| HtmlParseCapturedCause { value })
     }
     pub fn retired_destination(
         &self,
     ) -> Result<Option<HtmlParseRetiredDestination<'a>>, HtmlParseUnresolvedReference> {
-        let Some(location) = self.cause.retired_destination else {
+        let Some(location) = self.cause.retired_destination() else {
             return Ok(None);
         };
         if location == StringLocation::Detached {

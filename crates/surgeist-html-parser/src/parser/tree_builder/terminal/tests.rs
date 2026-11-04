@@ -202,7 +202,7 @@ fn completed_lexical_already_present_attributes_and_retired_history_keep_exact_o
     for index in 0..view.len() {
         let row = view.row(index).unwrap();
         let cause = view.cause(row.cause).unwrap();
-        if let Some(group) = cause.original {
+        if let Some(group) = cause.original() {
             let group = view.group(group).unwrap();
             if let Some(retirement) = group.retirement {
                 retired = true;
@@ -892,24 +892,24 @@ fn completed_native_field_projection_retains_atomic_merged_origins_and_later_tri
     for index in 0..rows.len() {
         if rows.node_for(index, &root).unwrap() {
             let (_, cause) = rows.row(index).unwrap().unwrap();
-            assert_eq!(cause.operation, HtmlParseConstructionOperation::Request);
-            assert!(cause.source.is_none());
-            assert!(cause.captured.is_none());
-            assert!(cause.original_node.is_none());
+            assert_eq!(cause.operation(), HtmlParseConstructionOperation::Request);
+            assert!(cause.source().is_none());
+            assert!(cause.captured().is_none());
+            assert!(cause.original_node().is_none());
             roots += 1;
         }
         if rows.text_for(index, &text).unwrap() {
             let reference = rows.cause_reference(index).unwrap().unwrap();
             let cause = rows.cause(&reference).unwrap();
-            assert_eq!(cause.operation, HtmlParseConstructionOperation::Merge);
-            assert!(cause.original.is_some());
-            assert!(cause.incoming.is_some());
-            assert!(cause.trigger.is_some());
-            assert!(cause.source.is_none());
-            assert!(cause.rule.is_none());
-            assert!(cause.family.is_none());
-            let original = cause.original.unwrap();
-            let trigger = cause.trigger.unwrap();
+            assert_eq!(cause.operation(), HtmlParseConstructionOperation::Merge);
+            assert!(cause.original().is_some());
+            assert!(cause.incoming().is_some());
+            assert!(cause.trigger().is_some());
+            assert!(cause.source().is_none());
+            assert!(cause.rule().is_none());
+            assert!(cause.family().is_none());
+            let original = cause.original().unwrap();
+            let trigger = cause.trigger().unwrap();
             let retirement = rows
                 .group(original)
                 .unwrap()
@@ -927,19 +927,22 @@ fn completed_native_field_projection_retains_atomic_merged_origins_and_later_tri
                 .unwrap();
             let retired = rows.cause_at(retirement).unwrap().unwrap();
             assert_eq!(
-                retired.operation,
+                retired.operation(),
                 HtmlParseConstructionOperation::Retirement
             );
-            assert_eq!(retired.original, Some(original));
+            assert_eq!(retired.original(), Some(original));
             assert!(matches!(
-                retired.retired_destination,
+                retired.retired_destination(),
                 Some(crate::construction::StringLocation::Text(_))
             ));
-            assert!(retired.source.is_none());
-            assert_eq!(retired.trigger, Some(trigger));
+            assert!(retired.source().is_none());
+            assert_eq!(retired.trigger(), Some(trigger));
             let trigger = rows.cause_at(trigger).unwrap().unwrap();
-            assert_eq!(trigger.operation, HtmlParseConstructionOperation::Token);
-            assert_eq!(trigger.source, Some(source.range(10, 25).unwrap()));
+            assert_eq!(trigger.operation(), HtmlParseConstructionOperation::Token);
+            assert_eq!(
+                trigger.source().cloned(),
+                Some(source.range(10, 25).unwrap())
+            );
             let (row, _) = rows.row(index).unwrap().unwrap();
             observed.push((row.start, row.end, row.source.clone(), row.kind));
         }
@@ -1092,9 +1095,12 @@ fn completed_intrinsic_raw_fields_keep_utf16_child_and_hidden_sanitization_relat
         for index in 0..rows.len() {
             if rows.raw_for(index, &node, kind).unwrap() {
                 let (row, cause) = rows.row(index).unwrap().unwrap();
-                assert_eq!(cause.operation, HtmlParseConstructionOperation::Replacement);
-                assert!(cause.original.is_some());
-                assert!(cause.trigger.is_some());
+                assert_eq!(
+                    cause.operation(),
+                    HtmlParseConstructionOperation::Replacement
+                );
+                assert!(cause.original().is_some());
+                assert!(cause.trigger().is_some());
                 actual.push((
                     row.start,
                     row.end,
@@ -1147,15 +1153,15 @@ fn completed_formatting_reconstruction_distinguishes_original_creation_and_later
     for index in 0..rows.len() {
         if rows.node_for(index, &replay).unwrap() {
             let (_, cause) = rows.row(index).unwrap().unwrap();
-            assert_eq!(cause.operation, HtmlParseConstructionOperation::Replay);
-            assert_eq!(cause.intended_parent, intended);
-            let (original, trigger) = (cause.original_cause.unwrap(), cause.trigger.unwrap());
+            assert_eq!(cause.operation(), HtmlParseConstructionOperation::Replay);
+            assert_eq!(cause.intended_parent(), intended);
+            let (original, trigger) = (cause.original_cause().unwrap(), cause.trigger().unwrap());
             assert_eq!(
-                rows.cause_at(original).unwrap().unwrap().source,
+                rows.cause_at(original).unwrap().unwrap().source().cloned(),
                 Some(source.range(3, 6).unwrap())
             );
             assert_eq!(
-                rows.cause_at(trigger).unwrap().unwrap().source,
+                rows.cause_at(trigger).unwrap().unwrap().source().cloned(),
                 Some(source.range(11, 12).unwrap())
             );
             seen += 1;
@@ -1223,15 +1229,15 @@ fn completed_adoption_replay_keeps_furthest_block_parent_and_original_moved_text
                 unreachable!()
             };
             assert_ne!(Some(node), original_index);
-            assert_eq!(cause.operation, HtmlParseConstructionOperation::Replay);
-            assert_eq!(cause.intended_parent, intended);
-            let (creation, trigger) = (cause.original_cause.unwrap(), cause.trigger.unwrap());
+            assert_eq!(cause.operation(), HtmlParseConstructionOperation::Replay);
+            assert_eq!(cause.intended_parent(), intended);
+            let (creation, trigger) = (cause.original_cause().unwrap(), cause.trigger().unwrap());
             assert_eq!(
-                rows.cause_at(creation).unwrap().unwrap().source,
+                rows.cause_at(creation).unwrap().unwrap().source().cloned(),
                 Some(source.range(0, 3).unwrap())
             );
             assert_eq!(
-                rows.cause_at(trigger).unwrap().unwrap().source,
+                rows.cause_at(trigger).unwrap().unwrap().source().cloned(),
                 Some(source.range(8, 12).unwrap())
             );
             seen += 1;
@@ -1453,21 +1459,21 @@ fn completed_selectedcontent_clone_retains_original_native_identity_and_scheduli
     for index in 0..rows.len() {
         if rows.node_for(index, &copy).unwrap() {
             let (_, cause) = rows.row(index).unwrap().unwrap();
-            assert_eq!(cause.operation, HtmlParseConstructionOperation::Copy);
-            assert_eq!(cause.original_node, original_identity);
-            let trigger = cause.trigger.unwrap();
+            assert_eq!(cause.operation(), HtmlParseConstructionOperation::Copy);
+            assert_eq!(cause.original_node(), original_identity);
+            let trigger = cause.trigger().unwrap();
             let trigger = rows.cause_at(trigger).unwrap().unwrap();
             let start = input.find("</option>").unwrap();
             assert_eq!(
-                trigger.source,
+                trigger.source().cloned(),
                 Some(source.range(start, start + 9).unwrap())
             );
             nodes += 1;
         }
         if rows.text_for(index, &copy).unwrap() {
             let (row, cause) = rows.row(index).unwrap().unwrap();
-            assert_eq!(cause.operation, HtmlParseConstructionOperation::Copy);
-            assert!(cause.original.is_some());
+            assert_eq!(cause.operation(), HtmlParseConstructionOperation::Copy);
+            assert!(cause.original().is_some());
             let start = input.find(">A<").unwrap() + 1;
             assert_eq!(row.source, Some(source.range(start, start + 1).unwrap()));
             assert_eq!((row.start, row.end), (0, 1));
@@ -1540,10 +1546,10 @@ fn completed_template_foreign_and_rewritten_fields_keep_exact_native_bindings() 
                     if Some(node) == *id {
                         if position == 0 {
                             assert_eq!(
-                                cause.operation,
+                                cause.operation(),
                                 HtmlParseConstructionOperation::Replacement
                             );
-                            assert!(cause.original.is_some());
+                            assert!(cause.original().is_some());
                         }
                         names[position].push((row.start, row.end, row.source.clone(), row.kind));
                     }
@@ -1630,27 +1636,30 @@ fn completed_fostered_table_text_keeps_original_processing_and_later_flush_trigg
             continue;
         }
         let (row, cause) = rows.row(index).unwrap().unwrap();
-        assert_eq!(cause.operation, HtmlParseConstructionOperation::Merge);
-        let groups = [cause.original.unwrap(), cause.incoming.unwrap()];
+        assert_eq!(cause.operation(), HtmlParseConstructionOperation::Merge);
+        let groups = [cause.original().unwrap(), cause.incoming().unwrap()];
         observed.push((row.start, row.end, row.source.clone(), row.kind));
         for (group, expected) in groups.into_iter().zip([(7, 8), (8, 9)]) {
             let group = rows.group(group).unwrap().unwrap();
             let replay = group.cause;
             let replay = rows.cause_at(replay).unwrap().unwrap();
-            assert_eq!(replay.operation, HtmlParseConstructionOperation::Replay);
-            let (original, trigger) = (replay.original_cause.unwrap(), replay.trigger.unwrap());
+            assert_eq!(replay.operation(), HtmlParseConstructionOperation::Replay);
+            let (original, trigger) = (replay.original_cause().unwrap(), replay.trigger().unwrap());
             let original = rows.cause_at(original).unwrap().unwrap();
-            assert_eq!(original.operation, HtmlParseConstructionOperation::Token);
+            assert_eq!(original.operation(), HtmlParseConstructionOperation::Token);
             assert_eq!(
-                original.source,
+                original.source().cloned(),
                 Some(source.range(expected.0, expected.1).unwrap())
             );
             assert_eq!(
-                original.rule,
+                original.rule(),
                 Some(HtmlParserRule::Tree(HtmlInsertionMode::InTableText))
             );
             let trigger = rows.cause_at(trigger).unwrap().unwrap();
-            assert_eq!(trigger.source, Some(source.range(9, 13).unwrap()));
+            assert_eq!(
+                trigger.source().cloned(),
+                Some(source.range(9, 13).unwrap())
+            );
         }
     }
     assert_eq!(
@@ -1709,14 +1718,20 @@ fn completed_pi_pseudo_attribute_derivation_keeps_literal_and_xml_reference_grou
         let (row, cause) = rows.row(index).unwrap().unwrap();
         match row.destination {
             NativeDestination::Field(StringLocation::PiName(_, 0)) => {
-                assert_eq!(cause.operation, HtmlParseConstructionOperation::Replacement);
-                assert!(cause.original.is_some());
+                assert_eq!(
+                    cause.operation(),
+                    HtmlParseConstructionOperation::Replacement
+                );
+                assert!(cause.original().is_some());
                 names += 1;
             }
             NativeDestination::Field(StringLocation::PiValue(_, 0)) => {
-                assert_eq!(cause.operation, HtmlParseConstructionOperation::Replacement);
-                assert!(cause.original.is_some());
-                assert!(cause.trigger.is_some());
+                assert_eq!(
+                    cause.operation(),
+                    HtmlParseConstructionOperation::Replacement
+                );
+                assert!(cause.original().is_some());
+                assert!(cause.trigger().is_some());
                 values.push((row.start, row.end, row.source.clone(), row.kind));
             }
             _ => {}
