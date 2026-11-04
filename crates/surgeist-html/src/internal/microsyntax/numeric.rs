@@ -4130,6 +4130,33 @@ mod tests {
     /// The predecessor shape of a decimal string keeps its length except when a lone leading one
     /// drops out, and the pivot is the last digit that is not zero.
     #[test]
+    fn digit_buffers_report_the_first_byte_that_is_not_an_ascii_digit() {
+        assert_eq!(
+            ascii_digit_string(b"0123456789".to_vec()).as_deref(),
+            Ok("0123456789")
+        );
+        assert_eq!(ascii_digit_string(Vec::new()).as_deref(), Ok(""));
+        for (bytes, offset, unit) in [
+            (&b"12a4"[..], 2, u16::from(b'a')),
+            (&b" 1"[..], 0, u16::from(b' ')),
+            (&b"12-"[..], 2, u16::from(b'-')),
+            (&b"/"[..], 0, u16::from(b'/')),
+            (&b":"[..], 0, u16::from(b':')),
+            (&b"12\x804"[..], 2, 0x80),
+            (&b"1\xff"[..], 1, 0xff),
+        ] {
+            assert_eq!(
+                ascii_digit_string(bytes.to_vec()),
+                Err(HtmlDecimalDigitsError::NonAsciiDigit {
+                    code_unit_offset: offset,
+                    code_unit: unit,
+                }),
+                "{bytes:?}"
+            );
+        }
+    }
+
+    #[test]
     fn predecessor_shape_matches_the_decremented_digits() {
         for value in [1_u128, 2, 9, 10, 11, 100, 101, 1000, 1999, 120_000] {
             let digits = value.to_string();
