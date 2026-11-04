@@ -483,3 +483,80 @@ fn a_stacked_header_column_costs_the_input_and_the_associations() {
         .collect();
     assert_work_follows_input_and_associations("stacked column", &measured);
 }
+
+/// A cell of one row among the tall header cells that cross all the rows does
+/// not make the rows be scanned one by one.
+///
+/// HTML 877d, internal algorithm for scanning and assigning header cells,
+/// steps 4 and 9. Row 0 holds a tall `th` (`rowspan="n"`, `scope="row"`), a
+/// `td`, then `n` more tall `th` of the same rows, then a tall `td`; each of
+/// the `n - 1` rows after holds one `td`, which lands in column 1 beside the
+/// first `th`. So every row has a cell of its own between the tall cells, and
+/// all the `th` cross the same rows. Every cell but the last carries
+/// `headers=""`, which assigns it no header and keeps it from scanning.
+///
+/// The tall `td` is the one principal cell that scans. Each of its `n` rows is
+/// read leftward: the `n` later `th` meet no data cell, so they share one
+/// header block, none is opaque, and each is a row header by its `scope`: all
+/// are taken. Then the row's `td` ends that block, which makes those `th`
+/// opaque, and the first `th`, of the same rows, is hidden by them. A row's
+/// own cell therefore decides one header, and the same one in every row. The
+/// `n` rows give the same headers, so the tall `td` takes the `n` later `th`
+/// once: `n` associations in all, and the first `th` is not among them.
+fn among_work(n: usize) -> (usize, usize, usize) {
+    let span = n.to_string();
+    let work = associated_work(
+        |b, d| {
+            let table = element(b, d, "table", &[]);
+            let tall = |b: &mut surgeist_html_semantics::HtmlCaptureBuilder| {
+                cell(
+                    b,
+                    d,
+                    "th",
+                    &[("scope", "row"), ("rowspan", &span), ("headers", "")],
+                )
+            };
+            let mut first = vec![tall(b), cell(b, d, "td", &[("headers", "")])];
+            for _ in 0..n {
+                first.push(tall(b));
+            }
+            first.push(cell(b, d, "td", &[("rowspan", &span)]));
+            let mut trs = Vec::new();
+            let row = element(b, d, "tr", &[]);
+            b.establish_children(&row, &first).unwrap();
+            trs.push(row);
+            for _ in 1..n {
+                let row = element(b, d, "tr", &[]);
+                let td = cell(b, d, "td", &[("headers", "")]);
+                b.establish_children(&row, &[td]).unwrap();
+                trs.push(row);
+            }
+            b.establish_children(&table, &trs).unwrap();
+            table
+        },
+        (n + 3, n),
+        2 * n + 2,
+        n,
+    );
+    (2 * n + 2, n, work)
+}
+
+#[test]
+fn cells_among_tall_header_cells_cost_the_input_and_the_associations() {
+    let measured: Vec<_> = [100, 200, 400, 800].into_iter().map(among_work).collect();
+    // The input and the associations double with `n`: allow a little over
+    // two for the logarithms of the lookups, as the tests above do.
+    for pair in measured.windows(2) {
+        assert!(
+            pair[1].2 * 10 <= pair[0].2 * 26,
+            "{} cells and {} associations cost {} but {} and {} cost {} \
+             (input and associations x2 may cost at most x2.6)",
+            pair[0].0,
+            pair[0].1,
+            pair[0].2,
+            pair[1].0,
+            pair[1].1,
+            pair[1].2,
+        );
+    }
+}
