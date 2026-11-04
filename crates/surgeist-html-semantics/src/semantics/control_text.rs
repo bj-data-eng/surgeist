@@ -2,6 +2,7 @@
 //! DOM child/descendant text content preserves ordinary Text data. Setters,
 //! reset and establishing an output's actual default override are external.
 
+use super::seen::Seen;
 use super::*;
 use surgeist_html::{values::DocumentString, vocabulary::KnownHtmlElement};
 
@@ -105,7 +106,12 @@ impl HtmlOutputDefaultFacts {
         }
         let mut work = 0usize;
         let mut units = 0usize;
-        for (index, record) in records.iter().enumerate() {
+        let mut seen = Seen::new(
+            records.len(),
+            |n| output_validation_charge(&mut work, limits.validation_work, n),
+            HtmlOutputDefaultError::RepresentationExhausted,
+        )?;
+        for record in records.iter() {
             output_validation_charge(&mut work, limits.validation_work, 1)?;
             let node = capture
                 .node(&record.subject)
@@ -138,13 +144,10 @@ impl HtmlOutputDefaultFacts {
                     record.subject.clone(),
                 ));
             }
-            for previous in &records[..index] {
-                output_validation_charge(&mut work, limits.validation_work, 1)?;
-                if previous.subject == record.subject {
-                    return Err(HtmlOutputDefaultError::DuplicateSubject(
-                        record.subject.clone(),
-                    ));
-                }
+            if !seen.first(record.subject.ordinal()) {
+                return Err(HtmlOutputDefaultError::DuplicateSubject(
+                    record.subject.clone(),
+                ));
             }
             output_validation_charge(&mut work, limits.validation_work, 1)?;
             if let HtmlOutputDefaultValueOverride::Value(value) = &record.default_value_override {

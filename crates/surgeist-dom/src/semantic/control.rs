@@ -23,15 +23,10 @@ pub(super) fn native_input(
             && element.custom_element_definition() == crate::DomElementDefinition::Null
         {
             control.reserve(&mut classifications, 1)?;
-            // Context::new performs one element qualification and i previous
-            // duplicate comparisons for this record; admit that exact envelope
+            // Context::new performs one element qualification and one
+            // duplicate flag test for this record; admit that exact envelope
             // before entering its non-cancelable bounded validation loop.
-            control.charge(
-                classifications
-                    .len()
-                    .checked_add(1)
-                    .ok_or(DomHtmlCaptureError::RepresentationExhausted)?,
-            )?;
+            control.charge(2)?;
             classifications.push(HtmlCustomControlClassification::new(
                 entry.subject.clone(),
                 false,
@@ -45,10 +40,11 @@ pub(super) fn with_native_state(
     input: HtmlSemanticContextInput,
     source: &DomSnapshot,
     capture: &HtmlCapture,
-    entries: &[Entry],
+    subjects: &super::nodes::Subjects<'_>,
     control: &mut Control<'_>,
     output_units: usize,
 ) -> Result<HtmlSemanticContextInput, DomHtmlCaptureError> {
+    let entries = subjects.entries();
     let mut associations = Vec::new();
     let mut inputs = Vec::new();
     let mut textareas = Vec::new();
@@ -74,15 +70,7 @@ pub(super) fn with_native_state(
             continue;
         };
         let owner = if let Some(owner) = node.node.control_owner() {
-            let mut mapped = None;
-            for candidate in entries {
-                control.charge(1)?;
-                if candidate.node == owner {
-                    mapped = Some(candidate.subject.clone());
-                    break;
-                }
-            }
-            Some(mapped.ok_or(DomHtmlCaptureError::UnmappedSubject)?)
+            Some(subjects.subject(control, owner)?)
         } else {
             None
         };
@@ -171,17 +159,7 @@ pub(super) fn with_native_state(
                 let state = match target {
                     None => HtmlExplicitElementReference::Null,
                     Some(target) => {
-                        let mut found = None;
-                        for candidate in entries {
-                            control.charge(1)?;
-                            if candidate.node == target {
-                                found = Some(candidate.subject.clone());
-                                break;
-                            }
-                        }
-                        HtmlExplicitElementReference::Element(
-                            found.ok_or(DomHtmlCaptureError::UnmappedSubject)?,
-                        )
+                        HtmlExplicitElementReference::Element(subjects.subject(control, target)?)
                     }
                 };
                 control.reserve_extent(&mut references, 1, extent)?;
