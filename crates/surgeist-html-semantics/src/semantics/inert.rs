@@ -6,6 +6,7 @@
 //! sourced DOM producer supplies that capability. Runtime owns modal transitions
 //! and inert interaction effects; only the current blocking subject escapes.
 
+use super::seen::Seen;
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
 use surgeist_html::{
@@ -330,13 +331,15 @@ impl HtmlInertFacts {
             work: 0,
             limit: limits.validation_work,
         };
+        let mut seen = Seen::new(
+            nodes.len(),
+            |n| validation.charge(n),
+            HtmlInertFactError::RepresentationExhausted,
+        )?;
         for (index, fact) in nodes.iter().enumerate() {
             let node = validation.node(capture, &fact.subject)?;
-            for previous in &nodes[..index] {
-                validation.charge(1)?;
-                if previous.subject == fact.subject {
-                    return Err(HtmlInertFactError::DuplicateSubject(fact.subject.clone()));
-                }
+            if !seen.first(fact.subject.ordinal()) {
+                return Err(HtmlInertFactError::DuplicateSubject(fact.subject.clone()));
             }
             let connection = validation.connection(capture, &fact.subject)?;
             let established_connected = connection.connected();
@@ -452,16 +455,18 @@ impl HtmlInertFacts {
                 current = parent.clone();
             }
         }
-        for (index, fact) in documents.iter().enumerate() {
+        let mut seen = Seen::new(
+            documents.len(),
+            |n| validation.charge(n),
+            HtmlInertFactError::RepresentationExhausted,
+        )?;
+        for fact in documents.iter() {
             validation.charge(1)?;
             capture
                 .document_id(&fact.document)
                 .map_err(HtmlInertFactError::Capture)?;
-            for previous in &documents[..index] {
-                validation.charge(1)?;
-                if previous.document == fact.document {
-                    return Err(HtmlInertFactError::DuplicateSubject(fact.document.clone()));
-                }
+            if !seen.first(fact.document.ordinal()) {
+                return Err(HtmlInertFactError::DuplicateSubject(fact.document.clone()));
             }
             if let HtmlDocumentModalBlocking::BlockedBy(blocker) = &fact.blocking {
                 let node = validation.node(capture, blocker)?;

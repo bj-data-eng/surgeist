@@ -198,7 +198,7 @@ fn partial_document_coverage_uses_actual_lists_and_original_qualification() {
             &captured,
             &entries,
             Vec::new(),
-            HtmlInertFactLimits::new(2, 3),
+            HtmlInertFactLimits::new(2, 4),
             &mut Control {
                 limits: DomHtmlCaptureLimits::new(2, 1000),
                 work: 0,
@@ -291,7 +291,16 @@ fn partial_modal_rows_obey_adapter_bounds_producer_capacity_work_and_cancellatio
         run(2, 1000, 1, 1, &AtomicBool::new(true)),
         Err(DomHtmlCaptureError::Cancelled)
     ));
-    let input = run(2, 1000, 1, 1, &cancel).unwrap();
+    assert!(matches!(
+        run(2, 1000, 1, 1, &cancel),
+        Err(DomHtmlCaptureError::Inert(
+            HtmlInertFactError::ValidationWork {
+                limit: 1,
+                required: 2
+            }
+        ))
+    ));
+    let input = run(2, 1000, 1, 2, &cancel).unwrap();
     let context = HtmlSemanticContext::new(
         captured.capture(),
         captured.capture().host_facts_revision().clone(),

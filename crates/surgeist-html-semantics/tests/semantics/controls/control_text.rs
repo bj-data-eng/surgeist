@@ -561,10 +561,10 @@ fn moved_capacity_logical_units_and_validation_work_have_exact_one_short_boundar
     let baseline =
         HtmlOutputDefaultFacts::new(&c, c.host_facts_revision().clone(), make(), fact_limits())
             .unwrap();
-    // Validation charges the record (1), the vocabulary envelope of the
-    // six-unit "output" name in the 28-unit HTML namespace, no previous-record
-    // comparisons and the override check (1).
-    let work = 1 + (("output".len() + 1) * KnownHtmlElement::ALL.len() + 28) + 1;
+    // Validation charges the fill of the duplicate set (1), the record (1), the
+    // vocabulary envelope of the six-unit "output" name in the 28-unit HTML
+    // namespace, no previous-record comparisons and the override check (1).
+    let work = 1 + 1 + (("output".len() + 1) * KnownHtmlElement::ALL.len() + 28) + 1;
     assert_eq!(baseline.validation_work(), work);
     assert_eq!(baseline.records()[0].subject(), &id);
     assert_eq!(baseline.capture(), c.identity());

@@ -65,6 +65,15 @@ pub enum surgeist_html_semantics::HtmlCaptureDefinitionInput
 pub surgeist_html_semantics::HtmlCaptureDefinitionInput::Definition(surgeist_html_semantics::HtmlCaptureBuilderDefinition)
 pub surgeist_html_semantics::HtmlCaptureDefinitionInput::Null
 pub surgeist_html_semantics::HtmlCaptureDefinitionInput::Unavailable
+pub enum surgeist_html_semantics::HtmlCaptureEdgeError<E>
+pub surgeist_html_semantics::HtmlCaptureEdgeError::Capture(surgeist_html_semantics::HtmlCaptureError)
+pub surgeist_html_semantics::HtmlCaptureEdgeError::Interrupted(E)
+impl<E: core::error::Error + 'static> core::error::Error for surgeist_html_semantics::HtmlCaptureEdgeError<E>
+pub fn surgeist_html_semantics::HtmlCaptureEdgeError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl<E: core::fmt::Display> core::fmt::Display for surgeist_html_semantics::HtmlCaptureEdgeError<E>
+pub fn surgeist_html_semantics::HtmlCaptureEdgeError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<E> core::convert::From<surgeist_html_semantics::HtmlCaptureError> for surgeist_html_semantics::HtmlCaptureEdgeError<E>
+pub fn surgeist_html_semantics::HtmlCaptureEdgeError<E>::from(error: surgeist_html_semantics::HtmlCaptureError) -> Self
 pub enum surgeist_html_semantics::HtmlCaptureElementError<E>
 pub surgeist_html_semantics::HtmlCaptureElementError::Attributes(surgeist_html::internal::values::bounded::HtmlAttributeValidationError)
 pub surgeist_html_semantics::HtmlCaptureElementError::Capture(surgeist_html_semantics::HtmlCaptureError)
@@ -134,6 +143,8 @@ pub fn surgeist_html_semantics::HtmlConstructionCaptureError::from(error: surgei
 impl core::error::Error for surgeist_html_semantics::HtmlCaptureError
 impl core::fmt::Display for surgeist_html_semantics::HtmlCaptureError
 pub fn surgeist_html_semantics::HtmlCaptureError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<E> core::convert::From<surgeist_html_semantics::HtmlCaptureError> for surgeist_html_semantics::HtmlCaptureEdgeError<E>
+pub fn surgeist_html_semantics::HtmlCaptureEdgeError<E>::from(error: surgeist_html_semantics::HtmlCaptureError) -> Self
 impl<E> core::convert::From<surgeist_html_semantics::HtmlCaptureError> for surgeist_html_semantics::HtmlCaptureElementError<E>
 pub fn surgeist_html_semantics::HtmlCaptureElementError<E>::from(error: surgeist_html_semantics::HtmlCaptureError) -> Self
 impl<E> core::convert::From<surgeist_html_semantics::HtmlCaptureError> for surgeist_html_semantics::HtmlHyperlinkCaptureError<E>
@@ -1658,6 +1669,7 @@ pub fn surgeist_html_semantics::HtmlCaptureBuilder::add_shadow_root(&mut self, d
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::add_text(&mut self, document: &surgeist_html_semantics::HtmlCaptureBuilderSubject, text: surgeist_html::internal::values::DocumentString) -> core::result::Result<surgeist_html_semantics::HtmlCaptureBuilderSubject, surgeist_html_semantics::HtmlCaptureError>
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::definition_handle(&self, registry: &surgeist_html_semantics::HtmlCaptureBuilderRegistry, index: usize) -> core::result::Result<surgeist_html_semantics::HtmlCaptureBuilderDefinition, surgeist_html_semantics::HtmlCaptureError>
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_children(&mut self, parent: &surgeist_html_semantics::HtmlCaptureBuilderSubject, children: &[surgeist_html_semantics::HtmlCaptureBuilderSubject]) -> core::result::Result<(), surgeist_html_semantics::HtmlCaptureError>
+pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_children_with<E>(&mut self, parent: &surgeist_html_semantics::HtmlCaptureBuilderSubject, children: &[surgeist_html_semantics::HtmlCaptureBuilderSubject], step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<(), surgeist_html_semantics::HtmlCaptureEdgeError<E>>
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_custom_element_context(&mut self, subject: &surgeist_html_semantics::HtmlCaptureBuilderSubject, state: surgeist_html_semantics::HtmlCapturedCustomElementState, definition: surgeist_html_semantics::HtmlCaptureDefinitionInput) -> core::result::Result<(), surgeist_html_semantics::HtmlCaptureError>
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_document_image_support(&mut self, document: &surgeist_html_semantics::HtmlCaptureBuilderSubject, support: surgeist_html_semantics::HtmlImageSupport) -> core::result::Result<(), surgeist_html_semantics::HtmlCaptureError>
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_document_nonce_environment(&mut self, subject: &surgeist_html_semantics::HtmlCaptureBuilderSubject, environment: surgeist_html::internal::security::nonce::HtmlNonceDocumentEnvironment) -> core::result::Result<(), surgeist_html_semantics::HtmlCaptureError>
@@ -1667,10 +1679,12 @@ pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_hyperlink_url_with
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_link_history(&mut self, subject: &surgeist_html_semantics::HtmlCaptureBuilderSubject, history: surgeist_html::internal::elements::rel::HtmlLinkHistory) -> core::result::Result<(), surgeist_html_semantics::HtmlCaptureError>
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_no_shadow_root(&mut self, element: &surgeist_html_semantics::HtmlCaptureBuilderSubject) -> core::result::Result<(), surgeist_html_semantics::HtmlCaptureError>
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_parent(&mut self, child: &surgeist_html_semantics::HtmlCaptureBuilderSubject, parent: &surgeist_html_semantics::HtmlCaptureBuilderSubject) -> core::result::Result<(), surgeist_html_semantics::HtmlCaptureError>
+pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_parent_with<E>(&mut self, child: &surgeist_html_semantics::HtmlCaptureBuilderSubject, parent: &surgeist_html_semantics::HtmlCaptureBuilderSubject, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<(), surgeist_html_semantics::HtmlCaptureEdgeError<E>>
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_parser_creation_image_support(&mut self, entry_document: &surgeist_html_semantics::HtmlCaptureBuilderSubject, support: surgeist_html_semantics::HtmlImageSupport) -> core::result::Result<(), surgeist_html_semantics::HtmlCaptureError>
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_registry_scope(&mut self, registry: &surgeist_html_semantics::HtmlCaptureBuilderRegistry, scope: surgeist_html_semantics::HtmlRegistryScope) -> core::result::Result<(), surgeist_html_semantics::HtmlCaptureError>
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_root(&mut self, child: &surgeist_html_semantics::HtmlCaptureBuilderSubject) -> core::result::Result<(), surgeist_html_semantics::HtmlCaptureError>
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_template_contents(&mut self, template: &surgeist_html_semantics::HtmlCaptureBuilderSubject, fragment: &surgeist_html_semantics::HtmlCaptureBuilderSubject) -> core::result::Result<(), surgeist_html_semantics::HtmlCaptureError>
+pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_template_contents_with<E>(&mut self, template: &surgeist_html_semantics::HtmlCaptureBuilderSubject, fragment: &surgeist_html_semantics::HtmlCaptureBuilderSubject, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<(), surgeist_html_semantics::HtmlCaptureEdgeError<E>>
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_template_shadow_reference(&mut self, template: &surgeist_html_semantics::HtmlCaptureBuilderSubject, contents: &surgeist_html_semantics::HtmlCaptureBuilderSubject) -> core::result::Result<(), surgeist_html_semantics::HtmlCaptureError>
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_unhosted(&mut self, fragment: &surgeist_html_semantics::HtmlCaptureBuilderSubject) -> core::result::Result<(), surgeist_html_semantics::HtmlCaptureError>
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::finish(self) -> core::result::Result<surgeist_html_semantics::HtmlCapture, surgeist_html_semantics::HtmlCaptureError>
