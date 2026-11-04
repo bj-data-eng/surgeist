@@ -565,7 +565,7 @@ fn exact_work_admits_complete_results_and_one_short_stops_before_write() {
 }
 
 #[test]
-fn ordered_current_records_cost_one_each_and_stop_before_an_unadmitted_visit() {
+fn a_current_record_costs_one_probe_wherever_it_is_recorded_and_stops_before_an_unadmitted_visit() {
     let (mut b, d) = builder();
     let a = element(&mut b, &d, "textarea", &[("required", "")]);
     let z = element(&mut b, &d, "textarea", &[]);
@@ -579,7 +579,7 @@ fn ordered_current_records_cost_one_each_and_stop_before_an_unadmitted_visit() {
         ),
         (
             vec![(z.clone(), Some("".into())), (id.clone(), Some("x".into()))],
-            1096,
+            1095,
         ),
     ] {
         let cx = context(&c, &values);
@@ -589,7 +589,8 @@ fn ordered_current_records_cost_one_each_and_stop_before_an_unadmitted_visit() {
     }
     let cx = context(&c, &[(z, Some("".into())), (id.clone(), Some("x".into()))]);
     // Before lookup: reserve1+node1+namespace29+known1045+role1+
-    // required9+presence1+readonly4+presence1=1092. One record is admitted.
+    // required9+presence1+readonly4+presence1=1092. The probe of the index is
+    // admitted.
     let mut s = session(&c, &cx, limits(1093), 100, HtmlSemanticCancellation::new());
     let failure = s.query(&[request(&id, query_for("textarea"))]).unwrap_err();
     assert_eq!(

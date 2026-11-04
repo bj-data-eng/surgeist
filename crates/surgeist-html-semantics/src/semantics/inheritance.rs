@@ -4,8 +4,8 @@
 //! distinct where the selected algorithms require them.
 
 use super::admission::producer_revision;
+use super::index::FactIndex;
 use super::scan::{ScanError, ScanMeter};
-use super::seen::Seen;
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
 use surgeist_html::attributes::{
@@ -112,6 +112,8 @@ pub struct HtmlGlobalInheritanceFacts {
     revision: HtmlGlobalInheritanceRevision,
     design_modes: Vec<HtmlDocumentDesignModeFact>,
     spellcheck_defaults: Vec<HtmlSpellcheckDefaultFact>,
+    design_mode_index: FactIndex,
+    spellcheck_index: FactIndex,
 }
 impl ScanError for HtmlGlobalInheritanceError {
     fn representation_exhausted() -> Self {
@@ -147,12 +149,16 @@ impl HtmlGlobalInheritanceFacts {
             });
         }
         let mut validation = ScanMeter::new(0, limits.validation_work);
-        let mut seen = Seen::new(
+        let mut design_mode_index = FactIndex::new(
+            capture.identity(),
             design_modes.len(),
             |n| validation.charge(n),
             HtmlGlobalInheritanceError::RepresentationExhausted,
         )?;
-        for fact in design_modes.iter() {
+        for (position, fact) in design_modes.iter().enumerate() {
+            design_mode_index.enter(&fact.document, position);
+        }
+        for (position, fact) in design_modes.iter().enumerate() {
             let node = validation.node(capture, &fact.document)?;
             validation.charge(1)?;
             if !matches!(node.kind(), HtmlCapturedNodeKind::Document(_)) {
@@ -160,18 +166,22 @@ impl HtmlGlobalInheritanceFacts {
                     fact.document.clone(),
                 ));
             }
-            if !seen.first(fact.document.ordinal()) {
+            if design_mode_index.position(&fact.document) != Some(position) {
                 return Err(HtmlGlobalInheritanceError::DuplicateSubject(
                     fact.document.clone(),
                 ));
             }
         }
-        let mut seen = Seen::new(
+        let mut spellcheck_index = FactIndex::new(
+            capture.identity(),
             spellcheck_defaults.len(),
             |n| validation.charge(n),
             HtmlGlobalInheritanceError::RepresentationExhausted,
         )?;
-        for fact in spellcheck_defaults.iter() {
+        for (position, fact) in spellcheck_defaults.iter().enumerate() {
+            spellcheck_index.enter(&fact.subject, position);
+        }
+        for (position, fact) in spellcheck_defaults.iter().enumerate() {
             let node = validation.node(capture, &fact.subject)?;
             validation.charge(1)?;
             let HtmlCapturedNodeKind::Element(element) = node.kind() else {
@@ -184,7 +194,7 @@ impl HtmlGlobalInheritanceFacts {
                     fact.subject.clone(),
                 ));
             }
-            if !seen.first(fact.subject.ordinal()) {
+            if spellcheck_index.position(&fact.subject) != Some(position) {
                 return Err(HtmlGlobalInheritanceError::DuplicateSubject(
                     fact.subject.clone(),
                 ));
@@ -213,6 +223,8 @@ impl HtmlGlobalInheritanceFacts {
             revision,
             design_modes,
             spellcheck_defaults,
+            design_mode_index,
+            spellcheck_index,
         })
     }
     pub fn capture(&self) -> &HtmlCaptureId {
@@ -276,15 +288,13 @@ impl<'a> HtmlSemanticSession<'a> {
         document: &HtmlCaptureSubjectId,
     ) -> Result<HtmlSemanticValue<bool>, HtmlSemanticFailure> {
         if let Some(facts) = self.context.global_inheritance() {
-            for fact in facts.design_modes() {
+            self.charge(1)?;
+            if let Some(position) = facts.design_mode_index.position(document) {
                 self.charge(1)?;
-                if fact.document() == document {
-                    self.charge(1)?;
-                    match fact.state() {
-                        HtmlDesignMode::Enabled => return Ok(HtmlSemanticValue::Known(true)),
-                        HtmlDesignMode::Disabled => return Ok(HtmlSemanticValue::Known(false)),
-                        HtmlDesignMode::Unavailable => break,
-                    }
+                match facts.design_modes[position].state() {
+                    HtmlDesignMode::Enabled => return Ok(HtmlSemanticValue::Known(true)),
+                    HtmlDesignMode::Disabled => return Ok(HtmlSemanticValue::Known(false)),
+                    HtmlDesignMode::Unavailable => {}
                 }
             }
         }
@@ -538,13 +548,10 @@ impl<'a> HtmlSemanticSession<'a> {
             }
             let mut behavior = None;
             if let Some(facts) = self.context.global_inheritance() {
-                for fact in facts.spellcheck_defaults() {
+                self.charge(1)?;
+                if let Some(position) = facts.spellcheck_index.position(&current) {
                     self.charge(1)?;
-                    if fact.subject() == &current {
-                        self.charge(1)?;
-                        behavior = fact.behavior();
-                        break;
-                    }
+                    behavior = facts.spellcheck_defaults[position].behavior();
                 }
             }
             match behavior {

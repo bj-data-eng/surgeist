@@ -1068,3 +1068,148 @@ fn template_host_association_does_not_establish_connection_or_inert_ancestry() {
         ))
     );
 }
+
+fn three_siblings() -> (HtmlCapture, [HtmlCaptureBuilderSubject; 3]) {
+    let (mut b, d) = builder();
+    let a = element(&mut b, &d, "div", &[]);
+    let z = element(&mut b, &d, "span", &[]);
+    let y = element(&mut b, &d, "p", &[]);
+    for node in [&a, &z, &y] {
+        b.establish_children(node, &[]).unwrap();
+        b.establish_parent(node, &d).unwrap();
+    }
+    (b.finish().unwrap(), [a, z, y])
+}
+fn flat(
+    c: &HtmlCapture,
+    nodes: Vec<HtmlInertNodeFact>,
+) -> Result<HtmlInertFacts, HtmlInertFactError> {
+    HtmlInertFacts::new(
+        c,
+        c.host_facts_revision().clone(),
+        key(),
+        nodes,
+        vec![],
+        HtmlInertFactLimits::new(100, 1000000),
+    )
+}
+
+#[test]
+fn a_flat_cycle_is_reported_at_the_first_record_whose_chain_reaches_it() {
+    let (c, [a, z, y]) = three_siblings();
+    // `y` only leads into the cycle of `a` and `z`, and comes first.
+    match flat(
+        &c,
+        vec![parent(&c, &y, &a), parent(&c, &a, &z), parent(&c, &z, &a)],
+    ) {
+        Err(HtmlInertFactError::FlatCycle(id)) => assert_eq!(id, c.subject_id(&y).unwrap()),
+        other => panic!("{other:?}"),
+    }
+    // A record whose own chain is fine does not hide a later cycle.
+    match flat(
+        &c,
+        vec![
+            fact(
+                &c,
+                &z,
+                Some(true),
+                HtmlDocumentFlatTreeRelation::Unavailable,
+            ),
+            parent(&c, &a, &a),
+        ],
+    ) {
+        Err(HtmlInertFactError::FlatCycle(id)) => assert_eq!(id, c.subject_id(&a).unwrap()),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn flat_chains_are_accepted_in_either_record_order_and_may_leave_the_records() {
+    let (c, [a, z, y]) = three_siblings();
+    let forward = flat(
+        &c,
+        vec![
+            fact(
+                &c,
+                &a,
+                Some(true),
+                HtmlDocumentFlatTreeRelation::Unavailable,
+            ),
+            parent(&c, &z, &a),
+            parent(&c, &y, &z),
+        ],
+    )
+    .unwrap();
+    let reversed = flat(
+        &c,
+        vec![
+            parent(&c, &y, &z),
+            parent(&c, &z, &a),
+            fact(
+                &c,
+                &a,
+                Some(true),
+                HtmlDocumentFlatTreeRelation::Unavailable,
+            ),
+        ],
+    )
+    .unwrap();
+    assert_eq!(forward.nodes().len(), 3);
+    assert_eq!(reversed.nodes().len(), 3);
+    // A parent without a record ends the chain.
+    flat(&c, vec![parent(&c, &y, &z)]).unwrap();
+}
+
+#[test]
+fn a_second_flat_root_of_one_document_is_refused_at_that_record() {
+    let (mut b, d) = builder();
+    let first = element(&mut b, &d, "html", &[]);
+    let second = element(&mut b, &d, "html", &[]);
+    b.establish_children(&first, &[]).unwrap();
+    b.establish_children(&second, &[]).unwrap();
+    b.establish_children(&d, &[first.clone(), second.clone()])
+        .unwrap();
+    let c = b.finish().unwrap();
+    match flat(&c, vec![root(&c, &first), root(&c, &second)]) {
+        Err(HtmlInertFactError::InvalidFlatRoot(id)) => {
+            assert_eq!(id, c.subject_id(&second).unwrap());
+        }
+        other => panic!("{other:?}"),
+    }
+    flat(&c, vec![root(&c, &first)]).unwrap();
+}
+
+#[test]
+fn a_parent_of_another_capture_is_never_the_record_of_the_same_position() {
+    // Both captures hold the same three subjects, so every position names a
+    // subject in each; only the capture tells them apart.
+    let (c, [a, z, _]) = three_siblings();
+    let (other, [_, other_z, _]) = three_siblings();
+    let foreign = HtmlInertNodeFact::new(
+        other.subject_id(&other_z).unwrap(),
+        Some(true),
+        HtmlDocumentFlatTreeRelation::Unavailable,
+    );
+    assert_eq!(
+        foreign.subject().ordinal(),
+        c.subject_id(&z).unwrap().ordinal()
+    );
+    // `a` leads to the foreign position of `z`, which has a record in the list
+    // only through the foreign subject, and the foreign record is refused.
+    let result = flat(
+        &c,
+        vec![
+            fact(
+                &c,
+                &a,
+                Some(true),
+                HtmlDocumentFlatTreeRelation::Parent(other.subject_id(&other_z).unwrap()),
+            ),
+            foreign,
+        ],
+    );
+    assert!(
+        matches!(result, Err(HtmlInertFactError::Capture(_))),
+        "{result:?}"
+    );
+}

@@ -2442,3 +2442,91 @@ fn a_one_token_list_is_refused_below_the_minimum_capacity_and_admitted_at_it() {
         }
     }
 }
+
+#[test]
+fn type_and_property_facts_are_duplicates_only_of_the_same_token_receiver_and_origin() {
+    let (mut b, d) = builder();
+    let item = el(
+        &mut b,
+        &d,
+        "div",
+        &[
+            ("itemscope", ""),
+            ("itemtype", "https://vocab/T https://vocab/U"),
+        ],
+    );
+    let p = el(&mut b, &d, "span", &[("itemprop", "a b")]);
+    cs(&mut b, &p, &[]);
+    cs(&mut b, &item, std::slice::from_ref(&p));
+    cs(&mut b, &d, std::slice::from_ref(&item));
+    let c = b.finish().unwrap();
+    let (item, p) = (c.subject_id(&item).unwrap(), c.subject_id(&p).unwrap());
+    let vocabulary = revision();
+    let expected = HtmlMicrodataRevision::new(None, Some(vocabulary.clone()));
+    let type_fact = |token: usize| {
+        HtmlMicrodataTypeFact::new(
+            HtmlMicrodataRawBinding::new(
+                &c,
+                item.clone(),
+                HtmlMicrodataRawSource::ItemTypeToken(token),
+                100,
+            )
+            .unwrap(),
+            vocabulary.clone(),
+            Some(true),
+            None,
+            None,
+        )
+        .unwrap()
+    };
+    let property_fact = |token: usize, origin: Option<&HtmlCaptureSubjectId>| {
+        HtmlMicrodataPropertyFact::new(
+            &c,
+            HtmlMicrodataRawBinding::new(
+                &c,
+                p.clone(),
+                HtmlMicrodataRawSource::ItemPropToken(token),
+                100,
+            )
+            .unwrap(),
+            vocabulary.clone(),
+            item.clone(),
+            origin.cloned(),
+            HtmlMicrodataPropertyPermission::new(Some(true), None, None, None),
+            100,
+        )
+        .unwrap()
+    };
+    let make = |types, properties| {
+        HtmlMicrodataFacts::new(&c, expected.clone(), vec![], types, properties, 10, 100)
+    };
+    // Different tokens of the same attribute are different facts.
+    assert!(make(vec![type_fact(0), type_fact(1)], vec![]).is_ok());
+    assert!(matches!(
+        make(vec![type_fact(1), type_fact(0), type_fact(1)], vec![]),
+        Err(HtmlMicrodataFactsError::Duplicate)
+    ));
+    // The token, and the origin among the same receivers, tell properties apart.
+    assert!(
+        make(
+            vec![],
+            vec![
+                property_fact(0, None),
+                property_fact(1, None),
+                property_fact(0, Some(&item)),
+            ],
+        )
+        .is_ok()
+    );
+    assert!(matches!(
+        make(
+            vec![],
+            vec![
+                property_fact(0, Some(&item)),
+                property_fact(1, None),
+                property_fact(0, Some(&item)),
+            ],
+        ),
+        Err(HtmlMicrodataFactsError::Duplicate)
+    ));
+}

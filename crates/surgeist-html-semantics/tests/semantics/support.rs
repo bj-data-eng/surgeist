@@ -464,3 +464,19 @@ pub fn validated_work(
     );
     work
 }
+
+/// Every doubling must at most multiply a total that is linear in the number of
+/// facts by 2.2; a scan of the earlier facts for each fact multiplies it by 4.
+pub fn assert_doubling_at_most_2_2(label: &str, sizes: &[usize], work: impl Fn(usize) -> usize) {
+    let totals: Vec<usize> = sizes.iter().map(|size| work(*size)).collect();
+    for (pair, totals) in sizes.windows(2).zip(totals.windows(2)) {
+        assert!(
+            totals[1] * 10 <= totals[0] * 22,
+            "{label}: {} facts charged {} but {} facts charged {}: more than 2.2 times",
+            pair[0],
+            totals[0],
+            pair[1],
+            totals[1]
+        );
+    }
+}

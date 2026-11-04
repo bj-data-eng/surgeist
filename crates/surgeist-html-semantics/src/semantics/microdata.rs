@@ -1,5 +1,6 @@
 //! Generic HTML §5.2 microdata over one qualified immutable ordinary tree.
 //! External URL/vocabulary observations are supplied facts, never URL guesses.
+use super::index::FactIndex;
 use super::*;
 use crate::HtmlCaptureDocumentId;
 use surgeist_html::attributes::microdata::{
@@ -429,7 +430,7 @@ impl<'a> HtmlSemanticSession<'a> {
         if !matches!(node.kind(), HtmlCapturedNodeKind::Document(_)) {
             return Ok(HtmlSemanticValue::Inapplicable);
         }
-        let graph = self.md_graph(id)?;
+        let graph = self.md_tree_graph(id)?;
         let mut frames = Vec::new();
         let mut contributors = Vec::new();
         let result = (|| {
@@ -495,7 +496,6 @@ impl<'a> HtmlSemanticSession<'a> {
         })();
         self.release_scratch(&frames);
         self.release_scratch(&contributors);
-        self.md_release_graph(&graph);
         result
     }
     pub(super) fn microdata_author(
@@ -595,6 +595,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     // place of one scan of the tree per token. The pass is
                     // charged before the first token, so a query whose tokens
                     // match early can reach a work or scratch limit sooner.
+                    // A graph held for the batch is not read here, and the
+                    // index must not be reserved on top of it.
+                    self.md_drop_tree_graph();
                     let index = self.md_id_index(&root)?;
                     let checked = (|| {
                         let mut references = references;
@@ -646,7 +649,7 @@ impl<'a> HtmlSemanticSession<'a> {
         } else if names.raw().is_some() {
             match self.ordinary_tree_root(id)? {
                 Ok(root) => {
-                    let graph = self.md_graph(&root)?;
+                    let graph = self.md_tree_graph(&root)?;
                     let result = (|| {
                         let mut rows = Vec::new();
                         let mut received = false;
@@ -751,7 +754,6 @@ impl<'a> HtmlSemanticSession<'a> {
                         };
                         Ok((contribution, receivers))
                     })();
-                    self.md_release_graph(&graph);
                     (contribution, receivers) = result?;
                 }
                 Err(m) => {
@@ -1191,6 +1193,45 @@ pub struct HtmlMicrodataFacts {
     urls: Vec<HtmlMicrodataUrlFact>,
     types: Vec<HtmlMicrodataTypeFact>,
     properties: Vec<HtmlMicrodataPropertyFact>,
+    url_index: FactIndex<(RawSourceKey, UrlUseKey)>,
+    type_index: FactIndex<usize>,
+    property_index: FactIndex<(usize, usize, Option<usize>)>,
+}
+/// A raw source reduced to what identifies it: the attribute and the token.
+type RawSourceKey = (u8, usize);
+/// The kind of a URL operation, which tells apart the facts of one source.
+type UrlUseKey = u8;
+fn raw_source_key(source: HtmlMicrodataRawSource) -> RawSourceKey {
+    match source {
+        HtmlMicrodataRawSource::ItemTypeToken(i) => (0, i),
+        HtmlMicrodataRawSource::ItemPropToken(i) => (1, i),
+        HtmlMicrodataRawSource::ItemId => (2, 0),
+        HtmlMicrodataRawSource::Src => (3, 0),
+        HtmlMicrodataRawSource::Href => (4, 0),
+        HtmlMicrodataRawSource::Data => (5, 0),
+    }
+}
+/// What identifies a property fact within its subject: the name token, the
+/// receiving item and the optional own-type origin.
+///
+/// The receiver and origin are keyed by capture position without a capture
+/// check: `HtmlMicrodataPropertyFact::new` has already required both to be
+/// subjects of the capture its binding belongs to, and a session's subjects all
+/// come from one capture, so positions cannot collide across captures here.
+fn property_key(fact: &HtmlMicrodataPropertyFact) -> (usize, usize, Option<usize>) {
+    (
+        raw_source_key(fact.binding.source).1,
+        fact.receiver.ordinal(),
+        fact.origin.as_ref().map(HtmlCaptureSubjectId::ordinal),
+    )
+}
+fn url_operation_key(operation: &HtmlMicrodataUrlOperation) -> UrlUseKey {
+    match operation {
+        HtmlMicrodataUrlOperation::AbsoluteAuthorToken(_) => 0,
+        HtmlMicrodataUrlOperation::ItemIdAuthor(_) => 1,
+        HtmlMicrodataUrlOperation::CurrentItemIdentifier { .. } => 2,
+        HtmlMicrodataUrlOperation::PropertyAttributeSet { .. } => 3,
+    }
 }
 impl HtmlMicrodataFacts {
     pub(super) fn qualifies(
@@ -1228,7 +1269,24 @@ impl HtmlMicrodataFacts {
             }
             Ok(())
         };
-        for (i, f) in urls.iter().enumerate() {
+        let exhausted = HtmlMicrodataFactsError::Limit;
+        let mut url_index = FactIndex::new(
+            capture.identity(),
+            urls.len(),
+            |_| Ok(()),
+            exhausted.clone(),
+        )?;
+        for (position, f) in urls.iter().enumerate() {
+            url_index.enter_bound(
+                &f.binding.subject,
+                (
+                    raw_source_key(f.binding.source),
+                    url_operation_key(&f.expected),
+                ),
+                position,
+            );
+        }
+        for (position, f) in urls.iter().enumerate() {
             qualify(&f.binding)?;
             if revision.url.as_ref() != Some(f.expected.revision()) {
                 return Err(HtmlMicrodataFactsError::OperationMismatch);
@@ -1238,23 +1296,44 @@ impl HtmlMicrodataFacts {
             {
                 return Err(HtmlMicrodataFactsError::Limit);
             }
-            if urls[..i].iter().any(|o| {
-                o.binding == f.binding
-                    && std::mem::discriminant(&o.expected) == std::mem::discriminant(&f.expected)
-            }) {
+            let key = (
+                raw_source_key(f.binding.source),
+                url_operation_key(&f.expected),
+            );
+            if url_index.bound_position(&f.binding.subject, key) != Some(position) {
                 return Err(HtmlMicrodataFactsError::Duplicate);
             }
         }
-        for (i, f) in types.iter().enumerate() {
+        let mut type_index = FactIndex::new(
+            capture.identity(),
+            types.len(),
+            |_| Ok(()),
+            exhausted.clone(),
+        )?;
+        for (position, f) in types.iter().enumerate() {
+            type_index.enter_bound(
+                &f.binding.subject,
+                raw_source_key(f.binding.source).1,
+                position,
+            );
+        }
+        for (position, f) in types.iter().enumerate() {
             qualify(&f.binding)?;
             if revision.vocabulary.as_ref() != Some(&f.revision) {
                 return Err(HtmlMicrodataFactsError::OperationMismatch);
             }
-            if types[..i].iter().any(|o| o.binding == f.binding) {
+            if type_index.bound_position(&f.binding.subject, raw_source_key(f.binding.source).1)
+                != Some(position)
+            {
                 return Err(HtmlMicrodataFactsError::Duplicate);
             }
         }
-        for (i, f) in properties.iter().enumerate() {
+        let mut property_index =
+            FactIndex::new(capture.identity(), properties.len(), |_| Ok(()), exhausted)?;
+        for (position, f) in properties.iter().enumerate() {
+            property_index.enter_bound(&f.binding.subject, property_key(f), position);
+        }
+        for (position, f) in properties.iter().enumerate() {
             qualify(&f.binding)?;
             if revision.vocabulary.as_ref() != Some(&f.revision) {
                 return Err(HtmlMicrodataFactsError::OperationMismatch);
@@ -1262,9 +1341,7 @@ impl HtmlMicrodataFacts {
             if f.origin_types.as_ref().is_some_and(|s| s.len() > max_units) {
                 return Err(HtmlMicrodataFactsError::Limit);
             }
-            if properties[..i]
-                .iter()
-                .any(|o| o.binding == f.binding && o.receiver == f.receiver && o.origin == f.origin)
+            if property_index.bound_position(&f.binding.subject, property_key(f)) != Some(position)
             {
                 return Err(HtmlMicrodataFactsError::Duplicate);
             }
@@ -1276,6 +1353,9 @@ impl HtmlMicrodataFacts {
             urls,
             types,
             properties,
+            url_index,
+            type_index,
+            property_index,
         })
     }
 }
@@ -1505,6 +1585,11 @@ struct Crawl {
     missing: Option<HtmlSemanticMissing>,
     revisit: HtmlMicrodataCondition<HtmlCaptureSubjectId>,
 }
+/// The item graph of one tree, shared by the graph queries of a batch.
+pub(super) struct TreeGraph {
+    root: HtmlCaptureSubjectId,
+    graph: Arc<Graph>,
+}
 struct Graph {
     items: Vec<HtmlCaptureSubjectId>,
     edges: Vec<(HtmlCaptureSubjectId, HtmlCaptureSubjectId)>,
@@ -1582,21 +1667,23 @@ enum UrlUse {
     Property,
 }
 impl UrlUse {
-    fn matches(self, o: &HtmlMicrodataUrlOperation) -> bool {
+    /// The kind of operation this use accepts, as `url_operation_key` numbers it.
+    fn key(self) -> UrlUseKey {
+        match self {
+            Self::Absolute => 0,
+            Self::IdAuthor => 1,
+            Self::Identifier => 2,
+            Self::Property => 3,
+        }
+    }
+}
+impl HtmlSemanticQuery {
+    /// Whether the query reads the item graph of its tree, so a batch keeps the
+    /// graph for the query after it rather than building it again.
+    pub(super) fn uses_item_graph(self) -> bool {
         matches!(
-            (self, o),
-            (
-                Self::Absolute,
-                HtmlMicrodataUrlOperation::AbsoluteAuthorToken(_)
-            ) | (Self::IdAuthor, HtmlMicrodataUrlOperation::ItemIdAuthor(_))
-                | (
-                    Self::Identifier,
-                    HtmlMicrodataUrlOperation::CurrentItemIdentifier { .. }
-                )
-                | (
-                    Self::Property,
-                    HtmlMicrodataUrlOperation::PropertyAttributeSet { .. }
-                )
+            self,
+            Self::MicrodataItem | Self::MicrodataAuthor | Self::MicrodataDocumentAuthor
         )
     }
 }
@@ -2105,15 +2192,13 @@ impl<'a> HtmlSemanticSession<'a> {
         use_kind: UrlUse,
     ) -> Result<Option<&'a HtmlMicrodataUrlResult>, HtmlSemanticFailure> {
         if let Some(facts) = &self.context.microdata {
-            for fact in &facts.urls {
+            self.charge(1)?;
+            if let Some(position) = facts
+                .url_index
+                .bound_position(subject, (raw_source_key(source), use_kind.key()))
+            {
                 self.charge(1)?;
-                if &fact.binding.subject == subject
-                    && fact.binding.source == source
-                    && use_kind.matches(&fact.expected)
-                {
-                    self.charge(1)?;
-                    return Ok(fact.result.as_ref());
-                }
+                return Ok(facts.urls[position].result.as_ref());
             }
         }
         Ok(None)
@@ -2124,13 +2209,9 @@ impl<'a> HtmlSemanticSession<'a> {
         index: usize,
     ) -> Result<Option<&'a HtmlMicrodataTypeFact>, HtmlSemanticFailure> {
         if let Some(facts) = &self.context.microdata {
-            for f in &facts.types {
-                self.charge(1)?;
-                if &f.binding.subject == subject
-                    && f.binding.source == HtmlMicrodataRawSource::ItemTypeToken(index)
-                {
-                    return Ok(Some(f));
-                }
+            self.charge(1)?;
+            if let Some(position) = facts.type_index.bound_position(subject, index) {
+                return Ok(Some(&facts.types[position]));
             }
         }
         Ok(None)
@@ -2143,15 +2224,14 @@ impl<'a> HtmlSemanticSession<'a> {
         origin: Option<&HtmlCaptureSubjectId>,
     ) -> Result<Option<&'a HtmlMicrodataPropertyFact>, HtmlSemanticFailure> {
         if let Some(facts) = &self.context.microdata {
-            for f in &facts.properties {
-                self.charge(1)?;
-                if &f.binding.subject == subject
-                    && f.binding.source == HtmlMicrodataRawSource::ItemPropToken(index)
-                    && &f.receiver == item
-                    && f.origin.as_ref() == origin
-                {
-                    return Ok(Some(f));
-                }
+            self.charge(1)?;
+            let key = (
+                index,
+                item.ordinal(),
+                origin.map(HtmlCaptureSubjectId::ordinal),
+            );
+            if let Some(position) = facts.property_index.bound_position(subject, key) {
+                return Ok(Some(&facts.properties[position]));
             }
         }
         Ok(None)
@@ -2301,6 +2381,49 @@ impl<'a> HtmlSemanticSession<'a> {
             return Err(error);
         }
         Ok(graph)
+    }
+    /// The item graph of the tree rooted at `root`. The capture is immutable, so
+    /// a batch builds a tree's graph once, and each later query that reads it
+    /// charges one unit for finding it.
+    ///
+    /// The held graph keeps its scratch accounted, so it is released as soon as
+    /// the batch could need that scratch for something else: when a query of
+    /// another tree builds its graph, when a query of a kind that does not read
+    /// the graph begins, before a graph-kind query reserves scratch it does not
+    /// read the graph for (an author query's id index, an item's own types), when
+    /// the batch ends, and when it fails. A batch therefore never needs more
+    /// scratch than its largest query alone, with one exception, which is
+    /// listed in the operations reference: an untyped item query holds the graph
+    /// while it crawls the item, where the graph used to be released before the
+    /// crawl, so that query's peak is at most the graph's records above what it
+    /// was (G + crawl where it was max(G + type context, crawl)).
+    ///
+    /// The graph is behind an `Arc` only so a query can read it while the
+    /// session, which owns the held slot, stays mutably borrowed for charging.
+    fn md_tree_graph(
+        &mut self,
+        root: &HtmlCaptureSubjectId,
+    ) -> Result<Arc<Graph>, HtmlSemanticFailure> {
+        if let Some(held) = &self.microdata_graph
+            && held.root == *root
+        {
+            let graph = held.graph.clone();
+            self.charge(1)?;
+            return Ok(graph);
+        }
+        self.md_drop_tree_graph();
+        let graph = Arc::new(self.md_graph(root)?);
+        self.microdata_graph = Some(TreeGraph {
+            root: root.clone(),
+            graph: graph.clone(),
+        });
+        Ok(graph)
+    }
+    /// Releases the held item graph and its scratch, if any.
+    pub(super) fn md_drop_tree_graph(&mut self) {
+        if let Some(held) = self.microdata_graph.take() {
+            self.md_release_graph(&held.graph);
+        }
     }
     fn md_release_graph(&mut self, graph: &Graph) {
         self.release_scratch(&graph.items);
@@ -2540,19 +2663,17 @@ impl<'a> HtmlSemanticSession<'a> {
         let own_types = self.md_tokens(e, HtmlMicrodataTokenKind::ItemType)?;
         let top_level = self.md_attribute(e, "itemprop")?.is_none();
         let types = if !own_types.tokens().is_empty() {
+            // The item's own types need no graph, so a graph held for the batch
+            // is released before this query reserves any scratch.
+            self.md_drop_tree_graph();
             let fresh = self.md_tokens(e, HtmlMicrodataTokenKind::ItemType)?;
             self.md_type_context(id, fresh, None)?
         } else {
             match self.ordinary_tree_root(id)? {
                 Ok(root) => {
-                    let graph = self.md_graph(&root)?;
-                    let fresh = self.md_tokens(e, HtmlMicrodataTokenKind::ItemType);
-                    let types = match fresh {
-                        Ok(fresh) => self.md_type_context(id, fresh, Some(&graph)),
-                        Err(error) => Err(error),
-                    };
-                    self.md_release_graph(&graph);
-                    types?
+                    let graph = self.md_tree_graph(&root)?;
+                    let fresh = self.md_tokens(e, HtmlMicrodataTokenKind::ItemType)?;
+                    self.md_type_context(id, fresh, Some(&graph))?
                 }
                 Err(m) => HtmlMicrodataTypeContext {
                     typing: HtmlMicrodataTyping::Missing(m.clone()),

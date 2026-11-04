@@ -18,6 +18,7 @@
 
 mod admission;
 mod context;
+mod index;
 mod scan;
 mod seen;
 pub use context::*;
@@ -1368,6 +1369,9 @@ pub struct HtmlSemanticSession<'a> {
     usage: HtmlSemanticUsage,
     failure: Option<HtmlSemanticFailure>,
     option_control: Option<crate::controlled_option_value::QueryControl<'a>>,
+    /// The item graph of the tree the last graph query used, kept for the rest
+    /// of a batch of graph queries and released with the batch.
+    microdata_graph: Option<microdata::TreeGraph>,
     #[cfg(test)]
     template_cancellation: Option<(template::CancellationPoint, HtmlSemanticCancellation)>,
 }
@@ -1451,6 +1455,7 @@ impl<'a> HtmlSemanticSession<'a> {
             usage: HtmlSemanticUsage::default(),
             failure: None,
             option_control: None,
+            microdata_graph: None,
             #[cfg(test)]
             template_cancellation: None,
         })
@@ -1928,15 +1933,13 @@ impl<'a> HtmlSemanticSession<'a> {
             Some(_) => Ok(HtmlSemanticValue::Inapplicable),
             None => {
                 let context = self.context;
-                for fact in &context.classifications {
-                    self.charge(1)?;
-                    if &fact.subject == subject {
-                        return if fact.form_associated {
-                            self.form_disabled(subject, true)
-                        } else {
-                            Ok(HtmlSemanticValue::Inapplicable)
-                        };
-                    }
+                self.charge(1)?;
+                if let Some(fact) = context.classification(subject) {
+                    return if fact.form_associated() {
+                        self.form_disabled(subject, true)
+                    } else {
+                        Ok(HtmlSemanticValue::Inapplicable)
+                    };
                 }
                 Ok(HtmlSemanticValue::Missing(
                     HtmlSemanticMissing::CustomControlClassification(subject.clone()),
@@ -2535,6 +2538,16 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         requests: &[HtmlSemanticRequest],
     ) -> Result<HtmlSemanticReport, HtmlSemanticFailure> {
+        let result = self.query_requests(requests);
+        // A failed batch leaves its item graph behind; a finished one has
+        // already released it before the report took its usage.
+        self.md_drop_tree_graph();
+        result
+    }
+    fn query_requests(
+        &mut self,
+        requests: &[HtmlSemanticRequest],
+    ) -> Result<HtmlSemanticReport, HtmlSemanticFailure> {
         self.poll()?;
         let mut results = Vec::new();
         self.reserve_records(
@@ -2543,6 +2556,9 @@ impl<'a> HtmlSemanticSession<'a> {
             HtmlSemanticResource::OutputRecords,
         )?;
         for request in requests {
+            if !request.query().uses_item_graph() {
+                self.md_drop_tree_graph();
+            }
             let node = self.node(&request.subject)?;
             let fact = match request.query() {
                 HtmlSemanticQuery::DocumentFeeds => {
@@ -3611,6 +3627,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 fact,
             });
         }
+        self.md_drop_tree_graph();
         self.poll()?;
         Ok(HtmlSemanticReport {
             qualification: self.qualification.clone(),

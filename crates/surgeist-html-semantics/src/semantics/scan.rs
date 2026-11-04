@@ -2,10 +2,10 @@
 //!
 //! Every fact constructor and the session charge the same three things the same
 //! way: the vocabulary-recognition envelope of an element name, the comparison
-//! of an element's namespace with an expected URI, and the lookup of a node (or
-//! of a fact by subject). They differ only in the error they report and in what
-//! they do when a charge is refused. The helpers here take that error from the
-//! caller and preserve each caller's charge order and first reached failure.
+//! of an element's namespace with an expected URI, and the lookup of a node.
+//! They differ only in the error they report and in what they do when a charge
+//! is refused. The helpers here take that error from the caller and preserve
+//! each caller's charge order and first reached failure.
 
 use super::*;
 use crate::{HtmlCapture, HtmlCaptureError, HtmlCapturedElement, HtmlCapturedNode};
@@ -125,21 +125,6 @@ impl<E: ScanError> ScanMeter<E> {
     /// Whether the element is in the HTML namespace, charged as `namespace_is_with`.
     pub(super) fn html_namespace(&mut self, element: &HtmlCapturedElement) -> Result<bool, E> {
         namespace_is_with(element, HTML_NAMESPACE, |amount| self.charge(amount))
-    }
-    /// Finds the first fact of `facts` bound to `id`, charging 1 per fact examined.
-    pub(super) fn fact<'a, T>(
-        &mut self,
-        facts: &'a [T],
-        subject: impl Fn(&T) -> &HtmlCaptureSubjectId,
-        id: &HtmlCaptureSubjectId,
-    ) -> Result<Option<&'a T>, E> {
-        for fact in facts {
-            self.charge(1)?;
-            if subject(fact) == id {
-                return Ok(Some(fact));
-            }
-        }
-        Ok(None)
     }
 }
 
@@ -309,27 +294,5 @@ mod tests {
             })
         );
         assert_eq!(tight.work(), 0);
-    }
-
-    #[test]
-    fn fact_lookup_charges_one_per_fact_examined() {
-        let (_, div, circle) = capture();
-        let facts = [div.clone(), circle.clone(), div.clone()];
-        let mut meter = ScanMeter::<Refusal>::new(0, 100);
-        let found = meter.fact(&facts, |fact| fact, &circle).unwrap();
-        assert!(std::ptr::eq(found.unwrap(), &facts[1]));
-        assert_eq!(meter.work(), 2);
-        // No match examines every fact.
-        let (_, other, _) = capture();
-        assert!(meter.fact(&facts, |fact| fact, &other).unwrap().is_none());
-        assert_eq!(meter.work(), 5);
-        let mut tight = ScanMeter::<Refusal>::new(0, 1);
-        assert_eq!(
-            tight.fact(&facts, |fact| fact, &circle),
-            Err(Refusal::Work {
-                limit: 1,
-                required: 2
-            })
-        );
     }
 }

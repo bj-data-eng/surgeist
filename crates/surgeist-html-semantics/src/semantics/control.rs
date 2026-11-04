@@ -2,8 +2,8 @@
 //! HTML 877d6146487f §4.10.2, §4.10.4, §4.10.5, §4.10.10 and §4.10.18.
 //! Host adapters establish history and current slots; queries execute no transitions.
 
+use super::index::FactIndex;
 use super::scan::{ScanError, ScanMeter};
-use super::seen::Seen;
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
 use surgeist_html::attributes::{HtmlAttributeReport, HtmlInputType};
@@ -247,6 +247,10 @@ pub struct HtmlControlFacts {
     inputs: Vec<HtmlInputControlState>,
     options: Vec<HtmlOptionControlState>,
     textareas: Vec<HtmlTextareaControlState>,
+    association_index: FactIndex,
+    input_index: FactIndex,
+    option_index: FactIndex,
+    textarea_index: FactIndex,
     validation_work: usize,
     validation_limit: usize,
 }
@@ -304,12 +308,16 @@ impl HtmlControlFacts {
             });
         }
         let mut validation = ScanMeter::new(0, limits.validation_work);
-        let mut seen = Seen::new(
+        let mut association_index = FactIndex::new(
+            capture.identity(),
             associations.len(),
             |n| validation.charge(n),
             HtmlControlFactsError::RepresentationExhausted,
         )?;
-        for fact in associations.iter() {
+        for (position, fact) in associations.iter().enumerate() {
+            association_index.enter(&fact.subject, position);
+        }
+        for (position, fact) in associations.iter().enumerate() {
             validation.charge(1)?;
             let node = validation.node(capture, &fact.subject)?;
             let HtmlCapturedNodeKind::Element(element) = node.kind() else {
@@ -326,7 +334,7 @@ impl HtmlControlFacts {
                     fact.subject.clone(),
                 ));
             }
-            if !seen.first(fact.subject.ordinal()) {
+            if association_index.position(&fact.subject) != Some(position) {
                 return Err(HtmlControlFactsError::DuplicateSubject(
                     fact.subject.clone(),
                 ));
@@ -352,12 +360,16 @@ impl HtmlControlFacts {
                 }
             }
         }
-        let mut seen = Seen::new(
+        let mut input_index = FactIndex::new(
+            capture.identity(),
             inputs.len(),
             |n| validation.charge(n),
             HtmlControlFactsError::RepresentationExhausted,
         )?;
-        for fact in inputs.iter() {
+        for (position, fact) in inputs.iter().enumerate() {
+            input_index.enter(&fact.subject, position);
+        }
+        for (position, fact) in inputs.iter().enumerate() {
             validation.charge(1)?;
             let node = validation.node(capture, &fact.subject)?;
             let HtmlCapturedNodeKind::Element(element) = node.kind() else {
@@ -370,18 +382,22 @@ impl HtmlControlFacts {
                     fact.subject.clone(),
                 ));
             }
-            if !seen.first(fact.subject.ordinal()) {
+            if input_index.position(&fact.subject) != Some(position) {
                 return Err(HtmlControlFactsError::DuplicateSubject(
                     fact.subject.clone(),
                 ));
             }
         }
-        let mut seen = Seen::new(
+        let mut option_index = FactIndex::new(
+            capture.identity(),
             options.len(),
             |n| validation.charge(n),
             HtmlControlFactsError::RepresentationExhausted,
         )?;
-        for fact in options.iter() {
+        for (position, fact) in options.iter().enumerate() {
+            option_index.enter(&fact.subject, position);
+        }
+        for (position, fact) in options.iter().enumerate() {
             validation.charge(1)?;
             let node = validation.node(capture, &fact.subject)?;
             let HtmlCapturedNodeKind::Element(element) = node.kind() else {
@@ -394,18 +410,22 @@ impl HtmlControlFacts {
                     fact.subject.clone(),
                 ));
             }
-            if !seen.first(fact.subject.ordinal()) {
+            if option_index.position(&fact.subject) != Some(position) {
                 return Err(HtmlControlFactsError::DuplicateSubject(
                     fact.subject.clone(),
                 ));
             }
         }
-        let mut seen = Seen::new(
+        let mut textarea_index = FactIndex::new(
+            capture.identity(),
             textareas.len(),
             |n| validation.charge(n),
             HtmlControlFactsError::RepresentationExhausted,
         )?;
-        for fact in textareas.iter() {
+        for (position, fact) in textareas.iter().enumerate() {
+            textarea_index.enter(&fact.subject, position);
+        }
+        for (position, fact) in textareas.iter().enumerate() {
             validation.charge(1)?;
             let node = validation.node(capture, &fact.subject)?;
             let HtmlCapturedNodeKind::Element(element) = node.kind() else {
@@ -418,7 +438,7 @@ impl HtmlControlFacts {
                     fact.subject.clone(),
                 ));
             }
-            if !seen.first(fact.subject.ordinal()) {
+            if textarea_index.position(&fact.subject) != Some(position) {
                 return Err(HtmlControlFactsError::DuplicateSubject(
                     fact.subject.clone(),
                 ));
@@ -431,6 +451,10 @@ impl HtmlControlFacts {
             inputs,
             options,
             textareas,
+            association_index,
+            input_index,
+            option_index,
+            textarea_index,
             validation_work: validation.work(),
             validation_limit: validation.limit(),
         })
@@ -439,6 +463,7 @@ impl HtmlControlFacts {
     pub(super) fn validate_classifications(
         mut self,
         capture: &HtmlCapture,
+        classified: &FactIndex,
         classifications: &[HtmlCustomControlClassification],
     ) -> Result<Self, HtmlControlFactsError> {
         let mut validation = ScanMeter::new(self.validation_work, self.validation_limit);
@@ -453,18 +478,19 @@ impl HtmlControlFacts {
             if validation.known(element)?.is_some() {
                 continue;
             }
-            for classification in classifications {
+            // With no classifications there is nothing to look the subject up in.
+            if classifications.is_empty() {
+                continue;
+            }
+            validation.charge(1)?;
+            if let Some(position) = classified.position(&association.subject) {
                 validation.charge(1)?;
-                if classification.subject == association.subject {
-                    validation.charge(1)?;
-                    if !classification.form_associated {
-                        return Err(
-                            HtmlControlFactsError::ContradictoryCustomControlAssociation(
-                                association.subject.clone(),
-                            ),
-                        );
-                    }
-                    break;
+                if !classifications[position].form_associated {
+                    return Err(
+                        HtmlControlFactsError::ContradictoryCustomControlAssociation(
+                            association.subject.clone(),
+                        ),
+                    );
                 }
             }
         }
@@ -628,11 +654,9 @@ impl<'a> HtmlSemanticSession<'a> {
         }
     }
     fn control_custom(&mut self, subject: &HtmlCaptureSubjectId) -> ControlResult<bool> {
-        for fact in self.context.classifications() {
-            self.charge(1)?;
-            if fact.subject() == subject {
-                return Ok(fact.form_associated());
-            }
+        self.charge(1)?;
+        if let Some(fact) = self.context.classification(subject) {
+            return Ok(fact.form_associated());
         }
         Err(ControlStop::Missing(
             HtmlSemanticMissing::CustomControlClassification(subject.clone()),
@@ -1050,11 +1074,9 @@ impl<'a> HtmlSemanticSession<'a> {
         subject: &HtmlCaptureSubjectId,
     ) -> ControlResult<&'a HtmlFormAssociationState> {
         if let Some(facts) = self.context.controls() {
-            for fact in facts.associations() {
-                self.charge(1)?;
-                if fact.subject() == subject {
-                    return Ok(fact.state());
-                }
+            self.charge(1)?;
+            if let Some(position) = facts.association_index.position(subject) {
+                return Ok(facts.associations[position].state());
             }
         }
         Err(ControlStop::Missing(HtmlSemanticMissing::FormAssociation(
@@ -1524,40 +1546,33 @@ impl<'a> HtmlSemanticSession<'a> {
         if let Some(facts) = self.context.controls() {
             match kind {
                 Some(KnownHtmlElement::Input) => {
-                    for fact in facts.inputs() {
-                        self.charge(1)?;
-                        if fact.subject() == subject {
-                            value = match flag {
-                                HtmlControlFlag::Checkedness => fact.checkedness(),
-                                HtmlControlFlag::DirtyCheckedness => fact.dirty_checkedness(),
-                                HtmlControlFlag::DirtyValue => fact.dirty_value(),
-                                HtmlControlFlag::Indeterminateness => fact.indeterminateness(),
-                                _ => None,
-                            };
-                            break;
-                        }
+                    self.charge(1)?;
+                    if let Some(position) = facts.input_index.position(subject) {
+                        let fact = &facts.inputs[position];
+                        value = match flag {
+                            HtmlControlFlag::Checkedness => fact.checkedness(),
+                            HtmlControlFlag::DirtyCheckedness => fact.dirty_checkedness(),
+                            HtmlControlFlag::DirtyValue => fact.dirty_value(),
+                            HtmlControlFlag::Indeterminateness => fact.indeterminateness(),
+                            _ => None,
+                        };
                     }
                 }
                 Some(KnownHtmlElement::Option) => {
-                    for fact in facts.options() {
-                        self.charge(1)?;
-                        if fact.subject() == subject {
-                            value = if flag == HtmlControlFlag::Selectedness {
-                                fact.selectedness()
-                            } else {
-                                fact.dirtiness()
-                            };
-                            break;
-                        }
+                    self.charge(1)?;
+                    if let Some(position) = facts.option_index.position(subject) {
+                        let fact = &facts.options[position];
+                        value = if flag == HtmlControlFlag::Selectedness {
+                            fact.selectedness()
+                        } else {
+                            fact.dirtiness()
+                        };
                     }
                 }
                 Some(KnownHtmlElement::Textarea) => {
-                    for fact in facts.textareas() {
-                        self.charge(1)?;
-                        if fact.subject() == subject {
-                            value = fact.dirty_value();
-                            break;
-                        }
+                    self.charge(1)?;
+                    if let Some(position) = facts.textarea_index.position(subject) {
+                        value = facts.textareas[position].dirty_value();
                     }
                 }
                 _ => {}
