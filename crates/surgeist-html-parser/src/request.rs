@@ -104,9 +104,9 @@ enum DocumentContext {
 }
 
 /// The supplied observation banks, in exactly one of two states. They are
-/// edited only while the caller builds the request, and then shared once with
-/// execution, so no edit can ever need to copy a bank that execution also holds
-/// and a request can never carry both an editable and a shared bank.
+/// edited while the caller builds the request, and then shared once with
+/// execution. A request never carries both an editable and a shared bank; an
+/// edit after sharing leaves the shared bank as execution's snapshot.
 #[derive(Debug)]
 enum InputBank {
     Building(Option<crate::construction::associated::Inputs>),
@@ -118,29 +118,18 @@ impl Default for InputBank {
     }
 }
 impl InputBank {
-    /// Applies a builder's edit. The builders consume a request, and a parse
-    /// owner never hands a request back to a builder, so only a building bank
-    /// is edited here. A shared bank that nothing else holds reopens for the
-    /// edit; one that execution also holds is left as it is.
+    /// Applies a builder's edit. A shared bank that nothing else holds reopens
+    /// for the edit. One that execution also holds is a snapshot execution
+    /// keeps: the edit forks it into the request's own bank, so the edit is
+    /// never lost and execution's bank is never changed under it.
     fn edited(self, edit: impl FnOnce(&mut crate::construction::associated::Inputs)) -> Self {
         let mut bank = match self {
             Self::Building(bank) => bank.unwrap_or_default(),
             Self::Shared(None) => Default::default(),
-            Self::Shared(Some(shared)) => match std::sync::Arc::try_unwrap(shared) {
-                Ok(bank) => bank,
-                Err(shared) => return Self::unedited(shared),
-            },
+            Self::Shared(Some(shared)) => std::sync::Arc::unwrap_or_clone(shared),
         };
         edit(&mut bank);
         Self::Building(Some(bank))
-    }
-    /// The edit found a bank that execution also holds. No public path leads
-    /// here, so tests fail loudly; a release build leaves the bank alone.
-    fn unedited(shared: std::sync::Arc<crate::construction::associated::Inputs>) -> Self {
-        #[cfg(test)]
-        panic!("an input edit reached a bank that execution also holds: {shared:?}");
-        #[cfg(not(test))]
-        Self::Shared(Some(shared))
     }
     /// Ends editing: a supplied bank becomes the one execution shares.
     fn share(self) -> Self {
