@@ -17,9 +17,13 @@
 //! only `P` takes headers. The `th` cells have `scope="row"`.
 
 use super::scope_work::{cell, element, limits, query};
-use crate::semantics::support::wide_builder_without_registries;
+use crate::semantics::support::{
+    Charge, ExpectedUsage, assert_exact_and_one_short_caps, context, result_record_bytes,
+    wide_builder_without_registries,
+};
 use surgeist_html_semantics::{
-    HtmlCaptureBuilderSubject, HtmlCaptureSubjectId, HtmlSemanticFact, HtmlSemanticValue,
+    HtmlCapture, HtmlCaptureBuilderSubject, HtmlCaptureSubjectId, HtmlSemanticFact,
+    HtmlSemanticQuery, HtmlSemanticRequest, HtmlSemanticValue,
 };
 
 /// A cell of the layout, by the slots it covers.
@@ -54,28 +58,39 @@ const fn td(name: &'static str, x: usize, y: usize, width: usize, height: usize)
     }
 }
 
-/// The names of the headers of `principal`, in order, for the layout (or its
-/// transpose). The table is built in rows, each holding its cells in column
-/// order; the layouts leave no gap before a cell, so each lands at its slot.
-fn headers_of(layout: &[Spec], transpose: bool, principal: &str) -> Vec<&'static str> {
-    let place = |spec: &Spec| {
-        if transpose {
-            (spec.y, spec.x, spec.height, spec.width)
-        } else {
-            (spec.x, spec.y, spec.width, spec.height)
-        }
-    };
+type Named = Vec<(&'static str, HtmlCaptureBuilderSubject)>;
+
+/// The slots a cell covers in the layout, or in its transpose.
+fn place(spec: &Spec, transpose: bool) -> (usize, usize, usize, usize) {
+    if transpose {
+        (spec.y, spec.x, spec.height, spec.width)
+    } else {
+        (spec.x, spec.y, spec.width, spec.height)
+    }
+}
+
+/// The table for the layout (or its transpose), with `principal` the only cell
+/// that scans. It is built in rows, each holding its cells in column order;
+/// the layouts leave no gap before a cell, so each lands at its slot.
+fn build(
+    layout: &[Spec],
+    transpose: bool,
+    principal: &str,
+) -> (HtmlCapture, HtmlCaptureBuilderSubject, Named) {
     let (mut b, d) = wide_builder_without_registries();
     let table = element(&mut b, &d, "table", &[]);
-    let rows = layout.iter().map(|s| place(s).1).max().unwrap() + 1;
+    let rows = layout.iter().map(|s| place(s, transpose).1).max().unwrap() + 1;
     let mut subjects = Vec::new();
     let mut trs = Vec::new();
     for y in 0..rows {
-        let mut in_row: Vec<_> = layout.iter().filter(|s| place(s).1 == y).collect();
-        in_row.sort_by_key(|s| place(s).0);
+        let mut in_row: Vec<_> = layout
+            .iter()
+            .filter(|s| place(s, transpose).1 == y)
+            .collect();
+        in_row.sort_by_key(|s| place(s, transpose).0);
         let mut cells = Vec::new();
         for spec in in_row {
-            let (_, _, width, height) = place(spec);
+            let (_, _, width, height) = place(spec, transpose);
             let (colspan, rowspan) = (width.to_string(), height.to_string());
             let mut attrs = Vec::new();
             if width > 1 {
@@ -99,7 +114,13 @@ fn headers_of(layout: &[Spec], transpose: bool, principal: &str) -> Vec<&'static
         trs.push(row);
     }
     b.establish_children(&table, &trs).unwrap();
-    let capture = b.finish().unwrap();
+    (b.finish().unwrap(), table, subjects)
+}
+
+/// The names of the headers of `principal`, in order, for the layout (or its
+/// transpose).
+fn headers_of(layout: &[Spec], transpose: bool, principal: &str) -> Vec<&'static str> {
+    let (capture, table, subjects) = build(layout, transpose, principal);
     let report = query(&capture, &table, limits()).0.unwrap();
     let HtmlSemanticFact::TableModel(HtmlSemanticValue::Known(model)) = report.results()[0].fact()
     else {
@@ -119,7 +140,7 @@ fn headers_of(layout: &[Spec], transpose: bool, principal: &str) -> Vec<&'static
             .unwrap();
         assert_eq!(
             (placed.x(), placed.y(), placed.width(), placed.height()),
-            place(spec),
+            place(spec, transpose),
             "{} lands where the layout draws it",
             spec.name
         );
@@ -250,4 +271,34 @@ fn a_cell_between_tall_headers_of_the_same_rows_hides_those_before_it() {
         td("D2", 1, 2, 1, 1),
     ];
     assert_headers(&layout, "P", &["T3", "T2", "T1"]);
+}
+
+/// The exact work and scratch budgets of a table with rows among tall cells,
+/// whose scans note the data cells that hid tall headers and read a row's own
+/// headers, admit it and are one unit short of failing, and release all they
+/// admitted, in both orientations.
+#[test]
+fn budgets_of_rows_among_tall_cells_are_exact_and_release_their_scratch() {
+    for transpose in [false, true] {
+        let (capture, table, _) = build(&two_kinds_of_extent(), transpose, "P");
+        let cx = context(&capture);
+        assert_exact_and_one_short_caps(
+            &format!("rows among tall cells, transpose={transpose}"),
+            &capture,
+            &cx,
+            10000,
+            limits(),
+            &[HtmlSemanticRequest::new(
+                capture.subject_id(&table).unwrap(),
+                HtmlSemanticQuery::TableModel,
+            )],
+            ExpectedUsage {
+                output_records: Charge::Exactly(1),
+                peak_scratch_records: Charge::Charged,
+                nested_output_records: Charge::Charged,
+                allocated_bytes: Charge::AtLeast(result_record_bytes()),
+                ..ExpectedUsage::none()
+            },
+        );
+    }
 }
