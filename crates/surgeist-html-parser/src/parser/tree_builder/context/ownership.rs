@@ -66,6 +66,11 @@ impl<'source> FragmentEntry<'source> {
         target: super::super::parse::InitializationTarget,
     ) -> Result<(), FragmentExecutionError> {
         let request = driver.request;
+        // An input edit reached a bank execution also holds: no parse may run
+        // on this request, whichever route entered it.
+        if request.input_bank_refused() {
+            return Err(FragmentExecutionError::Consumed);
+        }
         let c = &mut driver.control;
         c.admit_source(request.source())?;
         target.admit(c)?;
@@ -374,9 +379,6 @@ impl FragmentInitialization {
     ) -> Result<FragmentInitializationAttempt<'_>, InitializationState> {
         if self.begun {
             return Err(InitializationState::Consumed);
-        }
-        if self.request.input_bank_refused() {
-            return Err(InitializationState::Failed);
         }
         self.begun = true;
         Ok(FragmentInitializationAttempt {
