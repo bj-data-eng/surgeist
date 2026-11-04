@@ -154,10 +154,15 @@ fn freeze(kernel: LocationKernel, control: &mut ParseControl) -> FrozenArena {
         mut session,
         open,
         templates,
+        paragraphs,
+        scope_boundaries,
+        buttons,
         ..
     } = kernel;
     open.unwrap().release(control).unwrap();
-    templates.unwrap().release(control).unwrap();
+    for listed in [templates, paragraphs, scope_boundaries, buttons] {
+        listed.unwrap().release(control).unwrap();
+    }
     session.freeze(control).unwrap()
 }
 pub(crate) fn assert_released(control: &ParseControl) {
@@ -900,6 +905,234 @@ fn the_last_template_is_the_topmost_open_template_after_every_stack_operation() 
     assert_released(&c);
 }
 
+/// Whether an element of this namespace and name is a `p` or a boundary of
+/// button scope, by HTML §13.2.4.2's lists as written, for the model below.
+fn model_scope_role(namespace: &str, name: &str) -> (bool, bool) {
+    let boundary = match namespace {
+        "html" => [
+            "applet", "caption", "html", "table", "td", "th", "marquee", "object", "select",
+            "template", "button",
+        ]
+        .contains(&name),
+        "mathml" => ["mi", "mo", "mn", "ms", "mtext", "annotation-xml"].contains(&name),
+        "svg" => ["foreignObject", "desc", "title"].contains(&name),
+        _ => false,
+    };
+    (namespace == "html" && name == "p", boundary)
+}
+
+/// Applies a long deterministic sequence of every stack operation to a kernel
+/// and to a plain vector of the same nodes, and requires the kernel's answer to
+/// "is a p element in button scope" to be the vector's after each one. The
+/// vector's answer walks from the top as the standard writes it, so it is
+/// independent of how the kernel derives its own, and the pool mixes the
+/// boundaries of every list with elements that merely look like them.
+#[test]
+fn a_paragraph_in_button_scope_is_what_a_walk_from_the_top_finds_after_every_stack_operation() {
+    const HTML_POOL: [&str; 16] = [
+        "p", "div", "button", "table", "td", "p", "template", "select", "p", "ol", "div", "p",
+        "caption", "button", "span", "p",
+    ];
+    // Foreign elements named like HTML boundaries and paragraphs, and the
+    // foreign boundaries themselves.
+    const FOREIGN_POOL: [(&str, &str); 6] = [
+        ("mathml", "mi"),
+        ("mathml", "annotation-xml"),
+        ("svg", "desc"),
+        ("svg", "p"),
+        ("svg", "button"),
+        ("mathml", "mn"),
+    ];
+    let source = HtmlSource::utf8("<html>");
+    let mut c = control(100);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer = crate::parser::tokenizer::tests::LexerFixture::new(
+        &source,
+        HtmlTokenizerState::Data,
+        None,
+        &mut c,
+    )
+    .unwrap();
+    let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
+    let mut pool: Vec<(ParserNode, (bool, bool))> = Vec::new();
+    for (namespace, name) in HTML_POOL
+        .iter()
+        .map(|name| ("html", *name))
+        .chain(FOREIGN_POOL)
+    {
+        let ns = match namespace {
+            "html" => Namespace::html(),
+            "mathml" => Namespace::mathml(),
+            _ => Namespace::svg(),
+        };
+        pool.push((
+            preexisting(&mut kernel.session, ns, name, &mut c),
+            model_scope_role(namespace, name),
+        ));
+    }
+    // `open` holds pool indices; the html element below them bounds scope.
+    let mut open: Vec<usize> = Vec::new();
+    let mut seed: u64 = 0xd1b5_4a32_d192_ed03;
+    let mut pick = |bound: usize| {
+        seed = seed
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        ((seed >> 33) as usize) % bound
+    };
+    let (mut seen_true, mut seen_false, mut seen_blocked) = (false, false, false);
+    let mut ran = [0_u32; 5];
+    for step in 0..1500 {
+        let unused: Vec<usize> = (0..pool.len()).filter(|id| !open.contains(id)).collect();
+        let operation = pick(5);
+        match operation {
+            0 if !unused.is_empty() => {
+                let id = unused[pick(unused.len())];
+                kernel.push(&pool[id].0, &mut c).unwrap();
+                open.push(id);
+            }
+            1 if !open.is_empty() => {
+                kernel.pop(&mut c, None).unwrap();
+                open.pop();
+            }
+            2 if !open.is_empty() && !unused.is_empty() => {
+                let at = pick(open.len());
+                let id = unused[pick(unused.len())];
+                kernel
+                    .replace_stack(at + 1, &pool[id].0, &mut c, None)
+                    .unwrap();
+                open[at] = id;
+            }
+            3 if !unused.is_empty() => {
+                let at = pick(open.len() + 1);
+                let id = unused[pick(unused.len())];
+                kernel.insert_stack(at + 1, &pool[id].0, &mut c).unwrap();
+                open.insert(at, id);
+            }
+            4 if !open.is_empty() => {
+                let at = pick(open.len());
+                kernel
+                    .remove_stack_identity(&pool[open[at]].0, &mut c, None)
+                    .unwrap();
+                open.remove(at);
+            }
+            _ => continue,
+        }
+        ran[operation] += 1;
+        // The walk: from the top, the first element that is a `p` or a
+        // boundary decides. The html element at the bottom is a boundary.
+        let expected = open
+            .iter()
+            .rev()
+            .find_map(|id| {
+                let (paragraph, boundary) = pool[*id].1;
+                (paragraph || boundary).then_some(paragraph)
+            })
+            .unwrap_or(false);
+        let any_paragraph = open.iter().any(|id| pool[*id].1.0);
+        assert_eq!(
+            kernel.scoped_name("p", Scope::Button, &mut c).unwrap(),
+            expected,
+            "step {step}: {open:?}"
+        );
+        if expected {
+            seen_true = true;
+        } else if any_paragraph {
+            seen_blocked = true;
+        } else {
+            seen_false = true;
+        }
+        // The lists name exactly the entries of their classes.
+        for (listing, wanted) in [
+            (Listing::Paragraph, 0),
+            (Listing::Template, 1),
+            (Listing::ScopeBoundary, 2),
+            (Listing::ButtonBoundary, 3),
+        ] {
+            let listed: Vec<usize> = open
+                .iter()
+                .enumerate()
+                .filter(|(_, id)| match wanted {
+                    0 => pool[**id].1.0,
+                    1 => HTML_POOL.get(**id) == Some(&"template"),
+                    2 => {
+                        pool[**id].1.1
+                            && HTML_POOL
+                                .get(**id)
+                                .is_none_or(|name| !["template", "button"].contains(name))
+                    }
+                    _ => HTML_POOL.get(**id) == Some(&"button"),
+                })
+                .map(|(at, _)| at + 1)
+                .collect();
+            let mut with_html = listed.clone();
+            if wanted == 2 {
+                // The html element at the bottom, index 0, is a boundary too.
+                with_html.insert(0, 0);
+            }
+            assert_eq!(
+                kernel.listed_indices(listing),
+                with_html,
+                "step {step}: {listing:?}"
+            );
+        }
+    }
+    // The sequence reached every answer, so the comparison was not vacuous.
+    assert!(seen_true && seen_false && seen_blocked);
+    assert!(ran.iter().all(|count| *count > 20), "{ran:?}");
+    tokenizer.release(&mut c).unwrap();
+    kernel.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
+#[test]
+fn asking_whether_a_paragraph_is_in_button_scope_costs_the_same_at_every_depth() {
+    // Each chunk opens more divs, which neither is a paragraph nor bounds a
+    // scope, so the answer is no wherever it is asked, and the work must not
+    // depend on how many are open. A `p` under them makes it yes at once.
+    let chunks = [5_usize, 15, 60];
+    let tags: String = chunks
+        .iter()
+        .map(|divs| format!("{}<p>", "<div>".repeat(*divs)))
+        .collect();
+    let source = HtmlSource::utf8(format!("<html>{tags}"));
+    let mut c = control(200);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer = crate::parser::tokenizer::tests::LexerFixture::new(
+        &source,
+        HtmlTokenizerState::Data,
+        None,
+        &mut c,
+    )
+    .unwrap();
+    let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
+    let mut costs = Vec::new();
+    for divs in chunks {
+        for _ in 0..divs {
+            add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+        }
+        let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        assert!(
+            !kernel
+                .scoped_name("p", Scope::Button, &mut c)
+                .unwrap_or_else(|error| panic!("{error:?}"))
+        );
+        costs.push(c.usage().resource(HtmlParseResource::WorkCredits).current - before);
+        add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+        let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
+        assert!(kernel.scoped_name("p", Scope::Button, &mut c).unwrap());
+        costs.push(c.usage().resource(HtmlParseResource::WorkCredits).current - before);
+        kernel.pop(&mut c, None).unwrap();
+    }
+    assert_eq!(costs[0], costs[2], "no paragraph open: {costs:?}");
+    assert_eq!(costs[2], costs[4], "no paragraph open: {costs:?}");
+    // Answered from the lists: the ends of the paragraph list and of the three
+    // boundary lists are four record visits after the identity check's two.
+    assert!(costs[1] == costs[3] && costs[3] == costs[5], "{costs:?}");
+    tokenizer.release(&mut c).unwrap();
+    kernel.release(&mut c).unwrap();
+    assert_released(&c);
+}
+
 #[test]
 fn checking_a_new_element_for_insertion_costs_the_same_at_every_depth() {
     // A new element has no children, so it can be a host-including ancestor of
@@ -1004,10 +1237,10 @@ fn finding_a_listed_template_charges_each_probe_of_the_search() {
     // 2. Remove the template at index 8 (position 7 of 15): the first probe is
     //    position 7, which holds 8, so the search takes 1 probe: 1. The
     //    entries above move down, leaving 14 listings: 1-7 and 9-15.
-    // 3. Replace the div, now at index 16, which is not listed. The range
-    //    0..14 probes position 7 (holds 9, less than 16), then 8..14 probes
-    //    position 11 (holds 13), then 12..14 probes position 13 (holds 15),
-    //    and 14..14 is empty: 3 probes and not found. Nothing is unlisted: 3.
+    // 3. Replace the div, now at index 16, which is not listed. Its class,
+    //    kept with the entry since it was pushed, says so: no search is made
+    //    and nothing is unlisted: 0. (Before entries kept their class this
+    //    was a search of 3 probes that found nothing.)
     let source = HtmlSource::utf8(format!("<html>{}<div><div><div>", "<template>".repeat(16)));
     let mut c = control(100);
     c.admit_source(&source).unwrap();
@@ -1046,7 +1279,7 @@ fn finding_a_listed_template_charges_each_probe_of_the_search() {
     let second = add(&mut kernel, &mut tokenizer, StackPush::NoPush, &mut c);
     let before = steps(&c);
     kernel.replace_stack(16, &second, &mut c, None).unwrap();
-    assert_eq!(steps(&c) - before, 3);
+    assert_eq!(steps(&c) - before, 0);
     assert_eq!(kernel.template_indices().len(), 14);
     tokenizer.release(&mut c).unwrap();
     kernel.release(&mut c).unwrap();
@@ -1372,6 +1605,66 @@ fn complete_html_scope_lists_have_exact_namespace_and_prefix_independence() {
     assert!(!tag_sets::scope_boundary(&button, Scope::Default, &mut c).unwrap());
     assert!(!tag_sets::scope_boundary(&button, Scope::ListItem, &mut c).unwrap());
     assert!(tag_sets::scope_boundary(&button, Scope::Button, &mut c).unwrap());
+}
+
+#[test]
+fn an_elements_class_bounds_exactly_the_scopes_the_literal_lists_name() {
+    // The class is decided once by `ElementClass::classify`; the literal lists
+    // in `tag_sets::scope_boundary` are the standard's, name by name. Every
+    // listed name, near misses of case and length, and every namespace must
+    // agree for every scope.
+    let mut c = control(100);
+    let names = [
+        "applet",
+        "caption",
+        "html",
+        "table",
+        "td",
+        "th",
+        "marquee",
+        "object",
+        "select",
+        "template",
+        "ol",
+        "ul",
+        "button",
+        "p",
+        "mi",
+        "mo",
+        "mn",
+        "ms",
+        "mtext",
+        "annotation-xml",
+        "foreignObject",
+        "desc",
+        "title",
+        "TABLE",
+        "foreignobject",
+        "tr",
+        "tbody",
+        "div",
+        "",
+        "buttons",
+        "o",
+    ];
+    for namespace in [
+        Namespace::html(),
+        Namespace::mathml(),
+        Namespace::svg(),
+        Namespace::none(),
+    ] {
+        for name in names {
+            let qualified = QualifiedName::new(namespace.clone(), None, DocumentString::from(name));
+            let class = ElementClass::classify(&qualified, &mut c).unwrap();
+            for scope in [Scope::Default, Scope::ListItem, Scope::Button, Scope::Table] {
+                assert_eq!(
+                    class.bounds(scope),
+                    tag_sets::scope_boundary(&qualified, scope, &mut c).unwrap(),
+                    "{namespace:?} {name} {scope:?}"
+                );
+            }
+        }
+    }
 }
 
 #[test]
@@ -7005,27 +7298,31 @@ fn formatting_stack_replacement_charges_actual_clone_move_and_slot_write() {
     // Actual Style-pop qualification adds html_local's3 record reads plus the
     // two comparison headers =5 visits, and one28-unit namespace comparison
     // at3 bytes per pair. It mutates no Style row for this p element.
-    // The replacement is also asked whether it is a template, so the kernel
-    // can keep the last template exact: its name read (index10 plus the
-    // record1) and html_named's namespace comparison (two plus the header =3,
-    // inspecting28 units) and local comparison (one, one choice and the
-    // header =3; the length differs from template, so no local units are
-    // read) =17 visits, and one more asking whether the replaced entry is
-    // listed as a template.
+    // The replacement is also classified, so the kernel can keep its lists of
+    // template, paragraph and boundary entries exact: its name read (index10
+    // plus the record1), the namespace comparison (two plus the header =3,
+    // inspecting28 units) and one visit and one comparison header for each of
+    // the fourteen listed local names (the length of `span` equals only
+    // `html`'s, which it does not match) =28, so 42 visits. The replaced `p`
+    // is listed as a paragraph and the replacement is not, so the entry leaves
+    // that list: one visit for the search for its position (a list of one
+    // probes once, which is a state step) and one for the pop that unlists
+    // it =2 visits.
     assert_eq!(
         c.usage().work(HtmlParseWorkCategory::RecordVisit)
             - before.work(HtmlParseWorkCategory::RecordVisit),
-        63 + 3 + 2 + 17 + 1
+        63 + 3 + 2 + 42 + 2
     );
     assert_eq!(
         c.usage().work(HtmlParseWorkCategory::RecordWrite)
             - before.work(HtmlParseWorkCategory::RecordWrite),
-        1
+        // The slot write, and the pop that unlists the replaced paragraph.
+        2
     );
     assert_eq!(
         c.usage().work(HtmlParseWorkCategory::CopyByte)
             - before.work(HtmlParseWorkCategory::CopyByte),
-        3 * size_of::<ParserNode>() as u64
+        (2 * size_of::<ParserNode>() + size_of::<OpenElement>() + size_of::<usize>()) as u64
     );
     assert_eq!(
         c.usage().work(HtmlParseWorkCategory::ProviderCall)
@@ -7035,12 +7332,15 @@ fn formatting_stack_replacement_charges_actual_clone_move_and_slot_write() {
     assert_eq!(
         c.usage().work(HtmlParseWorkCategory::InspectByte)
             - before.work(HtmlParseWorkCategory::InspectByte),
-        (4 + 1 + 1) * 28 * 3
+        // Six namespace comparisons of 28 units, and the one unit compared
+        // of `html`, the only listed name of the length of `span`.
+        (4 + 1 + 1) * 28 * 3 + 3
     );
     assert_eq!(
         c.usage().work(HtmlParseWorkCategory::StateStep)
             - before.work(HtmlParseWorkCategory::StateStep),
-        0
+        // The one probe of the paragraph list.
+        1
     );
     assert_eq!(
         c.usage().resource(HtmlParseResource::OpenElements).current,

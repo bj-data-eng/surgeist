@@ -22,9 +22,9 @@ pub(crate) enum Scope {
     Table,
 }
 
-const HTML: &str = "http://www.w3.org/1999/xhtml";
-const MATHML: &str = "http://www.w3.org/1998/Math/MathML";
-const SVG: &str = "http://www.w3.org/2000/svg";
+pub(super) const HTML: &str = "http://www.w3.org/1999/xhtml";
+pub(super) const MATHML: &str = "http://www.w3.org/1998/Math/MathML";
+pub(super) const SVG: &str = "http://www.w3.org/2000/svg";
 
 /// Exact units: names containing non-scalars or non-ASCII units simply do not
 /// match a defining ASCII literal. No scalar conversion or allocation occurs.
@@ -97,6 +97,9 @@ pub(super) fn foster_target(
     local_in(name, &["table", "tbody", "tfoot", "thead", "tr"], control)
 }
 
+/// The standard's scope lists as written, for tests to hold the class that
+/// [`ElementClass`](super::stack_class::ElementClass) decides against.
+#[cfg(test)]
 pub(super) fn scope_boundary(
     name: &QualifiedName,
     scope: Scope,

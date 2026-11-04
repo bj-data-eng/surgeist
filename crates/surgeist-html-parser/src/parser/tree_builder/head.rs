@@ -568,9 +568,11 @@ impl<'source> HeadStage<'source> {
             HtmlParseResource::OpenElements,
             c,
         )?;
-        if let Some(templates) = state.before.kernel.templates.as_mut() {
-            templates.clear(c)?;
-            release_fixture_vector(templates, HtmlParseResource::AuxiliaryEntries, c)?;
+        for listing in super::Listing::ALL {
+            if let Some(listed) = state.before.kernel.list_mut_for_fixture(listing) {
+                listed.clear(c)?;
+                release_fixture_vector(listed, HtmlParseResource::AuxiliaryEntries, c)?;
+            }
         }
         release_fixture_vector(
             &mut state.table.entries,

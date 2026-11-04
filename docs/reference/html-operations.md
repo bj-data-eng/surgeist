@@ -2679,6 +2679,20 @@ for the same source, which changes what the history and reverse queries report. 
 is right is a decision about the provenance contract and not an engineering constant, so it is
 left to a separate change.
 
+<a id="open-element-scope-cost"></a>
+
+Whether a `p` element is in button scope is asked for every start tag that closes a `p`, so it
+reads four ascending lists of the stack indices of the open `p`, `template`, button and other
+scope-boundary elements instead of walking the stack: the answer is whether the last `p` lies
+above the last boundary, which is what the walk from the top finds, and it costs a fixed
+number of record visits whatever the depth. Each element is classified once, when it is pushed,
+and the lists change only for the classes that an element joins or leaves. The other scope
+queries (`select`, `form`, `button`, `li`, table scope and the end-tag checks) still walk from the
+top to their target or boundary, so a token that asks one costs work in proportion to the
+elements above the nearest boundary; the walk reads an entry's class and no longer compares its
+namespace and name. Nested `<div>y` repeated 2,000 times costs 216,171,077 work credits, down
+from 714,777,157, and 4,000 times costs 431,654,206, twice as much.
+
 <a id="private-context-fragments"></a>
 
 The private [ContextFragmentDriver](../../crates/surgeist-html-parser/src/parser/tree_builder/context.rs) executes

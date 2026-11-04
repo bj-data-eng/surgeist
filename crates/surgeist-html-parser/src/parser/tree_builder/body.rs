@@ -1760,13 +1760,8 @@ impl HeadState<'_> {
                     target = Some(node);
                     break;
                 }
-                let q = self
-                    .before
-                    .kernel
-                    .session
-                    .element_name(c, &node)?
-                    .ok_or(KernelError::NotElement)?;
-                if tag_sets::scope_boundary(q, Scope::Default, c)? {
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                if self.before.kernel.class_at(index)?.bounds(Scope::Default) {
                     break;
                 }
             }

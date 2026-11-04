@@ -55,6 +55,7 @@ pub(crate) mod prologue;
 mod provenance_scaling_tests;
 pub(crate) mod report;
 pub(crate) mod seal;
+mod stack_class;
 mod tables;
 mod tag_sets;
 mod template;
@@ -77,6 +78,7 @@ use crate::{
         ElementInsertionIgnored, ParserArenaSession, ParserNode, SessionError, TextInsertion,
     },
 };
+use stack_class::{ElementClass, Listing};
 use std::mem::size_of;
 pub(crate) use tag_sets::Scope;
 
@@ -192,7 +194,7 @@ pub(crate) struct CreatedElement {
 pub(crate) struct LocationKernel {
     owner: ControlIdentity,
     session: ParserArenaSession,
-    open: Option<OwnedVec<ParserNode>>,
+    open: Option<OwnedVec<OpenElement>>,
     /// Exclusive upper bound on the arena position of every node that is or
     /// was on the stack of open elements. Arena positions are never reused, so
     /// a node at or beyond the bound cannot already be on the stack: pushing it
@@ -205,8 +207,22 @@ pub(crate) struct LocationKernel {
     /// already walked, so neither the last template nor the one before it is
     /// ever searched for. It holds nothing, and costs nothing, without a template.
     templates: Option<OwnedVec<usize>>,
+    /// As `templates`, for the HTML `p` elements on the stack.
+    paragraphs: Option<OwnedVec<usize>>,
+    /// As `templates`, for the other boundaries of the default scope: see
+    /// [`Listing::ScopeBoundary`].
+    scope_boundaries: Option<OwnedVec<usize>>,
+    /// As `templates`, for the HTML `button` elements on the stack.
+    buttons: Option<OwnedVec<usize>>,
     root_target: Option<ParserNode>,
     foster_parenting: bool,
+}
+
+/// One entry of the stack of open elements: the element and what it is to the
+/// scope walks, decided when it was pushed.
+struct OpenElement {
+    node: ParserNode,
+    class: ElementClass,
 }
 
 /// Binary search over the ascending `listed` for `index`: the position where it
@@ -278,21 +294,31 @@ impl LocationKernel {
         let removed = self.at(index, c)?;
         self.session
             .qualify_stack_removal(c, &removed, capability)?;
-        let listed_at = self.template_position(index, c)?;
-        let is_template = self.named(target, "template", c)?;
+        let old_class = self.class_at(index)?;
+        let class = self.classify(target, c)?;
+        // Each listing the removed entry leaves is searched once, for where it
+        // lies, before anything changes.
+        let mut leaving = [None; Listing::ALL.len()];
+        for (listing, at) in Listing::ALL.into_iter().zip(&mut leaving) {
+            if old_class.listed(listing) && !class.listed(listing) {
+                *at = Some(self.listed_position(listing, index, c)?);
+            }
+        }
         let node = copy_node(target, c)?;
-        write(size_of::<ParserNode>(), 1, c)?;
+        write(size_of::<OpenElement>(), 1, c)?;
         let slot = self
             .open
             .as_mut()
             .ok_or(KernelError::Consumed)?
             .get_mut(index, c)?
             .ok_or(KernelError::EmptyStack)?;
-        *slot = node;
-        match (listed_at, is_template) {
-            (Some(at), false) => self.template_remove(at, c)?,
-            (None, true) => self.template_insert(index, c)?,
-            _ => {}
+        *slot = OpenElement { node, class };
+        for (listing, at) in Listing::ALL.into_iter().zip(leaving) {
+            if let Some(at) = at {
+                self.unlist(listing, at, c)?;
+            } else if class.listed(listing) && !old_class.listed(listing) {
+                self.list_at(listing, index, c)?;
+            }
         }
         self.stack_position_bound = self.stack_position_bound.max(position.saturating_add(1));
         self.session.parser_stack_removed(c, &removed, capability)?;
@@ -309,10 +335,15 @@ impl LocationKernel {
         if index > self.stack()?.len() {
             return Err(KernelError::EmptyStack);
         }
-        let template = self.named(target, "template", c)?;
         self.push(target, c)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         // The push left the target on top, so the stack is not empty.
+        let class = self.class_at(
+            self.stack()?
+                .len()
+                .checked_sub(1)
+                .ok_or(KernelError::EmptyStack)?,
+        )?;
         let top = self
             .stack()?
             .len()
@@ -330,12 +361,16 @@ impl LocationKernel {
         }
         // The target now sits at `index` and every entry from there up moved
         // one place toward the top. The push listed the target at the top.
-        if template {
-            self.template_unlist_last(c)?;
+        for listing in Listing::ALL {
+            if class.listed(listing) {
+                self.unlist_last(listing, c)?;
+            }
         }
-        self.templates_shift(index, true, c)?;
-        if template {
-            self.template_insert(index, c)?;
+        self.listings_shift(index, true, c)?;
+        for listing in Listing::ALL {
+            if class.listed(listing) {
+                self.list_at(listing, index, c)?;
+            }
         }
         Ok(())
     }
@@ -368,6 +403,9 @@ impl LocationKernel {
         scope: Scope,
         c: &mut ParseControl,
     ) -> Result<bool, KernelError> {
+        if name == "p" && matches!(scope, Scope::Button) {
+            return self.paragraph_in_button_scope(c);
+        }
         self.require(c)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         for index in (0..self.stack()?.len()).rev() {
@@ -375,15 +413,35 @@ impl LocationKernel {
             if self.named(&node, name, c)? {
                 return Ok(true);
             }
-            let q = self
-                .session
-                .element_name(c, &node)?
-                .ok_or(KernelError::NotElement)?;
-            if tag_sets::scope_boundary(q, scope, c)? {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            if self.class_at(index)?.bounds(scope) {
                 return Ok(false);
             }
         }
         Ok(false)
+    }
+    /// Whether an HTML `p` element is in button scope (§13.2.4.2): the nearest
+    /// element from the top of the stack that is a `p` or a boundary of button
+    /// scope is a `p`. No element is both, so the answer is whether the last
+    /// listed `p` lies above the last listed boundary. This reads the end of
+    /// each of the four ascending lists instead of walking the stack, and
+    /// charges one record visit for each of them.
+    fn paragraph_in_button_scope(&self, c: &mut ParseControl) -> Result<bool, KernelError> {
+        self.require(c)?;
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        let Some(paragraph) = self.last_listed(Listing::Paragraph) else {
+            return Ok(false);
+        };
+        c.charge(HtmlParseWorkCategory::RecordVisit, 3)?;
+        let boundary = [
+            Listing::Template,
+            Listing::ScopeBoundary,
+            Listing::ButtonBoundary,
+        ]
+        .into_iter()
+        .filter_map(|listing| self.last_listed(listing))
+        .max();
+        Ok(boundary.is_none_or(|boundary| paragraph > boundary))
     }
     fn implied_ends(
         &mut self,
@@ -436,10 +494,14 @@ impl LocationKernel {
             if self.session.same_node(c, &node, target)? {
                 self.session.qualify_stack_removal(c, &node, capability)?;
                 // The removal moves every entry above `index` one place down.
-                if let Some(at) = self.template_position(index, c)? {
-                    self.template_remove(at, c)?;
+                let class = self.class_at(index)?;
+                for listing in Listing::ALL {
+                    if class.listed(listing) {
+                        let at = self.listed_position(listing, index, c)?;
+                        self.unlist(listing, at, c)?;
+                    }
                 }
-                self.templates_shift(index.saturating_add(1), false, c)?;
+                self.listings_shift(index.saturating_add(1), false, c)?;
                 for shift in index..top {
                     if !self
                         .open
@@ -469,6 +531,9 @@ impl LocationKernel {
             .fragment_root(control)?;
         let open = OwnedVec::new(HtmlParseResource::OpenElements)?;
         let templates = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
+        let paragraphs = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
+        let scope_boundaries = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
+        let buttons = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         write(size_of::<Self>(), 5, control)?;
         write(size_of::<Option<ParserArenaSession>>(), 1, control)?;
         control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
@@ -483,6 +548,9 @@ impl LocationKernel {
             open: Some(open),
             stack_position_bound: 0,
             templates: Some(templates),
+            paragraphs: Some(paragraphs),
+            scope_boundaries: Some(scope_boundaries),
+            buttons: Some(buttons),
             root_target,
             foster_parenting: false,
         })
@@ -495,18 +563,41 @@ impl LocationKernel {
         Ok(())
     }
 
-    fn stack(&self) -> Result<&OwnedVec<ParserNode>, KernelError> {
+    fn stack(&self) -> Result<&OwnedVec<OpenElement>, KernelError> {
         self.open.as_ref().ok_or(KernelError::Consumed)
     }
 
     fn at(&self, index: usize, control: &mut ParseControl) -> Result<ParserNode, KernelError> {
         control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        let node = self
+        let entry = self
             .stack()?
             .as_slice()
             .get(index)
             .ok_or(KernelError::EmptyStack)?;
-        Ok(copy_node(node, control)?)
+        Ok(copy_node(&entry.node, control)?)
+    }
+
+    /// The class of the stack entry at `index`. The caller has already charged
+    /// the visit that reached the entry.
+    fn class_at(&self, index: usize) -> Result<ElementClass, KernelError> {
+        self.stack()?
+            .as_slice()
+            .get(index)
+            .map(|entry| entry.class)
+            .ok_or(KernelError::EmptyStack)
+    }
+
+    /// Classifies an element by its name, which is where its name is compared.
+    fn classify(
+        &self,
+        node: &ParserNode,
+        control: &mut ParseControl,
+    ) -> Result<ElementClass, KernelError> {
+        let name = self
+            .session
+            .element_name(control, node)?
+            .ok_or(KernelError::NotElement)?;
+        Ok(ElementClass::classify(name, control)?)
     }
 
     fn named(
@@ -545,17 +636,22 @@ impl LocationKernel {
             }
         }
         let index = self.stack()?.len();
-        let template = self.named(node, "template", control)?;
+        let class = self.classify(node, control)?;
         let copied = copy_node(node, control)?;
         self.open
             .as_mut()
             .ok_or(KernelError::Consumed)?
-            .try_push_geometric(control, copied)?;
-        if template {
-            self.templates
-                .as_mut()
-                .ok_or(KernelError::Consumed)?
-                .try_push_geometric(control, index)?;
+            .try_push_geometric(
+                control,
+                OpenElement {
+                    node: copied,
+                    class,
+                },
+            )?;
+        for listing in Listing::ALL {
+            if class.listed(listing) {
+                self.list_mut(listing)?.try_push_geometric(control, index)?;
+            }
         }
         self.stack_position_bound = self.stack_position_bound.max(position.saturating_add(1));
         self.session.parser_stack_added(control, node)?;
@@ -575,20 +671,25 @@ impl LocationKernel {
                 .qualify_stack_removal(control, &current, capability)?;
         }
         let top = self.stack()?.len().checked_sub(1);
-        let top_is_last_template = top.is_some() && top == self.last_template_index();
-        let node = self
+        let top_is_last =
+            Listing::ALL.map(|listing| top.is_some() && top == self.last_listed(listing));
+        let entry = self
             .open
             .as_mut()
             .ok_or(KernelError::Consumed)?
             .try_pop(control)?;
-        if node.is_some() && top_is_last_template {
-            self.template_unlist_last(control)?;
+        if entry.is_some() {
+            for (listing, is_last) in Listing::ALL.into_iter().zip(top_is_last) {
+                if is_last {
+                    self.unlist_last(listing, control)?;
+                }
+            }
         }
-        if let Some(node) = &node {
+        if let Some(entry) = &entry {
             self.session
-                .parser_stack_removed(control, node, capability)?;
+                .parser_stack_removed(control, &entry.node, capability)?;
         }
-        Ok(node)
+        Ok(entry.map(|entry| entry.node))
     }
 
     pub(crate) fn set_foster_parenting(
@@ -618,11 +719,8 @@ impl LocationKernel {
             if self.session.same_node(control, &node, target)? {
                 return Ok(true);
             }
-            let qualified = self
-                .session
-                .element_name(control, &node)?
-                .ok_or(KernelError::NotElement)?;
-            if tag_sets::scope_boundary(qualified, scope, control)? {
+            control.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            if self.class_at(index)?.bounds(scope) {
                 return Ok(false);
             }
         }
@@ -660,59 +758,91 @@ impl LocationKernel {
             .map(|index| self.at(index, control))
             .transpose()
     }
+    /// The ascending stack indices the stack lists under `listing`.
+    fn list(&self, listing: Listing) -> Option<&OwnedVec<usize>> {
+        match listing {
+            Listing::Template => self.templates.as_ref(),
+            Listing::Paragraph => self.paragraphs.as_ref(),
+            Listing::ScopeBoundary => self.scope_boundaries.as_ref(),
+            Listing::ButtonBoundary => self.buttons.as_ref(),
+        }
+    }
+    fn list_mut(&mut self, listing: Listing) -> Result<&mut OwnedVec<usize>, KernelError> {
+        match listing {
+            Listing::Template => self.templates.as_mut(),
+            Listing::Paragraph => self.paragraphs.as_mut(),
+            Listing::ScopeBoundary => self.scope_boundaries.as_mut(),
+            Listing::ButtonBoundary => self.buttons.as_mut(),
+        }
+        .ok_or(KernelError::Consumed)
+    }
+    /// The listing's storage, if the kernel still owns it, for fixtures that
+    /// release it themselves.
+    #[cfg(test)]
+    fn list_mut_for_fixture(&mut self, listing: Listing) -> Option<&mut OwnedVec<usize>> {
+        self.list_mut(listing).ok()
+    }
+    fn listed_indices(&self, listing: Listing) -> &[usize] {
+        self.list(listing).map_or(&[], OwnedVec::as_slice)
+    }
+    #[cfg(test)]
     fn template_indices(&self) -> &[usize] {
-        self.templates.as_ref().map_or(&[], OwnedVec::as_slice)
+        self.listed_indices(Listing::Template)
+    }
+    fn last_listed(&self, listing: Listing) -> Option<usize> {
+        self.listed_indices(listing).last().copied()
     }
     fn last_template_index(&self) -> Option<usize> {
-        self.template_indices().last().copied()
+        self.last_listed(Listing::Template)
     }
-    /// Searches the listings for the stack entry at `index`, charging one state
-    /// step for each probe the search makes, before the probe reads its listing.
-    /// State steps are what this kernel charges for each entry a loop over its
-    /// own state examines (the duplicate scan, the scope walks); a probe
-    /// examines one listing the same way. The probes are counted by the loop in
+    /// The position among the `listing` of the stack entry at `index`, which
+    /// the entry's class says is listed. The search charges one state step for
+    /// each probe it makes, before the probe reads its listing. State steps are
+    /// what this kernel charges for each entry a loop over its own state
+    /// examines (the duplicate scan, the scope walks); a probe examines one
+    /// listing the same way. The probes are counted by the loop in
     /// `search_listing`, not derived from the length, so the charge is the work
-    /// whatever the standard library's binary search would do.
-    fn search_templates(
+    /// whatever the standard library's binary search would do. An entry the
+    /// class lists but the list lacks is a defect of the stack's own state.
+    fn listed_position(
         &self,
+        listing: Listing,
         index: usize,
         c: &mut ParseControl,
-    ) -> Result<Result<usize, usize>, KernelError> {
-        Ok(search_listing(self.template_indices(), index, || {
-            c.charge(HtmlParseWorkCategory::StateStep, 1)
-        })?)
-    }
-    /// The position among the listings of the stack entry at `index`, if it is
-    /// listed as a template.
-    fn template_position(
-        &self,
-        index: usize,
-        c: &mut ParseControl,
-    ) -> Result<Option<usize>, KernelError> {
+    ) -> Result<usize, KernelError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        Ok(self.search_templates(index, c)?.ok())
+        match search_listing(self.listed_indices(listing), index, || {
+            c.charge(HtmlParseWorkCategory::StateStep, 1)
+        })? {
+            Ok(at) => Ok(at),
+            Err(_) => Err(c
+                .fail_invariant(HtmlParseInvariant::TreeBuilderState)
+                .into()),
+        }
     }
     /// Drops the last listing: the stack entry it names left the stack.
-    fn template_unlist_last(&mut self, c: &mut ParseControl) -> Result<(), KernelError> {
-        self.templates
-            .as_mut()
-            .ok_or(KernelError::Consumed)?
-            .try_pop(c)?;
+    fn unlist_last(&mut self, listing: Listing, c: &mut ParseControl) -> Result<(), KernelError> {
+        self.list_mut(listing)?.try_pop(c)?;
         Ok(())
     }
     /// Lists the stack entry at `index`, which is not yet listed, keeping the
     /// list ascending. Only the entries above `index` move.
-    fn template_insert(&mut self, index: usize, c: &mut ParseControl) -> Result<(), KernelError> {
-        let templates = self.templates.as_mut().ok_or(KernelError::Consumed)?;
-        templates.try_push_geometric(c, index)?;
-        let mut at = templates.len().saturating_sub(1);
+    fn list_at(
+        &mut self,
+        listing: Listing,
+        index: usize,
+        c: &mut ParseControl,
+    ) -> Result<(), KernelError> {
+        let listed = self.list_mut(listing)?;
+        listed.try_push_geometric(c, index)?;
+        let mut at = listed.len().saturating_sub(1);
         while at > 0
-            && templates
+            && listed
                 .as_slice()
                 .get(at.saturating_sub(1))
                 .is_some_and(|below| *below > index)
         {
-            if !templates.swap_slots(at.saturating_sub(1), at, c)? {
+            if !listed.swap_slots(at.saturating_sub(1), at, c)? {
                 return Err(KernelError::EmptyStack);
             }
             at = at.saturating_sub(1);
@@ -720,42 +850,50 @@ impl LocationKernel {
         Ok(())
     }
     /// Unlists the listing at position `at`. Only the listings above it move.
-    fn template_remove(&mut self, at: usize, c: &mut ParseControl) -> Result<(), KernelError> {
-        let templates = self.templates.as_mut().ok_or(KernelError::Consumed)?;
-        if at >= templates.len() {
+    fn unlist(
+        &mut self,
+        listing: Listing,
+        at: usize,
+        c: &mut ParseControl,
+    ) -> Result<(), KernelError> {
+        let listed = self.list_mut(listing)?;
+        if at >= listed.len() {
             return Err(KernelError::EmptyStack);
         }
-        for shift in at..templates.len().saturating_sub(1) {
-            if !templates.swap_slots(shift, shift.saturating_add(1), c)? {
+        for shift in at..listed.len().saturating_sub(1) {
+            if !listed.swap_slots(shift, shift.saturating_add(1), c)? {
                 return Err(KernelError::EmptyStack);
             }
         }
-        templates.try_pop(c)?;
+        listed.try_pop(c)?;
         Ok(())
     }
-    /// Renumbers the listed entries at or above stack index `from`, which moved
-    /// one place up or down together with their stack entries.
-    fn templates_shift(
+    /// Renumbers the listed entries at or above stack index `from`, in every
+    /// listing, which moved one place up or down together with their stack
+    /// entries.
+    fn listings_shift(
         &mut self,
         from: usize,
         up: bool,
         c: &mut ParseControl,
     ) -> Result<(), KernelError> {
-        let templates = self.templates.as_mut().ok_or(KernelError::Consumed)?;
-        let mut at = templates.len();
-        while at > 0
-            && templates
-                .as_slice()
-                .get(at.saturating_sub(1))
-                .is_some_and(|index| *index >= from)
-        {
-            at = at.saturating_sub(1);
-            let entry = templates.get_mut(at, c)?.ok_or(KernelError::EmptyStack)?;
-            *entry = if up {
-                entry.saturating_add(1)
-            } else {
-                entry.saturating_sub(1)
-            };
+        for listing in Listing::ALL {
+            let listed = self.list_mut(listing)?;
+            let mut at = listed.len();
+            while at > 0
+                && listed
+                    .as_slice()
+                    .get(at.saturating_sub(1))
+                    .is_some_and(|index| *index >= from)
+            {
+                at = at.saturating_sub(1);
+                let entry = listed.get_mut(at, c)?.ok_or(KernelError::EmptyStack)?;
+                *entry = if up {
+                    entry.saturating_add(1)
+                } else {
+                    entry.saturating_sub(1)
+                };
+            }
         }
         Ok(())
     }
@@ -1014,10 +1152,20 @@ impl LocationKernel {
             Some(open) => open.release(control).map_err(KernelError::from),
             None => Err(KernelError::Consumed),
         };
-        let listings = match self.templates.take() {
-            Some(templates) => templates.release(control),
-            None => Ok(()),
-        };
+        let mut listings = Ok(());
+        for listing in [
+            self.templates.take(),
+            self.paragraphs.take(),
+            self.scope_boundaries.take(),
+            self.buttons.take(),
+        ] {
+            if let Some(listed) = listing
+                && let Err(stop) = listed.release(control)
+                && listings.is_ok()
+            {
+                listings = Err(stop);
+            }
+        }
         self.root_target = None;
         stack?;
         listings?;
