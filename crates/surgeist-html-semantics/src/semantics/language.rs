@@ -1,6 +1,7 @@
 //! HTML 877d6146487f §3.2.6.2 and §3.2.6.4: exact language and directionality.
 //! Language tags are BCP 47-designated payloads, without validity or service claims.
 
+use super::seen::Seen;
 use super::*;
 use crate::bidi::{BidiClass, bidi_class};
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
@@ -279,7 +280,12 @@ impl HtmlLanguageDirectionFacts {
         };
         let mut units = 0;
         let mut assigned_capacity = 0;
-        for (index, fact) in fallbacks.iter().enumerate() {
+        let mut seen = Seen::new(
+            fallbacks.len(),
+            |n| validation.charge(n),
+            HtmlLanguageDirectionError::RepresentationExhausted,
+        )?;
+        for fact in fallbacks.iter() {
             validation.charge(1)?;
             let node = validation.node(capture, &fact.document)?;
             if !matches!(node.kind(), HtmlCapturedNodeKind::Document(_)) {
@@ -288,13 +294,10 @@ impl HtmlLanguageDirectionFacts {
                     .document_id(&fact.document)
                     .map_err(HtmlLanguageDirectionError::Capture)?;
             }
-            for previous in &fallbacks[..index] {
-                validation.charge(1)?;
-                if previous.document == fact.document {
-                    return Err(HtmlLanguageDirectionError::DuplicateSubject(
-                        fact.document.clone(),
-                    ));
-                }
+            if !seen.first(fact.document.ordinal()) {
+                return Err(HtmlLanguageDirectionError::DuplicateSubject(
+                    fact.document.clone(),
+                ));
             }
             if let HtmlPragmaLanguage::Tag(tag) = &fact.pragma {
                 validation.charge(1)?;
@@ -310,7 +313,12 @@ impl HtmlLanguageDirectionFacts {
                 units = language_sum(units, tag.len())?;
             }
         }
-        for (index, fact) in current_values.iter().enumerate() {
+        let mut seen = Seen::new(
+            current_values.len(),
+            |n| validation.charge(n),
+            HtmlLanguageDirectionError::RepresentationExhausted,
+        )?;
+        for fact in current_values.iter() {
             validation.charge(1)?;
             let node = validation.node(capture, &fact.subject)?;
             let HtmlCapturedNodeKind::Element(element) = node.kind() else {
@@ -381,19 +389,21 @@ impl HtmlLanguageDirectionFacts {
                     fact.subject.clone(),
                 ));
             }
-            for previous in &current_values[..index] {
-                validation.charge(1)?;
-                if previous.subject == fact.subject {
-                    return Err(HtmlLanguageDirectionError::DuplicateSubject(
-                        fact.subject.clone(),
-                    ));
-                }
+            if !seen.first(fact.subject.ordinal()) {
+                return Err(HtmlLanguageDirectionError::DuplicateSubject(
+                    fact.subject.clone(),
+                ));
             }
             if let Some(value) = &fact.value {
                 validation.charge(1)?;
                 units = language_sum(units, value.len())?;
             }
         }
+        let mut seen = Seen::new(
+            assignments.len(),
+            |n| validation.charge(n),
+            HtmlLanguageDirectionError::RepresentationExhausted,
+        )?;
         for (index, fact) in assignments.iter().enumerate() {
             validation.charge(1)?;
             let node = validation.node(capture, &fact.slot)?;
@@ -403,13 +413,10 @@ impl HtmlLanguageDirectionFacts {
             if validation.known(element)? != Some(KnownHtmlElement::Slot) {
                 return Err(HtmlLanguageDirectionError::InvalidSlot(fact.slot.clone()));
             }
-            for previous in &assignments[..index] {
-                validation.charge(1)?;
-                if previous.slot == fact.slot {
-                    return Err(HtmlLanguageDirectionError::DuplicateSubject(
-                        fact.slot.clone(),
-                    ));
-                }
+            if !seen.first(fact.slot.ordinal()) {
+                return Err(HtmlLanguageDirectionError::DuplicateSubject(
+                    fact.slot.clone(),
+                ));
             }
             let Some(nodes) = &fact.nodes else {
                 continue;

@@ -11274,10 +11274,11 @@ fn select_option_appends_agree_with_the_full_selectedness_algorithm_over_every_s
 
 #[test]
 fn style_order_extensions_agree_with_the_tree_walk_over_varied_documents() {
-    // Every style trigger on the main tree is compared in test builds with a
-    // walk of the tree, so parsing each document is the check. The documents
-    // insert styles at the end, mid-tree, through foster parenting and the
-    // adoption agency, in templates and foreign content, and with text between.
+    // Every style trigger on a cached tree order is compared in test builds
+    // with a walk of the tree, so parsing each document is the check. The
+    // documents insert styles at the end, mid-tree, through foster parenting
+    // and the adoption agency, in templates, shadow roots and foreign content,
+    // and with text between.
     for body in [
         "<head><style>a{}</style><style>b{}</style><body><style>c{}</style>",
         "<style>a{}</style><!--c--><style>b{}</style>t<style>c{}</style>",
@@ -11297,6 +11298,29 @@ fn style_order_extensions_agree_with_the_tree_walk_over_varied_documents() {
         "<form><style>a{}</style></form><form><style>b{}</style><style>c{}</style>",
         "<style>a{}</style><frameset><style>b{}</style></frameset><style>c{}",
         "<style type=text/css media=print title=t nonce=n>a{}</style><style>b{}",
+        "<template><style>a{}</style><style>b{}</style><p><style>c{}</style></p><style>d{}</style></template>",
+        "<div><template shadowrootmode=open><style>a{}</style><style>b{}</style></template></div><style>c{}",
+        "<template><b><style>a{}</style><p>x</b><style>b{}</style></template><style>c{}",
+        "<table><template><style>a{}</style><style>b{}</style></template><style>c{}</style></table>",
+        "<template><style>a{}</style></template><style>b{}</style><template><style>c{}</style><style>d{}</style></template><style>e{}",
+        "<div><template shadowrootmode=open><style>a{}</style></template></div><div><template shadowrootmode=open><style>b{}</style><style>c{}</style></template></div>",
+        // Foster-parented and mid-tree insertion, and a style-bearing subtree
+        // moved by the adoption agency, while a non-main order is live.
+        "<template><table><style>a{}</style><b><style>b{}</style></b></table><style>c{}</style></template>",
+        "<template><style>a{}</style><b><p><style>b{}</style></b><style>c{}</style></template>",
+        "<div><template shadowrootmode=open><table><style>a{}</style><b><style>b{}</style></b></table><style>c{}</style></template></div>",
+        "<div><template shadowrootmode=open><style>a{}</style><b><p><style>b{}</style></b><style>c{}</style></template></div>",
+        // The same subtree moved twice with a style added to it between the moves,
+        // and two styled subtrees removed one after the other.
+        "<a><b><p><style>1{}</style></b><style>2{}</style></a>x",
+        "<div><template shadowrootmode=open><a><b><p><style>1{}</style></b><style>2{}</style></a>x</template></div>",
+        "<a><p><style>1{}</style></a><a><p><style>2{}</style><style>3{}</style></a>x",
+        "<table><a><p><style>1{}</style></a><b><p><style>2{}</style></b></table>x",
+        "<div><template shadowrootmode=open><a><p><style>1{}</style></a><a><p><style>2{}</style><style>3{}</style></a>x</template></div>",
+        "<div><template shadowrootmode=open><table><a><p><style>1{}</style></a><b><p><style>2{}</style></b></table>x</template></div>",
+        // Several styles moved together, with a listed style before and after.
+        "<style>a{}</style><b><p><style>b{}</style><style>c{}</style><style>d{}</style></b><style>e{}",
+        "<div><template shadowrootmode=open><style>a{}</style><b><p><style>b{}</style><style>c{}</style></b><style>d{}</style></template></div><style>e{}",
     ] {
         let request = crate::HtmlDocumentParseRequest::offline(
             HtmlSource::utf8(format!("<!doctype html>{body}")),

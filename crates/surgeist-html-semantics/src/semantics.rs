@@ -17,6 +17,7 @@
 //! remain with their producers; queries borrow one immutable capture.
 
 mod context;
+mod seen;
 pub use context::*;
 mod microdata;
 pub use microdata::*;

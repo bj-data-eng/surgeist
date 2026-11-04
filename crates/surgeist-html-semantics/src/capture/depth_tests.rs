@@ -526,3 +526,193 @@ fn random_edge_orders_agree_with_the_base_semantics() {
         "the model must exercise every edge kind and refusal"
     );
 }
+
+/// One of the three metered edge operations, run on a fresh builder holding a
+/// child and a parent to join, the parent already below a third record.
+#[derive(Clone, Copy, Debug)]
+enum Edge {
+    Parent,
+    Children,
+    TemplateContents,
+}
+
+/// The builder, the child and the parent of the edge.
+fn edge_builder(
+    edge: Edge,
+) -> (
+    HtmlCaptureBuilder,
+    HtmlCaptureBuilderSubject,
+    HtmlCaptureBuilderSubject,
+) {
+    let (mut builder, document) = builder(8);
+    let (child, parent) = match edge {
+        Edge::Parent | Edge::Children => (
+            element(&mut builder, &document, "div"),
+            element(&mut builder, &document, "span"),
+        ),
+        Edge::TemplateContents => (
+            builder.add_fragment(&document).unwrap(),
+            element(&mut builder, &document, "template"),
+        ),
+    };
+    let above = element(&mut builder, &document, "p");
+    builder.establish_parent(&parent, &above).unwrap();
+    (builder, child, parent)
+}
+
+/// The work the controlled seam reports for the edge.
+fn reported_work(edge: Edge) -> usize {
+    let (mut builder, child, parent) = edge_builder(edge);
+    let mut work = 0;
+    match edge {
+        Edge::Parent => builder
+            .establish_parent_controlled(&child, &parent, &mut tally(&mut work))
+            .unwrap(),
+        Edge::Children => builder
+            .establish_children_controlled(
+                &parent,
+                std::slice::from_ref(&child),
+                &mut tally(&mut work),
+            )
+            .unwrap(),
+        Edge::TemplateContents => builder
+            .establish_template_contents_controlled(&parent, &child, &mut tally(&mut work))
+            .unwrap(),
+    }
+    work
+}
+
+/// The metered method on a fresh builder, refusing its `stop`-th step when
+/// given: the steps taken, the result, and the usage before and after.
+fn metered(
+    edge: Edge,
+    stop: Option<usize>,
+) -> (
+    usize,
+    Result<(), HtmlCaptureEdgeError<usize>>,
+    HtmlCaptureUsage,
+    HtmlCaptureUsage,
+) {
+    let (mut builder, child, parent) = edge_builder(edge);
+    let before = builder.usage();
+    let mut steps = 0;
+    let mut step = || {
+        let at = steps;
+        steps += 1;
+        if Some(at) == stop { Err(at) } else { Ok(()) }
+    };
+    let result = match edge {
+        Edge::Parent => builder.establish_parent_with(&child, &parent, &mut step),
+        Edge::Children => {
+            builder.establish_children_with(&parent, std::slice::from_ref(&child), &mut step)
+        }
+        Edge::TemplateContents => {
+            builder.establish_template_contents_with(&parent, &child, &mut step)
+        }
+    };
+    (steps, result, before, builder.usage())
+}
+
+#[test]
+fn metered_edges_take_one_step_for_each_unit_the_builder_reports() {
+    for edge in [Edge::Parent, Edge::Children, Edge::TemplateContents] {
+        let work = reported_work(edge);
+        assert!(work > 0, "{edge:?} reports work");
+        let (steps, result, before, after) = metered(edge, None);
+        assert_eq!(result, Ok(()), "{edge:?}");
+        assert_eq!(steps, work, "{edge:?}");
+        assert_ne!(before, after, "{edge:?}: the edge adds usage");
+    }
+}
+
+#[test]
+fn a_metered_edge_returns_the_first_refusal_unchanged_and_establishes_nothing() {
+    for edge in [Edge::Parent, Edge::Children, Edge::TemplateContents] {
+        for stop in 0..reported_work(edge) {
+            let (steps, result, before, after) = metered(edge, Some(stop));
+            assert_eq!(
+                result,
+                Err(HtmlCaptureEdgeError::Interrupted(stop)),
+                "{edge:?} at {stop}"
+            );
+            assert_eq!(steps, stop + 1, "{edge:?}: no step after the refusal");
+            assert_eq!(before, after, "{edge:?} at {stop}");
+        }
+    }
+}
+
+#[test]
+fn a_refused_metered_edge_can_be_established_again_with_a_permissive_step() {
+    for edge in [Edge::Parent, Edge::Children, Edge::TemplateContents] {
+        for stop in 0..reported_work(edge) {
+            let (mut builder, child, parent) = edge_builder(edge);
+            let mut at = 0;
+            let mut refuse = || {
+                at += 1;
+                if at == stop + 1 { Err(stop) } else { Ok(()) }
+            };
+            let refused = match edge {
+                Edge::Parent => builder.establish_parent_with(&child, &parent, &mut refuse),
+                Edge::Children => builder.establish_children_with(
+                    &parent,
+                    std::slice::from_ref(&child),
+                    &mut refuse,
+                ),
+                Edge::TemplateContents => {
+                    builder.establish_template_contents_with(&parent, &child, &mut refuse)
+                }
+            };
+            assert_eq!(
+                refused,
+                Err(HtmlCaptureEdgeError::Interrupted(stop)),
+                "{edge:?} at {stop}"
+            );
+            let mut permissive = || Ok::<_, usize>(());
+            let again = match edge {
+                Edge::Parent => builder.establish_parent_with(&child, &parent, &mut permissive),
+                Edge::Children => builder.establish_children_with(
+                    &parent,
+                    std::slice::from_ref(&child),
+                    &mut permissive,
+                ),
+                Edge::TemplateContents => {
+                    builder.establish_template_contents_with(&parent, &child, &mut permissive)
+                }
+            };
+            assert_eq!(again, Ok(()), "{edge:?} retried after {stop}");
+        }
+    }
+}
+
+#[test]
+fn a_metered_edge_error_exposes_its_cause() {
+    use std::error::Error as _;
+    let capture: HtmlCaptureEdgeError<HtmlCaptureError> =
+        HtmlCaptureEdgeError::Capture(HtmlCaptureError::Cycle);
+    let interrupted: HtmlCaptureEdgeError<HtmlCaptureError> =
+        HtmlCaptureEdgeError::Interrupted(HtmlCaptureError::DuplicateChild);
+    assert_eq!(
+        capture.source().unwrap().to_string(),
+        HtmlCaptureError::Cycle.to_string()
+    );
+    assert_eq!(
+        interrupted.source().unwrap().to_string(),
+        HtmlCaptureError::DuplicateChild.to_string()
+    );
+}
+
+#[test]
+fn a_metered_edge_reports_a_capture_refusal_as_such() {
+    let (mut builder, document) = builder(8);
+    let element = element(&mut builder, &document, "div");
+    let mut steps = 0;
+    let result = builder.establish_parent_with(&element, &element, || -> Result<(), ()> {
+        steps += 1;
+        Ok(())
+    });
+    assert_eq!(
+        result,
+        Err(HtmlCaptureEdgeError::Capture(HtmlCaptureError::Cycle))
+    );
+    assert!(steps > 0, "the refusal was reached through metered work");
+}

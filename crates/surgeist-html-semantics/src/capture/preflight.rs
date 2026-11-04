@@ -71,6 +71,31 @@ pub(super) fn ordinary_error(error: Failure<Infallible>) -> HtmlCaptureError {
     }
 }
 
+/// Meters only the work an operation reports, one `step` per unit.
+pub(super) fn steps<'a, E>(
+    step: &'a mut impl FnMut() -> Result<(), E>,
+) -> impl FnMut(Action) -> Result<(), E> + 'a {
+    move |action| {
+        if let Action::Work(units) = action {
+            for _ in 0..units {
+                step()?;
+            }
+        }
+        Ok(())
+    }
+}
+
+pub(super) fn edge_error<E>(error: Failure<E>) -> super::HtmlCaptureEdgeError<E> {
+    match error {
+        Failure::Admission(error) => super::HtmlCaptureEdgeError::Interrupted(error),
+        Failure::Capture(error) => super::HtmlCaptureEdgeError::Capture(error),
+        // The same spelling the ordinary operations give an allocation failure.
+        Failure::AllocationFailed => {
+            super::HtmlCaptureEdgeError::Capture(HtmlCaptureError::RepresentationExhausted)
+        }
+    }
+}
+
 /// Caller-owned actual temporary allocations survive a refused borrowed pass.
 pub(crate) struct DepthScratch {
     incoming: Vec<Option<usize>>,

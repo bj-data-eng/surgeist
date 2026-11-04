@@ -741,7 +741,9 @@ fn moved_capacity_and_validation_work_are_admitted_before_context_identity() {
         .unwrap_err(),
         HtmlGlobalInheritanceError::RecordCapacity { limit: 0, .. }
     ));
-    for work in [0, 1] {
+    // The Document row takes its lookup (1), its step (1) and the fill of the
+    // duplicate set (1).
+    for work in [0, 1, 2] {
         assert!(matches!(
             HtmlGlobalInheritanceFacts::new(
                 &c,
@@ -761,7 +763,7 @@ fn moved_capacity_and_validation_work_are_admitted_before_context_identity() {
         key(),
         vec![mode(&c, &d, HtmlDesignMode::Disabled)],
         vec![],
-        HtmlGlobalInheritanceLimits::new(1, 2),
+        HtmlGlobalInheritanceLimits::new(1, 3),
     )
     .unwrap();
 }
