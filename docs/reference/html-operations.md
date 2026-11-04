@@ -2722,6 +2722,18 @@ reached charge where the walk puts it. None of that has been shown to leave the 
 charges as they are, so a caller admitting untrusted input sizes `work_credits` for the
 quadratic figures above.
 
+<a id="provenance-read-bounds"></a>
+
+Two reads of a report's provenance have a bound that follows the size of the whole report and not
+the size of the answer. The source-range reverse query (`associations().reverse(range, ..)`) has
+no index by position: each `advance` examines one association row and a query advanced to
+completion visits every row, so `q` queries cost `q` times `associations().len()` row visits, none
+charged to a parse limit because the report is immutable. The history expansion cursor needs scratch
+of `index + 1` frames of 16 bytes, where `index` is the position of the group in `history_view()`: a
+group created late needs scratch in proportion to the groups before it, up to `16 * history_view().len()`
+bytes, however shallow its own history is, and a shorter scratch reports `InsufficientScratch` with
+the length required.
+
 <a id="open-element-scope-cost"></a>
 
 Whether a `p` element is in button scope is asked for every start tag that closes a `p`, so it
