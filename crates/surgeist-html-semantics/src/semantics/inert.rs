@@ -1,4 +1,5 @@
-//! HTML 877d6146487f §6.3–6.3.2 inert attributes and document modal blocking.
+//! HTML 877d6146487f §6.3–6.3.2 inert attributes and document modal blocking,
+//! and the #the-button-element rule for a select's first button.
 //!
 //! DOM owns document flattening (CSS Shadow 50337328484f §4.1). Excluded
 //! document membership does not establish detached semantic inert ancestry:
@@ -10,7 +11,8 @@ use super::seen::Seen;
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
 use surgeist_html::{
-    attributes::HtmlBooleanAttribute, values::DocumentString, vocabulary::KnownHtmlElement,
+    attributes::HtmlBooleanAttribute, bounded::select::button_is_inert_in_select,
+    values::DocumentString, vocabulary::KnownHtmlElement,
 };
 
 /// Identity of the actual immutable flat-relation producer.
@@ -619,6 +621,63 @@ impl<'a> HtmlSemanticSession<'a> {
             }
         }
     }
+    /// HTML #the-button-element: a button that is the first child which is an
+    /// element of a select is inert. The html owner decides the rule; this
+    /// supplies only the ordinary-tree parent and first element child (never
+    /// flat-tree edges or the enclosing slot/shadow structure) and charges each
+    /// step it takes. The rule marks the button itself, not its descendants.
+    fn select_first_button_inert(
+        &mut self,
+        node: HtmlCapturedNode<'a>,
+    ) -> Result<HtmlSemanticValue<bool>, HtmlSemanticFailure> {
+        let HtmlCapturedNodeKind::Element(element) = node.kind() else {
+            return Ok(HtmlSemanticValue::Known(false));
+        };
+        let kind = self.known(element)?;
+        // The predicate is true only with its first-element-child operand true,
+        // so answering with true here asks whether the other operands can hold
+        // before a later operand is looked up; its final answer is below.
+        if !button_is_inert_in_select(kind, Some(KnownHtmlElement::Select), true) {
+            return Ok(HtmlSemanticValue::Known(false));
+        }
+        let parent = match self.parent(node)? {
+            Ok(Some(parent)) => parent,
+            Ok(None) => return Ok(HtmlSemanticValue::Known(false)),
+            Err(missing) => return Ok(HtmlSemanticValue::Missing(missing)),
+        };
+        let parent_node = self.node(&parent)?;
+        let HtmlCapturedNodeKind::Element(parent_element) = parent_node.kind() else {
+            return Ok(HtmlSemanticValue::Known(false));
+        };
+        let parent_kind = self.known(parent_element)?;
+        if !button_is_inert_in_select(kind, parent_kind, true) {
+            return Ok(HtmlSemanticValue::Known(false));
+        }
+        self.charge(1)?;
+        let mut children = match parent_node.children() {
+            HtmlCapturedChildren::Complete(children) => children,
+            HtmlCapturedChildren::Unavailable => {
+                return Ok(HtmlSemanticValue::Missing(
+                    HtmlSemanticMissing::OrderedChildren(parent),
+                ));
+            }
+        };
+        let first_element_child = loop {
+            self.charge(1)?;
+            let Some(child) = children.next() else {
+                break None;
+            };
+            let child_node = self.node(&child)?;
+            if matches!(child_node.kind(), HtmlCapturedNodeKind::Element(_)) {
+                break Some(child);
+            }
+        };
+        Ok(HtmlSemanticValue::Known(button_is_inert_in_select(
+            kind,
+            parent_kind,
+            first_element_child.as_ref() == Some(&node.id()),
+        )))
+    }
     pub(super) fn inertness(
         &mut self,
         subject: &HtmlCaptureSubjectId,
@@ -627,6 +686,25 @@ impl<'a> HtmlSemanticSession<'a> {
         if self.own_inert(node)? {
             return Ok(HtmlSemanticValue::Known(true));
         }
+        // Like the node's own attribute, this needs no flat relation or modal
+        // payload. Unavailable ordinary-tree evidence only matters when no
+        // other source proves inertness.
+        let button_rule = self.select_first_button_inert(node)?;
+        if button_rule == HtmlSemanticValue::Known(true) {
+            return Ok(button_rule);
+        }
+        let inherited = self.inherited_inertness(subject, node)?;
+        Ok(match (button_rule, inherited) {
+            (_, inherited @ HtmlSemanticValue::Known(true)) => inherited,
+            (missing @ HtmlSemanticValue::Missing(_), _) => missing,
+            (_, inherited) => inherited,
+        })
+    }
+    fn inherited_inertness(
+        &mut self,
+        subject: &HtmlCaptureSubjectId,
+        node: HtmlCapturedNode<'a>,
+    ) -> Result<HtmlSemanticValue<bool>, HtmlSemanticFailure> {
         // A Document is intrinsically connected and cannot be the dialog or
         // any element's flat descendant. It needs only its blocking state.
         if matches!(node.kind(), HtmlCapturedNodeKind::Document(_)) {

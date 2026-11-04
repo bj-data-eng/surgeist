@@ -370,6 +370,12 @@ pub enum HtmlSemanticQuery {
     DocumentTitle,
     Meter,
     Progress,
+    /// Whether the node is inert (HTML 877d6146487f #inert-subtrees). Sources are
+    /// the node's own `inert` attribute, the rule that a `button` that is the
+    /// first child which is an element of a `select` is inert
+    /// (#the-button-element; ordinary-tree children, and the button itself only),
+    /// the `inert` attribute of a flat-tree ancestor, and the document's modal
+    /// blocking dialog. The first two need no host supplement.
     Inertness,
     FormOwner,
     CommandForElement,
