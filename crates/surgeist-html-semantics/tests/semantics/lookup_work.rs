@@ -8,7 +8,7 @@
 //! 2.2 (a sweep with linear lookups multiplies it by about 2, a scanning one
 //! by about 4). Results do not change; the work is the whole difference.
 
-use super::constructor_work::{big_builder, flat_page, inert_fact};
+use super::constructor_work::{flat_page, inert_fact};
 use crate::semantics::support::assert_doubling_at_most_2_2;
 use surgeist_html::values::HtmlValueInterpreter;
 use surgeist_html_semantics::{

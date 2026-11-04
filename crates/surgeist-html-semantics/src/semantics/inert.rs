@@ -157,6 +157,8 @@ pub struct HtmlInertFacts {
     flat_revision: HtmlFlatTreeRevision,
     nodes: Vec<HtmlInertNodeFact>,
     documents: Vec<HtmlDocumentModalFact>,
+    node_index: FactIndex,
+    document_index: FactIndex,
 }
 enum InertConnection {
     Document(HtmlCaptureSubjectId),
@@ -434,17 +436,21 @@ impl HtmlInertFacts {
                 at = next;
             }
         }
-        let mut seen = Seen::new(
+        let mut document_index = FactIndex::new(
+            capture.identity(),
             documents.len(),
             |n| validation.charge(n),
             HtmlInertFactError::RepresentationExhausted,
         )?;
-        for fact in documents.iter() {
+        for (position, fact) in documents.iter().enumerate() {
+            document_index.enter(&fact.document, position);
+        }
+        for (position, fact) in documents.iter().enumerate() {
             validation.charge(1)?;
             capture
                 .document_id(&fact.document)
                 .map_err(HtmlInertFactError::Capture)?;
-            if !seen.first(fact.document.ordinal()) {
+            if document_index.position(&fact.document) != Some(position) {
                 return Err(HtmlInertFactError::DuplicateSubject(fact.document.clone()));
             }
             if let HtmlDocumentModalBlocking::BlockedBy(blocker) = &fact.blocking {
@@ -480,6 +486,8 @@ impl HtmlInertFacts {
             flat_revision,
             nodes,
             documents,
+            node_index: index,
+            document_index,
         })
     }
     pub fn capture(&self) -> &HtmlCaptureId {
@@ -507,13 +515,11 @@ impl<'a> HtmlSemanticSession<'a> {
         let Some(input) = self.context.inert() else {
             return Ok(None);
         };
-        for fact in input.nodes() {
-            self.charge(1)?;
-            if fact.subject == *subject {
-                return Ok(Some(fact));
-            }
-        }
-        Ok(None)
+        self.charge(1)?;
+        Ok(input
+            .node_index
+            .position(subject)
+            .map(|at| &input.nodes[at]))
     }
     fn inert_blocking(
         &mut self,
@@ -522,13 +528,11 @@ impl<'a> HtmlSemanticSession<'a> {
         let Some(input) = self.context.inert() else {
             return Ok(None);
         };
-        for fact in input.documents() {
-            self.charge(1)?;
-            if fact.document == *document {
-                return Ok(Some(&fact.blocking));
-            }
-        }
-        Ok(None)
+        self.charge(1)?;
+        Ok(input
+            .document_index
+            .position(document)
+            .map(|at| &input.documents[at].blocking))
     }
     fn own_inert(&mut self, node: HtmlCapturedNode<'a>) -> Result<bool, HtmlSemanticFailure> {
         let HtmlCapturedNodeKind::Element(element) = node.kind() else {
