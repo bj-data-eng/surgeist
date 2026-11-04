@@ -21,10 +21,14 @@ use surgeist_html_semantics::{
     HtmlFlatTreeRevision, HtmlFormAssociation, HtmlFormAssociationState,
     HtmlGlobalInheritanceFacts, HtmlGlobalInheritanceLimits, HtmlGlobalInheritanceProducerId,
     HtmlGlobalInheritanceRevision, HtmlInertFactLimits, HtmlInertFacts, HtmlInputControlState,
-    HtmlLanguageDirectionFacts, HtmlLanguageDirectionLimits, HtmlOptionControlState,
-    HtmlPragmaLanguage, HtmlProtocolLanguage, HtmlScriptingStatus, HtmlSemanticCancellation,
-    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticLimits, HtmlSemanticQuery,
-    HtmlSemanticRequest, HtmlSemanticSession, HtmlSlotAssignedNodes, HtmlSpellcheckDefaultBehavior,
+    HtmlLanguageDirectionFacts, HtmlLanguageDirectionLimits, HtmlMicrodataFacts,
+    HtmlMicrodataPropertyFact, HtmlMicrodataPropertyPermission, HtmlMicrodataProviderId,
+    HtmlMicrodataProviderRevision, HtmlMicrodataRawBinding, HtmlMicrodataRawSource,
+    HtmlMicrodataRevision, HtmlMicrodataTypeFact, HtmlMicrodataUrlFact, HtmlMicrodataUrlOperation,
+    HtmlMicrodataUrlResult, HtmlMicrodataVocabularyId, HtmlOptionControlState, HtmlPragmaLanguage,
+    HtmlProtocolLanguage, HtmlScriptingStatus, HtmlSemanticCancellation, HtmlSemanticContext,
+    HtmlSemanticContextInput, HtmlSemanticLimits, HtmlSemanticQuery, HtmlSemanticRequest,
+    HtmlSemanticSession, HtmlSlotAssignedNodes, HtmlSpellcheckDefaultBehavior,
     HtmlSpellcheckDefaultFact, HtmlTextareaControlState,
 };
 
@@ -499,5 +503,168 @@ fn a_spellcheck_sweep_finds_each_default_in_constant_work() {
         "spellcheck default sweep",
         &DOUBLINGS,
         spellcheck_default_sweep,
+    );
+}
+
+fn microdata_context(
+    capture: &HtmlCapture,
+    url: HtmlMicrodataProviderRevision,
+    vocabulary: HtmlMicrodataProviderRevision,
+    urls: Vec<HtmlMicrodataUrlFact>,
+    types: Vec<HtmlMicrodataTypeFact>,
+    properties: Vec<HtmlMicrodataPropertyFact>,
+) -> HtmlSemanticContext {
+    let revision = HtmlMicrodataRevision::new(Some(url), Some(vocabulary));
+    let records = urls.len() + types.len() + properties.len();
+    let facts = HtmlMicrodataFacts::new(
+        capture,
+        revision.clone(),
+        urls,
+        types,
+        properties,
+        records,
+        1 << 20,
+    )
+    .unwrap();
+    HtmlSemanticContext::new(
+        capture,
+        capture.host_facts_revision().clone(),
+        HtmlSemanticContextInput::new(vec![]).with_microdata(revision, Some(facts)),
+        0,
+    )
+    .unwrap()
+}
+fn provider() -> HtmlMicrodataProviderRevision {
+    HtmlMicrodataProviderRevision::new(HtmlMicrodataProviderId::fresh(), 1, 1)
+}
+fn absolute_url(
+    capture: &HtmlCapture,
+    revision: &HtmlMicrodataProviderRevision,
+    subject: &HtmlCaptureSubjectId,
+    source: HtmlMicrodataRawSource,
+) -> HtmlMicrodataUrlFact {
+    let operation = HtmlMicrodataUrlOperation::AbsoluteAuthorToken(revision.clone());
+    HtmlMicrodataUrlFact::new(
+        HtmlMicrodataRawBinding::new(capture, subject.clone(), source, 1 << 20).unwrap(),
+        operation.clone(),
+        Some(operation),
+        Some(HtmlMicrodataUrlResult::AuthorSyntax(true)),
+    )
+    .unwrap()
+}
+
+/// `count` items with one item type each, with a URL fact and a type fact each.
+fn microdata_type_sweep(count: usize) -> usize {
+    let (mut b, d) = big_builder(count);
+    let items: Vec<_> = (0..count)
+        .map(|_| {
+            attributed(
+                &mut b,
+                &d,
+                "div",
+                &[("itemscope", ""), ("itemtype", "https://vocab.example/a")],
+            )
+        })
+        .collect();
+    for item in &items {
+        b.establish_children(item, &[]).unwrap();
+    }
+    b.establish_children(&d, &items).unwrap();
+    let capture = b.finish().unwrap();
+    let ids: Vec<_> = items
+        .iter()
+        .map(|item| capture.subject_id(item).unwrap())
+        .collect();
+    let (url, vocabulary) = (provider(), provider());
+    let vocabulary_id = HtmlMicrodataVocabularyId::fresh();
+    let urls = ids
+        .iter()
+        .map(|id| absolute_url(&capture, &url, id, HtmlMicrodataRawSource::ItemTypeToken(0)))
+        .collect();
+    let types = ids
+        .iter()
+        .map(|id| {
+            HtmlMicrodataTypeFact::new(
+                HtmlMicrodataRawBinding::new(
+                    &capture,
+                    id.clone(),
+                    HtmlMicrodataRawSource::ItemTypeToken(0),
+                    1 << 20,
+                )
+                .unwrap(),
+                vocabulary.clone(),
+                Some(true),
+                Some(vocabulary_id.clone()),
+                Some(true),
+            )
+            .unwrap()
+        })
+        .collect();
+    let context = microdata_context(&capture, url, vocabulary, urls, types, vec![]);
+    sweep_work(&capture, &context, &ids, HtmlSemanticQuery::MicrodataAuthor)
+}
+
+/// One property element naming `count` properties of the item around it, with a
+/// URL fact and a permission fact for each name.
+fn microdata_property_sweep(count: usize) -> usize {
+    let names: Vec<String> = (0..count).map(|n| format!("n{n}")).collect();
+    let raw = names.join(" ");
+    let (mut b, d) = big_builder(4);
+    let item = attributed(&mut b, &d, "div", &[("itemscope", "")]);
+    let property = attributed(&mut b, &d, "span", &[("itemprop", raw.as_str())]);
+    b.establish_children(&property, &[]).unwrap();
+    b.establish_children(&item, std::slice::from_ref(&property))
+        .unwrap();
+    b.establish_children(&d, std::slice::from_ref(&item))
+        .unwrap();
+    let capture = b.finish().unwrap();
+    let (item, property) = (
+        capture.subject_id(&item).unwrap(),
+        capture.subject_id(&property).unwrap(),
+    );
+    let (url, vocabulary) = (provider(), provider());
+    let source = |n: usize| HtmlMicrodataRawSource::ItemPropToken(n);
+    let urls = (0..count)
+        .map(|n| absolute_url(&capture, &url, &property, source(n)))
+        .collect();
+    let properties = (0..count)
+        .map(|n| {
+            HtmlMicrodataPropertyFact::new(
+                &capture,
+                HtmlMicrodataRawBinding::new(&capture, property.clone(), source(n), 1 << 20)
+                    .unwrap(),
+                vocabulary.clone(),
+                item.clone(),
+                None,
+                HtmlMicrodataPropertyPermission::new(
+                    Some(true),
+                    Some(true),
+                    Some(false),
+                    Some(true),
+                ),
+                1 << 20,
+            )
+            .unwrap()
+        })
+        .collect();
+    let context = microdata_context(&capture, url, vocabulary, urls, vec![], properties);
+    sweep_work(
+        &capture,
+        &context,
+        std::slice::from_ref(&property),
+        HtmlSemanticQuery::MicrodataAuthor,
+    )
+}
+
+#[test]
+fn a_microdata_type_sweep_finds_each_url_and_type_fact_in_constant_work() {
+    assert_doubling_at_most_2_2("microdata type sweep", &DOUBLINGS, microdata_type_sweep);
+}
+#[test]
+fn a_property_with_many_names_finds_each_url_and_permission_fact_in_constant_work() {
+    assert_doubling_at_most_2_2(
+        "microdata property names",
+        &[100, 200, 400, 800],
+        microdata_property_sweep,
     );
 }

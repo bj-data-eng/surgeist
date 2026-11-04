@@ -311,7 +311,7 @@ pub fn big_builder(subjects: usize) -> (HtmlCaptureBuilder, HtmlCaptureBuilderSu
     builder_with(HtmlCaptureLimits::new(
         subjects + 10,
         4 * subjects + 100,
-        subjects + 100,
+        3 * subjects + 100,
         40 * subjects + 100000,
         100,
         0,
