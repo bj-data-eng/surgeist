@@ -1885,12 +1885,12 @@ fn duplicate_bookkeeping_admits_each_flag_in_addition_to_lookup_and_diagnostic_w
     let tag = t.tag.as_ref().unwrap();
     let a = tag.attribute.as_ref().unwrap();
     assert!(a.duplicate && a.name_checked && tag.had_duplicates);
-    // Lookup terminal; duplicate/name-checked/had-duplicates flags; one
-    // diagnostic and location slots; queue slot and queue length = eight writes.
+    // The lookup finds the equal name and writes nothing; duplicate/name-checked/had-duplicates
+    // flags; one diagnostic and location slots; queue slot and queue length = seven writes.
     assert_eq!(
         c.usage().work(HtmlParseWorkCategory::RecordWrite)
             - before.work(HtmlParseWorkCategory::RecordWrite),
-        8
+        7
     );
     t.release(&mut c).unwrap();
     assert_storage_released(&c);
@@ -2871,22 +2871,27 @@ fn lexical_close_admission_exact_each_short_cancel_and_record_cap_keep_actual_pe
     }
 }
 
+impl KeptNames for [Vec<u16>] {
+    fn name(&self, index: usize) -> Option<&[u16]> {
+        self.get(index).map(Vec::as_slice)
+    }
+}
+
 #[test]
-fn radix_name_storage_growth_submits_bounded_layouts_for_unique_prefixes_and_duplicates() {
-    // Independently enumerated prefixes of the 16-bit units in the literal
-    // names sharedprefix0000.., including the empty root. Duplicate replay
-    // requires no new prefix; this is not an expectation read from Names.
-    let cases = [(1, 257), (8, 268), (16, 298), (64, 463), (256, 1_140)];
+fn name_storage_holds_two_nodes_for_each_name_and_a_repeat_allocates_nothing() {
+    // A compressed radix tree over n distinct names that no name prefixes has n leaves and, since
+    // every branch has two children, n - 1 branches: 2n - 1 nodes, whatever the names share and
+    // however long they are. This is counted from the definition, not read from `Names`.
+    let cases = [(1, 1), (8, 15), (16, 31), (64, 127), (256, 511)];
     let mut observations = Vec::new();
-    for (count, expected_branches) in cases {
-        let bytes = size_of::<Branch>() as u64;
-        // Room for <2B final slots and old/new overlap, independent of observed
-        // capacity. Logical slots remain exactly the necessary B prefixes.
-        let capacity_budget = 4 * expected_branches as u64 * bytes;
+    for (count, expected_nodes) in cases {
+        let bytes = size_of::<Node>() as u64;
+        // Room for twice the final slots and the old/new overlap of a doubling, independent of
+        // the capacity observed. Logical slots remain exactly the necessary nodes.
+        let capacity_budget = 4 * expected_nodes as u64 * bytes;
         let caps = limits()
             .into_builder()
-            .auxiliary_entries(expected_branches as u64)
-            .active_formatting_entries(expected_branches as u64)
+            .auxiliary_entries(expected_nodes as u64)
             .managed_capacity_bytes(capacity_budget)
             .peak_transient_bytes(capacity_budget)
             .atomic_layout_bytes(capacity_budget)
@@ -2894,32 +2899,27 @@ fn radix_name_storage_growth_submits_bounded_layouts_for_unique_prefixes_and_dup
             .unwrap();
         let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
         let mut names = Names::new().unwrap();
+        let mut kept: Vec<Vec<u16>> = Vec::new();
         for i in 0..count {
-            assert!(
-                !names
-                    .insert(&units(&format!("sharedprefix{i:04}")), &mut c)
-                    .unwrap()
-            );
+            let name = units(&format!("sharedprefix{i:04}"));
+            assert!(!names.insert(&name, &kept[..], kept.len(), &mut c).unwrap());
+            kept.push(name);
         }
-        assert_eq!(names.nodes.len(), expected_branches);
+        assert_eq!(names.nodes.len(), expected_nodes);
         assert_eq!(
             c.usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current,
-            expected_branches as u64
+            expected_nodes as u64
         );
         let reserve = c.usage().work(HtmlParseWorkCategory::ReserveByte);
         let provider = c.usage().work(HtmlParseWorkCategory::ProviderCall);
         let retained = c.usage().actual_capacity_bytes;
         assert_eq!(retained, names.nodes.capacity() as u64 * bytes);
-        for i in 0..count {
-            assert!(
-                names
-                    .insert(&units(&format!("sharedprefix{i:04}")), &mut c)
-                    .unwrap()
-            );
+        for name in &kept {
+            assert!(names.insert(name, &kept[..], kept.len(), &mut c).unwrap());
         }
-        assert_eq!(names.nodes.len(), expected_branches);
+        assert_eq!(names.nodes.len(), expected_nodes);
         assert_eq!(c.usage().work(HtmlParseWorkCategory::ReserveByte), reserve);
         assert_eq!(
             c.usage().work(HtmlParseWorkCategory::ProviderCall),
@@ -2939,17 +2939,57 @@ fn radix_name_storage_growth_submits_bounded_layouts_for_unique_prefixes_and_dup
             c.usage().actual_capacity_high_water,
             before_cleanup.actual_capacity_high_water
         );
-        observations.push((count, expected_branches, reserve / bytes, provider));
+        observations.push((count, expected_nodes, reserve / bytes, provider));
     }
-    // Unclipped admitted doubling submits old+new layouts below 6B slots.
-    // A generous 8B fixture allowance distinguishes repeated exact growth;
-    // it is not a normative HTML coefficient or the diagnostic 100M cap.
-    for (count, branches, submitted_slots, provider_calls) in observations {
+    // Unclipped admitted doubling submits old+new layouts below 6n slots. A generous 8n fixture
+    // allowance distinguishes repeated exact growth; it is not a normative HTML coefficient.
+    for (count, nodes, submitted_slots, provider_calls) in observations {
         assert!(
-            submitted_slots <= 8 * branches as u64,
-            "names={count}, required prefixes={branches}, submitted old/new slots={submitted_slots}, provider calls={provider_calls}"
+            submitted_slots <= 8 * nodes as u64,
+            "names={count}, required nodes={nodes}, submitted old/new slots={submitted_slots}, provider calls={provider_calls}"
         );
     }
+}
+
+#[test]
+fn names_report_a_repeat_exactly_when_an_equal_name_was_recorded() {
+    // The oracle is a set of whole names. The alphabet puts the extremes of the unit range,
+    // units that differ in one low bit, and a surrogate in names of every length up to five, so
+    // that names are often equal, often a prefix of one another, and often differ in a single bit
+    // after a long common prefix.
+    const ALPHABET: [u16; 7] = [0x0000, 0x0001, 0x8000, 0xFFFF, 0x0061, 0x0062, 0xD800];
+    let mut seed: u64 = 0x2545_f491_4f6c_dd1d;
+    let mut next = |bound: usize| {
+        seed = seed
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        ((seed >> 33) as usize) % bound
+    };
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+    let mut names = Names::new().unwrap();
+    let mut kept: Vec<Vec<u16>> = Vec::new();
+    let mut set = std::collections::HashSet::new();
+    let (mut repeats, mut prefixes) = (0, 0);
+    for _ in 0..3_000 {
+        let name: Vec<u16> = (0..next(6)).map(|_| ALPHABET[next(7)]).collect();
+        let expected = !set.insert(name.clone());
+        let found = names.insert(&name, &kept[..], kept.len(), &mut c).unwrap();
+        assert_eq!(found, expected, "{name:04x?}");
+        if found {
+            repeats += 1;
+        } else {
+            prefixes += kept
+                .iter()
+                .filter(|other| other.len() < name.len() && name.starts_with(other))
+                .count();
+            kept.push(name);
+        }
+    }
+    // The run met repeats and names with prefixes among the recorded ones.
+    assert!(repeats > 100 && prefixes > 100, "{repeats} {prefixes}");
+    assert_eq!(names.nodes.len(), 2 * kept.len() - 1);
+    names.nodes.release(&mut c).unwrap();
+    assert_storage_released(&c);
 }
 
 #[test]
@@ -3128,35 +3168,65 @@ fn retained_attribute_growth_is_bounded_without_charging_duplicates_as_new_slots
 
 #[test]
 fn name_growth_admits_the_doubled_target_and_retains_a_refused_one_short_failure() {
-    // One UTF-16 unit requires the root plus its sixteen bit prefixes: the seventeenth node
-    // finds a full sixteen-slot index and asks for thirty-two slots, whatever the limits are.
-    let bytes = size_of::<Branch>() as u64;
-    for slots in [16, 17, 31, 32] {
+    // A full node vector asks for twice its capacity, whatever the limits are, and a limit that
+    // holds the nodes needed but not the doubled target refuses the reservation. A name adds a
+    // leaf and a branch, so a generous run finds how many names leave the vector one node short
+    // of full, at capacity `full`: the next name pushes its leaf into the last slot and its
+    // branch is the push that grows the vector.
+    let bytes = size_of::<Node>() as u64;
+    let name = |i: usize| units(&format!("n{i}"));
+    let fill = |names: &mut Names, count: usize, c: &mut ParseControl| {
+        let mut kept: Vec<Vec<u16>> = Vec::new();
+        for i in 0..count {
+            let n = name(i);
+            names.insert(&n, &kept[..], kept.len(), c)?;
+            kept.push(n);
+        }
+        Ok::<_, HtmlParseStop>(kept)
+    };
+    let mut count = 0;
+    let full = loop {
+        count += 1;
+        let mut probe = ParseControl::new(limits(), HtmlParseCancellation::new());
+        let mut candidate = Names::new().unwrap();
+        fill(&mut candidate, count, &mut probe).unwrap();
+        let (len, capacity) = (candidate.nodes.len(), candidate.nodes.capacity());
+        candidate.nodes.release(&mut probe).unwrap();
+        if capacity >= 4 && len + 1 == capacity {
+            break capacity;
+        }
+        assert!(count < 64, "the node vector never filled");
+    };
+    for slots in [full, full + 1, 2 * full - 1, 2 * full] {
+        let slots = slots as u64;
         let caps = limits()
             .into_builder()
-            .auxiliary_entries(17)
-            .active_formatting_entries(17)
+            .auxiliary_entries(2 * full as u64 + 1)
             .managed_capacity_bytes(slots * bytes)
-            .peak_transient_bytes(48 * bytes)
-            .atomic_layout_bytes(32 * bytes)
+            .peak_transient_bytes(3 * full as u64 * bytes)
+            .atomic_layout_bytes(2 * full as u64 * bytes)
             .finish()
             .unwrap();
         let mut c = ParseControl::new(caps, HtmlParseCancellation::new());
         let mut names = Names::new().unwrap();
-        let result = names.insert(&[97], &mut c);
-        let retained = if slots == 32 {
+        let kept = fill(&mut names, count, &mut c).unwrap();
+        assert_eq!(
+            (names.nodes.len(), names.nodes.capacity()),
+            (full - 1, full)
+        );
+        let next = name(count);
+        let result = names.insert(&next, &kept[..], kept.len(), &mut c);
+        let retained = if slots == 2 * full as u64 {
             assert_eq!(result, Ok(false));
-            assert_eq!(names.nodes.len(), 17);
-            assert_eq!(names.nodes.capacity(), 32);
-            assert_eq!(names.insert(&[97], &mut c), Ok(true));
-            // The growth retains 16 old and submits 32 new slots.
+            assert_eq!(names.nodes.capacity(), 2 * full);
+            // The growth retains the old slots and submits the doubled ones.
             assert_eq!(
                 c.usage()
                     .resource(HtmlParseResource::PeakTransientBytes)
                     .high_water,
-                48 * bytes
+                3 * full as u64 * bytes
             );
-            32
+            2 * full
         } else {
             let stop = result.unwrap_err();
             assert!(matches!(
@@ -3166,13 +3236,14 @@ fn name_growth_admits_the_doubled_target_and_retains_a_refused_one_short_failure
                     ..
                 }
             ));
-            assert_eq!(names.nodes.len(), 16);
-            assert_eq!(names.nodes.capacity(), 16);
-            assert!(names.nodes.as_slice().iter().all(|node| !node.terminal));
-            assert_eq!(names.insert(&[97], &mut c), Err(stop));
-            16
+            assert_eq!(names.nodes.capacity(), full);
+            assert_eq!(
+                names.insert(&next, &kept[..], kept.len(), &mut c),
+                Err(stop)
+            );
+            full
         };
-        assert_eq!(c.usage().actual_capacity_bytes, retained * bytes);
+        assert_eq!(c.usage().actual_capacity_bytes, retained as u64 * bytes);
         let snapshot = c.first_stop_usage().cloned();
         let before = c.usage().clone();
         names.nodes.release(&mut c).unwrap();
@@ -3195,22 +3266,28 @@ fn name_growth_foreign_and_cancelled_owners_keep_the_actual_index_for_cleanup() 
     let cancellation = HtmlParseCancellation::new();
     let mut c = ParseControl::new(limits(), cancellation.clone());
     let mut names = Names::new().unwrap();
-    assert_eq!(names.insert(&[97], &mut c), Ok(false));
+    assert_eq!(
+        names.insert(&[97], &[][..] as &[Vec<u16>], 0, &mut c),
+        Ok(false)
+    );
     let len = names.nodes.len();
     let capacity = names.nodes.capacity();
     let before = c.usage().clone();
     let mut foreign = ParseControl::new(limits(), HtmlParseCancellation::new());
     assert_eq!(
-        names.insert(&[98], &mut foreign),
+        names.insert(&[98], &[vec![97]][..], 1, &mut foreign),
         Err(HtmlParseStop::InternalInvariant(
             HtmlParseInvariant::ForeignControl
         ))
     );
     assert_eq!(c.usage(), &before);
     assert_eq!((names.nodes.len(), names.nodes.capacity()), (len, capacity));
-    assert_eq!(names.insert(&[97], &mut c), Ok(true));
+    assert_eq!(names.insert(&[97], &[vec![97]][..], 1, &mut c), Ok(true));
     cancellation.cancel();
-    assert_eq!(names.insert(&[98], &mut c), Err(HtmlParseStop::Cancelled));
+    assert_eq!(
+        names.insert(&[98], &[vec![97]][..], 1, &mut c),
+        Err(HtmlParseStop::Cancelled)
+    );
     assert_eq!((names.nodes.len(), names.nodes.capacity()), (len, capacity));
     let snapshot = c.first_stop_usage().unwrap().clone();
     names.nodes.release(&mut c).unwrap();

@@ -990,10 +990,12 @@ fn capacity_of_one_long_attribute_name_grows_by_under_four_hundred_bytes_per_uni
 }
 
 #[test]
-fn auxiliary_entries_of_distinct_attribute_names_grow_by_at_most_three_for_each_name() {
+fn auxiliary_entries_of_distinct_attribute_names_grow_by_at_most_eight_for_each_name() {
     // Names with no shared prefix, so a trie finds nothing to reuse: eight hexadecimal digits of a
-    // multiplicative hash of the index. Each name needs one record of its own and one to join it
-    // to the others; the third allowed is slack for a growing buffer.
+    // multiplicative hash of the index. A bitwise trie keeps sixteen records for each of the
+    // five or so units a name does not share, about eighty; eight is a tenth of that. The names'
+    // own records are a leaf and a branch, and each attribute holds a few more auxiliary entries
+    // of the token (three are held by a repeated name, which has no record of its own).
     let entries = |names: usize| {
         let attributes: String = (0..names)
             .map(|i| format!(" {:08x}", (i as u32).wrapping_mul(2_654_435_761)))
@@ -1005,7 +1007,7 @@ fn auxiliary_entries_of_distinct_attribute_names_grow_by_at_most_three_for_each_
     };
     let (small, large) = (entries(1_000), entries(2_000));
     assert!(
-        (large - small) <= 3 * 1_000,
+        (large - small) <= 8 * 1_000,
         "1,000 more names hold {} more auxiliary entries ({small} at 1,000 names, {large} at \
          2,000)",
         large - small,

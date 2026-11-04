@@ -2648,8 +2648,8 @@ the source units can refuse the parse.
 | Text `a` (implied `html`, `head` and `body`, or inside `body`) | 31,400 | 3,280 | 3,280 | 918 | 25.2 | 14 | 2 | 0 |
 | Character reference `&amp;` (per source unit of the five) | 6,660 | 656 | 656 | 184 | 5.05 | 2.8 | 0.4 | 0 |
 | Ambiguous `< ` (per source unit of the two) | 39,450 | 4,720 | 5,580 | 1,835 | 26.7 | 18.5 | 2 | 0.5 |
-| One attribute name of `a`s (per name unit) | 6,450 | 780 | 1,040 | 655 | 16 | 4 | 1 | 0 |
-| Distinct attribute names `n0 n1 ...` (per source unit, 2,400 to 23,000 units) | 8,000 to 9,700 | 660 to 1,360 | 760 to 1,750 | 300 to 920 | 1.0 to 1.2 | 5.5 | 1.7 | 0 |
+| One attribute name of `a`s (per name unit) | 3,220 | 354 | 469 | 229 | 0 | 4 | 1 | 0 |
+| Distinct attribute names `n0 n1 ...` (per source unit, 2,400 to 23,000 units) | 7,500 to 9,200 | 660 to 1,360 | 760 to 1,750 | 300 to 920 | 1.0 to 1.2 | 5.5 | 1.7 | 0 |
 
 A reference or a `< ` costs its five or two units: `&amp;` is 33,300 credits and 3,280 capacity bytes;
 `< ` is 78,900 credits and 9,440 capacity bytes, and retains one diagnostic, whose payload is
@@ -2679,6 +2679,20 @@ either keep one group per character, which keeps most of the cost, or publish di
 for the same source, which changes what the history and reverse queries report. Which of the two
 is right is a decision about the provenance contract and not an engineering constant, so it is
 left to a separate change.
+
+A start tag recognises a repeated attribute name through a compressed binary radix tree
+of the names it has kept, which holds one leaf and one branch for each name however long the
+name is. A name of 16,000 units holds no auxiliary entry for its units, where a tree of one
+record for each bit held 16 for each unit, 256,014 in all, and the work of a lookup follows the
+length of the name and not the number of names before it.
+
+Text inside `textarea` is the one text run whose cost is not linear in its length, a known
+exception tracked as "surgeist-html-parser: keep textarea text accumulation linear". The work
+credits for each unit of a run grow with the length of the run, closed or not: 63,454, 64,877,
+68,466, 76,231, 92,137 and 124,102 for each unit at 1,000, 2,000, 4,000, 8,000, 16,000 and
+32,000 units, against a constant 31,400 for the same text in `body`, and the copied bytes for
+each unit grow from 20,305 to 50,710 over the same lengths. A caller sizing `work_credits` for
+`textarea` content should use the figure for the longest run it admits.
 
 <a id="open-element-scope-cost"></a>
 
