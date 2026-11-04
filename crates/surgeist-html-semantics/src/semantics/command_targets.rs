@@ -6,7 +6,7 @@ use super::seen::Seen;
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
 use surgeist_html::attributes::{
-    HtmlAttributeReport, HtmlInputType, HtmlPopoverState, HtmlStandardCommand,
+    HtmlAttributeReport, HtmlInputType, HtmlPopoverState,
     command::{HtmlCommandReadback, HtmlCommandState},
 };
 use surgeist_html::{
@@ -517,15 +517,10 @@ impl<'a> HtmlSemanticSession<'a> {
                 if !self.html_namespace(element)? {
                     return Ok(false);
                 }
-                if matches!(
-                    command,
-                    HtmlStandardCommand::TogglePopover
-                        | HtmlStandardCommand::ShowPopover
-                        | HtmlStandardCommand::HidePopover
-                ) {
+                if command.is_valid_for_every_html_element() {
                     return Ok(true);
                 }
-                Ok(self.known(element)? == Some(KnownHtmlElement::Dialog))
+                Ok(command.is_valid_by_element_steps(self.known(element)?))
             }
         }
     }

@@ -6,6 +6,7 @@ mod boolean_content;
 mod bounded_keywords;
 mod cell_spans;
 mod column_spans;
+mod command_validity;
 mod content_attributes;
 mod control_length;
 mod control_text;

@@ -2014,6 +2014,9 @@ pub surgeist_html::attributes::HtmlStandardCommand::TogglePopover
 impl surgeist_html::attributes::HtmlStandardCommand
 pub fn surgeist_html::attributes::HtmlStandardCommand::canonical_keyword(self) -> &'static str
 pub fn surgeist_html::attributes::HtmlStandardCommand::into_attribute(self) -> surgeist_html::values::Attribute
+impl surgeist_html::attributes::HtmlStandardCommand
+pub fn surgeist_html::attributes::HtmlStandardCommand::is_valid_by_element_steps(self, target: core::option::Option<surgeist_html::vocabulary::KnownHtmlElement>) -> bool
+pub fn surgeist_html::attributes::HtmlStandardCommand::is_valid_for_every_html_element(self) -> bool
 pub enum surgeist_html::attributes::HtmlTrackKind
 pub surgeist_html::attributes::HtmlTrackKind::Captions
 pub surgeist_html::attributes::HtmlTrackKind::Chapters
