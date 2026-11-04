@@ -100,6 +100,18 @@ impl SessionStorage {
         node: usize,
         position: usize,
     ) -> Result<(), SessionError> {
+        self.install_nonce_attribute(c, node, position, None)
+    }
+    /// As [`Self::initial_nonce_attribute`], for an attribute whose value the
+    /// caller has just registered at `registered`: that row is used when it
+    /// still backs the attribute's value, instead of looking the value up.
+    fn install_nonce_attribute(
+        &mut self,
+        c: &mut ParseControl,
+        node: usize,
+        position: usize,
+        registered: Option<usize>,
+    ) -> Result<(), SessionError> {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         c.charge(
             HtmlParseWorkCategory::InspectByte,
@@ -130,7 +142,21 @@ impl SessionStorage {
         }
         // Ordered installation may still have an active field redirect; select the
         // real installed value backing through its existing ownership lender.
-        let source = self.attribute_value_slot(c, node, position)?;
+        let known = registered.filter(|&slot| {
+            matches!(
+                self.payloads.values.get(slot),
+                Some(RetainedPayload::String { value, .. })
+                    if Arc::ptr_eq(value.shared_code_units(), attribute.value().shared_code_units())
+            )
+        });
+        let source = match known {
+            Some(slot) => {
+                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                c.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
+                slot
+            }
+            None => self.attribute_value_slot(c, node, position)?,
+        };
         let raw = self.copy_raw_field(c, source)?;
         let (slot, _) = self
             .nonce_slot(c, node)?
@@ -596,8 +622,13 @@ impl SessionStorage {
         c.require_identity(&self.control)?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         self.payloads
-            .check_aliases(ConstructionView::Active(self.construction.storage(c)?), c)?;
+            .check_new_aliases(ConstructionView::Active(self.construction.storage(c)?), c)?;
         let container = self.element_attribute_container(c, node)?;
+        self.payloads.check_row_aliases(
+            ConstructionView::Active(self.construction.storage(c)?),
+            c,
+            container,
+        )?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = &self
             .construction
@@ -647,7 +678,7 @@ impl SessionStorage {
                     incoming,
                     [name_slot, value_slot],
                 )?;
-                self.initial_nonce_attribute(c, node, position)
+                self.install_nonce_attribute(c, node, position, Some(value_slot))
             } else {
                 // The actual merge owner invokes the same installation hook.
                 self.append_registered_attribute(

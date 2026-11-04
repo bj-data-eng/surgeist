@@ -1,5 +1,6 @@
 //! Actual managed lexical field replacement/removal over the existing registry.
 //! Family policies remain source-specific; this owner is the single backing edit.
+use super::clone::same_location;
 use super::*;
 #[cfg(test)]
 use surgeist_html::values::{DocumentString, Namespace, QualifiedName};
@@ -333,6 +334,54 @@ impl SessionStorage {
         )?;
         Ok(())
     }
+    /// The registry rows of the name and value of the attribute at `position`
+    /// of `node`, found from the layout creation registered instead of by a
+    /// scan of the registry, or `None` when the layout cannot be relied on.
+    /// The attribute must have no namespace and no prefix, which are strings of
+    /// their own, and each candidate row is used only when its location names
+    /// this attribute, the location a scan matches, so a hint that an edit made
+    /// stale falls back to the scan and finds the same rows.
+    fn hinted_attribute_rows(
+        &self,
+        c: &mut ParseControl,
+        node: usize,
+        container: usize,
+        position: usize,
+    ) -> Result<Option<[Option<usize>; 4]>, SessionError> {
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
+        let attributes = element_record(&self.construction, c, node)?
+            .attributes()
+            .as_slice();
+        let Some(attribute) = attributes.get(position) else {
+            return Ok(None);
+        };
+        if attribute.name().namespace().uri().is_some() || attribute.name().prefix().is_some() {
+            return Ok(None);
+        }
+        let Some(value) = self
+            .payloads
+            .attribute_value_candidate(node, attributes.len(), position)
+        else {
+            return Ok(None);
+        };
+        let Some(name) = value.checked_sub(1) else {
+            return Ok(None);
+        };
+        c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
+        let located = |slot: usize, expected: StringLocation| {
+            matches!(
+                self.payloads.values.get(slot),
+                Some(RetainedPayload::String { location, .. }) if same_location(*location, expected)
+            )
+        };
+        if located(name, StringLocation::AttributeName(container, position))
+            && located(value, StringLocation::AttributeValue(container, position))
+        {
+            Ok(Some([Some(name), Some(value), None, None]))
+        } else {
+            Ok(None)
+        }
+    }
     pub(super) fn replace_registered_attribute(
         &mut self,
         c: &mut ParseControl,
@@ -350,34 +399,47 @@ impl SessionStorage {
             // boundary; old source history retires while that owner is exclusive.
             payload_write::<[StringLocation; 6]>(c, 6)?;
             let mut old_slots = [None; 4];
-            for (slot, payload) in self.payloads.values.iter().enumerate() {
-                c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-                if let RetainedPayload::String { location, .. } = payload {
-                    let which = match *location {
-                        StringLocation::AttributeName(o, p) if o == container && p == position => {
-                            Some(0)
-                        }
-                        StringLocation::AttributeValue(o, p) if o == container && p == position => {
-                            Some(1)
-                        }
-                        StringLocation::AttributeNamespace(o, p)
-                            if o == container && p == position =>
-                        {
-                            Some(2)
-                        }
-                        StringLocation::AttributePrefix(o, p)
-                            if o == container && p == position =>
-                        {
-                            Some(3)
-                        }
-                        _ => None,
-                    };
-                    if let Some(which) = which {
+            if let Some(hinted) = self.hinted_attribute_rows(c, node, container, position)? {
+                for (old, hinted) in old_slots.iter_mut().zip(hinted) {
+                    if hinted.is_some() {
                         payload_write::<Option<usize>>(c, 1)?;
-                        let Some(old) = old_slots.get_mut(which) else {
-                            return Err(latch_registry_row(c));
+                        *old = hinted;
+                    }
+                }
+            } else {
+                for (slot, payload) in self.payloads.values.iter().enumerate() {
+                    c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                    if let RetainedPayload::String { location, .. } = payload {
+                        let which = match *location {
+                            StringLocation::AttributeName(o, p)
+                                if o == container && p == position =>
+                            {
+                                Some(0)
+                            }
+                            StringLocation::AttributeValue(o, p)
+                                if o == container && p == position =>
+                            {
+                                Some(1)
+                            }
+                            StringLocation::AttributeNamespace(o, p)
+                                if o == container && p == position =>
+                            {
+                                Some(2)
+                            }
+                            StringLocation::AttributePrefix(o, p)
+                                if o == container && p == position =>
+                            {
+                                Some(3)
+                            }
+                            _ => None,
                         };
-                        *old = Some(slot);
+                        if let Some(which) = which {
+                            payload_write::<Option<usize>>(c, 1)?;
+                            let Some(old) = old_slots.get_mut(which) else {
+                                return Err(latch_registry_row(c));
+                            };
+                            *old = Some(slot);
+                        }
                     }
                 }
             }
@@ -423,8 +485,13 @@ impl SessionStorage {
         local: &str,
     ) -> Result<(), SessionError> {
         self.payloads
-            .check_aliases(ConstructionView::Active(self.construction.storage(c)?), c)?;
+            .check_new_aliases(ConstructionView::Active(self.construction.storage(c)?), c)?;
         let container = self.element_attribute_container(c, node)?;
+        self.payloads.check_row_aliases(
+            ConstructionView::Active(self.construction.storage(c)?),
+            c,
+            container,
+        )?;
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
         let HtmlNodeKind::Element(element) = &self
             .construction
@@ -611,7 +678,7 @@ impl ParserArenaSession {
         if !storage.html_local(c, node, family.local())? {
             return Err(SessionError::WrongToken);
         }
-        storage.payloads.check_aliases(
+        storage.payloads.check_new_aliases(
             ConstructionView::Active(storage.construction.test_storage()),
             c,
         )?;
@@ -686,6 +753,11 @@ impl ParserArenaSession {
             }
         }
         let container = storage.element_attribute_container(c, node)?;
+        storage.payloads.check_row_aliases(
+            ConstructionView::Active(storage.construction.test_storage()),
+            c,
+            container,
+        )?;
         let mut position = None;
         let HtmlNodeKind::Element(element) = &storage
             .construction

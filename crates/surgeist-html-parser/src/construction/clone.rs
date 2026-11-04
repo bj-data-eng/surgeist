@@ -1211,8 +1211,31 @@ impl SessionStorage {
             c.require_document_string(allocation, value)?;
             return Ok(slot);
         }
-        // Deliberately a registry scan: it runs per attribute on clone paths only,
-        // not per parsed element, and string rows have no location index.
+        if let StringLocation::ProcessingInstructionData(node) = location {
+            // Parsing a processing instruction reaches this for every
+            // pseudo-attribute piece, so the instruction's data row is joined.
+            c.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
+            let slot = self
+                .payloads
+                .node_joins
+                .get(node)
+                .ok_or(SessionError::ForeignNode)?
+                .get(Join::ProcessingInstructionData)
+                .ok_or(SessionError::WrongToken)?;
+            let Some(RetainedPayload::String {
+                location: StringLocation::ProcessingInstructionData(owner),
+                ..
+            }) = self.payloads.values.get(slot)
+            else {
+                return Err(SessionError::WrongToken);
+            };
+            if *owner != node {
+                return Err(SessionError::WrongToken);
+            }
+            return Ok(slot);
+        }
+        // Deliberately a registry scan: every other location is looked up on
+        // clone paths only, not per parsed node, and has no join.
         for (slot, payload) in self.payloads.values.iter().enumerate() {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::String {
@@ -1249,7 +1272,7 @@ fn control_field_owner(
     Ok(())
 }
 
-fn same_location(a: StringLocation, b: StringLocation) -> bool {
+pub(super) fn same_location(a: StringLocation, b: StringLocation) -> bool {
     match (a, b) {
         (StringLocation::ElementName(a), StringLocation::ElementName(b))
         | (StringLocation::Namespace(a), StringLocation::Namespace(b))

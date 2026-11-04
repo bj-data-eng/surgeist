@@ -390,6 +390,9 @@ impl SessionStorage {
                         return Err(latch_registry_row(control));
                     };
                     *bound = Some(node.index);
+                    self.payloads
+                        .join_row(metadata)
+                        .map_err(|_| latch_registry_row(control))?;
                 }
                 OrderedCreation::Input {
                     input,

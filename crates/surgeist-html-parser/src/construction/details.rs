@@ -17,12 +17,12 @@ impl SessionStorage {
         c: &mut ParseControl,
         node: usize,
     ) -> Result<NotificationDomain, SessionError> {
-        for payload in &self.payloads.values {
+        if let Some(slot) = self.payloads.joined(c, node, Join::Details)? {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::Details {
+            if let Some(RetainedPayload::Details {
                 node: Some(owner),
                 notification,
-            } = payload
+            }) = self.payloads.values.get(slot)
                 && *owner == node
             {
                 c.charge(

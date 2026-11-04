@@ -75,6 +75,9 @@ impl SessionStorage {
             return Err(latch_registry_row(c));
         };
         *bound = Some(node);
+        self.payloads
+            .join_row(map)
+            .map_err(|_| latch_registry_row(c))?;
         Ok(())
     }
 
@@ -116,6 +119,7 @@ impl SessionStorage {
             data_len,
         ));
         let mut table: Option<OwnedVec<NameSlot>> = None;
+        let mut origins = provenance::PiOriginWalk::new(node);
         let result = (|| {
             while let Some(action) = cursor.action() {
                 payload_write::<HtmlParsePendingAssociationCursor>(c, 1)?;
@@ -169,7 +173,7 @@ impl SessionStorage {
                         )?;
                         self.pi_piece_origins(
                             c,
-                            node,
+                            &mut origins,
                             start..end,
                             begin..pending.buffer.len(),
                             reference,
@@ -344,6 +348,7 @@ impl SessionStorage {
         if let Some(bank) = table {
             bank.release(c)?;
         }
+        origins.release(c)?;
         result
     }
     fn commit_pi_pair(
@@ -442,13 +447,16 @@ impl SessionStorage {
         node: usize,
         name: &str,
     ) -> Result<Option<&'a DocumentString>, SessionError> {
-        for payload in &self.payloads.values {
+        if let Some(slot) = self
+            .payloads
+            .joined(c, node, Join::ProcessingInstructionAttributes)?
+        {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-            if let RetainedPayload::PiAttributes {
+            if let Some(RetainedPayload::PiAttributes {
                 node: Some(bound),
                 values,
                 ready,
-            } = payload
+            }) = self.payloads.values.get(slot)
                 && *bound == node
             {
                 if !ready {

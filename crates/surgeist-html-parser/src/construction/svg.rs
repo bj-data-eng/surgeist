@@ -54,12 +54,12 @@ fn state_at(
     c: &mut ParseControl,
     node: usize,
 ) -> Result<(usize, SvgScriptState), SessionError> {
-    for (slot, payload) in payloads.values.iter().enumerate() {
+    if let Some(slot) = payloads.joined(c, node, Join::SvgScript)? {
         c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
-        if let RetainedPayload::SvgScript {
+        if let Some(RetainedPayload::SvgScript {
             node: Some(bound),
             state,
-        } = payload
+        }) = payloads.values.get(slot)
             && *bound == node
         {
             c.charge(
@@ -112,6 +112,9 @@ impl SessionStorage {
             return Err(latch_registry_row(c));
         };
         *bound = Some(node);
+        self.payloads
+            .join_row(slot)
+            .map_err(|_| latch_registry_row(c))?;
         Ok(())
     }
     /// Effect frames already own readiness; the same sealed domain and source
@@ -679,6 +682,7 @@ mod tests {
             .unwrap()
             .svg_state_at(&mut c, node.index)
             .unwrap();
+        session.active_mut().unwrap().payloads.unjoin_for_test(slot);
         let RetainedPayload::SvgScript { node: bound, .. } =
             &mut session.active_mut().unwrap().payloads.values[slot]
         else {
