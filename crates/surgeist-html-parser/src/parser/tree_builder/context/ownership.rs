@@ -1009,6 +1009,29 @@ mod tests {
             .finish()
             .unwrap()
     }
+    #[test]
+    fn a_fragment_edit_of_a_bank_execution_also_holds_changes_nothing_and_fails_the_parse() {
+        use crate::{HtmlParseEngineCondition, HtmlParseFailureReason};
+        let shared = request("x")
+            .with_encoding_url_facts(Vec::new())
+            .share_associated_inputs();
+        let held = std::sync::Arc::clone(shared.shared_associated_inputs().unwrap());
+        let refused = shared.with_encoding_url_facts(Vec::new());
+        assert!(std::sync::Arc::ptr_eq(
+            refused
+                .shared_associated_inputs()
+                .expect("the held bank stays the request's bank"),
+            &held
+        ));
+        let failure = refused
+            .parse()
+            .err()
+            .expect("a refused edit fails the parse");
+        assert_eq!(
+            failure.reason(),
+            HtmlParseFailureReason::Engine(HtmlParseEngineCondition::Ownership)
+        );
+    }
     fn with_limits(source: &str, limits: HtmlParseLimits) -> HtmlFragmentParseRequest {
         let original = request(source);
         HtmlFragmentParseRequest::with_options(

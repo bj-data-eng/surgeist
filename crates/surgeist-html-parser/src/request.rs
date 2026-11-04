@@ -833,16 +833,30 @@ mod tests {
     }
 
     #[test]
-    fn an_edit_of_a_bank_execution_also_holds_lands_in_the_request_and_not_in_the_held_bank() {
-        let held = std::sync::Arc::new(crate::construction::associated::Inputs::default());
-        let reached = InputBank::Shared(Some(std::sync::Arc::clone(&held)))
-            .edited(|bank| bank.encoding_urls = Vec::new());
-        // The edit is not lost: the request carries its own editable bank, and
-        // the bank execution holds is exactly the one it was given.
-        assert!(reached.shared().is_none());
-        let edited = reached.inputs().expect("the edit made a bank");
-        assert!(!std::ptr::eq(edited, std::sync::Arc::as_ptr(&held)));
-        assert_eq!(std::sync::Arc::strong_count(&held), 1);
+    fn an_edit_of_a_bank_execution_also_holds_changes_nothing_and_fails_the_parse() {
+        use crate::{HtmlParseEngineCondition, HtmlParseFailureReason};
+        let shared = HtmlDocumentParseRequest::offline(HtmlSource::utf8(""), limits(6, 1))
+            .with_encoding_url_facts(Vec::new())
+            .share_associated_inputs();
+        let held = std::sync::Arc::clone(shared.shared_associated_inputs().unwrap());
+        let refused = shared.with_encoding_url_facts(Vec::new());
+        // Nothing was edited and nothing was copied: the request still names
+        // the bank execution holds.
+        assert!(std::sync::Arc::ptr_eq(
+            refused
+                .shared_associated_inputs()
+                .expect("the held bank stays the request's bank"),
+            &held
+        ));
+        // The refusal is a typed defect of the parse, never a silent success.
+        let failure = refused
+            .parse()
+            .err()
+            .expect("a refused edit fails the parse");
+        assert_eq!(
+            failure.reason(),
+            HtmlParseFailureReason::Engine(HtmlParseEngineCondition::Ownership)
+        );
     }
 
     #[test]
