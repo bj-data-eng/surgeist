@@ -723,6 +723,40 @@ fn cancellation_and_terminal_stop_never_return_a_later_token() {
     );
 }
 
+/// Reading the name of a character reference needs no storage of its own: the
+/// longest table name is bounded, so the tokenizer reads it through fixed
+/// storage. A tokenizer that retains no auxiliary entry at any moment, however
+/// many references the source holds, has no per-reference allocation.
+#[test]
+fn reading_character_references_holds_no_auxiliary_entries_at_any_moment() {
+    for raw in [
+        "&Aacute;".repeat(64),
+        "&amp".repeat(64),
+        "&notit;".repeat(64),
+        "&CounterClockwiseContourIntegral;".repeat(16),
+        "&#x41;&#65;&#0;".repeat(32),
+        "&".repeat(64),
+        "&zzz;".repeat(64),
+    ] {
+        let source = HtmlSource::utf8(raw.as_str());
+        let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+        c.admit_source(&source).unwrap();
+        let mut tokenizer =
+            LexerFixture::new(&source, HtmlTokenizerState::Data, None, &mut c).unwrap();
+        while let Some(event) = tokenizer.next(&mut c, true).unwrap() {
+            event.release(&mut c).unwrap();
+        }
+        tokenizer.release(&mut c).unwrap();
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .high_water,
+            0,
+            "{:?}",
+            &raw[..raw.len().min(40)]
+        );
+    }
+}
 fn run_with_limits(
     source: &HtmlSource,
     state: HtmlTokenizerState,
