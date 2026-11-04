@@ -901,9 +901,9 @@ unavailable; known empty assignments are distinct from missing assignments.
 
 Inertness has three sources. An element's own `inert` attribute applies to
 itself. A `button` that is the first child which is an element of a `select` is
-inert ([the button element](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md)).
-The HTML crate owns that predicate, `bounded::select::button_is_inert_in_select`;
-semantics supplies only the ordinary-tree parent and first element child, so
+inert ([the button element](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#the-button-element)).
+The HTML crate owns that rule through the staged `bounded::select::HtmlSelectButton`
+and `HtmlSelectChildButton` types; semantics supplies only the ordinary-tree parent and first element child, so
 text and comment siblings never precede that child and flat-tree edges never
 decide it. The sentence marks the button itself and names no descendants, and it
 needs no flat-tree or modal supplement; unavailable parent or ordered children

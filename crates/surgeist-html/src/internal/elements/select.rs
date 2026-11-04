@@ -548,26 +548,46 @@ pub fn select_option_rule(
     }
 }
 
-/// Whether a `button` is inert because it is the first element child of a `select` (HTML877d
-/// #the-button-element: "If a button element is the first child which is an element of a select
-/// element, then it is inert", retained at forms capture line 7399).
+/// A `button` element: the first stage of HTML877d #the-button-element's rule "If a button
+/// element is the first child which is an element of a select element, then it is inert"
+/// (forms capture line 7399). Constructed only from a button's known kind.
 ///
-/// `button` is the node's known element kind and `parent` the known element kind of its ordinary
-/// tree parent, each `None` for any other node or element. "Child" is the DOM ordinary-tree child,
-/// never a flat-tree child, so a slot or shadow edge never supplies `parent`.
-/// `first_element_child` tells whether the node is the first element among its parent's children;
-/// text and comment siblings are not elements and do not precede it. The result is true only for a
-/// button, its select parent and the first element child together, so an adapter that lacks a later
-/// operand may probe with `first_element_child` set to true: a false answer then holds for either
-/// position. The rule marks the button itself; it names no descendants.
-pub const fn button_is_inert_in_select(
-    button: Option<KnownHtmlElement>,
-    parent: Option<KnownHtmlElement>,
-    first_element_child: bool,
-) -> bool {
-    matches!(button, Some(KnownHtmlElement::Button))
-        && matches!(parent, Some(KnownHtmlElement::Select))
-        && first_element_child
+/// The rule is staged so an adapter reads each operand only after the earlier ones hold:
+/// [`HtmlSelectButton::new`], then [`HtmlSelectButton::child_of`] with the ordinary-tree parent's
+/// kind, then [`HtmlSelectChildButton::is_inert`] with the first-element-child fact. "Child" is the
+/// DOM ordinary-tree child, never a flat-tree child, so a slot or shadow edge never supplies the
+/// parent. The rule marks the button itself and names no descendants.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlSelectButton(());
+impl HtmlSelectButton {
+    /// The button stage for a node whose known element kind is `kind` (`None` for any other node
+    /// or element), or `None` when it is not a `button`.
+    pub const fn new(kind: Option<KnownHtmlElement>) -> Option<Self> {
+        match kind {
+            Some(KnownHtmlElement::Button) => Some(Self(())),
+            _ => None,
+        }
+    }
+    /// The select-child stage when the button's ordinary-tree parent has known element kind
+    /// `parent` (`None` for any other node or element), or `None` when it is not a `select`.
+    pub const fn child_of(self, parent: Option<KnownHtmlElement>) -> Option<HtmlSelectChildButton> {
+        match parent {
+            Some(KnownHtmlElement::Select) => Some(HtmlSelectChildButton(())),
+            _ => None,
+        }
+    }
+}
+
+/// A `button` that is a child of a `select`; whether it is the first element child decides the
+/// rule (see [`HtmlSelectButton`]).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HtmlSelectChildButton(());
+impl HtmlSelectChildButton {
+    /// Whether the button is inert: true exactly when it is the first element among its parent's
+    /// children. Text and comment siblings are not elements and do not precede it.
+    pub const fn is_inert(self, is_first_element_child: bool) -> bool {
+        is_first_element_child
+    }
 }
 
 /// Action for one established option ancestor, after own disabled presence.

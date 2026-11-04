@@ -14,8 +14,8 @@ use super::seen::Seen;
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
 use surgeist_html::{
-    attributes::HtmlBooleanAttribute, bounded::select::button_is_inert_in_select,
-    values::DocumentString, vocabulary::KnownHtmlElement,
+    attributes::HtmlBooleanAttribute, bounded::select::HtmlSelectButton, values::DocumentString,
+    vocabulary::KnownHtmlElement,
 };
 
 /// Identity of the actual immutable flat-relation producer.
@@ -645,12 +645,9 @@ impl<'a> HtmlSemanticSession<'a> {
             return Ok(HtmlSemanticValue::Known(false));
         };
         let kind = self.known(element)?;
-        // The predicate is true only with its first-element-child operand true,
-        // so answering with true here asks whether the other operands can hold
-        // before a later operand is looked up; its final answer is below.
-        if !button_is_inert_in_select(kind, Some(KnownHtmlElement::Select), true) {
+        let Some(button) = HtmlSelectButton::new(kind) else {
             return Ok(HtmlSemanticValue::Known(false));
-        }
+        };
         let parent = match self.parent(node)? {
             Ok(Some(parent)) => parent,
             Ok(None) => return Ok(HtmlSemanticValue::Known(false)),
@@ -661,9 +658,9 @@ impl<'a> HtmlSemanticSession<'a> {
             return Ok(HtmlSemanticValue::Known(false));
         };
         let parent_kind = self.known(parent_element)?;
-        if !button_is_inert_in_select(kind, parent_kind, true) {
+        let Some(select_button) = button.child_of(parent_kind) else {
             return Ok(HtmlSemanticValue::Known(false));
-        }
+        };
         self.charge(1)?;
         let mut children = match parent_node.children() {
             HtmlCapturedChildren::Complete(children) => children,
@@ -683,9 +680,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 break Some(child);
             }
         };
-        Ok(HtmlSemanticValue::Known(button_is_inert_in_select(
-            kind,
-            parent_kind,
+        Ok(HtmlSemanticValue::Known(select_button.is_inert(
             first_element_child.as_ref() == Some(&node.id()),
         )))
     }
