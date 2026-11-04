@@ -12,12 +12,14 @@ use super::constructor_work::{big_builder, flat_page, html, inert_fact};
 use crate::semantics::support::assert_doubling_at_most_2_2;
 use surgeist_html::values::HtmlValueInterpreter;
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureSubjectId, HtmlDocumentFlatTreeRelation, HtmlElementReferenceFact,
+    HtmlCapture, HtmlCaptureSubjectId, HtmlControlFacts, HtmlControlFactsLimits,
+    HtmlCustomControlClassification, HtmlDocumentFlatTreeRelation, HtmlElementReferenceFact,
     HtmlElementReferenceFacts, HtmlElementReferenceFactsLimits, HtmlElementReferenceKey,
     HtmlExplicitElementReference, HtmlFlatTreeProducerId, HtmlFlatTreeRevision,
-    HtmlInertFactLimits, HtmlInertFacts, HtmlSemanticCancellation, HtmlSemanticContext,
+    HtmlFormAssociation, HtmlFormAssociationState, HtmlInertFactLimits, HtmlInertFacts,
+    HtmlInputControlState, HtmlOptionControlState, HtmlSemanticCancellation, HtmlSemanticContext,
     HtmlSemanticContextInput, HtmlSemanticLimits, HtmlSemanticQuery, HtmlSemanticRequest,
-    HtmlSemanticSession,
+    HtmlSemanticSession, HtmlTextareaControlState,
 };
 
 const DOUBLINGS: [usize; 4] = [250, 500, 1000, 2000];
@@ -149,4 +151,130 @@ fn an_element_reference_sweep_finds_each_pointer_in_constant_work() {
         &DOUBLINGS,
         element_reference_sweep,
     );
+}
+
+/// Context over `controls` built from the given records for every element.
+fn control_sweep(
+    name: &str,
+    count: usize,
+    query: HtmlSemanticQuery,
+    classify: bool,
+    associate: bool,
+    states: bool,
+) -> usize {
+    let (capture, ids) = flat_elements(name, count);
+    let associations: Vec<_> = if associate {
+        ids.iter()
+            .map(|id| {
+                HtmlFormAssociation::new(
+                    id.clone(),
+                    HtmlFormAssociationState::EstablishedCurrent(None),
+                )
+            })
+            .collect()
+    } else {
+        vec![]
+    };
+    let (mut inputs, mut options, mut textareas) = (vec![], vec![], vec![]);
+    if states {
+        for id in &ids {
+            match name {
+                "input" => inputs.push(HtmlInputControlState::new(
+                    id.clone(),
+                    Some(true),
+                    Some(false),
+                    Some(false),
+                    Some(false),
+                )),
+                "option" => options.push(HtmlOptionControlState::new(
+                    id.clone(),
+                    Some(true),
+                    Some(false),
+                )),
+                _ => textareas.push(HtmlTextareaControlState::new(id.clone(), Some(false))),
+            }
+        }
+    }
+    let records =
+        associations.capacity() + inputs.capacity() + options.capacity() + textareas.capacity();
+    let facts = HtmlControlFacts::new(
+        &capture,
+        capture.host_facts_revision().clone(),
+        associations,
+        inputs,
+        options,
+        textareas,
+        HtmlControlFactsLimits::new(records, 1 << 40),
+    )
+    .unwrap();
+    // Reversed, so that finding a subject by scanning is not accidentally cheap.
+    let classifications: Vec<_> = if classify {
+        ids.iter()
+            .rev()
+            .map(|id| HtmlCustomControlClassification::new(id.clone(), true))
+            .collect()
+    } else {
+        vec![]
+    };
+    let context = HtmlSemanticContext::new(
+        &capture,
+        capture.host_facts_revision().clone(),
+        HtmlSemanticContextInput::new(classifications).with_controls(facts),
+        count,
+    )
+    .unwrap();
+    sweep_work(&capture, &context, &ids, query)
+}
+
+#[test]
+fn a_form_association_sweep_finds_each_association_in_constant_work() {
+    assert_doubling_at_most_2_2("form association sweep", &DOUBLINGS, |n| {
+        control_sweep("input", n, HtmlSemanticQuery::FormOwner, false, true, false)
+    });
+}
+#[test]
+fn a_custom_control_sweep_finds_each_classification_in_constant_work() {
+    assert_doubling_at_most_2_2("custom control sweep", &DOUBLINGS, |n| {
+        control_sweep(
+            "x-widget",
+            n,
+            HtmlSemanticQuery::FormOwner,
+            true,
+            true,
+            false,
+        )
+    });
+}
+#[test]
+fn a_control_state_sweep_finds_each_state_in_constant_work() {
+    assert_doubling_at_most_2_2("input state sweep", &DOUBLINGS, |n| {
+        control_sweep(
+            "input",
+            n,
+            HtmlSemanticQuery::CurrentCheckedness,
+            false,
+            false,
+            true,
+        )
+    });
+    assert_doubling_at_most_2_2("option state sweep", &DOUBLINGS, |n| {
+        control_sweep(
+            "option",
+            n,
+            HtmlSemanticQuery::CurrentSelectedness,
+            false,
+            false,
+            true,
+        )
+    });
+    assert_doubling_at_most_2_2("textarea state sweep", &DOUBLINGS, |n| {
+        control_sweep(
+            "textarea",
+            n,
+            HtmlSemanticQuery::DirtyValueFlag,
+            false,
+            false,
+            true,
+        )
+    });
 }

@@ -29,11 +29,11 @@ use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureLimits,
     HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue,
     HtmlCapturedShadowProperties, HtmlControlCurrentValue, HtmlControlFacts, HtmlControlFactsError,
-    HtmlControlFactsLimits, HtmlDocumentFlatTreeRelation, HtmlDocumentLanguageFallback,
-    HtmlDocumentModalBlocking, HtmlDocumentModalFact, HtmlElementReferenceFact,
-    HtmlElementReferenceFacts, HtmlElementReferenceFactsError, HtmlElementReferenceFactsLimits,
-    HtmlElementReferenceKey, HtmlExplicitElementReference, HtmlFlatTreeProducerId,
-    HtmlFlatTreeRevision, HtmlFormAssociation, HtmlFormAssociationState,
+    HtmlControlFactsLimits, HtmlCustomControlClassification, HtmlDocumentFlatTreeRelation,
+    HtmlDocumentLanguageFallback, HtmlDocumentModalBlocking, HtmlDocumentModalFact,
+    HtmlElementReferenceFact, HtmlElementReferenceFacts, HtmlElementReferenceFactsError,
+    HtmlElementReferenceFactsLimits, HtmlElementReferenceKey, HtmlExplicitElementReference,
+    HtmlFlatTreeProducerId, HtmlFlatTreeRevision, HtmlFormAssociation, HtmlFormAssociationState,
     HtmlImageContentBoxObservation, HtmlImageDimensionCompleted, HtmlImageDimensionExpectation,
     HtmlImageDimensionFacts, HtmlImageDimensionFactsError, HtmlImageDimensionFactsLimits,
     HtmlImageDimensionMeasurement, HtmlImageDimensionOperationKey,
@@ -52,7 +52,8 @@ use surgeist_html_semantics::{
     HtmlPragmaLanguage, HtmlProtocolLanguage, HtmlRelDefinition, HtmlRelDefinitionId,
     HtmlRelDefinitionKey, HtmlRelExtensionEffect, HtmlRelFacts, HtmlRelFactsError,
     HtmlRelFactsInput, HtmlRelFactsLimits, HtmlRelProducerId, HtmlRelRegistryOccurrence,
-    HtmlRelRegistryStatus, HtmlRelRevision, HtmlScriptingStatus, HtmlSlotAssignedNodes,
+    HtmlRelRegistryStatus, HtmlRelRevision, HtmlScriptingStatus, HtmlSemanticContext,
+    HtmlSemanticContextError, HtmlSemanticContextInput, HtmlSlotAssignedNodes,
     HtmlTextareaControlState,
 };
 
@@ -1047,4 +1048,73 @@ fn fact_families_charge_their_pinned_totals() {
             70 + 8 * a,
         ]
     );
+}
+
+// ---------------------------------------------------------------------------
+// The context join of control facts
+
+/// The least `validation_work` of control facts over three custom controls
+/// that lets a context with their classifications, listed in reverse, be built.
+/// The limit is shared by the constructor and by the join that resumes it.
+fn join_run(work: usize) -> Run {
+    let (capture, ids) = element_page(&[("x-a", &[]), ("x-b", &[]), ("x-c", &[])]);
+    let associations: Vec<_> = ids
+        .iter()
+        .map(|id| {
+            HtmlFormAssociation::new(id.clone(), HtmlFormAssociationState::ResetAgainstCapture)
+        })
+        .collect();
+    let capacity = associations.capacity();
+    let facts = HtmlControlFacts::new(
+        &capture,
+        capture.host_facts_revision().clone(),
+        associations,
+        vec![],
+        vec![],
+        vec![],
+        HtmlControlFactsLimits::new(capacity, work),
+    );
+    let facts = match facts {
+        Ok(facts) => facts,
+        Err(HtmlControlFactsError::ValidationWork { limit, required }) => {
+            assert_eq!(limit, work);
+            return Run::Refused { required };
+        }
+        Err(other) => panic!("fixture refused for another reason: {other:?}"),
+    };
+    let classifications = ids
+        .iter()
+        .rev()
+        .map(|id| HtmlCustomControlClassification::new(id.clone(), true))
+        .collect();
+    match HtmlSemanticContext::new(
+        &capture,
+        capture.host_facts_revision().clone(),
+        HtmlSemanticContextInput::new(classifications).with_controls(facts),
+        10,
+    ) {
+        Ok(_) => Run::Admitted,
+        Err(HtmlSemanticContextError::ControlsFacts(HtmlControlFactsError::ValidationWork {
+            limit,
+            required,
+        })) => {
+            assert_eq!(limit, work);
+            Run::Refused { required }
+        }
+        Err(other) => panic!("fixture refused for another reason: {other:?}"),
+    }
+}
+
+#[test]
+fn the_control_classification_join_charges_its_pinned_total() {
+    // By hand, with `A` the size of the element vocabulary. The constructor:
+    // duplicate set 3, then per association 1, a lookup 1, the HTML namespace
+    // test 29 and the recognition of the 3-unit name (4A + 28). The join then
+    // charges per association 1, a lookup 1 and the recognition (4A + 28), and
+    // examines the classifications in their reverse order: 3 for the first
+    // association, 2 for the second and 1 for the third, plus 1 for each match.
+    let a = KnownHtmlElement::ALL.len();
+    let constructor = 3 + 3 * (1 + 1 + 29 + 4 * a + 28);
+    let join = 3 * (1 + 1 + 4 * a + 28) + (3 + 2 + 1) + 3;
+    assert_eq!(least_work("context join", join_run), constructor + join);
 }
