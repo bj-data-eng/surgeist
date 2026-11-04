@@ -2978,6 +2978,10 @@ impl HtmlCapture {
 /// DOM "attach a shadow root" outcome for one host and requested mode, in
 /// specification step order. `Allowed` creates a new root (step 5 onward,
 /// which cannot fail); the other variants are the reached early exits.
+///
+/// Both `Allowed` and `DeclarativeRootReused` mean the attach does not throw:
+/// `Allowed` creates a root, while `DeclarativeRootReused` reuses the existing
+/// one (steps 4.3 to 4.5). The remaining variants are the throwing outcomes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlShadowAttachmentStatus {
     /// Steps 1 to 4 pass and the host has no shadow root.

@@ -2590,3 +2590,81 @@ fn an_invalid_host_is_reported_before_its_existing_root() {
         HtmlShadowAttachmentStatus::InvalidHost
     );
 }
+
+// Step 3 needs the host's registry whenever the host has a valid custom element
+// name, so an unavailable registry is a missing fact, not an allowance.
+#[test]
+fn a_custom_name_with_an_unavailable_registry_is_a_missing_registry_fact() {
+    let mut b = HtmlCaptureBuilder::new(limits(), HtmlHostFactsRevision::fresh());
+    let d = document(&mut b, HtmlScriptingStatus::Disabled);
+    let host = b
+        .add_element(
+            &d,
+            name(Namespace::html(), "x-host"),
+            OrderedAttributes::default(),
+            HtmlCapturedIsValue::Absent,
+            HtmlCaptureRegistryInput::Unavailable,
+        )
+        .unwrap();
+    b.establish_no_shadow_root(&host).unwrap();
+    let c = b.finish().unwrap();
+    let id = c.element_id(&c.subject_id(&host).unwrap()).unwrap();
+    assert_eq!(
+        c.shadow_attachment_status(&id, HtmlShadowRootMode::Open),
+        Err(HtmlCaptureError::MissingFact {
+            subject: None,
+            fact: HtmlCaptureFact::Registry,
+        })
+    );
+}
+
+// The definition lookup tries the autonomous definition (by local name) before
+// any `is` value, so a found, non-disabling definition makes an unavailable `is`
+// value irrelevant and the algorithm proceeds to step 4.
+#[test]
+fn an_autonomous_definition_makes_an_unavailable_is_value_irrelevant() {
+    let mut b = HtmlCaptureBuilder::new(limits(), HtmlHostFactsRevision::fresh());
+    let reg = b
+        .add_registry(Some(vec![HtmlCustomElementDefinition::new(
+            "x-host".into(),
+            "x-host".into(),
+            false,
+            false,
+        )]))
+        .unwrap();
+    let d = document(&mut b, HtmlScriptingStatus::Disabled);
+    let host = |b: &mut HtmlCaptureBuilder| {
+        b.add_element(
+            &d,
+            name(Namespace::html(), "x-host"),
+            OrderedAttributes::default(),
+            HtmlCapturedIsValue::Unavailable,
+            HtmlCaptureRegistryInput::Registry(reg.clone()),
+        )
+        .unwrap()
+    };
+    let without_root = host(&mut b);
+    b.establish_no_shadow_root(&without_root).unwrap();
+    let with_root = host(&mut b);
+    b.add_shadow_root(
+        &d,
+        &with_root,
+        captured_shadow_properties(),
+        HtmlCaptureRegistryInput::Null,
+    )
+    .unwrap();
+    let c = b.finish().unwrap();
+    let status = |h| {
+        let id = c.element_id(&c.subject_id(h).unwrap()).unwrap();
+        c.shadow_attachment_status(&id, HtmlShadowRootMode::Open)
+    };
+    assert_eq!(
+        status(&without_root),
+        Ok(HtmlShadowAttachmentStatus::Allowed)
+    );
+    // The existing root is closed, so a request for an open root throws at step 4.2.
+    assert_eq!(
+        status(&with_root),
+        Ok(HtmlShadowAttachmentStatus::ExistingRootDisallows)
+    );
+}
