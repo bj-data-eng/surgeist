@@ -1083,3 +1083,20 @@ fn record_visits_of_nonce_elements_hidden_by_a_header_policy_at_most_double_with
         },
     );
 }
+
+#[test]
+fn record_visits_of_repeated_open_details_of_one_group_at_most_double_with_their_number() {
+    // Opening a details element closes the others of its name group, which removes the `open`
+    // attribute of the one before: one removal for each element after the first.
+    assert_visits_each_doubling_at_most_two_point_two_times(
+        REPEAT_SIZES,
+        "repeated open details of one name group",
+        |n| {
+            parse_work(format!(
+                "<!doctype html><body>{}",
+                "<details name=a open></details>".repeat(n)
+            ))
+            .visited
+        },
+    );
+}
