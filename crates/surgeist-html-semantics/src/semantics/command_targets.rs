@@ -2,6 +2,7 @@
 //! These readbacks execute no activation, events, form transition or target effect.
 
 use super::control::ControlStop;
+use super::scan::{ScanError, ScanMeter};
 use super::seen::Seen;
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
@@ -9,10 +10,7 @@ use surgeist_html::attributes::{
     HtmlAttributeReport, HtmlInputType, HtmlPopoverState,
     command::{HtmlCommandReadback, HtmlCommandState},
 };
-use surgeist_html::{
-    values::{Attribute, DocumentString},
-    vocabulary::KnownHtmlElement,
-};
+use surgeist_html::{values::Attribute, vocabulary::KnownHtmlElement};
 
 /// The two concrete reflected Element slots consumed by this owner.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -108,6 +106,17 @@ pub enum HtmlElementReferenceFactsError {
     InapplicableSubject(HtmlCaptureSubjectId),
     InvalidTarget(HtmlCaptureSubjectId),
 }
+impl ScanError for HtmlElementReferenceFactsError {
+    fn representation_exhausted() -> Self {
+        Self::RepresentationExhausted
+    }
+    fn work_exceeded(limit: usize, required: usize) -> Self {
+        Self::ValidationWork { limit, required }
+    }
+    fn capture(error: HtmlCaptureError) -> Self {
+        Self::Capture(error)
+    }
+}
 impl fmt::Display for HtmlElementReferenceFactsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self:?}")
@@ -138,28 +147,15 @@ impl HtmlElementReferenceFacts {
                 required: records.capacity(),
             });
         }
-        let mut work = 0usize;
         // This is input validation, not a query/controller or a tree projection.
-        let mut charge = |amount: usize| {
-            let required = work
-                .checked_add(amount)
-                .ok_or(HtmlElementReferenceFactsError::RepresentationExhausted)?;
-            if required > limits.validation_work {
-                return Err(HtmlElementReferenceFactsError::ValidationWork {
-                    limit: limits.validation_work,
-                    required,
-                });
-            }
-            work = required;
-            Ok(())
-        };
+        let mut meter = ScanMeter::new(0, limits.validation_work);
         let mut seen = Seen::new(
             records.len(),
-            &mut charge,
+            |n| meter.charge(n),
             HtmlElementReferenceFactsError::RepresentationExhausted,
         )?;
         for fact in records.iter() {
-            charge(2)?; // record and source lookup
+            meter.charge(2)?; // record and source lookup
             let node = capture
                 .node(&fact.subject)
                 .map_err(HtmlElementReferenceFactsError::Capture)?;
@@ -168,27 +164,7 @@ impl HtmlElementReferenceFacts {
                     fact.subject.clone(),
                 ));
             };
-            let envelope = element
-                .name()
-                .local_name()
-                .len()
-                .checked_add(1)
-                .and_then(|n| n.checked_mul(KnownHtmlElement::ALL.len()))
-                .and_then(|n| {
-                    n.checked_add(
-                        element
-                            .name()
-                            .namespace()
-                            .uri()
-                            .map_or(0, DocumentString::len),
-                    )
-                })
-                .ok_or(HtmlElementReferenceFactsError::RepresentationExhausted)?;
-            charge(envelope)?;
-            if !fact
-                .key
-                .applicable(KnownHtmlElement::from_name(element.name()))
-            {
+            if !fact.key.applicable(meter.known(element)?) {
                 return Err(HtmlElementReferenceFactsError::InapplicableSubject(
                     fact.subject.clone(),
                 ));
@@ -203,10 +179,7 @@ impl HtmlElementReferenceFacts {
                 });
             }
             if let HtmlExplicitElementReference::Element(target) = &fact.state {
-                charge(1)?;
-                let target_node = capture
-                    .node(target)
-                    .map_err(HtmlElementReferenceFactsError::Capture)?;
+                let target_node = meter.node(capture, target)?;
                 if !matches!(target_node.kind(), HtmlCapturedNodeKind::Element(_)) {
                     return Err(HtmlElementReferenceFactsError::InvalidTarget(
                         target.clone(),

@@ -637,14 +637,8 @@ impl FactsAdmission {
         let HtmlCapturedNodeKind::Element(e) = node.kind() else {
             return Err(HtmlRelFactsError::InvalidRole);
         };
-        let envelope = e
-            .name()
-            .local_name()
-            .len()
-            .checked_add(1)
-            .and_then(|n| n.checked_mul(KnownHtmlElement::ALL.len()))
-            .and_then(|n| n.checked_add(e.name().namespace().uri().map_or(0, DocumentString::len)))
-            .ok_or(HtmlRelFactsError::RepresentationExhausted)?;
+        let envelope =
+            scan::recognition_envelope(e).ok_or(HtmlRelFactsError::RepresentationExhausted)?;
         self.work(envelope)?;
         HtmlRelRole::from_element(e.name()).ok_or(HtmlRelFactsError::InvalidRole)
     }

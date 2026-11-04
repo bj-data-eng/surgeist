@@ -10,11 +10,12 @@
 //! owns modal transitions and inert interaction effects; only the current
 //! blocking subject escapes.
 
+use super::scan::{ScanError, ScanMeter};
 use super::seen::Seen;
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
 use surgeist_html::{
-    attributes::HtmlBooleanAttribute, bounded::select::HtmlSelectButton, values::DocumentString,
+    attributes::HtmlBooleanAttribute, bounded::select::HtmlSelectButton,
     vocabulary::KnownHtmlElement,
 };
 
@@ -185,10 +186,6 @@ pub struct HtmlInertFacts {
     nodes: Vec<HtmlInertNodeFact>,
     documents: Vec<HtmlDocumentModalFact>,
 }
-struct InertValidation {
-    work: usize,
-    limit: usize,
-}
 enum InertConnection {
     Document(HtmlCaptureSubjectId),
     Disconnected,
@@ -203,106 +200,66 @@ impl InertConnection {
         }
     }
 }
-impl InertValidation {
-    fn charge(&mut self, amount: usize) -> Result<(), HtmlInertFactError> {
-        let required = self
-            .work
-            .checked_add(amount)
-            .ok_or(HtmlInertFactError::RepresentationExhausted)?;
-        if required > self.limit {
-            return Err(HtmlInertFactError::ValidationWork {
-                limit: self.limit,
-                required,
-            });
+impl ScanError for HtmlInertFactError {
+    fn representation_exhausted() -> Self {
+        Self::RepresentationExhausted
+    }
+    fn work_exceeded(limit: usize, required: usize) -> Self {
+        Self::ValidationWork { limit, required }
+    }
+    fn capture(error: HtmlCaptureError) -> Self {
+        Self::Capture(error)
+    }
+}
+type InertMeter = ScanMeter<HtmlInertFactError>;
+fn inert_connected(
+    validation: &mut InertMeter,
+    capture: &HtmlCapture,
+    subject: &HtmlCaptureSubjectId,
+) -> Result<Option<bool>, HtmlInertFactError> {
+    Ok(inert_connection(validation, capture, subject)?.connected())
+}
+fn inert_connection(
+    validation: &mut InertMeter,
+    capture: &HtmlCapture,
+    subject: &HtmlCaptureSubjectId,
+) -> Result<InertConnection, HtmlInertFactError> {
+    let mut current = subject.clone();
+    loop {
+        let node = validation.node(capture, &current)?;
+        validation.charge(1)?;
+        if matches!(node.kind(), HtmlCapturedNodeKind::Document(_)) {
+            return Ok(InertConnection::Document(current));
         }
-        self.work = required;
-        Ok(())
-    }
-    fn node<'a>(
-        &mut self,
-        capture: &'a HtmlCapture,
-        id: &HtmlCaptureSubjectId,
-    ) -> Result<HtmlCapturedNode<'a>, HtmlInertFactError> {
-        self.charge(1)?;
-        capture.node(id).map_err(HtmlInertFactError::Capture)
-    }
-    fn fact<'a>(
-        &mut self,
-        nodes: &'a [HtmlInertNodeFact],
-        id: &HtmlCaptureSubjectId,
-    ) -> Result<Option<&'a HtmlInertNodeFact>, HtmlInertFactError> {
-        for fact in nodes {
-            self.charge(1)?;
-            if fact.subject == *id {
-                return Ok(Some(fact));
-            }
-        }
-        Ok(None)
-    }
-    fn connected(
-        &mut self,
-        capture: &HtmlCapture,
-        subject: &HtmlCaptureSubjectId,
-    ) -> Result<Option<bool>, HtmlInertFactError> {
-        Ok(self.connection(capture, subject)?.connected())
-    }
-    fn connection(
-        &mut self,
-        capture: &HtmlCapture,
-        subject: &HtmlCaptureSubjectId,
-    ) -> Result<InertConnection, HtmlInertFactError> {
-        let mut current = subject.clone();
-        loop {
-            let node = self.node(capture, &current)?;
-            self.charge(1)?;
-            if matches!(node.kind(), HtmlCapturedNodeKind::Document(_)) {
-                return Ok(InertConnection::Document(current));
-            }
-            if let HtmlCapturedNodeKind::Fragment(fragment) = node.kind() {
-                if matches!(fragment.kind(), HtmlCapturedFragmentKind::ShadowRoot(_)) {
-                    self.charge(1)?;
-                    match node.host() {
-                        Some(HtmlCapturedHost::Element(host)) => {
-                            current = host.subject().clone();
-                            continue;
-                        }
-                        Some(HtmlCapturedHost::Absent) => return Ok(InertConnection::Disconnected),
-                        _ => return Ok(InertConnection::Unavailable),
+        if let HtmlCapturedNodeKind::Fragment(fragment) = node.kind() {
+            if matches!(fragment.kind(), HtmlCapturedFragmentKind::ShadowRoot(_)) {
+                validation.charge(1)?;
+                match node.host() {
+                    Some(HtmlCapturedHost::Element(host)) => {
+                        current = host.subject().clone();
+                        continue;
                     }
+                    Some(HtmlCapturedHost::Absent) => return Ok(InertConnection::Disconnected),
+                    _ => return Ok(InertConnection::Unavailable),
                 }
-                return Ok(InertConnection::Disconnected);
             }
-            self.charge(1)?;
-            match node.parent() {
-                HtmlCapturedParent::Subject(parent) => current = parent,
-                HtmlCapturedParent::Root => return Ok(InertConnection::Disconnected),
-                HtmlCapturedParent::Unavailable => return Ok(InertConnection::Unavailable),
-            }
+            return Ok(InertConnection::Disconnected);
+        }
+        validation.charge(1)?;
+        match node.parent() {
+            HtmlCapturedParent::Subject(parent) => current = parent,
+            HtmlCapturedParent::Root => return Ok(InertConnection::Disconnected),
+            HtmlCapturedParent::Unavailable => return Ok(InertConnection::Unavailable),
         }
     }
-    fn known(
-        &mut self,
-        element: &HtmlCapturedElement,
-    ) -> Result<Option<KnownHtmlElement>, HtmlInertFactError> {
-        let units = element
-            .name()
-            .local_name()
-            .len()
-            .checked_add(1)
-            .and_then(|n| n.checked_mul(KnownHtmlElement::ALL.len()))
-            .and_then(|n| {
-                n.checked_add(
-                    element
-                        .name()
-                        .namespace()
-                        .uri()
-                        .map_or(0, DocumentString::len),
-                )
-            })
-            .ok_or(HtmlInertFactError::RepresentationExhausted)?;
-        self.charge(units)?;
-        Ok(KnownHtmlElement::from_name(element.name()))
-    }
+}
+/// The recorded fact of `id`, charging 1 per fact examined.
+fn inert_node_lookup<'a>(
+    validation: &mut InertMeter,
+    nodes: &'a [HtmlInertNodeFact],
+    id: &HtmlCaptureSubjectId,
+) -> Result<Option<&'a HtmlInertNodeFact>, HtmlInertFactError> {
+    validation.fact(nodes, |fact| &fact.subject, id)
 }
 impl HtmlInertFacts {
     /// Moves finite supplied capacities. Partial coverage is permitted and remains
@@ -332,10 +289,7 @@ impl HtmlInertFacts {
                 required,
             });
         }
-        let mut validation = InertValidation {
-            work: 0,
-            limit: limits.validation_work,
-        };
+        let mut validation = InertMeter::new(0, limits.validation_work);
         let mut seen = Seen::new(
             nodes.len(),
             |n| validation.charge(n),
@@ -346,7 +300,7 @@ impl HtmlInertFacts {
             if !seen.first(fact.subject.ordinal()) {
                 return Err(HtmlInertFactError::DuplicateSubject(fact.subject.clone()));
             }
-            let connection = validation.connection(capture, &fact.subject)?;
+            let connection = inert_connection(&mut validation, capture, &fact.subject)?;
             let established_connected = connection.connected();
             if let (Some(supplied), Some(established)) = (fact.connected, established_connected) {
                 validation.charge(1)?;
@@ -407,7 +361,7 @@ impl HtmlInertFacts {
                         return Err(HtmlInertFactError::InvalidFlatParent(parent.clone()));
                     }
                     validation.charge(1)?;
-                    let parent_connection = validation.connection(capture, parent)?;
+                    let parent_connection = inert_connection(&mut validation, capture, parent)?;
                     // Flat ancestry crosses actual shadow hosts. A retained
                     // root may have a different node document from its host;
                     // only known separate connected trees contradict this edge.
@@ -427,7 +381,7 @@ impl HtmlInertFacts {
                             parent.clone(),
                         ));
                     }
-                    if let Some(parent_fact) = validation.fact(&nodes, parent)? {
+                    if let Some(parent_fact) = inert_node_lookup(&mut validation, &nodes, parent)? {
                         if parent_fact.connected == Some(false) {
                             return Err(HtmlInertFactError::ContradictoryConnectedness(
                                 parent.clone(),
@@ -447,7 +401,8 @@ impl HtmlInertFacts {
             // Every complete link resolves to a unique record. More than the
             // record count cannot occur without revisiting a record (a cycle).
             for traversed in 0..=nodes.len() {
-                let Some(current_fact) = validation.fact(&nodes, &current)? else {
+                let Some(current_fact) = inert_node_lookup(&mut validation, &nodes, &current)?
+                else {
                     break;
                 };
                 validation.charge(1)?;
@@ -485,12 +440,12 @@ impl HtmlInertFacts {
                 if node.node_document().subject() != &fact.document {
                     return Err(HtmlInertFactError::DocumentMismatch(blocker.clone()));
                 }
-                if validation.connected(capture, blocker)? == Some(false) {
+                if inert_connected(&mut validation, capture, blocker)? == Some(false) {
                     return Err(HtmlInertFactError::DisconnectedBlockingDialog(
                         blocker.clone(),
                     ));
                 }
-                if let Some(blocker_fact) = validation.fact(&nodes, blocker)?
+                if let Some(blocker_fact) = inert_node_lookup(&mut validation, &nodes, blocker)?
                     && blocker_fact.connected == Some(false)
                 {
                     return Err(HtmlInertFactError::DisconnectedBlockingDialog(

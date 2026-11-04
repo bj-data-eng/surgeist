@@ -3,6 +3,7 @@
 //! state transitions are executed. Ordinary and shadow-host traversal remain
 //! distinct where the selected algorithms require them.
 
+use super::scan::{ScanError, ScanMeter};
 use super::seen::Seen;
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
@@ -147,51 +148,15 @@ pub struct HtmlGlobalInheritanceFacts {
     design_modes: Vec<HtmlDocumentDesignModeFact>,
     spellcheck_defaults: Vec<HtmlSpellcheckDefaultFact>,
 }
-struct Validation {
-    work: usize,
-    limit: usize,
-}
-impl Validation {
-    fn charge(&mut self, amount: usize) -> Result<(), HtmlGlobalInheritanceError> {
-        let required = self
-            .work
-            .checked_add(amount)
-            .ok_or(HtmlGlobalInheritanceError::RepresentationExhausted)?;
-        if required > self.limit {
-            return Err(HtmlGlobalInheritanceError::ValidationWork {
-                limit: self.limit,
-                required,
-            });
-        }
-        self.work = required;
-        Ok(())
+impl ScanError for HtmlGlobalInheritanceError {
+    fn representation_exhausted() -> Self {
+        Self::RepresentationExhausted
     }
-    fn node<'a>(
-        &mut self,
-        capture: &'a HtmlCapture,
-        id: &HtmlCaptureSubjectId,
-    ) -> Result<HtmlCapturedNode<'a>, HtmlGlobalInheritanceError> {
-        self.charge(1)?;
-        capture
-            .node(id)
-            .map_err(HtmlGlobalInheritanceError::Capture)
+    fn work_exceeded(limit: usize, required: usize) -> Self {
+        Self::ValidationWork { limit, required }
     }
-    fn html(&mut self, element: &HtmlCapturedElement) -> Result<bool, HtmlGlobalInheritanceError> {
-        self.charge(1)?;
-        let Some(uri) = element.name().namespace().uri() else {
-            return Ok(false);
-        };
-        let expected = "http://www.w3.org/1999/xhtml";
-        if uri.len() != expected.len() {
-            return Ok(false);
-        }
-        for (unit, byte) in uri.code_units().iter().zip(expected.bytes()) {
-            self.charge(1)?;
-            if *unit != u16::from(byte) {
-                return Ok(false);
-            }
-        }
-        Ok(true)
+    fn capture(error: HtmlCaptureError) -> Self {
+        Self::Capture(error)
     }
 }
 impl HtmlGlobalInheritanceFacts {
@@ -216,10 +181,7 @@ impl HtmlGlobalInheritanceFacts {
                 required,
             });
         }
-        let mut validation = Validation {
-            work: 0,
-            limit: limits.validation_work,
-        };
+        let mut validation = ScanMeter::new(0, limits.validation_work);
         let mut seen = Seen::new(
             design_modes.len(),
             |n| validation.charge(n),
@@ -252,7 +214,7 @@ impl HtmlGlobalInheritanceFacts {
                     fact.subject.clone(),
                 ));
             };
-            if !validation.html(element)? {
+            if !validation.html_namespace(element)? {
                 return Err(HtmlGlobalInheritanceError::InapplicableSubject(
                     fact.subject.clone(),
                 ));

@@ -17,9 +17,7 @@ use surgeist_html::bounded::numeric::{
 };
 use surgeist_html::microsyntax::numeric::{HtmlNonNegativeInteger, HtmlNonNegativeRational};
 use surgeist_html::{
-    attributes::HtmlInputType,
-    bounded::numeric::HtmlIntegerUnitStepError,
-    values::{Attribute, DocumentString},
+    attributes::HtmlInputType, bounded::numeric::HtmlIntegerUnitStepError, values::Attribute,
     vocabulary::KnownHtmlElement,
 };
 
@@ -448,13 +446,7 @@ impl ImageAdmission {
         let HtmlCapturedNodeKind::Element(e) = node.kind() else {
             return Err(HtmlImageDimensionFactsError::RoleMismatch(subject.clone()));
         };
-        let n = e
-            .name()
-            .local_name()
-            .len()
-            .checked_add(1)
-            .and_then(|n| n.checked_mul(KnownHtmlElement::ALL.len()))
-            .and_then(|n| n.checked_add(e.name().namespace().uri().map_or(0, DocumentString::len)))
+        let n = scan::recognition_envelope(e)
             .ok_or(HtmlImageDimensionFactsError::RepresentationExhausted)?;
         self.charge(n)?;
         match KnownHtmlElement::from_name(e.name()) {
