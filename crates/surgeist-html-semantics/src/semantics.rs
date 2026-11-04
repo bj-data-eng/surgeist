@@ -2043,7 +2043,10 @@ impl<'a> HtmlSemanticSession<'a> {
         let parent_result = self
             .option_control
             .map(|control| control.after_growth(capacity, actual_capacity, record_size, resource));
-        let actual_growth = actual_capacity - before;
+        // Reserving never shrinks a vector.
+        let actual_growth = actual_capacity
+            .checked_sub(before)
+            .ok_or_else(|| self.stop(HtmlSemanticFailureKind::ProtocolViolated))?;
         let actual = retained
             .checked_add(actual_growth)
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
@@ -2107,12 +2110,12 @@ impl<'a> HtmlSemanticSession<'a> {
     /// instead, leaves the counts as they were, and the next charge reports it unless an earlier
     /// failure already holds the slot.
     fn release_scratch_backing(&mut self, backing: ScratchBacking) {
-        match self.usage.scratch_records.checked_sub(backing.records) {
-            Some(remaining) => self.usage.scratch_records = remaining,
-            None => {
-                self.stop(HtmlSemanticFailureKind::ProtocolViolated);
-            }
-        }
+        let Some(remaining) = self.usage.scratch_records.checked_sub(backing.records) else {
+            // Nothing was returned on either side, so both counts stay as they were.
+            self.stop(HtmlSemanticFailureKind::ProtocolViolated);
+            return;
+        };
+        self.usage.scratch_records = remaining;
         if let Some(control) = self.option_control
             && let Err(error) = control.release_scratch(backing.bytes)
         {

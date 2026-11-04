@@ -265,15 +265,9 @@ impl<'a> HtmlSemanticSession<'a> {
                     if row.subject == id {
                         let Some(value) = &row.value else { break };
                         self.charge(3)?;
-                        let selected = match crate::select_document_base(
-                            None,
-                            crate::HtmlDocumentFirstBase::Present(Some(value)),
-                        ) {
-                            Ok(selected) => selected,
-                            Err(missing) => return self.base_missing(id, missing),
-                        };
+                        // With a present frozen record, the selection is that record.
                         return Ok(HtmlSemanticValue::Known(HtmlDocumentBaseUrl {
-                            value: selected.clone(),
+                            value: value.clone(),
                             base_element: Some(id),
                             frozen_revision: Some(row.frozen_revision.clone()),
                         }));

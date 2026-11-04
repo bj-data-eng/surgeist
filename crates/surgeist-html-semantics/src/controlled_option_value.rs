@@ -1322,17 +1322,20 @@ impl HtmlControlledOptionValueCapture {
                 Ok(&*report_slot.insert(report))
             }
             Err(error) => {
+                // The query's failure is the first one and holds the sticky slot before any
+                // accounting below runs; a later breach is kept only if the slot were empty.
+                failure_slot.get_or_insert_with(|| error.clone());
                 if let HtmlControlledOptionValueError::Semantic(failure) = &error
                     && failure.qualification().is_some()
-                {
-                    // The query already failed, and that first failure is the one reported. An
-                    // accounting refusal here moved nothing, so it cannot corrupt the counts.
-                    let _ = self.control.transfer(HtmlOptionValueStorageUsage {
+                    && let Err(breach) = self.control.transfer(HtmlOptionValueStorageUsage {
                         bytes: size_of::<HtmlSemanticQualification>(),
                         units: 0,
-                    });
+                    })
+                {
+                    // A refusal moved nothing, so it cannot corrupt the counts.
+                    failure_slot
+                        .get_or_insert_with(|| HtmlControlledOptionValueError::Control(breach));
                 }
-                *failure_slot = Some(error.clone());
                 self.control.clear_temporaries();
                 Err(self.control.failure(error))
             }

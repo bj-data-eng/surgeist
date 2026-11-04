@@ -101,9 +101,7 @@ impl HtmlSemanticSession<'_> {
             self.charge(1)?;
             // The text selection above read these children as complete.
             let HtmlCapturedChildren::Complete(mut children) = node.children() else {
-                return Ok(HtmlSemanticValue::Missing(
-                    HtmlSemanticMissing::OrderedChildren(subject.clone()),
-                ));
+                return Err(self.stop(HtmlSemanticFailureKind::ProtocolViolated));
             };
             let mut descendants = HtmlTimeElementDescendantAuthorState::Conforming;
             loop {
