@@ -3008,17 +3008,20 @@ mod order_commit_guard_tests {
     }
 
     #[test]
-    fn ready_commit_applies_nothing_when_the_append_cannot_be_pushed() {
+    fn ready_transition_refuses_an_append_that_cannot_be_pushed() {
         for spoil in [fill_child_order, lose_parent] {
             let (mut operation, children, usage) = pending_commit(append, spoil);
             let node = operation.plan.positions[0];
-            // Bypass the refusing action to reach the commit itself.
+            // Bypass the refusing action to reach the ready transition itself.
             operation.phase = Phase::Ready;
-            let HtmlConstructionCommit::Changed { storage, .. } =
-                slots::operation(&mut Some(operation)).unwrap().commit()
-            else {
-                panic!("mutation published")
+            let Err(refusal) = operation.try_ready() else {
+                panic!("a ready operation that cannot push must not commit");
             };
+            assert_eq!(
+                refusal.reason(),
+                &HtmlConstructionErrorKind::CapacityMismatch.error()
+            );
+            let storage = refusal.into_parts().0.abort().storage;
             assert_eq!(storage.arena.records[0].children, children);
             assert_eq!(storage.arena.records[node].parent, None);
             assert_eq!(storage.usage(), usage);
@@ -3053,7 +3056,7 @@ mod order_commit_guard_tests {
     }
 
     #[test]
-    fn ready_commit_applies_nothing_when_planned_places_are_stale() {
+    fn ready_transition_refuses_edits_whose_planned_places_are_stale() {
         for (build, spoil) in STALE {
             let (mut operation, children, usage) = pending_commit(build, spoil);
             let nodes: Vec<usize> = operation
@@ -3063,11 +3066,14 @@ mod order_commit_guard_tests {
                 .map(|record| record.parent.unwrap_or(usize::MAX))
                 .collect();
             operation.phase = Phase::Ready;
-            let HtmlConstructionCommit::Changed { storage, .. } =
-                slots::operation(&mut Some(operation)).unwrap().commit()
-            else {
-                panic!("mutation published")
+            let Err(refusal) = operation.try_ready() else {
+                panic!("a ready operation with stale places must not commit");
             };
+            assert_eq!(
+                refusal.reason(),
+                &HtmlConstructionErrorKind::ParentChildConflict.error()
+            );
+            let storage = refusal.into_parts().0.abort().storage;
             assert_eq!(storage.arena.records[0].children, children);
             let after: Vec<usize> = storage
                 .arena
