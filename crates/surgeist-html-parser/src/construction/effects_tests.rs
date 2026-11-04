@@ -856,6 +856,61 @@ fn select_fifo_consumes_two_actual_removal_tasks_in_source_order_and_keeps_exact
 }
 
 #[test]
+fn a_drained_removal_queue_holds_no_auxiliary_entries_however_many_removals_passed() {
+    // Each removal of the selected option changes selectedness and queues one
+    // update of its select. The checkpoint runs it, so nothing is outstanding
+    // between removals and the queue must not remember the ones that ran.
+    const OPTIONS: usize = 40;
+    let mut source = String::from("<body><select><selectedcontent></selectedcontent>");
+    for _ in 0..OPTIONS {
+        source.push_str("<option>A</option>");
+    }
+    source.push_str("</select></body>");
+    let wide = limits()
+        .into_builder()
+        .source_units(100_000)
+        .source_map_entries(100_000)
+        .source_map_payload_units(100_000)
+        .managed_nodes(100_000)
+        .managed_edges(100_000)
+        .buffered_utf16_units(100_000)
+        .token_attributes(100_000)
+        .auxiliary_entries(100_000)
+        .managed_capacity_bytes(10_000_000)
+        .peak_transient_bytes(20_000_000)
+        .work_credits(1_000_000_000)
+        .finish()
+        .unwrap();
+    let request =
+        crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8(source.as_str()), wide);
+    let (mut c, mut session, proof, nodes) = graph(&request);
+    let mut held = Vec::new();
+    for index in 0..OPTIONS {
+        let option = named(&nodes, "option", index);
+        update(&mut session, &mut c, &option);
+        session.remove(&mut c, &option, Some(&proof)).unwrap();
+        let queued = session.active().unwrap().effects.tasks.len()
+            - session.active().unwrap().effects.dequeue;
+        assert_eq!(queued, 1, "removal {index} queues one select update");
+        session
+            .perform_intrinsic_checkpoint(&mut c, &proof)
+            .unwrap();
+        held.push(
+            c.usage()
+                .resource(HtmlParseResource::AuxiliaryEntries)
+                .current,
+        );
+    }
+    assert!(
+        held.iter().all(|&entries| entries == held[0]),
+        "auxiliary entries after each drained removal: {held:?}"
+    );
+    let mut frozen = session.freeze(&mut c).unwrap();
+    frozen.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
 fn select_fifo_stopped_current_task_and_static_lists_remain_owned_without_pending_publication() {
     let mut with_current = false;
     for extra in (0..3000).step_by(97) {
