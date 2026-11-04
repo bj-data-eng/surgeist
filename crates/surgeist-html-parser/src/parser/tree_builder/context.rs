@@ -849,7 +849,7 @@ pub(crate) fn initialized_driver(request: &HtmlFragmentParseRequest) -> ContextF
 pub(super) mod tests {
     use super::ownership::FragmentInitialization;
     use super::*;
-    use crate::construction::native_view::NativeKind;
+    use crate::construction::tests::native_view::NativeKind;
     use crate::*;
     use surgeist_html::elements::native::HtmlCustomElementState;
     use surgeist_html::{
@@ -2668,8 +2668,9 @@ pub(super) mod tests {
             .contents;
         let mut view = session.native_view(&mut driver.control).unwrap();
         assert!(view.same_node(&shadow, &effect.contents).unwrap());
-        let Some(crate::construction::native_view::NativeFragmentOwner::CapturedShadowHost(actual)) =
-            view.fragment_owner(&effect.contents).unwrap()
+        let Some(crate::construction::tests::native_view::NativeFragmentOwner::CapturedShadowHost(
+            actual,
+        )) = view.fragment_owner(&effect.contents).unwrap()
         else {
             panic!("actual retained capture host")
         };
@@ -2944,7 +2945,7 @@ pub(super) mod tests {
         assert!(view.same_node(&shadow.contents, &effect.contents).unwrap());
         assert_eq!(shadow.properties.mode(), HtmlShadowRootMode::Open);
         assert!(shadow.properties.clonable());
-        let Some(crate::construction::native_view::NativeFragmentOwner::ShadowHost(owner)) =
+        let Some(crate::construction::tests::native_view::NativeFragmentOwner::ShadowHost(owner)) =
             view.fragment_owner(&effect.contents).unwrap()
         else {
             panic!("actual shadow backlink")
@@ -3057,7 +3058,7 @@ pub(super) mod tests {
     }
     fn units(
         view: &mut crate::construction::NativeView<'_>,
-        value: &crate::construction::native_view::NativeString<'_>,
+        value: &crate::construction::tests::native_view::NativeString<'_>,
     ) -> Vec<u16> {
         (0..value.len())
             .map(|i| view.unit(value, i).unwrap().unwrap())
@@ -5084,7 +5085,7 @@ pub(super) mod tests {
 #[cfg(test)]
 mod owned_fragment_details_tests {
     use super::*;
-    use crate::construction::native_view::{NativeKind, NativeString, NativeView};
+    use crate::construction::tests::native_view::{NativeKind, NativeString, NativeView};
     use surgeist_html::construction::HtmlShadowRootMode;
 
     #[derive(Debug, PartialEq)]
@@ -5500,7 +5501,7 @@ mod owned_fragment_details_effect_tests {
     ) -> Vec<(Vec<u16>, Vec<u16>)> {
         fn units(
             view: &mut NativeView<'_>,
-            text: crate::construction::native_view::NativeString<'_>,
+            text: crate::construction::tests::native_view::NativeString<'_>,
         ) -> Vec<u16> {
             (0..text.len())
                 .map(|i| view.unit(&text, i).unwrap().unwrap())

@@ -1320,7 +1320,9 @@ fn parsed_expected(
 // projection is a different owner: all storage below uses the borrowed parser
 // control and is explicitly released before the completed driver is released.
 use crate::HtmlParseResource;
-use crate::construction::native_view::{NativeFragmentOwner, NativeKind, NativeName, NativeString};
+use crate::construction::tests::native_view::{
+    NativeFragmentOwner, NativeKind, NativeName, NativeString,
+};
 use crate::construction::{NativeView, ParserNode, SessionError};
 use crate::parser::control::{HtmlParseStop, HtmlParseWorkCategory, OwnedVec, ParseControl};
 use std::mem::size_of;

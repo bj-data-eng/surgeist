@@ -2521,7 +2521,7 @@ mod event_retention_tests {
         assert!(input.is_none());
         assert_eq!(complete.diagnostics().unwrap().len(), 32);
         {
-            use crate::construction::native_view::NativeKind;
+            use crate::construction::tests::native_view::NativeKind;
             let mut view = complete.native_view().unwrap();
             let root = view.root().unwrap();
             let html = view.child_at(&root, 1).unwrap().unwrap();

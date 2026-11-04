@@ -14819,7 +14819,6 @@ fn ordinary_comment_diagnostics_retain_bounded_event_layouts() {
             HtmlParseDiagnosticLocation, HtmlParseDiagnosticLocationRole,
             HtmlParseDiagnosticSeverity, ParseEvidence,
         },
-        native_view::{NativeKind, NativeString, NativeView},
         provenance::{
             ConstructionCause, HtmlParseAssociationRelation, NativeAssociation, NativeDestination,
             OriginGroup,
@@ -14828,6 +14827,7 @@ fn ordinary_comment_diagnostics_retain_bounded_event_layouts() {
             HtmlParseLexicalDisposition, HtmlParseLexicalKind, HtmlParseLexicalRole,
             LexicalOccurrence, LexicalPart,
         },
+        tests::native_view::{NativeKind, NativeString, NativeView},
     };
     use crate::parser::tokenizer::token::{
         HtmlParseOriginKind, HtmlParseTextOrigin, HtmlTokenizerDiagnostic,
@@ -15993,7 +15993,7 @@ struct ProgressiveDiagnosticExpectation {
 }
 
 fn progressive_native_node(
-    view: &mut crate::construction::native_view::NativeView<'_>,
+    view: &mut crate::construction::tests::native_view::NativeView<'_>,
     path: &[usize],
 ) -> ParserNode {
     let mut node = view.root().unwrap();
@@ -16008,8 +16008,8 @@ fn progressive_native_node(
 }
 
 fn progressive_native_units(
-    view: &mut crate::construction::native_view::NativeView<'_>,
-    value: crate::construction::native_view::NativeString<'_>,
+    view: &mut crate::construction::tests::native_view::NativeView<'_>,
+    value: crate::construction::tests::native_view::NativeString<'_>,
     expected: &str,
 ) {
     let expected: Vec<_> = expected.encode_utf16().collect();
@@ -16031,11 +16031,11 @@ fn progressive_completed_native_evidence(
     use crate::construction::{
         StringLocation,
         evidence::HtmlParseDiagnosticSeverity,
-        native_view::NativeKind,
         provenance::{
             GroupBody, HtmlParseAssociationRelation, HtmlParseConstructionOperation,
             NativeAttributeField, NativeDestination,
         },
+        tests::native_view::NativeKind,
     };
     let request = crate::HtmlDocumentParseRequest::offline(HtmlSource::utf8(raw), limits(100));
     let source = request.source().clone();
@@ -19352,7 +19352,7 @@ mod complete_hostile_scan {
             HtmlParseDiagnosticContext, HtmlParseDiagnosticKind, HtmlParseDiagnosticLocationRole,
             HtmlParseDiagnosticSeverity, HtmlParseDiagnostics,
         },
-        native_view::{NativeKind, NativeView},
+        tests::native_view::{NativeKind, NativeView},
     };
     use crate::parser::tokenizer::{
         states::HtmlTokenizerQuote,

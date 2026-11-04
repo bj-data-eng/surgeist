@@ -250,7 +250,7 @@ obtain a structural match.
 `public_failure_keeps_first_stop_snapshot_separate_from_cleanup_and_cancel` and
 `retained_source_and_capture_aliases_do_not_alias_terminal_parser_backing`
 exercise real terminal evidence and cleanup. The [request tests](../tests/parser/requests.rs)
-name all nineteen required limits. The [completed observer](../src/construction/native_view.rs)
+name all nineteen required limits. The [completed observer](../src/construction/tests/native_view.rs)
 and [conformance adapter][conformance] borrow qualified native storage and admit
 consumer capacity/work through the actual parser controller. Selected source
 associations, history, reverse reads and chronology checks do not establish

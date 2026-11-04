@@ -3,7 +3,9 @@ use super::super::head::HeadStep;
 use super::*;
 use crate::construction::HtmlParseCompletion;
 use crate::construction::HtmlParseReadiness;
-use crate::construction::native_view::{NativeFragmentOwner, NativeKind, NativeString, NativeView};
+use crate::construction::tests::native_view::{
+    NativeFragmentOwner, NativeKind, NativeString, NativeView,
+};
 use surgeist_html::values::DocumentString;
 
 use crate::{HtmlDocumentParseRequest, HtmlParseResource, HtmlSource};
