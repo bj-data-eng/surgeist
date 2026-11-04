@@ -23,11 +23,12 @@ use surgeist_html_semantics::{
     HtmlMediaProducerId, HtmlNaturalDimensionAxis, HtmlNaturalDimensionFact,
     HtmlNaturalDimensionFactsError, HtmlNaturalDimensionLimits, HtmlNaturalDimensionProducerId,
     HtmlNaturalDimensionRevision, HtmlNaturalDimensions, HtmlNaturalResourceId,
-    HtmlNaturalResourceKey, HtmlParticipationProducerId, HtmlRelBookmarkSection, HtmlRelDefinition,
-    HtmlRelDefinitionId, HtmlRelDefinitionKey, HtmlRelExtensionEffect, HtmlRelFacts,
-    HtmlRelFactsError, HtmlRelFactsInput, HtmlRelFactsLimits, HtmlRelGrammarInput,
-    HtmlRelProducerId, HtmlRelRegistryOccurrence, HtmlRelRegistryStatus, HtmlRelRevision,
-    HtmlRelSectionId, HtmlRelSupportedTokens, HtmlRelUrlGrammar,
+    HtmlNaturalResourceKey, HtmlParticipationProducerId, HtmlRelBlobEntry, HtmlRelBookmarkSection,
+    HtmlRelDefinition, HtmlRelDefinitionId, HtmlRelDefinitionKey, HtmlRelExtensionEffect,
+    HtmlRelFacts, HtmlRelFactsError, HtmlRelFactsInput, HtmlRelFactsLimits, HtmlRelGrammarInput,
+    HtmlRelOriginId, HtmlRelProducerId, HtmlRelRegistryOccurrence, HtmlRelRegistryStatus,
+    HtmlRelRevision, HtmlRelSameSiteObservation, HtmlRelSectionId, HtmlRelSettingsId,
+    HtmlRelSupportedTokens, HtmlRelUrlGrammar, HtmlRelUrlId, HtmlRelUrlKey, HtmlRelUrlObservation,
 };
 
 const DOUBLINGS: [usize; 4] = [100, 200, 400, 800];
@@ -328,6 +329,75 @@ fn rel_bookmark_sections_check_duplicates_in_work_linear_in_the_facts() {
                 .map(|id| HtmlRelBookmarkSection::new(id.clone(), HtmlRelSectionId::fresh()))
                 .collect();
             HtmlRelFactsInput::new().with_bookmark_sections(rel_revision(), records)
+        })
+    });
+}
+
+/// One URL observation per form, in the order of the forms or reversed.
+fn url_observations(
+    ids: &[HtmlCaptureSubjectId],
+    revision: &HtmlRelRevision,
+    origin: &HtmlRelOriginId,
+) -> (Vec<HtmlRelUrlKey>, Vec<HtmlRelUrlObservation>) {
+    let keys: Vec<_> = ids
+        .iter()
+        .map(|_| HtmlRelUrlKey::new(HtmlRelUrlId::fresh(), revision.clone()))
+        .collect();
+    let urls = ids
+        .iter()
+        .zip(&keys)
+        .map(|(id, key)| {
+            HtmlRelUrlObservation::new(
+                id.clone(),
+                key.clone(),
+                HtmlRelBlobEntry::NonNull {
+                    environment_origin: origin.clone(),
+                },
+            )
+        })
+        .collect();
+    (keys, urls)
+}
+
+#[test]
+fn rel_url_observations_check_duplicates_in_work_linear_in_the_facts() {
+    assert_doubling_at_most_2_2("rel url observations", &DOUBLINGS, |count| {
+        rel_total("rel urls", "form", &[("rel", "ext")], count, |ids| {
+            let revision = rel_revision();
+            let (_, urls) = url_observations(ids, &revision, &HtmlRelOriginId::fresh());
+            HtmlRelFactsInput::new().with_url_records(revision, urls)
+        })
+    });
+}
+
+#[test]
+fn rel_same_site_observations_bind_to_urls_and_check_duplicates_in_work_linear_in_the_facts() {
+    assert_doubling_at_most_2_2("rel same-site observations", &DOUBLINGS, |count| {
+        rel_total("rel same site", "form", &[("rel", "ext")], count, |ids| {
+            let revision = rel_revision();
+            let origin = HtmlRelOriginId::fresh();
+            let (keys, urls) = url_observations(ids, &revision, &origin);
+            // Observed in the reverse order, so that finding an observation's URL
+            // by scanning the URLs is not accidentally cheap.
+            let settings = HtmlRelSettingsId::fresh();
+            let same_site = ids
+                .iter()
+                .zip(&keys)
+                .rev()
+                .map(|(id, key)| {
+                    HtmlRelSameSiteObservation::new(
+                        id.clone(),
+                        key.clone(),
+                        settings.clone(),
+                        origin.clone(),
+                        HtmlRelOriginId::fresh(),
+                        true,
+                    )
+                })
+                .collect();
+            HtmlRelFactsInput::new()
+                .with_url_records(revision.clone(), urls)
+                .with_settings(revision, same_site)
         })
     });
 }
