@@ -15,27 +15,33 @@ use surgeist_html::{
     microsyntax::tokens::HtmlSpaceToken,
 };
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureSubjectId, HtmlCapturedShadowProperties,
-    HtmlImageContentBoxObservation, HtmlImageDimensionCompleted, HtmlImageDimensionExpectation,
-    HtmlImageDimensionFacts, HtmlImageDimensionFactsError, HtmlImageDimensionFactsLimits,
-    HtmlImageDimensionMeasurement, HtmlImageDimensionOperationKey,
-    HtmlImageDimensionResourceObservation, HtmlImageDimensionRevision, HtmlImageDimensionRole,
-    HtmlImageDimensionSelection, HtmlImageSizingRevision, HtmlImgRequestState,
-    HtmlLanguageDirectionError, HtmlLanguageDirectionFacts, HtmlLanguageDirectionLimits,
-    HtmlListParticipation, HtmlListParticipationFact, HtmlListParticipationRevision,
-    HtmlMediaAttributeInput, HtmlMediaContextRevision, HtmlMediaEnvironmentRevision, HtmlMediaFact,
-    HtmlMediaFacts, HtmlMediaFactsError, HtmlMediaFactsLimits, HtmlMediaGrammarAttestation,
+    HtmlAboutBaseUrl, HtmlBaseDocumentFacts, HtmlBaseEncoding, HtmlBaseFactsError,
+    HtmlBaseFactsLimits, HtmlBaseFactsRevision, HtmlBaseParseObservation, HtmlBaseParseOutcome,
+    HtmlBaseProducerId, HtmlBaseUrlRecord, HtmlBaseUrlScheme, HtmlCapture, HtmlCaptureSubjectId,
+    HtmlCapturedBaseDocument, HtmlCapturedBaseFacts, HtmlCapturedFrozenBase,
+    HtmlCapturedShadowProperties, HtmlEncodingUrlFactsError, HtmlEncodingUrlParseFacts,
+    HtmlEncodingUrlParseObservation, HtmlEncodingUrlParseOutcome, HtmlImageContentBoxObservation,
+    HtmlImageDimensionCompleted, HtmlImageDimensionExpectation, HtmlImageDimensionFacts,
+    HtmlImageDimensionFactsError, HtmlImageDimensionFactsLimits, HtmlImageDimensionMeasurement,
+    HtmlImageDimensionOperationKey, HtmlImageDimensionResourceObservation,
+    HtmlImageDimensionRevision, HtmlImageDimensionRole, HtmlImageDimensionSelection,
+    HtmlImageSizingRevision, HtmlImgRequestState, HtmlLanguageDirectionError,
+    HtmlLanguageDirectionFacts, HtmlLanguageDirectionLimits, HtmlListParticipation,
+    HtmlListParticipationFact, HtmlListParticipationRevision, HtmlMediaAttributeInput,
+    HtmlMediaContextRevision, HtmlMediaEnvironmentRevision, HtmlMediaFact, HtmlMediaFacts,
+    HtmlMediaFactsError, HtmlMediaFactsLimits, HtmlMediaGrammarAttestation,
     HtmlMediaGrammarOutcome, HtmlMediaGrammarRevision, HtmlMediaMatchAttestation,
     HtmlMediaMatchOutcome, HtmlMediaProducerId, HtmlNaturalDimensionAxis, HtmlNaturalDimensionFact,
     HtmlNaturalDimensionFactsError, HtmlNaturalDimensionLimits, HtmlNaturalDimensionProducerId,
     HtmlNaturalDimensionRevision, HtmlNaturalDimensions, HtmlNaturalResourceId,
-    HtmlNaturalResourceKey, HtmlParticipationProducerId, HtmlRelBlobEntry, HtmlRelBookmarkSection,
-    HtmlRelDefinition, HtmlRelDefinitionId, HtmlRelDefinitionKey, HtmlRelExtensionEffect,
-    HtmlRelFacts, HtmlRelFactsError, HtmlRelFactsInput, HtmlRelFactsLimits, HtmlRelGrammarInput,
-    HtmlRelOriginId, HtmlRelProducerId, HtmlRelRegistryOccurrence, HtmlRelRegistryStatus,
-    HtmlRelRevision, HtmlRelSameSiteObservation, HtmlRelSectionId, HtmlRelSettingsId,
-    HtmlRelSupportedTokens, HtmlRelUrlGrammar, HtmlRelUrlId, HtmlRelUrlKey, HtmlRelUrlObservation,
-    HtmlSemanticContext, HtmlSemanticContextError, HtmlSemanticContextInput, HtmlSlotAssignedNodes,
+    HtmlNaturalResourceKey, HtmlParseBaseFacts, HtmlParticipationProducerId, HtmlRelBlobEntry,
+    HtmlRelBookmarkSection, HtmlRelDefinition, HtmlRelDefinitionId, HtmlRelDefinitionKey,
+    HtmlRelExtensionEffect, HtmlRelFacts, HtmlRelFactsError, HtmlRelFactsInput, HtmlRelFactsLimits,
+    HtmlRelGrammarInput, HtmlRelOriginId, HtmlRelProducerId, HtmlRelRegistryOccurrence,
+    HtmlRelRegistryStatus, HtmlRelRevision, HtmlRelSameSiteObservation, HtmlRelSectionId,
+    HtmlRelSettingsId, HtmlRelSupportedTokens, HtmlRelUrlGrammar, HtmlRelUrlId, HtmlRelUrlKey,
+    HtmlRelUrlObservation, HtmlSemanticContext, HtmlSemanticContextError, HtmlSemanticContextInput,
+    HtmlSlotAssignedNodes,
 };
 
 const DOUBLINGS: [usize; 4] = [100, 200, 400, 800];
@@ -914,4 +920,184 @@ fn a_node_assigned_twice_is_refused_wherever_the_other_assignment_is() {
         Err(HtmlLanguageDirectionError::DuplicateAssignment(id)) => assert_eq!(id, texts[0]),
         other => panic!("{other:?}"),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Base and hyperlink observations
+
+fn base_revision() -> HtmlBaseFactsRevision {
+    HtmlBaseFactsRevision::new(HtmlBaseProducerId::fresh(), 1, 1, 1)
+}
+fn base_url(revision: &HtmlBaseFactsRevision) -> HtmlBaseUrlRecord {
+    HtmlBaseUrlRecord::observed(
+        revision.clone(),
+        "https://base.example/".into(),
+        HtmlBaseUrlScheme::Other,
+        false,
+        None,
+    )
+    .unwrap()
+}
+
+#[test]
+fn hyperlink_observations_check_duplicates_in_work_linear_in_the_observations() {
+    assert_doubling_at_most_2_2("hyperlink observations", &DOUBLINGS, |count| {
+        let revision = base_revision();
+        let base = base_url(&revision);
+        let encoding = HtmlBaseEncoding::fresh();
+        least_work_unreported("hyperlink observations", |work| {
+            let observations = (0..count)
+                .map(|n| {
+                    HtmlEncodingUrlParseObservation::new(
+                        format!("link-{n}").as_str().into(),
+                        HtmlEncodingUrlParseOutcome::Failure,
+                    )
+                })
+                .collect();
+            match HtmlEncodingUrlParseFacts::new(
+                base.clone(),
+                encoding.clone(),
+                revision.clone(),
+                observations,
+                HtmlBaseFactsLimits::new(8 * count, 1 << 30, work),
+            ) {
+                Ok(_) => Run::Admitted,
+                Err(HtmlEncodingUrlFactsError::Formation(HtmlBaseFactsError::WorkLimit)) => {
+                    Run::Refused { required: 0 }
+                }
+                Err(other) => panic!("fixture refused for another reason: {other:?}"),
+            }
+        })
+    });
+}
+
+#[test]
+fn parse_base_observations_check_duplicates_in_work_linear_in_the_observations() {
+    assert_doubling_at_most_2_2("parse base observations", &DOUBLINGS, |count| {
+        let revision = base_revision();
+        let fallback = base_url(&revision);
+        let encoding = HtmlBaseEncoding::fresh();
+        least_work_unreported("parse base observations", |work| {
+            let document = HtmlBaseDocumentFacts::new(
+                revision.clone(),
+                Some(fallback.clone()),
+                HtmlAboutBaseUrl::KnownNull,
+                false,
+                None,
+            )
+            .unwrap();
+            let observations = (0..count)
+                .map(|n| {
+                    HtmlBaseParseObservation::new(
+                        format!("base-{n}").as_str().into(),
+                        fallback.clone(),
+                        encoding.clone(),
+                        revision.clone(),
+                        HtmlBaseParseOutcome::Failure,
+                    )
+                    .unwrap()
+                })
+                .collect();
+            match HtmlParseBaseFacts::new(
+                document,
+                observations,
+                HtmlBaseFactsLimits::new(8 * count, 1 << 30, work),
+            ) {
+                Ok(_) => Run::Admitted,
+                Err(HtmlBaseFactsError::WorkLimit) => Run::Refused { required: 0 },
+                Err(other) => panic!("fixture refused for another reason: {other:?}"),
+            }
+        })
+    });
+}
+
+#[test]
+fn captured_base_documents_and_frozen_rows_check_duplicates_in_work_linear_in_the_rows() {
+    assert_doubling_at_most_2_2("captured base rows", &DOUBLINGS, |count| {
+        let (mut b, first) = big_builder(2 * count);
+        let mut documents = vec![first];
+        for _ in 1..count {
+            documents.push(
+                b.add_document(
+                    surgeist_html::construction::HtmlDocumentMode::NoQuirks,
+                    surgeist_html_semantics::HtmlScriptingStatus::Disabled,
+                    surgeist_html_semantics::HtmlCaptureRegistryInput::Null,
+                )
+                .unwrap(),
+            );
+        }
+        let bases: Vec<_> = documents
+            .iter()
+            .map(|d| {
+                let base = attributed(&mut b, d, "base", &[("href", "x")]);
+                b.establish_children(&base, &[]).unwrap();
+                b.establish_children(d, std::slice::from_ref(&base))
+                    .unwrap();
+                base
+            })
+            .collect();
+        let capture = b.finish().unwrap();
+        let document_ids: Vec<_> = documents
+            .iter()
+            .map(|d| {
+                capture
+                    .document_id(&capture.subject_id(d).unwrap())
+                    .unwrap()
+            })
+            .collect();
+        let base_ids: Vec<_> = bases
+            .iter()
+            .map(|base| capture.subject_id(base).unwrap())
+            .collect();
+        let revision = base_revision();
+        let fallback = base_url(&revision);
+        least_work_unreported("captured base rows", |work| {
+            let rows = document_ids
+                .iter()
+                .map(|document| {
+                    HtmlCapturedBaseDocument::new(
+                        document.clone(),
+                        HtmlParseBaseFacts::new(
+                            HtmlBaseDocumentFacts::new(
+                                revision.clone(),
+                                Some(fallback.clone()),
+                                HtmlAboutBaseUrl::KnownNull,
+                                false,
+                                None,
+                            )
+                            .unwrap(),
+                            vec![],
+                            HtmlBaseFactsLimits::new(8, 1 << 30, 1 << 30),
+                        )
+                        .unwrap(),
+                    )
+                })
+                .collect();
+            let frozen = base_ids
+                .iter()
+                .zip(&document_ids)
+                .map(|(subject, document)| {
+                    HtmlCapturedFrozenBase::new(
+                        subject.clone(),
+                        document.clone(),
+                        "x".into(),
+                        None,
+                        revision.clone(),
+                    )
+                })
+                .collect();
+            match HtmlCapturedBaseFacts::new(
+                &capture,
+                capture.host_facts_revision().clone(),
+                revision.clone(),
+                rows,
+                frozen,
+                HtmlBaseFactsLimits::new(16 * count, 1 << 30, work),
+            ) {
+                Ok(_) => Run::Admitted,
+                Err(HtmlBaseFactsError::WorkLimit) => Run::Refused { required: 0 },
+                Err(other) => panic!("fixture refused for another reason: {other:?}"),
+            }
+        })
+    });
 }
