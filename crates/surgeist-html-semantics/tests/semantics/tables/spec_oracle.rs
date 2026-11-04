@@ -24,7 +24,7 @@
 //! Spans are written 0 to 9 and as garbage, scopes in every spelling, and the
 //! `headers` attribute names cells, a caption that shares an id, elements
 //! outside the table that own an id before or after its cells, cells that
-//! repeat another's id, and unknown ids; cells are empty, blank, text or hold
+//! repeat another's id, ids and tokens that differ only in case, and unknown ids; cells are empty, blank, text or hold
 //! an element. Every element of a kind carries its position in tree order as
 //! its ordinal.
 
@@ -160,7 +160,7 @@ fn cell(rng: &mut Rng, dense: bool, ordinals: &mut Ordinals) -> Cell {
                 if rng.chance(5) {
                     "missing".to_string()
                 } else {
-                    format!("c{}", rng.below(30))
+                    format!("{}{}", if rng.chance(6) { 'C' } else { 'c' }, rng.below(30))
                 }
             })
             .collect();
@@ -203,7 +203,7 @@ fn table(rng: &mut Rng, dense: bool) -> Vec<Child> {
         // The first element in the document with an id may lie before the
         // table, and then no cell of the table has it.
         children.push(Child::Outside {
-            id: format!("c{}", rng.below(30)),
+            id: format!("{}{}", if rng.chance(3) { 'C' } else { 'c' }, rng.below(30)),
             after: false,
         });
     }
@@ -268,7 +268,7 @@ fn table(rng: &mut Rng, dense: bool) -> Vec<Child> {
     if rng.chance(6) {
         // After the table, an element with an id never takes it from a cell.
         children.push(Child::Outside {
-            id: format!("c{}", rng.below(30)),
+            id: format!("{}{}", if rng.chance(3) { 'C' } else { 'c' }, rng.below(30)),
             after: true,
         });
     }

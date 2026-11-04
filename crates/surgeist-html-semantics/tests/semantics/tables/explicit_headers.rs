@@ -305,6 +305,208 @@ fn the_first_of_a_refused_id_and_an_unknown_branch_in_tree_order_ends_the_search
     ));
 }
 
+/// A table whose `th#h` is followed, after the table, by a stop: an element
+/// whose ID the interpreter (cap 8) refuses, or one whose children are
+/// unknown. The data cell names `tokens`. Returns the capture, the table, the
+/// data cell, the `th` and the element that stops the search.
+fn stop_after_table(
+    tokens: &str,
+    refused: bool,
+) -> (HtmlCapture, Subject, Subject, Subject, Subject) {
+    let (mut b, d) = builder();
+    let h = cell(&mut b, &d, "th", &[("id", "h"), ("headers", "")]);
+    let data = cell(&mut b, &d, "td", &[("headers", tokens)]);
+    let t = table(&mut b, &d, &[h.clone(), data.clone()]);
+    let stop = if refused {
+        leaf(&mut b, &d, REFUSED)
+    } else {
+        // Its children are not established: unknown.
+        element(&mut b, &d, "section", &[])
+    };
+    b.establish_children(&d, &[t.clone(), stop.clone()])
+        .unwrap();
+    (b.finish().unwrap(), t, data, h, stop)
+}
+
+#[test]
+fn a_token_no_indexed_element_owns_meets_the_refused_id_that_follows_the_table() {
+    // The index holds `h` when the search for `nothing` meets the stop.
+    let (c, t, _, _, _) = stop_after_table("nothing", true);
+    let failure = query(&c, &t, 8, small_limits()).unwrap_err();
+    assert!(matches!(
+        failure.kind(),
+        HtmlSemanticFailureKind::Attribute(_)
+    ));
+}
+
+#[test]
+fn a_token_no_indexed_element_owns_meets_the_unknown_branch_that_follows_the_table() {
+    let (c, t, _, _, stop) = stop_after_table("nothing", false);
+    let report = query(&c, &t, 10000, small_limits()).unwrap();
+    assert_eq!(
+        report.results()[0].fact(),
+        &HtmlSemanticFact::TableModel(HtmlSemanticValue::Missing(
+            HtmlSemanticMissing::OrderedChildren(id(&c, &stop))
+        ))
+    );
+}
+
+#[test]
+fn within_one_cell_only_the_tokens_with_no_earlier_owner_meet_the_pending_stop() {
+    for refused in [true, false] {
+        let limit = if refused { 8 } else { 10000 };
+        // Both tokens are owned before the stop.
+        let (c, t, data, h, _) = stop_after_table("h h", refused);
+        let report = query(&c, &t, limit, small_limits()).unwrap();
+        let found: Vec<_> = model(&report)
+            .headers()
+            .iter()
+            .map(|e| (e.cell().clone(), e.header().clone()))
+            .collect();
+        assert_eq!(
+            found,
+            vec![(id(&c, &data), id(&c, &h))],
+            "refused={refused}"
+        );
+        // The second token has none, in either order.
+        for tokens in ["h nothing", "nothing h"] {
+            let (c, t, _, _, stop) = stop_after_table(tokens, refused);
+            match query(&c, &t, limit, small_limits()) {
+                Err(failure) => {
+                    assert!(refused, "{tokens}");
+                    assert!(matches!(
+                        failure.kind(),
+                        HtmlSemanticFailureKind::Attribute(_)
+                    ));
+                }
+                Ok(report) => {
+                    assert!(!refused, "{tokens}");
+                    assert_eq!(
+                        report.results()[0].fact(),
+                        &HtmlSemanticFact::TableModel(HtmlSemanticValue::Missing(
+                            HtmlSemanticMissing::OrderedChildren(id(&c, &stop))
+                        )),
+                        "{tokens}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// A `th` with an ID of exactly these UTF-16 units.
+fn header_with_id_units(b: &mut HtmlCaptureBuilder, d: &Subject, units: &[u16]) -> Subject {
+    let attrs = OrderedAttributes::new([
+        Attribute::new(
+            QualifiedName::new(Namespace::none(), None, "id"),
+            DocumentString::from_utf16(units.to_vec()),
+        ),
+        Attribute::new(QualifiedName::new(Namespace::none(), None, "headers"), ""),
+    ])
+    .unwrap();
+    let e = b
+        .add_element(
+            d,
+            QualifiedName::new(Namespace::html(), None, "th"),
+            attrs,
+            HtmlCapturedIsValue::Unavailable,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    let t = b.add_text(d, DocumentString::from("x")).unwrap();
+    b.establish_children(&e, &[t]).unwrap();
+    e
+}
+
+/// A `td` whose `headers` value is exactly these UTF-16 units.
+fn data_naming_units(b: &mut HtmlCaptureBuilder, d: &Subject, units: &[u16]) -> Subject {
+    let attrs = OrderedAttributes::new([Attribute::new(
+        QualifiedName::new(Namespace::none(), None, "headers"),
+        DocumentString::from_utf16(units.to_vec()),
+    )])
+    .unwrap();
+    let e = b
+        .add_element(
+            d,
+            QualifiedName::new(Namespace::html(), None, "td"),
+            attrs,
+            HtmlCapturedIsValue::Unavailable,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    let t = b.add_text(d, DocumentString::from("x")).unwrap();
+    b.establish_children(&e, &[t]).unwrap();
+    e
+}
+
+/// For each (token units, expected owner) a data cell naming the token is
+/// associated with the header of the expected ID alone, or with none: IDs match
+/// by exact UTF-16 code units.
+fn assert_tokens_select(ids: &[&[u16]], tokens: &[(&[u16], Option<usize>)]) {
+    let (mut b, d) = builder();
+    let headers: Vec<_> = ids
+        .iter()
+        .map(|units| header_with_id_units(&mut b, &d, units))
+        .collect();
+    let data: Vec<_> = tokens
+        .iter()
+        .map(|(units, _)| data_naming_units(&mut b, &d, units))
+        .collect();
+    let all: Vec<_> = headers.iter().chain(&data).cloned().collect();
+    let t = table(&mut b, &d, &all);
+    b.establish_children(&d, std::slice::from_ref(&t)).unwrap();
+    let c = b.finish().unwrap();
+    let expected: Vec<_> = tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(at, (_, owner))| Some((id(&c, &data[at]), id(&c, &headers[(*owner)?]))))
+        .collect();
+    assert_eq!(edges(&c, &t), expected);
+}
+
+const LOWER: u16 = 0x68;
+const UPPER: u16 = 0x48;
+const ONE: u16 = 0x31;
+
+#[test]
+fn ids_differing_only_in_case_are_different_ids() {
+    assert_tokens_select(
+        &[&[LOWER], &[UPPER]],
+        &[
+            (&[UPPER], Some(1)),
+            (&[LOWER], Some(0)),
+            (&[UPPER], Some(1)),
+        ],
+    );
+}
+
+#[test]
+fn an_id_that_is_a_prefix_of_another_does_not_stand_for_it() {
+    assert_tokens_select(
+        &[&[LOWER, ONE], &[LOWER]],
+        &[(&[LOWER], Some(1)), (&[LOWER, ONE], Some(0))],
+    );
+    // A token that only begins an ID, or extends one, names nothing.
+    assert_tokens_select(
+        &[&[LOWER, ONE]],
+        &[(&[LOWER], None), (&[LOWER, ONE, ONE], None)],
+    );
+}
+
+#[test]
+fn ids_match_by_exact_utf16_units_including_surrogates() {
+    // U+1F600 is the pair d83d de00; a lone d83d and a lone de00 are other IDs.
+    assert_tokens_select(
+        &[&[0xd83d, 0xde00], &[0xd83d], &[0xde00], &[0xd83d, 0xde01]],
+        &[
+            (&[0xde00], Some(2)),
+            (&[0xd83d, 0xde00], Some(0)),
+            (&[0xd83d], Some(1)),
+            (&[0xd83d, 0xde01], Some(3)),
+        ],
+    );
+}
+
 // ---- Work ---------------------------------------------------------------
 
 fn work_limits() -> HtmlSemanticLimits {
