@@ -3818,4 +3818,70 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn an_indexed_append_notices_a_replacement_made_by_an_edit_that_did_not_hold_the_index() {
+        let (mut storage, _) = make_storage(Vec::new());
+        let mut index = new_index(16);
+        let mut admitted = Admitted::default();
+        for name in ["a", "b", "c"] {
+            let (next, back, result) =
+                append_in_new_edit(storage, index, attribute(name, "v"), &mut admitted);
+            result.unwrap();
+            storage = next;
+            index = back;
+        }
+        // An edit that never held the index replaces b with z in place.
+        let target = storage.node_at(0).unwrap().handle();
+        let mut edit = make_edit(storage, target, HtmlConstructionAttributeEditMode::Slots);
+        let mut incoming = Some(attribute("z", "v"));
+        slot(edit.replace(1, &mut incoming).unwrap());
+        storage = finish(edit);
+        // The index still names b where z now is, so z must be found by rebuilding it.
+        let (_, _, result) = append_in_new_edit(storage, index, attribute("z", "v"), &mut admitted);
+        assert_eq!(
+            result,
+            Err(HtmlConstructionErrorKind::DuplicateAttribute {
+                first: 1,
+                duplicate: 3
+            }
+            .error())
+        );
+    }
+
+    #[test]
+    fn an_index_lent_after_a_candidate_was_planned_does_not_change_later_decisions() {
+        let names = ["x", "x", "y", "y"].map(DocumentString::from);
+        let decide = |late: bool| {
+            let (storage, target) = make_storage(Vec::new());
+            let mut edit = make_edit(
+                storage,
+                target,
+                HtmlConstructionAttributeEditMode::NamedMerge {
+                    candidate_count: names.len(),
+                },
+            );
+            for (index, name) in names.iter().enumerate() {
+                if late && index == 1 {
+                    edit.adopt_index(new_index(names.len()));
+                }
+                let mut candidate = Some(edit.candidate(index, name).unwrap());
+                while let Some(action) = candidate.as_mut().unwrap().next_action().unwrap() {
+                    let prior = action.description().prior_index();
+                    action
+                        .perform(prior.map(|index| &names[index]))
+                        .unwrap()
+                        .accept();
+                }
+                slots::candidate(&mut candidate).unwrap();
+            }
+            let decisions: Vec<bool> = (0..names.len())
+                .map(|i| edit.decision(i).unwrap())
+                .collect();
+            retire(edit.abort().into_parts().1);
+            decisions
+        };
+        assert_eq!(decide(false), [true, false, true, false]);
+        assert_eq!(decide(true), [true, false, true, false]);
+    }
 }
