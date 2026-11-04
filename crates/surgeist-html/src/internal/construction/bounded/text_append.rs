@@ -1547,6 +1547,39 @@ mod tests {
         assert_eq!(holder.len(), 3, "the other holder keeps what it saw");
     }
 
+    /// The qualification found the backing exclusive, so abort truncates it in place. Were another
+    /// holder to share it, the abort must not copy the shared bytes into a new allocation that
+    /// nothing metered: the record keeps the backing the other holder shares.
+    #[test]
+    fn abort_does_not_copy_a_backing_another_holder_shares() {
+        let mut units = Vec::with_capacity(8);
+        units.push(u16::from(b'x'));
+        let (storage, node) = make(HtmlNodeKind::Text(DocumentString::from_shared_code_units(
+            Arc::new(units),
+        )));
+        let mut owner =
+            HtmlConstructionTextAppend::begin(storage, node, DocumentString::from("yz"));
+        drive_to(&mut owner, Phase::Commit);
+        owner
+            .next_action()
+            .unwrap()
+            .unwrap()
+            .perform(None)
+            .unwrap()
+            .accept();
+        let mut owner = Some(owner);
+        let ready = slots::text_append(&mut owner).unwrap();
+        let index = ready.index;
+        let holder = text_of(&ready.storage, index).unwrap().clone();
+        let shared = holder.code_units().as_ptr();
+        let (storage, _, _, _) = ready.abort().into_parts();
+        assert_eq!(
+            text_of(&storage, index).unwrap().code_units().as_ptr(),
+            shared,
+            "the record still shares the other holder's backing"
+        );
+    }
+
     /// A ready append whose target is no longer a text node cannot commit. The commit refuses and
     /// hands the append back, so the abort returns the storage, and the separate copy of a
     /// preserved append, to the caller; nothing is reported as committed.

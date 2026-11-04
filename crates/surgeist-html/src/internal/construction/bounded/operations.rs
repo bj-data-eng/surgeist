@@ -3192,3 +3192,119 @@ mod native_finish_tests {
         assert!(error.is_parent_child_conflict(), "{error}");
     }
 }
+
+#[cfg(test)]
+mod unreachable_state_tests {
+    use super::*;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    fn drive(
+        storage: HtmlConstructionStorage,
+        command: HtmlConstructionCommand,
+    ) -> (HtmlConstructionStorage, Option<HtmlBuilderNode>) {
+        let mut operation = Some(storage.prepare(command));
+        while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
+            action.perform().unwrap().accept();
+        }
+        match slots::operation(&mut operation).unwrap().commit() {
+            HtmlConstructionCommit::Changed {
+                storage, created, ..
+            } => (storage, created),
+            HtmlConstructionCommit::Published { .. } => panic!("mutation published"),
+        }
+    }
+
+    fn empty() -> HtmlConstructionStorage {
+        let mut initialization = Some(HtmlConstructionStorage::begin());
+        initialization
+            .as_mut()
+            .unwrap()
+            .next_action()
+            .unwrap()
+            .unwrap()
+            .perform()
+            .accept();
+        slots::initialization(&mut initialization).unwrap().commit()
+    }
+
+    fn element(local: &str) -> HtmlConstructionCommand {
+        HtmlConstructionCommand::Create {
+            kind: HtmlNodeKind::Element(HtmlElement::new(
+                QualifiedName::new(Namespace::html(), None, local),
+                OrderedAttributes::default(),
+            )),
+        }
+    }
+
+    type Write = fn(&HtmlBuilderNode) -> HtmlConstructionCommand;
+    fn rename(node: &HtmlBuilderNode) -> HtmlConstructionCommand {
+        HtmlConstructionCommand::ReplaceContent {
+            node: node.clone(),
+            content: HtmlConstructionContent::ElementName(QualifiedName::new(
+                Namespace::html(),
+                None,
+                "renamed",
+            )),
+        }
+    }
+    fn reattribute(node: &HtmlBuilderNode) -> HtmlConstructionCommand {
+        HtmlConstructionCommand::ReplaceAttributes {
+            element: node.clone(),
+            attributes: HtmlValidatedAttributes::from(OrderedAttributes::default()),
+        }
+    }
+    fn flag(node: &HtmlBuilderNode) -> HtmlConstructionCommand {
+        HtmlConstructionCommand::SetLinkFlags {
+            element: node.clone(),
+            flags: crate::internal::elements::rel::HtmlLinkFlags::fresh(),
+        }
+    }
+
+    /// The element writes, each with the local name of an element it can target.
+    const WRITES: [(&str, Write); 3] = [("div", rename), ("div", reattribute), ("link", flag)];
+
+    /// An element write driven through every action to its ready state, with its target then
+    /// replaced by a comment, the way no action of the exclusively owned operation can.
+    fn ready_with_spoiled_target(local: &str, write: Write) -> HtmlConstructionReadyOperation {
+        let (storage, node) = drive(empty(), element(local));
+        let mut operation = storage.prepare(write(&node.unwrap()));
+        while let Some(action) = operation.next_action().unwrap() {
+            action.perform().unwrap().accept();
+        }
+        let position = operation.plan.positions[0];
+        operation.arena_mut().unwrap().records[position].kind = HtmlNodeKind::Comment("c".into());
+        operation.try_ready().unwrap()
+    }
+
+    #[test]
+    fn commit_of_an_element_write_does_not_panic_when_its_target_stopped_being_an_element() {
+        for (local, write) in WRITES {
+            let ready = ready_with_spoiled_target(local, write);
+            let outcome = catch_unwind(AssertUnwindSafe(move || ready.commit()));
+            assert!(
+                outcome.is_ok(),
+                "{local}: a write through an element whose target is a comment must be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn abort_of_a_publication_another_owner_holds_does_not_panic() {
+        let (storage, root) = drive(empty(), HtmlConstructionCommand::CreateFragment);
+        let mut operation = storage.prepare_finish(root.unwrap());
+        while let Some(action) = operation.next_action().unwrap() {
+            action.perform().unwrap().accept();
+        }
+        let ready = operation.try_ready().unwrap();
+        let StorageOwner::Shared { arena, .. } = &ready.operation.owner else {
+            panic!("a ready publication shares its arena");
+        };
+        let alias = Arc::clone(arena);
+        let outcome = catch_unwind(AssertUnwindSafe(move || ready.abort()));
+        assert!(
+            outcome.is_ok(),
+            "a publication another owner holds cannot be reclaimed and must be refused"
+        );
+        drop(alias);
+    }
+}
