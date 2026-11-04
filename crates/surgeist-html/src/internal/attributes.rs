@@ -2862,6 +2862,71 @@ pub(crate) mod bounded_rules {
         InputBooleanApplicability::Readonly.allows(state)
     }
 
+    /// Whether an `input` of this type state is a submit button.
+    ///
+    /// The Submit Button state and the Image Button state both describe an `input` element that
+    /// "is a button, specifically a submit button" (HTML877d `#submit-button-state-(type=submit)`
+    /// and `#image-button-state-(type=image)`). Every other state is not a submit button. Retained
+    /// capture: `references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md`,
+    /// the opening prose of those two states. This classifies the state alone, not the form owner
+    /// or any activation.
+    pub fn input_submitter_context(state: HtmlInputType) -> HtmlButtonSubmitterContext {
+        match state {
+            HtmlInputType::Submit | HtmlInputType::Image => {
+                HtmlButtonSubmitterContext::SubmitButton
+            }
+            _ => HtmlButtonSubmitterContext::NotSubmitButton,
+        }
+    }
+
+    /// A fact about an actual `button` element that its Auto type state consults.
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum HtmlButtonSubmitterFact {
+        /// The element has a `command` content attribute, whatever its value.
+        CommandAttributePresent,
+        /// The element has a `commandfor` content attribute, whatever its value.
+        CommandforAttributePresent,
+        /// The element's parent node is a `select` element. A parent that is absent or is not an
+        /// element is not a `select`, so the fact is false there.
+        ParentIsSelect,
+    }
+
+    /// Whether a `button` element is a submit button, from its type state and the facts its Auto
+    /// state consults.
+    ///
+    /// A `button` is a submit button when its `type` attribute is in the Submit Button state, or
+    /// when it is in the Auto state, neither `command` nor `commandfor` is present and the parent
+    /// node is not a `select` element (HTML877d `#the-button-element`, "is said to be a submit
+    /// button"; `#attr-button-type` for the Auto state). Retained capture:
+    /// `references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md`, the list
+    /// after "is said to be a submit button". The Reset Button and Button states are never
+    /// submit buttons.
+    ///
+    /// `facts` is asked lazily, in the standard's order, and only in the Auto state: the
+    /// `command` attribute first, then `commandfor` only when `command` is absent, then the parent
+    /// only when both are absent. Its first error ends the classification and is returned
+    /// unchanged, so a caller's charges, cancellation and first reached failure are exactly those
+    /// of the facts it was asked for.
+    pub fn button_submitter_context_with<E>(
+        state: HtmlButtonTypeState,
+        mut facts: impl FnMut(HtmlButtonSubmitterFact) -> Result<bool, E>,
+    ) -> Result<HtmlButtonSubmitterContext, E> {
+        let submit = match state {
+            HtmlButtonTypeState::Keyword(HtmlButtonType::Submit) => true,
+            HtmlButtonTypeState::Keyword(HtmlButtonType::Reset | HtmlButtonType::Button) => false,
+            HtmlButtonTypeState::Auto => {
+                !facts(HtmlButtonSubmitterFact::CommandAttributePresent)?
+                    && !facts(HtmlButtonSubmitterFact::CommandforAttributePresent)?
+                    && !facts(HtmlButtonSubmitterFact::ParentIsSelect)?
+            }
+        };
+        Ok(if submit {
+            HtmlButtonSubmitterContext::SubmitButton
+        } else {
+            HtmlButtonSubmitterContext::NotSubmitButton
+        })
+    }
+
     /// Finite work envelope for stylesheet membership and fixed context creation.
     ///
     /// For n input units, the borrowed Infra splitter inspects at most n boundary
