@@ -200,6 +200,17 @@ the capacity needed but not the target refuses the reservation. Only an allocato
 of the target falls back to the capacity that is needed, and so does a target whose layout
 would exceed `isize::MAX` bytes, which depends on the vector alone too.
 
+A start tag, or a merge of one into the first `html` element, whose attribute list holds 32
+or more attributes builds a table of attribute names while the list is installed, so that
+repeated names are found in work linear in the list. The table is real capacity: it reserves
+16 to 32 more bytes for each attribute (two to four 8 byte slots, rounded up to a power of
+two), plus a transient set of the names for the creation scan, until the install or merge ends.
+A tag that sat under a tight `managed_capacity_bytes` or `peak_transient_bytes` limit with
+room for the list but not the table is refused with the limit stop, where a list of fewer
+than 32 attributes, which compares names pair by pair, is not. One hash key serves the
+whole process, so within it the same list charges the same work every time; across processes the
+probes it admits, and so its work, can differ by a small share.
+
 From the repository root, run focused checks through bounded `pisct run`:
 
 ```sh

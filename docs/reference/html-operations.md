@@ -2420,7 +2420,8 @@ length of the names, whatever the element: ordinary elements, those that install
 attributes one at a time (`input`, `details`, `select`), the merge of a later `html` start tag
 into the first, and the replay of a formatting element that copies its attributes. A tag of
 fewer than 32 attributes compares names pair by pair, which is cheaper than building a table of
-them. The [work tests](../../crates/surgeist-html-parser/tests/parser/parse/linear_work.rs)
+them. A tag of 32 or more attributes reserves that table (16 to 32 bytes per attribute) while it
+is built, so a limit that held the list but not the table refuses it. The [work tests](../../crates/surgeist-html-parser/tests/parser/parse/linear_work.rs)
 measure each of these; reservation steps up with capacity doublings and is measured apart.
 [Public entry tests](../../crates/surgeist-html-parser/tests/parser/parse/reports.rs) exercise this boundary. Internal-owner
 descriptions below retain their existing link anchors.
