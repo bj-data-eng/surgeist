@@ -1117,3 +1117,58 @@ fn the_control_classification_join_charges_its_pinned_total() {
     let join = 3 * (1 + 1 + 4 * a + 28 + 1 + 1);
     assert_eq!(least_work("context join", join_run), constructor + join);
 }
+
+/// Without classifications there is nothing to look an association's subject up
+/// in, so the join charges nothing for it, as it did before the classifications
+/// were indexed: the whole budget is the constructor's alone.
+#[test]
+fn the_classification_join_charges_nothing_when_there_are_no_classifications() {
+    let (capture, ids) = element_page(&[("x-a", &[]), ("x-b", &[]), ("x-c", &[])]);
+    let run = |work: usize| {
+        let associations: Vec<_> = ids
+            .iter()
+            .map(|id| {
+                HtmlFormAssociation::new(id.clone(), HtmlFormAssociationState::ResetAgainstCapture)
+            })
+            .collect();
+        let capacity = associations.capacity();
+        let facts = match HtmlControlFacts::new(
+            &capture,
+            capture.host_facts_revision().clone(),
+            associations,
+            vec![],
+            vec![],
+            vec![],
+            HtmlControlFactsLimits::new(capacity, work),
+        ) {
+            Ok(facts) => facts,
+            Err(HtmlControlFactsError::ValidationWork { limit, required }) => {
+                assert_eq!(limit, work);
+                return Run::Refused { required };
+            }
+            Err(other) => panic!("fixture refused for another reason: {other:?}"),
+        };
+        match HtmlSemanticContext::new(
+            &capture,
+            capture.host_facts_revision().clone(),
+            HtmlSemanticContextInput::new(vec![]).with_controls(facts),
+            10,
+        ) {
+            Ok(_) => Run::Admitted,
+            Err(HtmlSemanticContextError::ControlsFacts(
+                HtmlControlFactsError::ValidationWork { limit, required },
+            )) => {
+                assert_eq!(limit, work);
+                Run::Refused { required }
+            }
+            Err(other) => panic!("fixture refused for another reason: {other:?}"),
+        }
+    };
+    // The constructor alone, derived by hand as for the join above; the join
+    // still looks at each association (1, a lookup 1 and the recognition of its
+    // name, 4A + 28) because it must know whether the name is a known element.
+    let a = KnownHtmlElement::ALL.len();
+    let constructor = 3 + 3 * (1 + 1 + 29 + 4 * a + 28);
+    let join = 3 * (1 + 1 + 4 * a + 28);
+    assert_eq!(least_work("empty join", run), constructor + join);
+}

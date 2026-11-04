@@ -35,7 +35,7 @@ use surgeist_html_semantics::{
 const DOUBLINGS: [usize; 4] = [250, 500, 1000, 2000];
 
 /// Limits no sweep of these sizes reaches, so the usage alone is measured.
-fn roomy_limits() -> HtmlSemanticLimits {
+pub fn roomy_limits() -> HtmlSemanticLimits {
     let big = 1 << 40;
     HtmlSemanticLimits::new(big, big, big, 0, big, big)
 }
@@ -793,4 +793,32 @@ fn a_held_item_graph_adds_nothing_to_the_scratch_peak_and_is_released() {
     );
     assert_eq!(eight.usage().scratch_records(), 0);
     assert_eq!(after.scratch_records(), 0);
+}
+
+/// `count` custom elements with an established classification each, as not
+/// form-associated, listed in reverse so that scanning for one is not cheap.
+fn custom_disabledness_sweep(count: usize) -> usize {
+    let (capture, ids) = flat_elements("x-widget", count);
+    let classifications = ids
+        .iter()
+        .rev()
+        .map(|id| HtmlCustomControlClassification::new(id.clone(), false))
+        .collect();
+    let context = HtmlSemanticContext::new(
+        &capture,
+        capture.host_facts_revision().clone(),
+        HtmlSemanticContextInput::new(classifications),
+        count,
+    )
+    .unwrap();
+    sweep_work(&capture, &context, &ids, HtmlSemanticQuery::Disabledness)
+}
+
+#[test]
+fn a_custom_disabledness_sweep_finds_each_classification_in_constant_work() {
+    assert_doubling_at_most_2_2(
+        "custom disabledness sweep",
+        &DOUBLINGS,
+        custom_disabledness_sweep,
+    );
 }
