@@ -22,7 +22,8 @@ use surgeist_html_semantics::{
     HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlCapturedIsValue, HtmlSemanticCancellation,
     HtmlSemanticFact, HtmlSemanticFailure, HtmlSemanticFailureKind, HtmlSemanticLimits,
     HtmlSemanticMissing, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticSession, HtmlSemanticValue, HtmlTableModel,
+    HtmlSemanticResource, HtmlSemanticSession, HtmlSemanticUsage, HtmlSemanticValue,
+    HtmlTableModel,
 };
 
 type Subject = HtmlCaptureBuilderSubject;
@@ -257,14 +258,25 @@ fn refused_id_before(token: &str, ahead: &[&str]) -> (HtmlCapture, Subject) {
 
 const REFUSED: &str = "far-too-long";
 
+/// The failure is the interpreter refusing the `id` of the element that owns
+/// `REFUSED`: 12 units against the cap of 8. A refused `headers` value or any
+/// other attribute would report a different length.
+fn assert_refused_id(failure: &HtmlSemanticFailure) {
+    let HtmlSemanticFailureKind::Attribute(error) = failure.kind() else {
+        panic!("expected a refused attribute: {failure:?}");
+    };
+    assert_eq!(
+        (error.required(), error.capacity()),
+        (REFUSED.len(), 8),
+        "{failure:?}"
+    );
+}
+
 #[test]
 fn an_id_the_interpreter_refuses_stops_a_token_that_the_scan_reaches_after_it() {
     let (c, t) = refused_id_before("h", &[REFUSED]);
     let failure = query(&c, &t, 8, small_limits()).unwrap_err();
-    assert!(matches!(
-        failure.kind(),
-        HtmlSemanticFailureKind::Attribute(_)
-    ));
+    assert_refused_id(&failure);
 }
 
 #[test]
@@ -299,10 +311,7 @@ fn the_first_of_a_refused_id_and_an_unknown_branch_in_tree_order_ends_the_search
     // A refused ID, then an unknown branch: the ID is reached first.
     let (c, t) = refused_id_before("nothing", &[REFUSED, "unknown"]);
     let failure = query(&c, &t, 8, small_limits()).unwrap_err();
-    assert!(matches!(
-        failure.kind(),
-        HtmlSemanticFailureKind::Attribute(_)
-    ));
+    assert_refused_id(&failure);
 }
 
 /// A table whose `th#h` is followed, after the table, by a stop: an element
@@ -333,10 +342,7 @@ fn a_token_no_indexed_element_owns_meets_the_refused_id_that_follows_the_table()
     // The index holds `h` when the search for `nothing` meets the stop.
     let (c, t, _, _, _) = stop_after_table("nothing", true);
     let failure = query(&c, &t, 8, small_limits()).unwrap_err();
-    assert!(matches!(
-        failure.kind(),
-        HtmlSemanticFailureKind::Attribute(_)
-    ));
+    assert_refused_id(&failure);
 }
 
 #[test]
@@ -369,15 +375,12 @@ fn within_one_cell_only_the_tokens_with_no_earlier_owner_meet_the_pending_stop()
             "refused={refused}"
         );
         // The second token has none, in either order.
-        for tokens in ["h nothing", "nothing h"] {
+        for tokens in ["h none", "none h"] {
             let (c, t, _, _, stop) = stop_after_table(tokens, refused);
             match query(&c, &t, limit, small_limits()) {
                 Err(failure) => {
                     assert!(refused, "{tokens}");
-                    assert!(matches!(
-                        failure.kind(),
-                        HtmlSemanticFailureKind::Attribute(_)
-                    ));
+                    assert_refused_id(&failure);
                 }
                 Ok(report) => {
                     assert!(!refused, "{tokens}");
@@ -505,6 +508,86 @@ fn ids_match_by_exact_utf16_units_including_surrogates() {
             (&[0xd83d, 0xde01], Some(3)),
         ],
     );
+}
+
+// ---- Cleanup ------------------------------------------------------------
+
+/// Runs the query of a 3 by 3 grid under the given work and scratch caps,
+/// returning its result and the session's usage afterwards.
+fn capped(
+    c: &HtmlCapture,
+    t: &Subject,
+    work: usize,
+    scratch: usize,
+) -> (
+    Result<HtmlSemanticReport, HtmlSemanticFailure>,
+    HtmlSemanticUsage,
+) {
+    let cx = context(c);
+    let mut session = HtmlSemanticSession::new(
+        c,
+        &cx,
+        HtmlValueInterpreter::new(10000),
+        HtmlSemanticLimits::new(work, 100, scratch, 10000, usize::MAX / 4, 10_000_000),
+        HtmlSemanticCancellation::new(),
+    )
+    .unwrap();
+    let result = session.query(&[HtmlSemanticRequest::new(
+        c.subject_id(t).unwrap(),
+        HtmlSemanticQuery::TableModel,
+    )]);
+    (result, session.usage())
+}
+
+fn assert_stops_on(
+    result: Result<HtmlSemanticReport, HtmlSemanticFailure>,
+    expected: HtmlSemanticResource,
+    cap: usize,
+) {
+    assert!(
+        matches!(
+            result.unwrap_err().kind(),
+            HtmlSemanticFailureKind::LimitExceeded { resource, .. } if *resource == expected
+        ),
+        "{expected:?} cap {cap}"
+    );
+}
+
+#[test]
+fn a_scratch_cap_stopping_the_index_build_releases_its_scratch_records() {
+    let (c, t, _) = grid(3);
+    let baseline = query(&c, &t, 10000, work_limits()).unwrap();
+    let peak = baseline.usage().peak_scratch_records();
+    assert!(peak > 0);
+    // Every scratch cap below the peak stops the query on scratch records: in
+    // the axes, the walk, the entries or the cells. Each stop, including those
+    // inside the index build, releases all of it.
+    for cap in 0..peak {
+        let (result, usage) = capped(&c, &t, usize::MAX / 4, cap);
+        assert_stops_on(result, HtmlSemanticResource::ScratchRecords, cap);
+        assert_eq!(usage.scratch_records(), 0, "scratch cap {cap}");
+    }
+    let (result, usage) = capped(&c, &t, usize::MAX / 4, peak);
+    assert_eq!(result.unwrap().results(), baseline.results());
+    assert_eq!(usage.scratch_records(), 0);
+}
+
+#[test]
+fn a_work_cap_stopping_the_index_build_releases_its_scratch_records() {
+    let (c, t, _) = grid(3);
+    let baseline = query(&c, &t, 10000, work_limits()).unwrap();
+    let work = baseline.usage().work();
+    // Every work cap below the total stops the query on work, at any point of
+    // the build, among them the charge for the sort after the walk, and
+    // leaves no scratch records behind.
+    for cap in 0..work {
+        let (result, usage) = capped(&c, &t, cap, usize::MAX / 4);
+        assert_stops_on(result, HtmlSemanticResource::Work, cap);
+        assert_eq!(usage.scratch_records(), 0, "work cap {cap}");
+    }
+    let (result, usage) = capped(&c, &t, work, usize::MAX / 4);
+    assert_eq!(result.unwrap().results(), baseline.results());
+    assert_eq!(usage.scratch_records(), 0);
 }
 
 // ---- Work ---------------------------------------------------------------

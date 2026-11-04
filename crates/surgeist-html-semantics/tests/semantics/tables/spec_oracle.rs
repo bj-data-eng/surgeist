@@ -24,9 +24,9 @@
 //! Spans are written 0 to 9 and as garbage, scopes in every spelling, and the
 //! `headers` attribute names cells, a caption that shares an id, elements
 //! outside the table that own an id before or after its cells, cells that
-//! repeat another's id, ids and tokens that differ only in case, and unknown ids; cells are empty, blank, text or hold
-//! an element. Every element of a kind carries its position in tree order as
-//! its ordinal.
+//! repeat another's id, ids and tokens that differ only in case, and unknown
+//! ids; cells are empty, blank, text or hold an element. Every element of a
+//! kind carries its position in tree order as its ordinal.
 
 use super::scope_work::{element, limits, query};
 use crate::semantics::support::wide_builder_without_registries;
