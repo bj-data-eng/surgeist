@@ -2,7 +2,6 @@
 
 use super::operations::attribute_units;
 use super::*;
-use crate::internal::values::Attribute;
 use crate::internal::values::attribute_name_index::{
     Binding, CLEAR_CHUNK, HtmlAttributeNameIndex, Occupant, entry, occupant, tag,
 };
@@ -13,6 +12,7 @@ use crate::internal::values::name_index::{
     HtmlNameIndex, HtmlNameIndexProbe, HtmlNameIndexSlot, HtmlNameIndexSlots, HtmlNameIndexStep,
     HtmlNameIndexVacancy,
 };
+use crate::internal::values::{Attribute, ReserveOutcome};
 
 /// Which protocol an attribute edit follows. It is fixed when the edit begins.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -419,8 +419,7 @@ impl HtmlConstructionAttributeEdit {
     fn reserve_backing(
         &mut self,
         additional: usize,
-    ) -> Result<Option<(Result<(), std::collections::TryReserveError>, usize)>, HtmlConstructionError>
-    {
+    ) -> Result<Option<ReserveOutcome>, HtmlConstructionError> {
         let target = self
             .stage
             .target()

@@ -266,6 +266,9 @@ impl Attribute {
     }
 }
 
+/// What reserving capacity in a construction backing did: its result, and the capacity after it.
+pub(crate) type ReserveOutcome = (Result<(), std::collections::TryReserveError>, usize);
+
 /// Immutable attributes in input order, unique by namespace and local name.
 ///
 /// Prefixes and values do not participate in duplicate identity. Native
@@ -333,7 +336,7 @@ impl OrderedAttributes {
     pub(crate) fn reserve_exact_in_construction(
         &mut self,
         additional: usize,
-    ) -> Option<(Result<(), std::collections::TryReserveError>, usize)> {
+    ) -> Option<ReserveOutcome> {
         let backing = Arc::get_mut(&mut self.attributes)?;
         let result = backing.try_reserve_exact(additional);
         Some((result, backing.capacity()))
