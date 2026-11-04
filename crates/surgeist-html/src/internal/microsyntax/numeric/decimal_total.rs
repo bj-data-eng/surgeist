@@ -69,9 +69,14 @@ impl HtmlDecimalTotal {
         bounded_work(&[n, n, n, n, CARRY_CHUNK, CARRY_CHUNK])
     }
 
-    /// The upper bound on the digit-visiting steps of the matching `try_carried`.
+    /// The upper bound on the digit-visiting steps of the matching `try_carried`: a chunk of the
+    /// carry, and, when the chunk reaches the top, the copy that one more place may make.
     pub(crate) fn carried_work_bound(&self) -> Option<usize> {
-        bounded_work(&[CARRY_CHUNK, CARRY_CHUNK])
+        let reaches_top = self
+            .carry
+            .is_some_and(|position| self.integer.len().saturating_sub(position) < CARRY_CHUNK);
+        let copy = if reaches_top { self.integer.len() } else { 0 };
+        bounded_work(&[CARRY_CHUNK, CARRY_CHUNK, copy])
     }
 
     /// The upper bound on the digit-visiting steps of the matching `try_finished`.
