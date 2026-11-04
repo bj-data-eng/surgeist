@@ -46,8 +46,12 @@ pub(crate) fn reserve_amortized<T>(values: &mut Vec<T>) -> Result<(), TryReserve
 /// `reserve_to` call after the first, with the first's resulting capacity, so a fallback in the
 /// first lowers the second's target.
 pub(crate) fn reserve_to<T>(values: &mut Vec<T>, target: usize) -> Result<(), TryReserveError> {
+    // Only a call that reaches the allocator is a request: one that finds room returns without
+    // asking, so the allocator could never refuse it and the test counter must not count it.
     #[cfg(test)]
-    if fault::refuses_next_reservation() {
+    if (target > values.capacity() || values.len() == values.capacity())
+        && fault::refuses_next_reservation()
+    {
         return Err(fault::refusal());
     }
     if target > values.capacity() {
