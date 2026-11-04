@@ -771,8 +771,8 @@ fn controlled_duration_equals_the_ordinary_path_and_the_literal_algorithm_on_ran
         }
         assert_controlled_duration_matches(&text);
     }
-    // The generator reaches both the successes and the failures.
-    assert!((1_000..3_800).contains(&recovered), "{recovered}");
+    // The generator is deterministic, so it reaches the same successes and failures every run.
+    assert_eq!(recovered, 1_083);
 }
 
 /// The failure that driving `text` under the digit limit reaches, with the number of steps taken.
