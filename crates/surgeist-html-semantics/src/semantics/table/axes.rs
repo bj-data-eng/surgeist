@@ -552,6 +552,7 @@ impl<'a> HtmlSemanticSession<'a> {
 struct Tail {
     reach: usize,
     header: Option<LastHeader>,
+    data: Option<usize>,
 }
 
 /// The nearest header so far.
@@ -583,12 +584,16 @@ impl Tail {
             };
             self.header = Some(LastHeader { at, key, differs });
         }
+        if cell.kind == HtmlTableCellKind::Data {
+            self.data = Some(at);
+        }
         SlotEntry {
             start: crossing.start,
             end: crossing.end,
             cell: index,
             reach: self.reach,
             header: self.header.map(|last| last.at),
+            data: self.data,
             key,
             differs,
         }

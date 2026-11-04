@@ -221,6 +221,10 @@ struct Scratch<'a> {
     memo: Vec<HeaderMemo>,
     /// Lines of a scan that are scanned one at a time.
     specials: Vec<usize>,
+    /// Per header key, the short data cell that made it opaque, and the short
+    /// data cells that made a header of the long cells hide another.
+    closed: Vec<usize>,
+    window: Vec<usize>,
     /// The header cells whose `scope` names a row group, and those whose
     /// `scope` names a column group, in model order. Kept only for tables
     /// that have such groups.
@@ -257,6 +261,8 @@ impl Scratch<'_> {
             ScratchBacking::of(&self.document),
             ScratchBacking::of(&self.memo),
             ScratchBacking::of(&self.specials),
+            ScratchBacking::of(&self.closed),
+            ScratchBacking::of(&self.window),
             ScratchBacking::of(&self.row_group_headers),
             ScratchBacking::of(&self.column_group_headers),
             ScratchBacking::of(&self.flags),
