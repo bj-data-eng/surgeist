@@ -402,3 +402,246 @@ fn connected_node_outside_the_flat_tree_is_not_made_inert_by_an_ancestor_attribu
         ))
     );
 }
+
+#[test]
+fn a_select_button_with_an_unavailable_parent_is_missing_evidence_naming_the_parent_link() {
+    let (mut b, d) = builder();
+    let html = element(&mut b, &d, "html", &[]);
+    let button = element(&mut b, &d, "button", &[]);
+    b.establish_parent(&html, &d).unwrap();
+    b.establish_children(&html, &[]).unwrap();
+    let c = b.finish().unwrap();
+    // No flat record for the button either, so only the rule's own gap is named.
+    let cx = flat_context(&c, &d, &html, &[]);
+    assert_eq!(
+        value(&query(&c, &cx, &[&button]), 0),
+        &HtmlSemanticValue::Missing(HtmlSemanticMissing::Parent(c.subject_id(&button).unwrap()))
+    );
+}
+
+#[test]
+fn inherited_inertness_proves_true_where_the_button_rule_lacks_evidence() {
+    // `lost_parent` has no ordinary parent link and `lost_children` sits in a
+    // select whose ordered children are unavailable, so the rule alone is
+    // missing evidence. Their flat ancestor carries the inert attribute.
+    let (mut b, d) = builder();
+    let html = element(&mut b, &d, "html", &[]);
+    let inert = element(&mut b, &d, "div", &[("inert", "")]);
+    let lost_parent = element(&mut b, &d, "button", &[]);
+    let select = element(&mut b, &d, "select", &[]);
+    let lost_children = element(&mut b, &d, "button", &[]);
+    b.establish_parent(&html, &d).unwrap();
+    b.establish_children(&html, std::slice::from_ref(&inert))
+        .unwrap();
+    b.establish_children(&inert, std::slice::from_ref(&select))
+        .unwrap();
+    b.establish_parent(&lost_children, &select).unwrap();
+    let c = b.finish().unwrap();
+    let cx = flat_context(
+        &c,
+        &d,
+        &html,
+        &[
+            (&inert, &html),
+            (&lost_parent, &inert),
+            (&select, &inert),
+            (&lost_children, &select),
+        ],
+    );
+    let report = query(&c, &cx, &[&lost_parent, &lost_children]);
+    assert_eq!(value(&report, 0), &HtmlSemanticValue::Known(true));
+    assert_eq!(value(&report, 1), &HtmlSemanticValue::Known(true));
+}
+
+#[test]
+fn a_select_button_stays_inert_inside_a_blocking_dialog_that_escapes_ancestor_inertness() {
+    // The blocking dialog and its flat descendants escape modal inertness, but
+    // the button rule is a separate source that still applies to the button.
+    let (mut b, d) = builder();
+    let html = element(&mut b, &d, "html", &[]);
+    let outside = element(&mut b, &d, "div", &[]);
+    let dialog = element(&mut b, &d, "dialog", &[("open", "")]);
+    let select = element(&mut b, &d, "select", &[]);
+    let first = element(&mut b, &d, "button", &[]);
+    let option = element(&mut b, &d, "option", &[]);
+    let later = element(&mut b, &d, "button", &[]);
+    b.establish_parent(&html, &d).unwrap();
+    b.establish_children(&html, &[outside.clone(), dialog.clone()])
+        .unwrap();
+    b.establish_children(&dialog, std::slice::from_ref(&select))
+        .unwrap();
+    b.establish_children(&select, &[first.clone(), option.clone(), later.clone()])
+        .unwrap();
+    let c = b.finish().unwrap();
+    let cx = context(
+        &c,
+        Some(supplement(
+            &c,
+            key(),
+            vec![
+                root(&c, &html),
+                parent(&c, &outside, &html),
+                parent(&c, &dialog, &html),
+                parent(&c, &select, &dialog),
+                parent(&c, &first, &select),
+                parent(&c, &option, &select),
+                parent(&c, &later, &select),
+            ],
+            vec![modal(&c, &d, Some(&dialog))],
+        )),
+    );
+    let report = query(&c, &cx, &[&outside, &first, &option, &later]);
+    assert_eq!(value(&report, 0), &HtmlSemanticValue::Known(true));
+    assert_eq!(value(&report, 1), &HtmlSemanticValue::Known(true));
+    assert_eq!(value(&report, 2), &HtmlSemanticValue::Known(false));
+    assert_eq!(value(&report, 3), &HtmlSemanticValue::Known(false));
+}
+
+#[test]
+fn unavailable_modal_blocking_leaves_a_later_button_missing_but_not_the_select_button() {
+    let (mut b, d) = builder();
+    let html = element(&mut b, &d, "html", &[]);
+    let select = element(&mut b, &d, "select", &[]);
+    let first = element(&mut b, &d, "button", &[]);
+    let later = element(&mut b, &d, "button", &[]);
+    b.establish_parent(&html, &d).unwrap();
+    b.establish_children(&html, std::slice::from_ref(&select))
+        .unwrap();
+    b.establish_children(&select, &[first.clone(), later.clone()])
+        .unwrap();
+    let c = b.finish().unwrap();
+    let cx = context(
+        &c,
+        Some(supplement(
+            &c,
+            key(),
+            vec![
+                root(&c, &html),
+                parent(&c, &select, &html),
+                parent(&c, &first, &select),
+                parent(&c, &later, &select),
+            ],
+            vec![HtmlDocumentModalFact::new(
+                c.subject_id(&d).unwrap(),
+                HtmlDocumentModalBlocking::Unavailable,
+            )],
+        )),
+    );
+    let report = query(&c, &cx, &[&first, &later]);
+    assert_eq!(value(&report, 0), &HtmlSemanticValue::Known(true));
+    assert_eq!(
+        value(&report, 1),
+        &HtmlSemanticValue::Missing(HtmlSemanticMissing::ModalBlocking(
+            c.subject_id(&d).unwrap()
+        ))
+    );
+}
+
+#[test]
+fn a_select_button_combines_with_an_inert_ancestor_and_a_later_button_still_inherits_it() {
+    let (mut b, d) = builder();
+    let html = element(&mut b, &d, "html", &[]);
+    let inert = element(&mut b, &d, "div", &[("inert", "")]);
+    let select = element(&mut b, &d, "select", &[]);
+    let first = element(&mut b, &d, "button", &[]);
+    let later = element(&mut b, &d, "button", &[]);
+    b.establish_parent(&html, &d).unwrap();
+    b.establish_children(&html, std::slice::from_ref(&inert))
+        .unwrap();
+    b.establish_children(&inert, std::slice::from_ref(&select))
+        .unwrap();
+    b.establish_children(&select, &[first.clone(), later.clone()])
+        .unwrap();
+    let c = b.finish().unwrap();
+    let cx = flat_context(
+        &c,
+        &d,
+        &html,
+        &[
+            (&inert, &html),
+            (&select, &inert),
+            (&first, &select),
+            (&later, &select),
+        ],
+    );
+    let report = query(&c, &cx, &[&first, &later]);
+    assert_eq!(value(&report, 0), &HtmlSemanticValue::Known(true));
+    assert_eq!(value(&report, 1), &HtmlSemanticValue::Known(true));
+}
+
+/// A select holding `leading` text children before its button, in an unblocked
+/// document. Returns the capture, context and the button's request.
+fn text_before_button(leading: usize) -> (HtmlCapture, HtmlSemanticContext, HtmlSemanticRequest) {
+    let (mut b, d) = builder();
+    let html = element(&mut b, &d, "html", &[]);
+    let select = element(&mut b, &d, "select", &[]);
+    let button = element(&mut b, &d, "button", &[]);
+    let mut children = (0..leading).map(|_| text(&mut b, &d)).collect::<Vec<_>>();
+    children.push(button.clone());
+    b.establish_parent(&html, &d).unwrap();
+    b.establish_children(&html, std::slice::from_ref(&select))
+        .unwrap();
+    b.establish_children(&select, &children).unwrap();
+    let c = b.finish().unwrap();
+    let cx = flat_context(&c, &d, &html, &[(&select, &html), (&button, &select)]);
+    let request =
+        HtmlSemanticRequest::new(c.subject_id(&button).unwrap(), HtmlSemanticQuery::Inertness);
+    (c, cx, request)
+}
+
+#[test]
+fn scanning_leading_non_element_children_is_charged_and_bounded_by_the_work_limit() {
+    let work = |leading| {
+        let (c, cx, request) = text_before_button(leading);
+        let report = HtmlSemanticSession::new(
+            &c,
+            &cx,
+            HtmlValueInterpreter::new(10000),
+            limits(),
+            HtmlSemanticCancellation::new(),
+        )
+        .unwrap()
+        .query(&[request])
+        .unwrap();
+        assert_eq!(
+            value(&report, 0),
+            &HtmlSemanticValue::Known(true),
+            "{leading} leading children"
+        );
+        report.usage().work()
+    };
+    // Each scanned child costs one step to advance and one to read its node.
+    assert_eq!(work(40) - work(10), 2 * 30);
+
+    let (c, cx, request) = text_before_button(40);
+    let report = assert_exact_and_one_short_caps(
+        "button after leading text",
+        &c,
+        &cx,
+        10000,
+        limits(),
+        std::slice::from_ref(&request),
+        ExpectedUsage {
+            work: Charge::AtLeast(2 * 40),
+            output_records: Charge::Exactly(1),
+            allocated_bytes: Charge::Exactly(std::mem::size_of::<HtmlSemanticResult>()),
+            ..ExpectedUsage::none()
+        },
+    );
+    let too_small =
+        HtmlSemanticLimits::new(report.usage().work() - 1, 100, 1000, 1000, 1000000, 1000);
+    let failure = HtmlSemanticSession::new(
+        &c,
+        &cx,
+        HtmlValueInterpreter::new(10000),
+        too_small,
+        HtmlSemanticCancellation::new(),
+    )
+    .unwrap()
+    .query(&[request])
+    .unwrap_err();
+    assert!(matches!(
+        failure.kind(),
+        HtmlSemanticFailureKind::LimitExceeded { resource, .. } if resource == &HtmlSemanticResource::Work
+    ));
+}
