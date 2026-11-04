@@ -26,6 +26,43 @@ pub(super) struct HeaderMemo {
     empty: Option<bool>,
 }
 
+/// An element with a non-empty `id`: its value, the capture ordinal of its
+/// subject, and its place among the nodes of a walk in tree order.
+struct IdEntry<'a> {
+    value: &'a [u16],
+    ordinal: usize,
+    order: usize,
+}
+
+/// What ends a search for an ID before any element has it.
+enum IdStop {
+    /// A node whose ordered children are unknown.
+    Missing(HtmlSemanticMissing),
+    /// An element whose ID the interpreter refuses.
+    Refused(HtmlValueAdmissionError),
+}
+
+/// The IDs of a document, sorted by value with ties in tree order, and what
+/// ends a search for an absent ID. Built on the first `headers` token.
+#[derive(Default)]
+pub(super) struct IdIndex<'a> {
+    ready: bool,
+    entries: Vec<IdEntry<'a>>,
+    stop: Option<IdStop>,
+}
+
+impl IdIndex<'_> {
+    /// The capacity admitted for the entries.
+    pub(super) fn capacity(&self) -> usize {
+        self.entries.capacity()
+    }
+}
+
+/// The bit length of `n`: the depth of a search or sort over `n` records.
+fn table_log2(n: usize) -> usize {
+    (usize::BITS - n.leading_zeros()) as usize
+}
+
 /// The finished row and column lines.
 #[derive(Clone, Copy)]
 struct Axes<'s> {
@@ -747,29 +784,45 @@ impl<'a> HtmlSemanticSession<'a> {
             bound = start + 1;
         }
     }
-    fn table_id_match(&mut self, left: &[u16], right: &[u16]) -> TableResult<bool> {
-        self.charge(1)?;
-        if left.len() != right.len() {
-            return Ok(false);
+    /// Admits and charges a product of factors as one operation.
+    fn table_charge_product(&mut self, factors: &[usize]) -> TableResult<()> {
+        let mut work = 1usize;
+        for &factor in factors {
+            work = work.checked_mul(factor).ok_or_else(|| {
+                TableStop::from(self.stop(HtmlSemanticFailureKind::RepresentationExhausted))
+            })?;
         }
-        for (a, b) in left.iter().zip(right) {
-            self.charge(2)?;
-            if a != b {
-                return Ok(false);
-            }
-        }
-        Ok(true)
+        self.charge(work)?;
+        Ok(())
     }
-    fn table_find_id(
+    /// Indexes the elements of the document that have a non-empty `id`, once,
+    /// walking them in tree order as the search for one ID would (HTML 877d
+    /// §4.9.12.2, assigning header cells, step 3.2: "the first element in the
+    /// Document with an ID equal to the token"). The walk ends at the first
+    /// thing a search from the root would stop at, which is recorded and
+    /// answers every token that no earlier element owns: an element whose ID
+    /// the interpreter refuses, or a node whose ordered children are unknown.
+    /// Entries are admitted one at a time as they are pushed and the sort is
+    /// charged before it runs.
+    fn table_index_ids(
         &mut self,
         document: &HtmlCaptureSubjectId,
-        token: &[u16],
         frames: &mut Vec<HtmlCapturedChildIds<'a>>,
-    ) -> TableResult<Option<HtmlCaptureSubjectId>> {
+        ids: &mut IdIndex<'a>,
+    ) -> TableResult<()> {
+        ids.ready = true;
         self.charge(1)?;
         frames.clear();
-        let children = self.table_children(document)?;
-        self.table_scratch(frames, children)?;
+        match self.table_children(document) {
+            Ok(children) => self.table_scratch(frames, children)?,
+            Err(TableStop::Missing(missing)) => {
+                ids.stop = Some(IdStop::Missing(missing));
+                return Ok(());
+            }
+            Err(failure) => return Err(failure),
+        }
+        let mut order = 0usize;
+        let mut longest = 0usize;
         while !frames.is_empty() {
             self.charge(1)?;
             let Some(id) = frames.last_mut().and_then(Iterator::next) else {
@@ -778,20 +831,91 @@ impl<'a> HtmlSemanticSession<'a> {
             };
             let node = self.node(&id)?;
             if let HtmlCapturedNodeKind::Element(element) = node.kind() {
-                let raw = self.table_raw(element, "id")?;
+                let raw = self.attribute(element, "id")?;
+                if let Err(error) = self
+                    .interpreter
+                    .admit_attribute_raw(raw.map(Attribute::value))
+                {
+                    ids.stop = Some(IdStop::Refused(error));
+                    break;
+                }
                 if let Some(raw) = raw
                     && !raw.value().is_empty()
-                    && self.table_id_match(raw.value().code_units(), token)?
                 {
-                    return Ok(Some(id));
+                    let value = raw.value().code_units();
+                    longest = longest.max(value.len());
+                    self.table_scratch(
+                        &mut ids.entries,
+                        IdEntry {
+                            value,
+                            ordinal: id.ordinal(),
+                            order,
+                        },
+                    )?;
                 }
             }
-            let children = self.table_children(&id)?;
-            if children.len() != 0 {
-                self.table_scratch(frames, children)?;
+            order += 1;
+            match self.table_children(&id) {
+                Ok(children) => {
+                    if children.len() != 0 {
+                        self.table_scratch(frames, children)?;
+                    }
+                }
+                Err(TableStop::Missing(missing)) => {
+                    ids.stop = Some(IdStop::Missing(missing));
+                    break;
+                }
+                Err(failure) => return Err(failure),
             }
         }
-        Ok(None)
+        frames.clear();
+        // Tree order breaks ties, so the first equal entry is the first
+        // element; each comparison reads up to the longest ID.
+        let count = ids.entries.len();
+        self.table_charge_product(&[count, table_log2(count), longest + 1])?;
+        ids.entries
+            .sort_unstable_by(|a, b| a.value.cmp(b.value).then(a.order.cmp(&b.order)));
+        Ok(())
+    }
+    /// The cells of the model by capture ordinal, so a cell is found from its
+    /// subject without reading the cells one by one.
+    fn table_index_cells(
+        &mut self,
+        model: &HtmlTableModel,
+        cells: &mut Vec<(usize, usize)>,
+    ) -> TableResult<()> {
+        for (index, cell) in model.cells.iter().enumerate() {
+            self.table_scratch(cells, (cell.subject.ordinal(), index))?;
+        }
+        self.table_charge_product(&[cells.len(), table_log2(cells.len())])?;
+        cells.sort_unstable();
+        Ok(())
+    }
+    /// The cell of the model that the first element with this ID is, if that
+    /// element is a cell of it. What a search from the root would reach before
+    /// a match decides the token if there is none.
+    fn table_find_cell(
+        &mut self,
+        ids: &IdIndex<'a>,
+        cells: &[(usize, usize)],
+        token: &[u16],
+    ) -> TableResult<Option<usize>> {
+        self.table_charge_product(&[table_log2(ids.entries.len()) + 1, token.len() + 1])?;
+        let at = ids.entries.partition_point(|entry| entry.value < token);
+        let Some(entry) = ids.entries.get(at).filter(|entry| entry.value == token) else {
+            return match &ids.stop {
+                None => Ok(None),
+                Some(IdStop::Missing(missing)) => Err(TableStop::Missing(missing.clone())),
+                Some(IdStop::Refused(error)) => {
+                    Err(self.stop(HtmlSemanticFailureKind::Attribute(*error)).into())
+                }
+            };
+        };
+        self.charge(table_log2(cells.len()) + 1)?;
+        Ok(cells
+            .binary_search_by_key(&entry.ordinal, |&(ordinal, _)| ordinal)
+            .ok()
+            .map(|at| cells[at].1))
     }
     fn table_empty(&mut self, model: &HtmlTableModel, index: usize) -> TableResult<bool> {
         let mut children = self.table_children(&model.cells[index].subject)?;
@@ -839,6 +963,8 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let Scratch {
             document: frames,
+            ids,
+            cells,
             headers,
             stamps,
             listed,
@@ -940,16 +1066,15 @@ impl<'a> HtmlSemanticSession<'a> {
                         }
                         position += 1;
                     }
-                    if let Some(id) =
-                        self.table_find_id(document, &units[start..position], frames)?
+                    if !ids.ready {
+                        self.table_index_ids(document, frames, ids)?;
+                        self.table_index_cells(model, cells)?;
+                    }
+                    if let Some(index) =
+                        self.table_find_cell(ids, cells, &units[start..position])?
+                        && index != principal
                     {
-                        for (index, cell) in model.cells.iter().enumerate() {
-                            self.charge(1)?;
-                            if cell.subject == id && index != principal {
-                                self.table_list(model, &mut scan, index)?;
-                                break;
-                            }
-                        }
+                        self.table_list(model, &mut scan, index)?;
                     }
                 }
             } else if any_header {

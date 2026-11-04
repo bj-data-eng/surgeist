@@ -2294,8 +2294,24 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
     header cell when the table has such groups: a table with a row or column
     group is refused for a `scope` value that is too long to read on any header
     cell, even one that no cell would otherwise have reached.
-  - The `headers` attribute is outside this bound: each token searches the
-    document, and each resolved token searches the cells.
+  - *Explicit `headers` tokens* cost `O(V + N log N * I + T log N)` for `V`
+    the nodes of the document, `N` the elements with a non-empty `id`, `I` the
+    longest such `id` in units and `T` the units of all tokens, plus
+    `O(C log C)` for the cells. The first
+    token walks the ordinary tree from the document once and indexes every
+    non-empty `id` by value, ties in tree order, so the first element wins; each
+    token is then a binary search, and the element it finds is looked up among
+    the cells by capture ordinal. The sort and the lookups are charged before
+    they run, and the entries are admitted as `ScratchRecords` as they are
+    pushed. A table with no non-empty `headers` token never walks the document.
+    The walk ends where a search from the root for an absent ID would: at an
+    element whose `id` the interpreter refuses, or at a node whose ordered
+    children are unknown. That stop is kept, not raised, and answers (as the
+    refusal or the missing children) only the tokens that no earlier element
+    owns, so a token matched before it still resolves. The walk itself is now
+    charged once, in full up to that stop, even if every token is owned by an
+    early element; a document whose nodes after the last owner exceed the work
+    limit is refused where a search for each token would have fit.
   - Everything the model needs beyond the retained records is scratch: the
     placement tree, the per-column and per-cell placement records and the header
     indexes are admitted as `ScratchRecords`, and released with the query. Every
@@ -2309,6 +2325,10 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
   first row and column of header cells (outside and inside a `tbody`), for tall
   cells beside later rows, and the work per association for staggered tall
   header cells and for a stacked header column;
+  [the explicit headers tests](../../crates/surgeist-html-semantics/tests/semantics/tables/explicit_headers.rs)
+  pin the growth for an `n` by `n` grid in which every data cell names a header
+  by ID, and the cells named by duplicate, unknown, self-referring and outside
+  IDs;
   [the scan bounds tests](../../crates/surgeist-html-semantics/tests/semantics/tables/scan_bounds.rs)
   pin the shapes above that are costly for the scans.
 - **FooterScope** ([code](../../crates/surgeist-html-semantics/src/semantics/footer.rs)),
