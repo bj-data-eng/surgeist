@@ -940,6 +940,78 @@ fn start_tag_with_attributes(prefix: &str, tag: &str, n: usize) -> String {
     format!("<!doctype html>{prefix}<{tag}{attributes}>")
 }
 
+/// What one parse holds at its high water in `resource`.
+fn high_water(raw: String, resource: HtmlParseResource) -> u64 {
+    HtmlDocumentParseRequest::offline(HtmlSource::utf8(raw), long_input_limits())
+        .parse()
+        .unwrap_or_else(|_| panic!("the document parses within the long-input limits"))
+        .usage()
+        .resource(resource)
+        .high_water()
+}
+
+#[test]
+fn auxiliary_entries_of_one_long_attribute_name_grow_by_less_than_an_entry_per_eight_units() {
+    // HTML 877d6146487f section 13.2.5.33 (attribute name state): a name equal to one already on
+    // the token is dropped as a duplicate, so the tokenizer must recognise the names it kept. That
+    // takes a record for the name, not sixteen for each of its units.
+    let entries = |units: usize| {
+        high_water(
+            format!("<!doctype html><div {}>", "a".repeat(units)),
+            HtmlParseResource::AuxiliaryEntries,
+        )
+    };
+    let (small, large) = (entries(4_000), entries(8_000));
+    assert!(
+        (large - small) * 8 <= 4_000,
+        "4,000 more units of one name hold {} more auxiliary entries ({small} at 4,000 units, \
+         {large} at 8,000)",
+        large - small,
+    );
+}
+
+#[test]
+fn capacity_of_one_long_attribute_name_grows_by_under_four_hundred_bytes_per_unit() {
+    // The name is stored once as text and once for each origin of its units, which is under 400
+    // bytes of capacity for each unit; recognising it as a duplicate adds nothing for each unit.
+    let capacity = |units: usize| {
+        high_water(
+            format!("<!doctype html><div {}>", "a".repeat(units)),
+            HtmlParseResource::ManagedCapacityBytes,
+        )
+    };
+    let (small, large) = (capacity(4_000), capacity(8_000));
+    assert!(
+        (large - small) <= 4_000 * 400,
+        "4,000 more units of one name hold {} more bytes of capacity ({small} at 4,000 units, \
+         {large} at 8,000)",
+        large - small,
+    );
+}
+
+#[test]
+fn auxiliary_entries_of_distinct_attribute_names_grow_by_at_most_three_for_each_name() {
+    // Names with no shared prefix, so a trie finds nothing to reuse: eight hexadecimal digits of a
+    // multiplicative hash of the index. Each name needs one record of its own and one to join it
+    // to the others; the third allowed is slack for a growing buffer.
+    let entries = |names: usize| {
+        let attributes: String = (0..names)
+            .map(|i| format!(" {:08x}", (i as u32).wrapping_mul(2_654_435_761)))
+            .collect();
+        high_water(
+            format!("<!doctype html><div{attributes}>"),
+            HtmlParseResource::AuxiliaryEntries,
+        )
+    };
+    let (small, large) = (entries(1_000), entries(2_000));
+    assert!(
+        (large - small) <= 3 * 1_000,
+        "1,000 more names hold {} more auxiliary entries ({small} at 1,000 names, {large} at \
+         2,000)",
+        large - small,
+    );
+}
+
 #[test]
 fn work_of_an_input_start_tag_with_many_attributes_at_most_doubles() {
     // `input` installs its attributes one at a time, so that each can run its element-specific
