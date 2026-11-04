@@ -44,6 +44,9 @@ pub(super) enum Join {
     LookupRegistry,
     /// The latest style occurrence naming the record as its subject.
     StyleOccurrence,
+    /// The `StyleOrder` row listing the style elements of the tree the record
+    /// roots, while it is current; see `SessionStorage::style_order_floor`.
+    StyleOrder,
 }
 
 impl Join {
@@ -56,7 +59,7 @@ impl Join {
     }
 }
 
-const JOIN_COUNT: usize = Join::StyleOccurrence as usize + 1;
+const JOIN_COUNT: usize = Join::StyleOrder as usize + 1;
 
 /// One value per [`Join`]; a lookup cannot be out of range.
 type JoinTable<T> = Table<Join, T, JOIN_COUNT>;
@@ -79,6 +82,7 @@ slots!(Join, JOIN_COUNT, {
     BaseDocument => 14,
     LookupRegistry => 15,
     StyleOccurrence => 16,
+    StyleOrder => 17,
 });
 
 /// Cells hold a registry slot plus one in 32 bits; a slot beyond that is
@@ -115,6 +119,10 @@ impl NodeJoins {
     pub(super) fn set_latest(&mut self, join: Join, slot: usize) -> Result<(), SessionError> {
         *self.rows.get_mut(join) = Some(joined_cell(slot)?);
         Ok(())
+    }
+    /// Forgets the registry row of `join`.
+    pub(super) fn clear(&mut self, join: Join) {
+        *self.rows.get_mut(join) = None;
     }
     /// Keeps the earliest registry row, the one a front-to-back scan finds, and
     /// reports whether the cell already named another row.

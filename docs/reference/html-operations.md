@@ -3257,13 +3257,13 @@ index, which the types carry: a power-of-two slot count; opaque slots that a con
 forge; an index with a unique identity that is not `Clone`, that guards the one empty storage
 it was first lent and that counts its entries against a capacity of at most half the slots;
 and probes and vacancies that only that index produces and accepts. The one way to write is the
-vacancy that a probe yields at the first empty slot of its sequence. The hash key is random for
-each scan, so no input can pick colliding names. The consumer charges the table, the hash of
+vacancy that a probe yields at the first empty slot of its sequence. The hash key is chosen at
+random once per process, so no input can pick colliding names. The consumer charges the table, the hash of
 the name, every probe and every comparison; `HtmlNameIndexTable::advance` and `insert` serve
 consumers that admit each probe as an action, and `find_or_insert` serves those that charge
 inside closures. A `None` answer to `FindName` is trusted, and the index is never consulted
-after `Pop` or `Discard`. Because the key is random, a multi-pair scan's charge totals vary
-from run to run.
+after `Pop` or `Discard`. Because the key is random per process, a multi-pair scan's charge
+totals can differ between processes; within a process the same input charges the same work.
 
 <a id="private-ordinary-templates"></a>
 
