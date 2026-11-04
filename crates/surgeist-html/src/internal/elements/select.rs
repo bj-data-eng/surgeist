@@ -548,6 +548,28 @@ pub fn select_option_rule(
     }
 }
 
+/// Whether a `button` is inert because it is the first element child of a `select` (HTML877d
+/// #the-button-element: "If a button element is the first child which is an element of a select
+/// element, then it is inert", retained at forms capture line 7399).
+///
+/// `button` is the node's known element kind and `parent` the known element kind of its ordinary
+/// tree parent, each `None` for any other node or element. "Child" is the DOM ordinary-tree child,
+/// never a flat-tree child, so a slot or shadow edge never supplies `parent`.
+/// `first_element_child` tells whether the node is the first element among its parent's children;
+/// text and comment siblings are not elements and do not precede it. The result is true only for a
+/// button, its select parent and the first element child together, so an adapter that lacks a later
+/// operand may probe with `first_element_child` set to true: a false answer then holds for either
+/// position. The rule marks the button itself; it names no descendants.
+pub const fn button_is_inert_in_select(
+    button: Option<KnownHtmlElement>,
+    parent: Option<KnownHtmlElement>,
+    first_element_child: bool,
+) -> bool {
+    matches!(button, Some(KnownHtmlElement::Button))
+        && matches!(parent, Some(KnownHtmlElement::Select))
+        && first_element_child
+}
+
 /// Action for one established option ancestor, after own disabled presence.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlOptionDisabledAncestor {

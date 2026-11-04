@@ -3498,6 +3498,7 @@ impl surgeist_html::bounded::select::HtmlSelectedcontentAncestors
 pub fn surgeist_html::bounded::select::HtmlSelectedcontentAncestors::disabled(&self) -> bool
 pub fn surgeist_html::bounded::select::HtmlSelectedcontentAncestors::has_nearest_select(&self) -> bool
 pub fn surgeist_html::bounded::select::HtmlSelectedcontentAncestors::observe(&mut self, kind: core::option::Option<surgeist_html::vocabulary::KnownHtmlElement>) -> surgeist_html::bounded::select::HtmlSelectedcontentAncestorAction
+pub const fn surgeist_html::bounded::select::button_is_inert_in_select(button: core::option::Option<surgeist_html::vocabulary::KnownHtmlElement>, parent: core::option::Option<surgeist_html::vocabulary::KnownHtmlElement>, first_element_child: bool) -> bool
 pub fn surgeist_html::bounded::select::option_disabled_ancestor(kind: core::option::Option<surgeist_html::vocabulary::KnownHtmlElement>) -> surgeist_html::bounded::select::HtmlOptionDisabledAncestor
 pub const fn surgeist_html::bounded::select::select_display_size_default(multiple: bool) -> u8
 pub fn surgeist_html::bounded::select::select_option_rule(kind: core::option::Option<surgeist_html::vocabulary::KnownHtmlElement>, inside_optgroup: bool) -> surgeist_html::bounded::select::HtmlSelectOptionRule

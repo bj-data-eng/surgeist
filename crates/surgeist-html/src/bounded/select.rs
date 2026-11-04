@@ -6,6 +6,6 @@ pub use crate::internal::elements::select::{
     HtmlSelectFirstSelectedCursor, HtmlSelectFirstSelection, HtmlSelectOperation,
     HtmlSelectOptionRule, HtmlSelectReply, HtmlSelectSetterAction, HtmlSelectSetterCursor,
     HtmlSelectSetterReply, HtmlSelectedcontentAncestorAction, HtmlSelectedcontentAncestors,
-    HtmlSelectedcontentUpdate, option_disabled_ancestor, select_display_size_default,
-    select_option_rule, selectedcontent_update,
+    HtmlSelectedcontentUpdate, button_is_inert_in_select, option_disabled_ancestor,
+    select_display_size_default, select_option_rule, selectedcontent_update,
 };
