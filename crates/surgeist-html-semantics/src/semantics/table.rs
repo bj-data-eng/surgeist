@@ -8,7 +8,7 @@ mod headers;
 mod occupancy;
 mod placement;
 mod slots;
-use headers::{HeaderMemo, IdTargets};
+use headers::{HeaderMemo, IdTargets, KeyNote, Need};
 use placement::{Footprint, Placement, Reach};
 use slots::{LeastTree, SlotAxis};
 
@@ -221,10 +221,12 @@ struct Scratch<'a> {
     memo: Vec<HeaderMemo>,
     /// Lines of a scan that are scanned one at a time.
     specials: Vec<usize>,
-    /// Per header key, the short data cell that made it opaque, and the short
-    /// data cells that made a header of the long cells hide another.
-    closed: Vec<usize>,
-    window: Vec<usize>,
+    /// Per header key, what a scan that notes remembers; the requirements a
+    /// line must meet to share the scan of the long cells, and those the scan
+    /// in progress notes.
+    closed: Vec<KeyNote>,
+    window: Vec<Need>,
+    notes: Vec<Need>,
     /// The header cells whose `scope` names a row group, and those whose
     /// `scope` names a column group, in model order. Kept only for tables
     /// that have such groups.
@@ -263,6 +265,7 @@ impl Scratch<'_> {
             ScratchBacking::of(&self.specials),
             ScratchBacking::of(&self.closed),
             ScratchBacking::of(&self.window),
+            ScratchBacking::of(&self.notes),
             ScratchBacking::of(&self.row_group_headers),
             ScratchBacking::of(&self.column_group_headers),
             ScratchBacking::of(&self.flags),

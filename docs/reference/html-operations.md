@@ -2276,30 +2276,39 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
     data cell of its own changes it only by ending a block of tall headers, so
     that the nearer of two tall headers of the same rows hides the other
     (HTML 877d §4.9.12.2, the internal algorithm for scanning and assigning
-    header cells, step 9). The first such row is scanned in full, noting the
-    data cells of its own that made a tall header opaque before the scan met
-    another tall header hidden by it (each start once, so at most one for each
-    header the scan visited). Every later row that has a data cell at each of
-    those starts takes no tall header that row did not, and so costs a search
-    for each noted cell and a visit for each header of its own that it reads: the
-    nearest and those next to it, up to the first data cell between two, tall
-    or not. A first column of cells beside tall header cells, and cells of
-    each row between tall header cells that cross the same rows, therefore
-    cost the cells, not a scan of the tall cells for each. A row that lacks a
-    noted cell, or that is not regular, is scanned on its own.
+    header cells, step 9). So a row takes, of tall headers of one extent, those
+    nearer the scanning cell than its nearest data cell of its own, and the
+    first row that is scanned in full notes for each extent the nearest tall
+    header it hid (a requirement: a data cell of its own between that header
+    and the first tall header of the extent). A later row that meets every
+    requirement, which is to have a data cell of its own that near, takes no
+    tall header not taken already, and costs a search for each requirement and
+    a visit for each header of its own that it reads: the nearest and those
+    next to it, up to the first data cell between two, tall or not. Any other
+    row is scanned in full, takes tall headers not taken yet, and refreshes the
+    requirements: an extent keeps the farther of the two headers, and loses its
+    requirement when the row takes all of its headers. A first column of cells
+    beside tall header cells, cells of each row between tall header cells that
+    cross the same rows, and rows that fill fewer of the first row's gaps (a
+    row fills free columns from the left, so a sparse row has its data cells
+    far from the scanning cell) therefore cost the cells and the rows that
+    improve on the rows before them, not a scan of the tall cells for each. A
+    row that is not regular is scanned on its own.
   - *The fine bound.* Header assignment is `O((C + A + V + L + R) log C)`, where
     `A` is the number of associations, `V` the number of unhidden headers
     visited without being listed (a header that is no header of the scan's
     kind, as `scope=col` is for a row scan) and `R` the sum, over the times a
     cell crosses a row (or column) that has a cell of its own before it, of one
-    and the cells noted for the first such row it crosses (each is searched
-    for in the row), when no cells overlap and each such row has the noted
-    cells of the first such row, as above. It holds for a table of `n` by `n` cells whose headers are
+    and the requirements (at most one for each extent of tall header that a
+    data cell of that row hid), when no cells overlap and each such row meets
+    the requirements, as above, or is scanned in full only a few times. It holds for a table of `n` by `n` cells whose headers are
     a first row and first column, with or without a `tbody`; for tall header
     cells with data cells between them beside later rows that hold their own
     cells to the right, or to the left in a first column; for tall header
     cells of the same rows with a cell of each later row between them, which
-    take the headers beyond the cell once; for tall header cells whose row
+    take the headers beyond the cell once; for the same with later rows that
+    fill only the first gap, for one principal and for as many principals as
+    rows; for tall header cells whose row
     ends all differ, which take quadratically many associations; and for a
     column of `th` cells that each take every `th` above. The model work tests
     pin these shapes.
@@ -2314,12 +2323,19 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
     `C * (W + H)` from growing). A row or column where cells share a slot is
     scanned one slot at a time, `O(log)` per slot from the scanning cell to
     the start of the line, and each such row is scanned on its own, so the
-    overlapping cells cost `O(W log)` for each row they cross. Rows whose own
-    data cells differ among the tall header cells from those of the first such
-    row (they lack one the first row had between two tall headers of the same
-    rows) are scanned on their own: a tall cell crossing `h` such rows costs
-    `h` scans of up to `W` slots, and with many tall cells that is cubic in
-    the size of the table.
+    overlapping cells cost `O(W log)` for each row they cross. Rows that each
+    improve on every row before them are scanned in full: a row takes a tall
+    header that no row before it took, which needs its data cells to lie
+    farther from the scanning cell than those of every row before. Rows fill
+    free columns from the left, so this is rows with fewer and fewer cells of
+    their own among the tall cells (`m` gaps, then rows of `m - 1`, `m - 2`
+    cells and so on, or each row's cells ending sooner than the row before's),
+    and a principal over `h` of them visits, for each row, the tall headers it
+    takes (`r + 1` for the `r`th), `O(h * W)` in all. Each principal pays that
+    sum again: for `m` gaps and `m` principals the work is cubic in `m` while
+    the input is quadratic, and the associations are `m` for each principal.
+    The tests pin the ceiling of that growth, which is about x5.4, x6.6 and
+    x7.5 per doubling of `m` for `m` from 25 to 200.
     A cell in a row group (or column group) tests only the header cells whose
     `scope` names its group, found by index (by row, then the least column;
     by column, then the least row) in `O(log + k)` for `k` hits, which are
@@ -2366,8 +2382,9 @@ element-only query therefore costs the reservation, the lookup and the write: 3.
   pin the growth for `n` by `n` grids of data cells and of data cells under a
   first row and column of header cells (outside and inside a `tbody`), for tall
   cells beside later rows, for tall header cells with a cell of each row among
-  them, and the work per association for staggered tall header cells and for a
-  stacked header column; [the shared scans
+  them and for rows that fill only the first gap, the ceiling of the growth for
+  rows that each improve on the rows before them, and the work per association
+  for staggered tall header cells and for a stacked header column; [the shared scans
   tests](../../crates/surgeist-html-semantics/tests/semantics/tables/shared_scans.rs)
   pin the header lists of rows with cells among tall cells, by hand and for
   both orientations;
