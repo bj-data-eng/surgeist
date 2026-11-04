@@ -12,6 +12,8 @@
 //! A carry that is still pending makes the total inexact, so the operations that need an exact
 //! total refuse it with a typed error instead of walking it uncharged.
 
+#[cfg(test)]
+use super::count_digit_steps;
 use super::{
     HtmlIntegerUnitStepError, HtmlNonNegativeDecimal, HtmlNonNegativeInteger,
     HtmlNumericMaterializationFailure, HtmlNumericMaterialized, ascii_digit_string, bounded_work,
@@ -143,12 +145,16 @@ impl HtmlDecimalTotal {
             .iter()
             .rposition(|&place| place != 0)
             .map_or(0, |last| last + 1);
+        #[cfg(test)]
+        count_digit_steps(self.fraction.len() - fraction_len + 1);
         let mut integer = reserve_materialization(
             self.integer.len().max(1),
             Some(max_digits),
             max_bytes,
             &mut observed,
         )?;
+        #[cfg(test)]
+        count_digit_steps(self.integer.len() + fraction_len);
         if self.integer.is_empty() {
             integer.push(b'0');
         } else {
@@ -218,6 +224,8 @@ impl HtmlDecimalTotal {
                 return Ok(());
             }
             walked += 1;
+            #[cfg(test)]
+            count_digit_steps(1);
             match self.integer.get_mut(position) {
                 Some(place) if *place == 9 => {
                     *place = 0;
@@ -258,6 +266,8 @@ fn add_places<'a>(
     mut carry: u8,
 ) -> u8 {
     for (place, digit) in places.zip(operand) {
+        #[cfg(test)]
+        count_digit_steps(1);
         let total = place
             .wrapping_add(digit.wrapping_sub(b'0'))
             .wrapping_add(carry);
@@ -289,6 +299,9 @@ fn grow(
             });
         }
         let before = places.capacity();
+        // Reallocating copies the places that exist.
+        #[cfg(test)]
+        count_digit_steps(places.len());
         let allocation = places.try_reserve_exact(target - places.len());
         // Even an allocation failure retains any backing it obtained, which is new only if the
         // capacity changed.
@@ -300,13 +313,15 @@ fn grow(
         allocation.map_err(|_| HtmlIntegerUnitStepError::AllocationFailed { requested: target })?;
         check_integer_actual_capacity(required, *observed, max_bytes)?;
     }
+    #[cfg(test)]
+    count_digit_steps(target - places.len());
     places.resize(target, 0);
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::HtmlNumericMaterializationError;
+    use super::super::{HtmlNumericMaterializationError, digit_steps_during};
     use super::*;
     use crate::internal::values::DocumentString;
 
@@ -534,6 +549,76 @@ mod tests {
             finished(&mut total).integer_part().decimal_digits(),
             zeros_after_one(CARRY_CHUNK + 8)
         );
+    }
+
+    /// The charged bound of each step covers the digit visits it makes.
+    fn assert_charged_for_every_step(
+        total: &mut HtmlDecimalTotal,
+        addend: &HtmlNonNegativeDecimal,
+    ) {
+        let bound = total.added_work_bound(addend).unwrap();
+        let (result, steps) =
+            digit_steps_during(|| total.try_added_to(addend, usize::MAX, usize::MAX));
+        result.unwrap();
+        assert!(
+            steps as usize <= bound,
+            "an addition made {steps} visits for a charge of {bound}"
+        );
+        while total.carry_pending() {
+            let bound = total.carried_work_bound().unwrap();
+            let (result, steps) = digit_steps_during(|| total.try_carried(usize::MAX, usize::MAX));
+            result.unwrap();
+            assert!(
+                steps as usize <= bound,
+                "a carry made {steps} visits for a charge of {bound}"
+            );
+        }
+    }
+
+    fn assert_finish_charged(total: &HtmlDecimalTotal) -> HtmlNonNegativeDecimal {
+        let bound = total.finished_work_bound().unwrap();
+        let (result, steps) = digit_steps_during(|| total.try_finished(usize::MAX, usize::MAX));
+        assert!(
+            steps as usize <= bound,
+            "a read-out made {steps} visits for a charge of {bound}"
+        );
+        result.unwrap().value
+    }
+
+    /// The growth inputs of the work-growth test, an ever longer series and random series: no
+    /// step makes more digit visits than it was charged for.
+    #[test]
+    fn every_step_is_charged_for_the_digit_visits_it_makes() {
+        for digits in [300_usize, 1_200] {
+            let mut total = HtmlDecimalTotal::default();
+            assert_charged_for_every_step(
+                &mut total,
+                &decimal(&format!("{}1", "9".repeat(digits)), ""),
+            );
+            for _ in 0..digits / 3 {
+                assert_charged_for_every_step(&mut total, &decimal("1", ""));
+            }
+            let value = assert_finish_charged(&total);
+            assert_eq!(value.integer_part().decimal_digits().len(), digits + 2);
+        }
+        // Each addend is longer than the total, so the places grow every time.
+        let mut total = HtmlDecimalTotal::default();
+        for length in 1..200 {
+            let addend = decimal(&"7".repeat(length), &"3".repeat(length / 2));
+            assert_charged_for_every_step(&mut total, &addend);
+        }
+        assert_finish_charged(&total);
+        let mut random = Random(0x0bad_cafe_f00d_5eed);
+        for _ in 0..300 {
+            let mut total = HtmlDecimalTotal::default();
+            for _ in 0..1 + random.below(30) {
+                let long = random.below(6) == 0;
+                let integer = random.digits(1, if long { 150 } else { 8 });
+                let fraction = random.digits(0, if long { 100 } else { 6 });
+                assert_charged_for_every_step(&mut total, &decimal(&integer, &fraction));
+            }
+            assert_finish_charged(&total);
+        }
     }
 
     /// A carry out of the top needs one place more, which the byte limit and the digit limit each
