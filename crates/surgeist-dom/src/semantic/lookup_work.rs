@@ -49,39 +49,48 @@ fn names() -> DomNameLimits {
     DomNameLimits::new(16_777_216, 16_384, 4_000_000, 16_777_216).unwrap()
 }
 
+fn wide_capture_limits(n: usize) -> HtmlCaptureLimits {
+    HtmlCaptureLimits::new(
+        4 * n + 16,
+        16 * n + 64,
+        4 * n + 16,
+        100 * n + 100,
+        4 * n + 16,
+        0,
+        0,
+        1 << 30,
+    )
+}
+
+/// A new store holding one document with a parent of `n` children.
+fn wide_snapshot(n: usize) -> (DomSnapshot, DocumentId) {
+    let limits =
+        DomLimits::new(3 * n + 64, 1 << 22, 8 * n + 256, 0, 0, 16, 131072, names()).unwrap();
+    let mut dom = Dom::new(limits).unwrap();
+    let mut batch = DomBatch::new();
+    let document = batch.create_document();
+    let parent = batch.create_element_ns(&document, Namespace::html(), "div");
+    for _ in 0..n {
+        let child = batch.create_element_ns(&document, Namespace::html(), "span");
+        batch.insert_before(&child, &parent, None);
+    }
+    batch.insert_before(&parent, &document, None);
+    let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
+    let document = commit.document(&document).unwrap();
+    (dom.snapshot(), document)
+}
+
 #[test]
 fn mapping_every_node_to_its_subject_and_back_takes_steps_linear_in_the_nodes() {
     let sizes = [256usize, 512, 1024, 2048];
     let mut counts = Vec::new();
     for n in sizes {
-        let limits =
-            DomLimits::new(3 * n + 64, 1 << 22, 8 * n + 256, 0, 0, 16, 131072, names()).unwrap();
-        let mut dom = Dom::new(limits).unwrap();
-        let mut batch = DomBatch::new();
-        let document = batch.create_document();
-        let parent = batch.create_element_ns(&document, Namespace::html(), "div");
-        for _ in 0..n {
-            let child = batch.create_element_ns(&document, Namespace::html(), "span");
-            batch.insert_before(&child, &parent, None);
-        }
-        batch.insert_before(&parent, &document, None);
-        let commit = dom.apply(batch, &AtomicBool::new(false)).unwrap();
-        let document = commit.document(&document).unwrap();
-        let snapshot = dom.snapshot();
+        let (snapshot, document) = wide_snapshot(n);
         let captured = snapshot
             .html_capture(
                 document,
                 None,
-                HtmlCaptureLimits::new(
-                    4 * n + 16,
-                    16 * n + 64,
-                    4 * n + 16,
-                    100 * n + 100,
-                    4 * n + 16,
-                    0,
-                    0,
-                    1 << 30,
-                ),
+                wide_capture_limits(n),
                 DomHtmlCaptureLimits::new(4 * n + 16, 1 << 40),
                 &AtomicBool::new(false),
             )
@@ -128,164 +137,167 @@ fn registry_snapshot(count: usize) -> (DomSnapshot, Vec<DomRegistryId>) {
     (snapshot, ids)
 }
 
+/// The work charged to stage `n` registries and then find each staged.
+fn registry_work(n: usize) -> usize {
+    let (snapshot, ids) = registry_snapshot(n);
+    let mut builder = HtmlCaptureBuilder::new(
+        HtmlCaptureLimits::new(8, 8, 0, 4096, 8, n + 8, 0, 1 << 30),
+        HtmlHostFactsRevision::fresh(),
+    );
+    let cancel = AtomicBool::new(false);
+    let mut control = Control {
+        limits: DomHtmlCaptureLimits::new(n + 8, 1 << 40),
+        work: 0,
+        cancellation: &cancel,
+    };
+    let mut registries = StagedRegistries::default();
+    // The first pass stages every registry, the second finds each staged.
+    for _ in 0..2 {
+        for id in &ids {
+            registry_input(
+                &mut builder,
+                &snapshot,
+                DomRegistryBinding::Registry(*id),
+                &mut registries,
+                &mut control,
+            )
+            .unwrap();
+        }
+    }
+    assert_eq!(registries.items.len(), n);
+    control.work
+}
+
 #[test]
 fn resolving_each_registry_twice_takes_steps_linear_in_the_registries() {
-    let sizes = [128usize, 256, 512, 1024];
-    let mut counts = Vec::new();
-    for n in sizes {
-        let (snapshot, ids) = registry_snapshot(n);
-        let mut builder = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(8, 8, 0, 4096, 8, n + 8, 0, 1 << 30),
-            HtmlHostFactsRevision::fresh(),
-        );
-        let cancel = AtomicBool::new(false);
-        let mut control = Control {
-            limits: DomHtmlCaptureLimits::new(n + 8, 1 << 40),
-            work: 0,
-            cancellation: &cancel,
-        };
-        let mut registries = StagedRegistries::default();
-        // The first pass stages every registry, the second finds each staged.
-        for _ in 0..2 {
-            for id in &ids {
-                registry_input(
-                    &mut builder,
-                    &snapshot,
-                    DomRegistryBinding::Registry(*id),
-                    &mut registries,
-                    &mut control,
-                )
-                .unwrap();
-            }
-        }
-        assert_eq!(registries.items.len(), n);
-        counts.push(control.work);
-    }
+    let sizes = [64usize, 128, 256, 512];
+    let counts: Vec<usize> = sizes.iter().map(|n| registry_work(*n)).collect();
     assert_linear("registry resolution", &sizes, &counts);
+}
+
+/// The work charged to find the modal blocker of each of `n` Documents.
+fn modal_work(n: usize) -> usize {
+    let cancel = AtomicBool::new(false);
+    let limits = DomLimits::new(2 * n + 8, 1 << 20, 8 * n + 64, 0, 0, 1, 65536, names()).unwrap();
+    let mut dom = Dom::new(limits).unwrap();
+    let mut batch = DomBatch::new();
+    let documents: Vec<_> = (0..n).map(|_| batch.create_document()).collect();
+    let dialogs: Vec<_> = documents
+        .iter()
+        .map(|document| {
+            let dialog = batch.create_element_ns(document, Namespace::html(), "dialog");
+            batch.insert_before(&dialog, document, None);
+            dialog
+        })
+        .collect();
+    let commit = dom.apply(batch, &cancel).unwrap();
+    let documents: Vec<_> = documents
+        .iter()
+        .map(|document| commit.document(document).unwrap())
+        .collect();
+    let dialogs: Vec<_> = dialogs
+        .iter()
+        .map(|dialog| commit.created(dialog).unwrap().unwrap())
+        .collect();
+    for (document, dialog) in documents.iter().zip(&dialogs) {
+        crate::store::set_modal_fixture_state(
+            &mut dom,
+            *document,
+            Some(crate::dialog::DocumentInteractiveState::Known {
+                open_dialogs: Vec::new(),
+                top_layer: vec![*dialog],
+                pending_top_layer_removals: Vec::new(),
+            }),
+            &cancel,
+        )
+        .unwrap();
+    }
+    let source = dom.snapshot();
+    // Every Document and then every dialog, as a capture holding the
+    // dialog of each Document it covers.
+    let mut builder = HtmlCaptureBuilder::new(
+        HtmlCaptureLimits::new(
+            4 * n + 16,
+            16 * n + 64,
+            4 * n + 16,
+            100 * n + 100,
+            4 * n + 16,
+            0,
+            0,
+            1 << 30,
+        ),
+        HtmlHostFactsRevision::fresh(),
+    );
+    let mut staged = Vec::new();
+    for document in &documents {
+        let subject = builder
+            .add_document(
+                source.document(*document).unwrap().metadata().mode(),
+                HtmlScriptingStatus::Disabled,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        staged.push((document.node(), subject));
+    }
+    for (document, dialog) in staged.clone().iter().zip(&dialogs) {
+        let subject = builder
+            .add_element(
+                &document.1,
+                QualifiedName::new(Namespace::html(), None, "dialog"),
+                OrderedAttributes::default(),
+                HtmlCapturedIsValue::Absent,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        staged.push((*dialog, subject));
+    }
+    let captured = builder.finish().unwrap();
+    let entries: Vec<_> = staged
+        .iter()
+        .map(|(node, subject)| Entry {
+            node: *node,
+            subject: captured.subject_id(subject).unwrap(),
+        })
+        .collect();
+    let mut control = Control {
+        limits: DomHtmlCaptureLimits::new(2 * n + 8, 1 << 40),
+        work: 0,
+        cancellation: &cancel,
+    };
+    let input = modal::with_facts(
+        HtmlSemanticContextInput::new(Vec::new()),
+        &source,
+        &captured,
+        &mut nodes::LazyNodes::new(&entries, None),
+        Vec::new(),
+        surgeist_html_semantics::HtmlInertFactLimits::new(2 * n + 8, 1 << 30),
+        &mut control,
+    )
+    .unwrap();
+    let context = HtmlSemanticContext::new(
+        &captured,
+        captured.host_facts_revision().clone(),
+        input,
+        2 * n + 8,
+    )
+    .unwrap();
+    let facts = context.inert().unwrap();
+    assert_eq!(facts.documents().len(), n);
+    for (fact, (_, dialog)) in facts.documents().iter().zip(&staged[n..]) {
+        assert_eq!(
+            fact.blocking(),
+            &surgeist_html_semantics::HtmlDocumentModalBlocking::BlockedBy(
+                captured.subject_id(dialog).unwrap()
+            )
+        );
+    }
+    control.work
 }
 
 #[test]
 fn finding_the_modal_blocker_of_each_document_takes_steps_linear_in_the_documents() {
-    let sizes = [128usize, 256, 512, 1024];
-    let mut counts = Vec::new();
-    for n in sizes {
-        let cancel = AtomicBool::new(false);
-        let limits =
-            DomLimits::new(2 * n + 8, 1 << 20, 8 * n + 64, 0, 0, 1, 65536, names()).unwrap();
-        let mut dom = Dom::new(limits).unwrap();
-        let mut batch = DomBatch::new();
-        let documents: Vec<_> = (0..n).map(|_| batch.create_document()).collect();
-        let dialogs: Vec<_> = documents
-            .iter()
-            .map(|document| {
-                let dialog = batch.create_element_ns(document, Namespace::html(), "dialog");
-                batch.insert_before(&dialog, document, None);
-                dialog
-            })
-            .collect();
-        let commit = dom.apply(batch, &cancel).unwrap();
-        let documents: Vec<_> = documents
-            .iter()
-            .map(|document| commit.document(document).unwrap())
-            .collect();
-        let dialogs: Vec<_> = dialogs
-            .iter()
-            .map(|dialog| commit.created(dialog).unwrap().unwrap())
-            .collect();
-        for (document, dialog) in documents.iter().zip(&dialogs) {
-            crate::store::set_modal_fixture_state(
-                &mut dom,
-                *document,
-                Some(crate::dialog::DocumentInteractiveState::Known {
-                    open_dialogs: Vec::new(),
-                    top_layer: vec![*dialog],
-                    pending_top_layer_removals: Vec::new(),
-                }),
-                &cancel,
-            )
-            .unwrap();
-        }
-        let source = dom.snapshot();
-        // Every Document and then every dialog, as a capture holding the
-        // dialog of each Document it covers.
-        let mut builder = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(
-                4 * n + 16,
-                16 * n + 64,
-                4 * n + 16,
-                100 * n + 100,
-                4 * n + 16,
-                0,
-                0,
-                1 << 30,
-            ),
-            HtmlHostFactsRevision::fresh(),
-        );
-        let mut staged = Vec::new();
-        for document in &documents {
-            let subject = builder
-                .add_document(
-                    source.document(*document).unwrap().metadata().mode(),
-                    HtmlScriptingStatus::Disabled,
-                    HtmlCaptureRegistryInput::Null,
-                )
-                .unwrap();
-            staged.push((document.node(), subject));
-        }
-        for (document, dialog) in staged.clone().iter().zip(&dialogs) {
-            let subject = builder
-                .add_element(
-                    &document.1,
-                    QualifiedName::new(Namespace::html(), None, "dialog"),
-                    OrderedAttributes::default(),
-                    HtmlCapturedIsValue::Absent,
-                    HtmlCaptureRegistryInput::Null,
-                )
-                .unwrap();
-            staged.push((*dialog, subject));
-        }
-        let captured = builder.finish().unwrap();
-        let entries: Vec<_> = staged
-            .iter()
-            .map(|(node, subject)| Entry {
-                node: *node,
-                subject: captured.subject_id(subject).unwrap(),
-            })
-            .collect();
-        let mut control = Control {
-            limits: DomHtmlCaptureLimits::new(2 * n + 8, 1 << 40),
-            work: 0,
-            cancellation: &cancel,
-        };
-        let input = modal::with_facts(
-            HtmlSemanticContextInput::new(Vec::new()),
-            &source,
-            &captured,
-            &mut nodes::LazyNodes::new(&entries, None),
-            Vec::new(),
-            surgeist_html_semantics::HtmlInertFactLimits::new(n + 8, 1 << 30),
-            &mut control,
-        )
-        .unwrap();
-        let context = HtmlSemanticContext::new(
-            &captured,
-            captured.host_facts_revision().clone(),
-            input,
-            2 * n + 8,
-        )
-        .unwrap();
-        let facts = context.inert().unwrap();
-        assert_eq!(facts.documents().len(), n);
-        for (fact, (_, dialog)) in facts.documents().iter().zip(&staged[n..]) {
-            assert_eq!(
-                fact.blocking(),
-                &surgeist_html_semantics::HtmlDocumentModalBlocking::BlockedBy(
-                    captured.subject_id(dialog).unwrap()
-                )
-            );
-        }
-        counts.push(control.work);
-    }
+    let sizes = [64usize, 128, 256, 512];
+    let counts: Vec<usize> = sizes.iter().map(|n| modal_work(*n)).collect();
     assert_linear("modal blocker lookups", &sizes, &counts);
 }
 
@@ -349,4 +361,74 @@ fn a_subject_of_another_capture_is_refused_whatever_its_ordinal() {
         assert_eq!(first.node(&own.subject).unwrap(), own.node);
         assert_eq!(second.node(&other.subject).unwrap(), other.node);
     }
+}
+
+/// Makes `count` more stores, so the next one has a different owner identity.
+fn shift_owners(count: usize) {
+    for _ in 0..count {
+        drop(Dom::new(DomLimits::new(8, 4096, 32, 0, 0, 1, 65536, names()).unwrap()).unwrap());
+    }
+}
+
+/// Runs `measure` after each of several owner shifts and requires one answer.
+fn assert_owner_independent<T: PartialEq + std::fmt::Debug>(
+    what: &str,
+    mut measure: impl FnMut() -> T,
+) {
+    let mut seen = Vec::new();
+    for shift in [0, 3, 17, 101] {
+        shift_owners(shift);
+        seen.push(measure());
+    }
+    assert!(
+        seen.iter().all(|value| *value == seen[0]),
+        "{what} depends on the owner identity of the store: {seen:?}"
+    );
+}
+
+/// The least work bound under which `snapshot` captures `document`.
+fn least_capture_work(snapshot: &DomSnapshot, document: DocumentId, n: usize) -> usize {
+    let finishes = |work: usize| {
+        snapshot
+            .html_capture(
+                document,
+                None,
+                wide_capture_limits(n),
+                DomHtmlCaptureLimits::new(4 * n + 16, work),
+                &AtomicBool::new(false),
+            )
+            .is_ok()
+    };
+    let mut high = 1;
+    while !finishes(high) {
+        high *= 2;
+    }
+    let mut low = high / 2;
+    while high - low > 1 {
+        let middle = low + (high - low) / 2;
+        if finishes(middle) {
+            high = middle;
+        } else {
+            low = middle;
+        }
+    }
+    high
+}
+
+#[test]
+fn the_work_a_capture_needs_does_not_depend_on_the_stores_made_before_it() {
+    assert_owner_independent("capture work", || {
+        let (snapshot, document) = wide_snapshot(300);
+        least_capture_work(&snapshot, document, 300)
+    });
+}
+
+#[test]
+fn the_work_of_registry_resolution_does_not_depend_on_the_stores_made_before_it() {
+    assert_owner_independent("registry work", || registry_work(100));
+}
+
+#[test]
+fn the_work_of_modal_blocker_lookups_does_not_depend_on_the_stores_made_before_it() {
+    assert_owner_independent("modal work", || modal_work(100));
 }
