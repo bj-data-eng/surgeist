@@ -420,6 +420,62 @@ impl fmt::Display for HtmlSemanticContextError {
     }
 }
 impl Error for HtmlSemanticContextError {}
+/// A producer supplement that a context accepts only for one exact capture and
+/// host revision. Each supplement also has its own expected revision, which the
+/// context compares after this qualification.
+pub(super) trait QualifiedSupplement {
+    /// The identity of the capture the supplement was built over.
+    fn supplement_capture(&self) -> &HtmlCaptureId;
+    /// The host-fact revision the supplement was built under.
+    fn supplement_host(&self) -> &HtmlHostFactsRevision;
+}
+macro_rules! qualified_supplements {
+    ($($supplement:ty),+ $(,)?) => {
+        $(
+            impl QualifiedSupplement for $supplement {
+                fn supplement_capture(&self) -> &HtmlCaptureId {
+                    self.capture()
+                }
+                fn supplement_host(&self) -> &HtmlHostFactsRevision {
+                    self.host_revision()
+                }
+            }
+        )+
+    };
+}
+qualified_supplements!(
+    HtmlMediaFacts,
+    HtmlCapturedBaseFacts,
+    HtmlRelFacts,
+    HtmlImageDimensionFacts,
+    HtmlNaturalDimensions,
+    HtmlGlobalInheritanceFacts,
+    HtmlInertFacts,
+    HtmlOutputDefaultFacts,
+    HtmlElementReferenceFacts,
+    HtmlControlFacts,
+    HtmlLanguageDirectionFacts,
+);
+/// Refuses an attached supplement that was not built over this capture, then one
+/// that was not built under this host revision. An absent supplement qualifies.
+fn qualify(
+    supplement: Option<&impl QualifiedSupplement>,
+    capture: &HtmlCapture,
+    host_revision: &HtmlHostFactsRevision,
+    capture_mismatch: HtmlSemanticContextError,
+    host_mismatch: HtmlSemanticContextError,
+) -> Result<(), HtmlSemanticContextError> {
+    let Some(supplement) = supplement else {
+        return Ok(());
+    };
+    if supplement.supplement_capture() != capture.identity() {
+        return Err(capture_mismatch);
+    }
+    if supplement.supplement_host() != host_revision {
+        return Err(host_mismatch);
+    }
+    Ok(())
+}
 impl HtmlSemanticContext {
     pub fn media_revision(&self) -> Option<&HtmlMediaContextRevision> {
         self.media_revision.as_ref()
@@ -465,13 +521,14 @@ impl HtmlSemanticContext {
             base_revision,
             base_facts,
         } = input;
+        qualify(
+            media.as_ref(),
+            capture,
+            &host_revision,
+            HtmlSemanticContextError::MediaCaptureMismatch,
+            HtmlSemanticContextError::MediaHostRevisionMismatch,
+        )?;
         if let Some(facts) = &media {
-            if facts.capture() != capture.identity() {
-                return Err(HtmlSemanticContextError::MediaCaptureMismatch);
-            }
-            if facts.host_revision() != &host_revision {
-                return Err(HtmlSemanticContextError::MediaHostRevisionMismatch);
-            }
             if media_revision.as_ref() != Some(facts.revision()) {
                 return Err(HtmlSemanticContextError::MediaRevisionMismatch);
             }
@@ -482,35 +539,38 @@ impl HtmlSemanticContext {
         {
             return Err(HtmlSemanticContextError::MicrodataFactsMismatch);
         }
+        qualify(
+            base_facts.as_ref(),
+            capture,
+            &host_revision,
+            HtmlSemanticContextError::BaseCaptureMismatch,
+            HtmlSemanticContextError::BaseHostRevisionMismatch,
+        )?;
         if let Some(facts) = &base_facts {
-            if facts.capture() != capture.identity() {
-                return Err(HtmlSemanticContextError::BaseCaptureMismatch);
-            }
-            if facts.host_revision() != &host_revision {
-                return Err(HtmlSemanticContextError::BaseHostRevisionMismatch);
-            }
             if base_revision.as_ref() != Some(facts.revision()) {
                 return Err(HtmlSemanticContextError::BaseRevisionMismatch);
             }
         }
+        qualify(
+            rel_facts.as_ref(),
+            capture,
+            &host_revision,
+            HtmlSemanticContextError::LinkRelationshipsCaptureMismatch,
+            HtmlSemanticContextError::LinkRelationshipsHostRevisionMismatch,
+        )?;
         if let Some(facts) = &rel_facts {
-            if facts.capture() != capture.identity() {
-                return Err(HtmlSemanticContextError::LinkRelationshipsCaptureMismatch);
-            }
-            if facts.host_revision() != &host_revision {
-                return Err(HtmlSemanticContextError::LinkRelationshipsHostRevisionMismatch);
-            }
             if facts.revisions() != &rel_revisions {
                 return Err(HtmlSemanticContextError::LinkRelationshipsRevisionMismatch);
             }
         }
+        qualify(
+            image_dimensions.as_ref(),
+            capture,
+            &host_revision,
+            HtmlSemanticContextError::ImageDimensionsCaptureMismatch,
+            HtmlSemanticContextError::ImageDimensionsHostRevisionMismatch,
+        )?;
         if let Some(facts) = &mut image_dimensions {
-            if facts.capture() != capture.identity() {
-                return Err(HtmlSemanticContextError::ImageDimensionsCaptureMismatch);
-            }
-            if facts.host_revision() != &host_revision {
-                return Err(HtmlSemanticContextError::ImageDimensionsHostRevisionMismatch);
-            }
             if image_dimension_revision.as_ref() != Some(facts.revision()) {
                 return Err(HtmlSemanticContextError::ImageDimensionsRevisionMismatch);
             }
@@ -523,71 +583,70 @@ impl HtmlSemanticContext {
                 .validate_joins(participation.as_ref(), natural_dimensions.as_ref())
                 .map_err(HtmlSemanticContextError::ImageDimensionsFacts)?;
         }
+        qualify(
+            natural_dimensions.as_ref(),
+            capture,
+            &host_revision,
+            HtmlSemanticContextError::NaturalDimensionsCaptureMismatch,
+            HtmlSemanticContextError::NaturalDimensionsHostRevisionMismatch,
+        )?;
         if let Some(facts) = &natural_dimensions {
-            if facts.capture() != capture.identity() {
-                return Err(HtmlSemanticContextError::NaturalDimensionsCaptureMismatch);
-            }
-            if facts.host_revision() != &host_revision {
-                return Err(HtmlSemanticContextError::NaturalDimensionsHostRevisionMismatch);
-            }
             if natural_dimension_revision.as_ref() != Some(facts.revision()) {
                 return Err(HtmlSemanticContextError::NaturalDimensionsRevisionMismatch);
             }
         }
+        qualify(
+            global_inheritance.as_ref(),
+            capture,
+            &host_revision,
+            HtmlSemanticContextError::GlobalInheritanceCaptureMismatch,
+            HtmlSemanticContextError::GlobalInheritanceHostRevisionMismatch,
+        )?;
         if let Some(facts) = &global_inheritance {
-            if facts.capture() != capture.identity() {
-                return Err(HtmlSemanticContextError::GlobalInheritanceCaptureMismatch);
-            }
-            if facts.host_revision() != &host_revision {
-                return Err(HtmlSemanticContextError::GlobalInheritanceHostRevisionMismatch);
-            }
             if global_inheritance_revision.as_ref() != Some(facts.revision()) {
                 return Err(HtmlSemanticContextError::GlobalInheritanceRevisionMismatch);
             }
         }
+        qualify(
+            inert.as_ref(),
+            capture,
+            &host_revision,
+            HtmlSemanticContextError::InertCaptureMismatch,
+            HtmlSemanticContextError::InertHostRevisionMismatch,
+        )?;
         if let Some(facts) = &inert {
-            if facts.capture() != capture.identity() {
-                return Err(HtmlSemanticContextError::InertCaptureMismatch);
-            }
-            if facts.host_revision() != &host_revision {
-                return Err(HtmlSemanticContextError::InertHostRevisionMismatch);
-            }
             if inert_revision.as_ref() != Some(facts.flat_revision()) {
                 return Err(HtmlSemanticContextError::InertRevisionMismatch);
             }
         }
-        if let Some(facts) = &output_defaults {
-            if facts.capture() != capture.identity() {
-                return Err(HtmlSemanticContextError::OutputDefaultsCaptureMismatch);
-            }
-            if facts.host_revision() != &host_revision {
-                return Err(HtmlSemanticContextError::OutputDefaultsHostRevisionMismatch);
-            }
-        }
-        if let Some(facts) = &element_references {
-            if facts.capture() != capture.identity() {
-                return Err(HtmlSemanticContextError::ElementReferencesCaptureMismatch);
-            }
-            if facts.host_revision() != &host_revision {
-                return Err(HtmlSemanticContextError::ElementReferencesHostRevisionMismatch);
-            }
-        }
-        if let Some(facts) = &controls {
-            if facts.capture() != capture.identity() {
-                return Err(HtmlSemanticContextError::ControlsCaptureMismatch);
-            }
-            if facts.host_revision() != &host_revision {
-                return Err(HtmlSemanticContextError::ControlsHostRevisionMismatch);
-            }
-        }
-        if let Some(facts) = &language_direction {
-            if facts.capture() != capture.identity() {
-                return Err(HtmlSemanticContextError::LanguageDirectionCaptureMismatch);
-            }
-            if facts.host_revision() != &host_revision {
-                return Err(HtmlSemanticContextError::LanguageDirectionHostRevisionMismatch);
-            }
-        }
+        qualify(
+            output_defaults.as_ref(),
+            capture,
+            &host_revision,
+            HtmlSemanticContextError::OutputDefaultsCaptureMismatch,
+            HtmlSemanticContextError::OutputDefaultsHostRevisionMismatch,
+        )?;
+        qualify(
+            element_references.as_ref(),
+            capture,
+            &host_revision,
+            HtmlSemanticContextError::ElementReferencesCaptureMismatch,
+            HtmlSemanticContextError::ElementReferencesHostRevisionMismatch,
+        )?;
+        qualify(
+            controls.as_ref(),
+            capture,
+            &host_revision,
+            HtmlSemanticContextError::ControlsCaptureMismatch,
+            HtmlSemanticContextError::ControlsHostRevisionMismatch,
+        )?;
+        qualify(
+            language_direction.as_ref(),
+            capture,
+            &host_revision,
+            HtmlSemanticContextError::LanguageDirectionCaptureMismatch,
+            HtmlSemanticContextError::LanguageDirectionHostRevisionMismatch,
+        )?;
         if let Some(input) = &participation {
             if input.capture() != capture.identity() {
                 return Err(HtmlSemanticContextError::ParticipationCaptureMismatch);
@@ -723,5 +782,91 @@ impl HtmlSemanticContext {
     }
     pub(super) fn empty_language(&self) -> &DocumentString {
         &self.empty_language
+    }
+}
+
+#[cfg(test)]
+mod qualification_tests {
+    use super::*;
+    use crate::{
+        HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlScriptingStatus,
+    };
+    use surgeist_html::construction::HtmlDocumentMode;
+
+    struct Toy {
+        capture: HtmlCaptureId,
+        host: HtmlHostFactsRevision,
+    }
+    impl QualifiedSupplement for Toy {
+        fn supplement_capture(&self) -> &HtmlCaptureId {
+            &self.capture
+        }
+        fn supplement_host(&self) -> &HtmlHostFactsRevision {
+            &self.host
+        }
+    }
+    fn capture(host: HtmlHostFactsRevision) -> HtmlCapture {
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(2, 0, 0, 0, 0, 0, 0, 16_777_216),
+            host,
+        );
+        let document = builder
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Unavailable,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        builder.establish_children(&document, &[]).unwrap();
+        builder.finish().unwrap()
+    }
+    fn check(
+        supplement: Option<&Toy>,
+        capture: &HtmlCapture,
+        host: &HtmlHostFactsRevision,
+    ) -> Result<(), HtmlSemanticContextError> {
+        qualify(
+            supplement,
+            capture,
+            host,
+            HtmlSemanticContextError::MediaCaptureMismatch,
+            HtmlSemanticContextError::MediaHostRevisionMismatch,
+        )
+    }
+
+    #[test]
+    fn a_supplement_qualifies_only_for_its_own_capture_and_host_revision() {
+        let host = HtmlHostFactsRevision::fresh();
+        let own = capture(host.clone());
+        let other = capture(HtmlHostFactsRevision::fresh());
+        let toy = Toy {
+            capture: own.identity().clone(),
+            host: host.clone(),
+        };
+        assert_eq!(check(Some(&toy), &own, &host), Ok(()));
+        assert_eq!(check(None, &other, &host), Ok(()));
+        assert_eq!(
+            check(Some(&toy), &other, &host),
+            Err(HtmlSemanticContextError::MediaCaptureMismatch)
+        );
+        assert_eq!(
+            check(Some(&toy), &own, &HtmlHostFactsRevision::fresh()),
+            Err(HtmlSemanticContextError::MediaHostRevisionMismatch)
+        );
+    }
+
+    #[test]
+    fn the_capture_is_refused_before_the_host_revision() {
+        let host = HtmlHostFactsRevision::fresh();
+        let own = capture(host.clone());
+        let other = capture(HtmlHostFactsRevision::fresh());
+        let toy = Toy {
+            capture: own.identity().clone(),
+            host: host.clone(),
+        };
+        assert_eq!(
+            check(Some(&toy), &other, &HtmlHostFactsRevision::fresh()),
+            Err(HtmlSemanticContextError::MediaCaptureMismatch)
+        );
     }
 }
