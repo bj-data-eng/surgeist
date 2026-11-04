@@ -674,3 +674,77 @@ fn a_property_with_many_names_finds_each_url_and_permission_fact_in_constant_wor
         microdata_property_fact_work,
     );
 }
+
+/// A document of `items` untyped microdata items, each holding one property
+/// element, and the item and property subjects in document order.
+fn microdata_page(
+    items: usize,
+) -> (
+    HtmlCapture,
+    Vec<HtmlCaptureSubjectId>,
+    Vec<HtmlCaptureSubjectId>,
+) {
+    let (mut b, d) = big_builder(2 * items);
+    let scopes: Vec<_> = (0..items)
+        .map(|_| attributed(&mut b, &d, "div", &[("itemscope", "")]))
+        .collect();
+    let properties: Vec<_> = (0..items)
+        .map(|_| attributed(&mut b, &d, "span", &[("itemprop", "name")]))
+        .collect();
+    for (scope, property) in scopes.iter().zip(&properties) {
+        b.establish_children(property, &[]).unwrap();
+        b.establish_children(scope, std::slice::from_ref(property))
+            .unwrap();
+    }
+    b.establish_children(&d, &scopes).unwrap();
+    let capture = b.finish().unwrap();
+    let ids = |nodes: &[surgeist_html_semantics::HtmlCaptureBuilderSubject]| {
+        nodes
+            .iter()
+            .map(|node| capture.subject_id(node).unwrap())
+            .collect::<Vec<_>>()
+    };
+    let (scopes, properties) = (ids(&scopes), ids(&properties));
+    (capture, scopes, properties)
+}
+
+/// A batch of `queries` of the same kind over distinct elements of one tree
+/// builds the tree's item graph once: it charges less than twice the work of
+/// the first query alone, where a graph built for each query charges about
+/// `queries` times as much.
+fn assert_graph_is_built_once(
+    label: &str,
+    query: HtmlSemanticQuery,
+    pick: impl Fn(&[HtmlCaptureSubjectId], &[HtmlCaptureSubjectId]) -> Vec<HtmlCaptureSubjectId>,
+) {
+    let (capture, items, properties) = microdata_page(100);
+    let context = HtmlSemanticContext::new(
+        &capture,
+        capture.host_facts_revision().clone(),
+        HtmlSemanticContextInput::new(vec![]),
+        0,
+    )
+    .unwrap();
+    let subjects = pick(&items, &properties);
+    let one = sweep_work(&capture, &context, &subjects[..1], query);
+    let eight = sweep_work(&capture, &context, &subjects[..8], query);
+    assert!(
+        eight < 2 * one,
+        "{label}: one query charged {one} but a batch of eight charged {eight}"
+    );
+}
+
+#[test]
+fn item_queries_of_one_tree_share_its_item_graph() {
+    assert_graph_is_built_once("item", HtmlSemanticQuery::MicrodataItem, |items, _| {
+        items.to_vec()
+    });
+}
+#[test]
+fn author_queries_of_one_tree_share_its_item_graph() {
+    assert_graph_is_built_once(
+        "author",
+        HtmlSemanticQuery::MicrodataAuthor,
+        |_, properties| properties.to_vec(),
+    );
+}
