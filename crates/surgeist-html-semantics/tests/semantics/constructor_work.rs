@@ -12,7 +12,7 @@
 //! charging rules of the constructor, as a check that does not read the
 //! implementation's output.
 
-use crate::semantics::support::builder_with;
+use crate::semantics::support::{assert_doubling_at_most_2_2, builder_with};
 use surgeist_html::{
     bounded::lexical::{HtmlSpaceTokenCursor, HtmlSpaceTokenStep},
     construction::HtmlDocumentMode,
@@ -207,7 +207,7 @@ fn page() -> Page {
         capture,
     }
 }
-fn inert_fact(
+pub fn inert_fact(
     subject: &HtmlCaptureSubjectId,
     connected: Option<bool>,
     relation: HtmlDocumentFlatTreeRelation,
@@ -306,23 +306,7 @@ fn a_page_of_roots_parents_and_a_modal_blocker_charges_its_pinned_total() {
     );
 }
 
-/// Every doubling must at most multiply a total that is linear in the number of
-/// facts by 2.2; a scan of the earlier facts for each fact multiplies it by 4.
-pub fn assert_doubling_at_most_2_2(label: &str, sizes: &[usize], work: impl Fn(usize) -> usize) {
-    let totals: Vec<usize> = sizes.iter().map(|size| work(*size)).collect();
-    for (pair, totals) in sizes.windows(2).zip(totals.windows(2)) {
-        assert!(
-            totals[1] * 10 <= totals[0] * 22,
-            "{label}: {} facts charged {} but {} facts charged {}: more than 2.2 times",
-            pair[0],
-            totals[0],
-            pair[1],
-            totals[1]
-        );
-    }
-}
-
-fn big_builder(subjects: usize) -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
+pub fn big_builder(subjects: usize) -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
     builder_with(HtmlCaptureLimits::new(
         subjects + 10,
         4 * subjects + 100,
@@ -337,7 +321,7 @@ fn big_builder(subjects: usize) -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubjec
 
 /// A capture whose document holds an `html` element with `count - 1` `div`
 /// children. The capture tree is flat, so only the supplied relations are deep.
-fn flat_page(count: usize) -> (HtmlCapture, Vec<HtmlCaptureSubjectId>) {
+pub fn flat_page(count: usize) -> (HtmlCapture, Vec<HtmlCaptureSubjectId>) {
     let (mut b, d) = big_builder(count);
     let root = html(&mut b, &d, "html");
     let divs: Vec<_> = (1..count).map(|_| html(&mut b, &d, "div")).collect();

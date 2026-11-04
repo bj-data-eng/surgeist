@@ -9,6 +9,7 @@ mod controls;
 mod elements;
 mod global;
 mod links;
+mod lookup_work;
 mod media;
 mod metadata;
 mod microdata;
