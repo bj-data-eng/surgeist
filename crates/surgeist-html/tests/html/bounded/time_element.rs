@@ -5,7 +5,7 @@ use surgeist_html::{
         numeric::{HtmlIntegerUnitStepError, HtmlNumericMaterializationError},
         temporal::{
             HtmlTimeElementInterpretation as Interpretation,
-            HtmlTimeElementInterpretationActionKind as Kind,
+            HtmlTimeElementInterpretationActionKind as Kind, HtmlTimeElementInterpretationError,
         },
     },
     microsyntax::temporal::{HtmlMachineReadableTime, HtmlTimeElementValue},
@@ -490,10 +490,8 @@ mod spec_duration {
             }
             next = input[position];
             position += 1;
-            let mut fraction = String::new();
-            let units;
-            if next == '.' {
-                fraction = collect_digits(&input, &mut position);
+            let (fraction, units) = if next == '.' {
+                let fraction = collect_digits(&input, &mut position);
                 if fraction.is_empty() {
                     return None;
                 }
@@ -506,7 +504,7 @@ mod spec_duration {
                 if next != 'S' && next != 's' {
                     return None;
                 }
-                units = Units::Seconds;
+                (fraction, Units::Seconds)
             } else {
                 if is_whitespace(next) {
                     skip_whitespace(&input, &mut position);
@@ -516,7 +514,7 @@ mod spec_duration {
                     next = input[position];
                     position += 1;
                 }
-                units = match next {
+                let units = match next {
                     'Y' | 'y' => {
                         m_is_months = true;
                         Units::Years
@@ -541,7 +539,8 @@ mod spec_duration {
                     }
                     _ => return None,
                 };
-            }
+                (String::new(), units)
+            };
             component_count += 1;
             let nonzero = integer.bytes().chain(fraction.bytes()).any(|d| d != b'0');
             let multiplier = match units {
@@ -774,4 +773,55 @@ fn controlled_duration_equals_the_ordinary_path_and_the_literal_algorithm_on_ran
     }
     // The generator reaches both the successes and the failures.
     assert!((1_000..3_800).contains(&recovered), "{recovered}");
+}
+
+/// The failure that driving `text` under the digit limit reaches, with the number of steps taken.
+fn digit_limited_failure(
+    text: &str,
+    max_digits: usize,
+) -> (usize, HtmlTimeElementInterpretationError) {
+    let raw = DocumentString::from(text);
+    let mut owner = Some(Interpretation::new(&raw, HtmlValueInterpreter::new(raw.len())).unwrap());
+    for steps in 0..100_000 {
+        let action = owner.as_mut().unwrap().next_action().unwrap().unwrap();
+        if let Err(error) = action.advance(max_digits, usize::MAX).outcome() {
+            assert_eq!(Interpretation::try_finish(&mut owner).unwrap_err(), error);
+            return (steps, error);
+        }
+    }
+    panic!("{text:?} reached no failure");
+}
+
+/// The running total is held to the digit limit exactly where a sum first needs one more digit,
+/// whether the carry that adds it is short or longer than one step walks.
+#[test]
+fn a_running_duration_total_fails_at_the_addition_that_exceeds_the_digit_limit() {
+    for (text, limit, required) in [
+        ("99s1s", 2, 3),
+        ("99s1s100s", 2, 3),
+        (&format!("{}s1s", "9".repeat(40)), 40, 41),
+        (&format!("{}s1s", "9".repeat(400)), 400, 401),
+    ] {
+        let (_, error) = digit_limited_failure(text, limit);
+        assert!(
+            matches!(
+                error.processing_failure(),
+                Some(HtmlNumericMaterializationError::Boundary(
+                    HtmlIntegerUnitStepError::DigitLimitExceeded { limit: l, required: r }
+                )) if l == limit && r == required
+            ),
+            "{text:?}: {error:?}"
+        );
+    }
+    // The same number without the final carry stays within the limit.
+    let raw = DocumentString::from(format!("{}s0s", "9".repeat(400)).as_str());
+    let mut owner = Some(Interpretation::new(&raw, HtmlValueInterpreter::new(raw.len())).unwrap());
+    while let Some(action) = owner.as_mut().unwrap().next_action().unwrap() {
+        action.advance(400, usize::MAX).outcome().unwrap();
+    }
+    let report = Interpretation::try_finish(&mut owner).unwrap();
+    assert!(matches!(
+        report.recovery(),
+        HtmlValueRecoveryState::Value(HtmlMachineReadableTime::Duration(_))
+    ));
 }
