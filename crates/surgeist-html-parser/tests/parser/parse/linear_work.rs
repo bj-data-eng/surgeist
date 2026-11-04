@@ -1479,3 +1479,31 @@ fn record_visits_of_repeated_open_details_of_one_group_at_most_double_with_their
         },
     );
 }
+
+#[test]
+fn record_visits_of_repeated_bases_without_an_href_at_most_double_with_their_number() {
+    // HTML 877d6146487f section 4.2.3 (the base element): the document base URL follows the first
+    // base element with an href attribute in tree order, so a base without one cannot change it
+    // and its insertion needs no search of the document.
+    assert_visits_each_doubling_at_most_two_point_two_times(
+        REPEAT_SIZES,
+        "repeated bases without an href",
+        |n| parse_work(format!("<!doctype html><body>{}", "<base>".repeat(n))).visited,
+    );
+}
+
+#[test]
+fn record_visits_the_adoption_agency_adds_by_moving_bases_without_an_href_at_most_double() {
+    // `</b>` makes the adoption agency move the children of the `p`, one removal and one insertion
+    // for each base. With no base that has an href, none of them changes the first.
+    assert_visits_each_doubling_at_most_two_point_two_times(
+        REPEAT_SIZES,
+        "bases moved by the adoption agency",
+        |n| {
+            let bases = "<base>".repeat(n);
+            let moved = parse_work(format!("<!doctype html><body><b>1<p>{bases}</b>"));
+            let kept = parse_work(format!("<!doctype html><body><b>1<p>{bases}"));
+            moved.visited.saturating_sub(kept.visited)
+        },
+    );
+}
