@@ -129,16 +129,19 @@ impl Planned {
         control: &mut Control<'_>,
     ) -> Result<Option<(NodeId, bool)>, DomHtmlCaptureError> {
         control.charge(1)?;
-        let position = match self.revisit.pop() {
-            Some(Reverse(position)) => {
-                control.charge(heap_steps(self.revisit.len()))?;
-                position
+        let position = if self.revisit.is_empty() {
+            if self.cursor >= self.entries.len() {
+                return Ok(None);
             }
-            None if self.cursor < self.entries.len() => {
-                self.cursor += 1;
-                self.cursor - 1
+            self.cursor += 1;
+            self.cursor - 1
+        } else {
+            // The sift of the pop is charged before it runs.
+            control.charge(heap_steps(self.revisit.len()))?;
+            match self.revisit.pop() {
+                Some(Reverse(position)) => position,
+                None => return Err(DomHtmlCaptureError::UnmappedSubject),
             }
-            None => return Ok(None),
         };
         let entry = self
             .entries

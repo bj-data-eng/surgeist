@@ -46,7 +46,8 @@ use crate::{
 /// `work`. Actual HTML/null-definition classifications also use subjects, with
 /// their context qualification and duplicate checks charged to adapter work.
 /// Planning and the final subject lookups use `NodeId` indexes of at most four
-/// slots per admitted subject, each admitted and charged before it allocates.
+/// slots per admitted subject (and at least eight), each admitted against
+/// `subjects` and charged before it allocates.
 /// Planned-node membership, subject and parent lookups, and control-owner and
 /// command-target lookups each cost a constant number of charged steps; so does
 /// choosing the next node to expand, except that revisiting a node whose
@@ -1161,6 +1162,84 @@ mod tests {
             assert_eq!(control.work, 0);
             assert_eq!(builder.usage(), before);
             assert_eq!(Arc::strong_count(backing), strong);
+        }
+    }
+
+    #[test]
+    fn cancellation_flipped_during_attachment_refuses_as_cancelled_and_attaches_nothing() {
+        use surgeist_html::values::OrderedAttributes;
+        #[derive(Clone, Copy, Debug)]
+        enum Edge {
+            Children,
+            Parent,
+        }
+        // Runs one edge through the adapter's own wiring, flipping the flag
+        // from the work charge at the `flip`-th step when given.
+        fn attach(
+            edge: Edge,
+            flip: Option<usize>,
+        ) -> (usize, Result<(), DomHtmlCaptureError>, bool) {
+            let mut builder =
+                HtmlCaptureBuilder::new(limits(1_000_000), HtmlHostFactsRevision::fresh());
+            let document = builder
+                .add_document(
+                    surgeist_html::construction::HtmlDocumentMode::NoQuirks,
+                    HtmlScriptingStatus::Disabled,
+                    HtmlCaptureRegistryInput::Null,
+                )
+                .unwrap();
+            let mut element = |name: &str| {
+                builder
+                    .add_element(
+                        &document,
+                        QualifiedName::new(Namespace::html(), None, name),
+                        OrderedAttributes::default(),
+                        HtmlCapturedIsValue::Absent,
+                        HtmlCaptureRegistryInput::Null,
+                    )
+                    .unwrap()
+            };
+            let (child, parent, above) = (element("a"), element("b"), element("c"));
+            builder.establish_parent(&parent, &above).unwrap();
+            let before = builder.usage();
+            let cancellation = AtomicBool::new(false);
+            let mut control = Control {
+                limits: DomHtmlCaptureLimits::new(16, usize::MAX),
+                work: 0,
+                cancellation: &cancellation,
+            };
+            let mut steps = 0;
+            let mut step = || {
+                steps += 1;
+                if Some(steps) == flip {
+                    cancellation.store(true, Ordering::Release);
+                }
+                control.charge(1)
+            };
+            let result = match edge {
+                Edge::Children => builder.establish_children_with(
+                    &parent,
+                    std::slice::from_ref(&child),
+                    &mut step,
+                ),
+                Edge::Parent => builder.establish_parent_with(&child, &parent, &mut step),
+            }
+            .map_err(edge_capture_error);
+            let unchanged = builder.usage() == before;
+            (steps, result, unchanged)
+        }
+        for edge in [Edge::Children, Edge::Parent] {
+            let (total, finished, _) = attach(edge, None);
+            assert!(finished.is_ok() && total > 2, "{edge:?}");
+            for flip in 1..=total {
+                let (steps, result, unchanged) = attach(edge, Some(flip));
+                assert!(
+                    matches!(result, Err(DomHtmlCaptureError::Cancelled)),
+                    "{edge:?} flipped at step {flip}: {result:?}"
+                );
+                assert_eq!(steps, flip, "{edge:?}: no step after the refusal");
+                assert!(unchanged, "{edge:?} flipped at step {flip}");
+            }
         }
     }
 }
