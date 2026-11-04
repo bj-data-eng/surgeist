@@ -818,6 +818,61 @@ fn facts_naming_a_node_outside_the_imported_closure_are_refused() {
         &HtmlConstructionCaptureError::OutsideImportedClosure
     );
 }
+/// The first entry outside the closure, in the order of the facts, is the one the
+/// import stops at: the work admitted by then is the same for either of two
+/// entries outside when each comes first, and is more when the entry sits later
+/// among the facts.
+#[test]
+fn the_first_fact_entry_outside_the_closure_is_where_the_import_stops() {
+    use surgeist_html::bounded::construction::HtmlConstructionCommand as C;
+    let (owner, first) = create(storage(), C::CreateFragment);
+    let (owner, second) = create(owner, C::CreateFragment);
+    let (owner, doc) = create(
+        owner,
+        C::CreateDocument {
+            mode: HtmlDocumentMode::Quirks,
+        },
+    );
+    let first = owner.result_id(&first).unwrap();
+    let second = owner.result_id(&second).unwrap();
+    let source = publish(owner, doc);
+    let stopped_with = |outside: &[HtmlNodeId], last: bool| {
+        let (builder, revision) = new_builder();
+        let facts = facts_with(
+            &source,
+            revision.clone(),
+            HtmlConstructionCaptureDocument::ResultDocument,
+            outside,
+        );
+        let mut rows = facts.nodes().to_vec();
+        if last {
+            rows.rotate_left(outside.len());
+        }
+        let refused = import(
+            builder,
+            source.clone(),
+            HtmlConstructionCaptureFacts::new(revision, rows),
+            adapter_limits(),
+            HtmlSemanticCancellation::new(),
+        )
+        .map(|_| ())
+        .unwrap_err();
+        assert_eq!(
+            refused.reason(),
+            &HtmlConstructionCaptureError::OutsideImportedClosure
+        );
+        refused.usage().work()
+    };
+    // Two entries outside, in either order, stop at the one that comes first.
+    let two = stopped_with(&[first.clone(), second.clone()], false);
+    let reversed = stopped_with(&[second, first.clone()], false);
+    assert_eq!(reversed, two);
+    // An entry outside is reached after the entries of the closure when it comes
+    // last, so the import stops later, not at the end of a full scan.
+    let early = stopped_with(std::slice::from_ref(&first), false);
+    let late = stopped_with(std::slice::from_ref(&first), true);
+    assert!(late > early, "{late} and {early}");
+}
 #[test]
 fn unowned_shadow_reference_cycle_imports_once_without_fabricating_host_or_depth() {
     use surgeist_html::bounded::construction::HtmlConstructionCommand as C;

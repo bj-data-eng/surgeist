@@ -54,6 +54,103 @@ mod tests {
         });
     }
 
+    /// Cancelling at any charge of a later item query, where an earlier one left
+    /// the graph and its type walk index held, leaves the session with no
+    /// scratch.
+    #[test]
+    fn cancellation_at_any_charge_of_a_later_item_query_releases_the_held_index() {
+        let mut b = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(40, 400, 40, 10_000, 10, 0, 0, 16_777_216),
+            crate::HtmlHostFactsRevision::fresh(),
+        );
+        let d = b
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Unavailable,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        let items: Vec<_> = (0..3)
+            .map(|_| {
+                let item = b
+                    .add_element(
+                        &d,
+                        surgeist_html::values::QualifiedName::new(
+                            surgeist_html::values::Namespace::html(),
+                            None,
+                            "div",
+                        ),
+                        OrderedAttributes::new([Attribute::new(
+                            surgeist_html::values::QualifiedName::new(
+                                surgeist_html::values::Namespace::none(),
+                                None,
+                                "itemscope",
+                            ),
+                            "",
+                        )])
+                        .unwrap(),
+                        HtmlCapturedIsValue::Unavailable,
+                        HtmlCaptureRegistryInput::Null,
+                    )
+                    .unwrap();
+                b.establish_children(&item, &[]).unwrap();
+                item
+            })
+            .collect();
+        b.establish_children(&d, &items).unwrap();
+        let capture = b.finish().unwrap();
+        let context = crate::HtmlSemanticContext::new(
+            &capture,
+            capture.host_facts_revision().clone(),
+            crate::HtmlSemanticContextInput::new(vec![]),
+            0,
+        )
+        .unwrap();
+        let requests: Vec<_> = items[..2]
+            .iter()
+            .map(|item| {
+                HtmlSemanticRequest::new(
+                    capture.subject_id(item).unwrap(),
+                    HtmlSemanticQuery::MicrodataItem,
+                )
+            })
+            .collect();
+        let big = 1 << 40;
+        let limits = HtmlSemanticLimits::new(big, big, big, 0, big, big);
+        let session = |cancellation: HtmlSemanticCancellation| {
+            HtmlSemanticSession::new(
+                &capture,
+                &context,
+                HtmlValueInterpreter::new(10000),
+                limits,
+                cancellation,
+            )
+            .unwrap()
+        };
+        let first = session(HtmlSemanticCancellation::new())
+            .query(&requests[..1])
+            .unwrap()
+            .usage()
+            .work();
+        let both = session(HtmlSemanticCancellation::new())
+            .query(&requests)
+            .unwrap()
+            .usage()
+            .work();
+        for at in first..both {
+            let cancellation = HtmlSemanticCancellation::new();
+            let mut s = session(cancellation.clone());
+            s.cancel_at_work = Some((at, cancellation));
+            let failure = s.query(&requests).unwrap_err();
+            assert_eq!(
+                failure.kind(),
+                &HtmlSemanticFailureKind::Cancelled,
+                "at {at}"
+            );
+            assert_eq!(s.usage().scratch_records(), 0, "cancelled at work {at}");
+        }
+    }
+
     /// Binding every token of an attribute one at a time splits the attribute
     /// once per token, which is quadratic in them; binding them together splits
     /// it once, and yields the same bindings.
