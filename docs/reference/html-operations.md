@@ -2629,6 +2629,56 @@ measure each of these; reservation steps up with capacity doublings and is measu
 [Public entry tests](../../crates/surgeist-html-parser/tests/parser/parse/reports.rs) exercise this boundary. Internal-owner
 descriptions below retain their existing link anchors.
 
+<a id="parse-cost-model"></a>
+
+### Parse cost per source unit
+
+A caller sizes `HtmlParseLimits` from the cost of the input it admits. These figures were
+measured with generous limits at commit `881cc5f1d` by parsing the same repeated input at
+doubling sizes and taking the slope between the two largest, so each value is the marginal
+cost of one more repeated source unit (one UTF-8 byte of ASCII or one UTF-16 unit) and not a
+fixed prefix. Work credits are deterministic: a build profile does not change them. Each
+cost is linear in the source (the credits added by each doubling are twice the previous).
+Every row is one of the resources a limit caps; a limit below the product of the figure and
+the source units can refuse the parse.
+
+| Repeated input | Work credits | Capacity bytes (live, high water) | Peak transient bytes | Atomic layout bytes | Auxiliary entries (high water) | Source map entries | Managed UTF-16 units | Retained diagnostics |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Text `a` (implied `html`, `head` and `body`, or inside `body`) | 31,400 | 3,280 | 3,280 | 918 | 25.2 | 14 | 2 | 0 |
+| Character reference `&amp;` (per source unit of the five) | 6,660 | 656 | 656 | 184 | 5.05 | 2.8 | 0.4 | 0 |
+| Ambiguous `< ` (per source unit of the two) | 39,450 | 4,720 | 5,580 | 1,835 | 26.7 | 18.5 | 2 | 0.5 |
+| One attribute name of `a`s (per name unit) | 6,450 | 780 | 1,040 | 655 | 16 | 4 | 1 | 0 |
+| Distinct attribute names `n0 n1 ...` (per source unit, 2,400 to 23,000 units) | 8,000 to 9,700 | 660 to 1,360 | 760 to 1,750 | 300 to 920 | 1.0 to 1.2 | 5.5 | 1.7 | 0 |
+
+A reference or a `< ` costs its five or two units: `&amp;` is 33,300 credits and 3,280 capacity bytes;
+`< ` is 78,900 credits and 9,440 capacity bytes, and retains one diagnostic, whose payload is
+empty. Capacity is live bytes at the high-water mark; the high water of a growing vector steps
+at its doublings, so the distinct-name range covers where in a doubling a document ends.
+One mebibyte of plain text therefore needs about 33 billion work credits and 3.4 GB of
+managed capacity before the tree it builds, and the largest indivisible allocation of 918 bytes
+per unit (a vector of per-unit records) is 0.96 GB. The text row retains 2,710 capacity bytes per
+unit once the parse ends, and the other rows keep less.
+
+Plain text is the expensive case, because every Data-state character is its own token. About
+31,400 credits split into 11,350 copied bytes, 10,430 reserved bytes, 8,800 inspected bytes,
+508 record visits, 180 record writes, 88 provider calls, 6 input reads and 3 state steps.
+Reading the tokens costs the tokenizer 1,360 credits; the tree builder spends the other 30,000,
+appending each token to the open text node, which retains 14 source map entries and two history
+groups for the character. A token that spans many units costs
+far less per unit: the `</` and name of a rejected end tag in `script` content form one token, and
+a run of 8,000 units that way costs 5,300 credits and 710 capacity bytes per unit.
+
+Batching consecutive Text tokens in the tree builder was evaluated against these figures and is not
+implemented. It could cut the text row by about a factor of six, but it is not exact. The
+retained provenance is observable: `history_view().len()` for a run of `n` characters in
+`body` is `2n + 11` groups, while one token of `n` units (a rejected end tag in `script`
+content) gives a constant 16 whatever `n` is. The association rows grow by 6 per character of script
+content and by 3 per unit of the single token. A batched parser would have to
+either keep one group per character, which keeps most of the cost, or publish different groups
+for the same source, which changes what the history and reverse queries report. Which of the two
+is right is a decision about the provenance contract and not an engineering constant, so it is
+left to a separate change.
+
 <a id="private-context-fragments"></a>
 
 The private [ContextFragmentDriver](../../crates/surgeist-html-parser/src/parser/tree_builder/context.rs) executes
