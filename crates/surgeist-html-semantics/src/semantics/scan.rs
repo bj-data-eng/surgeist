@@ -2,9 +2,10 @@
 //!
 //! Every fact constructor and the session charge the same three things the same
 //! way: the vocabulary-recognition envelope of an element name, the comparison
-//! of an element's namespace with an expected URI, and the lookup of a node. They differ only in the error they report and in
-//! what they do when a charge is refused. The helpers here take that error from the
-//! caller and preserve each caller's charge order and first reached failure.
+//! of an element's namespace with an expected URI, and the lookup of a node.
+//! They differ only in the error they report and in what they do when a charge
+//! is refused. The helpers here take that error from the caller and preserve
+//! each caller's charge order and first reached failure.
 
 use super::*;
 use crate::{HtmlCapture, HtmlCaptureError, HtmlCapturedElement, HtmlCapturedNode};
