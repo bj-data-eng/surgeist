@@ -4687,31 +4687,14 @@ mod whole_source_comparisons {
         assert_eq!(first.projection, second.projection);
         for ((phase, a, _), (other, b, _)) in first.phases.iter().zip(&second.phases) {
             assert_eq!(phase, other);
-            let (first_work, second_work) = (WORK.map(|w| a.work(w)), WORK.map(|w| b.work(w)));
-            if l.label == "attributes" {
-                // A list of 32 or more attributes finds its repeated names in a table under a
-                // random key for each run, so the probes it admits, though never more than
-                // the table bound, differ between identical runs by a small share.
-                for (one, other) in first_work.into_iter().zip(second_work) {
-                    assert!(
-                        one.abs_diff(other) <= one.max(other) / 100,
-                        "{phase}: {first_work:?} against {second_work:?}"
-                    );
-                }
-            } else {
-                assert_eq!(first_work, second_work);
-            }
+            assert_eq!(WORK.map(|w| a.work(w)), WORK.map(|w| b.work(w)));
             for resource in crate::settings::RESOURCES {
-                // The credits are the sum of the work categories compared above.
-                let varies = l.label == "attributes" && resource == HtmlParseResource::WorkCredits;
-                if !varies
-                    && !matches!(
-                        resource,
-                        HtmlParseResource::ManagedCapacityBytes
-                            | HtmlParseResource::PeakTransientBytes
-                            | HtmlParseResource::AtomicLayoutBytes
-                    )
-                {
+                if !matches!(
+                    resource,
+                    HtmlParseResource::ManagedCapacityBytes
+                        | HtmlParseResource::PeakTransientBytes
+                        | HtmlParseResource::AtomicLayoutBytes
+                ) {
                     assert_eq!(a.resource(resource), b.resource(resource));
                 }
             }

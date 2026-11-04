@@ -65,9 +65,9 @@ pub enum HtmlPiPseudoAttributeAction {
     /// is trusted and never verified, so a false `None` hides a duplicate. The index is never
     /// consulted after `Pop` or `Discard`, because those occur only on the invalid path, so it
     /// needs no removal. The requests of a scan grow with the pair count and the name units,
-    /// not with their product. The caller's cost for the index varies from scan to scan,
-    /// because the hash key is random: charge totals for a PI with several pairs differ from
-    /// run to run, though never beyond the table bound the caller admitted.
+    /// not with their product. The hash key is random per process, so charge totals for a PI
+    /// with several pairs can differ between processes, though never beyond the table bound the
+    /// caller admitted; within a process the same input charges the same work.
     FindName,
     /// Report the length, in UTF-16 code units, of the name of the committed pair at this index,
     /// to compare it with the name of the pair being scanned for a duplicate. Reply with
