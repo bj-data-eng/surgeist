@@ -9,7 +9,11 @@ use surgeist_html::values::DocumentString;
 mod lexical;
 #[path = "reverse.rs"]
 pub(crate) mod reverse;
-use crate::parser::{control::HtmlParseInvariant, tokenizer::token::HtmlParseOriginKind};
+use crate::parser::{
+    control::HtmlParseInvariant,
+    references::{ReferenceValue, decode_spelling},
+    tokenizer::token::HtmlParseOriginKind,
+};
 pub use lexical::{
     HtmlParseLexicalDisposition, HtmlParseLexicalKind, HtmlParseLexicalRole, HtmlParseOmissionKind,
 };
@@ -1095,6 +1099,9 @@ impl ParseEvidence {
             return Ok(());
         };
         let mut cursor = GroupOriginCursor::new(self, group, c)?;
+        // The source range, origins checked and origins owed of the reference
+        // just checked.
+        let mut reference_run: Option<((usize, usize), usize, usize)> = None;
         let read = (|| {
             while let Some(origin) = cursor.next(self, c)? {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
@@ -1106,6 +1113,15 @@ impl ParseEvidence {
                 let end = origin.source.end();
                 if source.identity() != origin.source.source() {
                     return Err(SessionError::WrongToken);
+                }
+                if let Some((range, done, total)) = reference_run
+                    && (origin.kind != HtmlParseOriginKind::CharacterReference
+                        || range != (begin, end))
+                {
+                    if done != total {
+                        return Err(SessionError::WrongToken);
+                    }
+                    reference_run = None;
                 }
                 match origin.kind {
                     HtmlParseOriginKind::Literal | HtmlParseOriginKind::AsciiLowercase => {
@@ -1185,11 +1201,46 @@ impl ParseEvidence {
                             return Err(SessionError::WrongToken);
                         }
                     }
+                    // The source spelling of a character reference decodes through
+                    // the pinned table and numeric rules the tokenizer applies;
+                    // the output must be exactly the scalar it stands for. A
+                    // two-scalar reference has one origin per scalar over the
+                    // same source range, in order.
+                    HtmlParseOriginKind::CharacterReference => {
+                        c.charge(
+                            HtmlParseWorkCategory::InspectByte,
+                            (output.len() as u64).saturating_mul(2),
+                        )?;
+                        let position = match reference_run {
+                            Some((_, done, _)) => done,
+                            None => 0,
+                        };
+                        let spelling = if let Some(text) = source.as_utf8() {
+                            let text = text.get(begin..end).ok_or(SessionError::WrongToken)?;
+                            decode_spelling(text.chars().map(u32::from), c)?
+                        } else {
+                            let units = source
+                                .as_utf16()
+                                .and_then(|text| text.code_units().get(begin..end))
+                                .ok_or(SessionError::WrongToken)?;
+                            decode_spelling(units.iter().copied().map(u32::from), c)?
+                        };
+                        let (scalar, total) = match (spelling, position) {
+                            (Some(ReferenceValue::One(scalar)), 0) => (scalar, 1),
+                            (Some(ReferenceValue::Two(scalar, _)), 0) => (scalar, 2),
+                            (Some(ReferenceValue::Two(_, scalar)), 1) => (scalar, 2),
+                            _ => return Err(SessionError::WrongToken),
+                        };
+                        let mut pair = [0; 2];
+                        if scalar.encode_utf16(&mut pair) != output {
+                            return Err(SessionError::WrongToken);
+                        }
+                        reference_run = Some(((begin, end), position.saturating_add(1), total));
+                        continue;
+                    }
                     // These are producer transformations, not raw equality. The
-                    // actual token/copy operation preserves its atomic output;
-                    // validation must not invent an entity/XML resolver here.
-                    HtmlParseOriginKind::CharacterReference
-                    | HtmlParseOriginKind::RecoverySyntax
+                    // actual token/copy operation preserves its atomic output.
+                    HtmlParseOriginKind::RecoverySyntax
                     | HtmlParseOriginKind::InputValueNormalization => {
                         c.charge(
                             HtmlParseWorkCategory::InspectByte,
@@ -1201,7 +1252,11 @@ impl ParseEvidence {
                     }
                 }
             }
-            Ok(())
+            // A two-scalar reference whose second origin is absent is defective.
+            match reference_run {
+                Some((_, done, total)) if done != total => Err(SessionError::WrongToken),
+                _ => Ok(()),
+            }
         })();
         cursor.release(c)?;
         read

@@ -511,21 +511,13 @@ impl Tokenizer<'_> {
                     if !semicolon {
                         self.error(MissingSemicolonAfterCharacterReference, c, evidence)?;
                     }
-                    let mut value = r.value;
-                    match value {
-                        0 => {
-                            self.error(NullCharacterReference, c, evidence)?;
-                            value = 0xFFFD;
-                        }
+                    match r.value {
+                        0 => self.error(NullCharacterReference, c, evidence)?,
                         0x110000.. => {
                             self.error(CharacterReferenceOutsideUnicodeRange, c, evidence)?;
-                            value = 0xFFFD;
                         }
-                        0xD800..=0xDFFF => {
-                            self.error(SurrogateCharacterReference, c, evidence)?;
-                            value = 0xFFFD;
-                        }
-                        _ => {
+                        0xD800..=0xDFFF => self.error(SurrogateCharacterReference, c, evidence)?,
+                        value => {
                             if (0xFDD0..=0xFDEF).contains(&value) || value & 0xFFFF >= 0xFFFE {
                                 self.error(NoncharacterCharacterReference, c, evidence)?;
                             }
@@ -535,11 +527,9 @@ impl Tokenizer<'_> {
                             {
                                 self.error(ControlCharacterReference, c, evidence)?;
                             }
-                            if let Some(replacement) = references::c1_replacement(value, c)? {
-                                value = u32::from(replacement);
-                            }
                         }
                     }
+                    let value = u32::from(references::numeric_scalar(r.value, c)?);
                     self.reference_point(
                         value,
                         r.attribute,
