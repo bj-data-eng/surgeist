@@ -753,11 +753,8 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
             GlobalStage::Cycles(v) => {
                 self.integers[3] = Some(
                     materialized(
-                        self.integer(2)?.try_quotient_remainder(
-                            NonZeroU32::new(400).expect("nonzero divisor"),
-                            digits,
-                            bytes,
-                        ),
+                        self.integer(2)?
+                            .try_quotient_remainder(GREGORIAN_CYCLE, digits, bytes),
                         observed,
                     )?
                     .0,

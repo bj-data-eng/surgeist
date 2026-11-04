@@ -740,7 +740,7 @@ fn exact_millisecond(value: &HtmlNonNegativeDecimal) -> Result<u16, HtmlTemporal
 }
 
 /// The length of the Gregorian cycle that year arithmetic reduces by.
-const GREGORIAN_CYCLE: NonZeroU32 = NonZeroU32::MIN.saturating_add(399);
+pub(crate) const GREGORIAN_CYCLE: NonZeroU32 = NonZeroU32::MIN.saturating_add(399);
 
 fn authored_decimal(integer: HtmlNonNegativeInteger, millisecond: u16) -> HtmlNonNegativeDecimal {
     if millisecond == 0 {
