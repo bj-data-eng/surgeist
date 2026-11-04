@@ -8,6 +8,9 @@
 //! further charged steps. The digit limit is therefore enforced exactly where a canonical sum
 //! first needs more digits than allowed, and every allocation is reserved and observed under the
 //! caller's limits.
+//!
+//! A carry that is still pending makes the total inexact, so the operations that need an exact
+//! total refuse it with a typed error instead of walking it uncharged.
 
 use super::{
     HtmlIntegerUnitStepError, HtmlNonNegativeDecimal, HtmlNonNegativeInteger,
@@ -15,6 +18,17 @@ use super::{
     check_integer_actual_capacity, check_integer_digit_capacity, materialization_boundary,
     reserve_materialization,
 };
+
+/// Why a step of the total was not made.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HtmlDecimalTotalError {
+    /// The step needs an exact total, but a carry is pending and only `try_carried` may run.
+    CarryPending,
+    /// `try_carried` has no carry to walk.
+    NoCarryPending,
+    /// The step hit a digit or allocation boundary.
+    Materialization(HtmlNumericMaterializationFailure),
+}
 
 /// The places of a carry that one step walks. A pending carry is resumed by further steps.
 const CARRY_CHUNK: usize = 32;
@@ -34,7 +48,8 @@ pub(crate) struct HtmlDecimalTotal {
 }
 
 impl HtmlDecimalTotal {
-    /// Whether a carry still has to be walked, which only `try_carried` does.
+    /// Whether a carry still has to be walked, which only `try_carried` does. While it is pending,
+    /// `try_added_to` and `try_finished` refuse with `CarryPending`.
     pub(crate) fn carry_pending(&self) -> bool {
         self.carry.is_some()
     }
@@ -65,49 +80,64 @@ impl HtmlDecimalTotal {
 
     /// Adds `addend` exactly and walks the first chunk of its carry. The integer part of the sum
     /// obeys `max_digits`, and the allocation observed in this step stays within `max_bytes`;
-    /// failure reports the capacity observed so far. A carry still pending from an earlier
-    /// addition is walked to its end first.
+    /// failure reports the capacity observed so far. It refuses a total with a carry pending.
     pub(crate) fn try_added_to(
         &mut self,
         addend: &HtmlNonNegativeDecimal,
         max_digits: usize,
         max_bytes: usize,
-    ) -> Result<HtmlNumericMaterialized<()>, HtmlNumericMaterializationFailure> {
+    ) -> Result<HtmlNumericMaterialized<()>, HtmlDecimalTotalError> {
+        if self.carry.is_some() {
+            return Err(HtmlDecimalTotalError::CarryPending);
+        }
         let mut observed = 0;
         self.add(addend, max_digits, max_bytes, &mut observed)
             .map(|()| HtmlNumericMaterialized {
                 value: (),
                 capacity_bytes: observed,
             })
-            .map_err(|kind| materialization_boundary(kind, observed))
+            .map_err(|kind| boundary(kind, observed))
     }
 
-    /// Walks a further chunk of the pending carry; with none pending it changes nothing.
+    /// Walks a further chunk of the pending carry, and refuses a total with none pending.
     pub(crate) fn try_carried(
         &mut self,
         max_digits: usize,
         max_bytes: usize,
-    ) -> Result<HtmlNumericMaterialized<()>, HtmlNumericMaterializationFailure> {
+    ) -> Result<HtmlNumericMaterialized<()>, HtmlDecimalTotalError> {
+        if self.carry.is_none() {
+            return Err(HtmlDecimalTotalError::NoCarryPending);
+        }
         let mut observed = 0;
-        self.walk_carry(CARRY_CHUNK, max_digits, max_bytes, &mut observed)
+        self.walk_carry(max_digits, max_bytes, &mut observed)
             .map(|()| HtmlNumericMaterialized {
                 value: (),
                 capacity_bytes: observed,
             })
-            .map_err(|kind| materialization_boundary(kind, observed))
+            .map_err(|kind| boundary(kind, observed))
     }
 
-    /// The canonical value, with no leading integer zeroes and no trailing fractional zeroes. A
-    /// carry still pending is walked to its end first.
+    /// The canonical value, with no leading integer zeroes and no trailing fractional zeroes. It
+    /// refuses a total with a carry pending.
     pub(crate) fn try_finished(
-        &mut self,
+        &self,
+        max_digits: usize,
+        max_bytes: usize,
+    ) -> Result<HtmlNumericMaterialized<HtmlNonNegativeDecimal>, HtmlDecimalTotalError> {
+        if self.carry.is_some() {
+            return Err(HtmlDecimalTotalError::CarryPending);
+        }
+        self.finish(max_digits, max_bytes)
+            .map_err(HtmlDecimalTotalError::Materialization)
+    }
+
+    fn finish(
+        &self,
         max_digits: usize,
         max_bytes: usize,
     ) -> Result<HtmlNumericMaterialized<HtmlNonNegativeDecimal>, HtmlNumericMaterializationFailure>
     {
         let mut observed = 0;
-        self.walk_carry(usize::MAX, max_digits, max_bytes, &mut observed)
-            .map_err(|kind| materialization_boundary(kind, observed))?;
         let fraction_len = self
             .fraction
             .iter()
@@ -149,7 +179,6 @@ impl HtmlDecimalTotal {
         max_bytes: usize,
         observed: &mut usize,
     ) -> Result<(), HtmlIntegerUnitStepError> {
-        self.walk_carry(usize::MAX, max_digits, max_bytes, observed)?;
         // A zero integer part has no places, so adding it cannot leave a leading zero.
         let addend_integer: &[u8] = if addend.integer.is_zero() {
             &[]
@@ -172,21 +201,20 @@ impl HtmlDecimalTotal {
             carry,
         );
         self.carry = (carry != 0).then_some(addend_integer.len());
-        self.walk_carry(CARRY_CHUNK, max_digits, max_bytes, observed)
+        self.walk_carry(max_digits, max_bytes, observed)
     }
 
-    /// Walks at most `steps` places of the pending carry. It adds one place when the carry leaves
-    /// the top, and then needs one digit more than the total had.
+    /// Walks at most one chunk of the pending carry. It adds one place when the carry leaves the
+    /// top, and then needs one digit more than the total had.
     fn walk_carry(
         &mut self,
-        steps: usize,
         max_digits: usize,
         max_bytes: usize,
         observed: &mut usize,
     ) -> Result<(), HtmlIntegerUnitStepError> {
         let mut walked = 0;
         while let Some(position) = self.carry {
-            if walked == steps {
+            if walked == CARRY_CHUNK {
                 return Ok(());
             }
             walked += 1;
@@ -212,6 +240,10 @@ impl HtmlDecimalTotal {
         }
         Ok(())
     }
+}
+
+fn boundary(kind: HtmlIntegerUnitStepError, observed: usize) -> HtmlDecimalTotalError {
+    HtmlDecimalTotalError::Materialization(materialization_boundary(kind, observed))
 }
 
 fn ascii(place: u8) -> u8 {
@@ -256,11 +288,15 @@ fn grow(
                 required,
             });
         }
+        let before = places.capacity();
         let allocation = places.try_reserve_exact(target - places.len());
-        // Even an allocation failure retains any backing it obtained.
-        *observed = observed
-            .checked_add(places.capacity())
-            .ok_or(HtmlIntegerUnitStepError::RepresentationExhausted)?;
+        // Even an allocation failure retains any backing it obtained, which is new only if the
+        // capacity changed.
+        if places.capacity() != before {
+            *observed = observed
+                .checked_add(places.capacity())
+                .ok_or(HtmlIntegerUnitStepError::RepresentationExhausted)?;
+        }
         allocation.map_err(|_| HtmlIntegerUnitStepError::AllocationFailed { requested: target })?;
         check_integer_actual_capacity(required, *observed, max_bytes)?;
     }
@@ -270,8 +306,28 @@ fn grow(
 
 #[cfg(test)]
 mod tests {
+    use super::super::HtmlNumericMaterializationError;
     use super::*;
     use crate::internal::values::DocumentString;
+
+    /// The boundary a refused step reports, and the capacity it observed.
+    fn boundary_of(error: HtmlDecimalTotalError) -> (HtmlIntegerUnitStepError, usize) {
+        match error {
+            HtmlDecimalTotalError::Materialization(HtmlNumericMaterializationFailure {
+                kind: HtmlNumericMaterializationError::Boundary(boundary),
+                capacity_bytes,
+            }) => (boundary, capacity_bytes),
+            other => panic!("expected a boundary failure, got {other:?}"),
+        }
+    }
+
+    fn nines(count: usize) -> HtmlNonNegativeDecimal {
+        decimal(&"9".repeat(count), "")
+    }
+
+    fn zeros_after_one(count: usize) -> String {
+        format!("1{}", "0".repeat(count))
+    }
 
     fn decimal(integer: &str, fraction: &str) -> HtmlNonNegativeDecimal {
         let integer = DocumentString::from(integer);
@@ -402,6 +458,10 @@ mod tests {
                 match (whole, result) {
                     (Ok(sum), Ok(_)) => expected = sum.value,
                     (Err(whole), Err(controlled)) => {
+                        // The observed capacity differs, because the total grows in place.
+                        let HtmlDecimalTotalError::Materialization(controlled) = controlled else {
+                            panic!("{controlled:?}");
+                        };
                         assert_eq!(whole.kind, controlled.kind);
                         failures += 1;
                         break;
@@ -420,22 +480,206 @@ mod tests {
     fn the_byte_limit_bounds_a_step_and_reports_its_capacity() {
         let mut total = HtmlDecimalTotal::default();
         let addend = decimal("12345", "678");
-        let failure = total.try_added_to(&addend, usize::MAX, 7).unwrap_err();
-        assert!(matches!(
-            failure.kind,
-            super::super::HtmlNumericMaterializationError::Boundary(
+        let error = total.try_added_to(&addend, usize::MAX, 7).unwrap_err();
+        // The integer places were reserved before the fraction places hit the limit.
+        assert_eq!(
+            boundary_of(error),
+            (
                 HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded {
                     limit: 7,
                     required: 8
-                }
+                },
+                5
             )
-        ));
-        // The integer places were reserved before the fraction places hit the limit.
-        assert_eq!(failure.capacity_bytes, 5);
+        );
         let mut total = HtmlDecimalTotal::default();
         let step = total.try_added_to(&addend, usize::MAX, 8).unwrap();
         assert_eq!(step.capacity_bytes, 5 + 3);
         let repeat = total.try_added_to(&addend, usize::MAX, 0).unwrap();
         assert_eq!(repeat.capacity_bytes, 0);
+    }
+
+    /// While a carry is pending, only `try_carried` runs; with none pending it refuses.
+    #[test]
+    fn a_pending_carry_refuses_every_step_but_its_own() {
+        let mut total = HtmlDecimalTotal::default();
+        assert_eq!(
+            total.try_carried(usize::MAX, usize::MAX).unwrap_err(),
+            HtmlDecimalTotalError::NoCarryPending
+        );
+        add(&mut total, &nines(CARRY_CHUNK + 8), usize::MAX);
+        // A carry out of the fraction reaches the nines too.
+        add(&mut total, &decimal("0", "5"), usize::MAX);
+        total
+            .try_added_to(&decimal("0", "5"), usize::MAX, usize::MAX)
+            .unwrap();
+        assert!(total.carry_pending());
+        assert_eq!(
+            total
+                .try_added_to(&decimal("1", ""), usize::MAX, usize::MAX)
+                .unwrap_err(),
+            HtmlDecimalTotalError::CarryPending
+        );
+        assert_eq!(
+            total.try_finished(usize::MAX, usize::MAX).unwrap_err(),
+            HtmlDecimalTotalError::CarryPending
+        );
+        total.try_carried(usize::MAX, usize::MAX).unwrap();
+        assert!(!total.carry_pending());
+        assert_eq!(
+            total.try_carried(usize::MAX, usize::MAX).unwrap_err(),
+            HtmlDecimalTotalError::NoCarryPending
+        );
+        assert_eq!(
+            finished(&mut total).integer_part().decimal_digits(),
+            zeros_after_one(CARRY_CHUNK + 8)
+        );
+    }
+
+    /// A carry out of the top needs one place more, which the byte limit and the digit limit each
+    /// refuse before anything is allocated, in the first step and in a resumed step.
+    #[test]
+    fn growth_at_the_top_of_a_carry_fails_under_the_byte_and_digit_limits() {
+        for (places, resumed) in [(5, false), (CARRY_CHUNK + 8, true)] {
+            let new_top = places + 1;
+            let build = || {
+                let mut total = HtmlDecimalTotal::default();
+                add(&mut total, &nines(places), usize::MAX);
+                assert_eq!(total.integer.capacity(), places);
+                total
+            };
+            // Each limit fails at the step that reaches the top, and nowhere earlier.
+            for (max_digits, max_bytes, expected) in [
+                (
+                    usize::MAX,
+                    places,
+                    HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded {
+                        limit: places,
+                        required: new_top,
+                    },
+                ),
+                (
+                    places,
+                    usize::MAX,
+                    HtmlIntegerUnitStepError::DigitLimitExceeded {
+                        limit: places,
+                        required: new_top,
+                    },
+                ),
+            ] {
+                let mut total = build();
+                let mut step = total.try_added_to(&decimal("1", ""), max_digits, max_bytes);
+                if resumed {
+                    step.unwrap();
+                    assert!(total.carry_pending());
+                    step = total.try_carried(max_digits, max_bytes);
+                }
+                assert_eq!(boundary_of(step.unwrap_err()), (expected, 0));
+            }
+            // With room, the step allocates exactly the new place and observes its capacity.
+            let mut total = build();
+            let mut step = total
+                .try_added_to(&decimal("1", ""), usize::MAX, new_top)
+                .unwrap();
+            if resumed {
+                step = total.try_carried(usize::MAX, new_top).unwrap();
+            }
+            assert_eq!(step.capacity_bytes, new_top);
+            assert_eq!(
+                finished(&mut total).integer_part().decimal_digits(),
+                zeros_after_one(places)
+            );
+        }
+    }
+
+    /// An allocation the allocator cannot make fails with the requested places and observes none.
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn an_allocation_failure_is_reported_without_observed_capacity() {
+        let mut places = Vec::new();
+        let mut observed = 0;
+        let target = isize::MAX as usize;
+        assert_eq!(
+            grow(&mut places, target, usize::MAX, &mut observed),
+            Err(HtmlIntegerUnitStepError::AllocationFailed { requested: target })
+        );
+        assert_eq!((places.len(), observed), (0, 0));
+    }
+
+    /// The read-out reserves the integer and then the fraction under the byte limit, and reports
+    /// the allocation it had made when the second fails.
+    #[test]
+    fn the_read_out_fails_under_the_byte_limit_and_reports_its_capacity() {
+        let mut total = HtmlDecimalTotal::default();
+        add(&mut total, &decimal("123", "45"), usize::MAX);
+        assert_eq!(
+            boundary_of(total.try_finished(usize::MAX, 2).unwrap_err()),
+            (
+                HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded {
+                    limit: 2,
+                    required: 3
+                },
+                0
+            )
+        );
+        assert_eq!(
+            boundary_of(total.try_finished(usize::MAX, 4).unwrap_err()),
+            (
+                HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded {
+                    limit: 4,
+                    required: 5
+                },
+                3
+            )
+        );
+        assert_eq!(total.try_finished(usize::MAX, 5).unwrap().capacity_bytes, 5);
+    }
+
+    /// A carry out of the fraction that grows the integer part is held to the digit limit when it
+    /// is walked, and the read-out holds the grown integer part to it again.
+    #[test]
+    fn a_fraction_carry_into_a_new_top_place_meets_the_digit_limit() {
+        let places = CARRY_CHUNK + 8;
+        let build = |max_digits| {
+            let mut total = HtmlDecimalTotal::default();
+            add(&mut total, &nines(places), usize::MAX);
+            add(&mut total, &decimal("0", "5"), usize::MAX);
+            let mut step = total.try_added_to(&decimal("0", "5"), max_digits, usize::MAX);
+            while step.is_ok() && total.carry_pending() {
+                step = total.try_carried(max_digits, usize::MAX);
+            }
+            (total, step)
+        };
+        // The walk fails at the top, once, with the digits it needs.
+        let (_, step) = build(places);
+        assert_eq!(
+            boundary_of(step.unwrap_err()),
+            (
+                HtmlIntegerUnitStepError::DigitLimitExceeded {
+                    limit: places,
+                    required: places + 1
+                },
+                0
+            )
+        );
+        // The grown total exists under a larger limit, and the read-out refuses a smaller one.
+        let (total, step) = build(places + 1);
+        step.unwrap();
+        assert_eq!(
+            boundary_of(total.try_finished(places, usize::MAX).unwrap_err()),
+            (
+                HtmlIntegerUnitStepError::DigitLimitExceeded {
+                    limit: places,
+                    required: places + 1
+                },
+                0
+            )
+        );
+        let value = total.try_finished(places + 1, usize::MAX).unwrap().value;
+        assert_eq!(
+            value.integer_part().decimal_digits(),
+            zeros_after_one(places)
+        );
+        assert_eq!(value.fractional_digits(), None);
     }
 }

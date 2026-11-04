@@ -2,7 +2,8 @@
 use super::*;
 use crate::internal::microsyntax::numeric::{
     HtmlIntegerUnitStep, HtmlNumericMaterializationError, HtmlNumericMaterializationFailure,
-    HtmlNumericMaterialized, decimal_total::HtmlDecimalTotal,
+    HtmlNumericMaterialized,
+    decimal_total::{HtmlDecimalTotal, HtmlDecimalTotalError},
 };
 use crate::{
     internal::values::interpretation::HtmlValueAdmissionError,
@@ -968,7 +969,7 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                         let addend = self.decimals[2].as_ref().ok_or_else(invalid)?;
                         self.total.try_added_to(addend, digits, bytes)
                     };
-                    materialized(result, observed)?;
+                    total_step(result, observed)?;
                     if self.total.carry_pending() {
                         DurationStage::Accumulate(running)
                     } else {
@@ -977,7 +978,7 @@ impl<'raw> HtmlTimeElementInterpretation<'raw> {
                 }
             }
             DurationStage::Finish(plan) => {
-                let seconds = materialized(self.total.try_finished(digits, bytes), observed)?;
+                let seconds = total_step(self.total.try_finished(digits, bytes), observed)?;
                 let value = plan.assemble_recovery(seconds);
                 self.recovery(HtmlMachineReadableTime::Duration(value));
                 return Ok(());
@@ -1053,6 +1054,22 @@ fn read_seconds(
         ),
         observed,
     )
+}
+/// A step of the recovery total. The stage order never runs a step the total refuses, so a
+/// refusal reports the invalid-recognized-plan cause.
+fn total_step<T>(
+    result: Result<HtmlNumericMaterialized<T>, HtmlDecimalTotalError>,
+    observed: &mut usize,
+) -> Result<T, HtmlTimeElementInterpretationError> {
+    match result {
+        Ok(value) => materialized(Ok(value), observed),
+        Err(HtmlDecimalTotalError::Materialization(failure)) => {
+            materialized(Err(failure), observed)
+        }
+        Err(HtmlDecimalTotalError::CarryPending | HtmlDecimalTotalError::NoCarryPending) => {
+            Err(invalid())
+        }
+    }
 }
 fn materialized<T>(
     result: Result<HtmlNumericMaterialized<T>, HtmlNumericMaterializationFailure>,
