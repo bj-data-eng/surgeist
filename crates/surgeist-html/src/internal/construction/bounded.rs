@@ -764,6 +764,8 @@ impl HtmlConstructionInitializationObservation<'_> {
         *self.accepted = true;
     }
 }
+/// The serials issued to construction storages.
+static NEXT_STORAGE_SERIAL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 impl HtmlConstructionReadyInitialization {
     /// Completes initialization and returns empty construction storage with zero usage.
     pub fn commit(self) -> HtmlConstructionStorage {
@@ -775,6 +777,8 @@ impl HtmlConstructionReadyInitialization {
                 records_generation: 0,
                 wrapper_generation: 0,
                 temporary_generation: 0,
+                serial: NEXT_STORAGE_SERIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+                attribute_revision: 0,
             },
         }
     }

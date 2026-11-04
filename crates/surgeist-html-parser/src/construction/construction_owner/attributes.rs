@@ -126,10 +126,12 @@ impl ConstructionOwner {
         let Some(storage) = self.owner.take() else {
             return Err(latch_registry_row(control));
         };
-        let mut group = HtmlConstructionAttributeEdit::begin(storage, handle, mode);
-        if let Some(index) = self.name_index.take() {
-            group.adopt_index(index);
-        }
+        let mut group = match self.name_index.take() {
+            Some(index) => {
+                HtmlConstructionAttributeEdit::begin_indexed(storage, handle, mode, index)
+            }
+            None => HtmlConstructionAttributeEdit::begin(storage, handle, mode),
+        };
         let result = (|| {
             while let Some(action) = group
                 .next_action()
@@ -205,12 +207,11 @@ impl ConstructionOwner {
         control: &mut ParseControl,
         completion: HtmlConstructionAttributeCompletion,
     ) -> Result<(), SessionError> {
-        let mut completion = completion;
         // The table goes back to where `provide_name_index` and `retire_name_index` find it.
-        if let Some(index) = completion.take_index() {
+        let (storage, mut retirement, index) = completion.into_parts_with_index();
+        if let Some(index) = index {
             self.name_index = Some(index);
         }
-        let (storage, mut retirement) = completion.into_parts();
         self.owner = Some(storage);
         let mut refused = None;
         while let Some(action) = retirement.next_action() {

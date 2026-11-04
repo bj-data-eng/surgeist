@@ -677,6 +677,7 @@ fn every_owner_fault_reports_what_it_violates() {
         ),
         (F::RepresentationExhausted, exhausted, true),
         (F::CapacityMismatch, mismatch, true),
+        (F::IndexUnavailable, refusal, true),
         (F::ForeignAllocation, mismatch, true),
         (F::LimitExceeded, mismatch, true),
         (

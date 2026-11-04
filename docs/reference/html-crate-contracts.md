@@ -316,8 +316,8 @@ scan or raise a blanket limit to accommodate the change.
 ##### Name index
 
 `bounded::values::HtmlAttributeNameIndex` holds the attribute-name table of an edit or a
-validation: the shared `HtmlNameIndex` (an insert-only open-addressed index with a per-instance
-random key, a power-of-two slot count and at most half the slots in use) over slot storage
+validation: the shared `HtmlNameIndex` (an insert-only open-addressed index hashed under one
+random key for the whole process, a power-of-two slot count and at most half the slots in use) over slot storage
 (`Vec<HtmlNameIndexSlot>`) that the consumer reserves and accounts. The hash is that of the
 exact expanded name (namespace URI units, then local-name units; prefix and value never count).
 Each entry records a stored attribute or a planned candidate and also keeps 32 bits of the
@@ -329,15 +329,28 @@ vacancy borrows nothing, and the cursor keeps it between the probe that found it
 that fills it.
 
 The consumer's slot storage has at least `HtmlAttributeNameIndex::slots_required(entries)` slots
-of capacity; it adopts them with `new`, lends the index to an edit with `adopt_index`, and takes
-it back with `HtmlConstructionAttributeCompletion::take_index` (or
-`HtmlAttributeValidation::take_index`) and `into_storage` to release it. The owner never allocates
-the table. A rebuild starts a new `HtmlNameIndex` over the cleared storage, and the clearing
-action that completes the slots also lends them to it for the first time, which reads every
-slot once and is admitted with that action. Without enough capacity a step compares every name
-as before; the verdict is the same and the work quadratic. Verdicts equal the pairwise ones,
-including the first reached failure: a repeat is reported against the single earlier attribute
-that owns the name, at the attribute that repeats it.
+of capacity; it adopts them with `new`, lends the index to an edit when the edit begins
+(`HtmlConstructionAttributeEdit::begin_indexed`) or to a validation (`validate_indexed`), and takes
+it back with `HtmlConstructionAttributeCompletion::take_index` or `into_parts_with_index`
+(`HtmlAttributeValidation::take_index`, `abort_with_index` or `try_finish_with_index`) and
+`into_storage` to release it. An index cannot be lent to an edit that has started, so every name
+it describes was entered by a step of an edit that held it; `into_parts`, `abort` and `try_finish`
+drop an index that was not taken first. The owner never allocates the table. A rebuild starts a new
+`HtmlNameIndex` over the cleared storage, and the clearing action that completes the slots also
+lends them to it for the first time, which reads every slot once and is admitted with that action.
+
+The index describes the attributes of one element of one storage as they were at one revision. The
+storage keeps a serial of its own and a revision that every committed change to an attribute list
+advances (an append, replacement, swap or pop, through an index or not, and a merge append), and
+an index records the serial, the element, the revision and the length it describes after each
+append it served. A step that finds any of them different rebuilds the index before it looks a
+name up, so an edit that held no index, or held it for another element or storage, cannot leave a
+stale index trusted. Without enough capacity a step compares every name as before; the verdict is
+the same and the work quadratic. Verdicts equal the pairwise ones, including the first reached
+failure: a repeat is reported against the single earlier attribute that owns the name, at the
+attribute that repeats it. A table that cannot serve a step (storage, probe or vacancy that does not
+fit) refuses with the `IndexUnavailable` cause: `HtmlConstructionError::is_index_unavailable` for
+an edit and `HtmlAttributeValidationError::IndexUnavailable` for a validation.
 
 Three steps use the index:
 

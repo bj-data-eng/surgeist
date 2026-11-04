@@ -3,7 +3,7 @@
 use super::attribute_name_index::{
     CLEAR_CHUNK, HtmlAttributeNameIndex, Occupant, entry, occupant, tag,
 };
-use super::name_index::{HtmlNameIndexProbe, HtmlNameIndexSlot, HtmlNameIndexStep};
+use super::name_index::{HtmlNameIndex, HtmlNameIndexProbe, HtmlNameIndexSlot, HtmlNameIndexStep};
 use super::{Attribute, DocumentString, OrderedAttributes};
 use std::{error::Error, fmt, mem::size_of, sync::Arc};
 
@@ -207,10 +207,22 @@ impl HtmlAttributeValidation {
     }
 
     /// Takes only a successfully completed cursor; refusals retain the owner.
-    /// This transition performs no comparisons, allocation or backing clone.
+    /// This transition performs no comparisons, allocation or backing clone. A name index that
+    /// was not taken is dropped; [`try_finish_with_index`](Self::try_finish_with_index) gives it
+    /// back.
     pub fn try_finish(
         owner: &mut Option<Self>,
     ) -> Result<HtmlValidatedAttributes, HtmlAttributeValidationError> {
+        Self::try_finish_with_index(owner).map(|(validated, _)| validated)
+    }
+
+    /// As [`try_finish`](Self::try_finish), and the name index too if it was not taken.
+    pub fn try_finish_with_index(
+        owner: &mut Option<Self>,
+    ) -> Result<
+        (HtmlValidatedAttributes, Option<HtmlAttributeNameIndex>),
+        HtmlAttributeValidationError,
+    > {
         let validation = owner
             .as_ref()
             .ok_or(HtmlAttributeValidationError::Consumed)?;
@@ -220,17 +232,23 @@ impl HtmlAttributeValidation {
         if !matches!(validation.phase, Phase::Finished) {
             return Err(HtmlAttributeValidationError::NotReady);
         }
-        Ok(HtmlValidatedAttributes {
-            storage: owner
-                .take()
-                .expect("checked occupied validation owner")
-                .storage,
-        })
+        let validation = owner.take().expect("checked occupied validation owner");
+        Ok((
+            HtmlValidatedAttributes {
+                storage: validation.storage,
+            },
+            validation.indexed,
+        ))
     }
 
     /// Recovers the original allocation without further reads or publication.
     pub fn abort(self) -> HtmlAttributeStorage {
         self.storage
+    }
+
+    /// As [`abort`](Self::abort), and the name index too if it was not taken.
+    pub fn abort_with_index(self) -> (HtmlAttributeStorage, Option<HtmlAttributeNameIndex>) {
+        (self.storage, self.indexed)
     }
 
     fn next_pair(&mut self) {
@@ -256,7 +274,9 @@ impl HtmlAttributeValidation {
     }
 
     /// Takes back the name index that `validate_indexed` was given, whatever its contents.
-    /// A cursor given none returns `None`.
+    /// A cursor given none returns `None`. [`abort`](Self::abort) and
+    /// [`try_finish`](Self::try_finish) drop an index that was not taken; their `_with_index`
+    /// variants give it back.
     pub fn take_index(&mut self) -> Option<HtmlAttributeNameIndex> {
         self.indexed.take()
     }
@@ -314,13 +334,23 @@ impl HtmlAttributeValidationAction<'_> {
                     .map_or(0, HtmlAttributeNameIndex::unwritten)
                     .min(CLEAR_CHUNK);
                 // The chunk that finishes the table also binds it to its index, which reads
-                // every slot once.
+                // every slot once and records the storage it guards.
                 let scanned = table.map_or(0, |table| table.scanned_by_clearing(CLEAR_CHUNK));
+                let finishing = usize::from(scanned != 0);
+                // The first chunk follows the start of the rebuild: a new index, an unbound
+                // table and an empty storage.
+                let first =
+                    usize::from(table.is_some_and(|table| {
+                        table.unwritten() == table.size() && table.size() != 0
+                    }));
                 HtmlAttributeValidationLayout {
                     record_visits: 0,
                     inspected_bytes: (scanned * size_of::<HtmlNameIndexSlot>()) as u64,
-                    record_writes: slots as u64,
-                    copied_bytes: (slots * size_of::<HtmlNameIndexSlot>()) as u64,
+                    record_writes: (slots + finishing + 3 * first) as u64,
+                    copied_bytes: (slots * size_of::<HtmlNameIndexSlot>()
+                        + finishing * size_of::<usize>()
+                        + first * (size_of::<HtmlNameIndex>() + size_of::<usize>() * 2))
+                        as u64,
                 }
             }
             // The attribute and its two name headers.
@@ -340,8 +370,8 @@ impl HtmlAttributeValidationAction<'_> {
             Stage::Probe { .. } => HtmlAttributeValidationLayout {
                 record_visits: 1,
                 inspected_bytes: 0,
-                record_writes: 1,
-                copied_bytes: size_of::<HtmlNameIndexSlot>() as u64,
+                record_writes: 2,
+                copied_bytes: (size_of::<HtmlNameIndexSlot>() + size_of::<usize>()) as u64,
             },
         }
     }

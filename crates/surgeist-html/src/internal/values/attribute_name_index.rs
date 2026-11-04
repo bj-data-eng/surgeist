@@ -72,11 +72,12 @@ pub(crate) fn occupant(entry: usize) -> (Occupant, u32) {
 pub(crate) enum Binding {
     /// Nothing: the next use must rebuild the table.
     Unbound,
-    /// The first `len` attributes of the element at ordinal `target`, backed by the allocation at
-    /// address `backing`.
+    /// The first `len` attributes of the element at ordinal `target` of the storage with serial
+    /// `storage`, as they were at attribute revision `revision` of that storage.
     Slots {
+        storage: u64,
         target: usize,
-        backing: usize,
+        revision: u64,
         len: usize,
     },
     /// The attributes of the element at ordinal `target` and the candidates planned so far.
@@ -122,7 +123,7 @@ pub struct HtmlAttributeNameIndex {
 }
 
 impl HtmlAttributeNameIndex {
-    /// Adopts `storage` as the table's slots, with a random key for this instance. The table is
+    /// Adopts `storage` as the table's slots, under the process's hash key. The table is
     /// empty until a cursor builds it, and its contents are replaced then.
     pub fn new(mut storage: Vec<HtmlNameIndexSlot>) -> Self {
         storage.clear();

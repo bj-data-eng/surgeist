@@ -10,7 +10,8 @@ use crate::internal::values::bounded::{
     ComparisonStep, Phase as NamePhase, advance_comparison, comparison_layout,
 };
 use crate::internal::values::name_index::{
-    HtmlNameIndexProbe, HtmlNameIndexSlot, HtmlNameIndexStep, HtmlNameIndexVacancy,
+    HtmlNameIndex, HtmlNameIndexProbe, HtmlNameIndexSlot, HtmlNameIndexSlots, HtmlNameIndexStep,
+    HtmlNameIndexVacancy,
 };
 
 /// Which protocol an attribute edit follows. It is fixed when the edit begins.
@@ -271,7 +272,21 @@ impl HtmlConstructionAttributeCompletion {
         self.index.take()
     }
 
-    /// Returns the storage and the retirement owner for the merge plan. Cleanup the plan with
+    /// As [`into_parts`](Self::into_parts), and the name index too if it was not taken, so that
+    /// the consumer can always release the storage it lent.
+    pub fn into_parts_with_index(
+        self,
+    ) -> (
+        HtmlConstructionStorage,
+        HtmlConstructionAttributePlanRetirement,
+        Option<HtmlAttributeNameIndex>,
+    ) {
+        (self.storage, self.retirement, self.index)
+    }
+
+    /// Returns the storage and the retirement owner for the merge plan. A name index that was not
+    /// taken with [`take_index`](Self::take_index) is dropped with its storage. Cleanup the plan
+    /// with
     /// `HtmlConstructionAttributePlanRetirement::next_action`.
     pub fn into_parts(
         self,
@@ -329,24 +344,31 @@ impl HtmlConstructionAttributeEdit {
         }
     }
 
-    /// Lends the edit a name index. Appends to an element, and the planning of a merge, then
-    /// find a duplicate name by probing the few names that share a hash, so an edit that adds
-    /// `n` names costs work linear in `n` and their length instead of quadratic. An index with
-    /// too little capacity for the names (see [`HtmlAttributeNameIndex::slots_required`]) is
-    /// ignored by the step that needs more, which then compares every name.
+    /// Starts an attribute edit as [`begin`](Self::begin) does, lent a name index. Appends to an
+    /// element, and the planning of a merge, then find a duplicate name by probing the few names
+    /// that share a hash, so an edit that adds `n` names costs work linear in `n` and their
+    /// length instead of quadratic. An index with too little capacity for the names (see
+    /// [`HtmlAttributeNameIndex::slots_required`]) is ignored by the step that needs more, which
+    /// then compares every name.
     ///
-    /// An index kept from an earlier edit of the same element stays usable while nothing but
-    /// appends through an index changed that element. Any other change to it, or an edit of
-    /// another element, makes the next step that needs the index rebuild it first. The index is
-    /// returned by [`HtmlConstructionAttributeCompletion::take_index`].
-    pub fn adopt_index(&mut self, mut index: HtmlAttributeNameIndex) {
-        if matches!(
-            self.mode,
-            HtmlConstructionAttributeEditMode::NamedMerge { .. }
-        ) {
+    /// An index can only be lent when an edit begins, so that every name it describes was
+    /// entered by a step of an edit that held it. An index kept from an earlier edit describes
+    /// the same element while the revision of the storage's attributes is the one it recorded;
+    /// any change made since, by an edit that held no index or by another element's edit, makes
+    /// the next step that needs the index rebuild it first. The index is returned by
+    /// [`HtmlConstructionAttributeCompletion::take_index`] and its variants.
+    pub fn begin_indexed(
+        storage: HtmlConstructionStorage,
+        element: HtmlBuilderNode,
+        mode: HtmlConstructionAttributeEditMode,
+        mut index: HtmlAttributeNameIndex,
+    ) -> Self {
+        if matches!(mode, HtmlConstructionAttributeEditMode::NamedMerge { .. }) {
             index.bind(Binding::Unbound);
         }
-        self.index = Some(index);
+        let mut edit = Self::begin(storage, element, mode);
+        edit.index = Some(index);
+        edit
     }
     /// The construction storage as it stands, for read-only inspection.
     pub fn storage_view(&self) -> &HtmlConstructionStorage {
@@ -478,8 +500,7 @@ impl HtmlConstructionAttributeEdit {
                     subject: Subject::Incoming,
                 };
             } else {
-                held.begin_clear(geometry);
-                phase = CandidatePhase::IndexClear;
+                phase = CandidatePhase::IndexBegin { geometry };
             }
         }
         let EditStage::Merge { plan, .. } = &mut self.stage else {
@@ -739,6 +760,10 @@ enum Subject {
 #[derive(Clone, Copy, Debug)]
 enum CandidatePhase<'n> {
     Target(usize),
+    /// Start rebuilding the index with this geometry.
+    IndexBegin {
+        geometry: HtmlNameIndexSlots,
+    },
     /// Overwrite the next slots of the index with the empty value.
     IndexClear,
     /// Read the lengths of the name of `subject`.
@@ -881,15 +906,27 @@ fn comparison_work(phase: NamePhase) -> HtmlConstructionAttributeWork {
         ..Default::default()
     }
 }
+/// The name index could not serve a step: its storage, probe or vacancy did not agree with the
+/// table the step expected.
 fn table_error() -> HtmlConstructionError {
-    HtmlConstructionErrorKind::CapacityMismatch.into()
+    HtmlConstructionErrorKind::IndexUnavailable.into()
 }
-/// The work of reading one slot of the index, which writes the empty slot it finds.
+/// The work of reading one slot of the index, which writes the empty slot it finds, counts the
+/// entry and may renew what the index describes.
 fn probe_work() -> HtmlConstructionAttributeWork {
     HtmlConstructionAttributeWork {
         record_visits: 1,
-        record_writes: 1,
-        copied_bytes: size_of::<HtmlNameIndexSlot>(),
+        record_writes: 3,
+        copied_bytes: size_of::<HtmlNameIndexSlot>() + size_of::<usize>() + size_of::<Binding>(),
+        ..Default::default()
+    }
+}
+/// The work of starting a rebuild: a new index over the storage, an unbound table and an empty
+/// storage.
+fn begin_clear_work() -> HtmlConstructionAttributeWork {
+    HtmlConstructionAttributeWork {
+        record_writes: 3,
+        copied_bytes: size_of::<HtmlNameIndex>() + size_of::<Binding>() + size_of::<usize>(),
         ..Default::default()
     }
 }
@@ -900,9 +937,13 @@ fn clear_work(table: Option<&HtmlAttributeNameIndex>) -> HtmlConstructionAttribu
         .map_or(0, HtmlAttributeNameIndex::unwritten)
         .min(CLEAR_CHUNK);
     let scanned = table.map_or(0, |table| table.scanned_by_clearing(CLEAR_CHUNK));
+    // The chunk that finishes the table also records the storage the index guards and what the
+    // table describes.
+    let finishing = usize::from(scanned != 0);
     HtmlConstructionAttributeWork {
-        record_writes: slots,
-        copied_bytes: slots * size_of::<HtmlNameIndexSlot>(),
+        record_writes: slots + 2 * finishing,
+        copied_bytes: slots * size_of::<HtmlNameIndexSlot>()
+            + finishing * (size_of::<usize>() + size_of::<Binding>()),
         inspected_bytes: scanned * size_of::<HtmlNameIndexSlot>(),
         ..Default::default()
     }
@@ -1033,6 +1074,9 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
                     copied_bytes: usize::from(!*c.busy) * size_of::<bool>(),
                     ..Default::default()
                 })
+            }
+            CandidatePhase::IndexBegin { .. } => {
+                HtmlConstructionAttributeDescription::Inspect(begin_clear_work())
             }
             CandidatePhase::IndexClear => {
                 HtmlConstructionAttributeDescription::Inspect(clear_work(c.table.as_ref()))
@@ -1194,6 +1238,13 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
                             }
                         }
                     }
+                }
+                CandidatePhase::IndexBegin { geometry } => {
+                    c.table
+                        .as_mut()
+                        .ok_or_else(table_error)?
+                        .begin_clear(geometry);
+                    CandidatePhase::IndexClear
                 }
                 CandidatePhase::IndexClear => {
                     let table = c.table.as_mut().ok_or_else(table_error)?;
@@ -1520,7 +1571,10 @@ impl HtmlConstructionAttributeSlot<'_> {
             .target()
             .ok_or(HtmlConstructionErrorKind::OperationNotReady)?;
         let len = self.edit.capacity.initialized_len;
-        let backing = Arc::as_ptr(self.edit.shared_attributes()?) as usize;
+        let (storage, revision) = (
+            self.edit.storage.arena.serial,
+            self.edit.storage.arena.attribute_revision,
+        );
         let Some(index) = self.edit.index.as_mut() else {
             return Ok(brute);
         };
@@ -1528,8 +1582,9 @@ impl HtmlConstructionAttributeSlot<'_> {
             return Ok(brute);
         };
         let described = Binding::Slots {
+            storage,
             target,
-            backing,
+            revision,
             len,
         };
         let held = HtmlAttributeNameIndex::slots_required(entries);
@@ -1572,7 +1627,7 @@ impl HtmlConstructionAttributeSlot<'_> {
             self.invalidate_index();
             return;
         };
-        let described = self.bind_described_after();
+        let described = self.described();
         if let Some(index) = self.edit.index.as_mut() {
             let placed = entry(tag, Occupant::Attribute(before))
                 .is_some_and(|entry| index.insert(vacancy, entry).is_ok());
@@ -1582,31 +1637,26 @@ impl HtmlConstructionAttributeSlot<'_> {
             }
         }
     }
-    fn bind_described_after(&self) -> Option<Binding> {
+    /// What the index would describe now: the element's attributes at the storage's current
+    /// revision.
+    fn described(&self) -> Option<Binding> {
         Some(Binding::Slots {
+            storage: self.edit.storage.arena.serial,
             target: self.edit.stage.target()?,
-            backing: Arc::as_ptr(self.edit.shared_attributes().ok()?) as usize,
+            revision: self.edit.storage.arena.attribute_revision,
             len: self.edit.capacity.initialized_len,
         })
     }
     /// Records that the index describes the attributes the element has now.
     fn bind_described(&mut self) -> Result<(), HtmlConstructionError> {
-        let target = self
-            .edit
-            .stage
-            .target()
+        let described = self
+            .described()
             .ok_or(HtmlConstructionErrorKind::OperationNotReady)?;
-        let len = self.edit.capacity.initialized_len;
-        let backing = Arc::as_ptr(self.edit.shared_attributes()?) as usize;
         self.edit
             .index
             .as_mut()
             .ok_or_else(table_error)?
-            .bind(Binding::Slots {
-                target,
-                backing,
-                len,
-            });
+            .bind(described);
         Ok(())
     }
 }
@@ -1746,10 +1796,22 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                     SlotInput::Swap(_) => 0,
                 };
                 let busy = usize::from(!s.edit.busy);
+                // A checked append that looks its name up through the index may start rebuilding
+                // it, which writes a new index, its binding and its storage length.
+                let rebuild = usize::from(
+                    s.edit.index.is_some()
+                        && matches!(s.input, SlotInput::Append(_))
+                        && matches!(s.edit.mode, HtmlConstructionAttributeEditMode::Slots),
+                );
                 HtmlConstructionAttributeDescription::Inspect(HtmlConstructionAttributeWork {
                     record_visits: 8,
-                    record_writes: counters + busy,
-                    copied_bytes: counters * size_of::<usize>() + busy * size_of::<bool>(),
+                    record_writes: counters + busy + 3 * rebuild,
+                    copied_bytes: counters * size_of::<usize>()
+                        + busy * size_of::<bool>()
+                        + rebuild
+                            * (size_of::<HtmlNameIndex>()
+                                + size_of::<Binding>()
+                                + size_of::<usize>()),
                     ..Default::default()
                 })
             }
@@ -1787,16 +1849,20 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                     SlotInput::Pop => (2, size_of::<usize>() + size_of::<bool>()),
                     SlotInput::Reserve(_) => (0, 0),
                 };
-                // An append through the index fills the slot its probe reached and renews the
-                // binding that says which attributes the index describes.
-                let (counter_writes, counter_bytes) = if s.insert_slot.is_some() {
-                    (
-                        counter_writes + 2,
-                        counter_bytes + size_of::<usize>() + size_of::<Binding>(),
-                    )
-                } else {
-                    (counter_writes, counter_bytes)
-                };
+                // Every change to the attributes advances the storage's revision. A held index
+                // is bound again or unbound, and an append through it fills the slot its probe
+                // reached and counts the entry.
+                let changes = !matches!(s.input, SlotInput::Reserve(_));
+                let held = changes && s.edit.index.is_some();
+                let entered = s.insert_slot.is_some();
+                let counter_writes = counter_writes
+                    + usize::from(changes)
+                    + usize::from(held)
+                    + 2 * usize::from(entered);
+                let counter_bytes = counter_bytes
+                    + usize::from(changes) * size_of::<u64>()
+                    + usize::from(held) * size_of::<Binding>()
+                    + usize::from(entered) * (size_of::<HtmlNameIndexSlot>() + size_of::<usize>());
                 let fixed_bytes =
                     counter_bytes + size_of::<HtmlConstructionUsage>() + 2 * size_of::<bool>();
                 HtmlConstructionAttributeDescription::Commit {
@@ -2182,6 +2248,10 @@ impl HtmlConstructionReadyAttributeSlot<'_> {
     /// for every other step.
     pub fn commit(mut self) -> Option<Attribute> {
         let s = &mut self.slot;
+        if !matches!(s.input, SlotInput::Reserve(_)) {
+            s.edit.storage.arena.attribute_revision =
+                s.edit.storage.arena.attribute_revision.wrapping_add(1);
+        }
         let removed = match &mut s.input {
             SlotInput::Reserve(_) => None,
             SlotInput::Append(incoming) => {
@@ -2383,6 +2453,23 @@ mod tests {
         mode: HtmlConstructionAttributeEditMode,
     ) -> HtmlConstructionAttributeEdit {
         let mut edit = HtmlConstructionAttributeEdit::begin(storage, target, mode);
+        while let Some(action) = edit.next_action().unwrap() {
+            action.perform().unwrap().accept();
+        }
+        edit
+    }
+    fn make_edit_with(
+        storage: HtmlConstructionStorage,
+        target: HtmlBuilderNode,
+        mode: HtmlConstructionAttributeEditMode,
+        index: Option<HtmlAttributeNameIndex>,
+    ) -> HtmlConstructionAttributeEdit {
+        let mut edit = match index {
+            Some(index) => {
+                HtmlConstructionAttributeEdit::begin_indexed(storage, target, mode, index)
+            }
+            None => HtmlConstructionAttributeEdit::begin(storage, target, mode),
+        };
         while let Some(action) = edit.next_action().unwrap() {
             action.perform().unwrap().accept();
         }
@@ -2949,8 +3036,8 @@ mod tests {
                 // One pop/push transfers exactly two public Attribute records.
                 assert_eq!(work.atomic_layout_bytes, 2 * size_of::<Attribute>());
                 // Three physical writes, cached length/used, usage/busy/finish,
-                // and four admitted phase/successor writes.
-                assert_eq!(work.record_writes, 12);
+                // four admitted phase/successor writes and the storage's attribute revision.
+                assert_eq!(work.record_writes, 13);
                 let one_short = 2 * size_of::<Attribute>() - 1;
                 assert!(work.atomic_layout_bytes > one_short);
                 break;
@@ -3255,8 +3342,9 @@ mod tests {
             if let HtmlConstructionAttributeDescription::Commit { work, .. } = action.description()
             {
                 assert_eq!(
-                    work.record_writes, 13,
-                    "named commit includes cached length and both plan progress fields"
+                    work.record_writes, 14,
+                    "named commit includes cached length, both plan progress fields and the \
+                     storage's attribute revision"
                 );
             }
             assert_eq!(
@@ -3517,8 +3605,17 @@ mod tests {
     }
     /// The work a driver admits, in every category, plus one per action.
     #[derive(Default)]
-    struct Admitted(u64);
+    struct Admitted(u64, usize);
     impl Admitted {
+        /// Counts a `Compare` description, which is where a name is read.
+        fn note(&mut self, description: &HtmlConstructionAttributeDescription<'_>) {
+            if matches!(
+                description,
+                HtmlConstructionAttributeDescription::Compare { .. }
+            ) {
+                self.1 += 1;
+            }
+        }
         fn add(&mut self, work: HtmlConstructionAttributeWork) {
             self.0 += (work.record_visits
                 + work.provider_calls
@@ -3532,8 +3629,9 @@ mod tests {
     /// One append of `incoming` in its own Slots edit that borrows `index` and gives it back, as a
     /// consumer does for each attribute of an element it builds one at a time. The error is the
     /// first refusal; the edit is then abandoned.
-    fn append_in_new_edit(
+    fn append_at(
         storage: HtmlConstructionStorage,
+        ordinal: usize,
         index: HtmlAttributeNameIndex,
         incoming: Attribute,
         admitted: &mut Admitted,
@@ -3542,29 +3640,35 @@ mod tests {
         HtmlAttributeNameIndex,
         Result<(), HtmlConstructionError>,
     ) {
-        let target = storage.node_at(0).unwrap().handle();
-        let mut edit = HtmlConstructionAttributeEdit::begin(
+        let target = storage.node_at(ordinal).unwrap().handle();
+        let mut edit = HtmlConstructionAttributeEdit::begin_indexed(
             storage,
             target,
             HtmlConstructionAttributeEditMode::Slots,
+            index,
         );
-        edit.adopt_index(index);
         while let Some(action) = edit.next_action().unwrap() {
-            admitted.add(action.description().work());
+            let description = action.description();
+            admitted.note(&description);
+            admitted.add(description.work());
             action.perform().unwrap().accept();
         }
         let mut incoming = vec![incoming];
         let result = (|| {
             let mut reserve = Some(edit.reserve(1)?);
             while let Some(action) = reserve.as_mut().unwrap().next_action()? {
-                admitted.add(action.description().work());
+                let description = action.description();
+                admitted.note(&description);
+                admitted.add(description.work());
                 action.perform()?.accept();
             }
             slots::attribute_slot(&mut reserve)?.commit();
             drop(reserve);
             let mut append = Some(edit.append(&mut incoming)?);
             while let Some(action) = append.as_mut().unwrap().next_action()? {
-                admitted.add(action.description().work());
+                let description = action.description();
+                admitted.note(&description);
+                admitted.add(description.work());
                 action.perform()?.accept();
             }
             slots::attribute_slot(&mut append)?.commit();
@@ -3583,6 +3687,18 @@ mod tests {
         (storage, index, result)
     }
 
+    fn append_in_new_edit(
+        storage: HtmlConstructionStorage,
+        index: HtmlAttributeNameIndex,
+        incoming: Attribute,
+        admitted: &mut Admitted,
+    ) -> (
+        HtmlConstructionStorage,
+        HtmlAttributeNameIndex,
+        Result<(), HtmlConstructionError>,
+    ) {
+        append_at(storage, 0, index, incoming, admitted)
+    }
     #[test]
     fn indexed_appends_agree_with_a_set_of_names_through_swaps_pops_and_rebuilds() {
         let mut random = Random(0x2545_f491_4f6c_dd1d);
@@ -3598,27 +3714,74 @@ mod tests {
                 if kind == 0 && expected.len() >= 2 {
                     // A change that is not an index-aware append: the index must notice.
                     let target = storage.node_at(0).unwrap().handle();
-                    let mut edit = HtmlConstructionAttributeEdit::begin(
+                    let mut edit = make_edit_with(
                         storage,
                         target,
                         HtmlConstructionAttributeEditMode::Slots,
+                        Some(index),
                     );
-                    edit.adopt_index(index);
-                    while let Some(action) = edit.next_action().unwrap() {
-                        action.perform().unwrap().accept();
+                    let mut aborted = false;
+                    match random.next(3) {
+                        0 => {
+                            let at = random.next(expected.len() - 1);
+                            slot(edit.swap_adjacent(at).unwrap());
+                            expected.swap(at, at + 1);
+                        }
+                        1 => {
+                            slot(edit.pop().unwrap());
+                            expected.pop();
+                        }
+                        _ => {
+                            // A replacement whose name may repeat another attribute's.
+                            let at = random.next(expected.len());
+                            let namespace = NAMESPACES[random.next(NAMESPACES.len())];
+                            let local = LOCALS[random.next(LOCALS.len())];
+                            let key = (namespace.to_string(), local.to_string());
+                            let mut incoming = Some(qualified(namespace, None, local));
+                            let outcome = (|| -> Result<(), HtmlConstructionError> {
+                                let mut replacing = Some(edit.replace(at, &mut incoming)?);
+                                while let Some(action) =
+                                    replacing.as_mut().unwrap().next_action()?
+                                {
+                                    action.perform()?.accept();
+                                }
+                                slots::attribute_slot(&mut replacing)?.commit();
+                                Ok(())
+                            })();
+                            let other = expected
+                                .iter()
+                                .enumerate()
+                                .position(|(position, held)| position != at && *held == key);
+                            match (other, outcome) {
+                                (None, Ok(())) => expected[at] = key,
+                                (Some(first), Err(error)) => {
+                                    assert_eq!(
+                                        error,
+                                        HtmlConstructionErrorKind::DuplicateAttribute {
+                                            first,
+                                            duplicate: at
+                                        }
+                                        .error(),
+                                        "round {round} step {step}"
+                                    );
+                                    aborted = true;
+                                }
+                                (other, outcome) => {
+                                    panic!("round {round} step {step}: {other:?} {outcome:?}")
+                                }
+                            }
+                        }
                     }
-                    if random.next(2) == 0 {
-                        let at = random.next(expected.len() - 1);
-                        slot(edit.swap_adjacent(at).unwrap());
-                        expected.swap(at, at + 1);
+                    let mut completion = if aborted {
+                        edit.abort()
                     } else {
-                        slot(edit.pop().unwrap());
-                        expected.pop();
-                    }
-                    let mut owner = Some(edit);
-                    let mut completion = slots::edit(&mut owner).unwrap();
+                        let mut owner = Some(edit);
+                        slots::edit(&mut owner).unwrap()
+                    };
                     index = completion.take_index().unwrap();
-                    storage = completion.into_parts().0;
+                    let (next, retirement) = completion.into_parts();
+                    retire(retirement);
+                    storage = next;
                     continue;
                 }
                 let namespace = NAMESPACES[random.next(NAMESPACES.len())];
@@ -3745,16 +3908,14 @@ mod tests {
                 .collect();
             let decide = |index: Option<HtmlAttributeNameIndex>| {
                 let (storage, target) = make_storage(installed.clone());
-                let mut edit = make_edit(
+                let mut edit = make_edit_with(
                     storage,
                     target,
                     HtmlConstructionAttributeEditMode::NamedMerge {
                         candidate_count: names.len(),
                     },
+                    index,
                 );
-                if let Some(index) = index {
-                    edit.adopt_index(index);
-                }
                 plan(&mut edit, &names);
                 let decisions: Vec<bool> = (0..names.len())
                     .map(|i| edit.decision(i).unwrap())
@@ -3780,14 +3941,14 @@ mod tests {
             let names: Vec<DocumentString> = (0..count)
                 .map(|i| DocumentString::from(format!("candidate{i}")))
                 .collect();
-            let mut edit = HtmlConstructionAttributeEdit::begin(
+            let mut edit = HtmlConstructionAttributeEdit::begin_indexed(
                 storage,
                 target,
                 HtmlConstructionAttributeEditMode::NamedMerge {
                     candidate_count: count,
                 },
+                new_index(count + 1),
             );
-            edit.adopt_index(new_index(count + 1));
             let mut admitted = Admitted::default();
             while let Some(action) = edit.next_action().unwrap() {
                 admitted.add(action.description().work());
@@ -3850,38 +4011,151 @@ mod tests {
     }
 
     #[test]
-    fn an_index_lent_after_a_candidate_was_planned_does_not_change_later_decisions() {
+    fn an_index_lent_when_the_edit_begins_decides_repeated_candidates_like_the_pairwise_plan() {
+        // An index can only be lent at the start of an edit, so that it has seen every name the
+        // plan has: lending one after a candidate was planned is not expressible.
         let names = ["x", "x", "y", "y"].map(DocumentString::from);
-        let decide = |late: bool| {
+        let decide = |index: Option<HtmlAttributeNameIndex>| {
             let (storage, target) = make_storage(Vec::new());
-            let mut edit = make_edit(
+            let mut edit = make_edit_with(
                 storage,
                 target,
                 HtmlConstructionAttributeEditMode::NamedMerge {
                     candidate_count: names.len(),
                 },
+                index,
             );
-            for (index, name) in names.iter().enumerate() {
-                if late && index == 1 {
-                    edit.adopt_index(new_index(names.len()));
-                }
-                let mut candidate = Some(edit.candidate(index, name).unwrap());
-                while let Some(action) = candidate.as_mut().unwrap().next_action().unwrap() {
-                    let prior = action.description().prior_index();
-                    action
-                        .perform(prior.map(|index| &names[index]))
-                        .unwrap()
-                        .accept();
-                }
-                slots::candidate(&mut candidate).unwrap();
-            }
+            plan(&mut edit, &names);
             let decisions: Vec<bool> = (0..names.len())
                 .map(|i| edit.decision(i).unwrap())
                 .collect();
             retire(edit.abort().into_parts().1);
             decisions
         };
-        assert_eq!(decide(false), [true, false, true, false]);
-        assert_eq!(decide(true), [true, false, true, false]);
+        assert_eq!(decide(None), [true, false, true, false]);
+        assert_eq!(
+            decide(Some(new_index(names.len()))),
+            [true, false, true, false]
+        );
+    }
+
+    #[test]
+    fn a_probe_reads_a_name_only_where_the_tag_matches_and_moves_on_when_the_names_differ() {
+        let (storage, _) = make_storage(Vec::new());
+        let mut admitted = Admitted::default();
+        let (storage, mut index, result) =
+            append_in_new_edit(storage, new_index(16), attribute("a", "v"), &mut admitted);
+        result.unwrap();
+        // Without a collision no name is read: the empty slot or a tag that differs ends the
+        // probe, so appending b compares nothing.
+        let mut plain = Admitted::default();
+        let (control, back, result) =
+            append_in_new_edit(storage, index, attribute("b", "v"), &mut plain);
+        result.unwrap();
+        index = back;
+        // The slot of a hand-built entry that carries the tag of c but names a, placed on the
+        // path of c's probe, which the append of c must meet, read and pass.
+        let hash = index.hash_local(&[u16::from(b'c')]);
+        let mut probe = index.probe(hash).unwrap();
+        loop {
+            match index.advance(&mut probe).unwrap() {
+                Some(HtmlNameIndexStep::Vacant(vacancy)) => {
+                    let collide = entry(tag(hash), Occupant::Attribute(0)).unwrap();
+                    index.insert(vacancy, collide).unwrap();
+                    break;
+                }
+                Some(HtmlNameIndexStep::Occupied(_)) => {}
+                None => panic!("a half full table has a vacancy"),
+            }
+        }
+        let mut collided = Admitted::default();
+        let (control, _, result) =
+            append_in_new_edit(control, index, attribute("c", "v"), &mut collided);
+        assert_eq!(
+            result,
+            Ok(()),
+            "the colliding name differs, so c is appended"
+        );
+        assert_eq!(plain.1, 0, "no name is read without a collision");
+        assert!(collided.1 > 0, "the colliding entry's name was read");
+        let names: Vec<String> = match control.node_at(0).unwrap().kind() {
+            HtmlNodeKind::Element(element) => element
+                .attributes()
+                .as_slice()
+                .iter()
+                .map(|held| held.name().local_name().to_utf8().unwrap())
+                .collect(),
+            _ => unreachable!(),
+        };
+        assert_eq!(names, ["a", "b", "c"]);
+    }
+
+    /// Adds an element with `attributes` to `storage`.
+    fn add_element(
+        storage: HtmlConstructionStorage,
+        attributes: Vec<Attribute>,
+    ) -> HtmlConstructionStorage {
+        let mut operation = Some(storage.prepare(HtmlConstructionCommand::Create {
+            kind: HtmlNodeKind::Element(HtmlElement::new(
+                QualifiedName::new(Namespace::none(), None, "other"),
+                OrderedAttributes::new(attributes).unwrap(),
+            )),
+        }));
+        while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
+            action.perform().unwrap().accept();
+        }
+        let HtmlConstructionCommit::Changed { storage, .. } =
+            slots::operation(&mut operation).unwrap().commit()
+        else {
+            panic!("create")
+        };
+        storage
+    }
+
+    #[test]
+    fn an_index_that_served_another_element_of_the_storage_is_rebuilt_for_this_one() {
+        let (storage, _) = make_storage(Vec::new());
+        let storage = add_element(storage, Vec::new());
+        let mut admitted = Admitted::default();
+        let (storage, index, result) = append_at(
+            storage,
+            0,
+            new_index(16),
+            attribute("x", "v"),
+            &mut admitted,
+        );
+        result.unwrap();
+        // The other element has no x yet: the same name is accepted there.
+        let (storage, index, result) =
+            append_at(storage, 1, index, attribute("x", "v"), &mut admitted);
+        assert_eq!(result, Ok(()));
+        // Back on the first element, the index describes the other one and must not be trusted.
+        let (_, _, result) = append_at(storage, 0, index, attribute("x", "v"), &mut admitted);
+        assert_eq!(
+            result,
+            Err(HtmlConstructionErrorKind::DuplicateAttribute {
+                first: 0,
+                duplicate: 1
+            }
+            .error())
+        );
+    }
+
+    #[test]
+    fn an_index_kept_beside_another_storage_is_not_trusted_for_this_one() {
+        let mut admitted = Admitted::default();
+        let (first, _) = make_storage(Vec::new());
+        let (second, _) = make_storage(Vec::new());
+        let (first, index, result) =
+            append_in_new_edit(first, new_index(16), attribute("x", "v"), &mut admitted);
+        result.unwrap();
+        // The index describes a one attribute element of the first storage; the second has the
+        // same target ordinal, length and revision, and must not be taken for it.
+        let (second, index, result) =
+            append_in_new_edit(second, index, attribute("y", "v"), &mut admitted);
+        assert_eq!(result, Ok(()));
+        let (_, _, result) = append_in_new_edit(first, index, attribute("x", "v"), &mut admitted);
+        assert!(result.is_err(), "x repeats the first storage's x");
+        drop(second);
     }
 }
