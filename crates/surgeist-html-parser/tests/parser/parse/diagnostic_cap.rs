@@ -337,9 +337,11 @@ fn a_failure_keeps_the_prefix_and_the_dropped_count_reached_before_the_stop() {
         .usage()
         .resource(HtmlParseResource::WorkCredits)
         .current();
+    // A quarter of the credits ends the parse inside tokenization however the
+    // cost of construction and publication is split between the two.
     let cut = limits_builder()
         .diagnostics(3)
-        .work_credits(used / 2)
+        .work_credits(used / 4)
         .finish()
         .unwrap();
     let failure = parse(Kind::Document, &input, cut).unwrap_err();
