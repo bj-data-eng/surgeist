@@ -597,6 +597,9 @@ impl<'a> HtmlSemanticSession<'a> {
             return Ok(HtmlSemanticValue::Inapplicable);
         }
         let graph = self.md_tree_graph(id)?;
+        // The cycles build an index of their own; the type walk index held with
+        // the graph is not read here.
+        self.md_drop_typing();
         let mut frames = Vec::new();
         let mut contributors = Vec::new();
         let result = (|| {
@@ -834,6 +837,11 @@ impl<'a> HtmlSemanticSession<'a> {
                             };
                             let own = self.md_tokens(re, HtmlMicrodataTokenKind::ItemType)?;
                             let inherited = own.tokens().is_empty();
+                            if !inherited {
+                                // A typed receiver is walked alone with an index of
+                                // its own, so none is held beside it.
+                                self.md_drop_typing();
+                            }
                             let context = self.md_type_context(
                                 receiver,
                                 own,
@@ -1862,6 +1870,9 @@ struct TypingIndex {
     explored: Vec<usize>,
     /// The last receiver epoch used; it only grows.
     epoch: usize,
+    /// Whether everything but `keys` is built: the keys answer whether a subject
+    /// is an item of the graph, which settles that it has no receivers.
+    complete: bool,
 }
 struct Graph {
     items: Vec<HtmlCaptureSubjectId>,
@@ -2703,9 +2714,10 @@ impl<'a> HtmlSemanticSession<'a> {
             }
         }
     }
-    /// The typing index of `graph`: the one the held graph keeps, taken out for
-    /// the walk (and then `true`, for putting back), or a new one built from the
-    /// graph's items and edges, which is kept if `graph` is the held graph.
+    /// The typing index of `graph` with at least its keys: the one the held graph
+    /// keeps, taken out for the walk (and then `true`, for putting back), or a new
+    /// one with the keys of the graph's items, which is kept if `graph` is the
+    /// held graph.
     fn md_graph_typing(
         &mut self,
         graph: &Arc<Graph>,
@@ -2715,15 +2727,38 @@ impl<'a> HtmlSemanticSession<'a> {
             .as_ref()
             .is_some_and(|held| Arc::ptr_eq(&held.graph, graph));
         if held
-            && let Some(typing) = self
+            && self
+                .microdata_graph
+                .as_ref()
+                .is_some_and(|held| held.typing.is_some())
+        {
+            // Charged before the index leaves the held graph, so a refusal here
+            // leaves it there to be released with the graph.
+            self.charge(1)?;
+            let typing = self
                 .microdata_graph
                 .as_mut()
                 .and_then(|held| held.typing.take())
-        {
-            self.charge(1)?;
+                .ok_or_else(|| self.stop(HtmlSemanticFailureKind::ProtocolViolated))?;
             return Ok((typing, true));
         }
-        Ok((self.md_build_typing(&graph.items, &graph.edges)?, held))
+        let mut typing = TypingIndex::default();
+        match self.md_item_keys(&graph.items, &mut typing.keys) {
+            Ok(()) => Ok((typing, held)),
+            Err(failure) => {
+                self.md_release_typing(&typing);
+                Err(failure)
+            }
+        }
+    }
+    /// Builds what `typing` lacks beyond its keys for the walks of `graph`.
+    /// A refusal leaves `typing` for the caller to release.
+    fn md_complete_graph_typing(
+        &mut self,
+        graph: &Graph,
+        typing: &mut TypingIndex,
+    ) -> Result<(), HtmlSemanticFailure> {
+        self.md_complete_typing(&graph.items, &graph.edges, typing)
     }
     /// Puts a typing index taken from the held graph back with it, or releases
     /// it when `graph` is no longer the held graph.
@@ -2739,6 +2774,17 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         self.md_release_typing(&typing);
     }
+    /// Releases the type walk index the held graph keeps, and not the graph, for
+    /// a query that reserves scratch of its own and does not read the index.
+    fn md_drop_typing(&mut self) {
+        if let Some(typing) = self
+            .microdata_graph
+            .as_mut()
+            .and_then(|held| held.typing.take())
+        {
+            self.md_release_typing(&typing);
+        }
+    }
     fn md_release_typing(&mut self, typing: &TypingIndex) {
         self.release_scratch(&typing.keys);
         self.release_scratch(&typing.incoming);
@@ -2746,29 +2792,16 @@ impl<'a> HtmlSemanticSession<'a> {
         self.release_scratch(&typing.on_path);
         self.release_scratch(&typing.explored);
     }
+    /// A complete index of `items` and `edges`, released if building it is refused.
     fn md_build_typing(
         &mut self,
         items: &[HtmlCaptureSubjectId],
         edges: &[(HtmlCaptureSubjectId, HtmlCaptureSubjectId)],
     ) -> Result<TypingIndex, HtmlSemanticFailure> {
         let mut typing = TypingIndex::default();
-        let built = (|| {
-            self.md_edge_index(
-                items,
-                edges,
-                EdgeEnd::To,
-                &mut typing.keys,
-                &mut typing.incoming,
-                &mut typing.start,
-            )?;
-            self.reserve_scratch(&mut typing.on_path, items.len())?;
-            self.charge(items.len())?;
-            typing.on_path.resize(items.len(), false);
-            self.reserve_scratch(&mut typing.explored, items.len())?;
-            self.charge(items.len())?;
-            typing.explored.resize(items.len(), 0usize);
-            Ok(())
-        })();
+        let built = self
+            .md_item_keys(items, &mut typing.keys)
+            .and_then(|()| self.md_complete_typing(items, edges, &mut typing));
         match built {
             Ok(()) => Ok(typing),
             Err(failure) => {
@@ -2776,6 +2809,29 @@ impl<'a> HtmlSemanticSession<'a> {
                 Err(failure)
             }
         }
+    }
+    fn md_complete_typing(
+        &mut self,
+        items: &[HtmlCaptureSubjectId],
+        edges: &[(HtmlCaptureSubjectId, HtmlCaptureSubjectId)],
+        typing: &mut TypingIndex,
+    ) -> Result<(), HtmlSemanticFailure> {
+        self.md_edge_index_from_keys(
+            items,
+            edges,
+            EdgeEnd::To,
+            &typing.keys,
+            &mut typing.incoming,
+            &mut typing.start,
+        )?;
+        self.reserve_scratch(&mut typing.on_path, items.len())?;
+        self.charge(items.len())?;
+        typing.on_path.resize(items.len(), false);
+        self.reserve_scratch(&mut typing.explored, items.len())?;
+        self.charge(items.len())?;
+        typing.explored.resize(items.len(), 0usize);
+        typing.complete = true;
+        Ok(())
     }
     fn md_release_graph(&mut self, graph: &Graph) {
         self.release_scratch(&graph.items);
@@ -2812,6 +2868,15 @@ impl<'a> HtmlSemanticSession<'a> {
         index: &mut Vec<(usize, usize, usize)>,
         start: &mut Vec<usize>,
     ) -> Result<(), HtmlSemanticFailure> {
+        self.md_item_keys(items, keys)?;
+        self.md_edge_index_from_keys(items, edges, by, keys, index, start)
+    }
+    /// The ordinals of `items` with their positions, sorted by ordinal.
+    fn md_item_keys(
+        &mut self,
+        items: &[HtmlCaptureSubjectId],
+        keys: &mut Vec<(usize, usize)>,
+    ) -> Result<(), HtmlSemanticFailure> {
         self.reserve_scratch(keys, items.len())?;
         for (position, item) in items.iter().enumerate() {
             self.charge(1)?;
@@ -2819,6 +2884,18 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         self.md_charge_product(&[items.len(), md_log2(items.len())])?;
         keys.sort_unstable();
+        Ok(())
+    }
+    /// As [`md_edge_index`](Self::md_edge_index) over keys already built.
+    fn md_edge_index_from_keys(
+        &mut self,
+        items: &[HtmlCaptureSubjectId],
+        edges: &[(HtmlCaptureSubjectId, HtmlCaptureSubjectId)],
+        by: EdgeEnd,
+        keys: &[(usize, usize)],
+        index: &mut Vec<(usize, usize, usize)>,
+        start: &mut Vec<usize>,
+    ) -> Result<(), HtmlSemanticFailure> {
         self.reserve_scratch(index, edges.len())?;
         for (ordinal, (from, to)) in edges.iter().enumerate() {
             let from = self.md_position(keys, from)?;
@@ -2855,16 +2932,27 @@ impl<'a> HtmlSemanticSession<'a> {
         let single = [id.clone()];
         let mut graph_index = None;
         if let Some(graph) = graph {
-            let (index, held) = self.md_graph_typing(graph)?;
-            self.charge(md_log2(index.keys.len()))?;
-            if index
-                .keys
-                .binary_search_by_key(&id.ordinal(), |&(ordinal, _)| ordinal)
-                .is_ok()
-            {
-                graph_index = Some((index, held));
-            } else {
+            let (mut index, held) = self.md_graph_typing(graph)?;
+            let found = match self.charge(md_log2(index.keys.len())) {
+                Ok(()) => index
+                    .keys
+                    .binary_search_by_key(&id.ordinal(), |&(ordinal, _)| ordinal)
+                    .is_ok(),
+                Err(failure) => {
+                    self.md_release_typing(&index);
+                    return Err(failure);
+                }
+            };
+            if !found {
+                // The subject has no receivers; only the keys were needed.
                 self.md_return_typing(graph, index, held);
+            } else if index.complete {
+                graph_index = Some((index, held));
+            } else if let Err(failure) = self.md_complete_graph_typing(graph, &mut index) {
+                self.md_release_typing(&index);
+                return Err(failure);
+            } else {
+                graph_index = Some((index, held));
             }
         }
         let (mut ix, held, items): (TypingIndex, bool, &[HtmlCaptureSubjectId]) =
