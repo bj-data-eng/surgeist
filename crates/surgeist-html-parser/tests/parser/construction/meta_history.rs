@@ -596,6 +596,62 @@ fn media_and_css_fact_absence_are_missing_operations_and_independent_fields_cont
     }
 }
 
+/// "Obtain a page's theme color" step 2.1 skips a candidate whose `media` does
+/// not match the environment (html-language-elements-attributes--877d6146487f
+/// capture, line 1844). "Matches the environment" holds for the empty string,
+/// for ASCII whitespace, and for a media query list that matches (html-language-
+/// foundations capture, line 3605). The media type `all` matches all devices
+/// (mediaqueries-4 capture, line 405) and media types are ASCII case-insensitive
+/// (line 767), so `all` needs no environment. Any other query does.
+#[test]
+fn media_all_selects_a_theme_color_without_an_environment() {
+    for media in ["all", "ALL", "All", " all", "all\t", "\n all \r\n"] {
+        let report = parse(&format!(
+            "<!doctype html><meta name=theme-color content=red media='{media}'><meta name=theme-color content=blue>"
+        ));
+        let states = rows(&report);
+        let state = &states[0];
+        let theme = state
+            .theme_color()
+            .unwrap_or_else(|_| panic!("media {media:?} needs no environment"));
+        assert_eq!(
+            theme.and_then(|color| color.srgb_bytes()),
+            Some([255, 0, 0]),
+            "media {media:?}"
+        );
+        assert!(state.first_missing().is_none(), "media {media:?}");
+    }
+}
+
+#[test]
+fn a_media_query_needing_an_environment_keeps_the_theme_color_gap() {
+    for media in [
+        "print",
+        "screen",
+        "not all",
+        "only all",
+        "all and (color)",
+        "all, print",
+        "(prefers-color-scheme: dark)",
+        "allx",
+        "al l",
+    ] {
+        let report = parse(&format!(
+            "<!doctype html><meta name=theme-color content=red media='{media}'><meta name=theme-color content=blue>"
+        ));
+        let states = rows(&report);
+        let missing = match states[0].theme_color() {
+            Err(value) => value,
+            Ok(_) => panic!("media {media:?} needs an environment"),
+        };
+        assert_eq!(
+            missing.kind(),
+            &HtmlParseMetaMissingKind::ThemeColor,
+            "media {media:?}"
+        );
+    }
+}
+
 #[test]
 fn candidate_metas_in_a_subtree_the_adoption_agency_moves_select_in_tree_order() {
     // Each document is the one parse that moves a subtree holding the three
