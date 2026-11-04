@@ -1318,6 +1318,26 @@ impl HtmlAutocompleteReport {
     }
 }
 
+/// The control an applicable verdict names, or `None` with the verdict no longer applicable. A
+/// verdict is only `Applicable` together with its known element: a missing element, or an element
+/// that does not fit the supplied input state, makes it a different context.
+fn applicable_control(
+    applicability: &mut HtmlAttributeApplicability,
+    known: Option<KnownHtmlElement>,
+    state: Option<HtmlInputType>,
+) -> Option<KnownHtmlElement> {
+    if *applicability != HtmlAttributeApplicability::Applicable {
+        return None;
+    }
+    match known {
+        Some(known) if state.is_none() || known == KnownHtmlElement::Input => Some(known),
+        _ => {
+            *applicability = HtmlAttributeApplicability::DifferentContext;
+            None
+        }
+    }
+}
+
 fn keyword_token(keyword: DeclaredKeyword) -> HtmlSpaceToken {
     HtmlSpaceToken::declared(keyword)
 }
@@ -1714,26 +1734,22 @@ impl HtmlValueInterpreter {
         if let Some(state) = state {
             input.supplied_context = SuppliedContext::Input(state);
         }
-        let known = KnownHtmlElement::from_name(element);
-        if input.applicability == HtmlAttributeApplicability::Applicable
-            && state.is_some()
-            && known != Some(KnownHtmlElement::Input)
-        {
-            input.applicability = HtmlAttributeApplicability::DifferentContext;
-        }
-        // The rule applies only to a known control, so an applicable report names one.
-        let known = match known {
-            Some(known) if input.applicability == HtmlAttributeApplicability::Applicable => known,
-            _ => {
-                return Ok(HtmlAutocompleteReport {
-                    input,
-                    tokens: None,
-                    syntax: HtmlAutocompleteSyntaxState::Unapplied,
-                    mantle: None,
-                    context_author: HtmlAutocompleteContextAuthorState::Unapplied,
-                    processing: HtmlAutocompleteProcessingState::Unapplied,
-                });
-            }
+        // The applicable verdict is kept only with the known control it names. A supplied input
+        // state fits an `input` alone, and the rule covers no unknown element, so every other
+        // element is written back as a different context and the report agrees with what follows.
+        let Some(known) = applicable_control(
+            &mut input.applicability,
+            KnownHtmlElement::from_name(element),
+            state,
+        ) else {
+            return Ok(HtmlAutocompleteReport {
+                input,
+                tokens: None,
+                syntax: HtmlAutocompleteSyntaxState::Unapplied,
+                mantle: None,
+                context_author: HtmlAutocompleteContextAuthorState::Unapplied,
+                processing: HtmlAutocompleteProcessingState::Unapplied,
+            });
         };
         let tokens = raw.map(|raw| storage.tokens(raw.value())).transpose()?;
         let syntax = tokens
@@ -1768,6 +1784,63 @@ impl HtmlValueInterpreter {
 #[cfg(test)]
 mod controlled_tests {
     use super::*;
+
+    /// An applicable verdict survives only with the known control it names, and every report that
+    /// is returned unapplied says so: the verdict never stays applicable without its element.
+    #[test]
+    fn an_applicable_verdict_is_kept_only_with_its_known_control() {
+        use HtmlAttributeApplicability as A;
+        let cases = [
+            (
+                A::Applicable,
+                Some(KnownHtmlElement::Select),
+                None,
+                Some(KnownHtmlElement::Select),
+                A::Applicable,
+            ),
+            (
+                A::Applicable,
+                Some(KnownHtmlElement::Input),
+                Some(HtmlInputType::Text),
+                Some(KnownHtmlElement::Input),
+                A::Applicable,
+            ),
+            (
+                A::Applicable,
+                Some(KnownHtmlElement::Select),
+                Some(HtmlInputType::Text),
+                None,
+                A::DifferentContext,
+            ),
+            (A::Applicable, None, None, None, A::DifferentContext),
+            (
+                A::Applicable,
+                None,
+                Some(HtmlInputType::Text),
+                None,
+                A::DifferentContext,
+            ),
+            (
+                A::DifferentElement,
+                Some(KnownHtmlElement::Input),
+                None,
+                None,
+                A::DifferentElement,
+            ),
+            (
+                A::ForeignElementNamespace,
+                None,
+                None,
+                None,
+                A::ForeignElementNamespace,
+            ),
+        ];
+        for (verdict, known, state, control, expected) in cases {
+            let mut verdict = verdict;
+            assert_eq!(applicable_control(&mut verdict, known, state), control);
+            assert_eq!(verdict, expected);
+        }
+    }
 
     fn limits() -> HtmlAutocompleteMaterializationLimits {
         HtmlAutocompleteMaterializationLimits {

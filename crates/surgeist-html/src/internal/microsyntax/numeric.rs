@@ -172,24 +172,39 @@ fn write_quotient(input: &[u8], divisor: NonZeroU32, output: &mut Vec<u8>) -> u3
     remainder as u32
 }
 
-/// Takes ownership of a metered digit buffer as a string, validating it in one pass and making no
-/// second allocation. Writers push only ASCII digits, so a rejected byte reports the first
-/// non-digit as the digits error the controlled operations already carry.
+/// Takes ownership of a metered digit buffer as a string without a second allocation. It reports
+/// the first byte that is not an ASCII digit, with its offset, as the digits error the controlled
+/// operations already carry. Writers push only ASCII digits, so no valid operation reaches it.
 fn ascii_digit_string(bytes: Vec<u8>) -> Result<String, HtmlDecimalDigitsError> {
     #[cfg(test)]
     count_digit_steps(bytes.len());
-    String::from_utf8(bytes).map_err(|rejected| {
-        let bytes = rejected.into_bytes();
-        let (offset, unit) = bytes
+    let first_non_digit = |bytes: &[u8]| {
+        bytes
             .iter()
             .enumerate()
             .find(|(_, byte)| !byte.is_ascii_digit())
-            .map_or((bytes.len(), 0), |(offset, byte)| (offset, *byte));
-        HtmlDecimalDigitsError::NonAsciiDigit {
-            code_unit_offset: offset,
-            code_unit: u16::from(unit),
+            .map(|(offset, byte)| HtmlDecimalDigitsError::NonAsciiDigit {
+                code_unit_offset: offset,
+                code_unit: u16::from(*byte),
+            })
+    };
+    match String::from_utf8(bytes) {
+        Ok(digits) => match first_non_digit(digits.as_bytes()) {
+            None => Ok(digits),
+            Some(error) => Err(error),
+        },
+        // A byte that is not UTF-8 is not an ASCII digit either, so the first non-digit exists;
+        // the error is reported from the same byte scan.
+        Err(rejected) => {
+            let bytes = rejected.into_bytes();
+            Err(
+                first_non_digit(&bytes).unwrap_or(HtmlDecimalDigitsError::NonAsciiDigit {
+                    code_unit_offset: bytes.len(),
+                    code_unit: 0,
+                }),
+            )
         }
-    })
+    }
 }
 
 /// Builds the string of an unmetered writer's digit buffer. These writers already grow ordinary

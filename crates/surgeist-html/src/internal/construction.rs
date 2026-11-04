@@ -1073,7 +1073,10 @@ impl<'a> HtmlNode<'a> {
             .template_contents
             .map(|contents| self.arena.id(contents.position()))
     }
-    /// Native declarative shadow association, if supplied.
+    /// Native declarative shadow association, if supplied. A declarative shadow root is the
+    /// association whose contents carry shadow properties, and publication refuses any `shadow`
+    /// relation whose contents lack them (`validate_record`, `InvalidShadowAssociation`), so a
+    /// published tree has no association that this answers with `None`.
     pub fn declarative_shadow_root(self) -> Option<HtmlDeclarativeShadowRoot<'a>> {
         let relation = self.arena.records[self.index].shadow.as_ref()?;
         // A declarative shadow root is an association whose contents carry shadow properties.
