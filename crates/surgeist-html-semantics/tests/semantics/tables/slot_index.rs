@@ -316,3 +316,83 @@ fn a_scope_too_long_to_read_refuses_a_table_with_a_row_group_only() {
     let (capture, table) = build(true);
     assert!(query(&capture, &table, limits()).0.is_err());
 }
+
+/// The cells a cell lists as its headers, as positions among `cells`, in the
+/// order the model lists them.
+fn headers_of(
+    capture: &HtmlCapture,
+    model: &HtmlTableModel,
+    cells: &[Vec<Subject>],
+    cell: usize,
+) -> Vec<usize> {
+    associations(capture, model, cells)
+        .into_iter()
+        .filter(|(principal, _)| *principal == cell)
+        .map(|(_, header)| header)
+        .collect()
+}
+
+#[test]
+fn row_group_headers_are_added_in_model_order() {
+    // The specification adds "all header cells" of the group that lie up and
+    // left of the cell without an order; the model adds them in model order.
+    // A, B and C (th, scope rowgroup, taking no headers of their own) lie in
+    // the one row group, up and left of P, which spans columns 1 and 2 of row
+    // 1. P's scans find only cells that are not row or column headers, so its
+    // list is what the group adds: A, B, C.
+    let group_th = &[("scope", "rowgroup"), ("headers", "")];
+    let (mut b, d) = wide_builder_without_registries();
+    let a = cell(&mut b, &d, "th", group_th);
+    let bb = cell(&mut b, &d, "th", group_th);
+    let first = element(&mut b, &d, "tr", &[]);
+    b.establish_children(&first, &[a.clone(), bb.clone()])
+        .unwrap();
+    let c = cell(&mut b, &d, "th", group_th);
+    let p = cell(&mut b, &d, "td", &[("colspan", "2")]);
+    let second = element(&mut b, &d, "tr", &[]);
+    b.establish_children(&second, &[c.clone(), p.clone()])
+        .unwrap();
+    let body = element(&mut b, &d, "tbody", &[]);
+    b.establish_children(&body, &[first, second]).unwrap();
+    let table = element(&mut b, &d, "table", &[]);
+    b.establish_children(&table, &[body]).unwrap();
+    let capture = b.finish().unwrap();
+    let model = model_of(&capture, &table);
+    let cells = vec![vec![a, bb], vec![c, p]];
+    assert_eq!(headers_of(&capture, &model, &cells, 3), [0, 1, 2]);
+}
+
+#[test]
+fn column_group_headers_are_added_in_model_order_not_column_order() {
+    // One column group spans three columns. Hr (th, scope colgroup) is at the
+    // right of row 0 and Hl at the left of row 1, so Hr comes first in the
+    // model and Hl first by column. P spans the three columns of row 2. Both
+    // lie up and left of P's far edge, and nothing else is a header of P, so P
+    // lists what the group adds, in model order: Hr, Hl.
+    let group_th = &[("scope", "colgroup"), ("headers", "")];
+    let (mut b, d) = wide_builder_without_registries();
+    let group = element(&mut b, &d, "colgroup", &[("span", "3")]);
+    b.establish_children(&group, &[]).unwrap();
+    let t0 = cell(&mut b, &d, "td", &[]);
+    let t1 = cell(&mut b, &d, "td", &[]);
+    let hr = cell(&mut b, &d, "th", group_th);
+    let first = element(&mut b, &d, "tr", &[]);
+    b.establish_children(&first, &[t0.clone(), t1.clone(), hr.clone()])
+        .unwrap();
+    let hl = cell(&mut b, &d, "th", group_th);
+    let second = element(&mut b, &d, "tr", &[]);
+    b.establish_children(&second, std::slice::from_ref(&hl))
+        .unwrap();
+    let p = cell(&mut b, &d, "td", &[("colspan", "3")]);
+    let third = element(&mut b, &d, "tr", &[]);
+    b.establish_children(&third, std::slice::from_ref(&p))
+        .unwrap();
+    let table = element(&mut b, &d, "table", &[]);
+    b.establish_children(&table, &[group, first, second, third])
+        .unwrap();
+    let capture = b.finish().unwrap();
+    let model = model_of(&capture, &table);
+    let cells = vec![vec![t0, t1, hr], vec![hl], vec![p]];
+    // Cells in model order: t0 0, t1 1, Hr 2, Hl 3, P 4.
+    assert_eq!(headers_of(&capture, &model, &cells, 4), [2, 3]);
+}
