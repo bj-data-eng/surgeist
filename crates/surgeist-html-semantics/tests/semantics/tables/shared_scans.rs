@@ -309,15 +309,164 @@ fn a_row_with_the_noted_data_cell_takes_only_its_own_headers_up_to_a_tall_data_c
     );
 }
 
-/// The exact work, scratch and byte budgets of the two tables above (the
-/// first row scanned in full that notes data cells and a later row that does
-/// not, and a later row that shares the first row's scan and reads its own
-/// headers past a tall data cell) admit them, are one unit short of failing,
-/// and release all that was admitted, in both orientations.
+/// Four rows. The first holds tall `th` `T1` to `T4` of the same rows with a
+/// data cell between each pair and `P`, a tall `td`, at the right; the rows
+/// after fill the first gaps: two, one and one of the three. `P` scans:
+///
+/// - Row 0: `T4` is taken; `d3` ends its block and hides `T3`, and so `T2` and
+///   `T1`: taken `T4`.
+/// - Row 1 holds no cell at `d3`'s column: `T4` and `T3` share a block and
+///   are taken; its data cell at `d2` ends it and hides `T2`. New: `T3`.
+/// - Row 2 holds only a cell at `d1`'s column: `T4`, `T3` and `T2` share a
+///   block and are taken; the cell ends it and hides `T1`. New: `T2`.
+/// - Row 3 holds the same cell: nothing is new, `T1` stays hidden.
+///
+/// Row 1 lacks the data cell row 0 had, though it holds one next to `T3`; row
+/// 2 lacks the one row 1 had; row 3 meets what is left.
+fn rows_filling_fewer_gaps() -> Vec<Spec> {
+    vec![
+        th("T1", 0, 0, 1, 4),
+        td("d1", 1, 0, 1, 1),
+        th("T2", 2, 0, 1, 4),
+        td("d2", 3, 0, 1, 1),
+        th("T3", 4, 0, 1, 4),
+        td("d3", 5, 0, 1, 1),
+        th("T4", 6, 0, 1, 4),
+        td("P", 7, 0, 1, 4),
+        td("x1", 1, 1, 1, 1),
+        td("x2", 3, 1, 1, 1),
+        td("y1", 1, 2, 1, 1),
+        td("z1", 1, 3, 1, 1),
+    ]
+}
+
+#[test]
+fn rows_filling_fewer_gaps_each_list_the_headers_the_earlier_rows_hid() {
+    assert_headers(&rows_filling_fewer_gaps(), "P", &["T4", "T3", "T2"]);
+}
+
+/// Two extents: `a1`, `a2` cross three rows and `b1`, `b2` four. Row 0 has a
+/// data cell in each of the three gaps; row 1 holds a header `h` in the first
+/// gap and data cells in the others; row 2 holds a data cell in the first gap
+/// only. `P` scans three rows:
+///
+/// - Row 0: `b2` is taken; `d3` ends its block and hides `b1`, then `a2` is
+///   taken (`b` is the only extent opaque); `d1` ends its block and hides
+///   `a1`. Taken: `b2`, `a2`.
+/// - Row 1: `b2`; `y3` hides `b1`; `a2` and `h` and `a1` share a block, as `h`
+///   is a header: all taken. New: `h`, `a1`.
+/// - Row 2: `b2`, `b1` and `a2` share a block, all taken; the data cell ends
+///   it and hides `a1`, taken already. New: `b1`.
+///
+/// Row 1 improves on row 0 for one extent only; row 2 improves on row 1 for
+/// the other, and `a1`, which row 1 listed, is hidden again.
+fn rows_improving_one_extent_each() -> Vec<Spec> {
+    vec![
+        th("a1", 0, 0, 1, 3),
+        td("d1", 1, 0, 1, 1),
+        th("a2", 2, 0, 1, 3),
+        td("d2", 3, 0, 1, 1),
+        th("b1", 4, 0, 1, 4),
+        td("d3", 5, 0, 1, 1),
+        th("b2", 6, 0, 1, 4),
+        td("P", 7, 0, 1, 3),
+        th("h", 1, 1, 1, 1),
+        td("y2", 3, 1, 1, 1),
+        td("y3", 5, 1, 1, 1),
+        td("z", 1, 2, 1, 1),
+    ]
+}
+
+#[test]
+fn rows_that_improve_different_extents_keep_what_each_earlier_row_listed() {
+    assert_headers(
+        &rows_improving_one_extent_each(),
+        "P",
+        &["b2", "a2", "h", "a1", "b1"],
+    );
+}
+
+/// The same two extents, two rows. Row 1 holds a data cell in the first gap
+/// and headers in the other two, so it has what the requirement of `a` asks
+/// (a data cell between `a1` and `a2`) but not what `b` asks. `P` scans:
+///
+/// - Row 0: `b2`, then `a2`, as above.
+/// - Row 1: `b2`, `h3`, `b1`, `h2` and `a2` share a block, as only headers
+///   lie between them: all taken. New: `h3`, `b1`, `h2`. The data cell ends
+///   the block and hides `a1`.
+fn a_row_that_meets_one_requirement_and_not_the_other() -> Vec<Spec> {
+    vec![
+        th("a1", 0, 0, 1, 2),
+        td("d1", 1, 0, 1, 1),
+        th("a2", 2, 0, 1, 2),
+        td("d2", 3, 0, 1, 1),
+        th("b1", 4, 0, 1, 3),
+        td("d3", 5, 0, 1, 1),
+        th("b2", 6, 0, 1, 3),
+        td("P", 7, 0, 1, 2),
+        td("y1", 1, 1, 1, 1),
+        th("h2", 3, 1, 1, 1),
+        th("h3", 5, 1, 1, 1),
+    ]
+}
+
+#[test]
+fn a_row_meeting_one_requirement_and_not_the_other_is_scanned_on_its_own() {
+    assert_headers(
+        &a_row_that_meets_one_requirement_and_not_the_other(),
+        "P",
+        &["b2", "a2", "h3", "b1", "h2"],
+    );
+}
+
+/// Row 1 holds a cell of two columns at the first gap, which shares a slot
+/// with `T2`; row 0 hides `T2`. `P` scans: row 0 takes `T3`; row 1 is read
+/// slot by slot and skips the slot with two cells, so it takes `T3` and its
+/// data cell hides `T1` (the cell of two columns ends the block); row 2 holds
+/// a cell at the first gap: `T3` and `T2` are taken and `T1` is hidden. Taken:
+/// `T3`, `T2`.
+fn a_row_where_cells_share_a_slot_among_rows_filling_fewer_gaps() -> Vec<Spec> {
+    vec![
+        th("T1", 0, 0, 1, 3),
+        td("d1", 1, 0, 1, 1),
+        th("T2", 2, 0, 1, 3),
+        td("d2", 3, 0, 1, 1),
+        th("T3", 4, 0, 1, 3),
+        td("P", 5, 0, 1, 3),
+        td("x", 1, 1, 2, 1),
+        td("y", 1, 2, 1, 1),
+    ]
+}
+
+#[test]
+fn a_row_where_cells_share_a_slot_is_scanned_on_its_own_among_rows_filling_fewer_gaps() {
+    assert_headers(
+        &a_row_where_cells_share_a_slot_among_rows_filling_fewer_gaps(),
+        "P",
+        &["T3", "T2"],
+    );
+}
+
+/// The exact work, scratch and byte budgets of the tables above admit them,
+/// are one unit short of failing, and release all that was admitted, in both
+/// orientations. They cover a row that lacks the noted data cell (the first
+/// row's requirements), a row that meets them and reads its own headers past a
+/// tall data cell, rows that refresh the requirements one by one and a row
+/// that meets them, rows that improve one extent each, a row that meets one
+/// requirement and not the other, and a row where cells share a slot.
 #[test]
 fn budgets_of_tall_headers_hidden_by_a_rows_data_cells_are_exact_and_release_their_scratch() {
     let layouts = [
         ("a row lacking the noted data cell", two_kinds_of_extent()),
+        ("rows filling fewer gaps", rows_filling_fewer_gaps()),
+        (
+            "rows improving one extent each",
+            rows_improving_one_extent_each(),
+        ),
+        (
+            "a row where cells share a slot",
+            a_row_where_cells_share_a_slot_among_rows_filling_fewer_gaps(),
+        ),
         (
             "a row with the noted data cell",
             row_data_cell_between_tall_headers_and_row_headers_around_a_tall_data_cell(),

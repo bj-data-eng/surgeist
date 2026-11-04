@@ -754,3 +754,94 @@ fn many_principals_over_rows_that_fill_only_the_first_gap_cost_the_input_and_the
         .collect();
     assert_work_follows_input_and_associations("fewer gaps, many principals", &measured);
 }
+
+/// Rows that each improve on every row before them are still scanned in full,
+/// for every principal: the staircase that remains of #1774.
+///
+/// HTML 877d, internal algorithm for scanning and assigning header cells,
+/// steps 4 and 9. Row 0 holds `m` times a tall `th` (`rowspan="m"`,
+/// `scope="row"`) and a `td`, one more such `th`, then `p` tall `td` (`m`
+/// rows), the principal cells. Row `r` after holds `m - r` `td`, which fill
+/// the first `m - r` gaps. Every cell but the tall `td` carries `headers=""`.
+///
+/// A principal reads row `r` leftward: the `th` after the nearest data cell,
+/// the one in gap `m - r`, share a block and are taken (`r + 1` of them, since
+/// the last `r` gaps are empty), and that data cell ends the block and hides
+/// the `th` before it. So row `r` takes the last `r + 1` of the `m + 1` `th`,
+/// each row one more than the row before, `m` of them over the rows and `p * m`
+/// associations in all. Each row's data cells are nearer the principal than
+/// those of the rows after, which holds fewer, so each row takes a header
+/// that no row before it did and is scanned in full: `r + 1` headers visited,
+/// `m * (m + 1) / 2` for each principal, against `m` associations. The input
+/// is `2m + 1 + p + m * (m - 1) / 2` cells.
+fn staircase_work(m: usize, p: usize) -> (usize, usize, usize) {
+    let span = m.to_string();
+    let work = associated_work(
+        |b, d| {
+            let table = element(b, d, "table", &[]);
+            let tall = |b: &mut surgeist_html_semantics::HtmlCaptureBuilder| {
+                cell(
+                    b,
+                    d,
+                    "th",
+                    &[("scope", "row"), ("rowspan", &span), ("headers", "")],
+                )
+            };
+            let mut first = Vec::new();
+            for _ in 0..m {
+                first.push(tall(b));
+                first.push(cell(b, d, "td", &[("headers", "")]));
+            }
+            first.push(tall(b));
+            for _ in 0..p {
+                first.push(cell(b, d, "td", &[("rowspan", &span)]));
+            }
+            let mut trs = Vec::new();
+            let row = element(b, d, "tr", &[]);
+            b.establish_children(&row, &first).unwrap();
+            trs.push(row);
+            for r in 1..m {
+                let cells: Vec<_> = (0..m - r)
+                    .map(|_| cell(b, d, "td", &[("headers", "")]))
+                    .collect();
+                let row = element(b, d, "tr", &[]);
+                b.establish_children(&row, &cells).unwrap();
+                trs.push(row);
+            }
+            b.establish_children(&table, &trs).unwrap();
+            table
+        },
+        (2 * m + 1 + p, m),
+        2 * m + 1 + p + m * (m - 1) / 2,
+        p * m,
+    );
+    (2 * m + 1 + p + m * (m - 1) / 2, p * m, work)
+}
+
+/// The staircase costs `p` times `m * (m + 1) / 2` visits, with `p = m` cubic
+/// in `m` while the associations are quadratic: the work grows by about x5.4,
+/// x6.6 and x7.5 per doubling for `m` from 25 to 200 (363076, 1967591,
+/// 12989639 and 97568856 units), toward x8. This pins that ceiling, not a
+/// bound the scheme meets for the input and associations: a scheme that
+/// refreshed only the headers a row adds would lower it, and this test is to
+/// tighten when it does.
+#[test]
+fn rows_that_each_improve_on_the_rows_before_cost_each_principal_the_sum_of_their_headers() {
+    let measured: Vec<_> = [25, 50, 100, 200]
+        .into_iter()
+        .map(|m| staircase_work(m, m))
+        .collect();
+    for pair in measured.windows(2) {
+        assert!(
+            pair[1].2 * 10 <= pair[0].2 * 86,
+            "{} cells and {} associations cost {} but {} and {} cost {} \
+             (m x2 with m principals may cost at most x8.6)",
+            pair[0].0,
+            pair[0].1,
+            pair[0].2,
+            pair[1].0,
+            pair[1].1,
+            pair[1].2,
+        );
+    }
+}
