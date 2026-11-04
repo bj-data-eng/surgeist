@@ -14,16 +14,18 @@ use surgeist_html::construction::HtmlDocumentMode;
 use surgeist_html::values::HtmlValueInterpreter;
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureRegistryInput, HtmlCaptureSubjectId, HtmlControlCurrentValue,
-    HtmlControlFacts, HtmlControlFactsLimits, HtmlCustomControlClassification,
-    HtmlDocumentFlatTreeRelation, HtmlDocumentLanguageFallback, HtmlElementReferenceFact,
-    HtmlElementReferenceFacts, HtmlElementReferenceFactsLimits, HtmlElementReferenceKey,
-    HtmlExplicitElementReference, HtmlFlatTreeProducerId, HtmlFlatTreeRevision,
-    HtmlFormAssociation, HtmlFormAssociationState, HtmlInertFactLimits, HtmlInertFacts,
-    HtmlInputControlState, HtmlLanguageDirectionFacts, HtmlLanguageDirectionLimits,
-    HtmlOptionControlState, HtmlPragmaLanguage, HtmlProtocolLanguage, HtmlScriptingStatus,
-    HtmlSemanticCancellation, HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticLimits,
-    HtmlSemanticQuery, HtmlSemanticRequest, HtmlSemanticSession, HtmlSlotAssignedNodes,
-    HtmlTextareaControlState,
+    HtmlControlFacts, HtmlControlFactsLimits, HtmlCustomControlClassification, HtmlDesignMode,
+    HtmlDocumentDesignModeFact, HtmlDocumentFlatTreeRelation, HtmlDocumentLanguageFallback,
+    HtmlElementReferenceFact, HtmlElementReferenceFacts, HtmlElementReferenceFactsLimits,
+    HtmlElementReferenceKey, HtmlExplicitElementReference, HtmlFlatTreeProducerId,
+    HtmlFlatTreeRevision, HtmlFormAssociation, HtmlFormAssociationState,
+    HtmlGlobalInheritanceFacts, HtmlGlobalInheritanceLimits, HtmlGlobalInheritanceProducerId,
+    HtmlGlobalInheritanceRevision, HtmlInertFactLimits, HtmlInertFacts, HtmlInputControlState,
+    HtmlLanguageDirectionFacts, HtmlLanguageDirectionLimits, HtmlOptionControlState,
+    HtmlPragmaLanguage, HtmlProtocolLanguage, HtmlScriptingStatus, HtmlSemanticCancellation,
+    HtmlSemanticContext, HtmlSemanticContextInput, HtmlSemanticLimits, HtmlSemanticQuery,
+    HtmlSemanticRequest, HtmlSemanticSession, HtmlSlotAssignedNodes, HtmlSpellcheckDefaultBehavior,
+    HtmlSpellcheckDefaultFact, HtmlTextareaControlState,
 };
 
 const DOUBLINGS: [usize; 4] = [250, 500, 1000, 2000];
@@ -308,8 +310,14 @@ fn language_context(
     .unwrap()
 }
 
-/// `count` documents, each holding one `div`, with a language fallback each.
-fn language_fallback_sweep(count: usize) -> usize {
+/// `count` documents, each holding one `div`: the documents and the divs.
+fn document_page(
+    count: usize,
+) -> (
+    HtmlCapture,
+    Vec<HtmlCaptureSubjectId>,
+    Vec<HtmlCaptureSubjectId>,
+) {
     let (mut b, first) = big_builder(2 * count);
     let mut documents = vec![first];
     for _ in 1..count {
@@ -329,22 +337,32 @@ fn language_fallback_sweep(count: usize) -> usize {
             .unwrap();
     }
     let capture = b.finish().unwrap();
+    let documents = documents
+        .iter()
+        .map(|d| capture.subject_id(d).unwrap())
+        .collect();
+    let divs = divs
+        .iter()
+        .map(|div| capture.subject_id(div).unwrap())
+        .collect();
+    (capture, documents, divs)
+}
+
+/// `count` documents, each holding one `div`, with a language fallback each.
+fn language_fallback_sweep(count: usize) -> usize {
+    let (capture, documents, divs) = document_page(count);
     let fallbacks = documents
         .iter()
         .map(|d| {
             HtmlDocumentLanguageFallback::new(
-                capture.subject_id(d).unwrap(),
+                d.clone(),
                 HtmlPragmaLanguage::Tag("en".into()),
                 HtmlProtocolLanguage::Absent,
             )
         })
         .collect();
     let context = language_context(&capture, fallbacks, vec![], vec![]);
-    let ids: Vec<_> = divs
-        .iter()
-        .map(|div| capture.subject_id(div).unwrap())
-        .collect();
-    sweep_work(&capture, &context, &ids, HtmlSemanticQuery::Language)
+    sweep_work(&capture, &context, &divs, HtmlSemanticQuery::Language)
 }
 
 fn current_value_sweep(count: usize) -> usize {
@@ -417,5 +435,69 @@ fn a_directionality_sweep_finds_each_slot_assignment_in_constant_work() {
         "slot assignment sweep",
         &[500, 1000, 2000, 4000],
         slot_assignment_sweep,
+    );
+}
+
+fn inheritance_context(
+    capture: &HtmlCapture,
+    design_modes: Vec<HtmlDocumentDesignModeFact>,
+    spellcheck_defaults: Vec<HtmlSpellcheckDefaultFact>,
+) -> HtmlSemanticContext {
+    let revision =
+        HtmlGlobalInheritanceRevision::new(HtmlGlobalInheritanceProducerId::fresh(), 1, 1);
+    let records = design_modes.capacity() + spellcheck_defaults.capacity();
+    let facts = HtmlGlobalInheritanceFacts::new(
+        capture,
+        capture.host_facts_revision().clone(),
+        revision.clone(),
+        design_modes,
+        spellcheck_defaults,
+        HtmlGlobalInheritanceLimits::new(records, 1 << 40),
+    )
+    .unwrap();
+    HtmlSemanticContext::new(
+        capture,
+        capture.host_facts_revision().clone(),
+        HtmlSemanticContextInput::new(vec![]).with_global_inheritance(revision, Some(facts)),
+        0,
+    )
+    .unwrap()
+}
+
+fn design_mode_sweep(count: usize) -> usize {
+    let (capture, documents, divs) = document_page(count);
+    let modes = documents
+        .iter()
+        .map(|d| HtmlDocumentDesignModeFact::new(d.clone(), HtmlDesignMode::Disabled))
+        .collect();
+    let context = inheritance_context(&capture, modes, vec![]);
+    sweep_work(&capture, &context, &divs, HtmlSemanticQuery::EditingHost)
+}
+
+fn spellcheck_default_sweep(count: usize) -> usize {
+    let (capture, ids) = flat_elements("div", count);
+    let defaults = ids
+        .iter()
+        .map(|id| {
+            HtmlSpellcheckDefaultFact::new(
+                id.clone(),
+                Some(HtmlSpellcheckDefaultBehavior::TrueByDefault),
+            )
+        })
+        .collect();
+    let context = inheritance_context(&capture, vec![], defaults);
+    sweep_work(&capture, &context, &ids, HtmlSemanticQuery::Spellcheck)
+}
+
+#[test]
+fn a_design_mode_sweep_finds_each_document_in_constant_work() {
+    assert_doubling_at_most_2_2("design mode sweep", &DOUBLINGS, design_mode_sweep);
+}
+#[test]
+fn a_spellcheck_sweep_finds_each_default_in_constant_work() {
+    assert_doubling_at_most_2_2(
+        "spellcheck default sweep",
+        &DOUBLINGS,
+        spellcheck_default_sweep,
     );
 }
