@@ -2,8 +2,8 @@
 //! These readbacks execute no activation, events, form transition or target effect.
 
 use super::control::ControlStop;
+use super::index::FactIndex;
 use super::scan::{ScanError, ScanMeter};
-use super::seen::Seen;
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
 use surgeist_html::attributes::{
@@ -24,6 +24,9 @@ impl HtmlElementReferenceKey {
             Self::CommandFor => "commandfor",
             Self::PopoverTarget => "popovertarget",
         }
+    }
+    fn is_popover_target(self) -> bool {
+        self == Self::PopoverTarget
     }
     fn applicable(self, kind: Option<KnownHtmlElement>) -> bool {
         kind == Some(KnownHtmlElement::Button)
@@ -130,6 +133,8 @@ pub struct HtmlElementReferenceFacts {
     capture: HtmlCaptureId,
     host_revision: HtmlHostFactsRevision,
     records: Vec<HtmlElementReferenceFact>,
+    /// Records by subject and whether the key is `PopoverTarget`.
+    index: FactIndex<bool>,
 }
 impl HtmlElementReferenceFacts {
     pub fn new(
@@ -149,12 +154,16 @@ impl HtmlElementReferenceFacts {
         }
         // This is input validation, not a query/controller or a tree projection.
         let mut meter = ScanMeter::new(0, limits.validation_work);
-        let mut seen = Seen::new(
+        let mut index = FactIndex::new(
+            capture.identity(),
             records.len(),
             |n| meter.charge(n),
             HtmlElementReferenceFactsError::RepresentationExhausted,
         )?;
-        for fact in records.iter() {
+        for (position, fact) in records.iter().enumerate() {
+            index.enter_bound(&fact.subject, fact.key.is_popover_target(), position);
+        }
+        for (position, fact) in records.iter().enumerate() {
             meter.charge(2)?; // record and source lookup
             let node = capture
                 .node(&fact.subject)
@@ -169,10 +178,7 @@ impl HtmlElementReferenceFacts {
                     fact.subject.clone(),
                 ));
             }
-            if !seen.first((
-                fact.subject.ordinal(),
-                fact.key == HtmlElementReferenceKey::PopoverTarget,
-            )) {
+            if index.bound_position(&fact.subject, fact.key.is_popover_target()) != Some(position) {
                 return Err(HtmlElementReferenceFactsError::DuplicateReference {
                     subject: fact.subject.clone(),
                     key: fact.key,
@@ -191,6 +197,7 @@ impl HtmlElementReferenceFacts {
             capture: capture.identity().clone(),
             host_revision,
             records,
+            index,
         })
     }
     pub fn capture(&self) -> &HtmlCaptureId {
@@ -272,17 +279,15 @@ impl<'a> HtmlSemanticSession<'a> {
         key: HtmlElementReferenceKey,
     ) -> Result<Result<ActualReference<'a>, HtmlSemanticMissing>, HtmlSemanticFailure> {
         if let Some(facts) = self.context.element_references() {
-            for fact in facts.records() {
-                self.charge(1)?;
-                if fact.subject() == subject && fact.key() == key {
-                    match fact.state() {
-                        HtmlExplicitElementReference::Unavailable => {}
-                        HtmlExplicitElementReference::Null => {
-                            return Ok(Ok(ActualReference::Null));
-                        }
-                        HtmlExplicitElementReference::Element(target) => {
-                            return Ok(Ok(ActualReference::Element(target)));
-                        }
+            self.charge(1)?;
+            if let Some(position) = facts.index.bound_position(subject, key.is_popover_target()) {
+                match facts.records[position].state() {
+                    HtmlExplicitElementReference::Unavailable => {}
+                    HtmlExplicitElementReference::Null => {
+                        return Ok(Ok(ActualReference::Null));
+                    }
+                    HtmlExplicitElementReference::Element(target) => {
+                        return Ok(Ok(ActualReference::Element(target)));
                     }
                 }
             }
