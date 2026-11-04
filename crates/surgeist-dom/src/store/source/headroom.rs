@@ -910,7 +910,7 @@ mod tests {
                     )
                     .unwrap();
             }
-            let source = builder.finish();
+            let source = builder.finish().unwrap();
             f.dom.revision = DomRevision(u64::MAX - remaining);
             let before = f.dom.snapshot();
             let mut staged = f

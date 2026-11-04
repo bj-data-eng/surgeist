@@ -20,7 +20,7 @@ fn native_constructor_and_non_document_readbacks_have_distinct_meanings() {
             OrderedAttributes::default(),
         )
         .unwrap();
-    let document = builder.finish();
+    let document = builder.finish().unwrap();
     assert_eq!(
         document.root().document_focused_area_designation(),
         Some(HtmlFocusedAreaDesignation::KnownNull)
@@ -35,7 +35,8 @@ fn native_constructor_and_non_document_readbacks_have_distinct_meanings() {
     );
     let fragment = HtmlFragment::builder(HtmlConstructionLimits::new(2, 1, 0, 10, 2))
         .unwrap()
-        .finish();
+        .finish()
+        .unwrap();
     assert_eq!(fragment.root().document_focused_area_designation(), None);
 }
 

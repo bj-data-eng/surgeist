@@ -2379,7 +2379,7 @@ mod tests {
             HtmlAuthoredProcessingInstruction::new("Target", " raw\n").unwrap(),
         )
         .unwrap();
-        let p = project(&b.finish()).unwrap();
+        let p = project(&b.finish().unwrap()).unwrap();
         assert_eq!(p.nodes.len(), 6);
         assert_eq!(
             p.nodes[0].kind,
@@ -2432,7 +2432,7 @@ mod tests {
         let contents = b.template_contents(&template).unwrap().unwrap();
         b.append_text(&contents, "same").unwrap();
         b.append_text(&root, "same").unwrap();
-        let p = project(&b.finish()).unwrap();
+        let p = project(&b.finish().unwrap()).unwrap();
         assert_eq!(p.nodes[0].children, [1, 4]);
         assert_eq!(p.nodes[1].children, []);
         assert_eq!(p.nodes[1].template, Some(2));
@@ -2474,7 +2474,7 @@ mod tests {
         let contents = b.attach_declarative_shadow(&host, props).unwrap();
         b.append_text(&host, "light").unwrap();
         b.append_text(&contents, "shadow").unwrap();
-        let p = project(&b.finish()).unwrap();
+        let p = project(&b.finish().unwrap()).unwrap();
         assert_eq!(p.nodes[1].children, [2]);
         assert_eq!(p.nodes[1].shadow, Some((3, props)));
         assert_eq!(p.nodes[3].kind, Kind::Fragment);

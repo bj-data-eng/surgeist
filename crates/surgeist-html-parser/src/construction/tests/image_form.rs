@@ -175,7 +175,8 @@ fn image_frozen_metadata_resolves_actual_native_identity_and_unavailable_is_not_
         HtmlDocumentMode::NoQuirks,
     )
     .unwrap()
-    .finish();
+    .finish()
+    .unwrap();
     let foreign = other.root().id();
     assert_eq!(
         frozen.image_form_state(&mut c, &foreign),

@@ -3176,6 +3176,10 @@ mod native_finish_tests {
             storage.arena.records[1].parent = None;
         }
         let outcome = catch_unwind(AssertUnwindSafe(|| builder.finish()));
-        assert!(outcome.is_ok(), "finish panicked on a refused publication");
+        let Ok(result) = outcome else {
+            panic!("finish panicked on a refused publication");
+        };
+        let error = result.expect_err("a tree with a lost parent link is refused");
+        assert!(error.is_parent_child_conflict(), "{error}");
     }
 }

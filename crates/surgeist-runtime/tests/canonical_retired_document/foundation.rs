@@ -384,7 +384,7 @@ fn fragment() -> HtmlFragment {
     builder
         .append_comment(&builder.root(), "native comment")
         .unwrap();
-    builder.finish()
+    builder.finish().unwrap()
 }
 
 #[expect(

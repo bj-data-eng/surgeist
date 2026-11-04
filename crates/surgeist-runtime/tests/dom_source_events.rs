@@ -3060,7 +3060,7 @@ fn native_installation_completes_watcher_hook_with_its_actual_created_identity()
             .unwrap(),
         )
         .unwrap();
-    let fragment = builder.finish();
+    let fragment = builder.finish().unwrap();
     assert_eq!(fragment.root().children().len(), 1);
     let source_subject = fragment.root().children().next().unwrap();
     let target = DomNativeHtmlInstallTarget::new(

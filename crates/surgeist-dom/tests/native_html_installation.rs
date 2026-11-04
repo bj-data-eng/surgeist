@@ -60,7 +60,7 @@ fn assert_attribute_values(actual: &[DomAttribute], authored: &OrderedAttributes
 fn fragment_with_element(name: QualifiedName, attributes: OrderedAttributes) -> HtmlFragment {
     let mut b = HtmlFragment::builder(authoring()).unwrap();
     b.append_element(&b.root(), name, attributes).unwrap();
-    b.finish()
+    b.finish().unwrap()
 }
 fn install(
     dom: &mut Dom,
@@ -137,7 +137,7 @@ fn mixed_fields_and_utf16_install_before_real_reference_with_complete_historical
         HtmlAuthoredProcessingInstruction::new("target", "x='y'").unwrap(),
     )
     .unwrap();
-    let source = b.finish();
+    let source = b.finish().unwrap();
     let ids: Vec<_> = source.root().children().collect();
     let child = source.node(&ids[2]).unwrap().children().next().unwrap();
     let report = dom
@@ -300,7 +300,7 @@ fn template_owned_contents_and_script_fresh_preparation_use_real_native_document
         )
         .unwrap();
     b.append_text(&script, " \n").unwrap();
-    let source = b.finish();
+    let source = b.finish().unwrap();
     let ids: Vec<_> = source.root().children().collect();
     let contents = source.node(&ids[0]).unwrap().template_contents().unwrap();
     let inner = source.node(&contents).unwrap().children().next().unwrap();
@@ -515,7 +515,7 @@ fn invalid_components_and_late_unadmitted_families_publish_no_partial_identities
         OrderedAttributes::default(),
     )
     .unwrap();
-    let source = b.finish();
+    let source = b.finish().unwrap();
     let id = source.root().children().nth(1).unwrap();
     let before = dom.snapshot();
     let usage = dom.usage();
@@ -550,7 +550,7 @@ fn precise_declarative_shadow_and_hosted_root_refusals_preserve_the_entire_batch
         ),
     )
     .unwrap();
-    let source = b.finish();
+    let source = b.finish().unwrap();
     let host = source.root().children().nth(1).unwrap();
     let before = dom.snapshot();
     let usage = dom.usage();
@@ -565,7 +565,7 @@ fn precise_declarative_shadow_and_hosted_root_refusals_preserve_the_entire_batch
         OrderedAttributes::default(),
     )
     .unwrap();
-    let source = b.finish();
+    let source = b.finish().unwrap();
     let template = source.root().children().next().unwrap();
     let contents = source.node(&template).unwrap().template_contents().unwrap();
     let subview = source.fragment(&contents).unwrap().unwrap();
@@ -581,7 +581,7 @@ fn mapped_node_work_storage_and_canonical_limits_are_independently_atomic() {
     let (d, parent) = setup(&mut dom);
     let mut b = HtmlFragment::builder(authoring()).unwrap();
     b.append_text(&b.root(), "x").unwrap();
-    let source = b.finish();
+    let source = b.finish().unwrap();
     for install_limits in [
         DomNativeHtmlInstallLimits::new(1, 1000, 65536),
         DomNativeHtmlInstallLimits::new(2, 0, 65536),
@@ -613,7 +613,10 @@ fn mapped_node_work_storage_and_canonical_limits_are_independently_atomic() {
         )
         .unwrap();
     assert_eq!(report.bindings().len(), 2);
-    let empty = HtmlFragment::builder(authoring()).unwrap().finish();
+    let empty = HtmlFragment::builder(authoring())
+        .unwrap()
+        .finish()
+        .unwrap();
     let before = dom.snapshot();
     let usage = dom.usage();
     assert!(matches!(
@@ -665,7 +668,7 @@ fn hierarchy_failure_never_changes_target_metadata_or_installs_partial_source() 
     let mut b = HtmlFragment::builder(authoring()).unwrap();
     b.append_doctype(&b.root(), HtmlDoctype::new("html", None, None))
         .unwrap();
-    let source = b.finish();
+    let source = b.finish().unwrap();
     let before = dom.snapshot();
     let usage = dom.usage();
     let metadata = before.document(d).unwrap().metadata().clone();
@@ -727,7 +730,7 @@ fn installed_families_run_actual_attribute_and_control_hooks_then_remain_live() 
         )
         .unwrap();
     }
-    let source = b.finish();
+    let source = b.finish().unwrap();
     let ids: Vec<_> = source.root().children().collect();
     let controls: Vec<_> = source.node(&ids[0]).unwrap().children().collect();
     let report = install(&mut dom, d, parent, &source);
@@ -901,7 +904,7 @@ fn wrapper_and_every_installed_string_have_exact_canonical_admission() {
         let (d, parent) = setup(&mut dom);
         let mut b = HtmlFragment::builder(authoring()).unwrap();
         b.append_text(&b.root(), "x").unwrap();
-        let source = b.finish();
+        let source = b.finish().unwrap();
         let before = dom.snapshot();
         let usage = dom.usage();
         let result = dom.install_native_html_fragment(
@@ -947,7 +950,7 @@ fn deep_native_authoring_installs_iteratively_without_a_second_live_tree() {
     }
     b.append_text(&next, DocumentString::from_utf16(vec![0xd800, 0, 0xdc00]))
         .unwrap();
-    let source = b.finish();
+    let source = b.finish().unwrap();
     let report = install(&mut dom, d, parent, &source);
     assert_eq!(report.bindings().len(), 202);
     let mut node = report.snapshot().node(parent).unwrap().children()[0];

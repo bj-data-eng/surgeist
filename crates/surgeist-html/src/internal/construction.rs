@@ -1247,6 +1247,10 @@ fn drive_native(
 
 /// Readies a driven operation. A refusal aborts the operation the refusal hands back and returns
 /// its storage with the cause, so no storage is dropped on the error path.
+#[expect(
+    clippy::result_large_err,
+    reason = "a refusal hands the complete storage back without boxing it"
+)]
 fn ready_or_recover(
     operation: bounded::operations::HtmlConstructionOperation,
 ) -> Result<
@@ -1473,29 +1477,36 @@ impl Builder {
         }
         Ok(contents)
     }
-    fn finish(mut self) -> Arc<Arena> {
-        let root = self.handle(0);
-        let storage = self.storage.take().expect("native storage retained");
+    /// Publishes the whole arena. The builder is consumed: a refusal here means the tree failed
+    /// the publication's own validation, which the append steps are meant to make impossible, so
+    /// no half-published builder is worth keeping.
+    fn finish(mut self) -> Result<Arc<Arena>, HtmlConstructionError> {
+        let storage = self
+            .storage
+            .take()
+            .ok_or(HtmlConstructionErrorKind::OperationNotReady)?;
+        let root = storage
+            .node_at(0)
+            .ok_or(HtmlConstructionErrorKind::UnknownNode)?
+            .handle();
         let mut operation = storage.prepare_finish(root);
-        while let Some(action) = operation
-            .next_action()
-            .expect("native construction invariants")
-        {
+        while let Some(action) = operation.next_action()? {
             action
                 .perform()
-                .expect("native construction publication")
+                .map_err(|failure| failure.into_parts().0)?
                 .accept();
         }
-        match bounded::operations::HtmlConstructionOperation::try_ready(operation)
-            .expect("native publication ready")
+        match operation
+            .try_ready()
+            .map_err(|refusal| refusal.into_parts().1)?
             .commit()
         {
             bounded::operations::HtmlConstructionCommit::Published { result, lease } => {
                 drop(lease);
-                result.into_arena().0
+                Ok(result.into_arena().0)
             }
             bounded::operations::HtmlConstructionCommit::Changed { .. } => {
-                unreachable!("native finish publishes")
+                Err(HtmlConstructionErrorKind::OperationNotReady.into())
             }
         }
     }
@@ -1598,21 +1609,27 @@ macro_rules! authoring_methods {
 impl HtmlDocumentBuilder {
     authoring_methods!();
     /// Consumes the session and freezes its entire flat arena.
-    pub fn finish(self) -> HtmlDocument {
-        HtmlDocument {
-            arena: self.builder.finish(),
+    ///
+    /// Publication validates the whole tree again. A refusal returns the cause and ends the
+    /// session; the append steps keep the tree valid, so none is known to occur.
+    pub fn finish(self) -> Result<HtmlDocument, HtmlConstructionError> {
+        Ok(HtmlDocument {
+            arena: self.builder.finish()?,
             root: 0,
-        }
+        })
     }
 }
 impl HtmlFragmentBuilder {
     authoring_methods!();
     /// Consumes the session and freezes its entire flat arena.
-    pub fn finish(self) -> HtmlFragment {
-        HtmlFragment {
-            arena: self.builder.finish(),
+    ///
+    /// Publication validates the whole tree again. A refusal returns the cause and ends the
+    /// session; the append steps keep the tree valid, so none is known to occur.
+    pub fn finish(self) -> Result<HtmlFragment, HtmlConstructionError> {
+        Ok(HtmlFragment {
+            arena: self.builder.finish()?,
             root: 0,
-        }
+        })
     }
 }
 
@@ -1699,7 +1716,7 @@ mod tests {
             Err(HtmlProcessingInstructionError::DataEndsWithQuestionMark)
         );
         assert_eq!(builder.usage(), before);
-        assert_eq!(builder.finish().root().children().len(), 0);
+        assert_eq!(builder.finish().unwrap().root().children().len(), 0);
         assert_eq!(recovered.data().code_units(), [97, 63]);
     }
 

@@ -163,7 +163,7 @@ fn exact_utf16_native_document_shares_backing_and_preserves_order_and_identity()
     let raw = DocumentString::from_utf16(vec![0xd800, 0, 13, 10, 0xdc00]);
     native.append_text(&element, raw.clone()).unwrap();
     native.append_comment(&source_root, "tail").unwrap();
-    let source = native.finish();
+    let source = native.finish().unwrap();
     let root = source.root().id();
     let ids: Vec<_> = source.root().children().collect();
     let text = source.node(&ids[0]).unwrap().children().next().unwrap();
@@ -217,7 +217,7 @@ fn complete_children_leave_shadow_unknown_and_producer_can_explicitly_establish_
     native
         .append_element(&root_handle, name("span"), OrderedAttributes::default())
         .unwrap();
-    let source = native.finish();
+    let source = native.finish().unwrap();
     let element = source.root().children().next().unwrap();
     let root = source.root().id();
     let source = HtmlConstructionResult::Fragment(source);
@@ -265,7 +265,7 @@ fn actual_shadow_root_imports_properties_and_rejects_conflicting_absence() {
         .unwrap();
     native.append_text(&shadow, "shadow").unwrap();
     native.append_text(&host, "light").unwrap();
-    let source = native.finish();
+    let source = native.finish().unwrap();
     let host = source.root().children().next().unwrap();
     let shadow = source
         .node(&host)
@@ -332,7 +332,7 @@ fn hosted_shadow_import_preserves_its_evidenced_document_independently_of_host()
         .unwrap();
     native.append_text(&shadow, "shadow").unwrap();
     native.append_text(&host, "light").unwrap();
-    let source = native.finish();
+    let source = native.finish().unwrap();
     let host = source.root().children().next().unwrap();
     let shadow = source
         .node(&host)
@@ -433,7 +433,7 @@ fn selected_template_fragment_imports_only_its_owner_and_leaves_unrelated_relati
     native
         .append_element(&root, name("outside"), OrderedAttributes::default())
         .unwrap();
-    let whole = native.finish();
+    let whole = native.finish().unwrap();
     let ids: Vec<_> = whole.root().children().collect();
     let contents = whole.node(&ids[0]).unwrap().template_contents().unwrap();
     let source = whole.fragment(&contents).unwrap().unwrap();
@@ -509,7 +509,7 @@ fn early_fact_refusals_and_each_admission_limit_return_original_builder_and_sour
     native
         .append_element(&root, name("p"), OrderedAttributes::default())
         .unwrap();
-    let source = HtmlConstructionResult::Fragment(native.finish());
+    let source = HtmlConstructionResult::Fragment(native.finish().unwrap());
     let root = root_id(&source);
     let make = || {
         let (mut builder, revision) = new_builder();
@@ -619,7 +619,7 @@ fn refused_finish_keeps_caller_facts_mapping_and_original_source() {
     native
         .append_element(&root, name("div"), OrderedAttributes::default())
         .unwrap();
-    let source = HtmlConstructionResult::Fragment(native.finish());
+    let source = HtmlConstructionResult::Fragment(native.finish().unwrap());
     let root = root_id(&source);
     let element = source.node(&root).unwrap().children().next().unwrap();
     let (mut builder, revision) = new_builder();
@@ -983,7 +983,8 @@ fn revision_foreign_ids_duplicate_roles_and_missing_shadow_facts_are_typed_refus
     let source = HtmlConstructionResult::Fragment(
         HtmlFragment::builder(construction_limits())
             .unwrap()
-            .finish(),
+            .finish()
+            .unwrap(),
     );
     let id = root(&source);
     let run = |make: &dyn Fn(
@@ -1011,7 +1012,8 @@ fn revision_foreign_ids_duplicate_roles_and_missing_shadow_facts_are_typed_refus
     );
     let other = HtmlFragment::builder(construction_limits())
         .unwrap()
-        .finish();
+        .finish()
+        .unwrap();
     run(
         &|revision, document| {
             HtmlConstructionCaptureFacts::new(
@@ -1118,7 +1120,7 @@ fn template_contents_keep_their_explicit_distinct_document_assignment() {
         .unwrap();
     let contents_handle = native.template_contents(&template_handle).unwrap().unwrap();
     native.append_text(&contents_handle, "inert").unwrap();
-    let source = HtmlConstructionResult::Fragment(native.finish());
+    let source = HtmlConstructionResult::Fragment(native.finish().unwrap());
     let root = root(&source);
     let template = source.node(&root).unwrap().children().next().unwrap();
     let contents = source.node(&template).unwrap().template_contents().unwrap();
@@ -1193,7 +1195,7 @@ fn finish_work_refusal_preserves_caller_additions_without_consuming_the_builder(
     native
         .append_element(&root_handle, name("div"), OrderedAttributes::default())
         .unwrap();
-    let source = HtmlConstructionResult::Fragment(native.finish());
+    let source = HtmlConstructionResult::Fragment(native.finish().unwrap());
     let element = source
         .node(&root(&source))
         .unwrap()
@@ -1329,7 +1331,7 @@ fn wide_fragment(children: usize) -> HtmlConstructionCaptureUsage {
             .append_element(&root, name("p"), OrderedAttributes::default())
             .unwrap();
     }
-    usage_of_import(native.finish(), children + 1, 1)
+    usage_of_import(native.finish().unwrap(), children + 1, 1)
 }
 /// A fragment root with `pairs` elements that each contain one element.
 fn paired_fragment(pairs: usize) -> HtmlConstructionCaptureUsage {
@@ -1343,7 +1345,7 @@ fn paired_fragment(pairs: usize) -> HtmlConstructionCaptureUsage {
             .append_element(&outer, name("a"), OrderedAttributes::default())
             .unwrap();
     }
-    usage_of_import(native.finish(), 2 * pairs + 1, 2)
+    usage_of_import(native.finish().unwrap(), 2 * pairs + 1, 2)
 }
 /// A fragment root with a single chain of `depth` nested elements.
 fn chain_fragment(depth: usize) -> HtmlConstructionCaptureUsage {
@@ -1354,7 +1356,7 @@ fn chain_fragment(depth: usize) -> HtmlConstructionCaptureUsage {
             .append_element(&parent, name("div"), OrderedAttributes::default())
             .unwrap();
     }
-    usage_of_import(native.finish(), depth + 1, depth)
+    usage_of_import(native.finish().unwrap(), depth + 1, depth)
 }
 /// A fragment root holding a template whose contents hold a template, and so on
 /// `templates` times: the contents are attached to their template after their
@@ -1369,7 +1371,7 @@ fn nested_templates(templates: usize) -> HtmlConstructionCaptureUsage {
             .unwrap();
         parent = native.template_contents(&template).unwrap().unwrap();
     }
-    usage_of_import(native.finish(), nodes, 2 * templates)
+    usage_of_import(native.finish().unwrap(), nodes, 2 * templates)
 }
 /// A fragment root holding a host whose declarative shadow root holds a host,
 /// and so on `hosts` times.
@@ -1385,7 +1387,7 @@ fn nested_shadows(hosts: usize) -> HtmlConstructionCaptureUsage {
             .attach_declarative_shadow(&host, properties())
             .unwrap();
     }
-    usage_of_import(native.finish(), nodes, 2 * hosts)
+    usage_of_import(native.finish().unwrap(), nodes, 2 * hosts)
 }
 /// A chain of `size` nested elements whose deepest element holds `size`
 /// templates, each with one element in its contents.
@@ -1407,7 +1409,7 @@ fn chain_with_templates(size: usize) -> HtmlConstructionCaptureUsage {
             .append_element(&contents, name("p"), OrderedAttributes::default())
             .unwrap();
     }
-    usage_of_import(native.finish(), nodes, size + 2)
+    usage_of_import(native.finish().unwrap(), nodes, size + 2)
 }
 /// Every doubling of the size must at most double a charge that does not depend
 /// on the other nodes. A little slack covers the amortized growth of arrays,
@@ -1560,7 +1562,7 @@ fn reported_usage_of_a_wide_import_is_its_least_admitting_allowance() {
             .append_element(&root, name("p"), OrderedAttributes::default())
             .unwrap();
     }
-    let source = native.finish();
+    let source = native.finish().unwrap();
     let nodes = children + 1;
     let usage = usage_of_import(source.clone(), nodes, 1);
     let exact = HtmlConstructionCaptureLimits::new(

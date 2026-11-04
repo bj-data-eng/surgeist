@@ -69,10 +69,10 @@ impl Builder {
     fn usage(&self) -> HtmlConstructionUsage {
         both!(self, b, b.usage())
     }
-    fn finish(self) -> Frozen {
+    fn finish(self) -> std::result::Result<Frozen, HtmlConstructionError> {
         match self {
-            Self::Document(b) => Frozen::Document(b.finish()),
-            Self::Fragment(b) => Frozen::Fragment(b.finish()),
+            Self::Document(b) => b.finish().map(Frozen::Document),
+            Self::Fragment(b) => b.finish().map(Frozen::Fragment),
         }
     }
     fn apply(
@@ -382,7 +382,8 @@ fn inspect(
     }
     let other = HtmlFragment::builder(HtmlConstructionLimits::new(1, 0, 0, 0, 0))
         .map_err(|_| "foreign-probe-allocation")?
-        .finish();
+        .finish()
+        .map_err(|_| "foreign-probe-allocation")?;
     if other.root().id() == f.root().id()
         || !matches!(other.node(&f.root().id()), Err(ForeignHtmlResult))
         || f.node(&other.root().id()).is_ok()
@@ -705,7 +706,12 @@ pub(super) fn evaluate(t: &NativeTarget, c: &NativeCase) -> Result<CaseOutcome> 
             return t.failure("native-admitted-usage", "recipe count mismatch");
         }
     }
-    let frozen = b.finish();
+    let Ok(frozen) = b.finish() else {
+        return t.failure(
+            "native-finish",
+            "publication refused a recipe the appends admitted",
+        );
+    };
     drop(foreign); // Borrowed foreign handles cannot change frozen identity.
     if let Err(key) = inspect(&frozen, &expected, c) {
         if matches!(key, "observation-capacity" | "foreign-probe-allocation") {

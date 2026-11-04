@@ -613,7 +613,7 @@ fn actual_created_hook_repeats_same_exposed_identity_before_real_watcher_service
             .unwrap(),
         )
         .unwrap();
-    let fragment = builder.finish();
+    let fragment = builder.finish().unwrap();
     assert_eq!(fragment.root().children().len(), 1);
     let source_subject = fragment.root().children().next().unwrap();
     let target = DomNativeHtmlInstallTarget::new(

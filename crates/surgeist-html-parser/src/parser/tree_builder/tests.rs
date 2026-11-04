@@ -129,7 +129,7 @@ fn preexisting(
             OrderedAttributes::default(),
         )
         .unwrap();
-    let fragment = builder.finish();
+    let fragment = builder.finish().unwrap();
     let node = fragment
         .node(&fragment.root().children().next().unwrap())
         .unwrap();

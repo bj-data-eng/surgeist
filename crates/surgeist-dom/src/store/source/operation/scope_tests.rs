@@ -120,7 +120,7 @@ fn installation_binds_its_actual_target_parent_before_creations_or_publication()
             OrderedAttributes::new([]).unwrap(),
         )
         .unwrap();
-    let fragment = builder.finish();
+    let fragment = builder.finish().unwrap();
     let child = fragment.root().children().next().unwrap();
     let before = dom.snapshot();
     let target =

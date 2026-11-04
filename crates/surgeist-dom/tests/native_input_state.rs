@@ -1018,7 +1018,7 @@ fn native_fragment_installation_uses_real_input_defaults_and_live_commands() {
             .unwrap(),
         )
         .unwrap();
-    let source = builder.finish();
+    let source = builder.finish().unwrap();
     let subject = source.root().children().next().unwrap();
     let result = dom
         .install_native_html_fragment(

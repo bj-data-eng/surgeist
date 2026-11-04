@@ -994,7 +994,7 @@ mod tests {
                 .unwrap();
             builder.append_text(&script, "x").unwrap();
         }
-        builder.finish()
+        builder.finish().unwrap()
     }
 
     fn actual_source_pending_growth(bytes: usize) -> Option<staging_observation::Growth> {
@@ -1028,7 +1028,7 @@ mod tests {
         for _ in 0..1000 {
             builder.append_text(&builder.root(), "x").unwrap();
         }
-        let source = builder.finish();
+        let source = builder.finish().unwrap();
         let before = dom.snapshot();
         staging_observation::start();
         let result = dom.begin_native_installation(

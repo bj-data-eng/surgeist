@@ -503,7 +503,7 @@ fn clone_and_native_install_process_copied_attributes_in_actual_destination() {
             .unwrap(),
         )
         .unwrap();
-    let fragment = builder.finish();
+    let fragment = builder.finish().unwrap();
     let source = fragment.root().children().next().unwrap();
     let stamp = dom.snapshot().document(second).unwrap().stamp();
     let report = dom

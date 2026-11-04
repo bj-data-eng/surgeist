@@ -28,7 +28,7 @@ fn fragment() -> HtmlFragment {
         .append_text(&element, DocumentString::from_utf16(vec![0, 0xd800, 10]))
         .unwrap();
     builder.append_comment(&root, "native control").unwrap();
-    builder.finish()
+    builder.finish().unwrap()
 }
 
 fn target(
@@ -327,7 +327,7 @@ fn retired_native_installation_keeps_family_cause_and_late_failure_atomic() {
             OrderedAttributes::default(),
         )
         .unwrap();
-    let source = builder.finish();
+    let source = builder.finish().unwrap();
     let audio = source.root().children().nth(1).unwrap();
     assert!(matches!(
         refused(&mut fixture, &source, target, installation_limits(), &cancel()),
@@ -348,7 +348,7 @@ fn retired_native_installation_keeps_family_cause_and_late_failure_atomic() {
             OrderedAttributes::default(),
         )
         .unwrap();
-    let source = builder.finish();
+    let source = builder.finish().unwrap();
     let template = source.root().children().next().unwrap();
     let contents = source.node(&template).unwrap().template_contents().unwrap();
     let hosted_source = source.fragment(&contents).unwrap().unwrap();
@@ -367,7 +367,7 @@ fn retired_native_installation_keeps_family_cause_and_late_failure_atomic() {
     builder
         .append_doctype(&root, HtmlDoctype::new("html", None, None))
         .unwrap();
-    let source = builder.finish();
+    let source = builder.finish().unwrap();
     let doctype = source.root().children().nth(1).unwrap();
     assert!(matches!(
         refused(&mut fixture, &source, target, installation_limits(), &cancel()),

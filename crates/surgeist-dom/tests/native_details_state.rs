@@ -331,7 +331,7 @@ fn native_immutable_installation_creates_fresh_attribute_transitions_and_mapping
             attrs,
         )
         .unwrap();
-    let source = builder.finish();
+    let source = builder.finish().unwrap();
     let report = d
         .install_native_html_fragment(
             d.snapshot().document(doc).unwrap().stamp(),

@@ -647,7 +647,8 @@ fn select_owners_active_and_frozen_facts_are_qualified_and_unavailable_for_wrong
         HtmlDocumentMode::NoQuirks,
     )
     .unwrap()
-    .finish();
+    .finish()
+    .unwrap();
     assert_eq!(
         frozen.option_state(&mut c, &foreign.root().id()).err(),
         Some(SessionError::ForeignNode)
