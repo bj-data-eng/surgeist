@@ -484,15 +484,16 @@ fn a_stacked_header_column_costs_the_input_and_the_associations() {
     assert_work_follows_input_and_associations("stacked column", &measured);
 }
 
-/// A cell of one row among the tall header cells that cross all the rows does
-/// not make the rows be scanned one by one.
+/// A `td` in each row between tall `th` of the same rows does not make the
+/// rows be scanned one by one by the tall `td` at their right.
 ///
 /// HTML 877d, internal algorithm for scanning and assigning header cells,
 /// steps 4 and 9. Row 0 holds a tall `th` (`rowspan="n"`, `scope="row"`), a
 /// `td`, then `n` more tall `th` of the same rows, then a tall `td`; each of
-/// the `n - 1` rows after holds one `td`, which lands in column 1 beside the
-/// first `th`. So every row has a cell of its own between the tall cells, and
-/// all the `th` cross the same rows. Every cell but the last carries
+/// the `n - 1` rows after holds one `td`, which fills the gap the first row's
+/// `td` leaves in column 1 beside the first `th`. So every row has a cell of
+/// its own between the tall cells, at the same column, and all the `th` cross
+/// the same rows. Every cell but the last carries
 /// `headers=""`, which assigns it no header and keeps it from scanning.
 ///
 /// The tall `td` is the one principal cell that scans. Each of its `n` rows is
@@ -542,7 +543,7 @@ fn among_work(n: usize) -> (usize, usize, usize) {
 }
 
 #[test]
-fn cells_among_tall_header_cells_cost_the_input_and_the_associations() {
+fn a_td_per_row_between_tall_th_of_the_same_rows_costs_the_input_and_the_associations() {
     let measured: Vec<_> = [100, 200, 400, 800].into_iter().map(among_work).collect();
     // The input and the associations double with `n`: allow a little over
     // two for the logarithms of the lookups.

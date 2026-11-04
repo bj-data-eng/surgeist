@@ -273,32 +273,78 @@ fn a_cell_between_tall_headers_of_the_same_rows_hides_those_before_it() {
     assert_headers(&layout, "P", &["T3", "T2", "T1"]);
 }
 
-/// The exact work and scratch budgets of a table with rows among tall cells,
-/// whose scans note the data cells that hid tall headers and read a row's own
-/// headers, admit it and are one unit short of failing, and release all they
-/// admitted, in both orientations.
+/// Two rows, three kinds of cell among the tall cells. The tall `th` `a0` and
+/// `a1` and the tall data cell `Dl` cross both rows, as does `P`; row 0 holds
+/// the data cell `D0` between `a0` and `a1`, headers `S_a0` and `S_b0` with
+/// `Dl` between them, and row 1 fills the same gaps with a data cell `D1` at
+/// the column of `D0` and headers `S_a1` and `S_b1`.
+///
+/// Row 0, scanned in full from `P`: `S_b0` is taken; `Dl` makes it opaque and
+/// hides `S_a0`; `a1` is taken; `D0` makes it opaque and hides `a0`. So `D0`
+/// is the data cell that hid a tall header. Row 1 has a data cell at that
+/// start, so it takes no tall header row 0 did not: `S_b1` is taken, `Dl`
+/// lies between `S_b1` and `S_a1`, so `S_a1` is hidden. Taken, in order:
+/// `S_b0`, `a1`, `S_b1`.
+fn row_data_cell_between_tall_headers_and_row_headers_around_a_tall_data_cell() -> Vec<Spec> {
+    vec![
+        th("a0", 0, 0, 1, 2),
+        td("D0", 1, 0, 1, 1),
+        th("a1", 2, 0, 1, 2),
+        th("S_a0", 3, 0, 1, 1),
+        td("Dl", 4, 0, 1, 2),
+        th("S_b0", 5, 0, 1, 1),
+        td("P", 6, 0, 1, 2),
+        td("D1", 1, 1, 1, 1),
+        th("S_a1", 3, 1, 1, 1),
+        th("S_b1", 5, 1, 1, 1),
+    ]
+}
+
 #[test]
-fn budgets_of_rows_among_tall_cells_are_exact_and_release_their_scratch() {
-    for transpose in [false, true] {
-        let (capture, table, _) = build(&two_kinds_of_extent(), transpose, "P");
-        let cx = context(&capture);
-        assert_exact_and_one_short_caps(
-            &format!("rows among tall cells, transpose={transpose}"),
-            &capture,
-            &cx,
-            10000,
-            limits(),
-            &[HtmlSemanticRequest::new(
-                capture.subject_id(&table).unwrap(),
-                HtmlSemanticQuery::TableModel,
-            )],
-            ExpectedUsage {
-                output_records: Charge::Exactly(1),
-                peak_scratch_records: Charge::Charged,
-                nested_output_records: Charge::Charged,
-                allocated_bytes: Charge::AtLeast(result_record_bytes()),
-                ..ExpectedUsage::none()
-            },
-        );
+fn a_row_with_the_noted_data_cell_takes_only_its_own_headers_up_to_a_tall_data_cell() {
+    assert_headers(
+        &row_data_cell_between_tall_headers_and_row_headers_around_a_tall_data_cell(),
+        "P",
+        &["S_b0", "a1", "S_b1"],
+    );
+}
+
+/// The exact work, scratch and byte budgets of the two tables above (the
+/// first row scanned in full that notes data cells and a later row that does
+/// not, and a later row that shares the first row's scan and reads its own
+/// headers past a tall data cell) admit them, are one unit short of failing,
+/// and release all that was admitted, in both orientations.
+#[test]
+fn budgets_of_tall_headers_hidden_by_a_rows_data_cells_are_exact_and_release_their_scratch() {
+    let layouts = [
+        ("a row lacking the noted data cell", two_kinds_of_extent()),
+        (
+            "a row with the noted data cell",
+            row_data_cell_between_tall_headers_and_row_headers_around_a_tall_data_cell(),
+        ),
+    ];
+    for (name, layout) in &layouts {
+        for transpose in [false, true] {
+            let (capture, table, _) = build(layout, transpose, "P");
+            let cx = context(&capture);
+            assert_exact_and_one_short_caps(
+                &format!("{name}, transpose={transpose}"),
+                &capture,
+                &cx,
+                10000,
+                limits(),
+                &[HtmlSemanticRequest::new(
+                    capture.subject_id(&table).unwrap(),
+                    HtmlSemanticQuery::TableModel,
+                )],
+                ExpectedUsage {
+                    output_records: Charge::Exactly(1),
+                    peak_scratch_records: Charge::Charged,
+                    nested_output_records: Charge::Charged,
+                    allocated_bytes: Charge::AtLeast(result_record_bytes()),
+                    ..ExpectedUsage::none()
+                },
+            );
+        }
     }
 }
