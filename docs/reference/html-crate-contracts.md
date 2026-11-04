@@ -115,15 +115,15 @@ the same verdict, the first attribute whose expanded name repeats an earlier one
 earlier attribute's index, in work linear in the count and the total length of the names: see
 [name index](#attribute-name-index). The cursor's layouts then also report the index slots a step
 writes and bytes it copies (`record_writes()`, `copied_bytes()`). `take_index()` gives the index
-back before `try_finish`, which consumes the cursor.
+back before `finish`, which consumes the cursor.
 
 The cursor exposes `next_action()` and an action's `layout()`/`advance()` pair.
 The parser admits each record/string comparison before advancing it.
-`HtmlAttributeValidation::try_finish(&mut Option<Self>) ->
-Result<HtmlValidatedAttributes, HtmlAttributeValidationError>` removes the cursor
-only when validation has completed successfully. `NotReady` and the first
-`Duplicate { first, duplicate }` refusal leave the same cursor/storage in
-`Some`; cancellation/admission failure likewise retains that owner.
+`HtmlAttributeValidation::finish(self) ->
+Result<HtmlValidatedAttributes, HtmlFinishFailure<Self, HtmlAttributeValidationError>>` consumes the
+cursor only when validation has completed successfully. `NotReady` and the first
+`Duplicate { first, duplicate }` refusal hand the same cursor/storage back in the
+`HtmlFinishFailure`; cancellation/admission failure likewise retains that owner.
 `abort(self) -> HtmlAttributeStorage` returns its actual storage without further
 validation, allocation or successful attribute publication.
 `HtmlValidatedAttributes::into_attributes` is infallible and shares the original
@@ -208,6 +208,10 @@ remains observable to the caller's actual allocation owner on failure. Temporary
 parser algorithm state belongs in its session, not in a published invalid HTML
 record. HTML never applies parser placement, recovery or language conformance
 rules to native authoring.
+
+The native builders' `finish(self)` drives this publication and returns
+`Result<HtmlDocument | HtmlFragment, HtmlConstructionError>`; a refusal ends the session. The
+builder keeps its storage through every refused step of an append.
 
 `HtmlConstructionStorage::prepare_finish(self, root: HtmlBuilderNode) ->
 HtmlConstructionOperation` is the `Publish` command's consuming convenience
@@ -338,9 +342,9 @@ The consumer's slot storage has at least `HtmlAttributeNameIndex::slots_required
 of capacity; it adopts them with `new`, lends the index to an edit when the edit begins
 (`HtmlConstructionAttributeEdit::begin_indexed`) or to a validation (`validate_indexed`), and takes
 it back with `HtmlConstructionAttributeCompletion::take_index` or `into_parts_with_index`
-(`HtmlAttributeValidation::take_index`, `abort_with_index` or `try_finish_with_index`) and
+(`HtmlAttributeValidation::take_index`, `abort_with_index` or `finish_with_index`) and
 `into_storage` to release it. An index cannot be lent to an edit that has started, so every name
-it describes was entered by a step of an edit that held it; `into_parts`, `abort` and `try_finish`
+it describes was entered by a step of an edit that held it; `into_parts`, `abort` and `finish`
 drop an index that was not taken first. The owner never allocates the table. A rebuild starts a new
 `HtmlNameIndex` over the cleared storage, and the clearing action that completes the slots also
 lends them to it for the first time, which reads every slot once and is admitted with that action.
@@ -495,8 +499,11 @@ writes cannot be observed through a construction result. Ready commits the new
 logical usage and native value using prepaid moves; node identity and topology
 remain unchanged.
 
+`HtmlConstructionTextAppendReady::commit(self)` returns the completion, or an
+`HtmlConstructionRefusal` handing the ready append back when its target is no longer a text node.
 Abort truncates initialized tail only when reusing the native backing, retaining
-any successful capacity growth. A separate preservation copy returns all its
+any successful capacity growth; the record's own text always returns to its original length, and
+the backing is copied first only if another holder were ever found. A separate preservation copy returns all its
 actually initialized units for stopped-owner retention and disposal; the
 original native text was never changed. Completion returns the same storage,
 node and incoming operand, plus any distinct backing whose ownership must be
@@ -748,7 +755,9 @@ every validation, provider action and allocation observation has completed, and
 that the complete fixed final-write description has been issued and admitted
 through its action. It performs no additional useful work, allocation,
 reserve or clone. Pending returns `OperationNotReady`; a failed operation
-returns its latched construction reason. Every refusal hands the original
+returns its latched construction reason. An operation whose planned order edits no longer find
+their places in the storage (`CapacityMismatch` or `ParentChildConflict`) is refused the same way, so
+the commit never receives a state it would have to skip. Every refusal hands the original
 owner back unchanged inside `HtmlConstructionRefusal`, with its command, actual
 allocations and capacities untouched; a consumed operation cannot be presented
 again because the check takes it by value. Only success issues the
@@ -1111,17 +1120,17 @@ Parser-only helper code inside tests of `input.rs`, `request.rs` or
 `custom_names.rs` moves to parser tests or uses public owner operations; a dev
 dependency cycle is not introduced to preserve private test access.
 
-`HtmlTimeElementInterpretation::try_finish(&mut Option<Self>) ->
+`HtmlTimeElementInterpretation::finish(self) ->
 Result<HtmlValueReport<HtmlTimeElementValue, HtmlMachineReadableTime>,
-HtmlTimeElementInterpretationError>` uses the same retained-slot rule as
-attribute validation. `NotReady` and a latched processing failure leave the
+HtmlFinishFailure<Self, HtmlTimeElementInterpretationError>>` follows the same
+consuming rule as attribute validation. `NotReady` and a latched processing failure hand the
 exact interpretation, raw operand and any actual materialization allocations
-in `Some`; only completed recognition/materialization and admitted report
-assembly can remove it and produce a report. `abort(self)` drops unpublished
+back in the `HtmlFinishFailure`; only completed recognition/materialization and admitted report
+assembly can consume it and produce a report. `abort(self)` drops unpublished
 partial materializations and returns the original borrowed raw operand, without
 recognition or allocation. Their already-observed capacities remain charged in
 the semantic phase's existing cumulative-allocation model. The public error
-distinguishes `NotReady`, `Consumed`, processing representation exhaustion and
+distinguishes `NotReady`, processing representation exhaustion and
 actual allocation failure; consumer cancellation/admission remains the original
 consumer's error. Completed source-defined invalid syntax or unrepresentable
 value outcomes are the report's author/recovery states, not a failed publication
@@ -1178,12 +1187,18 @@ An explicit borrowing `stop` operation latches the same stopped state without
 work when the consumer fails between HTML actions, such as during external-fact
 lookup; it does not accept, copy or replace that consumer error.
 
-Each owner has `try_finish(&mut Option<Self>) -> Result<Report, Error>`, with its
-own existing report and concrete error type. `Consumed` means the slot was empty;
-`NotReady` means required actions remain; `Stopped` means execution failed.
-These refusals preserve `Some` and its exact backing. Only an owner whose report
-assembly has already succeeded is removed from the slot. Finishing moves that
-report without scanning, charging, cloning or allocating. `abort(self)` drops
+Each owner has `finish(self) -> Result<Report, HtmlFinishFailure<Self, Error>>`, with its
+own existing report and concrete error type. `NotReady` means required actions remain; `Stopped`
+means execution failed. These refusals hand the owner back unchanged with its exact backing, so a
+caller keeps no `Option` slot and no owner is dropped on an error path. Only an owner whose report
+assembly has already succeeded is consumed. Finishing moves that
+report without scanning, charging, cloning or allocating.
+
+The standalone operations (`microdata_tokens`, `media`, `media_for_meta`, `rel_with_attributes`,
+`control_autocomplete` and `control_autocomplete_for_input`) drive these owners with a meter that
+admits all work, and return `HtmlValueInterpretationError`: the per-value admission refusal, a
+refused allocation, an unrepresentable size, or a breach of the owner's own protocol by that driver.
+They reserve with the fallible allocator and never abort the caller. `abort(self)` drops
 unpublished backing and returns the original borrowed inputs, without further
 observations or admission. Actual capacities already observed by semantics keep
 their existing accounting treatment; abort does not refund cumulative nested
