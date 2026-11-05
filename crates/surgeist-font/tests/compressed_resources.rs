@@ -282,6 +282,29 @@ fn reserved_and_reference_size_fields_do_not_reject_valid_woff2() {
 }
 
 #[test]
+fn invalid_metadata_expansion_claim_does_not_prevent_loading_valid_woff2() {
+    // WOFF2 section 6 inherits WOFF1 section 7: invalid metadata is ignored.
+    // Its decoded-length claim is content information, not a file range.
+    let original = include_bytes!("fixtures/ahem-original/Ahem.woff2");
+    let baseline = FontResource::decode(original.to_vec(), limits()).unwrap();
+    for claimed in [0usize, u32::MAX as usize] {
+        let mut encoded = original.to_vec();
+        while !encoded.len().is_multiple_of(4) {
+            encoded.push(0);
+        }
+        let metadata_start = encoded.len();
+        encoded.push(255); // Intentionally not a valid Brotli/XML metadata stream.
+        put32(&mut encoded, 28, metadata_start);
+        put32(&mut encoded, 32, 1);
+        put32(&mut encoded, 36, claimed);
+        let length = encoded.len();
+        put32(&mut encoded, 8, length);
+        let decoded = FontResource::decode(encoded, limits()).unwrap();
+        assert_eq!(decoded.bytes(), baseline.bytes());
+    }
+}
+
+#[test]
 fn compressed_source_and_working_storage_limits_reject_without_a_partial_resource() {
     let encoded = include_bytes!("fixtures/ahem-original/Ahem.woff2");
     let n = 64 << 20;
