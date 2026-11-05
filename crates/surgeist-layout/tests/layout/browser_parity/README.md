@@ -96,6 +96,17 @@ comparison covers the five original elements. Qualification also checks
 both packet channels for the anonymous items and text leaves, and
 verifies the shared placed baseline.
 
+The [prepared Range edition](captured/prepared-range-qualification/qualification.json)
+covers four continuity variants. The two LTR controls match exactly. The two RTL
+variants qualify only the PDI start under the Native source-anchor policy and
+retain the original source and actual Range piece identity.
+
+The [sideways Flex edition](captured/flex-composition-qualification/qualification.json)
+covers four composition variants. Each has nine collapse differences. Each RTL
+variant also has one scrollbar difference under a separate policy. The edition
+binds the measured image, both Native packet phases, and the browser environment
+used by the collapse-disabled gutter control.
+
 The reader authenticates each terminal seal, retained inputs and outputs,
 browser profile, policy, and per-variant identity. It compares the retained
 selected records with one live catalogue and checks exact bytes for the other
@@ -120,6 +131,10 @@ cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-ge
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-measured-grid-differences
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --publish-flex-text-differences
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-flex-text-differences
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --publish-prepared-range-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-prepared-range-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --publish-flex-composition-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-flex-composition-qualification
 ```
 
 Publication uses the already-acquired pinned browser and refuses an existing
