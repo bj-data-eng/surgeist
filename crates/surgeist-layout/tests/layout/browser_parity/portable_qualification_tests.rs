@@ -1311,3 +1311,32 @@ fn reissued_omission_of_source_spec_policy_global_or_receipt_owner_pins_is_refus
         expect_changed(&fixture);
     }
 }
+
+#[test]
+fn registered_prepared_range_preserves_raw_differences_and_exact_controls() {
+    let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let registry = admit_registered(owner).unwrap();
+    let selected: BTreeSet<_> = registry
+        .outputs()
+        .filter(|path| path.contains("/prepared-range-qualification/"))
+        .collect();
+    assert_eq!(selected.len(), 4);
+    let run = registry.execute_selected(&selected).unwrap();
+    assert!(run.selected_cases_passed());
+    for case in &run.cases {
+        let fields = case.raw.as_ref().unwrap();
+        if case.output.ends_with("_rtl.xml") {
+            assert_eq!(fields.len(), 1);
+            for detail in ["72.0", "24.0", "native_pieces", "aggregate"] {
+                assert!(fields[0].contains(detail), "{}", fields[0]);
+            }
+            assert_eq!(
+                case.qualified.as_ref().unwrap().raw,
+                RawVerdict::Different { fields: 1 }
+            );
+        } else {
+            assert!(fields.is_empty());
+            assert!(case.qualified.is_ok());
+        }
+    }
+}
