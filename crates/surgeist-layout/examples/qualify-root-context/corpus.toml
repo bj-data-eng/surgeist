@@ -1808,3 +1808,20 @@ sha256 = "5da21d01d1201642c686f483c083f3637be969dbe36fd58818da5a1ba11cff33"
 [semantic_publications.specifications.content_box_rtl]
 path = "semantic/block-inset-percentage-content_box_rtl.json"
 sha256 = "aca0ce077cffec87d854332931a4cc93e0a4aae193459542b9b224c2e3aca6b9"
+
+# The wrapping successor selects the original world-corner root height.
+[[semantic_publications]]
+source = "html/flex/fri07_collapsed_strut_wrapping.html"
+replaces_sha256 = "5af1bcc515ff4be5fafc9418cb49cbdcc039021374eb3e05c67a440644fe6856"
+[semantic_publications.specifications.border_box_ltr]
+path = "semantic/wrapping-world-corner-border_box_ltr.json"
+sha256 = "152d70a54bfa41358476972426ee4c20b2245c602cf8240387207fe4425bc565"
+[semantic_publications.specifications.border_box_rtl]
+path = "semantic/wrapping-world-corner-border_box_rtl.json"
+sha256 = "37cb8104b402a5451132369665f4bbf0615a79a3fd79ea601fc46c7197c9f789"
+[semantic_publications.specifications.content_box_ltr]
+path = "semantic/wrapping-world-corner-content_box_ltr.json"
+sha256 = "18487b6aa2a0bb27444d248bffbeb28c5f2ae449d98ce1e1f982b34c312e2d8f"
+[semantic_publications.specifications.content_box_rtl]
+path = "semantic/wrapping-world-corner-content_box_rtl.json"
+sha256 = "d9d2488a5f9e99a6ae67ac149908664ea2fedc857746f384076d883a20d8bb18"
