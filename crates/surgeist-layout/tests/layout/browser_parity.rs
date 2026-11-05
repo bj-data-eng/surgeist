@@ -2386,7 +2386,7 @@ fn current_registry_executes_all_measured_grid_variants() {
         selected_current_outputs(&registered, Some("captured/measured-grid-differences"));
     assert_eq!(
         selected.len(),
-        4,
+        16,
         "all measured Grid variants must be registered"
     );
     let run = registered
@@ -2398,7 +2398,7 @@ fn current_registry_executes_all_measured_grid_variants() {
             .iter()
             .map(|case| case.raw.as_ref().unwrap().len())
             .sum::<usize>(),
-        44
+        98
     );
 }
 
