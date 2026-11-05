@@ -397,6 +397,10 @@ pub(crate) enum CanonicalField {
     Y,
     Width,
     Height,
+    ClientWidth,
+    ClientHeight,
+    ScrollWidth,
+    ScrollHeight,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, Ord, PartialEq, PartialOrd)]
 #[serde(deny_unknown_fields)]
@@ -413,6 +417,26 @@ pub(crate) enum CurrentFrame {
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum CurrentDomain {
     Layout,
+    LayoutAndElementSizes,
+}
+
+impl CurrentDomain {
+    pub(crate) fn fields(self) -> &'static [CanonicalField] {
+        const ALL: [CanonicalField; 8] = [
+            CanonicalField::X,
+            CanonicalField::Y,
+            CanonicalField::Width,
+            CanonicalField::Height,
+            CanonicalField::ClientWidth,
+            CanonicalField::ClientHeight,
+            CanonicalField::ScrollWidth,
+            CanonicalField::ScrollHeight,
+        ];
+        match self {
+            Self::Layout => &ALL[..4],
+            Self::LayoutAndElementSizes => &ALL,
+        }
+    }
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]

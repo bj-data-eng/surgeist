@@ -388,7 +388,7 @@ fn completed_empty_native_inline_family_is_rejected_even_without_text_fragments_
         .attrs
         .insert("width".into(), "100px".into());
     golden.root.style.attrs.remove("height");
-    let source = source_census(&golden.root, &golden.expectations).unwrap();
+    let source = source_census(&golden.root, &golden.expectations, None).unwrap();
     let tree = TestTree::from_golden(&golden.root, None).unwrap();
     assert!(tree.paragraphs.is_empty());
     let request = output_census_native_request();
@@ -491,7 +491,7 @@ fn completed_prepared_text_and_both_fragment_channels_are_rejected_by_box_snapsh
         }
     );
     assert!(matches!(
-        source_census(&golden.root, &golden.expectations),
+        source_census(&golden.root, &golden.expectations, None),
         Err(QualificationError::UnsupportedObservation { .. })
     ));
 }
@@ -874,7 +874,7 @@ fn current_prebinding_refuses_case_output_selector_and_either_packet_census_drif
 #[test]
 fn measured_grid_publication_compares_both_complete_domains_for_the_certified_leaf() {
     const XML: &str = r#"<test name="fixed-published" measurement-version="4" observation-frame="root-border-local" use-rounding="false">
-<viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="grid" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-limits="unbounded"/>
+<viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="grid" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
 <input><div source-tag="div" grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" display="grid" position="absolute" direction="ltr" width="80px" height="40px" grid-template-columns="80px" grid-template-rows="40px">
 <text source-tag="div" display="flex" direction="ltr">HHHH&#x200b;HHHH</text></div></input>
 <expectations><node x="0" y="0" width="81" height="40"><node x="0" y="0" width="80" height="40"/></node></expectations>
@@ -939,6 +939,14 @@ fn measured_grid_publication_compares_both_complete_domains_for_the_certified_le
         differences,
         ["layout:/:Width", "element-size:/0:ScrollWidth"]
     );
+
+    let mut missing_executed_field = golden.clone();
+    missing_executed_field.expectations.children[0].height = None;
+    assert!(matches!(
+        complete_captured_comparison(&missing_executed_field, &resolved),
+        Err(QualificationError::IncompleteRepresentation { key })
+            if key == "complete executed current comparison selectors"
+    ));
 
     let mut without_witness = golden.clone();
     without_witness.measured_leaf = None;

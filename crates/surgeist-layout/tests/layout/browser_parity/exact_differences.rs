@@ -1,5 +1,6 @@
-//! Layout-private exact qualification of a complete, no-text canonical box batch.
+//! Layout-private exact qualification of captured ordinary box batches.
 //! Authored oracles are inputs, never copied from a completed batch.
+use super::capture_authority::{CanonicalField, CurrentDomain, CurrentRequirements, Selector};
 use super::*;
 use serde::{Deserialize, Serialize};
 
@@ -291,6 +292,7 @@ enum ElementField {
     ScrollWidth,
     ScrollHeight,
 }
+
 impl ComparedField {
     fn key(&self) -> String {
         match &self.0 {
@@ -298,6 +300,28 @@ impl ComparedField {
             Field::ElementSize { path, field, .. } => format!("element-size:{path}:{field:?}"),
         }
     }
+    fn canonical_selector(&self) -> Option<Selector> {
+        let field = match &self.0 {
+            Field::Layout { field, .. } => match field {
+                LayoutField::X => CanonicalField::X,
+                LayoutField::Y => CanonicalField::Y,
+                LayoutField::Width => CanonicalField::Width,
+                LayoutField::Height => CanonicalField::Height,
+                LayoutField::ScrollWidth | LayoutField::ScrollHeight => return None,
+            },
+            Field::ElementSize { field, .. } => match field {
+                ElementField::ClientWidth => CanonicalField::ClientWidth,
+                ElementField::ClientHeight => CanonicalField::ClientHeight,
+                ElementField::ScrollWidth => CanonicalField::ScrollWidth,
+                ElementField::ScrollHeight => CanonicalField::ScrollHeight,
+            },
+        };
+        Some(Selector {
+            path: self.path().to_owned(),
+            field,
+        })
+    }
+
     fn path(&self) -> &str {
         match &self.0 {
             Field::Layout { path, .. } | Field::ElementSize { path, .. } => path,
@@ -383,6 +407,8 @@ pub(crate) struct CaseIdentity {
 #[serde(rename_all = "kebab-case")]
 enum FontDemand {
     None,
+    #[serde(rename = "ahem-10px-zwsp")]
+    AhemZwsp,
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -412,6 +438,16 @@ impl CaptureLineage {
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum PublishedEdition {
     CanonicalBoxDifferences,
+    MeasuredGridDifferences,
+}
+
+impl PublishedEdition {
+    fn domain(self) -> CurrentDomain {
+        match self {
+            Self::CanonicalBoxDifferences => CurrentDomain::Layout,
+            Self::MeasuredGridDifferences => CurrentDomain::LayoutAndElementSizes,
+        }
+    }
 }
 
 /// Select one capture lineage before comparing any observation or Native output.
@@ -447,11 +483,21 @@ struct RawSpec {
 #[serde(rename_all = "kebab-case")]
 enum Profile {
     CanonicalNoTextBoxes,
+    CanonicalMeasuredGrid,
+}
+impl Profile {
+    fn published_edition(&self) -> PublishedEdition {
+        match self {
+            Self::CanonicalNoTextBoxes => PublishedEdition::CanonicalBoxDifferences,
+            Self::CanonicalMeasuredGrid => PublishedEdition::MeasuredGridDifferences,
+        }
+    }
 }
 pub(crate) struct ExactDifferenceSpec(RawSpec);
 pub(crate) struct ResolvedSpec<'a> {
     spec: &'a RawSpec,
     source: Vec<(String, Vec<String>)>,
+    current: Option<&'a CurrentRequirements>,
 }
 pub(crate) struct CompletedComparison {
     nodes: Vec<NativeNode>,
@@ -648,7 +694,6 @@ impl ExactDifferenceSpec {
         // Share the already-owned duplicate-key parser; no Value last-key wins.
         let value = prepared_source::unique_json(raw).map_err(|e| malformed(e.to_string()))?;
         let spec: RawSpec = serde_json::from_value(value).map_err(|e| malformed(e.to_string()))?;
-        let Profile::CanonicalNoTextBoxes = &spec.profile;
         for value in [
             &spec.policy.id,
             &spec.policy.edition,
@@ -675,11 +720,18 @@ impl ExactDifferenceSpec {
                 )));
             }
             if *lineage == CaptureLineage::Published
-                && spec.representation.published_edition
-                    != Some(PublishedEdition::CanonicalBoxDifferences)
+                && spec.representation.published_edition != Some(spec.profile.published_edition())
             {
                 return Err(malformed(
-                    "published identity requires canonical-box-differences edition association",
+                    "published identity requires its profile's edition association",
+                ));
+            }
+            let measured = matches!(spec.profile, Profile::CanonicalMeasuredGrid);
+            if measured != (identity.font_demand == FontDemand::AhemZwsp)
+                || measured && *lineage != CaptureLineage::Published
+            {
+                return Err(malformed(
+                    "font demand or capture lineage disagrees with the source profile",
                 ));
             }
         }
@@ -744,7 +796,6 @@ impl ExactDifferenceSpec {
         edition: PublishedEdition,
         selected: &super::capture_authority::CaseSelection,
     ) -> Result<super::capture_authority::CurrentRequirements> {
-        use super::capture_authority::{CanonicalField, Selector};
         self.require_published_context(edition)?;
         if self.0.representation.published_edition != Some(edition) {
             return Err(QualificationError::IdentityChanged {
@@ -795,22 +846,9 @@ impl ExactDifferenceSpec {
                 key: "Published canonical boxes require both present packet channels".to_owned(),
             });
         }
-        let selectors = nodes
-            .iter()
-            .flat_map(|path| {
-                [
-                    CanonicalField::X,
-                    CanonicalField::Y,
-                    CanonicalField::Width,
-                    CanonicalField::Height,
-                ]
-                .map(|field| Selector {
-                    path: path.clone(),
-                    field,
-                })
-            })
-            .collect::<Vec<_>>();
-        if required.nodes != nodes
+        let selectors = canonical_selectors(edition.domain(), &nodes);
+        if required.domain != edition.domain()
+            || required.nodes != nodes
             || required.unrounded_packets != nodes
             || required.final_packets != nodes
             || required.selectors != selectors
@@ -849,8 +887,20 @@ impl ExactDifferenceSpec {
         if let Some(component) = expected.changed_component(identity) {
             return Err(QualificationError::IdentityChanged { component });
         }
-        let source = source_census(&golden.root, &golden.expectations)?;
-        if let Some(edition) = edition {
+        let measured_path = match self.0.profile {
+            Profile::CanonicalNoTextBoxes => None,
+            Profile::CanonicalMeasuredGrid => {
+                let leaf = golden.measured_leaf.as_ref().ok_or_else(|| {
+                    unsupported(
+                        "/",
+                        "measured Grid profile requires its retained leaf witness",
+                    )
+                })?;
+                Some(format!("/{}", leaf.child_index))
+            }
+        };
+        let source = source_census(&golden.root, &golden.expectations, measured_path.as_deref())?;
+        let current = if let Some(edition) = edition {
             let current = self.0.representation.current.as_ref().ok_or_else(|| {
                 QualificationError::IncompleteRepresentation {
                     key: "representation.current".to_owned(),
@@ -867,7 +917,10 @@ impl ExactDifferenceSpec {
             };
             let required = self.prebind_current(edition, &selected)?;
             verify_current_requirements(&required, golden, &source)?;
-        }
+            Some(current)
+        } else {
+            None
+        };
         let expected = unique(&self.0.native.nodes, |n| n.path.clone())?;
         if expected.len() != source.len() {
             return Err(QualificationError::IncompleteNativeOracle {
@@ -887,26 +940,40 @@ impl ExactDifferenceSpec {
         Ok(ResolvedSpec {
             spec: &self.0,
             source,
+            current,
         })
     }
 }
 
+fn canonical_selectors(domain: CurrentDomain, nodes: &[String]) -> Vec<Selector> {
+    nodes
+        .iter()
+        .flat_map(|path| {
+            domain.fields().iter().map(|&field| Selector {
+                path: path.clone(),
+                field,
+            })
+        })
+        .collect()
+}
+
 fn verify_current_requirements(
-    required: &super::capture_authority::CurrentRequirements,
+    required: &CurrentRequirements,
     golden: &Golden,
     source: &[(String, Vec<String>)],
 ) -> Result<()> {
-    use super::capture_authority::{CanonicalField, Selector};
+    let measured = required.domain == CurrentDomain::LayoutAndElementSizes;
     if !matches!(
         &golden.viewport.root_context,
         RootContext::Qualified(root_context::QualifiedRootContext::AbsoluteRootLocal { .. })
-    ) || golden.has_element_scroll_sizes()
+    ) || golden.has_element_scroll_sizes() != measured
+        || golden.measured_leaf.is_some() != measured
     {
         return Err(QualificationError::IncompleteRepresentation {
-            key: "current RootBorderLocal Geometry frame/domain".to_owned(),
+            key: "current root-border-local observation frame or domain".to_owned(),
         });
     }
-    fn walk(expected: &Expectation, path: String, fields: &mut Vec<Selector>) -> Result<()> {
+    fn verify_geometry(expected: &Expectation) -> Result<()> {
         if expected.scroll_size.is_some()
             || expected.x.is_none()
             || expected.y.is_none()
@@ -914,42 +981,23 @@ fn verify_current_requirements(
             || expected.height.is_none()
         {
             return Err(QualificationError::IncompleteRepresentation {
-                key: format!("{path}:complete current canonical box observations"),
+                key: "complete current canonical box observations".to_owned(),
             });
         }
-        fields.extend(
-            [
-                CanonicalField::X,
-                CanonicalField::Y,
-                CanonicalField::Width,
-                CanonicalField::Height,
-            ]
-            .map(|field| Selector {
-                path: path.clone(),
-                field,
-            }),
-        );
-        for (index, child) in expected.children.iter().enumerate() {
-            walk(
-                child,
-                if path == "/" {
-                    format!("/{index}")
-                } else {
-                    format!("{path}/{index}")
-                },
-                fields,
-            )?;
+        for child in &expected.children {
+            verify_geometry(child)?;
         }
         Ok(())
     }
-    let mut fields = Vec::new();
-    walk(&golden.expectations, "/".to_owned(), &mut fields)?;
-    fields.sort();
-    let mut nodes = source.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>();
+    verify_geometry(&golden.expectations)?;
+    let mut nodes = source
+        .iter()
+        .map(|(path, _)| path.clone())
+        .collect::<Vec<_>>();
     nodes.sort();
-    if fields != required.selectors || nodes != required.nodes {
+    if nodes != required.nodes {
         return Err(QualificationError::IncompleteRepresentation {
-            key: "actual current requested source/selector census".to_owned(),
+            key: "actual current requested source census".to_owned(),
         });
     }
     Ok(())
@@ -1002,15 +1050,24 @@ fn unsupported(owner: &str, category: &str) -> QualificationError {
         category: category.to_owned(),
     }
 }
-fn source_census(root: &Node, expectation: &Expectation) -> Result<Vec<(String, Vec<String>)>> {
+fn source_census(
+    root: &Node,
+    expectation: &Expectation,
+    measured_path: Option<&str>,
+) -> Result<Vec<(String, Vec<String>)>> {
     fn walk(
         node: &Node,
         expected: &Expectation,
         path: String,
+        measured_path: Option<&str>,
         out: &mut Vec<(String, Vec<String>)>,
     ) -> Result<()> {
-        if node.kind != NodeKind::Div
-            || node.text.is_some()
+        let role_matches = if measured_path == Some(path.as_str()) {
+            node.kind == NodeKind::Text && node.text.is_some()
+        } else {
+            node.kind == NodeKind::Div && node.text.is_none()
+        };
+        if !role_matches
             || node.inline_text.is_some()
             || node.prepared.is_some()
             || node.prepared_occurrence.is_some()
@@ -1025,7 +1082,10 @@ fn source_census(root: &Node, expectation: &Expectation) -> Result<Vec<(String, 
             || node.shape_bands.is_some()
             || node.atomic_line_strut.is_some()
         {
-            return Err(unsupported(&path, "source is not an ordinary no-text box"));
+            return Err(unsupported(
+                &path,
+                "source does not match its canonical box role",
+            ));
         }
         if expected.fragments.is_some()
             || expected.range_rectangles.is_some()
@@ -1052,12 +1112,12 @@ fn source_census(root: &Node, expectation: &Expectation) -> Result<Vec<(String, 
         for ((child, expectation), path) in
             node.children.iter().zip(&expected.children).zip(children)
         {
-            walk(child, expectation, path, out)?;
+            walk(child, expectation, path, measured_path, out)?;
         }
         Ok(())
     }
     let mut out = Vec::new();
-    walk(root, expectation, "/".to_owned(), &mut out)?;
+    walk(root, expectation, "/".to_owned(), measured_path, &mut out)?;
     Ok(out)
 }
 
@@ -1096,6 +1156,21 @@ pub(crate) fn complete_captured_comparison(
     let NumericComparisonSink::CollectAll { fields, .. } = sink else {
         unreachable!("owned collecting sink")
     };
+    if let Some(required) = spec.current {
+        let mut actual = fields
+            .iter()
+            .map(ComparedField::canonical_selector)
+            .collect::<Option<Vec<_>>>()
+            .ok_or_else(|| QualificationError::IncompleteRepresentation {
+                key: "comparison produced a field outside the current domain".to_owned(),
+            })?;
+        actual.sort();
+        if actual != required.selectors {
+            return Err(QualificationError::IncompleteRepresentation {
+                key: "complete executed current comparison selectors".to_owned(),
+            });
+        }
+    }
     unique(&fields, ComparedField::key)?;
     let nodes = snapshot.ok_or_else(|| malformed("missing completed batch"))?;
     Ok(CompletedComparison {
