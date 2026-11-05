@@ -4940,3 +4940,112 @@ fn block_ratio_minimum_probe_does_not_repeat_descendant_layout() {
         .count();
     assert_eq!(performed, 1);
 }
+
+fn assert_signed_margin_intrinsic_demand<S: LayoutScalar>() {
+    let n = scalar_value::<S>;
+    let mut differences = Vec::new();
+    for direction in [Direction::Ltr, Direction::Rtl] {
+        let flow = FlowAxes::new(WritingMode::HorizontalTb, direction);
+        for (left, right) in [(-10.0, -5.0), (-5.0, -10.0)] {
+            for inline in [None, Some(0.0), Some(12.0)] {
+                let tree = PublicBlockTree::default()
+                    .with_children(0, [1, 2])
+                    .with_children(1, [])
+                    .with_children(2, [])
+                    .with_style(
+                        0,
+                        NodeInputOf {
+                            display: Display::Block,
+                            direction,
+                            size: Size::new(
+                                inline.map_or(PreferredSizeOf::AUTO, |width| {
+                                    PreferredSizeOf::px(n(width))
+                                }),
+                                PreferredSizeOf::AUTO,
+                            ),
+                            ..NodeInputOf::default()
+                        },
+                    )
+                    .with_style(
+                        1,
+                        NodeInputOf {
+                            display: Display::Block,
+                            direction,
+                            size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(n(10.0))),
+                            margin: Edges {
+                                left: LengthAutoOf::px(n(left)),
+                                right: LengthAutoOf::px(n(right)),
+                                ..Edges::all(LengthAutoOf::ZERO)
+                            },
+                            ..NodeInputOf::default()
+                        },
+                    )
+                    .with_style(
+                        2,
+                        NodeInputOf {
+                            display: Display::Block,
+                            direction,
+                            size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(n(10.0))),
+                            ..NodeInputOf::default()
+                        },
+                    );
+                let request = LayoutRootRequestOf::standalone(
+                    SizingRequestOf::new(
+                        Size::splat(AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::Normal,
+                        )),
+                        OrthogonalFallbackOf::new(
+                            Size::NONE,
+                            NearestScrollportOf::Absent,
+                            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                        ),
+                    ),
+                    flow,
+                    Size::NONE,
+                );
+                let batch = compute_layout(&tree, 0, request).unwrap();
+                let root = public_final_output(&batch, 0);
+                let first = public_final_output(&batch, 1);
+                let sibling = public_final_output(&batch, 2);
+                let root_width = inline.unwrap_or(0.0);
+                let child_width = root_width + 15.0;
+                let actual = (
+                    root.size,
+                    first.location,
+                    first.size,
+                    sibling.size,
+                    root.scroll_geometry.unwrap().scrollable_overflow(),
+                );
+                let expected = (
+                    Size::new(n(root_width), n(20.0)),
+                    Point::new(n(left), S::ZERO),
+                    Size::new(n(child_width), n(10.0)),
+                    Size::new(n(root_width), n(10.0)),
+                    ScrollRectOf::try_new(
+                        Point::new(n(left), S::ZERO),
+                        Size::new(n(child_width), n(20.0)),
+                    )
+                    .unwrap(),
+                );
+                if actual != expected {
+                    differences.push(format!(
+                        "{direction:?}, margins ({left}, {right}), inline {inline:?}: \
+                         expected {expected:?}, got {actual:?}"
+                    ));
+                }
+            }
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn block_signed_margin_intrinsic_width_excludes_visual_overflow_f32() {
+    assert_signed_margin_intrinsic_demand::<f32>();
+}
+
+#[test]
+fn block_signed_margin_intrinsic_width_excludes_visual_overflow_f64() {
+    assert_signed_margin_intrinsic_demand::<f64>();
+}
