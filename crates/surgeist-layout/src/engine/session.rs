@@ -1022,23 +1022,26 @@ where
                     ),
                 ));
             }
-            let context = input.block_indent_context().ok_or_else(|| {
-                LayoutErrorOf::new(
-                    LayoutErrorSiteOf::Node(node),
-                    LayoutOperation::ChildLayout,
-                    LayoutErrorKindOf::MissingContext(
-                        crate::LayoutMissingContext::AnonymousGeneratingBlock,
-                    ),
-                )
-            })?;
-            if context.inherited != style.text_indent {
-                return Err(LayoutErrorOf::new(
-                    LayoutErrorSiteOf::Node(node),
-                    LayoutOperation::ChildLayout,
-                    LayoutErrorKindOf::InvalidInput(
-                        crate::LayoutInvalidInputOf::AnonymousIndentMismatch,
-                    ),
-                ));
+            // Hidden traversal publishes zero output independently of indentation.
+            if input.run_mode() != RunMode::PerformHiddenLayout {
+                let context = input.block_indent_context().ok_or_else(|| {
+                    LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(node),
+                        LayoutOperation::ChildLayout,
+                        LayoutErrorKindOf::MissingContext(
+                            crate::LayoutMissingContext::AnonymousGeneratingBlock,
+                        ),
+                    )
+                })?;
+                if context.inherited != style.text_indent {
+                    return Err(LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(node),
+                        LayoutOperation::ChildLayout,
+                        LayoutErrorKindOf::InvalidInput(
+                            crate::LayoutInvalidInputOf::AnonymousIndentMismatch,
+                        ),
+                    ));
+                }
             }
         }
         if input.run_mode() == RunMode::PerformHiddenLayout || style.display == crate::Display::None
