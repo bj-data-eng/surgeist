@@ -214,6 +214,24 @@ impl<'input, 'a, Node, S: LayoutScalar> IntrinsicGrid<'input, 'a, Node, S> {
         }
     }
 
+    pub(in crate::grid) fn column_contribution_margin_basis(
+        self,
+        span_tracks: &[TrackSizingOf<S>],
+    ) -> Option<Size<Option<S>>> {
+        let contributes = span_tracks
+            .iter()
+            .any(|track| track_accepts_intrinsic_contribution(track, self.track_basis.inline));
+        contributes.then(|| {
+            // An ordinary grid item can grow its own inline area. Resolve its
+            // cyclic percentage against zero, preserving any fixed term.
+            if self.style.display.inner_display() == Display::Grid {
+                Size::splat(Some(S::ZERO))
+            } else {
+                self.constants.node_inner_size
+            }
+        })
+    }
+
     // Initial-first availability is a source-defined maximum-track estimate,
     // not an allocated opposite axis. An unresolved maximum stays unbounded.
     pub(in crate::grid) fn initial_opposite_span(
@@ -889,13 +907,12 @@ where
             .items
             .get(index)
             .is_some_and(|item| item_inherits_parent_axis(*item, GridAxisKind::Row));
-        let contributes_column = grid.query.includes(GridAxisKind::Column)
-            && !inherited_column_subgrid
-            && column_span_tracks.is_some_and(|tracks| {
-                tracks.iter().any(|track| {
-                    track_accepts_intrinsic_contribution(track, grid.track_basis.inline)
-                })
-            });
+        let column_margin_basis =
+            if grid.query.includes(GridAxisKind::Column) && !inherited_column_subgrid {
+                column_span_tracks.and_then(|tracks| grid.column_contribution_margin_basis(tracks))
+            } else {
+                None
+            };
         let align_self = child_style
             .align_self
             .or(style.align_items)
@@ -915,7 +932,7 @@ where
             && !inherited_row_subgrid
             && row_span_tracks.is_some()
             && matches!(align_self, AlignItems::Baseline | AlignItems::LastBaseline);
-        if !contributes_column && !contributes_row && !row_baseline_candidate {
+        if column_margin_basis.is_none() && !contributes_row && !row_baseline_candidate {
             continue;
         }
 
@@ -965,14 +982,7 @@ where
         let row_contribution_size =
             grid_axis_size(grid.sizing_flow_axes, output.size, GridAxisKind::Row);
 
-        if contributes_column {
-            // The item can change its ordinary grid area's inline size. Resolve
-            // cyclic percentages against zero while preserving fixed terms.
-            let margin_basis = if grid.style.display.inner_display() == Display::Grid {
-                Size::splat(Some(Tree::Scalar::ZERO))
-            } else {
-                constants.node_inner_size
-            };
+        if let Some(margin_basis) = column_margin_basis {
             let margin = contribution_margin(margin_basis)?;
             let child_flow_axes = FlowAxes::new(child_style.writing_mode, child_style.direction);
             let block_auto_margins = block_auto_margins_for_intrinsic_contribution(

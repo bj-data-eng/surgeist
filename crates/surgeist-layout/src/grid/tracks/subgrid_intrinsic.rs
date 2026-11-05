@@ -1036,17 +1036,18 @@ where
                     ),
                 },
             )?;
-            let margin = intrinsic_contribution_margin(
-                child_style,
-                input.constants.flow_axes,
-                input.constants.node_inner_size,
-            )
-            .map_err(|status| crate::error::value_resolution_error(child, status))?;
+            let margin_basis = input
+                .grid
+                .column_contribution_margin_basis(span_tracks)
+                .unwrap_or(input.constants.node_inner_size);
+            let margin =
+                intrinsic_contribution_margin(child_style, input.constants.flow_axes, margin_basis)
+                    .map_err(|status| crate::error::value_resolution_error(child, status))?;
             let child_flow_axes = FlowAxes::new(child_style.writing_mode, child_style.direction);
             let block_auto_margins = block_auto_margins_for_intrinsic_contribution(
                 child_style,
                 input.constants.flow_axes,
-                input.constants.node_inner_size,
+                margin_basis,
                 child_flow_axes,
             )
             .map_err(|status| crate::error::value_resolution_error(child, status))?;
