@@ -910,6 +910,64 @@ fn changed_real_inline_constraint_reselects_native_lines_instead_of_reusing_old_
     reflow::<f64>();
 }
 
+fn positioned_root_refits_its_real_upright_text<S: LayoutScalar>() {
+    let paragraph = wrapping_paragraph();
+    let containing = Size::new(
+        NonNegativeFiniteOf::new(n(120.0)).unwrap(),
+        NonNegativeFiniteOf::new(n(100.0)).unwrap(),
+    );
+    let frame = RootLocalPositionedContextOf::horizontal_auto_insets(
+        containing,
+        Direction::Ltr,
+        S::ZERO,
+        OrthogonalFallbackOf::new(
+            containing.map(Some),
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .unwrap();
+    for mode in [WritingMode::VerticalLr, WritingMode::VerticalRl] {
+        let mut root = style::<S>(mode);
+        root.position = Position::Absolute;
+        root.size = Size::new(px(80.0), PreferredSizeOf::AUTO);
+        let tree = MemoTree::new(&paragraph, root);
+        let flow = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![paragraph.binding()],
+            WrappingInput::default(),
+            Vec::new(),
+        )
+        .unwrap();
+        // Ahem's X/space/X supplies min10/max30 in its own inline axis.
+        for (top, height, lines) in [(95.0, 10.0, 2), (80.0, 20.0, 2), (60.0, 30.0, 1)] {
+            let request = LayoutRootRequestOf::positioned_root_local(
+                frame.with_hypothetical_block_offset(n(top)).unwrap(),
+            )
+            .unwrap();
+            let batch = compute_layout_with_flow(&flow, 0, request).unwrap();
+            let root = batch
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == 0)
+                .unwrap()
+                .output();
+            assert_eq!(root.location, Point::ZERO);
+            assert_eq!(root.size, Size::new(n(80.0), n(height)));
+            let placed = batch.placed_text()[0].layout();
+            assert_eq!(placed.source(), &paragraph.original);
+            assert_eq!(placed.lines().len(), lines);
+        }
+    }
+}
+
+#[test]
+fn positioned_root_refits_real_upright_text_in_both_scalar_lanes() {
+    positioned_root_refits_its_real_upright_text::<f32>();
+    positioned_root_refits_its_real_upright_text::<f64>();
+}
+
 fn source_refinement<S: LayoutScalar>() {
     let mode = WritingMode::VerticalRl;
     let paragraph = Paragraph::new("X", mode);
