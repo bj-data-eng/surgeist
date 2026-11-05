@@ -95,9 +95,15 @@ fn finish(
             let browser_path =
                 browser::acquire_browser(owner, &settings, AcquisitionMode::ExistingOnly)?;
             let request = GenerationRequest::new(corpus.clone(), browser_path, None, None)?;
-            browser::generate(request, QualificationAdapter)
+            browser::generate(
+                request,
+                QualificationAdapter::for_mode(QualificationMode::Regular),
+            )
         }
-        InputAccess::ReadOnly => browser::check_corpus(&corpus, &LayoutAdapter),
+        InputAccess::ReadOnly => browser::check_corpus(
+            &corpus,
+            &QualificationAdapter::for_mode(QualificationMode::Regular),
+        ),
     };
     // Generation joins its supervisor; check terminal journals even if it failed.
     // This inspection is read-only and never erases unresolved machine state.

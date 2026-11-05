@@ -9,7 +9,12 @@ fn box_fixture() -> serde_json::Value {
     json!({"layoutInput":"box","tagName":"div","gridAlignmentProfile":{"profile":1,"owners":[]},"useRounding":false,"viewport":{"rootContext":{"kind":"block-flow-auto","parentInlineExtent":800,"parentDirection":"ltr","fallback":{"initialContainingBlock":{"width":800,"height":600},"nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}},"style":{"position":"relative"},"unroundedLayout":{"x":0,"y":0,"width":20,"height":10},"worldRoundedLayout":{"x":0,"y":0,"width":20,"height":10},"children":[]})
 }
 fn decode_fixture(value: &serde_json::Value) -> Result<DecodedMeasurement, MeasurementError> {
-    decode(&value.to_string(), "fixture/case", "border-box-ltr")
+    decode(
+        &value.to_string(),
+        "fixture/case",
+        "border-box-ltr",
+        BoxObservationRequest::Geometry,
+    )
 }
 fn supported(value: &serde_json::Value) -> ValidatedMeasurement {
     match decode_fixture(value).expect("valid fixture") {
@@ -35,13 +40,17 @@ fn unknown_and_duplicate_fields_are_rejected_before_unsupported_classification()
         r#"{"layoutInput":"unsupported","unsupportedReason":"first","unsupportedReason":"second"}"#,
     ] {
         assert_eq!(
-            decode(raw, "case", "variant").unwrap_err().kind,
+            decode(raw, "case", "variant", BoxObservationRequest::Geometry)
+                .unwrap_err()
+                .kind,
             MeasurementErrorKind::Decode
         );
     }
     let raw = r#"{"layoutInput":"box","unsupportedReason":"known","style":{"size":{"width":{"unit":"px","unit":"auto","value":2}}}}"#;
     assert_eq!(
-        decode(raw, "case", "variant").unwrap_err().kind,
+        decode(raw, "case", "variant", BoxObservationRequest::Geometry)
+            .unwrap_err()
+            .kind,
         MeasurementErrorKind::Decode
     );
 }

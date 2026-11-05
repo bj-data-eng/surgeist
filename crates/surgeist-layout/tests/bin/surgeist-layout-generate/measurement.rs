@@ -9,6 +9,67 @@ mod style;
 mod root_context;
 use root_context::WireViewport;
 
+#[path = "measurement/element_scroll_sizes.rs"]
+mod element_scroll_sizes;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum BoxObservationRequest {
+    Geometry,
+    ElementScrollSizes,
+}
+
+pub(super) const OBSERVATION_REQUEST_INPUT: &str = "observation-request.json";
+
+impl BoxObservationRequest {
+    pub fn from_input_bytes(input: Option<&[u8]>) -> Result<Self, &'static str> {
+        match input {
+            None => Ok(Self::Geometry),
+            Some(bytes) if Some(bytes) == Self::ElementScrollSizes.input_bytes() => {
+                Ok(Self::ElementScrollSizes)
+            }
+            Some(_) => {
+                Err("observation request must be the exact canonical element scroll-size input")
+            }
+        }
+    }
+
+    pub fn input_bytes(self) -> Option<&'static [u8]> {
+        match self {
+            Self::Geometry => None,
+            Self::ElementScrollSizes => Some(
+                b"{\"schema_version\":1,\"element_scroll_sizes\":\"horizontal-zero-edge-divs\"}\n",
+            ),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(super) struct ElementScrollSize {
+    node_path: String,
+    client_width: u32,
+    client_height: u32,
+    scroll_width: u32,
+    scroll_height: u32,
+}
+
+impl ElementScrollSize {
+    pub fn node_path(&self) -> &str {
+        self.node_path.as_str()
+    }
+    pub fn client_width(&self) -> u32 {
+        self.client_width
+    }
+    pub fn client_height(&self) -> u32 {
+        self.client_height
+    }
+    pub fn scroll_width(&self) -> u32 {
+        self.scroll_width
+    }
+    pub fn scroll_height(&self) -> u32 {
+        self.scroll_height
+    }
+}
+
 use serde::Deserialize;
 
 use crate::{atomic_paragraph_metrics, grid_alignment_reference};
@@ -365,6 +426,7 @@ pub(super) struct ValidatedMeasurement {
     viewport: Attributes,
     root_local_positioned: bool,
     root: Box<Node>,
+    element_scroll_sizes: Option<Vec<ElementScrollSize>>,
 }
 #[derive(Debug)]
 pub(super) struct Node {
@@ -413,6 +475,7 @@ pub(super) fn decode(
     raw: &str,
     case_id: &str,
     variant: &str,
+    request: BoxObservationRequest,
 ) -> Result<DecodedMeasurement, MeasurementError> {
     let mut deserializer = serde_json::Deserializer::from_str(raw);
     let wire: WireNode = serde_path_to_error::deserialize(&mut deserializer).map_err(|error| {
@@ -472,6 +535,24 @@ pub(super) fn decode(
         })?
         .validate(&context)?;
     wire.validate_grid_alignment_profile(&context)?;
+    let element_scroll_sizes = match request {
+        BoxObservationRequest::Geometry => None,
+        BoxObservationRequest::ElementScrollSizes => {
+            if !root_local_positioned {
+                return Ok(DecodedMeasurement::Unsupported {
+                    reason: "root: element scroll sizes require an authenticated absolute-root-local capture".into(),
+                });
+            }
+            if let Some(reason) = element_scroll_sizes::unsupported_reason(&wire, &context)? {
+                return Ok(DecodedMeasurement::Unsupported { reason });
+            }
+            Some(element_scroll_sizes::collect(
+                &wire,
+                use_rounding,
+                &context,
+            )?)
+        }
+    };
     let root = wire.validate(&context, "horizontal-tb", use_rounding, true)?;
     if root_local_positioned {
         let Observation::Geometry {
@@ -497,6 +578,7 @@ pub(super) fn decode(
         viewport,
         root_local_positioned,
         root: Box::new(root),
+        element_scroll_sizes,
     }))
 }
 
@@ -1847,6 +1929,9 @@ impl WireRange {
 }
 
 impl ValidatedMeasurement {
+    pub fn element_scroll_sizes(&self) -> Option<&[ElementScrollSize]> {
+        self.element_scroll_sizes.as_deref()
+    }
     pub fn observation_frame(&self) -> &'static str {
         if self.root_local_positioned {
             "root-border-local"

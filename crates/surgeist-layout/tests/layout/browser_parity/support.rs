@@ -16,6 +16,9 @@ use root_context::parse_root_context;
 #[path = "root_diagnostics.rs"]
 mod root_diagnostics;
 pub use root_diagnostics::WorldRoundedLayout;
+#[path = "element_scroll_sizes.rs"]
+mod element_scroll_sizes;
+pub use element_scroll_sizes::ElementScrollSizeMismatch;
 
 type Scalar = layout::Scalar;
 
@@ -42,9 +45,14 @@ pub struct Golden {
     pub root: Node,
     pub expectations: Expectation,
     pub world_rounding_diagnostics: Vec<WorldRoundedLayout>,
+    pub(crate) element_scroll_sizes: Option<element_scroll_sizes::Table>,
 }
 
 impl Golden {
+    pub fn has_element_scroll_sizes(&self) -> bool {
+        self.element_scroll_sizes.is_some()
+    }
+
     pub fn parse_file(path: impl AsRef<Path>) -> Result<Self, Error> {
         let raw = std::fs::read_to_string(path.as_ref())
             .map_err(|source| Error::new(source.to_string()))?;
@@ -118,6 +126,7 @@ impl Golden {
             root_diagnostics::parse(test, &root, test.attribute("measurement-version"))?;
         let root_context = parse_root_context(viewport, test.attribute("measurement-version"))?;
         root_context.validate_root(&root)?;
+        let element_scroll_sizes = element_scroll_sizes::parse(test, &root, &root_context)?;
 
         Ok(Self {
             name,
@@ -126,6 +135,7 @@ impl Golden {
             root,
             expectations,
             world_rounding_diagnostics,
+            element_scroll_sizes,
         })
     }
 }
@@ -244,6 +254,9 @@ fn compare_captured_expectations(
     golden: &Golden,
     numeric: &mut NumericComparisonSink,
 ) -> Result<ComparisonResult, Error> {
+    if let Some(table) = &golden.element_scroll_sizes {
+        table.validate_source(&golden.root, &golden.viewport.root_context)?;
+    }
     let request = root_request(&golden.viewport.root_context)?;
     validate_grid_alignment_profile(&golden.root, true)?;
     let mut tree = TestTree::from_golden(&golden.root, Some(&golden.viewport.root_context))?;
@@ -267,6 +280,7 @@ fn compare_captured_expectations(
             batch.final_inline_fragments(),
         ),
         ComparisonPolicy {
+            element_scroll_sizes: golden.element_scroll_sizes.as_ref(),
             frame: ComparisonFrame::RootBorder,
             numeric,
         },
@@ -305,6 +319,9 @@ pub(super) fn assert_native_input_matches(
     golden: &Golden,
     request: layout::LayoutRootRequest,
 ) -> Result<(), Error> {
+    if let Some(table) = &golden.element_scroll_sizes {
+        table.validate_source(&golden.root, &golden.viewport.root_context)?;
+    }
     let mut tree = TestTree::from_golden(&golden.root, None)?;
     let batch = compute_actual_batch(&tree, &golden.name, request)?;
     tree.apply_completed_batch(&batch);
@@ -319,6 +336,7 @@ pub(super) fn assert_native_input_matches(
             batch.final_inline_fragments(),
         ),
         ComparisonPolicy {
+            element_scroll_sizes: golden.element_scroll_sizes.as_ref(),
             frame: ComparisonFrame::ParentLocal,
             numeric: &mut NumericComparisonSink::Strict,
         },
@@ -657,16 +675,41 @@ impl NumericComparisonField {
     }
 }
 
-/// An immutable finite observation difference; source admission remains separate.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ElementScrollSizeField {
+    ClientWidth,
+    ClientHeight,
+    ScrollWidth,
+    ScrollHeight,
+}
+impl ElementScrollSizeField {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ClientWidth => "clientWidth",
+            Self::ClientHeight => "clientHeight",
+            Self::ScrollWidth => "scrollWidth",
+            Self::ScrollHeight => "scrollHeight",
+        }
+    }
+}
+
+/// One complete comparison difference, retaining its numeric domain.
 #[derive(Clone, Debug, PartialEq)]
-pub struct NumericMismatch {
+pub enum NumericMismatch {
+    Layout(LayoutNumericMismatch),
+    ElementScrollSize(ElementScrollSizeMismatch),
+}
+
+/// An immutable finite layout-number difference using ordinary parity tolerance.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LayoutNumericMismatch {
     path: String,
     field: NumericComparisonField,
     browser_value: Scalar,
     native_value: Scalar,
 }
 
-impl NumericMismatch {
+impl LayoutNumericMismatch {
     pub fn path(&self) -> &str {
         &self.path
     }
@@ -3293,6 +3336,7 @@ fn compare_expectation(
         use_rounding,
         FragmentCursors::new(unrounded_inline_fragments, final_inline_fragments),
         ComparisonPolicy {
+            element_scroll_sizes: None,
             frame: ComparisonFrame::ParentLocal,
             numeric: &mut NumericComparisonSink::Strict,
         },
@@ -3335,6 +3379,9 @@ fn compare_expectation_with_endpoint_accounting(
         )),
     };
     let mut comparison_state = ComparisonState {
+        element_scroll_sizes: policy.element_scroll_sizes,
+        element_scroll_next: 0,
+        element_source_path: policy.element_scroll_sizes.map(|_| "0".to_owned()),
         numeric: policy.numeric,
         root_border_origin,
         fragment_cursors,
@@ -3371,6 +3418,9 @@ fn compare_expectation_with_endpoint_accounting(
             "{path}: unexpected fragment source association at owner {:?}",
             entry.owner()
         )));
+    }
+    if let Some(table) = comparison_state.element_scroll_sizes {
+        table.finish(comparison_state.element_scroll_next)?;
     }
     let mut result = ComparisonResult::default();
     let mut unsupported_band = None;
@@ -3442,6 +3492,7 @@ enum ComparisonFrame {
 }
 
 struct ComparisonPolicy<'a> {
+    element_scroll_sizes: Option<&'a element_scroll_sizes::Table>,
     frame: ComparisonFrame,
     numeric: &'a mut NumericComparisonSink,
 }
@@ -3473,12 +3524,12 @@ impl NumericComparisonSink {
             )));
         }
         if !numeric_values_match(actual, expected) {
-            mismatches.push(NumericMismatch {
+            mismatches.push(NumericMismatch::Layout(LayoutNumericMismatch {
                 path: path.to_owned(),
                 field,
                 browser_value: expected,
                 native_value: actual,
-            });
+            }));
         }
         Ok(())
     }
@@ -3498,6 +3549,9 @@ impl NumericComparisonSink {
 }
 
 struct ComparisonState<'a> {
+    element_scroll_sizes: Option<&'a element_scroll_sizes::Table>,
+    element_scroll_next: usize,
+    element_source_path: Option<String>,
     numeric: &'a mut NumericComparisonSink,
     root_border_origin: Option<(usize, layout::Point)>,
     fragment_cursors: FragmentCursors<'a>,
@@ -3660,6 +3714,20 @@ fn compare_expectation_in_source_order(
         )?;
     }
 
+    if let Some(table) = comparison_state.element_scroll_sizes {
+        table.compare_next(
+            comparison_state.element_scroll_next,
+            comparison_state
+                .element_source_path
+                .as_deref()
+                .expect("requested element table retains its source path"),
+            path,
+            &tree.nodes[node],
+            comparison_state.numeric,
+        )?;
+        comparison_state.element_scroll_next += 1;
+    }
+
     let unrounded_fragments = comparison_state
         .fragment_cursors
         .unrounded
@@ -3703,12 +3771,19 @@ fn compare_expectation_in_source_order(
     }
 
     let mut index = 0;
-    for child in comparison_source_children(tree, node) {
+    for (source_index, child) in comparison_source_children(tree, node)
+        .into_iter()
+        .enumerate()
+    {
         if unobserved_inline_boundary(&tree.nodes[child].layout_input) {
             consume_unobserved_boundary(tree, child, path, comparison_state)?;
             continue;
         }
-        compare_expectation_in_source_order(
+        let parent_source_path = comparison_state.element_source_path.take();
+        comparison_state.element_source_path = parent_source_path
+            .as_ref()
+            .map(|path| format!("{path}.{source_index}"));
+        let result = compare_expectation_in_source_order(
             tree,
             child,
             expected_children[index],
@@ -3720,7 +3795,9 @@ fn compare_expectation_in_source_order(
                 source_index: index,
                 siblings: &children,
             }),
-        )?;
+        );
+        comparison_state.element_source_path = parent_source_path;
+        result?;
         index += 1;
     }
 
@@ -6951,6 +7028,9 @@ mod tests {
         golden: &Golden,
         request: layout::LayoutRootRequest,
     ) -> Result<ComparisonResult, Error> {
+        if let Some(table) = &golden.element_scroll_sizes {
+            table.validate_source(&golden.root, &golden.viewport.root_context)?;
+        }
         let mut tree = TestTree::from_golden(&golden.root, None)?;
         let batch = compute_actual_batch(&tree, &golden.name, request)?;
         tree.apply_completed_batch(&batch);
@@ -6965,6 +7045,7 @@ mod tests {
                 batch.final_inline_fragments(),
             ),
             ComparisonPolicy {
+                element_scroll_sizes: golden.element_scroll_sizes.as_ref(),
                 frame: ComparisonFrame::ParentLocal,
                 numeric: &mut NumericComparisonSink::Strict,
             },
@@ -8856,6 +8937,7 @@ mod tests {
             true,
             FragmentCursors::new(&[], &[]),
             ComparisonPolicy {
+                element_scroll_sizes: None,
                 frame: ComparisonFrame::ParentLocal,
                 numeric: &mut NumericComparisonSink::Strict,
             },
@@ -8879,6 +8961,7 @@ mod tests {
             true,
             FragmentCursors::new(&[], &[]),
             ComparisonPolicy {
+                element_scroll_sizes: None,
                 frame: ComparisonFrame::ParentLocal,
                 numeric: &mut NumericComparisonSink::Strict,
             },
@@ -8902,6 +8985,7 @@ mod tests {
                 true,
                 FragmentCursors::new(&[], &[],),
                 ComparisonPolicy {
+                    element_scroll_sizes: None,
                     frame: ComparisonFrame::ParentLocal,
                     numeric: &mut NumericComparisonSink::Strict
                 },
@@ -8923,6 +9007,7 @@ mod tests {
                 true,
                 FragmentCursors::new(&[], &[],),
                 ComparisonPolicy {
+                    element_scroll_sizes: None,
                     frame: ComparisonFrame::ParentLocal,
                     numeric: &mut NumericComparisonSink::Strict
                 },
@@ -8943,6 +9028,7 @@ mod tests {
                 true,
                 FragmentCursors::new(&[], &[],),
                 ComparisonPolicy {
+                    element_scroll_sizes: None,
                     frame: ComparisonFrame::ParentLocal,
                     numeric: &mut NumericComparisonSink::Strict
                 },
@@ -8963,6 +9049,7 @@ mod tests {
                 true,
                 FragmentCursors::new(&[], &[],),
                 ComparisonPolicy {
+                    element_scroll_sizes: None,
                     frame: ComparisonFrame::ParentLocal,
                     numeric: &mut NumericComparisonSink::Strict
                 },
@@ -8983,6 +9070,7 @@ mod tests {
                 true,
                 FragmentCursors::new(&[], &[],),
                 ComparisonPolicy {
+                    element_scroll_sizes: None,
                     frame: ComparisonFrame::ParentLocal,
                     numeric: &mut NumericComparisonSink::Strict
                 },
@@ -9007,6 +9095,7 @@ mod tests {
                 true,
                 FragmentCursors::new(&[], &[],),
                 ComparisonPolicy {
+                    element_scroll_sizes: None,
                     frame: ComparisonFrame::ParentLocal,
                     numeric: &mut NumericComparisonSink::Strict
                 },
@@ -12847,6 +12936,7 @@ mod source_root_frame_tests {
                 batch.final_inline_fragments(),
             ),
             ComparisonPolicy {
+                element_scroll_sizes: None,
                 frame: ComparisonFrame::RootBorder,
                 numeric: &mut NumericComparisonSink::Strict,
             },
@@ -12865,6 +12955,7 @@ mod source_root_frame_tests {
                     batch.final_inline_fragments(),
                 ),
                 ComparisonPolicy {
+                    element_scroll_sizes: None,
                     frame: ComparisonFrame::ParentLocal,
                     numeric: &mut NumericComparisonSink::Strict
                 },

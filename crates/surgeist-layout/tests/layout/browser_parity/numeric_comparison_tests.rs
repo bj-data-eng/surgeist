@@ -90,7 +90,12 @@ fn numeric_collection_retains_later_fields_and_descendants_after_same_first_erro
     assert_eq!(
         first
             .iter()
-            .map(|m| (m.path(), m.field(), m.browser_value(), m.native_value()))
+            .map(|m| {
+                let NumericMismatch::Layout(m) = m else {
+                    panic!("box-only fixture must retain a layout-number mismatch");
+                };
+                (m.path(), m.field(), m.browser_value(), m.native_value())
+            })
             .collect::<Vec<_>>(),
         [("numeric-comparison", NumericComparisonField::X, 1.0, 0.0)]
     );
@@ -102,7 +107,12 @@ fn numeric_collection_retains_later_fields_and_descendants_after_same_first_erro
     assert_eq!(
         complete
             .iter()
-            .map(|m| (m.path(), m.field(), m.browser_value(), m.native_value()))
+            .map(|m| {
+                let NumericMismatch::Layout(m) = m else {
+                    panic!("box-only fixture must retain a layout-number mismatch");
+                };
+                (m.path(), m.field(), m.browser_value(), m.native_value())
+            })
             .collect::<Vec<_>>(),
         [
             ("numeric-comparison", NumericComparisonField::X, 1.0, 0.0),
@@ -221,7 +231,12 @@ fn numeric_collection_shares_strict_root_border_frame_under_rtl_parent() {
     assert_eq!(
         mismatches
             .iter()
-            .map(|m| (m.path(), m.field(), m.browser_value(), m.native_value()))
+            .map(|m| {
+                let NumericMismatch::Layout(m) = m else {
+                    panic!("box-only fixture must retain a layout-number mismatch");
+                };
+                (m.path(), m.field(), m.browser_value(), m.native_value())
+            })
             .collect::<Vec<_>>(),
         [("numeric-comparison", NumericComparisonField::X, 1.0, 0.0)]
     );

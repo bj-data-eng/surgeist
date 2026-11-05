@@ -10,6 +10,27 @@ cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-ge
 
 Omitting the fixture selects the complete declared inventory. Numeric diagnostics remain a separate explicit mode; every numeric difference is still fatal and does not become an approved intentional difference.
 
+## Element scroll sizes
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --element-scroll-size-diagnostics --fixture html/grid/grid_fit_content_percent_indefinite_max_content_hidden.html
+~~~
+
+This explicit request adds the actual DOM `clientWidth`, `clientHeight`,
+`scrollWidth` and `scrollHeight` observations in a separate V4 sideband. The
+initial profile admits horizontal ordinary DIV boxes with zero edges/gutters
+and Visible, Clip or Hidden overflow. Unsupported roles or missing geometry
+refuse. Historical expectation trees and their scroll-range fields retain
+their existing meaning.
+
+The request is authenticated as an invocation input. The complete numeric walk
+compares its integer sizes against unrounded, origin-aware Native geometry;
+world-rounded diagnostics are separate. All differences remain fatal and
+unclassified. A selected source includes the closure of its declared observation
+peers, so selecting `block-translation-0-75.html` also runs its existing phase
+control without duplicating the authored sources. Paired element-size tuples
+must agree while the declared world-corner phase change remains observable.
+
 ## Stylesheet custody
 
 ~~~sh

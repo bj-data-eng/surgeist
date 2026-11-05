@@ -15,7 +15,12 @@ use std::path::Path;
 use std::process::Command;
 
 fn measured_xml(name: &str, node: &Value) -> Result<String, MeasurementError> {
-    let decoded = measurement::decode(&node.to_string(), name, "test")?;
+    let decoded = measurement::decode(
+        &node.to_string(),
+        name,
+        "test",
+        measurement::BoxObservationRequest::Geometry,
+    )?;
     match decoded {
         DecodedMeasurement::Supported(measurement) => Ok(super::generate_xml(name, &measurement)),
         DecodedMeasurement::Unsupported { reason } => {

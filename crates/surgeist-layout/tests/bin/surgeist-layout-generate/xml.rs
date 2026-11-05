@@ -19,6 +19,16 @@ pub(super) fn generate_xml(name: &str, measurement: &ValidatedMeasurement) -> St
     lines.push("  <expectations>".into());
     write_expectation(&mut lines, measurement.root(), 4, true);
     lines.push("  </expectations>".into());
+    if let Some(rows) = measurement.element_scroll_sizes() {
+        lines.push("  <element-scroll-sizes profile=\"horizontal-zero-edge-divs\">".into());
+        for row in rows {
+            lines.push(format!(
+                "    <element node-path=\"{}\" client-width=\"{}\" client-height=\"{}\" scroll-width=\"{}\" scroll-height=\"{}\"/>",
+                row.node_path(), row.client_width(), row.client_height(), row.scroll_width(), row.scroll_height(),
+            ));
+        }
+        lines.push("  </element-scroll-sizes>".into());
+    }
     lines.push("  <diagnostics>".into());
     write_world_diagnostics(&mut lines, measurement.root(), "0");
     lines.push("  </diagnostics>".into());
