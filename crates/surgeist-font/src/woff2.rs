@@ -337,10 +337,7 @@ fn validate_blocks(
             }
             continue;
         }
-        if region.start != padded(end)?
-            || region.length == 0
-            || (is_metadata && metadata_original == 0)
-        {
+        if region.start != padded(end)? || region.length == 0 {
             return Err(invalid(InvalidKind::WoffHeader, region.start));
         }
         if data
