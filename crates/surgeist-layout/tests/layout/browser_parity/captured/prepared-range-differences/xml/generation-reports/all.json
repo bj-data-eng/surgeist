@@ -1,0 +1,88 @@
+{
+  "metadata": {
+    "schema_version": 4,
+    "generator": "surgeist-layout-root-context-focused",
+    "engine_version": "0.2.0",
+    "host_executable_sha256": "6d9d951e328ee364e2c3494578d02044298b8e85460b11a6e61e7bb14942ecdf",
+    "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+    "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+    "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+    "contract_sha256": "aae1a11a491e15ecb4fb29c3d7aeeedf0e5b3c7e38d59a80efb3f99cd8cbddeb",
+    "inputs": {
+      "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+      "corpus.toml": "c2102dfe54a3c9ff9a0a93f696e889e01654a9bcd0e695146f0b007e40c3d174",
+      "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+      "historical/block/prepared_text_continuity_bidi__border_box_ltr.xml": "95953046fd090fde97bbeed6cfaf3eff838f29838a3a214a2c8e044b8afdc860",
+      "historical/block/prepared_text_continuity_bidi__border_box_rtl.xml": "5ac8e10f2cf0c001678c4c7e56817c6b1e7d8373c55d2aeb52a8c524c964f877",
+      "historical/block/prepared_text_continuity_bidi__content_box_ltr.xml": "0d8325c41247c8e815632eb658abe0114705c5affcc89ca17d9de3c94c94e995",
+      "historical/block/prepared_text_continuity_bidi__content_box_rtl.xml": "41b983a5ba287b4f47ee2a1fc4f05f39237041f7a25ea05d2eebf77b63951b5d",
+      "html/block/prepared_text_continuity_bidi.html": "48cc2e77ec658cacd9de207a16b1b9d41fbe33f3e494161b4f88da584e52f3ba",
+      "observation-request.json": "e04da2c3ef3ed2ffb69cac235335ef74ba4467b0ee66a91802ef466bfd6ae606",
+      "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+      "scripts/gentest/test_helper.js": "bd1b351e488f846b2e73947746ced8d8b290f49b108e220c228b2c4d94c069c0"
+    },
+    "source_imports": []
+  },
+  "filter": null,
+  "summary": {
+    "generated": 4,
+    "unsupported": 0,
+    "expected_fail": 0,
+    "quarantined": 0,
+    "failed_to_generate": 0
+  },
+  "generated": [
+    {
+      "name": "prepared_text_continuity_bidi__border_box_ltr",
+      "source": "html/block/prepared_text_continuity_bidi.html",
+      "output": "xml/block/prepared_text_continuity_bidi__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "source_sha256": "48cc2e77ec658cacd9de207a16b1b9d41fbe33f3e494161b4f88da584e52f3ba",
+      "linked_resources": {
+        "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc"
+      },
+      "job_sha256": "9ba3ec51fd124c93b44d7169eaaff1c47d9a16fca61378a3e956260ba5900af9",
+      "output_sha256": "1412e62f26afb5560c412616f4cef4c17c42e8655b119711f17ef2d37373f29e"
+    },
+    {
+      "name": "prepared_text_continuity_bidi__border_box_rtl",
+      "source": "html/block/prepared_text_continuity_bidi.html",
+      "output": "xml/block/prepared_text_continuity_bidi__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "source_sha256": "48cc2e77ec658cacd9de207a16b1b9d41fbe33f3e494161b4f88da584e52f3ba",
+      "linked_resources": {
+        "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc"
+      },
+      "job_sha256": "9ba3ec51fd124c93b44d7169eaaff1c47d9a16fca61378a3e956260ba5900af9",
+      "output_sha256": "9de2fa9846fe2301135f32b9120b5f3bfafd178940c3a88f5bb6ab7632782bcd"
+    },
+    {
+      "name": "prepared_text_continuity_bidi__content_box_ltr",
+      "source": "html/block/prepared_text_continuity_bidi.html",
+      "output": "xml/block/prepared_text_continuity_bidi__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "source_sha256": "48cc2e77ec658cacd9de207a16b1b9d41fbe33f3e494161b4f88da584e52f3ba",
+      "linked_resources": {
+        "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc"
+      },
+      "job_sha256": "9ba3ec51fd124c93b44d7169eaaff1c47d9a16fca61378a3e956260ba5900af9",
+      "output_sha256": "eb16e4d52b45b0f0a94f88b82bc261fdb563024f47221b6bec6b9241fe5e841a"
+    },
+    {
+      "name": "prepared_text_continuity_bidi__content_box_rtl",
+      "source": "html/block/prepared_text_continuity_bidi.html",
+      "output": "xml/block/prepared_text_continuity_bidi__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "source_sha256": "48cc2e77ec658cacd9de207a16b1b9d41fbe33f3e494161b4f88da584e52f3ba",
+      "linked_resources": {
+        "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc"
+      },
+      "job_sha256": "9ba3ec51fd124c93b44d7169eaaff1c47d9a16fca61378a3e956260ba5900af9",
+      "output_sha256": "9b3b8498ce0e09a043e359dac813c964fcf24907cd29cb99ac141319d2ef854a"
+    }
+  ],
+  "unsupported": [],
+  "expected_fail": [],
+  "quarantined": [],
+  "failed_to_generate": []
+}

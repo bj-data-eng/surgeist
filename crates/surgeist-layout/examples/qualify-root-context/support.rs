@@ -2676,3 +2676,7 @@ mod custody_applicability_tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "prepared_range_tests.rs"]
+mod prepared_range_tests;
