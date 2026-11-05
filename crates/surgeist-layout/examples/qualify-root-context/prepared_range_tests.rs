@@ -8,7 +8,7 @@ const CAPTURE_DECLARATION_SHA256: &str =
 fn prepared_range_qualification_accepts_only_the_declared_rtl_pdi_differences() {
     let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
     let invocation = Invocation::new(owner).unwrap();
-    let result = qualify_retained_prepared_range(owner, &invocation.root, DECLARATION);
+    let result = qualify_retained_prepared_range(owner, &invocation.root, DECLARATION, |_| Ok(()));
     invocation.check_terminal().unwrap();
     fs::remove_dir_all(&invocation.root).unwrap();
     result.expect("the two adopted RTL PDI differences qualify; the two LTR controls match");
@@ -31,13 +31,62 @@ reason = "Root context: AuthoredBodyOrHtmlStyle"
     );
     let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
     let invocation = Invocation::new(owner).unwrap();
-    let result = qualify_retained_prepared_range(owner, &invocation.root, &current);
+    let result = qualify_retained_prepared_range(owner, &invocation.root, &current, |_| Ok(()));
     invocation.check_terminal().unwrap();
     fs::remove_dir_all(&invocation.root).unwrap();
     result.expect("unrelated records leave the prepared Range receipt valid");
 }
 
-fn qualify_retained_prepared_range(owner: &Path, root: &Path, current: &[u8]) -> Result<()> {
+#[test]
+fn prepared_range_replay_refuses_a_resealed_capture_with_changed_root_width() {
+    let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let invocation = Invocation::new(owner).unwrap();
+    let result = qualify_retained_prepared_range(owner, &invocation.root, DECLARATION, |root| {
+        let xml_path = root.join("xml/block/prepared_text_continuity_bidi__border_box_ltr.xml");
+        let xml = fs::read_to_string(&xml_path)?;
+        let changed = xml
+            .replace("containing-width=\"800px\"", "containing-width=\"801px\"")
+            .replace(
+                "fallback-icb-width=\"800px\"",
+                "fallback-icb-width=\"801px\"",
+            );
+        assert_ne!(xml, changed);
+        fs::write(xml_path, &changed)?;
+        let xml_hash = Sha256Digest::from_bytes(xml.as_bytes());
+        let changed_xml_hash = Sha256Digest::from_bytes(changed.as_bytes());
+        let report_path = root.join("xml/generation-reports/all.json");
+        let report = fs::read_to_string(&report_path)?;
+        let changed_report = report.replace(xml_hash.as_str(), changed_xml_hash.as_str());
+        assert_ne!(report, changed_report);
+        fs::write(report_path, &changed_report)?;
+        let ownership_path = root.join("xml/generation-ownership.json");
+        let ownership = fs::read_to_string(&ownership_path)?;
+        let report_hash = Sha256Digest::from_bytes(report.as_bytes());
+        let changed_report_hash = Sha256Digest::from_bytes(changed_report.as_bytes());
+        fs::write(
+            ownership_path,
+            ownership
+                .replace(xml_hash.as_str(), changed_xml_hash.as_str())
+                .replace(report_hash.as_str(), changed_report_hash.as_str()),
+        )?;
+        Ok(())
+    });
+    invocation.check_terminal().unwrap();
+    fs::remove_dir_all(&invocation.root).unwrap();
+    let error = result.expect_err("a self-consistent replacement cannot change the captured root");
+    assert!(
+        error
+            .to_string()
+            .contains("retained prepared Range capture report changed")
+    );
+}
+
+fn qualify_retained_prepared_range(
+    owner: &Path,
+    root: &Path,
+    current: &[u8],
+    alter_outputs: impl FnOnce(&Path) -> Result<()>,
+) -> Result<()> {
     let source = crate::parity_support::prepared_range_qualification::SOURCE;
     let mode = QualificationMode::PreparedRangeCapture;
     let receipt = owner.join("tests/layout/browser_parity/captured/prepared-range-differences");
@@ -63,6 +112,7 @@ fn qualify_retained_prepared_range(owner: &Path, root: &Path, current: &[u8]) ->
         fs::create_dir_all(destination.parent().expect("output has a parent"))?;
         fs::copy(receipt.join(relative), destination)?;
     }
+    alter_outputs(root)?;
     let browser_declaration: OwnerBrowserDeclaration = surgeist_generator::parse_manifest(
         &fs::read_to_string(root.join("browser-owner.toml"))?,
         "browser-owner.toml",

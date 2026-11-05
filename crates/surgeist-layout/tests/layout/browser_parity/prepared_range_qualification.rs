@@ -600,6 +600,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn prepared_range_verdict_identifies_the_adopted_policy_revision() {
+        let original = include_str!(
+            "captured/prepared-range-differences/xml/block/prepared_text_continuity_bidi__border_box_rtl.xml"
+        );
+        let golden = Golden::parse(original).unwrap();
+        let mut raw = Vec::new();
+        qualify(&golden, SOURCE, "border_box_rtl", &mut raw).unwrap();
+        let verdict: serde_json::Value =
+            serde_json::from_slice(raw.split(|&byte| byte == b'\n').nth(1).unwrap()).unwrap();
+        assert_eq!(
+            verdict["policy_sha256"],
+            "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0"
+        );
+    }
+
+    #[test]
     fn rejects_an_unexpected_rtl_match_and_a_later_range_difference() {
         let original = include_str!(
             "captured/prepared-range-differences/xml/block/prepared_text_continuity_bidi__border_box_rtl.xml"
