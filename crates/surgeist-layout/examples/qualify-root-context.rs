@@ -235,23 +235,33 @@ mod tests {
     }
 
     #[test]
-    fn grid_static_position_publication_selects_a_fixed_edition() {
-        let modes = [
-            "--publish-grid-static-position-differences",
-            "--check-published-grid-static-position-differences",
-            "--derive-grid-static-position-qualification",
-        ]
-        .map(|flag| {
-            let arguments_for_flag = arguments(&[flag]);
-            let (selection, mode) = parse_arguments(&arguments_for_flag).unwrap();
-            assert_eq!(selection, None);
-            assert!(parse_arguments(&arguments(&[flag, "arbitrary-output"])).is_err());
-            assert!(parse_arguments(&arguments(&[flag, "--fixture", "html/other.html"])).is_err());
-            mode
-        });
-        assert_ne!(modes[0], modes[1]);
-        assert_ne!(modes[0], modes[2]);
-        assert_ne!(modes[1], modes[2]);
+    fn native_policy_publication_selects_a_fixed_edition() {
+        for flags in [
+            [
+                "--publish-grid-static-position-differences",
+                "--check-published-grid-static-position-differences",
+                "--derive-grid-static-position-qualification",
+            ],
+            [
+                "--publish-relative-inset-differences",
+                "--check-published-relative-inset-differences",
+                "--derive-relative-inset-qualification",
+            ],
+        ] {
+            let modes = flags.map(|flag| {
+                let arguments_for_flag = arguments(&[flag]);
+                let (selection, mode) = parse_arguments(&arguments_for_flag).unwrap();
+                assert_eq!(selection, None);
+                assert!(parse_arguments(&arguments(&[flag, "arbitrary-output"])).is_err());
+                assert!(
+                    parse_arguments(&arguments(&[flag, "--fixture", "html/other.html"])).is_err()
+                );
+                mode
+            });
+            assert_ne!(modes[0], modes[1]);
+            assert_ne!(modes[0], modes[2]);
+            assert_ne!(modes[1], modes[2]);
+        }
     }
 
     #[test]
