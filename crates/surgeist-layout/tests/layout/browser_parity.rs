@@ -2485,7 +2485,42 @@ fn runs_registered_current_browser_parity_qualification() {
 
 #[test]
 fn runs_all_checked_in_browser_parity_xml() {
+    let filter = std::env::var("SURGEIST_PARITY_FILTER").ok();
     let fixtures = support::fixture_files("xml").expect("fixtures should load");
+    run_raw_browser_parity(fixtures, filter.as_deref()).unwrap_or_else(|error| panic!("{error}"));
+}
+
+#[test]
+fn raw_corpus_reports_current_differences_after_the_historical_display_limit() {
+    let fixtures = support::fixture_files("xml").expect("fixtures should load");
+    let error = run_raw_browser_parity(fixtures, Some("xml/flex/"))
+        .expect_err("historical and current Flex comparisons contain raw failures");
+    assert!(error.contains("MissingRootContextAuthority"), "{error}");
+    assert!(
+        error.contains("fri07_collapsed_strut_wrapping__border_box_ltr.xml raw differences:"),
+        "the raw report must show the current comparison after historical failures"
+    );
+}
+
+#[test]
+fn raw_corpus_reports_a_missing_xml_and_still_executes_later_originals() {
+    let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let original =
+        owner.join("tests/layout/browser_parity/xml/block/block_basic__border_box_ltr.xml");
+    let missing = original.with_file_name("missing_test_input__border_box_ltr.xml");
+    let error = run_raw_browser_parity(vec![missing, original], Some("xml/block/"))
+        .expect_err("both original artifacts fail raw execution");
+    assert!(
+        error.contains("missing_test_input__border_box_ltr.xml"),
+        "{error}"
+    );
+    assert!(
+        error.contains("block_basic__border_box_ltr.xml failed: MissingRootContextAuthority"),
+        "the original after the unreadable input must execute"
+    );
+}
+
+fn run_raw_browser_parity(fixtures: Vec<PathBuf>, filter: Option<&str>) -> Result<(), String> {
     assert!(
         !fixtures.is_empty(),
         "expected at least one browser parity XML fixture"
@@ -2494,10 +2529,8 @@ fn runs_all_checked_in_browser_parity_xml() {
     let mut failures = Vec::new();
     let mut by_suite = BTreeMap::<String, usize>::new();
     let mut by_kind = BTreeMap::<String, usize>::new();
-    let filter = std::env::var("SURGEIST_PARITY_FILTER").ok();
     let edition = registered_current_edition();
-    let selection = select_parity_inventory(fixtures, edition.as_ref().ok(), filter.as_deref())
-        .unwrap_or_else(|error| panic!("{error}"));
+    let selection = select_parity_inventory(fixtures, edition.as_ref().ok(), filter)?;
     for fixture in selection.originals {
         let golden = support::Golden::parse_file(&fixture).expect("fixture should parse");
         if let Err(error) = support::assert_surgeist_matches(&golden) {
@@ -2544,7 +2577,7 @@ fn runs_all_checked_in_browser_parity_xml() {
 
     if !failures.is_empty() {
         let shown = failures.iter().take(80).cloned().collect::<Vec<_>>();
-        panic!(
+        return Err(format!(
             "{} browser parity fixtures failed:\n\nBy suite:\n{}\n\nBy kind:\n{}\n\nFirst failures:\n{}{}",
             failures.len(),
             count_lines(&by_suite),
@@ -2555,8 +2588,9 @@ fn runs_all_checked_in_browser_parity_xml() {
             } else {
                 String::new()
             }
-        );
+        ));
     }
+    Ok(())
 }
 
 fn suite_name(path: &Path) -> String {
