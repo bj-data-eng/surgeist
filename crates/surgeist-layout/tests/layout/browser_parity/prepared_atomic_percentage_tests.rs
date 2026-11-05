@@ -87,3 +87,64 @@ fn capture_refuses_missing_authority_stale_basis_and_numeric_substitution() {
             .contains("authored source or font metrics changed")
     );
 }
+
+#[test]
+fn rehashed_capture_cannot_change_effective_variant_or_containing_frame() {
+    let (xml, report, source) = artifacts();
+    let changed_modes = [
+        xml.replace(
+            "source-tag=\"span\"",
+            "source-tag=\"span\" box-sizing=\"content-box\"",
+        ),
+        xml.replace(" direction=\"ltr\"", " direction=\"rtl\"")
+            .replace(
+                "&quot;direction&quot;:&quot;ltr&quot;",
+                "&quot;direction&quot;:&quot;rtl&quot;",
+            ),
+        xml.replace("800px", "801px"),
+    ];
+    for changed in changed_modes {
+        assert_ne!(xml, changed);
+        let changed_report = report.replace(&sha256(xml.as_bytes()), &sha256(changed.as_bytes()));
+        let verdict = parse(&changed, &changed_report, &source);
+        assert!(
+            verdict.as_ref().err().is_some_and(|error| {
+                let reason = error.to_string();
+                reason.contains("variant") || reason.contains("containing frame")
+            }),
+            "rehashed changed box mode, direction or frame was not specifically refused"
+        );
+    }
+}
+
+#[test]
+fn changed_native_atomic_custody_preserves_raw_box_and_range_differences() {
+    let (xml, report, source) = artifacts();
+    let mut golden = parse(&xml, &report, &source).unwrap();
+    golden
+        .root
+        .style
+        .attrs
+        .insert("height".into(), "60px".into());
+    // Exercise the comparison after Native succeeds with different actual
+    // geometry. The public reader rejects this changed preparation input.
+    golden.prepared_atomic_basis = Some(Basis::new(&golden.root, &golden.viewport.root_context));
+    golden.expectations.children[2]
+        .range_rectangles
+        .as_mut()
+        .unwrap()[0]
+        .advance = 127.0;
+    let (raw, qualified) = compare(&golden).unwrap();
+    assert!(
+        raw.iter()
+            .any(|field| field.contains("browser: 40.0") && field.contains("native: 30.0")),
+        "{raw:?}"
+    );
+    assert!(
+        raw.iter()
+            .any(|field| field.contains("browser_advance: 127.0")
+                && field.contains("native_advance: 128.0")),
+        "{raw:?}"
+    );
+    assert!(qualified.unwrap_err().to_string().contains("custody"));
+}
