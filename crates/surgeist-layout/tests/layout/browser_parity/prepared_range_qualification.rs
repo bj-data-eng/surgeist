@@ -904,6 +904,22 @@ mod tests {
     }
 
     #[test]
+    fn prepared_range_policy_rejects_equivalent_atx_headings() {
+        let rejected = [
+            " ### Nonempty Text range fragments",
+            "### Nonempty Text range fragments ###",
+            "## Nonempty Text range fragments",
+            "###\tNonempty Text range fragments",
+            "### Nonempty text range fragments",
+        ]
+        .map(|heading| {
+            let shadowed = format!("{heading}\n\nConflicting policy.\n\n{CONTRACT}");
+            PolicyIdentity::from_contract(&shadowed).is_err()
+        });
+        assert_eq!(rejected, [true; 5]);
+    }
+
+    #[test]
     fn prepared_range_verdict_identifies_the_adopted_policy_revision() {
         let original = include_str!(
             "captured/prepared-range-differences/xml/block/prepared_text_continuity_bidi__border_box_rtl.xml"
