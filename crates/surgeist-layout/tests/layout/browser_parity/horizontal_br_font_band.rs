@@ -3,9 +3,9 @@ use super::{
     capture_authority::{PathDigest, SpecializedEvidence, sha256},
 };
 
-#[path = "../../bin/surgeist-layout-generate/measurement/horizontal_br_font_band_profile.rs"]
-mod profile;
-pub(crate) use profile::{HELPER_SHA256, REQUEST, SCRIPT, SCRIPT_PATH, SOURCE, SOURCE_SHA256};
+pub(crate) use crate::horizontal_br_font_band_profile::{
+    HELPER_SHA256, REQUEST, SCRIPT, SCRIPT_PATH, SOURCE, SOURCE_SHA256,
+};
 
 pub(crate) fn evidence() -> SpecializedEvidence {
     SpecializedEvidence::HorizontalBrFontBand {

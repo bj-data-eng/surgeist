@@ -4,6 +4,8 @@ mod atomic_paragraph_metrics;
 mod fixture_variants;
 #[path = "layout/browser_parity/grid_alignment_reference.rs"]
 mod grid_alignment_reference;
+#[path = "bin/surgeist-layout-generate/measurement/horizontal_br_font_band_profile.rs"]
+mod horizontal_br_font_band_profile;
 #[path = "layout/mod.rs"]
 mod layout;
 #[path = "bin/surgeist-layout-generate/measurement/original_subgrid_body_profile.rs"]

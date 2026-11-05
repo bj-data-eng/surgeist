@@ -240,6 +240,9 @@ mod grid;
 #[path = "../tests/layout/browser_parity/grid_alignment_reference.rs"]
 mod grid_alignment_reference;
 mod group_alignment;
+#[cfg(test)]
+#[path = "../tests/bin/surgeist-layout-generate/measurement/horizontal_br_font_band_profile.rs"]
+mod horizontal_br_font_band_profile;
 mod hyphenation;
 mod inline;
 mod layout_math;
