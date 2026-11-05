@@ -86,10 +86,25 @@ requests leave PISCT's commit, publication, and review requirements unchanged.
 Unless the assignment names a branch, branch from current `origin/main` as
 `branch/<topic>`, where the topic is a short kebab-case name for the outcome. A
 pull request may carry several logical commits that share one outcome and
-verification; do not batch unrelated outcomes.
+verification; do not batch unrelated outcomes. By default one pull request
+completes one issue. Several issues share one only when they are small and
+change the same code for the same reason. PISCT's testing and commit skills own
+the commits inside it.
+
+Open a pull request only when its outcome is complete: implemented,
+independently reviewed with the findings fixed on the branch, and verified. Do
+not open one per commit or step. If an issue is too large for one reviewable
+pull request, split it into parts that are each a complete, independently
+verified outcome. Earlier parts use `Refs #N`, the last part uses `Closes #N`,
+and the split is recorded on the issue.
 
 The body states the change, public impact, and verification evidence. Keep
 decisions and judgement calls on the owning issue; the body may link them.
+
+Pull request text, commit messages and tracked files name no development
+tools and carry no "Generated with" lines or co-author trailers. Tracked files
+cite no branch commit SHAs, because a rebase replaces them; describe a
+measurement by its method and inputs, or cite a commit already on `main`.
 
 A closing keyword in the body or a `Closes:` commit trailer closes its issue
 when the change reaches `main`. Use one
@@ -112,7 +127,9 @@ After a rebase, re-run the verification the rebase invalidates.
 
 The default-branch ruleset requires a pull request, allows merge commits only,
 and requires the branch to be up to date with `main` with its required status
-checks passing. It rejects direct pushes to `main`. Land a pull request through
+checks passing: "Branch follows branch/<topic>", "One closing keyword per
+issue", and "No tool names in text, commits or files". It rejects direct pushes
+to `main`. Land a pull request through
 GitHub with a merge commit (`gh pr merge --merge`), pinned to the verified head
 commit. Its subject and body are the authored message, which passes
 `pisct commit validate` before the merge and again on readback. Never squash,
