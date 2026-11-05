@@ -2101,6 +2101,55 @@ fn fri06_c12_t08_inline_column_direct_members_consume_column_group() {
 }
 
 #[test]
+fn cyclic_column_margin_does_not_shift_an_item_against_its_own_baseline() {
+    let mut tree = OracleTree::new()
+        .children(1, [2, 3])
+        .children(2, [])
+        .children(3, [])
+        .style(
+            1,
+            NodeInput {
+                display: Display::Grid,
+                size: Size::new(PreferredSize::px(120.0), PreferredSize::px(40.0)),
+                grid_template_columns: vec![TrackComponent::AUTO],
+                grid_template_rows: vec![TrackComponent::px(20.0); 2],
+                justify_content: Some(AlignContent::Start),
+                ..NodeInput::default()
+            },
+        )
+        .style(
+            2,
+            NodeInput {
+                writing_mode: WritingMode::VerticalLr,
+                grid_row: GridPlacement::try_line(1).unwrap(),
+                justify_self: Some(AlignItems::Baseline),
+                margin: Edges {
+                    left: LengthAuto::percent(0.1),
+                    ..Edges::all(LengthAuto::ZERO)
+                },
+                ..NodeInput::default()
+            },
+        )
+        .style(
+            3,
+            NodeInput {
+                display: Display::Block,
+                grid_row: GridPlacement::try_line(2).unwrap(),
+                ..NodeInput::default()
+            },
+        )
+        .measure(2, vertical_baseline_measure(50.0, 20.0, Some(10.0), None));
+
+    compute_oracle_grid(&mut tree);
+
+    let child = tree.layout(2).unwrap();
+    let track_probe = tree.layout(3).unwrap();
+    // One baseline participant contributes no alignment shim. The 50px track
+    // sets the later 10% margin on the placed child.
+    assert_eq!((track_probe.size.width, child.margin.left), (50.0, 5.0));
+}
+
+#[test]
 fn fri06_c12_t08_vertical_nested_direct_members_conserve_actual_owner_point() {
     let mut tree = OracleTree::new()
         .children(1, [2, 3])
