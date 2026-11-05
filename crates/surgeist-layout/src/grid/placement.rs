@@ -937,6 +937,8 @@ pub(super) fn absolute_grid_area<S: LayoutScalar>(
         row_geometry,
         column_offsets,
         row_offsets,
+        static_position,
+        containing_size,
         constants,
         lines,
     } = input;
@@ -962,7 +964,6 @@ pub(super) fn absolute_grid_area<S: LayoutScalar>(
     let padding = flow_axes.logical_edges(constants.padding);
     let border = flow_axes.logical_edges(constants.border);
     let padding_size = LogicalSizeOf::new(padding.inline_sum(), padding.block_sum());
-    let border_size = LogicalSizeOf::new(border.inline_sum(), border.block_sum());
     let logical_inner_size = flow_axes.logical_size(constants.node_inner_size);
     let padding_box_size = LogicalSizeOf::new(
         logical_inner_size
@@ -973,17 +974,6 @@ pub(super) fn absolute_grid_area<S: LayoutScalar>(
             .block
             .map(|size| size + padding_size.block)
             .unwrap_or(content_size.block + padding_size.block),
-    );
-    let logical_outer_size = flow_axes.logical_size(constants.node_outer_size);
-    let static_padding_box_size = LogicalSizeOf::new(
-        logical_outer_size
-            .inline
-            .map(|size| size - border_size.inline)
-            .unwrap_or(padding_box_size.inline),
-        logical_outer_size
-            .block
-            .map(|size| size - border_size.block)
-            .unwrap_or(padding_box_size.block),
     );
     let inline = absolute_grid_axis_area(AbsoluteGridAxisInput {
         placement: column,
@@ -1008,35 +998,50 @@ pub(super) fn absolute_grid_area<S: LayoutScalar>(
         explicit_count: lines.row_explicit_count,
     });
 
-    let column_is_definite = has_definite_line(column);
-    let row_is_definite = has_definite_line(row);
+    let (static_location, static_size) = match static_position {
+        GridStaticPosition::ContentBox => {
+            // Grid 1 §9.2 aligns the static margin box in the used content box.
+            let inset = flow_axes.logical_edges(constants.content_box_inset);
+            (
+                LogicalPointOf::new(inset.inline_start, inset.block_start),
+                flow_axes.logical_size(
+                    (containing_size - constants.content_box_inset.sum_axes()).max(Size::ZERO),
+                ),
+            )
+        }
+        GridStaticPosition::LanePlacement => {
+            let outer = flow_axes.logical_size(constants.node_outer_size);
+            let padding_box = LogicalSizeOf::new(
+                outer
+                    .inline
+                    .map(|size| size - border.inline_sum())
+                    .unwrap_or(padding_box_size.inline),
+                outer
+                    .block
+                    .map(|size| size - border.block_sum())
+                    .unwrap_or(padding_box_size.block),
+            );
+            let (inline_start, inline_size) = if has_definite_line(column) {
+                (inline.location, inline.size)
+            } else {
+                (border.inline_start, padding_box.inline)
+            };
+            let (block_start, block_size) = if has_definite_line(row) {
+                (block.location, block.size)
+            } else {
+                (border.block_start, padding_box.block)
+            };
+            (
+                LogicalPointOf::new(inline_start, block_start),
+                LogicalSizeOf::new(inline_size, block_size),
+            )
+        }
+    };
     LogicalAbsoluteGridArea {
         location: LogicalPointOf::new(inline.location, block.location),
-        static_location: LogicalPointOf::new(
-            if column_is_definite {
-                inline.location
-            } else {
-                border.inline_start
-            },
-            if row_is_definite {
-                block.location
-            } else {
-                border.block_start
-            },
-        ),
         size: LogicalSizeOf::new(inline.size, block.size),
-        static_size: LogicalSizeOf::new(
-            if column_is_definite {
-                inline.size
-            } else {
-                static_padding_box_size.inline
-            },
-            if row_is_definite {
-                block.size
-            } else {
-                static_padding_box_size.block
-            },
-        ),
+        static_location,
+        static_size,
     }
 }
 

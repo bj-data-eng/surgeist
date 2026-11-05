@@ -5152,7 +5152,7 @@ fn grid_absolute_child_does_not_consume_auto_placement_cell() {
 
     assert_eq!(
         tree.layout(2).expect("node layout is staged").location,
-        Point::new(80.0, 0.0)
+        Point::new(0.0, 0.0)
     );
     assert_eq!(
         tree.layout(2).expect("node layout is staged").size,
@@ -5623,7 +5623,7 @@ fn grid_absolute_child_with_opposing_horizontal_insets_honors_rtl_end_edge() {
 }
 
 #[test]
-fn grid_absolute_child_expands_horizontal_auto_margins() {
+fn grid_static_position_resolves_horizontal_auto_margins_to_zero() {
     let mut tree = OracleTree::new();
     tree.insert_children(1, vec![2]);
     tree.insert_children(2, vec![]);
@@ -5690,15 +5690,15 @@ fn grid_absolute_child_expands_horizontal_auto_margins() {
 
     assert_eq!(
         tree.layout(2).expect("node layout is staged").location,
-        Point::new(45.0, 0.0)
+        Point::new(0.0, 0.0)
     );
     assert_eq!(
         tree.layout(2).expect("node layout is staged").margin.left,
-        45.0
+        0.0
     );
     assert_eq!(
         tree.layout(2).expect("node layout is staged").margin.right,
-        45.0
+        0.0
     );
     assert_eq!(
         tree.layout(2).expect("node layout is staged").size,
@@ -5814,6 +5814,10 @@ fn grid_absolute_child_percent_size_resolves_against_grid_area() {
         2,
         NodeInput {
             position: Position::Absolute,
+            inset: Edges {
+                left: LengthAuto::ZERO,
+                ..Edges::all(LengthAuto::AUTO)
+            },
             grid_column: GridPlacement::try_line(2).expect("valid grid line"),
             size: Size::new(PreferredSize::percent(0.5), PreferredSize::percent(0.5)),
             ..NodeInput::default()
@@ -5887,6 +5891,10 @@ fn grid_absolute_child_percent_padding_resolves_against_grid_area() {
         2,
         NodeInput {
             position: Position::Absolute,
+            inset: Edges {
+                left: LengthAuto::ZERO,
+                ..Edges::all(LengthAuto::AUTO)
+            },
             grid_column: GridPlacement::try_line(2).expect("valid grid line"),
             size: Size::new(PreferredSize::px(30.0), PreferredSize::px(12.0)),
             padding: Edges::all(Length::percent(0.1)),
@@ -7779,6 +7787,7 @@ fn grid_child_pure_helpers_accept_non_default_scalar() {
 
     assert_eq!(
         absolute_grid_axis(AbsoluteGridAxis::<f64> {
+            static_position: GridStaticPosition::ContentBox,
             area_location: 5.0,
             static_area_location: 10.0,
             area_size: 100.0,

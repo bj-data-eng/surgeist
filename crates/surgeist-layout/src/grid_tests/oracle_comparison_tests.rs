@@ -6896,7 +6896,7 @@ mod root_layout_oracle {
     }
 
     #[test]
-    fn subgrid_absolute_descendant_uses_existing_static_position_behavior() {
+    fn subgrid_absolute_descendant_uses_parent_content_edges() {
         let expected_columns = TrackSizingSlice::definite_columns(200.0, 10.0)
             .track(GridTrack::fixed(40.0))
             .track(GridTrack::fixed(80.0))
@@ -6923,8 +6923,8 @@ mod root_layout_oracle {
                         GridLayoutNode::item(GridArea::new(2, 1, 1, 1))
                             .position(Position::Absolute)
                             .size(Size::new(PreferredSize::px(10.0), PreferredSize::px(10.0)))
-                            .expect_layout(Point::new(90.0, 0.0), Size::new(10.0, 10.0))
-                            .expect_final_layout(Point::new(90.0, 0.0), Size::new(10.0, 10.0)),
+                            .expect_layout(Point::new(0.0, 0.0), Size::new(10.0, 10.0))
+                            .expect_final_layout(Point::new(0.0, 0.0), Size::new(10.0, 10.0)),
                     ),
             )
             .assert_layout();
