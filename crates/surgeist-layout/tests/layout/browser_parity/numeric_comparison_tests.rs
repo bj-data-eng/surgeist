@@ -417,3 +417,40 @@ fn numeric_collection_keeps_genuinely_empty_boxes_in_row_baseline_alignment() {
             .is_empty()
     );
 }
+
+#[test]
+fn numeric_collection_keeps_opaque_absolute_boxes_outside_flex_baseline_participation() {
+    let golden = analytic_flex_capture(
+        "opaque-absolute-flex-content",
+        r#"flex-direction="row" align-items="baseline""#,
+        &analytic_flex_label_items(
+            r#"position="absolute" left="0px" top="0px""#,
+            r#"position="absolute" left="40px" top="0px""#,
+        ),
+        r#"<node x="0" y="0" width="30" height="20"/><node x="40" y="0" width="30" height="25"/>"#,
+        r#"<world-rounded-layout node-path="0.0" x="0" y="0" width="30" height="20"/><world-rounded-layout node-path="0.1" x="40" y="0" width="30" height="25"/>"#,
+    );
+    assert_surgeist_matches(&golden).unwrap();
+    assert!(
+        collect_surgeist_numeric_mismatches(&golden)
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn numeric_collection_does_not_require_baselines_from_a_nonparticipating_hidden_subtree() {
+    let golden = analytic_flex_capture(
+        "hidden-opaque-flex-content",
+        r#"flex-direction="row" align-items="baseline""#,
+        r#"<div source-tag="div" display="none"><div source-tag="div" display="flex" align-items="baseline"><text source-tag="div" display="flex" width="30px" height="20px">base</text></div></div>"#,
+        r#"<node x="0" y="0" width="0" height="0"><node x="0" y="0" width="0" height="0"><node x="0" y="0" width="0" height="0"/></node></node>"#,
+        r#"<world-rounded-layout node-path="0.0" x="0" y="0" width="0" height="0"/><world-rounded-layout node-path="0.0.0" x="0" y="0" width="0" height="0"/><world-rounded-layout node-path="0.0.0.0" x="0" y="0" width="0" height="0"/>"#,
+    );
+    assert_surgeist_matches(&golden).unwrap();
+    assert!(
+        collect_surgeist_numeric_mismatches(&golden)
+            .unwrap()
+            .is_empty()
+    );
+}
