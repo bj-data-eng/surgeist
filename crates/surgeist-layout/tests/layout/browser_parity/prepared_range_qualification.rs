@@ -815,6 +815,14 @@ mod tests {
         let output: serde_json::Value = serde_json::from_slice(&raw).unwrap();
         let ranges = output["ranges"].as_array().unwrap();
         assert_eq!(ranges.len(), 5);
+        assert_eq!(
+            ranges[2]["native_pieces"],
+            serde_json::json!([
+                {"unit": 1, "piece": 0, "local": [1, 2], "aggregate": [2, 3]},
+                {"unit": 2, "piece": 0, "local": [2, 3], "aggregate": [3, 4]},
+            ]),
+            "the combined X rectangle retains both query pieces"
+        );
         for (index, row, source, browser, native) in
             [(1, 0, [1, 2], 24.0, 40.0), (3, 2, [4, 5], 40.0, 24.0)]
         {
@@ -827,6 +835,8 @@ mod tests {
                     "line": 0,
                     "edge": "left",
                     "native_source": source,
+                    "native_pieces": [{"unit": if row == 0 { 0 } else { 3 }, "piece": 0,
+                        "local": [source[0] - 1, source[1] - 1], "aggregate": source}],
                     "browser_start": browser,
                     "native_start": native,
                     "browser_advance": 0.0,
