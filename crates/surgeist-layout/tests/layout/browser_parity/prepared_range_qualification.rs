@@ -10,13 +10,21 @@ const POLICY_ANCHOR: &str = "nonempty-text-range-fragments";
 const POLICY_HEADING: &str = "\n### Nonempty Text range fragments\n";
 const POLICY_SHA256: &str = "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0";
 
-pub struct PolicyIdentity(String);
+pub struct PolicyIdentity(&'static str);
 
 impl PolicyIdentity {
     pub fn from_contract(contract: &str) -> Result<Self, Error> {
+        Self::verified_section(contract)?;
+        Ok(Self(POLICY_SHA256))
+    }
+
+    pub fn verified_section(contract: &str) -> Result<&str, Error> {
         let (_, section) = contract
             .split_once(POLICY_HEADING)
             .ok_or_else(|| Error::new("missing prepared Range policy section"))?;
+        if section.contains(POLICY_HEADING) {
+            return Err(Error::new("duplicate prepared Range policy section"));
+        }
         let length = section
             .split_inclusive('\n')
             .take_while(|line| {
@@ -26,11 +34,11 @@ impl PolicyIdentity {
             })
             .map(str::len)
             .sum();
-        let digest = capture_authority::sha256(&section.as_bytes()[..length]);
-        if digest != POLICY_SHA256 {
+        let section = &section[..length];
+        if capture_authority::sha256(section.as_bytes()) != POLICY_SHA256 {
             return Err(Error::new("prepared Range policy section changed"));
         }
-        Ok(Self(digest))
+        Ok(section)
     }
 }
 const FONT_SIZE: f64 = 16.0;
