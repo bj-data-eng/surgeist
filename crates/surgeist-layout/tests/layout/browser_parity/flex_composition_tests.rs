@@ -206,3 +206,48 @@ fn bound_replaced_image_reaches_native_geometry_comparison_in_all_variants() {
         assert!(error.to_string().contains(difference), "{variant}: {error}");
     }
 }
+
+#[test]
+fn complete_comparison_keeps_absent_native_scroll_spans_and_visits_later_boxes() {
+    use super::{
+        NumericComparisonSink, compare_captured_with_batch, exact_differences::ComparedField,
+    };
+    use serde_json::json;
+
+    for (variant, xml) in VARIANTS {
+        let output = format!("xml/flex/fri07_flex_composition__{variant}.xml");
+        let golden =
+            Golden::parse_with_flex_composition(xml, REPORT, SOURCE, SOURCE_BYTES, &output)
+                .unwrap();
+        let mut sink = NumericComparisonSink::CollectAll {
+            root: golden.name.clone(),
+            fields: Vec::new(),
+        };
+        compare_captured_with_batch(&golden, &mut sink, |_, _| Ok(()))
+            .unwrap_or_else(|error| panic!("{variant}: {error}"));
+        let NumericComparisonSink::CollectAll { fields, .. } = sink else {
+            unreachable!()
+        };
+        assert_eq!(fields.len(), 34, "{variant}");
+
+        for (path, field, browser, native) in [
+            ("/2", "scroll-width", 40, None),
+            ("/2", "scroll-height", 0, None),
+            ("/2/0", "width", 140, Some(0)),
+            ("/3", "scroll-width", 50, Some(50)),
+            (
+                "/3/0",
+                "y",
+                0,
+                Some(if variant.ends_with("_rtl") { 15 } else { 0 }),
+            ),
+        ] {
+            let expected = serde_json::from_value::<ComparedField>(json!({
+                "domain": "layout", "path": path, "field": field,
+                "browser": browser, "native": native,
+            }))
+            .unwrap();
+            assert!(fields.contains(&expected), "{variant}: {path} {field}");
+        }
+    }
+}
