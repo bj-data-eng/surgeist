@@ -376,7 +376,7 @@ fn mutable_families_share_exact_utf8_quota_and_release_only_current_values() {
     assert!(!map_capture(&store, &before, &map).has("x").unwrap());
 }
 #[test]
-fn readonly_palette_attributes_use_effective_checked_descriptors_and_honest_empty_absence() {
+fn readonly_palette_attributes_use_effective_checked_descriptors_and_empty_absence() {
     let (store, _, rules) = create(
         "@font-palette-values --Palette { font-family: A; base-palette:light; base-palette:dark; override-colors:0 red, 1 blue; } @font-palette-values --Empty {font-family:B;}",
     );
@@ -737,7 +737,7 @@ fn font_face_pending_descriptor_mutation_keeps_current_style_id_and_owning_origi
         .unwrap();
     assert!(occurrence.position().is_none());
     let CssAuthoredFontFaceDescriptorValue::Pending(value) = occurrence.value() else {
-        panic!("honest pending descriptor")
+        panic!("pending descriptor")
     };
     let CssValueOrigin::Parsed(origin) = value.components().items()[0].origin() else {
         panic!("actual parsed component origin")

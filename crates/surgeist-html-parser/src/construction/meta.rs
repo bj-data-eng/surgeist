@@ -1939,7 +1939,7 @@ mod tests {
         };
         put(&mut session, &mut c, &root, blue, None);
         assert_eq!(theme(&session), BLUE);
-        // The media list names a query nobody can answer: it is not reached
+        // The media list needs an environment: it is not reached
         // behind the color, and ends the selection once it is in front.
         put(&mut session, &mut c, &root, media, None);
         assert_eq!(theme(&session), BLUE);

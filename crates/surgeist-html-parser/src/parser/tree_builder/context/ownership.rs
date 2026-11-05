@@ -1237,7 +1237,7 @@ mod tests {
         assert_reclaimed(sealed.retained_usage());
     }
     #[test]
-    fn pre_source_zero_work_zero_and_cancel_keep_original_error_and_honest_absent_binding() {
+    fn pre_source_zero_work_zero_and_cancel_keep_original_error_and_absent_binding() {
         for (source_cap, work, cancelled) in [
             (0, 100_000_000, false),
             (100, 0, false),

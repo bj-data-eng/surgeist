@@ -258,7 +258,7 @@ fn empty_captured_inline_retains_family_identity_when_following_text_wraps() {
         assert!(
             piece.members().all(|member| match member.participant() {
                 Some(t::PreparedParticipant::Text(unit)) => {
-                    // An already-issued zero marker is honest incidence, not
+                    // An already-issued zero marker is an incidence, not
                     // borrowed neighboring text or a newly manufactured scalar.
                     assert!(authentic_zero_units.contains(unit));
                     assert_eq!(unit.view().source_range(), t::Range::new(4, 4));

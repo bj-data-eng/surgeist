@@ -252,7 +252,7 @@ pub enum ProcessExit {
     Unavailable,
 }
 
-/// Retained output plus honest truncation/stream completion evidence.
+/// Retained output plus truncation/stream completion evidence.
 /// Buffered execution retains a prefix; streaming execution retains a stderr tail.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CapturedOutput {

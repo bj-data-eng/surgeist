@@ -236,7 +236,7 @@ fn reference_inspection_agrees_across_parsed_and_mixed_origin_checked_admission(
 }
 
 #[test]
-fn parsed_rule_grammar_tokens_and_eof_terminators_keep_honest_origins() {
+fn parsed_rule_grammar_tokens_and_eof_terminators_keep_origins() {
     let rule = definition("/* 😀 */ @CUSTOM-MEDIA --x FALSE;");
     let out = rule.serialize_tokens(Default::default()).unwrap();
     assert_eq!(out.as_css(), "@custom-media --x false;");

@@ -305,7 +305,7 @@ fn namespace_context_changes_selector_admission_without_resolving_the_namespace(
 }
 
 #[test]
-fn programmatic_import_and_mixed_numeric_children_keep_honest_independent_origins() {
+fn programmatic_import_and_mixed_numeric_children_keep_independent_origins() {
     let target = CssComponentValues::parse(&CssParser::default(), "/*😀*/'x'")
         .unwrap()
         .items()

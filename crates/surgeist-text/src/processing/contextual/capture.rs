@@ -273,7 +273,7 @@ impl CapturedScope {
         }
     }
 
-    /// Captured Style, honestly absent when the producer did not supply it.
+    /// Captured Style, absent when the producer did not supply it.
     /// Observing a dormant scope does not resolve or validate fonts.
     #[must_use]
     pub fn style(&self) -> Option<&Style> {

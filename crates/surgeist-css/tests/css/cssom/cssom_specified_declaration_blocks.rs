@@ -519,7 +519,7 @@ fn reset_only_override_prevents_broad_border_but_keeps_smaller_exact_families() 
 }
 
 #[test]
-fn system_font_reconstructs_complete_environment_state_and_partial_override_fails_honestly() {
+fn system_font_reconstructs_complete_environment_state_and_partial_override_fails() {
     let complete = specified_block("font:caption");
     assert_eq!(
         read(&complete, CssKnownProperty::Font).as_deref(),

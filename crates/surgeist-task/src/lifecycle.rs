@@ -360,7 +360,7 @@ mod tests {
     }
 
     #[test]
-    fn cancellation_is_honest_until_terminal_event_arrives() {
+    fn cancellation_stays_cancelling_until_the_attempt_finishes() {
         let mut record = TaskRecord::queued(
             TaskId::from_u64(2),
             TaskKey::try_new("media:import").unwrap(),

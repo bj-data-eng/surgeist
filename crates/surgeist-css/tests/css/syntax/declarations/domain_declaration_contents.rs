@@ -138,7 +138,7 @@ fn font_face_recovers_invalid_neighbors_priority_and_duplicate_order() {
             CssFontDisplay::Optional
         ))
     ));
-    // An honest programmatic containing rule uses existing effective-descriptor formatting.
+    // A programmatic containing rule uses existing effective-descriptor formatting.
     let rule = CssRule::FontFace(CssFontFaceRule::new(block.clone()));
     assert_eq!(
         rule.serialize_specified(Default::default()).unwrap(),

@@ -9,7 +9,7 @@
 //! `additive-symbols`, and `speak-as`. Invalid individual descriptors recover locally.
 //! A grammar-valid collection can still fail to define a counter style; the separate
 //! [`CssCounterStyleDefinitionStatus`] records that distinction. Prospective descriptor
-//! entries retain real named occurrences or honestly source-free programmatic values.
+//! entries retain named occurrences or source-free programmatic values.
 
 pub(crate) mod counter_definition;
 pub(crate) mod counter_style_serialization;

@@ -453,7 +453,7 @@ fn recovery_and_explicit_resource_limits_report_the_original_component_origin() 
     .unwrap_err();
     assert!(error.is_recovered_input());
     let CssValueOrigin::ImplicitClosure { opening, at } = error.origin() else {
-        panic!("honest EOF recovery origin")
+        panic!("EOF recovery origin")
     };
     let CssValueOrigin::Parsed(expected) = &original_origin else {
         panic!("parsed opener")

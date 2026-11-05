@@ -807,7 +807,7 @@ fn empty_set_preparation_is_abandonable_and_precedes_invalid_priority() {
     );
 }
 #[test]
-fn equal_value_set_has_new_honest_provenance_without_owner_update() {
+fn equal_value_set_has_new_provenance_without_owner_update() {
     let mut store = store();
     let id = create(&mut store, "width:1px", false, false, true);
     let before = store.snapshot();

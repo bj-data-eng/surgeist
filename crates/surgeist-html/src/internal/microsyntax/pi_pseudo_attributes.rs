@@ -837,17 +837,17 @@ mod tests {
         }
         Ok((valid, names))
     }
-    fn honest(names: &[Vec<u16>], name: &[u16]) -> Option<usize> {
+    fn lookup(names: &[Vec<u16>], name: &[u16]) -> Option<usize> {
         names.iter().position(|n| n == name)
     }
     #[test]
     fn find_name_answers_decide_duplicates_and_a_candidate_is_verified_against_its_units() {
         let text = |s: &str| s.encode_utf16().collect::<Vec<u16>>();
         // An exact duplicate is invalid and the map is emptied again.
-        assert_eq!(drive("a='1' b='2' a='3'", honest), Ok((false, vec![])));
+        assert_eq!(drive("a='1' b='2' a='3'", lookup), Ok((false, vec![])));
         // Names that differ only in case, in length or in a late unit are distinct.
         assert_eq!(
-            drive("a='' A='' ab='' aB='' abc=''", honest).unwrap().1,
+            drive("a='' A='' ab='' aB='' abc=''", lookup).unwrap().1,
             vec![text("a"), text("A"), text("ab"), text("aB"), text("abc")]
         );
         // A wrong candidate, of another length or of the same length with other units, is
