@@ -1108,3 +1108,36 @@ fn grid_static_position_checks_safe_alignment_against_content_extent() {
     // The child fits the 60×40 content box even though its 32×24 inset area is smaller.
     assert_integer_rect(&compute(&tree), 2, [40.0, 30.0, 40.0, 30.0]);
 }
+
+#[test]
+fn grid_static_position_uses_the_used_content_box_with_classic_gutters() {
+    for (direction, content_x, child_x) in
+        [(Direction::Ltr, 35.0, 130.0), (Direction::Rtl, 50.0, 50.0)]
+    {
+        let mut parent = grid::<f32>(
+            direction,
+            BoxSizing::BorderBox,
+            Size::splat(200.0),
+            Tracks::Neither,
+        );
+        parent.border = Edges::all(LengthOf::px(20.0));
+        parent.padding = Edges::all(LengthOf::px(15.0));
+        parent.overflow = ComputedOverflow::try_new(Overflow::Scroll, Overflow::Scroll).unwrap();
+        parent.scrollbar_width = ScrollbarWidthOf::try_new(15.0).unwrap();
+        let mut child = fixed_absolute::<f32>(direction, Size::new(20.0, 10.0));
+        child.justify_self = Some(AlignItems::End);
+        child.align_self = Some(AlignItems::End);
+        child.margin = Edges::all(LengthAutoOf::AUTO);
+        let tree = PublicLayoutTreeOf::new()
+            .children(1, [2])
+            .style(1, parent)
+            .children(2, [])
+            .style(2, child);
+        let batch = compute(&tree);
+
+        let scroll = output(batch.final_entries(), 1).scroll_geometry.unwrap();
+        assert_empty_grid_scroll_rect(scroll.content_box(), [content_x, 35.0, 115.0, 115.0]);
+        assert_integer_rect(&batch, 2, [child_x, 140.0, 20.0, 10.0]);
+        assert_eq!(output(batch.final_entries(), 2).margin, Edges::all(0.0));
+    }
+}
