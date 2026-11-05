@@ -342,6 +342,67 @@ fn percentage_basis<S: LayoutScalar>() {
     }
 }
 
+fn fixed_orthogonal_root<S: LayoutScalar>() {
+    let containing_size = Size::new(nn(192.0), nn(80.0));
+    for (direction, containing_direction) in [
+        (Direction::Ltr, Direction::Rtl),
+        (Direction::Rtl, Direction::Ltr),
+    ] {
+        for box_sizing in [BoxSizing::BorderBox, BoxSizing::ContentBox] {
+            let mut root = root_style::<S>(direction);
+            root.display = Display::Flex;
+            root.writing_mode = WritingMode::SidewaysRl;
+            root.box_sizing = box_sizing;
+            root.size = Size::new(
+                PreferredSizeOf::percent(n(0.5)),
+                PreferredSizeOf::percent(n(0.25)),
+            );
+            root.max_size.width = MaxSizeOf::percent(n(0.375));
+            root.min_size.height =
+                MinSizeOf::value(LengthPercentageOf::from_percent_fraction(n(0.5)).unwrap());
+            let child = NodeInputOf {
+                display: Display::Block,
+                flex_shrink: FlexShrinkOf::try_new(S::ZERO).unwrap(),
+                size: Size::new(
+                    PreferredSizeOf::percent(n(0.5)),
+                    PreferredSizeOf::percent(n(0.5)),
+                ),
+                ..NodeInputOf::default()
+            };
+            let tree = PublicLayoutTreeOf::new()
+                .children(0, [1])
+                .children(1, [])
+                .style(0, root)
+                .style(1, child);
+            let context = RootLocalPositionedContextOf::horizontal_auto_insets(
+                containing_size,
+                containing_direction,
+                n(160.0),
+                fallback(),
+            )
+            .unwrap();
+            let request = LayoutRootRequestOf::positioned_root_local(context).unwrap();
+            let batch = compute_layout(&tree, 0, request).unwrap();
+            for finalized in [false, true] {
+                let root = output(&batch, 0, finalized);
+                assert_eq!(root.location, Point::ZERO);
+                // Full 192×80 physical percentage bases yield preferred 96×20.
+                // The authored max-width caps it at 72 and min-height floors it at 40.
+                assert_eq!(root.size, Size::new(n(72.0), n(40.0)));
+                assert_eq!(
+                    root.scroll_geometry.unwrap().flow_axes(),
+                    FlowAxes::new(WritingMode::SidewaysRl, direction)
+                );
+                // The child uses the accepted 72×40 content box as its basis.
+                assert_eq!(
+                    output(&batch, 1, finalized).size,
+                    Size::new(n(36.0), n(20.0))
+                );
+            }
+        }
+    }
+}
+
 fn independent_fallback<S: LayoutScalar>() {
     let mut root = root_style::<S>(Direction::Ltr);
     root.size.width = PreferredSizeOf::px(n(30.0));
@@ -598,6 +659,11 @@ lanes!(
     root_local_percentage_basis_f32,
     root_local_percentage_basis_f64,
     percentage_basis
+);
+lanes!(
+    root_local_fixed_orthogonal_f32,
+    root_local_fixed_orthogonal_f64,
+    fixed_orthogonal_root
 );
 lanes!(
     root_local_independent_fallback_f32,
