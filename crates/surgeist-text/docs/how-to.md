@@ -121,7 +121,9 @@ assert!(!layout.glyph_runs().is_empty());
 ```
 
 If the application already holds encoded bytes, use
-`system.register_fonts(bytes, limits)`. To transfer a populated Font catalogue
+`system.register_fonts(bytes, limits)`. Both registration paths accept raw SFNT
+and collections as well as WOFF and WOFF2. Set limits for the encoded input,
+decoded resource and decoder workspace. To transfer a populated Font catalogue
 into Text, use `System::new(catalogue)`. Every face must pass admission before the
 system publishes the registration. Repeated registrations append in request
 order. Supply an ordered list of explicit family names when the text needs
