@@ -1687,3 +1687,23 @@ sha256 = "32bb5ebf4cb31156b67d630e8145f782b05c4e7c540cc0afee27b929845604b4"
 [records.semantic_specifications.content_box_rtl]
 path = "semantic/collapsed-flex-wrapping-content_box_rtl.json"
 sha256 = "246aa172b3396347efbf28f60da391e23a2659f9acfa3dbf9fc1afbe82e1d80e"
+
+[[records]]
+source = "html/block/prepared_text_continuity_bidi.html"
+source_sha256 = "48cc2e77ec658cacd9de207a16b1b9d41fbe33f3e494161b4f88da584e52f3ba"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "95953046fd090fde97bbeed6cfaf3eff838f29838a3a214a2c8e044b8afdc860"
+border_box_rtl = "5ac8e10f2cf0c001678c4c7e56817c6b1e7d8373c55d2aeb52a8c524c964f877"
+content_box_ltr = "0d8325c41247c8e815632eb658abe0114705c5affcc89ca17d9de3c94c94e995"
+content_box_rtl = "41b983a5ba287b4f47ee2a1fc4f05f39237041f7a25ea05d2eebf77b63951b5d"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
