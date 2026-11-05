@@ -251,3 +251,38 @@ fn complete_comparison_keeps_absent_native_scroll_spans_and_visits_later_boxes()
         }
     }
 }
+
+#[test]
+fn sideways_flex_binding_refuses_changed_browser_environment() {
+    let (variant, xml) = VARIANTS[0];
+    let output = format!("xml/flex/fri07_flex_composition__{variant}.xml");
+    let original: serde_json::Value = serde_json::from_str(REPORT).unwrap();
+    for pointer in [
+        "/metadata/browser_executable",
+        "/metadata/browser_executable_sha256",
+        "/metadata/browser_provenance",
+        "/metadata/engine_version",
+        "/metadata/contract_sha256",
+        "/metadata/inputs/browser-owner.toml",
+    ] {
+        let mut changed = original.clone();
+        *changed.pointer_mut(pointer).unwrap() = serde_json::json!("a".repeat(64));
+        let error = Golden::parse_with_flex_composition(
+            xml,
+            &changed.to_string(),
+            SOURCE,
+            SOURCE_BYTES,
+            &output,
+        )
+        .expect_err("capture environment must match the retained control");
+        assert!(
+            error.to_string().contains("capture environment changed"),
+            "{pointer}: {error}"
+        );
+    }
+
+    let mut rebuilt = original;
+    rebuilt["metadata"]["host_executable_sha256"] = serde_json::json!("b".repeat(64));
+    Golden::parse_with_flex_composition(xml, &rebuilt.to_string(), SOURCE, SOURCE_BYTES, &output)
+        .expect("a rebuilt qualifier can replay the same browser environment");
+}
