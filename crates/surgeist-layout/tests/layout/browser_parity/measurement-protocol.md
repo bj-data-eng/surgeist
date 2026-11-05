@@ -536,16 +536,15 @@ Neither coordinate is claimed uniquely required by CSS. Version 2 stores only
 the observed inline edge/start/advance; it does not retain the browser rectangle's
 height. Native source-fragment height must not be substituted for that observation.
 
-The owning Native regression checks both retained RTL variants with their original
-source/font inputs, actual issued line and placement, and an explicitly authored
-formal MaxContent request. This establishes the Native policy difference without
-claiming that the historical browser issued that sizing operation. The captured
-V2 viewport does not authenticate a current root request: the strict captured
-entry point refuses missing root-context authority before comparing Range fields.
-Faithful current capture and complete exact-difference qualification remain
-required under [#1669](https://github.com/bj-data-eng/surgeist/issues/1669). This
-capture limit does not classify the supported Native input as unsupported or
-establish the full live DOM Range projection.
+The V4 prepared Range request binds the original HTML, its pinned TTF preload,
+the effective loaded face, and the root's border frame. The four-variant
+[receipt](captured/prepared-range-differences/raw-comparisons.jsonl) records
+every box field and Range row. The two LTR controls match. The RTL policy
+accepts only the occurrence 1, line 0, zero-advance PDI start at browser x=72
+and Native x=24. Qualification checks the actual Native node packets and
+issued fragments in both phases, selected lines, glyph positions, effective
+face, and placed PDI Range and caret. The retained V2 viewport cannot issue
+a source-qualified root operation.
 
 [CSSOM View §9](../../../../../references/cssom-view-1--WD-cssom-view-1-20250916--693b1c1fe7f7.md#dom-range-getclientrects)
 defines Text-node Range rectangles using font metrics and advances, but does not
@@ -556,11 +555,9 @@ and [trailing-space classification/split](https://github.com/chromium/chromium/b
 retain a different item-level path for this PDI. Its
 [Range entry](https://github.com/chromium/chromium/blob/149.0.7827.115/third_party/blink/renderer/core/dom/range.cc#L1532)
 delegates to [actual text fragments](https://github.com/chromium/chromium/blob/149.0.7827.115/third_party/blink/renderer/core/layout/layout_text.cc#L516),
-not an independent native caret rule. These sources explain the observation
-boundary; they do not authorize changing native bidi or guessing a neighboring
-edge. Exact Range acceptance under [#1450](https://github.com/bj-data-eng/surgeist/issues/1450)
-remains open. Future DOM Range projection belongs to
-[#850](https://github.com/bj-data-eng/surgeist/issues/850).
+through the browser's item-level layout. Live DOM Range projection is tracked in
+[#850](https://github.com/bj-data-eng/surgeist/issues/850) and
+[#860](https://github.com/bj-data-eng/surgeist/issues/860).
 
 The historical version 1 `rangeInks` JSON / `range-inks` XML spellings below remain
 only as their declared historical parser contract. Current private models and
