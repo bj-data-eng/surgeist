@@ -899,6 +899,50 @@ fn current_prebinding_refuses_case_output_selector_and_either_packet_census_drif
     }
 }
 #[test]
+fn published_layout_ranges_are_independent_of_dom_element_sizes() {
+    let mut value = two_lineage_declaration();
+    let current = &mut value["representation"]["current"];
+    let selectors = current["selectors"].as_array_mut().unwrap();
+    selectors.extend([
+        json!({"path":"/","field":"layout-scroll-width"}),
+        json!({"path":"/","field":"layout-scroll-height"}),
+    ]);
+    let identity = CaseIdentity::from_verified_projection(published_identity()).unwrap();
+    let authority = || CaptureAuthority::Published {
+        edition: PublishedEdition::CanonicalBoxes,
+        identity: &identity,
+    };
+    let mut golden = element_golden(20);
+    golden.element_scroll_sizes = None;
+    golden.expectations.scroll_size = Some(Size {
+        width: 0.0,
+        height: 0.0,
+    });
+
+    let parsed = spec(&value);
+    let resolved = parsed.resolve_against(authority(), &golden).unwrap();
+    let complete = complete_captured_comparison(&golden, &resolved).unwrap();
+    assert_eq!(complete.observations.len(), 6);
+    assert_eq!(
+        resolved.qualify(&complete).unwrap().raw,
+        RawVerdict::Different { fields: 1 }
+    );
+
+    let mut incomplete = value;
+    incomplete["representation"]["current"]["selectors"]
+        .as_array_mut()
+        .unwrap()
+        .pop();
+    assert!(
+        spec(&incomplete)
+            .resolve_against(authority(), &golden)
+            .is_err()
+    );
+    golden.expectations.scroll_size = None;
+    assert!(parsed.resolve_against(authority(), &golden).is_err());
+}
+
+#[test]
 fn measured_grid_publication_compares_both_complete_domains_for_the_certified_leaf() {
     const XML: &str = r#"<test name="fixed-published" measurement-version="4" observation-frame="root-border-local" use-rounding="false">
 <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="grid" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
