@@ -359,7 +359,7 @@ fn assert_auto_height_retains_percentage_margins<S: LayoutScalar>() {
                     margin: flow.physical_edges(LogicalEdgesOf::new(
                         LengthAutoOf::ZERO,
                         LengthAutoOf::ZERO,
-                        percentage.clone(),
+                        percentage,
                         percentage,
                     )),
                     ..NodeInputOf::default()
