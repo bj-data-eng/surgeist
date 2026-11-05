@@ -469,6 +469,14 @@ validated all-zero default axes omitted by the provider. Malformed instance
 metadata and unresolved faux-bold/skew return typed failures. These views retain
 no independent layout or preparation identity; their lifetime comes from the
 original immutable Layout.
+
+`FontData::bytes()` and `FontFace::bytes()` return the entire decoded SFNT or
+collection backing. Use `index()` to identify the selected face within it.
+`admitted_face().resource().source()` carries the original format, source
+identity and exact input bytes, including the original WOFF or WOFF2 container.
+A retained face keeps that resource alive across catalogue refresh and Text
+system disposal.
+
 `RunView::origin()` is physical. `FinalizedRunView::origin()` is line-local
 `(inline, line-under)` for an ordinary run; a run with `cell()` retains its
 intrinsic horizontal inner offsets before the cell frame. Both views and owned
