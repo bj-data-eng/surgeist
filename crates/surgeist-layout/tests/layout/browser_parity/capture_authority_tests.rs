@@ -50,6 +50,13 @@ impl Fixture {
         }
     }
     fn verified(&self) -> Result<VerifiedIdentity> {
+        self.with_observation("geometry", None)
+    }
+    fn with_observation(
+        &self,
+        request: &str,
+        request_sha: Option<&str>,
+    ) -> Result<VerifiedIdentity> {
         identity_from_verified_inputs(IdentityInputs {
             metadata: &self.metadata,
             artifact: &self.artifact,
@@ -60,11 +67,64 @@ impl Fixture {
             historical_sha256: None,
             policy_sha256: &self.inputs["policy.md"],
             browser_settings: &self.settings,
-            observation_request: "geometry",
-            observation_input_sha256: None,
+            observation_request: request,
+            observation_input_sha256: request_sha,
         })
     }
 }
+#[test]
+fn measured_identity_requires_the_exact_request_capture_script_and_stylesheet() {
+    let request = sha256(b"{\"schema_version\":1,\"element_scroll_sizes\":\"horizontal-zero-edge-divs\",\"measured_leaf\":\"ahem-10px-zwsp\"}\n");
+    let script = sha256(include_bytes!(
+        "../../bin/surgeist-layout-generate/measurement/measured_leaf.js"
+    ));
+    let stylesheet = "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6";
+    let expected = [
+        ("observation-request.json", request.as_str()),
+        ("scripts/gentest/measured_leaf.js", script.as_str()),
+        ("scripts/gentest/test_base_style.css", stylesheet),
+    ];
+    let fixture = |changed: Option<(&str, Option<&str>)>| {
+        let mut fixture = Fixture::new(&"a".repeat(64));
+        for (path, digest) in expected {
+            if let Some((key, replacement)) = changed
+                && path == key
+            {
+                if let Some(replacement) = replacement {
+                    fixture
+                        .inputs
+                        .insert(path.to_owned(), replacement.to_owned());
+                }
+            } else {
+                fixture.inputs.insert(path.to_owned(), digest.to_owned());
+            }
+        }
+        fixture.metadata.inputs = fixture.inputs.clone();
+        fixture
+    };
+    let valid = fixture(None);
+    let verified = valid
+        .with_observation("measured-leaf", Some(&request))
+        .unwrap_or_else(|error| {
+            panic!("measured request and its exact resources must bind: {error}")
+        });
+    assert_eq!(verified.projection().font_demand, "ahem-10px-zwsp");
+    for (path, digest) in expected {
+        assert_eq!(verified.projection().inputs[path], digest);
+        for replacement in [
+            None,
+            Some("0000000000000000000000000000000000000000000000000000000000000000"),
+        ] {
+            assert!(
+                fixture(Some((path, replacement)))
+                    .with_observation("measured-leaf", Some(&request))
+                    .is_err(),
+                "{path} must remain bound even when the report matches the changed inputs"
+            );
+        }
+    }
+}
+
 #[test]
 fn lossless_settings_witness_preserves_the_existing_profile_tuple_bytes() {
     let fixture = Fixture::new(&"a".repeat(64));
