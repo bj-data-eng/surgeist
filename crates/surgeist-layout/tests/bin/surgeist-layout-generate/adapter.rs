@@ -218,13 +218,12 @@ impl LayoutAdapter {
         })?;
         let setup =
             helper_setup_expression(helper, font_bytes, source, style, input.fixture().source())?;
-        let measurement = if request == crate::measurement::BoxObservationRequest::MeasuredLeaf {
-            let path = RelativePath::new(crate::measurement::MEASURED_LEAF_SCRIPT_INPUT)
+        let measurement = if let Some((path, script)) = request.proof_script() {
+            let path = RelativePath::new(path)
                 .map_err(|error| AdapterError::Preparation(error.to_string()))?;
-            let script = crate::measurement::MEASURED_LEAF_SCRIPT;
             if input.input_bytes(&path) != Some(script.as_bytes()) {
                 return Err(AdapterError::Preparation(
-                    "measured leaf capture script changed or is missing".into(),
+                    "observation proof script changed or is missing".into(),
                 ));
             }
             let font = crate::pinned_font::AHEM_STYLESHEET_WOFF2_SHA256;

@@ -32,6 +32,13 @@ pub(super) fn generate_xml(name: &str, measurement: &ValidatedMeasurement) -> St
     if let Some(attrs) = measurement.measured_leaf() {
         lines.push(format!("  <measured-leaf{}/>", attr_text(attrs)));
     }
+    if let Some(proof) = measurement.flex_content_text() {
+        lines.push(format!("  <flex-content-text{}>", attr_text(&proof.attrs)));
+        for row in &proof.rows {
+            lines.push(format!("    <occurrence{}/>", attr_text(row)));
+        }
+        lines.push("  </flex-content-text>".into());
+    }
     lines.push("  <diagnostics>".into());
     write_world_diagnostics(&mut lines, measurement.root(), "0");
     lines.push("  </diagnostics>".into());
