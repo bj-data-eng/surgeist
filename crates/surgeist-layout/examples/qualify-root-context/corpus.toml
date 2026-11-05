@@ -1294,6 +1294,22 @@ hypothetical_direction = "ltr"
 root_direction = "variant"
 inline_offset = 0
 
+[records.semantic_specifications.border_box_ltr]
+path = "semantic/grid-min-fit-10-border_box_ltr.json"
+sha256 = "8f59dc590d7d78eab6b3af72ca27fa6796f9f984fd87acca40f7fc3a3c35e4c3"
+
+[records.semantic_specifications.border_box_rtl]
+path = "semantic/grid-min-fit-10-border_box_rtl.json"
+sha256 = "f674b1419a7b6eb91c94c85cd5ac57aae635e1b25bae922b5b8e1addd696bf23"
+
+[records.semantic_specifications.content_box_ltr]
+path = "semantic/grid-min-fit-10-content_box_ltr.json"
+sha256 = "2b5bbb5fee4d42ae04bb1524f9d6339e8fe9d889352cf7763f4e21603d8720fd"
+
+[records.semantic_specifications.content_box_rtl]
+path = "semantic/grid-min-fit-10-content_box_rtl.json"
+sha256 = "34d3c50f583269742ad2f2fbb022df47fbbf1e25633f9058ad410ed8c9e0c9c3"
+
 [[records]]
 source = "html/grid/grid_span_2_min_content_fit_content_10px_indefinite_hidden.html"
 source_sha256 = "4f1ce713aeab70de4fec3062dbe825f0b74cf8432f7c668d32a636d3656e11f5"

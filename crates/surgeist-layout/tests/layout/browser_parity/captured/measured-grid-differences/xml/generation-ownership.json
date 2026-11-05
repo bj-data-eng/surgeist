@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "artifacts": {
+    "xml/generation-reports/all.json": "275b0e429fad0286271b1f77417e92d643cde60ff7c2a3b3b94bcb2bfaca26c4",
+    "xml/grid/grid_span_2_min_content_fit_content_10px_indefinite__border_box_ltr.xml": "4fddab52d4527bc93ccae7a677261d193bc706a957048594b39849823f0db4ae",
+    "xml/grid/grid_span_2_min_content_fit_content_10px_indefinite__border_box_rtl.xml": "b1f1ff38852e8a59d193b10fc494251026572f27e7b7824edac5d4db381fb271",
+    "xml/grid/grid_span_2_min_content_fit_content_10px_indefinite__content_box_ltr.xml": "7bd15e6ad9d354932610493d4d24e2241869dba996c3cf99a0e7079b6b670d4b",
+    "xml/grid/grid_span_2_min_content_fit_content_10px_indefinite__content_box_rtl.xml": "20c4e759d999580a672e349782e0ee2765a3380c3b750f406d1eac65f1478eb0"
+  }
+}

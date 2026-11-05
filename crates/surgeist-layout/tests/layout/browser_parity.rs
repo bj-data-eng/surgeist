@@ -2382,6 +2382,29 @@ fn current_edition_path_filter_executes_all_registered_cases() {
 }
 
 #[test]
+fn current_registry_executes_all_measured_grid_variants() {
+    let registered = registered_current_edition().expect("current registry must authenticate");
+    let selected =
+        selected_current_outputs(&registered, Some("captured/measured-grid-differences"));
+    assert_eq!(
+        selected.len(),
+        4,
+        "all measured Grid variants must be registered"
+    );
+    let run = registered
+        .execute_selected(&selected)
+        .expect("measured Grid cases must execute");
+    assert!(run.selected_cases_passed());
+    assert_eq!(
+        run.cases
+            .iter()
+            .map(|case| case.raw.as_ref().unwrap().len())
+            .sum::<usize>(),
+        44
+    );
+}
+
+#[test]
 fn runs_registered_current_browser_parity_qualification() {
     let admitted =
         registered_current_edition().expect("required current edition must authenticate");
