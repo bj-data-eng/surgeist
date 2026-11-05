@@ -1135,6 +1135,78 @@ fn asking_whether_a_paragraph_is_in_button_scope_costs_the_same_at_every_depth()
 }
 
 #[test]
+fn a_stack_whose_lists_disagree_with_an_entrys_class_is_a_defect_at_pop_and_at_a_shift() {
+    // Private-state fault injection: the stack and its lists are one owner's state, so a list
+    // that lacks the top entry its class names, or holds an entry it does not name, or holds an
+    // index that cannot move, stops the parse as a defect and never as a normal answer.
+    let source = HtmlSource::utf8("<html><p><p>");
+    let mut c = control(100);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer = crate::parser::tokenizer::tests::LexerFixture::new(
+        &source,
+        HtmlTokenizerState::Data,
+        None,
+        &mut c,
+    )
+    .unwrap();
+    let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
+    add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+    let defect = HtmlParseStop::InternalInvariant(HtmlParseInvariant::TreeBuilderState);
+    // The paragraph is open and listed; take it out of its list behind the stack's back.
+    kernel.paragraphs.as_mut().unwrap().try_pop(&mut c).unwrap();
+    assert!(matches!(
+        kernel.pop(&mut c, None),
+        Err(KernelError::Stop(stop)) if stop == defect
+    ));
+    tokenizer.release(&mut c).unwrap();
+    kernel.release(&mut c).unwrap();
+
+    let mut c = control(100);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer = crate::parser::tokenizer::tests::LexerFixture::new(
+        &source,
+        HtmlTokenizerState::Data,
+        None,
+        &mut c,
+    )
+    .unwrap();
+    let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
+    let p = add(&mut kernel, &mut tokenizer, StackPush::Push, &mut c);
+    // An entry the class does not list, listed behind the stack's back: the next pop of it.
+    let top = kernel.stack().unwrap().len() - 1;
+    kernel
+        .list_mut(Listing::ButtonBoundary)
+        .unwrap()
+        .try_push_geometric(&mut c, top)
+        .unwrap();
+    assert!(matches!(
+        kernel.pop(&mut c, None),
+        Err(KernelError::Stop(stop)) if stop == defect
+    ));
+    let _ = p;
+    tokenizer.release(&mut c).unwrap();
+    kernel.release(&mut c).unwrap();
+
+    let mut c = control(100);
+    c.admit_source(&source).unwrap();
+    let mut tokenizer = crate::parser::tokenizer::tests::LexerFixture::new(
+        &source,
+        HtmlTokenizerState::Data,
+        None,
+        &mut c,
+    )
+    .unwrap();
+    let (mut kernel, _) = begin(&mut tokenizer, RootKind::Fragment, &mut c);
+    // A listed index of zero cannot move down.
+    assert!(matches!(
+        kernel.listings_shift(0, false, &mut c),
+        Err(KernelError::Stop(stop)) if stop == defect
+    ));
+    tokenizer.release(&mut c).unwrap();
+    kernel.release(&mut c).unwrap();
+}
+
+#[test]
 fn checking_a_new_element_for_insertion_costs_the_same_at_every_depth() {
     // A new element has no children, so it can be a host-including ancestor of
     // the target only by being the target: the check visits no ancestor.

@@ -512,7 +512,7 @@ impl LocationKernel {
                         return Err(KernelError::EmptyStack);
                     }
                 }
-                self.pop(c, capability)?;
+                self.pop_with_lists(c, capability, false)?;
                 return Ok(());
             }
         }
@@ -534,7 +534,7 @@ impl LocationKernel {
         let paragraphs = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         let scope_boundaries = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
         let buttons = OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?;
-        write(size_of::<Self>(), 5, control)?;
+        write(size_of::<Self>(), 8, control)?;
         write(size_of::<Option<ParserArenaSession>>(), 1, control)?;
         control.charge(HtmlParseWorkCategory::ProviderCall, 1)?;
         // Every fallible step precedes the take, so a refusal leaves the
@@ -664,6 +664,19 @@ impl LocationKernel {
         control: &mut ParseControl,
         capability: Option<&ConstructionCapability<'_>>,
     ) -> Result<Option<ParserNode>, KernelError> {
+        self.pop_with_lists(control, capability, true)
+    }
+    /// Pops the top entry, unlisting it from each list its class names when `listed`; a caller
+    /// that unlisted it already (and moved the entry to the top) passes `false`. The lists
+    /// must agree with the class: an entry the class lists must be the last of that list when
+    /// `listed` and absent from it otherwise, and an entry it does not list must be absent, or
+    /// the stack's own state is inconsistent, which stops the parse as a defect.
+    fn pop_with_lists(
+        &mut self,
+        control: &mut ParseControl,
+        capability: Option<&ConstructionCapability<'_>>,
+        listed: bool,
+    ) -> Result<Option<ParserNode>, KernelError> {
         self.require(control)?;
         if self.stack()?.len() != 0 {
             let current = self.current(control)?;
@@ -671,16 +684,22 @@ impl LocationKernel {
                 .qualify_stack_removal(control, &current, capability)?;
         }
         let top = self.stack()?.len().checked_sub(1);
-        let top_is_last =
+        let holds_top =
             Listing::ALL.map(|listing| top.is_some() && top == self.last_listed(listing));
         let entry = self
             .open
             .as_mut()
             .ok_or(KernelError::Consumed)?
             .try_pop(control)?;
-        if entry.is_some() {
-            for (listing, is_last) in Listing::ALL.into_iter().zip(top_is_last) {
-                if is_last {
+        if let Some(entry) = &entry {
+            for (listing, holds) in Listing::ALL.into_iter().zip(holds_top) {
+                let unlist = listed && entry.class.listed(listing);
+                if holds != unlist {
+                    return Err(control
+                        .fail_invariant(HtmlParseInvariant::TreeBuilderState)
+                        .into());
+                }
+                if unlist {
                     self.unlist_last(listing, control)?;
                 }
             }
@@ -888,11 +907,13 @@ impl LocationKernel {
             {
                 at = at.saturating_sub(1);
                 let entry = listed.get_mut(at, c)?.ok_or(KernelError::EmptyStack)?;
-                *entry = if up {
-                    entry.saturating_add(1)
+                let moved = if up {
+                    entry.checked_add(1)
                 } else {
-                    entry.saturating_sub(1)
+                    entry.checked_sub(1)
                 };
+                *entry =
+                    moved.ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TreeBuilderState))?;
             }
         }
         Ok(())
