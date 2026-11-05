@@ -149,6 +149,82 @@ fn measured_identity_requires_the_exact_request_capture_script_and_stylesheet() 
 }
 
 #[test]
+fn flex_text_identity_binds_the_request_script_and_font_stylesheet() {
+    const REQUEST: &str = "1148009cb8ef089475a09c1a9cda8ab19ac8693c0f4af141f0f2586e173742e5";
+    let mut fixture = Fixture::new(&"a".repeat(64));
+    let inputs = [
+        ("observation-request.json", REQUEST),
+        (
+            "scripts/gentest/flex_content_text.js",
+            "dbc5513b959c33231ea177c294458723e0fafeb154c6af4a391406f73708f189",
+        ),
+        (
+            "scripts/gentest/test_base_style.css",
+            "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+        ),
+        (
+            "scripts/gentest/test_helper.js",
+            "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee",
+        ),
+    ];
+    fixture
+        .inputs
+        .extend(inputs.map(|(path, hash)| (path.to_owned(), hash.to_owned())));
+    fixture.metadata.inputs = fixture.inputs.clone();
+    let verified = fixture
+        .with_observation("flex-content-text", Some(REQUEST))
+        .expect("direct text evidence binds to its own capture profile");
+    assert_eq!(
+        verified.projection().font_demand,
+        "ahem-10px-flex-direct-text"
+    );
+    let profile = format!(
+        r#"["canonical-flex-content-text",{SETTINGS},"{}","content_box_ltr","flex-content-text","{REQUEST}"]"#,
+        "a".repeat(64)
+    );
+    assert_eq!(
+        verified.projection().profile_sha256,
+        sha256(profile.as_bytes())
+    );
+    assert!(fixture.with_observation("geometry", None).is_err());
+    assert!(fixture.with_observation("flex-content-text", None).is_err());
+    assert!(
+        fixture
+            .with_observation("flex-content-text", Some(&"b".repeat(64)))
+            .is_err()
+    );
+
+    for (path, hash) in inputs {
+        assert_eq!(verified.projection().inputs[path], hash);
+        fixture.excluded.insert(path.to_owned());
+        assert!(
+            fixture
+                .with_observation("flex-content-text", Some(REQUEST))
+                .is_err()
+        );
+        fixture.excluded.remove(path);
+
+        fixture.inputs.remove(path);
+        fixture.metadata.inputs = fixture.inputs.clone();
+        assert!(
+            fixture
+                .with_observation("flex-content-text", Some(REQUEST))
+                .is_err()
+        );
+
+        fixture.inputs.insert(path.to_owned(), "b".repeat(64));
+        fixture.metadata.inputs = fixture.inputs.clone();
+        assert!(
+            fixture
+                .with_observation("flex-content-text", Some(REQUEST))
+                .is_err()
+        );
+        fixture.inputs.insert(path.to_owned(), hash.to_owned());
+        fixture.metadata.inputs = fixture.inputs.clone();
+    }
+}
+
+#[test]
 fn lossless_settings_witness_preserves_the_existing_profile_tuple_bytes() {
     let fixture = Fixture::new(&"a".repeat(64));
     let verified = fixture.verified().unwrap();
