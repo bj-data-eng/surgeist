@@ -1160,6 +1160,11 @@ pub const fn surgeist_render::PositionEdgeOffset::edge(self) -> surgeist_render:
 pub fn surgeist_render::PositionEdgeOffset::end(offset: f64) -> surgeist_render::Result<Self>
 pub const fn surgeist_render::PositionEdgeOffset::offset(self) -> f64
 pub fn surgeist_render::PositionEdgeOffset::start(offset: f64) -> surgeist_render::Result<Self>
+pub struct surgeist_render::PreparedGlyphDraw<'scene>
+impl<'scene> surgeist_render::PreparedGlyphDraw<'scene>
+pub const fn surgeist_render::PreparedGlyphDraw<'scene>::paint(self) -> &'scene surgeist_render::TextPaint
+pub const fn surgeist_render::PreparedGlyphDraw<'scene>::run(self) -> &'scene surgeist_render::PreparedGlyphRun
+pub const fn surgeist_render::PreparedGlyphDraw<'scene>::transform(self) -> surgeist_render::Transform
 pub struct surgeist_render::PreparedGlyphRun(_)
 impl surgeist_render::PreparedGlyphRun
 pub fn surgeist_render::PreparedGlyphRun::bounds(&self) -> surgeist_render::TextRunBounds
@@ -1172,6 +1177,7 @@ impl core::cmp::PartialEq for surgeist_render::PreparedGlyphRun
 pub fn surgeist_render::PreparedGlyphRun::eq(&self, other: &Self) -> bool
 pub struct surgeist_render::PreparedTextScene<'a>
 impl<'a> surgeist_render::PreparedTextScene<'a>
+pub fn surgeist_render::PreparedTextScene<'a>::glyph_draws(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_render::PreparedGlyphDraw<'_>>
 pub const fn surgeist_render::PreparedTextScene<'a>::layout(&self) -> &'a surgeist_text::layout::Layout
 pub const fn surgeist_render::PreparedTextScene<'a>::scene(&self) -> &surgeist_render::Scene
 pub struct surgeist_render::Radii
