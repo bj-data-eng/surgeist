@@ -5048,8 +5048,10 @@ fn project_prepared_browser_br_font_band(
     let (x, y, right, bottom) = match (profile, metrics.basis()) {
         (
             BrFontBandProfile::Horizontal,
-            surgeist_text::BreakFontMetricBasis::Horizontal { font_origin_offset },
-        ) if font_origin_offset == 0.0 => {
+            surgeist_text::BreakFontMetricBasis::Horizontal {
+                font_origin_offset: 0.0,
+            },
+        ) => {
             let x = f64::from(point.x);
             let baseline = f64::from(baseline.y);
             (
