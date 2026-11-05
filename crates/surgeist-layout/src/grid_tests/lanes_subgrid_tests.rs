@@ -2580,7 +2580,9 @@ fn fri04_c03_grid_track_grid_and_lanes_consume_nested_properties_on_both_axes_an
         )
         .expect("grid property calculations resolve");
 
-        assert_eq!(output.size, Size::new(85.0, 65.0), "{display:?}");
+        // The resolved width minimum of 90 wins over the maximum of 85.
+        // The height bounds are ordered, so the maximum still caps 70 at 65.
+        assert_eq!(output.size, Size::new(90.0, 65.0), "{display:?}");
 
         let mut negative_tree = OracleTree::new().children(1, []).style(
             1,

@@ -1167,6 +1167,80 @@ fn max_constrained_intrinsic_grid_aligns_children_with_final_content_box_f64() {
     qualify_max_constrained_alignment::<f64>();
 }
 
+fn qualify_conflicting_grid_bounds<S: LayoutScalar>() {
+    let scalar = S::from_f64;
+    let sizing = crate::layout::native_request::sizing(
+        Size::new(None, None),
+        Size::splat(SizingOperation::Normal),
+    );
+    let request = LayoutRootRequestOf::standalone(
+        sizing,
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        sizing.orthogonal_fallback().initial_containing_block(),
+    );
+    let mut failures = Vec::new();
+    for display in [Display::Grid, Display::GridLanes] {
+        for width in [PreferredSizeOf::MAX_CONTENT, preferred(30.0)] {
+            for (gutter, inline_inset) in [
+                (ScrollbarGutter::Auto, S::ZERO),
+                (ScrollbarGutter::StableBothEdges, scalar(5.0)),
+            ] {
+                let mut tree = fixture::<S>(display, gutter, width.clone());
+                let mut root = tree.node_input(0).clone();
+                root.min_size.width =
+                    MinSizeOf::value(LengthPercentageOf::px(scalar(50.0)).unwrap());
+                root.max_size.width =
+                    MaxSizeOf::value(LengthPercentageOf::px(scalar(2.0)).unwrap());
+                tree.inputs[0] = LayoutInputOf::box_input(root);
+                let batch = compute_layout(&tree, 0, request).unwrap();
+                let output = |node| {
+                    batch
+                        .unrounded_entries()
+                        .iter()
+                        .find(|entry| entry.node() == node)
+                        .unwrap()
+                        .output()
+                };
+                let root = output(0);
+                let child = output(1);
+                let content = root.scroll_geometry.unwrap().content_box();
+                // CSS Sizing 3 §3.1 gives the 50px minimum precedence. The
+                // fixed column retains its 40px extent at the content start.
+                let actual = (
+                    root.size.width,
+                    content.origin().x,
+                    content.size().width,
+                    child.location.x,
+                    child.size.width,
+                );
+                let expected = (
+                    scalar(50.0),
+                    inline_inset,
+                    scalar(50.0) - inline_inset - inline_inset,
+                    inline_inset,
+                    scalar(40.0),
+                );
+                if actual != expected {
+                    failures.push(format!(
+                        "{display:?} {width:?} {gutter:?}: {actual:?}, expected {expected:?}"
+                    ));
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn grid_container_minimum_takes_precedence_over_maximum_f32() {
+    qualify_conflicting_grid_bounds::<f32>();
+}
+
+#[test]
+fn grid_container_minimum_takes_precedence_over_maximum_f64() {
+    qualify_conflicting_grid_bounds::<f64>();
+}
+
 struct OrthogonalSubgridChain<S: LayoutScalar> {
     inputs: [LayoutInputOf<S>; 5],
 }
