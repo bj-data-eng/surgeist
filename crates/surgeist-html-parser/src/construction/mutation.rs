@@ -499,7 +499,7 @@ impl SessionStorage {
                 .ok_or_else(|| latch_registry_row(c))?,
         ) && local == "href"
         {
-            self.base_change(c, node, None, true)?;
+            self.base_change(c, node, None, true, None)?;
         }
         Ok(())
     }

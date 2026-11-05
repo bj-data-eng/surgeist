@@ -612,6 +612,7 @@ impl SessionStorage {
                         cause: InsertionCause::NonParser,
                         next: None,
                         pass: FormEffectPass::Local,
+                        href_base: base::HrefBaseAhead::Unscanned,
                     });
                     self.drain_form_effects(control)?;
                 }

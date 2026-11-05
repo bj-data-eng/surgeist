@@ -380,7 +380,7 @@ impl SessionStorage {
                     break;
                 }
             }
-            self.base_change(control, target, None, href_changed)?;
+            self.base_change(control, target, None, href_changed, None)?;
         }
         Ok(())
     }
@@ -532,6 +532,7 @@ impl SessionStorage {
                     cause: InsertionCause::NonParser,
                     next: Some(target),
                     pass: FormEffectPass::Local,
+                    href_base: base::HrefBaseAhead::Unscanned,
                 }));
             }
         }
