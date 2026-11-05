@@ -1,5 +1,6 @@
 //! Layout fixture semantics supplied to the generic browser engine.
 
+use crate::horizontal_br_font_band_profile;
 use crate::measurement::{
     BoxObservationRequest, FLEX_COMPOSITION_SOURCE, FLEX_COMPOSITION_SOURCE_SHA256,
 };
@@ -236,6 +237,15 @@ impl LayoutAdapter {
                 "prepared atomic percentage capture requires its exact source".into(),
             ));
         }
+        if request == BoxObservationRequest::HorizontalBrFontBand
+            && (input.fixture().source().as_str() != horizontal_br_font_band_profile::SOURCE
+                || surgeist_generator::Sha256Digest::from_bytes(input.source_bytes()).as_str()
+                    != horizontal_br_font_band_profile::SOURCE_SHA256)
+        {
+            return Err(AdapterError::Preparation(
+                "horizontal break font-band capture requires its exact source".into(),
+            ));
+        }
         let source = std::str::from_utf8(input.source_bytes()).map_err(|error| {
             AdapterError::Preparation(format!("fixture source is not UTF-8: {error}"))
         })?;
@@ -294,6 +304,8 @@ impl LayoutAdapter {
                 let bytes = serde_json::to_string(font_bytes)
                     .map_err(|error| AdapterError::Preparation(error.to_string()))?;
                 format!("globalThis.captureOriginalPreparedAtomicPercentage({bytes})")
+            } else if request == BoxObservationRequest::HorizontalBrFontBand {
+                format!("({script})()")
             } else {
                 let font = crate::pinned_font::AHEM_STYLESHEET_WOFF2_SHA256;
                 format!("({script})({font:?})")
@@ -489,6 +501,14 @@ fn helper_setup_expression(
     {
         return Err(AdapterError::Preparation(
             "prepared atomic percentage capture helper changed".into(),
+        ));
+    }
+    if request == BoxObservationRequest::HorizontalBrFontBand
+        && surgeist_generator::Sha256Digest::from_bytes(helper.as_bytes()).as_str()
+            != horizontal_br_font_band_profile::HELPER_SHA256
+    {
+        return Err(AdapterError::Preparation(
+            "horizontal break font-band capture helper changed".into(),
         ));
     }
     let specialized_helper;

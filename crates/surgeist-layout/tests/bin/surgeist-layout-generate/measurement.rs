@@ -16,6 +16,7 @@ mod element_scroll_sizes;
 mod flex_content_text;
 #[path = "measurement/measured_leaf.rs"]
 mod measured_leaf;
+use crate::horizontal_br_font_band_profile;
 use crate::original_subgrid_body_profile;
 use crate::prepared_atomic_percentage_profile;
 pub(super) use flex_content_text::FlexContentText;
@@ -30,6 +31,7 @@ pub(super) enum BoxObservationRequest {
     FlexComposition,
     OriginalSubgridBody,
     PreparedAtomicPercentage,
+    HorizontalBrFontBand,
 }
 
 pub(super) const FLEX_COMPOSITION_SOURCE: &str = "html/flex/fri07_flex_composition.html";
@@ -64,6 +66,9 @@ impl BoxObservationRequest {
             Some(bytes) if Some(bytes) == Self::PreparedAtomicPercentage.input_bytes() => {
                 Ok(Self::PreparedAtomicPercentage)
             }
+            Some(bytes) if Some(bytes) == Self::HorizontalBrFontBand.input_bytes() => {
+                Ok(Self::HorizontalBrFontBand)
+            }
             Some(_) => Err("observation request must match a registered exact input"),
         }
     }
@@ -82,6 +87,10 @@ impl BoxObservationRequest {
             Self::PreparedAtomicPercentage => Some((
                 prepared_atomic_percentage_profile::SCRIPT_PATH,
                 prepared_atomic_percentage_profile::SCRIPT,
+            )),
+            Self::HorizontalBrFontBand => Some((
+                horizontal_br_font_band_profile::SCRIPT_PATH,
+                horizontal_br_font_band_profile::SCRIPT,
             )),
             Self::Geometry
             | Self::ElementScrollSizes
@@ -106,6 +115,7 @@ impl BoxObservationRequest {
             }
             Self::OriginalSubgridBody => Some(original_subgrid_body_profile::REQUEST),
             Self::PreparedAtomicPercentage => Some(prepared_atomic_percentage_profile::REQUEST),
+            Self::HorizontalBrFontBand => Some(horizontal_br_font_band_profile::REQUEST),
         }
     }
 }
@@ -655,6 +665,9 @@ pub(super) fn decode(
         })?
         .validate(&context)?;
     wire.validate_grid_alignment_profile(&context)?;
+    if request == BoxObservationRequest::HorizontalBrFontBand {
+        wire.validate_horizontal_br_font_band(&context, root_local_positioned)?;
+    }
     if request == BoxObservationRequest::OriginalSubgridBody {
         context.compatible(
             !root_local_positioned && use_rounding,
@@ -706,7 +719,8 @@ pub(super) fn decode(
         | BoxObservationRequest::PreparedRanges
         | BoxObservationRequest::FlexComposition
         | BoxObservationRequest::OriginalSubgridBody
-        | BoxObservationRequest::PreparedAtomicPercentage => None,
+        | BoxObservationRequest::PreparedAtomicPercentage
+        | BoxObservationRequest::HorizontalBrFontBand => None,
         BoxObservationRequest::ElementScrollSizes
         | BoxObservationRequest::MeasuredLeaf
         | BoxObservationRequest::FlexContentText => {
@@ -896,6 +910,33 @@ impl WireNode {
             child.validate_prepared_range_rows(&context.child(index))?;
         }
         Ok(())
+    }
+
+    fn validate_horizontal_br_font_band(
+        &self,
+        context: &Context<'_>,
+        root_local_positioned: bool,
+    ) -> Result<(), MeasurementError> {
+        let prepared = context.required(self.prepared_paragraph.as_ref(), "preparedParagraph")?;
+        let children = context.required(self.children.as_deref(), "children")?;
+        context.compatible(
+            root_local_positioned
+                && self.layout_ready_inline_root == Some(true)
+                && self.style.as_ref().is_some_and(|style| {
+                    style.display.as_deref() == Some("block")
+                        && style.writing_mode.as_deref().unwrap_or("horizontal-tb") == "horizontal-tb"
+                })
+                && prepared.origins.is_empty()
+                && prepared.atomics.len() == 2
+                && prepared.controls.len() == 1
+                && prepared.controls[0].child == 1
+                && matches!(children, [before, br, after]
+                    if before.browser_br_observation.is_none()
+                        && br.browser_br_observation.is_some()
+                        && after.browser_br_observation.is_none()),
+            "preparedParagraph",
+            "horizontal break font-band evidence requires the original root, prepared source and selected break",
+        )
     }
 
     fn validate_prepared_atomic_percentage(

@@ -31,6 +31,8 @@ mod flex_composition_tests;
 mod flex_content_text;
 #[path = "flex_text_projection.rs"]
 mod flex_text_projection;
+#[path = "horizontal_br_font_band.rs"]
+pub(crate) mod horizontal_br_font_band;
 #[path = "measured_leaf.rs"]
 mod measured_leaf;
 #[path = "original_subgrid_body.rs"]
