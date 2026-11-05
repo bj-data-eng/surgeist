@@ -1165,14 +1165,27 @@ where
         .transpose_with_node(tree, child)?
         .apply_aspect_ratio(*style.common.aspect_ratio)
         .add_optional(box_sizing_adjustment);
-    let mut max_size = maximum_size(style.common.max_size, parent, SizingAlgorithm::Block, true)
-        .transpose_with_node(tree, child)?
-        .add_optional(box_sizing_adjustment);
-    let aspect_height_limit = style
-        .common
-        .aspect_ratio
-        .zip(max_size.height)
-        .and_then(|(ratio, height)| max_size.width.is_none().then_some(height * ratio.get()));
+    let ratio_transfers_in_block = style.display == crate::Display::Block
+        && normal_block_auto_inline(&style.common, style.display, style.float)
+        && automatic_block_depends_on_ratio(&style.common)
+        && !tree.has_leaf_measurement(child);
+    let max_size = maximum_size(style.common.max_size, parent, SizingAlgorithm::Block, true)
+        .transpose_with_node(tree, child)?;
+    let max_size = if ratio_transfers_in_block {
+        max_size.apply_aspect_ratio(*style.common.aspect_ratio)
+    } else {
+        max_size
+    };
+    let mut max_size = max_size.add_optional(box_sizing_adjustment);
+    let aspect_height_limit = if ratio_transfers_in_block {
+        None
+    } else {
+        style
+            .common
+            .aspect_ratio
+            .zip(max_size.height)
+            .and_then(|(ratio, height)| max_size.width.is_none().then_some(height * ratio.get()))
+    };
     if let Some(width) = aspect_height_limit {
         max_size.width = Some(width);
     }
@@ -1197,12 +1210,7 @@ where
     {
         known.inline = available_inline
             .map(|inline| inline.clamp_max_before_min_optional(min_size.inline, max_size.inline));
-        if aspect_height_limit.is_some()
-            && !(style.display == crate::Display::Block
-                && normal_block_auto_inline(&style.common, style.display, style.float)
-                && automatic_block_depends_on_ratio(&style.common)
-                && !tree.has_leaf_measurement(child))
-        {
+        if aspect_height_limit.is_some() {
             let physical_known = child_flow_axes.physical_size(known);
             known = child_flow_axes.logical_size(
                 physical_known
