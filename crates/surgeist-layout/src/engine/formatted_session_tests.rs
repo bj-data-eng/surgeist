@@ -645,7 +645,7 @@ fn warm_geometry_only_numeric_child_cache_cannot_supply_formatted_tail_truth() {
     );
 }
 
-fn assert_collapsed_flex_keeps_strut_without_placing_text<S: LayoutScalar>() {
+fn assert_collapsed_flex_keeps_strut_without_placing_text<S: LayoutScalar>(nested_anonymous: bool) {
     let visible = PreparedParagraph::plain(3, text::Source::new("XX"), ahem_style(10.0, 10.0));
     let second = PreparedParagraph::plain(6, text::Source::new("YYY"), ahem_style(10.0, 40.0));
     let item = |width, height: Option<f64>, collapse| NodeInputOf {
@@ -660,14 +660,15 @@ fn assert_collapsed_flex_keeps_strut_without_placing_text<S: LayoutScalar>() {
         flex_item_collapse: collapse,
         ..NodeInputOf::default()
     };
+    let second_container = if nested_anonymous { 7 } else { 5 };
     let tree = |collapse| {
-        PublicLayoutTreeOf::<S>::new()
+        let tree = PublicLayoutTreeOf::<S>::new()
             .children(0, [1, 4])
             .children(1, [2])
             .children(2, [3])
             .children(3, [])
             .children(4, [5])
-            .children(5, [6])
+            .children(5, [if nested_anonymous { 7 } else { 6 }])
             .children(6, [])
             .style(
                 0,
@@ -694,12 +695,24 @@ fn assert_collapsed_flex_keeps_strut_without_placing_text<S: LayoutScalar>() {
                 },
             )
             .input(3, visible.text_input(3))
-            .input(6, second.text_input(6))
+            .input(6, second.text_input(6));
+        if nested_anonymous {
+            tree.children(7, [6]).style(
+                7,
+                NodeInputOf {
+                    display: Display::Block,
+                    block_generation: crate::BlockGeneration::Anonymous,
+                    ..NodeInputOf::default()
+                },
+            )
+        } else {
+            tree
+        }
     };
     let output = |collapse| {
         compute(
             &tree(collapse),
-            vec![visible.binding(2), second.binding(5)],
+            vec![visible.binding(2), second.binding(second_container)],
             100.0,
         )
     };
@@ -718,17 +731,28 @@ fn assert_collapsed_flex_keeps_strut_without_placing_text<S: LayoutScalar>() {
     assert_eq!(size(&control, 0).height, S::from_f64(40.0));
     assert_eq!(size(&control, 4), Size::splat(S::from_f64(40.0)));
     assert_eq!(control.placed_text().len(), 2);
+    assert!(
+        control
+            .placed_text()
+            .iter()
+            .any(|text| { text.container() == second_container && text.nodes() == &[6] })
+    );
 
     let collapsed = output(FlexItemCollapse::Collapsed);
     assert_eq!(size(&collapsed, 0).height, S::from_f64(40.0));
-    for node in [4, 5, 6] {
+    let anonymous_node = nested_anonymous.then_some(7);
+    for node in [4, 5, 6].into_iter().chain(anonymous_node) {
         assert_eq!(size(&collapsed, node), Size::ZERO);
         let final_entry = collapsed
             .final_entries()
             .iter()
             .find(|entry| entry.node() == node)
             .expect("hidden nodes retain final output entries");
-        assert_eq!(final_entry.output().size, Size::ZERO);
+        let source_index = crate::SourceIndex::new(usize::from(node == 4));
+        assert_eq!(
+            final_entry.output(),
+            crate::NodeOutputOf::with_source_index(source_index)
+        );
         assert!(
             !collapsed
                 .cache_store_entries()
@@ -750,10 +774,16 @@ fn assert_collapsed_flex_keeps_strut_without_placing_text<S: LayoutScalar>() {
 
 #[test]
 fn collapsed_flex_keeps_strut_without_placing_text_f32() {
-    assert_collapsed_flex_keeps_strut_without_placing_text::<f32>();
+    assert_collapsed_flex_keeps_strut_without_placing_text::<f32>(false);
 }
 
 #[test]
 fn collapsed_flex_keeps_strut_without_placing_text_f64() {
-    assert_collapsed_flex_keeps_strut_without_placing_text::<f64>();
+    assert_collapsed_flex_keeps_strut_without_placing_text::<f64>(false);
+}
+
+#[test]
+fn collapsed_flex_hides_nested_anonymous_text_after_measuring_its_strut() {
+    assert_collapsed_flex_keeps_strut_without_placing_text::<f32>(true);
+    assert_collapsed_flex_keeps_strut_without_placing_text::<f64>(true);
 }
