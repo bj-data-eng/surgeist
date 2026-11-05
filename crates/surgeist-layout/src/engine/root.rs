@@ -131,7 +131,7 @@ where
             )
         }
         crate::LayoutRootContextOf::PositionedAutoInsets(context) => {
-            admit_positioned_root(root, style, RootEdgeProfile::Zero)?;
+            admit_positioned_root(root, style, None)?;
             (
                 context.containing_flow_axes(),
                 crate::ParentFormattingContext::BlockFlow,
@@ -142,13 +142,7 @@ where
             )
         }
         crate::LayoutRootContextOf::RootLocalPositioned(context) => {
-            admit_positioned_root(
-                root,
-                style,
-                RootEdgeProfile::DefiniteInline {
-                    percentage_parent: context.containing_size().width,
-                },
-            )?;
+            admit_positioned_root(root, style, Some(context.containing_size()))?;
             (
                 context.containing_flow_axes(),
                 crate::ParentFormattingContext::BlockFlow,
@@ -322,17 +316,41 @@ where
 fn admit_positioned_root<Node, S: LayoutScalar, M>(
     root: Node,
     style: &NodeInputOf<S>,
-    edges: RootEdgeProfile<S>,
+    local_containing_size: Option<Size<crate::NonNegativeFiniteOf<S>>>,
 ) -> LayoutResultOf<Node, (), S, M>
 where
     Node: Copy,
 {
+    let horizontal = style.writing_mode == crate::WritingMode::HorizontalTb;
+    let edges = match local_containing_size {
+        Some(size) if horizontal => RootEdgeProfile::DefiniteInline {
+            percentage_parent: size.width,
+        },
+        _ => RootEdgeProfile::Zero,
+    };
     admit_root_box(root, style, crate::Position::Absolute, edges)?;
-    if style.writing_mode != crate::WritingMode::HorizontalTb {
-        return Err(root_context_error(
-            root,
-            crate::RootContextMismatch::WritingMode,
-        ));
+    if !horizontal {
+        let writing_mode_error =
+            || root_context_error(root, crate::RootContextMismatch::WritingMode);
+        let basis = local_containing_size.ok_or_else(writing_mode_error)?;
+        // Resolve only for admission. The normal box algorithm retains the
+        // original preferred dimensions and owns their min/max constraints.
+        for (axis, preferred, basis) in [
+            (PhysicalAxis::Horizontal, &style.size.width, basis.width),
+            (PhysicalAxis::Vertical, &style.size.height, basis.height),
+        ] {
+            let resolved = resolve_preferred_sizing(
+                preferred,
+                SizingAlgorithm::Block,
+                axis,
+                Some(basis.get()),
+                false,
+            )
+            .map_err(|error| sizing_resolution_error(root, error))?;
+            if !matches!(resolved, ResolvedPreferredSize::Definite(value) if value.is_finite()) {
+                return Err(writing_mode_error());
+            }
+        }
     }
     if style.item_is_replaced {
         return Err(root_context_error(
