@@ -46,6 +46,7 @@ fn capture(
     } else {
         ParagraphBaseDirection::LeftToRight
     };
+    let local_wrap = styles.each_ref().map(|style| style.wrap);
     let lengths = parts.map(|s| s.encode_utf16().count());
     let end = lengths[0] + lengths[1];
     let mut source = Source::new(parts.concat());
@@ -180,8 +181,8 @@ fn capture(
             controls,
             boundary_policies: vec![text::ParagraphBoundaryPolicy {
                 definition: text::ParagraphBoundaryDefinition::Connection(0),
-                preceding_wrap: Wrap::Word,
-                following_wrap: Wrap::Word,
+                preceding_wrap: local_wrap[0],
+                following_wrap: local_wrap[1],
                 ancestor_wrap: ancestor,
             }],
             replacements: vec![],
@@ -200,7 +201,7 @@ fn capture(
     )
     .unwrap();
     // The only cross-origin NCA is the captured outer inline (nested) or block
-    // (siblings). Same-origin pairs remain in their own Word-wrapping child.
+    // (siblings). Same-origin pairs use their own captured child policy.
     let policies = analyzed
         .wrapping_relations()
         .filter(|r| r.ancestor_wrap().is_none())
@@ -209,7 +210,7 @@ fn capture(
                 (
                     text::WrappingNeighbor::Text { origin: a, .. },
                     text::WrappingNeighbor::Text { origin: b, .. },
-                ) if a == b => Wrap::Word,
+                ) if a == b => local_wrap[a],
                 _ => ancestor,
             };
             text::WrappingPolicy {
@@ -227,7 +228,7 @@ fn capture(
         {
             assert_eq!(
                 r.ancestor_wrap(),
-                Some(if a == b { Wrap::Word } else { ancestor })
+                Some(if a == b { local_wrap[a] } else { ancestor })
             );
         }
     }
@@ -982,6 +983,111 @@ fn emergency_seam_uses_the_logical_before_box_for_fit_and_intrinsic_width() {
                         S::from_f64(expected),
                         "{before:?}/{after:?} {operation:?} rtl={rtl} nested={nested}"
                     );
+                }
+            }
+        }
+    }
+
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn disappearing_space_uses_its_own_box_for_soft_fit_and_plaintext() {
+    fn lane<S: LayoutScalar>() {
+        for (nested, rtl) in [(false, false), (false, true), (true, false), (true, true)] {
+            for (parts, space_box) in [(["A ", "A"], 0), (["A", " A"], 1)] {
+                for (space_wrap, neighbor_wrap, expected_cut, minimum) in [
+                    (Wrap::Word, Wrap::None, Some(2), 10.0),
+                    (Wrap::None, Wrap::Word, None, 30.0),
+                ] {
+                    let mut styles = [neighbor_wrap; 2];
+                    styles[space_box] = space_wrap;
+                    let paragraph = capture(
+                        parts,
+                        styles.map(|wrap| text::Style {
+                            wrap,
+                            white_space: text::WhiteSpace::Collapse,
+                            ..style(text::WordBreak::Normal, text::LineBreak::Normal, false)
+                        }),
+                        AHEM,
+                        nested,
+                        Wrap::Word,
+                        rtl,
+                        true,
+                    );
+                    let expected: std::collections::BTreeSet<_> =
+                        expected_cut.into_iter().collect();
+                    let ordinary = paragraph
+                        .prepared
+                        .opportunity_views()
+                        .filter(|offer| offer.kind() == text::PreparedBreakKind::Allowed)
+                        .map(|offer| offer.boundary().view().source_after().get())
+                        .collect();
+                    assert_eq!(
+                        expected, ordinary,
+                        "{parts:?} {space_wrap:?} rtl={rtl} nested={nested}"
+                    );
+                    let finite = compute::<S>(
+                        &paragraph,
+                        rtl,
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(S::from_f64(10.0)).unwrap(),
+                            ),
+                            crate::SizingOperation::Normal,
+                        ),
+                    );
+                    let layout = finite.placed_text()[0].layout();
+                    let ranges = layout
+                        .lines()
+                        .iter()
+                        .map(|line| line.range())
+                        .collect::<Vec<_>>();
+                    assert_eq!(layout.source().text().code_units(), [65, 32, 65]);
+                    super::whitespace_modes::assert_copy(layout, 3, "A A");
+                    let expected = if expected_cut.is_some() {
+                        vec![text::Range::new(0, 2), text::Range::new(2, 3)]
+                    } else {
+                        vec![text::Range::new(0, 3)]
+                    };
+                    assert_eq!(
+                        ranges, expected,
+                        "{parts:?} {space_wrap:?} rtl={rtl} nested={nested}"
+                    );
+                    for row in finite.final_inline_fragments() {
+                        let fragment = row.fragment();
+                        let line = fragment.finalized_fragment().finalized_line();
+                        assert_eq!(line.prepared_text(), paragraph.prepared);
+                        assert_eq!(
+                            line.feedback().advance,
+                            if expected_cut.is_some() { 10.0 } else { 30.0 }
+                        );
+                    }
+                    for (operation, expected) in [
+                        (crate::SizingOperation::MinContent, minimum),
+                        (crate::SizingOperation::MaxContent, 30.0),
+                    ] {
+                        let intrinsic = compute::<S>(
+                            &paragraph,
+                            rtl,
+                            crate::AxisSizingRequestOf::new(
+                                crate::AvailableSpaceOf::Indefinite,
+                                operation,
+                            ),
+                        );
+                        let root = intrinsic
+                            .unrounded_entries()
+                            .iter()
+                            .find(|entry| entry.node() == 0)
+                            .unwrap()
+                            .output();
+                        assert_eq!(
+                            root.size.width,
+                            S::from_f64(expected),
+                            "{parts:?} {space_wrap:?} {operation:?} rtl={rtl} nested={nested}"
+                        );
+                    }
                 }
             }
         }

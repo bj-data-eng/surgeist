@@ -112,7 +112,7 @@ fn selected<S: LayoutScalar>(
     lines.into_iter().map(Option::unwrap).collect()
 }
 
-fn assert_copy(layout: &surgeist_text::Layout, length: usize, expected: &str) {
+pub(super) fn assert_copy(layout: &surgeist_text::Layout, length: usize, expected: &str) {
     let endpoint = |offset, affinity| {
         layout
             .positions()
