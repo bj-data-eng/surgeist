@@ -1884,3 +1884,63 @@ hypothetical_direction = "ltr"
 root_direction = "variant"
 root_writing_mode = "horizontal-tb"
 inline_offset = 0
+
+[[records]]
+source = "html/block/block_aspect_ratio_fill_min_height.html"
+source_sha256 = "b530656986203eb30c78ece33f93414a52831ad72f2188bc911aa873dbbe7807"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "39891236657c883812e7be59b5bbd7a1fe9e2ed2d2c173ae2ae154cda74c2484"
+content_box_ltr = "0552cd781dd49235757a93d13b22e86a1ccf51f56f47ee4d885bcc5bfc2c9341"
+border_box_rtl = "8d90efc220743898cbbf7a0392577d02784307902b7775908af501ace98510ba"
+content_box_rtl = "5835a454044bb14b445cda249b96af49c71182e418e9f185011a65ac76bbcbfd"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/block/block_aspect_ratio_fill_min_width.html"
+source_sha256 = "135acc9c7a51142e537985c4c8c52a4dff42e994c5190f442f1b597414acac63"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "e79e6b1fbee626806e25ea8b1137dba73c5d96427ad53f26cc2ddfb206cadce3"
+content_box_ltr = "e1e9aa18ba7929943dfd45dd77dadefd17c7f7f3c1f58fb4bb7ba2f221b87b29"
+border_box_rtl = "27862445fa02d1fcef8ad4fe23e678dba118504f401939c2d7c3fa6d69502130"
+content_box_rtl = "4749d76f8b65207f04fa7ef915cef3c476b1e83cf662aa7fedc9f3913063ff81"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/block/block_margin_y_collapse_through_blocked_by_aspect_ratio.html"
+source_sha256 = "7f043f9c68dc1ac3892e32b4d90f8f721336e06733fd880f1b79ae2b6a6ac1b8"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "21c3e59ac37f99e411b9a7bf614e72f097d745c0cfae8692f27203576330065a"
+content_box_ltr = "6ac5f388ec3812b98d22ce667cdb77a6f20fcb855bdb125b3828c4afe04642e9"
+border_box_rtl = "7c0b2b6d0da799e72196fe2815961186ea669cacaf5d6d589b154be1f993d2b5"
+content_box_rtl = "45be6670ded0c521de2ea0a440a2e1b90acdf64783ec65b01da89bd8b3f5e331"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
