@@ -6704,3 +6704,90 @@ fn fri08_c07_t03_optional_math_flex_results_preserve_both_scalar_lanes() {
     assert_fri08_c07_t03_optional_math_flex_results::<f32>();
     assert_fri08_c07_t03_optional_math_flex_results::<f64>();
 }
+
+fn assert_flex_basis_does_not_replace_intrinsic_content<S: LayoutScalar>() {
+    let scalar = S::from_f64;
+    let px = |value| PreferredSizeOf::px(scalar(value));
+    let root = NodeInputOf {
+        display: Display::Flex,
+        ..NodeInputOf::default()
+    };
+    let item = NodeInputOf {
+        display: Display::Block,
+        flex_basis: FlexBasisOf::px(scalar(50.0)),
+        size: Size::new(PreferredSizeOf::AUTO, px(100.0)),
+        ..NodeInputOf::default()
+    };
+    let block = NodeInputOf {
+        display: Display::Block,
+        size: Size::new(px(20.0), px(10.0)),
+        ..NodeInputOf::default()
+    };
+    let frame = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::NONE,
+        OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    );
+    let request = |operation, space| {
+        frame.request(Size::new(
+            AxisSizingRequestOf::new(space, operation),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+        ))
+    };
+    let normal = request(SizingOperation::Normal, AvailableSpaceOf::Indefinite);
+    let max_content = request(SizingOperation::MaxContent, AvailableSpaceOf::Indefinite);
+    let mut tree = Fri07C01CompositionTree {
+        tree: PublicLayoutTreeOf::new()
+            .children(1, [3])
+            .children(3, [5])
+            .children(5, [])
+            .style(1, root.clone())
+            .style(3, item.clone())
+            .style(5, block.clone()),
+        ..Fri07C01CompositionTree::new()
+    };
+
+    for root_request in [normal, max_content, normal] {
+        let batch = compute_layout(&tree, 1, root_request).expect("flex layout succeeds");
+        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+            let output = |node| fri07_c01_composition_output(entries, node);
+            assert_eq!(output(1).size, Size::new(scalar(20.0), scalar(100.0)));
+            assert_eq!(output(3).size, Size::new(scalar(20.0), scalar(100.0)));
+            assert_eq!(output(5).size, Size::new(scalar(20.0), scalar(10.0)));
+        }
+        batch
+            .apply_to(&mut tree)
+            .expect("cache publication succeeds");
+    }
+
+    let definite_root = NodeInputOf {
+        size: Size::new(px(100.0), PreferredSizeOf::AUTO),
+        ..root
+    };
+    let definite_tree = PublicLayoutTreeOf::new()
+        .children(1, [3])
+        .children(3, [5])
+        .children(5, [])
+        .style(1, definite_root)
+        .style(3, item)
+        .style(5, block);
+    let batch = compute_layout(&definite_tree, 1, normal).expect("definite flex layout succeeds");
+    let output = |node| fri07_c01_composition_output(batch.unrounded_entries(), node);
+    assert_eq!(output(1).size.width, scalar(100.0));
+    assert_eq!(output(3).size.width, scalar(50.0));
+    assert_eq!(output(5).size.width, scalar(20.0));
+}
+
+#[test]
+fn flex_basis_does_not_replace_intrinsic_content_f32() {
+    assert_flex_basis_does_not_replace_intrinsic_content::<f32>();
+}
+
+#[test]
+fn flex_basis_does_not_replace_intrinsic_content_f64() {
+    assert_flex_basis_does_not_replace_intrinsic_content::<f64>();
+}
