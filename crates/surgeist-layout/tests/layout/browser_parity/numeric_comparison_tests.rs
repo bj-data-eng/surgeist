@@ -463,8 +463,7 @@ fn captured_flex_baselines_use_original_prepared_text() {
     let stylesheet = include_bytes!("scripts/gentest/test_base_style.css");
     let encoded_font =
         include_bytes!("../../../../surgeist-font/tests/fixtures/ahem-original/Ahem.woff2");
-    let raw_report =
-        include_str!("captured/flex-content-baselines/xml/generation-reports/all.json");
+    let raw_report = include_str!("captured/flex-text-differences/xml/generation-reports/all.json");
     let report = capture_authority::unique_json(raw_report).unwrap();
     let inputs = &report["metadata"]["inputs"];
     assert_eq!(inputs[ORIGINAL], capture_authority::sha256(source));
@@ -483,7 +482,7 @@ fn captured_flex_baselines_use_original_prepared_text() {
             (
                 $variant,
                 include_str!(concat!(
-                    "captured/flex-content-baselines/xml/flex/fri07_collapsed_strut_single_line__",
+                    "captured/flex-text-differences/xml/flex/fri07_collapsed_strut_single_line__",
                     $variant,
                     ".xml"
                 )),

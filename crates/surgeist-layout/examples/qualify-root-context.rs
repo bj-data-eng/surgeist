@@ -60,6 +60,12 @@ fn parse_arguments(
         [mode] if mode == "--check-published-measured-grid-differences" => {
             Ok((None, QualificationMode::CheckPublishedMeasuredGrid))
         }
+        [mode] if mode == "--publish-flex-text-differences" => {
+            Ok((None, QualificationMode::PublishFlexText))
+        }
+        [mode] if mode == "--check-published-flex-text-differences" => {
+            Ok((None, QualificationMode::CheckPublishedFlexText))
+        }
         [flag, source] if flag == "--fixture" && !source.starts_with("--") => {
             Ok((Some(source.as_str()), QualificationMode::Regular))
         }
@@ -140,7 +146,7 @@ mod tests {
     }
 
     #[test]
-    fn measured_grid_publication_commands_have_a_fixed_output() {
+    fn measured_grid_and_flex_text_publication_commands_have_fixed_outputs() {
         for (flag, mode) in [
             (
                 "--publish-measured-grid-differences",
@@ -149,6 +155,14 @@ mod tests {
             (
                 "--check-published-measured-grid-differences",
                 QualificationMode::CheckPublishedMeasuredGrid,
+            ),
+            (
+                "--publish-flex-text-differences",
+                QualificationMode::PublishFlexText,
+            ),
+            (
+                "--check-published-flex-text-differences",
+                QualificationMode::CheckPublishedFlexText,
             ),
         ] {
             assert_eq!(parse_arguments(&arguments(&[flag])), Ok((None, mode)));

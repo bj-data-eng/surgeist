@@ -48,6 +48,8 @@ pub(super) enum QualificationMode {
     DeriveCanonicalBoxes,
     PublishMeasuredGrid,
     CheckPublishedMeasuredGrid,
+    PublishFlexText,
+    CheckPublishedFlexText,
 }
 
 impl QualificationMode {
@@ -64,7 +66,9 @@ impl QualificationMode {
     fn box_observations(self) -> BoxObservationRequest {
         match self {
             Self::ElementScrollSizeDiagnostics => BoxObservationRequest::ElementScrollSizes,
-            Self::FlexContentTextDiagnostics => BoxObservationRequest::FlexContentText,
+            Self::FlexContentTextDiagnostics
+            | Self::PublishFlexText
+            | Self::CheckPublishedFlexText => BoxObservationRequest::FlexContentText,
             Self::MeasuredLeafDiagnostics
             | Self::PublishMeasuredGrid
             | Self::CheckPublishedMeasuredGrid => BoxObservationRequest::MeasuredLeaf,
@@ -134,7 +138,9 @@ fn select_records(
                 | QualificationMode::CheckPublishedCanonicalBoxes
                 | QualificationMode::DeriveCanonicalBoxes
                 | QualificationMode::PublishMeasuredGrid
-                | QualificationMode::CheckPublishedMeasuredGrid => {
+                | QualificationMode::CheckPublishedMeasuredGrid
+                | QualificationMode::PublishFlexText
+                | QualificationMode::CheckPublishedFlexText => {
                     return Err("durable modes require the complete inventory".into());
                 }
             }
@@ -378,6 +384,8 @@ pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> 
             | QualificationMode::DeriveCanonicalBoxes
             | QualificationMode::PublishMeasuredGrid
             | QualificationMode::CheckPublishedMeasuredGrid
+            | QualificationMode::PublishFlexText
+            | QualificationMode::CheckPublishedFlexText
     ) {
         if fixture.is_some() {
             return Err("durable modes require the complete inventory".into());
@@ -563,6 +571,7 @@ struct SemanticCapture<'a> {
     inventory: &'a Inventory,
     corpus: &'a BrowserCorpus,
     report: &'a browser::BrowserGenerationReport,
+    flex_report: Option<&'a str>,
     lineage: SemanticLineage,
     requirements:
         Option<&'a BTreeMap<String, crate::parity_support::capture_authority::CurrentRequirements>>,
@@ -628,18 +637,19 @@ fn validate_corpus(
             .count()
     );
     let mut terminal_cases = Vec::new();
+    let flex_report = if mode.box_observations() == BoxObservationRequest::FlexContentText {
+        Some(String::from_utf8(report.to_bytes()?)?)
+    } else {
+        None
+    };
     let capture = SemanticCapture {
         root,
         inventory,
         corpus,
         report,
+        flex_report: flex_report.as_deref(),
         lineage: validation.lineage,
         requirements: validation.requirements,
-    };
-    let flex_report = if mode.box_observations() == BoxObservationRequest::FlexContentText {
-        Some(String::from_utf8(report.to_bytes()?)?)
-    } else {
-        None
     };
     let mut native_errors = Vec::new();
     let mut numeric = NumericDiagnostics::default();
@@ -652,18 +662,7 @@ fn validate_corpus(
         let xml = fs::read_to_string(root.join(artifact.output().as_str()))?;
         // Source certificates and parsing remain fatal in every mode.
         qualify_xml(&xml, case)?;
-        let golden = if let Some(report) = &flex_report {
-            let source = artifact.source().as_str();
-            crate::parity_support::Golden::parse_with_flex_content_text(
-                &xml,
-                report,
-                source,
-                &fs::read(root.join(source))?,
-                artifact.output().as_str(),
-            )?
-        } else {
-            crate::parity_support::Golden::parse(&xml)?
-        };
+        let golden = parse_capture_golden(root, artifact, &xml, capture.flex_report)?;
         if golden.has_element_scroll_sizes()
             != (mode.box_observations() != BoxObservationRequest::Geometry)
         {
@@ -796,7 +795,9 @@ fn validate_corpus(
         | QualificationMode::CheckPublishedCanonicalBoxes
         | QualificationMode::DeriveCanonicalBoxes
         | QualificationMode::PublishMeasuredGrid
-        | QualificationMode::CheckPublishedMeasuredGrid => {}
+        | QualificationMode::CheckPublishedMeasuredGrid
+        | QualificationMode::PublishFlexText
+        | QualificationMode::CheckPublishedFlexText => {}
     }
     if let Some(output) = validation.terminal_cases.as_mut() {
         **output = terminal_cases;
@@ -1000,7 +1001,9 @@ fn inventory(
         | QualificationMode::CheckPublishedCanonicalBoxes
         | QualificationMode::DeriveCanonicalBoxes
         | QualificationMode::PublishMeasuredGrid
-        | QualificationMode::CheckPublishedMeasuredGrid => None,
+        | QualificationMode::CheckPublishedMeasuredGrid
+        | QualificationMode::PublishFlexText
+        | QualificationMode::CheckPublishedFlexText => None,
     };
     for (name, bytes) in INPUTS
         .iter()
@@ -1807,6 +1810,29 @@ use crate::parity_support::capture_authority::{
     PathDigest, QualifiedCase, identity_from_verified_inputs,
 };
 
+fn parse_capture_golden(
+    root: &Path,
+    artifact: &browser::BrowserGeneratedArtifact,
+    xml: &str,
+    flex_report: Option<&str>,
+) -> Result<crate::parity_support::Golden> {
+    use crate::parity_support::Golden;
+    match flex_report {
+        Some(report) => {
+            let source = artifact.source();
+            publication::require_regular_input(root, source)?;
+            Ok(Golden::parse_with_flex_content_text(
+                xml,
+                report,
+                source.as_str(),
+                &fs::read(root.join(source.as_str()))?,
+                artifact.output().as_str(),
+            )?)
+        }
+        None => Ok(Golden::parse(xml)?),
+    }
+}
+
 fn qualify_semantic_case(
     capture: &SemanticCapture<'_>,
     artifact: &browser::BrowserGeneratedArtifact,
@@ -1821,6 +1847,7 @@ fn qualify_semantic_case(
         inventory,
         corpus,
         report,
+        flex_report,
         lineage,
         requirements,
     } = capture;
@@ -1873,7 +1900,8 @@ fn qualify_semantic_case(
     publication::require_regular_input(root, artifact.output())?;
     let xml = fs::read(root.join(artifact.output().as_str()))?;
     if Sha256Digest::from_bytes(&xml).as_str() != captured.output_sha256
-        || crate::parity_support::Golden::parse(std::str::from_utf8(&xml)?)? != *golden
+        || parse_capture_golden(root, artifact, std::str::from_utf8(&xml)?, *flex_report)?
+            != *golden
     {
         return Err(semantic_identity_changed("actual capture XML"));
     }
@@ -1898,7 +1926,9 @@ fn qualify_semantic_case(
                 .map(|s| s.reference.path.as_str().to_owned())
         })
         .collect();
-    let (observation, request_name) = if golden.measured_leaf.is_some() {
+    let (observation, request_name) = if golden.has_flex_content_text() {
+        (BoxObservationRequest::FlexContentText, "flex-content-text")
+    } else if golden.measured_leaf.is_some() {
         (BoxObservationRequest::MeasuredLeaf, "measured-leaf")
     } else if golden.has_element_scroll_sizes() {
         (

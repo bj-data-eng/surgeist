@@ -65,6 +65,10 @@ impl Golden {
         self.element_scroll_sizes.is_some()
     }
 
+    pub fn has_flex_content_text(&self) -> bool {
+        self.flex_content_text.is_some()
+    }
+
     /// Bind the retained source and capture report before admitting prepared Flex text.
     pub fn parse_with_flex_content_text(
         xml: &str,

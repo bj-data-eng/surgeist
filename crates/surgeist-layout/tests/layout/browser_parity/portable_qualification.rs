@@ -377,7 +377,7 @@ impl AdmittedEdition {
 }
 
 pub(super) struct AdmittedRegistry {
-    editions: [AdmittedEdition; 2],
+    editions: [AdmittedEdition; 3],
     owner: PathBuf,
     selected_records: BTreeMap<String, Value>,
 }
@@ -427,6 +427,9 @@ const REGISTERED_BOX_TERMINAL_SHA256: &str =
 const REGISTERED_MEASURED_GRID_TERMINAL_SHA256: &str =
     "28435f3977feecfc76bfd28de1c364124d0e5c4abc08b7f0f362952b08fa27fc";
 
+const REGISTERED_FLEX_TEXT_TERMINAL_SHA256: &str =
+    "b7c3de2a9dbaf74b32263ac2cbdc671c1d8ed6e3b1999c2eb39712eb98d2d54f";
+
 pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
     let editions = [
         admit(
@@ -441,6 +444,13 @@ pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
             Registration {
                 edition: PublishedEdition::MeasuredGridDifferences,
                 terminal_sha256: REGISTERED_MEASURED_GRID_TERMINAL_SHA256,
+            },
+        )?,
+        admit(
+            owner,
+            Registration {
+                edition: PublishedEdition::FlexTextDifferences,
+                terminal_sha256: REGISTERED_FLEX_TEXT_TERMINAL_SHA256,
             },
         )?,
     ];
@@ -536,7 +546,8 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
     {
         return Err(changed("complete current-owner input census"));
     }
-    let report: Report = parse_json(&read_pinned(&root, &terminal.report)?)?;
+    let report_bytes = read_pinned(&root, &terminal.report)?;
+    let report: Report = parse_json(&report_bytes)?;
     if report.filter.is_some()
         || report.summary.generated != terminal.cases.len()
         || report.generated.len() != terminal.cases.len()
@@ -585,14 +596,23 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
     let mut consumed = BTreeSet::new();
     let mut cases = Vec::new();
     let measured = edition == PublishedEdition::MeasuredGridDifferences;
-    let (observation_request, observation_input_sha256) = if measured {
-        let request = terminal
-            .retained_inputs
-            .get("observation-request.json")
-            .ok_or_else(|| changed("missing retained measured request"))?;
-        ("measured-leaf", Some(request.as_str()))
-    } else {
-        ("geometry", None)
+    let flex_text = edition == PublishedEdition::FlexTextDifferences;
+    let (observation_request, observation_input_sha256) = match edition {
+        PublishedEdition::CanonicalBoxDifferences => ("geometry", None),
+        PublishedEdition::MeasuredGridDifferences | PublishedEdition::FlexTextDifferences => {
+            let request = terminal
+                .retained_inputs
+                .get("observation-request.json")
+                .ok_or_else(|| changed("missing retained observation request"))?;
+            (
+                if flex_text {
+                    "flex-content-text"
+                } else {
+                    "measured-leaf"
+                },
+                Some(request.as_str()),
+            )
+        }
     };
     for case in &terminal.cases {
         let artifact = artifacts
@@ -642,12 +662,28 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
             return Err(changed("canonical source/history mapping"));
         }
         let xml = read_pinned(&root, &case.case.output)?;
-        let golden = support::Golden::parse(
-            std::str::from_utf8(&xml).map_err(|error| malformed(error.to_string()))?,
-        )
+        let xml_text = std::str::from_utf8(&xml).map_err(|error| malformed(error.to_string()))?;
+        let golden = if flex_text {
+            let source = read_pinned(
+                &root,
+                &PathDigest {
+                    path: case.case.source.clone(),
+                    sha256: artifact.source_sha256.clone(),
+                },
+            )?;
+            support::Golden::parse_with_flex_content_text(
+                xml_text,
+                std::str::from_utf8(&report_bytes).map_err(|error| malformed(error.to_string()))?,
+                &case.case.source,
+                &source,
+                &case.case.output.path,
+            )
+        } else {
+            support::Golden::parse(xml_text)
+        }
         .map_err(|error| malformed(error.to_string()))?;
         if golden.name != case.case.name
-            || golden.has_element_scroll_sizes() != measured
+            || golden.has_element_scroll_sizes() != (measured || flex_text)
             || golden.measured_leaf.is_some() != measured
         {
             return Err(changed("canonical observation profile"));

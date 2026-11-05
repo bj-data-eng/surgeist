@@ -15,6 +15,7 @@ enum Edition {
     RootContextV4,
     CanonicalBoxDifferences,
     MeasuredGridDifferences,
+    FlexTextDifferences,
 }
 impl Edition {
     fn name(self) -> &'static str {
@@ -25,6 +26,7 @@ impl Edition {
             Self::RootContextV4 => None,
             Self::CanonicalBoxDifferences => Some(PublishedEdition::CanonicalBoxDifferences),
             Self::MeasuredGridDifferences => Some(PublishedEdition::MeasuredGridDifferences),
+            Self::FlexTextDifferences => Some(PublishedEdition::FlexTextDifferences),
         }
     }
     fn lineage(self) -> SemanticLineage {
@@ -71,6 +73,10 @@ pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
         }
         QualificationMode::CheckPublishedMeasuredGrid => {
             (Edition::MeasuredGridDifferences, InputAccess::ReadOnly)
+        }
+        QualificationMode::PublishFlexText => (Edition::FlexTextDifferences, InputAccess::Prepare),
+        QualificationMode::CheckPublishedFlexText => {
+            (Edition::FlexTextDifferences, InputAccess::ReadOnly)
         }
         _ => return Err("expected a durable publication mode".into()),
     };

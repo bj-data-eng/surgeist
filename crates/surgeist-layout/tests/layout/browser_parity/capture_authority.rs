@@ -11,6 +11,7 @@ pub(crate) const EDITION: &str = "canonical-box-differences";
 pub(crate) const MEASURED_GRID_EDITION: &str = "measured-grid-differences";
 pub(crate) const ARTIFACT_ROOT: &str =
     "tests/layout/browser_parity/captured/canonical-box-differences";
+const FLEX_TEXT_EDITION: &str = "flex-text-differences";
 pub(crate) const TERMINAL: &str = "qualification.json";
 pub(crate) const TERMINAL_SCHEMA: u8 = 2;
 const OBSERVATION_REQUEST: &str = "observation-request.json";
@@ -559,7 +560,10 @@ impl Qualification {
     }
     fn validate(&self) -> Result<()> {
         if self.schema_version != TERMINAL_SCHEMA
-            || !matches!(self.edition.as_str(), EDITION | MEASURED_GRID_EDITION)
+            || !matches!(
+                self.edition.as_str(),
+                EDITION | MEASURED_GRID_EDITION | FLEX_TEXT_EDITION
+            )
             || self.declaration.path != "corpus.toml"
             || self.report.path != "xml/generation-reports/all.json"
             || self.ownership.path != "xml/generation-ownership.json"

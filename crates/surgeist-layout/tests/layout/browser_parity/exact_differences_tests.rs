@@ -399,7 +399,7 @@ fn completed_empty_native_inline_family_is_rejected_even_without_text_fragments_
         .attrs
         .insert("width".into(), "100px".into());
     golden.root.style.attrs.remove("height");
-    let source = source_census(&golden.root, &golden.expectations, None).unwrap();
+    let source = source_census(&golden.root, &golden.expectations, None, false).unwrap();
     let tree = TestTree::from_golden(&golden.root, None).unwrap();
     assert!(tree.paragraphs.is_empty());
     let request = output_census_native_request();
@@ -491,8 +491,16 @@ fn completed_prepared_text_and_both_fragment_channels_are_rejected_by_box_snapsh
     // This is the authored root plus its one original Text child. It is a direct
     // snapshot guard stimulus, never admission to the no-text source profile.
     let source = vec![
-        ("/".to_owned(), vec!["/0".to_owned()]),
-        ("/0".to_owned(), Vec::new()),
+        SourceNode {
+            path: "/".to_owned(),
+            role: SourceRole::OrdinaryBox,
+            children: vec!["/0".to_owned()],
+        },
+        SourceNode {
+            path: "/0".to_owned(),
+            role: SourceRole::OrdinaryBox,
+            children: Vec::new(),
+        },
     ];
     assert_eq!(
         snapshot_batch(&tree, &batch, &source).unwrap_err(),
@@ -502,7 +510,7 @@ fn completed_prepared_text_and_both_fragment_channels_are_rejected_by_box_snapsh
         }
     );
     assert!(matches!(
-        source_census(&golden.root, &golden.expectations, None),
+        source_census(&golden.root, &golden.expectations, None, false),
         Err(QualificationError::UnsupportedObservation { .. })
     ));
 }
