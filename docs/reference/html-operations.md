@@ -2635,39 +2635,39 @@ descriptions below retain their existing link anchors.
 ### Parse cost per source unit
 
 A caller sizes `HtmlParseLimits` from the cost of the input it admits. These figures were
-measured with generous limits at commit `72c5ae658` by parsing the same repeated input at
-doubling sizes and taking the slope between the two largest, so each value is the marginal
-cost of one more repeated source unit (one UTF-8 byte of ASCII or one UTF-16 unit) and not a
-fixed prefix. Work credits are deterministic: a build profile does not change them. Each
-cost is linear in the source (the credits added by each doubling are twice the previous).
-Every row is one of the resources a limit caps; a limit below the product of the figure and
-the source units can refuse the parse.
+measured with generous limits at commit `19289e181` by parsing the same repeated input at ten
+sizes, the powers of two from 4,096 to 131,072 source units and 10,000, 20,000, 40,000 and
+80,000, and dividing each resource's total by the units of the document. A figure is a range
+over those sizes, and the high end is the figure to size a limit by: a capacity or a layout
+steps up when a buffer doubles, so the cost per unit depends on where a document ends in the
+doubling. Work credits are deterministic: a build profile does not change them. The cost is
+linear in the source, up to those steps. A limit below the product of the high end and the
+source units can refuse the parse.
 
 | Repeated input | Work credits | Capacity bytes (live, high water) | Peak transient bytes | Atomic layout bytes | Auxiliary entries (high water) | Source map entries | Managed UTF-16 units | Retained diagnostics |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Text `a` (implied `html`, `head` and `body`, or inside `body`) | 31,400 | 3,280 | 3,280 | 918 | 25.2 | 14 | 2 | 0 |
-| Character reference `&amp;` (per source unit of the five) | 6,660 | 656 | 656 | 184 | 5.05 | 2.8 | 0.4 | 0 |
-| Ambiguous `< ` (per source unit of the two) | 39,450 | 4,720 | 5,580 | 1,835 | 26.7 | 18.5 | 2 | 0.5 |
-| One attribute name of `a`s (per name unit) | 3,220 | 354 | 469 | 229 | 0 | 4 | 1 | 0 |
-| Distinct attribute names `n0 n1 ...` (per source unit, 2,400 to 23,000 units) | 7,500 to 9,200 | 660 to 1,360 | 760 to 1,750 | 300 to 920 | 1.0 to 1.2 | 5.5 | 1.7 | 0 |
+| Text `a` (implied `html`, `head` and `body`, or inside `body`) | 35,861 to 36,258 | 4,404 to 4,927 | 4,905 to 5,048 | 1,465 to 1,664 | 23.2 to 25.0 | 13.96 to 14.00 | 2.00 to 2.04 | 0 |
+| Character reference `&amp;` (per source unit of the five) | 6,670 to 7,303 | 655 to 788 | 655 to 788 | 183 to 224 | 5.04 to 5.50 | 2.80 to 2.82 | 0.40 to 0.44 | 0 |
+| Ambiguous `< ` (per source unit of the two) | 38,962 to 42,027 | 4,639 to 5,599 | 5,340 to 6,439 | 1,465 to 1,792 | 24.7 to 26.5 | 18.44 to 18.50 | 2.00 to 2.04 | 0.497 to 0.500 |
+| One attribute name of `a`s (per name unit) | 3,964 to 4,409 | 567 to 698 | 751 to 917 | 366 to 448 | 0 to 0.03 | 4.00 to 4.02 | 1.00 to 1.05 | 0 |
+| Distinct attribute names `n0 n1 ...` (per source unit) | 2,999 to 3,526 | 346 to 431 | 438 to 540 | 183 to 224 | 0.31 to 0.43 | 2.93 to 3.25 | 0.00 to 0.05 | 0 |
 
-A reference or a `< ` costs its five or two units: `&amp;` is 33,300 credits and 3,280 capacity bytes;
-`< ` is 78,900 credits and 9,440 capacity bytes, and retains one diagnostic, whose payload is
-empty. Capacity is live bytes at the high-water mark; the high water of a growing vector steps
-at its doublings, so the distinct-name range covers where in a doubling a document ends.
-One mebibyte of plain text therefore needs about 33 billion work credits and 3.4 GB of
-managed capacity before the tree it builds, and the largest indivisible allocation of 918 bytes
-per unit (a vector of per-unit records) is 0.96 GB. The text row retains 2,710 capacity bytes per
-unit once the parse ends, and the other rows keep less.
+A reference or a `< ` costs its five or two units: at the high end `&amp;` is 36,515 credits and
+3,940 capacity bytes, and `< ` is 84,054 credits and 11,198 capacity bytes, and retains one
+diagnostic, whose payload is empty. One mebibyte of plain text therefore needs about 38 billion
+work credits and 5.2 GB of managed capacity (4,927 bytes for each of 1,048,576 units) before the
+tree it builds, and its largest indivisible allocation, which grows with the document, reaches
+1,664 bytes per unit, 1.7 GB.
 
 Plain text is the expensive case, because every Data-state character is its own token. About
-31,400 credits split into 11,350 copied bytes, 10,430 reserved bytes, 8,800 inspected bytes,
-508 record visits, 180 record writes, 88 provider calls, 6 input reads and 3 state steps.
-Reading the tokens costs the tokenizer 1,360 credits; the tree builder spends the other 30,000,
-appending each token to the open text node, which retains 14 source map entries and two history
-groups for the character. A token that spans many units costs
-far less per unit: the `</` and name of a rejected end tag in `script` content form one token, and
-a run of 8,000 units that way costs 5,300 credits and 710 capacity bytes per unit.
+36,258 credits for a unit at 131,093 units split into 15,364 reserved bytes, 11,323 copied bytes,
+8,789 inspected bytes, 507 record visits, 179 record writes, 88 provider calls, 6 input reads and
+3 state steps; the reserved bytes are the part that steps with a buffer doubling. Reading the
+tokens costs the tokenizer about 1,360 credits; the tree builder spends the rest, appending each
+token to the open text node, which retains 14 source map entries and two history groups for the
+character. A token that spans many units costs far less per unit: the `</` and name of a rejected
+end tag in `script` content form one token, and a run of 65,561 units that way costs 6,006
+credits and 878 capacity bytes per unit.
 
 Batching consecutive Text tokens in the tree builder was evaluated against these figures and is not
 implemented. It could cut the text row by about a factor of six, but it is not exact. The
@@ -2680,18 +2680,24 @@ for the same source, which changes what the history and reverse queries report. 
 is right is a decision about the provenance contract and not an engineering constant, so it is
 left to a separate change.
 
-A start tag recognises a repeated attribute name through a compressed binary radix tree
-of the names it has kept, which holds one leaf and one branch for each name however long the
-name is. A name of 16,000 units holds no auxiliary entry for its units, where a tree of one
-record for each bit held 16 for each unit, 256,014 in all, and the work of a lookup follows the
-length of the name and not the number of names before it.
+A start tag recognises a repeated attribute name through a compressed binary radix tree of
+the names it has kept, which holds one leaf and one branch for each name, 80 bytes, however long
+the name is. A name of 16,000 units holds no auxiliary entry for its units, where a tree of one
+record for each bit held 16 for each unit, 256,014 in all. The tree reads a name as 17 bits for each
+unit and one end marker, and a lookup follows the probe's bits and stops at the first branch past
+the probe's end marker, since the names below that branch agree with one another on every earlier
+bit and so differ from the probe where any one of them does. It reads at most `17 * units + 1`
+branches, and the walk that places a new branch the same, so a name takes at most
+`2 * (17 * units + 2)` steps whatever names precede it, and the work of a start tag's names is
+linear in their total length. A name past two hundred kept names on one path takes 4 steps where
+the full walk took 202.
 
 Text inside `textarea` is the one text run whose cost is not linear in its length, a known
 exception tracked as "surgeist-html-parser: keep textarea text accumulation linear". The work
-credits for each unit of a run grow with the length of the run, closed or not: 63,454, 64,877,
-68,466, 76,231, 92,137 and 124,102 for each unit at 1,000, 2,000, 4,000, 8,000, 16,000 and
-32,000 units, against a constant 31,400 for the same text in `body`, and the copied bytes for
-each unit grow from 20,305 to 50,710 over the same lengths. A caller sizing `work_credits` for
+credits for each unit of a run grow with the length of the run, closed or not: 63,530, 64,947,
+68,533, 76,297, 92,202 and 124,167 for each unit at 1,000, 2,000, 4,000, 8,000, 16,000 and
+32,000 units, against 32,054 falling to 31,389 over the same lengths for the same text in
+`body`, and the copied bytes for each unit grow from 20,380 to 50,774 over the same lengths. A caller sizing `work_credits` for
 `textarea` content should use the figure for the longest run it admits.
 
 <a id="group-walk-cost"></a>
@@ -2701,19 +2707,23 @@ base element's search is skipped when the change cannot move the first base with
 other three are not indexed.
 
 - **Base.** A base without an `href` is never the first base with one, so inserting it needs no
-  search, and removing it needs none unless the removed subtree held the first. n bases without an
-  `href` cost 1.5 million, 3.0 million, 6.0 million and 12.0 million record visits at 500, 1,000,
-  2,000 and 4,000, where the search made them cost 2.4 million to 68.1 million, and the adoption agency
-  moving 4,000 of them costs 8.4 million where it cost 305.2 million. A base with an `href`, an
-  `href` change and the removal of a subtree while a first base with an `href` is recorded still
-  search the tree, from its start to the first base with an `href` outside the removed subtree.
-- **Checked named radios.** n checked radios of one name cost 196.7 million, 499.2 million, 1,423.8
-  million and 4,550.8 million work credits at 500, 1,000, 2,000 and 4,000 (7.1 million to 294.9
+  search once every base with an `href` in the inserted subtree has had its hook run, and removing
+  it needs none unless the removed subtree held the first. A subtree's hooks run in tree order after
+  the whole subtree is attached, so while a later base with an `href` is pending the hook of a
+  base before it searches, and the occurrences it records are the search's. n bases without an
+  `href` cost 1.52 million, 3.01 million, 6.00 million and 11.97 million record visits at 500,
+  1,000, 2,000 and 4,000, where the search made them cost 2.4 million to 68.1 million, and the
+  adoption agency moving 4,096 of them adds 8.7 million where it added 305.2 million for 4,000.
+  A base with an `href`, an `href` change, a base before a pending base with an `href` and the
+  removal of a subtree while a first base with an `href` is recorded still search the tree, from
+  its start to the first base with an `href` outside the removed subtree.
+- **Checked named radios.** n checked radios of one name cost 197.0 million, 499.8 million, 1,424.8
+  million and 4,552.9 million work credits at 500, 1,000, 2,000 and 4,000 (7.1 million to 294.9
   million record visits).
-- **Open details with a name.** n open details of distinct names cost 162.8 million, 409.0 million,
-  1,150.9 million and 3,642.7 million credits (5.2 million to 196.0 million visits).
-- **`template for`.** n empty elements after one another cost 90.5 million, 186.1 million, 394.4
-  million and 880.1 million credits (3.2 million to 67.6 million visits).
+- **Open details with a name.** n open details of distinct names cost 167.2 million, 425.8 million,
+  1,216.4 million and 3,901.5 million credits (5.2 million to 196.0 million visits).
+- **`template for`.** n empty elements after one another cost 90.5 million, 186.1 million, 394.5
+  million and 880.2 million credits (3.2 million to 67.6 million visits).
 
 The last three stay walks. Each group is the elements of one name in one tree, and for radios
 also one form owner, so an index would have to follow every move of an element between trees,
@@ -2762,8 +2772,8 @@ and the lists change only for the classes that an element joins or leaves. The o
 queries (`select`, `form`, `button`, `li`, table scope and the end-tag checks) still walk from the
 top to their target or boundary, so a token that asks one costs work in proportion to the
 elements above the nearest boundary; the walk reads an entry's class and no longer compares its
-namespace and name. Nested `<div>y` repeated 2,000 times costs 216,171,077 work credits, down
-from 714,777,157, and 4,000 times costs 431,654,206, twice as much.
+namespace and name. Nested `<div>y` repeated 2,000 times costs 216,272,208 work credits, down
+from 714,777,157, and 4,000 times costs 431,851,337, twice as much.
 
 <a id="active-formatting-list-cost"></a>
 
@@ -2775,9 +2785,9 @@ a long list could refuse the parse for all of them. The Noah's Ark check that ru
 formatting start tag compares it with every entry back to the last marker, as the standard
 words it ([HTML 13.2.4.3](../../references/html-language-syntax-parser--877d6146487f--37a9ba51eed8.md)),
 so start tags whose attributes all differ cost work quadratic in their number: after `<p>`,
-`<b a=i0>`, `<b a=i1>` and so on repeated 500, 1,000, 2,000 and 4,000 times cost 92,508,868,
-218,407,732, 576,420,879 and 1,718,453,019 work credits (11.7 million, 44.0 million, 173.9
-million and 691.9 million record visits). Start tags with equal attributes are linear, because
+`<b a=i0>`, `<b a=i1>` and so on repeated 500, 1,000, 2,000 and 4,000 times cost 90,032,031,
+213,448,895, 566,498,042 and 1,698,602,182 work credits (11.7 million, 43.9 million, 173.8
+million and 691.6 million record visits). Start tags with equal attributes are linear, because
 the check removes the earliest of three equal entries and the list stays at three. The scan stays
 literal: an index that answered how many entries equal the new one would have to hold a table
 keyed by name and attribute set and keep it exact through the erasures, replacements and marker
