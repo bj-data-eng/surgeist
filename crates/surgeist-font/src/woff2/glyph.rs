@@ -1,4 +1,6 @@
 //! Reverse glyf/loca transform; triplet equations adapted from Wuff 0.2.9.
+mod encoding;
+
 use super::{
     Budget, Buffer, DecodeError, InvalidKind, Reader, add, as_u32, invalid, multiply, table_limit,
 };
@@ -78,6 +80,7 @@ impl<'a> Decoder<'a> {
         let mut glyph = Buffer::new(budget);
         let mut points = Buffer::new(budget);
         let mut ends = Buffer::new(budget);
+        let mut encoder = encoding::Encoder::new(budget);
         for index in 0..self.glyphs {
             glyph.clear();
             points.clear();
@@ -101,7 +104,7 @@ impl<'a> Decoder<'a> {
                             return Err(invalid(InvalidKind::WoffGlyph, index));
                         }
                         total = add(total, count)?;
-                        if total > 65536 {
+                        if total > encoding::MAX_POINTS {
                             return Err(invalid(InvalidKind::WoffGlyph, index));
                         }
                         ends.push((total - 1) as u16)?;
@@ -127,9 +130,10 @@ impl<'a> Decoder<'a> {
                     let overlap = self
                         .overlap_bitmap
                         .is_some_and(|bitmap| bitmap[index / 8] & (0x80 >> (index % 8)) != 0);
+                    let point_bytes = encoder.plan(&points, overlap)?;
                     let length = add(
                         add(12, multiply(count, 2)?)?,
-                        add(point_bytes(&points, overlap)?, instructions)?,
+                        add(point_bytes, instructions)?,
                     )?;
                     table_limit(length, budget)?;
                     glyph.reserve(length)?;
@@ -144,7 +148,7 @@ impl<'a> Decoder<'a> {
                     }
                     glyph.extend(&(instructions as u16).to_be_bytes())?;
                     glyph.extend(self.instructions.take(instructions)?)?;
-                    write_points(&points, overlap, &mut glyph)?;
+                    encoder.write(&points, &mut glyph)?;
                 }
                 _ => return Err(invalid(InvalidKind::WoffGlyph, index)),
             }
@@ -328,93 +332,4 @@ fn write_box(points: &[Point], output: &mut Buffer<'_, u8>) -> Result<(), Decode
         output.extend(&(value as i16).to_be_bytes())?;
     }
     Ok(())
-}
-fn write_points(
-    points: &[Point],
-    overlap: bool,
-    output: &mut Buffer<'_, u8>,
-) -> Result<(), DecodeError> {
-    for (flag, repeats) in flag_runs(points, overlap) {
-        output.push(flag | if repeats == 0 { 0 } else { 8 })?;
-        if repeats != 0 {
-            output.push(repeats)?;
-        }
-    }
-    for horizontal in [true, false] {
-        let mut previous = 0;
-        for point in points {
-            let value = if horizontal { point.x } else { point.y };
-            let delta = value - previous;
-            if delta != 0 {
-                if delta.unsigned_abs() < 256 {
-                    output.push(delta.unsigned_abs() as u8)?;
-                } else {
-                    output.extend(&(delta as i16).to_be_bytes())?;
-                }
-            }
-            previous = value;
-        }
-    }
-    Ok(())
-}
-fn point_bytes(points: &[Point], overlap: bool) -> Result<usize, DecodeError> {
-    let mut length = 0;
-    for (_, repeats) in flag_runs(points, overlap) {
-        length = add(length, if repeats == 0 { 1 } else { 2 })?;
-    }
-    let (mut x, mut y) = (0, 0);
-    for point in points {
-        for delta in [point.x - x, point.y - y] {
-            length = add(
-                length,
-                if delta == 0 {
-                    0
-                } else if delta.unsigned_abs() < 256 {
-                    1
-                } else {
-                    2
-                },
-            )?;
-        }
-        x = point.x;
-        y = point.y;
-    }
-    Ok(length)
-}
-
-fn flag_runs(points: &[Point], overlap: bool) -> impl Iterator<Item = (u8, u8)> + '_ {
-    let (mut x, mut y) = (0, 0);
-    let mut flags = points
-        .iter()
-        .enumerate()
-        .map(move |(index, point)| {
-            let (dx, dy) = (point.x - x, point.y - y);
-            let mut flag = u8::from(point.on_curve) | if overlap && index == 0 { 64 } else { 0 };
-            if dx == 0 {
-                flag |= 16;
-            } else if dx.unsigned_abs() < 256 {
-                flag |= 2 | if dx > 0 { 16 } else { 0 };
-            }
-            if dy == 0 {
-                flag |= 32;
-            } else if dy.unsigned_abs() < 256 {
-                flag |= 4 | if dy > 0 { 32 } else { 0 };
-            }
-            x = point.x;
-            y = point.y;
-            flag
-        })
-        .peekable();
-    // One emitted flag and its optional repeat byte cover at most 256 points.
-    // The overlap bit is already part of the first point's flag, so that point
-    // cannot merge into an otherwise identical run without the overlap bit.
-    std::iter::from_fn(move || {
-        let flag = flags.next()?;
-        let mut repeats = 0u8;
-        while repeats < u8::MAX && flags.peek() == Some(&flag) {
-            flags.next();
-            repeats += 1;
-        }
-        Some((flag, repeats))
-    })
 }
