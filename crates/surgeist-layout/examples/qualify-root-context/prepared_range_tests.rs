@@ -97,3 +97,39 @@ fn qualify_retained_prepared_range(owner: &Path, root: &Path, current: &[u8]) ->
     }
     Ok(())
 }
+
+#[test]
+fn prepared_range_source_is_selected_only_for_its_capture_profile() {
+    let source = crate::parity_support::prepared_range_qualification::SOURCE;
+    let mut ordinary = DeclarationInput::parse(DECLARATION).unwrap();
+    let ordinary_count = ordinary.declaration.records.len() - 1;
+    select_records(&mut ordinary.declaration, None, QualificationMode::Regular).unwrap();
+    assert_eq!(ordinary.declaration.records.len(), ordinary_count);
+    assert!(
+        ordinary
+            .declaration
+            .records
+            .iter()
+            .all(|record| record.source.as_str() != source)
+    );
+
+    let mut prepared = DeclarationInput::parse(DECLARATION).unwrap();
+    select_records(
+        &mut prepared.declaration,
+        Some(source),
+        QualificationMode::PreparedRangeCapture,
+    )
+    .unwrap();
+    assert_eq!(prepared.declaration.records.len(), 1);
+    assert_eq!(prepared.declaration.records[0].source.as_str(), source);
+
+    let mut wrong_profile = DeclarationInput::parse(DECLARATION).unwrap();
+    assert!(
+        select_records(
+            &mut wrong_profile.declaration,
+            Some(source),
+            QualificationMode::Regular,
+        )
+        .is_err()
+    );
+}
