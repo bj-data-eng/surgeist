@@ -71,7 +71,9 @@ impl Fixture {
                 _ => group.pop(),
             }
             .map_err(|e| construction_error(c, e))?;
-            Ok(prepare_attribute_slot(c, slot, &mut self.shared, &mut self.vector)?.commit())
+            prepare_attribute_slot(c, slot, &mut self.shared, &mut self.vector)?
+                .commit()
+                .map_err(|refusal| construction_error(c, refusal.into_parts().1))
         })();
         let HtmlNodeKind::Element(v) = self.owner.node_at(0).unwrap().kind() else {
             unreachable!()
@@ -100,7 +102,9 @@ impl Fixture {
                 .unwrap()
                 .append(incoming)
                 .map_err(|e| construction_error(c, e))?;
-            prepare_attribute_slot(c, slot, &mut self.shared, &mut self.vector)?.commit();
+            prepare_attribute_slot(c, slot, &mut self.shared, &mut self.vector)?
+                .commit()
+                .map_err(|refusal| construction_error(c, refusal.into_parts().1))?;
             Ok(())
         })();
         let HtmlNodeKind::Element(v) = self.owner.node_at(0).unwrap().kind() else {

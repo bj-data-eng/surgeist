@@ -438,14 +438,17 @@ impl HtmlConstructionAttributeEdit {
         }
     }
     /// The element's attribute vector for a ready slot's commit. The slot's `Unique` action
-    /// proved, under this edit's exclusive ownership of the storage, that the target is an
-    /// element whose backing has no other strong or weak owner, and nothing runs between that
-    /// proof and the commit that could change it.
-    fn ready_backing(&mut self) -> &mut Vec<Attribute> {
-        self.backing_mut()
-            .ok()
-            .and_then(Arc::get_mut)
-            .expect("ready slot proved an exclusive element backing")
+    /// checked, under this edit's exclusive ownership of the storage, that the target is an
+    /// element whose backing has no other strong or weak owner. The commit checks it again, and a
+    /// backing held by another owner is refused before anything changes, the storage's attribute
+    /// revision included.
+    fn exclusive_backing(&mut self) -> Result<&mut Vec<Attribute>, HtmlConstructionError> {
+        let backing = self.shared_attributes()?;
+        if Arc::strong_count(backing) != 1 || Arc::weak_count(backing) != 0 {
+            return Err(HtmlConstructionErrorKind::SharedAllocationAliased.into());
+        }
+        Arc::get_mut(self.backing_mut()?)
+            .ok_or_else(|| HtmlConstructionErrorKind::SharedAllocationAliased.into())
     }
     fn check_ready(&self) -> Result<(), HtmlConstructionError> {
         if let Some(e) = &self.failure {
@@ -535,7 +538,7 @@ impl HtmlConstructionAttributeEdit {
             target,
             index,
             name,
-            phase,
+            phase: CandidateState::Pending(phase),
             found: false,
             complete: false,
             failure: None,
@@ -580,7 +583,7 @@ impl HtmlConstructionAttributeEdit {
         Ok(HtmlConstructionAttributeSlot {
             edit: self,
             input,
-            phase: SlotPhase::Input,
+            phase: SlotState::Pending(SlotPhase::Input),
             failure: None,
             finished: false,
             usage,
@@ -829,6 +832,13 @@ enum CandidatePhase<'n> {
     },
     Reserve,
     Witness,
+}
+/// Where the planning of one candidate stands: an action is pending, the observation of a
+/// performed action awaits acceptance, or planning is finished. Only a pending action has a phase,
+/// so an action cannot exist without one.
+#[derive(Clone, Copy, Debug)]
+enum CandidateState<'n> {
+    Pending(CandidatePhase<'n>),
     Observing,
     Done,
 }
@@ -845,7 +855,7 @@ pub struct HtmlConstructionAttributeCandidate<'e, 'n> {
     target: usize,
     index: usize,
     name: &'n DocumentString,
-    phase: CandidatePhase<'n>,
+    phase: CandidateState<'n>,
     found: bool,
     complete: bool,
     failure: Option<HtmlConstructionError>,
@@ -858,14 +868,16 @@ pub struct HtmlConstructionAttributeCandidate<'e, 'n> {
 #[derive(Debug)]
 pub struct HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
     candidate: &'a mut HtmlConstructionAttributeCandidate<'e, 'n>,
+    /// The phase this action performs.
+    phase: CandidatePhase<'n>,
 }
 /// The observation after a candidate action. It borrows the candidate exclusively; `accept`
 /// resumes it.
 #[derive(Debug)]
 pub struct HtmlConstructionAttributeCandidateObservation<'a, 'e, 'n> {
     candidate: &'a mut HtmlConstructionAttributeCandidate<'e, 'n>,
-    /// The phase this accepted observation resumes.
-    next: CandidatePhase<'n>,
+    /// The state this accepted observation resumes.
+    next: CandidateState<'n>,
     allocation: bool,
 }
 impl Drop for HtmlConstructionAttributeCandidate<'_, '_> {
@@ -889,11 +901,14 @@ impl<'e, 'n> HtmlConstructionAttributeCandidate<'e, 'n> {
         if let Some(e) = &self.failure {
             return Err(e.clone());
         }
-        if matches!(self.phase, CandidatePhase::Observing) {
-            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
+        match self.phase {
+            CandidateState::Observing => Err(HtmlConstructionErrorKind::OperationNotReady.into()),
+            CandidateState::Done => Ok(None),
+            CandidateState::Pending(phase) => Ok(Some(HtmlConstructionAttributeCandidateAction {
+                candidate: self,
+                phase,
+            })),
         }
-        Ok((!matches!(self.phase, CandidatePhase::Done))
-            .then_some(HtmlConstructionAttributeCandidateAction { candidate: self }))
     }
     /// Consumes a finished candidate and returns whether it is kept (no matching name). Returns
     /// the latched failure, or the not-ready error before planning finished; either way the
@@ -907,7 +922,7 @@ impl<'e, 'n> HtmlConstructionAttributeCandidate<'e, 'n> {
             let e = e.clone();
             return Err(HtmlConstructionRefusal::new(self, e));
         }
-        if !matches!(self.phase, CandidatePhase::Done) {
+        if !matches!(self.phase, CandidateState::Done) {
             return Err(HtmlConstructionRefusal::new(
                 self,
                 HtmlConstructionErrorKind::OperationNotReady,
@@ -1032,7 +1047,7 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
     /// Describes the pending candidate action's work for the consumer to admit.
     pub fn description(&self) -> HtmlConstructionAttributeDescription<'_> {
         let c = &self.candidate;
-        match c.phase {
+        match self.phase {
             CandidatePhase::TargetName { name, .. } => {
                 let mut work = comparison_work(name);
                 work.record_writes = 1;
@@ -1140,9 +1155,8 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
                     work,
                 }
             }
-            _ => unreachable!("pending candidate action"),
         }
-        .transitions::<CandidatePhase>()
+        .transitions::<CandidateState>()
     }
     /// Performs the candidate action. Pass the admitted name of the earlier candidate when
     /// `description().prior_index()` is `Some`; the name must be the same shared allocation
@@ -1176,6 +1190,7 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
     ) -> Result<HtmlConstructionAttributeCandidateObservation<'a, 'e, 'n>, HtmlConstructionError>
     {
         let c = self.candidate;
+        let phase = self.phase;
         // Owner state, rather than Drop alone, prevents a forgotten cursor or
         // observation from making an unaccepted admission usable.
         if !*c.busy {
@@ -1184,11 +1199,11 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
         let mut allocation = false;
         let result = (|| -> Result<_, HtmlConstructionError> {
             if reserved.is_some_and(|capacity| {
-                !matches!(c.phase, CandidatePhase::Reserve) || capacity <= c.index
+                !matches!(phase, CandidatePhase::Reserve) || capacity <= c.index
             }) {
                 return Err(HtmlConstructionErrorKind::CapacityMismatch.into());
             }
-            Ok(match c.phase {
+            Ok(CandidateState::Pending(match phase {
                 CandidatePhase::Target(index) => {
                     if index == element_attributes(c.storage, c.target)?.len() {
                         CandidatePhase::Prior(0)
@@ -1438,14 +1453,13 @@ impl<'a, 'e, 'n> HtmlConstructionAttributeCandidateAction<'a, 'e, 'n> {
                     });
                     c.plan.initialized_len = c.decisions.len();
                     *c.selected += usize::from(!c.found);
-                    CandidatePhase::Done
+                    return Ok(CandidateState::Done);
                 }
-                _ => unreachable!("pending candidate action"),
-            })
+            }))
         })();
         match result {
             Ok(next) => {
-                c.phase = CandidatePhase::Observing;
+                c.phase = CandidateState::Observing;
                 Ok(HtmlConstructionAttributeCandidateObservation {
                     candidate: c,
                     next,
@@ -1490,13 +1504,22 @@ impl SlotInput<'_> {
             _ => None,
         }
     }
+    /// The attribute this step brings in. Its absence is the refusal that the step's first action
+    /// gives for a missing attribute.
+    fn incoming(&self) -> Result<&Attribute, HtmlConstructionError> {
+        self.attribute()
+            .ok_or_else(|| HtmlConstructionErrorKind::CapacityMismatch.into())
+    }
 }
 #[derive(Clone, Copy, Debug)]
 enum SlotPhase {
     Input,
     NextName,
     NamedIdentity,
-    SameName,
+    /// Checking whether the replacement at `index` keeps the replaced attribute's name.
+    SameName {
+        index: usize,
+    },
     Compare {
         index: usize,
         name: NamePhase,
@@ -1526,6 +1549,13 @@ enum SlotPhase {
     Reserve,
     Layout,
     Unique,
+}
+/// Where a positional step stands: an action is pending, the observation of a performed action
+/// awaits acceptance, or every action was accepted. Only a pending action has a phase, so an action
+/// cannot exist without one.
+#[derive(Clone, Copy, Debug)]
+enum SlotState {
+    Pending(SlotPhase),
     /// Awaiting acceptance; records whether acceptance resumes at `Ready`.
     Observing {
         resumes_ready: bool,
@@ -1538,7 +1568,7 @@ enum SlotPhase {
 pub struct HtmlConstructionAttributeSlot<'a> {
     edit: &'a mut HtmlConstructionAttributeEdit,
     input: SlotInput<'a>,
-    phase: SlotPhase,
+    phase: SlotState,
     failure: Option<HtmlConstructionError>,
     finished: bool,
     usage: HtmlConstructionUsage,
@@ -1555,13 +1585,15 @@ pub struct HtmlConstructionAttributeSlot<'a> {
 #[derive(Debug)]
 pub struct HtmlConstructionAttributeSlotAction<'a, 'e> {
     slot: &'a mut HtmlConstructionAttributeSlot<'e>,
+    /// The phase this action performs.
+    phase: SlotPhase,
 }
 /// The observation after a slot action. It borrows the slot exclusively; `accept` resumes it.
 #[derive(Debug)]
 pub struct HtmlConstructionAttributeSlotObservation<'a, 'e> {
     slot: &'a mut HtmlConstructionAttributeSlot<'e>,
-    /// The phase this accepted observation resumes.
-    next: SlotPhase,
+    /// The state this accepted observation resumes.
+    next: SlotState,
     capacity: bool,
 }
 /// A slot whose every action was accepted. `commit` applies it.
@@ -1687,8 +1719,8 @@ impl<'e> HtmlConstructionAttributeSlot<'e> {
         if self.failure.is_none()
             && matches!(
                 self.phase,
-                SlotPhase::Ready
-                    | SlotPhase::Observing {
+                SlotState::Ready
+                    | SlotState::Observing {
                         resumes_ready: true
                     }
             )
@@ -1709,11 +1741,14 @@ impl<'e> HtmlConstructionAttributeSlot<'e> {
         if let Some(e) = &self.failure {
             return Err(e.clone());
         }
-        if matches!(self.phase, SlotPhase::Observing { .. }) {
-            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
+        match self.phase {
+            SlotState::Observing { .. } => Err(HtmlConstructionErrorKind::OperationNotReady.into()),
+            SlotState::Ready => Ok(None),
+            SlotState::Pending(phase) => Ok(Some(HtmlConstructionAttributeSlotAction {
+                slot: self,
+                phase,
+            })),
         }
-        Ok((!matches!(self.phase, SlotPhase::Ready))
-            .then_some(HtmlConstructionAttributeSlotAction { slot: self }))
     }
     /// Consumes a ready slot. Returns the latched failure, or the not-ready error before the last
     /// action was accepted; either way the slot is handed back unchanged.
@@ -1728,7 +1763,7 @@ impl<'e> HtmlConstructionAttributeSlot<'e> {
             let e = e.clone();
             return Err(HtmlConstructionRefusal::new(self, e));
         }
-        if !matches!(self.phase, SlotPhase::Ready) {
+        if !matches!(self.phase, SlotState::Ready) {
             return Err(HtmlConstructionRefusal::new(
                 self,
                 HtmlConstructionErrorKind::OperationNotReady,
@@ -1766,7 +1801,7 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
     /// Describes the pending slot action's work for the consumer to admit.
     pub fn description(&self) -> HtmlConstructionAttributeDescription<'_> {
         let s = &self.slot;
-        match s.phase {
+        match self.phase {
             SlotPhase::Compare { name, .. } => HtmlConstructionAttributeDescription::Compare {
                 prior_index: None,
                 work: comparison_work(name),
@@ -1778,7 +1813,7 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                     ..Default::default()
                 })
             }
-            SlotPhase::SameName => {
+            SlotPhase::SameName { .. } => {
                 HtmlConstructionAttributeDescription::Inspect(HtmlConstructionAttributeWork {
                     record_visits: 4,
                     provider_calls: 2,
@@ -1915,9 +1950,8 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                 prior_index: None,
                 work: comparison_work(name),
             },
-            SlotPhase::Observing { .. } | SlotPhase::Ready => unreachable!("pending slot action"),
         }
-        .transitions::<SlotPhase>()
+        .transitions::<SlotState>()
     }
     /// Performs the slot action. The observation must be accepted before the next action. The
     /// first failure is latched.
@@ -1925,12 +1959,13 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
         self,
     ) -> Result<HtmlConstructionAttributeSlotObservation<'a, 'e>, HtmlConstructionError> {
         let s = self.slot;
+        let phase = self.phase;
         if !s.edit.busy {
             s.edit.busy = true;
         }
         let mut capacity = false;
         let result = (|| -> Result<_, HtmlConstructionError> {
-            Ok(match s.phase {
+            Ok(SlotState::Pending(match phase {
                 SlotPhase::Input => match &s.input {
                     SlotInput::Reserve(additional) => {
                         s.minimum_capacity = plus(s.edit.capacity.initialized_len, *additional)?;
@@ -1973,7 +2008,7 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                             minus(s.usage.utf16_units, attribute_units(old)?)?,
                             attribute_units(new)?,
                         )?;
-                        SlotPhase::SameName
+                        SlotPhase::SameName { index: *index }
                     }
                     SlotInput::Swap(index) => {
                         if plus(*index, 1)? >= s.edit.capacity.initialized_len {
@@ -2009,23 +2044,27 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                     }
                 }
                 SlotPhase::NamedIdentity => {
-                    let attribute = s.input.attribute().expect("checked incoming slot");
+                    let attribute = s.input.incoming()?;
+                    let decision = s
+                        .edit
+                        .decisions
+                        .get(s.plan_index)
+                        .ok_or(HtmlConstructionErrorKind::AttributeOrderMismatch)?;
                     if attribute.name().namespace().uri().is_some()
-                        || s.edit.decisions[s.plan_index].name.as_ptr()
+                        || decision.name.as_ptr()
                             != Arc::as_ptr(attribute.name().local_name().shared_code_units())
                     {
                         return Err(HtmlConstructionErrorKind::AttributeNameMismatch.into());
                     }
                     SlotPhase::Layout
                 }
-                SlotPhase::SameName => {
-                    let SlotInput::Replace { index, .. } = s.input else {
-                        unreachable!("replacement name check")
-                    };
-                    if identical_name(
-                        s.edit.attributes()?[index].name(),
-                        s.input.attribute().expect("checked incoming").name(),
-                    ) {
+                SlotPhase::SameName { index } => {
+                    let old = s
+                        .edit
+                        .attributes()?
+                        .get(index)
+                        .ok_or(HtmlConstructionErrorKind::CapacityMismatch)?;
+                    if identical_name(old.name(), s.input.incoming()?.name()) {
                         SlotPhase::Layout
                     } else {
                         SlotPhase::Compare {
@@ -2044,8 +2083,13 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                             name: NamePhase::Pair,
                         }
                     } else {
-                        let old = s.edit.attributes()?[index].name();
-                        let new = s.input.attribute().expect("checked incoming").name();
+                        let old = s
+                            .edit
+                            .attributes()?
+                            .get(index)
+                            .ok_or(HtmlConstructionErrorKind::CapacityMismatch)?
+                            .name();
+                        let new = s.input.incoming()?.name();
                         match advance_comparison(
                             name,
                             old.namespace().uri(),
@@ -2214,25 +2258,23 @@ impl<'a, 'e> HtmlConstructionAttributeSlotAction<'a, 'e> {
                 }
                 SlotPhase::Layout => {
                     if matches!(s.input, SlotInput::Reserve(_)) {
-                        SlotPhase::Ready
-                    } else {
-                        SlotPhase::Unique
+                        return Ok(SlotState::Ready);
                     }
+                    SlotPhase::Unique
                 }
                 SlotPhase::Unique => {
                     let backing = s.edit.shared_attributes()?;
                     if Arc::strong_count(backing) != 1 || Arc::weak_count(backing) != 0 {
                         return Err(HtmlConstructionErrorKind::SharedAllocationAliased.into());
                     }
-                    SlotPhase::Ready
+                    return Ok(SlotState::Ready);
                 }
-                _ => unreachable!("pending slot action"),
-            })
+            }))
         })();
         match result {
             Ok(next) => {
-                s.phase = SlotPhase::Observing {
-                    resumes_ready: matches!(next, SlotPhase::Ready),
+                s.phase = SlotState::Observing {
+                    resumes_ready: matches!(next, SlotState::Ready),
                 };
                 Ok(HtmlConstructionAttributeSlotObservation {
                     slot: s,
@@ -2267,16 +2309,39 @@ impl HtmlConstructionAttributeSlotObservation<'_, '_> {
 impl HtmlConstructionReadyAttributeSlot<'_> {
     /// Applies the prepaid step. Returns the attribute that `replace` or `pop` removed, and `None`
     /// for every other step.
-    pub fn commit(mut self) -> Option<Attribute> {
+    ///
+    /// Every check precedes the first change. A backing that another owner holds, an incoming
+    /// attribute that is gone, or a position outside the backing refuses the commit with the
+    /// ready slot handed back unchanged. Dropping the refused slot poisons the edit.
+    #[expect(
+        clippy::result_large_err,
+        reason = "a refusal hands the complete owner back without boxing it"
+    )]
+    pub fn commit(mut self) -> Result<Option<Attribute>, HtmlConstructionRefusal<Self>> {
+        match self.apply() {
+            Ok(removed) => {
+                let s = &mut self.slot;
+                s.edit.storage.arena.usage = s.usage;
+                s.edit.busy = false;
+                s.finished = true;
+                Ok(removed)
+            }
+            Err(error) => Err(HtmlConstructionRefusal::new(self, error)),
+        }
+    }
+    fn apply(&mut self) -> Result<Option<Attribute>, HtmlConstructionError> {
         let s = &mut self.slot;
-        let removed = match &mut s.input {
+        Ok(match &mut s.input {
             SlotInput::Reserve(_) => None,
             SlotInput::Append(incoming) => {
                 let before = s.edit.capacity.initialized_len;
-                s.edit
-                    .ready_backing()
-                    .push(incoming.pop().expect("ready actual last slot"));
-                s.edit.capacity.initialized_len += 1;
+                let grown = plus(before, 1)?;
+                let backing = s.edit.exclusive_backing()?;
+                let attribute = incoming
+                    .pop()
+                    .ok_or(HtmlConstructionErrorKind::CapacityMismatch)?;
+                backing.push(attribute);
+                s.edit.capacity.initialized_len = grown;
                 if matches!(
                     s.edit.mode,
                     HtmlConstructionAttributeEditMode::NamedMerge { .. }
@@ -2291,17 +2356,26 @@ impl HtmlConstructionReadyAttributeSlot<'_> {
                 None
             }
             SlotInput::Replace { index, incoming } => {
+                let backing = s.edit.exclusive_backing()?;
+                let target = backing
+                    .get_mut(*index)
+                    .ok_or(HtmlConstructionErrorKind::CapacityMismatch)?;
+                let attribute = incoming
+                    .take()
+                    .ok_or(HtmlConstructionErrorKind::CapacityMismatch)?;
+                let removed = std::mem::replace(target, attribute);
                 s.edit.used = true;
                 if let Some(table) = s.edit.index.as_mut() {
                     table.bind(Binding::Unbound);
                 }
-                Some(std::mem::replace(
-                    &mut s.edit.ready_backing()[*index],
-                    incoming.take().expect("ready actual replacement"),
-                ))
+                Some(removed)
             }
             SlotInput::Swap(index) => {
-                s.edit.ready_backing().swap(*index, *index + 1);
+                let backing = s.edit.exclusive_backing()?;
+                let Some([first, second, ..]) = backing.get_mut(*index..) else {
+                    return Err(HtmlConstructionErrorKind::CapacityMismatch.into());
+                };
+                std::mem::swap(first, second);
                 s.edit.used = true;
                 if let Some(table) = s.edit.index.as_mut() {
                     table.bind(Binding::Unbound);
@@ -2309,17 +2383,17 @@ impl HtmlConstructionReadyAttributeSlot<'_> {
                 None
             }
             SlotInput::Pop => {
+                let remaining = minus(s.edit.capacity.initialized_len, 1)?;
+                let backing = s.edit.exclusive_backing()?;
+                let value = backing
+                    .pop()
+                    .ok_or(HtmlConstructionErrorKind::CapacityMismatch)?;
                 s.invalidate_index();
-                let value = s.edit.ready_backing().pop().expect("ready last slot");
-                s.edit.capacity.initialized_len -= 1;
+                s.edit.capacity.initialized_len = remaining;
                 s.edit.used = true;
                 Some(value)
             }
-        };
-        s.edit.storage.arena.usage = s.usage;
-        s.edit.busy = false;
-        s.finished = true;
-        removed
+        })
     }
 }
 
@@ -2347,43 +2421,66 @@ pub enum HtmlConstructionAttributeRetirementDescription {
 #[derive(Debug)]
 pub struct HtmlConstructionAttributeRetirementAction<'a> {
     retirement: &'a mut HtmlConstructionAttributePlanRetirement,
+    step: RetirementStep,
+}
+/// What a cleanup action releases. The allocation step holds the snapshot it retires.
+#[derive(Debug)]
+enum RetirementStep {
+    /// The last initialized decision cell.
+    Cell,
+    /// The plan's allocation, once every decision cell is released.
+    Allocation(HtmlConstructionAllocationSnapshot),
 }
 impl HtmlConstructionAttributePlanRetirement {
     /// The next cleanup action, or `None` once the plan is fully released.
     pub fn next_action(&mut self) -> Option<HtmlConstructionAttributeRetirementAction<'_>> {
-        (!self.decisions.is_empty() || self.snapshot.is_some())
-            .then_some(HtmlConstructionAttributeRetirementAction { retirement: self })
+        let step = if !self.decisions.is_empty() {
+            RetirementStep::Cell
+        } else {
+            RetirementStep::Allocation(self.snapshot.clone()?)
+        };
+        Some(HtmlConstructionAttributeRetirementAction {
+            retirement: self,
+            step,
+        })
     }
 }
 impl HtmlConstructionAttributeRetirementAction<'_> {
     /// Describes what the pending action releases.
     pub fn description(&self) -> HtmlConstructionAttributeRetirementDescription {
-        if self.retirement.decisions.is_empty() {
-            HtmlConstructionAttributeRetirementDescription::Allocation
-        } else {
-            HtmlConstructionAttributeRetirementDescription::NameWitness {
+        match self.step {
+            RetirementStep::Allocation(_) => {
+                HtmlConstructionAttributeRetirementDescription::Allocation
+            }
+            RetirementStep::Cell => HtmlConstructionAttributeRetirementDescription::NameWitness {
                 auxiliary_entries: 1,
                 provider_calls: 1,
-            }
+            },
         }
     }
     /// The plan's allocation snapshot, if one was made.
     pub fn allocation(&self) -> Option<&HtmlConstructionAllocationSnapshot> {
-        self.retirement.snapshot.as_ref()
+        match &self.step {
+            RetirementStep::Allocation(snapshot) => Some(snapshot),
+            RetirementStep::Cell => self.retirement.snapshot.as_ref(),
+        }
     }
     /// Performs the cleanup. Returns the retirement evidence when the plan's allocation was
     /// released and `None` for a decision cell.
     pub fn perform(self) -> Option<HtmlConstructionRetired> {
-        if let Some(decision) = self.retirement.decisions.pop() {
-            drop(decision);
-            if let Some(snapshot) = self.retirement.snapshot.as_mut() {
-                snapshot.initialized_len = self.retirement.decisions.len();
+        match self.step {
+            RetirementStep::Cell => {
+                drop(self.retirement.decisions.pop());
+                if let Some(snapshot) = self.retirement.snapshot.as_mut() {
+                    snapshot.initialized_len = self.retirement.decisions.len();
+                }
+                None
             }
-            None
-        } else {
-            let snapshot = self.retirement.snapshot.take().expect("actual plan bank");
-            drop(std::mem::take(&mut self.retirement.decisions));
-            Some(HtmlConstructionRetired { snapshot })
+            RetirementStep::Allocation(snapshot) => {
+                self.retirement.snapshot = None;
+                drop(std::mem::take(&mut self.retirement.decisions));
+                Some(HtmlConstructionRetired { snapshot })
+            }
         }
     }
 }
@@ -2497,7 +2594,7 @@ mod tests {
         while let Some(action) = slot.as_mut().unwrap().next_action().unwrap() {
             action.perform().unwrap().accept();
         }
-        slots::attribute_slot(&mut slot).unwrap().commit()
+        slots::attribute_slot(&mut slot).unwrap().commit().unwrap()
     }
     fn plan(edit: &mut HtmlConstructionAttributeEdit, names: &[DocumentString]) -> Vec<usize> {
         let mut priors = Vec::new();
@@ -2998,15 +3095,24 @@ mod tests {
         finish(edit);
     }
 
-    /// Runs `attempt` and reports whether it panicked. The tests below tamper with a slot's private
-    /// state, which no caller of the public API can reach, to observe what a step does when a state
-    /// that its earlier actions established has been lost. None may panic.
-    fn panics<R>(attempt: impl FnOnce() -> R) -> bool {
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(attempt)).is_err()
+    /// The error of a ready slot's refused commit, and the slot handed back with it.
+    fn refused(
+        ready: HtmlConstructionReadyAttributeSlot<'_>,
+    ) -> (
+        HtmlConstructionReadyAttributeSlot<'_>,
+        HtmlConstructionError,
+    ) {
+        match ready.commit() {
+            Err(refusal) => refusal.into_parts(),
+            Ok(removed) => panic!("the commit must be refused, but it removed {removed:?}"),
+        }
     }
 
+    /// The tests below tamper with a slot's private state, which no caller of the public API can
+    /// reach, to observe what a step does when a state that its earlier actions established has
+    /// been lost. Each must be refused with a typed error, and none may panic.
     #[test]
-    fn commit_does_not_panic_when_another_owner_holds_the_backing() {
+    fn commit_is_refused_while_another_owner_holds_the_backing_and_succeeds_once_it_is_alone() {
         let (storage, target) = make_storage(vec![attribute("x", "old")]);
         let mut edit = make_edit(storage, target, HtmlConstructionAttributeEditMode::Slots);
         let mut incoming = Some(attribute("y", "new"));
@@ -3016,17 +3122,98 @@ mod tests {
         }
         let ready = slots::attribute_slot(&mut pending).unwrap();
         let alias = Arc::clone(ready.slot.edit.shared_attributes().unwrap());
+        let revision = ready.slot.edit.storage.arena.attribute_revision;
+        let (ready, error) = refused(ready);
+        assert!(error.is_shared_allocation_aliased(), "{error}");
+        // The refusal changed nothing: the backing, the incoming attribute and the revision.
+        assert_eq!(alias[0].value().to_utf8().unwrap(), "old");
+        assert_eq!(ready.slot.edit.storage.arena.attribute_revision, revision);
         assert!(
-            !panics(|| {
-                let _ = ready.commit();
-            }),
-            "a commit whose backing another owner holds must be refused, not panic"
+            matches!(&ready.slot.input, SlotInput::Replace { incoming, .. } if incoming.is_some())
         );
         drop(alias);
+        let removed = ready.commit().unwrap().unwrap();
+        drop(pending);
+        assert_eq!(removed.value().to_utf8().unwrap(), "old");
+        assert_eq!(
+            edit.attributes().unwrap()[0].value().to_utf8().unwrap(),
+            "new"
+        );
     }
 
     #[test]
-    fn commit_does_not_panic_when_the_replacement_is_gone() {
+    fn replacement_steps_refuse_a_missing_incoming_attribute() {
+        for steps_before_tamper in [1, 3] {
+            let (storage, target) =
+                make_storage(vec![attribute("x", "old"), attribute("w", "old")]);
+            let mut edit = make_edit(storage, target, HtmlConstructionAttributeEditMode::Slots);
+            let mut incoming = Some(attribute("y", "new"));
+            let mut slot = edit.replace(0, &mut incoming).unwrap();
+            // Input, the same-name check, which finds the names differ, then the comparisons with
+            // each stored name: the replaced position is skipped and the next one is compared.
+            for _ in 0..steps_before_tamper {
+                slot.next_action()
+                    .unwrap()
+                    .unwrap()
+                    .perform()
+                    .unwrap()
+                    .accept();
+            }
+            if let SlotInput::Replace { incoming, .. } = &mut slot.input {
+                incoming.take();
+            }
+            let error = slot
+                .next_action()
+                .unwrap()
+                .unwrap()
+                .perform()
+                .map(|_| ())
+                .expect_err("a missing incoming attribute is refused");
+            assert!(
+                error.is_capacity_mismatch(),
+                "step {steps_before_tamper}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_named_append_refuses_a_missing_incoming_attribute() {
+        let (storage, target) = make_storage(Vec::new());
+        let names = [DocumentString::from("a")];
+        let mut edit = make_edit(
+            storage,
+            target,
+            HtmlConstructionAttributeEditMode::NamedMerge { candidate_count: 1 },
+        );
+        plan(&mut edit, &names);
+        slot(edit.reserve(1).unwrap());
+        let mut incoming = vec![attribute("a", "v")];
+        let mut pending = edit.append(&mut incoming).unwrap();
+        // Input, then the search for the next kept name, which leaves the identity check pending.
+        for _ in 0..2 {
+            pending
+                .next_action()
+                .unwrap()
+                .unwrap()
+                .perform()
+                .unwrap()
+                .accept();
+        }
+        if let SlotInput::Append(attributes) = &mut pending.input {
+            attributes.clear();
+        }
+        let error = pending
+            .next_action()
+            .unwrap()
+            .unwrap()
+            .perform()
+            .map(|_| ())
+            .expect_err("a missing incoming attribute is refused");
+        assert!(error.is_capacity_mismatch(), "{error}");
+    }
+
+    #[test]
+    fn commit_refuses_a_replacement_that_is_gone_and_leaves_the_backing() {
         let (storage, target) = make_storage(vec![attribute("x", "old")]);
         let mut edit = make_edit(storage, target, HtmlConstructionAttributeEditMode::Slots);
         let mut replacement = Some(attribute("y", "new"));
@@ -3038,16 +3225,20 @@ mod tests {
         if let SlotInput::Replace { incoming, .. } = &mut ready.slot.input {
             incoming.take();
         }
-        assert!(
-            !panics(|| {
-                let _ = ready.commit();
-            }),
-            "a replacement whose attribute is gone must be refused, not panic"
+        let (ready, error) = refused(ready);
+        assert!(error.is_capacity_mismatch(), "{error}");
+        assert_eq!(ready.slot.edit.attributes().unwrap().len(), 1);
+        assert_eq!(
+            ready.slot.edit.attributes().unwrap()[0]
+                .value()
+                .to_utf8()
+                .unwrap(),
+            "old"
         );
     }
 
     #[test]
-    fn commit_does_not_panic_when_the_appended_attribute_is_gone() {
+    fn commit_refuses_an_appended_attribute_that_is_gone_and_leaves_the_counts() {
         let (storage, target) = make_storage(Vec::new());
         let mut edit = make_edit(storage, target, HtmlConstructionAttributeEditMode::Slots);
         slot(edit.reserve(1).unwrap());
@@ -3060,16 +3251,15 @@ mod tests {
         if let SlotInput::Append(attributes) = &mut ready.slot.input {
             attributes.clear();
         }
-        assert!(
-            !panics(|| {
-                let _ = ready.commit();
-            }),
-            "an append whose attribute is gone must be refused, not panic"
-        );
+        let (ready, error) = refused(ready);
+        assert!(error.is_capacity_mismatch(), "{error}");
+        assert_eq!(ready.slot.edit.capacity.initialized_len, 0);
+        assert!(ready.slot.edit.attributes().unwrap().is_empty());
     }
 
     #[test]
-    fn commit_does_not_panic_when_the_backing_lost_its_attributes() {
+    fn commit_refuses_a_backing_that_lost_the_attributes_it_checked() {
+        // Pop and swap meet an emptied backing; replace meets a position beyond it.
         for step in 0..3 {
             let (storage, target) =
                 make_storage(vec![attribute("x", "old"), attribute("y", "old")]);
@@ -3087,64 +3277,11 @@ mod tests {
             Arc::get_mut(ready.slot.edit.backing_mut().unwrap())
                 .unwrap()
                 .clear();
-            assert!(
-                !panics(|| {
-                    let _ = ready.commit();
-                }),
-                "step {step} must refuse a backing without the attributes it checked"
-            );
+            let (ready, error) = refused(ready);
+            assert!(error.is_capacity_mismatch(), "step {step}: {error}");
+            // The refusal left the recorded length, so the lost attributes stay visible as such.
+            assert_eq!(ready.slot.edit.capacity.initialized_len, 2, "step {step}");
         }
-    }
-
-    #[test]
-    fn replacement_steps_do_not_panic_when_the_incoming_attribute_is_gone() {
-        for steps_before_tamper in [1, 2] {
-            let (storage, target) = make_storage(vec![attribute("x", "old")]);
-            let mut edit = make_edit(storage, target, HtmlConstructionAttributeEditMode::Slots);
-            let mut incoming = Some(attribute("y", "new"));
-            let mut slot = edit.replace(0, &mut incoming).unwrap();
-            // Input, then the same-name check; the names differ, so a comparison follows.
-            for _ in 0..steps_before_tamper {
-                slot.next_action().unwrap().unwrap().perform().unwrap().accept();
-            }
-            if let SlotInput::Replace { incoming, .. } = &mut slot.input {
-                incoming.take();
-            }
-            assert!(
-                !panics(|| {
-                    let _ = slot.next_action().unwrap().unwrap().perform().map(|_| ());
-                }),
-                "step {steps_before_tamper} must refuse a missing incoming attribute"
-            );
-        }
-    }
-
-    #[test]
-    fn a_named_append_does_not_panic_when_the_incoming_attribute_is_gone() {
-        let (storage, target) = make_storage(Vec::new());
-        let names = [DocumentString::from("a")];
-        let mut edit = make_edit(
-            storage,
-            target,
-            HtmlConstructionAttributeEditMode::NamedMerge { candidate_count: 1 },
-        );
-        plan(&mut edit, &names);
-        slot(edit.reserve(1).unwrap());
-        let mut incoming = vec![attribute("a", "v")];
-        let mut pending = edit.append(&mut incoming).unwrap();
-        // Input, then the search for the next kept name, which leaves the identity check pending.
-        for _ in 0..2 {
-            pending.next_action().unwrap().unwrap().perform().unwrap().accept();
-        }
-        if let SlotInput::Append(attributes) = &mut pending.input {
-            attributes.clear();
-        }
-        assert!(
-            !panics(|| {
-                let _ = pending.next_action().unwrap().unwrap().perform().map(|_| ());
-            }),
-            "the identity check must refuse a missing incoming attribute"
-        );
     }
 
     #[test]
@@ -3156,7 +3293,7 @@ mod tests {
         let mut pending = Some(edit.replace(0, &mut incoming).unwrap());
         while let Some(action) = pending.as_mut().unwrap().next_action().unwrap() {
             let observation = action.perform().unwrap();
-            if matches!(observation.next, SlotPhase::Ready) {
+            if matches!(observation.next, SlotState::Ready) {
                 assert!(matches!(
                     observation.shared_attributes(),
                     Err(ref error) if error.kind == HtmlConstructionErrorKind::OperationNotReady
@@ -3520,7 +3657,10 @@ mod tests {
             );
             action.perform().unwrap().accept();
         }
-        slots::attribute_slot(&mut pending).unwrap().commit();
+        slots::attribute_slot(&mut pending)
+            .unwrap()
+            .commit()
+            .unwrap();
         drop(pending);
         let mut owner = Some(edit);
         let (_, retirement) = slots::edit(&mut owner).unwrap().into_parts();
@@ -3828,7 +3968,7 @@ mod tests {
                 admitted.add(description.work());
                 action.perform()?.accept();
             }
-            slots::attribute_slot(&mut reserve)?.commit();
+            slots::attribute_slot(&mut reserve)?.commit().unwrap();
             drop(reserve);
             let mut append = Some(edit.append(&mut incoming)?);
             while let Some(action) = append.as_mut().unwrap().next_action()? {
@@ -3837,7 +3977,7 @@ mod tests {
                 admitted.add(description.work());
                 action.perform()?.accept();
             }
-            slots::attribute_slot(&mut append)?.commit();
+            slots::attribute_slot(&mut append)?.commit().unwrap();
             Ok(())
         })();
         let mut completion = match result {
@@ -3911,7 +4051,7 @@ mod tests {
                                 {
                                     action.perform()?.accept();
                                 }
-                                slots::attribute_slot(&mut replacing)?.commit();
+                                slots::attribute_slot(&mut replacing)?.commit().unwrap();
                                 Ok(())
                             })();
                             let other = expected

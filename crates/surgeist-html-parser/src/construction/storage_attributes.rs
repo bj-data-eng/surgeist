@@ -643,7 +643,9 @@ impl SessionStorage {
             if append {
                 control.observe_construction_attribute_append();
             }
-            ready.commit();
+            ready.commit().map_err(|refusal| {
+                construction_owner::construction_error(control, refusal.into_parts().1)
+            })?;
             Ok::<_, SessionError>(())
         })();
         // Restore the sole ticket before creating the registry's known alias.
