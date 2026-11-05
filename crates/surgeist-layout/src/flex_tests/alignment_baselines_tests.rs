@@ -1742,7 +1742,7 @@ fn flex_row_exports_the_end_items_last_baseline_with_a_cross_auto_margin() {
 }
 
 #[test]
-fn flex_row_exports_the_end_items_last_baseline_with_a_sharing_peer() {
+fn flex_row_exports_the_shared_last_baseline_with_a_nonsharing_end_item() {
     let baselines = BaselinesOf {
         first: Point::new(None, Some(3.0)),
         last: Point::new(None, Some(8.0)),
