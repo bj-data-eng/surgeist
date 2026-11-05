@@ -575,26 +575,26 @@ impl<S: LayoutScalar> PositionedRootContextOf<S> {
 /// local sizing. The containing direction still supplies the actual containing
 /// flow axes, not a global static-anchor alignment.
 ///
-/// Every observed descendant must be independent of the omitted static block
-/// translation. This capability does not establish document-space placement,
-/// external clipping, or containing parent overflow. Source-specific hypothetical
-/// layout proof belongs to the producer; computed blockification alone does not
-/// supply it.
+/// Root-local coordinates omit document-space translation and establish the
+/// continuous border-box frame before publication rounding. The producer
+/// supplies the hypothetical frame and proves that the subtree's observations
+/// can use local coordinates.
 ///
 /// All root insets are Auto and margins are zero. A horizontal root can carry
 /// padding and border when its inline preferred size resolves definite against
 /// the full containing width. Auto and intrinsic inline sizing require zero
-/// padding and border. Orthogonal roots require zero padding and border and
-/// definite preferred sizes on both physical axes. Each preferred size uses
-/// its own full containing-block basis. Normal sizing applies authored
-/// box-sizing and min/max constraints.
+/// padding and border. Orthogonal roots require zero padding and border.
+/// Their preferred sizes must resolve definite on both physical axes, except
+/// that a vertical-lr or vertical-rl principal Block can fit its Auto inline
+/// size using an explicit hypothetical block-start offset and a definite
+/// opposite preferred size.
 ///
-/// Root-local continuous coordinates are established
-/// before canonical geometry and publication rounding. Percentage bases use the
-/// full containing size, independently of reduced inline fitting space; Auto
-/// block sizing has indefinite physical availability, not invented remaining
-/// block space. Profiles needing the omitted translation require another real
-/// capability rather than this one.
+/// This offset is the hypothetical position relative to the ICB's physical top.
+/// The vertical root fits within the nonnegative remaining ICB height. Each
+/// percentage uses the full containing-block extent on its physical axis.
+/// Normal sizing applies authored box sizing and min/max constraints.
+/// Without a supplied block-start offset the request's physical height
+/// availability is indefinite.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RootLocalPositionedContextOf<S: LayoutScalar = DefaultScalar> {
     containing_size: Size<NonNegativeFiniteOf<S>>,
