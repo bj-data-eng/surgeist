@@ -1,3 +1,4 @@
+use super::lanes::{LanePurposeContributionOf, collect_lane_intrinsic_purpose};
 use super::*;
 
 #[cfg(test)]
@@ -54,14 +55,9 @@ pub(super) struct IntrinsicStageFrame<'a, S: LayoutScalar> {
 pub(super) struct GridAxisTrackInputs<S: LayoutScalar> {
     pub(super) rows: Vec<GridIntrinsicContributionRow<S>>,
     pub(super) base_floors: Vec<S>,
-    // The original MinContent floor backing remains separate from the
-    // all-purpose aggregate used by reduction. Only this basis can admit a
-    // source-defined min-content revisit.
-    pub(super) min_content_base_floors: Vec<S>,
 }
 
 pub(super) struct GridAxisTrackPreparation<S: LayoutScalar> {
-    pub(super) contributions: GridAxisTrackInputs<S>,
     // This effective request produced the reduction. Original caller operation and
     // initial fixed authority separately govern normal recomputation.
     pub(super) available: AxisSizingRequestOf<S>,
@@ -133,10 +129,52 @@ fn retain_allocation<Node: Copy, S: LayoutScalar, M>(
     Ok(result)
 }
 
+struct MinContentObservation<Node, S: LayoutScalar> {
+    grid: IntrinsicAxisContributions<Node, S>,
+    lanes: Vec<LanePurposeContributionOf<Node, S>>,
+}
+
+impl<Node: PartialEq, S: LayoutScalar> MinContentObservation<Node, S> {
+    fn matches(&self, previous: &AcceptedMinContent<Node, S>) -> bool {
+        self.grid.receipts == previous.receipts
+            && self.grid.base_floors == previous.base_floors
+            && self.lanes == previous.lanes
+    }
+}
+
+enum StageMinContent<Node, S: LayoutScalar> {
+    Discard,
+    Retain,
+    Observed(MinContentObservation<Node, S>),
+}
+
+struct AcceptedMinContent<Node, S: LayoutScalar> {
+    receipts: Vec<GridContributionReceipt<Node, S>>,
+    base_floors: Vec<S>,
+    lanes: Vec<LanePurposeContributionOf<Node, S>>,
+    own_axis: Option<Vec<S>>,
+    observe_auto: bool,
+}
+
+impl<Node, S: LayoutScalar> AcceptedMinContent<Node, S> {
+    fn in_frame<'a>(&'a self, mut frame: IntrinsicStageFrame<'a, S>) -> IntrinsicStageFrame<'a, S> {
+        let own_axis = self.own_axis.as_deref();
+        match frame.axis {
+            GridAxisKind::Column => frame.columns = own_axis,
+            GridAxisKind::Row => frame.rows = own_axis,
+        }
+        frame.observed_axis = if self.observe_auto { own_axis } else { None };
+        frame
+    }
+}
+
 struct EvaluatedAxis<Node, S: LayoutScalar> {
     contributions: GridAxisTrackInputs<S>,
-    receipts: Vec<GridContributionReceipt<Node, S>>,
+    min_content: MinContentObservation<Node, S>,
+    observed_axis: Option<Vec<S>>,
 }
+
+type MinContentResult<Node, S, M> = LayoutResultOf<Node, MinContentObservation<Node, S>, S, M>;
 
 type RoleResult<Node, S, M> = LayoutResultOf<Node, IntrinsicAxisContributions<Node, S>, S, M>;
 type StageResult<Node, S, M> = LayoutResultOf<Node, EvaluatedAxis<Node, S>, S, M>;
@@ -260,8 +298,8 @@ where
             )
         }
     };
-    let mut column_receipts = Vec::new();
-    let mut row_receipts = Vec::new();
+    let mut column_min_content = None;
+    let mut row_min_content = None;
     for (phase, axis) in [
         (GridSizingPhase::InitialFirst, first),
         (GridSizingPhase::InitialSecond, second),
@@ -271,53 +309,94 @@ where
         if unchanged || phase > input.stage.through {
             break;
         }
+        let frame = IntrinsicStageFrame {
+            axis,
+            stage: GridSizingStage {
+                through: if receiver { input.stage.through } else { phase },
+                ..input.stage
+            },
+            columns: columns.as_deref(),
+            rows: rows.as_deref(),
+            observed_axis: None,
+        };
+        let retain_min_content = match phase {
+            GridSizingPhase::InitialFirst => input.stage.through >= GridSizingPhase::RevisitFirst,
+            GridSizingPhase::InitialSecond => input.stage.through >= GridSizingPhase::RevisitSecond,
+            GridSizingPhase::RevisitFirst
+            | GridSizingPhase::RevisitSecond
+            | GridSizingPhase::Complete => false,
+        };
+        let (frame, min_content) = if phase >= GridSizingPhase::RevisitFirst {
+            let previous: &AcceptedMinContent<Tree::Node, Tree::Scalar> = match axis {
+                GridAxisKind::Column => column_min_content.as_ref(),
+                GridAxisKind::Row => row_min_content.as_ref(),
+            }
+            .expect("each revisit follows the initial stage of its axis");
+            // Hold the own-axis input constant while the opposite-axis
+            // allocation advances. Inherited items used the tentative input.
+            let gate_frame = previous.in_frame(frame);
+            let observation = observe_min_content(tree, node, &input, grid, gate_frame)?;
+            if observation.matches(previous) {
+                continue;
+            }
+            if previous.observe_auto {
+                (frame, StageMinContent::Discard)
+            } else {
+                (gate_frame, StageMinContent::Observed(observation))
+            }
+        } else if retain_min_content {
+            (frame, StageMinContent::Retain)
+        } else {
+            (frame, StageMinContent::Discard)
+        };
         let evaluated = evaluate_stage(
             tree,
             node,
             &input,
             grid,
-            IntrinsicStageFrame {
-                axis,
-                stage: GridSizingStage {
-                    through: if receiver { input.stage.through } else { phase },
-                    ..input.stage
-                },
-                columns: columns.as_deref(),
-                rows: rows.as_deref(),
-                observed_axis: None,
-            },
+            frame,
             axis_available(spaces, axis),
+            min_content,
         )?;
-        let (previous_receipts, previous) = match axis {
-            GridAxisKind::Column => (&column_receipts, column_preparation.as_ref()),
-            GridAxisKind::Row => (&row_receipts, row_preparation.as_ref()),
-        };
-        if phase >= GridSizingPhase::RevisitFirst
-            && same_min_content_receipts(&evaluated.receipts, previous_receipts)
-            && previous.is_some_and(|previous| {
-                same_min_content_inputs(&evaluated.contributions, &previous.contributions)
-            })
-        {
-            continue;
-        }
         let (sizes, preparation) = prepare_axis_track_inputs(
             node,
             &input,
             axis,
-            evaluated.contributions,
+            &evaluated.contributions,
             axis_available(input.available, axis),
             axis_available(spaces, axis),
         )?;
+        let min_content = if retain_min_content {
+            let observe_auto = evaluated.observed_axis.is_some();
+            let own_axis = match evaluated.observed_axis {
+                Some(tentative) => Some(tentative),
+                None => match axis {
+                    GridAxisKind::Column => frame.columns,
+                    GridAxisKind::Row => frame.rows,
+                }
+                .map(|values| retain_allocation(node, values))
+                .transpose()?,
+            };
+            Some(AcceptedMinContent {
+                receipts: evaluated.min_content.grid.receipts,
+                base_floors: evaluated.min_content.grid.base_floors,
+                lanes: evaluated.min_content.lanes,
+                own_axis,
+                observe_auto,
+            })
+        } else {
+            None
+        };
         match axis {
             GridAxisKind::Column => {
                 columns = Some(sizes);
                 column_preparation = Some(GridAxisPreparationOwner::Owned(preparation));
-                column_receipts = evaluated.receipts;
+                column_min_content = min_content;
             }
             GridAxisKind::Row => {
                 rows = Some(sizes);
                 row_preparation = Some(GridAxisPreparationOwner::Owned(preparation));
-                row_receipts = evaluated.receipts;
+                row_min_content = min_content;
             }
         }
     }
@@ -370,31 +449,6 @@ where
         row_preparation,
         source_frame,
     })
-}
-
-fn same_min_content_receipts<Node: PartialEq, S: LayoutScalar>(
-    left: &[GridContributionReceipt<Node, S>],
-    right: &[GridContributionReceipt<Node, S>],
-) -> bool {
-    left.iter()
-        .filter(|receipt| receipt.purpose == GridContributionPurpose::MinContent)
-        .map(|receipt| (&receipt.source, receipt.axis, receipt.span, receipt.value))
-        .eq(right
-            .iter()
-            .filter(|receipt| receipt.purpose == GridContributionPurpose::MinContent)
-            .map(|receipt| (&receipt.source, receipt.axis, receipt.span, receipt.value)))
-}
-
-fn same_min_content_inputs<S: LayoutScalar>(
-    left: &GridAxisTrackInputs<S>,
-    right: &GridAxisTrackInputs<S>,
-) -> bool {
-    left.min_content_base_floors == right.min_content_base_floors
-        && left.rows.len() == right.rows.len()
-        && left.rows.iter().zip(&right.rows).all(|(left, right)| {
-            left.span == right.span
-                && left.contributions.min_content == right.contributions.min_content
-        })
 }
 
 fn initial_estimate<S: LayoutScalar>(tracks: &[TrackSizingOf<S>], basis: Option<S>) -> Vec<S> {
@@ -620,7 +674,7 @@ fn prepare_axis_track_inputs<Node: Copy, S: LayoutScalar, M>(
     node: Node,
     input: &GridTrackResolutionInput<'_, '_, Node, S>,
     axis: GridAxisKind,
-    contributions: GridAxisTrackInputs<S>,
+    contributions: &GridAxisTrackInputs<S>,
     available: AxisSizingRequestOf<S>,
     space: GridAxisTrackSpace<S>,
 ) -> PreparedAxisResult<Node, S, M> {
@@ -628,7 +682,7 @@ fn prepare_axis_track_inputs<Node: Copy, S: LayoutScalar, M>(
         node,
         input,
         axis,
-        &contributions,
+        contributions,
         match space {
             GridAxisTrackSpace::Intrinsic => effective_available(input, axis, available)
                 .map_err(|error| grid_track_sizing_error(node, error))?,
@@ -649,11 +703,64 @@ fn prepare_axis_track_inputs<Node: Copy, S: LayoutScalar, M>(
     Ok((
         reduced.sizes,
         GridAxisTrackPreparation {
-            contributions,
             available: reduced.available,
             finishing_available: reduced.finishing_available,
         },
     ))
+}
+
+fn lane_intrinsic_input<'input, 'a, Node: Copy, S: LayoutScalar>(
+    input: &'a GridTrackResolutionInput<'input, '_, Node, S>,
+    grid: IntrinsicGrid<'input, 'a, Node, S>,
+    frame: IntrinsicStageFrame<'a, S>,
+) -> Option<LaneIntrinsicTrackSizeInput<'input, 'a, Node, S>> {
+    if !input
+        .style
+        .display
+        .establishes_grid_lanes_formatting_context()
+        || grid_axis_for_grid_lanes(input.style) != frame.axis
+    {
+        return None;
+    }
+    Some(LaneIntrinsicTrackSizeInput {
+        grid,
+        frame,
+        container_style: input.style,
+        constants: input.constants,
+        axis: frame.axis,
+        tracks: axis_tracks(input, frame.axis),
+        gap: axis_available(input.context.gap, frame.axis),
+        gutters: Some(axis_gutters(input, frame.axis)),
+        lines: input.context.lines,
+        placements: input.placements,
+        subgrid_report: input.subgrid_report,
+    })
+}
+
+fn observe_min_content<'input, Tree, M>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    input: &GridTrackResolutionInput<'input, '_, Tree::Node, Tree::Scalar>,
+    grid: IntrinsicGrid<'input, '_, Tree::Node, Tree::Scalar>,
+    frame: IntrinsicStageFrame<'_, Tree::Scalar>,
+) -> MinContentResult<Tree::Node, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let purpose = GridContributionPurpose::MinContent;
+    let grid_observation = evaluate_role(tree, node, grid, frame, purpose)?;
+    let lanes = match lane_intrinsic_input(input, grid, frame) {
+        Some(input) => {
+            collect_lane_intrinsic_purpose(tree, node, input, purpose)?.map_err(|_| {
+                grid_track_sizing_error(node, SpanningContributionError::InvalidIncidence)
+            })?
+        }
+        None => Vec::new(),
+    };
+    Ok(MinContentObservation {
+        grid: grid_observation,
+        lanes,
+    })
 }
 
 fn collect_purposes<'input, Tree, M>(
@@ -662,70 +769,65 @@ fn collect_purposes<'input, Tree, M>(
     input: &GridTrackResolutionInput<'input, '_, Tree::Node, Tree::Scalar>,
     grid: IntrinsicGrid<'input, '_, Tree::Node, Tree::Scalar>,
     frame: IntrinsicStageFrame<'_, Tree::Scalar>,
+    min_content: StageMinContent<Tree::Node, Tree::Scalar>,
 ) -> StageResult<Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
     let minimum = evaluate_role(tree, node, grid, frame, GridContributionPurpose::Minimum)?;
-    let min_content = evaluate_role(tree, node, grid, frame, GridContributionPurpose::MinContent)?;
+    let retain_min_content = matches!(min_content, StageMinContent::Retain);
+    let (min_content, observed_lanes) = match min_content {
+        StageMinContent::Observed(observation) => (observation.grid, Some(observation.lanes)),
+        StageMinContent::Discard | StageMinContent::Retain => (
+            evaluate_role(tree, node, grid, frame, GridContributionPurpose::MinContent)?,
+            None,
+        ),
+    };
     let max_content = evaluate_role(tree, node, grid, frame, GridContributionPurpose::MaxContent)?;
     let group = GridAxisContributions::new(minimum, min_content, max_content);
     let mut rows =
         grid_contribution_rows(&group).map_err(|error| grid_track_sizing_error(node, error))?;
-    if input
-        .style
-        .display
-        .establishes_grid_lanes_formatting_context()
-        && grid_axis_for_grid_lanes(input.style) == frame.axis
-    {
-        let lane_rows = lane_intrinsic_contribution_rows(
-            tree,
-            node,
-            LaneIntrinsicTrackSizeInput {
-                grid,
-                frame,
-                container_style: input.style,
-                constants: input.constants,
-                axis: frame.axis,
-                tracks: axis_tracks(input, frame.axis),
-                gap: axis_available(input.context.gap, frame.axis),
-                gutters: Some(axis_gutters(input, frame.axis)),
-                lines: input.context.lines,
-                placements: input.placements,
-                subgrid_report: input.subgrid_report,
-            },
-        )?
-        .map_err(|_| grid_track_sizing_error(node, SpanningContributionError::InvalidIncidence))?;
-        rows.try_reserve(lane_rows.len())
-            .map_err(|_| grid_track_sizing_error(node, SpanningContributionError::Allocation))?;
-        rows.extend(lane_rows);
-    }
-    let GridAxisContributions {
-        minimum,
-        min_content,
-        max_content,
-        base_floors,
-    } = group;
-    let min_content_base_floors = min_content.base_floors;
-    let mut receipts = minimum.receipts;
-    let additional = min_content
-        .receipts
-        .len()
-        .checked_add(max_content.receipts.len())
-        .ok_or_else(|| grid_track_sizing_error(node, SpanningContributionError::Allocation))?;
-    receipts
-        .try_reserve(additional)
-        .map_err(|_| grid_track_sizing_error(node, SpanningContributionError::Allocation))?;
-    receipts.extend(min_content.receipts);
-    receipts.extend(max_content.receipts);
+    let lane_min_content = match lane_intrinsic_input(input, grid, frame) {
+        Some(input) => {
+            let lanes = lane_intrinsic_contributions(
+                tree,
+                node,
+                input,
+                observed_lanes,
+                retain_min_content,
+            )?
+            .map_err(|_| {
+                grid_track_sizing_error(node, SpanningContributionError::InvalidIncidence)
+            })?;
+            rows.try_reserve(lanes.rows.len()).map_err(|_| {
+                grid_track_sizing_error(node, SpanningContributionError::Allocation)
+            })?;
+            rows.extend(lanes.rows);
+            lanes.min_content
+        }
+        None => Vec::new(),
+    };
     Ok(EvaluatedAxis {
         contributions: GridAxisTrackInputs {
             rows,
-            base_floors,
-            min_content_base_floors,
+            base_floors: group.base_floors,
         },
-        receipts,
+        min_content: MinContentObservation {
+            grid: group.min_content,
+            lanes: lane_min_content,
+        },
+        observed_axis: None,
     })
+}
+
+fn has_inherited_items<Node: Copy, S: LayoutScalar>(
+    grid: IntrinsicGrid<'_, '_, Node, S>,
+    axis: GridAxisKind,
+) -> bool {
+    grid.subgrid_report
+        .items
+        .iter()
+        .any(|item| item_inherits_parent_axis(*item, axis))
 }
 
 fn evaluate_stage<'input, Tree, M>(
@@ -735,29 +837,24 @@ fn evaluate_stage<'input, Tree, M>(
     grid: IntrinsicGrid<'input, '_, Tree::Node, Tree::Scalar>,
     frame: IntrinsicStageFrame<'_, Tree::Scalar>,
     space: GridAxisTrackSpace<Tree::Scalar>,
+    min_content: StageMinContent<Tree::Node, Tree::Scalar>,
 ) -> StageResult<Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
-    let initial = collect_purposes(tree, node, input, grid, frame)?;
-    if frame.observed_axis.is_some()
-        || !grid
-            .subgrid_report
-            .items
-            .iter()
-            .any(|item| item_inherits_parent_axis(*item, frame.axis))
-    {
-        return Ok(initial);
+    if !has_inherited_items(grid, frame.axis) {
+        return collect_purposes(tree, node, input, grid, frame, min_content);
     }
+    let initial = collect_purposes(tree, node, input, grid, frame, StageMinContent::Discard)?;
     let (tentative, _) = prepare_axis_track_inputs(
         node,
         input,
         frame.axis,
-        initial.contributions,
+        &initial.contributions,
         axis_available(input.available, frame.axis),
         space,
     )?;
-    collect_purposes(
+    let mut evaluated = collect_purposes(
         tree,
         node,
         input,
@@ -766,7 +863,10 @@ where
             observed_axis: Some(&tentative),
             ..frame
         },
-    )
+        min_content,
+    )?;
+    evaluated.observed_axis = Some(tentative);
+    Ok(evaluated)
 }
 
 // All adapters use the same per-role opposite-axis/source preparation.

@@ -65,7 +65,7 @@ pub use lanes::{
 use lanes::{
     GridLanesLayoutInput, LaneIntrinsicTrackSizeInput, apply_grid_lanes_auto_fit_policy,
     column_flow_for_grid_lanes, grid_axis_for_grid_lanes, lane_axis_for_grid_lanes,
-    lane_intrinsic_contribution_rows, layout_grid_lanes_children,
+    lane_intrinsic_contributions, layout_grid_lanes_children,
     prepare_grid_lanes_intrinsic_child_input, resolve_grid_lanes_placement_with_resolved_tracks,
 };
 use named::{

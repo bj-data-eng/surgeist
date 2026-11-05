@@ -1092,62 +1092,70 @@ pub(super) struct LaneIntrinsicTrackSizeInput<'input, 'a, Node, S: LayoutScalar 
     pub(super) subgrid_report: &'a GridSubgridReport<Node>,
 }
 
-#[expect(
-    clippy::type_complexity,
-    reason = "lane intrinsic sizing preserves the session's node, scalar, and provider error types"
-)]
-pub(super) fn lane_intrinsic_contribution_rows<'input, Tree, M>(
+#[derive(Clone, Copy, PartialEq)]
+pub(super) struct LanePurposeContributionOf<Node, S: LayoutScalar> {
+    source: Node,
+    span: GridTrackSpan,
+    value: S,
+}
+
+pub(super) type LanePurposeResultOf<Node, S, M> =
+    LayoutResultOf<Node, Result<Vec<LanePurposeContributionOf<Node, S>>, LanePlacementError>, S, M>;
+
+pub(super) struct LaneIntrinsicContributions<Node, S: LayoutScalar> {
+    pub(super) rows: Vec<GridIntrinsicContributionRow<S>>,
+    pub(super) min_content: Vec<LanePurposeContributionOf<Node, S>>,
+}
+
+type LaneIntrinsicResult<Node, S, M> =
+    LayoutResultOf<Node, Result<LaneIntrinsicContributions<Node, S>, LanePlacementError>, S, M>;
+
+pub(super) fn lane_intrinsic_contributions<'input, Tree, M>(
     tree: &mut Tree,
     node: Tree::Node,
     input: LaneIntrinsicTrackSizeInput<'input, '_, Tree::Node, Tree::Scalar>,
-) -> LayoutResultOf<
-    Tree::Node,
-    Result<Vec<GridIntrinsicContributionRow<Tree::Scalar>>, LanePlacementError>,
-    Tree::Scalar,
-    M,
->
+    observed_min_content: Option<Vec<LanePurposeContributionOf<Tree::Node, Tree::Scalar>>>,
+    retain_min_content: bool,
+) -> LaneIntrinsicResult<Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
-    let mut collect = |purpose| {
-        let grid = intrinsic_role_grid(input.grid, input.frame, purpose)
-            .map_err(|error| grid_track_sizing_error(node, error))?;
-        collect_lane_intrinsic_purpose(
-            tree,
-            node,
-            LaneIntrinsicTrackSizeInput { grid, ..input },
-            purpose,
-        )
-    };
+    let mut collect = |purpose| collect_lane_intrinsic_purpose(tree, node, input, purpose);
     let minimum = match collect(GridContributionPurpose::Minimum)? {
         Ok(rows) => rows,
         Err(error) => return Ok(Err(error)),
     };
-    let min_content = match collect(GridContributionPurpose::MinContent)? {
-        Ok(rows) => rows,
-        Err(error) => return Ok(Err(error)),
+    let min_content = match observed_min_content {
+        Some(rows) => rows,
+        None => match collect(GridContributionPurpose::MinContent)? {
+            Ok(rows) => rows,
+            Err(error) => return Ok(Err(error)),
+        },
     };
     let max_content = match collect(GridContributionPurpose::MaxContent)? {
         Ok(rows) => rows,
         Err(error) => return Ok(Err(error)),
     };
-    complete_lane_contribution_rows(minimum, min_content, max_content)
-        .map(Ok)
-        .map_err(|error| grid_track_sizing_error(node, error))
+    let (min_rows, min_content) = if retain_min_content {
+        // Reduction combines equal spans. Preserve the individual facts
+        // only when this collection supplies a later comparison.
+        let mut min_rows = Vec::new();
+        min_rows
+            .try_reserve_exact(min_content.len())
+            .map_err(|_| grid_track_sizing_error(node, SpanningContributionError::Allocation))?;
+        min_rows.extend_from_slice(&min_content);
+        (min_rows, min_content)
+    } else {
+        (min_content, Vec::new())
+    };
+    let rows = complete_lane_contribution_rows(minimum, min_rows, max_content)
+        .map_err(|error| grid_track_sizing_error(node, error))?;
+    Ok(Ok(LaneIntrinsicContributions { rows, min_content }))
 }
 
-#[derive(Clone, Copy)]
-struct LanePurposeContributionOf<S: LayoutScalar> {
-    span: GridTrackSpan,
-    value: S,
-}
-
-type LanePurposeResultOf<Node, S, M> =
-    LayoutResultOf<Node, Result<Vec<LanePurposeContributionOf<S>>, LanePlacementError>, S, M>;
-
-fn normalize_lane_purpose_rows<S: LayoutScalar>(
-    mut rows: Vec<LanePurposeContributionOf<S>>,
-) -> Result<Vec<LanePurposeContributionOf<S>>, SpanningContributionError<S>> {
+fn normalize_lane_purpose_rows<Node: Copy, S: LayoutScalar>(
+    mut rows: Vec<LanePurposeContributionOf<Node, S>>,
+) -> Result<Vec<LanePurposeContributionOf<Node, S>>, SpanningContributionError<S>> {
     rows.sort_unstable_by_key(|row| (row.span.start, row.span.end));
     let mut written = 0;
     for read in 0..rows.len() {
@@ -1172,10 +1180,10 @@ fn normalize_lane_purpose_rows<S: LayoutScalar>(
 // Equal spans describe numerical inequalities, not a measured node identity.
 // Max preserves every same-span constraint. Presence comes from actual rows,
 // including real zero values, and each purpose must own the same incidence.
-fn complete_lane_contribution_rows<S: LayoutScalar>(
-    minimum: Vec<LanePurposeContributionOf<S>>,
-    min_content: Vec<LanePurposeContributionOf<S>>,
-    max_content: Vec<LanePurposeContributionOf<S>>,
+fn complete_lane_contribution_rows<Node: Copy, S: LayoutScalar>(
+    minimum: Vec<LanePurposeContributionOf<Node, S>>,
+    min_content: Vec<LanePurposeContributionOf<Node, S>>,
+    max_content: Vec<LanePurposeContributionOf<Node, S>>,
 ) -> Result<Vec<GridIntrinsicContributionRow<S>>, SpanningContributionError<S>> {
     let minimum = normalize_lane_purpose_rows(minimum)?;
     let min_content = normalize_lane_purpose_rows(min_content)?;
@@ -1200,7 +1208,7 @@ fn complete_lane_contribution_rows<S: LayoutScalar>(
         let Some(span) = span else {
             break;
         };
-        let take = |rows: &[LanePurposeContributionOf<S>],
+        let take = |rows: &[LanePurposeContributionOf<Node, S>],
                     index: &mut usize,
                     purpose: GridContributionPurpose|
          -> Result<S, SpanningContributionError<S>> {
@@ -1235,7 +1243,7 @@ fn complete_lane_contribution_rows<S: LayoutScalar>(
     Ok(result)
 }
 
-fn collect_lane_intrinsic_purpose<'input, Tree, M>(
+pub(super) fn collect_lane_intrinsic_purpose<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: LaneIntrinsicTrackSizeInput<'input, '_, Tree::Node, Tree::Scalar>,
@@ -1244,6 +1252,11 @@ fn collect_lane_intrinsic_purpose<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
+    let input = LaneIntrinsicTrackSizeInput {
+        grid: intrinsic_role_grid(input.grid, input.frame, purpose)
+            .map_err(|error| grid_track_sizing_error(node, error))?,
+        ..input
+    };
     let LaneIntrinsicTrackSizeInput {
         grid,
         frame: _,
@@ -1491,6 +1504,7 @@ where
                 grid_track_sizing_error(child, SpanningContributionError::Allocation)
             })?;
             items.push(LanePurposeContributionOf {
+                source: child,
                 span: GridTrackSpan::new(start + 1, end + 1),
                 value,
             });
@@ -1624,7 +1638,7 @@ fn collect_nested_lane_intrinsic_items<'input, Tree, M>(
     request: GridMinimumWrapperInput<'input, '_, Tree::Node, Tree::Scalar>,
     projection: NestedLaneIntrinsicProjectionOf<Tree::Scalar>,
     purpose: GridContributionPurpose,
-    items: &mut Vec<LanePurposeContributionOf<Tree::Scalar>>,
+    items: &mut Vec<LanePurposeContributionOf<Tree::Node, Tree::Scalar>>,
 ) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
@@ -1802,6 +1816,7 @@ where
                         grid_track_sizing_error(child, SpanningContributionError::Allocation)
                     })?;
                     items.push(LanePurposeContributionOf {
+                        source: child,
                         span: GridTrackSpan::new(start + 1, start + child_span + 1),
                         value: adjusted.max(Tree::Scalar::ZERO),
                     });

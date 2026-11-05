@@ -246,7 +246,7 @@ fn differential<S: LayoutScalar>(axis: GridAxisKind, overflow: Overflow, demand:
                     placements: &placements,
                     query: IntrinsicGridQuery::complete(GridContributionPurpose::Minimum),
                 };
-                let rows = lane_intrinsic_contribution_rows(
+                let rows = lane_intrinsic_contributions(
                     &mut compute,
                     0,
                     LaneIntrinsicTrackSizeInput {
@@ -271,9 +271,12 @@ fn differential<S: LayoutScalar>(axis: GridAxisKind, overflow: Overflow, demand:
                         placements: &placements,
                         subgrid_report: &subgrid_report,
                     },
+                    None,
+                    false,
                 )
                 .expect("actual native intrinsic query succeeds")
-                .expect("one real child occupies its declared one-track span");
+                .expect("one real child occupies its declared one-track span")
+                .rows;
                 resolve_grid_contribution_rows(
                     SpanningTrackContext {
                         tracks,
