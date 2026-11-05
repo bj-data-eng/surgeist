@@ -2508,8 +2508,16 @@ fn raw_corpus_reports_a_missing_xml_and_still_executes_later_originals() {
     let original =
         owner.join("tests/layout/browser_parity/xml/block/block_basic__border_box_ltr.xml");
     let missing = original.with_file_name("missing_test_input__border_box_ltr.xml");
-    let error = run_raw_browser_parity(vec![missing, original], Some("xml/block/"))
-        .expect_err("both original artifacts fail raw execution");
+    let mut fixtures = support::fixture_files("xml")
+        .expect("fixtures should load")
+        .into_iter()
+        .filter(|fixture| fixture != &original && parity_path_matches(fixture, "xml/block/"))
+        .take(80)
+        .collect::<Vec<_>>();
+    assert_eq!(fixtures.len(), 80);
+    fixtures.extend([missing, original]);
+    let error = run_raw_browser_parity(fixtures, Some("xml/block/"))
+        .expect_err("original raw execution reports every failure");
     assert!(
         error.contains("missing_test_input__border_box_ltr.xml"),
         "{error}"
