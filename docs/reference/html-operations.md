@@ -2635,7 +2635,7 @@ descriptions below retain their existing link anchors.
 ### Parse cost per source unit
 
 A caller sizes `HtmlParseLimits` from the cost of the input it admits. These figures were
-measured with generous limits at commit `881cc5f1d` by parsing the same repeated input at
+measured with generous limits at commit `72c5ae658` by parsing the same repeated input at
 doubling sizes and taking the slope between the two largest, so each value is the marginal
 cost of one more repeated source unit (one UTF-8 byte of ASCII or one UTF-16 unit) and not a
 fixed prefix. Work credits are deterministic: a build profile does not change them. Each
