@@ -647,12 +647,14 @@ fn warm_geometry_only_numeric_child_cache_cannot_supply_formatted_tail_truth() {
 
 fn assert_collapsed_flex_keeps_strut_without_placing_text<S: LayoutScalar>() {
     let visible = PreparedParagraph::plain(3, text::Source::new("XX"), ahem_style(10.0, 10.0));
-    let second = PreparedParagraph::plain(6, text::Source::new("YYY"), ahem_style(10.0, 10.0));
-    let item = |width, height, collapse| NodeInputOf {
+    let second = PreparedParagraph::plain(6, text::Source::new("YYY"), ahem_style(10.0, 40.0));
+    let item = |width, height: Option<f64>, collapse| NodeInputOf {
         display: Display::Flex,
         size: Size::new(
             PreferredSizeOf::px(S::from_f64(width)),
-            PreferredSizeOf::px(S::from_f64(height)),
+            height.map_or(PreferredSizeOf::AUTO, |height| {
+                PreferredSizeOf::px(S::from_f64(height))
+            }),
         ),
         align_items: Some(AlignItems::Start),
         flex_item_collapse: collapse,
@@ -675,7 +677,7 @@ fn assert_collapsed_flex_keeps_strut_without_placing_text<S: LayoutScalar>() {
                     ..root(100.0)
                 },
             )
-            .style(1, item(30.0, 20.0, FlexItemCollapse::Normal))
+            .style(1, item(30.0, Some(20.0), FlexItemCollapse::Normal))
             .style(
                 2,
                 NodeInputOf {
@@ -683,7 +685,7 @@ fn assert_collapsed_flex_keeps_strut_without_placing_text<S: LayoutScalar>() {
                     ..NodeInputOf::default()
                 },
             )
-            .style(4, item(40.0, 40.0, collapse))
+            .style(4, item(40.0, None, collapse))
             .style(
                 5,
                 NodeInputOf {
@@ -711,6 +713,7 @@ fn assert_collapsed_flex_keeps_strut_without_placing_text<S: LayoutScalar>() {
             .size
     };
 
+    // The second item derives its 40px cross size from its text line.
     let control = output(FlexItemCollapse::Normal);
     assert_eq!(size(&control, 0).height, S::from_f64(40.0));
     assert_eq!(size(&control, 4), Size::splat(S::from_f64(40.0)));
@@ -720,6 +723,18 @@ fn assert_collapsed_flex_keeps_strut_without_placing_text<S: LayoutScalar>() {
     assert_eq!(size(&collapsed, 0).height, S::from_f64(40.0));
     for node in [4, 5, 6] {
         assert_eq!(size(&collapsed, node), Size::ZERO);
+        let final_entry = collapsed
+            .final_entries()
+            .iter()
+            .find(|entry| entry.node() == node)
+            .expect("hidden nodes retain final output entries");
+        assert_eq!(final_entry.output().size, Size::ZERO);
+        assert!(
+            !collapsed
+                .cache_store_entries()
+                .iter()
+                .any(|entry| entry.node() == node)
+        );
     }
     let [placed] = collapsed.placed_text() else {
         panic!("only the visible paragraph is placed");
