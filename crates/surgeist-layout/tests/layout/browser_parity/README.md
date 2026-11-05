@@ -300,12 +300,15 @@ The second command selects the prepared Range profile, uses the pinned browser,
 and writes the comparison report to standard output. The ordinary root-context
 capture selects the geometry cohort separately.
 The [horizontal BR edition](captured/horizontal-br-font-band-qualification/)
-compares all four original pinned Ahem variants. It checks the selected
-font-band coordinates, both inline blocks and the exact control relations.
-See the [prepared-input and observation contract](measurement-protocol.md#authentic-prepared-text-input).
+compares four original pinned Ahem variants. The
+[vertical BR edition](captured/vertical-br-font-band-qualification/) compares
+twelve original variants in their authored writing modes and directions.
+Each compares the selected font band, both inline blocks and the exact control
+relations. See the [prepared-input and observation contract](measurement-protocol.md#authentic-prepared-text-input).
 
 ```sh
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-horizontal-br-font-band-qualification
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-vertical-br-font-band-qualification
 ```
 
 Root-context capture is versioned separately from the unchanged prepared font/source
