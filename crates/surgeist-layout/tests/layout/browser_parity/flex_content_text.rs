@@ -6,15 +6,22 @@ use super::{
 };
 use surgeist_text as text;
 
-const PROFILE: &str = "ahem-10px-flex-direct-text";
+pub(super) const PROFILE: &str = "ahem-10px-flex-direct-text";
 const STYLESHEET: &[u8] = include_bytes!("scripts/gentest/test_base_style.css");
 const HELPER: &[u8] = include_bytes!("scripts/gentest/test_helper.js");
-const REQUEST: &[u8] =
+pub(super) const REQUEST: &[u8] =
     include_bytes!("../../bin/surgeist-layout-generate/measurement/flex_content_text_request.json");
 const SCRIPT: &[u8] =
     include_bytes!("../../bin/surgeist-layout-generate/measurement/flex_content_text.js");
 const FONT: &[u8] =
     include_bytes!("../../../../surgeist-font/tests/fixtures/ahem-original/Ahem.woff2");
+pub(super) const SCRIPT_PATH: &str = "scripts/gentest/flex_content_text.js";
+pub(super) const CAPTURE_INPUTS: [(&str, &[u8]); 4] = [
+    ("scripts/gentest/test_base_style.css", STYLESHEET),
+    ("scripts/gentest/test_helper.js", HELPER),
+    ("observation-request.json", REQUEST),
+    (SCRIPT_PATH, SCRIPT),
+];
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct Proof {
@@ -45,19 +52,15 @@ pub(super) fn bind(
     let report = capture_authority::unique_json(report).map_err(invalid)?;
     let metadata: capture_authority::CaptureMetadata =
         serde_json::from_value(report["metadata"].clone()).map_err(invalid)?;
-    let inputs = [
-        (source_path, source_bytes),
-        ("scripts/gentest/test_base_style.css", STYLESHEET),
-        ("scripts/gentest/test_helper.js", HELPER),
-        ("observation-request.json", REQUEST),
-        ("scripts/gentest/flex_content_text.js", SCRIPT),
-    ];
     if metadata.schema_version != 4
         || capture_authority::sha256(STYLESHEET) != pinned_font::ROOT_CONTEXT_STYLESHEET_SHA256
         || capture_authority::sha256(FONT) != pinned_font::AHEM_STYLESHEET_WOFF2_SHA256
-        || inputs.iter().any(|(path, bytes)| {
-            metadata.inputs.get(*path) != Some(&capture_authority::sha256(bytes))
-        })
+        || CAPTURE_INPUTS
+            .into_iter()
+            .chain([(source_path, source_bytes)])
+            .any(|(path, bytes)| {
+                metadata.inputs.get(path) != Some(&capture_authority::sha256(bytes))
+            })
     {
         return Err(invalid("source, font, or capture inputs changed"));
     }

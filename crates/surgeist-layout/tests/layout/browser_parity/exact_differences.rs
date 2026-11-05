@@ -410,6 +410,8 @@ enum FontDemand {
     None,
     #[serde(rename = "ahem-10px-zwsp")]
     AhemZwsp,
+    #[serde(rename = "ahem-10px-flex-direct-text")]
+    AhemFlexDirectText,
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -744,7 +746,12 @@ impl ExactDifferenceSpec {
                 )));
             }
             let measured = matches!(spec.profile, Profile::CanonicalMeasuredGrid);
-            if measured != (identity.font_demand == FontDemand::AhemZwsp)
+            let expected_font = if measured {
+                FontDemand::AhemZwsp
+            } else {
+                FontDemand::None
+            };
+            if identity.font_demand != expected_font
                 || measured && *lineage != CaptureLineage::Published
             {
                 return Err(malformed(
