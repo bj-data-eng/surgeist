@@ -1602,15 +1602,14 @@ fn flex_row_aligns_items_on_the_cross_axis() {
     );
 }
 
-#[test]
-fn flex_row_reports_first_child_baseline() {
+fn flex_row_child_baselines(run_mode: RunMode, baselines: BaselinesOf<f32>) -> ComputeOutput {
     let mut tree = FlexTree::default();
     tree.insert_children(1, vec![2]);
     tree.insert_children(2, vec![]);
     tree.insert_style(
         1,
         NodeInput {
-            size: Size::new(PreferredSize::px(100.0), PreferredSize::px(40.0)),
+            size: Size::new(PreferredSize::px(100.0), PreferredSize::AUTO),
             ..NodeInput::default()
         },
     );
@@ -1623,18 +1622,14 @@ fn flex_row_reports_first_child_baseline() {
     );
     tree.insert_measure(
         2,
-        ComputeOutput::from_sizes_and_first_baselines(
-            Size::new(20.0, 10.0),
-            Size::ZERO,
-            Point::new(None, Some(7.0)),
-        ),
+        ComputeOutput::from_sizes_and_baselines(Size::new(20.0, 10.0), Size::ZERO, baselines),
     );
 
-    let output = compute_flex(
+    compute_flex(
         &mut tree.borrow_compute(),
         1,
         ComputeInput::for_child(
-            RunMode::PerformLayout,
+            run_mode,
             SizingMode::InherentSize,
             RequestedAxis::Both,
             Size::NONE,
@@ -1662,10 +1657,30 @@ fn flex_row_reports_first_child_baseline() {
             ),
         ),
     )
-    .unwrap();
+    .unwrap()
+}
 
+#[test]
+fn flex_row_reports_first_child_baseline() {
+    let output = flex_row_child_baselines(
+        RunMode::PerformLayout,
+        BaselinesOf::first(Point::new(None, Some(7.0))),
+    );
     assert_eq!(output.first_baselines.y, Some(7.0));
     assert_eq!(output.last_baselines.y, Some(7.0));
+}
+
+#[test]
+fn flex_row_exports_the_unshared_parallel_end_items_last_baseline() {
+    let baselines = BaselinesOf {
+        first: Point::new(None, Some(3.0)),
+        last: Point::new(None, Some(8.0)),
+    };
+    let ports = [RunMode::ComputeSize, RunMode::PerformLayout].map(|mode| {
+        let output = flex_row_child_baselines(mode, baselines);
+        (output.first_baselines.y, output.last_baselines.y)
+    });
+    assert_eq!(ports, [(Some(3.0), Some(8.0)); 2]);
 }
 
 fn assert_flex_uses_the_orthogonal_child_line_over_margin_for_baselines<S: LayoutScalar>()
