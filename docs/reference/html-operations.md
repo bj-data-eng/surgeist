@@ -2694,19 +2694,23 @@ linear in their total length. A name past two hundred kept names on one path tak
 the full walk took 202.
 
 Text inside `textarea` is linear in its length, like text in `body`, at about 1.7 times the cost
-of a unit there. The `textarea` row was measured by the same method at commit `0e41cd441`, where
-the `body` text row is 35,875 to 36,263 credits for each unit, 15,198 to 15,336 reserved bytes and
-11,124 to 11,456 copied bytes, against 21,350 to 24,034 reserved and 18,672 to 19,954 copied for
-`textarea`. Each character appended to the one text child also resets the textarea's raw value, a
-separate string with its own provenance, which adds two history groups and seven association rows
-to the two and seven of the text itself (4 and 14 for each unit, against 2 and 7 in `body`). The
-reset appends the character to the end of the raw value's backing in place, growing it by capacity
-doubling, so no unit is copied again: the units copied for each character no longer grow with the
-text so far. The caller sizing `work_credits` for `textarea` content uses the high end of the row.
-A reset from every child's text, which copies all of it, remains for the changes that are not
-an append to the end of the last child, namely a child removed, inserted or moved and text
-inserted before a reference sibling, and for the reset when the element leaves the stack of open
-elements, which runs once. The parser makes no other change to a textarea's children.
+of a unit there. The `textarea` row was measured on the source of the change that made it linear, by
+the method above: `<textarea>` followed by `a` repeated at the same ten sizes, unclosed, with the
+generous limits and the totals divided by the repeated units. The other rows were measured on
+earlier source, so the `body` text row of the same run, 35,875 to 36,263 credits for each unit,
+differs a little from the row above it; against that, `textarea` costs 21,350 to 24,034 reserved
+bytes and 18,672 to 19,954 copied bytes for each unit, where `body` costs 15,198 to 15,336 and
+11,124 to 11,456. Each character appended to the one text child also resets the textarea's raw
+value, a separate string with its own provenance, which adds two history groups and seven
+association rows to the two and seven of the text itself (4 and 14 for each unit, against 2 and 7
+in `body`). The reset appends the character to the end of the raw value's backing in place,
+growing it by capacity doubling, so no unit is copied again: the units copied for each character no
+longer grow with the text so far. The caller sizing `work_credits` for `textarea` content uses the
+high end of the row. A reset from every child's text, which copies all of it, remains for every
+other change of the children (a child removed, inserted or moved, and text inserted before a
+reference sibling) and for the reset when the element leaves the stack of open elements, which
+runs once. The parser changes a textarea's children only by inserting the first text node, which
+resets the value from one short child, and by appending to it.
 
 <a id="group-walk-cost"></a>
 
