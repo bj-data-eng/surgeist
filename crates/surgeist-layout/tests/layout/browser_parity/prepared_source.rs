@@ -826,6 +826,38 @@ mod tests {
     }
 
     #[test]
+    fn authored_atomic_percentage_requires_the_actual_containing_frame() {
+        let mut raw = original_capture();
+        let mut style = raw["baseStyle"].clone();
+        style["fontSize"] = json!(16.0);
+        style["lineHeight"] = json!(20.0);
+        style["whitespace"] = json!("collapse");
+        raw["baseStyle"] = style.clone();
+        raw["origins"] = json!([
+            {"child":0,"units":"\n  basis ".encode_utf16().collect::<Vec<_>>(),"start":0,"end":9,"style":style},
+            {"child":2,"units":" definite\n".encode_utf16().collect::<Vec<_>>(),"start":9,"end":19,"style":style}
+        ]);
+        raw["connections"] = json!([
+            {"preceding":0,"following":1,"kind":"continuous",
+             "precedingWrap":"word","followingWrap":"word","ancestorWrap":"word"}
+        ]);
+        raw["atomics"] = json!([
+            {"child":1,"at":9,"kind":"in-flow","authoredSize":{"width":"20px","height":"50%"},
+             "precedingWrap":"word","followingWrap":"word","ancestorWrap":"word"}
+        ]);
+        raw["order"] = json!([
+            {"kind":"origin","index":0,"affinity":"before"},
+            {"kind":"atomic","index":0,"affinity":"before"},
+            {"kind":"origin","index":1,"affinity":"before"}
+        ]);
+        let error = Capture::parse(&raw.to_string(), 3).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "prepared source: authored atomic size requires its actual containing frame"
+        );
+    }
+
+    #[test]
     fn permuted_control_array_keeps_explicit_event_order_and_placed_owner() {
         for (raw_children, kinds, order, xml) in [
             (
