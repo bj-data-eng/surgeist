@@ -405,6 +405,36 @@ fn case_identities(snapshot: &Inventory) -> Vec<(String, String, String, String)
 }
 
 #[test]
+fn focused_geometry_only_requires_selected_grid_static_predecessors() {
+    let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let empty_editions = Directory::new();
+    let mode = QualificationMode::Regular;
+    for (source, requires_grid_static) in [
+        ("html/flex/fri07_collapsed_strut_wrapping.html", false),
+        ("html/grid/grid_absolute_resolved_insets.html", true),
+    ] {
+        let root = Directory::new();
+        let mut declaration = DeclarationInput::parse(DECLARATION).unwrap();
+        select_records(&mut declaration.declaration, Some(source), mode).unwrap();
+        let inventory =
+            inventory(&root.0, owner, &declaration, mode, InputAccess::Prepare).unwrap();
+        assert!(inventory.cases.iter().all(|case| case.semantic.is_some()));
+        let selected = focused_geometry_predecessors(&empty_editions.0, &inventory.cases, mode);
+        if requires_grid_static {
+            assert!(selected.is_err());
+            assert_eq!(
+                focused_geometry_predecessors(owner, &inventory.cases, mode)
+                    .unwrap()
+                    .len(),
+                4
+            );
+        } else {
+            assert!(selected.unwrap().is_empty());
+        }
+    }
+}
+
+#[test]
 fn appended_semantic_publication_preserves_sealed_source_and_rejects_shadows() {
     let source = "html/grid/grid_absolute_resolved_insets.html";
     let digest = "a".repeat(64);
