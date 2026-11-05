@@ -1296,19 +1296,19 @@ inline_offset = 0
 
 [records.semantic_specifications.border_box_ltr]
 path = "semantic/grid-min-fit-10-border_box_ltr.json"
-sha256 = "8f59dc590d7d78eab6b3af72ca27fa6796f9f984fd87acca40f7fc3a3c35e4c3"
+sha256 = "4f11520d540b65ac40917b6f319543da72511b4a5652ac0fbe9561fb2f917b23"
 
 [records.semantic_specifications.border_box_rtl]
 path = "semantic/grid-min-fit-10-border_box_rtl.json"
-sha256 = "f674b1419a7b6eb91c94c85cd5ac57aae635e1b25bae922b5b8e1addd696bf23"
+sha256 = "344a3ce9d87c903500ead01c9deb3896aaf79269edaa5b78dced62f89c8eeb57"
 
 [records.semantic_specifications.content_box_ltr]
 path = "semantic/grid-min-fit-10-content_box_ltr.json"
-sha256 = "2b5bbb5fee4d42ae04bb1524f9d6339e8fe9d889352cf7763f4e21603d8720fd"
+sha256 = "6ad76ac4c49a17d6698fa17455a7e1bcf5ad08d9b26d3ef9f026ff924f7ed136"
 
 [records.semantic_specifications.content_box_rtl]
 path = "semantic/grid-min-fit-10-content_box_rtl.json"
-sha256 = "34d3c50f583269742ad2f2fbb022df47fbbf1e25633f9058ad410ed8c9e0c9c3"
+sha256 = "1c215eaf1ba0998e9fd02629d7395e9f65190ad437dc10e85fed818b72b82130"
 
 [[records]]
 source = "html/grid/grid_span_2_min_content_fit_content_10px_indefinite_hidden.html"
@@ -1330,6 +1330,22 @@ hypothetical_direction = "ltr"
 root_direction = "variant"
 inline_offset = 0
 
+[records.semantic_specifications.border_box_ltr]
+path = "semantic/grid-min-fit-10-hidden-border_box_ltr.json"
+sha256 = "7b835c73b0f0d1b06d575895d74d601268053a0122dbfea12bbfa4024563ada3"
+
+[records.semantic_specifications.border_box_rtl]
+path = "semantic/grid-min-fit-10-hidden-border_box_rtl.json"
+sha256 = "ede0cf6fde81c019d674aeea89ac98f8503f050130d976b4c50da67c201ef7d8"
+
+[records.semantic_specifications.content_box_ltr]
+path = "semantic/grid-min-fit-10-hidden-content_box_ltr.json"
+sha256 = "1f9aa61658534aff546977ca1f5c9aadef9964cdb5b4c29005c17061f19e511a"
+
+[records.semantic_specifications.content_box_rtl]
+path = "semantic/grid-min-fit-10-hidden-content_box_rtl.json"
+sha256 = "fe7f583aff3f4b5075a1f35751e27fd4552d49840d410e6025b80c46b54bb8eb"
+
 [[records]]
 source = "html/grid/grid_span_2_min_content_fit_content_30px_indefinite.html"
 source_sha256 = "e9bab3162eab10027b7a16db497797857bf6909689913c5723fd72ce0d017e26"
@@ -1350,6 +1366,22 @@ hypothetical_direction = "ltr"
 root_direction = "variant"
 inline_offset = 0
 
+[records.semantic_specifications.border_box_ltr]
+path = "semantic/grid-min-fit-30-border_box_ltr.json"
+sha256 = "527deb16d7f4ffefcc90c9b8bda1ccd5392a3f8dd7439429bf67fd83bc56c36c"
+
+[records.semantic_specifications.border_box_rtl]
+path = "semantic/grid-min-fit-30-border_box_rtl.json"
+sha256 = "cd07e529721eb95e21410b1e47738c867ec3a661e450e9f5d9e385308cb7cd07"
+
+[records.semantic_specifications.content_box_ltr]
+path = "semantic/grid-min-fit-30-content_box_ltr.json"
+sha256 = "f9e6c3d83023d6780a8c44006379aa7838ddc87f952fe40876c65d13dd4375dd"
+
+[records.semantic_specifications.content_box_rtl]
+path = "semantic/grid-min-fit-30-content_box_rtl.json"
+sha256 = "eb3217e76b668501eeb343e12b2db76bd43e02abaf876c1b746dec56205af14d"
+
 [[records]]
 source = "html/grid/grid_span_2_min_content_fit_content_30px_indefinite_hidden.html"
 source_sha256 = "7cd6ccad2b32ff3e6eeb38e007a659197df1d415f48364f4f7a4e67fc93aae6a"
@@ -1369,6 +1401,22 @@ containing_direction = "ltr"
 hypothetical_direction = "ltr"
 root_direction = "variant"
 inline_offset = 0
+
+[records.semantic_specifications.border_box_ltr]
+path = "semantic/grid-min-fit-30-hidden-border_box_ltr.json"
+sha256 = "b2763005e7024e2ba380f54d82fe1b4850f5f338951232abbc9e187a0de96559"
+
+[records.semantic_specifications.border_box_rtl]
+path = "semantic/grid-min-fit-30-hidden-border_box_rtl.json"
+sha256 = "17d6c5579240bf8303f234765d57c4acf230b6ca71dade7f31d6ad0640b024b3"
+
+[records.semantic_specifications.content_box_ltr]
+path = "semantic/grid-min-fit-30-hidden-content_box_ltr.json"
+sha256 = "bb3ec517815e1c47abff7fcf6322e45ab74335732494c85b264b3fe3d888423c"
+
+[records.semantic_specifications.content_box_rtl]
+path = "semantic/grid-min-fit-30-hidden-content_box_rtl.json"
+sha256 = "7cfaa8b1e01647a36f94659e933df17d53aed0f363f7689e007946c3e3cb6679"
 
 [[records]]
 source = "html/grid/grid_span_2_min_content_fit_content_80px_indefinite.html"

@@ -300,14 +300,15 @@ impl ComparedField {
             Field::ElementSize { path, field, .. } => format!("element-size:{path}:{field:?}"),
         }
     }
-    fn canonical_selector(&self) -> Option<Selector> {
+    fn canonical_selector(&self) -> Selector {
         let field = match &self.0 {
             Field::Layout { field, .. } => match field {
                 LayoutField::X => CanonicalField::X,
                 LayoutField::Y => CanonicalField::Y,
                 LayoutField::Width => CanonicalField::Width,
                 LayoutField::Height => CanonicalField::Height,
-                LayoutField::ScrollWidth | LayoutField::ScrollHeight => return None,
+                LayoutField::ScrollWidth => CanonicalField::LayoutScrollWidth,
+                LayoutField::ScrollHeight => CanonicalField::LayoutScrollHeight,
             },
             Field::ElementSize { field, .. } => match field {
                 ElementField::ClientWidth => CanonicalField::ClientWidth,
@@ -316,10 +317,10 @@ impl ComparedField {
                 ElementField::ScrollHeight => CanonicalField::ScrollHeight,
             },
         };
-        Some(Selector {
+        Selector {
             path: self.path().to_owned(),
             field,
-        })
+        }
     }
 
     fn path(&self) -> &str {
@@ -865,7 +866,7 @@ impl ExactDifferenceSpec {
                 key: "Published canonical boxes require both present packet channels".to_owned(),
             });
         }
-        let selectors = canonical_selectors(edition.domain(), &nodes);
+        let selectors = canonical_selectors(required, &nodes);
         if required.domain != edition.domain()
             || required.nodes != nodes
             || required.unrounded_packets != nodes
@@ -964,16 +965,42 @@ impl ExactDifferenceSpec {
     }
 }
 
-fn canonical_selectors(domain: CurrentDomain, nodes: &[String]) -> Vec<Selector> {
-    nodes
-        .iter()
-        .flat_map(|path| {
-            domain.fields().iter().map(|&field| Selector {
-                path: path.clone(),
-                field,
+fn layout_scroll_ranges_requested(required: &CurrentRequirements, path: &str) -> bool {
+    required.domain == CurrentDomain::LayoutAndElementSizes
+        && required
+            .selectors
+            .binary_search_by(|selector| {
+                (selector.path.as_str(), selector.field)
+                    .cmp(&(path, CanonicalField::LayoutScrollWidth))
             })
-        })
-        .collect()
+            .is_ok()
+}
+
+fn canonical_selectors(required: &CurrentRequirements, nodes: &[String]) -> Vec<Selector> {
+    const LAYOUT_SCROLL: [CanonicalField; 2] = [
+        CanonicalField::LayoutScrollWidth,
+        CanonicalField::LayoutScrollHeight,
+    ];
+    let mut selectors = Vec::new();
+    for path in nodes {
+        let range_fields = if layout_scroll_ranges_requested(required, path) {
+            LAYOUT_SCROLL.as_slice()
+        } else {
+            &[]
+        };
+        selectors.extend(
+            required
+                .domain
+                .fields()
+                .iter()
+                .chain(range_fields)
+                .map(|&field| Selector {
+                    path: path.clone(),
+                    field,
+                }),
+        );
+    }
+    selectors
 }
 
 fn verify_current_requirements(
@@ -992,8 +1019,12 @@ fn verify_current_requirements(
             key: "current root-border-local observation frame or domain".to_owned(),
         });
     }
-    fn verify_geometry(expected: &Expectation) -> Result<()> {
-        if expected.scroll_size.is_some()
+    fn verify_geometry(
+        expected: &Expectation,
+        path: &str,
+        required: &CurrentRequirements,
+    ) -> Result<()> {
+        if expected.scroll_size.is_some() != layout_scroll_ranges_requested(required, path)
             || expected.x.is_none()
             || expected.y.is_none()
             || expected.width.is_none()
@@ -1003,12 +1034,13 @@ fn verify_current_requirements(
                 key: "complete current canonical box observations".to_owned(),
             });
         }
-        for child in &expected.children {
-            verify_geometry(child)?;
+        for (index, child) in expected.children.iter().enumerate() {
+            let child_path = format!("{}/{index}", path.trim_end_matches('/'));
+            verify_geometry(child, &child_path, required)?;
         }
         Ok(())
     }
-    verify_geometry(&golden.expectations)?;
+    verify_geometry(&golden.expectations, "/", required)?;
     let mut nodes = source
         .iter()
         .map(|(path, _)| path.clone())
@@ -1179,10 +1211,7 @@ pub(crate) fn complete_captured_comparison(
         let mut actual = fields
             .iter()
             .map(ComparedField::canonical_selector)
-            .collect::<Option<Vec<_>>>()
-            .ok_or_else(|| QualificationError::IncompleteRepresentation {
-                key: "comparison produced a field outside the current domain".to_owned(),
-            })?;
+            .collect::<Vec<_>>();
         actual.sort();
         if actual != required.selectors {
             return Err(QualificationError::IncompleteRepresentation {

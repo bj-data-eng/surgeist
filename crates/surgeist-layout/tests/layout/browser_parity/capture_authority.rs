@@ -436,6 +436,8 @@ pub(crate) enum CanonicalField {
     ClientHeight,
     ScrollWidth,
     ScrollHeight,
+    LayoutScrollWidth,
+    LayoutScrollHeight,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, Ord, PartialEq, PartialOrd)]
 #[serde(deny_unknown_fields)]

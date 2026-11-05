@@ -1,10 +1,22 @@
 {
   "schema_version": 1,
   "artifacts": {
-    "xml/generation-reports/all.json": "275b0e429fad0286271b1f77417e92d643cde60ff7c2a3b3b94bcb2bfaca26c4",
+    "xml/generation-reports/all.json": "27fa3a62fa5753fd9e1b1461d01fd7beb74d27dcc01622eae2c95ef4bc3d300a",
     "xml/grid/grid_span_2_min_content_fit_content_10px_indefinite__border_box_ltr.xml": "4fddab52d4527bc93ccae7a677261d193bc706a957048594b39849823f0db4ae",
     "xml/grid/grid_span_2_min_content_fit_content_10px_indefinite__border_box_rtl.xml": "b1f1ff38852e8a59d193b10fc494251026572f27e7b7824edac5d4db381fb271",
     "xml/grid/grid_span_2_min_content_fit_content_10px_indefinite__content_box_ltr.xml": "7bd15e6ad9d354932610493d4d24e2241869dba996c3cf99a0e7079b6b670d4b",
-    "xml/grid/grid_span_2_min_content_fit_content_10px_indefinite__content_box_rtl.xml": "20c4e759d999580a672e349782e0ee2765a3380c3b750f406d1eac65f1478eb0"
+    "xml/grid/grid_span_2_min_content_fit_content_10px_indefinite__content_box_rtl.xml": "20c4e759d999580a672e349782e0ee2765a3380c3b750f406d1eac65f1478eb0",
+    "xml/grid/grid_span_2_min_content_fit_content_10px_indefinite_hidden__border_box_ltr.xml": "5e82d798e543385377bd5175f149a5d995a6e574db75c76c6b24722656d8be26",
+    "xml/grid/grid_span_2_min_content_fit_content_10px_indefinite_hidden__border_box_rtl.xml": "38a1be219e3ce53355ed27d463298f4588ad67a17322249496f82ded9ac94f3d",
+    "xml/grid/grid_span_2_min_content_fit_content_10px_indefinite_hidden__content_box_ltr.xml": "c00388b3a824350bbc50953d21d1d5c1007ec70846773186ba579450db566df4",
+    "xml/grid/grid_span_2_min_content_fit_content_10px_indefinite_hidden__content_box_rtl.xml": "670acef5707edcbb1b800acac0c5c96a6556ad09847b66fac6cfe7aed6452f9b",
+    "xml/grid/grid_span_2_min_content_fit_content_30px_indefinite__border_box_ltr.xml": "89ac092ff93d5ff7d54ccb709488d076ce3f4bb812f34f90078546f29735ebe5",
+    "xml/grid/grid_span_2_min_content_fit_content_30px_indefinite__border_box_rtl.xml": "7651197368f108695b6faa10b092c14b832f07baf5116f7af97b0a5fb0c22336",
+    "xml/grid/grid_span_2_min_content_fit_content_30px_indefinite__content_box_ltr.xml": "196935482ec33e437b4ec1be45db8b874b356bd7e5bcfa58430dc835a9e69350",
+    "xml/grid/grid_span_2_min_content_fit_content_30px_indefinite__content_box_rtl.xml": "a0a4bbbe9b5d37968ec33193fc86df2bcb3b0f57bd1ffb3fa8fb249840fc62c3",
+    "xml/grid/grid_span_2_min_content_fit_content_30px_indefinite_hidden__border_box_ltr.xml": "e83bdb37978ff0d1c0c37b91de5373165bf8995587ebe6ab7707a39fc821d724",
+    "xml/grid/grid_span_2_min_content_fit_content_30px_indefinite_hidden__border_box_rtl.xml": "66bf444da52ab5ad89a8022fe2716f1df8c7174698b89123c6cedf5527b3baad",
+    "xml/grid/grid_span_2_min_content_fit_content_30px_indefinite_hidden__content_box_ltr.xml": "e09e8fca4dc54bef4298e14d65b971c7520777cebd7847dc37057e3a90b7bf72",
+    "xml/grid/grid_span_2_min_content_fit_content_30px_indefinite_hidden__content_box_rtl.xml": "b40f4d90c67d4de27bb169498d0cbad03ee026ed44e4674a8498984d83ad4014"
   }
 }
