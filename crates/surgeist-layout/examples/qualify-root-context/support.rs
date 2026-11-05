@@ -41,11 +41,12 @@ pub(super) enum QualificationMode {
     ElementScrollSizeDiagnostics,
     MeasuredLeafDiagnostics,
     FlexContentTextDiagnostics,
+    PreparedRangeCapture,
     Publish,
     CheckPublished,
     PublishCanonicalBoxes,
     CheckPublishedCanonicalBoxes,
-    DeriveCanonicalBoxes,
+    Derive(crate::parity_support::exact_differences::PublishedEdition),
     PublishMeasuredGrid,
     CheckPublishedMeasuredGrid,
     PublishFlexText,
@@ -65,13 +66,20 @@ impl QualificationMode {
 
     fn box_observations(self) -> BoxObservationRequest {
         match self {
+            Self::PreparedRangeCapture => BoxObservationRequest::PreparedRanges,
             Self::ElementScrollSizeDiagnostics => BoxObservationRequest::ElementScrollSizes,
             Self::FlexContentTextDiagnostics
             | Self::PublishFlexText
-            | Self::CheckPublishedFlexText => BoxObservationRequest::FlexContentText,
+            | Self::CheckPublishedFlexText
+            | Self::Derive(crate::parity_support::exact_differences::PublishedEdition::FlexText) => {
+                BoxObservationRequest::FlexContentText
+            }
             Self::MeasuredLeafDiagnostics
             | Self::PublishMeasuredGrid
-            | Self::CheckPublishedMeasuredGrid => BoxObservationRequest::MeasuredLeaf,
+            | Self::CheckPublishedMeasuredGrid
+            | Self::Derive(
+                crate::parity_support::exact_differences::PublishedEdition::MeasuredGrid,
+            ) => BoxObservationRequest::MeasuredLeaf,
             _ => BoxObservationRequest::Geometry,
         }
     }
@@ -82,6 +90,16 @@ fn select_records(
     fixture: Option<&str>,
     mode: QualificationMode,
 ) -> Result<()> {
+    let prepared_source = crate::parity_support::prepared_range_qualification::SOURCE;
+    if mode == QualificationMode::PreparedRangeCapture {
+        if fixture != Some(prepared_source) {
+            return Err("prepared Range qualification requires its declared fixture".into());
+        }
+    } else {
+        declaration
+            .records
+            .retain(|record| record.source.as_str() != prepared_source);
+    }
     if matches!(
         mode,
         QualificationMode::ElementScrollSizeDiagnostics
@@ -128,6 +146,9 @@ fn select_records(
                 QualificationMode::NumericDiagnostics => {
                     return Err("numeric diagnostics require a Generated fixture".into());
                 }
+                QualificationMode::PreparedRangeCapture => {
+                    return Err("prepared Range qualification requires a Generated fixture".into());
+                }
                 QualificationMode::ElementScrollSizeDiagnostics
                 | QualificationMode::MeasuredLeafDiagnostics
                 | QualificationMode::FlexContentTextDiagnostics => unreachable!("selected above"),
@@ -136,7 +157,7 @@ fn select_records(
                 | QualificationMode::CheckPublished
                 | QualificationMode::PublishCanonicalBoxes
                 | QualificationMode::CheckPublishedCanonicalBoxes
-                | QualificationMode::DeriveCanonicalBoxes
+                | QualificationMode::Derive(_)
                 | QualificationMode::PublishMeasuredGrid
                 | QualificationMode::CheckPublishedMeasuredGrid
                 | QualificationMode::PublishFlexText
@@ -327,6 +348,19 @@ impl<'a> DeclarationInput<'a> {
         declaration.expected()?;
         Ok(Self { bytes, declaration })
     }
+
+    fn sealed_prefix(current: &'a [u8], length: usize, sha256: &str) -> Result<Self> {
+        // Validate the complete catalogue before selecting the captured prefix.
+        // An appended record cannot duplicate or shadow a captured source.
+        Self::parse(current)?;
+        let bytes = current
+            .get(..length)
+            .ok_or("canonical declaration is shorter than the fixed edition seal")?;
+        if Sha256Digest::from_bytes(bytes).as_str() != sha256 {
+            return Err("canonical declaration prefix differs from the fixed edition seal".into());
+        }
+        Self::parse(bytes)
+    }
 }
 
 // This intentionally projects only the browser declaration. It does not claim
@@ -381,7 +415,7 @@ pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> 
             | QualificationMode::CheckPublished
             | QualificationMode::PublishCanonicalBoxes
             | QualificationMode::CheckPublishedCanonicalBoxes
-            | QualificationMode::DeriveCanonicalBoxes
+            | QualificationMode::Derive(_)
             | QualificationMode::PublishMeasuredGrid
             | QualificationMode::CheckPublishedMeasuredGrid
             | QualificationMode::PublishFlexText
@@ -505,6 +539,7 @@ fn qualify(
             lineage: SemanticLineage::Focused,
             requirements: None,
             terminal_cases: None,
+            prepared_range_raw: &mut std::io::stdout(),
         },
     )
 }
@@ -565,6 +600,7 @@ struct Validation<'a> {
     requirements:
         Option<&'a BTreeMap<String, crate::parity_support::capture_authority::CurrentRequirements>>,
     terminal_cases: Option<&'a mut Vec<crate::parity_support::capture_authority::QualifiedCase>>,
+    prepared_range_raw: &'a mut dyn Write,
 }
 struct SemanticCapture<'a> {
     root: &'a Path,
@@ -589,7 +625,19 @@ fn validate_corpus(
     report: &browser::BrowserGenerationReport,
     mut validation: Validation<'_>,
 ) -> Result<()> {
+    use crate::parity_support::prepared_range_qualification as prepared_range;
+
     let mode = validation.mode;
+    let prepared_range_policy = if mode == QualificationMode::PreparedRangeCapture {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join(prepared_range::POLICY_SOURCE);
+        Some(prepared_range::PolicyIdentity::from_contract(
+            &fs::read_to_string(path)?,
+        )?)
+    } else {
+        None
+    };
     assert_eq!(*report.summary(), expected);
     assert!(report.filter().is_none());
     assert_eq!(
@@ -663,8 +711,22 @@ fn validate_corpus(
         // Source certificates and parsing remain fatal in every mode.
         qualify_xml(&xml, case)?;
         let golden = parse_capture_golden(root, artifact, &xml, capture.flex_report)?;
+        if golden.has_prepared_range_frame()
+            != (mode.box_observations() == BoxObservationRequest::PreparedRanges)
+        {
+            return Err(format!(
+                "{}: prepared Range frame differs from the registered request",
+                case.case.id()
+            )
+            .into());
+        }
         if golden.has_element_scroll_sizes()
-            != (mode.box_observations() != BoxObservationRequest::Geometry)
+            != matches!(
+                mode.box_observations(),
+                BoxObservationRequest::ElementScrollSizes
+                    | BoxObservationRequest::MeasuredLeaf
+                    | BoxObservationRequest::FlexContentText
+            )
         {
             return Err(format!(
                 "{}: element scroll-size coverage differs from the registered request",
@@ -692,7 +754,17 @@ fn validate_corpus(
             qualify_grid_reference_census(&golden.root, owners)?;
             crate::parity_support::assert_grid_alignment_reference_inputs(&golden, owners)?;
         }
-        if mode.collects_numeric_differences() {
+        if let Some(policy) = &prepared_range_policy {
+            if let Err(error) = prepared_range::qualify(
+                &golden,
+                case.source.as_str(),
+                case.case.variant(),
+                policy,
+                &mut *validation.prepared_range_raw,
+            ) {
+                native_errors.push(format!("{}: {error}", case.case.id()));
+            }
+        } else if mode.collects_numeric_differences() {
             match collect_numeric_case(&golden, case, &mut std::io::stdout().lock()) {
                 Ok(mismatches) => numeric.record_case(mismatches)?,
                 Err(error) => {
@@ -789,11 +861,12 @@ fn validate_corpus(
         | QualificationMode::ElementScrollSizeDiagnostics
         | QualificationMode::MeasuredLeafDiagnostics
         | QualificationMode::FlexContentTextDiagnostics
+        | QualificationMode::PreparedRangeCapture
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
         | QualificationMode::PublishCanonicalBoxes
         | QualificationMode::CheckPublishedCanonicalBoxes
-        | QualificationMode::DeriveCanonicalBoxes
+        | QualificationMode::Derive(_)
         | QualificationMode::PublishMeasuredGrid
         | QualificationMode::CheckPublishedMeasuredGrid
         | QualificationMode::PublishFlexText
@@ -995,11 +1068,12 @@ fn inventory(
         | QualificationMode::ElementScrollSizeDiagnostics
         | QualificationMode::MeasuredLeafDiagnostics
         | QualificationMode::FlexContentTextDiagnostics
+        | QualificationMode::PreparedRangeCapture
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
         | QualificationMode::PublishCanonicalBoxes
         | QualificationMode::CheckPublishedCanonicalBoxes
-        | QualificationMode::DeriveCanonicalBoxes
+        | QualificationMode::Derive(_)
         | QualificationMode::PublishMeasuredGrid
         | QualificationMode::CheckPublishedMeasuredGrid
         | QualificationMode::PublishFlexText
@@ -1020,7 +1094,21 @@ fn inventory(
         } else {
             None
         };
-        let bytes = augmented.as_deref().unwrap_or(bytes);
+        let retained = if name == crate::parity_support::capture_authority::ROOT_HELPER_INPUT
+            && matches!(access, InputAccess::ReadOnly)
+        {
+            publication::require_regular_input(root, &path)?;
+            let retained = fs::read(root.join(name))?;
+            let digest = Sha256Digest::from_bytes(&retained);
+            crate::parity_support::capture_authority::root_helper_profile(digest.as_str())?;
+            Some(retained)
+        } else {
+            None
+        };
+        let bytes = retained
+            .as_deref()
+            .or(augmented.as_deref())
+            .unwrap_or(bytes);
         inventory_input(root, &path, bytes, &mut inventory.expected_inputs, access)?;
         if name != "corpus.toml" {
             inventory.global_inputs.push(path);
@@ -2638,3 +2726,7 @@ mod custody_applicability_tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "prepared_range_tests.rs"]
+mod prepared_range_tests;

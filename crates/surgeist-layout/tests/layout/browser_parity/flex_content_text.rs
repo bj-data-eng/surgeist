@@ -8,7 +8,6 @@ use surgeist_text as text;
 
 pub(super) const PROFILE: &str = "ahem-10px-flex-direct-text";
 const STYLESHEET: &[u8] = include_bytes!("scripts/gentest/test_base_style.css");
-const HELPER: &[u8] = include_bytes!("scripts/gentest/test_helper.js");
 pub(super) const REQUEST: &[u8] =
     include_bytes!("../../bin/surgeist-layout-generate/measurement/flex_content_text_request.json");
 const SCRIPT: &[u8] =
@@ -16,9 +15,8 @@ const SCRIPT: &[u8] =
 const FONT: &[u8] =
     include_bytes!("../../../../surgeist-font/tests/fixtures/ahem-original/Ahem.woff2");
 pub(super) const SCRIPT_PATH: &str = "scripts/gentest/flex_content_text.js";
-pub(super) const CAPTURE_INPUTS: [(&str, &[u8]); 4] = [
+pub(super) const CAPTURE_INPUTS: [(&str, &[u8]); 3] = [
     ("scripts/gentest/test_base_style.css", STYLESHEET),
-    ("scripts/gentest/test_helper.js", HELPER),
     ("observation-request.json", REQUEST),
     (SCRIPT_PATH, SCRIPT),
 ];
@@ -53,6 +51,10 @@ pub(super) fn bind(
     let metadata: capture_authority::CaptureMetadata =
         serde_json::from_value(report["metadata"].clone()).map_err(invalid)?;
     if metadata.schema_version != 4
+        || !metadata
+            .inputs
+            .get(capture_authority::ROOT_HELPER_INPUT)
+            .is_some_and(|hash| capture_authority::root_helper_profile(hash).is_ok())
         || capture_authority::sha256(STYLESHEET) != pinned_font::ROOT_CONTEXT_STYLESHEET_SHA256
         || capture_authority::sha256(FONT) != pinned_font::AHEM_STYLESHEET_WOFF2_SHA256
         || CAPTURE_INPUTS

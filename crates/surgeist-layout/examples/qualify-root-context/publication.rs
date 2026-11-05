@@ -44,16 +44,11 @@ const DECLARATION_PREFIX_SHA256: &str =
     "3d8fd3be19d7e4b5411133a09816954d174725f25d2f76725fc46594ec156abb";
 
 fn edition_input(current: &[u8]) -> Result<DeclarationInput<'_>> {
-    // Inspect ALL current records before selecting the sealed edition: appended
-    // declarations cannot shadow a prior source or duplicate each other.
-    DeclarationInput::parse(current)?;
-    let bytes = current
-        .get(..DECLARATION_PREFIX_LENGTH)
-        .ok_or("canonical declaration is shorter than the fixed edition seal")?;
-    if Sha256Digest::from_bytes(bytes).as_str() != DECLARATION_PREFIX_SHA256 {
-        return Err("canonical declaration prefix differs from the fixed edition seal".into());
-    }
-    DeclarationInput::parse(bytes)
+    DeclarationInput::sealed_prefix(
+        current,
+        DECLARATION_PREFIX_LENGTH,
+        DECLARATION_PREFIX_SHA256,
+    )
 }
 
 pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
@@ -65,17 +60,19 @@ pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
             (Edition::CanonicalBoxDifferences, InputAccess::Prepare)
         }
         QualificationMode::CheckPublishedCanonicalBoxes
-        | QualificationMode::DeriveCanonicalBoxes => {
+        | QualificationMode::Derive(PublishedEdition::CanonicalBoxes) => {
             (Edition::CanonicalBoxDifferences, InputAccess::ReadOnly)
         }
         QualificationMode::PublishMeasuredGrid => {
             (Edition::MeasuredGridDifferences, InputAccess::Prepare)
         }
-        QualificationMode::CheckPublishedMeasuredGrid => {
+        QualificationMode::CheckPublishedMeasuredGrid
+        | QualificationMode::Derive(PublishedEdition::MeasuredGrid) => {
             (Edition::MeasuredGridDifferences, InputAccess::ReadOnly)
         }
         QualificationMode::PublishFlexText => (Edition::FlexTextDifferences, InputAccess::Prepare),
-        QualificationMode::CheckPublishedFlexText => {
+        QualificationMode::CheckPublishedFlexText
+        | QualificationMode::Derive(PublishedEdition::FlexText) => {
             (Edition::FlexTextDifferences, InputAccess::ReadOnly)
         }
         _ => return Err("expected a durable publication mode".into()),
@@ -157,7 +154,7 @@ fn finish(
     mode: QualificationMode,
 ) -> Result<()> {
     let published = edition.published();
-    let derive_terminal = mode == QualificationMode::DeriveCanonicalBoxes;
+    let derive_terminal = matches!(mode, QualificationMode::Derive(_));
     if let Some(published) = published
         && root != owner.join(published.artifact_root())
     {
@@ -221,6 +218,7 @@ fn finish(
             lineage: edition.lineage(),
             requirements: (published.is_some()).then_some(&requirements),
             terminal_cases: (published.is_some()).then_some(&mut terminal_cases),
+            prepared_range_raw: &mut std::io::sink(),
         },
     )?;
     // Catch source/input changes during the invocation, as well as stale binaries
@@ -819,6 +817,8 @@ fn terminal_authority(
     if fs::read(root.join("xml/generation-reports/all.json"))? != report_bytes {
         return Err("terminal report bytes changed".into());
     }
+    let retained_inputs = string_inputs(&inventory.expected_inputs);
+    let capture_validation = authority::CaptureValidation::from_retained(&retained_inputs)?;
     Ok(authority::Qualification {
         schema_version: authority::TERMINAL_SCHEMA,
         edition: edition.name().to_owned(),
@@ -843,8 +843,9 @@ fn terminal_authority(
             .to_owned(),
         },
         cases,
-        retained_inputs: string_inputs(&inventory.expected_inputs),
+        retained_inputs,
         current_owner_inputs,
+        capture_validation,
     })
 }
 

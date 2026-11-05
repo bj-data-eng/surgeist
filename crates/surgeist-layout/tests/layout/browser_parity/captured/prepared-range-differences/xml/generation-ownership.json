@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "artifacts": {
+    "xml/block/prepared_text_continuity_bidi__border_box_ltr.xml": "1412e62f26afb5560c412616f4cef4c17c42e8655b119711f17ef2d37373f29e",
+    "xml/block/prepared_text_continuity_bidi__border_box_rtl.xml": "9de2fa9846fe2301135f32b9120b5f3bfafd178940c3a88f5bb6ab7632782bcd",
+    "xml/block/prepared_text_continuity_bidi__content_box_ltr.xml": "eb16e4d52b45b0f0a94f88b82bc261fdb563024f47221b6bec6b9241fe5e841a",
+    "xml/block/prepared_text_continuity_bidi__content_box_rtl.xml": "9b3b8498ce0e09a043e359dac813c964fcf24907cd29cb99ac141319d2ef854a",
+    "xml/generation-reports/all.json": "2e8f353f2661e99cf48f0caab02c4149dd307f5438988d12baf51fe08d9985ca"
+  }
+}

@@ -264,13 +264,26 @@ line-name fixtures `subgrid_line_names_004_b_to_b_minus_1` and
 fixtures, so any future failures should report their concrete mismatch or
 validation kind.
 
+## Prepared Range qualification
+
 The Text-migration accounting records four executed historical successors and
 twelve additional native representatives: 14 match, and the two RTL continuity
 variants retain an executed zero-width PDI Range observation difference.
-Exact Range projection remains unresolved under #1450/#850; the
-strict runner still reports those differences. See the
-[protocol determination](measurement-protocol.md#executed-range-observation-difference)
-and [complete accounting](prepared-text-accounting.json).
+The [V4 prepared Range receipt](captured/prepared-range-differences/raw-comparisons.jsonl)
+qualifies both RTL starts under the Native source-anchor policy and retains the
+two matching LTR controls. The browser-free replay checks all four captures and
+compares the full report byte for byte. The
+[measurement protocol](measurement-protocol.md#executed-range-observation-difference)
+defines the policy and source bindings.
+
+```sh
+cargo test --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context prepared_range_qualification_accepts_only_the_declared_rtl_pdi_differences
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --prepared-range-capture --fixture html/block/prepared_text_continuity_bidi.html
+```
+
+The second command selects the prepared Range profile, uses the pinned browser,
+and writes the comparison report to standard output. The ordinary root-context
+capture selects the geometry cohort separately.
 Those 16 cases exclude the additional atomic/BR metric families. Their
 explicit BR font-band requests retain measured geometry independently of native
 input participation; an unsupported band observation is not a parity pass. See

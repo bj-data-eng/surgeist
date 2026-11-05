@@ -38,6 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 fn parse_arguments(
     arguments: &[String],
 ) -> Result<(Option<&str>, support::QualificationMode), &'static str> {
+    use parity_support::exact_differences::PublishedEdition;
     use support::QualificationMode;
     match arguments {
         [] => Ok((None, QualificationMode::Regular)),
@@ -48,8 +49,16 @@ fn parse_arguments(
         [mode] if mode == "--publish-canonical-box-differences" => {
             Ok((None, QualificationMode::PublishCanonicalBoxes))
         }
-        [mode] if mode == "--derive-canonical-box-qualification" => {
-            Ok((None, QualificationMode::DeriveCanonicalBoxes))
+        [mode] if mode == "--derive-canonical-box-qualification" => Ok((
+            None,
+            QualificationMode::Derive(PublishedEdition::CanonicalBoxes),
+        )),
+        [mode] if mode == "--derive-measured-grid-qualification" => Ok((
+            None,
+            QualificationMode::Derive(PublishedEdition::MeasuredGrid),
+        )),
+        [mode] if mode == "--derive-flex-text-qualification" => {
+            Ok((None, QualificationMode::Derive(PublishedEdition::FlexText)))
         }
         [mode] if mode == "--check-published-canonical-box-differences" => {
             Ok((None, QualificationMode::CheckPublishedCanonicalBoxes))
@@ -68,6 +77,16 @@ fn parse_arguments(
         }
         [flag, source] if flag == "--fixture" && !source.starts_with("--") => {
             Ok((Some(source.as_str()), QualificationMode::Regular))
+        }
+        [mode, flag, source]
+            if mode == "--prepared-range-capture"
+                && flag == "--fixture"
+                && !source.starts_with("--") =>
+        {
+            Ok((
+                Some(source.as_str()),
+                QualificationMode::PreparedRangeCapture,
+            ))
         }
         [mode, flag, source] if mode == "--stylesheet-custody" && flag == "--fixture" => {
             Ok((Some(source.as_str()), QualificationMode::StylesheetCustody))
@@ -109,7 +128,7 @@ fn parse_arguments(
             ))
         }
         _ => Err(
-            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --derive-canonical-box-qualification | --publish-measured-grid-differences | --check-published-measured-grid-differences | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source>",
+            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --derive-canonical-box-qualification | --publish-measured-grid-differences | --check-published-measured-grid-differences | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source> | --prepared-range-capture --fixture <declared-source>",
         ),
     }
 }
@@ -117,6 +136,7 @@ fn parse_arguments(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use parity_support::exact_differences::PublishedEdition;
     use support::QualificationMode;
 
     fn arguments(values: &[&str]) -> Vec<String> {
@@ -136,7 +156,15 @@ mod tests {
             ),
             (
                 "--derive-canonical-box-qualification",
-                QualificationMode::DeriveCanonicalBoxes,
+                QualificationMode::Derive(PublishedEdition::CanonicalBoxes),
+            ),
+            (
+                "--derive-measured-grid-qualification",
+                QualificationMode::Derive(PublishedEdition::MeasuredGrid),
+            ),
+            (
+                "--derive-flex-text-qualification",
+                QualificationMode::Derive(PublishedEdition::FlexText),
             ),
         ] {
             assert_eq!(parse_arguments(&arguments(&[flag])), Ok((None, mode)));

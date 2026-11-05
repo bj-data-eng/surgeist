@@ -432,7 +432,7 @@ impl Table {
                 ));
                 continue;
             }
-            if native == browser {
+            if native == browser && !matches!(sink, NumericComparisonSink::PreparedRanges(_)) {
                 continue;
             }
             match sink {
@@ -441,6 +441,12 @@ impl Table {
                         "{path}: {} mismatch, expected {browser}, got {native}",
                         field.as_str()
                     )));
+                }
+                NumericComparisonSink::PreparedRanges(_) => {
+                    return Err(invalid(
+                        path,
+                        "prepared Range comparison excludes element sizes",
+                    ));
                 }
                 NumericComparisonSink::CollectAll { .. } => {
                     unreachable!("complete field was collected above")

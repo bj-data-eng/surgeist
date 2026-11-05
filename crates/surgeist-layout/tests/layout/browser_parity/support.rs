@@ -28,7 +28,10 @@ mod flex_content_text;
 mod flex_text_projection;
 #[path = "measured_leaf.rs"]
 mod measured_leaf;
+#[path = "prepared_range_qualification.rs"]
+pub mod prepared_range_qualification;
 pub use element_scroll_sizes::ElementScrollSizeMismatch;
+use prepared_range_qualification::Comparisons as PreparedRangeComparisons;
 
 type Scalar = layout::Scalar;
 
@@ -58,9 +61,13 @@ pub struct Golden {
     pub(crate) element_scroll_sizes: Option<element_scroll_sizes::Table>,
     pub(crate) measured_leaf: Option<measured_leaf::MeasuredLeaf>,
     flex_content_text: Option<flex_content_text::Proof>,
+    prepared_range_frame: bool,
 }
 
 impl Golden {
+    pub fn has_prepared_range_frame(&self) -> bool {
+        self.prepared_range_frame
+    }
     pub fn has_element_scroll_sizes(&self) -> bool {
         self.element_scroll_sizes.is_some()
     }
@@ -165,6 +172,29 @@ impl Golden {
         let element_scroll_sizes = element_scroll_sizes::parse(test, &root, &root_context)?;
         let measured_leaf = measured_leaf::parse(test, &root, element_scroll_sizes.as_ref())?;
 
+        let mut prepared_frames = test
+            .descendants()
+            .filter(|node| node.has_tag_name("prepared-range-frame"));
+        let prepared_range_frame = if let Some(frame) = prepared_frames.next() {
+            if frame.parent() != Some(test)
+                || prepared_frames.next().is_some()
+                || frame.attribute("profile") != Some("prepared-range-root-border-v1")
+                || frame.attributes().len() != 1
+                || frame.children().next().is_some()
+                || test.attribute("measurement-version") != Some("4")
+                || viewport.attribute("root-context") != Some("absolute-root-local")
+                || !root.layout_ready_inline_root
+                || !input
+                    .descendants()
+                    .any(|node| node.has_tag_name("prepared-paragraph"))
+            {
+                return Err(Error::new("invalid prepared Range capture frame"));
+            }
+            true
+        } else {
+            false
+        };
+
         Ok(Self {
             name,
             use_rounding: parse_bool(test.attribute("use-rounding").unwrap_or("true"))?,
@@ -175,6 +205,7 @@ impl Golden {
             element_scroll_sizes,
             measured_leaf,
             flex_content_text: None,
+            prepared_range_frame,
         })
     }
 }
@@ -3470,7 +3501,7 @@ fn compare_expectation_with_endpoint_accounting(
     fragment_cursors: FragmentCursors<'_>,
     policy: ComparisonPolicy<'_>,
 ) -> Result<ComparisonResult, Error> {
-    if policy.numeric.is_collecting()
+    if policy.numeric.collects_boxes_only()
         && tree.flex_projection.is_none()
         && (!tree.paragraphs.is_empty()
             || tree
@@ -3618,6 +3649,7 @@ struct ComparisonPolicy<'a> {
 enum NumericComparisonSink {
     Strict,
     CollectNumeric(Vec<NumericMismatch>),
+    PreparedRanges(PreparedRangeComparisons),
     CollectAll {
         root: String,
         fields: Vec<exact_differences::ComparedField>,
@@ -3625,7 +3657,7 @@ enum NumericComparisonSink {
 }
 
 impl NumericComparisonSink {
-    fn is_collecting(&self) -> bool {
+    fn collects_boxes_only(&self) -> bool {
         matches!(self, Self::CollectNumeric(_) | Self::CollectAll { .. })
     }
 
@@ -3636,6 +3668,9 @@ impl NumericComparisonSink {
         actual: Scalar,
         expected: Scalar,
     ) -> Result<(), Error> {
+        if let Self::PreparedRanges(comparisons) = self {
+            return comparisons.record_box(path, field, actual, expected);
+        }
         if let Self::CollectAll { root, fields } = self {
             let source_path = exact_differences::source_path_from_diagnostic(root, path)?;
             fields.push(
@@ -3662,6 +3697,24 @@ impl NumericComparisonSink {
             }));
         }
         Ok(())
+    }
+
+    fn range(&mut self, path: &str, pair: RangeRectanglePair) -> Result<(), Error> {
+        if let Self::PreparedRanges(comparisons) = self {
+            return comparisons.record_range(path, pair);
+        }
+        compare_number(
+            path,
+            &format!("Range rectangle[{}] physical flow-inline start", pair.index),
+            pair.native_start,
+            pair.browser_start,
+        )?;
+        compare_number(
+            path,
+            &format!("Range rectangle[{}] advance", pair.index),
+            pair.native_advance,
+            pair.browser_advance,
+        )
     }
 
     fn optional_number(
@@ -3746,14 +3799,23 @@ fn compare_expectation_in_source_order(
 ) -> Result<(), Error> {
     validate_observation_expectation_category(expected)
         .map_err(|error| Error::new(format!("{path}: {error}")))?;
-    if comparison_state.numeric.is_collecting()
-        && (expected.fragments.is_some()
-            || expected.range_rectangles.is_some()
-            || expected.browser_control.is_some()
-            || expected.browser_br_font_band.is_some())
+    let other_text_observations = expected.fragments.is_some()
+        || expected.browser_control.is_some()
+        || expected.browser_br_font_band.is_some();
+    if comparison_state.numeric.collects_boxes_only()
+        && (other_text_observations || expected.range_rectangles.is_some())
     {
         return Err(Error::new(format!(
             "{path}: numeric collection supports only box geometry and scroll observations"
+        )));
+    }
+    if matches!(
+        comparison_state.numeric,
+        NumericComparisonSink::PreparedRanges(_)
+    ) && other_text_observations
+    {
+        return Err(Error::new(format!(
+            "{path}: prepared Range collection supports only box and Range observations"
         )));
     }
     let selected_output_is_present = if use_rounding {
@@ -3879,6 +3941,7 @@ fn compare_expectation_in_source_order(
             path,
             unrounded_fragments,
             expected_range_rectangles,
+            comparison_state.numeric,
         )?;
     }
     if let Some(expected_browser_control) = expected.browser_control {
@@ -4142,6 +4205,7 @@ fn compare_range_rectangle_expectations(
     path: &str,
     actual: &[layout::InlineFragmentOutputEntry<usize>],
     expected: &[InlineRangeRectangleExpectation],
+    numeric: &mut NumericComparisonSink,
 ) -> Result<(), Error> {
     let root = range_rectangle_root(tree, owner)?;
     let binding = tree
@@ -4172,12 +4236,13 @@ fn compare_range_rectangle_expectations(
             "Range inline root has ambiguous placed Text results",
         ));
     }
-    compare_range_rectangle_expectations_with_translation(
+    visit_range_rectangle_pairs(
         path,
         actual,
         placed.layout(),
         expected,
         |edge| range_rectangle_ancestor_translation(tree, owner, edge),
+        |pair| numeric.range(path, pair),
     )
 }
 
@@ -4363,12 +4428,38 @@ fn range_rectangle_values(rect: layout::ScrollRect, edge: PhysicalStartEdge) -> 
     }
 }
 
+#[cfg(test)]
 fn compare_range_rectangle_expectations_with_translation(
     path: &str,
     actual: &[layout::InlineFragmentOutputEntry<usize>],
     placed: &surgeist_text::Layout,
     expected: &[InlineRangeRectangleExpectation],
+    translation: impl FnMut(PhysicalStartEdge) -> Result<Scalar, Error>,
+) -> Result<(), Error> {
+    visit_range_rectangle_pairs(path, actual, placed, expected, translation, |pair| {
+        NumericComparisonSink::Strict.range(path, pair)
+    })
+}
+
+struct RangeRectanglePair {
+    index: usize,
+    source_segment_id: u64,
+    line_index: usize,
+    physical_start_edge: PhysicalStartEdge,
+    native_source: surgeist_text::Range,
+    native_start: Scalar,
+    browser_start: Scalar,
+    native_advance: Scalar,
+    browser_advance: Scalar,
+}
+
+fn visit_range_rectangle_pairs(
+    path: &str,
+    actual: &[layout::InlineFragmentOutputEntry<usize>],
+    placed: &surgeist_text::Layout,
+    expected: &[InlineRangeRectangleExpectation],
     mut translation: impl FnMut(PhysicalStartEdge) -> Result<Scalar, Error>,
+    mut visit: impl FnMut(RangeRectanglePair) -> Result<(), Error>,
 ) -> Result<(), Error> {
     let actual = native_range_rectangles(path, actual, placed)?;
     if actual.len() != expected.len() {
@@ -4423,18 +4514,17 @@ fn compare_range_rectangle_expectations_with_translation(
             expected.line_index,
         )?;
         let (start, advance) = range_rectangle_values(row.rect, expected.physical_start_edge);
-        compare_number(
-            path,
-            &format!("Range rectangle[{index}] physical flow-inline start"),
-            start + offset,
-            expected.start,
-        )?;
-        compare_number(
-            path,
-            &format!("Range rectangle[{index}] advance"),
-            advance,
-            expected.advance,
-        )?;
+        visit(RangeRectanglePair {
+            index,
+            source_segment_id: row.source_segment_id,
+            line_index: row.line_index,
+            physical_start_edge: expected.physical_start_edge,
+            native_source: row.source,
+            native_start: start + offset,
+            browser_start: expected.start,
+            native_advance: advance,
+            browser_advance: expected.advance,
+        })?;
     }
     Ok(())
 }
@@ -7724,6 +7814,92 @@ mod tests {
         assert_eq!(rectangles.len(), 1);
         assert_eq!(rectangles[0].source, surgeist_text::Range::new(0, 1));
         assert_eq!(rectangles[0].rect.size().width, 0.0);
+    }
+
+    #[test]
+    fn range_comparison_visits_all_pdi_pairs_and_detects_a_later_difference() {
+        for variant in [
+            "border_box_ltr",
+            "content_box_ltr",
+            "border_box_rtl",
+            "content_box_rtl",
+        ] {
+            let golden =
+                generated_native_golden(&format!("prepared_text_continuity_bidi__{variant}"));
+            let (_, batch) = generated_native_batch(&golden, formal_max_content_native_request());
+            let placed = batch.placed_text()[0].layout();
+            let rtl = variant.ends_with("_rtl");
+            let native_starts = if rtl {
+                [24.0, 40.0, 40.0, 24.0, 56.0]
+            } else {
+                [0.0, 16.0, 16.0, 48.0, 0.0]
+            };
+            let mut browser_starts = native_starts;
+            if rtl {
+                browser_starts[3] = 72.0;
+            }
+            // The 16px Ahem cells form three glyphs on the first line and one
+            // on the second. RLI and PDI remain separate zero-advance rows.
+            let advances = [16.0, 0.0, 32.0, 0.0, 16.0];
+            for changed_last_advance in [false, true] {
+                let mut row = 0;
+                let mut differences = 0;
+                for (source, expected) in [0, 2, 4].into_iter().zip(&golden.expectations.children) {
+                    let origin = golden.root.children[source]
+                        .prepared_origin
+                        .as_ref()
+                        .unwrap();
+                    let fragments = batch
+                        .unrounded_inline_fragments()
+                        .iter()
+                        .filter(|entry| {
+                            entry
+                                .fragment()
+                                .finalized_fragment()
+                                .view()
+                                .origin()
+                                .as_ref()
+                                == Some(origin)
+                        })
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    let mut expected = expected.range_rectangles.clone().unwrap();
+                    if source == 4 && changed_last_advance {
+                        expected[0].advance = 17.0;
+                    }
+                    visit_range_rectangle_pairs(
+                        variant,
+                        &fragments,
+                        placed,
+                        &expected,
+                        |_| Ok(0.0),
+                        |pair| {
+                            assert_eq!(pair.native_start, native_starts[row]);
+                            assert_eq!(pair.browser_start, browser_starts[row]);
+                            assert_eq!(pair.native_advance, advances[row]);
+                            assert_eq!(
+                                pair.browser_advance,
+                                if changed_last_advance && row == 4 {
+                                    17.0
+                                } else {
+                                    advances[row]
+                                },
+                            );
+                            differences += usize::from(pair.native_start != pair.browser_start);
+                            differences += usize::from(pair.native_advance != pair.browser_advance);
+                            row += 1;
+                            Ok(())
+                        },
+                    )
+                    .unwrap();
+                }
+                assert_eq!(row, 5);
+                assert_eq!(
+                    differences,
+                    usize::from(rtl) + usize::from(changed_last_advance)
+                );
+            }
+        }
     }
 
     #[test]

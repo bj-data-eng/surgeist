@@ -39,6 +39,9 @@ pub(super) fn generate_xml(name: &str, measurement: &ValidatedMeasurement) -> St
         }
         lines.push("  </flex-content-text>".into());
     }
+    if measurement.has_prepared_range_frame() {
+        lines.push("  <prepared-range-frame profile=\"prepared-range-root-border-v1\"/>".into());
+    }
     lines.push("  <diagnostics>".into());
     write_world_diagnostics(&mut lines, measurement.root(), "0");
     lines.push("  </diagnostics>".into());

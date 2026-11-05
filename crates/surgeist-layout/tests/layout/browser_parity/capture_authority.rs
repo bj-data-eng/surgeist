@@ -13,7 +13,12 @@ pub(crate) const ARTIFACT_ROOT: &str =
     "tests/layout/browser_parity/captured/canonical-box-differences";
 const FLEX_TEXT_EDITION: &str = "flex-text-differences";
 pub(crate) const TERMINAL: &str = "qualification.json";
-pub(crate) const TERMINAL_SCHEMA: u8 = 2;
+pub(crate) const TERMINAL_SCHEMA: u8 = 3;
+pub(crate) const ROOT_HELPER_INPUT: &str = "scripts/gentest/test_helper.js";
+const ROOT_HELPER_OWNER: &str = "tests/layout/browser_parity/scripts/gentest/test_helper.js";
+const ROOT_HELPER: &[u8] = include_bytes!("scripts/gentest/test_helper.js");
+const ROOT_CONTEXT_V4_HELPER_SHA256: &str =
+    "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee";
 const OBSERVATION_REQUEST: &str = "observation-request.json";
 const MEASURED_LEAF_SCRIPT: &str = "scripts/gentest/measured_leaf.js";
 const MEASURED_LEAF_REQUEST_BYTES: &[u8] =
@@ -38,6 +43,55 @@ pub(crate) fn unique_json(raw: &str) -> Result<Value> {
 pub(crate) fn sha256(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub(crate) enum RootCaptureProfile {
+    #[serde(rename = "root-context-v4")]
+    RootContextV4,
+    #[serde(rename = "root-context-prepared-range-v1")]
+    RootContextPreparedRangeV1,
+}
+
+const PREPARED_RANGE_HELPER_SHA256: &str =
+    "bd1b351e488f846b2e73947746ced8d8b290f49b108e220c228b2c4d94c069c0";
+const CURRENT_ROOT_VALIDATOR: RootCaptureProfile = RootCaptureProfile::RootContextPreparedRangeV1;
+
+pub(crate) fn root_helper_profile(digest: &str) -> Result<RootCaptureProfile> {
+    match digest {
+        ROOT_CONTEXT_V4_HELPER_SHA256 => Ok(RootCaptureProfile::RootContextV4),
+        PREPARED_RANGE_HELPER_SHA256 => Ok(RootCaptureProfile::RootContextPreparedRangeV1),
+        _ => Err(changed("unsupported retained root proof helper")),
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CaptureValidation {
+    producer_profile: RootCaptureProfile,
+    producer_helper_sha256: String,
+    validator_profile: RootCaptureProfile,
+    validator_helper_sha256: String,
+}
+
+impl CaptureValidation {
+    pub(crate) fn from_retained(inputs: &BTreeMap<String, String>) -> Result<Self> {
+        let producer = inputs
+            .get(ROOT_HELPER_INPUT)
+            .ok_or_else(|| changed("missing retained root proof helper"))?;
+        let validator = sha256(ROOT_HELPER);
+        if root_helper_profile(&validator)? != CURRENT_ROOT_VALIDATOR {
+            return Err(changed(
+                "canonical root helper does not match the current proof profile",
+            ));
+        }
+        Ok(Self {
+            producer_profile: root_helper_profile(producer)?,
+            producer_helper_sha256: producer.clone(),
+            validator_profile: CURRENT_ROOT_VALIDATOR,
+            validator_helper_sha256: validator,
+        })
+    }
+}
+
 /// Existing sorted-Value record identity, excluding only self-referential spec
 /// registrations. The complete projection remains retained in the terminal.
 pub(crate) fn semantic_record_digest(record: &Value) -> Result<String> {
@@ -62,7 +116,12 @@ pub(crate) fn current_owner_bindings(
     path(receipt_sidecar)?;
     let mut bindings = BTreeMap::new();
     for (name, hash) in retained {
-        let owner = if name == "browser-owner.toml" {
+        let mut owner_hash = hash.clone();
+        let owner = if name == ROOT_HELPER_INPUT {
+            root_helper_profile(hash)?;
+            owner_hash = sha256(ROOT_HELPER);
+            ROOT_HELPER_OWNER.to_owned()
+        } else if name == "browser-owner.toml" {
             format!("{ORIGINAL}/corpus.toml")
         } else if name == OBSERVATION_REQUEST {
             let file = if hash == &sha256(flex_content_text::REQUEST) {
@@ -98,7 +157,7 @@ pub(crate) fn current_owner_bindings(
             )));
         };
         path(&owner)?;
-        if bindings.insert(owner, hash.clone()).is_some() {
+        if bindings.insert(owner, owner_hash).is_some() {
             return Err(malformed("duplicate current-owner input role"));
         }
     }
@@ -392,6 +451,13 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
             if request_sha256 != sha256(flex_content_text::REQUEST) {
                 return Err(changed("Flex content text request identity"));
             }
+            if excluded_specs.contains(ROOT_HELPER_INPUT)
+                || !full_inputs
+                    .get(ROOT_HELPER_INPUT)
+                    .is_some_and(|hash| root_helper_profile(hash).is_ok())
+            {
+                return Err(changed("Flex content text root proof helper"));
+            }
             for (name, bytes) in flex_content_text::CAPTURE_INPUTS {
                 if full_inputs.get(name) != Some(&sha256(bytes)) || excluded_specs.contains(name) {
                     return Err(changed(format!("Flex content text input: {name}")));
@@ -544,6 +610,7 @@ pub(crate) struct Qualification {
     pub(crate) cases: Vec<QualifiedCase>,
     pub(crate) retained_inputs: BTreeMap<String, String>,
     pub(crate) current_owner_inputs: BTreeMap<String, String>,
+    pub(crate) capture_validation: CaptureValidation,
 }
 impl Qualification {
     pub(crate) fn to_bytes(&self) -> Result<Vec<u8>> {
@@ -571,6 +638,12 @@ impl Qualification {
             || self.cases.is_empty()
         {
             return Err(malformed("invalid terminal edition/census"));
+        }
+        if self.capture_validation != CaptureValidation::from_retained(&self.retained_inputs)?
+            || self.current_owner_inputs.get(ROOT_HELPER_OWNER)
+                != Some(&self.capture_validation.validator_helper_sha256)
+        {
+            return Err(changed("terminal producer or current validation authority"));
         }
         for entry in [&self.declaration, &self.report, &self.ownership]
             .into_iter()

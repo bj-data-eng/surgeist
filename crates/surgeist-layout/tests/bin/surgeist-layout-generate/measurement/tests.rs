@@ -23,6 +23,75 @@ fn supported(value: &serde_json::Value) -> ValidatedMeasurement {
     }
 }
 #[test]
+fn prepared_range_frame_requires_the_exact_request_and_root_authority() {
+    const REQUEST: &[u8] =
+        b"{\"schema_version\":1,\"prepared_ranges\":\"prepared-range-root-border-v1\"}\n";
+    let request = BoxObservationRequest::PreparedRanges;
+    assert_eq!(request.input_bytes(), Some(REQUEST));
+    assert_eq!(
+        BoxObservationRequest::from_input_bytes(Some(REQUEST)),
+        Ok(request)
+    );
+    assert!(BoxObservationRequest::from_input_bytes(Some(&REQUEST[..REQUEST.len() - 1])).is_err());
+
+    let mut value = box_fixture();
+    let decode_requested = |value: &serde_json::Value| {
+        decode(
+            &value.to_string(),
+            "fixture/case",
+            "border-box-ltr",
+            request,
+        )
+    };
+    let error = decode_requested(&value).unwrap_err();
+    assert_eq!(error.kind, MeasurementErrorKind::MissingField);
+    assert_eq!(error.field_path, "preparedRangeFrame");
+
+    value["preparedRangeFrame"] = json!("prepared-range-root-border-v1");
+    for error in [
+        decode_requested(&value).unwrap_err(),
+        decode_fixture(&value).unwrap_err(),
+    ] {
+        assert_eq!(error.kind, MeasurementErrorKind::ContradictoryFields);
+        assert_eq!(error.field_path, "preparedRangeFrame");
+    }
+}
+
+#[test]
+fn prepared_range_rows_preserve_zero_width_and_reject_foreign_occurrences() {
+    let mut value = json!({
+        "layoutInput": "prepared-text",
+        "preparedOccurrence": 1,
+        "rangeFragments": [
+            {"origin":1,"line":0,"physicalStartEdge":"left","start":16,"advance":0},
+            {"origin":1,"line":0,"physicalStartEdge":"left","start":16,"advance":32},
+        ],
+    });
+    let root = Context {
+        case_id: "fixture/case",
+        variant: "border-box-ltr",
+        node_path: "root".into(),
+    };
+    let context = root.child(1);
+    let validate = |value: &serde_json::Value| {
+        serde_json::from_value::<WireNode>(value.clone())
+            .unwrap()
+            .validate_prepared_range_rows(&context)
+    };
+    validate(&value).unwrap();
+
+    value["rangeFragments"][0]["origin"] = json!(0);
+    assert_eq!(validate(&value).unwrap_err().field_path, "rangeFragments");
+
+    value["rangeFragments"][0]["origin"] = json!(1);
+    value["rangeFragments"][0]["physicalStartEdge"] = json!("top");
+    assert_eq!(validate(&value).unwrap_err().field_path, "rangeFragments");
+
+    value["rangeFragments"] = json!([]);
+    assert_eq!(validate(&value).unwrap_err().field_path, "rangeFragments");
+}
+
+#[test]
 fn malformed_geometry_returns_location_and_json_source() {
     let mut value = box_fixture();
     value["unroundedLayout"]["width"] = json!("invalid");
