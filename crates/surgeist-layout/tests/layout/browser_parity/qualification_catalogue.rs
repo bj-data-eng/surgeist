@@ -208,3 +208,66 @@ impl Record {
         Ok((family, stem))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const LIVE: &[u8] = include_bytes!("../../../examples/qualify-root-context/corpus.toml");
+    const SPECIALIZED: &str = r#"
+
+[[specialized_publications]]
+source = "html/block/prepared_text_continuity_bidi.html"
+profile = "prepared-range"
+
+[[specialized_publications]]
+source = "html/flex/fri07_flex_composition.html"
+profile = "flex-composition"
+"#;
+
+    #[test]
+    fn appended_publications_require_all_specialized_variants() {
+        let prior = Declaration::parse(LIVE).unwrap();
+        let appended = Declaration::parse(&[LIVE, SPECIALIZED.as_bytes()].concat()).unwrap();
+        let mut selected = BTreeMap::new();
+        for record in prior
+            .records
+            .iter()
+            .filter(|record| record.semantic_specifications.is_some())
+        {
+            selected.insert(
+                record.source.as_str().to_owned(),
+                serde_json::to_value(record).unwrap(),
+            );
+        }
+
+        let expected: BTreeSet<_> = [
+            "html/block/prepared_text_continuity_bidi.html",
+            "html/flex/fri07_flex_composition.html",
+        ]
+        .into_iter()
+        .flat_map(|source| fixture_cases().map(move |(variant, _)| format!("{source} ({variant})")))
+        .collect();
+        let uncovered = appended.check_live_records(&selected).unwrap();
+        assert_eq!(uncovered.into_iter().collect::<BTreeSet<_>>(), expected);
+
+        let record = appended
+            .records
+            .iter()
+            .find(|record| {
+                record.source.as_str() == "html/block/prepared_text_continuity_bidi.html"
+            })
+            .unwrap();
+        let projection = serde_json::to_value(record).unwrap();
+        assert_eq!(projection["specialized_publication"], "prepared-range");
+        selected.insert(record.source.as_str().to_owned(), projection);
+        let uncovered = appended.check_live_records(&selected).unwrap();
+        assert_eq!(uncovered.len(), 4);
+        assert!(
+            uncovered
+                .iter()
+                .all(|case| case.contains("fri07_flex_composition"))
+        );
+        assert!(prior.check_live_records(&selected).is_err());
+    }
+}
