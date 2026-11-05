@@ -8,6 +8,8 @@ use surgeist_render::{
 };
 
 const AHEM: &[u8] = include_bytes!("fixtures/fonts/ahem/Ahem.ttf");
+const AHEM_ORIGINAL: &[u8] =
+    include_bytes!("../../surgeist-font/tests/fixtures/ahem-original/Ahem.woff2");
 const X: u32 = 58;
 
 fn limits() -> GlyphRunLimits {
@@ -50,6 +52,70 @@ fn prepared_glyph_run_retains_real_ahem_ink_separately_from_negative_advance() {
     assert_eq!(elements.len(), 5);
     assert!(matches!(elements[0], PathElement::MoveTo(p) if p.x() == -20.0 && p.y() == -770.0));
     assert!(matches!(elements[1], PathElement::LineTo(p) if p.x() == 980.0 && p.y() == -770.0));
+}
+
+fn assert_em_square_ink(bytes: &[u8], glyph_id: u32) {
+    let font = FontData::try_from_bytes(bytes.to_vec(), 0).expect("admit the encoded font");
+    let instance = instance(20.0, vec![], 0.0);
+    let glyph = TextGlyph::try_new(glyph_id, 0.0, 0.0, 20.0).unwrap();
+    let prepared = font
+        .prepare_glyph_run(&instance, &[glyph], limits())
+        .unwrap();
+    // X is an em square from y=-200 to y=800 at UPEM 1000. Render reflects y.
+    assert_eq!(
+        prepared.bounds().ink_rect(),
+        Some(Rect::try_new(0.0, -16.0, 20.0, 20.0).unwrap())
+    );
+    assert_eq!(prepared.path_elements().count(), 5);
+}
+
+#[test]
+fn standalone_woff1_prepares_literal_ahem_x_ink() {
+    assert_em_square_ink(AHEM, X);
+    assert_em_square_ink(&literal_woff1(), X);
+}
+
+#[test]
+fn standalone_original_woff2_prepares_literal_ahem_x_ink() {
+    assert_em_square_ink(AHEM, X);
+    // Original Ahem 1.1 has X at 59 in its retained format 0 and 4 cmaps.
+    assert_em_square_ink(AHEM_ORIGINAL, 59);
+}
+
+// Literal WOFF1 packaging of the retained 1.50 fixture. The directory uses
+// original tag order and the payload uses original physical table order.
+fn literal_woff1() -> Vec<u8> {
+    fn put32(bytes: &mut [u8], offset: usize, value: usize) {
+        bytes[offset..offset + 4].copy_from_slice(&u32::try_from(value).unwrap().to_be_bytes());
+    }
+
+    let count = usize::from(u16_at(AHEM, 4));
+    let mut wire = vec![0; 44 + 20 * count];
+    wire[..4].copy_from_slice(b"wOFF");
+    wire[4..8].copy_from_slice(&AHEM[..4]);
+    wire[12..14].copy_from_slice(&AHEM[4..6]);
+    let mut records = (0..count).collect::<Vec<_>>();
+    records.sort_unstable_by_key(|&index| u32_at(AHEM, 20 + 16 * index));
+    let mut decoded_len = 12 + 16 * count;
+    for index in records {
+        let record = 12 + 16 * index;
+        let entry = 44 + 20 * index;
+        let original = u32_at(AHEM, record + 8) as usize;
+        let len = u32_at(AHEM, record + 12) as usize;
+        let wire_offset = wire.len();
+        wire[entry..entry + 4].copy_from_slice(&AHEM[record..record + 4]);
+        put32(&mut wire, entry + 4, wire_offset);
+        put32(&mut wire, entry + 8, len);
+        put32(&mut wire, entry + 12, len);
+        wire[entry + 16..entry + 20].copy_from_slice(&AHEM[record + 4..record + 8]);
+        wire.extend_from_slice(&AHEM[original..original + len]);
+        wire.resize(wire.len().next_multiple_of(4), 0);
+        decoded_len += len.next_multiple_of(4);
+    }
+    let wire_len = wire.len();
+    put32(&mut wire, 8, wire_len);
+    put32(&mut wire, 16, decoded_len);
+    wire
 }
 
 #[test]
@@ -221,7 +287,9 @@ fn prepared_glyph_run_present_malformed_variation_metadata_cannot_become_default
 
 #[test]
 fn prepared_glyph_run_limits_refuse_whole_runs_and_retry_preserves_original_inputs() {
-    let font = font(AHEM);
+    let base = AHEM.to_vec();
+    let base_capacity = base.capacity();
+    let font = FontData::try_from_bytes(base, 0).unwrap();
     let instance = instance(1000.0, vec![], 0.0);
     let glyphs = [glyph(), glyph()];
     for (limits, resource) in [
@@ -251,10 +319,11 @@ fn prepared_glyph_run_limits_refuse_whole_runs_and_retry_preserves_original_inpu
         .unwrap();
     assert_eq!(prepared.glyphs(), glyphs);
     assert_eq!(prepared.path_elements().count(), 10);
-    // Blob boxes its input bytes: discarded input Vec spare capacity is not
-    // retained font custody. The declared charge is for boxed extent/headers.
+    // The admitted raw resource keeps the input allocation, including spare
+    // capacity. Capture actual capacities before transferring ownership.
     let mut bytes = Vec::with_capacity(2 << 20);
     bytes.extend_from_slice(AHEM);
+    let overcapacity_bytes = bytes.capacity();
     let overcapacity = FontData::try_from_bytes(bytes, 0).unwrap();
     let required = |font: &FontData| match diagnostic(
         &font
@@ -269,34 +338,29 @@ fn prepared_glyph_run_limits_refuse_whole_runs_and_retry_preserves_original_inpu
         other => panic!("expected declared retained admission, got {other:?}"),
     };
     let charge = required(&font);
-    assert_eq!(required(&overcapacity), charge);
-    // Readable SFNT tables permit trailing bytes. The independently known
-    // extra boxed extent must be charged, unlike discarded input capacity.
     const PADDING: usize = 257;
     let mut padded = AHEM.to_vec();
     padded.extend([0; PADDING]);
+    let padded_capacity = padded.capacity();
     let padded = FontData::try_from_bytes(padded, 0).unwrap();
-    assert_eq!(required(&padded), charge + PADDING);
-    assert!(
-        matches!(diagnostic(&padded.prepare_glyph_run(&instance, &[], GlyphRunLimits::new(0,0,0,charge)).unwrap_err()), GlyphPreparationError::Limit { resource: GlyphResource::RetainedBytes, required, .. } if required == charge + PADDING)
-    );
-    assert!(
-        padded
-            .prepare_glyph_run(
-                &instance,
-                &[],
-                GlyphRunLimits::new(0, 0, 0, charge + PADDING)
-            )
-            .is_ok()
-    );
-    assert!(
-        overcapacity
-            .prepare_glyph_run(&instance, &[], GlyphRunLimits::new(0, 0, 0, charge))
-            .is_ok()
-    );
-    assert!(
-        matches!(diagnostic(&font.prepare_glyph_run(&instance, &[], GlyphRunLimits::new(0, 0, 0, charge - 1)).unwrap_err()), GlyphPreparationError::Limit { resource: GlyphResource::RetainedBytes, required, .. } if required == charge)
-    );
+    for (font, capacity) in [
+        (&font, base_capacity),
+        (&overcapacity, overcapacity_bytes),
+        (&padded, padded_capacity),
+    ] {
+        let expected = charge + (capacity - base_capacity);
+        assert_eq!(required(font), expected);
+        let error = font
+            .prepare_glyph_run(&instance, &[], GlyphRunLimits::new(0, 0, 0, expected - 1))
+            .unwrap_err();
+        assert!(
+            matches!(diagnostic(&error), GlyphPreparationError::Limit { resource: GlyphResource::RetainedBytes, required, .. } if required == expected)
+        );
+        assert!(
+            font.prepare_glyph_run(&instance, &[], GlyphRunLimits::new(0, 0, 0, expected))
+                .is_ok()
+        );
+    }
 }
 
 #[test]

@@ -706,54 +706,75 @@ fn actual_italic_synthesis_is_executed_from_the_same_effective_instance() {
 }
 
 #[test]
-fn actual_same_face_runs_copy_once_and_layout_owns_input_after_system_drop() {
+fn actual_same_face_runs_share_text_backing_after_system_and_layout_drop() {
     let input = {
-        let mut bytes = Vec::with_capacity(AHEM.len() + ROOM);
-        bytes.extend_from_slice(AHEM);
-        let mut system = system(bytes);
+        let mut system = system(AHEM.to_vec());
         system.layout(split_source(), style(), options()).unwrap()
     };
+    let input_pointers = input
+        .run_views()
+        .map(|run| run.face().bytes().as_ptr())
+        .collect::<Vec<_>>();
+    assert_eq!(input_pointers.len(), 2);
+    let backing = input_pointers[0];
+    assert_eq!(input_pointers, [backing; 2]);
     let prepared = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
     let first = outline(&prepared.scene().commands[0]).0;
     let second = outline(&prepared.scene().commands[1]).0;
-    assert_eq!(
-        first.font().bytes().as_ptr(),
-        second.font().bytes().as_ptr()
-    );
-    assert_ne!(
-        first.font().bytes().as_ptr(),
-        input.run_views().next().unwrap().face().bytes().as_ptr()
-    );
     assert_eq!(first.font().bytes(), AHEM);
     assert_eq!(second.font().bytes(), AHEM);
-    let base = system(AHEM.to_vec())
-        .layout(split_source(), style(), options())
-        .unwrap();
-    let base_charge = minimum_retained(&base, Transform::identity());
-    assert_eq!(minimum_retained(&input, Transform::identity()), base_charge);
-    const PADDING: usize = 257;
-    let mut padded = AHEM.to_vec();
-    padded.resize(padded.len() + PADDING, 0);
-    let padded = system(padded)
-        .layout(split_source(), style(), options())
-        .unwrap();
     assert_eq!(
-        minimum_retained(&padded, Transform::identity()),
-        base_charge + PADDING
+        [
+            first.font().bytes().as_ptr(),
+            second.font().bytes().as_ptr()
+        ],
+        [backing; 2],
+        "both admitted runs share the same actual Text font backing"
     );
-    // One fewer retained byte refuses; a fresh full-budget invocation succeeds.
-    refuse(
-        &base,
-        Transform::identity(),
-        bounded(32, 1024, base_charge - 1, 32, 32, 32),
-    );
-    assert!(prepare_text_layout(&base, Transform::identity(), limits()).is_ok());
+
     let detached_scene = prepared.scene().clone();
     drop(prepared);
     drop(input);
     let (detached, _) = outline(&detached_scene.commands[1]);
+    assert_eq!(detached.font().bytes().as_ptr(), backing);
     assert_eq!(detached.font().bytes(), AHEM);
     assert_eq!(detached.path_elements().count(), 5);
+}
+
+#[test]
+fn split_text_runs_charge_actual_font_capacity_once_at_the_retained_cap() {
+    let base_bytes = AHEM.to_vec();
+    let base_capacity = base_bytes.capacity();
+    let base = system(base_bytes)
+        .layout(split_source(), style(), options())
+        .unwrap();
+    let base_charge = minimum_retained(&base, Transform::identity());
+
+    let mut spare = Vec::with_capacity(AHEM.len() + (1 << 20));
+    spare.extend_from_slice(AHEM);
+    let spare_capacity = spare.capacity();
+    let mut padded = AHEM.to_vec();
+    padded.resize(padded.len() + 257, 0);
+    let padded_capacity = padded.capacity();
+    for (bytes, capacity) in [(spare, spare_capacity), (padded, padded_capacity)] {
+        let input = system(bytes)
+            .layout(split_source(), style(), options())
+            .unwrap();
+        let expected = base_charge + (capacity - base_capacity);
+        assert_eq!(minimum_retained(&input, Transform::identity()), expected);
+        refuse(
+            &input,
+            Transform::identity(),
+            bounded(32, 1024, expected - 1, 32, 32, 32),
+        );
+        let accepted = prepare_text_layout(
+            &input,
+            Transform::identity(),
+            bounded(32, 1024, expected, 32, 32, 32),
+        )
+        .unwrap();
+        assert_eq!(accepted.scene().commands.len(), 2);
+    }
 }
 
 fn minimum_retained(input: &text::Layout, placement: Transform) -> usize {
