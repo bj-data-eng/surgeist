@@ -607,12 +607,19 @@ fn icon_size(token: &HtmlSpaceToken) -> Result<HtmlIconSize, HtmlIconSizeError> 
         Err(error) => Err(error),
         Ok(HtmlIconSizeShape::Scalable) => Ok(HtmlIconSize::Scalable),
         Ok(HtmlIconSizeShape::Bitmap { width, height }) => {
-            // The cursor accepted each range as a nonempty run of ASCII digits.
+            // The cursor recognized each range as a run of ASCII digits; reading it checks that again.
             let dimension = |range: std::ops::Range<usize>| {
-                HtmlNonNegativeInteger::from_recognized_digits(&units[range])
+                units
+                    .get(range)
+                    .and_then(|digits| {
+                        HtmlNonNegativeInteger::from_decimal_digits(&DocumentString::from_utf16(
+                            digits.to_vec(),
+                        ))
+                        .ok()
+                    })
+                    .ok_or(HtmlIconSizeError::DimensionDigits)
             };
-            HtmlBitmapIconSize::new(dimension(width.clone()), dimension(height.clone()))
-                .map(HtmlIconSize::Bitmap)
+            HtmlBitmapIconSize::new(dimension(width)?, dimension(height)?).map(HtmlIconSize::Bitmap)
         }
     }
 }
@@ -887,11 +894,16 @@ impl HtmlValueInterpreter {
                     result: icon_size(token),
                 })
                 .collect();
-            if let Some(keyword) = keywords.iter().find(|k| k.result.is_err()) {
+            if let Some((token_index, reason)) = keywords.iter().find_map(|k| {
+                k.result
+                    .as_ref()
+                    .err()
+                    .map(|&reason| (k.token_index, reason))
+            }) {
                 input.author = HtmlTokenDeclarationAuthorState::Nonconforming(
                     HtmlTokenDeclarationError::InvalidIconSize {
-                        token_index: keyword.token_index,
-                        reason: *keyword.result.as_ref().unwrap_err(),
+                        token_index,
+                        reason,
                     },
                 );
             } else if let Some(error) = &input.duplicate {
