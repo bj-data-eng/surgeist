@@ -16,14 +16,21 @@ Layout has [supplied-level L2 reordering](https://github.com/bj-data-eng/surgeis
 
 | Owner | Required responsibility |
 | --- | --- |
+| Font | Raw and compressed container admission, original source and face identity, application registration, catalogue publications and candidate lookup. |
 | Text | Authored/processed mappings; Unicode analysis; font matching/fallback; shaping; opportunities and replacement alternatives; line-edge text processing; selected-line shaping and spacing; line bidi ordering including atomic participants; font/glyph outline metrics; cursor, selection, hit and geometric accessibility projections from finalized geometry; source-only accessibility from analyzed source. |
 | Layout | Box and float constraints, intrinsic box aggregation, available spans, actual break choice, spacing allocation, line/fragment placement, baselines and atomic box geometry. |
-| Render | Safe font-resource admission; executing the effective font instance; selecting and validating the glyph representation used by the backend; its local ink bounds; rasterization. |
+| Render | Adapting the actual Font face into draw data, executing the effective font instance, selecting and validating the glyph representation, local ink bounds and rasterization. |
 | Consuming subsystems | Layout owns its style/text adapters and composed line selection; render owns conversion from placed text/layout results to admitted draw data; window owns host accessibility conversion. |
 | Runtime | Captured inputs, scheduling and coherent publication of the consumers' off-side results. It does not own their semantic conversions. |
 | Root | Facade, curated reexports and bootstrap. |
 
 This ownership follows the current [producer matrix in #483](https://github.com/bj-data-eng/surgeist/issues/483). Dependency edges point toward consumed producers: layout may consume style/text, render may consume placed layout/text, and window may consume the producer results needed for host projection. Text does not import layout or render; style does not import text or layout. [#1157](https://github.com/bj-data-eng/surgeist/issues/1157) owns generated-content plans, occurrence provenance and staged page/fragment feedback. That semantic source mapping accompanies this contract's evaluated text-source ranges; generated text does not acquire fabricated DOM nodes or authored offsets.
+
+Text and standalone Render consume Font directly. Placed Text supplies the
+actual face and its effective instance to Render. The placed scene retains
+that shared resource, including the original encoded source and collection
+index, and charges its backing once. Container admission and glyph capability
+remain separate stages.
 
 Move the supplied-level bidi reorder and applicable line-edge text operations out of layout when their callers use text. Keep line fitting, floats, intrinsic box aggregation and physical placement in layout. Include atomic inline participants and directional boundary controls in the ordering input: reordering text-only runs cannot establish the order of a mixed line. Fixture font-width heuristics do not become production algorithms.
 

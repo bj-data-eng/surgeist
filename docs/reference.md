@@ -45,6 +45,7 @@ listed below through their public front doors. It also exposes
 | `cssom` | [surgeist-cssom](../crates/surgeist-cssom/src/lib.rs) |
 | `dialog` | [surgeist-dialog](../crates/surgeist-dialog/src/lib.rs) |
 | `dom` | [surgeist-dom](../crates/surgeist-dom/src/lib.rs) |
+| `font` | [surgeist-font](../crates/surgeist-font/src/lib.rs) |
 | `html` | [surgeist-html](../crates/surgeist-html/src/lib.rs) |
 | `html_parser` | [surgeist-html-parser](../crates/surgeist-html-parser/src/lib.rs) |
 | `html_semantics` | [surgeist-html-semantics](../crates/surgeist-html-semantics/src/lib.rs) |
