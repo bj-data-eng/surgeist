@@ -5,7 +5,34 @@ use serde::Serialize;
 use surgeist_text::Range;
 
 pub const SOURCE: &str = "html/block/prepared_text_continuity_bidi.html";
-const POLICY: &str = "docs/text-layout-contract.md#nonempty-text-range-fragments";
+pub const POLICY_SOURCE: &str = "docs/text-layout-contract.md";
+const POLICY_ANCHOR: &str = "nonempty-text-range-fragments";
+const POLICY_HEADING: &str = "\n### Nonempty Text range fragments\n";
+const POLICY_SHA256: &str = "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0";
+
+pub struct PolicyIdentity(String);
+
+impl PolicyIdentity {
+    pub fn from_contract(contract: &str) -> Result<Self, Error> {
+        let (_, section) = contract
+            .split_once(POLICY_HEADING)
+            .ok_or_else(|| Error::new("missing prepared Range policy section"))?;
+        let length = section
+            .split_inclusive('\n')
+            .take_while(|line| {
+                !["# ", "## ", "### "]
+                    .iter()
+                    .any(|prefix| line.starts_with(prefix))
+            })
+            .map(str::len)
+            .sum();
+        let digest = capture_authority::sha256(&section.as_bytes()[..length]);
+        if digest != POLICY_SHA256 {
+            return Err(Error::new("prepared Range policy section changed"));
+        }
+        Ok(Self(digest))
+    }
+}
 const FONT_SIZE: f64 = 16.0;
 const LINE_HEIGHT: f64 = 20.0;
 // The font has ascent 800 at UPEM 1000. The remaining leading is split
@@ -94,6 +121,7 @@ pub fn qualify(
     golden: &Golden,
     source: &str,
     variant: &str,
+    policy: &PolicyIdentity,
     mut raw: impl std::io::Write,
 ) -> Result<(), Error> {
     let rtl = match variant {
@@ -136,8 +164,8 @@ pub fn qualify(
     if rtl {
         writeln!(
             raw,
-            "{{\"case\":\"{}\",\"verdict\":\"intentional\",\"policy\":\"{POLICY}\"}}",
-            golden.name
+            "{{\"case\":\"{}\",\"verdict\":\"intentional\",\"policy\":\"{POLICY_SOURCE}#{POLICY_ANCHOR}\",\"policy_sha256\":\"{}\"}}",
+            golden.name, policy.0
         )
     } else {
         writeln!(
@@ -599,6 +627,17 @@ fn verify_selected_lines(text: &surgeist_text::Layout, rtl: bool) -> Result<(), 
 mod tests {
     use super::*;
 
+    const CONTRACT: &str = include_str!("../../../../../docs/text-layout-contract.md");
+
+    #[test]
+    fn prepared_range_policy_verification_refuses_changed_source_anchor() {
+        assert!(PolicyIdentity::from_contract(CONTRACT).is_ok());
+        let changed = CONTRACT.replacen("post-L1/L2 position.", "pre-L1 position.", 1);
+        assert_ne!(changed, CONTRACT);
+        assert!(PolicyIdentity::from_contract(&changed).is_err());
+        assert!(PolicyIdentity::from_contract("missing policy").is_err());
+    }
+
     #[test]
     fn prepared_range_verdict_identifies_the_adopted_policy_revision() {
         let original = include_str!(
@@ -606,7 +645,8 @@ mod tests {
         );
         let golden = Golden::parse(original).unwrap();
         let mut raw = Vec::new();
-        qualify(&golden, SOURCE, "border_box_rtl", &mut raw).unwrap();
+        let policy = PolicyIdentity::from_contract(CONTRACT).unwrap();
+        qualify(&golden, SOURCE, "border_box_rtl", &policy, &mut raw).unwrap();
         let verdict: serde_json::Value =
             serde_json::from_slice(raw.split(|&byte| byte == b'\n').nth(1).unwrap()).unwrap();
         assert_eq!(
@@ -622,7 +662,8 @@ mod tests {
         );
         let mut golden = Golden::parse(original).unwrap();
         let mut raw = Vec::new();
-        qualify(&golden, SOURCE, "border_box_rtl", &mut raw).unwrap();
+        let policy = PolicyIdentity::from_contract(CONTRACT).unwrap();
+        qualify(&golden, SOURCE, "border_box_rtl", &policy, &mut raw).unwrap();
 
         for (owner, row, replacement) in [(1, 2, 24.0), (2, 0, 56.015625)] {
             let mut changed = golden.clone();
@@ -632,7 +673,7 @@ mod tests {
                 .unwrap()[row]
                 .start = replacement;
             raw.clear();
-            let error = qualify(&changed, SOURCE, "border_box_rtl", &mut raw).unwrap_err();
+            let error = qualify(&changed, SOURCE, "border_box_rtl", &policy, &mut raw).unwrap_err();
             assert!(
                 error
                     .to_string()
@@ -644,7 +685,7 @@ mod tests {
 
         golden.prepared_range_frame = false;
         raw.clear();
-        assert!(qualify(&golden, SOURCE, "border_box_rtl", &mut raw).is_err());
+        assert!(qualify(&golden, SOURCE, "border_box_rtl", &policy, &mut raw).is_err());
         assert!(raw.is_empty());
     }
 }

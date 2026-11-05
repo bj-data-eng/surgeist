@@ -1,5 +1,8 @@
 use super::*;
 
+const CAPTURE_REPORT: &str = "xml/generation-reports/all.json";
+const CAPTURE_REPORT_SHA256: &str =
+    "2e8f353f2661e99cf48f0caab02c4149dd307f5438988d12baf51fe08d9985ca";
 const CAPTURE_DECLARATION_LENGTH: usize = 64333;
 const CAPTURE_DECLARATION_SHA256: &str =
     "c2102dfe54a3c9ff9a0a93f696e889e01654a9bcd0e695146f0b007e40c3d174";
@@ -54,7 +57,7 @@ fn prepared_range_replay_refuses_a_resealed_capture_with_changed_root_width() {
         fs::write(xml_path, &changed)?;
         let xml_hash = Sha256Digest::from_bytes(xml.as_bytes());
         let changed_xml_hash = Sha256Digest::from_bytes(changed.as_bytes());
-        let report_path = root.join("xml/generation-reports/all.json");
+        let report_path = root.join(CAPTURE_REPORT);
         let report = fs::read_to_string(&report_path)?;
         let changed_report = report.replace(xml_hash.as_str(), changed_xml_hash.as_str());
         assert_ne!(report, changed_report);
@@ -103,16 +106,17 @@ fn qualify_retained_prepared_range(
         .cases
         .iter()
         .map(|case| case.case.output().as_str())
-        .chain([
-            "xml/generation-reports/all.json",
-            "xml/generation-ownership.json",
-        ])
+        .chain([CAPTURE_REPORT, "xml/generation-ownership.json"])
     {
         let destination = root.join(relative);
         fs::create_dir_all(destination.parent().expect("output has a parent"))?;
         fs::copy(receipt.join(relative), destination)?;
     }
     alter_outputs(root)?;
+    let report_bytes = fs::read(root.join(CAPTURE_REPORT))?;
+    if Sha256Digest::from_bytes(&report_bytes).as_str() != CAPTURE_REPORT_SHA256 {
+        return Err("retained prepared Range capture report changed".into());
+    }
     let browser_declaration: OwnerBrowserDeclaration = surgeist_generator::parse_manifest(
         &fs::read_to_string(root.join("browser-owner.toml"))?,
         "browser-owner.toml",

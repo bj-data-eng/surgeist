@@ -625,7 +625,19 @@ fn validate_corpus(
     report: &browser::BrowserGenerationReport,
     mut validation: Validation<'_>,
 ) -> Result<()> {
+    use crate::parity_support::prepared_range_qualification as prepared_range;
+
     let mode = validation.mode;
+    let prepared_range_policy = if mode == QualificationMode::PreparedRangeCapture {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join(prepared_range::POLICY_SOURCE);
+        Some(prepared_range::PolicyIdentity::from_contract(
+            &fs::read_to_string(path)?,
+        )?)
+    } else {
+        None
+    };
     assert_eq!(*report.summary(), expected);
     assert!(report.filter().is_none());
     assert_eq!(
@@ -742,11 +754,12 @@ fn validate_corpus(
             qualify_grid_reference_census(&golden.root, owners)?;
             crate::parity_support::assert_grid_alignment_reference_inputs(&golden, owners)?;
         }
-        if mode == QualificationMode::PreparedRangeCapture {
-            if let Err(error) = crate::parity_support::prepared_range_qualification::qualify(
+        if let Some(policy) = &prepared_range_policy {
+            if let Err(error) = prepared_range::qualify(
                 &golden,
                 case.source.as_str(),
                 case.case.variant(),
+                policy,
                 &mut *validation.prepared_range_raw,
             ) {
                 native_errors.push(format!("{}: {error}", case.case.id()));
