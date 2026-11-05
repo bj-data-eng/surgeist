@@ -83,10 +83,11 @@ cargo test --offline --locked -j 1 -p surgeist-layout --test layout runs_registe
 The [canonical box edition](captured/canonical-box-differences/qualification.json)
 covers four collapsed Flex wrapping variants. The
 [measured Grid edition](captured/measured-grid-differences/qualification.json)
-covers 16 min-content and fit-content variants across the 10px and 30px caps,
-Visible and Hidden overflow, both box modes, and both directions. It requires
-the retained Ahem leaf witness and compares Layout geometry and DOM integer
-sizes. The Hidden captures include both Layout scroll-range spans.
+covers 28 variants across min-content and fit-content, max-content and
+fit-content(10px), and thirteen-track intrinsic sizing. The measured Ahem
+leaf witness binds four or sixteen characters on each side of U+200B.
+The comparison checks Layout geometry and DOM integer sizes in both box
+modes and directions. Hidden captures include both Layout scroll-range spans.
 
 The reader authenticates each terminal seal, retained inputs and outputs,
 browser profile, policy, and per-variant identity. It compares the retained
