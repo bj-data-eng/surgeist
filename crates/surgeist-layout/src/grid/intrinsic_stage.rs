@@ -142,6 +142,12 @@ impl<Node: PartialEq, S: LayoutScalar> MinContentObservation<Node, S> {
     }
 }
 
+enum StageMinContent<Node, S: LayoutScalar> {
+    Discard,
+    Retain,
+    Observed(MinContentObservation<Node, S>),
+}
+
 struct AcceptedMinContent<Node, S: LayoutScalar> {
     receipts: Vec<GridContributionReceipt<Node, S>>,
     base_floors: Vec<S>,
@@ -313,6 +319,13 @@ where
             rows: rows.as_deref(),
             observed_axis: None,
         };
+        let retain_min_content = match phase {
+            GridSizingPhase::InitialFirst => input.stage.through >= GridSizingPhase::RevisitFirst,
+            GridSizingPhase::InitialSecond => input.stage.through >= GridSizingPhase::RevisitSecond,
+            GridSizingPhase::RevisitFirst
+            | GridSizingPhase::RevisitSecond
+            | GridSizingPhase::Complete => false,
+        };
         let (frame, min_content) = if phase >= GridSizingPhase::RevisitFirst {
             let previous: &AcceptedMinContent<Tree::Node, Tree::Scalar> = match axis {
                 GridAxisKind::Column => column_min_content.as_ref(),
@@ -327,12 +340,14 @@ where
                 continue;
             }
             if previous.observe_auto {
-                (frame, None)
+                (frame, StageMinContent::Discard)
             } else {
-                (gate_frame, Some(observation))
+                (gate_frame, StageMinContent::Observed(observation))
             }
+        } else if retain_min_content {
+            (frame, StageMinContent::Retain)
         } else {
-            (frame, None)
+            (frame, StageMinContent::Discard)
         };
         let evaluated = evaluate_stage(
             tree,
@@ -351,7 +366,7 @@ where
             axis_available(input.available, axis),
             axis_available(spaces, axis),
         )?;
-        let min_content = if phase < GridSizingPhase::RevisitFirst {
+        let min_content = if retain_min_content {
             let observe_auto = evaluated.observed_axis.is_some();
             let own_axis = match evaluated.observed_axis {
                 Some(tentative) => Some(tentative),
@@ -754,15 +769,16 @@ fn collect_purposes<'input, Tree, M>(
     input: &GridTrackResolutionInput<'input, '_, Tree::Node, Tree::Scalar>,
     grid: IntrinsicGrid<'input, '_, Tree::Node, Tree::Scalar>,
     frame: IntrinsicStageFrame<'_, Tree::Scalar>,
-    min_content: Option<MinContentObservation<Tree::Node, Tree::Scalar>>,
+    min_content: StageMinContent<Tree::Node, Tree::Scalar>,
 ) -> StageResult<Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
     let minimum = evaluate_role(tree, node, grid, frame, GridContributionPurpose::Minimum)?;
+    let retain_min_content = matches!(min_content, StageMinContent::Retain);
     let (min_content, observed_lanes) = match min_content {
-        Some(observation) => (observation.grid, Some(observation.lanes)),
-        None => (
+        StageMinContent::Observed(observation) => (observation.grid, Some(observation.lanes)),
+        StageMinContent::Discard | StageMinContent::Retain => (
             evaluate_role(tree, node, grid, frame, GridContributionPurpose::MinContent)?,
             None,
         ),
@@ -773,10 +789,16 @@ where
         grid_contribution_rows(&group).map_err(|error| grid_track_sizing_error(node, error))?;
     let lane_min_content = match lane_intrinsic_input(input, grid, frame) {
         Some(input) => {
-            let lanes =
-                lane_intrinsic_contributions(tree, node, input, observed_lanes)?.map_err(|_| {
-                    grid_track_sizing_error(node, SpanningContributionError::InvalidIncidence)
-                })?;
+            let lanes = lane_intrinsic_contributions(
+                tree,
+                node,
+                input,
+                observed_lanes,
+                retain_min_content,
+            )?
+            .map_err(|_| {
+                grid_track_sizing_error(node, SpanningContributionError::InvalidIncidence)
+            })?;
             rows.try_reserve(lanes.rows.len()).map_err(|_| {
                 grid_track_sizing_error(node, SpanningContributionError::Allocation)
             })?;
@@ -815,15 +837,15 @@ fn evaluate_stage<'input, Tree, M>(
     grid: IntrinsicGrid<'input, '_, Tree::Node, Tree::Scalar>,
     frame: IntrinsicStageFrame<'_, Tree::Scalar>,
     space: GridAxisTrackSpace<Tree::Scalar>,
-    min_content: Option<MinContentObservation<Tree::Node, Tree::Scalar>>,
+    min_content: StageMinContent<Tree::Node, Tree::Scalar>,
 ) -> StageResult<Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
-    let initial = collect_purposes(tree, node, input, grid, frame, min_content)?;
     if !has_inherited_items(grid, frame.axis) {
-        return Ok(initial);
+        return collect_purposes(tree, node, input, grid, frame, min_content);
     }
+    let initial = collect_purposes(tree, node, input, grid, frame, StageMinContent::Discard)?;
     let (tentative, _) = prepare_axis_track_inputs(
         node,
         input,
@@ -841,7 +863,7 @@ where
             observed_axis: Some(&tentative),
             ..frame
         },
-        None,
+        min_content,
     )?;
     evaluated.observed_axis = Some(tentative);
     Ok(evaluated)

@@ -272,6 +272,7 @@ fn differential<S: LayoutScalar>(axis: GridAxisKind, overflow: Overflow, demand:
                         subgrid_report: &subgrid_report,
                     },
                     None,
+                    false,
                 )
                 .expect("actual native intrinsic query succeeds")
                 .expect("one real child occupies its declared one-track span")

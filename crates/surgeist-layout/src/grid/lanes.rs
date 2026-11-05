@@ -1115,6 +1115,7 @@ pub(super) fn lane_intrinsic_contributions<'input, Tree, M>(
     node: Tree::Node,
     input: LaneIntrinsicTrackSizeInput<'input, '_, Tree::Node, Tree::Scalar>,
     observed_min_content: Option<Vec<LanePurposeContributionOf<Tree::Node, Tree::Scalar>>>,
+    retain_min_content: bool,
 ) -> LaneIntrinsicResult<Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
@@ -1135,13 +1136,18 @@ where
         Ok(rows) => rows,
         Err(error) => return Ok(Err(error)),
     };
-    // Reduction combines equal spans. Retain the individual observations
-    // for comparison across sizing stages.
-    let mut min_rows = Vec::new();
-    min_rows
-        .try_reserve_exact(min_content.len())
-        .map_err(|_| grid_track_sizing_error(node, SpanningContributionError::Allocation))?;
-    min_rows.extend_from_slice(&min_content);
+    let (min_rows, min_content) = if retain_min_content {
+        // Reduction combines equal spans. Preserve the individual facts
+        // only when this collection supplies a later comparison.
+        let mut min_rows = Vec::new();
+        min_rows
+            .try_reserve_exact(min_content.len())
+            .map_err(|_| grid_track_sizing_error(node, SpanningContributionError::Allocation))?;
+        min_rows.extend_from_slice(&min_content);
+        (min_rows, min_content)
+    } else {
+        (min_content, Vec::new())
+    };
     let rows = complete_lane_contribution_rows(minimum, min_rows, max_content)
         .map_err(|error| grid_track_sizing_error(node, error))?;
     Ok(Ok(LaneIntrinsicContributions { rows, min_content }))

@@ -2148,6 +2148,7 @@ where
             subgrid_report: &subgrid_report,
         },
         None,
+        false,
     )
     .expect("intrinsic collection succeeds")
     .expect("intrinsic placement is valid")
