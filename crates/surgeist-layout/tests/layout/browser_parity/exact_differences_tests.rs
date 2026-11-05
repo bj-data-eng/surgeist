@@ -965,6 +965,46 @@ fn measured_grid_publication_compares_both_complete_domains_for_the_certified_le
             .resolve_against(authority(), &golden)
             .is_err()
     );
+
+    let hidden_xml = XML
+        .replace(
+            "<text source-tag=\"div\" display=\"flex\" direction=\"ltr\">",
+            "<text source-tag=\"div\" display=\"flex\" direction=\"ltr\" overflow-x=\"hidden\" overflow-y=\"hidden\">",
+        )
+        .replace(
+            r#"<node x="0" y="0" width="80" height="40"/>"#,
+            r#"<node x="0" y="0" width="80" height="40" scroll_width="1" scroll_height="0"/>"#,
+        );
+    let hidden = Golden::parse(&hidden_xml).unwrap();
+    assert!(parsed.resolve_against(authority(), &hidden).is_err());
+
+    let selectors = value["representation"]["current"]["selectors"]
+        .as_array_mut()
+        .unwrap();
+    for field in ["layout-scroll-width", "layout-scroll-height"] {
+        selectors.push(json!({"path":"/0","field":field}));
+    }
+    let with_ranges = ExactDifferenceSpec::parse(&value.to_string())
+        .expect("measured Grid declares Layout scroll-range observations");
+    let resolved = with_ranges.resolve_against(authority(), &hidden).unwrap();
+    let complete = complete_captured_comparison(&hidden, &resolved).unwrap();
+    assert_eq!(complete.observations.len(), 18);
+    let differences: Vec<_> = complete.raw_differences().map(ComparedField::key).collect();
+    assert_eq!(
+        differences,
+        [
+            "layout:/:Width",
+            "layout:/0:ScrollWidth",
+            "element-size:/0:ScrollWidth",
+        ]
+    );
+    assert!(with_ranges.resolve_against(authority(), &golden).is_err());
+
+    value["representation"]["current"]["selectors"]
+        .as_array_mut()
+        .unwrap()
+        .pop();
+    assert!(spec(&value).resolve_against(authority(), &hidden).is_err());
 }
 
 #[test]
