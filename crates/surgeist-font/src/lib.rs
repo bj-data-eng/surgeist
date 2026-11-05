@@ -1,4 +1,4 @@
-//! Immutable, bounded SFNT resources and collection faces.
+//! Bounded font-container decoding, immutable resources and collection faces.
 //!
 //! Admission validates container structure, not OpenType table semantics.
 //! See the crate README for allocation accounting and capability limits.
@@ -12,7 +12,10 @@ use std::{
     sync::Arc,
 };
 
+mod brotli;
 mod sfnt;
+mod woff1;
+mod woff2;
 
 /// Caller policy; zero is a valid rejecting cap. No limits are inferred.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -104,6 +107,13 @@ pub enum InvalidKind {
     UnalignedOffset,
     Overlap,
     CollectionSignature,
+    WoffHeader,
+    WoffDirectory,
+    WoffTransform,
+    WoffGlyph,
+    WoffMetrics,
+    CompressedData,
+    WoffChecksum,
 }
 
 /// A malformed container and the byte offset of the affected field or region.
@@ -117,7 +127,7 @@ impl InvalidContainer {
     pub const fn kind(self) -> InvalidKind {
         self.kind
     }
-    /// Byte offset in the decoded container.
+    /// Byte offset within the affected container, table or compressed region.
     pub const fn offset(self) -> usize {
         self.offset
     }
@@ -135,6 +145,11 @@ pub enum DecodeError {
     InvalidContainer(InvalidContainer),
     AllocationFailed,
     SizeOverflow,
+    UnsupportedTransform {
+        tag: [u8; 4],
+        version: u8,
+    },
+    UnsupportedFlavor([u8; 4]),
 }
 impl fmt::Display for DecodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -149,6 +164,11 @@ impl fmt::Display for DecodeError {
             }
             Self::AllocationFailed => f.write_str("font allocation failed"),
             Self::SizeOverflow => f.write_str("font size arithmetic overflowed"),
+            Self::UnsupportedTransform { tag, version } => write!(
+                f,
+                "unsupported font table transform {tag:?} version {version}"
+            ),
+            Self::UnsupportedFlavor(flavor) => write!(f, "unsupported SFNT flavor {flavor:?}"),
         }
     }
 }
@@ -160,6 +180,8 @@ impl std::error::Error for DecodeError {}
 pub enum SourceFormat {
     Sfnt,
     Collection,
+    Woff,
+    Woff2,
 }
 
 #[derive(Debug)]
@@ -172,6 +194,9 @@ struct SourceInner {
 #[derive(Clone)]
 pub struct FontSource(Arc<SourceInner>);
 impl FontSource {
+    pub(crate) fn retained_bytes(&self) -> Result<usize, DecodeError> {
+        add(self.0.bytes.capacity(), source_metadata())
+    }
     pub(crate) fn from_encoded(
         bytes: Vec<u8>,
         format: SourceFormat,
@@ -244,6 +269,25 @@ struct ResourceInner {
 #[derive(Clone)]
 pub struct FontResource(Arc<ResourceInner>);
 impl FontResource {
+    /// Decodes WOFF/WOFF2 or admits a raw SFNT/OpenType collection.
+    ///
+    /// The returned resource retains both the exact encoded source and its
+    /// admitted decoded backing. Container decoding does not admit font-table
+    /// semantics, choose a family, or qualify glyphs for a rendering backend.
+    pub fn decode(bytes: Vec<u8>, limits: DecodeLimits) -> Result<Self, DecodeError> {
+        let format = match bytes.get(..4) {
+            Some(b"wOFF") => SourceFormat::Woff,
+            Some(b"wOF2") => SourceFormat::Woff2,
+            _ => return Self::from_sfnt(bytes, limits),
+        };
+        let source = FontSource::from_encoded(bytes, format, limits)?;
+        let decoded = match format {
+            SourceFormat::Woff => woff1::decode(&source, limits)?,
+            SourceFormat::Woff2 => woff2::decode(&source, limits)?,
+            _ => unreachable!("only compressed formats enter reconstruction"),
+        };
+        Self::from_backing(source, Some(decoded), limits)
+    }
     /// Admits raw SFNT/OTF or TTC/OTC bytes without copying their payload.
     /// The caller's allocation before ownership transfer is outside this call's
     /// allocation-failure boundary; its retained capacity is nevertheless charged.

@@ -10,3 +10,7 @@ description = "Bounded font resources and immutable face identity for Surgeist."
 
 [lib]
 path = "src/lib.rs"
+
+[dependencies]
+brotli-decompressor = { version = "=5.0.0", default-features = false }
+miniz_oxide = { version = "=0.8.9", default-features = false }

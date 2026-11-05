@@ -4,6 +4,33 @@
 provenance, decoded-resource identity, and original collection-face selection.
 It has no catalogue, matching, shaping, glyph-admission or rendering authority.
 
+`FontResource::decode(bytes, limits)` accepts raw SFNT/OpenType, collections,
+WOFF1 and WOFF2. Each result retains the exact source and the admitted decoded
+backing; `face(index)` selects an original collection index. All faces are
+admitted atomically. Strong face and identity handles keep their resources alive.
+
+## Compressed containers
+
+WOFF1 supports compressed and uncompressed tables, validates table checksums,
+preserves physical table order and reconstructs SFNT search fields. Checksum
+verification is an explicit decoder integrity policy; WOFF's normative producer
+validation requirement is separate. An unsigned font's whole-font adjustment
+is corrected when needed. A correction that would invalidate a retained `DSIG`
+is refused instead of silently changing signed data.
+
+WOFF2 supports single fonts and collections, transformed `glyf`/`loca`/`hmtx`,
+shared outlines with separate metrics, and metrics inferred from untransformed
+outlines. Original face order and shared table associations survive decoding.
+Opaque shaping, variation and color tables are retained. Unknown transforms and
+unsupported SFNT flavors are typed refusals. Decoding does not certify those
+tables for a consumer's particular shaping or glyph backend.
+
+The original encoded bytes retain optional metadata and private data. These
+blocks' structure is checked but their contents are unexposed and never used to
+load a font. Metadata XML is not inflated or interpreted. WOFF2's reserved value
+and reference-only total size do not determine acceptance or allocation.
+Reconstructed table sizes are independently derived and bounded.
+
 ## Raw resource admission
 
 `FontResource::from_sfnt` accepts standalone SFNT/OTF and version 1 or 2 TTC/OTC.
@@ -51,7 +78,8 @@ default. Zero is a valid cap. The limits mean:
 - `tables`: aggregate table count across all faces, counting shared tables for
   each reference.
 - `faces`: collection-face count; a standalone resource has one face.
-- `workspace_bytes`: requested temporary validation allocation payload.
+- `workspace_bytes`: requested temporary validation/reconstruction payload and
+  explicitly accounted fixed decompressor state.
 - `live_bytes`: requested simultaneously live heap payload plus known owned
   metadata, including retained encoded capacity, distinct decoded capacity when
   present, source/resource control data and reference counters, retained face
@@ -61,7 +89,13 @@ Count and byte arithmetic is checked before variable allocations. Admission
 scans complete directories without allocating, then fallibly reserves the
 face-offset and region arrays once using `Vec::try_reserve_exact`; the region
 sort needs no further allocation. Limits charge these arrays' requested
-element payload. Allocator bookkeeping, allocator rounding/excess capacity,
+element payload. Compressed decoding additionally charges all intermediate
+buffers, replacement-buffer overlap and provider storage. Brotli's strict
+decoder uses thirteen fully prepared cells, about 19.2 MiB of payload plus
+state and stream output; insufficient workspace is refused before provider
+entry. Callbacks recycle this storage without allocating. Allocator-granted
+reported capacity excess is checked before retaining or initializing it.
+Allocator bookkeeping and unreported allocator rounding,
 stack frames and caller-held handles are outside this accounting model.
 The original transferred `Vec`'s full reported capacity is charged regardless
 of how the caller obtained it. Bounds describe this admission operation, not a
@@ -76,8 +110,9 @@ returns no partially admitted resource.
 
 ## Capability and checks
 
-WOFF1 and WOFF2 decoding are separate implementation work; this raw entry point
-does not accept either encoded format. It exposes no placeholder decoder.
+The binary-resource API is host-independent, requires no system font discovery,
+and has no optional corpus-only decoder. See [source provenance](PROVENANCE.md),
+[dependency attribution](NOTICE.md) and [fixture sources](tests/fixtures/PROVENANCE.md).
 
 From the repository root:
 
@@ -86,6 +121,8 @@ cargo test --offline --locked -j 1 -p surgeist-font
 cargo clippy --offline --locked -j 1 -p surgeist-font --all-targets --no-deps -- -F unsafe-code -D warnings
 ```
 
-The tests use small authored structural containers and the repository's existing
-Ahem fixture by reference. New API behavior is checked alongside functional
+Tests use independently authored wire cases, retained original Ahem WOFF2,
+the repository's later Ahem TTF, and independently sourced CFF/variable-color
+fonts. Full table contents, actual sharing, bounds and malformed input are
+observable controls. New API behavior is checked alongside functional
 implementation; no preimplementation regression RED is claimed.
