@@ -423,12 +423,12 @@ impl AdmittedRegistry {
 // This seal admits only the publisher's complete terminal artifact. Retained
 // projections and directory existence do not establish capture authority.
 const REGISTERED_BOX_TERMINAL_SHA256: &str =
-    "b9c3ebf6610c82efe127a8dc4b9935cbb1b79aca125f9147cc68595ba1e75949";
+    "7bf7fa1ca5e2e8b06934f77151ff3ff9cd734f3bce5ba3ee3e48fa1d947a33ad";
 const REGISTERED_MEASURED_GRID_TERMINAL_SHA256: &str =
-    "fdd91bda348f1cce50b8a28867e4c868f41ca575877d85ea1499d6eb516ce499";
+    "053f377d4b13dc969459a5da6eee68509efb99e22ec163d73f9afde638058225";
 
 const REGISTERED_FLEX_TEXT_TERMINAL_SHA256: &str =
-    "7fb7b25fc1cfa7d5ea74b1d81a23bcaca2915fe634fec6f491559bf670992570";
+    "a7958329eeb9301fc4b3f0b709b248a9ab5fd5a6b7f57f96508e3bbe2475f888";
 
 pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
     let editions = [

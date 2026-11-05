@@ -1067,6 +1067,7 @@ fn verify_current_requirements(
         != (edition.domain() == CurrentDomain::LayoutAndElementSizes)
         || golden.measured_leaf.is_some() != (edition == PublishedEdition::MeasuredGrid)
         || golden.has_flex_content_text() != (edition == PublishedEdition::FlexText)
+        || golden.has_prepared_range_frame()
     {
         return Err(QualificationError::IncompleteRepresentation {
             key: "current root-border-local observation frame or domain".to_owned(),

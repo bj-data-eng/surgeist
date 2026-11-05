@@ -243,15 +243,18 @@ function atomicParagraphSource(element) {
       ![order[0], order[2]].every(({node}) => node.nodeType === Node.ELEMENT_NODE && isLoweredAtomicInline(node))) return undefined;
   return order;
 }
+function hasDefaultFontMetricDescriptors(face) {
+  return face.unicodeRange.toUpperCase() === 'U+0-10FFFF' &&
+    face.ascentOverride === 'normal' && face.descentOverride === 'normal' &&
+    face.lineGapOverride === 'normal' && face.sizeAdjust === '100%';
+}
 function referenceMetricFace() {
   const faces = Array.from(document.fonts).filter(face => referenceFontFamily(face.family) === 'ahem');
   if (faces.length !== 1) throw new Error(faces.length ? 'CompetingFontResource' : 'MissingFontResource');
   const face = faces[0];
   if (face.style !== 'normal' || !['normal', '400'].includes(face.weight) ||
-      !['normal', '100%'].includes(face.stretch) || face.unicodeRange.toUpperCase() !== 'U+0-10FFFF' ||
-      face.featureSettings !== 'normal' || face.variationSettings !== 'normal' ||
-      face.ascentOverride !== 'normal' || face.descentOverride !== 'normal' ||
-      face.lineGapOverride !== 'normal' || face.sizeAdjust !== '100%') throw new Error('UnsupportedFontResourceSettings');
+      !['normal', '100%'].includes(face.stretch) || !hasDefaultFontMetricDescriptors(face) ||
+      face.featureSettings !== 'normal' || face.variationSettings !== 'normal') throw new Error('UnsupportedFontResourceSettings');
   return face;
 }
 function gridAlignmentSource(element) {
@@ -375,7 +378,23 @@ function atomicParagraphMetricsForElement(element, children) {
       : { kind: 'atomic', child, source: row.source, bidiLevel: level }) };
 }
 
-function configureRootContextCapture(source, baseStyle, helperReference, styleReference) {
+const PREPARED_RANGE_FRAME = 'prepared-range-root-border-v1';
+
+function preparedRangePreload(link, head, fontUrl) {
+  return link?.parentElement === head && link.attributes.length === 5 &&
+    link.getAttribute('rel') === 'preload' && link.getAttribute('as') === 'font' &&
+    link.getAttribute('type') === 'font/ttf' && link.getAttribute('crossorigin') === '' &&
+    link.hasAttribute('href') && new URL(link.getAttribute('href'), document.baseURI).href === fontUrl;
+}
+
+function rootContextStyleInventory(ownedStyle, preload, preloadSource) {
+  const resources = Array.from(document.querySelectorAll('style, link'));
+  return resources.length === (preload ? 2 : 1) && resources.includes(ownedStyle) &&
+    (!preload || (resources.includes(preload) && preload.parentElement === document.head &&
+      preload.outerHTML === preloadSource));
+}
+
+function configureRootContextCapture(source, baseStyle, helperReference, styleReference, preparedFontReference) {
   const reject = reason => { rootContextCapture = { reason }; };
   try {
     const parsed = new DOMParser().parseFromString(source, 'text/html');
@@ -391,15 +410,20 @@ function configureRootContextCapture(source, baseStyle, helperReference, styleRe
         Array.from(node.attributes).some(attribute => /^on/i.test(attribute.name)))) return reject('SourceScript');
     const scripts = Array.from(parsed.querySelectorAll('script'));
     const links = Array.from(parsed.querySelectorAll('link'));
+    const preparedRanges = preparedFontReference !== undefined;
+    const fontUrl = preparedRanges ? new URL(preparedFontReference, document.baseURI).href : null;
+    const sourcePreload = preparedRanges ? links.find(link => link.rel === 'preload') : null;
+    if (preparedRanges && !preparedRangePreload(sourcePreload, parsed.head, fontUrl)) return reject('SourceResources');
+    const stylesheets = links.filter(link => link !== sourcePreload);
     const helperUrl = new URL(helperReference, document.baseURI).href;
     const styleUrl = new URL(styleReference, document.baseURI).href;
     if (scripts.length !== 1 || scripts[0].textContent.trim() ||
         new URL(scripts[0].getAttribute('src') || '', document.baseURI).href !== helperUrl ||
-        links.length !== 1 || links[0].rel !== 'stylesheet' ||
-        Array.from(links[0].attributes).some(attribute => !['rel', 'type', 'href'].includes(attribute.name)) ||
-        (links[0].hasAttribute('type') && links[0].getAttribute('type') !== 'text/css') ||
-        links[0].parentElement !== parsed.head ||
-        new URL(links[0].getAttribute('href') || '', document.baseURI).href !== styleUrl) return reject('SourceResources');
+        stylesheets.length !== 1 || stylesheets[0].rel !== 'stylesheet' ||
+        Array.from(stylesheets[0].attributes).some(attribute => !['rel', 'type', 'href'].includes(attribute.name)) ||
+        (stylesheets[0].hasAttribute('type') && stylesheets[0].getAttribute('type') !== 'text/css') ||
+        stylesheets[0].parentElement !== parsed.head ||
+        new URL(stylesheets[0].getAttribute('href') || '', document.baseURI).href !== styleUrl) return reject('SourceResources');
     const sourceRoot = parsed.getElementById('test-root');
     if (sourceRoot.parentElement !== parsed.body) return reject('SourceParent');
     if (!rootContextBodySequence(parsed.body, sourceRoot)) return reject('SourceBodySiblings');
@@ -410,29 +434,35 @@ function configureRootContextCapture(source, baseStyle, helperReference, styleRe
     const previous = rootContextCapture;
     let ownedStyle;
     let bodyChildren;
+    let preload;
     if (previous && !previous.reason && previous.source === source &&
         previous.baseStyle === baseStyle && previous.helperUrl === helperUrl &&
-        previous.styleUrl === styleUrl) {
+        previous.styleUrl === styleUrl && previous.fontUrl === fontUrl) {
       // Repeated setup retains the same authenticated owner; a marker alone
       // never authorizes a replacement sheet or repairs a changed document.
       ownedStyle = previous.ownedStyle;
       bodyChildren = previous.bodyChildren;
+      preload = previous.preload;
       if (!bodyChildren || bodyChildren.length !== document.body.childNodes.length ||
           bodyChildren.some((node, index) => document.body.childNodes[index] !== node)) return reject('SourceBodyChanged');
       if (!ownedStyle.isConnected || ownedStyle.parentElement !== document.head ||
           ownedStyle.textContent !== baseStyle ||
-          document.querySelectorAll('style, link').length !== 1 ||
+          !rootContextStyleInventory(ownedStyle, preload, sourcePreload?.outerHTML) ||
           document.styleSheets.length !== 1 ||
           document.styleSheets[0].ownerNode !== ownedStyle ||
           document.adoptedStyleSheets.length !== 0) return reject('StylesheetChanged');
     } else {
       bodyChildren = Array.from(document.body.childNodes);
       const liveLinks = Array.from(document.querySelectorAll('link'));
-      if (liveLinks.length !== 1 || liveLinks[0].parentElement !== document.head ||
-          liveLinks[0].outerHTML !== links[0].outerHTML || liveLinks[0].disabled ||
+      preload = preparedRanges ? liveLinks.find(link => link.rel === 'preload') : null;
+      if (preparedRanges && (!preparedRangePreload(preload, document.head, fontUrl) ||
+          preload.outerHTML !== sourcePreload.outerHTML)) return reject('SourceResources');
+      const liveStylesheets = liveLinks.filter(link => link !== preload);
+      if (liveStylesheets.length !== 1 || liveStylesheets[0].parentElement !== document.head ||
+          liveStylesheets[0].outerHTML !== stylesheets[0].outerHTML || liveStylesheets[0].disabled ||
           document.querySelectorAll('style').length !== 0 ||
           document.styleSheets.length !== 1 ||
-          document.styleSheets[0].ownerNode !== liveLinks[0] ||
+          document.styleSheets[0].ownerNode !== liveStylesheets[0] ||
           document.styleSheets[0].disabled || document.adoptedStyleSheets.length !== 0) return reject('StylesheetSource');
       // The file:// LINK's cssRules may be opaque. Replace only the exact
       // source-authenticated owned resource, in its original cascade position.
@@ -440,7 +470,7 @@ function configureRootContextCapture(source, baseStyle, helperReference, styleRe
       ownedStyle = document.createElement('style');
       ownedStyle.setAttribute('data-surgeist-root-source', 'true');
       ownedStyle.textContent = baseStyle;
-      liveLinks[0].replaceWith(ownedStyle);
+      liveStylesheets[0].replaceWith(ownedStyle);
     }
     // Only this exact base sheet supplies the DIV default. Restoring position,
     // float and clear must not use the live absolute box's blockified display.
@@ -448,7 +478,8 @@ function configureRootContextCapture(source, baseStyle, helperReference, styleRe
       sourceRoot.style.display || (sourceRoot.tagName === 'DIV' ? 'flex' : null);
     rootContextCapture = { source, baseStyle, ownedStyle, hypotheticalDisplay,
       sourceRoot: sourceRoot.outerHTML, html: parsed.documentElement,
-      body: parsed.body, bodyChildren, rules, helperUrl, styleUrl };
+      body: parsed.body, bodyChildren, rules, helperUrl, styleUrl, fontUrl, preload,
+      preloadSource: sourcePreload?.outerHTML, preparedRanges };
   } catch (_) {
     reject('SourceQualificationUnavailable');
   }
@@ -478,7 +509,9 @@ function captureRootContext(root) {
   if (scripts.length !== 1 || scripts[0].src !== proof.helperUrl || scripts[0].textContent.trim()) fail('ScriptChanged');
   const sheets = Array.from(document.styleSheets);
   if (document.adoptedStyleSheets.length !== 0) fail('AdoptedStylesheet');
-  if (sheets.length !== 1 || document.querySelectorAll('style, link').length !== 1) fail('StylesheetInventory');
+  if (sheets.length !== 1 ||
+      !rootContextStyleInventory(proof.ownedStyle, proof.preload, proof.preloadSource)) fail('StylesheetInventory');
+  if (proof.preparedRanges) qualifyLoadedPreparedRangeFace();
   for (const sheet of sheets) {
     const owner = sheet.ownerNode;
     if (owner !== proof.ownedStyle || owner?.tagName !== 'STYLE' ||
@@ -587,7 +620,7 @@ function captureRootContext(root) {
     // context even for visible-overflow Block. Local observation does not
     // promise its hypothetical block origin; complete subtree independence
     // below remains mandatory before that translation can be omitted.
-    qualifyRootLocalSubtree(root, unshifted);
+    qualifyRootLocalSubtree(root, unshifted, proof.preparedRanges);
     let hypotheticalInlineOffset = 0;
     if (body.style.length) {
       hypotheticalInlineOffset = qualifyRootLiteralIndent(root, proof, parentStyle, htmlStyle, width);
@@ -612,7 +645,7 @@ function captureRootContext(root) {
 // zero block origin. Every accepted producer must commute with a common root
 // translation before publication rounding. The exact base/inline declarations
 // and complete source/live subtree equality are authenticated above.
-function qualifyRootLocalSubtree(root, unshifted) {
+function qualifyRootLocalSubtree(root, unshifted, preparedRanges) {
   const fail = reason => { throw new Error('Root context: ' + reason); };
   const blockProperties = ['height', 'min-height', 'max-height',
     'block-size', 'min-block-size', 'max-block-size'];
@@ -622,6 +655,7 @@ function qualifyRootLocalSubtree(root, unshifted) {
   }
   const logicalBlockEdges = ['padding-block-start', 'padding-block-end',
     'inset-block-start', 'inset-block-end'];
+  const inline = preparedRanges ? qualifyPreparedRangeSubtree(root) : null;
   const pending = [root];
   while (pending.length) {
     const node = pending.pop();
@@ -636,12 +670,15 @@ function qualifyRootLocalSubtree(root, unshifted) {
     // These elements have no border-box observation that can share the root's
     // omitted translation. A world-zero rectangle is not a local zero box.
     if (['none', 'contents'].includes(style.display)) fail('RootLocalBoxlessObservation');
-    if (!['DIV', 'SPAN'].includes(node.tagName) ||
-        !['block', 'flow-root', 'flex', 'grid', 'grid-lanes'].includes(style.display)) fail('RootLocalBoxProfile');
+    if (node !== inline && (!['DIV', 'SPAN'].includes(node.tagName) ||
+        !['block', 'flow-root', 'flex', 'grid', 'grid-lanes'].includes(style.display))) fail('RootLocalBoxProfile');
     // Unlike variant box-sizing/direction rules, .viewport supplies dimensions
     // absent from this inline-declaration-only normalized sizing channel.
     if (node.classList.contains('viewport')) fail('RootLocalUnrepresentedClass');
-    if (Array.from(node.attributes).some(attribute => attribute.name.startsWith('data-surgeist-'))) fail('RootLocalObservationChannel');
+    const allowedMarkers = node === inline ? ['data-surgeist-transparent-inline-container'] :
+      preparedRanges && node === root ? ['data-surgeist-layout-ready-inline', 'data-surgeist-prepared-text'] : [];
+    if (Array.from(node.attributes).some(({name}) => name.startsWith('data-surgeist-') &&
+        !allowedMarkers.includes(name))) fail('RootLocalObservationChannel');
     if (node.scrollLeft !== 0 || node.scrollTop !== 0) fail('RootLocalScrolledBox');
     for (const property of Array.from(node.style)) {
       const value = node.style.getPropertyValue(property);
@@ -658,8 +695,29 @@ function qualifyRootLocalSubtree(root, unshifted) {
   }
 }
 
+function qualifyPreparedRangeSubtree(root) {
+  const text = node => node?.nodeType === Node.TEXT_NODE && node.length > 0;
+  const [first, inline, last] = root.childNodes;
+  const rootStyle = getComputedStyle(root);
+  if (rootStyle.display !== 'block' || root.getAttribute('data-surgeist-layout-ready-inline') !== 'true' ||
+      root.getAttribute('data-surgeist-prepared-text') !== 'ahem-ttf-v1' || root.childNodes.length !== 3 ||
+      !text(first) || inline?.tagName !== 'SPAN' || !text(last) || inline.childNodes.length !== 1 ||
+      !text(inline.firstChild) || inline.getAttribute('data-surgeist-transparent-inline-container') !== 'true') {
+    throw new Error('Root context: PreparedRangeSourceShape');
+  }
+  const inlineStyle = getComputedStyle(inline);
+  if (inlineStyle.display !== 'inline' || inlineStyle.direction !== rootStyle.direction ||
+      rootStyle.fontSizeAdjust !== 'none' || inlineStyle.fontSizeAdjust !== 'none' ||
+      [root, inline].some(node => ['::before', '::after'].some(pseudo =>
+        !['normal', 'none'].includes(getComputedStyle(node, pseudo).content)))) {
+    throw new Error('Root context: PreparedRangeInlineFrame');
+  }
+  qualifyPreparedFrame(inline, rootStyle);
+  qualifyTransparentPreparedInline(inline, root);
+  return inline;
+}
+
 function qualifyAnalyticCaptureText(node, containingMode, inheritedOrthogonal = false) {
-  // A genuine Prepared paragraph retains its own font/source/control authority.
   if (node.preparedParagraph) return;
   const mode = node.style?.writingMode || containingMode;
   const orthogonal = inheritedOrthogonal ||
@@ -675,11 +733,19 @@ function captureRootVariant(root, className) {
   const previousObservation = rootLocalObservation;
   try {
     const before = captureRootContext(root);
+    if (rootContextCapture.preparedRanges && before.kind !== 'absolute-root-local') {
+      throw new Error('Root context: PreparedRangeRequiresAbsoluteRoot');
+    }
     if (before.kind === 'absolute-root-local') {
       const rectangle = root.getBoundingClientRect();
       // These coordinates are observation operands only, never source/static
       // position evidence or inputs to the root sizing context above.
-      rootLocalObservation = { root, x: rectangle.left, y: rectangle.top };
+      if (rootContextCapture.preparedRanges &&
+          ![rectangle.left, rectangle.top, rectangle.width, rectangle.height].every(Number.isFinite)) {
+        throw new Error('Root context: NonfinitePreparedRangeFrame');
+      }
+      rootLocalObservation = { root, x: rectangle.left, y: rectangle.top,
+        preparedRangeRect: rootContextCapture.preparedRanges ? rectangle : undefined };
     } else {
       rootLocalObservation = undefined;
     }
@@ -689,6 +755,14 @@ function captureRootVariant(root, className) {
     qualifyAnalyticCaptureText(data, getComputedStyle(document.body).writingMode);
     const after = captureRootContext(root);
     if (JSON.stringify(before) !== JSON.stringify(after)) throw new Error('Root context: UnstableContainingFrame');
+    const preparedRangeRect = rootLocalObservation?.preparedRangeRect;
+    if (preparedRangeRect) {
+      const afterRect = root.getBoundingClientRect();
+      if (['left', 'top', 'width', 'height'].some(key => preparedRangeRect[key] !== afterRect[key])) {
+        throw new Error('Root context: UnstablePreparedRangeFrame');
+      }
+      if (!data.unsupportedReason) data.preparedRangeFrame = PREPARED_RANGE_FRAME;
+    }
     data.viewport = { rootContext: before };
     return data;
   } catch (error) {
@@ -2376,6 +2450,10 @@ function resetLayoutReadyRangeLineRegistry(root) {
   layoutReadyRangeLineRegistries.set(root, { anchors: [], nextLineIndex: 0 });
 }
 
+function preparedRangeRootRect(root) {
+  return rootLocalObservation?.root === root ? rootLocalObservation.preparedRangeRect : undefined;
+}
+
 function layoutReadyRangeLineIndex(root, fragment) {
   if (root?.getAttribute?.('data-surgeist-layout-ready-inline') !== 'true') {
     throw new Error('Range line identity requires an explicit layout-ready inline root');
@@ -2386,7 +2464,7 @@ function layoutReadyRangeLineIndex(root, fragment) {
     registry = layoutReadyRangeLineRegistries.get(root);
   }
 
-  const rootRect = root.getBoundingClientRect();
+  const rootRect = preparedRangeRootRect(root) ?? root.getBoundingClientRect();
   const writingMode = getComputedStyle(root).writingMode;
   let coordinate;
   switch (writingMode) {
@@ -2565,6 +2643,19 @@ async function preparePinnedTextFont(supplied) {
   pinnedTextFontState = { face, bytes };
 }
 
+function qualifyLoadedPreparedRangeFace() {
+  const faces = Array.from(document.fonts);
+  const face = pinnedTextFontState?.face;
+  const stylesheetFace = faces.find(candidate => referenceFontFamily(candidate.family) === 'ahem');
+  if (faces.length !== 2 || !stylesheetFace || !faces.includes(face) || face.status !== 'loaded' ||
+      referenceFontFamily(face.family) !== referenceFontFamily(PINNED_TEXT_FONT.family) ||
+      face.style !== 'normal' || face.weight !== '400' || !['normal', '100%'].includes(face.stretch) ||
+      !hasDefaultFontMetricDescriptors(face) ||
+      face.featureSettings !== 'normal' || face.variationSettings !== 'normal') {
+    throw new Error('Root context: PreparedRangeFontAuthority');
+  }
+}
+
 function pinnedTextNominalGlyph(codePoint) {
   if (!pinnedTextFontState || codePoint > 0xffff) return 0;
   const bytes = pinnedTextFontState.bytes;
@@ -2734,7 +2825,7 @@ function capturePreparedChildren(root) {
           paragraph.order.push({ kind: 'origin', index, affinity: 'before' });
           sourceEnd += units.length;
           const range = document.createRange(); range.selectNodeContents(node);
-          const rootRect = root.getBoundingClientRect();
+          const rootRect = preparedRangeRootRect(root) ?? root.getBoundingClientRect();
           const rangeRectangles = Array.from(range.getClientRects()).map(rect => ({
             origin: index, line: layoutReadyRangeLineIndex(root, rect),
             physicalStartEdge: vertical ? 'top' : 'left',

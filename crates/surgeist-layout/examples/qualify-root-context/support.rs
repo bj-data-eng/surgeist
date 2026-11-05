@@ -41,6 +41,7 @@ pub(super) enum QualificationMode {
     ElementScrollSizeDiagnostics,
     MeasuredLeafDiagnostics,
     FlexContentTextDiagnostics,
+    PreparedRangeCapture,
     Publish,
     CheckPublished,
     PublishCanonicalBoxes,
@@ -65,6 +66,7 @@ impl QualificationMode {
 
     fn box_observations(self) -> BoxObservationRequest {
         match self {
+            Self::PreparedRangeCapture => BoxObservationRequest::PreparedRanges,
             Self::ElementScrollSizeDiagnostics => BoxObservationRequest::ElementScrollSizes,
             Self::FlexContentTextDiagnostics
             | Self::PublishFlexText
@@ -103,7 +105,7 @@ fn select_records(
         (QualificationMode::FontCustody, None) => {
             return Err("font custody qualification requires one declared fixture".into());
         }
-        (QualificationMode::NumericDiagnostics, None) => {
+        (QualificationMode::NumericDiagnostics | QualificationMode::PreparedRangeCapture, None) => {
             return Err("numeric diagnostics require one declared fixture".into());
         }
         _ => {}
@@ -131,7 +133,7 @@ fn select_records(
                 QualificationMode::FontCustody => {
                     return Err("font custody qualification requires a Generated fixture".into());
                 }
-                QualificationMode::NumericDiagnostics => {
+                QualificationMode::NumericDiagnostics | QualificationMode::PreparedRangeCapture => {
                     return Err("numeric diagnostics require a Generated fixture".into());
                 }
                 QualificationMode::ElementScrollSizeDiagnostics
@@ -669,8 +671,22 @@ fn validate_corpus(
         // Source certificates and parsing remain fatal in every mode.
         qualify_xml(&xml, case)?;
         let golden = parse_capture_golden(root, artifact, &xml, capture.flex_report)?;
+        if golden.has_prepared_range_frame()
+            != (mode.box_observations() == BoxObservationRequest::PreparedRanges)
+        {
+            return Err(format!(
+                "{}: prepared Range frame differs from the registered request",
+                case.case.id()
+            )
+            .into());
+        }
         if golden.has_element_scroll_sizes()
-            != (mode.box_observations() != BoxObservationRequest::Geometry)
+            != matches!(
+                mode.box_observations(),
+                BoxObservationRequest::ElementScrollSizes
+                    | BoxObservationRequest::MeasuredLeaf
+                    | BoxObservationRequest::FlexContentText
+            )
         {
             return Err(format!(
                 "{}: element scroll-size coverage differs from the registered request",
@@ -795,6 +811,7 @@ fn validate_corpus(
         | QualificationMode::ElementScrollSizeDiagnostics
         | QualificationMode::MeasuredLeafDiagnostics
         | QualificationMode::FlexContentTextDiagnostics
+        | QualificationMode::PreparedRangeCapture
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
         | QualificationMode::PublishCanonicalBoxes
@@ -1001,6 +1018,7 @@ fn inventory(
         | QualificationMode::ElementScrollSizeDiagnostics
         | QualificationMode::MeasuredLeafDiagnostics
         | QualificationMode::FlexContentTextDiagnostics
+        | QualificationMode::PreparedRangeCapture
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
         | QualificationMode::PublishCanonicalBoxes

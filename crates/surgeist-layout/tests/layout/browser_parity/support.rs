@@ -58,9 +58,13 @@ pub struct Golden {
     pub(crate) element_scroll_sizes: Option<element_scroll_sizes::Table>,
     pub(crate) measured_leaf: Option<measured_leaf::MeasuredLeaf>,
     flex_content_text: Option<flex_content_text::Proof>,
+    prepared_range_frame: bool,
 }
 
 impl Golden {
+    pub fn has_prepared_range_frame(&self) -> bool {
+        self.prepared_range_frame
+    }
     pub fn has_element_scroll_sizes(&self) -> bool {
         self.element_scroll_sizes.is_some()
     }
@@ -165,6 +169,29 @@ impl Golden {
         let element_scroll_sizes = element_scroll_sizes::parse(test, &root, &root_context)?;
         let measured_leaf = measured_leaf::parse(test, &root, element_scroll_sizes.as_ref())?;
 
+        let mut prepared_frames = test
+            .descendants()
+            .filter(|node| node.has_tag_name("prepared-range-frame"));
+        let prepared_range_frame = if let Some(frame) = prepared_frames.next() {
+            if frame.parent() != Some(test)
+                || prepared_frames.next().is_some()
+                || frame.attribute("profile") != Some("prepared-range-root-border-v1")
+                || frame.attributes().len() != 1
+                || frame.children().next().is_some()
+                || test.attribute("measurement-version") != Some("4")
+                || viewport.attribute("root-context") != Some("absolute-root-local")
+                || !root.layout_ready_inline_root
+                || !input
+                    .descendants()
+                    .any(|node| node.has_tag_name("prepared-paragraph"))
+            {
+                return Err(Error::new("invalid prepared Range capture frame"));
+            }
+            true
+        } else {
+            false
+        };
+
         Ok(Self {
             name,
             use_rounding: parse_bool(test.attribute("use-rounding").unwrap_or("true"))?,
@@ -175,6 +202,7 @@ impl Golden {
             element_scroll_sizes,
             measured_leaf,
             flex_content_text: None,
+            prepared_range_frame,
         })
     }
 }

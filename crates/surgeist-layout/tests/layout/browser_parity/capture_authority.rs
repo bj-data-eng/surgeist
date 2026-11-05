@@ -47,13 +47,18 @@ pub(crate) fn sha256(bytes: &[u8]) -> String {
 pub(crate) enum RootCaptureProfile {
     #[serde(rename = "root-context-v4")]
     RootContextV4,
+    #[serde(rename = "root-context-prepared-range-v1")]
+    RootContextPreparedRangeV1,
 }
 
-const CURRENT_ROOT_VALIDATOR: RootCaptureProfile = RootCaptureProfile::RootContextV4;
+const PREPARED_RANGE_HELPER_SHA256: &str =
+    "bd1b351e488f846b2e73947746ced8d8b290f49b108e220c228b2c4d94c069c0";
+const CURRENT_ROOT_VALIDATOR: RootCaptureProfile = RootCaptureProfile::RootContextPreparedRangeV1;
 
 pub(crate) fn root_helper_profile(digest: &str) -> Result<RootCaptureProfile> {
     match digest {
         ROOT_CONTEXT_V4_HELPER_SHA256 => Ok(RootCaptureProfile::RootContextV4),
+        PREPARED_RANGE_HELPER_SHA256 => Ok(RootCaptureProfile::RootContextPreparedRangeV1),
         _ => Err(changed("unsupported retained root proof helper")),
     }
 }

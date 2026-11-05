@@ -24,6 +24,7 @@ pub(super) enum BoxObservationRequest {
     ElementScrollSizes,
     MeasuredLeaf,
     FlexContentText,
+    PreparedRanges,
 }
 
 pub(super) const OBSERVATION_REQUEST_INPUT: &str = "observation-request.json";
@@ -43,6 +44,9 @@ impl BoxObservationRequest {
             Some(bytes) if Some(bytes) == Self::FlexContentText.input_bytes() => {
                 Ok(Self::FlexContentText)
             }
+            Some(bytes) if Some(bytes) == Self::PreparedRanges.input_bytes() => {
+                Ok(Self::PreparedRanges)
+            }
             Some(_) => Err("observation request must match a registered exact input"),
         }
     }
@@ -54,7 +58,7 @@ impl BoxObservationRequest {
                 "scripts/gentest/flex_content_text.js",
                 include_str!("measurement/flex_content_text.js"),
             )),
-            Self::Geometry | Self::ElementScrollSizes => None,
+            Self::Geometry | Self::ElementScrollSizes | Self::PreparedRanges => None,
         }
     }
 
@@ -64,6 +68,7 @@ impl BoxObservationRequest {
             Self::ElementScrollSizes => Some(
                 b"{\"schema_version\":1,\"element_scroll_sizes\":\"horizontal-zero-edge-divs\"}\n",
             ),
+            Self::PreparedRanges => Some(include_bytes!("measurement/prepared_range_request.json")),
             Self::MeasuredLeaf => Some(include_bytes!("measurement/measured_leaf_request.json")),
             Self::FlexContentText => {
                 Some(include_bytes!("measurement/flex_content_text_request.json"))
@@ -234,6 +239,8 @@ struct WireNode {
     #[serde(default, deserialize_with = "present")]
     flex_content_text: Option<flex_content_text::WireFlexContentText>,
     #[serde(default, deserialize_with = "present")]
+    prepared_range_frame: Option<PreparedRangeFrame>,
+    #[serde(default, deserialize_with = "present")]
     unsupported_reason: Option<String>,
     #[serde(default, deserialize_with = "present")]
     style: Option<Style>,
@@ -287,6 +294,12 @@ struct WireNode {
     #[serde(default, deserialize_with = "present")]
     children: Option<Vec<WireNode>>,
 }
+#[derive(Deserialize)]
+enum PreparedRangeFrame {
+    #[serde(rename = "prepared-range-root-border-v1")]
+    RootBorder,
+}
+
 #[derive(Deserialize, PartialEq, Eq, Clone, Copy)]
 #[serde(rename_all = "kebab-case")]
 enum LayoutInput {
@@ -462,6 +475,7 @@ pub(super) struct ValidatedMeasurement {
     element_scroll_sizes: Option<Vec<ElementScrollSize>>,
     measured_leaf: Option<Attributes>,
     flex_content_text: Option<FlexContentText>,
+    prepared_range_frame: bool,
 }
 #[derive(Debug)]
 pub(super) struct Node {
@@ -555,6 +569,12 @@ pub(super) fn decode(
         "flexContentText",
         "Flex content evidence requires its registered request",
     )?;
+    let prepared_range_frame = request == BoxObservationRequest::PreparedRanges;
+    context.compatible(
+        prepared_range_frame || wire.prepared_range_frame.is_none(),
+        "preparedRangeFrame",
+        "prepared Range evidence requires its registered request",
+    )?;
     if let Some(reason) = wire.unsupported_reason() {
         return Ok(DecodedMeasurement::Unsupported {
             reason: reason.into(),
@@ -580,8 +600,19 @@ pub(super) fn decode(
         })?
         .validate(&context)?;
     wire.validate_grid_alignment_profile(&context)?;
+    if prepared_range_frame {
+        context.required(wire.prepared_range_frame.as_ref(), "preparedRangeFrame")?;
+        context.compatible(
+            root_local_positioned
+                && wire.layout_ready_inline_root == Some(true)
+                && wire.prepared_paragraph.is_some(),
+            "preparedRangeFrame",
+            "prepared Range evidence requires an absolute root-local prepared inline root",
+        )?;
+        wire.validate_prepared_range_rows(&context)?;
+    }
     let element_scroll_sizes = match request {
-        BoxObservationRequest::Geometry => None,
+        BoxObservationRequest::Geometry | BoxObservationRequest::PreparedRanges => None,
         BoxObservationRequest::ElementScrollSizes
         | BoxObservationRequest::MeasuredLeaf
         | BoxObservationRequest::FlexContentText => {
@@ -644,6 +675,7 @@ pub(super) fn decode(
         element_scroll_sizes,
         measured_leaf,
         flex_content_text,
+        prepared_range_frame,
     }))
 }
 
@@ -752,7 +784,31 @@ impl WireNode {
             )
         })
     }
+    fn validate_prepared_range_rows(&self, context: &Context<'_>) -> Result<(), MeasurementError> {
+        if let Some(occurrence) = self.prepared_occurrence {
+            let rows = context.required(self.range_fragments.as_ref(), "rangeFragments")?;
+            context.compatible(
+                !rows.is_empty()
+                    && rows.iter().all(|row| {
+                        usize::try_from(row.origin) == Ok(occurrence)
+                            && matches!(row.physical_start_edge, PhysicalEdge::Left)
+                    }),
+                "rangeFragments",
+                "prepared Range rows require their owning occurrence and the physical left edge",
+            )?;
+        }
+        for (index, child) in self.children.iter().flatten().enumerate() {
+            child.validate_prepared_range_rows(&context.child(index))?;
+        }
+        Ok(())
+    }
+
     fn validate_wire(&self, context: &Context<'_>) -> Result<(), MeasurementError> {
+        context.compatible(
+            context.node_path == "root" || self.prepared_range_frame.is_none(),
+            "preparedRangeFrame",
+            "prepared Range evidence belongs to the capture root",
+        )?;
         context.compatible(
             context.node_path == "root" || self.measured_leaf.is_none(),
             "measuredLeaf",
@@ -2004,6 +2060,9 @@ impl WireRange {
 }
 
 impl ValidatedMeasurement {
+    pub fn has_prepared_range_frame(&self) -> bool {
+        self.prepared_range_frame
+    }
     pub fn flex_content_text(&self) -> Option<&FlexContentText> {
         self.flex_content_text.as_ref()
     }

@@ -267,3 +267,61 @@ fn analytic_profile_keeps_orthogonal_ancestry_distinct_from_known_glyph_free_box
         ])
     );
 }
+
+#[test]
+fn prepared_range_requires_the_unchanged_effective_font_face() {
+    let refusals = helper_probe(
+        r#"(() => {
+          const face = {
+            family: 'SurgeistParityAhem', status: 'loaded',
+            style: 'normal', weight: '400', stretch: 'normal',
+            unicodeRange: 'U+0-10FFFF', featureSettings: 'normal', variationSettings: 'normal',
+            ascentOverride: 'normal', descentOverride: 'normal',
+            lineGapOverride: 'normal', sizeAdjust: '100%'
+          };
+          const stylesheetFace = { family: 'ahem' };
+          globalThis.document = { fonts: [face, stylesheetFace] };
+          pinnedTextFontState = { face };
+          qualifyLoadedPreparedRangeFace();
+          const attempts = {
+            unicodeRange: 'U+0041', ascentOverride: '10%', descentOverride: '10%',
+            lineGapOverride: '10%', sizeAdjust: '75%'
+          };
+          const refused = [];
+          const qualify = reason => {
+            try { qualifyLoadedPreparedRangeFace(); }
+            catch (error) {
+              if (error.message !== 'Root context: PreparedRangeFontAuthority') throw error;
+              refused.push(reason);
+            }
+          };
+          for (const [descriptor, replacement] of Object.entries(attempts)) {
+            const prior = face[descriptor];
+            face[descriptor] = replacement;
+            qualify(descriptor);
+            face[descriptor] = prior;
+          }
+          for (const family of ['surgeistparityahem', '\u017furgeistparityahem']) {
+            document.fonts.push({ ...face, family });
+            qualify(family);
+            document.fonts.pop();
+          }
+          document.fonts.pop();
+          qualify('missing-stylesheet-face');
+          return refused;
+        })()"#,
+    );
+    assert_eq!(
+        refusals,
+        json!([
+            "unicodeRange",
+            "ascentOverride",
+            "descentOverride",
+            "lineGapOverride",
+            "sizeAdjust",
+            "surgeistparityahem",
+            "ſurgeistparityahem",
+            "missing-stylesheet-face"
+        ])
+    );
+}
