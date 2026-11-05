@@ -18,7 +18,9 @@ use surgeist_generator::{GeneratorErrorKind, RelativePath, Sha256Digest};
 use crate::adapter::{AdapterError, LayoutAdapter, fixture_cases};
 use crate::browser_profile::BrowserManifest;
 use crate::fixture_variants;
-use crate::measurement::{BoxObservationRequest, OBSERVATION_REQUEST_INPUT};
+use crate::measurement::{
+    BoxObservationRequest, FLEX_COMPOSITION_SOURCE, OBSERVATION_REQUEST_INPUT,
+};
 
 #[path = "../../tests/layout/browser_parity/qualification_catalogue.rs"]
 mod qualification_catalogue;
@@ -42,6 +44,7 @@ pub(super) enum QualificationMode {
     MeasuredLeafDiagnostics,
     FlexContentTextDiagnostics,
     PreparedRangeCapture,
+    FlexCompositionCapture,
     Publish,
     CheckPublished,
     PublishCanonicalBoxes,
@@ -67,6 +70,7 @@ impl QualificationMode {
     fn box_observations(self) -> BoxObservationRequest {
         match self {
             Self::PreparedRangeCapture => BoxObservationRequest::PreparedRanges,
+            Self::FlexCompositionCapture => BoxObservationRequest::FlexComposition,
             Self::ElementScrollSizeDiagnostics => BoxObservationRequest::ElementScrollSizes,
             Self::FlexContentTextDiagnostics
             | Self::PublishFlexText
@@ -99,6 +103,15 @@ fn select_records(
         declaration
             .records
             .retain(|record| record.source.as_str() != prepared_source);
+    }
+    if mode == QualificationMode::FlexCompositionCapture {
+        if fixture != Some(FLEX_COMPOSITION_SOURCE) {
+            return Err("Flex composition qualification requires its declared fixture".into());
+        }
+    } else {
+        declaration
+            .records
+            .retain(|record| record.source.as_str() != FLEX_COMPOSITION_SOURCE);
     }
     if matches!(
         mode,
@@ -146,8 +159,9 @@ fn select_records(
                 QualificationMode::NumericDiagnostics => {
                     return Err("numeric diagnostics require a Generated fixture".into());
                 }
-                QualificationMode::PreparedRangeCapture => {
-                    return Err("prepared Range qualification requires a Generated fixture".into());
+                QualificationMode::PreparedRangeCapture
+                | QualificationMode::FlexCompositionCapture => {
+                    return Err("specialized qualification requires a Generated fixture".into());
                 }
                 QualificationMode::ElementScrollSizeDiagnostics
                 | QualificationMode::MeasuredLeafDiagnostics
@@ -408,6 +422,11 @@ impl BrowserCorpusAdapter for QualificationAdapter {
 }
 
 pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> {
+    let mode = if mode == QualificationMode::Regular && fixture == Some(FLEX_COMPOSITION_SOURCE) {
+        QualificationMode::FlexCompositionCapture
+    } else {
+        mode
+    };
     let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
     if matches!(
         mode,
@@ -862,6 +881,7 @@ fn validate_corpus(
         | QualificationMode::MeasuredLeafDiagnostics
         | QualificationMode::FlexContentTextDiagnostics
         | QualificationMode::PreparedRangeCapture
+        | QualificationMode::FlexCompositionCapture
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
         | QualificationMode::PublishCanonicalBoxes
@@ -1042,6 +1062,17 @@ fn inventory(
     mode: QualificationMode,
     access: InputAccess,
 ) -> Result<Inventory> {
+    inventory_with_retained_helper(root, owner, input, mode, access, None)
+}
+
+fn inventory_with_retained_helper(
+    root: &Path,
+    owner: &Path,
+    input: &DeclarationInput<'_>,
+    mode: QualificationMode,
+    access: InputAccess,
+    retained_helper: Option<&[u8]>,
+) -> Result<Inventory> {
     let mut inventory = Inventory {
         fixtures: Vec::new(),
         cases: Vec::new(),
@@ -1069,6 +1100,7 @@ fn inventory(
         | QualificationMode::MeasuredLeafDiagnostics
         | QualificationMode::FlexContentTextDiagnostics
         | QualificationMode::PreparedRangeCapture
+        | QualificationMode::FlexCompositionCapture
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
         | QualificationMode::PublishCanonicalBoxes
@@ -1104,6 +1136,15 @@ fn inventory(
             Some(retained)
         } else {
             None
+        };
+        let bytes = if name == crate::parity_support::capture_authority::ROOT_HELPER_INPUT
+            && let Some(helper) = retained_helper
+        {
+            let digest = Sha256Digest::from_bytes(helper);
+            crate::parity_support::capture_authority::root_helper_profile(digest.as_str())?;
+            helper
+        } else {
+            bytes
         };
         let bytes = retained
             .as_deref()

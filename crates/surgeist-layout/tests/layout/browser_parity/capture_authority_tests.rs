@@ -336,7 +336,7 @@ fn terminal_wire_preserves_publisher_bytes_and_rejects_broken_associations() {
 
 #[test]
 fn current_terminal_requires_distinct_producer_and_validator_authority() {
-    const VALIDATOR: &str = "bd1b351e488f846b2e73947746ced8d8b290f49b108e220c228b2c4d94c069c0";
+    const VALIDATOR: &str = "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c";
     const HELPER: &str = "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee";
     let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join(ARTIFACT_ROOT)
@@ -346,7 +346,7 @@ fn current_terminal_requires_distinct_producer_and_validator_authority() {
     terminal["capture_validation"] = json!({
         "producer_profile": "root-context-v4",
         "producer_helper_sha256": HELPER,
-        "validator_profile": "root-context-prepared-range-v1",
+        "validator_profile": "root-context-flex-composition-v1",
         "validator_helper_sha256": VALIDATOR,
     });
     terminal["current_owner_inputs"]["tests/layout/browser_parity/scripts/gentest/test_helper.js"] =

@@ -25,7 +25,12 @@ pub(super) enum BoxObservationRequest {
     MeasuredLeaf,
     FlexContentText,
     PreparedRanges,
+    FlexComposition,
 }
+
+pub(super) const FLEX_COMPOSITION_SOURCE: &str = "html/flex/fri07_flex_composition.html";
+pub(super) const FLEX_COMPOSITION_SOURCE_SHA256: &str =
+    "19acedc9894eed500890b91f48f9eb0e7f19a3db440f06cbaa6356e7ce73192e";
 
 pub(super) const OBSERVATION_REQUEST_INPUT: &str = "observation-request.json";
 pub(super) const MEASURED_LEAF_SCRIPT_INPUT: &str = "scripts/gentest/measured_leaf.js";
@@ -47,6 +52,9 @@ impl BoxObservationRequest {
             Some(bytes) if Some(bytes) == Self::PreparedRanges.input_bytes() => {
                 Ok(Self::PreparedRanges)
             }
+            Some(bytes) if Some(bytes) == Self::FlexComposition.input_bytes() => {
+                Ok(Self::FlexComposition)
+            }
             Some(_) => Err("observation request must match a registered exact input"),
         }
     }
@@ -58,7 +66,10 @@ impl BoxObservationRequest {
                 "scripts/gentest/flex_content_text.js",
                 include_str!("measurement/flex_content_text.js"),
             )),
-            Self::Geometry | Self::ElementScrollSizes | Self::PreparedRanges => None,
+            Self::Geometry
+            | Self::ElementScrollSizes
+            | Self::PreparedRanges
+            | Self::FlexComposition => None,
         }
     }
 
@@ -69,6 +80,9 @@ impl BoxObservationRequest {
                 b"{\"schema_version\":1,\"element_scroll_sizes\":\"horizontal-zero-edge-divs\"}\n",
             ),
             Self::PreparedRanges => Some(include_bytes!("measurement/prepared_range_request.json")),
+            Self::FlexComposition => {
+                Some(b"{\"schema_version\":1,\"flex_composition\":\"fixed-sideways-root-v1\"}\n")
+            }
             Self::MeasuredLeaf => Some(include_bytes!("measurement/measured_leaf_request.json")),
             Self::FlexContentText => {
                 Some(include_bytes!("measurement/flex_content_text_request.json"))
@@ -241,6 +255,8 @@ struct WireNode {
     #[serde(default, deserialize_with = "present")]
     prepared_range_frame: Option<PreparedRangeFrame>,
     #[serde(default, deserialize_with = "present")]
+    flex_composition_image: Option<FlexCompositionImage>,
+    #[serde(default, deserialize_with = "present")]
     unsupported_reason: Option<String>,
     #[serde(default, deserialize_with = "present")]
     style: Option<Style>,
@@ -294,6 +310,13 @@ struct WireNode {
     #[serde(default, deserialize_with = "present")]
     children: Option<Vec<WireNode>>,
 }
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct FlexCompositionImage {
+    pub(super) natural_width: u32,
+    pub(super) natural_height: u32,
+}
+
 #[derive(Deserialize)]
 enum PreparedRangeFrame {
     #[serde(rename = "prepared-range-root-border-v1")]
@@ -476,6 +499,7 @@ pub(super) struct ValidatedMeasurement {
     measured_leaf: Option<Attributes>,
     flex_content_text: Option<FlexContentText>,
     prepared_range_frame: bool,
+    flex_composition_image: Option<FlexCompositionImage>,
 }
 #[derive(Debug)]
 pub(super) struct Node {
@@ -575,6 +599,11 @@ pub(super) fn decode(
         "preparedRangeFrame",
         "prepared Range evidence requires its registered request",
     )?;
+    context.compatible(
+        request == BoxObservationRequest::FlexComposition || wire.flex_composition_image.is_none(),
+        "flexCompositionImage",
+        "Flex composition image evidence requires its registered request",
+    )?;
     if let Some(reason) = wire.unsupported_reason() {
         return Ok(DecodedMeasurement::Unsupported {
             reason: reason.into(),
@@ -611,8 +640,34 @@ pub(super) fn decode(
         )?;
         wire.validate_prepared_range_rows(&context)?;
     }
+    let flex_composition_image = if request == BoxObservationRequest::FlexComposition {
+        let image = context.required(wire.flex_composition_image, "flexCompositionImage")?;
+        context.compatible(
+            root_local_positioned
+                && wire.style.as_ref().is_some_and(|style| {
+                    style.display.as_deref() == Some("flex")
+                        && style.writing_mode.as_deref() == Some("sideways-rl")
+                })
+                && (image.natural_width, image.natural_height) == (80, 40)
+                && wire.children.as_deref().is_some_and(|children| {
+                    let [_, child, _, _] = children else {
+                        return false;
+                    };
+                    child.layout_input == LayoutInput::Box
+                        && child.tag_name.as_deref() == Some("img")
+                        && child.children.as_ref().is_some_and(Vec::is_empty)
+                }),
+            "flexCompositionImage",
+            "Flex composition requires the source-bound replaced image in its root frame",
+        )?;
+        Some(image)
+    } else {
+        None
+    };
     let element_scroll_sizes = match request {
-        BoxObservationRequest::Geometry | BoxObservationRequest::PreparedRanges => None,
+        BoxObservationRequest::Geometry
+        | BoxObservationRequest::PreparedRanges
+        | BoxObservationRequest::FlexComposition => None,
         BoxObservationRequest::ElementScrollSizes
         | BoxObservationRequest::MeasuredLeaf
         | BoxObservationRequest::FlexContentText => {
@@ -676,6 +731,7 @@ pub(super) fn decode(
         measured_leaf,
         flex_content_text,
         prepared_range_frame,
+        flex_composition_image,
     }))
 }
 
@@ -804,6 +860,11 @@ impl WireNode {
     }
 
     fn validate_wire(&self, context: &Context<'_>) -> Result<(), MeasurementError> {
+        context.compatible(
+            context.node_path == "root" || self.flex_composition_image.is_none(),
+            "flexCompositionImage",
+            "Flex composition evidence belongs to the capture root",
+        )?;
         context.compatible(
             context.node_path == "root" || self.prepared_range_frame.is_none(),
             "preparedRangeFrame",
@@ -2060,6 +2121,9 @@ impl WireRange {
 }
 
 impl ValidatedMeasurement {
+    pub fn flex_composition_image(&self) -> Option<FlexCompositionImage> {
+        self.flex_composition_image
+    }
     pub fn has_prepared_range_frame(&self) -> bool {
         self.prepared_range_frame
     }

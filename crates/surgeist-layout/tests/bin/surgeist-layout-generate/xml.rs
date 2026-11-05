@@ -42,6 +42,12 @@ pub(super) fn generate_xml(name: &str, measurement: &ValidatedMeasurement) -> St
     if measurement.has_prepared_range_frame() {
         lines.push("  <prepared-range-frame profile=\"prepared-range-root-border-v1\"/>".into());
     }
+    if let Some(image) = measurement.flex_composition_image() {
+        lines.push(format!(
+            "  <flex-composition-image natural-width=\"{}\" natural-height=\"{}\"/>",
+            image.natural_width, image.natural_height,
+        ));
+    }
     lines.push("  <diagnostics>".into());
     write_world_diagnostics(&mut lines, measurement.root(), "0");
     lines.push("  </diagnostics>".into());

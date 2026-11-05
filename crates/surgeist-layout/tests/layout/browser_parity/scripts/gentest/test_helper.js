@@ -394,7 +394,7 @@ function rootContextStyleInventory(ownedStyle, preload, preloadSource) {
       preload.outerHTML === preloadSource));
 }
 
-function configureRootContextCapture(source, baseStyle, helperReference, styleReference, preparedFontReference) {
+function configureRootContextCapture(source, baseStyle, helperReference, styleReference, preparedFontReference, compositionProfile) {
   const reject = reason => { rootContextCapture = { reason }; };
   try {
     const parsed = new DOMParser().parseFromString(source, 'text/html');
@@ -410,7 +410,9 @@ function configureRootContextCapture(source, baseStyle, helperReference, styleRe
         Array.from(node.attributes).some(attribute => /^on/i.test(attribute.name)))) return reject('SourceScript');
     const scripts = Array.from(parsed.querySelectorAll('script'));
     const links = Array.from(parsed.querySelectorAll('link'));
-    const preparedRanges = preparedFontReference !== undefined;
+    const preparedRanges = typeof preparedFontReference === 'string';
+    const flexComposition = compositionProfile === 'fixed-sideways-root-v1';
+    if (compositionProfile !== undefined && (!flexComposition || preparedRanges)) return reject('SourceObservationProfile');
     const fontUrl = preparedRanges ? new URL(preparedFontReference, document.baseURI).href : null;
     const sourcePreload = preparedRanges ? links.find(link => link.rel === 'preload') : null;
     if (preparedRanges && !preparedRangePreload(sourcePreload, parsed.head, fontUrl)) return reject('SourceResources');
@@ -437,7 +439,7 @@ function configureRootContextCapture(source, baseStyle, helperReference, styleRe
     let preload;
     if (previous && !previous.reason && previous.source === source &&
         previous.baseStyle === baseStyle && previous.helperUrl === helperUrl &&
-        previous.styleUrl === styleUrl && previous.fontUrl === fontUrl) {
+        previous.styleUrl === styleUrl && previous.fontUrl === fontUrl && previous.flexComposition === flexComposition) {
       // Repeated setup retains the same authenticated owner; a marker alone
       // never authorizes a replacement sheet or repairs a changed document.
       ownedStyle = previous.ownedStyle;
@@ -479,10 +481,57 @@ function configureRootContextCapture(source, baseStyle, helperReference, styleRe
     rootContextCapture = { source, baseStyle, ownedStyle, hypotheticalDisplay,
       sourceRoot: sourceRoot.outerHTML, html: parsed.documentElement,
       body: parsed.body, bodyChildren, rules, helperUrl, styleUrl, fontUrl, preload,
-      preloadSource: sourcePreload?.outerHTML, preparedRanges };
+      preloadSource: sourcePreload?.outerHTML, preparedRanges, flexComposition };
   } catch (_) {
     reject('SourceQualificationUnavailable');
   }
+}
+
+async function prepareFlexCompositionImage() {
+  const proof = rootContextCapture;
+  if (!proof?.flexComposition || proof.reason) return;
+  const image = document.getElementById('test-root')?.children[1];
+  if (image?.tagName !== 'IMG') {
+    proof.reason = 'FlexCompositionImageSource';
+    return;
+  }
+  try {
+    await image.decode();
+    proof.compositionImage = image;
+  } catch (_) {
+    proof.reason = 'FlexCompositionImageDecode';
+  }
+}
+
+function qualifyFlexCompositionSubtree(root, proof) {
+  const [opposite, image, collapsed, scroller] = root.children;
+  const style = getComputedStyle(root);
+  if (root.tagName !== 'DIV' || root.children.length !== 4 ||
+      style.display !== 'flex' || style.writingMode !== 'sideways-rl' ||
+      root.style.width !== '120px' || root.style.height !== '180px' ||
+      [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft,
+        style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth]
+        .some(value => value !== '0px') ||
+      [opposite, collapsed, scroller].some(node => node?.tagName !== 'DIV') ||
+      opposite.children.length !== 0 ||
+      [collapsed, scroller].some(node => node.children.length !== 1 ||
+        node.firstElementChild.tagName !== 'DIV' || node.firstElementChild.children.length !== 0) ||
+      getComputedStyle(opposite).writingMode !== 'vertical-lr') {
+    throw new Error('Root context: FlexCompositionSourceShape');
+  }
+  if (image !== proof.compositionImage || image?.tagName !== 'IMG' || image.children.length !== 0 ||
+      !image.getAttribute('src')?.startsWith('data:image/svg+xml,') || image.currentSrc !== image.src ||
+      !image.complete || image.naturalWidth !== 80 || image.naturalHeight !== 40 ||
+      image.style.width !== '40px' || image.style.height !== '80px') {
+    throw new Error('Root context: FlexCompositionImageAuthority');
+  }
+  const elements = [root, ...root.querySelectorAll('*')];
+  if (elements.some(node =>
+      Array.from(node.childNodes).some(child => child.nodeType === Node.TEXT_NODE && child.textContent.trim()) ||
+      ['::before', '::after'].some(pseudo => !['normal', 'none'].includes(getComputedStyle(node, pseudo).content)))) {
+    throw new Error('Root context: FlexCompositionAdditionalContent');
+  }
+  return image;
 }
 
 function captureRootContext(root) {
@@ -589,7 +638,7 @@ function captureRootContext(root) {
   const fallback = { initialContainingBlock: { width, height }, nearestScrollport: 'none',
     containingLimits: { width: 'unbounded', height: 'unbounded' } };
   if (style.position === 'absolute') {
-    if (style.writingMode !== 'horizontal-tb' ||
+    if ((style.writingMode !== 'horizontal-tb' && !proof.flexComposition) ||
         style.aspectRatio !== 'auto' || style.alignSelf !== 'auto' ||
         style.justifySelf !== 'auto' || ['IMG', 'VIDEO', 'CANVAS', 'IFRAME', 'OBJECT', 'EMBED', 'INPUT'].includes(root.tagName)) {
       fail('PositionedRootProfile');
@@ -620,7 +669,8 @@ function captureRootContext(root) {
     // context even for visible-overflow Block. Local observation does not
     // promise its hypothetical block origin; complete subtree independence
     // below remains mandatory before that translation can be omitted.
-    qualifyRootLocalSubtree(root, unshifted, proof.preparedRanges);
+    const image = proof.flexComposition ? qualifyFlexCompositionSubtree(root, proof) : null;
+    qualifyRootLocalSubtree(root, unshifted, proof.preparedRanges, image);
     let hypotheticalInlineOffset = 0;
     if (body.style.length) {
       hypotheticalInlineOffset = qualifyRootLiteralIndent(root, proof, parentStyle, htmlStyle, width);
@@ -645,7 +695,7 @@ function captureRootContext(root) {
 // zero block origin. Every accepted producer must commute with a common root
 // translation before publication rounding. The exact base/inline declarations
 // and complete source/live subtree equality are authenticated above.
-function qualifyRootLocalSubtree(root, unshifted, preparedRanges) {
+function qualifyRootLocalSubtree(root, unshifted, preparedRanges, compositionImage) {
   const fail = reason => { throw new Error('Root context: ' + reason); };
   const blockProperties = ['height', 'min-height', 'max-height',
     'block-size', 'min-block-size', 'max-block-size'];
@@ -666,14 +716,18 @@ function qualifyRootLocalSubtree(root, unshifted, preparedRanges) {
     if (node !== root && !['static', 'relative', 'absolute'].includes(style.position)) fail('RootLocalExternalFrame');
     if (!unshifted(style) || style.clipPath !== 'none' ||
         !['normal', 'none'].includes(style.content)) fail('RootLocalExternalFrame');
-    if (style.writingMode !== 'horizontal-tb') fail('RootLocalWritingMode');
+    const expectedMode = compositionImage
+      ? (node === root.firstElementChild ? 'vertical-lr' : 'sideways-rl')
+      : 'horizontal-tb';
+    if (style.writingMode !== expectedMode) fail('RootLocalWritingMode');
     // These elements have no border-box observation that can share the root's
     // omitted translation. A world-zero rectangle is not a local zero box.
     if (['none', 'contents'].includes(style.display)) fail('RootLocalBoxlessObservation');
-    if (node !== inline && (!['DIV', 'SPAN'].includes(node.tagName) ||
+    if (node !== inline && node !== compositionImage && (!['DIV', 'SPAN'].includes(node.tagName) ||
         !['block', 'flow-root', 'flex', 'grid', 'grid-lanes'].includes(style.display))) fail('RootLocalBoxProfile');
     // Unlike variant box-sizing/direction rules, .viewport supplies dimensions
     // absent from this inline-declaration-only normalized sizing channel.
+    if (node === compositionImage && style.display !== 'block') fail('RootLocalBoxProfile');
     if (node.classList.contains('viewport')) fail('RootLocalUnrepresentedClass');
     const allowedMarkers = node === inline ? ['data-surgeist-transparent-inline-container'] :
       preparedRanges && node === root ? ['data-surgeist-layout-ready-inline', 'data-surgeist-prepared-text'] : [];
@@ -733,6 +787,10 @@ function captureRootVariant(root, className) {
   const previousObservation = rootLocalObservation;
   try {
     const before = captureRootContext(root);
+    const fixedFrame = rootContextCapture.preparedRanges || rootContextCapture.flexComposition;
+    if (rootContextCapture.flexComposition && before.kind !== 'absolute-root-local') {
+      throw new Error('Root context: FlexCompositionRequiresAbsoluteRoot');
+    }
     if (rootContextCapture.preparedRanges && before.kind !== 'absolute-root-local') {
       throw new Error('Root context: PreparedRangeRequiresAbsoluteRoot');
     }
@@ -740,12 +798,13 @@ function captureRootVariant(root, className) {
       const rectangle = root.getBoundingClientRect();
       // These coordinates are observation operands only, never source/static
       // position evidence or inputs to the root sizing context above.
-      if (rootContextCapture.preparedRanges &&
+      if (fixedFrame &&
           ![rectangle.left, rectangle.top, rectangle.width, rectangle.height].every(Number.isFinite)) {
-        throw new Error('Root context: NonfinitePreparedRangeFrame');
+        throw new Error(rootContextCapture.preparedRanges ?
+          'Root context: NonfinitePreparedRangeFrame' : 'Root context: NonfiniteFlexCompositionFrame');
       }
       rootLocalObservation = { root, x: rectangle.left, y: rectangle.top,
-        preparedRangeRect: rootContextCapture.preparedRanges ? rectangle : undefined };
+        stableRect: fixedFrame ? rectangle : undefined };
     } else {
       rootLocalObservation = undefined;
     }
@@ -755,13 +814,20 @@ function captureRootVariant(root, className) {
     qualifyAnalyticCaptureText(data, getComputedStyle(document.body).writingMode);
     const after = captureRootContext(root);
     if (JSON.stringify(before) !== JSON.stringify(after)) throw new Error('Root context: UnstableContainingFrame');
-    const preparedRangeRect = rootLocalObservation?.preparedRangeRect;
-    if (preparedRangeRect) {
+    const stableRect = rootLocalObservation?.stableRect;
+    if (stableRect) {
       const afterRect = root.getBoundingClientRect();
-      if (['left', 'top', 'width', 'height'].some(key => preparedRangeRect[key] !== afterRect[key])) {
-        throw new Error('Root context: UnstablePreparedRangeFrame');
+      if (['left', 'top', 'width', 'height'].some(key => stableRect[key] !== afterRect[key])) {
+        throw new Error(rootContextCapture.preparedRanges ?
+          'Root context: UnstablePreparedRangeFrame' : 'Root context: UnstableFlexCompositionFrame');
       }
-      if (!data.unsupportedReason) data.preparedRangeFrame = PREPARED_RANGE_FRAME;
+      if (!data.unsupportedReason && rootContextCapture.preparedRanges) {
+        data.preparedRangeFrame = PREPARED_RANGE_FRAME;
+      }
+      if (!data.unsupportedReason && rootContextCapture.flexComposition) {
+        const {naturalWidth, naturalHeight} = rootContextCapture.compositionImage;
+        data.flexCompositionImage = {naturalWidth, naturalHeight};
+      }
     }
     data.viewport = { rootContext: before };
     return data;
@@ -2451,7 +2517,7 @@ function resetLayoutReadyRangeLineRegistry(root) {
 }
 
 function preparedRangeRootRect(root) {
-  return rootLocalObservation?.root === root ? rootLocalObservation.preparedRangeRect : undefined;
+  return rootLocalObservation?.root === root ? rootLocalObservation.stableRect : undefined;
 }
 
 function layoutReadyRangeLineIndex(root, fragment) {

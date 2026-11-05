@@ -1,5 +1,8 @@
 //! Layout fixture semantics supplied to the generic browser engine.
 
+use crate::measurement::{
+    BoxObservationRequest, FLEX_COMPOSITION_SOURCE, FLEX_COMPOSITION_SOURCE_SHA256,
+};
 use crate::xml::{escape_attr, generate_xml};
 use serde_json::Value;
 
@@ -186,6 +189,15 @@ impl LayoutAdapter {
         let request_path = RelativePath::new(crate::measurement::OBSERVATION_REQUEST_INPUT)
             .map_err(|error| AdapterError::Preparation(error.to_string()))?;
         admit_box_observation_request(input.input_bytes(&request_path), request)?;
+        if request == BoxObservationRequest::FlexComposition
+            && (input.fixture().source().as_str() != FLEX_COMPOSITION_SOURCE
+                || surgeist_generator::Sha256Digest::from_bytes(input.source_bytes()).as_str()
+                    != FLEX_COMPOSITION_SOURCE_SHA256)
+        {
+            return Err(AdapterError::Preparation(
+                "Flex composition requires its registered original source".into(),
+            ));
+        }
         let source = std::str::from_utf8(input.source_bytes()).map_err(|error| {
             AdapterError::Preparation(format!("fixture source is not UTF-8: {error}"))
         })?;
@@ -222,7 +234,7 @@ impl LayoutAdapter {
             source,
             style,
             input.fixture().source(),
-            request == crate::measurement::BoxObservationRequest::PreparedRanges,
+            request,
         )?;
         let measurement = if let Some((path, script)) = request.proof_script() {
             let path = RelativePath::new(path)
@@ -400,7 +412,7 @@ fn helper_setup_expression(
     source: &str,
     base_style: &str,
     source_path: &RelativePath,
-    prepared_ranges: bool,
+    request: BoxObservationRequest,
 ) -> Result<String, AdapterError> {
     // This capture version qualifies one exact zero-edge base document profile.
     // A changed stylesheet needs an explicit new source-profile qualification.
@@ -427,14 +439,27 @@ fn helper_setup_expression(
     let helper_reference = format!("{prefix}scripts/gentest/test_helper.js");
     let style_reference = format!("{prefix}scripts/gentest/test_base_style.css");
     let font_reference = format!("{prefix}fonts/Ahem.ttf");
-    let mut context = vec![source, base_style, &helper_reference, &style_reference];
-    if prepared_ranges {
-        context.push(&font_reference);
-    }
+    let mut context = vec![
+        Some(source),
+        Some(base_style),
+        Some(helper_reference.as_str()),
+        Some(style_reference.as_str()),
+    ];
+    let prepare_image = match request {
+        BoxObservationRequest::PreparedRanges => {
+            context.push(Some(font_reference.as_str()));
+            ""
+        }
+        BoxObservationRequest::FlexComposition => {
+            context.extend([None, Some("fixed-sideways-root-v1")]);
+            " await prepareFlexCompositionImage();"
+        }
+        _ => "",
+    };
     let context = serde_json::to_string(&context)
         .map_err(|error| AdapterError::Preparation(error.to_string()))?;
     Ok(format!(
-        "(async () => {{ const pinnedFontBytes = {bytes}; if (typeof getTestData !== 'function') {{ (0, eval)({helper}); }}\n{GRID_TEMPLATE_AREA_CAPTURE_SCRIPT}\nif (typeof configureRootContextCapture === 'function') {{ configureRootContextCapture(...{context}); await document.fonts.ready; }} if (typeof prepareNamedReferenceFont === 'function') {{ await prepareNamedReferenceFont(); }} if (typeof preparePinnedTextFont === 'function') {{ await preparePinnedTextFont(pinnedFontBytes); }} return true; }})()"
+        "(async () => {{ const pinnedFontBytes = {bytes}; if (typeof getTestData !== 'function') {{ (0, eval)({helper}); }}\n{GRID_TEMPLATE_AREA_CAPTURE_SCRIPT}\nif (typeof configureRootContextCapture === 'function') {{ configureRootContextCapture(...{context}); await document.fonts.ready; }}{prepare_image} if (typeof prepareNamedReferenceFont === 'function') {{ await prepareNamedReferenceFont(); }} if (typeof preparePinnedTextFont === 'function') {{ await preparePinnedTextFont(pinnedFontBytes); }} return true; }})()"
     ))
 }
 
@@ -531,6 +556,74 @@ mod tests {
             "fallback":{"initialContainingBlock":{"width":800,"height":600},
                 "nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}});
         node
+    }
+
+    #[test]
+    fn sideways_flex_capture_requires_the_natural_size_of_its_replaced_leaf() {
+        use BoxObservationRequest::{FlexComposition, Geometry};
+        use serde_json::json;
+
+        let mut root = element_size_box();
+        root["style"]["display"] = json!("flex");
+        root["style"]["writingMode"] = json!("sideways-rl");
+        root["viewport"]["rootContext"]["hypotheticalDisplay"] = json!("flex");
+        let mut leaf = supported_box();
+        let fields = leaf.as_object_mut().unwrap();
+        for field in ["gridAlignmentProfile", "useRounding", "viewport"] {
+            fields.remove(field);
+        }
+        let mut image = leaf.clone();
+        image["tagName"] = json!("img");
+        root["children"] = json!([leaf, image, leaf, leaf]);
+        let nodes = |node: &Value| envelope(std::array::from_fn(|_| node.clone()));
+        let lower = |node: &Value, request| {
+            LayoutAdapter.lower_with_observations(&fixture(), nodes(node), request)
+        };
+
+        let missing = lower(&root, FlexComposition);
+        assert!(matches!(
+            missing,
+            Err(AdapterError::Measurement(error)) if error.field_path == "flexCompositionImage"
+        ));
+
+        root["flexCompositionImage"] = json!({"naturalWidth":80, "naturalHeight":40});
+        for capture in lower(&root, FlexComposition).unwrap() {
+            let CaseOutcome::Generated { bytes, .. } = capture else {
+                panic!("expected a generated capture");
+            };
+            let document =
+                roxmltree::Document::parse(std::str::from_utf8(&bytes).unwrap()).unwrap();
+            let witness = document
+                .root_element()
+                .children()
+                .find(|node| node.has_tag_name("flex-composition-image"))
+                .unwrap();
+            assert_eq!(witness.attribute("natural-width"), Some("80"));
+            assert_eq!(witness.attribute("natural-height"), Some("40"));
+        }
+        assert!(matches!(
+            lower(&root, Geometry),
+            Err(AdapterError::Measurement(error)) if error.field_path == "flexCompositionImage"
+        ));
+
+        for (pointer, value) in [
+            ("/children/1/tagName", json!("div")),
+            ("/style/writingMode", json!("horizontal-tb")),
+            (
+                "/flexCompositionImage",
+                json!({"naturalWidth":40,"naturalHeight":80}),
+            ),
+        ] {
+            let mut changed = root.clone();
+            *changed.pointer_mut(pointer).unwrap() = value;
+            assert!(
+                matches!(
+                    lower(&changed, FlexComposition),
+                    Err(AdapterError::Measurement(error)) if error.field_path == "flexCompositionImage"
+                ),
+                "{pointer}"
+            );
+        }
     }
 
     fn measured_leaf_variants() -> [Value; 4] {
@@ -882,7 +975,7 @@ mod tests {
             "<!DOCTYPE html><html><body><div id=\"test-root\"></div></body></html>",
             TEST_BASE_STYLE_SOURCE,
             &RelativePath::new("html/grid/example.html").unwrap(),
-            false,
+            BoxObservationRequest::Geometry,
         )
         .unwrap();
         let replacement = helper_setup_expression(
@@ -891,7 +984,7 @@ mod tests {
             "<!DOCTYPE html><html><body><div id=\"test-root\"></div></body></html>",
             TEST_BASE_STYLE_SOURCE,
             &RelativePath::new("html/grid/example.html").unwrap(),
-            false,
+            BoxObservationRequest::Geometry,
         )
         .unwrap();
         let script = format!(
@@ -1065,7 +1158,7 @@ mod tests {
                 "<!DOCTYPE html><html><body><div id=\"test-root\"></div></body></html>",
                 TEST_BASE_STYLE_SOURCE,
                 &RelativePath::new("html/grid/example.html").unwrap(),
-                false,
+                BoxObservationRequest::Geometry,
             )
             .is_ok()
         );
@@ -1078,7 +1171,7 @@ mod tests {
                 "<!DOCTYPE html><html><body><div id=\"test-root\"></div></body></html>",
                 TEST_BASE_STYLE_SOURCE,
                 &RelativePath::new("html/grid/example.html").unwrap(),
-                false,
+                BoxObservationRequest::Geometry,
             ),
             Err(AdapterError::Preparation(_))
         ));
@@ -1089,7 +1182,7 @@ mod tests {
                 "<!DOCTYPE html><html><body><div id=\"test-root\"></div></body></html>",
                 TEST_BASE_STYLE_SOURCE,
                 &RelativePath::new("html/grid/example.html").unwrap(),
-                false,
+                BoxObservationRequest::Geometry,
             )
             .is_err()
         );
@@ -1107,7 +1200,7 @@ mod tests {
             "<!DOCTYPE html><html><body><div id=\"test-root\"></div></body></html>",
             TEST_BASE_STYLE_SOURCE,
             &RelativePath::new("html/grid/example.html").unwrap(),
-            false,
+            BoxObservationRequest::Geometry,
         )
         .unwrap();
         let script = format!(
@@ -1133,14 +1226,14 @@ FontFace:class{{constructor(family,buffer,descriptors){{this.family=family;this.
 
     #[test]
     fn setup_injects_a_missing_helper_and_preserves_an_existing_helper() {
-        let first = helper_setup_expression("function getTestData() { return 'original'; } function describeElement() { return { style: {} }; }",include_bytes!("../../layout/browser_parity/fonts/Ahem.ttf"), "<!DOCTYPE html><html><body><div id=\"test-root\"></div></body></html>", TEST_BASE_STYLE_SOURCE, &RelativePath::new("html/grid/example.html").unwrap(),false,).unwrap();
+        let first = helper_setup_expression("function getTestData() { return 'original'; } function describeElement() { return { style: {} }; }",include_bytes!("../../layout/browser_parity/fonts/Ahem.ttf"), "<!DOCTYPE html><html><body><div id=\"test-root\"></div></body></html>", TEST_BASE_STYLE_SOURCE, &RelativePath::new("html/grid/example.html").unwrap(),BoxObservationRequest::Geometry,).unwrap();
         let second = helper_setup_expression(
             "function getTestData() { return 'replacement'; }",
             include_bytes!("../../layout/browser_parity/fonts/Ahem.ttf"),
             "<!DOCTYPE html><html><body><div id=\"test-root\"></div></body></html>",
             TEST_BASE_STYLE_SOURCE,
             &RelativePath::new("html/grid/example.html").unwrap(),
-            false,
+            BoxObservationRequest::Geometry,
         )
         .unwrap();
         let script = format!(

@@ -100,7 +100,16 @@ fn qualify_retained_prepared_range(
     )?;
     select_records(&mut input.declaration, Some(source), mode)?;
     let expected = input.declaration.expected()?;
-    let inventory = prepare_inventory(root, owner, &input, mode)?;
+    let inventory = inventory_with_retained_helper(
+        root,
+        owner,
+        &input,
+        mode,
+        InputAccess::Prepare,
+        Some(include_bytes!(
+            "../../tests/layout/browser_parity/captured/prepared-range-differences/scripts/gentest/test_helper.js"
+        )),
+    )?;
 
     for relative in inventory
         .cases
@@ -153,37 +162,43 @@ fn qualify_retained_prepared_range(
 }
 
 #[test]
-fn prepared_range_source_is_selected_only_for_its_capture_profile() {
-    let source = crate::parity_support::prepared_range_qualification::SOURCE;
+fn specialized_sources_are_selected_only_for_their_capture_profiles() {
+    let profiles = [
+        (
+            crate::parity_support::prepared_range_qualification::SOURCE,
+            QualificationMode::PreparedRangeCapture,
+        ),
+        (
+            FLEX_COMPOSITION_SOURCE,
+            QualificationMode::FlexCompositionCapture,
+        ),
+    ];
     let mut ordinary = DeclarationInput::parse(DECLARATION).unwrap();
-    let ordinary_count = ordinary.declaration.records.len() - 1;
     select_records(&mut ordinary.declaration, None, QualificationMode::Regular).unwrap();
-    assert_eq!(ordinary.declaration.records.len(), ordinary_count);
-    assert!(
-        ordinary
-            .declaration
-            .records
-            .iter()
-            .all(|record| record.source.as_str() != source)
-    );
 
-    let mut prepared = DeclarationInput::parse(DECLARATION).unwrap();
-    select_records(
-        &mut prepared.declaration,
-        Some(source),
-        QualificationMode::PreparedRangeCapture,
-    )
-    .unwrap();
-    assert_eq!(prepared.declaration.records.len(), 1);
-    assert_eq!(prepared.declaration.records[0].source.as_str(), source);
+    for (source, mode) in profiles {
+        assert!(
+            ordinary
+                .declaration
+                .records
+                .iter()
+                .all(|record| record.source.as_str() != source)
+        );
 
-    let mut wrong_profile = DeclarationInput::parse(DECLARATION).unwrap();
-    assert!(
-        select_records(
-            &mut wrong_profile.declaration,
-            Some(source),
-            QualificationMode::Regular,
-        )
-        .is_err()
-    );
+        let mut selected = DeclarationInput::parse(DECLARATION).unwrap();
+        select_records(&mut selected.declaration, Some(source), mode).unwrap();
+        assert_eq!(selected.declaration.records.len(), 1);
+        assert_eq!(selected.declaration.records[0].source.as_str(), source);
+
+        let mut wrong_profile = DeclarationInput::parse(DECLARATION).unwrap();
+        assert!(
+            select_records(
+                &mut wrong_profile.declaration,
+                Some(source),
+                QualificationMode::Regular,
+            )
+            .is_err()
+        );
+        assert!(select_records(&mut wrong_profile.declaration, None, mode).is_err());
+    }
 }
