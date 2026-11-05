@@ -8,7 +8,7 @@ use surgeist_text::Range;
 pub const SOURCE: &str = "html/block/prepared_text_continuity_bidi.html";
 pub const POLICY_SOURCE: &str = "docs/text-layout-contract.md";
 pub(crate) const POLICY_ANCHOR: &str = "nonempty-text-range-fragments";
-const POLICY_HEADING: &str = "### Nonempty Text range fragments";
+const POLICY_TITLE: &str = "Nonempty Text range fragments";
 pub(crate) const RETAINED_POLICY: &str = "semantic/prepared-range-policy.md";
 pub(crate) const POLICY_SHA256: &str =
     "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0";
@@ -25,7 +25,7 @@ impl PolicyIdentity {
         let mut offset = 0;
         let mut headings = contract.split_inclusive('\n').filter_map(|line| {
             offset += line.len();
-            (line.trim_end() == POLICY_HEADING).then_some(offset)
+            is_policy_heading(line).then_some(offset)
         });
         let start = headings
             .next()
@@ -50,6 +50,27 @@ impl PolicyIdentity {
         Ok(section)
     }
 }
+fn is_policy_heading(line: &str) -> bool {
+    let line = line.trim_end();
+    let heading = line.trim_start_matches(' ');
+    let marker_len = heading.bytes().take_while(|byte| *byte == b'#').count();
+    if line.len() - heading.len() > 3 || !(1..=6).contains(&marker_len) {
+        return false;
+    }
+    let title = &heading[marker_len..];
+    if !title.starts_with([' ', '\t']) {
+        return false;
+    }
+    let title = title.trim_start_matches([' ', '\t']);
+    let before_closing_marker = title.trim_end_matches('#');
+    let title = if before_closing_marker.ends_with([' ', '\t']) {
+        before_closing_marker.trim_end_matches([' ', '\t'])
+    } else {
+        title
+    };
+    title.eq_ignore_ascii_case(POLICY_TITLE)
+}
+
 const FONT_SIZE: f64 = 16.0;
 const LINE_HEIGHT: f64 = 20.0;
 // The font has ascent 800 at UPEM 1000. The remaining leading is split
