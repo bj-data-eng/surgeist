@@ -14,6 +14,8 @@ pub mod atomic_paragraph_metrics;
 pub mod fixture_variants;
 #[path = "../../crates/surgeist-layout/tests/layout/browser_parity/grid_alignment_reference.rs"]
 pub mod grid_alignment_reference;
+#[path = "../../crates/surgeist-layout/tests/bin/surgeist-layout-generate/measurement/horizontal_br_font_band_profile.rs"]
+pub mod horizontal_br_font_band_profile;
 #[path = "../../crates/surgeist-layout/tests/bin/surgeist-layout-generate/measurement/original_subgrid_body_profile.rs"]
 pub mod original_subgrid_body_profile;
 #[path = "../../crates/surgeist-layout/tests/layout/browser_parity/pinned_font.rs"]

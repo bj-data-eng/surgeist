@@ -217,6 +217,9 @@ fn finish(
     if edition == Edition::Specialized(SpecializedProfile::PreparedAtomicPercentage) {
         require_prepared_atomic_inputs(owner)?;
     }
+    if edition == Edition::Specialized(SpecializedProfile::HorizontalBrFontBand) {
+        require_horizontal_br_inputs(owner)?;
+    }
     let published = edition.published();
     let has_terminal = edition != Edition::RootContextV4;
     let derive_terminal = matches!(mode, QualificationMode::Derive(_));
@@ -300,6 +303,9 @@ fn finish(
     }
     if edition == Edition::Specialized(SpecializedProfile::PreparedAtomicPercentage) {
         require_prepared_atomic_inputs(owner)?;
+    }
+    if edition == Edition::Specialized(SpecializedProfile::HorizontalBrFontBand) {
+        require_horizontal_br_inputs(owner)?;
     }
     let current = Origin::read(owner, &declaration.records)?;
     current.inputs(
@@ -436,6 +442,23 @@ fn require_prepared_atomic_inputs(owner: &Path) -> Result<()> {
         require_regular_input(owner, &path)?;
         if fs::read(owner.join(path.as_str()))? != bytes {
             return Err(format!("current prepared atomic percentage input differs: {name}").into());
+        }
+    }
+    Ok(())
+}
+
+fn require_horizontal_br_inputs(owner: &Path) -> Result<()> {
+    use crate::horizontal_br_font_band_profile as profile;
+    for (name, bytes) in [
+        ("horizontal_br_font_band.js", profile::SCRIPT.as_bytes()),
+        ("horizontal_br_font_band_request.json", profile::REQUEST),
+    ] {
+        let path = RelativePath::new(format!(
+            "tests/bin/surgeist-layout-generate/measurement/{name}"
+        ))?;
+        require_regular_input(owner, &path)?;
+        if fs::read(owner.join(path.as_str()))? != bytes {
+            return Err(format!("current horizontal break font-band input differs: {name}").into());
         }
     }
     Ok(())
@@ -949,6 +972,9 @@ fn specialized_cases(
                 SpecializedProfile::OriginalSubgridBody => original_subgrid_body::evidence(),
                 SpecializedProfile::PreparedAtomicPercentage => {
                     authority::prepared_atomic_percentage_evidence()
+                }
+                SpecializedProfile::HorizontalBrFontBand => {
+                    crate::parity_support::horizontal_br_font_band::evidence()
                 }
             };
             let verified = authority::identity_from_verified_inputs(authority::IdentityInputs {

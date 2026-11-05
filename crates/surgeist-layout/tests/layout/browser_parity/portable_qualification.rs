@@ -19,8 +19,8 @@ use support::capture_authority::{
 };
 use support::exact_differences::{
     CaptureAuthority, ExactDifferenceSpec, PublishedEdition, QualificationError,
-    QualifiedComparison, complete_captured_comparison, flex_composition_qualification as flex,
-    verify_wrapping_world_predecessor,
+    QualifiedComparison, QualifiedVerdict, RawVerdict, complete_captured_comparison,
+    flex_composition_qualification as flex, verify_wrapping_world_predecessor,
 };
 use support::{ObservedPlacement, capture_authority};
 
@@ -314,6 +314,7 @@ enum AdmittedComparison {
         variant: String,
     },
     PreparedAtomicPercentage,
+    HorizontalBrFontBand,
     FlexComposition {
         variant: String,
         inputs: Rc<flex::Inputs>,
@@ -446,6 +447,19 @@ impl AdmittedEdition {
                         },
                     )
                 }
+                AdmittedComparison::HorizontalBrFontBand => {
+                    support::horizontal_br_font_band::compare_authenticated(&case.golden)
+                        .map(|()| {
+                            let matched = QualifiedComparison {
+                                raw: RawVerdict::Matches,
+                                qualified: QualifiedVerdict::MatchingControl,
+                            };
+                            (Vec::new(), Ok(matched))
+                        })
+                        .map_err(|error| QualificationError::ComparisonFailure {
+                            reason: error.to_string(),
+                        })
+                }
                 AdmittedComparison::PreparedAtomicPercentage => {
                     prepared_atomic_percentage::compare(&case.golden, &mut *observe_placement)
                         .map(|(fields, qualified)| {
@@ -496,7 +510,7 @@ fn compare_prepared_range(
 }
 
 pub struct AdmittedRegistry {
-    editions: [AdmittedEdition; 9],
+    editions: [AdmittedEdition; 10],
     owner: PathBuf,
     selected_records: BTreeMap<String, Value>,
 }
@@ -574,6 +588,9 @@ const REGISTERED_ORIGINAL_SUBGRID_BODY_TERMINAL_SHA256: &str =
 const REGISTERED_PREPARED_ATOMIC_PERCENTAGE_TERMINAL_SHA256: &str =
     "061f5f4e425e0cd19c2c3abfa471b0a7d08ed52dff856e586573f08a46a70094";
 
+const REGISTERED_HORIZONTAL_BR_FONT_BAND_TERMINAL_SHA256: &str =
+    "c13507fa022b56d7722cd2d867c934e855add0a9e281725fa5f79b232a1c0e17";
+
 pub(super) fn admit_grid_static_positions(owner: &Path) -> Result<AdmittedEdition> {
     admit(
         owner,
@@ -633,6 +650,13 @@ pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
             Registration {
                 edition: Edition::Specialized(SpecializedProfile::PreparedAtomicPercentage),
                 terminal_sha256: REGISTERED_PREPARED_ATOMIC_PERCENTAGE_TERMINAL_SHA256,
+            },
+        )?,
+        admit(
+            owner,
+            Registration {
+                edition: Edition::Specialized(SpecializedProfile::HorizontalBrFontBand),
+                terminal_sha256: REGISTERED_HORIZONTAL_BR_FONT_BAND_TERMINAL_SHA256,
             },
         )?,
         admit_grid_static_positions(owner)?,
@@ -1007,7 +1031,8 @@ fn admit_specialized(
     let flex_inputs = match profile {
         SpecializedProfile::PreparedRange
         | SpecializedProfile::OriginalSubgridBody
-        | SpecializedProfile::PreparedAtomicPercentage => None,
+        | SpecializedProfile::PreparedAtomicPercentage
+        | SpecializedProfile::HorizontalBrFontBand => None,
         SpecializedProfile::FlexComposition => Some(Rc::new(flex::Inputs::load(root)?)),
     };
     terminal
@@ -1062,6 +1087,17 @@ fn admit_specialized(
                         Ok(current),
                         AdmittedComparison::OriginalSubgridBody { variant },
                     )
+                }
+                SpecializedProfile::HorizontalBrFontBand => {
+                    let current = support::Golden::parse(xml)
+                        .map_err(|error| malformed(error.to_string()))?;
+                    let historical = std::str::from_utf8(&historical)
+                        .map_err(|error| malformed(error.to_string()))?;
+                    let historical = support::Golden::parse(historical)
+                        .map_err(|error| malformed(error.to_string()))?;
+                    support::horizontal_br_font_band::verify_historical(&current, &historical)
+                        .map_err(|error| malformed(error.to_string()))?;
+                    (Ok(current), AdmittedComparison::HorizontalBrFontBand)
                 }
                 SpecializedProfile::PreparedAtomicPercentage => {
                     let source = read_pinned(

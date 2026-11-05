@@ -2473,6 +2473,7 @@ pub fn surgeist_text::Layout::run_views(&self) -> impl core::iter::traits::itera
 impl surgeist_text::Layout
 pub fn surgeist_text::Layout::from_finalized_lines(request: surgeist_text::PlacementRequest) -> surgeist_text::Result<Self>
 pub fn surgeist_text::Layout::nonformatted_lines(&self) -> impl core::iter::traits::iterator::Iterator<Item = &surgeist_text::NonFormattedLinePlacement>
+pub fn surgeist_text::Layout::placed_break_font_metrics(&self, line_index: usize, fragment: &surgeist_text::FinalizedFragment) -> surgeist_text::Result<core::option::Option<surgeist_text::PlacedBreakFontMetrics<'_>>>
 impl surgeist_text::Layout
 pub fn surgeist_text::Layout::inline_box_pieces(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::PlacedInlineBoxPiece<'_>>
 impl surgeist_text::Layout
@@ -2693,6 +2694,12 @@ impl surgeist_text::ParagraphTabReference
 pub const fn surgeist_text::ParagraphTabReference::direction(&self) -> surgeist_text::ParagraphBaseDirection
 pub fn surgeist_text::ParagraphTabReference::new(style: surgeist_text::Style, direction: surgeist_text::ParagraphBaseDirection) -> surgeist_text::Result<Self>
 pub fn surgeist_text::ParagraphTabReference::style(&self) -> &surgeist_text::Style
+pub struct surgeist_text::PlacedBreakFontMetrics<'a>
+impl<'a> surgeist_text::PlacedBreakFontMetrics<'a>
+pub const fn surgeist_text::PlacedBreakFontMetrics<'a>::ascent(self) -> f64
+pub const fn surgeist_text::PlacedBreakFontMetrics<'a>::descent(self) -> f64
+pub const fn surgeist_text::PlacedBreakFontMetrics<'a>::font_origin_offset(self) -> f64
+pub const fn surgeist_text::PlacedBreakFontMetrics<'a>::instance(self) -> surgeist_text::EffectiveFontInstance<'a>
 pub struct surgeist_text::PlacedInlineBoxPiece<'a>
 impl surgeist_text::PlacedInlineBoxPiece<'_>
 pub fn surgeist_text::PlacedInlineBoxPiece<'_>::anchor(&self) -> surgeist_text::Point

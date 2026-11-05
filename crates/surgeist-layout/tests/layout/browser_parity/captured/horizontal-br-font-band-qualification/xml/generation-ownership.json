@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "artifacts": {
+    "xml/block/block_br_inline_block_metrics__border_box_ltr.xml": "13063814afa0b865ff5350013dd52247f1db04025e7489f761eec5169281d9e2",
+    "xml/block/block_br_inline_block_metrics__border_box_rtl.xml": "b670c5aba22623013ca2ba45905f4961c5b15fc09187673bc5768b3da32127e5",
+    "xml/block/block_br_inline_block_metrics__content_box_ltr.xml": "0e7e2722e74a0c29509bb05e8a63e48ecfdcca67ca3db78ea88b8b0cd437df89",
+    "xml/block/block_br_inline_block_metrics__content_box_rtl.xml": "3f1e7e6cfc41ebb4f1036366efddb39fe38570eb87fb029c4b10ebf0f3252a93",
+    "xml/generation-reports/all.json": "f2d431366fd1ba7d9511b8d92053263ceb02e5dbee93167cab0a42a521d25090"
+  }
+}

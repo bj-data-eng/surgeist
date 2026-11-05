@@ -184,6 +184,39 @@ fn qualify_allocated_shift(
     Ok(())
 }
 
+/// Retained horizontal paragraph-default font metrics at an admitted forced break.
+/// Distances are measured from the line's common baseline, before line-height leading.
+#[derive(Clone, Copy, Debug)]
+pub struct PlacedBreakFontMetrics<'a> {
+    instance: crate::EffectiveFontInstance<'a>,
+    ascent: f64,
+    descent: f64,
+    font_origin_offset: f64,
+}
+
+impl<'a> PlacedBreakFontMetrics<'a> {
+    #[must_use]
+    pub const fn instance(self) -> crate::EffectiveFontInstance<'a> {
+        self.instance
+    }
+
+    #[must_use]
+    pub const fn ascent(self) -> f64 {
+        self.ascent
+    }
+
+    #[must_use]
+    pub const fn descent(self) -> f64 {
+        self.descent
+    }
+
+    /// Font-design zero relative to the common baseline, toward line-under.
+    #[must_use]
+    pub const fn font_origin_offset(self) -> f64 {
+        self.font_origin_offset
+    }
+}
+
 impl Layout {
     /// Places these exact finalized lines once; no wrapping, font query, pixel
     /// snapping, or independent paragraph layout occurs here.
@@ -194,6 +227,72 @@ impl Layout {
         layout.qualify_decorations()?;
         Ok(layout)
     }
+    /// Returns the actual paragraph-default font metrics for an unshifted
+    /// horizontal forced-break fragment on this exact placed line.
+    ///
+    /// An unplaced or foreign finalized line is an error. Other controls,
+    /// separately allocated break geometry and absent default-font authority
+    /// yield no metrics.
+    pub fn placed_break_font_metrics(
+        &self,
+        line_index: usize,
+        fragment: &super::FinalizedFragment,
+    ) -> Result<Option<PlacedBreakFontMetrics<'_>>> {
+        let line = self
+            .inner
+            .lines
+            .get(line_index)
+            .filter(|line| Arc::ptr_eq(&line.finalized, &fragment.finalized))
+            .ok_or_else(|| {
+                protocol_error(ProtocolError::ForeignFinalizedLine { line: line_index })
+            })?;
+        let super::readback::FinalizedFragmentOwner::Control(control) = fragment.view().owner()
+        else {
+            return Ok(None);
+        };
+        if line.orientation != LineOrientation::Horizontal
+            || !matches!(
+                control.view().kind(),
+                crate::ParagraphControlKind::ForcedBreak
+            )
+        {
+            return Ok(None);
+        }
+        let selected = &line.finalized.selected;
+        let finalized = super::FinalizedLine {
+            inner: Arc::clone(&line.finalized),
+        };
+        if !finalized.control_slots().any(|slot| {
+            slot.control() == control
+                && slot.scope_displacement().get() == 0.0
+                && slot.slot().y == line.finalized.data.metrics.baseline
+        }) || !selected.request.controls.iter().any(|allocation| {
+            allocation.occurrence == control
+                && allocation.strut.is_none()
+                && allocation.boundary.is_none()
+        }) {
+            return Ok(None);
+        }
+        let prepared = &selected.prepared;
+        let Some(run) = prepared.shaped.empty_run.as_ref().filter(|run| {
+            prepared.default_style_index == Some(run.style) && run.metrics.horizontal().is_some()
+        }) else {
+            return Ok(None);
+        };
+        let instance = crate::EffectiveFontInstance::qualify_synthesized(
+            run.font.face(),
+            run.font_size,
+            &run.coords,
+            run.synthesis,
+        )?;
+        Ok(Some(PlacedBreakFontMetrics {
+            instance,
+            ascent: run.metrics.ascent,
+            descent: run.metrics.descent,
+            font_origin_offset: run.metrics.font_origin_offset(),
+        }))
+    }
+
     /// Retained semantic completions with zero used line extent. These are not
     /// visible lines or caret targets; their original nominal metrics remain
     /// available from the finalized receipt.

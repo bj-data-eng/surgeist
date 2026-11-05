@@ -2131,3 +2131,27 @@ inline_offset = 0
 [[specialized_publications]]
 source = "html/block/fri06_atomic_inline_percentage_block_size.html"
 profile = "prepared-atomic-percentage"
+
+[[records]]
+source = "html/block/block_br_inline_block_metrics.html"
+source_sha256 = "e80f4d521108ff7481d3d4779cf1498f198ee9808106cde762e69f203173ea90"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "40283d33ea58b8219af603a1195a614dda8718245e98d8cd6304e2c8e5ab7a54"
+content_box_ltr = "ce9b81b9d77ed1bfd05baba50f09d95e9820a6f427c62d401ef73870e786039f"
+border_box_rtl = "20fecb326cf88693d3acd740b103a0174df734d585169d9ed6537a6141d00c8d"
+content_box_rtl = "bd18b71ddf1b1e8cc62b2faeaa7804a032b4df98f6b0071f1b88e19ae0637651"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[specialized_publications]]
+source = "html/block/block_br_inline_block_metrics.html"
+profile = "horizontal-br-font-band"

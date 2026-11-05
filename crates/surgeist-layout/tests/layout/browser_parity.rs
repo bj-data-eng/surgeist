@@ -2439,6 +2439,31 @@ fn current_registry_qualifies_all_original_flex_text_variants() {
 }
 
 #[test]
+fn current_registry_executes_all_original_horizontal_br_bands() {
+    let registry = registered_current_edition().expect("current registry must authenticate");
+    let selected = select_parity_inventory(
+        support::fixture_files("xml").expect("original fixtures"),
+        Some(&registry),
+        Some("block_br_inline_block_metrics"),
+    )
+    .expect("horizontal break fixtures must be discoverable");
+    assert_eq!(selected.originals.len(), 4);
+    assert_eq!(
+        selected.current.len(),
+        4,
+        "four V4 captures must be registered"
+    );
+    let run = registry.execute_selected(&selected.current).unwrap();
+    assert_eq!(run.cases.len(), 4);
+    assert!(run.selected_cases_passed(), "{:?}", run.freshness_error);
+    assert!(
+        run.cases
+            .iter()
+            .all(|case| { case.raw.as_ref().is_ok_and(Vec::is_empty) && case.qualified.is_ok() })
+    );
+}
+
+#[test]
 fn registered_atomic_percentage_exposes_its_completed_placement() {
     use support::capture_authority::SpecializedProfile;
 

@@ -452,12 +452,27 @@ geometry. Atomic/BR and empty-line metric fixtures explicitly retain this reques
 deliberately relation-only fixtures do not acquire one implicitly. Unknown
 requests and non-BR/hidden/block/contradictory measurement roles refuse.
 
-Native control points and aggregate line metrics are different observations.
-Until an authentic retained control-font metric-frame query is available, the
-reader reports a precise unsupported BR font-band **observation** after actual
-layout, ordinary geometry and control-relation checks. It retains all four
-measured values and does not count that result as engine or metric-band
-conformance. This does not make the source, font or native input unsupported.
+The [horizontal BR edition](captured/horizontal-br-font-band-qualification/)
+qualifies the four original direct-child BR variants with the pinned Ahem face
+at 20px and a 30px line height. Text returns the actual paragraph-default
+instance and pre-leading ascent and descent for the exact unshifted forced-break
+fragment on its placed line. Layout joins the visible source child to that
+occurrence and uses the control endpoint and finalized baseline in the capture
+root's coordinates.
+
+The pinned Chromium [BR control fragment](https://github.com/chromium/chromium/blob/daf70f9ddee4b45d4f8870f574fbde61c0db4ca7/third_party/blink/renderer/core/layout/inline/logical_line_builder.cc#L419-L459)
+uses the [primary font metrics before leading](https://github.com/chromium/chromium/blob/daf70f9ddee4b45d4f8870f574fbde61c0db4ca7/third_party/blink/renderer/core/layout/inline/inline_box_state.cc#L104-L151).
+[CSSOM View](../../../../../references/cssom-view-1--WD-cssom-view-1-20250916--693b1c1fe7f7.md)
+retains the degenerate element rectangle. Ahem's 1000 units per em and
+800/200 ascent and descent yield 16px and 4px at 20px. The first line
+baseline is 21px. The band spans y=5 to y=25 with zero width at x=10 in LTR
+and x=110 in RTL. The rounded profile applies the browser's root-local
+corner rounding. The integer font metrics and unshifted horizontal frame
+bound this projection.
+
+The reader compares all four coordinates separately from ordinary geometry
+and control relations. Structural and vertical BR font-band observations
+retain their four captured coordinates and return an unsupported observation.
 
 Only the byte-identical [pinned font](fonts/PROVENANCE.md) is admitted. The
 adapter hashes the **captured** `fonts/Ahem.ttf` input before injecting those
@@ -514,8 +529,7 @@ to their source and input digests.
 
 Eight source-bound successors and twelve additional prepared representatives
 have Native comparisons. Eighteen match the pinned browser. Two have the RTL
-PDI difference described below. The separate atomic and BR metric fixtures
-retain the font-band capability boundary above.
+PDI difference described below. The separate BR metric fixtures use the font-band contract above.
 
 The [prepared atomic percentage edition](captured/prepared-atomic-percentage-qualification/)
 uses the original paragraph and its inline block's authored 20px width and

@@ -1851,9 +1851,7 @@ mod tests {
         .unwrap()
     }
 
-    #[test]
-    fn source_bound_br_band_retains_geometry_but_refuses_only_the_unavailable_query() {
-        let golden = opaque_break_observation_golden();
+    fn opaque_break_observation_request() -> layout::LayoutRootRequest {
         // Explicit Native query for this authored Source/font/control fixture:
         // 120px physical availability and percentage parents, not historical
         // XML root authority or a replacement for a captured browser request.
@@ -1862,7 +1860,7 @@ mod tests {
             layout::AvailableSpace::Definite(extent),
             layout::SizingOperation::Normal,
         );
-        let request = layout::LayoutRootRequest::standalone(
+        layout::LayoutRootRequest::standalone(
             layout::SizingRequest::new(
                 layout::Size::splat(normal),
                 layout::OrthogonalFallbackOf::new(
@@ -1873,15 +1871,102 @@ mod tests {
             ),
             layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
             layout::Size::splat(Some(extent)),
-        );
-        let error = super::super::assert_native_input_matches(&golden, request)
-            .unwrap_err()
-            .to_string();
+        )
+    }
+
+    #[test]
+    fn source_bound_horizontal_br_matches_the_untrimmed_font_band() {
+        let golden = opaque_break_observation_golden();
+        let request = opaque_break_observation_request();
+        super::super::assert_native_input_matches_with_projection(
+            &golden,
+            request,
+            super::super::BrFontBandProjection::HorizontalPinned,
+        )
+        .unwrap();
+
+        let mut wrong_band = golden;
+        wrong_band.expectations.children[1]
+            .browser_br_font_band
+            .as_mut()
+            .unwrap()
+            .height = 30.0;
+        let error = super::super::assert_native_input_matches_with_projection(
+            &wrong_band,
+            request,
+            super::super::BrFontBandProjection::HorizontalPinned,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("BR font-band height mismatch"), "{error}");
+    }
+
+    #[test]
+    fn ordinary_comparison_requires_explicit_br_font_band_profile() {
+        let golden = opaque_break_observation_golden();
+        let error =
+            super::super::assert_native_input_matches(&golden, opaque_break_observation_request())
+                .unwrap_err()
+                .to_string();
         assert!(
             error.contains("unsupported browser BR font-band observation"),
             "{error}"
         );
-        assert!(error.contains("x=10, y=5, width=0, height=20"));
+    }
+
+    #[test]
+    fn placed_break_metrics_require_the_actual_finalized_line() {
+        let golden = opaque_break_observation_golden();
+        let request = opaque_break_observation_request();
+        let tree = super::super::TestTree::from_golden(&golden.root, None).unwrap();
+        let batch = super::super::compute_actual_batch(&tree, &golden.name, request).unwrap();
+        let placed = batch.placed_text()[0].layout();
+        let fragment = batch
+            .unrounded_inline_fragments()
+            .iter()
+            .find(|entry| entry.owner() == &layout::InlineFragmentOwner::Node(2))
+            .unwrap()
+            .fragment();
+        assert_eq!(fragment.line_index(), 0);
+        let metrics = placed
+            .placed_break_font_metrics(0, fragment.finalized_fragment())
+            .unwrap()
+            .unwrap();
+        assert_eq!(metrics.instance().face().bytes(), pinned_font::BYTES);
+        assert_eq!(metrics.instance().font_size(), 20.0);
+        assert_eq!((metrics.ascent(), metrics.descent()), (16.0, 4.0));
+        assert!(
+            placed
+                .placed_break_font_metrics(1, fragment.finalized_fragment())
+                .is_err()
+        );
+
+        // A fresh execution of the same preparation does not issue the old line.
+        let later = super::super::compute_actual_batch(&tree, &golden.name, request).unwrap();
+        assert!(
+            later.placed_text()[0]
+                .layout()
+                .placed_break_font_metrics(0, fragment.finalized_fragment())
+                .is_err()
+        );
+
+        // Identical input bytes do not identify an independently prepared line.
+        let other = opaque_break_observation_golden();
+        let other_tree = super::super::TestTree::from_golden(&other.root, None).unwrap();
+        let other_batch =
+            super::super::compute_actual_batch(&other_tree, &other.name, request).unwrap();
+        assert!(
+            other_batch.placed_text()[0]
+                .layout()
+                .placed_break_font_metrics(0, fragment.finalized_fragment())
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn source_bound_br_band_preserves_geometry_and_control_validation() {
+        let golden = opaque_break_observation_golden();
+        let request = opaque_break_observation_request();
         let mut relations = golden.clone();
         relations.expectations.children[1].browser_br_font_band = None;
         super::super::assert_native_input_matches(&relations, request).unwrap();
