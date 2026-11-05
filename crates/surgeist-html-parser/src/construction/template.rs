@@ -234,6 +234,14 @@ impl SessionStorage {
         }
         Ok(next)
     }
+    /// The marker search of `template for` (HTML 877d6146487f, the template element): the first
+    /// processing instruction named `name` in tree order within `scope`, then its matching end.
+    /// The walk reads each node of the scope that precedes the marker, so n empty `template for`
+    /// elements after one another cost record visits quadratic in n: 3.2 million at 500, 7.9
+    /// million at 1,000, 21.8 million at 2,000 and 67.6 million at 4,000. It stays a walk: the
+    /// processing instructions are found where the standard says, in tree order, and an index of
+    /// them by name would have to follow every move of a node between scopes.
+    /// (docs/reference/html-operations.md, "group-walk-cost")
     fn find_markers(
         &self,
         c: &mut ParseControl,

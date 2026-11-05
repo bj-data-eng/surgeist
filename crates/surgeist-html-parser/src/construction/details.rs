@@ -164,6 +164,14 @@ impl SessionStorage {
             },
         )
     }
+    /// One step of the details name group walk (HTML 877d6146487f, the details element:
+    /// opening one closes the others of its name in its tree). The walk visits every node of
+    /// the tree for each open details with a name, so n of distinct names cost record visits
+    /// quadratic in n: 5.2 million at 500, 16.0 million at 1,000, 54.0 million at 2,000 and
+    /// 196.0 million at 4,000. It stays a walk, as the group definition is written and in the
+    /// same order of charges: an index of open details by name would have to follow every
+    /// move, rename and attribute change, and a stopped parse reports the first charge reached.
+    /// (docs/reference/html-operations.md, "group-walk-cost")
     pub(super) fn step_details(
         &mut self,
         c: &mut ParseControl,

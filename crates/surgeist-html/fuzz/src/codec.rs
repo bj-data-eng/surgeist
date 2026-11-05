@@ -7,7 +7,7 @@ use surgeist_fuzz::{
 use surgeist_html_parser::HtmlParseLimits;
 
 pub const MAX_SOURCE_UNITS: usize = 4096;
-pub const CAPS: [u64; 19] = [
+pub const CAPS: [u64; 20] = [
     100_000,
     100_000,
     10_000,
@@ -22,13 +22,14 @@ pub const CAPS: [u64; 19] = [
     100_000,
     100_000,
     100,
+    1_000_000,
     100_000,
     100_000_000,
     100_000_000,
     100_000_000,
     100_000_000,
 ];
-const HEADER: usize = 4 + 4 + 19 * 8 + 4;
+const HEADER: usize = 4 + 4 + 20 * 8 + 4;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ParseKind {
@@ -54,14 +55,14 @@ pub struct UnicodeCase {
     pub(crate) kind: ParseKind,
     pub(crate) source: UnicodeSource,
     pub(crate) lane: Lane,
-    pub(crate) caps: [u64; 19],
+    pub(crate) caps: [u64; 20],
 }
 impl UnicodeCase {
     pub fn new(kind: ParseKind, source: UnicodeSource, lane: Lane) -> Result<Self> {
         let mut caps = CAPS;
         match lane {
             Lane::SourceDenied => caps[0] = 0,
-            Lane::WorkDenied => caps[18] = 0,
+            Lane::WorkDenied => caps[19] = 0,
             _ => {}
         }
         let case = Self {
@@ -74,7 +75,7 @@ impl UnicodeCase {
         Ok(case)
     }
     /// Checked reconfiguration; no unlimited cap or implicit default.
-    pub fn with_caps(mut self, caps: [u64; 19]) -> Result<Self> {
+    pub fn with_caps(mut self, caps: [u64; 20]) -> Result<Self> {
         self.caps = caps;
         self.validate()?;
         Ok(self)
@@ -114,7 +115,7 @@ impl UnicodeCase {
                     "source denial requires nonempty source and zero source cap",
                 ));
             }
-            Lane::WorkDenied if self.caps[18] != 0 || self.caps[..18] != CAPS[..18] => {
+            Lane::WorkDenied if self.caps[19] != 0 || self.caps[..19] != CAPS[..19] => {
                 return Err(error("work denial requires zero work cap"));
             }
             _ => {}
@@ -122,7 +123,7 @@ impl UnicodeCase {
         Ok(())
     }
 }
-pub(crate) fn limits(c: [u64; 19]) -> Result<HtmlParseLimits> {
+pub(crate) fn limits(c: [u64; 20]) -> Result<HtmlParseLimits> {
     HtmlParseLimits::builder()
         .source_units(c[0])
         .buffered_utf16_units(c[1])
@@ -138,11 +139,12 @@ pub(crate) fn limits(c: [u64; 19]) -> Result<HtmlParseLimits> {
         .diagnostic_payload_units(c[11])
         .context_effects(c[12])
         .open_elements(c[13])
-        .tree_depth(c[14])
-        .managed_capacity_bytes(c[15])
-        .peak_transient_bytes(c[16])
-        .atomic_layout_bytes(c[17])
-        .work_credits(c[18])
+        .active_formatting_entries(c[14])
+        .tree_depth(c[15])
+        .managed_capacity_bytes(c[16])
+        .peak_transient_bytes(c[17])
+        .atomic_layout_bytes(c[18])
+        .work_credits(c[19])
         .finish()
         .map_err(|_| error("invalid parser cap"))
 }
@@ -171,7 +173,7 @@ impl UnicodeTarget {
             (5, 0) => Lane::MissingScripting,
             _ => return Err(error("lane/reserved byte")),
         };
-        let mut caps = [0; 19];
+        let mut caps = [0; 20];
         for (i, cap) in caps.iter_mut().enumerate() {
             *cap = u64::from_le_bytes(
                 input[8 + i * 8..16 + i * 8]
@@ -212,7 +214,7 @@ impl UnicodeTarget {
             Lane::SourceDenied if caps[0] != 0 || units == 0 || caps[1..] != CAPS[1..] => {
                 return Err(error("source denial qualification"));
             }
-            Lane::WorkDenied if caps[18] != 0 || caps[..18] != CAPS[..18] => {
+            Lane::WorkDenied if caps[19] != 0 || caps[..19] != CAPS[..19] => {
                 return Err(error("work denial qualification"));
             }
             _ => {}

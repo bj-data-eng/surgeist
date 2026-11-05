@@ -14,6 +14,14 @@ pub(super) enum Response {
     Pending,
     Finished,
 }
+/// What a subtree's base hooks still wait for: nothing known yet, no base with an `href` yet to
+/// run, or the last base with an `href` of the subtree, whose hook has yet to run.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum HrefBaseAhead {
+    Unscanned,
+    None,
+    Last(usize),
+}
 pub(super) struct FrozenBase {
     pub(super) value: HtmlBaseUrlRecord,
     pub(super) environment: HtmlParseBaseFacts,
@@ -201,6 +209,93 @@ impl SessionStorage {
         }
         Ok(None)
     }
+    /// Whether inserting or removing `node`, a base element, leaves the document's first
+    /// base element with an `href` as it was, so that no search of the document is needed
+    /// (HTML 877d6146487f, the base element: the document base URL follows "the first base
+    /// element in tree order that has an href attribute"). A base without an `href` is never
+    /// that element, and the element does not change when one is added before or after it.
+    /// Removing one is no change unless the removed subtree held the first base with an
+    /// `href`, which the document's recorded first tells without a search: no first, or no
+    /// record of one because the document has no base facts, which stops the parse at the
+    /// first `href` that could make one.
+    ///
+    /// An inserted subtree's hooks run in tree order once the whole subtree is attached, so
+    /// a base with an `href` later in it is already the first in the tree the search reads and
+    /// not yet the one recorded. Nothing is skipped while one remains: the first hook of a
+    /// subtree that needs the answer scans the subtree once for its last such base, and the
+    /// hook of that base ends the wait. A change that is not one of a subtree's hooks
+    /// (`effect_root` is `None`) is never skipped. So the answer, and every record made for the
+    /// nodes between, are those of the search.
+    fn base_cannot_move_first(
+        &mut self,
+        c: &mut ParseControl,
+        node: usize,
+        document: usize,
+        detached: Option<usize>,
+        effect_root: Option<usize>,
+    ) -> Result<bool, SessionError> {
+        let Some(root) = effect_root else {
+            return Ok(false);
+        };
+        if self.form_attribute(c, node, "href")?.is_some() {
+            if let Some(effects) = self.effects.form.as_mut()
+                && effects.href_base == HrefBaseAhead::Last(node)
+            {
+                payload_write::<HrefBaseAhead>(c, 1)?;
+                effects.href_base = HrefBaseAhead::None;
+            }
+            return Ok(false);
+        }
+        if detached.is_none() {
+            return Ok(self.href_base_ahead(c, root, node)? == HrefBaseAhead::None);
+        }
+        let Some(slot) = self.base_document_slot(c, document)? else {
+            return Ok(true);
+        };
+        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+        let Some(RetainedPayload::BaseDocument { first, .. }) = self.payloads.values.get(slot)
+        else {
+            return Err(latch_registry_row(c));
+        };
+        Ok(first.is_none())
+    }
+    /// The last base element with an `href` in the subtree of `root` whose hook has yet to run,
+    /// found by one scan of the nodes after `node`, the first whose hook asks, for the whole
+    /// effect: the hooks run in tree order, so the nodes before it have had theirs.
+    fn href_base_ahead(
+        &mut self,
+        c: &mut ParseControl,
+        root: usize,
+        node: usize,
+    ) -> Result<HrefBaseAhead, SessionError> {
+        let known = match self.effects.form.as_ref() {
+            Some(effects) if effects.root == root => effects.href_base,
+            _ => return Err(latch_registry_row(c)),
+        };
+        if known != HrefBaseAhead::Unscanned {
+            return Ok(known);
+        }
+        let mut last = HrefBaseAhead::None;
+        let mut next = self.next_effect_node(c, root, node)?;
+        while let Some(current) = next {
+            c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+            if is_base(
+                self.construction
+                    .node_at(current)
+                    .ok_or_else(|| latch_registry_row(c))?,
+            ) && self.form_attribute(c, current, "href")?.is_some()
+            {
+                last = HrefBaseAhead::Last(current);
+            }
+            next = self.next_effect_node(c, root, current)?;
+        }
+        payload_write::<HrefBaseAhead>(c, 1)?;
+        let Some(effects) = self.effects.form.as_mut() else {
+            return Err(latch_registry_row(c));
+        };
+        effects.href_base = last;
+        Ok(last)
+    }
     /// Removal's virtual detached subtree is passed through every topology read.
     /// Physical staging is not interpreted as destination ancestry.
     pub(super) fn base_change(
@@ -209,8 +304,9 @@ impl SessionStorage {
         node: usize,
         detached: Option<usize>,
         href_changed: bool,
+        effect_root: Option<usize>,
     ) -> Result<(), SessionError> {
-        self.base_change_inner(c, node, detached, href_changed)?;
+        self.base_change_inner(c, node, detached, href_changed, effect_root)?;
         self.record_association(
             c,
             node,
@@ -226,6 +322,7 @@ impl SessionStorage {
         node: usize,
         detached: Option<usize>,
         href_changed: bool,
+        effect_root: Option<usize>,
     ) -> Result<(), SessionError> {
         c.require_identity(&self.control)?;
         if !is_base(
@@ -243,6 +340,9 @@ impl SessionStorage {
         // Ordinary document membership, never hosted/template/shadow contents.
         // During removal, find the next first in the old actual node document.
         if detached.is_none() && self.ordinary_root(c, node, None)? != document {
+            return Ok(());
+        }
+        if !href_changed && self.base_cannot_move_first(c, node, document, detached, effect_root)? {
             return Ok(());
         }
         let first = self.first_base_href(c, document, detached)?;
@@ -1151,14 +1251,14 @@ pub(super) mod tests {
             inserted_base_fixture!(request, c, session, root, lexer, base);
             let storage = session.active_mut().unwrap();
             storage
-                .base_change_inner(&mut c, base.index, None, false)
+                .base_change_inner(&mut c, base.index, None, false, None)
                 .unwrap();
             let prior = c
                 .usage()
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current;
             storage
-                .base_change(&mut c, base.index, None, false)
+                .base_change(&mut c, base.index, None, false, None)
                 .unwrap();
             let needed = c
                 .usage()
@@ -1176,7 +1276,7 @@ pub(super) mod tests {
             let storage = session.active_mut().unwrap();
             // Finish the existing intrinsic owner first.
             storage
-                .base_change_inner(&mut c, base.index, None, false)
+                .base_change_inner(&mut c, base.index, None, false, None)
                 .unwrap();
             let prior = c
                 .usage()
@@ -1191,7 +1291,7 @@ pub(super) mod tests {
             for _ in 0..pressure_rows {
                 pressure.try_push(&mut c, 0u8).unwrap();
             }
-            let result = storage.base_change(&mut c, base.index, None, false);
+            let result = storage.base_change(&mut c, base.index, None, false, None);
             if short {
                 assert!(matches!(
                     result,
@@ -1202,7 +1302,9 @@ pub(super) mod tests {
                 ));
                 let stop = c.stop();
                 assert_eq!(
-                    storage.base_change(&mut c, base.index, None, false).err(),
+                    storage
+                        .base_change(&mut c, base.index, None, false, None)
+                        .err(),
                     stop.map(SessionError::Stop)
                 );
                 assert_eq!(c.stop(), stop);
@@ -1250,7 +1352,7 @@ pub(super) mod tests {
             let storage = session.active_mut().unwrap();
             let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
             storage
-                .base_change_inner(&mut c, base.index, None, false)
+                .base_change_inner(&mut c, base.index, None, false, None)
                 .unwrap();
             let total = c.usage().resource(HtmlParseResource::WorkCredits).current - before;
             assert_value(&session, &base, "https://base.test/A");
@@ -1292,7 +1394,7 @@ pub(super) mod tests {
                 remaining - total + u64::from(short),
             )
             .unwrap();
-            let result = storage.base_change_inner(&mut c, base.index, None, false);
+            let result = storage.base_change_inner(&mut c, base.index, None, false, None);
             if short {
                 assert!(matches!(
                     result,
@@ -1310,7 +1412,7 @@ pub(super) mod tests {
                     session
                         .active_mut()
                         .unwrap()
-                        .base_change(&mut c, base.index, None, false)
+                        .base_change(&mut c, base.index, None, false, None)
                         .err(),
                     stop.map(SessionError::Stop)
                 );

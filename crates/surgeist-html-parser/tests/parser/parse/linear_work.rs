@@ -48,6 +48,7 @@ pub(super) fn roomy_limits() -> HtmlParseLimits {
         .buffered_utf16_units(1_000_000)
         .token_attributes(1_000_000)
         .auxiliary_entries(100_000_000)
+        .active_formatting_entries(100_000_000)
         .managed_nodes(1_000_000)
         .managed_edges(1_000_000)
         .managed_attributes(1_000_000)
@@ -882,6 +883,28 @@ fn work_of_nested_template_elements_at_most_doubles_with_their_number() {
 }
 
 #[test]
+fn work_of_nested_divs_with_text_at_most_doubles_with_their_number() {
+    // Pinned HTML 877d6146487f section 13.2.6.4.7, "A start tag whose tag name is one of: address,
+    // ..., div, ...": "If the stack of open elements has a p element in button scope, then close
+    // a p element." No `p` is open and no scope boundary is, so the answer is no for every
+    // `div`. Deciding it must not examine the whole stack of open elements each time.
+    assert_measures_at_most_two_point_two_times(
+        [250, 500, 1_000, 2_000],
+        |n| format!("<!doctype html>{}", "<div>y".repeat(n)),
+        &[WORK_OUTSIDE_RESERVATION, VISIT_WORK],
+    );
+}
+
+#[test]
+fn work_of_nested_divs_without_text_at_most_doubles_with_their_number() {
+    assert_measures_at_most_two_point_two_times(
+        [250, 500, 1_000, 2_000],
+        |n| format!("<!doctype html>{}", "<div>".repeat(n)),
+        &[WORK_OUTSIDE_RESERVATION, VISIT_WORK],
+    );
+}
+
+#[test]
 fn work_of_repeated_formatting_elements_with_an_attribute_at_most_doubles_with_their_number() {
     assert_each_doubling_costs_at_most_two_point_two_times(LONG_RUN_SIZES, |n| {
         format!("<!doctype html><p>{}", "<b a=i>".repeat(n))
@@ -915,6 +938,80 @@ fn work_of_reconstructing_a_formatting_element_with_many_attributes_at_most_doub
 fn start_tag_with_attributes(prefix: &str, tag: &str, n: usize) -> String {
     let attributes: String = (0..n).map(|i| format!(" a{i:05}=v")).collect();
     format!("<!doctype html>{prefix}<{tag}{attributes}>")
+}
+
+/// What one parse holds at its high water in `resource`.
+fn high_water(raw: String, resource: HtmlParseResource) -> u64 {
+    HtmlDocumentParseRequest::offline(HtmlSource::utf8(raw), long_input_limits())
+        .parse()
+        .unwrap_or_else(|_| panic!("the document parses within the long-input limits"))
+        .usage()
+        .resource(resource)
+        .high_water()
+}
+
+#[test]
+fn auxiliary_entries_of_one_long_attribute_name_grow_by_less_than_an_entry_per_eight_units() {
+    // HTML 877d6146487f section 13.2.5.33 (attribute name state): a name equal to one already on
+    // the token is dropped as a duplicate, so the tokenizer must recognise the names it kept. That
+    // takes a record for the name, not sixteen for each of its units.
+    let entries = |units: usize| {
+        high_water(
+            format!("<!doctype html><div {}>", "a".repeat(units)),
+            HtmlParseResource::AuxiliaryEntries,
+        )
+    };
+    let (small, large) = (entries(4_000), entries(8_000));
+    assert!(
+        (large - small) * 8 <= 4_000,
+        "4,000 more units of one name hold {} more auxiliary entries ({small} at 4,000 units, \
+         {large} at 8,000)",
+        large - small,
+    );
+}
+
+#[test]
+fn capacity_of_one_long_attribute_name_grows_by_under_four_hundred_bytes_per_unit() {
+    // The name is stored once as text and once for each origin of its units, which is under 400
+    // bytes of capacity for each unit; recognising it as a duplicate adds nothing for each unit.
+    let capacity = |units: usize| {
+        high_water(
+            format!("<!doctype html><div {}>", "a".repeat(units)),
+            HtmlParseResource::ManagedCapacityBytes,
+        )
+    };
+    let (small, large) = (capacity(4_000), capacity(8_000));
+    assert!(
+        (large - small) <= 4_000 * 400,
+        "4,000 more units of one name hold {} more bytes of capacity ({small} at 4,000 units, \
+         {large} at 8,000)",
+        large - small,
+    );
+}
+
+#[test]
+fn auxiliary_entries_of_distinct_attribute_names_grow_by_at_most_eight_for_each_name() {
+    // Names with no shared prefix, so a trie finds nothing to reuse: eight hexadecimal digits of a
+    // multiplicative hash of the index. A bitwise trie keeps sixteen records for each of the
+    // five or so units a name does not share, about eighty; eight is a tenth of that. The names'
+    // own records are a leaf and a branch, and each attribute holds a few more auxiliary entries
+    // of the token (three are held by a repeated name, which has no record of its own).
+    let entries = |names: usize| {
+        let attributes: String = (0..names)
+            .map(|i| format!(" {:08x}", (i as u32).wrapping_mul(2_654_435_761)))
+            .collect();
+        high_water(
+            format!("<!doctype html><div{attributes}>"),
+            HtmlParseResource::AuxiliaryEntries,
+        )
+    };
+    let (small, large) = (entries(1_000), entries(2_000));
+    assert!(
+        (large - small) <= 8 * 1_000,
+        "1,000 more names hold {} more auxiliary entries ({small} at 1,000 names, {large} at \
+         2,000)",
+        large - small,
+    );
 }
 
 #[test]
@@ -1379,6 +1476,34 @@ fn record_visits_of_repeated_open_details_of_one_group_at_most_double_with_their
                 "<details name=a open></details>".repeat(n)
             ))
             .visited
+        },
+    );
+}
+
+#[test]
+fn record_visits_of_repeated_bases_without_an_href_at_most_double_with_their_number() {
+    // HTML 877d6146487f section 4.2.3 (the base element): the document base URL follows the first
+    // base element with an href attribute in tree order, so a base without one cannot change it
+    // and its insertion needs no search of the document.
+    assert_visits_each_doubling_at_most_two_point_two_times(
+        REPEAT_SIZES,
+        "repeated bases without an href",
+        |n| parse_work(format!("<!doctype html><body>{}", "<base>".repeat(n))).visited,
+    );
+}
+
+#[test]
+fn record_visits_the_adoption_agency_adds_by_moving_bases_without_an_href_at_most_double() {
+    // `</b>` makes the adoption agency move the children of the `p`, one removal and one insertion
+    // for each base. With no base that has an href, none of them changes the first.
+    assert_visits_each_doubling_at_most_two_point_two_times(
+        [512, 1_024, 2_048, 4_096],
+        "bases moved by the adoption agency",
+        |n| {
+            let bases = "<base>".repeat(n);
+            let moved = parse_work(format!("<!doctype html><body><b>1<p>{bases}</b>"));
+            let kept = parse_work(format!("<!doctype html><body><b>1<p>{bases}"));
+            moved.visited.saturating_sub(kept.visited)
         },
     );
 }

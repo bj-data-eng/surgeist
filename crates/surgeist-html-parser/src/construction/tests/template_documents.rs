@@ -103,6 +103,7 @@ fn template_document_and_facts_slots_have_independent_pretransfer_and_installed_
             limits()
                 .into_builder()
                 .auxiliary_entries(cap)
+                .active_formatting_entries(cap)
                 .finish()
                 .unwrap(),
             HtmlParseCancellation::new(),

@@ -340,6 +340,7 @@ fn actual_parsed_document_history_supports_native_dialog_cleanup_without_resetti
         .buffered_utf16_units(100)
         .token_attributes(100)
         .auxiliary_entries(100_000)
+        .active_formatting_entries(100_000)
         .managed_nodes(100)
         .managed_edges(100)
         .managed_attributes(100)

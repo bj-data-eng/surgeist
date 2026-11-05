@@ -596,7 +596,9 @@ fn associated_resource_boundaries_and_cancellation_preserve_original_inputs_and_
             match resource {
                 HtmlParseResource::ManagedCapacityBytes => builder.managed_capacity_bytes(cap),
                 HtmlParseResource::ManagedUtf16Units => builder.managed_utf16_units(cap),
-                HtmlParseResource::AuxiliaryEntries => builder.auxiliary_entries(cap),
+                HtmlParseResource::AuxiliaryEntries => builder
+                    .auxiliary_entries(cap)
+                    .active_formatting_entries(cap),
                 HtmlParseResource::WorkCredits => builder.work_credits(cap),
                 _ => unreachable!(),
             }

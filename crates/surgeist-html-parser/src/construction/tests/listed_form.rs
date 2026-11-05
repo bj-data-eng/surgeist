@@ -397,6 +397,7 @@ fn listed_metadata_cap_rejects_all_three_kinds_before_any_lexical_take() {
             limits()
                 .into_builder()
                 .auxiliary_entries(22)
+                .active_formatting_entries(22)
                 .finish()
                 .unwrap(),
             HtmlParseCancellation::new(),

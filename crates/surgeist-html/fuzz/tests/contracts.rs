@@ -46,7 +46,7 @@ fn strict_unicode_codec_roundtrips_surrogates_and_rejects_noncanonical_inputs_be
         b[8..16].copy_from_slice(&u64::MAX.to_le_bytes());
         assert!(target.decode(&b).is_err());
         let mut b = encoded.clone();
-        b[160..164].copy_from_slice(&u32::MAX.to_le_bytes());
+        b[168..172].copy_from_slice(&u32::MAX.to_le_bytes());
         assert!(target.decode(&b).is_err());
         assert!(
             UnicodeCase::new(kind, UnicodeSource::Utf16(vec![0; 4097]), Lane::General).is_err()
@@ -56,8 +56,8 @@ fn strict_unicode_codec_roundtrips_surrogates_and_rejects_noncanonical_inputs_be
         );
         let mut b = encoded.clone();
         b[5] = 0;
-        b[160..164].copy_from_slice(&12u32.to_le_bytes());
-        b[164] = 0xff;
+        b[168..172].copy_from_slice(&12u32.to_le_bytes());
+        b[172] = 0xff;
         assert!(target.decode(&b).is_err());
     }
 }
@@ -340,10 +340,10 @@ const SEED_TEXT: [&str; 9] = [
 ];
 const SEED_SURROGATE_UNITS: [u16; 13] =
     [0xfeff, 60, 112, 62, 65, 0xd800, 13, 10, 66, 60, 47, 112, 62];
-/// The README "Cases and codec" header: 4 + 1 + 1 + 2 + 19 * 8 + 4 bytes.
-const README_HEADER_LEN: usize = 164;
+/// The README "Cases and codec" header: 4 + 1 + 1 + 2 + 20 * 8 + 4 bytes.
+const README_HEADER_LEN: usize = 172;
 /// The documented generous product envelope every literal case carries.
-const README_ENVELOPE: [u64; 19] = [
+const README_ENVELOPE: [u64; 20] = [
     100_000,
     100_000,
     10_000,
@@ -358,6 +358,7 @@ const README_ENVELOPE: [u64; 19] = [
     100_000,
     100_000,
     100,
+    1_000_000,
     100_000,
     100_000_000,
     100_000_000,
@@ -388,11 +389,11 @@ fn seed_files_decode_to_the_documented_layout_and_independent_literal_success() 
             let utf16 = id == 1;
             assert_eq!(b[5], u8::from(utf16), "{name}/{id} source tag");
             assert_eq!(&b[6..8], &[4, id], "{name}/{id} lane and literal id");
-            let caps: Vec<u64> = (0..19)
+            let caps: Vec<u64> = (0..20)
                 .map(|i| u64::from_le_bytes(b[8 + i * 8..16 + i * 8].try_into().unwrap()))
                 .collect();
             assert_eq!(caps, README_ENVELOPE, "{name}/{id} parser caps");
-            let count = u32::from_le_bytes(b[160..164].try_into().unwrap()) as usize;
+            let count = u32::from_le_bytes(b[168..172].try_into().unwrap()) as usize;
             let payload = &b[README_HEADER_LEN..];
             if utf16 {
                 let units: Vec<u16> = payload
@@ -550,7 +551,7 @@ fn actual_ordinary_worker_binaries_read_canonical_frames_and_publish_capture_the
 fn finite_nonzero_work_cut_checks_partial_execution_cleanup_and_retained_evidence() {
     let caps = [
         100000, 100000, 10000, 1000000, 100000, 100000, 100000, 100000, 100000, 100000, 100000,
-        100000, 100000, 100, 100000, 100000000, 100000000, 100000000, 199923,
+        100000, 100000, 100, 1000000, 100000, 100000000, 100000000, 100000000, 199923,
     ];
     for t in targets() {
         let c = UnicodeCase::new(

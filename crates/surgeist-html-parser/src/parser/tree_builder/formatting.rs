@@ -261,6 +261,16 @@ impl HeadState<'_> {
         }
         Ok(())
     }
+    /// The Noah's Ark clause of "push onto the list of active formatting
+    /// elements" (HTML §13.2.4.3): when three entries after the last marker
+    /// have the pending element's name, namespace and attributes, the earliest
+    /// is removed. The scan reads every entry back to the last marker, so a
+    /// start tag costs work in proportion to the entries; formatting start tags
+    /// whose attributes all differ cost work quadratic in their number
+    /// (`docs/reference/html-operations.md`, "active-formatting-list-cost").
+    /// It is not indexed: an index of equal entries would have to stay exact
+    /// through every erasure, replacement and marker clear of the list, and
+    /// the scan is the standard's own words, in the standard's order.
     fn noah(&mut self, c: &mut ParseControl) -> Result<(), HeadError> {
         write(
             const { size_of::<usize>() + size_of::<Option<usize>>() },

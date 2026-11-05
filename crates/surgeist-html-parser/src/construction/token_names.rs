@@ -45,7 +45,12 @@ impl DistinctNames {
                 Ok(())
             }
             Self::Set(names) => {
-                if names.insert(attribute.name.value.text().code_units(), control)? {
+                if names.insert(
+                    attribute.name.value.text().code_units(),
+                    attributes,
+                    index,
+                    control,
+                )? {
                     return Err(SessionError::DuplicateAttribute);
                 }
                 Ok(())

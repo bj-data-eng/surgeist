@@ -213,8 +213,8 @@ pub(crate) fn synthesize(input: &[u8], capture: bool) -> Option<Case> {
         let raw = g.c.word();
         caps[axis] = match axis {
             0 | 1 => raw % 160,
-            15..=17 => raw.saturating_mul(256),
-            18 => raw.saturating_mul(8),
+            16..=18 => raw.saturating_mul(256),
+            19 => raw.saturating_mul(8),
             _ => raw % (caps[axis].min(4096) + 1),
         }
         .min(caps[axis]);

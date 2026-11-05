@@ -61,103 +61,252 @@ fn admit_record_write(
     Ok(())
 }
 
+/// One node of the attribute-name tree: a name a start tag has kept, or the
+/// first bit at which the names below it differ, with the two subtrees that bit
+/// separates and one name below it. The names below a branch agree on every bit
+/// before the branch's.
 #[derive(Clone, Copy)]
-struct Branch {
-    next: [Option<usize>; 2],
-    terminal: bool,
+enum Node {
+    Leaf {
+        attribute: usize,
+    },
+    Branch {
+        bit: usize,
+        zero: usize,
+        one: usize,
+        /// The attribute index of one name below this branch.
+        below: usize,
+    },
 }
-impl Branch {
-    /// The child for one decided bit; a bit has exactly two children.
-    fn child(&self, bit: bool) -> Option<usize> {
-        let [zero, one] = self.next;
-        if bit { one } else { zero }
+impl Node {
+    /// The child a decided bit leads to; a branch has exactly two.
+    fn child(self, side: bool) -> Option<usize> {
+        match self {
+            Self::Branch { zero, one, .. } => Some(if side { one } else { zero }),
+            Self::Leaf { .. } => None,
+        }
     }
-    fn child_mut(&mut self, bit: bool) -> &mut Option<usize> {
-        let [zero, one] = &mut self.next;
-        if bit { one } else { zero }
+    fn set_child(&mut self, side: bool, child: usize) -> bool {
+        match self {
+            Self::Branch { zero, one, .. } => {
+                *(if side { one } else { zero }) = child;
+                true
+            }
+            Self::Leaf { .. } => false,
+        }
     }
 }
-/// Fixed-bit radix lookup: exactly sixteen admitted decisions per UTF-16 unit,
-/// independent of previous attribute count and adversarial shared prefixes.
+
+/// Bits per UTF-16 unit of a name as the tree reads it: a marker `1` that the
+/// unit is present, then its sixteen bits, most significant first. A name ends
+/// with a marker `0`, so no name is a prefix of another, and two different
+/// names always differ at a bit both have.
+const BITS_PER_UNIT: usize = 17;
+
+/// The masks of a unit's sixteen bits, most significant first.
+const UNIT_BIT_MASKS: [u16; 16] = [
+    0x8000, 0x4000, 0x2000, 0x1000, 0x0800, 0x0400, 0x0200, 0x0100, 0x0080, 0x0040, 0x0020, 0x0010,
+    0x0008, 0x0004, 0x0002, 0x0001,
+];
+
+/// The bit of `units` at `position`, in the layout above. Past the end marker
+/// every bit reads zero; two names are never compared beyond the first bit at
+/// which they differ, so a bit past the end of one is never the deciding bit.
+/// A position inside a unit has a mask, since it is less than seventeen; the
+/// absence of one is a defect of the caller.
+fn name_bit(units: &[u16], position: usize) -> Option<bool> {
+    let (unit, within) = (position / BITS_PER_UNIT, position % BITS_PER_UNIT);
+    match units.get(unit) {
+        None => Some(false),
+        Some(_) if within == 0 => Some(true),
+        Some(&value) => UNIT_BIT_MASKS
+            .get(within.saturating_sub(1))
+            .map(|mask| value & mask != 0),
+    }
+}
+
+/// The names of the attributes a start tag has kept, by index into its
+/// attribute list, as a lookup needs them.
+pub(crate) trait KeptNames {
+    fn name(&self, index: usize) -> Option<&[u16]>;
+}
+impl KeptNames for [Attribute] {
+    fn name(&self, index: usize) -> Option<&[u16]> {
+        self.get(index)
+            .map(|attribute| attribute.name.value.text().code_units())
+    }
+}
+
+/// Compressed binary radix tree over the bits of the attribute names a start
+/// tag has kept (the names are stored once, in the attribute list): one leaf
+/// for each name and one branch for each pair of subtrees, so two nodes for a
+/// name however long it is.
+///
+/// A lookup follows the probe's bits down from the root and stops at the first
+/// branch whose bit lies past the probe's end marker. The names below such a
+/// branch agree on every bit before it, the marker's among them, and the probe
+/// differs from them at or before that marker, so any one of them gives the
+/// first bit at which the probe differs from the kept names; the branch holds
+/// one. The branches read are therefore at distinct bit positions up to the end
+/// marker, at most `17 * units + 1` of them, and the same bound holds for the
+/// walk that places a new branch, so a lookup takes at most
+/// `2 * (17 * units + 2)` steps and compares the probe once with one kept name.
+/// The work of looking up a tag's names is linear in their total length,
+/// whatever the names before them are.
 pub(crate) struct Names {
-    nodes: OwnedVec<Branch>,
+    nodes: OwnedVec<Node>,
+    root: usize,
 }
 impl Names {
     pub(crate) fn new() -> Result<Self, HtmlParseStop> {
         Ok(Self {
             nodes: OwnedVec::new(HtmlParseResource::AuxiliaryEntries)?,
+            root: 0,
         })
     }
-    /// Records a name and reports whether an equal one was recorded before.
+    /// The first bit at which two names differ, or `None` for equal names.
+    fn first_difference(
+        stored: &[u16],
+        units: &[u16],
+        c: &mut ParseControl,
+    ) -> Result<Option<usize>, HtmlParseStop> {
+        for (at, (left, right)) in stored.iter().zip(units).enumerate() {
+            // Two stored UTF-16 units are inspected.
+            c.charge(HtmlParseWorkCategory::InspectByte, 4)?;
+            if left != right {
+                let bit = at
+                    .checked_mul(BITS_PER_UNIT)
+                    .and_then(|bits| bits.checked_add(1))
+                    .and_then(|bits| bits.checked_add((left ^ right).leading_zeros() as usize));
+                return bit
+                    .map(Some)
+                    .ok_or_else(|| c.stop_representation(HtmlParseResource::AuxiliaryEntries));
+            }
+        }
+        if stored.len() == units.len() {
+            return Ok(None);
+        }
+        // One name ends where the other continues: the end marker decides.
+        stored
+            .len()
+            .min(units.len())
+            .checked_mul(BITS_PER_UNIT)
+            .map(Some)
+            .ok_or_else(|| c.stop_representation(HtmlParseResource::AuxiliaryEntries))
+    }
+    /// The bit of `units` at `position`.
+    fn side(units: &[u16], position: usize, c: &mut ParseControl) -> Result<bool, HtmlParseStop> {
+        name_bit(units, position)
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))
+    }
+    /// The child of `branch` that the name's bit at `bit` leads to.
+    fn descend(
+        branch: Node,
+        units: &[u16],
+        bit: usize,
+        c: &mut ParseControl,
+    ) -> Result<usize, HtmlParseStop> {
+        let side = Self::side(units, bit, c)?;
+        branch
+            .child(side)
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))
+    }
+    fn node(&mut self, at: usize, c: &mut ParseControl) -> Result<Node, HtmlParseStop> {
+        self.nodes
+            .get_mut(at, c)?
+            .copied()
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))
+    }
+    fn push(&mut self, node: Node, c: &mut ParseControl) -> Result<usize, HtmlParseStop> {
+        let at = self.nodes.len();
+        self.nodes.reserve_geometric(c, 1)?;
+        self.nodes.try_push(c, node)?;
+        Ok(at)
+    }
+    /// Records a name and reports whether an equal one was recorded before. The
+    /// name will be the attribute at index `kept.len()` if it is not a
+    /// duplicate, and `kept` lists the names recorded so far.
     pub(crate) fn insert(
         &mut self,
         units: &[u16],
+        kept: &(impl KeptNames + ?Sized),
+        index: usize,
         c: &mut ParseControl,
     ) -> Result<bool, HtmlParseStop> {
+        let leaf = Node::Leaf { attribute: index };
         if self.nodes.len() == 0 {
-            self.nodes.reserve_geometric(c, 1)?;
-            self.nodes.try_push(
-                c,
-                Branch {
-                    next: [None; 2],
-                    terminal: false,
-                },
-            )?;
+            self.root = self.push(leaf, c)?;
+            return Ok(false);
         }
-        let mut index = 0;
-        for unit in units {
-            c.charge_unit_inspection()?;
-            let unit = *unit;
-            for shift in (0..16).rev() {
-                c.charge(HtmlParseWorkCategory::StateStep, 1)?;
-                let bit = (unit >> shift) & 1 == 1;
-                c.charge(
-                    HtmlParseWorkCategory::InspectByte,
-                    size_of::<Option<usize>>() as u64,
-                )?;
-                let next = self
-                    .nodes
-                    .get_mut(index, c)?
-                    .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
-                    .child(bit);
-                index = if let Some(next) = next {
-                    next
-                } else {
-                    let next = self.nodes.len();
-                    self.nodes.reserve_geometric(c, 1)?;
-                    self.nodes.try_push(
-                        c,
-                        Branch {
-                            next: [None; 2],
-                            terminal: false,
-                        },
-                    )?;
+        // Follow the name's bits to the leaf whose name shares the most with it, or to the
+        // first branch past its end marker, which holds a name that shares as much.
+        let end = units
+            .len()
+            .checked_mul(BITS_PER_UNIT)
+            .ok_or_else(|| c.stop_representation(HtmlParseResource::AuxiliaryEntries))?;
+        let mut at = self.root;
+        let stored = loop {
+            c.charge(HtmlParseWorkCategory::StateStep, 1)?;
+            match self.node(at, c)? {
+                Node::Leaf { attribute } => break attribute,
+                Node::Branch { bit, below, .. } if bit > end => break below,
+                branch @ Node::Branch { bit, .. } => {
                     c.charge(
-                        HtmlParseWorkCategory::CopyByte,
-                        size_of::<Option<usize>>() as u64,
+                        HtmlParseWorkCategory::InspectByte,
+                        size_of::<usize>() as u64,
                     )?;
-                    c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
-                    *self
-                        .nodes
-                        .get_mut(index, c)?
-                        .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
-                        .child_mut(bit) = Some(next);
-                    next
-                };
+                    at = Self::descend(branch, units, bit, c)?;
+                }
+            }
+        };
+        let stored = kept
+            .name(stored)
+            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?;
+        let Some(differ) = Self::first_difference(stored, units, c)? else {
+            return Ok(true);
+        };
+        // The new branch goes above the first node whose own bit is not before
+        // the one at which the names differ.
+        let mut parent: Option<(usize, bool)> = None;
+        let mut at = self.root;
+        loop {
+            c.charge(HtmlParseWorkCategory::StateStep, 1)?;
+            match self.node(at, c)? {
+                branch @ Node::Branch { bit, .. } if bit < differ => {
+                    let side = Self::side(units, bit, c)?;
+                    parent = Some((at, side));
+                    at = Self::descend(branch, units, bit, c)?;
+                }
+                _ => break,
             }
         }
-        c.charge(HtmlParseWorkCategory::InspectByte, 1)?;
-        let duplicate = self
-            .nodes
-            .get_mut(index, c)?
-            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
-            .terminal;
-        admit_record_write(size_of::<bool>(), 1, c)?;
-        self.nodes
-            .get_mut(index, c)?
-            .ok_or_else(|| c.fail_invariant(HtmlParseInvariant::TokenizerState))?
-            .terminal = true;
-        Ok(duplicate)
+        let new_leaf = self.push(leaf, c)?;
+        let side = Self::side(units, differ, c)?;
+        let (zero, one) = if side { (at, new_leaf) } else { (new_leaf, at) };
+        let branch = self.push(
+            Node::Branch {
+                bit: differ,
+                zero,
+                one,
+                below: index,
+            },
+            c,
+        )?;
+        c.charge(HtmlParseWorkCategory::CopyByte, size_of::<usize>() as u64)?;
+        c.charge(HtmlParseWorkCategory::RecordWrite, 1)?;
+        match parent {
+            None => self.root = branch,
+            Some((above, side)) => {
+                let linked = self
+                    .nodes
+                    .get_mut(above, c)?
+                    .is_some_and(|node| node.set_child(side, branch));
+                if !linked {
+                    return Err(c.fail_invariant(HtmlParseInvariant::TokenizerState));
+                }
+            }
+        }
+        Ok(false)
     }
 }
 impl Names {
@@ -878,7 +1027,12 @@ impl<'source> Tokenizer<'source> {
         if let Some(a) = &mut t.attribute
             && !a.name_checked
         {
-            let duplicate = t.names.insert(a.name.value.units(), c)?;
+            let duplicate = t.names.insert(
+                a.name.value.units(),
+                t.attributes.as_slice(),
+                t.attributes.len(),
+                c,
+            )?;
             admit_record_write(const { 2 * size_of::<bool>() }, 2, c)?;
             a.duplicate = duplicate;
             a.name_checked = true;

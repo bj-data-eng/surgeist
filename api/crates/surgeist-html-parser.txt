@@ -395,6 +395,7 @@ pub fn surgeist_html_parser::HtmlParseRequestError::source(&self) -> core::optio
 impl core::fmt::Display for surgeist_html_parser::HtmlParseRequestError
 pub fn surgeist_html_parser::HtmlParseRequestError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[repr(usize)] pub enum surgeist_html_parser::HtmlParseResource
+pub surgeist_html_parser::HtmlParseResource::ActiveFormattingEntries
 pub surgeist_html_parser::HtmlParseResource::AtomicLayoutBytes
 pub surgeist_html_parser::HtmlParseResource::AuxiliaryEntries
 pub surgeist_html_parser::HtmlParseResource::BufferedUtf16Units
@@ -1013,6 +1014,7 @@ pub fn surgeist_html_parser::HtmlParseLexicalPart<'a>::source(&self) -> &'a surg
 pub fn surgeist_html_parser::HtmlParseLexicalPart<'a>::start(&self) -> usize
 pub struct surgeist_html_parser::HtmlParseLimits
 impl surgeist_html_parser::HtmlParseLimits
+pub fn surgeist_html_parser::HtmlParseLimits::active_formatting_entries(&self) -> u64
 pub fn surgeist_html_parser::HtmlParseLimits::atomic_layout_bytes(&self) -> u64
 pub fn surgeist_html_parser::HtmlParseLimits::auxiliary_entries(&self) -> u64
 pub fn surgeist_html_parser::HtmlParseLimits::buffered_utf16_units(&self) -> u64
@@ -1036,6 +1038,7 @@ pub fn surgeist_html_parser::HtmlParseLimits::tree_depth(&self) -> u64
 pub fn surgeist_html_parser::HtmlParseLimits::work_credits(&self) -> u64
 pub struct surgeist_html_parser::HtmlParseLimitsBuilder
 impl surgeist_html_parser::HtmlParseLimitsBuilder
+pub fn surgeist_html_parser::HtmlParseLimitsBuilder::active_formatting_entries(self, cap: u64) -> Self
 pub fn surgeist_html_parser::HtmlParseLimitsBuilder::atomic_layout_bytes(self, cap: u64) -> Self
 pub fn surgeist_html_parser::HtmlParseLimitsBuilder::auxiliary_entries(self, cap: u64) -> Self
 pub fn surgeist_html_parser::HtmlParseLimitsBuilder::buffered_utf16_units(self, cap: u64) -> Self

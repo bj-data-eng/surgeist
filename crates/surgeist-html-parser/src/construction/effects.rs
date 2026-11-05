@@ -963,6 +963,7 @@ impl SessionStorage {
         node: usize,
         detached: Option<usize>,
         removal: bool,
+        effect_root: usize,
     ) -> Result<(), SessionError> {
         self.dialog_tree_hook(c, node, detached, removal)?;
         if base::is_base(
@@ -970,7 +971,7 @@ impl SessionStorage {
                 .node_at(node)
                 .ok_or_else(|| latch_registry_row(c))?,
         ) {
-            self.base_change(c, node, detached, false)?;
+            self.base_change(c, node, detached, false, Some(effect_root))?;
         }
         if !removal && self.html_local(c, node, "input")? {
             self.radio_insertion(c, node)?;

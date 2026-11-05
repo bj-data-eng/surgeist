@@ -818,6 +818,7 @@ mod tests {
                 limits()
                     .into_builder()
                     .auxiliary_entries(cap)
+                    .active_formatting_entries(cap)
                     .finish()
                     .unwrap(),
                 crate::HtmlParseCancellation::new(),

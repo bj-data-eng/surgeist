@@ -491,6 +491,7 @@ fn parse_limits() -> surgeist_html_parser::HtmlParseLimits {
         .buffered_utf16_units(4096)
         .token_attributes(1024)
         .auxiliary_entries(100_000)
+        .active_formatting_entries(100_000)
         .managed_nodes(1024)
         .managed_edges(1024)
         .managed_attributes(1024)

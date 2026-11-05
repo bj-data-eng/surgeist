@@ -44,6 +44,8 @@ pub(super) struct FormEffects {
     pub(super) cause: InsertionCause,
     pub(super) next: Option<usize>,
     pub(super) pass: FormEffectPass,
+    /// Whether a base element with an `href` in the subtree has yet to have its hook run.
+    pub(super) href_base: base::HrefBaseAhead,
 }
 
 impl SessionStorage {
@@ -191,6 +193,7 @@ impl SessionStorage {
             cause: InsertionCause::NonParser,
             next: Some(root),
             pass: FormEffectPass::Local,
+            href_base: base::HrefBaseAhead::Unscanned,
         }))
     }
 
@@ -586,6 +589,7 @@ impl SessionStorage {
                             node,
                             detached,
                             effects.stage == FormEffectStage::Removal,
+                            effects.root,
                         )?;
                     }
                     return Ok(());

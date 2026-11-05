@@ -463,6 +463,7 @@ fn contextual_installation_preserves_unqualified_owner_and_qualifies_only_new_au
             .buffered_utf16_units(4096)
             .token_attributes(256)
             .auxiliary_entries(100_000)
+            .active_formatting_entries(100_000)
             .managed_nodes(256)
             .managed_edges(512)
             .managed_attributes(512)

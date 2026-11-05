@@ -1,5 +1,7 @@
 use crate::parser::support::{environment, fragment_context, limits, record, revision};
-use surgeist_html::{elements::style::HtmlStyleTrigger, vocabulary::KnownHtmlAttribute};
+use surgeist_html::{
+    construction::HtmlNodeId, elements::style::HtmlStyleTrigger, vocabulary::KnownHtmlAttribute,
+};
 use surgeist_html_parser::*;
 use surgeist_html_semantics::*;
 
@@ -521,4 +523,95 @@ fn captured_template_contents_host_does_not_connect_pending_shadow_style() {
     }
     assert!(documents(&report).iter().all(|doc| !doc.has_obligations()
         && doc.disposition() == HtmlParseAssociationCaptureDisposition::PendingComplete));
+}
+
+/// One base observation for `https://example.test/next/` against the fallback
+/// `https://example.test/old/`.
+fn next_base_facts() -> HtmlParseBaseFacts {
+    let revision = revision();
+    let old = record(&revision, "https://example.test/old/", false, None);
+    let next = record(&revision, "https://example.test/next/", false, None);
+    let encoding = HtmlBaseEncoding::fresh();
+    HtmlParseBaseFacts::new(
+        HtmlBaseDocumentFacts::new(
+            revision.clone(),
+            Some(old.clone()),
+            HtmlAboutBaseUrl::KnownNull,
+            false,
+            Some(encoding.clone()),
+        )
+        .unwrap(),
+        vec![
+            HtmlBaseParseObservation::new(
+                "https://example.test/next/".into(),
+                old,
+                encoding,
+                revision,
+                HtmlBaseParseOutcome::Parsed {
+                    record: next,
+                    base_allowed: HtmlBaseAllowed::Allowed,
+                },
+            )
+            .unwrap(),
+        ],
+        HtmlBaseFactsLimits::new(20, 10_000, 100_000),
+    )
+    .unwrap()
+}
+
+/// For each pending association occurrence, in order, the first base element with an `href` it
+/// records and the base observation it selects.
+fn recorded_bases(text: &str) -> Vec<(Option<HtmlNodeId>, Option<usize>)> {
+    let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(text), limits())
+        .with_base_facts(next_base_facts())
+        .unwrap()
+        .parse()
+        .unwrap();
+    occurrences(&report)
+        .iter()
+        .map(|row| {
+            let context = row.context();
+            (
+                context.first_base().map(|node| node.id().clone()),
+                context.base_observation(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn a_moved_subtree_records_the_first_base_with_an_href_that_it_holds_for_every_node() {
+    // HTML 877d6146487f section 13.2.6.4.7 (adoption agency algorithm): `</b>` makes the furthest
+    // block, the `p`, move as one subtree holding a base without an href, a style and then a
+    // base with one. Both the removal steps and the insertion steps run for each node of the
+    // subtree once the whole subtree has been detached or attached, so with the subtree attached
+    // the first base element with an `href` in tree order is the later base from the first of
+    // them on, and every occurrence the insertion records selects it and its observation.
+    //
+    // The expectation is the search's: each of these occurrences, in order, as recorded when the
+    // hook of every base looked for the first base with an `href` through the whole document.
+    // The markup before `</b>` moves nothing and fixes the occurrences that precede the move.
+    let base =
+        "<!doctype html><b>1<p><base><style>a{}</style><base href='https://example.test/next/'>";
+    let kept = recorded_bases(base);
+    let moved = recorded_bases(&format!("{base}</b>"));
+    let shape = |rows: &[(Option<HtmlNodeId>, Option<usize>)]| -> Vec<(bool, Option<usize>)> {
+        rows.iter()
+            .map(|(first, observation)| (first.is_some(), *observation))
+            .collect()
+    };
+    assert_eq!(shape(&moved[..kept.len()]), shape(&kept));
+    let (none, first) = ((false, None), (true, Some(0)));
+    let expected = [vec![none; 3], vec![first; 6], vec![none; 2], vec![first; 3]].concat();
+    assert_eq!(
+        shape(&moved[kept.len()..]),
+        expected,
+        "during the move {:?}",
+        &moved[kept.len()..]
+    );
+    let firsts: Vec<_> = moved
+        .iter()
+        .filter_map(|(first, _)| first.clone())
+        .collect();
+    assert!(firsts.iter().all(|first| *first == firsts[0]));
 }

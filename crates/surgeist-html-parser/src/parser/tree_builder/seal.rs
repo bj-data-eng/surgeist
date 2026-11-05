@@ -585,6 +585,7 @@ mod tests {
             .buffered_utf16_units(100_000)
             .token_attributes(10_000)
             .auxiliary_entries(1_000_000)
+            .active_formatting_entries(1_000_000)
             .managed_nodes(100_000)
             .managed_edges(100_000)
             .managed_attributes(100_000)
@@ -829,6 +830,7 @@ mod tests {
         let limits = work_limits(1_000_000)
             .into_builder()
             .auxiliary_entries(2)
+            .active_formatting_entries(2)
             .finish()
             .unwrap();
         let mut owner = initialized_failure(HtmlDocumentParseRequest::offline(

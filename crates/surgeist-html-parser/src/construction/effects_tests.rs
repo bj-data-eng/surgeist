@@ -877,6 +877,7 @@ fn a_drained_removal_queue_holds_no_auxiliary_entries_however_many_removals_pass
         .buffered_utf16_units(100_000)
         .token_attributes(100_000)
         .auxiliary_entries(100_000)
+        .active_formatting_entries(100_000)
         .managed_capacity_bytes(10_000_000)
         .peak_transient_bytes(20_000_000)
         .work_credits(1_000_000_000)
@@ -1000,6 +1001,7 @@ fn select_creation_metadata_and_empty_option_snapshot_have_independent_exact_slo
         let caps = limits()
             .into_builder()
             .auxiliary_entries(cap)
+            .active_formatting_entries(cap)
             .finish()
             .unwrap();
         let request =

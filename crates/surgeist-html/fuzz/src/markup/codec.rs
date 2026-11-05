@@ -9,16 +9,16 @@
 //! | 7 | document shell, or fragment declarative-shadow permission |
 //! | 8 | body: 0 balanced recipe, 1 free-form token soup |
 //! | 9 | flags: bit 0 cancelled before the parse |
-//! | 10..162 | nineteen u64 parser caps |
-//! | 162..168 | `HCP1` only: scripting, registry, `is` slot, shadow facts, fault, pick |
-//! | 162.. or 168.. | the body, with no trailing bytes |
+//! | 10..170 | twenty u64 parser caps |
+//! | 170..176 | `HCP1` only: scripting, registry, `is` slot, shadow facts, fault, pick |
+//! | 170.. or 176.. | the body, with no trailing bytes |
 use super::model::*;
 use super::{Body, Case, Mode, SOUP, Segment};
 use crate::captured::{Fault, Plan};
 use crate::error;
 use surgeist_fuzz::Result;
 
-pub(crate) const HEADER: usize = 162;
+pub(crate) const HEADER: usize = 170;
 
 struct Reader<'a> {
     input: &'a [u8],
@@ -173,7 +173,7 @@ pub(crate) fn decode(input: &[u8], capture: bool) -> Result<Case> {
         1 => true,
         _ => return Err(error("flag bits")),
     };
-    let mut caps = [0; 19];
+    let mut caps = [0; 20];
     for cap in &mut caps {
         let b = r.take(8)?;
         *cap = u64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]);

@@ -1534,6 +1534,7 @@ mod tests {
                 .buffered_utf16_units(64 * room)
                 .token_attributes(0)
                 .auxiliary_entries(64 * room)
+                .active_formatting_entries(64 * room)
                 .managed_nodes(0)
                 .managed_edges(0)
                 .managed_attributes(0)

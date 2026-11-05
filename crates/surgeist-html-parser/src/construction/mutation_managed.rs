@@ -142,7 +142,7 @@ impl SessionStorage {
             // The generic actual backing owner already ran the exact Dialog
             // hook, including equal writes and removed attributes.
             ManagedEffect::Dialog | ManagedEffect::Style => Ok(()),
-            ManagedEffect::BaseHref => self.base_change(c, node, None, true),
+            ManagedEffect::BaseHref => self.base_change(c, node, None, true, None),
             ManagedEffect::BaseTarget => Ok(()),
             ManagedEffect::LinkFlags(flags) => {
                 c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;

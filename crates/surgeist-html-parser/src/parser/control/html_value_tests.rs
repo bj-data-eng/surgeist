@@ -17,6 +17,7 @@ fn control(work: u64, cancellation: HtmlParseCancellation) -> ParseControl {
         .buffered_utf16_units(1000)
         .token_attributes(1000)
         .auxiliary_entries(1000)
+        .active_formatting_entries(1000)
         .managed_nodes(1000)
         .managed_edges(1000)
         .managed_attributes(1000)

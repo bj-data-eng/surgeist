@@ -29,6 +29,7 @@ fn roomy_limits() -> HtmlParseLimits {
     limits()
         .into_builder()
         .auxiliary_entries(1_000_000)
+        .active_formatting_entries(1_000_000)
         .managed_nodes(1_000_000)
         .managed_edges(1_000_000)
         .managed_capacity_bytes(1_000_000_000)
@@ -330,6 +331,7 @@ fn append_reserve_bytes(count: usize) -> u64 {
     let caps = limits()
         .into_builder()
         .auxiliary_entries(1_000_000)
+        .active_formatting_entries(1_000_000)
         .managed_nodes(1_000_000)
         .managed_edges(1_000_000)
         .managed_capacity_bytes(1_000_000_000)
@@ -376,6 +378,7 @@ fn appending_children_to_a_wide_parent_charges_no_more_work_than_to_a_narrow_one
         .source_units(1_000_000)
         .buffered_utf16_units(1_000_000)
         .auxiliary_entries(1_000_000)
+        .active_formatting_entries(1_000_000)
         .managed_nodes(1_000_000)
         .managed_edges(1_000_000)
         .managed_utf16_units(1_000_000)
@@ -475,6 +478,7 @@ fn append_succeeds_at_the_auxiliary_limit_because_it_uses_no_scratch_slot() {
     let selected = limits()
         .into_builder()
         .auxiliary_entries(4)
+        .active_formatting_entries(4)
         .finish()
         .unwrap();
     let mut control = ParseControl::new(selected, HtmlParseCancellation::new());
@@ -623,6 +627,7 @@ fn child_order_changes_acquire_no_auxiliary_entries() {
     let exact = roomy_limits()
         .into_builder()
         .auxiliary_entries(after[0])
+        .active_formatting_entries(after[0])
         .finish()
         .unwrap();
     order_scenario(exact).unwrap_or_else(|_| panic!());

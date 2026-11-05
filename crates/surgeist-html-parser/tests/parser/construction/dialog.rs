@@ -349,7 +349,9 @@ fn dialog_owned_records_obey_exact_capacity_work_and_cleanup_boundaries() {
             let builder = limits().into_builder();
             match resource {
                 HtmlParseResource::ManagedCapacityBytes => builder.managed_capacity_bytes(cap),
-                HtmlParseResource::AuxiliaryEntries => builder.auxiliary_entries(cap),
+                HtmlParseResource::AuxiliaryEntries => builder
+                    .auxiliary_entries(cap)
+                    .active_formatting_entries(cap),
                 HtmlParseResource::WorkCredits => builder.work_credits(cap),
                 _ => unreachable!(),
             }

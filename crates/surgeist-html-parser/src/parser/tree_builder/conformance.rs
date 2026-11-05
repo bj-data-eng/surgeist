@@ -3980,6 +3980,7 @@ mod whole_source_comparisons {
             .buffered_utf16_units(256 * k)
             .token_attributes(64 * k)
             .auxiliary_entries(512 * k)
+            .active_formatting_entries(512 * k)
             .managed_nodes(64 * k)
             .managed_edges(64 * k)
             .managed_attributes(64 * k)

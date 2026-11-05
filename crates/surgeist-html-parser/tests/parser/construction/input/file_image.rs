@@ -364,7 +364,9 @@ fn file_image_actual_capacity_and_retained_record_boundaries_refuse_atomically()
             match resource {
                 HtmlParseResource::ManagedCapacityBytes => builder.managed_capacity_bytes(cap),
                 HtmlParseResource::ManagedUtf16Units => builder.managed_utf16_units(cap),
-                HtmlParseResource::AuxiliaryEntries => builder.auxiliary_entries(cap),
+                HtmlParseResource::AuxiliaryEntries => builder
+                    .auxiliary_entries(cap)
+                    .active_formatting_entries(cap),
                 HtmlParseResource::SourceMapEntries => builder.source_map_entries(cap),
                 _ => unreachable!(),
             }

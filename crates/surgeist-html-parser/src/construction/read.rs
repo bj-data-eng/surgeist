@@ -328,6 +328,9 @@ impl<'a> HtmlParseAssociations<'a> {
             .map(|row| HtmlParseAssociation::new(self.history, row))
             .transpose()
     }
+    /// Starts a query for the rows whose source overlaps `source`. There is no index by
+    /// position: each `advance` examines one row, and a query advanced to completion visits all
+    /// [`len`](Self::len) of them, so `q` queries cost `q` times that many row visits.
     pub fn reverse(
         &self,
         source: &'a crate::HtmlSourceRange,
@@ -1064,6 +1067,11 @@ impl<'a> HtmlParseHistory<'a> {
             body: h.body,
         })
     }
+    /// Starts the expansion of `group`. The scratch must hold `index + 1` frames of 16 bytes,
+    /// where `index` is the position of the group among the [`len`](Self::len) groups: a group
+    /// created late needs scratch in proportion to the groups before it, up to `16 * len()`
+    /// bytes, however shallow its own history is. A shorter scratch is refused with
+    /// `InsufficientScratch`, which names the length required.
     pub fn cursor<'s>(
         &'s self,
         group: HtmlParseOriginGroup<'_>,

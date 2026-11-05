@@ -127,7 +127,7 @@ pub struct MarkupCase {
     pub(crate) mode: Mode,
     pub(crate) utf16: bool,
     pub(crate) body: Body,
-    pub(crate) caps: [u64; 19],
+    pub(crate) caps: [u64; 20],
     pub(crate) cancelled: bool,
     /// External facts and the injected fault of a capture-import case.
     pub(crate) plan: Option<Plan>,
@@ -139,7 +139,7 @@ impl Case {
         mode: Mode,
         utf16: bool,
         body: Body,
-        caps: [u64; 19],
+        caps: [u64; 20],
         cancelled: bool,
         plan: Option<Plan>,
     ) -> Result<Self> {
@@ -154,11 +154,11 @@ impl Case {
         case.validate()?;
         Ok(case)
     }
-    pub fn caps(&self) -> [u64; 19] {
+    pub fn caps(&self) -> [u64; 20] {
         self.caps
     }
     /// Reconfigures the parser caps; each stays within the documented envelope.
-    pub fn with_caps(mut self, caps: [u64; 19]) -> Result<Self> {
+    pub fn with_caps(mut self, caps: [u64; 20]) -> Result<Self> {
         self.caps = caps;
         self.validate()?;
         Ok(self)

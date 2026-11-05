@@ -213,7 +213,9 @@ fn creation_retention_has_exact_storage_and_work_limits_with_terminal_cleanup() 
             let builder = limits().into_builder();
             let constrained = match resource {
                 HtmlParseResource::ManagedUtf16Units => builder.managed_utf16_units(allowance),
-                HtmlParseResource::AuxiliaryEntries => builder.auxiliary_entries(allowance),
+                HtmlParseResource::AuxiliaryEntries => builder
+                    .auxiliary_entries(allowance)
+                    .active_formatting_entries(allowance),
                 HtmlParseResource::WorkCredits => builder.work_credits(allowance),
                 HtmlParseResource::SourceMapEntries => builder.source_map_entries(allowance),
                 _ => unreachable!("selected resource"),

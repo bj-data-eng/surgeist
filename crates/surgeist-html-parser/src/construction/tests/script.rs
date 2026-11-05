@@ -936,6 +936,7 @@ fn the_actual_script_metadata_entry_requires_its_own_slot_and_failed_admission_i
             limits()
                 .into_builder()
                 .auxiliary_entries(cap)
+                .active_formatting_entries(cap)
                 .finish()
                 .unwrap(),
         );

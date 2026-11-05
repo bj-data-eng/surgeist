@@ -3,7 +3,7 @@ use surgeist_fuzz::{engine, *};
 use surgeist_html_fuzz::{MarkupCase, MarkupTarget};
 
 /// The documented generous product envelope every default case carries.
-const ENVELOPE: [u64; 19] = [
+const ENVELOPE: [u64; 20] = [
     100_000,
     100_000,
     10_000,
@@ -18,6 +18,7 @@ const ENVELOPE: [u64; 19] = [
     100_000,
     100_000,
     100,
+    1_000_000,
     100_000,
     100_000_000,
     100_000_000,
@@ -28,13 +29,13 @@ const SEEDS: u8 = 12;
 const TREE: &str = "surgeist-html::exact-markup-tree";
 
 /// Handwritten HMK1 layout (see the README): header, then the body.
-fn header(mode: u8, utf16: u8, a: u8, b: u8, body: u8, flags: u8, caps: [u64; 19]) -> Vec<u8> {
+fn header(mode: u8, utf16: u8, a: u8, b: u8, body: u8, flags: u8, caps: [u64; 20]) -> Vec<u8> {
     let mut v = b"HMK1".to_vec();
     v.extend_from_slice(&[mode, utf16, a, b, body, flags]);
     for cap in caps {
         v.extend_from_slice(&cap.to_le_bytes());
     }
-    assert_eq!(v.len(), 162);
+    assert_eq!(v.len(), 170);
     v
 }
 /// A fragment in a div context holding one text item of the given pieces.
@@ -68,7 +69,7 @@ fn strict_codec_roundtrips_isolated_surrogates_and_rejects_noncanonical_input() 
     for n in 0..bytes.len() {
         assert!(t.decode(&bytes[..n]).is_err(), "truncated at {n}");
     }
-    for (at, value) in [(0, 0), (4, 2), (5, 2), (7, 2), (8, 2), (9, 2), (162, 3)] {
+    for (at, value) in [(0, 0), (4, 2), (5, 2), (7, 2), (8, 2), (9, 2), (170, 3)] {
         let mut b = bytes.clone();
         b[at] = value;
         assert!(t.decode(&b).is_err(), "tag {at}");
