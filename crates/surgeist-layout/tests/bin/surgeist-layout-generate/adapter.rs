@@ -603,6 +603,43 @@ mod tests {
     }
 
     #[test]
+    fn measured_grid_lowers_sixteen_character_runs_and_checks_their_advances() {
+        use crate::measurement::BoxObservationRequest::MeasuredLeaf;
+
+        let text = "HHHHHHHHHHHHHHHH\u{200b}HHHHHHHHHHHHHHHH";
+        let mut variants = measured_leaf_variants();
+        for node in &mut variants {
+            node["children"][0]["textContent"] = text.into();
+            node["measuredLeaf"]["sourceUnits"] =
+                serde_json::json!(text.encode_utf16().collect::<Vec<_>>());
+            node["measuredLeaf"]["advances"] = serde_json::json!([160, 160, 320]);
+        }
+        let captures = LayoutAdapter
+            .lower_with_observations(&fixture(), envelope(variants.clone()), MeasuredLeaf)
+            .expect("the measured sixteen-character runs must lower");
+        for capture in captures {
+            let CaseOutcome::Generated { bytes, .. } = capture else {
+                panic!("expected a generated capture");
+            };
+            let xml = std::str::from_utf8(&bytes).unwrap();
+            let document = roxmltree::Document::parse(xml).unwrap();
+            let witness = document
+                .root_element()
+                .children()
+                .find(|node| node.has_tag_name("measured-leaf"))
+                .unwrap();
+            assert_eq!(witness.attribute("first-advance"), Some("160"));
+            assert_eq!(witness.attribute("second-advance"), Some("160"));
+            assert_eq!(witness.attribute("full-advance"), Some("320"));
+        }
+        variants[0]["measuredLeaf"]["advances"] = serde_json::json!([40, 40, 80]);
+        assert!(matches!(
+            LayoutAdapter.lower_with_observations(&fixture(), envelope(variants), MeasuredLeaf),
+            Err(AdapterError::Measurement(error)) if error.field_path == "measuredLeaf"
+        ));
+    }
+
+    #[test]
     fn measured_grid_capture_refuses_missing_unrequested_or_contradictory_witnesses() {
         use crate::measurement::BoxObservationRequest::{
             ElementScrollSizes, Geometry, MeasuredLeaf,
