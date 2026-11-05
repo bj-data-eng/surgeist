@@ -210,6 +210,17 @@ fn identity_drift_rejects_identical_geometry() {
     }
 }
 #[test]
+fn canonical_parser_preserves_an_exact_widened_binary32_coordinate() {
+    let value = prepared_source::unique_json("95.20001220703125").unwrap();
+    let actual: Number =
+        serde_json::from_value(value).expect("exact widened binary32 must survive JSON decoding");
+    assert_eq!(actual, Number(f32::from_bits(0x42be_6668)));
+
+    let off_grid = prepared_source::unique_json("95.20001220703124").unwrap();
+    assert!(serde_json::from_value::<Number>(off_grid).is_err());
+}
+
+#[test]
 fn parser_rejects_duplicates_unknown_missing_noncanonical_and_negative_extents() {
     let raw = declaration().to_string();
     assert!(

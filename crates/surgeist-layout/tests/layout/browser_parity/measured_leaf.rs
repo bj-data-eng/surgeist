@@ -33,17 +33,15 @@ pub(super) fn parse(
             "requires one root Grid witness and its complete element scroll-size table",
         ));
     }
+    const ADVANCE_ATTRIBUTES: [&str; 3] = ["first-advance", "second-advance", "full-advance"];
     let fixed = [
         ("profile", "ahem-10px-zwsp"),
         (
             "font-resource-sha256",
             pinned_font::AHEM_STYLESHEET_WOFF2_SHA256,
         ),
-        ("first-advance", "40"),
-        ("second-advance", "40"),
-        ("full-advance", "80"),
     ];
-    if section.attributes().len() != fixed.len() + 1
+    if section.attributes().len() != fixed.len() + ADVANCE_ATTRIBUTES.len() + 1
         || section.attributes().any(|attr| attr.namespace().is_some())
         || fixed
             .iter()
@@ -53,7 +51,7 @@ pub(super) fn parse(
         })
     {
         return Err(invalid(
-            "unknown payload or changed profile, font resource or advances",
+            "unknown payload or changed profile or font resource",
         ));
     }
     let path = section
@@ -68,9 +66,13 @@ pub(super) fn parse(
         .children
         .get(child_index)
         .ok_or_else(|| invalid("source child missing"))?;
+    let advances = leaf
+        .text
+        .as_deref()
+        .and_then(pinned_font::measured_grid_advances)
+        .ok_or_else(|| invalid("unregistered text runs"))?;
     if leaf.kind != NodeKind::Text
         || !leaf.children.is_empty()
-        || leaf.text.as_deref() != Some("HHHH\u{200b}HHHH")
         || root.text.is_some()
         || root
             .children
@@ -81,6 +83,13 @@ pub(super) fn parse(
         return Err(invalid(
             "source does not identify the single captured text leaf",
         ));
+    }
+    if ADVANCE_ATTRIBUTES
+        .into_iter()
+        .zip(advances)
+        .any(|(name, advance)| section.attribute(name) != Some(advance.to_string().as_str()))
+    {
+        return Err(invalid("advances disagree with the captured source runs"));
     }
     Ok(Some(MeasuredLeaf { child_index }))
 }

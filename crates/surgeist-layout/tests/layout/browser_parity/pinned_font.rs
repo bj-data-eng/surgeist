@@ -8,6 +8,14 @@ pub const ROOT_CONTEXT_STYLESHEET_SHA256: &str =
 pub const AHEM_STYLESHEET_WOFF2_SHA256: &str =
     "e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c";
 
+pub fn measured_grid_advances(source: &str) -> Option<[u32; 3]> {
+    match source {
+        "HHHH\u{200b}HHHH" => Some([40, 40, 80]),
+        "HHHHHHHHHHHHHHHH\u{200b}HHHHHHHHHHHHHHHH" => Some([160, 160, 320]),
+        _ => None,
+    }
+}
+
 fn word(bytes: &[u8], offset: usize) -> Option<u16> {
     Some(u16::from_be_bytes(
         bytes.get(offset..offset.checked_add(2)?)?.try_into().ok()?,

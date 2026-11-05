@@ -1174,6 +1174,22 @@ hypothetical_direction = "ltr"
 root_direction = "variant"
 inline_offset = 0
 
+[records.semantic_specifications.border_box_ltr]
+path = "semantic/grid-max-fit-10-border_box_ltr.json"
+sha256 = "52401b045272444ec112309bfa467f5fa0da7b4cb3387244a3b429144d7bcc34"
+
+[records.semantic_specifications.border_box_rtl]
+path = "semantic/grid-max-fit-10-border_box_rtl.json"
+sha256 = "2a4f4b42be68b83bef2a3ac6fab95d3ff0ce45f99a802f68eeb2c88762b64c52"
+
+[records.semantic_specifications.content_box_ltr]
+path = "semantic/grid-max-fit-10-content_box_ltr.json"
+sha256 = "ca02b66697e9e0e3e965d3cf2a571ea99a553e55fb3ee15d20ffc438d46dd75e"
+
+[records.semantic_specifications.content_box_rtl]
+path = "semantic/grid-max-fit-10-content_box_rtl.json"
+sha256 = "5b244c6c56a2166f902dff4c80e198bcafe2faa242cbadb38584e91f563d6955"
+
 [[records]]
 source = "html/grid/grid_span_2_max_content_fit_content_10px_indefinite_hidden.html"
 source_sha256 = "7c3bebc269ac5836d3afc09ed7ec101131eace51f95b2d267590c6f56693ee78"
@@ -1296,19 +1312,19 @@ inline_offset = 0
 
 [records.semantic_specifications.border_box_ltr]
 path = "semantic/grid-min-fit-10-border_box_ltr.json"
-sha256 = "4f11520d540b65ac40917b6f319543da72511b4a5652ac0fbe9561fb2f917b23"
+sha256 = "2f5cd3c7f843f17eb29672135c807db8895e7474d9a5e47bf5098aac804a6256"
 
 [records.semantic_specifications.border_box_rtl]
 path = "semantic/grid-min-fit-10-border_box_rtl.json"
-sha256 = "344a3ce9d87c903500ead01c9deb3896aaf79269edaa5b78dced62f89c8eeb57"
+sha256 = "0f357fb7aa8093ed81c3556f61035fdc2150f98be2be39ca683413371a18b51b"
 
 [records.semantic_specifications.content_box_ltr]
 path = "semantic/grid-min-fit-10-content_box_ltr.json"
-sha256 = "6ad76ac4c49a17d6698fa17455a7e1bcf5ad08d9b26d3ef9f026ff924f7ed136"
+sha256 = "427992eb2cc48fdad10bf1cc79b8e7dc1755ea6218f82b77e29eae0c99679e8b"
 
 [records.semantic_specifications.content_box_rtl]
 path = "semantic/grid-min-fit-10-content_box_rtl.json"
-sha256 = "1c215eaf1ba0998e9fd02629d7395e9f65190ad437dc10e85fed818b72b82130"
+sha256 = "fc160309db6b47b3db54a2c823b1da3f292b6b12ee91b0debf5dbc550ccb028b"
 
 [[records]]
 source = "html/grid/grid_span_2_min_content_fit_content_10px_indefinite_hidden.html"
@@ -1332,19 +1348,19 @@ inline_offset = 0
 
 [records.semantic_specifications.border_box_ltr]
 path = "semantic/grid-min-fit-10-hidden-border_box_ltr.json"
-sha256 = "7b835c73b0f0d1b06d575895d74d601268053a0122dbfea12bbfa4024563ada3"
+sha256 = "760193a7abc6f138cc09fcf5524bd47859891a3dde81b5dfbd7ce0a36ab3b4f7"
 
 [records.semantic_specifications.border_box_rtl]
 path = "semantic/grid-min-fit-10-hidden-border_box_rtl.json"
-sha256 = "ede0cf6fde81c019d674aeea89ac98f8503f050130d976b4c50da67c201ef7d8"
+sha256 = "875ddd70973a66af29f0720df6d32856ecb4051229f7b09e3e1bfc46ff04f9bd"
 
 [records.semantic_specifications.content_box_ltr]
 path = "semantic/grid-min-fit-10-hidden-content_box_ltr.json"
-sha256 = "1f9aa61658534aff546977ca1f5c9aadef9964cdb5b4c29005c17061f19e511a"
+sha256 = "66eba4544215836af1102eeb84c880c53986df99fef6b730fc05ec4d8fd2f556"
 
 [records.semantic_specifications.content_box_rtl]
 path = "semantic/grid-min-fit-10-hidden-content_box_rtl.json"
-sha256 = "fe7f583aff3f4b5075a1f35751e27fd4552d49840d410e6025b80c46b54bb8eb"
+sha256 = "3f8a10bef065b67c43ce0ebbd1afef2853464f40bb662f1f9e0d4182c5f0a1e1"
 
 [[records]]
 source = "html/grid/grid_span_2_min_content_fit_content_30px_indefinite.html"
@@ -1368,19 +1384,19 @@ inline_offset = 0
 
 [records.semantic_specifications.border_box_ltr]
 path = "semantic/grid-min-fit-30-border_box_ltr.json"
-sha256 = "527deb16d7f4ffefcc90c9b8bda1ccd5392a3f8dd7439429bf67fd83bc56c36c"
+sha256 = "e7edadb56358700517ffbbffed4e4265f98fe0f2fa7e648f9edf7b04c1e71cc9"
 
 [records.semantic_specifications.border_box_rtl]
 path = "semantic/grid-min-fit-30-border_box_rtl.json"
-sha256 = "cd07e529721eb95e21410b1e47738c867ec3a661e450e9f5d9e385308cb7cd07"
+sha256 = "d4a943c81d6ce3309d0d586e6722c4affcff0d111ac880c70e363dd8d7bef3a8"
 
 [records.semantic_specifications.content_box_ltr]
 path = "semantic/grid-min-fit-30-content_box_ltr.json"
-sha256 = "f9e6c3d83023d6780a8c44006379aa7838ddc87f952fe40876c65d13dd4375dd"
+sha256 = "c4c7b76ad9685a4677272b49601849b859bf80388ddc534cd3f2b002e5177806"
 
 [records.semantic_specifications.content_box_rtl]
 path = "semantic/grid-min-fit-30-content_box_rtl.json"
-sha256 = "eb3217e76b668501eeb343e12b2db76bd43e02abaf876c1b746dec56205af14d"
+sha256 = "02fc2fdec53bfbc91403327ae77f8d497c9d4253efd8dd663de3ae64e0df062b"
 
 [[records]]
 source = "html/grid/grid_span_2_min_content_fit_content_30px_indefinite_hidden.html"
@@ -1404,19 +1420,19 @@ inline_offset = 0
 
 [records.semantic_specifications.border_box_ltr]
 path = "semantic/grid-min-fit-30-hidden-border_box_ltr.json"
-sha256 = "b2763005e7024e2ba380f54d82fe1b4850f5f338951232abbc9e187a0de96559"
+sha256 = "b7b30f53a6221dc369de30bcd4adb8008f0de93b7a5016c9eb4b4695b8807452"
 
 [records.semantic_specifications.border_box_rtl]
 path = "semantic/grid-min-fit-30-hidden-border_box_rtl.json"
-sha256 = "17d6c5579240bf8303f234765d57c4acf230b6ca71dade7f31d6ad0640b024b3"
+sha256 = "ba3759e48fa77cf4a7d47f1d8fd810b574f1913bf5896be0ed6679cafe88d92d"
 
 [records.semantic_specifications.content_box_ltr]
 path = "semantic/grid-min-fit-30-hidden-content_box_ltr.json"
-sha256 = "bb3ec517815e1c47abff7fcf6322e45ab74335732494c85b264b3fe3d888423c"
+sha256 = "5f57396dc66f22ac72e762875a7f4c77d68b5aaac5937c484385e0d33dc48062"
 
 [records.semantic_specifications.content_box_rtl]
 path = "semantic/grid-min-fit-30-hidden-content_box_rtl.json"
-sha256 = "7cfaa8b1e01647a36f94659e933df17d53aed0f363f7689e007946c3e3cb6679"
+sha256 = "c617f545b2a786c7d10599e9a3a156dfb62652e25d834d895da003dae83864c9"
 
 [[records]]
 source = "html/grid/grid_span_2_min_content_fit_content_80px_indefinite.html"
@@ -1518,6 +1534,22 @@ hypothetical_direction = "ltr"
 root_direction = "variant"
 inline_offset = 0
 
+[records.semantic_specifications.border_box_ltr]
+path = "semantic/grid-thirteen-track-border_box_ltr.json"
+sha256 = "dc82b039ce98480a7d6142391e3c8f3db2753ccb6b6dc54845a9d5854d2df6a0"
+
+[records.semantic_specifications.border_box_rtl]
+path = "semantic/grid-thirteen-track-border_box_rtl.json"
+sha256 = "09cefa8ab368b36d572a29bb73c5f2e4cd62d40ed0d70bcd9c179d232e44128f"
+
+[records.semantic_specifications.content_box_ltr]
+path = "semantic/grid-thirteen-track-content_box_ltr.json"
+sha256 = "dff92709fc7a72f365f907240d0e067c2dd4c4401cb1a6a613d8c62ce6eda57a"
+
+[records.semantic_specifications.content_box_rtl]
+path = "semantic/grid-thirteen-track-content_box_rtl.json"
+sha256 = "1e67c8f6466de2a672df59617a522ef4489f97e23b48d7e51498f2c9b5a2c2c0"
+
 [[records]]
 source = "html/grid/grid_span_13_most_non_flex_with_minmax_indefinite_hidden.html"
 source_sha256 = "e6f5e2fec747effbde5c41e663d21f905046d1f28ee3287b308677fb14ab1a6f"
@@ -1537,6 +1569,22 @@ containing_direction = "ltr"
 hypothetical_direction = "ltr"
 root_direction = "variant"
 inline_offset = 0
+
+[records.semantic_specifications.border_box_ltr]
+path = "semantic/grid-thirteen-track-hidden-border_box_ltr.json"
+sha256 = "5e3a7b2d4ca1f1a6902b039efe0d627aa019836d4e244448ea06c61f48324400"
+
+[records.semantic_specifications.border_box_rtl]
+path = "semantic/grid-thirteen-track-hidden-border_box_rtl.json"
+sha256 = "ffc341683390791b677ee537e0c8d990522e85b83e3f8cadd0068b2daf0e9978"
+
+[records.semantic_specifications.content_box_ltr]
+path = "semantic/grid-thirteen-track-hidden-content_box_ltr.json"
+sha256 = "0b7af5b97ac3d820b2bf5564f2aaae3fff192b4b08419767e09c6b6c66a1bb9b"
+
+[records.semantic_specifications.content_box_rtl]
+path = "semantic/grid-thirteen-track-hidden-content_box_rtl.json"
+sha256 = "7c4eb443a973e35f433996dfc463d30ac7da0ebc575fb513fe1515634377ee3f"
 
 [[records]]
 source = "html/qualification/element-scroll-reachable.html"

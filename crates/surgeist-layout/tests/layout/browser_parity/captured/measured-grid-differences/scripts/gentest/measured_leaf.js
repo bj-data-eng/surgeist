@@ -1,14 +1,15 @@
 fontResourceSha256 => {
   const root = document.getElementById('test-root');
-  const source = 'HHHH\u200bHHHH';
+  const sources = ['HHHH\u200bHHHH', 'HHHHHHHHHHHHHHHH\u200bHHHHHHHHHHHHHHHH'];
   function readLeaf() {
     const children = Array.from(root.children);
     const candidates = children.filter(element => element.tagName === 'DIV' &&
       element.childNodes.length === 1 && element.firstChild.nodeType === Node.TEXT_NODE &&
-      element.textContent === source);
+      sources.includes(element.textContent));
     if (candidates.length !== 1) throw new Error('Measured Grid leaf requires one matching text child');
 
     const [leaf] = candidates;
+    const source = leaf.textContent;
     const own = getComputedStyle(leaf);
     const face = referenceMetricFace();
     if (face.status !== 'loaded' || !hasClosedReferenceFont(own) ||
@@ -24,13 +25,13 @@ fontResourceSha256 => {
       nodePath: '0.' + children.indexOf(leaf),
       fontResourceSha256,
       sourceUnits: Array.from(source, char => char.charCodeAt(0)),
-      advances: [source.slice(0, 4), source.slice(5), source].map(run => canvas.measureText(run).width),
+      advances: [...source.split('\u200b'), source].map(run => canvas.measureText(run).width),
       direction: own.direction,
       boxSizing: own.boxSizing,
       clientWidth: leaf.clientWidth,
       scrollWidth: leaf.scrollWidth
     };
-    return {leaf, face, witness};
+    return {leaf, face, source, witness};
   }
   function measure(variant) {
     if (!root) return unsupportedTestData('Measured Grid capture requires #test-root');
@@ -44,7 +45,7 @@ fontResourceSha256 => {
       if (before.leaf !== after.leaf || before.face !== after.face ||
           JSON.stringify(before.witness) !== JSON.stringify(after.witness) ||
           captured.viewport?.rootContext?.kind !== 'absolute-root-local' ||
-          captured.children?.[index]?.textContent !== source) {
+          captured.children?.[index]?.textContent !== before.source) {
         throw new Error('Measured Grid leaf does not match its captured occurrence');
       }
       return {...captured, measuredLeaf: after.witness};

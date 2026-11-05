@@ -101,6 +101,32 @@ fn measured_leaf_xml_preserves_valid_evidence_and_refuses_mismatched_witnesses()
 }
 
 #[test]
+fn measured_grid_admits_sixteen_character_runs_and_checks_their_advances() {
+    let sizes = table(&[("0", [322, 80, 322, 80]), ("0.0", [322, 40, 322, 40])]);
+    let witness = r#"<measured-leaf profile="ahem-10px-zwsp" node-path="0.0" font-resource-sha256="e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c" first-advance="160" second-advance="160" full-advance="320"/>"#;
+    let raw = xml(
+        "",
+        Some(r#"<text source-tag="div">HHHHHHHHHHHHHHHH&#x200b;HHHHHHHHHHHHHHHH</text>"#),
+        &(sizes + witness),
+    )
+    .replace(r#"display="block""#, r#"display="grid""#);
+    let admitted = Golden::parse(&raw).expect("the measured sixteen-character runs must parse");
+    assert_eq!(admitted.measured_leaf.unwrap().child_index, 0);
+
+    for changed in [
+        raw.replace(r#"second-advance="160""#, r#"second-advance="40""#),
+        raw.replace("&#x200b;HHHHHHHHHHHHHHHH", "&#x200b;HHHH"),
+        raw.replace("HHHHHHHHHHHHHHHH", "HHHHHHHH")
+            .replace("160", "80")
+            .replace("320", "160"),
+    ] {
+        assert!(
+            Golden::parse(&changed).is_err_and(|error| error.to_string().contains("measured-leaf"))
+        );
+    }
+}
+
+#[test]
 fn absent_observation_preserves_existing_capture_and_strict_first_error() {
     let mut g = Golden::parse(&xml("width=\"20px\" height=\"30px\"", None, "")).unwrap();
     assert!(!g.has_element_scroll_sizes());

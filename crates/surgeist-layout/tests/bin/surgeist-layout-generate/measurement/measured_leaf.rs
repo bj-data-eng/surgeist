@@ -6,14 +6,12 @@ use super::{
     Attributes, Context, ElementScrollSize, MeasurementError, MeasurementErrorKind, WireNode,
 };
 
-const SOURCE_UNITS: [u16; 9] = [72, 72, 72, 72, 8203, 72, 72, 72, 72];
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct WireMeasuredLeaf {
     node_path: String,
     font_resource_sha256: String,
-    source_units: [u16; 9],
+    source_units: Vec<u16>,
     advances: [u32; 3],
     direction: String,
     box_sizing: String,
@@ -69,8 +67,12 @@ impl WireMeasuredLeaf {
             field,
             "measured leaf role or captured variant changed",
         )?;
+        let expected_advances = leaf
+            .text_content
+            .as_deref()
+            .and_then(crate::pinned_font::measured_grid_advances);
         context.compatible(
-            self.source_units == SOURCE_UNITS
+            expected_advances.is_some()
                 && root.text_content.is_none()
                 && !children
                     .iter()
@@ -79,13 +81,13 @@ impl WireMeasuredLeaf {
                 && leaf
                     .text_content
                     .as_ref()
-                    .is_some_and(|text| text.encode_utf16().eq(self.source_units)),
+                    .is_some_and(|text| text.encode_utf16().eq(self.source_units.iter().copied())),
             field,
             "measured source does not identify the single captured text leaf",
         )?;
         context.compatible(
             self.font_resource_sha256 == crate::pinned_font::AHEM_STYLESHEET_WOFF2_SHA256
-                && self.advances == [40, 40, 80],
+                && expected_advances == Some(self.advances),
             field,
             "measured font resource or advances changed",
         )?;

@@ -425,7 +425,7 @@ impl AdmittedRegistry {
 const REGISTERED_BOX_TERMINAL_SHA256: &str =
     "c4280cd619a70520a51232c83b13ae0e6aa078479a32fa49947d1e0a0de8b074";
 const REGISTERED_MEASURED_GRID_TERMINAL_SHA256: &str =
-    "572f4e0ce01b0b2add215c6d9e431d801ea5d48cbb9f14eb1ce8af1575352c4d";
+    "28435f3977feecfc76bfd28de1c364124d0e5c4abc08b7f0f362952b08fa27fc";
 
 pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
     let editions = [
