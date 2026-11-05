@@ -28,6 +28,7 @@ struct Catalogue {
 #[serde(deny_unknown_fields)]
 struct SemanticPublication {
     source: RelativePath,
+    replaces_sha256: Option<Sha256Digest>,
     specifications: BTreeMap<String, SemanticReference>,
 }
 
@@ -111,34 +112,6 @@ impl Declaration {
             return Err("qualification declaration schema_version must be 3".into());
         }
         let variants = fixture_cases().map(|(variant, _)| variant);
-        for SemanticPublication {
-            source,
-            specifications,
-        } in catalogue.semantic_publications
-        {
-            let record = catalogue
-                .records
-                .iter_mut()
-                .find(|record| record.source == source)
-                .ok_or_else(|| {
-                    format!(
-                        "semantic publication requires a declared source: {}",
-                        source.as_str()
-                    )
-                })?;
-            if !matches!(record.source_kind, SourceKind::Original)
-                || record.relation.is_some()
-                || record.semantic_specifications.is_some()
-                || specifications.len() != variants.len()
-            {
-                return Err(format!(
-                    "semantic publication requires an unpaired original and all variants: {}",
-                    source.as_str()
-                )
-                .into());
-            }
-            record.semantic_specifications = Some(specifications);
-        }
         let mut sources = BTreeSet::new();
         let mut stems = BTreeMap::new();
         let mut semantic_paths = BTreeSet::new();
@@ -186,20 +159,7 @@ impl Declaration {
                         "semantic specifications require a nonempty Generated variant map".into(),
                     );
                 }
-                for (variant, reference) in specifications {
-                    if !variants.contains(&variant.as_str())
-                        || !reference.path.as_str().starts_with("semantic/")
-                    {
-                        return Err("semantic specification requires a registered variant and semantic/ input path".into());
-                    }
-                    if !semantic_paths.insert(reference.path.as_str()) {
-                        return Err(format!(
-                            "duplicate semantic specification path: {}",
-                            reference.path.as_str()
-                        )
-                        .into());
-                    }
-                }
+                validate_semantic_references(specifications, &variants, &mut semantic_paths)?;
             }
         }
         for record in &catalogue.records {
@@ -215,6 +175,50 @@ impl Declaration {
         }
         if catalogue.records.is_empty() {
             return Err("root-context qualification requires source records".into());
+        }
+        let mut annotated = BTreeSet::new();
+        for SemanticPublication {
+            source,
+            replaces_sha256,
+            specifications,
+        } in catalogue.semantic_publications
+        {
+            let record = catalogue
+                .records
+                .iter_mut()
+                .find(|record| record.source == source)
+                .ok_or_else(|| {
+                    format!(
+                        "semantic publication requires a declared source: {}",
+                        source.as_str()
+                    )
+                })?;
+            if !annotated.insert(source)
+                || !matches!(record.source_kind, SourceKind::Original)
+                || record.relation.is_some()
+                || specifications.len() != variants.len()
+            {
+                return Err(format!(
+                    "semantic publication requires a unique unpaired original and all variants: {}",
+                    record.source.as_str()
+                )
+                .into());
+            }
+            match (&record.semantic_specifications, replaces_sha256) {
+                (None, None) => {}
+                (Some(previous), Some(pin))
+                    if previous.len() == variants.len()
+                        && Sha256Digest::from_bytes(serde_json::to_vec(previous)?) == pin => {}
+                _ => {
+                    return Err(format!(
+                        "semantic publication predecessor differs: {}",
+                        record.source.as_str()
+                    )
+                    .into());
+                }
+            }
+            validate_semantic_references(&specifications, &variants, &mut semantic_paths)?;
+            record.semantic_specifications = Some(specifications);
         }
         let mut profiles = BTreeSet::new();
         for SpecializedPublication { source, profile } in catalogue.specialized_publications {
@@ -275,6 +279,31 @@ impl Declaration {
         }
         Ok(uncovered)
     }
+}
+
+fn validate_semantic_references(
+    specifications: &BTreeMap<String, SemanticReference>,
+    variants: &[&str],
+    paths: &mut BTreeSet<RelativePath>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    for (variant, reference) in specifications {
+        if !variants.contains(&variant.as_str())
+            || !reference.path.as_str().starts_with("semantic/")
+        {
+            return Err(
+                "semantic specification requires a registered variant and semantic/ input path"
+                    .into(),
+            );
+        }
+        if !paths.insert(reference.path.clone()) {
+            return Err(format!(
+                "duplicate semantic specification path: {}",
+                reference.path.as_str()
+            )
+            .into());
+        }
+    }
+    Ok(())
 }
 
 impl Record {
