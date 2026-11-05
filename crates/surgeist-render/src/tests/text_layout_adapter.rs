@@ -546,7 +546,12 @@ fn actual_decorations_follow_glyphs_and_have_one_shared_placement_layer() {
     ] {
         let prepared = prepare_text_layout(&input, placement, limits()).unwrap();
         let commands = &prepared.scene().commands;
-        let (_, transform) = outline(&commands[0]);
+        let (run, transform) = outline(&commands[0]);
+        let mut draws = prepared.glyph_draws();
+        let draw = draws.next().unwrap();
+        assert!(std::ptr::eq(draw.run(), run));
+        assert_eq!(draw.transform(), transform);
+        assert!(draws.next().is_none());
         assert_eq!(
             transform,
             Transform::translation(0.0, 16.0)
@@ -628,6 +633,21 @@ fn aggregate_limits_cover_actual_multiple_runs_and_raised_retry() {
     let exact = bounded(2, 10, ROOM, 2, 0, 0);
     let prepared = prepare_text_layout(&input, Transform::identity(), exact).unwrap();
     assert_eq!(prepared.scene().commands.len(), 2);
+    let draws: Vec<_> = prepared.glyph_draws().collect();
+    assert_eq!(draws.len(), 2);
+    for (draw, command) in draws.into_iter().zip(&prepared.scene().commands) {
+        let Command::PreparedGlyphRun {
+            run,
+            transform,
+            paint,
+        } = command
+        else {
+            panic!("expected a glyph draw");
+        };
+        assert!(std::ptr::eq(draw.run(), run));
+        assert_eq!(draw.transform(), *transform);
+        assert!(std::ptr::eq(draw.paint(), paint));
+    }
     assert_eq!(
         prepared
             .scene()
@@ -939,6 +959,9 @@ fn empty_and_actual_space_do_not_acquire_fabricated_ink() {
     );
     assert_eq!(run.bounds().kind(), crate::TextRunBoundsKind::Empty);
     assert_eq!(run.path_elements().count(), 0);
+    let mut draws = prepared.glyph_draws();
+    assert!(std::ptr::eq(draws.next().unwrap().run(), run));
+    assert!(draws.next().is_none());
 }
 
 #[test]

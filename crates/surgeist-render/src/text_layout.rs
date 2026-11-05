@@ -7,7 +7,7 @@ use surgeist_text::{Brush, Layout, RunView};
 
 use crate::{
     Color, Error, FontData, GlyphRunLimits, GlyphSynthesis, Layer, NormalizedCoordinate, Paint,
-    Result, Scene, Shape, TextGlyph, TextInstance, TextPaint, Transform,
+    PreparedGlyphRun, Result, Scene, Shape, TextGlyph, TextInstance, TextPaint, Transform,
     scene::Command,
     text::{qualify_bounds_placement, qualify_glyph_placement},
 };
@@ -68,6 +68,56 @@ impl<'a> PreparedTextScene<'a> {
     #[must_use]
     pub const fn scene(&self) -> &Scene {
         &self.scene
+    }
+
+    /// Borrows admitted glyph draws in emitted paint order, including empty ink.
+    ///
+    /// The adapter stores glyph draws at the scene root. Its layers contain
+    /// decoration fills, which are outside this glyph-draw view.
+    pub fn glyph_draws(&self) -> impl Iterator<Item = PreparedGlyphDraw<'_>> {
+        self.scene
+            .commands
+            .iter()
+            .filter_map(|command| match command {
+                Command::PreparedGlyphRun {
+                    run,
+                    transform,
+                    paint,
+                } => Some(PreparedGlyphDraw {
+                    run,
+                    transform: *transform,
+                    paint,
+                }),
+                _ => None,
+            })
+    }
+}
+
+/// An immutable draw in a prepared Text scene.
+#[derive(Clone, Copy, Debug)]
+pub struct PreparedGlyphDraw<'scene> {
+    run: &'scene PreparedGlyphRun,
+    transform: Transform,
+    paint: &'scene TextPaint,
+}
+
+impl<'scene> PreparedGlyphDraw<'scene> {
+    /// Borrows the actual admitted run and its retained font and ink.
+    #[must_use]
+    pub const fn run(self) -> &'scene PreparedGlyphRun {
+        self.run
+    }
+
+    /// Returns the stored transform from run coordinates to scene coordinates.
+    #[must_use]
+    pub const fn transform(self) -> Transform {
+        self.transform
+    }
+
+    /// Borrows the paint stored with the draw.
+    #[must_use]
+    pub const fn paint(self) -> &'scene TextPaint {
+        self.paint
     }
 }
 

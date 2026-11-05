@@ -120,8 +120,8 @@ pub use surface::{
 };
 #[cfg(feature = "render-text")]
 pub use text_layout::{
-    PreparedTextScene, TextLayoutCause, TextLayoutError, TextLayoutLimits, TextLayoutLocation,
-    TextLayoutResource, prepare_text_layout,
+    PreparedGlyphDraw, PreparedTextScene, TextLayoutCause, TextLayoutError, TextLayoutLimits,
+    TextLayoutLocation, TextLayoutResource, prepare_text_layout,
 };
 
 pub use text::{
