@@ -622,10 +622,64 @@ fn fixed_editions_create_distinct_exclusive_targets() {
     let parent = Directory::new();
     let old = create_edition(&parent.0, Edition::RootContextV4).unwrap();
     let current = create_edition(&parent.0, Edition::CanonicalBoxDifferences).unwrap();
+    let measured = create_edition(&parent.0, Edition::MeasuredGridDifferences).unwrap();
+    assert_eq!(measured, parent.0.join(authority::MEASURED_GRID_EDITION));
+    assert!(create_edition(&parent.0, Edition::MeasuredGridDifferences).is_err());
     assert_eq!(old, parent.0.join("root-context-v4"));
     assert_eq!(current, parent.0.join(authority::EDITION));
     assert!(create_edition(&parent.0, Edition::CanonicalBoxDifferences).is_err());
 }
+#[test]
+fn retained_publication_selects_only_its_own_specifications() {
+    let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let retained = owner.join(authority::ARTIFACT_ROOT);
+    let mut declaration = fs::read(retained.join("corpus.toml")).unwrap();
+    declaration.extend_from_slice(
+        br#"
+
+[[records]]
+source = "html/qualification/unretained-publication-test.html"
+source_sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+[records.semantic_specifications.border_box_ltr]
+path = "semantic/unretained-publication-test.json"
+sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+"#,
+    );
+    let input = canonical_input(
+        &retained,
+        &declaration,
+        PublishedEdition::CanonicalBoxDifferences,
+        InputAccess::ReadOnly,
+    )
+    .unwrap();
+    assert_eq!(input.bytes, declaration);
+    assert_eq!(input.declaration.records.len(), 1);
+    assert_eq!(
+        input.declaration.records[0].source.as_str(),
+        "html/flex/fri07_collapsed_strut_wrapping.html"
+    );
+    assert!(
+        canonical_input(
+            owner,
+            &declaration,
+            PublishedEdition::CanonicalBoxDifferences,
+            InputAccess::Prepare,
+        )
+        .is_err()
+    );
+}
+
 #[test]
 fn terminal_output_has_explicit_exact_byte_custody_outside_the_input_map() {
     let root = Directory::new();

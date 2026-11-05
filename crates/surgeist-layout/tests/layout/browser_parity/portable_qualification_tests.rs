@@ -221,6 +221,7 @@ impl Fixture {
         admit(
             &self.owner,
             Registration {
+                edition: PublishedEdition::CanonicalBoxDifferences,
                 terminal_sha256: &self.terminal_sha256,
             },
         )
@@ -554,6 +555,7 @@ fn external_terminal_anchor_rejects_even_semantically_identical_changed_bytes() 
         admit(
             &fixture.owner,
             Registration {
+                edition: PublishedEdition::CanonicalBoxDifferences,
                 terminal_sha256: &"0".repeat(64)
             }
         ),

@@ -218,11 +218,25 @@ impl LayoutAdapter {
         })?;
         let setup =
             helper_setup_expression(helper, font_bytes, source, style, input.fixture().source())?;
+        let measurement = if request == crate::measurement::BoxObservationRequest::MeasuredLeaf {
+            let path = RelativePath::new(crate::measurement::MEASURED_LEAF_SCRIPT_INPUT)
+                .map_err(|error| AdapterError::Preparation(error.to_string()))?;
+            let script = crate::measurement::MEASURED_LEAF_SCRIPT;
+            if input.input_bytes(&path) != Some(script.as_bytes()) {
+                return Err(AdapterError::Preparation(
+                    "measured leaf capture script changed or is missing".into(),
+                ));
+            }
+            let font = crate::pinned_font::AHEM_STYLESHEET_WOFF2_SHA256;
+            format!("({script})({font:?})")
+        } else {
+            "getTestData()".into()
+        };
         PreparedFixture::new(
             document,
             "document.readyState !== 'loading' && !!document.body".to_string(),
             setup,
-            "getTestData()".to_string(),
+            measurement,
             resources,
         )
         .map_err(|error| AdapterError::Preparation(error.to_string()))
@@ -385,7 +399,7 @@ fn helper_setup_expression(
     // This capture version qualifies one exact zero-edge base document profile.
     // A changed stylesheet needs an explicit new source-profile qualification.
     if surgeist_generator::Sha256Digest::from_bytes(base_style.as_bytes()).to_string()
-        != "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6"
+        != crate::pinned_font::ROOT_CONTEXT_STYLESHEET_SHA256
     {
         return Err(AdapterError::Preparation(
             "root-context source profile does not qualify the captured base stylesheet".into(),
@@ -509,6 +523,130 @@ mod tests {
             "fallback":{"initialContainingBlock":{"width":800,"height":600},
                 "nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}});
         node
+    }
+
+    fn measured_leaf_variants() -> [Value; 4] {
+        let font = "e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c";
+        let variants = fixture_cases();
+        std::array::from_fn(|index| {
+            let (variant, _) = variants[index];
+            let (box_sizing, direction) = variant.rsplit_once('_').unwrap();
+            let box_sizing = box_sizing.replace('_', "-");
+            let mut root = element_size_box();
+            root["style"]["display"] = "grid".into();
+            root["style"]["direction"] = direction.into();
+            root["style"]["boxSizing"] = box_sizing.as_str().into();
+            root["viewport"]["rootContext"]["hypotheticalDisplay"] = "grid".into();
+
+            let mut leaf = supported_box();
+            let object = leaf.as_object_mut().unwrap();
+            for field in ["gridAlignmentProfile", "useRounding", "viewport"] {
+                object.remove(field);
+            }
+            leaf["style"]["direction"] = direction.into();
+            leaf["style"]["boxSizing"] = box_sizing.as_str().into();
+            leaf["style"]["overflowX"] = "visible".into();
+            leaf["style"]["overflowY"] = "visible".into();
+            leaf["style"]["scrollbarGutter"] = "auto".into();
+            leaf["textContent"] = "HHHH\u{200b}HHHH".into();
+            root["children"] = serde_json::json!([leaf]);
+            root["measuredLeaf"] = serde_json::json!({
+                "nodePath": "0.0",
+                "fontResourceSha256": font,
+                "sourceUnits": [72, 72, 72, 72, 8203, 72, 72, 72, 72],
+                "advances": [40, 40, 80],
+                "direction": direction,
+                "boxSizing": box_sizing,
+                "clientWidth": 10,
+                "scrollWidth": 10,
+            });
+            root
+        })
+    }
+
+    #[test]
+    fn measured_grid_request_retains_the_leaf_witness_in_each_capture() {
+        use crate::measurement::BoxObservationRequest;
+
+        let request = BoxObservationRequest::from_input_bytes(Some(
+            b"{\"schema_version\":1,\"element_scroll_sizes\":\"horizontal-zero-edge-divs\",\"measured_leaf\":\"ahem-10px-zwsp\"}\n",
+        ))
+        .expect("the measured Grid capture request must be admitted");
+        let font = "e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c";
+        let nodes = measured_leaf_variants();
+        let outcomes = LayoutAdapter
+            .lower_with_observations(&fixture(), envelope(nodes), request)
+            .expect("all four measured wire variants lower");
+        assert_eq!(outcomes.len(), fixture_cases().len());
+        for outcome in outcomes {
+            let CaseOutcome::Generated { case_id, bytes } = outcome else {
+                panic!("expected generated capture, received {outcome:?}");
+            };
+            let xml = std::str::from_utf8(&bytes).unwrap();
+            let parsed = roxmltree::Document::parse(xml).unwrap();
+            let root = parsed.root_element();
+            assert_eq!(root.attribute("name"), Some(case_id.as_str()));
+            let witness = root
+                .children()
+                .find(|node| node.has_tag_name("measured-leaf"))
+                .expect("the measured leaf witness must survive lowering");
+            assert_eq!(witness.attribute("node-path"), Some("0.0"));
+            assert_eq!(witness.attribute("font-resource-sha256"), Some(font));
+            assert_eq!(witness.attribute("first-advance"), Some("40"));
+            assert_eq!(witness.attribute("second-advance"), Some("40"));
+            assert_eq!(witness.attribute("full-advance"), Some("80"));
+            assert!(
+                root.children()
+                    .any(|node| node.has_tag_name("element-scroll-sizes"))
+            );
+        }
+    }
+
+    #[test]
+    fn measured_grid_capture_refuses_missing_unrequested_or_contradictory_witnesses() {
+        use crate::measurement::BoxObservationRequest::{
+            ElementScrollSizes, Geometry, MeasuredLeaf,
+        };
+        for request in [Geometry, ElementScrollSizes] {
+            assert!(matches!(
+                LayoutAdapter.lower_with_observations(&fixture(), envelope(measured_leaf_variants()), request),
+                Err(AdapterError::Measurement(error)) if error.field_path == "measuredLeaf"
+            ));
+        }
+        let mut absent = measured_leaf_variants();
+        absent[0].as_object_mut().unwrap().remove("measuredLeaf");
+        assert!(matches!(
+            LayoutAdapter.lower_with_observations(&fixture(), envelope(absent), MeasuredLeaf),
+            Err(AdapterError::Measurement(error)) if error.field_path == "measuredLeaf"
+        ));
+        let mut extra = measured_leaf_variants();
+        let leaf = extra[0]["children"][0].clone();
+        extra[0]["children"].as_array_mut().unwrap().push(leaf);
+        assert!(matches!(
+            LayoutAdapter.lower_with_observations(&fixture(), envelope(extra), MeasuredLeaf),
+            Err(AdapterError::Measurement(error)) if error.field_path == "measuredLeaf"
+        ));
+        for (field, value) in [
+            ("nodePath", serde_json::json!("0.1")),
+            ("fontResourceSha256", serde_json::json!("different")),
+            (
+                "sourceUnits",
+                serde_json::json!([72, 72, 72, 72, 32, 72, 72, 72, 72]),
+            ),
+            ("advances", serde_json::json!([40, 40, 81])),
+            ("direction", serde_json::json!("rtl")),
+            ("scrollWidth", serde_json::json!(11)),
+        ] {
+            let mut changed = measured_leaf_variants();
+            changed[0]["measuredLeaf"][field] = value;
+            assert!(
+                matches!(
+                    LayoutAdapter.lower_with_observations(&fixture(), envelope(changed), MeasuredLeaf),
+                    Err(AdapterError::Measurement(error)) if error.field_path == "measuredLeaf"
+                ),
+                "{field}"
+            );
+        }
     }
 
     #[test]

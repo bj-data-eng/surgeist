@@ -7,10 +7,18 @@ use sha2::{Digest as _, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(crate) const EDITION: &str = "canonical-box-differences";
+pub(crate) const MEASURED_GRID_EDITION: &str = "measured-grid-differences";
 pub(crate) const ARTIFACT_ROOT: &str =
     "tests/layout/browser_parity/captured/canonical-box-differences";
 pub(crate) const TERMINAL: &str = "qualification.json";
 pub(crate) const TERMINAL_SCHEMA: u8 = 2;
+const OBSERVATION_REQUEST: &str = "observation-request.json";
+const MEASURED_LEAF_SCRIPT: &str = "scripts/gentest/measured_leaf.js";
+const MEASURED_LEAF_REQUEST_BYTES: &[u8] =
+    include_bytes!("../../bin/surgeist-layout-generate/measurement/measured_leaf_request.json");
+const MEASURED_LEAF_SCRIPT_BYTES: &[u8] =
+    include_bytes!("../../bin/surgeist-layout-generate/measurement/measured_leaf.js");
+
 type Result<T> = std::result::Result<T, QualificationError>;
 fn malformed(reason: impl Into<String>) -> QualificationError {
     QualificationError::MalformedDeclaration {
@@ -54,6 +62,10 @@ pub(crate) fn current_owner_bindings(
     for (name, hash) in retained {
         let owner = if name == "browser-owner.toml" {
             format!("{ORIGINAL}/corpus.toml")
+        } else if name == OBSERVATION_REQUEST {
+            "tests/bin/surgeist-layout-generate/measurement/measured_leaf_request.json".to_owned()
+        } else if name == MEASURED_LEAF_SCRIPT {
+            "tests/bin/surgeist-layout-generate/measurement/measured_leaf.js".to_owned()
         } else if let Some(tail) = name.strip_prefix("historical/") {
             format!("{ORIGINAL}/xml/{tail}")
         } else if name.starts_with("scripts/")
@@ -335,12 +347,35 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
     {
         return Err(changed("source/variant/capture mapping"));
     }
-    if !matches!(
-        (observation_request, observation_input_sha256),
+    let (profile, font_demand) = match (observation_request, observation_input_sha256) {
         ("geometry", None) | ("element-scroll-sizes", Some(_))
-    ) {
-        return Err(malformed("unsupported observation request/input binding"));
-    }
+            if !full_inputs.contains_key(MEASURED_LEAF_SCRIPT) =>
+        {
+            ("canonical-no-text-boxes", "none")
+        }
+        ("measured-leaf", Some(request_sha256)) => {
+            if request_sha256 != sha256(MEASURED_LEAF_REQUEST_BYTES) {
+                return Err(changed("measured leaf request identity"));
+            }
+            let script_sha256 = sha256(MEASURED_LEAF_SCRIPT_BYTES);
+            for (name, expected) in [
+                (OBSERVATION_REQUEST, request_sha256),
+                (MEASURED_LEAF_SCRIPT, script_sha256.as_str()),
+                (
+                    "scripts/gentest/test_base_style.css",
+                    super::pinned_font::ROOT_CONTEXT_STYLESHEET_SHA256,
+                ),
+            ] {
+                if full_inputs.get(name).map(String::as_str) != Some(expected)
+                    || excluded_specs.contains(name)
+                {
+                    return Err(changed(format!("measured leaf input: {name}")));
+                }
+            }
+            ("canonical-measured-grid", "ahem-10px-zwsp")
+        }
+        _ => return Err(malformed("unsupported observation request/input binding")),
+    };
     if let Some(hash) = observation_input_sha256 {
         digest(hash)?;
     }
@@ -351,7 +386,7 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
         .collect();
     let profile_sha256 = sha256(
         &serde_json::to_vec(&(
-            "canonical-no-text-boxes",
+            profile,
             browser_settings,
             case.record_sha256.as_str(),
             case.variant.as_str(),
@@ -378,7 +413,7 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
         ),
         inputs,
         linked_resources: artifact.linked_resources.clone(),
-        font_demand: "none".to_owned(),
+        font_demand: font_demand.to_owned(),
         policy_source_sha256: policy_sha256.to_owned(),
     };
     let identity = CaseIdentity::from_verified_projection(
@@ -397,6 +432,10 @@ pub(crate) enum CanonicalField {
     Y,
     Width,
     Height,
+    ClientWidth,
+    ClientHeight,
+    ScrollWidth,
+    ScrollHeight,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, Ord, PartialEq, PartialOrd)]
 #[serde(deny_unknown_fields)]
@@ -413,6 +452,26 @@ pub(crate) enum CurrentFrame {
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum CurrentDomain {
     Layout,
+    LayoutAndElementSizes,
+}
+
+impl CurrentDomain {
+    pub(crate) fn fields(self) -> &'static [CanonicalField] {
+        const ALL: [CanonicalField; 8] = [
+            CanonicalField::X,
+            CanonicalField::Y,
+            CanonicalField::Width,
+            CanonicalField::Height,
+            CanonicalField::ClientWidth,
+            CanonicalField::ClientHeight,
+            CanonicalField::ScrollWidth,
+            CanonicalField::ScrollHeight,
+        ];
+        match self {
+            Self::Layout => &ALL[..4],
+            Self::LayoutAndElementSizes => &ALL,
+        }
+    }
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -474,7 +533,7 @@ impl Qualification {
     }
     fn validate(&self) -> Result<()> {
         if self.schema_version != TERMINAL_SCHEMA
-            || self.edition != EDITION
+            || !matches!(self.edition.as_str(), EDITION | MEASURED_GRID_EDITION)
             || self.declaration.path != "corpus.toml"
             || self.report.path != "xml/generation-reports/all.json"
             || self.ownership.path != "xml/generation-ownership.json"
