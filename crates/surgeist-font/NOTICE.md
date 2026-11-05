@@ -1,7 +1,7 @@
 # Surgeist Font
 
-This notice covers the font-container implementation and its two direct
-decompression dependencies, including the Brotli allocator-interface dependency.
+This notice covers the font-container and catalogue implementation and its
+dependencies, including the Brotli allocator interface.
 It does not inventory a separately linked application's other dependencies.
 
 ## Dependencies
@@ -23,6 +23,22 @@ contains the BSD-3-Clause terms reproduced here.
 
 * License: [supplied BSD-3-Clause license](licenses/brotli-decompressor/LICENSE)
 * Homepage: [rust-brotli-decompressor](https://github.com/dropbox/rust-brotli-decompressor)
+
+### Fontique 0.9.0
+
+The registered catalogue uses Fontique's registration and font metadata
+interfaces, distributed by the Parley Authors.
+
+* License: [Apache-2.0](licenses/fontique/LICENSE-APACHE) or [MIT](licenses/fontique/LICENSE-MIT)
+* Homepage: [Fontique](https://github.com/linebender/parley)
+
+### linebender_resource_handle 0.1.1
+
+The catalogue shares admitted resource bytes with Fontique through the
+Linebender resource handle interface.
+
+* License: [Apache-2.0](licenses/linebender-resource-handle/LICENSE-APACHE) or [MIT](licenses/linebender-resource-handle/LICENSE-MIT)
+* Homepage: [Linebender resource handles](https://github.com/linebender/raw_resource_handle)
 
 ### miniz_oxide 0.8.9
 

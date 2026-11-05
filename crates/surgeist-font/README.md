@@ -2,7 +2,8 @@
 
 `surgeist-font` owns immutable font resource admission, exact encoded-source
 provenance, decoded-resource identity, and original collection-face selection.
-It has no catalogue, matching, shaping, glyph-admission or rendering authority.
+It also owns publication of explicitly registered resources. Text shaping and
+glyph admission remain with their consumers.
 
 `FontResource::decode(bytes, limits)` accepts raw SFNT/OpenType, collections,
 WOFF1 and WOFF2. Each result retains the exact source and the admitted decoded
@@ -107,6 +108,19 @@ handler; this API cannot promise recoverable process-wide out-of-memory.
 The caller's original allocation occurred before transfer and is outside this
 call's allocation-failure guarantee. Rejection drops transferred ownership and
 returns no partially admitted resource.
+
+## Registered catalogue
+
+`FontCatalogue::registered_only()` starts with an empty catalogue and performs
+no system discovery. Register an admitted `FontResource` to publish all its
+original faces together. If the provider cannot admit every face, registration
+preserves the preceding publication. `registered_faces()` yields strong handles
+in registration and face order. Refresh issues a new publication over the same
+admitted resources, with their identities and backing intact.
+
+A publication identifies both its issuing catalogue and its generation.
+Numeric generations alone cannot identify a publication. Catalogue metadata
+and provider allocations are outside a resource's decode limits.
 
 ## Capability and checks
 

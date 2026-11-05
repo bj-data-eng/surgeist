@@ -13,9 +13,12 @@ use std::{
 };
 
 mod brotli;
+mod catalogue;
 mod sfnt;
 mod woff1;
 mod woff2;
+
+pub use catalogue::{CatalogueError, CataloguePublication, FontCatalogue};
 
 /// Caller policy; zero is a valid rejecting cap. No limits are inferred.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

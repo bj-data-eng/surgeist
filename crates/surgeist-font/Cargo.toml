@@ -13,4 +13,6 @@ path = "src/lib.rs"
 
 [dependencies]
 brotli-decompressor = { version = "=5.0.0", default-features = false }
+fontique = { version = "=0.9.0", default-features = false, features = ["std"] }
+linebender_resource_handle = { version = "=0.1.1", default-features = false }
 miniz_oxide = { version = "=0.8.9", default-features = false }
