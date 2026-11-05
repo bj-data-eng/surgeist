@@ -279,8 +279,9 @@ cargo test --offline --locked -j 1 -p surgeist-layout --features layout-golden-g
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --prepared-range-capture --fixture html/block/prepared_text_continuity_bidi.html
 ```
 
-The second command uses the pinned browser and writes the comparison report
-to standard output.
+The second command selects the prepared Range profile, uses the pinned browser,
+and writes the comparison report to standard output. The ordinary root-context
+capture selects the geometry cohort separately.
 Those 16 cases exclude the additional atomic/BR metric families. Their
 explicit BR font-band requests retain measured geometry independently of native
 input participation; an unsupported band observation is not a parity pass. See

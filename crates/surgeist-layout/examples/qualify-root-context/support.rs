@@ -90,6 +90,16 @@ fn select_records(
     fixture: Option<&str>,
     mode: QualificationMode,
 ) -> Result<()> {
+    let prepared_source = crate::parity_support::prepared_range_qualification::SOURCE;
+    if mode == QualificationMode::PreparedRangeCapture {
+        if fixture != Some(prepared_source) {
+            return Err("prepared Range qualification requires its declared fixture".into());
+        }
+    } else {
+        declaration
+            .records
+            .retain(|record| record.source.as_str() != prepared_source);
+    }
     if matches!(
         mode,
         QualificationMode::ElementScrollSizeDiagnostics
@@ -105,7 +115,7 @@ fn select_records(
         (QualificationMode::FontCustody, None) => {
             return Err("font custody qualification requires one declared fixture".into());
         }
-        (QualificationMode::NumericDiagnostics | QualificationMode::PreparedRangeCapture, None) => {
+        (QualificationMode::NumericDiagnostics, None) => {
             return Err("numeric diagnostics require one declared fixture".into());
         }
         _ => {}
@@ -133,8 +143,11 @@ fn select_records(
                 QualificationMode::FontCustody => {
                     return Err("font custody qualification requires a Generated fixture".into());
                 }
-                QualificationMode::NumericDiagnostics | QualificationMode::PreparedRangeCapture => {
+                QualificationMode::NumericDiagnostics => {
                     return Err("numeric diagnostics require a Generated fixture".into());
+                }
+                QualificationMode::PreparedRangeCapture => {
+                    return Err("prepared Range qualification requires a Generated fixture".into());
                 }
                 QualificationMode::ElementScrollSizeDiagnostics
                 | QualificationMode::MeasuredLeafDiagnostics
