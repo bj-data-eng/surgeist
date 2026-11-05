@@ -321,11 +321,7 @@ impl FontResource {
     ) -> Result<Self, DecodeError> {
         let bytes = decoded.as_deref().unwrap_or_else(|| source.bytes());
         check(LimitKind::DecodedBytes, bytes.len(), limits.decoded_bytes)?;
-        let retained = add(
-            source.0.bytes.capacity(),
-            decoded.as_ref().map_or(0, Vec::capacity),
-        )?;
-        let base = add(retained, add(source_metadata(), resource_metadata())?)?;
+        let base = retained_backing(&source, decoded.as_ref().map_or(0, Vec::capacity))?;
         check(LimitKind::LiveBytes, base, limits.live_bytes)?;
         let face_offsets = sfnt::admit(bytes, limits, base)?;
         Ok(Self(Arc::new(ResourceInner {
@@ -344,6 +340,23 @@ impl FontResource {
     /// Exact source provenance. Raw resources share its payload allocation.
     pub fn source(&self) -> &FontSource {
         &self.0.source
+    }
+    /// Retained byte charge for this resource, independent of the selected face.
+    ///
+    /// Includes the actual encoded, separate decoded, and face-offset vector
+    /// capacities and their known shared owner metadata. Raw bytes are counted
+    /// once. Temporary decoder storage and caller-owned handles are outside
+    /// this charge.
+    pub fn retained_bytes(&self) -> usize {
+        let decoded_capacity = self.0.decoded.as_ref().map_or(0, Vec::capacity);
+        retained_backing(self.source(), decoded_capacity)
+            .and_then(|base| {
+                add(
+                    base,
+                    multiply(self.0.face_offsets.capacity(), size_of::<usize>())?,
+                )
+            })
+            .expect("retained resource was checked against its admission limit")
     }
     /// Strong decoded-resource identity; this is never a content hash.
     pub fn identity(&self) -> ResourceId {
@@ -462,6 +475,12 @@ fn source_metadata() -> usize {
 }
 fn resource_metadata() -> usize {
     size_of::<ResourceInner>() + 2 * size_of::<usize>()
+}
+fn retained_backing(source: &FontSource, decoded_capacity: usize) -> Result<usize, DecodeError> {
+    add(
+        add(source.retained_bytes()?, decoded_capacity)?,
+        resource_metadata(),
+    )
 }
 fn add(left: usize, right: usize) -> Result<usize, DecodeError> {
     left.checked_add(right).ok_or(DecodeError::SizeOverflow)

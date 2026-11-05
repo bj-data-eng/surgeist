@@ -19,7 +19,7 @@ fn instance(size: f32) -> crate::TextInstance {
 
 fn assert_retained_ink(bytes: Vec<u8>, size: f32, expected: Rect) {
     let original = bytes.clone();
-    let font = FontData::try_from_bytes(bytes, 0).unwrap();
+    let font = FontData::try_from_bytes(bytes, 0, surgeist_test::fixtures::FONT_LIMITS).unwrap();
     let instance = instance(size);
     let glyphs = vec![TextGlyph::try_new(AHEM_GLYPH_X, 3.0, 11.0, 777.0).unwrap()];
     let result = font.prepare_glyph_run(&instance, &glyphs, limits());
@@ -372,7 +372,7 @@ fn one_glyph() -> [TextGlyph; 1] {
 }
 
 fn refusal(bytes: Vec<u8>, instance: &crate::TextInstance) -> crate::GlyphPreparationError {
-    let error = FontData::try_from_bytes(bytes, 0)
+    let error = FontData::try_from_bytes(bytes, 0, surgeist_test::fixtures::FONT_LIMITS)
         .unwrap()
         .prepare_glyph_run(instance, &one_glyph(), limits())
         .unwrap_err();
@@ -387,7 +387,7 @@ fn transparent_selected_color_and_fully_decoded_png_prove_empty_without_advance_
         ahem_color_font(palette),
         ahem_sbix_font(encoded_png(png::ColorType::Rgba, &[255, 0, 0, 0])),
     ] {
-        let ready = FontData::try_from_bytes(bytes, 0)
+        let ready = FontData::try_from_bytes(bytes, 0, surgeist_test::fixtures::FONT_LIMITS)
             .unwrap()
             .prepare_glyph_run(&instance(20.0), &one_glyph(), limits())
             .unwrap();
@@ -485,10 +485,11 @@ fn default_axis_is_retained_but_selected_image_variation_and_synthesis_refuse() 
             crate::GlyphSynthesis::none(),
         )
         .unwrap();
-        let ready = FontData::try_from_bytes(variable.clone(), 0)
-            .unwrap()
-            .prepare_glyph_run(&zero, &one_glyph(), limits())
-            .unwrap();
+        let ready =
+            FontData::try_from_bytes(variable.clone(), 0, surgeist_test::fixtures::FONT_LIMITS)
+                .unwrap()
+                .prepare_glyph_run(&zero, &one_glyph(), limits())
+                .unwrap();
         assert_eq!(ready.instance(), &zero);
         let varied = crate::TextInstance::try_new(
             20.0,
@@ -536,7 +537,8 @@ fn selected_color_and_png_limits_are_atomic_and_same_input_retries_remain_valid(
         translated_clipped_v1(),
         offset_sbix(),
     ] {
-        let font = FontData::try_from_bytes(bytes.clone(), 0).unwrap();
+        let font = FontData::try_from_bytes(bytes.clone(), 0, surgeist_test::fixtures::FONT_LIMITS)
+            .unwrap();
         let instance = instance(20.0);
         for tight in [
             crate::GlyphRunLimits::new(0, 1024, 8 << 20, 8 << 20),
@@ -565,7 +567,12 @@ fn selected_color_and_png_limits_are_atomic_and_same_input_retries_remain_valid(
 
 #[test]
 fn mixed_foreground_and_intrinsic_color_preserve_actual_overlap_order() {
-    let font = FontData::try_from_bytes(ahem_color_font(valid_cpal()), 0).unwrap();
+    let font = FontData::try_from_bytes(
+        ahem_color_font(valid_cpal()),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .unwrap();
     let glyphs = [35, AHEM_GLYPH_X, 35].map(|id| TextGlyph::try_new(id, 0.0, 8.0, 10.0).unwrap());
     let ready = font
         .prepare_glyph_run(&instance(10.0), &glyphs, limits())
@@ -606,14 +613,18 @@ fn mixed_foreground_and_intrinsic_color_preserve_actual_overlap_order() {
 
 #[test]
 fn bitmap_without_paths_admits_zero_path_capacity_but_charges_decoded_pixel_storage() {
-    let tiny = FontData::try_from_bytes(ahem_sbix_font(rgba_png()), 0).unwrap();
-    let cap = tiny.bytes().len() + 1024;
+    let tiny = FontData::try_from_bytes(
+        ahem_sbix_font(rgba_png()),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .unwrap();
+    let limits_for_bitmap = |font: &FontData| {
+        let font_charge = font.admitted_face().resource().retained_bytes();
+        crate::GlyphRunLimits::new(1, 0, 8 << 20, font_charge + 1024)
+    };
     let ready = tiny
-        .prepare_glyph_run(
-            &instance(16.0),
-            &one_glyph(),
-            crate::GlyphRunLimits::new(1, 0, 8 << 20, cap),
-        )
+        .prepare_glyph_run(&instance(16.0), &one_glyph(), limits_for_bitmap(&tiny))
         .unwrap();
     assert_eq!(ready.path_elements().count(), 0);
     assert_eq!(ready.bounds().kind(), TextRunBoundsKind::Ink);
@@ -628,13 +639,11 @@ fn bitmap_without_paths_admits_zero_path_capacity_but_charges_decoded_pixel_stor
             .write_image_data(&[255, 0, 0, 255].repeat(32 * 32))
             .unwrap();
     }
-    let large = FontData::try_from_bytes(ahem_sbix_font(png), 0).unwrap();
+    let large =
+        FontData::try_from_bytes(ahem_sbix_font(png), 0, surgeist_test::fixtures::FONT_LIMITS)
+            .unwrap();
     let error = large
-        .prepare_glyph_run(
-            &instance(16.0),
-            &one_glyph(),
-            crate::GlyphRunLimits::new(1, 0, 8 << 20, cap),
-        )
+        .prepare_glyph_run(&instance(16.0), &one_glyph(), limits_for_bitmap(&large))
         .unwrap_err();
     assert!(
         matches!(

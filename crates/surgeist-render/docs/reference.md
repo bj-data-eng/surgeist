@@ -66,6 +66,13 @@ integration work; this crate guide does not define a separate crate MSRV.
 
 ## Glyph admission
 
+`FontData::try_from_bytes` takes an original face index and caller-supplied
+`surgeist_font::DecodeLimits`. Font admits raw SFNT or collection bytes and
+decodes WOFF or WOFF2. Decode refusals remain available as the source of the
+Render error. `FontData::from_face` takes an already admitted Font face.
+`FontData::admitted_face` exposes its original index, decoded resource and
+exact encoded source. These entry points are available in standalone Render.
+
 `FontData::prepare_glyph_run` retains the selected representation and its font,
 executed `TextInstance` and original `TextGlyph` facts. Its `PreparedGlyphRun`
 provides representation-derived `Ink` or source-proved `Empty` bounds.
@@ -92,8 +99,9 @@ and output extent, Adler checksum and all five scanline filters before retaining
 pixels. The inflater uses fixed-state miniz_oxide with caller-owned buffers.
 
 `GlyphRunLimits` bounds glyphs, retained outline path elements, scratch storage
-and retained logical custody. Charges include font bytes and conservative owner
-headers, actual buffer capacities, fixed provider workspace and growth overlap.
+and retained logical custody. Charges include the retained Font resource,
+conservative owner headers, actual buffer capacities, fixed provider workspace
+and growth overlap. Font's separate `DecodeLimits` cover container admission.
 These limits do not measure the allocator or bound CPU time. A failure discards
 the entire unpublished result; the caller's inputs remain available for retry.
 The authored `TextRun` route retains its existing provider behavior and supports
@@ -101,10 +109,11 @@ The authored `TextRun` route retains its existing provider behavior and supports
 
 The optional `prepare_text_layout` adapter consumes the actual placed Text
 snapshot without reshaping or choosing lines. Its complete `TextLayoutLimits`
-budget also covers font copies, mapping buffers and decoration commands. Font
-copies are shared within one invocation; the original Text storage remains an
-input loan. The adapter consumes each run's executed `GlyphFrame`: its physical
-origin, outline axes and independent pen direction in outline coordinates.
+budget also covers retained Font resources, mapping buffers and decoration
+commands. The adapter retains each run's actual face and charges the resource
+once per invocation, including when several faces use one collection. It
+consumes each run's executed `GlyphFrame` with its physical origin, outline axes
+and independent pen direction in outline coordinates.
 Native upright runs keep their outlines unrotated and place each glyph at
 `(origin.x + dx, origin.y + pen + dy)`. Combined cells retain horizontal inner
 pens and the outline frame supplied by Text inside their vertical outer line.

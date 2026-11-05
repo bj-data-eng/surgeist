@@ -2,21 +2,23 @@
 
 use std::mem::size_of;
 
+use surgeist_font::ResourceId;
 use surgeist_text::{Brush, Layout, RunView};
 
 use crate::{
-    Color, Error, GlyphRunLimits, GlyphSynthesis, Layer, NormalizedCoordinate, Paint, Result,
-    Scene, Shape, TextGlyph, TextInstance, TextPaint, Transform,
+    Color, Error, FontData, GlyphRunLimits, GlyphSynthesis, Layer, NormalizedCoordinate, Paint,
+    Result, Scene, Shape, TextGlyph, TextInstance, TextPaint, Transform,
     scene::Command,
-    text::{AdmittedGlyphFont, qualify_bounds_placement, qualify_glyph_placement},
+    text::{qualify_bounds_placement, qualify_glyph_placement},
 };
 
 /// Whole-invocation bounds for a placed Text-layout scene.
 ///
 /// Glyph/path/paint/image/temporary/retained limits apply across all runs, rather
-/// than resetting for each run. Input-loaned Text storage is excluded. Retained
-/// bytes include the output command tree, font copies and prepared geometry;
-/// temporary bytes include mapping and face-table capacities and copy overlap.
+/// than resetting for each run. Retained bytes include the output command tree,
+/// prepared geometry and each shared font resource retained by the scene once.
+/// Temporary bytes include mapping and resource identity buffers. The remaining
+/// storage borrowed from Text is outside these bounds.
 /// Ordinary failure-diagnostic String/Box allocations are outside these bounds.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TextLayoutLimits {
@@ -187,7 +189,7 @@ pub fn prepare_text_layout(
     } else {
         Vec::new()
     };
-    let mut faces = budget.temporary::<FaceCopy<'_>>(counts.runs)?;
+    let mut resources = budget.temporary::<ResourceId>(counts.runs)?;
     let mut glyphs = budget.temporary::<TextGlyph>(counts.max_glyphs)?;
 
     for (run_index, run) in layout.run_views().enumerate() {
@@ -205,23 +207,14 @@ pub fn prepare_text_layout(
             .map_err(|e| TextLayoutError::text(location, e))?;
         let run_transform =
             run_transform(&run, placement).map_err(|e| TextLayoutError::render(location, e))?;
-        let face = instance.face();
-        let face_index = faces
-            .iter()
-            .position(|copy| face.is_same_face(&copy.source.face()));
-        let new_copy = if face_index.is_none() {
-            let copy = AdmittedGlyphFont::copy_from(
-                face.bytes(),
-                face.index(),
-                budget.remaining_scratch(),
-                budget.remaining_retained(),
-            )
-            .map_err(|e| TextLayoutError::render(location, e))?;
-            budget.retain(copy.retained_bytes())?;
-            Some(copy)
-        } else {
-            None
-        };
+        let face = instance.face().admitted_face();
+        let resource = face.resource();
+        let identity = resource.identity();
+        if !resources.contains(&identity) {
+            budget.retain(resource.retained_bytes())?;
+            resources.push(identity);
+        }
+        let font = FontData::from_face(face.clone());
         glyphs.clear();
         for glyph in run.glyphs() {
             glyphs.push(text_glyph(&run, glyph).map_err(|e| TextLayoutError::render(location, e))?);
@@ -239,12 +232,8 @@ pub fn prepare_text_layout(
         let instance = TextInstance::try_new(instance.font_size(), coordinates, synthesis)
             .map_err(|e| TextLayoutError::render(location, e))?;
         let remaining = budget.glyph_run_limits();
-        let admitted = match face_index {
-            Some(index) => &faces[index].admitted,
-            None => new_copy.as_ref().expect("new face has an admitted copy"),
-        };
-        let (outline, retained) = admitted
-            .prepare(&instance, &glyphs, remaining)
+        let (outline, retained) = font
+            .prepare_glyph_run_with_accounted_font(&instance, &glyphs, remaining)
             .map_err(|e| TextLayoutError::render(location, e))?;
         budget.retain(retained)?;
         budget.glyphs = add(budget.glyphs, glyphs.len())?;
@@ -262,12 +251,6 @@ pub fn prepare_text_layout(
         });
         drop(instance);
         budget.release_scratch(coordinate_bytes);
-        if let Some(admitted) = new_copy {
-            faces.push(FaceCopy {
-                source: run,
-                admitted,
-            });
-        }
     }
 
     for (index, decoration) in layout.decoration_views().enumerate() {
@@ -296,16 +279,11 @@ pub fn prepare_text_layout(
     }
     // These actual buffers are disposed before their custody can leave the builder.
     drop(glyphs);
-    drop(faces);
+    drop(resources);
     Ok(PreparedTextScene {
         layout,
         scene: Scene { commands },
     })
-}
-
-struct FaceCopy<'a> {
-    source: RunView<'a>,
-    admitted: AdmittedGlyphFont,
 }
 
 struct Counts {

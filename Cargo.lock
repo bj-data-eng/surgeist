@@ -3858,6 +3858,7 @@ dependencies = [
  "pollster",
  "proptest",
  "skrifa",
+ "surgeist-font",
  "surgeist-test",
  "surgeist-text",
  "surgeist-window",

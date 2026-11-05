@@ -282,7 +282,9 @@ fn native_vertical_writing_modes_keep_clockwise_parent_and_horizontal_atomic_chi
     // Independently admit the same licensed asymmetric glyph through Render.
     // Its horizontal stripe distinguishes the parent's CW basis from the
     // child's unrotated basis without a font derivative or placeholder box.
-    let font = render::FontData::try_from_bytes(AHEM.to_vec(), 0).unwrap();
+    let font =
+        render::FontData::try_from_bytes(AHEM.to_vec(), 0, surgeist_test::fixtures::FONT_LIMITS)
+            .unwrap();
     let instance =
         render::TextInstance::try_new(10.0, vec![], render::GlyphSynthesis::none()).unwrap();
     let glyphs = [render::TextGlyph::try_new(274, 0.0, 0.0, 10.0).unwrap()];

@@ -772,9 +772,11 @@ pub const fn surgeist_render::FilteredImagePaint::resource(&self) -> &surgeist_r
 pub fn surgeist_render::FilteredImagePaint::try_new(resource: surgeist_render::ResolvedImageResource, filters: surgeist_render::FilterList) -> surgeist_render::Result<Self>
 pub struct surgeist_render::FontData
 impl surgeist_render::FontData
-pub fn surgeist_render::FontData::prepare_glyph_run(&self, instance: &surgeist_render::TextInstance, glyphs: &[surgeist_render::TextGlyph], limits: surgeist_render::GlyphRunLimits) -> surgeist_render::Result<surgeist_render::PreparedGlyphRun>
+pub const fn surgeist_render::FontData::admitted_face(&self) -> &surgeist_font::FontFace
+pub const fn surgeist_render::FontData::from_face(face: surgeist_font::FontFace) -> Self
+pub fn surgeist_render::FontData::try_from_bytes(bytes: alloc::vec::Vec<u8>, index: u32, limits: surgeist_font::DecodeLimits) -> surgeist_render::Result<Self>
 impl surgeist_render::FontData
-pub fn surgeist_render::FontData::try_from_bytes(bytes: alloc::vec::Vec<u8>, index: u32) -> surgeist_render::Result<Self>
+pub fn surgeist_render::FontData::prepare_glyph_run(&self, instance: &surgeist_render::TextInstance, glyphs: &[surgeist_render::TextGlyph], limits: surgeist_render::GlyphRunLimits) -> surgeist_render::Result<surgeist_render::PreparedGlyphRun>
 pub struct surgeist_render::FontId(_)
 impl surgeist_render::FontId
 pub const fn surgeist_render::FontId::get(self) -> u64

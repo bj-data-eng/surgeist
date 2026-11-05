@@ -61,10 +61,28 @@ pub(super) fn admit(
     offsets
         .try_reserve_exact(container.faces)
         .map_err(|_| DecodeError::AllocationFailed)?;
+    let retained = multiply(offsets.capacity(), size_of::<usize>())?;
+    let base = add(base, retained)?;
+    check(
+        LimitKind::LiveBytes,
+        add(base, workspace)?,
+        limits.live_bytes(),
+    )?;
     let mut regions = Vec::new();
     regions
         .try_reserve_exact(region_count)
         .map_err(|_| DecodeError::AllocationFailed)?;
+    let workspace = multiply(regions.capacity(), size_of::<Region>())?;
+    check(
+        LimitKind::WorkspaceBytes,
+        workspace,
+        limits.workspace_bytes(),
+    )?;
+    check(
+        LimitKind::LiveBytes,
+        add(base, workspace)?,
+        limits.live_bytes(),
+    )?;
     if container.header_end != 0 {
         regions.push(Region {
             start: 0,

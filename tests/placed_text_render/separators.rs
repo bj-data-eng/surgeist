@@ -297,7 +297,12 @@ fn explicit_separator_replacement_keeps_original_range_selection_and_blank_paint
             glyph.advance(),
         )
         .unwrap();
-        let font = render::FontData::try_from_bytes(bytes.clone(), 0).unwrap();
+        let font = render::FontData::try_from_bytes(
+            bytes.clone(),
+            0,
+            surgeist_test::fixtures::FONT_LIMITS,
+        )
+        .unwrap();
         let instance =
             render::TextInstance::try_new(10.0, vec![], render::GlyphSynthesis::none()).unwrap();
         let retained = font

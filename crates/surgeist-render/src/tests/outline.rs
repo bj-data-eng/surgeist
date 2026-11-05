@@ -11,7 +11,12 @@ use crate::{
 };
 
 fn overlapping_outline() -> PreparedGlyphRun {
-    let font = FontData::try_from_bytes(AHEM_FONT_BYTES.to_vec(), 0).unwrap();
+    let font = FontData::try_from_bytes(
+        AHEM_FONT_BYTES.to_vec(),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .unwrap();
     let instance = TextInstance::try_new(1000.0, vec![], GlyphSynthesis::none()).unwrap();
     let glyph = TextGlyph::try_new(AHEM_GLYPH_X, 0.0, 800.0, -10.0).unwrap();
     font.prepare_glyph_run(
@@ -82,7 +87,7 @@ fn overlapping_composite_outline() -> PreparedGlyphRun {
         bytes[at + 12..at + 16].copy_from_slice(&u32::try_from(data.len()).unwrap().to_be_bytes());
         bytes.extend_from_slice(data);
     }
-    let font = FontData::try_from_bytes(bytes, 0).unwrap();
+    let font = FontData::try_from_bytes(bytes, 0, surgeist_test::fixtures::FONT_LIMITS).unwrap();
     let instance = TextInstance::try_new(1000.0, vec![], GlyphSynthesis::none()).unwrap();
     let glyph = TextGlyph::try_new(AHEM_GLYPH_X, 0.0, 800.0, -10.0).unwrap();
     let result = font
@@ -235,7 +240,12 @@ fn prepared_glyph_run_real_gpu_direct_and_graph_keep_overlapping_translucent_gly
 
 #[test]
 fn prepared_glyph_run_real_gpu_color_gradient_and_image_keep_run_local_paint_space() {
-    let font = FontData::try_from_bytes(AHEM_FONT_BYTES.to_vec(), 0).unwrap();
+    let font = FontData::try_from_bytes(
+        AHEM_FONT_BYTES.to_vec(),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .unwrap();
     let outline = font
         .prepare_glyph_run(
             &TextInstance::try_new(1.0, vec![], GlyphSynthesis::none()).unwrap(),
@@ -428,7 +438,12 @@ fn bold_contour_copies_are_one_nonzero_fill_on_direct_and_base_graph_routes() {
 
 #[test]
 fn any_absorbed_bold_point_refuses_even_when_other_copy_points_move() {
-    let font = FontData::try_from_bytes(AHEM_FONT_BYTES.to_vec(), 0).unwrap();
+    let font = FontData::try_from_bytes(
+        AHEM_FONT_BYTES.to_vec(),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .unwrap();
     let instance =
         TextInstance::try_new(36.0, vec![], GlyphSynthesis::try_new(0.0, 1.0).unwrap()).unwrap();
     // Exact IEEE ties-to-even facts isolate partial copy loss: the left point

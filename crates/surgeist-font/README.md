@@ -89,8 +89,10 @@ default. Zero is a valid cap. The limits mean:
 Count and byte arithmetic is checked before variable allocations. Admission
 scans complete directories without allocating, then fallibly reserves the
 face-offset and region arrays once using `Vec::try_reserve_exact`; the region
-sort needs no further allocation. Limits charge these arrays' requested
-element payload. Compressed decoding additionally charges all intermediate
+sort needs no further allocation. Admission checks the requested element
+payload and rechecks the reported capacities before using the arrays.
+`FontResource::retained_bytes` exposes the resource's charge after temporary
+storage has been released. Compressed decoding additionally charges intermediate
 buffers, replacement-buffer overlap and provider storage. Brotli's strict
 decoder uses thirteen fully prepared cells, about 19.2 MiB of payload plus
 state and stream output; insufficient workspace is refused before provider

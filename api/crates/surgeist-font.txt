@@ -136,6 +136,7 @@ pub fn surgeist_font::FontResource::face(&self, index: u32) -> core::option::Opt
 pub fn surgeist_font::FontResource::face_count(&self) -> u32
 pub fn surgeist_font::FontResource::from_sfnt(bytes: alloc::vec::Vec<u8>, limits: surgeist_font::DecodeLimits) -> core::result::Result<Self, surgeist_font::DecodeError>
 pub fn surgeist_font::FontResource::identity(&self) -> surgeist_font::ResourceId
+pub fn surgeist_font::FontResource::retained_bytes(&self) -> usize
 pub fn surgeist_font::FontResource::source(&self) -> &surgeist_font::FontSource
 impl surgeist_font::FontResource
 pub fn surgeist_font::FontResource::read_from(reader: impl std::io::Read, limits: surgeist_font::DecodeLimits) -> core::result::Result<Self, surgeist_font::ReadFontError>

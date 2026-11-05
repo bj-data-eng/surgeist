@@ -326,7 +326,12 @@ fn width_maps_real_glyph_advance_without_expanding_ink_or_original_selection() {
                 .rect(),
             text::Rect::new(0.0, 0.0, advance, 10.0)
         );
-        let font = render::FontData::try_from_bytes(bytes.clone(), 0).unwrap();
+        let font = render::FontData::try_from_bytes(
+            bytes.clone(),
+            0,
+            surgeist_test::fixtures::FONT_LIMITS,
+        )
+        .unwrap();
         let instance =
             render::TextInstance::try_new(10.0, vec![], render::GlyphSynthesis::none()).unwrap();
         let actual = placed
@@ -655,7 +660,12 @@ fn preserved_space_maps_but_surviving_collapsed_space_stays_narrow() {
             .flat_map(|run| run.glyphs().collect::<Vec<_>>())
             .find(|glyph| matches!(glyph.id(), 1 | 3))
             .unwrap();
-        let font = render::FontData::try_from_bytes(bytes.clone(), 0).unwrap();
+        let font = render::FontData::try_from_bytes(
+            bytes.clone(),
+            0,
+            surgeist_test::fixtures::FONT_LIMITS,
+        )
+        .unwrap();
         let instance =
             render::TextInstance::try_new(10.0, vec![], render::GlyphSynthesis::none()).unwrap();
         let blank = render::TextGlyph::try_new(

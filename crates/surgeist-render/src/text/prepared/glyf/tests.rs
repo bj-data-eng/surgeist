@@ -59,7 +59,7 @@ fn replace(changes: &[(u16, Vec<u8>)]) -> FontData {
         result[at + 12..at + 16].copy_from_slice(&u32::try_from(data.len()).unwrap().to_be_bytes());
         result.extend_from_slice(&data);
     }
-    FontData::try_from_bytes(result, 0).unwrap()
+    FontData::try_from_bytes(result, 0, surgeist_test::fixtures::FONT_LIMITS).unwrap()
 }
 fn compound(contours: i16, children: &[u16], instruction: Option<&[u8]>) -> Vec<u8> {
     let mut data: Vec<_> = [contours, 0, -200, 1000, 800]
@@ -337,7 +337,7 @@ fn malformed_child_reference_and_root_metric_extent_refuse_before_provider_fallb
             bytes[at + 12..at + 16].copy_from_slice(&2u32.to_be_bytes());
         }
     }
-    let font = FontData::try_from_bytes(bytes, 0).unwrap();
+    let font = FontData::try_from_bytes(bytes, 0, surgeist_test::fixtures::FONT_LIMITS).unwrap();
     assert_eq!(cause(prepare(&font)), GlyphPreparationError::InvalidFont);
 }
 
@@ -410,7 +410,7 @@ fn actual_fvar_presence_keeps_static_composite_outside_the_admitted_domain() {
         bytes[at + 12..at + 16].copy_from_slice(&u32::try_from(data.len()).unwrap().to_be_bytes());
         bytes.extend(data);
     }
-    let font = FontData::try_from_bytes(bytes, 0).unwrap();
+    let font = FontData::try_from_bytes(bytes, 0, surgeist_test::fixtures::FONT_LIMITS).unwrap();
     assert_eq!(cause(prepare(&font)), unsupported_composite());
     assert!(prepare(&original).is_ok());
 }

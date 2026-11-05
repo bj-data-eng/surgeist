@@ -4,11 +4,13 @@ use super::{
 };
 use std::borrow::Cow;
 
+use surgeist_font::{DecodeLimits, FontFace, FontResource};
+
 mod prepared;
 pub(crate) use prepared::GlyphPaint;
-pub(crate) use prepared::qualify_placement as qualify_glyph_placement;
 #[cfg(feature = "render-text")]
-pub(crate) use prepared::{AdmittedGlyphFont, qualify_bounds_placement};
+pub(crate) use prepared::qualify_bounds_placement;
+pub(crate) use prepared::qualify_placement as qualify_glyph_placement;
 pub use prepared::{
     GlyphCapability, GlyphNumericPhase, GlyphPreparationError, GlyphResource, GlyphRunLimits,
     GlyphSynthesis, NormalizedCoordinate, PreparedGlyphRun, TextInstance, VariationTable,
@@ -492,36 +494,49 @@ impl<'a> FontRef<'a> {
     }
 }
 
-/// Validated, owned OpenType font bytes and collection index.
+/// Retains an admitted OpenType face and its original encoded source.
 ///
-/// Construction verifies that the requested face is readable before GPU scene
-/// lowering. Selected glyph tables receive additional fallible preflight during
-/// rendering; malformed data never becomes an unwrap, fallback font, or silent omission.
+/// Selected glyphs receive additional fallible qualification before scene lowering.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FontData {
-    pub(crate) data: peniko::FontData,
+    face: FontFace,
 }
 
 impl FontData {
-    /// Validates and owns OpenType bytes at the requested collection index.
+    /// Decodes and admits the supplied font container under the caller's limits,
+    /// then selects its original collection index.
     ///
-    /// Returns [`crate::ErrorCode::InvalidInput`] before GPU work when the bytes
-    /// are malformed or the collection index is out of range.
-    pub fn try_from_bytes(bytes: Vec<u8>, index: u32) -> Result<Self> {
+    /// Container refusal returns [`crate::ErrorCode::InvalidInput`] with the
+    /// producer's [`surgeist_font::DecodeError`] as its source. An unavailable
+    /// index returns the invalid font-data diagnostic for that index.
+    pub fn try_from_bytes(bytes: Vec<u8>, index: u32, limits: DecodeLimits) -> Result<Self> {
         let byte_len = bytes.len();
-        skrifa::FontRef::from_index(bytes.as_slice(), index)
-            .map_err(|_| invalid_font_data(byte_len, index))?;
-        Ok(Self {
-            data: peniko::FontData::new(bytes.into(), index),
-        })
+        let resource = FontResource::decode(bytes, limits)
+            .map_err(|error| invalid_font_data(byte_len, index).with_source(error))?;
+        let face = resource
+            .face(index)
+            .ok_or_else(|| invalid_font_data(byte_len, index))?;
+        Ok(Self::from_face(face))
+    }
+
+    /// Retains an already admitted face without decoding or copying its bytes.
+    #[must_use]
+    pub const fn from_face(face: FontFace) -> Self {
+        Self { face }
+    }
+
+    /// Returns the actual shared face, including its resource and source provenance.
+    #[must_use]
+    pub const fn admitted_face(&self) -> &FontFace {
+        &self.face
     }
 
     pub(crate) fn bytes(&self) -> &[u8] {
-        self.data.data.as_ref()
+        self.face.resource().bytes()
     }
 
-    pub(crate) const fn index(&self) -> u32 {
-        self.data.index
+    pub(crate) fn index(&self) -> u32 {
+        self.face.index()
     }
 }
 

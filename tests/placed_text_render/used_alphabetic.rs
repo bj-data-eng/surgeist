@@ -533,7 +533,9 @@ fn actual_used_alphabetic_script_origins_reach_render_from_named_layout() {
     qualify_font(&bytes);
     // Confirm real asymmetric ink through Render's public headless owner before
     // composing Layout geometry; neither expected bound comes from Text output.
-    let render_font = render::FontData::try_from_bytes(bytes.clone(), 0).unwrap();
+    let render_font =
+        render::FontData::try_from_bytes(bytes.clone(), 0, surgeist_test::fixtures::FONT_LIMITS)
+            .unwrap();
     let instance =
         render::TextInstance::try_new(10.0, vec![], render::GlyphSynthesis::none()).unwrap();
     for (glyph, expected) in [

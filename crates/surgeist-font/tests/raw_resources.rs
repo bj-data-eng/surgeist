@@ -79,6 +79,23 @@ fn raw_payload_and_source_are_retained_without_copying() {
 }
 
 #[test]
+fn retained_charge_counts_raw_source_capacity_once_for_all_collection_faces() {
+    let baseline = collection();
+    let mut spare = Vec::with_capacity(baseline.capacity() + 512);
+    spare.extend_from_slice(&baseline);
+    let extra = spare.capacity() - baseline.capacity();
+    let baseline = FontResource::from_sfnt(baseline, limits()).unwrap();
+    let resource = FontResource::from_sfnt(spare, limits()).unwrap();
+
+    assert_eq!(resource.retained_bytes(), baseline.retained_bytes() + extra);
+    for index in [0, 1] {
+        let face = resource.face(index).unwrap();
+        assert_eq!(face.resource().identity(), resource.identity());
+        assert_eq!(face.resource().retained_bytes(), resource.retained_bytes());
+    }
+}
+
+#[test]
 fn all_documented_raw_scaler_signatures_admit() {
     for signature in [[0, 1, 0, 0], *b"OTTO", *b"true", *b"typ1"] {
         let mut bytes = sfnt();

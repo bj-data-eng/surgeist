@@ -12,6 +12,11 @@ mod scope_alignment;
 mod sideways;
 mod upright;
 
+#[path = "../../tests/fixtures/font_wire.rs"]
+mod font_wire;
+
+use surgeist_font::{FontResource, SourceFormat};
+use surgeist_test::fixtures::FONT_LIMITS;
 use surgeist_text as text;
 
 use crate::{
@@ -22,6 +27,8 @@ use crate::{
 };
 
 const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM_ORIGINAL: &[u8] =
+    include_bytes!("../../../surgeist-font/tests/fixtures/ahem-original/Ahem.woff2");
 const ROOM: usize = 8 << 20;
 
 fn system(bytes: Vec<u8>) -> text::System {
@@ -183,6 +190,87 @@ fn actual_registered_layout_preserves_face_instance_glyphs_ink_and_single_placem
         paint.fill(),
         &Color::try_rgba(1.0, 0.0, 0.0, 0.5).unwrap().into()
     );
+}
+
+#[test]
+fn compressed_text_layouts_keep_exact_faces_through_render_admission_and_refresh() {
+    let woff = font_wire::literal_woff1(AHEM);
+    for (encoded, format, ids) in [
+        (woff.as_slice(), SourceFormat::Woff, [35, 58]),
+        (AHEM_ORIGINAL, SourceFormat::Woff2, [36, 59]),
+    ] {
+        let resource = FontResource::decode(encoded.to_vec(), FONT_LIMITS).unwrap();
+        let expected = resource.face(0).unwrap();
+        let mut system = text::System::default();
+        system.register_font_resource(resource.clone()).unwrap();
+        let original_publication = system.font_catalogue_identity().clone();
+        let source = text::Source::new("AX");
+        let original = system.layout(source.clone(), style(), options()).unwrap();
+        system.refresh_fonts().unwrap();
+        let refreshed_publication = system.font_catalogue_identity().clone();
+        let refreshed = system.layout(source, style(), options()).unwrap();
+        assert_ne!(original_publication, refreshed_publication);
+        assert_ne!(original.key(), refreshed.key());
+
+        let mut foreign = text::System::default();
+        foreign.register_font_resource(resource).unwrap();
+        let original_run = original.run_views().next().unwrap();
+        let instance = original_run.effective_instance().unwrap();
+        assert_eq!(
+            instance.metrics(&original_publication).unwrap().ascent(),
+            16.0
+        );
+        for wrong in [&refreshed_publication, foreign.font_catalogue_identity()] {
+            assert_eq!(
+                instance.metrics(wrong).unwrap_err().code,
+                text::ErrorCode::FontCatalogueMismatch
+            );
+        }
+        drop(system);
+        drop(foreign);
+
+        for (layout, publication) in [
+            (&original, &original_publication),
+            (&refreshed, &refreshed_publication),
+        ] {
+            let text_run = layout.run_views().next().unwrap();
+            assert_eq!(text_run.face().catalogue_identity(), publication);
+            assert_eq!(text_run.face().admitted_face(), &expected);
+            let prepared = prepare_text_layout(layout, Transform::identity(), limits()).unwrap();
+            assert!(std::ptr::eq(prepared.layout(), layout));
+            assert_eq!(prepared.scene().commands.len(), 1);
+            let (run, transform) = outline(&prepared.scene().commands[0]);
+            assert_eq!(transform, Transform::translation(0.0, 16.0).unwrap());
+            let face = run.font().admitted_face();
+            assert_eq!(face, &expected);
+            assert_eq!(
+                face.resource().source().identity(),
+                expected.resource().source().identity()
+            );
+            assert_eq!(face.resource().source().format(), format);
+            assert_eq!(face.resource().source().bytes(), encoded);
+            assert!(std::ptr::eq(
+                face.resource().bytes(),
+                text_run.face().bytes()
+            ));
+            assert_eq!(run.instance().size(), 20.0);
+            assert!(run.instance().coordinates().is_empty());
+            assert_eq!(run.instance().synthesis(), GlyphSynthesis::none());
+            // Original cmap IDs differ across revisions. Both fixtures have
+            // 1,000-unit square A/X ink and advances at UPEM 1,000.
+            assert_eq!(
+                run.glyphs(),
+                [
+                    TextGlyph::try_new(ids[0], 0.0, 0.0, 20.0).unwrap(),
+                    TextGlyph::try_new(ids[1], 20.0, 0.0, 20.0).unwrap(),
+                ]
+            );
+            assert_eq!(
+                run.bounds().ink_rect(),
+                Some(Rect::try_new(0.0, -16.0, 40.0, 20.0).unwrap())
+            );
+        }
+    }
 }
 
 #[test]
@@ -706,54 +794,75 @@ fn actual_italic_synthesis_is_executed_from_the_same_effective_instance() {
 }
 
 #[test]
-fn actual_same_face_runs_copy_once_and_layout_owns_input_after_system_drop() {
+fn actual_same_face_runs_share_text_backing_after_system_and_layout_drop() {
     let input = {
-        let mut bytes = Vec::with_capacity(AHEM.len() + ROOM);
-        bytes.extend_from_slice(AHEM);
-        let mut system = system(bytes);
+        let mut system = system(AHEM.to_vec());
         system.layout(split_source(), style(), options()).unwrap()
     };
+    let input_pointers = input
+        .run_views()
+        .map(|run| run.face().bytes().as_ptr())
+        .collect::<Vec<_>>();
+    assert_eq!(input_pointers.len(), 2);
+    let backing = input_pointers[0];
+    assert_eq!(input_pointers, [backing; 2]);
     let prepared = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
     let first = outline(&prepared.scene().commands[0]).0;
     let second = outline(&prepared.scene().commands[1]).0;
-    assert_eq!(
-        first.font().bytes().as_ptr(),
-        second.font().bytes().as_ptr()
-    );
-    assert_ne!(
-        first.font().bytes().as_ptr(),
-        input.run_views().next().unwrap().face().bytes().as_ptr()
-    );
     assert_eq!(first.font().bytes(), AHEM);
     assert_eq!(second.font().bytes(), AHEM);
-    let base = system(AHEM.to_vec())
-        .layout(split_source(), style(), options())
-        .unwrap();
-    let base_charge = minimum_retained(&base, Transform::identity());
-    assert_eq!(minimum_retained(&input, Transform::identity()), base_charge);
-    const PADDING: usize = 257;
-    let mut padded = AHEM.to_vec();
-    padded.resize(padded.len() + PADDING, 0);
-    let padded = system(padded)
-        .layout(split_source(), style(), options())
-        .unwrap();
     assert_eq!(
-        minimum_retained(&padded, Transform::identity()),
-        base_charge + PADDING
+        [
+            first.font().bytes().as_ptr(),
+            second.font().bytes().as_ptr()
+        ],
+        [backing; 2],
+        "both admitted runs share the same actual Text font backing"
     );
-    // One fewer retained byte refuses; a fresh full-budget invocation succeeds.
-    refuse(
-        &base,
-        Transform::identity(),
-        bounded(32, 1024, base_charge - 1, 32, 32, 32),
-    );
-    assert!(prepare_text_layout(&base, Transform::identity(), limits()).is_ok());
+
     let detached_scene = prepared.scene().clone();
     drop(prepared);
     drop(input);
     let (detached, _) = outline(&detached_scene.commands[1]);
+    assert_eq!(detached.font().bytes().as_ptr(), backing);
     assert_eq!(detached.font().bytes(), AHEM);
     assert_eq!(detached.path_elements().count(), 5);
+}
+
+#[test]
+fn split_text_runs_charge_actual_font_capacity_once_at_the_retained_cap() {
+    let base_bytes = AHEM.to_vec();
+    let base_capacity = base_bytes.capacity();
+    let base = system(base_bytes)
+        .layout(split_source(), style(), options())
+        .unwrap();
+    let base_charge = minimum_retained(&base, Transform::identity());
+
+    let mut spare = Vec::with_capacity(AHEM.len() + (1 << 20));
+    spare.extend_from_slice(AHEM);
+    let spare_capacity = spare.capacity();
+    let mut padded = AHEM.to_vec();
+    padded.resize(padded.len() + 257, 0);
+    let padded_capacity = padded.capacity();
+    for (bytes, capacity) in [(spare, spare_capacity), (padded, padded_capacity)] {
+        let input = system(bytes)
+            .layout(split_source(), style(), options())
+            .unwrap();
+        let expected = base_charge + (capacity - base_capacity);
+        assert_eq!(minimum_retained(&input, Transform::identity()), expected);
+        refuse(
+            &input,
+            Transform::identity(),
+            bounded(32, 1024, expected - 1, 32, 32, 32),
+        );
+        let accepted = prepare_text_layout(
+            &input,
+            Transform::identity(),
+            bounded(32, 1024, expected, 32, 32, 32),
+        )
+        .unwrap();
+        assert_eq!(accepted.scene().commands.len(), 2);
+    }
 }
 
 fn minimum_retained(input: &text::Layout, placement: Transform) -> usize {

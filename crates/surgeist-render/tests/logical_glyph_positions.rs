@@ -13,7 +13,8 @@ fn logical_glyph_position_is_retained_until_actual_path_point_conversion() {
     let glyph = TextGlyph::try_new(58, origin, 0.0, -3.0).unwrap();
     assert_eq!(glyph.x(), origin);
     assert_eq!(glyph.advance(), -3.0);
-    let font = FontData::try_from_bytes(AHEM.to_vec(), 0).unwrap();
+    let font =
+        FontData::try_from_bytes(AHEM.to_vec(), 0, surgeist_test::fixtures::FONT_LIMITS).unwrap();
     let instance = TextInstance::try_new(1.0, vec![], GlyphSynthesis::none()).unwrap();
     let prepared = font
         .prepare_glyph_run(
