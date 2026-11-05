@@ -3,7 +3,7 @@
 use super::{Error, Golden, Node, TestTree, Viewport, capture_authority, layout, one_child};
 use capture_authority::{CaptureMetadata, CapturedArtifact, RootCaptureProfile, sha256};
 
-const SOURCE: &str = "html/flex/fri07_flex_composition.html";
+pub(super) const SOURCE: &str = "html/flex/fri07_flex_composition.html";
 const SOURCE_BYTES: &[u8] = include_bytes!("html/flex/fri07_flex_composition.html");
 const RETAINED_REPORT: &str =
     include_str!("captured/flex-composition-differences/xml/generation-reports/all.json");

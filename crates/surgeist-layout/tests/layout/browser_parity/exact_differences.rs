@@ -421,6 +421,8 @@ enum FontDemand {
     AhemZwsp,
     #[serde(rename = "ahem-10px-flex-direct-text")]
     AhemFlexDirectText,
+    #[serde(rename = "ahem-16px-prepared-ranges")]
+    AhemPreparedRanges,
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]

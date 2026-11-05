@@ -1,7 +1,7 @@
 //! Layout-private portable data and one identity calculation. This module uses
 //! no Generator types. Callers authenticate bytes/censuses before calculation.
 use super::exact_differences::{CaseIdentity, QualificationError};
-use super::flex_content_text;
+use super::{flex_composition, flex_content_text, pinned_font, prepared_range_qualification};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, value::RawValue};
 use sha2::{Digest as _, Sha256};
@@ -21,6 +21,9 @@ const ROOT_CONTEXT_V4_HELPER_SHA256: &str =
     "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee";
 const OBSERVATION_REQUEST: &str = "observation-request.json";
 const MEASURED_LEAF_SCRIPT: &str = "scripts/gentest/measured_leaf.js";
+const ELEMENT_SCROLL_SIZES_REQUEST_BYTES: &[u8] = include_bytes!(
+    "../../bin/surgeist-layout-generate/measurement/element_scroll_sizes_request.json"
+);
 const MEASURED_LEAF_REQUEST_BYTES: &[u8] =
     include_bytes!("../../bin/surgeist-layout-generate/measurement/measured_leaf_request.json");
 const PREPARED_RANGE_REQUEST_BYTES: &[u8] =
@@ -432,8 +435,19 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
         return Err(changed("source/variant/capture mapping"));
     }
     let (profile, font_demand) = match (observation_request, observation_input_sha256) {
-        ("geometry", None) | ("element-scroll-sizes", Some(_))
-            if !full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
+        ("geometry", None)
+            if !full_inputs.contains_key(OBSERVATION_REQUEST)
+                && !full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
+                && !full_inputs.contains_key(flex_content_text::SCRIPT_PATH) =>
+        {
+            ("canonical-no-text-boxes", "none")
+        }
+        ("element-scroll-sizes", Some(request_sha256))
+            if request_sha256 == sha256(ELEMENT_SCROLL_SIZES_REQUEST_BYTES)
+                && full_inputs.get(OBSERVATION_REQUEST).map(String::as_str)
+                    == Some(request_sha256)
+                && !excluded_specs.contains(OBSERVATION_REQUEST)
+                && !full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
                 && !full_inputs.contains_key(flex_content_text::SCRIPT_PATH) =>
         {
             ("canonical-no-text-boxes", "none")
@@ -480,6 +494,66 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
                 }
             }
             ("canonical-flex-content-text", flex_content_text::PROFILE)
+        }
+        ("prepared-ranges" | "flex-composition", Some(request_sha256))
+            if !full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
+                && !full_inputs.contains_key(flex_content_text::SCRIPT_PATH) =>
+        {
+            let ranges = observation_request == "prepared-ranges";
+            let (source, request, profile, font) = if ranges {
+                (
+                    prepared_range_qualification::SOURCE,
+                    PREPARED_RANGE_REQUEST_BYTES,
+                    "canonical-prepared-ranges",
+                    "ahem-16px-prepared-ranges",
+                )
+            } else {
+                (
+                    flex_composition::SOURCE,
+                    FLEX_COMPOSITION_REQUEST_BYTES,
+                    "canonical-flex-composition",
+                    "none",
+                )
+            };
+            const FONT_PATH: &str = "fonts/Ahem.ttf";
+            let resources_match = if ranges {
+                artifact.linked_resources.len() == 1
+                    && artifact.linked_resources.get(FONT_PATH).map(String::as_str)
+                        == Some(pinned_font::SHA256)
+            } else {
+                artifact.linked_resources.is_empty()
+            };
+            let helper = full_inputs
+                .get(ROOT_HELPER_INPUT)
+                .and_then(|hash| root_helper_profile(hash).ok());
+            let helper_matches = match helper {
+                Some(RootCaptureProfile::RootContextFlexCompositionV1) => true,
+                Some(RootCaptureProfile::RootContextPreparedRangeV1) => ranges,
+                _ => false,
+            };
+            if case.source != source
+                || request_sha256 != sha256(request)
+                || !resources_match
+                || !helper_matches
+                || excluded_specs.contains(ROOT_HELPER_INPUT)
+            {
+                return Err(changed("specialized capture profile"));
+            }
+            for (path, digest) in [
+                (OBSERVATION_REQUEST, request_sha256),
+                (
+                    "scripts/gentest/test_base_style.css",
+                    pinned_font::ROOT_CONTEXT_STYLESHEET_SHA256,
+                ),
+                (FONT_PATH, pinned_font::SHA256),
+            ] {
+                if full_inputs.get(path).map(String::as_str) != Some(digest)
+                    || excluded_specs.contains(path)
+                {
+                    return Err(changed(format!("specialized observation input: {path}")));
+                }
+            }
+            (profile, font)
         }
         _ => return Err(malformed("unsupported observation request/input binding")),
     };
