@@ -7,6 +7,7 @@ enum Measurement {
     RefuseResolvedWidth,
     SmallerAfterRows,
     MaximumOnlyChanges,
+    RevisitMaximumRefuses { minimum_changes: bool },
     LastRowsChange,
     HiddenMinimumChange,
     OppositeExtent,
@@ -230,6 +231,12 @@ impl<S: LayoutScalar> LayoutTree for StageTree<S> {
         {
             return Some(Err(ResolvedWidth));
         }
+        if matches!(self.measurement, Measurement::RevisitMaximumRefuses { .. })
+            && rows_known
+            && available.width.operation() == SizingOperation::MaxContent
+        {
+            return Some(Err(ResolvedWidth));
+        }
         let minimum = available.width.operation() == SizingOperation::MinContent;
         // These are declared host measurements, dependent only on the actual
         // content-space request. They model the opposite-axis dependencies in
@@ -263,6 +270,17 @@ impl<S: LayoutScalar> LayoutTree for StageTree<S> {
                 (true, true) => 10.0,
                 (true, false) => 30.0,
             },
+            Measurement::RevisitMaximumRefuses { minimum_changes } => {
+                if minimum {
+                    if rows_known && minimum_changes {
+                        15.0
+                    } else {
+                        10.0
+                    }
+                } else {
+                    40.0
+                }
+            }
             Measurement::MaximumOnlyChanges => {
                 if minimum {
                     10.0
@@ -426,6 +444,41 @@ fn assert_revisit<S: LayoutScalar>() {
 fn individual_minimum_changes_replace_both_roles_and_final_rows_do_not_reopen_columns() {
     assert_revisit::<f32>();
     assert_revisit::<f64>();
+}
+
+fn assert_revisit_maximum_query_permission<S: LayoutScalar>() {
+    let changed = StageTree::<S>::new(Measurement::RevisitMaximumRefuses {
+        minimum_changes: true,
+    });
+    let error = changed
+        .observe(GridSizingPhase::Complete)
+        .err()
+        .expect("changed min-content must query max-content for the permitted revisit");
+    assert!(matches!(
+        error.kind(),
+        LayoutErrorKindOf::Measurement(ResolvedWidth)
+    ));
+
+    let stable = StageTree::<S>::new(Measurement::RevisitMaximumRefuses {
+        minimum_changes: false,
+    });
+    let observed = stable
+        .observe(GridSizingPhase::Complete)
+        .expect("unchanged min-content must not query max-content for a skipped revisit");
+    assert_eq!(
+        observed.output.size,
+        Size::new(S::from_f64(40.0), S::from_f64(30.0))
+    );
+}
+
+#[test]
+fn grid_revisit_queries_max_content_only_when_min_content_changes_f32() {
+    assert_revisit_maximum_query_permission::<f32>();
+}
+
+#[test]
+fn grid_revisit_queries_max_content_only_when_min_content_changes_f64() {
+    assert_revisit_maximum_query_permission::<f64>();
 }
 
 fn assert_retained_prefix<S: LayoutScalar>() {
