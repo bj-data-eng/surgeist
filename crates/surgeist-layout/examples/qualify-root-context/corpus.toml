@@ -1999,3 +1999,23 @@ hypothetical_direction = "ltr"
 root_direction = "variant"
 root_writing_mode = "horizontal-tb"
 inline_offset = 0
+
+[[records]]
+source = "html/block/block_margin_x_intrinsic_size_negative.html"
+source_sha256 = "0810ab35ac7c3f05a1a901bb482efd882225544be5ed13c669dfd9c970a4a8a2"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "2e364669fd3f12a3017b93a18a2dda077b82433c73e2297cc2edde41b7e9337c"
+content_box_ltr = "6631360eb55f9f56e13d9dc991459077c3ab599dbe819ad2a2ed331a1bfe0562"
+border_box_rtl = "11199a787b458d4ac4ed801f7837a052480905b038d0d52a55ea2c64eb8739d1"
+content_box_rtl = "a168993068e2435062ab80c417118241a0cd941be6e229e3a40dce8a2e426876"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
