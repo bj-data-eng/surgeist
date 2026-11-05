@@ -1401,6 +1401,13 @@ pub struct HtmlFloatingPointNumber {
 }
 
 impl HtmlFloatingPointNumber {
+    /// Positive zero.
+    pub(crate) const ZERO: Self = Self { value: 0.0 };
+    /// One.
+    pub(crate) const ONE: Self = Self { value: 1.0 };
+    /// One hundred.
+    pub(crate) const ONE_HUNDRED: Self = Self { value: 100.0 };
+
     /// Changes representation of the actual finite binary64 bits, without
     /// reparsing decimal serialization or introducing another rounding step.
     pub(crate) fn exact_decimal(self) -> HtmlSignedDecimal {

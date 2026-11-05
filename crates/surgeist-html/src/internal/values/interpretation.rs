@@ -303,6 +303,53 @@ impl<A, R> HtmlValueReport<A, R> {
     }
 }
 
+/// Authored conformance of a common clause whose author grammar the Standard defines. It is the
+/// [`HtmlValueAuthorState`] without the `NotDefined` state, so a consumer of a defined clause
+/// matches only the states that clause can report.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum HtmlDefinedAuthorState<T> {
+    Missing,
+    Valid(T),
+    Invalid(HtmlValueSyntaxError),
+    Unrepresentable(HtmlValueRepresentationError),
+}
+impl<T> From<HtmlDefinedAuthorState<T>> for HtmlValueAuthorState<T> {
+    fn from(state: HtmlDefinedAuthorState<T>) -> Self {
+        match state {
+            HtmlDefinedAuthorState::Missing => Self::Missing,
+            HtmlDefinedAuthorState::Valid(value) => Self::Valid(value),
+            HtmlDefinedAuthorState::Invalid(error) => Self::Invalid(error),
+            HtmlDefinedAuthorState::Unrepresentable(error) => Self::Unrepresentable(error),
+        }
+    }
+}
+
+/// A [`HtmlValueReport`] of a clause whose author grammar the Standard defines, kept apart from the
+/// public report until its author state has been read. Only the defined-grammar interpreter
+/// operations construct one, so its author state is never `NotDefined`.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct HtmlDefinedValueReport<A, R> {
+    raw: Option<DocumentString>,
+    syntax: HtmlValueSyntax,
+    author: HtmlDefinedAuthorState<A>,
+    recovery: HtmlValueRecoveryState<R>,
+}
+impl<A, R> HtmlDefinedValueReport<A, R> {
+    /// The whole-value author-conformance attempt.
+    pub(crate) fn author(&self) -> &HtmlDefinedAuthorState<A> {
+        &self.author
+    }
+    /// The public report, carrying the same raw value, author state and recovery.
+    pub(crate) fn into_report(self) -> HtmlValueReport<A, R> {
+        HtmlValueReport {
+            raw: self.raw,
+            syntax: self.syntax,
+            author: self.author.into(),
+            recovery: self.recovery,
+        }
+    }
+}
+
 /// One value exceeds the caller's finite standalone input capacity.
 ///
 /// No syntax algorithm has run and no successful partial report is returned.
@@ -536,17 +583,41 @@ impl HtmlValueInterpreter {
         })
     }
 
+    fn admit_defined<A, R>(
+        &self,
+        raw: Option<&DocumentString>,
+        syntax: HtmlValueSyntax,
+        author: impl FnOnce(&DocumentString) -> HtmlDefinedAuthorState<A>,
+        recovery: impl FnOnce(&DocumentString) -> HtmlValueRecoveryState<R>,
+    ) -> Result<HtmlDefinedValueReport<A, R>, HtmlValueAdmissionError> {
+        self.admit_attribute_raw(raw)?;
+        Ok(HtmlDefinedValueReport {
+            raw: raw.cloned(),
+            syntax,
+            author: raw.map_or(HtmlDefinedAuthorState::Missing, author),
+            recovery: raw.map_or(HtmlValueRecoveryState::Missing, recovery),
+        })
+    }
+
     /// Checks authored integer syntax where defined and applies its recovery algorithm.
     pub fn integer(
         &self,
         raw: Option<&DocumentString>,
     ) -> Result<HtmlValueReport<HtmlInteger, HtmlInteger>, HtmlValueAdmissionError> {
-        let mut report = self.admit(raw, HtmlValueSyntax::Integer)?;
-        if let Some(raw) = raw {
-            report.author = numeric_author(numeric::validate_integer(raw));
-            report.recovery = numeric_recovery(numeric::parse_integer(raw));
-        }
-        Ok(report)
+        self.integer_defined(raw)
+            .map(HtmlDefinedValueReport::into_report)
+    }
+
+    pub(crate) fn integer_defined(
+        &self,
+        raw: Option<&DocumentString>,
+    ) -> Result<HtmlDefinedValueReport<HtmlInteger, HtmlInteger>, HtmlValueAdmissionError> {
+        self.admit_defined(
+            raw,
+            HtmlValueSyntax::Integer,
+            |raw| numeric_author(numeric::validate_integer(raw)),
+            |raw| numeric_recovery(numeric::parse_integer(raw)),
+        )
     }
 
     /// Checks authored nonnegative integer syntax where defined and applies its recovery algorithm.
@@ -557,12 +628,23 @@ impl HtmlValueInterpreter {
         HtmlValueReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
         HtmlValueAdmissionError,
     > {
-        let mut report = self.admit(raw, HtmlValueSyntax::NonnegativeInteger)?;
-        if let Some(raw) = raw {
-            report.author = numeric_author(numeric::validate_nonnegative_integer(raw));
-            report.recovery = numeric_recovery(numeric::parse_nonnegative_integer(raw));
-        }
-        Ok(report)
+        self.nonnegative_integer_defined(raw)
+            .map(HtmlDefinedValueReport::into_report)
+    }
+
+    pub(crate) fn nonnegative_integer_defined(
+        &self,
+        raw: Option<&DocumentString>,
+    ) -> Result<
+        HtmlDefinedValueReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
+        HtmlValueAdmissionError,
+    > {
+        self.admit_defined(
+            raw,
+            HtmlValueSyntax::NonnegativeInteger,
+            |raw| numeric_author(numeric::validate_nonnegative_integer(raw)),
+            |raw| numeric_recovery(numeric::parse_nonnegative_integer(raw)),
+        )
     }
 
     /// Checks authored floating point number syntax where defined and applies its recovery algorithm.
@@ -573,12 +655,23 @@ impl HtmlValueInterpreter {
         HtmlValueReport<HtmlFloatingPointNumber, HtmlFloatingPointNumber>,
         HtmlValueAdmissionError,
     > {
-        let mut report = self.admit(raw, HtmlValueSyntax::FloatingPointNumber)?;
-        if let Some(raw) = raw {
-            report.author = numeric_author(numeric::validate_floating_point_number(raw));
-            report.recovery = numeric_recovery(numeric::parse_floating_point_number(raw));
-        }
-        Ok(report)
+        self.floating_point_number_defined(raw)
+            .map(HtmlDefinedValueReport::into_report)
+    }
+
+    pub(crate) fn floating_point_number_defined(
+        &self,
+        raw: Option<&DocumentString>,
+    ) -> Result<
+        HtmlDefinedValueReport<HtmlFloatingPointNumber, HtmlFloatingPointNumber>,
+        HtmlValueAdmissionError,
+    > {
+        self.admit_defined(
+            raw,
+            HtmlValueSyntax::FloatingPointNumber,
+            |raw| numeric_author(numeric::validate_floating_point_number(raw)),
+            |raw| numeric_recovery(numeric::parse_floating_point_number(raw)),
+        )
     }
 
     /// Checks authored floating point list syntax where defined and applies its recovery algorithm.
@@ -591,7 +684,7 @@ impl HtmlValueInterpreter {
     > {
         let mut report = self.admit(raw, HtmlValueSyntax::FloatingPointList)?;
         if let Some(raw) = raw {
-            report.author = numeric_author(numeric::validate_floating_point_list(raw));
+            report.author = numeric_author(numeric::validate_floating_point_list(raw)).into();
             report.recovery =
                 HtmlValueRecoveryState::Value(numeric::parse_floating_point_list(raw));
         }
@@ -643,12 +736,20 @@ impl HtmlValueInterpreter {
         &self,
         raw: Option<&DocumentString>,
     ) -> Result<HtmlValueReport<HtmlMonth, HtmlMonth>, HtmlValueAdmissionError> {
-        let mut report = self.admit(raw, HtmlValueSyntax::Month)?;
-        if let Some(raw) = raw {
-            report.author = temporal_author(temporal::validate_month(raw));
-            report.recovery = temporal_recovery(temporal::parse_month(raw));
-        }
-        Ok(report)
+        self.month_defined(raw)
+            .map(HtmlDefinedValueReport::into_report)
+    }
+
+    pub(crate) fn month_defined(
+        &self,
+        raw: Option<&DocumentString>,
+    ) -> Result<HtmlDefinedValueReport<HtmlMonth, HtmlMonth>, HtmlValueAdmissionError> {
+        self.admit_defined(
+            raw,
+            HtmlValueSyntax::Month,
+            |raw| temporal_author(temporal::validate_month(raw)),
+            |raw| temporal_recovery(temporal::parse_month(raw)),
+        )
     }
 
     /// Checks date author syntax and separately applies temporal processing.
@@ -656,12 +757,20 @@ impl HtmlValueInterpreter {
         &self,
         raw: Option<&DocumentString>,
     ) -> Result<HtmlValueReport<HtmlDate, HtmlDate>, HtmlValueAdmissionError> {
-        let mut report = self.admit(raw, HtmlValueSyntax::Date)?;
-        if let Some(raw) = raw {
-            report.author = temporal_author(temporal::validate_date(raw));
-            report.recovery = temporal_recovery(temporal::parse_date(raw));
-        }
-        Ok(report)
+        self.date_defined(raw)
+            .map(HtmlDefinedValueReport::into_report)
+    }
+
+    pub(crate) fn date_defined(
+        &self,
+        raw: Option<&DocumentString>,
+    ) -> Result<HtmlDefinedValueReport<HtmlDate, HtmlDate>, HtmlValueAdmissionError> {
+        self.admit_defined(
+            raw,
+            HtmlValueSyntax::Date,
+            |raw| temporal_author(temporal::validate_date(raw)),
+            |raw| temporal_recovery(temporal::parse_date(raw)),
+        )
     }
 
     /// Checks yearless date author syntax and separately applies temporal processing.
@@ -671,7 +780,7 @@ impl HtmlValueInterpreter {
     ) -> Result<HtmlValueReport<HtmlYearlessDate, HtmlYearlessDate>, HtmlValueAdmissionError> {
         let mut report = self.admit(raw, HtmlValueSyntax::YearlessDate)?;
         if let Some(raw) = raw {
-            report.author = temporal_author(temporal::validate_yearless_date(raw));
+            report.author = temporal_author(temporal::validate_yearless_date(raw)).into();
             report.recovery = temporal_recovery(temporal::parse_yearless_date(raw));
         }
         Ok(report)
@@ -682,12 +791,20 @@ impl HtmlValueInterpreter {
         &self,
         raw: Option<&DocumentString>,
     ) -> Result<HtmlValueReport<HtmlTime, HtmlParsedTime>, HtmlValueAdmissionError> {
-        let mut report = self.admit(raw, HtmlValueSyntax::Time)?;
-        if let Some(raw) = raw {
-            report.author = temporal_author(temporal::validate_time(raw));
-            report.recovery = temporal_recovery(temporal::parse_time(raw));
-        }
-        Ok(report)
+        self.time_defined(raw)
+            .map(HtmlDefinedValueReport::into_report)
+    }
+
+    pub(crate) fn time_defined(
+        &self,
+        raw: Option<&DocumentString>,
+    ) -> Result<HtmlDefinedValueReport<HtmlTime, HtmlParsedTime>, HtmlValueAdmissionError> {
+        self.admit_defined(
+            raw,
+            HtmlValueSyntax::Time,
+            |raw| temporal_author(temporal::validate_time(raw)),
+            |raw| temporal_recovery(temporal::parse_time(raw)),
+        )
     }
 
     /// Checks local date time author syntax and separately applies temporal processing.
@@ -696,12 +813,23 @@ impl HtmlValueInterpreter {
         raw: Option<&DocumentString>,
     ) -> Result<HtmlValueReport<HtmlLocalDateTime, HtmlParsedLocalDateTime>, HtmlValueAdmissionError>
     {
-        let mut report = self.admit(raw, HtmlValueSyntax::LocalDateTime)?;
-        if let Some(raw) = raw {
-            report.author = temporal_author(temporal::validate_local_date_time(raw));
-            report.recovery = temporal_recovery(temporal::parse_local_date_time(raw));
-        }
-        Ok(report)
+        self.local_date_time_defined(raw)
+            .map(HtmlDefinedValueReport::into_report)
+    }
+
+    pub(crate) fn local_date_time_defined(
+        &self,
+        raw: Option<&DocumentString>,
+    ) -> Result<
+        HtmlDefinedValueReport<HtmlLocalDateTime, HtmlParsedLocalDateTime>,
+        HtmlValueAdmissionError,
+    > {
+        self.admit_defined(
+            raw,
+            HtmlValueSyntax::LocalDateTime,
+            |raw| temporal_author(temporal::validate_local_date_time(raw)),
+            |raw| temporal_recovery(temporal::parse_local_date_time(raw)),
+        )
     }
 
     /// Checks normalized local date time author syntax and separately applies temporal processing.
@@ -713,7 +841,8 @@ impl HtmlValueInterpreter {
     {
         let mut report = self.admit(raw, HtmlValueSyntax::NormalizedLocalDateTime)?;
         if let Some(raw) = raw {
-            report.author = temporal_author(temporal::validate_normalized_local_date_time(raw));
+            report.author =
+                temporal_author(temporal::validate_normalized_local_date_time(raw)).into();
             report.recovery = temporal_recovery(temporal::parse_local_date_time(raw));
         }
         Ok(report)
@@ -727,7 +856,7 @@ impl HtmlValueInterpreter {
     {
         let mut report = self.admit(raw, HtmlValueSyntax::TimeZoneOffset)?;
         if let Some(raw) = raw {
-            report.author = temporal_author(temporal::validate_time_zone_offset(raw));
+            report.author = temporal_author(temporal::validate_time_zone_offset(raw)).into();
             report.recovery = temporal_recovery(temporal::parse_time_zone_offset(raw));
         }
         Ok(report)
@@ -743,7 +872,7 @@ impl HtmlValueInterpreter {
     > {
         let mut report = self.admit(raw, HtmlValueSyntax::GlobalDateTime)?;
         if let Some(raw) = raw {
-            report.author = temporal_author(temporal::validate_global_date_time(raw));
+            report.author = temporal_author(temporal::validate_global_date_time(raw)).into();
             report.recovery = temporal_recovery(temporal::parse_global_date_time(raw));
         }
         Ok(report)
@@ -754,12 +883,20 @@ impl HtmlValueInterpreter {
         &self,
         raw: Option<&DocumentString>,
     ) -> Result<HtmlValueReport<HtmlWeek, HtmlWeek>, HtmlValueAdmissionError> {
-        let mut report = self.admit(raw, HtmlValueSyntax::Week)?;
-        if let Some(raw) = raw {
-            report.author = temporal_author(temporal::validate_week(raw));
-            report.recovery = temporal_recovery(temporal::parse_week(raw));
-        }
-        Ok(report)
+        self.week_defined(raw)
+            .map(HtmlDefinedValueReport::into_report)
+    }
+
+    pub(crate) fn week_defined(
+        &self,
+        raw: Option<&DocumentString>,
+    ) -> Result<HtmlDefinedValueReport<HtmlWeek, HtmlWeek>, HtmlValueAdmissionError> {
+        self.admit_defined(
+            raw,
+            HtmlValueSyntax::Week,
+            |raw| temporal_author(temporal::validate_week(raw)),
+            |raw| temporal_recovery(temporal::parse_week(raw)),
+        )
     }
 
     /// Checks duration author syntax and separately applies temporal processing.
@@ -769,7 +906,7 @@ impl HtmlValueInterpreter {
     ) -> Result<HtmlValueReport<HtmlDuration, HtmlParsedDuration>, HtmlValueAdmissionError> {
         let mut report = self.admit(raw, HtmlValueSyntax::Duration)?;
         if let Some(raw) = raw {
-            report.author = temporal_author(temporal::validate_duration(raw));
+            report.author = temporal_author(temporal::validate_duration(raw)).into();
             report.recovery = temporal_recovery(temporal::parse_duration(raw));
         }
         Ok(report)
@@ -797,7 +934,7 @@ impl HtmlValueInterpreter {
     {
         let mut report = self.admit(raw, HtmlValueSyntax::DateWithOptionalTime)?;
         if let Some(raw) = raw {
-            report.author = temporal_author(temporal::validate_date_with_optional_time(raw));
+            report.author = temporal_author(temporal::validate_date_with_optional_time(raw)).into();
             report.recovery = temporal_recovery(temporal::parse_date_or_time(raw));
         }
         Ok(report)
@@ -828,7 +965,7 @@ impl HtmlValueInterpreter {
     > {
         let mut report = self.admit(raw, HtmlValueSyntax::TimeElement)?;
         if let Some(raw) = raw {
-            report.author = temporal_author(temporal::validate_time_element_value(raw));
+            report.author = temporal_author(temporal::validate_time_element_value(raw)).into();
             report.recovery = temporal_recovery(temporal::parse_time_element_value(raw));
         }
         Ok(report)
@@ -846,7 +983,7 @@ impl HtmlValueInterpreter {
         HtmlValueAdmissionError,
     > {
         let mut report = self.admit(Some(raw), HtmlValueSyntax::TimeElement)?;
-        report.author = temporal_author(author);
+        report.author = temporal_author(author).into();
         report.recovery = temporal_recovery(recovery);
         Ok(report)
     }
@@ -869,12 +1006,14 @@ fn numeric_failure(error: HtmlNumericParseError) -> HtmlValueFailure {
     }
 }
 
-fn numeric_author<T>(result: Result<T, HtmlNumericParseError>) -> HtmlValueAuthorState<T> {
+fn numeric_author<T>(result: Result<T, HtmlNumericParseError>) -> HtmlDefinedAuthorState<T> {
     match result {
-        Ok(value) => HtmlValueAuthorState::Valid(value),
+        Ok(value) => HtmlDefinedAuthorState::Valid(value),
         Err(error) => match numeric_failure(error) {
-            HtmlValueFailure::Syntax(error) => HtmlValueAuthorState::Invalid(error),
-            HtmlValueFailure::Representation(error) => HtmlValueAuthorState::Unrepresentable(error),
+            HtmlValueFailure::Syntax(error) => HtmlDefinedAuthorState::Invalid(error),
+            HtmlValueFailure::Representation(error) => {
+                HtmlDefinedAuthorState::Unrepresentable(error)
+            }
         },
     }
 }
@@ -886,10 +1025,10 @@ fn numeric_recovery<T>(result: Result<T, HtmlNumericParseError>) -> HtmlValueRec
     }
 }
 
-fn temporal_author<T>(result: Result<T, HtmlTemporalError>) -> HtmlValueAuthorState<T> {
+fn temporal_author<T>(result: Result<T, HtmlTemporalError>) -> HtmlDefinedAuthorState<T> {
     match result {
-        Ok(value) => HtmlValueAuthorState::Valid(value),
-        Err(error) => HtmlValueAuthorState::Invalid(HtmlValueSyntaxError::Temporal(error)),
+        Ok(value) => HtmlDefinedAuthorState::Valid(value),
+        Err(error) => HtmlDefinedAuthorState::Invalid(HtmlValueSyntaxError::Temporal(error)),
     }
 }
 

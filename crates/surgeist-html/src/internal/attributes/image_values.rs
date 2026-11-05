@@ -5,7 +5,7 @@
 use super::*;
 use crate::{
     internal::microsyntax::numeric::HtmlNonNegativeInteger,
-    internal::values::interpretation::HtmlValueAuthorState,
+    internal::values::interpretation::HtmlDefinedAuthorState,
     internal::values::interpretation::HtmlValueFailure,
     internal::values::interpretation::HtmlValueRecoveryState,
     internal::values::interpretation::HtmlValueReport,
@@ -418,20 +418,47 @@ pub fn embedded_dimension_applicability(
     }
 }
 
-fn image_metadata(attribute: KnownHtmlAttribute) -> RuleMetadata {
-    let (rows, clause, elements): (&'static [u16], _, _) = match attribute {
-        KnownHtmlAttribute::Alt => (&[9][..], ALT_SOURCE, &[KnownHtmlElement::Input][..]),
-        KnownHtmlAttribute::Src => (&[149][..], SRC_SOURCE, &[KnownHtmlElement::Input][..]),
-        KnownHtmlAttribute::Width => (&[178][..], DIMENSIONS_SOURCE, IMAGE_ELEMENTS),
-        KnownHtmlAttribute::Height => (&[64][..], DIMENSIONS_SOURCE, IMAGE_ELEMENTS),
-        _ => unreachable!("private image roles are fixed"),
-    };
-    RuleMetadata {
-        attribute,
-        rows,
-        source: clause,
-        context: Context::Elements(elements),
-        vocabulary_source: None,
+/// The two image-input strings this owner observes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ImageStringRole {
+    Alt,
+    Src,
+}
+impl ImageStringRole {
+    fn metadata(self) -> RuleMetadata {
+        let (attribute, rows, clause): (_, &'static [u16], _) = match self {
+            Self::Alt => (KnownHtmlAttribute::Alt, &[9], ALT_SOURCE),
+            Self::Src => (KnownHtmlAttribute::Src, &[149], SRC_SOURCE),
+        };
+        RuleMetadata {
+            attribute,
+            rows,
+            source: clause,
+            context: Context::Elements(&[KnownHtmlElement::Input]),
+            vocabulary_source: None,
+        }
+    }
+}
+
+/// The two embedded-content dimensions this owner observes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DimensionRole {
+    Width,
+    Height,
+}
+impl DimensionRole {
+    fn metadata(self) -> RuleMetadata {
+        let (attribute, rows): (_, &'static [u16]) = match self {
+            Self::Width => (KnownHtmlAttribute::Width, &[178]),
+            Self::Height => (KnownHtmlAttribute::Height, &[64]),
+        };
+        RuleMetadata {
+            attribute,
+            rows,
+            source: DIMENSIONS_SOURCE,
+            context: Context::Elements(IMAGE_ELEMENTS),
+            vocabulary_source: None,
+        }
     }
 }
 
@@ -551,11 +578,11 @@ impl HtmlValueInterpreter {
     fn input_image_string(
         &self,
         element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
-        selected: KnownHtmlAttribute,
+        selected: ImageStringRole,
         raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         state: Option<HtmlInputType>,
     ) -> HtmlInputImageStringReport {
-        let mut attribute = report(image_metadata(selected), element, raw);
+        let mut attribute = report(selected.metadata(), element, raw);
         let selection = input_image_selection(&mut attribute, state);
         let mut result = HtmlInputImageStringReport {
             attribute,
@@ -578,7 +605,7 @@ impl HtmlValueInterpreter {
         };
         let error = match raw {
             None => Some(HtmlImageAttributeConformanceError::RequiredAttributeMissing),
-            Some(raw) if selected == KnownHtmlAttribute::Alt => raw
+            Some(raw) if selected == ImageStringRole::Alt => raw
                 .value()
                 .is_empty()
                 .then_some(HtmlImageAttributeConformanceError::EmptyAlt),
@@ -607,8 +634,8 @@ impl HtmlValueInterpreter {
         self.admit_attribute_raw(alt.map(HtmlAttributeInput::value))?;
         self.admit_attribute_raw(src.map(HtmlAttributeInput::value))?;
         Ok(HtmlInputImageAttributeReport {
-            alt: self.input_image_string(element, KnownHtmlAttribute::Alt, alt, state),
-            src: self.input_image_string(element, KnownHtmlAttribute::Src, src, state),
+            alt: self.input_image_string(element, ImageStringRole::Alt, alt, state),
+            src: self.input_image_string(element, ImageStringRole::Src, src, state),
         })
     }
 
@@ -638,11 +665,11 @@ impl HtmlValueInterpreter {
     fn embedded_dimension(
         &self,
         element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
-        selected: KnownHtmlAttribute,
+        selected: DimensionRole,
         raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         context: Option<&HtmlEmbeddedDimensionContext>,
     ) -> Result<HtmlEmbeddedDimensionReport, HtmlValueAdmissionError> {
-        let mut attribute = report(image_metadata(selected), element, raw);
+        let mut attribute = report(selected.metadata(), element, raw);
         let selection = dimension_selection(&mut attribute, context);
         let mut result = HtmlEmbeddedDimensionReport {
             attribute,
@@ -657,20 +684,19 @@ impl HtmlValueInterpreter {
             ImageRuleSelection::Unselected => return Ok(result),
             ImageRuleSelection::Selected => {}
         }
-        let common = self.nonnegative_integer(raw.map(HtmlAttributeInput::value))?;
+        let common = self.nonnegative_integer_defined(raw.map(HtmlAttributeInput::value))?;
         result.author = match common.author() {
-            HtmlValueAuthorState::Missing => HtmlImageAttributeAuthorState::Missing,
-            HtmlValueAuthorState::Valid(_) => HtmlImageAttributeAuthorState::Conforming,
-            HtmlValueAuthorState::Invalid(error) => HtmlImageAttributeAuthorState::Nonconforming(
+            HtmlDefinedAuthorState::Missing => HtmlImageAttributeAuthorState::Missing,
+            HtmlDefinedAuthorState::Valid(_) => HtmlImageAttributeAuthorState::Conforming,
+            HtmlDefinedAuthorState::Invalid(error) => HtmlImageAttributeAuthorState::Nonconforming(
                 HtmlImageAttributeConformanceError::CommonValue(HtmlValueFailure::Syntax(*error)),
             ),
             // The exact integer owner does not report representation overflow;
             // grammar conformance would nevertheless survive that capability
             // failure, while the common report retained it independently.
-            HtmlValueAuthorState::Unrepresentable(_) => HtmlImageAttributeAuthorState::Conforming,
-            HtmlValueAuthorState::NotDefined => unreachable!("exact integer author grammar"),
+            HtmlDefinedAuthorState::Unrepresentable(_) => HtmlImageAttributeAuthorState::Conforming,
         };
-        result.common = Some(common);
+        result.common = Some(common.into_report());
         Ok(result)
     }
 
@@ -684,13 +710,8 @@ impl HtmlValueInterpreter {
         self.admit_attribute_raw(width.map(HtmlAttributeInput::value))?;
         self.admit_attribute_raw(height.map(HtmlAttributeInput::value))?;
         Ok(HtmlEmbeddedDimensionAttributeReport {
-            width: self.embedded_dimension(element, KnownHtmlAttribute::Width, width, context)?,
-            height: self.embedded_dimension(
-                element,
-                KnownHtmlAttribute::Height,
-                height,
-                context,
-            )?,
+            width: self.embedded_dimension(element, DimensionRole::Width, width, context)?,
+            height: self.embedded_dimension(element, DimensionRole::Height, height, context)?,
             context: context.cloned(),
         })
     }

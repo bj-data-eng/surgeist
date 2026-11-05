@@ -7,7 +7,8 @@ use super::*;
 use crate::{
     internal::microsyntax::numeric::HtmlInteger,
     internal::microsyntax::numeric::HtmlNonNegativeInteger,
-    internal::values::interpretation::HtmlValueAuthorState,
+    internal::values::interpretation::HtmlDefinedAuthorState,
+    internal::values::interpretation::HtmlDefinedValueReport,
     internal::values::interpretation::HtmlValueFailure,
     internal::values::interpretation::HtmlValueRecoveryState,
     internal::values::interpretation::HtmlValueReport,
@@ -643,22 +644,20 @@ const FORMENCTYPE: EnumRule<HtmlFormEnctype> = EnumRule {
     exact_keywords: false,
 };
 
-fn numeric_author<A>(common: &HtmlValueReport<A, A>) -> HtmlNumericAttributeAuthorState {
+fn numeric_author<A>(common: &HtmlDefinedValueReport<A, A>) -> HtmlNumericAttributeAuthorState {
     match common.author() {
-        HtmlValueAuthorState::Missing => HtmlNumericAttributeAuthorState::Missing,
-        HtmlValueAuthorState::Valid(_) => HtmlNumericAttributeAuthorState::Conforming,
-        HtmlValueAuthorState::Invalid(error) => HtmlNumericAttributeAuthorState::Nonconforming(
+        HtmlDefinedAuthorState::Missing => HtmlNumericAttributeAuthorState::Missing,
+        HtmlDefinedAuthorState::Valid(_) => HtmlNumericAttributeAuthorState::Conforming,
+        HtmlDefinedAuthorState::Invalid(error) => HtmlNumericAttributeAuthorState::Nonconforming(
             HtmlNumericAttributeConformanceError::CommonValue(HtmlValueFailure::Syntax(*error)),
         ),
-        HtmlValueAuthorState::Unrepresentable(error) => {
+        HtmlDefinedAuthorState::Unrepresentable(error) => {
             HtmlNumericAttributeAuthorState::Nonconforming(
                 HtmlNumericAttributeConformanceError::CommonValue(
                     HtmlValueFailure::Representation(*error),
                 ),
             )
         }
-        // Exact signed/nonnegative integer operations always define grammar.
-        HtmlValueAuthorState::NotDefined => unreachable!("integer author grammar is defined"),
     }
 }
 
@@ -688,18 +687,18 @@ fn nonnegative_constraint(
 }
 
 fn nonnegative_author(
-    common: &HtmlValueReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
+    common: &HtmlDefinedValueReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
     positive: bool,
 ) -> HtmlNumericAttributeAuthorState {
     constrained_nonnegative_author(common, positive, None)
 }
 
 fn constrained_nonnegative_author(
-    common: &HtmlValueReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
+    common: &HtmlDefinedValueReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
     positive: bool,
     maximum: Option<u16>,
 ) -> HtmlNumericAttributeAuthorState {
-    if let HtmlValueAuthorState::Valid(value) = common.author()
+    if let HtmlDefinedAuthorState::Valid(value) = common.author()
         && let Err(error) = nonnegative_constraint(value, positive, maximum)
     {
         return HtmlNumericAttributeAuthorState::Nonconforming(error);
@@ -711,6 +710,7 @@ impl HtmlValueInterpreter {
     fn nonnegative_attribute(
         &self,
         rule: NonnegativeRule,
+        maximum: Option<u16>,
         element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<
@@ -727,8 +727,9 @@ impl HtmlValueInterpreter {
                 origin: None,
             });
         }
-        let common = self.nonnegative_integer(raw.map(HtmlAttributeInput::value))?;
-        let author = nonnegative_author(&common, rule.positive);
+        let common = self.nonnegative_integer_defined(raw.map(HtmlAttributeInput::value))?;
+        let author = constrained_nonnegative_author(&common, rule.positive, maximum);
+        let common = common.into_report();
         let (value, origin) = match common.recovery() {
             HtmlValueRecoveryState::Value(value) if !rule.positive || !value.is_zero() => {
                 (value.clone(), HtmlNumericAttributeValueOrigin::Recovered)
@@ -772,8 +773,9 @@ impl HtmlValueInterpreter {
                 origin: None,
             });
         }
-        let common = self.nonnegative_integer(raw.map(HtmlAttributeInput::value))?;
+        let common = self.nonnegative_integer_defined(raw.map(HtmlAttributeInput::value))?;
         let author = constrained_nonnegative_author(&common, rule.positive, Some(rule.maximum));
+        let common = common.into_report();
         let (value, origin) = match common.recovery() {
             HtmlValueRecoveryState::Value(value) if rule.positive && value.is_zero() => {
                 (1, HtmlNumericAttributeValueOrigin::ZeroDefault)
@@ -880,15 +882,7 @@ impl HtmlValueInterpreter {
         HtmlNumericAttributeReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
         HtmlValueAdmissionError,
     > {
-        let mut result = self.nonnegative_attribute(HEADING_OFFSET, element, raw)?;
-        if let Some(common) = result.common.as_ref() {
-            result.author = constrained_nonnegative_author(
-                common,
-                HEADING_OFFSET.positive,
-                Some(HEADING_OFFSET_MAXIMUM),
-            );
-        }
-        Ok(result)
+        self.nonnegative_attribute(HEADING_OFFSET, Some(HEADING_OFFSET_MAXIMUM), element, raw)
     }
 
     /// Interprets exact canvas bitmap width content, including valid zero.
@@ -901,7 +895,7 @@ impl HtmlValueInterpreter {
         HtmlNumericAttributeReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
         HtmlValueAdmissionError,
     > {
-        self.nonnegative_attribute(CANVAS_WIDTH, element, raw)
+        self.nonnegative_attribute(CANVAS_WIDTH, None, element, raw)
     }
 
     /// Interprets exact canvas bitmap height content; missing/failed recovery is 150.
@@ -914,7 +908,7 @@ impl HtmlValueInterpreter {
         HtmlNumericAttributeReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
         HtmlValueAdmissionError,
     > {
-        self.nonnegative_attribute(CANVAS_HEIGHT, element, raw)
+        self.nonnegative_attribute(CANVAS_HEIGHT, None, element, raw)
     }
 
     /// Interprets textarea character width; missing, failure or zero selects 20.
@@ -927,7 +921,7 @@ impl HtmlValueInterpreter {
         HtmlNumericAttributeReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
         HtmlValueAdmissionError,
     > {
-        self.nonnegative_attribute(TEXTAREA_COLS, element, raw)
+        self.nonnegative_attribute(TEXTAREA_COLS, None, element, raw)
     }
 
     /// Interprets textarea character height; missing, failure or zero selects 2.
@@ -940,7 +934,7 @@ impl HtmlValueInterpreter {
         HtmlNumericAttributeReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
         HtmlValueAdmissionError,
     > {
-        self.nonnegative_attribute(TEXTAREA_ROWS, element, raw)
+        self.nonnegative_attribute(TEXTAREA_ROWS, None, element, raw)
     }
 
     /// Interprets exact signed tabindex content; missing/failed recovery is Null.
@@ -962,8 +956,9 @@ impl HtmlValueInterpreter {
                 origin: None,
             });
         }
-        let common = self.integer(raw.map(HtmlAttributeInput::value))?;
+        let common = self.integer_defined(raw.map(HtmlAttributeInput::value))?;
         let author = numeric_author(&common);
+        let common = common.into_report();
         let (value, origin) = match common.recovery() {
             HtmlValueRecoveryState::Value(value) => (
                 HtmlTabindexValue::Integer(value.clone()),
@@ -1308,16 +1303,15 @@ impl HtmlValueInterpreter {
         self.admit_attribute_raw(multiple.map(HtmlAttributeInput::value))?;
         let attribute = report(SELECT_SIZE, element, size);
         let multiple = self.boolean_attribute(HtmlBooleanAttribute::Multiple, element, multiple)?;
-        let common = if attribute.applicability() == HtmlAttributeApplicability::Applicable {
-            Some(self.nonnegative_integer(size.map(HtmlAttributeInput::value))?)
+        let (common, author) = if attribute.applicability()
+            == HtmlAttributeApplicability::Applicable
+        {
+            let common = self.nonnegative_integer_defined(size.map(HtmlAttributeInput::value))?;
+            let author = nonnegative_author(&common, true);
+            (Some(common.into_report()), author)
         } else {
-            None
+            (None, HtmlNumericAttributeAuthorState::Unapplied)
         };
-        let author = common
-            .as_ref()
-            .map_or(HtmlNumericAttributeAuthorState::Unapplied, |common| {
-                nonnegative_author(common, true)
-            });
         let fallback = common.as_ref().and_then(|common| {
             let origin = match common.recovery() {
                 HtmlValueRecoveryState::Missing => HtmlNumericAttributeValueOrigin::MissingDefault,
@@ -1419,19 +1413,19 @@ impl HtmlValueInterpreter {
     ) -> Result<HtmlListIntegerAttributeReport, HtmlValueAdmissionError> {
         self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let mut attribute = report(metadata, element, raw);
-        let common = if attribute.applicability() == HtmlAttributeApplicability::Applicable {
-            if metadata.attribute == KnownHtmlAttribute::Value && raw.is_some() {
-                // The li table excludes authored value on a child of ul/menu;
-                // this standalone declaration has no actual parent observation.
-                attribute.context_author = HtmlAttributeContextAuthorState::Unchecked;
-            }
-            Some(self.integer(raw.map(HtmlAttributeInput::value))?)
-        } else {
-            None
-        };
-        let author = common
-            .as_ref()
-            .map_or(HtmlNumericAttributeAuthorState::Unapplied, numeric_author);
+        let (common, author) =
+            if attribute.applicability() == HtmlAttributeApplicability::Applicable {
+                if metadata.attribute == KnownHtmlAttribute::Value && raw.is_some() {
+                    // The li table excludes authored value on a child of ul/menu;
+                    // this standalone declaration has no actual parent observation.
+                    attribute.context_author = HtmlAttributeContextAuthorState::Unchecked;
+                }
+                let common = self.integer_defined(raw.map(HtmlAttributeInput::value))?;
+                let author = numeric_author(&common);
+                (Some(common.into_report()), author)
+            } else {
+                (None, HtmlNumericAttributeAuthorState::Unapplied)
+            };
         Ok(HtmlListIntegerAttributeReport {
             attribute,
             common,
