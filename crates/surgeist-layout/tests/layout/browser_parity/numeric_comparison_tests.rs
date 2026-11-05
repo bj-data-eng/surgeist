@@ -334,7 +334,7 @@ fn numeric_collection_refuses_opaque_row_baseline_even_with_main_axis_auto_margi
     let golden = analytic_flex_capture(
         "opaque-flex-baseline-main-auto-margin",
         r#"flex-direction="row" align-items="baseline""#,
-        &analytic_flex_label_items(r#"margin-left="auto""#, ""),
+        &analytic_flex_label_items(r#"margin-left="auto""#, r#"align-self="flex-start""#),
         r#"<node x="120" y="0" width="30" height="20"/><node x="150" y="0" width="30" height="25"/>"#,
         r#"<world-rounded-layout node-path="0.0" x="120" y="0" width="30" height="20"/><world-rounded-layout node-path="0.1" x="150" y="0" width="30" height="25"/>"#,
     );
