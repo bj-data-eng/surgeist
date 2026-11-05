@@ -295,3 +295,36 @@ defines source-qualified root contexts and separate ICB/nearest-scrollport/local
 facts. Historical viewport metadata cannot issue a Native operation. Preserve original
 XML and raw diagnostics while qualifying a self-contained candidate corpus. No browser
 root rectangle, used Auto body height or viewport-filling heuristic supplies new inputs.
+
+## Sideways Flex composition qualification
+
+The fixed sideways Flex source uses separate
+[collapse](../../../semantic/flex-composition-collapse-policy.md) and
+[classic scrollbar edge](../../../semantic/flex-composition-scrollbar-policy.md)
+policies. The [comparison receipt](captured/flex-composition-differences/raw-comparisons.jsonl)
+retains all requested browser and Native fields, both Native packet phases,
+and the exact differences assigned to each policy.
+
+Run the browser-free replay from the workspace root.
+
+```sh
+cargo test --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context retained_sideways_flex_replay_qualifies_all_four_variants
+```
+
+To regenerate the comparison, run the focused capture with the pinned browser
+available in the Layout cache. It writes the comparison records to standard
+output.
+
+```sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --fixture html/flex/fri07_flex_composition.html
+```
+
+On macOS arm64, the separate
+[gutter diagnostic](scripts/diagnose-flex-composition-gutter.mjs) uses the
+browser executable from the sealed receipt and a Node runtime with a
+WebSocket client. Its JSON output matches the retained
+[collapse-disabled control](captured/flex-composition-differences/gutter-control.json).
+
+```sh
+pisct run --timeout-seconds 55 -- node crates/surgeist-layout/tests/layout/browser_parity/scripts/diagnose-flex-composition-gutter.mjs
+```
