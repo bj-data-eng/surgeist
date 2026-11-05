@@ -552,13 +552,14 @@ fn inherited_auto_gutter_tracks_both_axes_and_all_writing_modes_f64() {
     qualify_reciprocal_axis_modes::<f64>();
 }
 
-struct WrappingColumnSubgrid<S: LayoutScalar> {
+struct WrappingColumnGrid<S: LayoutScalar> {
     boxes: [LayoutInputOf<S>; 3],
     text: [LayoutInputOf<S>; 2],
     non_box: NodeInputOf<S>,
+    measured: Option<NodeInputOf<S>>,
 }
 
-impl<S: LayoutScalar> Traverse for WrappingColumnSubgrid<S> {
+impl<S: LayoutScalar> Traverse for WrappingColumnGrid<S> {
     type Node = usize;
     type Scalar = S;
     type Children<'a>
@@ -568,6 +569,7 @@ impl<S: LayoutScalar> Traverse for WrappingColumnSubgrid<S> {
     fn children(&self, node: usize) -> Self::Children<'_> {
         let children: &[usize] = match node {
             0 => &[1],
+            1 if self.measured.is_some() => &[2, 5],
             1 => &[2],
             2 => &[3, 4],
             _ => &[],
@@ -581,21 +583,37 @@ impl<S: LayoutScalar> Traverse for WrappingColumnSubgrid<S> {
         self.children(node).nth(index).unwrap()
     }
 }
-impl<S: LayoutScalar> LayoutTree for WrappingColumnSubgrid<S> {
+impl<S: LayoutScalar> LayoutTree for WrappingColumnGrid<S> {
     type MeasureError = std::convert::Infallible;
     fn node_input(&self, node: usize) -> &NodeInputOf<S> {
-        if node >= 3 {
+        if node == 5 {
+            self.measured.as_ref().unwrap()
+        } else if node >= 3 {
             &self.non_box
         } else {
             self.boxes[node].as_box().unwrap()
         }
     }
     fn layout_input(&self, node: usize) -> LayoutInputViewOf<'_, S> {
-        if node >= 3 {
+        if node == 5 {
+            LayoutInputViewOf::Box(self.measured.as_ref().unwrap())
+        } else if node >= 3 {
             self.text[node - 3].as_view()
         } else {
             self.boxes[node].as_view()
         }
+    }
+
+    fn has_leaf_measurement(&self, node: usize) -> bool {
+        node == 5 && self.measured.is_some()
+    }
+    fn measure_leaf(
+        &self,
+        node: usize,
+        _: LeafMeasureInputOf<S>,
+    ) -> Option<Result<Size<S>, Self::MeasureError>> {
+        self.has_leaf_measurement(node)
+            .then(|| Ok(Size::new(S::from_f64(10.0), S::from_f64(5.0))))
     }
 }
 
@@ -681,7 +699,7 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
                 source.encode_utf16().collect::<Vec<_>>()
             );
         }
-        let tree = WrappingColumnSubgrid {
+        let tree = WrappingColumnGrid {
             boxes: [
                 LayoutInputOf::box_input(NodeInputOf {
                     display: Display::Grid,
@@ -722,6 +740,7 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
                 LayoutInputOf::inline_text(TextParticipation::new(origins[1].clone())),
             ],
             non_box: NodeInputOf::non_box(),
+            measured: None,
         };
         let capture = LayoutFlowInput::try_new(
             &tree,
@@ -894,6 +913,164 @@ fn inherited_columns_keep_minimum_and_maximum_auto_overflow_sources_distinct_f32
 #[test]
 fn inherited_columns_keep_minimum_and_maximum_auto_overflow_sources_distinct_f64() {
     qualify_wrapping_min_max::<f64>();
+}
+
+fn qualify_minimum_constrained_grid<S: LayoutScalar>() {
+    let scalar = S::from_f64;
+    for display in [Display::Grid, Display::GridLanes] {
+        for (definite, width, minimum) in [
+            (
+                false,
+                PreferredSizeOf::MAX_CONTENT,
+                MinSizeOf::value(LengthPercentageOf::from_percent_fraction(S::ONE).unwrap()),
+            ),
+            (true, preferred(80.0), MinSizeOf::AUTO),
+        ] {
+            let prepared = prepare_wrapping_text();
+            let origins: Vec<_> = prepared
+                .origin_views()
+                .map(|origin| origin.handle())
+                .collect();
+            let tree = WrappingColumnGrid {
+                boxes: [
+                    LayoutInputOf::box_input(NodeInputOf {
+                        display: Display::Grid,
+                        size: Size::new(width, PreferredSizeOf::AUTO),
+                        min_size: Size::new(minimum, MinSizeOf::AUTO),
+                        grid_template_columns: vec![TrackComponentOf::AUTO],
+                        grid_template_rows: vec![track(20.0)],
+                        justify_content: Some(AlignContent::Stretch),
+                        ..NodeInputOf::default()
+                    }),
+                    LayoutInputOf::box_input(NodeInputOf {
+                        display,
+                        size: Size::new(PreferredSizeOf::AUTO, preferred(20.0)),
+                        grid_template_columns: vec![TrackComponentOf::flex(
+                            TrackFlexFactorOf::try_new(S::ONE).unwrap(),
+                        )],
+                        grid_template_rows: vec![track(30.0), track(10.0)],
+                        overflow: ComputedOverflow::try_new(Overflow::Auto, Overflow::Auto)
+                            .unwrap(),
+                        scrollbar_gutter: ScrollbarGutter::Stable,
+                        scrollbar_width: ScrollbarWidthOf::try_new(scalar(5.0)).unwrap(),
+                        justify_content: Some(AlignContent::Start),
+                        align_content: Some(AlignContent::Start),
+                        ..NodeInputOf::default()
+                    }),
+                    LayoutInputOf::box_input(NodeInputOf {
+                        display: Display::Block,
+                        text_align: TextAlign::LegacyRight,
+                        ..NodeInputOf::default()
+                    }),
+                ],
+                text: [
+                    LayoutInputOf::inline_text(TextParticipation::new(origins[0].clone())),
+                    LayoutInputOf::inline_text(TextParticipation::new(origins[1].clone())),
+                ],
+                non_box: NodeInputOf::non_box(),
+                measured: Some(NodeInputOf {
+                    display: Display::Block,
+                    align_self: Some(AlignItems::Start),
+                    ..NodeInputOf::default()
+                }),
+            };
+            let flow = LayoutFlowInput::try_new(
+                &tree,
+                0,
+                vec![TextParagraphBinding {
+                    inline_box_fragments: InlineBoxFragmentationDemand::NotRequested,
+                    prepared,
+                    container: 2,
+                    nodes: vec![3, 4],
+                    origins: origins
+                        .into_iter()
+                        .zip([3, 4])
+                        .map(|(origin, node)| TextOriginBinding { origin, node })
+                        .collect(),
+                    atomics: vec![],
+                    controls: vec![],
+                    line_strut: None,
+                }],
+                WrappingInput {
+                    native_inline_boxes: Vec::new(),
+                    gaps: Vec::new(),
+                    scopes: Vec::new(),
+                    child_order: Vec::new(),
+                },
+                Vec::new(),
+            )
+            .unwrap();
+            let viewport = Size::new(Some(scalar(80.0)), None);
+            let sizing = crate::layout::native_request::sizing(
+                viewport,
+                Size::splat(SizingOperation::Normal),
+            );
+            let request = LayoutRootRequestOf::standalone(
+                sizing,
+                FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                sizing.orthogonal_fallback().initial_containing_block(),
+            );
+            let batch = compute_layout_with_flow(&flow, 0, request).unwrap();
+            let output = |node| {
+                batch
+                    .unrounded_entries()
+                    .iter()
+                    .find(|entry| entry.node() == node)
+                    .unwrap()
+                    .output()
+            };
+            let root = output(0);
+            let grid = output(1);
+            let scroll = grid.scroll_geometry.unwrap();
+            let text = output(2);
+            // The scrollable child has a zero automatic minimum. Grid 2 §12.8
+            // stretches the outer Auto track to the resolved 80px minimum.
+            // The child fills that track and reserves a 5px inline-end gutter.
+            // Its 45px line starts 30px into the content.
+            assert_eq!(
+                (
+                    root.size,
+                    grid.size,
+                    scroll.content_box().size(),
+                    text.size.width
+                ),
+                (
+                    Size::new(scalar(80.0), scalar(20.0)),
+                    Size::new(scalar(80.0), scalar(20.0)),
+                    Size::new(scalar(75.0), scalar(20.0)),
+                    scalar(75.0),
+                ),
+                "{display:?} definite={definite}"
+            );
+            assert_eq!(grid.location.x, S::ZERO);
+            assert_eq!(scroll.content_box().origin().x, S::ZERO);
+            assert_eq!(scroll.scrollbar_size(), Size::new(scalar(5.0), S::ZERO));
+            assert_eq!(text.location.x, S::ZERO);
+            let fragments: Vec<_> = batch
+                .unrounded_inline_fragments()
+                .iter()
+                .map(|entry| {
+                    let fragment = entry.fragment();
+                    let rect = fragment.rect().unwrap();
+                    (fragment.line_index(), rect.origin().x, rect.size().width)
+                })
+                .collect();
+            let expected: Vec<_> = (0..10)
+                .map(|unit| {
+                    let column = if unit > 5 { unit - 1 } else { unit };
+                    let advance = if unit == 5 { 0.0 } else { 5.0 };
+                    (0, scalar(30.0 + 5.0 * f64::from(column)), scalar(advance))
+                })
+                .collect();
+            assert_eq!(fragments, expected, "{display:?} definite={definite}");
+        }
+    }
+}
+
+#[test]
+fn minimum_constrained_intrinsic_grid_stretches_its_auto_track() {
+    qualify_minimum_constrained_grid::<f32>();
+    qualify_minimum_constrained_grid::<f64>();
 }
 
 fn qualify_max_constrained_alignment<S: LayoutScalar>() {
