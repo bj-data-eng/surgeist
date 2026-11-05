@@ -130,7 +130,7 @@ impl<'a> Decoder<'a> {
                     let overlap = self
                         .overlap_bitmap
                         .is_some_and(|bitmap| bitmap[index / 8] & (0x80 >> (index % 8)) != 0);
-                    let point_bytes = encoder.plan(&points, overlap)?;
+                    let point_bytes = encoder.plan(&points)?;
                     let length = add(
                         add(12, multiply(count, 2)?)?,
                         add(point_bytes, instructions)?,
@@ -148,7 +148,7 @@ impl<'a> Decoder<'a> {
                     }
                     glyph.extend(&(instructions as u16).to_be_bytes())?;
                     glyph.extend(self.instructions.take(instructions)?)?;
-                    encoder.write(&points, &mut glyph)?;
+                    encoder.write(&points, overlap, &mut glyph)?;
                 }
                 _ => return Err(invalid(InvalidKind::WoffGlyph, index)),
             }
@@ -329,7 +329,8 @@ fn write_box(points: &[Point], output: &mut Buffer<'_, u8>) -> Result<(), Decode
         bbox[3] = bbox[3].max(point.y);
     }
     for value in bbox {
-        output.extend(&(value as i16).to_be_bytes())?;
+        let value = i16::try_from(value).map_err(|_| invalid(InvalidKind::WoffGlyph, 0))?;
+        output.extend(&value.to_be_bytes())?;
     }
     Ok(())
 }

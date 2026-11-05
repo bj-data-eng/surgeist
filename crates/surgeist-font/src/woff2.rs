@@ -729,7 +729,7 @@ mod tests {
         assert!(glyph::reconstruct(&transformed_glyph(), 8, &budget).is_err());
     }
     #[test]
-    fn overlap_bitmap_sets_only_first_simple_point_flag() {
+    fn overlap_bitmap_sets_the_first_stored_simple_flag() {
         let budget = Budget::new(limits(), 0).unwrap();
         let mut bytes = transformed_glyph();
         bytes[3] = 1;

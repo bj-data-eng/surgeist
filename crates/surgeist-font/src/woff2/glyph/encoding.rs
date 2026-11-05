@@ -130,7 +130,7 @@ impl<'a> Encoder<'a> {
         }
     }
 
-    pub fn plan(&mut self, points: &[Point], overlap: bool) -> Result<usize, DecodeError> {
+    pub fn plan(&mut self, points: &[Point]) -> Result<usize, DecodeError> {
         // A contour's final point index is uint16. Consequently every run
         // start fits u16, and a five-byte singleton per point bounds all
         // optimal prefix costs well below u32::MAX.
@@ -149,7 +149,6 @@ impl<'a> Encoder<'a> {
             let dy = word_delta(point.y, y, index)?;
             (x, y) = (point.x, point.y);
             let end = index + 1;
-            let first_overlap = overlap && index == 0;
             let mut best = None::<Step>;
 
             // Every encoding ends with a singleton or a repeated run with
@@ -171,7 +170,7 @@ impl<'a> Encoder<'a> {
                 let mut choice = Step {
                     bytes: self.trace[index].bytes + 1 + width,
                     start: index as u16,
-                    flag: flag | if first_overlap { OVERLAP } else { 0 },
+                    flag,
                 };
                 if window.previous_fits {
                     // Earlier incompatibility clears the window. The only
@@ -192,8 +191,7 @@ impl<'a> Encoder<'a> {
                         };
                     }
                 }
-                // The overlap bit belongs to the first point alone.
-                window.previous_fits = !first_overlap;
+                window.previous_fits = true;
                 if best.is_none_or(|step| choice.bytes < step.bytes) {
                     best = Some(choice);
                 }
@@ -223,14 +221,23 @@ impl<'a> Encoder<'a> {
         Ok(self.trace[points.len()].bytes as usize)
     }
 
-    pub fn write(&self, points: &[Point], output: &mut Buffer<'_, u8>) -> Result<(), DecodeError> {
+    pub fn write(
+        &self,
+        points: &[Point],
+        overlap: bool,
+        output: &mut Buffer<'_, u8>,
+    ) -> Result<(), DecodeError> {
         // Preserve planned run boundaries so emission uses precisely the
         // byte count established before reserving the glyph buffer.
-        for run in &*self.runs {
+        for (index, run) in self.runs.iter().enumerate() {
+            // WOFF2 §5.1 places overlap on the first stored flag byte. It is
+            // a glyph property; it neither changes vector widths nor splits
+            // the first repeat run into a separate logical point.
+            let flag = run.flag | if overlap && index == 0 { OVERLAP } else { 0 };
             if run.repeats == 0 {
-                output.push(run.flag)?;
+                output.push(flag)?;
             } else {
-                output.extend(&[run.flag | REPEAT, run.repeats])?;
+                output.extend(&[flag | REPEAT, run.repeats])?;
             }
         }
         for vertical in [false, true] {
