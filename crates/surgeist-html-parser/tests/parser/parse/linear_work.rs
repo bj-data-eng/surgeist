@@ -872,13 +872,22 @@ fn work_of_long_whitespace_and_null_runs_inside_the_body_at_most_doubles_with_th
 #[test]
 fn work_of_a_long_text_run_in_a_closed_textarea_at_most_doubles_with_its_length() {
     // Each character appends to the one text child, and the textarea's value is that child's text.
-    for unit in ["a", "a\nb"] {
-        assert_measures_at_most_two_point_two_times(
-            LONGER_RUN_SIZES,
-            |n| format!("<!doctype html><textarea>{}</textarea>", unit.repeat(n)),
-            &[TOTAL_WORK, RESERVATION_WORK, COPY_WORK],
-        );
-    }
+    assert_measures_at_most_two_point_two_times(
+        LONGER_RUN_SIZES,
+        |n| format!("<!doctype html><textarea>{}</textarea>", "a".repeat(n)),
+        &[TOTAL_WORK, RESERVATION_WORK, COPY_WORK],
+    );
+}
+
+#[test]
+fn work_of_a_long_text_run_with_lines_in_a_closed_textarea_at_most_doubles_with_its_length() {
+    // Three units for each repeat, and the largest size is the most the source map limit of the
+    // long-input limits holds.
+    assert_measures_at_most_two_point_two_times(
+        [1_500, 3_000, 6_000, 12_000],
+        |n| format!("<!doctype html><textarea>{}</textarea>", "a\nb".repeat(n)),
+        &[TOTAL_WORK, RESERVATION_WORK, COPY_WORK],
+    );
 }
 
 #[test]
