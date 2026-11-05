@@ -78,6 +78,17 @@ fn lossless_settings_witness_preserves_the_existing_profile_tuple_bytes() {
         sha256(expected.as_bytes())
     );
     assert_eq!(serde_json::to_string(&fixture.settings).unwrap(), SETTINGS);
+    let expected_identity = CaseIdentity::from_verified_projection(json!({
+        "source":"html/fixed.html", "source_sha256":"a".repeat(64),
+        "variant":"content_box_ltr", "historical_sha256":null,
+        "capture_sha256":sha256(b"independent XML bytes"), "record_sha256":"a".repeat(64),
+        "generator":"test", "engine_version":"1", "browser_executable":"tmp/browser/chrome",
+        "browser_executable_sha256":"a".repeat(64), "browser_provenance":"test/1",
+        "profile_sha256":sha256(expected.as_bytes()), "source_imports_sha256":sha256(b"[]"),
+        "inputs":{"html/fixed.html":"a".repeat(64), "policy.md":"b".repeat(64), "base.css":"a".repeat(64)},
+        "linked_resources":{}, "font_demand":"none", "policy_source_sha256":"b".repeat(64)
+    })).unwrap();
+    assert_eq!(verified.identity(), &expected_identity);
     assert!(!verified.projection().inputs.contains_key("corpus.toml"));
     assert!(
         !verified
@@ -138,4 +149,85 @@ fn settings_witness_rejects_duplicate_unknown_and_incomplete_wire_shapes() {
     ] {
         assert!(BrowserSettingsWitness::from_official_json(raw.as_bytes()).is_err());
     }
+}
+
+#[test]
+fn terminal_wire_preserves_publisher_bytes_and_rejects_broken_associations() {
+    let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(ARTIFACT_ROOT)
+        .join(TERMINAL);
+    let raw = std::fs::read_to_string(file).expect("published terminal fixture");
+    let terminal = Qualification::parse(&raw).expect("valid emitted terminal");
+    assert_eq!(terminal.edition, EDITION);
+    assert_eq!(terminal.to_bytes().unwrap(), raw.as_bytes());
+    for (pointer, value) in [
+        ("/cases/0/identity/capture_sha256", json!("a".repeat(64))),
+        ("/cases/0/requirements/output", json!("xml/foreign.xml")),
+        ("/records/0/sha256", json!("a".repeat(64))),
+        ("/declaration/sha256", json!("a".repeat(64))),
+    ] {
+        let mut changed: Value = serde_json::from_str(&raw).unwrap();
+        *changed.pointer_mut(pointer).unwrap() = value;
+        assert!(
+            Qualification::parse(&changed.to_string()).is_err(),
+            "{pointer}"
+        );
+    }
+}
+
+#[test]
+fn live_owner_bindings_cover_all_roles_and_refuse_unknown_or_overlapping_paths() {
+    let roles = [
+        ("corpus.toml", "examples/qualify-root-context/corpus.toml"),
+        (
+            "browser-owner.toml",
+            "tests/layout/browser_parity/corpus.toml",
+        ),
+        (
+            "html/fixed.html",
+            "tests/layout/browser_parity/html/fixed.html",
+        ),
+        (
+            "scripts/gentest/base.css",
+            "tests/layout/browser_parity/scripts/gentest/base.css",
+        ),
+        (
+            "fonts/font.ttf",
+            "tests/layout/browser_parity/fonts/font.ttf",
+        ),
+        (
+            "historical/fixed.xml",
+            "tests/layout/browser_parity/xml/fixed.xml",
+        ),
+        ("semantic/one.json", "semantic/one.json"),
+        ("policy.md", "policy.md"),
+    ];
+    let mut retained = BTreeMap::new();
+    let mut expected = BTreeMap::new();
+    for (index, (input, owner)) in roles.into_iter().enumerate() {
+        let hash = sha256(format!("independent input {index}").as_bytes());
+        retained.insert(input.to_owned(), hash.clone());
+        expected.insert(owner.to_owned(), hash);
+    }
+    for name in [
+        "origin/source-receipt.json",
+        "origin/source-provenance.json",
+        "origin/selected-originals.json",
+    ] {
+        retained.insert(name.into(), sha256(name.as_bytes()));
+    }
+    expected.insert(
+        "tests/layout/browser_parity/html/.surgeist-source.json".into(),
+        sha256(b"origin/source-receipt.json"),
+    );
+    let semantic = BTreeSet::from(["semantic/one.json", "policy.md"]);
+    assert_eq!(
+        current_owner_bindings(&retained, &semantic, "html/.surgeist-source.json").unwrap(),
+        expected
+    );
+    for sidecar in ["../foreign.json", "html/fixed.html", "/absolute.json"] {
+        assert!(current_owner_bindings(&retained, &semantic, sidecar).is_err());
+    }
+    retained.insert("unknown.bin".into(), "a".repeat(64));
+    assert!(current_owner_bindings(&retained, &semantic, "html/.surgeist-source.json").is_err());
 }
