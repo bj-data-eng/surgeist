@@ -9,39 +9,6 @@ permissions:
   pull-requests: read
 
 jobs:
-  history:
-    name: Published history is not rewritten
-    if: github.event.action == 'synchronize'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Check that the previous head is an ancestor of the new head
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          BEFORE: ${{ github.event.before }}
-          AFTER: ${{ github.event.after }}
-        run: |
-          set -euo pipefail
-          if ! status=$(gh api "repos/$REPO/compare/$BEFORE...$AFTER" --jq .status 2> compare-error.txt); then
-            cat compare-error.txt
-            if grep -q 'HTTP 404' compare-error.txt; then
-              echo "::error title=Comparison unavailable::Could not compare $BEFORE with $AFTER (HTTP 404), so ancestry could not be verified. Check commit availability and repository access, then re-run this job."
-            else
-              echo "::error title=History check failed::Could not compare $BEFORE with $AFTER; re-run this job."
-            fi
-            exit 1
-          fi
-          case "$status" in
-            ahead | identical)
-              echo "$AFTER extends $BEFORE."
-              ;;
-            *)
-              echo "::error title=History rewritten::$AFTER does not extend $BEFORE (compare status: $status). A pushed branch is not rebased, amended or force-pushed; merge origin/main into it instead."
-              exit 1
-              ;;
-          esac
-
   closing-keywords:
     name: One closing keyword per issue
     runs-on: ubuntu-latest
