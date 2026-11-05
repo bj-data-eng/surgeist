@@ -1,0 +1,30 @@
+<test name="fri06_atomic_inline_percentage_block_size__border_box_rtl" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" layout-ready-inline-root="true" display="block" direction="rtl" font-family="monospace" font-size="16px" line-height="20px" width="180px" height="80px">
+      <text layout-input="inline-text">
+        <segment id="0" inline-extent="57.796875" inline-baseline="14.8" inline-line-height="20" bidi-level="1" whitespace-edge="preserve" following-break="prohibited"/>
+      </text>
+      <div source-tag="span" display="inline-block" direction="rtl" font-family="monospace" font-size="16px" line-height="20px" width="20px" height="50%"/>
+      <text layout-input="inline-text">
+        <segment id="2" inline-extent="86.703125" inline-baseline="14.8" inline-line-height="20" bidi-level="1" whitespace-edge="preserve" following-break="prohibited"/>
+      </text>
+      <atomic-placeholder child-index="1" bidi-level="1" following-break="prohibited"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="180" height="80">
+      <node>
+        <range-inks>
+          <range-ink source_segment_id="0" line_index="0" physical_start_edge="right" start="73.296875" advance="57.796875"/>
+        </range-inks>
+      </node>
+      <node x="73" y="0" width="20" height="40"/>
+      <node>
+        <range-inks>
+          <range-ink source_segment_id="2" line_index="0" physical_start_edge="right" start="180" advance="86.703125"/>
+        </range-inks>
+      </node>
+    </node>
+  </expectations>
+</test>
