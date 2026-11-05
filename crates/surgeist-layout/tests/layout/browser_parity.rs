@@ -2213,16 +2213,51 @@ fn registered_current_edition() -> Result<portable_qualification::AdmittedEditio
         .map_err(|error| error.to_string())
 }
 
+// Existing current-output selection, extracted without changing its predicate.
+fn selected_current_outputs(
+    edition: &portable_qualification::AdmittedEdition,
+    filter: Option<&str>,
+) -> BTreeSet<String> {
+    edition
+        .outputs()
+        .filter(|output| filter.is_none_or(|filter| output.contains(filter)))
+        .map(str::to_owned)
+        .collect()
+}
+
+#[test]
+fn current_edition_path_filter_executes_all_registered_cases() {
+    let edition = registered_current_edition().expect("required edition must authenticate");
+    let selected = selected_current_outputs(&edition, Some("captured/canonical-box-differences"));
+    let run = edition
+        .execute_selected(&selected)
+        .expect("registered selection must execute");
+    assert!(
+        run.current_coverage_complete(),
+        "edition-path filter skipped required current execution: {} of {} cases",
+        run.cases.len(),
+        run.declared_cases
+    );
+    for case in &run.cases {
+        assert_eq!(
+            case.raw.as_ref().expect("complete raw comparison").len(),
+            12
+        );
+        assert!(
+            case.qualified.is_ok(),
+            "{} must qualify: {:?}",
+            case.output,
+            case.qualified
+        );
+    }
+}
+
 #[test]
 fn runs_registered_current_browser_parity_qualification() {
     let admitted =
         registered_current_edition().expect("required current edition must authenticate");
     let filter = std::env::var("SURGEIST_PARITY_FILTER").ok();
-    let selected = admitted
-        .outputs()
-        .filter(|output| filter.as_ref().is_none_or(|filter| output.contains(filter)))
-        .map(str::to_owned)
-        .collect::<BTreeSet<_>>();
+    let selected = selected_current_outputs(&admitted, filter.as_deref());
     if selected.is_empty() {
         // An original-only filter does not claim coverage of the current edition.
         assert!(
@@ -2287,11 +2322,7 @@ fn runs_all_checked_in_browser_parity_xml() {
     match registered_current_edition() {
         Err(error) => failures.push(format!("current edition admission failed: {error}")),
         Ok(admitted) => {
-            let selected = admitted
-                .outputs()
-                .filter(|output| filter.as_ref().is_none_or(|filter| output.contains(filter)))
-                .map(str::to_owned)
-                .collect::<BTreeSet<_>>();
+            let selected = selected_current_outputs(&admitted, filter.as_deref());
             match admitted.execute_selected(&selected) {
                 Err(error) => failures.push(format!("current edition execution failed: {error}")),
                 Ok(run) => {
