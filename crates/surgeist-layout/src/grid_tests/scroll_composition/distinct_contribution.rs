@@ -233,7 +233,7 @@ fn case<S: LayoutScalar>(width: f64, cap: GrowthCap, overflow: Overflow, track: 
         (child.border, child.padding, child.margin),
         (Edges::ZERO, Edges::ZERO, Edges::ZERO)
     );
-    // Single track + genuine auto stretched item: this is actual completed
+    // Single track + auto stretched item: this is actual completed
     // normal border geometry, independently determined by minimum/growth cap.
     assert_eq!(
         child.size,
@@ -475,7 +475,7 @@ fn fit_case<S: LayoutScalar>(request: FitRequest, overflow: Overflow, expected_t
         (child.border, child.padding, child.margin),
         (Edges::ZERO, Edges::ZERO, Edges::ZERO)
     );
-    // Parent20 can consume20 only with genuine minimum0. Clip's content minimum40
+    // Parent20 can consume20 only with minimum0. Clip's content minimum40
     // survives the30 cap. Parent60 stops at30/40; intrinsicMIN/MAX use the same
     // minimum floor and capped contribution without inventing a definite root.
     assert_eq!(
@@ -655,7 +655,7 @@ fn mixed_span_nonaffected_fixed_min_base<S: LayoutScalar>() {
             definite,
         )
     })
-    .expect("genuine spanning native Grid computes");
+    .expect("spanning native Grid computes");
     let root = fri08_c01_placement_output(&batch, 0);
     let child = fri08_c01_placement_output(&batch, 1);
     // Limited min-content target40: affected auto-min A grows to fixed limit10;
@@ -803,7 +803,7 @@ fn mixed_span_visible_explicit_zero_minimum<S: LayoutScalar>(end_marker_in_a: bo
         let marker = fri08_c01_placement_output(&batch, 2);
         // The real zero item is in A, whose fixed maximum10 is identical with
         // or without this zero single item. It must NOT be put in B, where a
-        // genuine zero would change absent infinity into a finite0 limit.
+        // zero would change absent infinity into a finite0 limit.
         assert_eq!(marker.location, Point::new(S::from_f64(10.0), S::ZERO));
         assert_eq!(marker.size, Size::ZERO);
         assert_eq!(

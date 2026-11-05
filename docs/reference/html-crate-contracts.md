@@ -464,7 +464,7 @@ progress writes and actual capacity/high-water observations must be counted.
 Numeric work totals and the limit outcome at an old cap can therefore differ.
 Opaque Arc-header bytes remain outside known payload-byte accounting; operations
 on those headers still incur their real admitted work. Checked initial/single
-append and genuinely name-changing replacement require their own actual
+append and name-changing replacement require their own actual
 invariant comparisons; these are distinct from named merge's one-pass reuse
 and are separately accepted by the initial/generated-installation clarification
 in those issues. They must never be presented as fixed witness overhead. No hidden duplicate
@@ -1664,7 +1664,7 @@ Result<HtmlConstructionCapturedResult, HtmlConstructionCaptureFinishFailure>`;
 its failure retains the complete current import, including any facts the caller
 established after traversal. The capture owner shares its existing full-forest depth
 validation through a borrowed preflight, so validation/allocation/cancellation
-refusal cannot destroy that builder. After all genuinely fallible preflight,
+refusal cannot destroy that builder. After all fallible preflight,
 the exact builder data moves into its shared capture wrapper and publication
 performs no later fallible operation. The existing standard-library Arc setup
 limitation remains explicit. `mapping.subject(id, &capture)` checks capture

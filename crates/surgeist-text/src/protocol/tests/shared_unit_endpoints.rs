@@ -274,7 +274,7 @@ fn premises(p: &PreparedText, anywhere: bool) {
         assert_eq!(base < cut, mark < cut, "no ordinary cut divides A+acute");
     }
 
-    // Qualify the genuine registered font and cross-origin shared shaping
+    // Qualify the registered font and cross-origin shared shaping
     // before the physical-endpoint assertion. GPOS (400,600)-(100,200) at
     // 10/1000 puts the zero-advance mark at (+3,-4) from A. Both glyphs
     // retain their provider-closed range0..2, independently of origin ranges.
@@ -336,7 +336,7 @@ fn anywhere_positive_endpoints_preserve_shared_mark_attachment_and_count_each_ed
     let p = capture(true, true);
     premises(&p, true);
     assert_event_custody(&p);
-    // Genuine consumer-used Start2 and End3: A10+mark0 remains one group;
+    // Consumer-used Start2 and End3: A10+mark0 remains one group;
     // both endpoints add5 once, so the following B starts at15, not18.
     let line = finish(&p, request(&p), [2.0, 3.0]);
     assert_eq!(line.feedback().advance, 25.0);
@@ -826,7 +826,7 @@ fn transparent_empty_and_out_of_flow_occurrences_do_not_split_the_shared_unit() 
     })
     .collect();
     // Existing generic After affinity moves Empty/OOF to EGC-end2. Keeping
-    // them before physical End1 is a genuine descending projected request;
+    // them before physical End1 is a descending projected request;
     // exact endpoint support does not redefine those other roles' affinity.
     let error = AnalyzedSource::from_paragraph(
         input.clone(),

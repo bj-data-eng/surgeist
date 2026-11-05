@@ -91,11 +91,11 @@ impl DomParsedHtmlStyleSheetPublished<'_> {
 /// use surgeist_dom::{DomParsedHtmlStyleRuntimeHold, DomStyleCssomRoot};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(hold: &mut DomParsedHtmlStyleRuntimeHold<'_>,
-///            root: &DomStyleCssomRoot, cancel: &AtomicBool) {
-///     // Caller supplies the reached original CreateSheet hold and actual root.
-///     let prepared = hold.prepare_create_sheet(root, cancel).unwrap();
-///     hold.step(cancel).unwrap();
-///     let _ = prepared.request();
+/// root: &DomStyleCssomRoot, cancel: &AtomicBool) {
+/// // Caller supplies the reached original CreateSheet hold and actual root.
+/// let prepared = hold.prepare_create_sheet(root, cancel).unwrap();
+/// hold.step(cancel).unwrap();
+/// let _ = prepared.request();
 /// }
 /// ```
 /// End borrowed request inspection before consuming the prepared publication:
@@ -103,11 +103,11 @@ impl DomParsedHtmlStyleSheetPublished<'_> {
 /// use surgeist_dom::{DomParsedHtmlStyleRuntimeHold, DomStyleCssomRoot};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(hold: &mut DomParsedHtmlStyleRuntimeHold<'_>,
-///            root: &DomStyleCssomRoot, cancel: &AtomicBool) {
-///     let prepared = hold.prepare_create_sheet(root, cancel).unwrap();
-///     let request = prepared.request();
-///     let _ = prepared.commit(cancel);
-///     let _ = request.element();
+/// root: &DomStyleCssomRoot, cancel: &AtomicBool) {
+/// let prepared = hold.prepare_create_sheet(root, cancel).unwrap();
+/// let request = prepared.request();
+/// let _ = prepared.commit(cancel);
+/// let _ = request.element();
 /// }
 /// ```
 pub struct DomParsedHtmlStyleSheetPreparation<'hold, 'dom, 'caps> {
@@ -709,7 +709,7 @@ fn admit_construction(
 
 impl<'caps> DomParsedHtmlStyleSheetPreparation<'_, '_, 'caps> {
     /// Complete all fallible work before the first publication. The actual
-    /// producer preparation remains local under its genuine exclusive guard;
+    /// producer preparation remains local under its exclusive guard;
     /// no owning guard/self-referential prepared-value pair is constructed.
     #[expect(
         clippy::result_large_err,

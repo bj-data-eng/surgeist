@@ -58,7 +58,7 @@ struct SourceData {
 
 /// Immutable, font-independent joining analysis of one complete Unicode domain.
 ///
-/// The caller supplies either genuine unbroken processed source or actual
+/// The caller supplies either unbroken processed source or actual
 /// selected-line presentation, bounded by real barriers. Font changes do not
 /// bound these Unicode domains. This operation analyzes the whole body rather
 /// than clipping it to external pre/post-context capacity. Scalar indices are local to
@@ -74,7 +74,7 @@ impl JoiningSource {
     /// Analyze one complete Unicode domain for an explicit shaping profile.
     /// The resulting allocation may be shared across fonts and selections.
     /// `ordinary_symbol_positions` contains strictly increasing scalar indices
-    /// of genuine nonexempt Cc with the same closed presentation as the emitted
+    /// of nonexempt Cc with the same closed presentation as the emitted
     /// buffer. Cluster values and UTF-16 offsets do not identify these scalars.
     ///
     /// # Errors

@@ -108,7 +108,7 @@ fn positive_indent_keeps_negative_native_extrema_without_an_artificial_zero_uppe
 }
 
 #[test]
-fn genuine_absence_of_native_extrema_is_not_a_fake_zero_width_native_constraint() {
+fn source_absence_of_native_extrema_is_not_a_fake_zero_width_native_constraint() {
     // Every case contains ONE real CSS-authorized border10 atomic, not an
     // empty paragraph, placeholder or invented Native [0,0] allocation.
     // Independent AC literal controls, with terminal floor only AFTER I+F:
@@ -165,7 +165,7 @@ fn genuine_absence_of_native_extrema_is_not_a_fake_zero_width_native_constraint(
 #[test]
 fn native_only_admission_keeps_its_owner_and_does_not_acquire_css_indent_policy() {
     for (indent, incoming) in [(-20.0, [-20.0]), (10.0, [10.0])] {
-        // A genuine Native6/occupied10 object exists and moves with the supplied
+        // A Native6/occupied10 object exists and moves with the supplied
         // indent. None here means no CssComposed unanchored receipt, NOT absent
         // raw geometry and NOT inferred CSS authority from numeric values.
         executed(

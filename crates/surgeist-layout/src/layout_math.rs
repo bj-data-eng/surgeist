@@ -26,7 +26,7 @@ pub(crate) fn transpose_axis_requests_at_node<Node: Copy, S: LayoutScalar, M>(
     ))
 }
 
-/// Retains a request unless its producer supplies a genuine replacement extent.
+/// Retains a request unless its producer supplies a replacement extent.
 pub(crate) fn with_available_extent<S: LayoutScalar>(
     request: crate::AxisSizingRequestOf<S>,
     extent: Option<S>,

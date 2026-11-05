@@ -20,7 +20,7 @@ The native Style cursor intentionally selects HTML's
 `NoExecutableJavaScript` execution profile. At its script-bookkeeping action it
 uses the specific exclusion reply for both the normative executable-script
 predicate and associated sets; parser provenance and media are not converted
-into false predicate results. The next genuine render action still uses its
+into false predicate results. The next render action still uses its
 own Document/body/blocking/media facts. Native and Runtime notification cursors
 use the same profile distinction while preserving prior event dispatch and
 actual later render unblocking. This does not implement executable JavaScript.
@@ -71,7 +71,7 @@ keeps task custody separate from its still-unavailable synchronous dispatch
 frontier. An original pending history is neither a fake native Source operation
 nor a blanket prohibition on unrelated asynchronous resource waits. The
 [ParserPopped successor](html-installation.md#the-parserpopped-successor-and-recreation)
-removes the genuine old association, or executes authenticated known-null
+removes the old association, or executes authenticated known-null
 removal after a CSP refusal, and reaches a fresh policy request. Its independently
 allowed recreation uses the same creation owner and serial lineage without
 requiring old tasks to drain or replacing their original qualification.
@@ -130,7 +130,7 @@ The hold's one `prepare` seals further prefix admission before advancing the
 original continuation. With no reached native Meta occurrence it returns the
 authentic existing Source progress and optional inline publication. Otherwise it
 lends `DomMetaSourcePreparation` over a phase already retained by the original
-operation. Its ordered occurrences preserve exact UTF16 and genuine historical
+operation. Its ordered occurrences preserve exact UTF16 and historical
 subjects. The adapter reads held root snapshots, stages real flag edits and
 prepares its own preference history under the same admission. Actual accepted
 Style receipt authority is validated under one retained root lock, including
@@ -139,7 +139,7 @@ when that root also receives a Meta edit.
 `commit` prepares every actual CSSOM owner, optional inline ingestion, original
 Source publication and output before publishing any owner. The resulting
 `DomMetaSourcePublished` retains the root locks while the adapter installs its
-prepared history. Consuming `into_parts` unlocks and returns the genuine Source
+prepared history. Consuming `into_parts` unlocks and returns the Source
 progress, actual root commits, optional inline evidence and retirement backing.
 `DomMetaSourceCommit::stamp` identifies the actual resulting DOM publication even
 when its next progress is a request. A receipt-only root receives no synthetic

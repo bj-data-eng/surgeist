@@ -1,4 +1,4 @@
-//! Fixed selected Document membership against unrelated genuine issuer rows.
+//! Fixed selected Document membership against unrelated issuer rows.
 use super::*;
 
 fn document_fixture(

@@ -112,7 +112,7 @@ fn assert_native_cyclic_subgrid_gap<S: LayoutScalar>() {
                 definite,
             )
         })
-        .expect("the fixed native leaf has genuine intrinsic geometry");
+        .expect("the fixed native leaf has intrinsic geometry");
         for entries in [control.unrounded_entries(), control.final_entries()] {
             assert_eq!(output(entries, 2).size, Size::new(n(40.0), n(10.0)));
         }

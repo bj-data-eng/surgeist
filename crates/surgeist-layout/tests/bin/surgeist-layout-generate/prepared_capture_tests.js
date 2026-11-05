@@ -192,8 +192,8 @@ function atomicBreakCapture(spec) {
 
 function atomicBreakProfileTests() {
   const accepted=[
-    {name:'horizontal original LTR has genuinely zero origins',mode:'horizontal-tb',direction:'ltr'},
-    {name:'horizontal original RTL has genuinely zero origins',mode:'horizontal-tb',direction:'rtl'},
+    {name:'horizontal original LTR has zero origins',mode:'horizontal-tb',direction:'ltr'},
+    {name:'horizontal original RTL has zero origins',mode:'horizontal-tb',direction:'rtl'},
     {name:'vertical-lr actual LTR survives RTL variant class',mode:'vertical-lr',direction:'ltr',whitespace:true,bodyClass:'border-box rtl'},
     {name:'vertical-rl actual LTR survives RTL variant class',mode:'vertical-rl',direction:'ltr',whitespace:true,bodyClass:'border-box rtl'},
     {name:'vertical-rl actual RTL survives LTR variant class',mode:'vertical-rl',direction:'rtl',whitespace:true,bodyClass:'border-box ltr'},

@@ -90,7 +90,7 @@ fn paired_parent_disagreement<S: LayoutScalar>(contribution_end: bool) {
     accepted_geometry(&prior);
     let mut invalid = fixture::<S>(frame, true);
     let expected = FlowAxes::new(WritingMode::HorizontalTb, Direction::Rtl);
-    // Only C's End4 changes. Genuine Cstart2 still declares its immediate
+    // Only C's End4 changes. Cstart2 still declares its immediate
     // parent's RTL basis; P's endpoints and ALL formatter inputs stay B LTR.
     let replacement = if contribution_end {
         let original = invalid.layout_input(4).as_inline_boundary().unwrap();

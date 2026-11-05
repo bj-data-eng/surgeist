@@ -767,7 +767,7 @@ fn an_incoming_after_indication_stays_on_its_authentic_side_of_the_opening_edge(
         receiving.incoming = Some(
             outgoing
                 .hyphenation_continuation()
-                .expect("nonempty After emission is genuinely owed"),
+                .expect("nonempty After emission is owed"),
         );
         answer(&p, &mut receiving, &[(0, edge), (1, 0.0)]);
         let receiving = finalize(&p, receiving);

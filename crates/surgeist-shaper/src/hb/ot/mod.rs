@@ -411,7 +411,7 @@ pub(crate) fn observe_variation_adjustment(
             AdjustmentObservation::Applied
         }
         // delta_set silently yields an empty cursor for an invalid inner row;
-        // its resulting native Ok(0) cannot become a genuine action witness.
+        // its resulting native Ok(0) cannot become an action witness.
         _ => AdjustmentObservation::Unqualified,
     }
 }

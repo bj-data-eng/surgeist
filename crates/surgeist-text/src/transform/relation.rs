@@ -49,7 +49,7 @@ pub(crate) struct ScopeData {
 pub(crate) struct VirtualSeparatorData {
     /// The actual completed canonical phrase receipt which issued this site.
     pub(crate) phrase: usize,
-    /// Genuine incident source endpoints for bounded diagnostics. These do
+    /// Incident source endpoints for bounded diagnostics. These do
     /// not authorize output membership or replace the captured insertion cut.
     pub(crate) context_origins: [FlowOriginKey; 2],
     /// Actual insertion cut in the canonical captured event stream.
@@ -94,7 +94,7 @@ pub(crate) enum RelationEvent {
         row: usize,
         selection_part: Option<usize>,
     },
-    /// A genuinely generated separator was selected, then suppressed by the
+    /// A generated separator was selected, then suppressed by the
     /// fixed cell's inner processing. Its real component remains source
     /// custody; this event contributes no ordinary logical participant.
     GeneratedSuppression {
@@ -127,7 +127,7 @@ pub(crate) struct TransformMap {
     /// consecutive removals in that exact local mixed seam consumed.
     pub(crate) participant_cuts: Vec<usize>,
     /// Exact relation cut -> logical participant prefix. Unlike participant_cuts,
-    /// this preserves genuine frontiers inside consecutive removed mappings.
+    /// this preserves frontiers inside consecutive removed mappings.
     pub(super) logical_prefix: Vec<usize>,
 }
 

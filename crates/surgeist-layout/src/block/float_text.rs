@@ -344,7 +344,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             |journal| journal.earlier_float_top,
         );
         // The real end rank is only an upper work bound. Keep every unaccepted
-        // earlier/equal-rank event, including a genuinely deferred predecessor,
+        // earlier/equal-rank event, including a deferred predecessor,
         // then visit them in their original native event order.
         let window = self.journal.as_ref().map(|journal| {
             let end = line

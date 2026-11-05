@@ -40,13 +40,13 @@ The same complete-word count owner serves manual and automatic native
 admission. The actual governing style supplies computed total/before/after
 `HyphenateLimitChars` minima. Symbolic `Auto` components independently use native
 5/2/2 fallbacks; explicit nonnegative minima do not change word or cut custody.
-Every genuine language contribution must be exactly en-US, compared
+Every language contribution must be exactly en-US, compared
 without ASCII case distinctions. The logical-preceding text contribution owns
 each cut's style and indication. Ancestor wrapping permission is separate.
 Unavailable resources retain manual behavior and an explicit word observation.
 The raw standalone operation keeps its distinct unconstrained count policy.
 
-Prepared word and cut observations retain genuine source pieces and resource
+Prepared word and cut observations retain source pieces and resource
 provenance. They cannot be supplied by callers as a fabricated SHY or control.
 Selected automatic indication text remains computed presentation; plaintext and
 authored source are unchanged. Actual chooser priority and fit remain consuming

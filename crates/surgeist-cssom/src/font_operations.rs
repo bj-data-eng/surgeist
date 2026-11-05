@@ -14,7 +14,7 @@ use surgeist_css::rule::font_palette_values::CssFontPaletteValuesRule;
 use surgeist_css::serialization::CssSerializationLimits;
 use surgeist_css::{CssParser, CssParserContext};
 
-/// Genuine checked family admission, independent of the original rule occurrence.
+/// Checked family admission, independent of the original rule occurrence.
 /// Parsed carriers keep their actual whole/member origins; typed carriers retain
 /// their own provenance without being reparsed in the current parser context.
 #[derive(Clone, Debug, PartialEq)]

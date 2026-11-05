@@ -43,7 +43,7 @@ fn actual_source_premises(paragraph: &PreparedParagraph) {
     assert_eq!(origin.view().aggregate_range(), text::Range::new(0, 1));
     let views = prepared.atomic_views().collect::<Vec<_>>();
     let [atomic] = views.as_slice() else {
-        panic!("one genuine issued in-flow atomic");
+        panic!("one issued in-flow atomic");
     };
     assert_eq!(atomic.original_box().kind(), text::InlineBoxKind::InFlow);
     assert_eq!(atomic.original_box().size(), text::Size::new(10.0, 10.0));
@@ -113,7 +113,7 @@ fn compute<S: LayoutScalar>(
                 ..NodeInputOf::default()
             },
         );
-    // Atomic participation comes from the genuine issued binding, not a
+    // Atomic participation comes from the issued binding, not a
     // constructed level/opportunity or a numeric stand-in for source membership.
     let capture = LayoutFlowInput::try_new(
         &tree,
@@ -177,7 +177,7 @@ fn whole_line<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> text::
         .final_inline_fragments()
         .iter()
         .find(|entry| entry.fragment().line_index() == 0)
-        .expect("real source A has its genuine line0 fragment")
+        .expect("real source A has its line0 fragment")
         .fragment()
         .finalized_fragment()
         .finalized_line()
@@ -335,7 +335,7 @@ fn atomic_margin_lane<S: LayoutScalar>() {
         20.0,
         -5.0,
     );
-    // A genuine before-atomic opportunity permits a different
+    // A before-atomic opportunity permits a different
     //2-line result if dual occupied admission is wrong. No overflow fallback
     // or fabricated indivisibility is used as evidence for success/failure.
     one_line(

@@ -455,7 +455,7 @@ fn later_bound_root_meta_writes_use_actual_projection_mapping_without_reactivati
         RootResource::ReleasedForHostedDestruction { .. }
     ));
     drop(state);
-    // A genuinely reached writer for A cannot use a historical snapshot as a cap.
+    // A reached writer for A cannot use a historical snapshot as a cap.
     let capture = f.session.snapshot();
     let html = capture.node(released).unwrap().children()[0];
     let body = capture.node(html).unwrap().children()[1];

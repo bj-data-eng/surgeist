@@ -87,7 +87,7 @@ fn native_tree<S: LayoutScalar>(
         let kind = match row.occurrence.view().kind() {
             text::ParagraphControlKind::InlineBoundaryStart => InlineBoundaryKind::Start,
             text::ParagraphControlKind::InlineBoundaryEnd => InlineBoundaryKind::End,
-            other => panic!("this genuine capture has only four endpoints: {other:?}"),
+            other => panic!("this capture has only four endpoints: {other:?}"),
         };
         let amount = if !box_edges {
             0.0
@@ -100,7 +100,7 @@ fn native_tree<S: LayoutScalar>(
                 _ => unreachable!(),
             }
         };
-        // All dimensions are genuine nonnegative used border components.
+        // All dimensions are nonnegative used border components.
         // No margin, manufactured strut or change to the source bidi is involved.
         let edge = InlineBoundaryEdgeOf::try_new(S::ZERO, S::from_f64(amount), S::ZERO).unwrap();
         let metrics = InlineMetricsOf::try_new(
@@ -239,7 +239,7 @@ fn source_premises(fixture: &Fixture, value: &str, rtl: bool, captured_child: bo
         assert_ne!(p.exit_control(), Some(ce));
         assert_ne!(issued, text::InlineBoxSource::captured(p));
     }
-    // Authored ASCII A/B is genuinely strong L. B LTR resolves it to0;
+    // Authored ASCII A/B is strong L. B LTR resolves it to0;
     // B RTL resolves it to2. No direction override, forged UBA level or extra
     // bidi control is inserted to make the endpoint geometry pass.
     for unit in fixture
@@ -330,7 +330,7 @@ fn nested<S: LayoutScalar>(rtl: bool, captured_child: bool) {
         .map(|row| (row.handle(), row.level().get()))
         .collect();
     // This existing Native operation deliberately claims no box geometry,
-    // even though these controls have genuine captured ownership.
+    // even though these controls have captured ownership.
     let ordinary = compute::<S>(&fixture, rtl, 10.0, captured_child, false);
     let baseline = finalized_lines(&ordinary);
     assert_eq!(baseline.len(), 1);
@@ -457,7 +457,7 @@ fn tab_prefix<S: LayoutScalar>(captured_child: bool) {
                 && offer.boundary().view().source_before().get() == 2
                 && offer.boundary().view().source_after().get() == 2
         })
-        .expect("genuine preserved-TAB soft opportunity, not an invented boundary")
+        .expect("preserved-TAB soft opportunity, not an invented boundary")
         .handle();
     let mut recipe = full.selected_line().request().clone();
     recipe.end = end.view().boundary();
@@ -479,7 +479,7 @@ fn tab_prefix<S: LayoutScalar>(captured_child: bool) {
                 || row.occurrence == control(&fixture, 22))
     );
     // Supply only context actually requested by the existing source owner.
-    // Context keeps genuine BoxEdge identity/amount; it never schedules flow.
+    // Context keeps BoxEdge identity/amount; it never schedules flow.
     while let Some(needed) = prepared.boundary_context_demand(&recipe).unwrap() {
         assert!(
             !recipe
@@ -513,7 +513,7 @@ fn tab_prefix<S: LayoutScalar>(captured_child: bool) {
         })
         .unwrap();
     // NEW execution: Ps1,A10 ->TAB at11 executes9 to20, then selected Cs2.
-    // Neither genuinely unselected Ce3 nor Pe4 contributes. No old TAB receipt
+    // Neither unselected Ce3 nor Pe4 contributes. No old TAB receipt
     // is imported into this independently selected recipe.
     assert_eq!(partial.feedback().advance, 22.0);
     assert_eq!(glyphs(&partial), [(35, 1.0, 10.0)]);

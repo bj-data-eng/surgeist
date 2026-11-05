@@ -840,8 +840,7 @@ fn late_inline_overflow<S: LayoutScalar>() {
         false,
     );
     let query = request(WritingMode::HorizontalTb, SizingOperation::Normal);
-    let prior =
-        compute_layout(&control, 2, query).expect("genuine definite-width completed control");
+    let prior = compute_layout(&control, 2, query).expect("definite-width completed control");
     assert_subtree(
         &prior,
         WritingMode::HorizontalTb,
@@ -1104,7 +1103,7 @@ fn captured_normal_wrapping_finishes_auto_main<S: LayoutScalar>() {
             PreferredSizeOf::AUTO,
         );
         parent.flex_direction = FlexDirection::Column;
-        // A genuine Block owns this actual prepared paragraph. No Text source
+        // A Block owns this actual prepared paragraph. No Text source
         // is assigned to the fixed native sibling or the outer Flex formatter.
         let tree = PublicLayoutTreeOf::new()
             .children(2, [3, 4])

@@ -304,7 +304,7 @@ fn packet_metrics(bytes: &[u8], expected: &[(char, u32, f32)]) {
 }
 
 #[test]
-fn genuine_normal_di_keeps_the_upfront_conditional_plan_when_final_means_are_zero() {
+fn normal_di_keeps_the_upfront_conditional_plan_when_final_means_are_zero() {
     let bytes = font::fixture(Some('\u{2065}'), font::Action::PartialDelete);
     resource_premises(&bytes);
     assert_eq!(font::native_glyphs(&bytes, "C"), [(58, 1500)]);
@@ -529,7 +529,7 @@ fn selective_deletion_with_normal_zwj_covers_the_endpoint_beyond_the_joined_emoj
         ]
     );
     let mut system = system(&bytes);
-    // A genuine independent no-DI source is the all-removed contrast, never a
+    // An independent no-DI source is the all-removed contrast, never a
     // substitute for inspecting the actual partial native receipt above.
     let mut removed = Source::new("👩👨X");
     removed.span(Range::new(2, 4), own(-4.0));
@@ -636,7 +636,7 @@ fn source_neutral_and_non_governing_mark_controls_keep_ordinary_optional_output(
     let lookup = list + usize::from(crate::test_fonts::u16_at(&gsub, list + 2));
     assert_eq!(crate::test_fonts::u16_at(&gsub, lookup), 4);
     assert_eq!(crate::test_fonts::u16_at(&gsub, lookup + 2), 0);
-    // The only table change is a genuine IgnoreMarks lookup flag. Native Mn
+    // The only table change is an IgnoreMarks lookup flag. Native Mn
     // U180F otherwise blocks matching; no synthetic eligibility is supplied.
     gsub[lookup + 2..lookup + 4].copy_from_slice(&0x0008_u16.to_be_bytes());
     let stable = crate::test_fonts::replace_tables(&optional, vec![(*b"GSUB", gsub)]);

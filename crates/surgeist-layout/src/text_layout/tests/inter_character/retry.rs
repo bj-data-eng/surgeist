@@ -18,7 +18,7 @@ fn singleton_fallback<S: LayoutScalar>(line_height: f64) {
     );
 
     // Each raw Ahem glyph advances10: two cannot fit15. Each singleton has no
-    // character boundary, so its genuine unexpandable fallback is None/Center.
+    // character boundary, so its unexpandable fallback is None/Center.
     // The overflowing first two cuts must come from Text's conditional search.
     let actual = finite::<S>(&paragraph, 15.0, TextAlignLast::Justify);
     let layout = actual.placed_text()[0].layout();
@@ -82,7 +82,7 @@ fn singleton_fallback<S: LayoutScalar>(line_height: f64) {
         } else {
             assert_eq!(request.context.end, text::LineEnd::Paragraph);
             let text::PreparedTermination::Ordinary(end) = &request.termination else {
-                panic!("the last source glyph consumes the genuine paragraph end")
+                panic!("the last source glyph consumes the paragraph end")
             };
             assert_eq!(end.view().kind(), text::PreparedBreakKind::ParagraphEnd);
         }

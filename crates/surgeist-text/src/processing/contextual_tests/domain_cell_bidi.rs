@@ -306,7 +306,7 @@ fn captured_rlo_inside_a_cell_sets_inner_bidi_without_becoming_a_payload_scalar(
 
     // UAX9 X4 gives RLO the next odd level1 in this LTR context and overrides
     // B to R; its I2 level remains1. A precedes RLO and retains level0. Each
-    // mode has its OWN genuine capture; neither lends the other authority.
+    // mode has its OWN capture; neither lends the other authority.
     for mode in [TextCombineUpright::None, TextCombineUpright::All] {
         let mut input = root_input(
             "AB",

@@ -65,7 +65,7 @@ one original interval; contractions may retain multiple original units or pieces
 Zero-output input retains its association and affinity. Preserve holes and
 distinct occurrences rather than replace them with a source hull, output diff,
 or equal-text deduplication. Isolated surrogates remain original units through
-this phase; glyph replacement is separate. Context crosses genuine connected
+this phase; glyph replacement is separate. Context crosses connected
 origins, neutral inline/empty occurrences and out-of-flow boxes, while actual
 disconnections and atomic/forced boundaries retain their roles.
 
@@ -81,7 +81,7 @@ Its generation is separate from original-space preservation and later Phase-II
 collapsibility. Never replay Phase I or coalesce adjacent generated spaces;
 later removal/hanging uses the actual character and governing style.
 
-Genuine native wbr capture retains its complete computed Style and occurrence
+Native wbr capture retains its complete computed Style and occurrence
 identity independently of generic optional-break controls. Expand at its actual
 post-Phase-I scalar seam before rebuilding graphemes. Preserve exact mixed-event
 order, including distinct equal-anchor occurrences. An expanded wbr contributes
@@ -89,7 +89,7 @@ text with its own control authority and no original pieces; it does not add a
 second control participant or allocation. Generated-only Text units retain their
 control bindings in Layout's occurrence-order validation.
 
-A genuine wbr separates original UTF-16 decoding before Phase I regardless of
+A wbr separates original UTF-16 decoding before Phase I regardless of
 replacement or suppression. Surrogate halves across it remain isolated original
 units through later projections; provider-only glyph repair cannot change their
 semantics. Keep this decoding boundary separate from whitespace, word/phrase,
@@ -109,7 +109,7 @@ Coincident direct captures without the connection side needed by positive wbr
 expansion return precise missing-context refusal. Typography affinity and nearby
 forced characters do not establish that side or prove same-component suppression.
 
-Original U+200B replacement uses the same genuine connection-side boundaries for
+Original U+200B replacement uses the same connection-side boundaries for
 forced adjacency. If a flat capture's unknown coincident control side can change
 that replacement, refuse with the original separator's range and connection;
 never invent an emitting control. Preserve known no-op, source-hard-break
@@ -134,7 +134,7 @@ API are described in [Text's reference](../crates/surgeist-text/docs/reference.m
 Incident text requests detection; the entire incident inline-boundary strip
 determines the outermost expansion owner, including empty scopes. Its complete
 Style governs generated output, without requiring that owner itself to request
-detection. Preserve separate virtual and genuine wbr occurrences at a shared
+detection. Preserve separate virtual and captured wbr occurrences at a shared
 seam. Missing demanded topology or Style refuses precisely; true no-output paths
 do not consume unused context. Balanced capture remains the sole supplied tree.
 
@@ -156,18 +156,18 @@ Order is domain-local. Text projects authenticated source events; Layout derives
 actual observations independently from validated child/run order. A parent's
 atomic occurrence is ordered in that parent, while the atomic's independently
 captured content is validated inside its exact nominated box. Plain child blocks
-instead retain genuine interruption boundaries in parent flow. Deferred child
+instead retain interruption boundaries in parent flow. Deferred child
 capture cannot reorder parent siblings or transfer content to another atomic.
 
 Generated scope contributors determine the required proof regions: an inline
 owner requires its complete own-domain extent; a domain owner requires its full
 own-domain flow. Preserve disjoint regions. Resolving known ancestor endpoints
 or a nominee's parent binding proves association and containment without requiring
-unrelated interiors. Every genuine Block interruption inside a demanded region
+unrelated interiors. Every Block interruption inside a demanded region
 still requires its actual child-domain association. Ordinary local binding checks
 remain mandatory even when there is no generated contributor.
 
-A genuine zero-participation captured paragraph can supply an empty domain's
+A zero-participation captured paragraph can supply an empty domain's
 actual container association without requesting a Text run. Both actual prepared
 and supplied occurrence inventories must be empty, with no line strut request.
 It retains capture/cache/invalidation identity but produces no additional line,
@@ -175,7 +175,7 @@ glyph, fragment or placed Text result; the box keeps its ordinary layout behavio
 Missing source bindings or removed-only source cannot masquerade as emptiness.
 
 A distinct computed-only captured paragraph can be scheduled without host children
-when its genuine mandatory participants and unique native child gap are proved.
+when its mandatory participants and unique native child gap are proved.
 Retain exact paragraph, preparation and container identity through lookup, pending
 results, box custody, replay and cache ownership; an empty node vector is not a
 run identity or a prefix match. Shared gaps use canonical same-capture event order,
@@ -238,7 +238,7 @@ and its referenced Appendix C.1. The
 [native cardinality determination](https://github.com/bj-data-eng/surgeist/issues/63#issuecomment-6378219209)
 tests complete original Text-node content for one listed character, then maps
 its actual surviving contribution after Phase I. Original `SPACE c SPACE`
-remains ineligible even if genuine Discard leaves only `c`. Keep distinct nodes
+remains ineligible even if Discard leaves only `c`. Keep distinct nodes
 distinct, and do not manufacture eligibility by splitting an origin, selecting
 a substring or trimming aggregate element text. This original-cardinality
 choice resolves a source precision gap as native policy.
@@ -306,9 +306,9 @@ The [native wrap-seam determination](https://github.com/bj-data-eng/surgeist/iss
 binds a legal prepared boundary to the cut after consecutive removals within
 its authentic local mixed-participant/relation seam. The terminating line owns
 them; the receiving line starts at the same cut. Equal numeric output offsets
-do not authorize crossing genuine atomic, control or scope boundaries. Leading
-and trailing removals remain with their genuine scope's first and last
-source-bearing lines. A genuine output-empty extent retains custody through the
+do not authorize crossing atomic, control or scope boundaries. Leading
+and trailing removals remain with their scope's first and last
+source-bearing lines. An output-empty extent retains custody through the
 real empty-line/finalization path. Neither prepared start=end nor finite removal
 traversal can invent a wrap line or establish presentation progress.
 
@@ -322,7 +322,7 @@ selection, distinct equal occurrences, mixed source pieces and real conditional
 and known-language length-changing mappings. These requirements do not claim
 implementation before their owning contribution is qualified.
 Also qualify legal wrapping beside removals, consecutive/leading/trailing
-removals and genuine mixed zero-width participants. Combine actual reordered
+removals and mixed zero-width participants. Combine actual reordered
 Greek output, separated contributions of one input row and a real removal;
 check semantic event order, original-piece order, emission-only/removal-only
 and reversed selection, and whole-line custody independently.
@@ -358,11 +358,11 @@ owners. Physical Cell carets, hits and movement remain opaque exterior edges.
 
 Cell bounds join each original unit's real finalized contributions through the
 executed horizontal frame, compression and once-applied scope/placement. Removed
-or provider-empty originals retain semantics without donated bounds. Genuine
-native TABs use their executed nonprovider reference, including real zero width.
+or provider-empty originals retain semantics without donated bounds.
+Native TABs use their executed nonprovider reference, including zero width.
 Omit both optional Cell character-position and character-width arrays and any
 font/direction metadata lacking one truthful value. Range EGC closure is not
-accessibility membership authority. Refuse genuinely unrepresentable source/word
+accessibility membership authority. Refuse unrepresentable source/word
 joins atomically, preserving the previous binding and node-ID space. See the
 [Native Cell accessibility reference](../crates/surgeist-text/docs/reference.md#native-cell-accessibility).
 
@@ -432,7 +432,7 @@ finite authority. Unsupported language needs no invented phrase measurement to
 reach its eligible hyphen restoration stage after actual ordinary exhaustion.
 
 The [intrinsic determination](../references/text-auto-phrase-intrinsic--determination-20261025.md)
-retains genuine Anywhere intrinsic opportunities independently of finite stages;
+retains Anywhere intrinsic opportunities independently of finite stages;
 Normal/hyphen restoration cuts are excluded from min-content. Max-content opens
 no restoration stage. Text validates its issued handles and visible request
 context; each candidate may converge to its own numerical width, height, tabs
@@ -482,7 +482,7 @@ not take over the indication's style or identity.
 At actual text/atomic relations, Anywhere preserves the specific prohibition
 against an atomic-created cut adjacent to non-NBSP GL, WJ or ZWJ. NBSP retains
 its atomic compatibility exception, subject to actual ancestor wrapping. This
-does not change the atomic's geometry or margin-edge custody. A genuine Wbr or
+does not change the atomic's geometry or margin-edge custody. A Wbr or
 forced occurrence retains its independent authority at its exact mixed cut.
 
 Automatic line breaking derives its units from the retained extended-grapheme
@@ -521,7 +521,7 @@ admission and other writing systems' syllabic tailoring remain separate work.
 
 ### Empty text and font struts
 
-For genuinely empty source with no inline participants, intrinsic text advance and `Metrics::full_width` are zero. Retain the actual admitted-font empty-line strut, baseline and height, one `0..0` line and the original endpoint zero. No source character, glyph or phantom space advance is introduced. In the registered Ahem size-20, unconstrained, unquantized profile, the result is size `(0, 20)`, full width zero, baseline 16 and no clusters or glyphs. A real authored space retains its actual advance.
+For empty source with no inline participants, intrinsic text advance and `Metrics::full_width` are zero. Retain the actual admitted-font empty-line strut, baseline and height, one `0..0` line and the original endpoint zero. No source character, glyph or phantom space advance is introduced. In the registered Ahem size-20, unconstrained, unquantized profile, the result is size `(0, 20)`, full width zero, baseline 16 and no clusters or glyphs. A real authored space retains its actual advance.
 
 This intentionally replaces the former intermediary's empty-source `full_width` of 20 in that profile; its synthesized space was an implementation placeholder, not authored text. The zero-width owned representation was already drafted when this difference was characterized, so qualification must not claim a historical preimplementation RED. Preserve the baseline observation and independently test the selected functional result.
 
@@ -591,7 +591,7 @@ Hard-break precedence belongs to Text’s opportunity inventory under the [pinne
 
 Ordinary, conditional and non-placeable measurement terminations have distinct
 issued authority. Conditional search binds the exact preparation, unchanged line
-start/incoming, first genuinely formatted ordinary ceiling and purpose. Finite
+start/incoming, first formatted ordinary ceiling and purpose. Finite
 overflow fitting uses `Overflow`; unconstrained minimum-content pieces use
 `MinContent`. Maximum-content opens no search. Stages supply legal endpoint and
 variant capabilities; the consumer owns actual search exhaustion and fit.
@@ -623,15 +623,15 @@ and `FlowObservationRequest::line_box_struts`. Each `LineBoxStrut` pairs actual
 Numerical validation and request identity retain the complete list. An empty
 list contributes nothing; it cannot supply missing metrics to an allocation-only
 line. Text accepts numerical allocations; the consuming Layout adapter owns
-their genuine box attribution, assignment and feedback, including avoiding a
+their box attribution, assignment and feedback, including avoiding a
 second allocation for a contribution already owned by a selected control.
 
-Native preparation explicitly captures its paragraph strut policy. A default-font strut resolves and retains the actual base-style face during preparation and contributes on every selected line, even when body spans use other fonts; a missing requested face is an error. Each body font contributes its own line-height strut, including its own half-leading, before Text combines baseline-, top- and bottom-aligned allocations. The allocation-only policy omits the base strut; it may prepare without a font when no other input requires one. Finalization requires actual contributions for every otherwise metric-less line, including a terminal empty line after a forced break. An explicit zero allocation is distinct from a missing allocation. Control presence and catalogue availability cannot silently choose this policy. These native strut roles follow the pinned [CSS Inline layout-bounds rules](../references/css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md#inline-height). Raw standalone layout retains its characterized source-adjacent metric policy; genuinely empty standalone text retains its admitted-font strut.
+Native preparation explicitly captures its paragraph strut policy. A default-font strut resolves and retains the actual base-style face during preparation and contributes on every selected line, even when body spans use other fonts; a missing requested face is an error. Each body font contributes its own line-height strut, including its own half-leading, before Text combines baseline-, top- and bottom-aligned allocations. The allocation-only policy omits the base strut; it may prepare without a font when no other input requires one. Finalization requires actual contributions for every otherwise metric-less line, including a terminal empty line after a forced break. An explicit zero allocation is distinct from a missing allocation. Control presence and catalogue availability cannot silently choose this policy. These native strut roles follow the pinned [CSS Inline layout-bounds rules](../references/css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md#inline-height). Raw standalone layout retains its characterized source-adjacent metric policy; empty standalone text retains its admitted-font strut.
 
 Metric completeness does not establish that composed CSS Layout contains a
 formatted line. Layout applies the [phantom-line disposition](../references/text-wrap-edges--native-determination.md#paragraph-completion-and-retained-pins)
 to each actual selection, independently of earlier source-node presence. A
-phantom terminal completion retains its genuine ParagraphEnd, actual numerical
+phantom terminal completion retains its ParagraphEnd, actual numerical
 finalization, box/source custody and whole-paragraph coverage, but consumes no
 formatted-line role or positive layout/rendered/caret rectangle. Its used block
 extent is zero; real out-of-flow descendant positioning follows the CSS
@@ -640,7 +640,7 @@ standalone Text placement retains its separate native metric policy.
 
 Retain the normalized formatter's deterministic alignment-group policy: let `b` and `a` be the independent maxima of signed before/after contributions in the baseline group, and `T`/`B` the largest top/bottom-aligned extents when present. Set `u = max(b + a, T)` and extend above by `max(B - u, 0)`; the resulting baseline is `b` plus that extension and the physical line extent is `max(0, u, B)`. An absent alignment group supplies no constraint, and an absent baseline group uses zero only as its coordinate origin. Preserve signed baseline contributions, font half-leading and overflowing box geometry; only the overall physical extent has a zero floor. This preserves the existing box/control formatter's choice where the pinned CSS Inline draft leaves tall top/bottom content positioning underdetermined; it is a Surgeist placement policy, not a claim that the draft specifies a unique baseline.
 
-A native empty origin retains a zero-width, zero-height nominal source-fragment anchor at its actual finalized baseline and inline position. Its occurrence carries no independently captured font, so its fragment bounds cannot borrow a neighboring font or the whole line enlarged by unrelated boxes. Nonformatted placement retains this occurrence on its genuine finalized receipt without publishing a source or caret rectangle. Caret and accessibility geometry come from actual formatted lines. Raw standalone fragment geometry retains its characterized behavior.
+A native empty origin retains a zero-width, zero-height nominal source-fragment anchor at its actual finalized baseline and inline position. Its occurrence carries no independently captured font, so its fragment bounds cannot borrow a neighboring font or the whole line enlarged by unrelated boxes. Nonformatted placement retains this occurrence on its finalized receipt without publishing a source or caret rectangle. Caret and accessibility geometry come from actual formatted lines. Raw standalone fragment geometry retains its characterized behavior.
 
 The standalone `System::layout` convenience path retains the currently supported wrapping/alignment behavior by choosing lines through the same preparation/finalization machinery. Its simple paragraph chooser is private to text; layout’s composed CSS formatter does not use it as a second formatter. Unsupported style combinations remain explicit errors until the owning standards issue implements them.
 
@@ -696,7 +696,7 @@ Detached word/phrase measurements use authentic prospective roles. Text issues
 their measurement-flow recipes and nonplaceable post-collapse participation
 observations; consumers interpret those observations using their own emission
 rules. Retained participation alone never proves a generated line. Preserve the
-full manual-partition target, distinguish a genuine predecessor from a phantom
+full manual-partition target, distinguish a predecessor from a phantom
 phrase prefix, and account for future Forced/empty/receiving obligations before
 combining local closure with the external owner tail. Trials do not commit line
 history, and intrinsic invocations do not borrow finite history. Standalone uses
@@ -707,7 +707,7 @@ the same punctuation kernel with its actual raw metric and emission profile.
 Layout owns finite signed margin and finite nonnegative border/padding on each endpoint. Its
 [InlineBoundaryEdgeOf<S>](../crates/surgeist-layout/src/node_input/inline.rs)
 constructor `try_new(margin, border, padding)` checks each component in scalar `S`, with explicit
-`ZERO` for a genuine used zero. Both `InlineBoundaryInputOf::contribution` and
+`ZERO` for a used zero. Both `InlineBoundaryInputOf::contribution` and
 `::box_edge` require that explicit value; Contribution refuses nonzero margin.
 Keep the used border/padding sum `e = border + padding` and signed flow
 `f = margin + e` distinct. Ordinary BP addition retains native-lane rounding.
@@ -731,7 +731,7 @@ one real endpoint's nonnegative advance, preserving uncaptured, unpaired and
 zero/strut-only Native operations. BoxEdge additionally requires its actual owner,
 immediate parent and physical source-Start side. Layout receives that parent's
 resolved `FlowAxes` separately. Text authenticates an `InlineBoxSource` from a
-captured Inline scope or an explicitly declared pair of genuine captured Start/End
+captured Inline scope or an explicitly declared pair of captured Start/End
 controls; exact nominations canonicalize to the scope. Its
 `inline_box_edge_context` checks the actual preparation/domain and parent. A domain
 can be the parent, never the inline owner. Selection checks the supplied
@@ -785,7 +785,7 @@ unrequested family.
 
 Text owns the shared component and fragment-parent derivation. Prepared retains
 its captured incidence, full-body L1/L2 and packet authority; the supplied adapter
-consumes resolved native ordering and genuine empty-box incidence without claiming
+consumes resolved native ordering and empty-box incidence without claiming
 Source authority. A body has its own root. Intervening participating content can
 split a normal box; metadata and differing levels alone do not. The resulting
 global fragment identities survive fitting-run cuts and soft wrapping, including
@@ -794,9 +794,9 @@ when previously separated fragments become adjacent on a selected line.
 Only exact, proven zero Contribution endpoints in a demanded normal family become
 ordering-transparent. They retain their Contribution operation and metrics as
 logical-source aliases, without parent-directed BoxEdge authority. Place each
-alias using its genuine logical frontier's resolved direction and executed
+alias using its logical frontier's resolved direction and executed
 selected port. An equivalent adjacent witness must certify the same gap and be
-valid on that selected cut; empty aliases need genuine empty-gap authority.
+valid on that selected cut; empty aliases need empty-gap authority.
 Otherwise refuse `GapOutsideSelection`. Nonzero Contributions cannot acquire this
 role. In the six-atomic `000111` case with zero endpoints around members 2/3,
 member positions are `0,10,20,50,40,30`: the logical Start/End aliases are `20/50`,
@@ -814,9 +814,9 @@ Each `InlineGapGroupInput` names an anchor and the explicit physical order of
 unrelated boxes at that gap; nested boxes retain their admitted ancestry.
 Each real box/body has one attachment group. Overlapping group declarations
 refuse `ConflictingGap`; they do not define a partial-order merging capability.
-`InlineGapAnchor::Neighbor` uses a genuine ordering occurrence and physical
+`InlineGapAnchor::Neighbor` uses an ordering occurrence and physical
 `InlineGapAffinity::Before` or `After`. `Formatter` uses the actual source Start
-or End and its adjoining body. `Delimiter` uses the source side of a genuine
+or End and its adjoining body. `Delimiter` uses the source side of a
 visible break or in-flow block interruption. These source sides are separate
 from physical affinity. Formatter edges include operand-empty bodies.
 `EmptyParent` names an actual ordering-empty parent; positive border/padding or
@@ -851,7 +851,7 @@ preparation's complete structural bodies. Admission requires both explicit
 `SourceProcessingTopology::Complete` and ownership of every relevant raw member
 through the actual preparation or joint flow. Full raw coverage alone cannot
 establish box topology. Captured Inline scopes contribute their real ancestry;
-additional native pairs require genuine endpoint declarations. Unknown topology,
+additional native pairs require endpoint declarations. Unknown topology,
 incomplete bodies, foreign families and inconsistent edge contexts return their
 specific errors without changing prior results. Ordinary operations with
 `LineSelectionRequest::inline_boxes: None` make no global-fragment claim.
@@ -861,7 +861,7 @@ determines fragments from intervening content in the hypothetical unwrapped body
 Finite wrapping cannot merge their identities, and level changes alone cannot
 split a box. Parent links and nearest-common-ancestor queries describe fragment
 ancestry. Text reuses completed bidi analysis and full-body L1/L2; it does not
-repeat contextual analysis or shaping. A genuine empty Inline remains a box
+repeat contextual analysis or shaping. An empty Inline remains a box
 without an ink, advance or decoration threshold. For this PreparedText family,
 empty native-pair ordering uses its actual opening gap, borrowing the following
 nonopaque resolved level or the body's paragraph level before L2. That is an
@@ -881,7 +881,7 @@ readback; a piece supplies no independently reconstructed paint rectangle.
 
 Layout's `TextParagraphBinding::inline_box_fragments` explicitly chooses
 `NotRequested` or `CompleteBodies`. Both checked constructors admit the latter
-only for genuine Flow or SemanticFlow bindings and reject AssociationOnly with
+only for Flow or SemanticFlow bindings and reject AssociationOnly with
 `InlineBoxFragmentsRequireFlow`. The checked binding retains one family through
 measurement, conditional search, replay, finalization and placement.
 `PlacedTextOutput::inline_box_fragments()` exposes that exact association;
@@ -913,7 +913,7 @@ Omitted controls yield `MissingControl`, missing endpoint geometry yields
 existing errors.
 
 An endpoint outside selected flow can still affect original joining context.
-`LineSelectionRequest::boundary_context` supplies these genuine local
+`LineSelectionRequest::boundary_context` supplies these local
 `InlineBoundaryContextAllocation` rows separately: they allocate no flow, strut,
 placement or fragment, and cannot duplicate selected controls or clone a remote
 paragraph's global endpoint. [PreparedText::boundary_context_demand](../crates/surgeist-text/src/protocol/selection.rs)
@@ -938,7 +938,7 @@ coverage before publishing a selection; never invent zero for a missing fact.
 
 Text derives endpoint incidence from actual captured events and typography-safe
 cuts. At an authentic Soft opportunity, closing events attach to the outgoing
-line and opening events to the incoming line, using genuine event/scope incidence.
+line and opening events to the incoming line, using event/scope incidence.
 Retain opportunity ownership, positive-source deleted occurrences and distinct
 disappearing-SPACE cuts. Do not invent a cut, strand a closing endpoint at an
 artificial earlier Soft end, or rewrite Forced/domain/atomic chronology.
@@ -1019,7 +1019,7 @@ allocated-spacing replay; this is no global scope-wide disable-hanging flag.
 | Original source and exact placed positions | Endpoints add no UTF-16, source Range membership, glyph or plaintext. Exact relation-event Before/After positions retain original Source-event cuts and source-level orientation over the actual finalized strip, including relocated BoxEdge geometry. Parent side/role controls physical insertion. Exact selected-event ranges include the endpoint's actual line-height strip even with glyphs selected; source-offset queries do not invent that membership. |
 
 The node footprint and Control fragment observe one contribution, not two widths.
-Source/caret/Range, Render and accessibility consume the same displaced genuine
+Source/caret/Range, Render and accessibility consume the same displaced
 geometry and retain source-free endpoint custody. Global scope pairing remains
 capture-owned; paragraph cuts manufacture no continuation endpoint or envelope.
 
@@ -1096,7 +1096,7 @@ introducing unconditional opportunities or an indivisible whole-word rule.
 
 ### Native default-ignorable fallback
 
-This selected #64 contract distinguishes genuine native shaping from fallback
+This selected #64 contract distinguishes native shaping from fallback
 display. The pinned [Text 4 whitespace rules](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#white-space-processing)
 require unsupported Default_Ignorable characters to be ignored for rendering.
 The [Unicode rendering guidance](https://www.unicode.org/versions/Unicode17.0.0/core-spec/chapter-5/)
@@ -1126,7 +1126,7 @@ Exactly U+115F, U+1160, U+3164 and U+FFA0 retain the provider's recognized
 spacing-filler role when the actual selected face supplies a nonzero nominal
 glyph. This narrow resource exception does not validate arbitrary font ink or
 extend to other mapped default-ignorables. Missing, unsubstituted fillers fall
-back invisibly; genuine native filler consumption retains its actual joint
+back invisibly; native filler consumption retains its actual joint
 result. Keep lookup participation independent from fallback suppression.
 
 The maintained provider tracks only original default-ignorable input ordinals
@@ -1165,7 +1165,7 @@ hyphen is classified by its actual emitted atom, not its authored SHY source.
 
 Retain these actual exclusions beyond extraction for character topology and
 carrier choice. Wholly Residual/Deleted operation units have no spacing role;
-bridge their actual eligible neighbors only within genuine semantic components.
+bridge their actual eligible neighbors only within semantic components.
 A partial unit keeps complete source custody, but its base and displacement
 carrier cannot be a residual/deleted component. Native Normal descendants remain
 subject to source-owned EGC/Appendix-E rules and actual movement constraints;
@@ -1213,13 +1213,13 @@ remains usable; allocation replacement never reclassifies or reruns the provider
 ### Native whitespace processing modes
 
 Text's `WhiteSpace` values are Collapse, Discard, Preserve, PreserveSpaces,
-PreserveBreaks and BreakSpaces. Genuine captured trimming runs before Phase I;
+PreserveBreaks and BreakSpaces. Captured trimming runs before Phase I;
 source-local processing retains its narrower explicit source/delimiter inputs.
 The [Text reference](../crates/surgeist-text/docs/reference.md#source-local-whitespace-processing)
 records each mode's lexical operation and original-source correspondence.
 
 PreserveBreaks converts TAB and ordinary CR to collapsible U+0020, collapses
-adjacent eligible spaces across genuine Collapse/PreserveBreaks spans, and removes
+adjacent eligible spaces across Collapse/PreserveBreaks spans, and removes
 collapsible SPACE/TAB around actual delimiters within their real domain. Each
 surviving delimiter becomes one LF; duplicate-break collapsing and contextual
 break transformation do not apply to these LFs. Consecutive delimiters therefore
@@ -1230,18 +1230,18 @@ Each disappearing original SPACE retains its actual containing style's Wrap gate
 BreakSpaces preserves SPACE/TAB and actual delimiter LFs; ordinary CR becomes
 preserved SPACE. Preparation issues an opportunity immediately after each eligible
 preserved SPACE/TAB or other space separator at that character's actual end, only
-at a typography-safe cut with genuine neighboring/NCA wrapping permission.
+at a typography-safe cut with neighboring/NCA wrapping permission.
 Forced, explicit and atomic owners retain precedence. The mode supplies no
 before-first-space opportunity and cannot relocate a suppressed interior SPACE
 cut to the far end of a combining typographic unit. Its preserved TAB uses the
-same genuine font-advance/CSS-stop demands as Preserve.
+same font-advance/CSS-stop demands as Preserve.
 
 Follow the [glue source reconciliation](../references/css-text-break-spaces-glue--source-reconciliation-20261024.md)
 and the retained [Unicode 17/revision 55](../references/uax14--17.0.0--rev55-metadata.md)
 boundary rules: U+2007/U+202F retain their own GL protection, and WJ/ZWJ and
 indivisible typographic units remain protected. A following GL is not a blanket
 veto: the adopted SPACE/TAB-before-GL exceptions remain legal when their actual
-boundary permits. Preserve genuine higher-priority ZW opportunities. This
+boundary permits. Preserve higher-priority ZW opportunities. This
 contract does not adopt Unicode 18/revision 57's changed BA exception.
 
 These modes execute through native captured, analyzed and prepared paragraph
@@ -1279,7 +1279,7 @@ Actual evaluated/generated body content counts, while a selected hyphen or
 continuation indication cannot supply paragraph authority.
 
 Facts are indexed once over actual body contexts, including B-class separators
-and genuine ForcedBreak LF. A nonempty query may include its context's terminating
+and ForcedBreak LF. A nonempty query may include its context's terminating
 separator but cannot cross into another context. An empty query at an internal
 seam belongs to the right context; terminal empty queries retain that empty
 context. Foreign, reversed and cross-context queries fail rather than returning
@@ -1297,7 +1297,7 @@ it does not claim to be a CSS Plaintext producer.
 
 Layout resolves each ordinary, conditional and measurement candidate from its
 actual range. A failed wider strong candidate cannot freeze the direction of a
-successful weak prefix. Only actual accepted lines, including genuine empty or
+successful weak prefix. Only actual accepted lines, including empty or
 Forced lines, advance the containing formatter's previous-direction state.
 Speculative trials, float/height retries and detached measurements do not.
 Carry accepted state across runs in one container and reset it in a new
@@ -1358,7 +1358,7 @@ SPACE/TAB/separator contribution without line-edge removal, whitespace hanging o
 Forced or BlockEnd, under either wrap policy. These rows retain ordinary flow
 and stop preceding hanging groups, even at zero advance. Fit, alignment,
 MinContent and MaxContent consume the same retained contribution. MinContent may
-choose genuine after-each opportunities; MaxContent still honors actual Forced
+choose after-each opportunities; MaxContent still honors actual Forced
 lines. This mode therefore depends on its prepared opportunity inventory as well
 as finalization, rather than a finalizer flag.
 
@@ -1369,7 +1369,7 @@ the causes by actual contribution identity instead of omitting a unit twice.
 
 An issued paragraph ending proves preparation completion, not CSS block end.
 Native input retains a distinct `ParagraphTerminalEdge` capture: `Unknown`,
-`BlockEnd` or `NonBlockBoundary`. An explicit native producer supplies its genuine
+`BlockEnd` or `NonBlockBoundary`. An explicit native producer supplies its
 normalized fact. Contextual processing derives it from actual paragraph/domain
 custody and the owning block scope's exit, including ordered empty and out-of-flow
 occurrences; neither numeric extent nor paragraph-table order establishes it.
@@ -1545,7 +1545,7 @@ only resolved cluster advances, not that temporary signed pen, in logical prefix
 receipts. Existing positive-x visual emission and later alignment/placement use
 those same rows. Indentation influences tab distance and ordinary placement once;
 alignment does not reevaluate the grid. Actual struts or supplied allocations
-provide line metrics; font-dependent observations of genuinely fontless content
+provide line metrics; font-dependent observations of fontless content
 require their own precise missing-metric result.
 
 Changed spacing allocations require tab recomputation: expansion before a tab
@@ -1598,7 +1598,7 @@ decisions from the authentic unbroken processed source and its actual context
 barriers, as required by the pinned [word-break shaping rule](../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#word-break-shaping).
 Original and computed ownership alone does not introduce a shaping boundary.
 Otherwise-compatible presentation retains joint substitution and positioning,
-including genuine mixed graphemes, ligatures and cross-cluster adjustments.
+including mixed graphemes, ligatures and cross-cluster adjustments.
 Cluster membership and dependencies observed before correcting joining do not
 certify that independently shaping those contributions would be equivalent.
 
@@ -1615,7 +1615,7 @@ the complete operation before any finalized result is published.
 For computed characters, derive joining behavior from the actual selected
 presentation; original contributions retain their independently determined source
 joining decisions. The computed channel's Unicode context is the complete emitted
-selected-line presentation within its genuine context barriers. It includes
+selected-line presentation within its context barriers. It includes
 selected characters in other font or metric runs and excludes unselected source
 outside that line. Font and instance boundaries constrain joint substitution and
 positioning without introducing Unicode joining-context barriers.
@@ -1684,7 +1684,7 @@ families, resolved generics and actual face attributes. The selected
 [first-available-font rule](../references/css-fonts-4-width-matching--editor-capture-20261010--72f4c49ea2ec.md#first-available-font)
 uses U+0020 eligibility under admitted `unicode-range` restrictions, not the
 presence of a space glyph or U+2010 coverage. If listed faces are unavailable,
-only a genuinely configured and captured default-primary authority can supply
+only a configured and captured default-primary authority can supply
 the default; script fallback candidates do not establish that authority. With
 neither an eligible family face nor such a default, return a precise missing-primary
 failure for this auto-indication probe. This bounded failure does not make family
@@ -1715,7 +1715,7 @@ Retain the actual resolved convention, governing style and font/resource context
 in preparation and all affected cache identities. Qualification covers none versus
 visible-hyphen breaks, manual with unknown language, exact specified strings and
 empty endings, explicit-script precedence and supported script fallback, known
-unsupported conventions, primary-font versus adjacent-fallback coverage, genuine
+unsupported conventions, primary-font versus adjacent-fallback coverage,
 source/control custody, min-content and unchanged authored/selection/search text.
 This determination supplies requirements, not an implementation-completion claim.
 
@@ -1764,7 +1764,7 @@ Disabling hyphens removes the manual choice without removing independently legal
 source-after-SHY participant, original source custody and authentic Soft endpoint
 attachment. A source-free discretionary Control has no implicit BA character and
 cannot borrow the source-SHY permission. Consecutive SHYs, punctuation, marks and
-glue require their actual rules/context. Genuine Wbr, ZWSP, forced, atomic and
+glue require their actual rules/context. Wbr, ZWSP, forced, atomic and
 always-visible-hyphen permissions remain independent; none donates proof to a
 suppressed SHY or an equal-offset control.
 
@@ -1774,14 +1774,14 @@ A manual partition requires an actual matching admitted Source/Control
 alternative at its cut, not merely a retained cut observation, opportunity
 presence or Discretionary kind. `PreparedWordView::portions` skips
 unadmitted manual cuts without advancing the portion start or replacing its
-incoming choice. Allowed plus a manual alternative remains a genuine partition;
+incoming choice. Allowed plus a manual alternative remains a partition;
 Allowed/None-only does not become one because a Source cut was observed.
 
-An explicit Wbr can independently share an endpoint with Auto. For genuine
+An explicit Wbr can independently share an endpoint with Auto. For
 `as` + Wbr + `sociate`, Normal or KeepAll, en-US, hyphens:auto, wrapping enabled
 and no word-space transform, the complete lexical word remains `associate`.
 The actual boundary after Wbr retains both nonhyphenating `None` and the resource's
-independent Auto choice; a later genuinely issued offer supplies the
+independent Auto choice; a later issued offer supplies the
 conditional-enumeration ceiling. With 10px letters and a 10px indication, the
 full-prefix None/Auto trials retain their distinct 20/30px advances. Authenticate Wbr, source, resource and
 mixed-cut identity; a different pre-Wbr offer cannot supply that evidence.
@@ -1819,11 +1819,11 @@ adding their levels. The attachment authority is:
 At a mixed-direction After boundary, use the following side. Retain the original
 occurrence, cut side and selected-line association, not an unqualified integer
 level. Transparent empty and out-of-flow events supply no level; do not skip a
-genuine formatting character merely to find visible content. Receiving direction
+formatting character merely to find visible content. Receiving direction
 and geometric attachment do not transfer the indication's established style,
 font, language convention or DOM ownership. A nonempty After indication without
 authenticated receiving continuation authority returns
-`HyphenationError::MissingReceivingBidiAuthority`. A genuine in-flow atomic
+`HyphenationError::MissingReceivingBidiAuthority`. An in-flow atomic
 receiver supplies its own analyzed original occurrence and receiving-line L1
 authority; retain its actual allocation and shaping barrier without donating a
 scalar to the indication. Paragraph direction, adjacent fallback fonts and
@@ -1832,11 +1832,11 @@ continuation/selected-ending obligation identity without visible insertion.
 
 For incoming LogicalAfter, including the After side of BothSides, insert the
 whole indication immediately before its authenticated receiver in the selected
-logical mixed-event sequence. Preserve every genuine prefix control in captured
+logical mixed-event sequence. Preserve every prefix control in captured
 order: Start, indication, receiver in that case, at both zero and positive Start
 widths. Nested starts/ends and empty metadata retain that order; edge magnitude
 changes the barrier, not attachment identity. Authenticate the actual participant
-and original scalar or nonscalar occurrence, including a genuine formatting
+and original scalar or nonscalar occurrence, including a formatting
 control, deleted original or in-flow atomic with directional authority, rather
 than searching for the first visible glyph.
 
@@ -1850,7 +1850,7 @@ not a browser-interoperability claim.
 
 Use this same attachment for original-context seeds, transported presentation
 cuts, shaping and placement. An eligible positive Start precedes the whole
-indication-plus-receiver side: it bounds genuine original context across itself
+indication-plus-receiver side: it bounds original context across itself
 without dividing their computed joining. Whole-indication custody creates no
 atomic box or mandatory shaping barrier; retain local bidi, shared graphemes and
 compatible joint GSUB/GPOS. Outgoing Before custody is unchanged.
@@ -1864,7 +1864,7 @@ flatten all its characters to the attachment level, strip controls, or insert
 synthetic isolate characters into authored text.
 
 This bidi scope does not itself create a shaping barrier. Preserve the adopted
-original and computed joining contexts, genuine shared graphemes, and joint
+original and computed joining contexts, shared graphemes, and joint
 substitution and positioning across otherwise compatible original/computed
 runs. Different resolved directional runs retain their actual shaping
 constraints. If local bidi order, shared-unit correspondence and joint shaping
@@ -1890,7 +1890,7 @@ The prior full-paragraph variant-analysis effect is not an exception for Before.
 Qualification includes a real existing-callable Before case where an indication
 strong character, bracket or explicit control otherwise changes original bidi;
 opposite-direction After attachment; simultaneous incoming and outgoing
-indications; local control containment; genuine shared-unit shaping; unchanged
+indications; local control containment; shared-unit shaping; unchanged
 subsequent-line source bidi; and precise missing-authority/composition refusals.
 Exact font-query witness reuse must follow these authenticated directional
 inputs. These are requirements, not an implementation-completion claim.
@@ -1908,7 +1908,7 @@ derivative-word corrections or complete English coverage.
 
 A lexical word spans connected text origins, styles, fonts and transparent
 out-of-flow occurrences. Actual hard separators, in-flow atomics and disconnected
-text remain genuine domain boundaries. Resource qualification examines every
+text remain domain boundaries. Resource qualification examines every
 actual language contribution to the complete word: this resource admits only
 `en-US`, ignoring ASCII case. Other regions, generic `en`, variants and extensions
 do not acquire implicit coverage. An unqualified mixed-language word retains
@@ -1928,7 +1928,7 @@ does not fully determine the result.
 Text retains complete-word and cut observations with their exact ordered source
 pieces, processed correspondence, mixed boundary, governing contribution, counts
 and pattern/source-exception/Text-correction provenance. An automatic indication
-is a genuine computed insertion consuming no authored interval, rather than an
+is a computed insertion consuming no authored interval, rather than an
 injected SHY, fabricated control or caller-authored replacement. Provider UTF-8 is
 a temporary mapped view: preserve original SHY occurrences and exact UTF-16
 custody, validate scalar/grapheme boundaries, and never fuse isolated surrogate
@@ -2060,7 +2060,7 @@ manual priority, character or sequence limits, wrapping permission or actual fit
 This applicability choice and the reference-frame and intrinsic rules below are
 explicit native policies where the source does not fully determine behavior.
 
-Use the genuine legal ordinary, unhyphenated fallback that would leave the word
+Use the legal ordinary, unhyphenated fallback that would leave the word
 for the next line. Finalize it independently from the unchanged incoming line
 start with no spacing allocations, actual line-edge processing and contextual
 shaping, in its own converged float and height frame. Retain its prealignment
@@ -2085,7 +2085,7 @@ letters has a natural fallback advance of 10px and unfilled space of 50px. A
 45px zone permits consideration; counting its discarded trailing space would
 incorrectly reduce that gap to 40px.
 
-At line start or with genuinely no legal ordinary fallback leaving the word for
+At line start or with no legal ordinary fallback leaving the word for
 the next line, the zone gate is inapplicable. Do not manufacture an empty line,
 ordinary offer or measurement role. Zero advance alone does not prove absence
 of a formatted prefix. Failure to represent or finalize an existing legal
@@ -2111,7 +2111,7 @@ At the start of an actual line, suppress automatic hyphenation when the block's
 committed successive-hyphenated-line count reaches its finite limit. `no-limit`
 does not suppress it. Zero suppresses automatic opportunities immediately while
 retaining eligible manual conditional endings. Update state only when a line is
-committed: a selected genuine hyphenation ending increments the count, including
+committed: a selected hyphenation ending increments the count, including
 manual endings and empty indications; any other ending resets it. A literal
 visible hyphen's ordinary break and an arbitrary unhyphenated emergency break
 are resets. Rejected candidates, float retries and measurements do not commit.
@@ -2158,7 +2158,7 @@ visible ink. The protected line is that final content line's immediate
 soft-wrapped predecessor, in the same uninterrupted forced-break segment, which
 actually continues into it. Do not scan backward across a forced break. A
 one-line final segment has no protected predecessor; earlier segments are not
-retrospectively restricted. If the final content line ends with a genuine forced
+retrospectively restricted. If the final content line ends with a forced
 break and only empty terminal lines follow, its soft predecessor remains
 protected.
 
@@ -2168,7 +2168,7 @@ hyphen breaks remain distinct. This inclusive reading retains the unresolved
 [CSSWG issue 5090](https://github.com/w3c/csswg-drafts/issues/5090) dispute rather
 than claiming settled interoperability. An oversized final word grants no new
 hyphenation exception: use independently permitted nonhyphenating emergency
-breaking or ordinary overflow behavior. A genuine forced break between two
+breaking or ordinary overflow behavior. A forced break between two
 content lines prevents the protected relationship.
 
 Reselect through the existing line-selection and finalization machinery, then
@@ -2184,7 +2184,7 @@ paragraph's final line.
 soft/forced continuation relationships. `Unknown` cannot imply exemption, and
 `NonBlockBoundary` cannot prove a later formatted line. Missing necessary tail
 ownership is a capability limitation. Column, page and spread restrictions need
-genuine fragmentation-break production and line association; forced LF, grid
+fragmentation-break production and line association; forced LF, grid
 columns, clipping and paint fragments do not supply that authority.
 
 MinContent retains its existing manual partition and automatic refinement rules
@@ -2236,7 +2236,7 @@ constraints. Changed bands, allocations or legal line-break reshaping require
 the corresponding candidate to be finalized and checked again. If the unit moves
 to another line, replay its float encounter against that candidate; do not keep
 an obsolete placement above it or fabricate a partial glyph/accounting split.
-A genuine Text-issued legal break may reshape or dissolve an optional ligature;
+A Text-issued legal break may reshape or dissolve an optional ligature;
 derive the grouping anew from that finalized candidate. Rewinds restore provisional
 float state without double insertion. Complete feedback/cycle identity includes
 event progress and provisional placements. Only a coherent accepted result is
@@ -2297,7 +2297,7 @@ and rollback into a changed assignment.
 
 ### Canonical boxes and coherent line placement
 
-For admitted Horizontal, clockwise SidewaysRl and native upright VerticalRl/VerticalLr lines, Layout settles normal canonical box facts, available spans, actual float bands and admitted atomic flow allocations before accepting Text's normal finalized geometry. Normal canonical facts exclude CSS relative insets and accumulated relative visual ancestry. They retain the selected pixel-rounding policy for normal containing placement, vertical alignment and scope alignment. If a genuine change to that normal placement changes a dimension, baseline-relative metric or float intersection, Layout reevaluates the affected candidate and its feedback. Pixel snapping remains distinct from scalar conversion and canonical provider precision. A later visual rounding pass cannot silently change accepted normal line inputs.
+For admitted Horizontal, clockwise SidewaysRl and native upright VerticalRl/VerticalLr lines, Layout settles normal canonical box facts, available spans, actual float bands and admitted atomic flow allocations before accepting Text's normal finalized geometry. Normal canonical facts exclude CSS relative insets and accumulated relative visual ancestry. They retain the selected pixel-rounding policy for normal containing placement, vertical alignment and scope alignment. If a change to that normal placement changes a dimension, baseline-relative metric or float intersection, Layout reevaluates the affected candidate and its feedback. Pixel snapping remains distinct from scalar conversion and canonical provider precision. A later visual rounding pass cannot silently change accepted normal line inputs.
 
 CSS relative positioning follows the pinned [normal-layout then visual-offset rule](../references/css-position-3--WD-css-position-3-20251007--3c8a8120af2c.md#relpos-insets). Relative-inset percentages use the final accepted measured normal containing-block content size before publication corner rounding. This is the actual normal result after sizing constraints, used padding/border/gutter accounting and legitimate normal feedback, rather than an early provisional measure or an authored nominal dimension. Retain that measured basis from its actual owner alongside canonical geometry; never reconstruct it from rounded corners. Canonical normal box geometry remains the authority for canonical allocation, FIT and alignment; it is not substituted for this percentage basis. Relative visual placement follows that basis. A final auto basis for this property does not make ordinary child-size percentages definite. Relative visual snapping must not create a normal-height → inset → normal-height feedback loop. Existing normal snapping, float and scrollbar/gutter settlement retain their own retries and typed cycle/no-fit outcomes.
 
@@ -2305,7 +2305,7 @@ Selecting the measured phase for the percentage basis maps the CSS containing-bl
 
 For visual publication, Layout selects one physical anchor per finalized line: its inline origin and cross-axis baseline, rounded once under the requested Layout policy using the actual visual containing placement and global reference. Retain the normal canonical frame used for allocation separately; a relative visual ancestor can change this published anchor without changing normal line metrics. Every run, source fragment, cluster, caret and selection uses the same placed Text basis. Horizontal geometry receives a rigid translation; clockwise Sideways geometry rotates once about that actual baseline. Native upright retains the unrotated glyph basis while its inline pen advances on physical y. The font's over edge is the baseline minus ascent in Horizontal y, or baseline plus ascent in clockwise Sideways and native upright x. Native upright Central is placed B from the right block-start in VerticalRl and H-B from the left in VerticalLr, using the actual finalized baseline B and line allocation H. Both modes map Text cell coordinates (u,v) to (CentralX+B-v, inlineOrigin+u); normal-flow allocations separately follow the actual block progression. Fractional local positions, advances and sizes remain fractional. A line spanning multiple source nodes has one common formatting-context anchor. Node-local views are coordinate conversions from that placed geometry using actual committed ancestor origins, with no independent snapping. Layout's line allocation rectangles and Text's metric or ink bounds retain their distinct roles.
 
-Logical line allocations follow the pinned [line-box stacking rules](../references/css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md#line-boxes). Retain their unsnapped progression independently of each physical Text anchor: advance by the accepted block-axis allocation and any genuine float or clearance displacement. Placement does not become additional flow advance or change the next logical start. Natural container block size follows those allocations; actual placed metric and ink bounds contribute to their respective overflow calculations. Before CSS relative visual translation, both normal allocation and normal metric footprints must satisfy their applicable float constraints; a gap between those footprints is not newly occupied space. Relative visual overlap is not a new normal exclusion or clearance constraint. Revalidate changed canonical allocations and float intersections under the feedback rules below.
+Logical line allocations follow the pinned [line-box stacking rules](../references/css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md#line-boxes). Retain their unsnapped progression independently of each physical Text anchor: advance by the accepted block-axis allocation and any float or clearance displacement. Placement does not become additional flow advance or change the next logical start. Natural container block size follows those allocations; actual placed metric and ink bounds contribute to their respective overflow calculations. Before CSS relative visual translation, both normal allocation and normal metric footprints must satisfy their applicable float constraints; a gap between those footprints is not newly occupied space. Relative visual overlap is not a new normal exclusion or clearance constraint. Revalidate changed canonical allocations and float intersections under the feedback rules below.
 
 An in-flow atomic participant retains two related facts for the same actual occurrence: its normal canonical allocation, including signed used margins, FIT authority and baseline-relative ascent/descent, and its visual canonical border/content rectangle and baseline. Layout derives normal flow and FIT from normal canonical box facts. CSS relative offsets and their visual snapping phase cannot change those normal dimensions, metrics, exported normal baselines, following content or parent auto size. Text consumes the checked normal allocation without interpreting CSS margins; checked FIT receipts must retain truthful normal border authority independently of visual pixel extents.
 
@@ -2317,7 +2317,7 @@ A change to normal canonical atomic dimensions, baseline-relative metrics, margi
 
 Once the normal state is stable, Layout places those exact finalized lines, derives visual node/source associations and atomic rectangles from the same owned relationships, and builds interaction, accessibility and Render-facing views before atomically publishing `CompletedLayoutBatch`. Warm reuse must distinguish changed normal inputs from changed relative visual placement; retained older batches stay immutable. Final visual arithmetic or identity failure aborts publication with its owning typed error, without a zero or stale fallback. No subsequent rounding modifies Text-derived geometry. Live Style authentication under #1159 is separate from this explicit-input native protocol.
 
-Qualification must cover a ligature/mark line crossing source nodes with fractional widths and invariant relative geometry under placement and source repartition; fractional nested ancestor origins; mixed LTR/RTL atomics with fractional and negative margins and baseline offsets; and a canonical atomic change that genuinely changes height/float feedback or yields explicit cycle/no-fit. Include fractional relative top/left corner-threshold crossings with unchanged normal allocation, FIT, exported baselines, following source positions and parent size; independently correct visual node/Text geometry; and relative ancestor cases alongside the preserved normal ancestor, vertical-align and scope feedback controls. Verify common translation without reshaping, scalar conversion and association rejection, and late refusal preserving the previous batch. Vertical/oriented profiles require their own qualified placement mapping before admission.
+Qualification must cover a ligature/mark line crossing source nodes with fractional widths and invariant relative geometry under placement and source repartition; fractional nested ancestor origins; mixed LTR/RTL atomics with fractional and negative margins and baseline offsets; and a canonical atomic change that changes height/float feedback or yields explicit cycle/no-fit. Include fractional relative top/left corner-threshold crossings with unchanged normal allocation, FIT, exported baselines, following source positions and parent size; independently correct visual node/Text geometry; and relative ancestor cases alongside the preserved normal ancestor, vertical-align and scope feedback controls. Verify common translation without reshaping, scalar conversion and association rejection, and late refusal preserving the previous batch. Vertical/oriented profiles require their own qualified placement mapping before admission.
 
 ### Source positions and placed caret occurrences
 
@@ -2327,7 +2327,7 @@ The source projection is one-way: an exact position beside an atomic box can pro
 
 Raw word movement classifies the actual original-source endpoint, including one inside a deleted whitespace run. Processing does not turn that endpoint into the following word's start; traversal still uses the retained source word facts and actual row correspondence.
 
-Exact position geometry and movement use the same finalized interaction rows as source queries, without a parallel caret engine. A raw-source geometric or movement request must validate coverage and identify a unique eligible occurrence under the existing source-affinity rules; an uncovered or genuinely ambiguous request returns a typed error. It cannot invent a middle line, silently omit an occurrence, or substitute whole-paragraph coverage. Preserve existing unambiguous standalone behavior and source-only accessibility. Source extraction and editing retain their source-domain semantics; a source-less placed occurrence does not acquire authored characters or fabricated DOM offsets.
+Exact position geometry and movement use the same finalized interaction rows as source queries, without a parallel caret engine. A raw-source geometric or movement request must validate coverage and identify a unique eligible occurrence under the existing source-affinity rules; an uncovered or ambiguous request returns a typed error. It cannot invent a middle line, silently omit an occurrence, or substitute whole-paragraph coverage. Preserve existing unambiguous standalone behavior and source-only accessibility. Source extraction and editing retain their source-domain semantics; a source-less placed occurrence does not acquire authored characters or fabricated DOM offsets.
 
 Verify more than two same-offset caret lines, physical hits and movement through their exact issued positions, source-query ambiguity and coverage refusal, foreign-placement rejection, and reuse of the same geometry for selection and geometric accessibility. These requirements establish the composed position boundary and do not claim support before its implementation is qualified.
 
@@ -2403,7 +2403,7 @@ Collapsed ranges retain their separate endpoint semantics. Selecting part of an
 actual indivisible typographic unit includes that whole unit. Do not relocate a
 selected formatting unit to a neighboring visible run, matching isolate end,
 pre-L1 position or chosen caret.
-Keep genuine zero-width rectangles; bounding-rectangle aggregation is separate.
+Keep zero-width rectangles; bounding-rectangle aggregation is separate.
 
 For valid, fully covered nonempty selections with no eligible retained presentation
 attributable to the selected source, executed trim/discard/segment-break deletions
@@ -2412,7 +2412,7 @@ policy to suppressed collapsed duplicates, while preserving their distinct
 source anchors and opportunity facts. A surviving space representative supplies
 geometry only when its own original contribution is selected. Carrying deleted
 or duplicate custody alongside it does not select its advance. Preserved spaces
-with genuine zero allocations and retained formatting units remain distinct.
+with zero allocations and retained formatting units remain distinct.
 Mixed queries report eligible retained units in content order and account for
 the complete requested source coverage; absent or ambiguous mapping is an error,
 not a successful empty result. A wholly removed origin needs no synthesized font
@@ -2433,11 +2433,11 @@ attribution policy, not a consequence mandated by source-preserving hyphenation.
 An eligible original and a computed contribution sharing one actual Range unit
 select that unit with truthful contributor provenance. Sharing only an optional
 multi-unit ligature does not select the computed neighbor's share. Automatic
-hyphens without a replaced authored interval require a genuine typed relation
+hyphens without a replaced authored interval require a typed relation
 to their generating selected source boundary/span before a consumer can claim
 their geometry; control anchors do not supply that missing capability.
 
-For an automatic insertion, preparation retains its immediately preceding genuine
+For an automatic insertion, preparation retains its immediately preceding
 source-backed grapheme in the same lexical word, with all exact ordered source
 pieces, separately from the generating mixed boundary. A nonempty request selects
 the indication when it positively intersects any of those pieces under the actual
@@ -2446,7 +2446,7 @@ Surgeist's automatic-insertion attribution policy; the
 [Range rule](../references/cssom-view-range--editor-capture-20261022.md) supports
 partial-unit expansion but does not specify this membership predicate. The relation
 consumes no source and is not a replacement interval or a word/style/provider-cluster
-envelope. A grapheme crossing origins retains each genuine piece; selected
+envelope. A grapheme crossing origins retains each piece; selected
 intersections and attribution remain separate observations. Empty origins and
 source-less controls supply no relation. Cross transparent events only under
 authentic continuity; never search across a disconnection or skip an authored

@@ -789,7 +789,7 @@ fn native_ccw_preserves_precise_nonidentity_composite_refusal_after_an_ordinary_
 }
 
 #[test]
-fn genuine_ccw_selected_line_refuses_cw_placement_without_losing_its_source_or_replay() {
+fn ccw_selected_line_refuses_cw_placement_without_losing_its_source_or_replay() {
     let bytes = font(Representation::Outline, true);
     let (prepared, line, system) = selected(
         &bytes,

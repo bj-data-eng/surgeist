@@ -138,7 +138,7 @@ impl FinalizedLine {
     /// Whether this exact selected line retains actual in-flow content.
     ///
     /// Retained original or computed text counts even at zero or signed advance,
-    /// as do genuine in-flow atomics with zero geometry and positive inline
+    /// as do in-flow atomics with zero geometry and positive inline
     /// boundary advances. Hard separators, control struts, discarded text,
     /// empty anchors and out-of-flow
     /// roles do not independently count. This is neither visibility nor the
@@ -413,7 +413,7 @@ impl PreparedScopeView<'_> {
             .as_ref()
             .expect("issuing an emitted contributor proves its captured Style")
     }
-    /// Genuine entry occurrence only when local to this preparation's paragraph.
+    /// Entry occurrence only when local to this preparation's paragraph.
     /// Use the canonical captured scope to observe a remote global endpoint.
     #[must_use]
     pub fn entry_control(&self) -> Option<PreparedControl> {
@@ -421,7 +421,7 @@ impl PreparedScopeView<'_> {
             .boundaries
             .and_then(|pair| self.local_control(pair.start))
     }
-    /// Genuine exit occurrence only when local to this preparation's paragraph.
+    /// Exit occurrence only when local to this preparation's paragraph.
     #[must_use]
     pub fn exit_control(&self) -> Option<PreparedControl> {
         self.capture_fact()
@@ -714,7 +714,7 @@ impl PreparedOrigin {
 }
 
 impl PreparedOriginView<'_> {
-    /// Genuine original occurrence in global mixed-event order, when captured.
+    /// Original occurrence in global mixed-event order, when captured.
     #[must_use]
     pub fn capture_position(&self) -> Option<CapturedEventPosition> {
         let paragraph = &self.prepared.analyzed.paragraph;
@@ -753,7 +753,7 @@ impl PreparedOriginView<'_> {
         self.prepared.analyzed.paragraph.origins[self.index].aggregate
     }
 
-    /// Whether the supplied original is authored or genuinely generated text.
+    /// Whether the supplied original is authored or generated text.
     #[must_use]
     pub fn kind(&self) -> ParagraphOriginKind {
         self.prepared.analyzed.paragraph.origins[self.index].kind
@@ -933,7 +933,7 @@ impl PreparedOriginIntersectionView<'_> {
 }
 
 impl PreparedAtomicView<'_> {
-    /// Genuine atomic occurrence in global mixed-event order, when captured.
+    /// Atomic occurrence in global mixed-event order, when captured.
     #[must_use]
     pub fn capture_position(&self) -> Option<CapturedEventPosition> {
         self.prepared
@@ -973,7 +973,7 @@ impl PreparedAtomicView<'_> {
 }
 
 impl PreparedControlView<'_> {
-    /// Genuine control occurrence in global mixed-event order, when captured.
+    /// Control occurrence in global mixed-event order, when captured.
     #[must_use]
     pub fn capture_position(&self) -> Option<CapturedEventPosition> {
         self.prepared
@@ -1020,7 +1020,7 @@ impl PreparedControl {
         let order = topology.control_orders[self.view().data().occurrence];
         let SourceProcessingEvent::Control { control, .. } = topology.capture.events[order].event
         else {
-            unreachable!("contextual admission indexes genuine control events")
+            unreachable!("contextual admission indexes control events")
         };
         Some(CapturedControl {
             capture: Arc::clone(&topology.capture),
@@ -1431,7 +1431,7 @@ impl FinalizedFragmentView<'_> {
         }
     }
 
-    /// Genuine incident source occurrence, when one exists.
+    /// Incident source occurrence, when one exists.
     #[must_use]
     pub fn origin(&self) -> Option<PreparedOrigin> {
         self.fragment
@@ -1633,7 +1633,7 @@ impl SelectedMappingView<'_> {
         }
     }
 
-    /// The genuine control which emitted this source-less separator.
+    /// The control which emitted this source-less separator.
     pub fn separator_control(&self) -> Option<PreparedControl> {
         match self.piece.kind {
             SelectedMappingKind::GeneratedSeparator {
@@ -1737,7 +1737,7 @@ impl FinalizedLine {
 }
 
 impl FinalizedRunView<'_> {
-    /// The genuine outer cell whose horizontal inner frame owns this run.
+    /// The outer cell whose horizontal inner frame owns this run.
     #[must_use]
     pub fn cell(&self) -> Option<FinalizedCellView<'_>> {
         match self.run.frame {
@@ -1795,7 +1795,7 @@ impl FinalizedRunView<'_> {
     /// reference retained in the line's feedback.
     ///
     /// Line-frame coordinates are `(inline, line-under)` before physical placement.
-    /// For a genuine [`Self::cell`], coordinates are intrinsic horizontal inner
+    /// For a [`Self::cell`], coordinates are intrinsic horizontal inner
     /// offsets, before that cell's square/frame and enclosing scope translation.
     /// Vertical and SidewaysClockwise cells map `(u,v)` to
     /// `(cross_anchor+local_baseline-v, inline_origin+u)`.
@@ -1880,7 +1880,7 @@ impl FinalizedGlyphView<'_> {
         self.glyph.pen
     }
 
-    /// Aggregate original UTF-16 association, including a genuine empty anchor.
+    /// Aggregate original UTF-16 association, including an empty anchor.
     #[must_use]
     pub const fn range(self) -> Range {
         self.glyph.glyph.source
@@ -1961,7 +1961,7 @@ impl PreparedComputedLineBoundaryView<'_> {
             index: owner,
         }
     }
-    /// Genuine computed causes at this one effective mandatory incidence.
+    /// Computed causes at this one effective mandatory incidence.
     pub fn causes(
         &self,
     ) -> impl ExactSizeIterator<Item = crate::CapturedComputedLineBoundary> + '_ {

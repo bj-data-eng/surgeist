@@ -1,5 +1,5 @@
 //! HTML877d raw61117–61130: exact keyword interpretation, enable, actual
-//! association reset, then the current document element's genuine focusing call.
+//! association reset, then the current document element's focusing call.
 //! #1243 selects an explicit no-active-Range branch, without creating a Range.
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -433,7 +433,7 @@ fn published_focus_prefix_retains_exact_reset_and_called_stage_across_drop_cance
     assert_eq!(before.incomplete_source_operation(), None);
     assert_eq!(dom.usage().ranges(), 1);
     // Generic positive eligibility is unavailable. Whole-owner disposal releases
-    // this genuinely pending method; no successful focus receipt is fabricated.
+    // this pending method; no successful focus receipt is fabricated.
     assert_eq!(dom.pending_source_edit().unwrap().operation(), operation);
 }
 

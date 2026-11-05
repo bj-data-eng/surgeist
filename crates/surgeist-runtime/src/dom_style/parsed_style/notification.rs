@@ -10,7 +10,7 @@ use surgeist_html::elements::style::HtmlStyleNotificationCursor;
 /// Actual queue formation or the precise no-task outcome for this occurrence.
 #[derive(Debug)]
 pub enum DomStyleParsedNotificationProgress {
-    /// Genuine original NoImports completion now owns one networking task.
+    /// Original NoImports completion now owns one networking task.
     Queued {
         /// Exact task issued for this original occurrence.
         task: DomStyleNetworkingTaskId,

@@ -1,4 +1,4 @@
-//! The same genuine clockwise preparation keeps its Text basis in both vertical WMs.
+//! The same clockwise preparation keeps its Text basis in both vertical WMs.
 use super::*;
 mod supplemental;
 
@@ -148,9 +148,8 @@ fn vertical_paragraph<S: l::LayoutScalar>() {
             controls: vec![],
             line_strut: None,
         };
-        let batch = run(&host, vec![binding], &[], available(40.0, 15.0)).expect(
-            "genuine clockwise Text must retain its orientation in VerticalRl and VerticalLr",
-        );
+        let batch = run(&host, vec![binding], &[], available(40.0, 15.0))
+            .expect("clockwise Text must retain its orientation in VerticalRl and VerticalLr");
         for entries in [batch.unrounded_entries(), batch.final_entries()] {
             assert_eq!(node(entries, 0).size, l::Size::new(n(40.0), n(15.0)));
             unknown(node(entries, 0).named_baselines);

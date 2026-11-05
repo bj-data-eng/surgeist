@@ -96,7 +96,7 @@ fn active() -> ContextualSourceInput {
 fn scoped_fonts() -> (Vec<u8>, Vec<u8>) {
     use crate::baseline_test_fonts::{Axis, Coord, Script, base};
     // One parent font has distinct real script rows: Hani250 != Latn100.
-    // The child has a genuinely different family and romn coordinate-100.
+    // The child has a different family and romn coordinate-100.
     let parent_axis = Axis {
         tags: vec![*b"romn"],
         scripts: vec![
@@ -749,7 +749,7 @@ fn selected_scope_allocations_require_complete_unique_current_handles_and_preser
 }
 
 #[test]
-fn a_genuinely_empty_dormant_inline_does_not_demand_missing_reference_or_unavailable_font() {
+fn a_empty_dormant_inline_does_not_demand_missing_reference_or_unavailable_font() {
     let mut value = active();
     domain(&mut value, style(10.0, 10.0), Some(reference()));
     let mut unavailable = style(80.0, 90.0);

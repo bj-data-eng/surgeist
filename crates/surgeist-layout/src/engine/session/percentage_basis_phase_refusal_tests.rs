@@ -3,7 +3,7 @@ use super::*;
 
 #[test]
 fn actual_final_root_entry_cannot_replace_current_trial_measured_basis_custody() {
-    // Reuse this owner's genuine registered Ahem/captured scope fixture and
+    // Reuse this owner's registered Ahem/captured scope fixture and
     // complete public result, separately from the new staged private session.
     let fixture = Fixture::new(WORK);
     let flow = fixture.flow();

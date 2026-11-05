@@ -174,7 +174,7 @@ mod computed_cut_tests {
     fn a_float_on_the_first_possible_gap_has_no_proven_side() {
         // Native nodes [left, float, right]: after-left gap1 and before-right
         // gap2 are both possible. The float at node1 is not strictly interior
-        // to those bounds, but its side is still genuinely ambiguous.
+        // to those bounds, but its side is still ambiguous.
         let uncertain = ComputedNativeCut { lower: 1, upper: 2 };
         assert_eq!(uncertain.side_of_node(0), Some(Less));
         assert_eq!(uncertain.side_of_node(1), None);
@@ -1595,7 +1595,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
         Ok(())
     }
 
-    /// Validate a genuine captured actual-box reference, independently of declarations.
+    /// Validate a captured actual-box reference, independently of declarations.
     fn activate_scope(&mut self, scope: &CapturedScope, active: bool) -> ResultOf<Tree, ()> {
         if scope.role() != ScopeRole::Inline {
             return Err(crate::inline_wrapping::wrapping_error(
@@ -2734,7 +2734,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
                     .captured_owner()
                     .is_some_and(|owner| owner.joint_flow().is_some());
             // Raw source-only association metadata has no line/run operation.
-            // Its genuine markers are still checked by validate_metadata.
+            // Its markers are still checked by validate_metadata.
             if !scheduled {
                 continue;
             }

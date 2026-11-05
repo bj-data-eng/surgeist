@@ -21,7 +21,7 @@
 //! coordinates share `CssNumeric<CssNumber>`, which retains exact literals and symbolic
 //! math. All scale percentage branches use `CssNumeric<CssPercentage>`.
 //! Ordinary cubic-bezier X coordinates are checked exactly against inclusive [0, 1];
-//! genuine calculations remain unresolved. The independent `scale` property retains
+//! calculations remain unresolved. The independent `scale` property retains
 //! one to three typed number/percentage factors, including symbolic calculations. Transform,
 //! filter, gradient, and
 //! image-orientation angles share exact `CssNumericLiteral<CssAngle>` values and symbolic

@@ -204,7 +204,7 @@ fn real_post_producer_work_refusal_preserves_old_invocation_and_raised_retry_rem
     }
     assert!(
         reached,
-        "bounded genuine original work tail must reach CSSOM preparation before refusal"
+        "bounded original work tail must reach CSSOM preparation before refusal"
     );
 }
 #[test]

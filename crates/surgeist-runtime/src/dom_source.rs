@@ -786,7 +786,7 @@ impl DomSourceRuntime {
                 }
                 Advanced::Meta(outcome) => {
                     let (source, _, inline, _) = outcome.into_parts();
-                    // Empty observations identify the genuine non-Meta path;
+                    // Empty observations identify the non-Meta path;
                     // no native producer output is dropped by this branch.
                     (source, inline)
                 }

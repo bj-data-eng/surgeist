@@ -18,7 +18,7 @@ use crate::{
     RequestedAxis, RunMode, Size, SizingAlgorithm, SizingMode, Traverse,
 };
 
-/// Genuine pre-relative flow ports for one accepted absolute occurrence.
+/// Pre-relative flow ports for one accepted absolute occurrence.
 /// Native flow can supply equal ports; Text supplies both actual frames.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct StaticPositionOf<S: LayoutScalar> {

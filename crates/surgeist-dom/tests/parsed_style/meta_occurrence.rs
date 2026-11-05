@@ -1,4 +1,4 @@
-//! Exact original Meta progress after the genuine two-invocation Style prefix.
+//! Exact original Meta progress after the two-invocation Style prefix.
 use super::*;
 
 use surgeist_html_parser::{

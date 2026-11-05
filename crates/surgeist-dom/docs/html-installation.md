@@ -120,7 +120,7 @@ Original Style uses the exact known association retained at its source occurrenc
 including its source Document identity and generation. It does not replace that
 association with the destination's final canonical policy or invoke a processor
 again. Known intake forms an inline-policy request directly, without an offline
-binding slot. The offline-policy binder accepts only a genuine `OfflineUnbound`
+binding slot. The offline-policy binder accepts only an `OfflineUnbound`
 request and cannot replace known, captured or lost facts. Header-delivered CSP
 capture remains independently unavailable without its own source proof.
 
@@ -207,7 +207,7 @@ whole contribution. No URL, CSP or media binder is requested for this slice.
 Validation may inspect a later contribution, while preparation requires that
 this contribution is first for every affected canonical Document.
 
-`prepare` receives genuine destination CSSOM capabilities, qualifies actual
+`prepare` receives destination CSSOM capabilities, qualifies actual
 canonical bindings and holds each real root lock once. It returns ordered
 original occurrence IDs, historical HTML subjects, mapped Documents and exact
 UTF16 names. Runtime stages its existing sheet-set preference algorithm and
@@ -276,7 +276,7 @@ Preparation does not activate synchronous execution or evaluate CSP.
 
 For an unbound original slot the entry moves to `AwaitingInitialPolicy`. Binding
 accepts only the exact real request and an explicitly supplied immutable
-`HtmlCspAssociation`; even a genuine constructor-empty artifact is explicit.
+`HtmlCspAssociation`; even a constructor-empty artifact is explicit.
 Successful binding takes the Option input, while refusal preserves it. Binding
 and request formation are separate commands, so late formation refusal retains
 the accepted artifact and spent work. Raising the original limits permits retry;
@@ -299,7 +299,7 @@ An external supplier can inspect that immutable request after all mutable
 Runtime and DOM command loans end. `DomParsedHtmlStyleInlinePolicyObservation`
 records its actual allow/block decision; DOM provides no evaluator. An absent
 supplier leaves `InlinePolicyPending`, including for an opaque native artifact.
-Genuine InitialEmpty is an explicitly supplied policy state, not an inference
+InitialEmpty is an explicitly supplied policy state, not an inference
 from missing policy or browsing context. HTML's Meta CSP processor attests Meta
 insertion, not this inline decision.
 
@@ -336,7 +336,7 @@ installs/removals preserve that accounting.
 
 After an accepted allow decision, `create_sheet_document` identifies the actual
 mapped destination under the same original admission. `prepare_create_sheet`
-borrows that hold and the genuine CSSOM capability exclusively for the join.
+borrows that hold and the CSSOM capability exclusively for the join.
 Its closed editor lends the exact original empty text, title, media, parser
 Document and mode. It checks original source order and refuses unexplained
 existing producer membership. It does not construct native Source facts or use
@@ -363,11 +363,12 @@ spent, while canonical revisions, membership and effects remain unchanged.
 The final preparation uses the actual prepared ticket's authenticated sheet ID
 and result revision. All DOM formation, original work/output/storage admission,
 association serial, canonical binding, and HTML `Applied` successor are formed
-before either owner publishes. The infallible suffix publishes the genuine
+before either owner publishes. The infallible suffix publishes the
+
 CSSOM commit and DOM association, then moves the same original cursor to
 `ReadScriptBlockingPending`. The published capability retains the root lock
 through Runtime's sole add-sheet/preference installation. Only `into_parts`
-releases that lock and returns genuine completion plus disposal-only retirement.
+releases that lock and returns completion plus disposal-only retirement.
 Old State and its custody, old root binding, CSSOM retirement and exact impending
 history evictions remain retained through that fence; media diagnostics remain
 with the completion. No large backing is finally disposed inside the joined
@@ -419,7 +420,7 @@ occurrence's Style inputs, exact parser-Document identity and HTML media cursor.
 Absent Style media has its all-media default; empty and ASCII-whitespace-only
 values match without an environment. A nontrivial value (including `all`) returns
 `Pending(MediaEnvironment)` when the potential-render predicate still needs its
-match. A genuinely false potential predicate needs no media observation.
+match. A false potential predicate needs no media observation.
 Unavailable original Document facts remain `Pending(OriginalContext)`.
 
 The media/potential predicate is separate from the original Document eligibility
@@ -429,7 +430,7 @@ invocation without adding membership. The current mapped element and its actual
 Document must still match the original qualification; original body facts do
 not authorize an effect in an adopted or different destination.
 
-`Complete` owns the genuine `DomCommit`, narrow publication-coordinate membership
+`Complete` owns the `DomCommit`, narrow publication-coordinate membership
 evidence and actual output/retirement backing under the same original admission.
 A no-op gate returns the actual empty commit. Draft, change/history backing,
 retired State/custody and the cursor successor are prepared before the infallible
@@ -451,7 +452,8 @@ After the first invocation reaches `RenderingComplete` or its CSP decision
 completes with `InlinePolicyBlocked`, `successor_owner_document` and the closed
 `prepare_successor` editor select the next influencing original
 row internally. The ordinary sealed inventory, every Document capture and the
-actual `prior_document`/`prior_style` dependencies must qualify. Only the genuine
+actual `prior_document`/`prior_style` dependencies must qualify. Only the
+
 next ParserPopped operation for the same mapped Style and Document is supported;
 another influencing action returns its exact remaining requirement. No caller
 ordinal or asynchronous queue/resource completion is required.
@@ -471,9 +473,10 @@ supplies no dummy publication or revision. Both branches admit their actual
 request/output/retirement and retain cumulative original work before the Entry
 transition. The old sheet object, rules and handles survive
 with list membership and owner links cleared. An already cleared producer may
-return a genuine unchanged CSSOM commit while DOM still clears the association.
+return an unchanged CSSOM commit while DOM still clears the association.
 Association serials, render-blocking membership and preference history are not
-reset by removing the sheet. The root guard remains held across both genuine
+reset by removing the sheet. The root guard remains held across both
+
 publications and until the preformed output/retirement is extracted.
 
 The offline successor moves its bound artifact only when the producer's shared
@@ -484,7 +487,7 @@ and nonce come from ParserPopped, including the later nonempty text rather than
 the insertion's empty input. It requires a new external inline-policy decision, even when its text matches
 the predecessor. A blocked new decision completes this cursor without creating
 a sheet, processing receipt or notification task. An allowed decision enters the
-same closed `prepare_create_sheet` editor: the genuine new occurrence and
+same closed `prepare_create_sheet` editor: the new occurrence and
 predecessor outcome qualify its original inputs and canonical null association.
 Existing registered sheets remain in their authentic original order. The producer creates a distinct sheet identity
 and DOM increments the same association lineage. Old readable CSSOM objects,
@@ -497,7 +500,7 @@ contribution or enables task delivery.
 
 The same Entry and cumulative Control retain one compact completed predecessor:
 its actual qualification and execution profile, plus either a creation-sealed
-sheet/association and handoff status or a genuine CSP-blocked outcome.
+sheet/association and handoff status or a CSP-blocked outcome.
 A blocked outcome has no invented sheet or notification permission. Old full
 text/nonce graphs move into admitted retirement. Offline bound policy moves into
 the new request; known old policy and its actual debit retire after publication,
@@ -551,7 +554,7 @@ dispose its preference fields before the completion; do not detach the receipt
 from the backing it represents.
 
 Each successful call records one compact contiguous completed prefix in the same
-entry. Repeated names may produce a genuine unchanged CSSOM publication while
+entry. Repeated names may produce an unchanged CSSOM publication while
 consuming a distinct occurrence once. Refusal or precommit Drop changes no flags,
 preference or progress, and original work remains cumulative. This operation
 preserves the active Style graph and asynchronous receipts/tasks. It neither
@@ -581,7 +584,8 @@ result once while Published retains the real root lock through the infallible
 queue update. There is no replayable lookup of notification authority in a newer
 active Graph.
 
-`DomStyleNotificationOrigin` distinguishes native Source operations from genuine
+`DomStyleNotificationOrigin` distinguishes native Source operations from
+
 parsed occurrences. Parsed tokens retain original finite custody independently
 of caller creation/rendering outputs; identities do not keep a live Element
 from being retired. Once a task is queued, later owner removal does not revoke
@@ -597,7 +601,7 @@ inline decision is real synchronous execution, not missing processing.
 `complete_synchronous_execution` authenticates the completed ordinary offline
 no-executable-JavaScript report, every Document capture disposition, the entire
 sealed inventory, and the actual contiguous executed prefix.
-It recognizes producer-proved no-effect rows, genuine blocked returns, and
+It recognizes producer-proved no-effect rows, blocked returns, and
 explicitly committed original Meta preferred-name progress. Unfinished Style/Link operations or an unconsumed Meta remain exact requirements.
 Capture completeness or an exhausted cursor alone does not establish end.
 The returned opaque end retains its actual original output custody; the
@@ -617,7 +621,7 @@ readiness guards still apply inside handlers. Native Source and hosted guards
 remain cumulative.
 
 Whole history Pending includes synchronous and asynchronous obligations and is
-not itself a dispatch predicate. Genuine end excludes import/resource waits,
+not itself a dispatch predicate. End excludes import/resource waits,
 unissued notifications and queued delivery when the original algorithm returned
 without waiting. `parsed_style_notification_requirement` returns `None` only
 when that authentic task's original entry has reached its own synchronous end;
@@ -643,7 +647,7 @@ does not independently inspect external callbacks. Parsed cleanup requires
 `Native` is valid only for a native token.
 
 Cleanup unblocks the target's **current** Document and returns `ParsedComplete`
-with its genuine DOM commit and original output/retirement custody. Native
+with its DOM commit and original output/retirement custody. Native
 cleanup returns `Complete`. Refusal preserves the token and sealed publication;
 a composing owner retains its delivered phase and must not dispatch again.
 Successful parsed cleanup consumes that same authority and settles its canonical
@@ -654,7 +658,8 @@ later original execution.
 
 Actual original CSS reports are validated and classified before CSSOM consumes
 them. The created-sheet preparation/completion lends `NoImports` or
-`ImportsUnresolved`; this is independent of later CSSOM edits. Each genuinely
+`ImportsUnresolved`; this is independent of later CSSOM edits. Each
+
 rendered created-sheet invocation mints one affine notification right and one
 checked canonical obligation. Retain, explicit transfer, queue and delivery move
 that same right. Historical output Drop does not own another right, and dropping

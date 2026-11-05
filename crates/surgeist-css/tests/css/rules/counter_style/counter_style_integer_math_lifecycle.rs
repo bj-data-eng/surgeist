@@ -126,7 +126,7 @@ fn fixed_calculated_default_retains_its_wrapper_and_explicit_occurrence() {
 }
 
 #[test]
-fn isolated_rule_and_genuine_body_fronts_share_math_and_complete_member_recovery() {
+fn isolated_rule_and_body_fronts_share_math_and_complete_member_recovery() {
     let body = "{system: fixed calc(1.5); range: calc(8) calc(2); pad: '0' min(1, 2); additive-symbols: max(1, 2) X, 0 N; pad: calc(1px) '0';}";
     let block = CssBlockFragment::<CssCounterStyleDescriptors>::parse(
         &CssParser::default(),

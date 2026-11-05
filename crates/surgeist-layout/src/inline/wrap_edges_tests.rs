@@ -393,7 +393,7 @@ fn force_matrix<S: LayoutScalar>() {
                 edges[0].after = WrapEdge::Line;
                 edges[1].before = WrapEdge::AvoidLine;
             }
-            // All soft opportunities are genuinely prohibited. This is the
+            // All soft opportunities are prohibited. This is the
             // native no-soft profile, not a fabricated computed CSS Style.
             let f = simple::<S>(
                 direction,
@@ -465,7 +465,7 @@ fn empty_edges<S: LayoutScalar>() {
             false,
         );
         let r = layout_mixed_inline_run(terminal.numeric()).unwrap();
-        // The genuine terminal Force ends the atomic line; its pending
+        // The terminal Force ends the atomic line; its pending
         // Paragraph strut does not supply another formatted line.
         assert_eq!(groups(&r), [vec![1, 2, 3]]);
         assert_eq!(r.lines.iter().map(|l| l.end).collect::<Vec<_>>(), [Forced]);
@@ -490,7 +490,7 @@ fn empty_edges<S: LayoutScalar>() {
     }
 }
 #[test]
-fn leading_terminal_and_adjacent_forces_have_genuine_numeric_empty_line_metrics() {
+fn leading_terminal_and_adjacent_forces_have_numeric_empty_line_metrics() {
     empty_edges::<f32>();
     empty_edges::<f64>();
 }
@@ -714,7 +714,7 @@ fn forced_propagation_demands_only_the_relevant_child_order_side() {
 fn opaque_context<S: LayoutScalar>() {
     for direction in [Direction::Ltr, Direction::Rtl] {
         let mut f = nested::<S>(direction, false, false, false);
-        // A owns its genuine internal IFC. Only its child has a Line edge;
+        // A owns its internal IFC. Only its child has a Line edge;
         // A's exterior remains Auto and may not transmit that internal force.
         f.tree.insert_input(
             2,
@@ -971,7 +971,7 @@ fn mixed_constraints<S: LayoutScalar>(direction: Direction, width: f64) -> Fixtu
     f.atomic(4, WrapEdges::AUTO, InlineBreakOpportunity::Allowed, false);
     f.boundary(13, InlineBoundaryKind::End, 0.0);
     f.atomic(5, WrapEdges::AUTO, InlineBreakOpportunity::Allowed, false);
-    // Genuine separate boxes, not a synthetic class array. A cut after2 or4
+    // Separate boxes, not a synthetic class array. A cut after2 or4
     // is interior to the respective complete native pair; after3 is outside.
     for (start, end) in [(10, 11), (12, 13)] {
         f.wrapping.scopes.push(WrappingScopeInput::NativePair {
@@ -1002,7 +1002,7 @@ fn assert_mixed_output<S: LayoutScalar>(f: &Fixture<S>, expected: &[&[usize]]) {
             let x = if f.direction == Direction::Ltr {
                 logical
             } else {
-                // Level0 atomics retain line-left source order; genuine
+                // Level0 atomics retain line-left source order;
                 // level1 boundaries here have zero advance.
                 f.width.to_f64() - 10.0 * nodes.len() as f64 + logical
             };
@@ -1133,7 +1133,7 @@ fn unknown_child_incidence<S: LayoutScalar>() {
                         .with_direction(direction),
                 ),
             );
-            // A genuine visible LineBreak is not a GeneratedBoxRef::Node.
+            // A visible LineBreak is not a GeneratedBoxRef::Node.
             // Its participation cannot disappear from the side proof merely
             // because the known generated-box inventory contains only inner.
             let nodes = if after {
@@ -1153,7 +1153,7 @@ fn unknown_child_incidence<S: LayoutScalar>() {
             );
             assert_eq!(output(&neutral, 3).location.y, n(10.0));
 
-            // Positive control retains the explicitly declared genuine pair
+            // Positive control retains the explicitly declared pair
             // and complete generated order. It proves the requested chain
             // without claiming every standalone control denotes a child box.
             let proved = nested::<S>(direction, after, false, false);
@@ -1281,7 +1281,7 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                 LayoutFlowInput::try_new(&tree, 0, vec![], WrappingInput::default(), Vec::new())
                     .unwrap();
             for (node, edges) in [(1, early), (3, late)] {
-                // Allocation fields are genuine owner inputs from the already
+                // Allocation fields are owner inputs from the already
                 // required unrounded public batch, never ending/cursor oracles.
                 let allocation = batch
                     .unrounded_entries()

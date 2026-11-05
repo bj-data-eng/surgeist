@@ -553,7 +553,7 @@ fn inactive_target() -> InactiveTarget {
 }
 
 #[test]
-fn callback_adoption_into_genuinely_inactive_document_keeps_open_and_queue_then_fails_assertion() {
+fn callback_adoption_into_inactive_document_keeps_open_and_queue_then_fails_assertion() {
     let InactiveTarget {
         mut session,
         a,

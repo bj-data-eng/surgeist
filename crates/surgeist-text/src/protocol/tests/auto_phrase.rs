@@ -1457,7 +1457,7 @@ fn after_and_both_latent_controls_require_real_counts_and_exact_incoming_custody
                 .is_empty()
         );
 
-        // This genuine Latin word supplies independently countable five units;
+        // This Latin word supplies independently countable five units;
         // unsupported phrase admission does not invent a Japanese phrase here.
         let mut base = phrase_style(Some("en-Latn-x-native"));
         base.native_hyphenation_convention = Some(

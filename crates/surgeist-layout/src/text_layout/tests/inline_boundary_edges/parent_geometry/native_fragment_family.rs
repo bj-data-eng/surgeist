@@ -54,7 +54,7 @@ fn ordinary_zero_strips(fixture: &Fixture) -> [(u32, f64); 4] {
 }
 
 fn lane<S: LayoutScalar>(rtl: bool, box_edges: bool) {
-    // This maintained fixture has real captured P nominations0/1 and genuine
+    // This maintained fixture has real captured P nominations0/1 and
     // additional C controls2/3 inside P, with no invented captured C scope.
     let mut fixture = Fixture::nested_parent("A", rtl, false, false);
     source_premises(&fixture, "A", rtl, false);
@@ -88,7 +88,7 @@ fn lane<S: LayoutScalar>(rtl: bool, box_edges: bool) {
     assert!(prior.placed_text()[0].inline_box_fragments().is_none());
 
     fixture.binding.inline_box_fragments = crate::InlineBoxFragmentationDemand::CompleteBodies;
-    // compute uses the actual checked LayoutFlowInput constructor, the genuine
+    // compute uses the actual checked LayoutFlowInput constructor, the
     // NativePair22/23 inventory and the exact same maintained native tree.
     let batch = compute::<S>(&fixture, rtl, width, false, box_edges);
     assert_eq!(batch.placed_text().len(), 1);
@@ -177,7 +177,7 @@ fn lane<S: LayoutScalar>(rtl: bool, box_edges: bool) {
             assert_strip(&batch, &fixture, node, start, end, right);
         }
     } else {
-        // P is genuinely undecorated and all endpoints remain Contributions.
+        // P is undecorated and all endpoints remain Contributions.
         // A demanded identity must not promote them into BoxEdge operations.
         let prior_line = finalized_lines(&prior).remove(0);
         for (node, position) in ordinary_zero_strips(&fixture) {

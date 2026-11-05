@@ -190,16 +190,17 @@ history changes in the batch.
 actual association adapter. It records reached nonempty default-style names in
 invocation order, preserving exact UTF-16 and the original qualified subject even
 when that node is later destroyed. It borrows the actual canonical root
-capabilities once, exposes their held current captures for the adapter's genuine
+capabilities once, exposes their held current captures for the adapter's
+
 sheet-set flag edits, and stages optional inline ingestion with the original
 profiles and a borrowed resolver. Every root and inline CSSOM owner prepares
 before any publishes. `commit` is the final fallible operation; its published
 custody retains the root locks while Runtime installs its prepared preference
-history. Consuming `into_parts` unlocks and returns the genuine DOM and producer
+history. Consuming `into_parts` unlocks and returns the DOM and producer
 commits plus CSSOM retirement backing. Drop before commit publishes nothing.
 Retirement makes no new bounded-disposal guarantee for the existing DOM tail.
 
-A genuine supplied owner can establish the first binding of a reached Document,
+A supplied owner can establish the first binding of a reached Document,
 including an empty sheet list. Existing canonical ownership remains authoritative;
 conflicting stores bearing the same root are refused independently of input order.
 The first binding is staged in the existing canonical custody bank and publishes

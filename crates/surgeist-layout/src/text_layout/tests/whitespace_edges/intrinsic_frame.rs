@@ -173,7 +173,7 @@ fn intrinsic_frame<S: LayoutScalar>() {
         ),
         (90.0, 90.0, 10.0, 90.0, 10.0)
     );
-    // The genuine 10px Text metric frame ends at the block's100px right edge.
+    // The 10px Text metric frame ends at the block's100px right edge.
     // Raw20 retains the hanging EM SPACE; it is not the anchoring frame width.
     assert_eq!(
         observed::<S>(

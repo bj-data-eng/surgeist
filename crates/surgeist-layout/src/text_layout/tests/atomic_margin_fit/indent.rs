@@ -233,8 +233,8 @@ fn positive_indent_retraction<S: LayoutScalar>() {
 }
 fn zero_total_does_not_cancel_positive_indent<S: LayoutScalar>() {
     let p = two_atomics();
-    // F1-10 permits the genuine middle cut, while F0 of the WHOLE candidate
-    // still requires I10>band5. First prefix is genuinely fitting under AC;
+    // F1-10 permits the middle cut, while F0 of the WHOLE candidate
+    // still requires I10>band5. First prefix is fitting under AC;
     // the second indivisible border10 may use its own unavoidable overflow.
     let batch = placed::<S>(&p, 5.0, 10.0, [-20.0, 0.0]);
     assert_eq!(batch.placed_text().len(), 1);

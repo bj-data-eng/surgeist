@@ -116,7 +116,7 @@ fn a_locally_retained_cell_word_half_must_survive_its_physical_horizontal_axis()
 }
 
 #[test]
-fn a_genuine_intrinsic_zero_nbsp_requests_no_word_half_at_the_large_x() {
+fn a_intrinsic_zero_nbsp_requests_no_word_half_at_the_large_x() {
     let font = qualified_nbsp_font(true);
     let tiny = f64::from_bits(1);
     for word in [2.0, tiny] {

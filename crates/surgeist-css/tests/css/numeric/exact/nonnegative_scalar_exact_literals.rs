@@ -308,7 +308,7 @@ fn animation_iteration_longhand_and_shorthand_reject_tiny_negative_nonzero_count
 }
 
 #[test]
-fn genuine_signed_zero_with_enormous_exponents_is_admitted_in_every_scalar_role() {
+fn signed_zero_with_enormous_exponents_is_admitted_in_every_scalar_role() {
     // These exponents exceed i128. A zero coefficient still denotes exact zero.
     for zero in [
         "-0e9999999999999999999999999999999999999999",

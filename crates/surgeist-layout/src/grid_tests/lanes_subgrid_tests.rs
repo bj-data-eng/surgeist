@@ -5916,7 +5916,7 @@ fn nested_inherited_grid_axis_preserves_owner_targets_and_physical_points_throug
     )
     .unwrap();
     let nested_row = nested_context.rows.as_ref().unwrap();
-    // Increasing the genuine gutter26→34 consumes another4px per side.
+    // Increasing the gutter26→34 consumes another4px per side.
     // The selected start is now47, so the same physical52 needs distance5.
     assert_eq!(nested_row.geometry.sizes(), &[13.0, 1.0, 1.0, 13.0]);
     assert_eq!(nested_row.geometry.total_extent(), 130.0);
@@ -8281,7 +8281,7 @@ fn collect_percentage_edge_parent_traversal<'input>(
         gap: initialized.context.gap,
         lines: initialized.context.lines,
     });
-    let area = placed_areas[0].expect("the genuine first-track child is placed");
+    let area = placed_areas[0].expect("the first-track child is placed");
     assert_eq!(area.size, LogicalSizeOf::new(200.0, 100.0));
     let grid = IntrinsicGrid {
         style: &parent_style,
@@ -8384,7 +8384,7 @@ fn vertical_subgrid_percentage_edges_use_physical_area_basis() {
         grid_template_columns: subgrid_track(),
         padding: Edges::all(Length::percent(0.1)),
         // The real200-high border makes the min-content parent track200,
-        // while10% padding retains its genuine200-high containing basis.
+        // while10% padding retains its 200-high containing basis.
         box_sizing: BoxSizing::BorderBox,
         size: Size::new(PreferredSize::AUTO, PreferredSize::px(200.0)),
         ..NodeInput::default()
@@ -8425,7 +8425,7 @@ fn orthogonal_subgrid_percentage_edges_use_containing_physical_area_basis() {
         grid_template_rows: subgrid_track(),
         padding: Edges::all(Length::percent(0.1)),
         // The real200-high border makes the min-content parent track200,
-        // while10% padding retains its genuine200-high containing basis.
+        // while10% padding retains its 200-high containing basis.
         box_sizing: BoxSizing::BorderBox,
         size: Size::new(PreferredSize::AUTO, PreferredSize::px(200.0)),
         ..NodeInput::default()
@@ -8519,7 +8519,7 @@ fn nested_subgrid_same_flow_projects_physical_edge_sums_before_local_track_sizin
     assert_eq!(leaf.node, 4);
     let frame = leaf
         .min_frame
-        .expect("the genuine immediate parent owns the query frame");
+        .expect("the immediate parent owns the query frame");
     let prepared = frame.prepared();
     let flow = FlowAxes::new(WritingMode::VerticalRl, Direction::Ltr);
     assert_eq!(frame.flow_axes, flow);
@@ -8541,7 +8541,7 @@ fn nested_subgrid_same_flow_projects_physical_edge_sums_before_local_track_sizin
     assert_eq!(
         prepared.known().height,
         Some(nearest_content),
-        "only the genuine opposite-axis stretch is prepared"
+        "only the opposite-axis stretch is prepared"
     );
     assert_eq!(
         prepared.sizing_request().axes().height,

@@ -694,7 +694,7 @@ fn custody_case<S: LayoutScalar>() {
                 (text::PreparedBreakKind::ParagraphEnd, 4, 2),
             ]
         );
-        // Both genuine mixed prefixes exist at source1. Each endpoint alias
+        // Both mixed prefixes exist at source1. Each endpoint alias
         // has its own fixed original incidence; source equality cannot merge
         // [A] with [A, StartS, EndS] or select a different control prefix.
         for (offer, relation) in offers.iter().take(2).zip([
@@ -855,7 +855,7 @@ fn selected_empty_box_strut_moves_the_real_receiving_band_past_or_across_a_float
     float_case::<f64>();
 }
 
-// A genuine host-defined static shape, using the same public contract as the
+// A host-defined static shape, using the same public contract as the
 // existing auto_phrase::ShapeTree. Answers depend only on actual geometry, not
 // candidate identity, requested result, traversal count or trial acceptance.
 struct ShapedFloat<S: LayoutScalar> {
@@ -979,7 +979,7 @@ fn rejected_tall_trial<S: LayoutScalar>() {
     // At y0 the real first line without S has height10 and available15, so A10
     // fits. Preferred outgoing S makes height20, intersects the lower shape,
     // and has available5: A10 cannot fit. Before-S remains legal despite Avoid.
-    // The genuine receiving S line starting at10 also intersects that shape;
+    // The receiving S line starting at10 also intersects that shape;
     // native float progress moves it below the real float bottom20, then B10
     // fits available15. The gap is layout, not a fabricated metric strut.
     let placed = batch.placed_text()[0].layout();
@@ -1654,7 +1654,7 @@ fn unique_outer_preference<S: LayoutScalar>() {
                     *wrap_inside = WrapInside::Avoid;
                 }
             }
-            // The outside non-avoided edge violates no constraint. Any genuine
+            // The outside non-avoided edge violates no constraint. Any
             // inside-S realization violates InsideAvoid; the opposite exterior
             // violates the authored edge. The unique outside class dominates.
             let actual = run_inventory::<S>(&f, inventory).unwrap();
@@ -1685,7 +1685,7 @@ fn realization_case(direction: Direction, force: bool) -> Case {
     source.span(text::Range::new(0, 2), style.clone());
     let mut events = vec![E::EnterScope(0), E::EnterParagraph(0)];
     if force {
-        // Real A/B are outside S. Before-T is a genuine early force INSIDE S,
+        // Real A/B are outside S. Before-T is an early force INSIDE S,
         // so the exact hard cause, not a fabricated soft offer, splits S.
         events.extend([
             E::Origin {
@@ -1703,7 +1703,7 @@ fn realization_case(direction: Direction, force: bool) -> Case {
             },
         ]);
     } else {
-        // S has genuine retained original content on BOTH sides of T. Its
+        // S has retained original content on BOTH sides of T. Its
         // ordinary AB seam is inside S, not an empty whole-subtree edge choice.
         events.extend([
             E::EnterScope(1),
@@ -1920,7 +1920,7 @@ fn realization_inventory(f: &Case, force: bool, t_edge: WrapEdges) -> WrappingIn
         }
     }
     // The force is an actual computed participant/cause, NOT a generated child
-    // box or fabricated host control node. Empty T remains a genuine child.
+    // box or fabricated host control node. Empty T remains a child.
     inventory
 }
 fn realization_compute<S: LayoutScalar>(
@@ -2102,11 +2102,11 @@ fn retained_parent_content<S: LayoutScalar>() {
     }
 }
 #[test]
-fn real_parent_content_on_both_sides_keeps_genuine_inner_incidence_and_parent_fragments() {
+fn real_parent_content_on_both_sides_keeps_inner_incidence_and_parent_fragments() {
     retained_parent_content::<f32>();
     retained_parent_content::<f64>();
 }
-fn genuine_inner_force<S: LayoutScalar>() {
+fn source_inner_force<S: LayoutScalar>() {
     let s = baseline(16.0, 20.0);
     let t = baseline(12.0, 30.0);
     for direction in [Direction::Ltr, Direction::Rtl] {
@@ -2132,9 +2132,9 @@ fn genuine_inner_force<S: LayoutScalar>() {
     }
 }
 #[test]
-fn genuine_computed_force_inside_a_glyph_free_parent_keeps_its_pinned_split() {
-    genuine_inner_force::<f32>();
-    genuine_inner_force::<f64>();
+fn source_computed_force_inside_a_glyph_free_parent_keeps_its_pinned_split() {
+    source_inner_force::<f32>();
+    source_inner_force::<f64>();
 }
 
 fn exterior_case(direction: Direction, trailing: bool) -> Case {

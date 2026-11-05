@@ -82,7 +82,7 @@ pub(super) fn descriptors(
     }
     let mut owners = filled(descriptors.len(), None)?;
     let mut covered = filled(descriptors.len(), Vec::<Range>::new())?;
-    // AX units are ordered disjoint source intervals. Distribute each genuine
+    // AX units are ordered disjoint source intervals. Distribute each
     // original part to its actual intersections; repeated ancestry adds no unit.
     for (cell, binding) in output.bindings.iter().enumerate() {
         if !groups[cell].active {

@@ -758,7 +758,7 @@ fn transparent_child_holes_keep_automatic_source_anchor_separate_from_mixed_cut_
     };
     use std::sync::Arc;
     // Parent asso+ciate is the same nine-letter word; child I contributes
-    // neither spelling nor counts. A genuine parent empty occurrence follows
+    // neither spelling nor counts. A parent empty occurrence follows
     // the child, at5; it cannot replace the preceding text's source authority.
     let mut source = Source::new("assoIciate");
     source.inline_box(InlineBox::new(
@@ -1386,7 +1386,7 @@ fn automatic_allowed_endpoint_keeps_its_nonhyphenating_variant_as_a_real_barrier
         assert!(
             matches!(reason(&error), ProtocolError::InvalidConditionalReceipt { receipt: 0, opportunity } if *opportunity == offer.index)
         );
-        // Complete coverage still works: the genuine zero-flow Wbr None requires
+        // Complete coverage still works: the zero-flow Wbr None requires
         // its own phantom receipt before the separately authenticated Auto variant.
         for purpose in [ConditionalPurpose::Overflow, ConditionalPurpose::MinContent] {
             let width = (purpose == ConditionalPurpose::Overflow).then_some(10.0);
@@ -1611,7 +1611,7 @@ fn line_limit_dispositions_authenticate_exact_automatic_variants_and_purpose() {
 }
 
 #[test]
-fn word_ordinary_fallbacks_keep_genuine_custody_and_require_the_influencing_text_occurrence() {
+fn word_ordinary_fallbacks_keep_custody_and_require_the_influencing_text_occurrence() {
     let p = prepare(input(Source::new("A associate"), &[0, 2, 11]));
     let start = p.boundary_views().next().unwrap().handle();
     let word = p

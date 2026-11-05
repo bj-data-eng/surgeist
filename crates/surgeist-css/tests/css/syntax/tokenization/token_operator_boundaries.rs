@@ -271,7 +271,7 @@ fn source_delimiter_pairs_serialize_two_bytes_with_their_original_per_item_origi
 }
 
 #[test]
-fn genuine_identifier_number_and_comment_opening_hazards_insert_separators() {
+fn identifier_number_and_comment_opening_hazards_insert_separators() {
     for (first, second, expected) in [
         (
             CssComponentValue::try_ident("a").unwrap(),
@@ -301,7 +301,7 @@ fn genuine_identifier_number_and_comment_opening_hazards_insert_separators() {
             })
             .collect();
         let [(segment, before, after)] = separators.as_slice() else {
-            panic!("one genuine boundary separator")
+            panic!("one boundary separator")
         };
         assert_eq!(&output.as_css()[segment.byte_range()], "/**/");
         assert_eq!(*before, values.items()[0].origin());

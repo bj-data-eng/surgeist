@@ -166,7 +166,7 @@ fn assert_nested_container_limits<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    // Both computations reuse the same genuine preparations. Changing which
+    // Both computations reuse the same preparations. Changing which
     // block owns the cap must not rewrite dictionary offers or leak state.
     for (input, first_expected, second_expected) in [
         (&capture, capped.as_slice(), uncapped.as_slice()),

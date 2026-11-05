@@ -30,7 +30,7 @@ fn opposed_parent<S: LayoutScalar>() {
     let mut f = prepared_fixture::<S>([0, 0, 0, 1, 1, 1], true);
     let formatter = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     let parent = FlowAxes::new(WritingMode::HorizontalTb, Direction::Rtl);
-    // Add a genuine normal parent P. C's RTL parent fact does not pretend that
+    // Add a normal parent P. C's RTL parent fact does not pretend that
     // the containing LTR Block formatter itself has RTL axes. P's own endpoints
     // still use Root-LTR parent axes and contribute affirmative zero BP.
     f.boundary(22, InlineBoundaryKind::Start, 0.0);
@@ -44,7 +44,7 @@ fn opposed_parent<S: LayoutScalar>() {
         let source = match row {
             MixedInlineParticipantOf::Atomic { item, .. } => item.source_index,
             MixedInlineParticipantOf::Boundary(control) => control.source_index(),
-            _ => unreachable!("the genuine fixture contains no visible break"),
+            _ => unreachable!("the fixture contains no visible break"),
         };
         f.nodes
             .iter()

@@ -1,4 +1,4 @@
-//! Genuine unexpanded Wbr anchors within one native Cell and AX word.
+//! Unexpanded Wbr anchors within one native Cell and AX word.
 #![cfg(feature = "text-accessibility")]
 
 use super::*;
@@ -53,7 +53,7 @@ fn ax_originals(update: &TreeUpdate, original: &str) -> Vec<(TextPosition, TextP
 }
 
 #[test]
-fn many_genuine_unexpanded_wbr_controls_remain_inside_one_native_all_cell_and_its_ax_word() {
+fn many_unexpanded_wbr_controls_remain_inside_one_native_all_cell_and_its_ax_word() {
     let text = "A".repeat(COUNT);
     let mut value = super::base(&text, TextCombineUpright::All);
     let own = match &value.scopes[0] {
@@ -113,7 +113,7 @@ fn many_genuine_unexpanded_wbr_controls_remain_inside_one_native_all_cell_and_it
     assert!(processed.captured_scope(1).is_none());
     let cells = analyzed.combined_cells().collect::<Vec<_>>();
     let [source_cell] = cells.as_slice() else {
-        panic!("one uninterrupted genuine root-All Cell")
+        panic!("one uninterrupted root-All Cell")
     };
     assert_eq!(source_cell.scope(), processed.captured_scope(0).unwrap());
     assert_eq!(source_cell.mode(), TextCombineUpright::All);
@@ -314,7 +314,7 @@ fn many_genuine_unexpanded_wbr_controls_remain_inside_one_native_all_cell_and_it
 }
 
 #[test]
-fn genuine_case_deleted_original_member_refuses_cell_mapping_without_publishing_ids_or_binding() {
+fn case_deleted_original_member_refuses_cell_mapping_without_publishing_ids_or_binding() {
     let original = "i\u{307}";
     let mut value = super::base(original, TextCombineUpright::All);
     let SourceProcessingScope::Block { base_style, .. } = &mut value.scopes[0] else {

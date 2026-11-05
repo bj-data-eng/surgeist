@@ -231,7 +231,7 @@ fn different_target_requires_old_chain_then_new_chain_then_actual_focus_update_c
     step(&mut c, A::RunFocusChain, R::FocusChainReady);
     let waiting = c;
     // Producing the update action, or an effect acknowledgment, is not its
-    // genuine called completion. Earlier chain receipts cannot settle it.
+    // called completion. Earlier chain receipts cannot settle it.
     assert!(matches!(c.reply(R::Applied), Err(ref e) if e.is_wrong_reply()));
     assert_eq!(c, waiting);
     assert!(matches!(c.reply(R::FocusChainReady), Err(ref e) if e.is_wrong_reply()));

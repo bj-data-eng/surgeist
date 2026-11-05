@@ -29,7 +29,7 @@ fn feature(condition: &CssCondition<CssWhenLeaf>) -> &CssWhenMediaFeature {
 
 fn parsed(origin: &CssValueOrigin) -> &CssParsedOrigin {
     let CssValueOrigin::Parsed(value) = origin else {
-        panic!("genuine source origin: {origin:?}");
+        panic!("source origin: {origin:?}");
     };
     value
 }
@@ -122,7 +122,7 @@ fn unknown_boolean_features_keep_the_actual_media_enclosure_without_custom_refer
         assert_eq!(unknown.authored(), Some(source.as_str()));
         assert_eq!(unknown.component(), leaf.component());
         // The existing unknown payload's own public serializer must accept its
-        // genuine media() enclosure, rather than assuming synthetic parentheses.
+        // media() enclosure, rather than assuming synthetic parentheses.
         assert_eq!(
             unknown
                 .serialize_tokens(Default::default())

@@ -10,7 +10,7 @@
 //! margin-box rule names retain ordered children. Shared property grammars and symbolic
 //! values are reused, including font-relative lengths; no layout or variable lookup runs.
 //! `CssDeclaration::try_from_components`, `CssPageDescriptorValue::parse`, and `CssBlockFragment::parse`
-//! check detached inputs with genuine origins. Checked selected blocks and borrowed
+//! check detached inputs with origins. Checked selected blocks and borrowed
 //! [`CssPageRuleView`] support immutable edits without re-expanding authored shorthands.
 //! Page and margin CSSOM output follows the adopted Blink whole-rule wrapper under one
 //! cumulative atomic budget. Page matching, pagination, cascade, counter registration,

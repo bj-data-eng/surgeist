@@ -1029,7 +1029,7 @@ fn keyframe_pending_mode_error_and_completed_fronts_keep_the_real_original_sourc
 }
 
 #[test]
-fn keyframe_reentry_preserves_quirks_context_and_genuine_programmatic_absence() {
+fn keyframe_reentry_preserves_quirks_context_and_programmatic_absence() {
     let context = CssParserContext::new(CssParserMode::Quirks);
     let report = CssParser::new(context, Default::default())
         .parse_sheet("@keyframes k{from{width:var(--W)}}");

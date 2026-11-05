@@ -23,11 +23,10 @@ uses the same selected-line and placement machinery.
    `paragraph_strut: ParagraphStrut::DefaultFont` requests an actual base-style
    font strut on every native line, even when body spans select other styles.
    `AllocatedContributions` omits that base strut; actual body and supplied
-   allocations determine metrics. A selected empty line still needs a genuine
-   contribution, including a terminal empty line. Explicit zero differs from absence.
+   allocations determine metrics. A selected empty line still needs a contribution, including a terminal empty line. Explicit zero differs from absence.
    Supply connections, ordered anchor occurrences with original endpoint affinity,
    controls, wrapping facts and any actual computed discretionary replacements.
-   Capture genuine wbr as `ParagraphControlKind::Wbr { style: Box<Style> }` with
+   Capture wbr as `ParagraphControlKind::Wbr { style: Box<Style> }` with
    its complete computed Style and actual ordered control occurrence. An expanded
    wbr contributes text and retains its control handle; it needs no additional
    control participant or allocation. Bind its contributing control node when
@@ -64,8 +63,7 @@ uses the same selected-line and placement machinery.
 2. Call `System::prepare(&analysis, PreparationOptions)` with the actual scale and
    `TabPreparation::FontAdvance` or `TabPreparation::CssStops` demand.
    Preparation resolves resources and preliminary measurements without choosing
-   breaks. Public preparation of `AnalyzedSource::new` also requests the genuine
-   native base-font strut. For an allocated-only fontless box/control paragraph,
+   breaks. Public preparation of `AnalyzedSource::new` also requests the native base-font strut. For an allocated-only fontless box/control paragraph,
    use explicit `ParagraphInput` with `ParagraphStrut::AllocatedContributions`.
    `System::layout` retains its actual standalone metric policy;
    there is no additional public preparation switch.
@@ -81,7 +79,7 @@ uses the same selected-line and placement machinery.
    For wrap-independent inline-box identity, call
    `PreparedText::inline_box_family(native_boxes, allowance)` once after preparation.
    It requires complete captured topology and ownership of the actual body;
-   supply genuine extra NativePair declarations, including undecorated Native ancestors.
+   supply extra NativePair declarations, including undecorated Native ancestors.
    Captured Inline boxes and ancestry are retained from their existing owner.
    Share the family through `LineSelectionRequest::inline_boxes: Some(family)`
    on every selected line; explicit `None` keeps the bounded local operation.
@@ -102,7 +100,7 @@ uses the same selected-line and placement machinery.
    canonical rectangle is supplied by the consumer's absolute-placement owner.
    A control strut or per-line `LineStrut` is allocated
    Layout geometry, not an invented font metric. Neutral formatting controls carry
-   explicit absence. `line_strut` can allocate a genuine line contribution without
+   explicit absence. `line_strut` can allocate a line contribution without
    inventing a control or a font. A taken discretionary break requires its own issued alternative;
    an empty replacement is valid, and a natural end does not imply a hyphen.
    `Style::hyphens` defaults to `Manual`; `None` suppresses both bare SHY and
@@ -121,7 +119,7 @@ uses the same selected-line and placement machinery.
    alternatives carry `PreparedAlternativeDefinition::Automatic`, consuming no
    authored interval. Their cut retains the preceding original EGC separately
    from the generating mixed boundary and computed presentation. A word's
-   `ordinary_fallbacks(start)` exposes genuine Allowed/no-alternative endings
+   `ordinary_fallbacks(start)` exposes Allowed/no-alternative endings
    immediately before its first influencing text occurrence. It preserves mixed
    custody and does not nominate synthetic empty endings or make fit decisions;
    Layout owns the natural fallback trials used by its automatic hyphenation zone.
@@ -204,7 +202,7 @@ uses the same selected-line and placement machinery.
    see [atomic fitting](atomic-fit.md). `metric_bounds()` observes the actual Text metric frame,
    independently of a consumer's intrinsic allocation.
    `edge_units()` distinguishes natural eligibility and terminal grouping from
-   final allocated exclusion and physical outward overlap, with genuine issued
+   final allocated exclusion and physical outward overlap, with issued
    participant/alternative owners and original pieces. It issues no break or
    replay capability. A hanging contribution can lie physically inside a wide
    frame, and a reverse contribution is not an absolute width.
@@ -214,7 +212,7 @@ uses the same selected-line and placement machinery.
    dependencies through spacing. If allocation makes one material, finalization
    requires the real terminal fact atomically; unrelated allocations stay valid.
    An eligible preserved terminal sequence consumes missing block-end context
-   only when its actual measures need the distinction; genuine Soft/Forced
+   only when its actual measures need the distinction; Soft/Forced
    endings, nowrap and independent ordinary content retain their own semantics.
    See the [native whitespace contract](../../../docs/text-layout-contract.md#native-whitespace-edges-and-hanging)
    for current modes, supplied-spacing remapping and remaining styled barriers.
@@ -296,7 +294,7 @@ Range semantics and refuse here.
 `units()` visits actual grapheme-based Range units in content order. Each unit
 retains its finalized line, fragments, presentation range and selected original
 intersections separately from expanded unit coverage. `alternatives()`,
-`defining_sources()` and `hyphenation_cuts()` expose all genuine contributing
+`defining_sources()` and `hyphenation_cuts()` expose all contributing
 owners/relations, including a shared incoming/outgoing mark EGC. `same_unit` compares actual placement and unit identity,
 so equal offsets or rectangles do not establish identity. A partial surrogate or
 combining sequence selects the complete unit. An optional multi-grapheme ligature
@@ -309,8 +307,8 @@ and `CellTab` retains an executed native TAB span. Every variant exposes `rect()
 match the variant for its own frame and references. Cell font edges precede
 compression, and `metric_frame()` identifies their common metric reference. This
 can differ from the font-design paint origin when a font baseline is nonzero.
-Native TABs expose their layout frame and genuine container metrics without a
-body font or glyph baseline. Distinct font pieces and genuine zero-width
+Native TABs expose their layout frame and container metrics without a
+body font or glyph baseline. Distinct font pieces and zero-width
 rectangles remain distinct. Shared provider advance
 uses the qualified allocation policy while retaining each unit's actual letter,
 word and selected spacing contributions. Queries neither reshape text nor choose
@@ -339,7 +337,7 @@ recover. Several exact positions can share a projection. A raw source query appl
 source-affinity eligibility rules and need not recover the same physical edge;
 retain the exact handle when continuing physical interaction.
 Raw source geometric queries refuse outside coverage or where their source endpoint
-is genuinely ambiguous. Original extraction and edits retain their separate source
+is ambiguous. Original extraction and edits retain their separate source
 coordinate domain. Original cursor movement uses the original legal source
 stops; executed whitespace deletions do not turn returned endpoints into
 processed offsets. Word movement follows actual neighboring source-associated
@@ -372,7 +370,7 @@ operations. For ordinary and replacement TABs, CSS preparation uses
 the real nearest block Style and used direction. It readies every selectable
 ordinary original and replacement tab under the exact catalogue and scale. The line
 request supplies `TabContext::CssStops { origin }`: the physical block start
-relative to unaligned paragraph start, or `None` for a genuinely unknown phase.
+relative to unaligned paragraph start, or `None` for an unknown phase.
 Nonzero tabs consume that phase; zero tabs retain custody without unused font
 probes. Hypothetical character metrics retain actual settings, coordinates,
 locale and the preparation's authenticated shaping profile. The horizontal/sideways

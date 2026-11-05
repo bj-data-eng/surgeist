@@ -363,7 +363,7 @@ fn bad_joint_mark_font() -> Vec<u8> {
     assert_eq!(parsed.maxp().unwrap().num_glyphs(), 281);
     assert!(parsed.gsub().unwrap().lookup_list().is_ok());
     // Original body shaping is valid; the hypothetical complete EGC is first
-    // realized as a genuine indication capture, which performs no GSUB.
+    // realized as an indication capture, which performs no GSUB.
     prepare(
         &font,
         paragraph(Source::new("A"), style()),
@@ -420,7 +420,7 @@ fn through_offer(
 }
 
 #[test]
-fn a_genuine_body_and_indication_mark_egc_failure_retains_both_ordered_pieces() {
+fn a_body_and_indication_mark_egc_failure_retains_both_ordered_pieces() {
     let bytes = bad_joint_mark_font();
     let mut authored = style();
     authored.hyphens = crate::Hyphens::Manual;
@@ -686,7 +686,7 @@ fn two_distinct_indications_sharing_one_real_mark_egc_keep_both_local_ranges_and
         source,
         native_style("A", crate::HyphenationPlacement::LogicalAfter),
     );
-    // This genuine separately offered native alternative captures the complete
+    // This separately offered native alternative captures the complete
     // A+acute font query. It is never emitted or borrowed as this line's text.
     input.replacements.push(
         crate::ParagraphReplacement::resolved_native_logical_before(
@@ -746,7 +746,7 @@ fn two_distinct_indications_sharing_one_real_mark_egc_keep_both_local_ranges_and
 
 fn repeated_gpos(attachment: bool) -> Vec<u8> {
     // Distinct real lookup indices may share one stored SinglePos subtable.
-    // 32730 top-level applications +40 genuine contextual nested applications
+    // 32730 top-level applications +40 contextual nested applications
     // stay in ordinary i32 range but exceed the provider's half-unit domain.
     let count = if attachment { 32722_u16 } else { 32731_u16 };
     let nested = if attachment { 49_u16 } else { 40_u16 };

@@ -29,7 +29,7 @@ fn queue(
         .unwrap()
     {
         DomStyleParsedNotificationProgress::Queued { task } => task,
-        other => panic!("NoImports must genuinely queue: {other:?}"),
+        other => panic!("NoImports must queue: {other:?}"),
     }
 }
 fn networking(session: &mut DomSession) -> DomStyleNetworkingProgress {
@@ -206,7 +206,7 @@ fn blocked_first_and_allowed_or_blocked_pop_authenticate_end_without_fake_sheet(
 }
 
 #[test]
-fn actual_import_processing_remains_pending_after_genuine_synchronous_end() {
+fn actual_import_processing_remains_pending_after_synchronous_end() {
     let (mut session, installed, old, _) =
         created_first("<!doctype html><style>@import 'theme.css'; p{color:red}</style>");
     let q = successor(&mut session, old.contribution());

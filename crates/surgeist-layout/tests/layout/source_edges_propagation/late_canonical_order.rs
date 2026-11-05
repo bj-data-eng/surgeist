@@ -159,7 +159,7 @@ fn assert_late_geometry<S: l::LayoutScalar>(
 
 fn exercise<S: l::LayoutScalar>(false_order: bool) {
     let mut input = source(Case::EmptyBefore);
-    // A genuine lower Text cause, not a claim that Layout Line declarations or
+    // A lower Text cause, not a claim that Layout Line declarations or
     // the early adapter ran. There is no ResolvedWrapEdges or early-source call.
     input
         .computed_line_boundaries
@@ -261,7 +261,7 @@ fn exercise<S: l::LayoutScalar>(false_order: bool) {
     if false_order {
         let error = result
             .err()
-            .expect("complete [T,E] contradicts genuine captured [E,T]");
+            .expect("complete [T,E] contradicts captured [E,T]");
         assert!(
             matches!(
                 error.kind(),
@@ -272,8 +272,8 @@ fn exercise<S: l::LayoutScalar>(false_order: bool) {
             "{error:?}"
         );
     } else {
-        let flow = result
-            .expect("genuine complete [E,T] must admit canonical empty scope with native sibling");
+        let flow =
+            result.expect("complete [E,T] must admit canonical empty scope with native sibling");
         let request = {
             let sizing_request = crate::layout::native_request::sizing(
                 surgeist_layout::Size::new(Some(S::from_f64(100.0)), None),

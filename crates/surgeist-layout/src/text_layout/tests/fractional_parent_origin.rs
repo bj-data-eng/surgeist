@@ -1,4 +1,4 @@
-//! Genuine normal border placement changes publication corners, not used inset basis.
+//! Normal border placement changes publication corners, not used inset basis.
 use super::*;
 
 fn fractional_origin_premises<S: LayoutScalar>(

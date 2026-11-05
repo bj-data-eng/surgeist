@@ -187,7 +187,7 @@ fn admit<'a, S: LayoutScalar>(
 
 fn seed_and_observe_root<S: LayoutScalar>(host: &Host<S>, root: u32, shape: Option<u32>) {
     // No scope/box operation or family demand is smuggled into this ordinary
-    // control. The tree has genuine neutral Contribution endpoints, not
+    // control. The tree has neutral Contribution endpoints, not
     // physical BoxEdges that would already make geometry caching ineligible.
     let ordinary = admit(host, root, WrappingInput::default());
     let cold = compute_layout_with_flow(
@@ -331,7 +331,7 @@ fn warm_native<S: LayoutScalar>(opaque_descendant: bool) {
     assert_eq!(f.nodes, [30, 10, 11, 20, 12, 13, 21, 14, 15]);
     assert_eq!(f.tree.node_input(30).atomic_inline_participation, None);
     // Keep the same real ten-pixel atomic, but obtain its dimensions through
-    // the maintained numeric leaf provider. This creates a genuine fallible
+    // the maintained numeric leaf provider. This creates a fallible
     // owner operation for invalidation/retry, not a fabricated geometry receipt.
     let mut measured = f.tree.node_input(14).clone();
     measured.size = Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::AUTO);
@@ -561,7 +561,7 @@ fn observed_ancestor_cache_cannot_omit_its_demanded_opaque_descendant_family() {
     warm_native::<f64>(true);
 }
 #[test]
-fn genuine_empty_formatter_publishes_demanded_completion_without_selected_pieces() {
+fn source_empty_formatter_publishes_demanded_completion_without_selected_pieces() {
     empty_completion::<f32>();
     empty_completion::<f64>();
 }

@@ -667,7 +667,7 @@ fn steps_classify_bare_calculation_tokens_without_losing_authored_components_or_
         )
         .unwrap();
         let Some(calculation) = steps.count().calculation() else {
-            panic!("genuine symbolic function");
+            panic!("symbolic function");
         };
         assert_eq!(calculation.components(), &components);
         parsed_origin(calculation.origin(), source, "calc(");

@@ -297,7 +297,7 @@ fn option_capture_child_identity_mapping_does_not_rescan_prior_rows() {
         assert_eq!(
             counts.capture_nodes,
             comments + 3,
-            "the genuine captured Option/Text/Comment graph is retained"
+            "the captured Option/Text/Comment graph is retained"
         );
         assert_eq!(
             counts.capture_edges,

@@ -681,7 +681,7 @@ fn collapsed_whitespace_only_with_word_spacing_keeps_one_em_and_no_provider_inpu
         .unwrap();
     let cells = prepared.cell_views().collect::<Vec<_>>();
     let [cell] = cells.as_slice() else {
-        panic!("one genuine nonempty-source Cell");
+        panic!("one nonempty-source Cell");
     };
     assert_eq!(cell.extent(), 10.0);
     assert!(!cell.has_provider_input());

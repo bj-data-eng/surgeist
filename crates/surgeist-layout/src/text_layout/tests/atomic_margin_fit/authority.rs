@@ -33,7 +33,7 @@ fn css(border: f64, end: f64, advance: f64, occupied: (f64, f64)) -> Spec {
     }
 }
 fn prepared(specs: &[Spec]) -> PreparedParagraph {
-    // Genuine authored inline boxes, one distinct issued occurrence each,
+    // Authored inline boxes, one distinct issued occurrence each,
     // even though all have the SAME source offset0 in this no-text paragraph.
     let p = PreparedParagraph::new(
         specs

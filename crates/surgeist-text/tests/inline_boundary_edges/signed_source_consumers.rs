@@ -261,7 +261,7 @@ fn source_and_strip_case(narrow: bool) {
             .filter(|position| position.source_cursor() == cursor);
         let endpoint = matching
             .next()
-            .expect("one genuine control side at this source cut");
+            .expect("one control side at this source cut");
         assert!(
             matching.next().is_none(),
             "the exact source projection is unique in this input"
@@ -348,11 +348,11 @@ fn static_site_case(narrow: bool) {
 }
 
 #[test]
-fn signed_f32_closing_margin_retracts_the_genuine_following_oof_static_site() {
+fn signed_f32_closing_margin_retracts_the_following_oof_static_site() {
     static_site_case(true);
 }
 #[test]
-fn signed_f64_closing_margin_retracts_the_genuine_following_oof_static_site() {
+fn signed_f64_closing_margin_retracts_the_following_oof_static_site() {
     static_site_case(false);
 }
 

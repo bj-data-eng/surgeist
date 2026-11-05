@@ -418,7 +418,7 @@ fn lane<S: LayoutScalar>(nested: bool) {
 fn formatter_mismatch<S: LayoutScalar>() {
     for frame in FRAMES {
         let mut tree = fixture::<S>(frame, true);
-        // Keep genuine P parent basis; change ONLY the old formatter field.
+        // Keep P parent basis; change ONLY the old formatter field.
         let changed = endpoint(
             frame,
             InlineBoundaryKind::Start,

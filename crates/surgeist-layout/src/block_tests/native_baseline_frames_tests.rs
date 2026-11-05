@@ -364,7 +364,7 @@ fn horizontal_and_vertical_lr_start_side_facts_and_known_clockwise_reference_rem
 fn ordered_and_padded<S: LayoutScalar>() {
     let mode = WritingMode::VerticalRl;
     let lines = Paragraph::new("X\nX", mode);
-    // Two genuine preserved source lines consume20. Source-first is the
+    // Two preserved source lines consume20. Source-first is the
     // right-hand line at15 and source-last the left-hand line at5.
     assert_facts::<S>(
         measured(&lines, mode, style(mode), None, false),
@@ -555,7 +555,7 @@ fn unknown_and_absent<S: LayoutScalar>() {
                 );
             if opaque_leaf {
                 // The actual public host leaf supplies size only. Its used
-                // width is genuinely measured, not a supplied baseline fact.
+                // width is measured, not a supplied baseline fact.
                 tree = tree.with_measurement(2, Size::new(n(4.0), n(100.0)));
             }
             let capture = LayoutFlowInput::try_new(
@@ -888,7 +888,7 @@ fn reflow<S: LayoutScalar>() {
         assert_eq!((pair.first(), pair.last()), (central(first), central(last)));
     };
     // Ahem's X/space/X occupies30 along the inline axis. At30 it is one
-    // genuine10px column; at10 the actual word boundary produces two columns,
+    // 10px column; at10 the actual word boundary produces two columns,
     // with the collapsed trailing separator excluded from the next line.
     let first = tree.compute(&paragraph, wide, false);
     assert_output(first, 30.0, 10.0, 5.0, 5.0);
@@ -912,7 +912,7 @@ fn changed_real_inline_constraint_reselects_native_lines_instead_of_reusing_old_
     reflow::<f64>();
 }
 
-fn genuine_refinement<S: LayoutScalar>() {
+fn source_refinement<S: LayoutScalar>() {
     let mode = WritingMode::VerticalRl;
     let paragraph = Paragraph::new("X", mode);
     let binding = paragraph.binding();
@@ -961,7 +961,7 @@ fn genuine_refinement<S: LayoutScalar>() {
         .unwrap();
         let mut owner = crate::engine::ComputeSession::with_flow(&capture, Vec::new());
         // The existing definite-size front may skip baseline inspection when
-        // its only child is out of flow. A genuine named demand inspects the
+        // its only child is out of flow. A named demand inspects the
         // actual flow and proves absence without changing the returned size.
         let unknown = owner.compute_child(2, plain).unwrap();
         let clarified = owner.compute_child(2, demanded).unwrap();
@@ -990,7 +990,7 @@ fn genuine_refinement<S: LayoutScalar>() {
     );
     tree.retain(plain, unresolved);
     // The named-demand key must miss the real cached Unknown barrier. Once
-    // the earlier child is genuinely Absent, the following Native5 is first.
+    // the earlier child is Absent, the following Native5 is first.
     let resolved = tree.compute(&paragraph, demanded, false);
     assert_facts::<S>(resolved, mode, 14.0, 5.0, 5.0);
     tree.retain(demanded, resolved);
@@ -1004,8 +1004,8 @@ fn genuine_refinement<S: LayoutScalar>() {
 }
 #[test]
 fn real_named_demand_refines_dimension_only_unknown_to_absence_before_following_native_fact() {
-    genuine_refinement::<f32>();
-    genuine_refinement::<f64>();
+    source_refinement::<f32>();
+    source_refinement::<f64>();
 }
 
 fn real_border_and_padding<S: LayoutScalar>() {

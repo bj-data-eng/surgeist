@@ -51,7 +51,7 @@ fn normal_fit() -> WordFixture {
 
 fn positions(shaped: &ShapedData) -> &Vec<CellClusterPosition> {
     let [cell] = shaped.cells.as_slice() else {
-        panic!("one genuine NBSP Cell");
+        panic!("one NBSP Cell");
     };
     match &cell.payload {
         CellPayload::LaidOut {
@@ -64,7 +64,7 @@ fn positions(shaped: &ShapedData) -> &Vec<CellClusterPosition> {
 
 fn assert_word(shaped: &ShapedData) {
     let [cell] = shaped.cells.as_slice() else {
-        panic!("one genuine NBSP Cell");
+        panic!("one NBSP Cell");
     };
     assert_eq!((cell.extent, cell.advance), (10.0, 10.0));
     let CellPayload::LaidOut {

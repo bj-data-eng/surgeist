@@ -430,7 +430,7 @@ fn completed_empty_native_inline_family_is_rejected_even_without_text_fragments_
     assert_eq!(
         demanded.native_inline_box_pieces().count(),
         0,
-        "a genuine empty completion has a family but no formatted piece"
+        "an empty completion has a family but no formatted piece"
     );
     assert_eq!(
         snapshot_batch(&tree, &demanded, &source).unwrap_err(),

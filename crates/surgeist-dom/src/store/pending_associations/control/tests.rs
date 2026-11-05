@@ -1,4 +1,4 @@
-//! Genuine original-entry reservation: both bootstrap paths, shared release.
+//! Original-entry reservation: both bootstrap paths, shared release.
 use super::super::style_prefix::tests::{envelope, install, parse, setup};
 use super::*;
 

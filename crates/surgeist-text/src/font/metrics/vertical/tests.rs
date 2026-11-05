@@ -172,7 +172,7 @@ fn native_metrics_scale_once_and_retain_each_actual_component_provenance() {
 }
 
 #[test]
-fn genuine_absence_uses_a_minus_d_and_ascent_without_ink_or_em_rebasing() {
+fn absence_uses_a_minus_d_and_ascent_without_ink_or_em_rebasing() {
     for (a, d, gap, expected) in [
         (800, -200, 0, [10.0, 5.0, 8.0]),
         (900, -300, 123, [12.0, 5.0, 9.0]),
@@ -360,7 +360,7 @@ fn native_zero_advance_and_negative_origin_remain_valid_signed_facts() {
 }
 
 #[test]
-fn genuine_empty_glyf_uses_tsb_natively_but_ascent_when_metrics_are_absent() {
+fn empty_glyf_uses_tsb_natively_but_ascent_when_metrics_are_absent() {
     for (bytes, values, provenance) in [
         (fixture::native(), [12.0, 5.0, 1.0], native_provenance(true)),
         (fixture::absent(), [10.0, 5.0, 8.0], synthesized(L::Hhea)),
@@ -702,7 +702,7 @@ fn native_does_not_consume_os2_and_fallback_does_not_consume_unneeded_mvar_or_le
 }
 
 #[test]
-fn genuine_variable_default_and_active_instances_refuse_without_static_guessing() {
+fn variable_default_and_active_instances_refuse_without_static_guessing() {
     let variable = crate::test_fonts::variable_ahem();
     // Build native tables while still static, then retain the already qualified
     // actual fvar/gvar sources. The TrueType-only fixture extrema encoder must
@@ -735,7 +735,7 @@ fn genuine_variable_default_and_active_instances_refuse_without_static_guessing(
 }
 
 #[test]
-fn genuine_static_cff_is_precisely_unsupported_not_malformed_or_synthesized() {
+fn static_cff_is_precisely_unsupported_not_malformed_or_synthesized() {
     let bytes = fixture::cff();
     let font = skrifa::FontRef::new(&bytes).unwrap();
     assert_eq!(font.maxp().unwrap().num_glyphs(), 2);

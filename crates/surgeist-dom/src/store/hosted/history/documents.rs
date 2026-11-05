@@ -363,7 +363,7 @@ mod tests {
         assert!(context.origin.get().is_none());
     }
     #[test]
-    fn genuine_document_group_rejects_foreign_owner_and_every_wrong_generation_bit() {
+    fn document_group_rejects_foreign_owner_and_every_wrong_generation_bit() {
         let cancel = AtomicBool::new(false);
         let mut fixture = super::super::tests::Fixture::new();
         let (missing, _, setup_work) = fixture.issue(2);
@@ -412,7 +412,7 @@ mod tests {
         assert!(index.get(foreign.document).is_none());
         // These are explicit stale/invalid key negatives, never native Document
         // authority. Each single bit, including all high bits on 32-bit hosts,
-        // must distinguish the genuine positive Document's generation.
+        // must distinguish the positive Document's generation.
         let actual = creation.document.node();
         for bit in 0..64 {
             let wrong = DocumentId(NodeId {

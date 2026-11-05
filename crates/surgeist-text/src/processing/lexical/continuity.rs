@@ -117,7 +117,7 @@ impl Neighbor {
 
 /// A scope marker can lie inside an absent origin relationship. In reverse
 /// trim traversal its frontier token lies outside the scanned range, so retain
-/// that genuine event-interval dependency at entry too.
+/// that event-interval dependency at entry too.
 pub(super) fn at_boundary(frontiers: &[Frontier], domain: usize, order: usize) -> Option<Edge> {
     frontiers
         .iter()
@@ -129,7 +129,7 @@ pub(super) fn at_boundary(frontiers: &[Frontier], domain: usize, order: usize) -
         .map(|frontier| frontier.edge)
 }
 
-/// The genuine domain edge locates its immediate exterior independently of
+/// The domain edge locates its immediate exterior independently of
 /// the source relationship between the parent originals on opposite sides.
 /// This certifies only entry to that exterior, never a later source seam.
 pub(super) struct ExteriorContinuity {

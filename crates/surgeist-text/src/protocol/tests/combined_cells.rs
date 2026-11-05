@@ -126,7 +126,7 @@ fn setup(
             ],
             paragraphs: vec![SourceProcessingParagraph {
                 base_direction: ParagraphBaseDirection::LeftToRight,
-                // The parent is a genuine font context, not an extra donated strut.
+                // The parent is a font context, not an extra donated strut.
                 paragraph_strut: ParagraphStrut::AllocatedContributions,
             }],
             joint_flows: vec![],
@@ -626,7 +626,7 @@ fn cell_interaction_contract(text: &str, whitespace: WhiteSpace, plaintext: &str
     );
     let before = Rect::new(95.0, 20.0, 10.0, 1.0);
     let after = Rect::new(95.0, 30.0, 10.0, 1.0);
-    // Genuine Inline1 font BASE gives O6/U-6 and E10. At physical anchor
+    // Inline1 font BASE gives O6/U-6 and E10. At physical anchor
     // inline20/baseline100 the square is95,20,10,10; carets span its cross axis.
     for (position, source, expected) in
         [(&positions[0], start, before), (&positions[1], end, after)]

@@ -214,7 +214,7 @@ fn source_and_cache<S: l::LayoutScalar>() {
         assert_float(&fixture, &warm, repaired);
         assert!(
             fixture.host.hits[leaf].get() > before,
-            "positive warm proof is the genuine eligible float leaf"
+            "positive warm proof is the eligible float leaf"
         );
         warm.apply_to(&mut fixture.host).unwrap();
         let mut fresh = Advanced::<S>::new(&["AAA BB C"], 80.0, Some(t::Range::new(4, 6)), true);
@@ -498,7 +498,7 @@ fn triangle_contrast<S: l::LayoutScalar>() {
     native_style(&mut host, l::TextWrapStyle::Pretty);
     let pretty = native_compute(&host, &[0]);
     native_packet(&pretty, &ordinary, 40.0);
-    // Genuine contour gives ordinary capacities60/80, alternate70/60.
+    // Contour gives ordinary capacities60/80, alternate70/60.
     // Both natural tails10: Tail rejects; Body Q0 beats1/49, so Pretty
     // differs from this actually executed within-cap Balance alternative.
     let repeated = native_compute(&host, &[]);

@@ -49,7 +49,7 @@ pub(crate) enum Variable {
         name: crate::color::controlled::protocol::RecordRange,
     },
 }
-/// A reference retains full source-token identity or its genuine authored site.
+/// A reference retains full source-token identity or its authored site.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum OperandReference {
     Source(ClassifiedToken),

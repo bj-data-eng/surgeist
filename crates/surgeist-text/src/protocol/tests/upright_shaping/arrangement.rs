@@ -90,7 +90,7 @@ fn mark_positioning(bases: &[u16]) -> Vec<u8> {
 }
 
 fn tibetan_font() -> Vec<u8> {
-    // Whole Ka+tsek+shad sees 35->277. The genuine cut after tsek sees only
+    // Whole Ka+tsek+shad sees 35->277. The cut after tsek sees only
     // Ka+tsek and takes35->274. A shad+Kha leak would incorrectly take36->82.
     // Global vert is intentional: the USE owner's ccmp is per-syllable and
     // cannot independently witness the larger arrangement-context contract.
@@ -350,7 +350,7 @@ fn tibetan_real_vert_context_survives_tsek_cut_and_rebuilds_the_selected_orphan(
     // Actual Unicode17 data and pinned UAX14rev55 LB13 forbid BA->EX,
     // so a tsek followed by ordinary shad is not an offered-break witness.
     // LB12a permits BA->GL; LB12 still forbids GL->GL. SBRUL SHAD0F08
-    // belongs to the adopted arrangement set and supplies that genuine case.
+    // belongs to the adopted arrangement set and supplies that case.
     // https://www.unicode.org/Public/17.0.0/ucd/LineBreak.txt
     // https://www.unicode.org/reports/tr14/tr14-55.html#LB12a
     let classes = CodePointMapData::<UnicodeLineBreak>::new();
@@ -831,7 +831,7 @@ fn actual_native_indication_portions_and_flows_keep_each_selected_side() {
                 })
             ));
 
-            // The flow target is this genuine issued native word portion.
+            // The flow target is this issued native word portion.
             // Ordinary/conditional Tibetan offers are not invented flow targets.
             let source_segment = p.source_segments().next().unwrap();
             let flow = p

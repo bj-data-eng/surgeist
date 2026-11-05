@@ -1,4 +1,4 @@
-//! Preparation-owned lexical words, resource observations and genuine cuts.
+//! Preparation-owned lexical words, resource observations and cuts.
 use std::{ops::Range as IndexRange, sync::Arc};
 
 use super::{
@@ -16,13 +16,13 @@ use crate::{
 pub enum HyphenationResource {
     /// Exact en-US, compared ASCII-insensitively, over every contribution.
     EnUs2005,
-    /// At least one genuine text contribution has another or no locale.
+    /// At least one text contribution has another or no locale.
     UnavailableLanguage,
     /// An isolated UTF-16 unit has no scalar spelling for this UTF-8 resource.
     NonScalarSource,
 }
 
-/// Provenance of an observed resource or genuinely authored cut.
+/// Provenance of an observed resource or authored cut.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum HyphenationProvenance {
     Source,
@@ -275,7 +275,7 @@ impl PreparedWordView<'_> {
         let map = &self.prepared.analyzed.transform;
         let start = map.emission_for_atom(atoms.start).event;
         let mut end = map.emission_for_atom(atoms.end - 1).event + 1;
-        // Only consecutive transform removals in this genuine terminal seam
+        // Only consecutive transform removals in this terminal seam
         // belong here; an independent anchor/participant stops the extent.
         while matches!(
             map.events().get(end),
@@ -318,7 +318,7 @@ impl PreparedWord {
     }
 }
 
-/// One genuine mixed cut; word/count absence remains observable for raw controls.
+/// One mixed cut; word/count absence remains observable for raw controls.
 pub struct PreparedHyphenationCutView<'a> {
     prepared: &'a Arc<PreparedData>,
     index: usize,
@@ -369,7 +369,7 @@ impl PreparedHyphenationCutView<'_> {
             index,
         })
     }
-    /// The genuine preceding EGC, distinct from the insertion's empty source span.
+    /// The preceding EGC, distinct from the insertion's empty source span.
     pub fn preceding_source_pieces(&self) -> impl Iterator<Item = HyphenationSourcePieceView<'_>> {
         self.data()
             .preceding
@@ -471,7 +471,7 @@ impl PreparedWordPortion {
             index,
         })
     }
-    /// Whether an admitted genuine manual cut partitions this word. This is
+    /// Whether an admitted manual cut partitions this word. This is
     /// source/selection authority, never a claim that a portion fits a frame.
     #[must_use]
     pub fn has_manual_partition(&self) -> bool {

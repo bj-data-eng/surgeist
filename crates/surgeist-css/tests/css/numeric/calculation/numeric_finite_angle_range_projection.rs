@@ -3,7 +3,7 @@
 //! Every such finite multiple has cosine 1 and sine 0; these tests do not select
 //! an implementation-specific endpoint or prescribe its conversion algorithm.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types
-//! §10.4 separately requires trig of genuine infinity to produce NaN, and
+//! §10.4 separately requires trig of infinity to produce NaN, and
 //! §10.13 preserves NaN in specified calculation serialization.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#trig-infinities
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-serialize
@@ -88,7 +88,7 @@ fn finite_authored_degree_coefficient_overflow_uses_the_angle_range_rule() {
 }
 
 #[test]
-fn genuine_authored_and_division_generated_infinities_have_nan_cosine() {
+fn authored_and_division_generated_infinities_have_nan_cosine() {
     for source in [
         "cos(infinity * 1deg)",
         "cos(-infinity * 1deg)",
@@ -139,7 +139,7 @@ fn ordinary_rgb_keeps_red_after_finite_angle_range_conversion() {
 }
 
 #[test]
-fn ordinary_rgb_censors_genuine_infinite_angle_cosine_to_zero() {
+fn ordinary_rgb_censors_infinite_angle_cosine_to_zero() {
     for source in [
         "rgb(calc(255 * cos(infinity * 1deg)) 0 0)",
         "rgb(calc(255 * cos(1 / 0 * 1deg)) 0 0)",

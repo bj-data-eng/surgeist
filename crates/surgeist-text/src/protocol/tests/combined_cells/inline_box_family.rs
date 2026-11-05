@@ -1,4 +1,4 @@
-//! A demanded complete family retains the genuine opaque outer Cell.
+//! A demanded complete family retains the opaque outer Cell.
 use super::*;
 
 fn one_outer_cell_member(

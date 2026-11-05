@@ -42,7 +42,7 @@ impl VerticalNominalMetrics {
 
 /// Explicit horizontal reference applied before actual vertical positioning.
 ///
-/// Values are exact doubled unscaled design units. Relative zero is the genuine
+/// Values are exact doubled unscaled design units. Relative zero is the
 /// nominal vertical pen; it is not a different compatibility mode.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum VerticalOriginReference {
@@ -172,7 +172,7 @@ pub enum VerticalShapeError<E> {
         /// Actual owner of the first coordinate-range failure.
         stage: VerticalPositionStage,
     },
-    /// The first genuine resource or custody refusal in this buffer lifecycle.
+    /// The first resource or custody refusal in this buffer lifecycle.
     Refused(ShapingRefusal),
 }
 

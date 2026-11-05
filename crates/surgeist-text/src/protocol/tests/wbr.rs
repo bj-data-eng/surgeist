@@ -131,7 +131,7 @@ fn full_selection(layout: &crate::Layout) -> crate::PlacedSelection {
 }
 
 #[test]
-fn genuine_wbr_emits_real_control_owned_glyphs_without_source_donation() {
+fn wbr_emits_real_control_owned_glyphs_without_source_donation() {
     for (operation, glyph, advance, total) in [
         (WordSpaceTransform::Space, 3, 5.0, 25.0),
         (WordSpaceTransform::IdeographicSpace, 1, 20.0, 40.0),

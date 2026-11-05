@@ -941,7 +941,7 @@ fn admit_text_node(
     Ok(())
 }
 
-/// Split the same aggregate winners by genuine contextual domains once, before
+/// Split the same aggregate winners by contextual domains once, before
 /// admission and the shared lexer consume these exact intervals.
 fn contextual_modes(
     source: &Source,

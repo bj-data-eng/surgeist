@@ -151,7 +151,7 @@ struct AnchorOwner<'a> {
     order: usize,
 }
 
-/// A genuine source fence retains its producer occurrence until it is lowered
+/// A source fence retains its producer occurrence until it is lowered
 /// into the current mixed stream. Equal source positions do not alias causes.
 pub(super) enum SourceFence {
     Disconnected(usize),

@@ -117,7 +117,7 @@ fn bare_shy(primary_hyphen: bool) {
     assert_eq!(plaintext(&prepared), original);
 
     // A natural paragraph end never takes the conditional indication, including
-    // when a later selection will genuinely use this same source SHY.
+    // when a later selection will use this same source SHY.
     let whole = prepared
         .select(request(&prepared))
         .unwrap()
@@ -139,7 +139,7 @@ fn bare_shy(primary_hyphen: bool) {
     );
 
     // The original short word retains all source/resource controls but misses
-    // the native5/2/2 minima. A genuinely admitted word qualifies indication use.
+    // the native5/2/2 minima. An admitted word qualifies indication use.
     assert!(
         prepared
             .opportunity_views()

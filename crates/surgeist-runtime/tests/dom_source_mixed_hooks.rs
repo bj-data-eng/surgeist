@@ -232,7 +232,7 @@ impl Fixture {
                 assert_eq!(child.parent_global(), self.top.global());
                 child
             }
-            other => panic!("Style must precede the genuine post-connection child wait: {other:?}"),
+            other => panic!("Style must precede the post-connection child wait: {other:?}"),
         }
     }
     #[expect(

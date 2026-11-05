@@ -8,7 +8,7 @@
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-simplification
 //! Frozen WebKit 73aa6c89e2cb77c46184a81aec944e4ab99d114d likewise merges
 //! Number children in CSSCalcTree+Simplification.cpp lines 654–745.
-//! Already projected Number/compound values retain NaN and genuine infinities;
+//! Already projected Number/compound values retain NaN and infinities;
 //! their finite overflow converts to the closest finite Number (#1297). An
 //! Angle ancestor does not reconstruct their earlier magnitudes.
 

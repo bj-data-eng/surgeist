@@ -88,7 +88,7 @@ fn authored_negative_zero_is_the_unsigned_zero_in_color_calculations() {
     // Values 4 (WD-20240312 §10.9): "0, +0 and -0 all produce the standard
     // 'unsigned' zero, which is considered positive (0⁺)". So 1 / sign(-0) is
     // +∞, which top-level range checking clamps to the channel maximum. A
-    // genuinely negative operand keeps its sign and clamps to the minimum.
+    // negative operand keeps its sign and clamps to the minimum.
     let facts = absent_facts();
     for (input, expected) in [
         ("rgb(0 0 calc(1 / sign(-0)))", "rgb(0, 0, 255)"),

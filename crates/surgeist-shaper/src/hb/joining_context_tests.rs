@@ -162,7 +162,7 @@ fn joining_context_default_nonjoining_and_body_only_use_do_not_claim_unicode_con
         );
         complete(&value, 35, JoiningContextUse::None);
     });
-    // Brahmi uses USE's body-syllable topographical feature path. A genuine
+    // Brahmi uses USE's body-syllable topographical feature path. A
     // isolated substitution to B proves that path ran, without Unicode joining
     // context being consumed by its distinct Arabic-plan branch.
     with_font(b"brah", true, 36, |font| {

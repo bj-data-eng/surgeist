@@ -46,7 +46,7 @@ impl CssCounterStyleSystem {
     }
 }
 
-/// A checked value borrowed either from its genuine named occurrence or a raw edit.
+/// A checked value borrowed either from its named occurrence or a raw edit.
 #[derive(Clone, Copy, Debug)]
 pub struct CssCounterStyleDescriptorEntry<'a> {
     value: &'a CssCounterStyleDescriptorValue,
@@ -66,7 +66,7 @@ impl<'a> CssCounterStyleDescriptorEntry<'a> {
     pub const fn value(self) -> &'a CssCounterStyleDescriptorValue {
         self.value
     }
-    /// Returns the genuine named descriptor occurrence, or `None` when the entry was created from a raw value with [`Self::from_value`].
+    /// Returns the named descriptor occurrence, or `None` when the entry was created from a raw value with [`Self::from_value`].
     #[must_use]
     pub const fn occurrence(
         self,

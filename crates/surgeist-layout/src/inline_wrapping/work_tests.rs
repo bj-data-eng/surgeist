@@ -123,7 +123,7 @@ fn tree<S: LayoutScalar>(profile: Profile, count: usize, avoid: bool) -> PublicL
                 Profile::Flex => WrapEdge::AvoidFlex,
             };
         }
-        // Before and the terminal After remain genuine neutral Auto. There is
+        // Before and the terminal After remain neutral Auto. There is
         // one independent actual avoided after-side per interior cut.
         tree = tree.children(node, []).style(node, input);
     }

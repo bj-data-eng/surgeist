@@ -285,7 +285,7 @@ fn explicit_separator_replacement_keeps_original_range_selection_and_blank_paint
         assert_eq!(whole.source_text().code_units(), [0x41, 0x200b, 0x41]);
         assert_eq!(whole.plaintext().code_units(), [0x41, 0x200b, 0x41]);
         // Use the same retained actual glyph to distinguish typographic advance
-        // from ink; both qualified space glyphs have genuinely blank outlines.
+        // from ink; both qualified space glyphs have blank outlines.
         let glyph = placed
             .run_views()
             .flat_map(|run| run.glyphs().collect::<Vec<_>>())

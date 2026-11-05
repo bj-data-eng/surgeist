@@ -53,7 +53,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
         )
         .unwrap();
     let DomSourceDriveProgress::Complete(done) = opened else {
-        panic!("the unrelated B watcher must genuinely be established: {opened:?}");
+        panic!("the unrelated B watcher must be established: {opened:?}");
     };
     assert!(!done.cancellation_requested());
     drop(done);
@@ -123,7 +123,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
     );
     assert_eq!(retired.relevant_global(subject).unwrap(), Some(a.global()));
 
-    // Dispatch starts in live A. Only the single genuine target callback moves
+    // Dispatch starts in live A. Only the single target callback moves
     // the closed receiver into B; no fresh dispatch is started in retired B.
     let event = start(&mut session, subject, None);
     let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {

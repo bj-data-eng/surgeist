@@ -1,4 +1,4 @@
-//! Nonempty indications retain their genuine original attachment, not a guessed source owner.
+//! Nonempty indications retain their original attachment, not a guessed source owner.
 use super::*;
 use crate::protocol::prepared::presentation::Attachment;
 use crate::protocol::prepared::{PresentationUnitKind, SelectedRelationEvent};
@@ -51,7 +51,7 @@ fn receipt(
         p.participants().nth(participant),
         Some(crate::PreparedParticipant::Text(host_unit.clone()))
     );
-    let atom = atom.expect("these genuine hosts are actual source scalars");
+    let atom = atom.expect("these hosts are actual source scalars");
     assert_eq!(p.inner.analyzed.projection.atoms[atom].source, host);
     let crate::protocol::prepared::ParticipantData::Text(index) =
         p.inner.tables.participants[participant]

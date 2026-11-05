@@ -255,7 +255,7 @@ fn assert_layout_placement<S: LayoutScalar>(
             },
         );
     }
-    // Genuine endpoint nodes retain their individual roles. Today's ordinary
+    // Endpoint nodes retain their individual roles. Today's ordinary
     // native operation has no supplied pair/scope policy, so none is invented.
     for (node, kind) in [(2, InlineBoundaryKind::Start), (5, InlineBoundaryKind::End)] {
         tree = tree.input(

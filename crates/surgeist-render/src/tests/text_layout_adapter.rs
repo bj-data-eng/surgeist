@@ -832,7 +832,7 @@ fn empty_and_actual_space_do_not_acquire_fabricated_ink() {
 }
 
 #[test]
-fn genuine_variable_layout_keeps_full_default_and_nondefault_coordinate_bits() {
+fn variable_layout_keeps_full_default_and_nondefault_coordinate_bits() {
     for (setting, bits, width) in [(0.0, 0, 1000.0), (0.5, 8192, 1050.0), (1.0, 16384, 1100.0)] {
         let input = system(variable_ahem())
             .layout(

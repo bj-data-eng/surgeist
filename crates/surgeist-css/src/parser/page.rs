@@ -82,13 +82,13 @@ pub(crate) fn parse_page_selector<'i, 't>(
                 snapshot,
                 start..input.position().byte_index(),
             )
-            .expect("genuine Page selector");
+            .expect("Page selector");
             Ok(CssPageSelector::from_parsed(name, pseudos, origin))
         })?
     };
     let origin =
         crate::source::CssParsedOrigin::from_range(snapshot, start..input.position().byte_index())
-            .expect("genuine Page selector list");
+            .expect("Page selector list");
     Ok(CssPageSelectorList::from_parsed(selectors, origin))
 }
 

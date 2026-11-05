@@ -1,5 +1,5 @@
 //! One captured box has separated visual members before wrapping and adjacent
-//! members after a genuine optional break, while its used BP edges execute once.
+//! members after an optional break, while its used BP edges execute once.
 use super::*;
 
 #[derive(Debug, PartialEq)]
@@ -66,7 +66,7 @@ fn captured_override() -> t::PreparedText {
             .all(|v| v.capture_position().is_some() && v.handle().captured_control().is_some())
     );
     // X4 gives ABC level1 under the actual RLO; abc remain level0. Native X9
-    // reinsertion retains the preceding level for RLO/PDF, while the genuine
+    // reinsertion retains the preceding level for RLO/PDF, while the
     // After-affinity box/optional controls inherit their actual following side.
     let logical = p
         .participants()
@@ -205,7 +205,7 @@ fn actual_optional_break(p: &t::PreparedText) -> t::PreparedOpportunity {
     });
     let offer = offers
         .next()
-        .expect("the genuine optional control issues its actual allowed cut");
+        .expect("the optional control issues its actual allowed cut");
     assert!(offers.next().is_none());
     assert_eq!(offer.view().kind(), t::PreparedBreakKind::Allowed);
     assert_eq!(offer.view().boundary().view().source_before().get(), 4);

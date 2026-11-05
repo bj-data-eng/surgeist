@@ -136,7 +136,7 @@ fn exact_one_page_retains_decoded_keyword_spelling_duplicates_and_priority() {
 }
 
 #[test]
-fn genuine_page_body_and_both_context_modes_retain_the_same_five_symbolic_margins() {
+fn page_body_and_both_context_modes_retain_the_same_five_symbolic_margins() {
     let source = "{margin:inherit;margin-top:inherit!important;margin-right:inherit;margin-bottom:inherit;margin-left:inherit!important}";
     let free = CssBlockFragment::<CssPageBody>::parse(
         &CssParser::default(),
@@ -551,7 +551,7 @@ fn inherit_is_a_complete_global_alternative_not_a_mixed_margin_component() {
 }
 
 #[test]
-fn valid_inherit_cannot_escape_failed_genuine_body_or_exact_one_rule_exhaustion() {
+fn valid_inherit_cannot_escape_failed_body_or_exact_one_rule_exhaustion() {
     for source in [
         "",
         "margin:inherit",

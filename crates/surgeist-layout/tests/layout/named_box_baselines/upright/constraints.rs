@@ -1,4 +1,4 @@
-//! Genuine native controls, nonformatted receipts and physical float constraints.
+//! Native controls, nonformatted receipts and physical float constraints.
 use super::*;
 use std::cell::RefCell;
 
@@ -535,7 +535,7 @@ impl<S: l::LayoutScalar> l::LayoutTree for ShapeHost<S> {
             };
         let refused = self.refuse.get() && later;
         self.queries.borrow_mut().push((query, refused));
-        // A genuine Shape provider may return no excluded interval. The only
+        // A Shape provider may return no excluded interval. The only
         // failure stimulus is the actual physical later band, never a call count.
         Some(if refused {
             Err(Refusal::LaterBand)

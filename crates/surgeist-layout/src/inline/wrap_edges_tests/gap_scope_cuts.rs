@@ -159,7 +159,7 @@ fn mixed_formatter_group<S: LayoutScalar>() {
     inner_box.formatting_context = 50;
     f.wrapping.child_order.extend([inner, inner_box]);
     f.finish();
-    // Both genuine boxes are individually admitted in their real formatters.
+    // Both boxes are individually admitted in their real formatters.
     drop(f.flow());
     f.wrapping.gaps.push(InlineGapGroupInput {
         anchor: InlineGapAnchor::Formatter {
@@ -235,7 +235,7 @@ fn filtered_metadata_inside_actual_run<S: LayoutScalar>(trailing: bool) {
     f.finish();
     f.tree.insert_children(0, raw);
     // These metadata occurrences are included by the actual raw run after its
-    // genuine Start control. Filtering them must not erase the available edge.
+    // Start control. Filtering them must not erase the available edge.
     let baseline = f.compute();
     assert_eq!(output(&baseline, 30).size, Size::splat(n(1.0)));
     f.wrapping.gaps.push(InlineGapGroupInput {

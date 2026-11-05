@@ -201,7 +201,7 @@ fn oriented_ancestor_and_normal_padding<S: LayoutScalar>() {
             3.0
         };
         let mut published = Vec::new();
-        //0=control,1=relative ancestor,2=genuine normal block-start padding.
+        //0=control,1=relative ancestor,2= normal block-start padding.
         for case in 0..3 {
             let mut ancestor = oriented_atomic::<S>(mode, 20.0, 20.0);
             if case == 1 {

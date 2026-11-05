@@ -565,7 +565,7 @@ pub(in crate::engine) fn scaled_logical(
 
 /// Canonical source-style row; control rows never acquire source membership.
 pub(crate) fn source_style(styles: &[AnalyzedStyleRun], at: usize) -> usize {
-    // Analysis appends genuine control rows after the ordered source rows.
+    // Analysis appends control rows after the ordered source rows.
     // Search only source membership; neither an empty source nor end affinity
     // may accidentally borrow a control's unrelated style.
     let source_count = styles.partition_point(|row| row.source_range().is_some());

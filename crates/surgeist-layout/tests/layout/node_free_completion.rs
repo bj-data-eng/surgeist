@@ -1,4 +1,4 @@
-//! Genuine node-free computed Force scheduling and retained phantom completion.
+//! Node-free computed Force scheduling and retained phantom completion.
 //! Public capture, preparation, association and actual layout with no host children.
 use std::{convert::Infallible, slice, sync::Arc};
 use surgeist_layout as l;
@@ -29,7 +29,7 @@ impl<S: l::LayoutScalar> l::Traverse for Root<S> {
         0
     }
     fn child(&self, _node: u32, _index: usize) -> u32 {
-        panic!("the genuine root has no host children")
+        panic!("the root has no host children")
     }
 }
 impl<S: l::LayoutScalar> l::LayoutTree for Root<S> {
@@ -305,7 +305,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
         let participants = self.prepared.participants().collect::<Vec<_>>();
         assert_eq!(participants.len(), 1);
         let t::PreparedParticipant::ComputedLineBoundary(group) = &participants[0] else {
-            panic!("only the genuine Text semantic anchor may participate")
+            panic!("only the Text semantic anchor may participate")
         };
         let boundary = offers[0].view().boundary();
         assert_eq!(offers[1].view().boundary(), boundary);
@@ -426,7 +426,7 @@ fn assert_semantic_output<S: l::LayoutScalar>(
     assert_eq!(
         batch.placed_text().len(),
         1,
-        "the genuine paragraph must actually execute"
+        "the paragraph must actually execute"
     );
     let entry = &batch.placed_text()[0];
     assert_eq!(entry.container(), 0);
@@ -474,7 +474,7 @@ fn assert_semantic_output<S: l::LayoutScalar>(
         l::Size::new(S::from_f64(30.0), S::from_f64(20.0))
     );
 
-    // End completion uses its genuine Paragraph capability at the same pinned
+    // End completion uses its Paragraph capability at the same pinned
     // cut. Real S/T metric allocations remain positive but create no second
     // formatted line or source fragment.
     let completions = layout.nonformatted_lines().collect::<Vec<_>>();
@@ -571,7 +571,7 @@ fn semantic_scheduling<S: l::LayoutScalar>(direction: l::Direction) {
         ),
     ] {
         let batch = fixture.try_compute(fixture.inventory(), available)
-            .expect("genuine node-free computed-Force paragraph must admit and execute in its unique empty-container gap");
+            .expect("node-free computed-Force paragraph must admit and execute in its unique empty-container gap");
         assert_semantic_output(&fixture, &batch);
         assert_eq!(fixture.inventory_facts(true), pin);
         let replay = fixture.try_compute(fixture.inventory(), available).unwrap();
@@ -1167,7 +1167,7 @@ fn shared_gap_order<S: l::LayoutScalar>(direction: l::Direction) {
     }
     fixture.assert_output(&forward);
     assert_eq!(fixture.facts(), pins);
-    // This is the same genuine CapturedParagraph twice, not merely two empty
+    // This is the same CapturedParagraph twice, not merely two empty
     // numeric ranges or two independently captured paragraphs at offset0.
     let duplicate = l::LayoutFlowInput::try_new(
         &fixture.tree,
@@ -1182,7 +1182,7 @@ fn shared_gap_order<S: l::LayoutScalar>(direction: l::Direction) {
         Vec::new(),
     )
     .err()
-    .expect("duplicate genuine paragraph binding must refuse");
+    .expect("duplicate paragraph binding must refuse");
     assert!(
         matches!(
             duplicate.kind(),
@@ -1924,7 +1924,7 @@ fn ambiguous_semantic_gap<S: l::LayoutScalar>(direction: l::Direction) {
         children: [vec![1], vec![]],
     };
     let mut inventory = fixture.inventory();
-    // S is genuinely known, but the relation of the real unmatched Block1 to
+    // S is known, but the relation of the real unmatched Block1 to
     // that source scope is unknown on BOTH sides. No complete order is claimed.
     let root = inventory
         .child_order
@@ -2222,7 +2222,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
         let mut pins = vec![];
         for i in 0..2 {
             let t::PreparedParticipant::ComputedLineBoundary(group) = &participants[i] else {
-                panic!("each distinct logical cut needs its genuine computed participant");
+                panic!("each distinct logical cut needs its computed participant");
             };
             assert_eq!(
                 offers[i].view().computed_line_boundary(),

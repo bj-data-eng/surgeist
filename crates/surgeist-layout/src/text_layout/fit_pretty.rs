@@ -1,4 +1,4 @@
-//! Streaming Auto → eligible Tail → fixed-reference Body at genuine entries.
+//! Streaming Auto → eligible Tail → fixed-reference Body at entries.
 
 use super::balance::{GroupProof, LineProof, Observations};
 use super::*;

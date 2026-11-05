@@ -107,7 +107,7 @@ fn indentation_and_margins<S: l::LayoutScalar>() {
             });
             let batch = tree.compute(mode, &[]);
             // -20: usable120, P60 ->30/30. +20: usable80, P20 ->10/10.
-            // Insets never replace the genuine signed20px indentation.
+            // Insets never replace the signed20px indentation.
             let expected = match (indent < 0.0, direction) {
                 (true, l::Direction::Ltr) => [10.0, 10.0],
                 (true, l::Direction::Rtl) => [30.0, 50.0],
@@ -170,7 +170,7 @@ fn indentation_and_margins<S: l::LayoutScalar>() {
     }
 }
 #[test]
-fn genuine_signed_indent_and_atomic_margin_remain_in_the_natural_basis() {
+fn source_signed_indent_and_atomic_margin_remain_in_the_natural_basis() {
     indentation_and_margins::<f32>();
     indentation_and_margins::<f64>();
 }
@@ -202,7 +202,7 @@ fn control_custody<S: l::LayoutScalar>() {
         let mut root = block(mode, direction, 100.0);
         root.text_group_align = l::TextGroupAlign::Center;
         // One real empty Forced line participates (N0/C100 ->P100), followed
-        // by genuine34px nominal endpoints in a phantom Paragraph receiver.
+        // by 34px nominal endpoints in a phantom Paragraph receiver.
         let tree = Tree::<S>::new(
             vec![
                 l::LayoutInputOf::box_input(root.clone()),

@@ -1,4 +1,4 @@
-//! One genuine inline owner continues through an empty block into retained paint.
+//! One inline owner continues through an empty block into retained paint.
 
 use super::*;
 use std::sync::Arc;
@@ -53,7 +53,7 @@ fn capture() -> (
         word_space_transform: text::WordSpaceTransform::SpaceAutoPhrase,
         ..text::Style::default()
     };
-    // The generated blank uses the genuine owner's 20px font. In phrase_ahem,
+    // The generated blank uses the owner's 20px font. In phrase_ahem,
     // SPACE is half an em: its advance is 10px, while originals remain 10px.
     let owner = text::Style {
         size: 20.0,
@@ -406,7 +406,7 @@ fn global_phrase_owner_keeps_each_local_occurrence_through_empty_block_paint_and
         assert_eq!(fragment.line_index(), 0);
         let rect = fragment.rect().unwrap();
         // Three 10px original cells precede a half-em SPACE at owner size20.
-        // Each genuine parent line allocates20px; the empty block adds zero.
+        // Each parent line allocates 20px; the empty block adds zero.
         assert_eq!(rect.origin(), layout::Point::new(30.0, y));
         assert_eq!(rect.size(), layout::Size::new(10.0, 20.0));
         assert_eq!(view.bounds(), Some(text::Rect::new(30.0, 0.0, 10.0, 20.0)));

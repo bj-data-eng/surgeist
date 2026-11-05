@@ -259,7 +259,7 @@ fn queue_preparation_reserves_both_show_focus_occurrences_before_any_queue_effec
             let DomSourceProgress::Request(DomSourceRequest::Dialog(request)) =
                 lease.advance(&cancel).unwrap()
             else {
-                panic!("the genuine original Show must reach QueueToggle")
+                panic!("the original Show must reach QueueToggle")
             };
             // The real event receipt is rebased by advance above. Only now
             // does this actual operation own a Draft; place the private

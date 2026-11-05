@@ -60,7 +60,7 @@ fn with_unused_neighbor(
         });
     }
     // Source resources are the actual final authored Source, including both
-    // genuine style winners; raw IDs intentionally run 1 then 0.
+    // style winners; raw IDs intentionally run 1 then 0.
     input.origins = [Range::new(0, 2), Range::new(2, 3)]
         .into_iter()
         .map(|range| super::origin(&input.source, range))

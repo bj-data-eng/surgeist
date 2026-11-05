@@ -85,7 +85,7 @@ impl Words {
         Self { rows, stops }
     }
 
-    /// A genuine mixed-sequence cut lends its atom endpoint. A count map never
+    /// A mixed-sequence cut lends its atom endpoint. A count map never
     /// turns an interior-EGC or word-exterior endpoint into an admitted cut.
     pub(crate) fn at(&self, atom: usize) -> Option<CutCounts> {
         self.stops.binary_search(&atom).ok()?;

@@ -495,7 +495,7 @@ pub enum OverflowWrap {
     BreakWord,
 }
 
-/// Presentation replacement of genuine U+200B, native wbr and virtual separators.
+/// Presentation replacement of U+200B, native wbr and virtual separators.
 /// Automatic Japanese phrases require demanded authentic contextual scope facts.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum WordSpaceTransform {

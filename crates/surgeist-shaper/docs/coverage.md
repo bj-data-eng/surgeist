@@ -91,7 +91,7 @@ than replace, calls through real font shaping.
 | Backward supplied vertical metrics | [Backward vertical tests](../src/hb/backward_vertical_tests.rs) exercise actual cmap mirroring and masked `rtlm` fallback, used-glyph metrics and half origins, original input ordinals, Normal/Residual/Deleted DI custody, required-feature provenance, GPOS attachment, explicit feature controls, context/supplier/refusal errors and clear/reuse. BTT retains negative Y advances; horizontal `rtla` remains independent. These are authored font witnesses, not exhaustive mirrored-character or script coverage. |
 
 [Ancestry qualification](../src/hb/width_feature_ancestry_qualification.rs)
-distinguishes genuine removal from malformed direct, contextual, cached and
+distinguishes removal from malformed direct, contextual, cached and
 earlier-rewrite dependencies, including rewritten contextual observers enabling
 another root's removal and removals performed by non-width features.
 Valid first-sibling removal and non-mutating misses preserve complete evidence.

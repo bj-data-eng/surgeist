@@ -139,7 +139,7 @@ fn allocated_character_gaps_keep_provider_empty_cell_square_and_authentic_endpoi
         (0, 1),
     );
     // Source processing emits the left B, no inner scalar, then the right B.
-    // The genuine selected Cell's empty cut is therefore1..1, not a glyph ID.
+    // The selected Cell's empty cut is therefore1..1, not a glyph ID.
     endpoint(
         visual_after,
         &participants[1],
@@ -190,7 +190,7 @@ fn allocated_character_gaps_keep_provider_empty_cell_square_and_authentic_endpoi
     assert_eq!(range.local_range(), Range::new(1, 2));
     let units = range.units().collect::<Vec<_>>();
     let [unit] = units.as_slice() else {
-        panic!("one genuine removed SPACE unit");
+        panic!("one removed SPACE unit");
     };
     let cell_unit = unit.cell_unit().unwrap();
     assert_eq!((cell_unit.line_index(), cell_unit.cell_index()), (0, 0));

@@ -1,4 +1,4 @@
-//! An ordinary GPOS-constrained tracking error inside a genuine Cell-active
+//! An ordinary GPOS-constrained tracking error inside a Cell-active
 //! preparation. The Cell is elsewhere; it cannot replace the A/B source owners.
 
 use super::*;
@@ -111,7 +111,7 @@ fn mixed_cell_preparation_keeps_ordinary_cursive_tracking_diagnostic_source_and_
     assert_eq!(line.feedback().advance, 32.0);
     let cells = line.cell_views().collect::<Vec<_>>();
     let [cell] = cells.as_slice() else {
-        panic!("one genuine AA Cell");
+        panic!("one AA Cell");
     };
     assert_eq!(
         cell.source_cell().scope(),
@@ -183,7 +183,7 @@ fn mixed_cell_preparation_keeps_ordinary_cursive_tracking_diagnostic_source_and_
         assert_eq!(context.locale.as_deref(), Some("en"));
     }
     let [constraint] = constraints.as_ref() else {
-        panic!("one genuine cursive constraint");
+        panic!("one cursive constraint");
     };
     assert_eq!(
         constraint.kind,

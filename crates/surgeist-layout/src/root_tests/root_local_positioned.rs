@@ -1,6 +1,6 @@
 //! Functional qualification of explicit root-border-local positioned requests.
 //! All expected widths come from the native/real Ahem MIN30/MAX70 content,
-//! genuine CB percentages, and continuous local corner rounding.
+//! CB percentages, and continuous local corner rounding.
 use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::test_support::text::{PreparedParagraph, ahem_style};
@@ -486,7 +486,7 @@ fn real_text<S: LayoutScalar>() {
         Vec::new(),
     )
     .unwrap();
-    // The source/font-backed content supplies genuine MIN30/MAX70 before the
+    // The source/font-backed content supplies MIN30/MAX70 before the
     // local request exercises shrink-to-fit. Intrinsic geometry is not reused
     // as final Normal placement.
     for (operation, expected) in [
@@ -695,9 +695,8 @@ fn fixed_padding_border<S: LayoutScalar>(box_sizing: BoxSizing) {
         root.padding = Edges::all(LengthOf::px(n(10.0)));
         root.border = Edges::all(LengthOf::px(n(10.0)));
         let tree = make_tree(root);
-        let batch = compute_layout(&tree, 0, request).expect(
-            "a genuinely definite own inline preferred size admits actual padding and border",
-        );
+        let batch = compute_layout(&tree, 0, request)
+            .expect("a definite own inline preferred size admits actual padding and border");
         // PB totals40 per physical axis. Content-box authoring adds that to
         // used100 (or constrained80/120); border-box authoring includes it.
         let (border, content) = match box_sizing {
@@ -773,7 +772,7 @@ fn padding_border_profile_guards<S: LayoutScalar>() {
         assert_box_edges(unsupported, request(50.0, Direction::Ltr));
     }
     // The initial-start positioned capability remains zero-edge, even for a
-    // genuinely fixed root. Only the separate root-local profile is extended.
+    // fixed root. Only the separate root-local profile is extended.
     assert_box_edges(
         fixed,
         LayoutRootRequestOf::positioned_auto_insets(

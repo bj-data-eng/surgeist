@@ -1,4 +1,4 @@
-//! Genuine empty box identity and source custody across wrapping.
+//! Empty box identity and source custody across wrapping.
 use super::*;
 
 fn with_empty_sibling() -> t::PreparedText {
@@ -100,7 +100,7 @@ fn one_owned_piece(
         .filter(|piece| &piece.owner() == owner);
     let piece = pieces
         .next()
-        .expect("the genuine empty Inline retains its own piece");
+        .expect("the empty Inline retains its own piece");
     assert!(pieces.next().is_none());
     piece
 }

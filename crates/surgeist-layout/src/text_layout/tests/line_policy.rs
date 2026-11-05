@@ -561,7 +561,7 @@ fn native_float_band_changes_recompute_amounts_and_actual_atomic_placement() {
 
 #[test]
 fn native_fractional_expansion_keeps_three_words_inside_the_actual_f64_band() {
-    // Each Ahem code point advances exactly its genuine f32 font size. All
+    // Each Ahem code point advances exactly its f32 font size. All
     // five natural advances are dyadic, so only the requested expansion has a
     // non-dyadic residual. Later XXXX forces this first line to end softly.
     let widths = [4.640625_f32, 4.09375, 0.28125, 14.046875, 0.21875];
@@ -748,7 +748,7 @@ fn native_fractional_expansion_keeps_three_words_inside_the_actual_f64_band() {
     assert_eq!(
         batch.placed_text()[0].layout().lines()[0].range(),
         surgeist_text::Range::new(0, 6),
-        "all three natural words fit the genuine band before supported expansion"
+        "all three natural words fit the band before supported expansion"
     );
     assert_eq!(xs(&batch).iter().filter(|(line, _)| *line == 0).count(), 3);
     assert!(

@@ -646,7 +646,7 @@ fn independent_outputs_cannot_split_one_uninterrupted_native_run_at_raw_markers(
     assert_eq!(
         fixture.prepared.len(),
         2,
-        "independent None outputs genuinely prepared"
+        "independent None outputs prepared"
     );
     for (index, prepared) in fixture.prepared.iter().enumerate() {
         let owner = prepared.captured_owner().unwrap();

@@ -123,7 +123,7 @@ pub(super) struct AcceptedFloatPlacement<S: LayoutScalar> {
     pub(super) line: surgeist_text::FinalizedLine,
 }
 
-/// Distinct authentic receipts: a represented original seam, or the genuine
+/// Distinct authentic receipts: a represented original seam, or the
 /// empty ParagraphEnd after an already consumed terminal mandatory boundary.
 #[derive(Clone, Debug)]
 pub(super) enum AcceptedFloatPrefix {
@@ -314,7 +314,7 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
     }
 
     /// Rebase this actual influencing float ledger to the preceding canonical
-    /// pass. Inherited entries keep their genuine node and side provenance.
+    /// pass. Inherited entries keep their node and side provenance.
     pub(super) fn canonical_for_text(
         &self,
         container: Node,

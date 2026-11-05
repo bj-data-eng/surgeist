@@ -230,7 +230,7 @@ pub(crate) enum CellPayload {
     },
 }
 
-/// One genuine source cell and its already executed winning horizontal payload.
+/// One source cell and its already executed winning horizontal payload.
 #[derive(Clone, Debug)]
 pub(crate) struct PreparedCell {
     /// Local ordinal in the analyzed output's actual CombinedOutput bindings.

@@ -936,13 +936,13 @@ mod tests {
             );
             for fragment in line.fragments() {
                 let text::FinalizedFragmentOwner::Control(control) = fragment.view().owner() else {
-                    panic!("genuine control must remain Control-owned")
+                    panic!("control must remain Control-owned")
                 };
                 let binding = tree.paragraphs[0]
                     .controls
                     .iter()
                     .find(|row| row.occurrence == control)
-                    .expect("the actual retained control still binds its genuine native child");
+                    .expect("the actual retained control still binds its native child");
                 assert_eq!(
                     control,
                     expected[binding.node - 1],

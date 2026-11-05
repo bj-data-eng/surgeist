@@ -106,7 +106,7 @@ impl<S: LayoutScalar> LayoutTree for ContourTree<S> {
         let end = query.band_maximum();
         // The contour is empty above y10 and occupies physical x0..50 below.
         // This fallible host cannot evaluate bands crossing that transition.
-        // Its answer depends only on the genuine geometric query, never on a
+        // Its answer depends only on the geometric query, never on a
         // target, a source cut, a trial identity or an invocation counter.
         if start < transition && transition < end {
             Some(Err(ContourFailure::CrossesTransition))
@@ -218,7 +218,7 @@ fn numeric_balance_losing_trial_preserves_exact_provider_failure_before_replay_e
         // heuristic trial or later replay observes different fallback bands.
         // Err supplies no completed batch; no candidate geometry is published.
         let error = match compute_layout(&tree, 0, request()) {
-            Ok(_) => panic!("a genuine Balance trial provider error must refuse publication"),
+            Ok(_) => panic!("a Balance trial provider error must refuse publication"),
             Err(error) => error,
         };
         assert!(

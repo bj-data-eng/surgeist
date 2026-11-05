@@ -28,7 +28,7 @@ fn funded() -> Funded {
     };
     *boundaries = Some(SourceProcessingScopeBoundaries { start: 1, end: 2 });
     input.controls = vec![
-        // Genuine unpaired Native endpoint outside the nominated Inline. Its
+        // Unpaired Native endpoint outside the nominated Inline. Its
         // explicit Contribution claims no pair/box/parent; it is NOT a dummy row.
         ParagraphControl {
             at: 0,
@@ -198,7 +198,7 @@ fn request_buffer(request: &LineSelectionRequest) -> (usize, usize) {
 }
 fn finish(selected: &SelectedLine) -> FinalizedLine {
     assert_eq!(selected.scopes().len(), 1);
-    // The existing genuine NonInitial target requires its actual allocation;
+    // The existing NonInitial target requires its actual allocation;
     // zero displacement here is a supplied real frame, not invented geometry.
     selected
         .finalize(super::allocations(selected.scopes().next().unwrap(), 0.0))

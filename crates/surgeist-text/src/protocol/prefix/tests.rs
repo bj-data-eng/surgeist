@@ -57,11 +57,7 @@ fn selected_end(
             inline_boxes: None,
             segment: {
                 let mut segments = prepared.source_segments();
-                assert_eq!(
-                    segments.len(),
-                    1,
-                    "this fixture has one genuine source segment"
-                );
+                assert_eq!(segments.len(), 1, "this fixture has one source segment");
                 segments.next().unwrap()
             },
             boundary_context: Vec::new(),
@@ -473,11 +469,7 @@ fn finalized_prefix_optional_unit_failure_does_not_poison_other_actual_queries()
             inline_boxes: None,
             segment: {
                 let mut segments = prepared.source_segments();
-                assert_eq!(
-                    segments.len(),
-                    1,
-                    "this fixture has one genuine source segment"
-                );
+                assert_eq!(segments.len(), 1, "this fixture has one source segment");
                 segments.next().unwrap()
             },
             boundary_context: vec![],
@@ -752,7 +744,7 @@ fn finalized_prefix_replacement_is_bundled_with_its_real_defining_control() {
             PresentationUnitKind::Replacement { .. }
         ));
     }
-    // A future original unit is genuinely outside this selected candidate.
+    // A future original unit is outside this selected candidate.
     assert!(matches!(
         line.prefix_at(&seam(&prepared, 3)).unwrap_err().detail(),
         Some(ErrorDetail::InvalidTextProtocol {

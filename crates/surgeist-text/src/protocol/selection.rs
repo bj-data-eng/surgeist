@@ -990,7 +990,7 @@ fn numeric(field: &'static str, category: TextNumericError, value: f64) -> crate
     crate::error::text_numeric_error(field, TextNumericPhase::Selection, category, value)
 }
 
-/// Build the actual raw operation request at genuine issued mixed boundaries.
+/// Build the actual raw operation request at issued mixed boundaries.
 /// Native callers supply their own allocations; raw boxes retain Source geometry.
 pub(crate) fn standalone_request(
     prepared: Arc<PreparedData>,

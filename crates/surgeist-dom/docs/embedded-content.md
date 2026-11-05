@@ -62,7 +62,7 @@ consume the shared language interpreter and eager-transition guard before the
 actual null resumption returns. Raw sandbox absence, empty content and tokens
 remain distinct attributes, not a numeric live sandbox policy. This admits no
 navigation, resource handle, active policy or context-creation transition.
-Clone/import-as-clone genuinely creates a fresh element and applies copied
+Clone/import-as-clone creates a fresh element and applies copied
 attributes; adoption and immutable copying preserve existing family state.
 Current null content alone never justifies resetting processed retained history.
 Semantic captures retain this state in their source snapshot; the semantic
@@ -83,7 +83,7 @@ association, without inventing loaded resources or external geometry.
 
 Creation and every relevant mutation synchronously start HTML's update-image-data
 algorithm. Its first step waits for the actual node Document to become fully
-active. Closed native Documents and genuinely retired hosted Documents establish
+active. Closed native Documents and retired hosted Documents establish
 inactivity through the canonical activity owner, so the wait occurs before the
 later images-disabled abort/reset. Unavailable live authority does not establish
 inactivity. The current request stays unchanged; no load/error event, request

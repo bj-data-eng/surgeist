@@ -1353,7 +1353,7 @@ impl SessionStorage {
     }
 }
 /// HTML selects the ASCII-whitespace subrange; CSS owns preprocessing, grammar
-/// and used-color resolution. A genuine syntax rejection has no input fallback.
+/// and used-color resolution. A syntax rejection has no input fallback.
 fn theme_color(
     c: &mut ParseControl,
     mut input: &[u16],

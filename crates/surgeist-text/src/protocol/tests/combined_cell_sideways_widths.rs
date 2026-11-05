@@ -226,7 +226,7 @@ pub(super) fn ordinary_control(system: &mut System, orientation: LineOrientation
     let layout = place(&prepared, line);
     let runs = layout.glyph_runs();
     let [run] = runs.as_slice() else {
-        panic!("one genuine ordinary B packet");
+        panic!("one ordinary B packet");
     };
     assert_eq!(run.font().bytes(), parent);
     assert_eq!(

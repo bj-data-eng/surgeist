@@ -237,7 +237,7 @@ fn prepared_fragment_publication_preserves_actual_original_nodes_ranges_and_issu
         assert_eq!(
             first[1].3.unwrap().size().width,
             S::ZERO,
-            "the original newline retains its genuine zero-advance occurrence"
+            "the original newline retains its zero-advance occurrence"
         );
         let absent: Vec<_> = rows.iter().filter(|row| row.0 == 2).collect();
         assert_eq!(absent.len(), 1);
@@ -2503,7 +2503,7 @@ fn native_fractional_spacing_budget_is_stable_across_real_warm_float_cache() {
             .borrow()
             .iter()
             .any(|(node, hit)| *node == 9 && *hit),
-        "genuine independent float cache is warm"
+        "independent float cache is warm"
     );
     warm.apply_to(&mut tree).unwrap();
 }
@@ -2690,7 +2690,7 @@ fn inter_character_source_revision_and_late_sink_failure_preserve_completed_cach
                 ..NodeInputOf::default()
             }),
         );
-        // The producer captures a genuine BlockEnd terminal. Keep text last
+        // The producer captures a BlockEnd terminal. Keep text last
         // in actual in-flow order rather than placing another block after it.
         tree.children.insert(0, vec![9, 1]);
         tree.children.insert(9, vec![]);

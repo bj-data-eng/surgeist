@@ -285,7 +285,7 @@ fn native_direct_analysis_counts_differ_from_the_actual_raw_standalone_operation
         crate::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    // This existing operation is genuinely raw and remains unconstrained.
+    // This existing operation is raw and remains unconstrained.
     let raw = system
         .layout_analyzed(
             &analyzed,

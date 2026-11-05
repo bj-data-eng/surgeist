@@ -1,4 +1,4 @@
-//! Actual body discovery after a genuine acknowledged CSSOM publication.
+//! Actual body discovery after an acknowledged CSSOM publication.
 use super::*;
 use crate::{DomSourceEdit, DomSourceLimits, DomSourceProgress, DomSourceRequest};
 use std::cell::Cell;
@@ -315,7 +315,7 @@ fn absent_render_blocking_removal_ignores_other_roles_and_preserves_duplicate_oc
             .iter()
             .map(|id| staged.resolve((*id).into()).unwrap())
             .collect();
-        // Genuine typed relation-owner fixture. This does not assert these
+        // Typed relation-owner fixture. This does not assert these
         // detached Styles completed CSP/CSSOM or became rendering resources.
         staged
             .relations_insert(

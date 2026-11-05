@@ -132,7 +132,7 @@ fn actual_association_requires_reset_before_reading_document_element() {
 }
 
 fn real_focusing_child(outer: &C) {
-    // A genuine focusing language invocation, omitted fallback and trigger. Its
+    // A focusing language invocation, omitted fallback and trigger. Its
     // actual target resolves to a viewport already holding focus. No native
     // focusability or current-area service is asserted by these pure replies.
     let mut child = HtmlFocusingCursor::new(HtmlFocusingFallback::Omitted);

@@ -2611,7 +2611,7 @@ impl Draft {
             source::formation::WorkOwner::Source { work, custody }
         };
         // One original operation owns these resources outside semantic Restore.
-        // A resumed Source reuses its existing scope; a genuine nested entry
+        // A resumed Source reuses its existing scope; a nested entry
         // starts a child constrained by every active name-operation ancestor.
         let names = match initial.and_then(source::initial::Initial::names) {
             Some(names) => names.clone(),

@@ -1,4 +1,4 @@
-//! Prepared width ownership and replay over genuine captured AA/AAAA cells.
+//! Prepared width ownership and replay over captured AA/AAAA cells.
 //! Expected allocation sizes are live capacities and Rust sizes, not visitor
 //! totals. This unregistered child reuses its parent's real source/font factory.
 

@@ -300,9 +300,9 @@ pub enum CssomAuthoredRule {
     Rule(CssRule),
     Keyframe(CssKeyframeBlock),
     Margin(CssMarginRule),
-    /// Genuine raw declaration input retained without manufacturing a rule position.
+    /// Raw declaration input retained without manufacturing a rule position.
     RawNestedDeclarations(CssDeclarationList),
-    /// Genuine inert named-support test occurrence, never a rendering rule.
+    /// Inert named-support test occurrence, never a rendering rule.
     SupportsTestChild(CssSupportsTestChild),
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -533,7 +533,7 @@ pub enum CssomPropertyOccurrences {
     Ordinary(CssDeclarationList),
     Keyframe(CssKeyframeDeclarationList),
     Margin(CssMarginDeclarationBlock),
-    /// Genuine raw contents admitted for a live domain without fabricating authored AST.
+    /// Raw contents admitted for a live domain without fabricating authored AST.
     RawContents(CssDeclarationList),
 }
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -562,7 +562,7 @@ pub enum CssomBlockData {
     CounterStyle(Box<CssCounterStyleDescriptors>),
     FontFace(CssFontFaceDescriptors),
 }
-/// Genuine raw contents of the last replacement request, independent of edited selected values.
+/// Raw contents of the last replacement request, independent of edited selected values.
 #[derive(Clone, Debug)]
 pub struct CssomDeclarationInput {
     source: DeclarationInputSource,

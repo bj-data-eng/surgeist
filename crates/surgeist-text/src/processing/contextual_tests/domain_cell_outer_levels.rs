@@ -88,7 +88,7 @@ fn an_empty_used_whitespace_cell_keeps_its_upright_l_outer_level_without_fake_at
     assert!(cell.presentation_code_points().next().is_none());
     assert!(cell.inner_bidi_levels().next().is_none());
     // A real nonempty selected upright-L cell in base RTL resolves to level2,
-    // independently of its genuinely empty inner/presentation atom ranges.
+    // independently of its empty inner/presentation atom ranges.
     assert_eq!(cell.outer_bidi_level().get(), 2);
     let pieces = cell.source_pieces().collect::<Vec<_>>();
     assert_eq!(pieces.len(), 2);

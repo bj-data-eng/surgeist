@@ -48,7 +48,7 @@ fn fixture(classified: bool) -> Fixture {
         used_direction: ParagraphBaseDirection::LeftToRight,
         font_reference: Some(reference),
     }];
-    // Genuine unrelated empty boxes remain in the captured inventory. They are
+    // Unrelated empty boxes remain in the captured inventory. They are
     // not injected owner entries or substitute selected scope rows.
     scopes.extend((0..2).map(|_| SourceProcessingScope::Inline {
         horizontal_inner_direction: None,

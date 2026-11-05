@@ -1,5 +1,5 @@
 //! Non-atomic components remain collapse-transparent; only actual BP blocks hanging.
-//! Preserved separators and punctuation use their separate genuine Phase-II causes.
+//! Preserved separators and punctuation use their separate Phase-II causes.
 use super::*;
 
 fn whole_inline(value: &str, own: t::Style) -> t::PreparedText {
@@ -76,7 +76,7 @@ fn signed_and_cancelling_edges_remain_transparent_to_actual_collapsible_space() 
             assert_eq!(paints(&replay), paints(&line));
         }
     }
-    // Genuine <Inline>A SPACE</Inline>B: this SPACE is internal, not terminal.
+    // <Inline>A SPACE</Inline>B: this SPACE is internal, not terminal.
     let p = prepare_capture(
         t::Source::new("A B"),
         block(style(t::WhiteSpace::Collapse), false, false),

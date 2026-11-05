@@ -1,4 +1,4 @@
-//! Explicit whole settlement uses genuine execution and affine lower authority.
+//! Explicit whole settlement uses execution and affine lower authority.
 use super::*;
 use surgeist_cssom::CssomEditGuard;
 use surgeist_html::elements::style::HtmlStyleExecutionProfile;

@@ -56,7 +56,7 @@ pub(crate) struct CombinedSourcePlan {
     pub(crate) units: Vec<SelectionUnit>,
     pub(crate) groups: Vec<FixedGroup>,
     pub(crate) used: Vec<UsedPayload>,
-    /// Genuine source fences, expressed in the immutable part inventory.
+    /// Source fences, expressed in the immutable part inventory.
     pub(crate) fences: Vec<usize>,
     pub(crate) semantic_fences: Vec<usize>,
     pub(crate) visible: Vec<bool>,
@@ -265,7 +265,7 @@ pub enum TextCombineError {
     },
     /// A demanded width-feature path cannot establish complete action evidence.
     UnqualifiedWidthObservation {
-        /// Genuine composition-container scope; this ordinal grants no authority.
+        /// Composition-container scope; this ordinal grants no authority.
         scope: usize,
         /// Original aggregate diagnostic envelope, not a source-identity proof.
         source: Range,

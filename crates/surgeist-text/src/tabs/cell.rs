@@ -1,4 +1,4 @@
-//! Fixed genuine container references and original-atom inner TAB operations.
+//! Fixed container references and original-atom inner TAB operations.
 use crate::Result;
 use crate::engine::scope_alignment::accounting::{self as account, Ledger};
 use crate::processing::contextual::alignment::operations;
@@ -63,7 +63,7 @@ impl CellTabPlan {
     }
 }
 
-/// Genuine original provider-projection custody, independent of style identity.
+/// Original provider-projection custody, independent of style identity.
 pub(crate) fn owns_atom(
     analyzed: &crate::engine::AnalyzedData,
     atom: usize,

@@ -141,7 +141,7 @@ fn output_observation_exact_40_unit_cap_or_sticky_20_unit_owned_prefix() {
             limits()
                 .into_builder()
                 .buffered_utf16_units(cap)
-                // Forty genuine insertion batches retain their merge and
+                // Forty insertion batches retain their merge and
                 // retirement histories; this test still isolates the exact
                 // forty-unit observation buffer, not a work-credit cap.
                 .work_credits(20_000_000)

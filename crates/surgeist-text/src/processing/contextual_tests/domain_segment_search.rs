@@ -190,7 +190,7 @@ fn empty_structural_sections_reject_cross_owned_ceilings_even_at_identical_numer
         let segment = &segments[index];
         let start = segment.start();
         let ceiling = segment.end_opportunity();
-        // Conditional search requires genuine progress. Empty sections do not
+        // Conditional search requires progress. Empty sections do not
         // manufacture a successful query merely to expose its identity.
         let error = segment
             .conditional_search(
@@ -233,7 +233,7 @@ fn empty_structural_sections_reject_cross_owned_ceilings_even_at_identical_numer
 }
 
 #[test]
-fn successful_conditional_searches_retain_their_genuine_structural_segment_identity() {
+fn successful_conditional_searches_retain_their_structural_segment_identity() {
     let (processed, prepared) = parent_output(true);
     let segments = prepared.source_segments().collect::<Vec<_>>();
     let mut searches = Vec::new();

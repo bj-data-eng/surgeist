@@ -114,7 +114,7 @@ fn atomic_capture(
         .with_baseline_reference(ALPHA);
     let prepared = system
         .prepare(&analysis, options)
-        .expect("the complete genuine used-Alphabetic producer must succeed before Layout");
+        .expect("the complete used-Alphabetic producer must succeed before Layout");
     assert_eq!(prepared.baseline_reference(), Some(ALPHA));
     assert_eq!(
         prepared
@@ -388,7 +388,7 @@ fn knowledge<S: l::LayoutScalar>() {
         );
         assert_eq!(receipt(&batch, 1).feedback().line_height, height);
         custody(&batch, 0, &parent);
-        // A genuine Physical child remains Unknown despite its normalized Text.
+        // A Physical child remains Unknown despite its normalized Text.
         let (host, bindings) = scene::<S>(
             mode,
             &parent,

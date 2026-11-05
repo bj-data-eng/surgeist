@@ -6,8 +6,8 @@ use super::*;
 #[test]
 fn empty_inline_box_prevents_combination_while_uninterrupted_text_suppresses_its_force() {
     // Reuse the actual captured factories, not a glyph/geometry surrogate:
-    // Control is A, genuine ForcedBreak, B in one scope;
-    // ComputedScopeSide is A, genuine empty Inline, B with that box's Before
+    // Control is A, ForcedBreak, B in one scope;
+    // ComputedScopeSide is A, empty Inline, B with that box's Before
     // computed force. Both retain the original two occurrences and cut1.
     for force in [Force::Control, Force::ComputedScopeSide] {
         for mode in [TextCombineUpright::None, TextCombineUpright::All] {
@@ -38,10 +38,10 @@ fn empty_inline_box_prevents_combination_while_uninterrupted_text_suppresses_its
             let force_position = retained_force(output, &processed, force);
             let end = output.inner.logical.events.len();
             let combines = mode == TextCombineUpright::All && matches!(force, Force::Control);
-            // WM4 9.1.1: no Cell crosses a genuine box boundary. With inherited
+            // WM4 9.1.1: no Cell crosses a box boundary. With inherited
             // All on both sides, lookaround rejects both partial candidates;
             // skipping empty events during lookaround is not crossing permission.
-            // WM4 9.1.2 separately ignores a force inside genuinely plain text.
+            // WM4 9.1.2 separately ignores a force inside plain text.
             assert_eq!(output.combined_cells().len(), usize::from(combines));
             if combines {
                 let cell = output.combined_cells().next().unwrap();
@@ -70,7 +70,7 @@ fn empty_inline_box_prevents_combination_while_uninterrupted_text_suppresses_its
                 );
             } else {
                 // Both None controls and the rejected All sequence retain their
-                // ordinary force effect. The genuine cause was checked above.
+                // ordinary force effect. The cause was checked above.
                 assert!(
                     output
                         .inner
@@ -107,7 +107,7 @@ fn out_of_flow_capture(
         ..
     } = &mut input.scopes[0]
     else {
-        unreachable!("genuine root Block");
+        unreachable!("root Block");
     };
     if let Some((reference, tracking)) = native_reference {
         *font_reference = Some(reference);
@@ -165,7 +165,7 @@ fn out_of_flow_capture(
 
 #[test]
 fn out_of_flow_occurrence_fences_combination_without_becoming_text_or_inline_only_lookaround() {
-    // Unlike an inline-only boundary, a genuine OOF separator makes each side
+    // Unlike an inline-only boundary, an OOF separator makes each side
     // independently eligible. All therefore creates [A Cell], OOF, [B Cell],
     // never one A[OOF]B Cell and never an invented provider/object scalar.
     for affinity in [Affinity::Before, Affinity::After] {
@@ -266,7 +266,7 @@ fn preserved_oof(
         .filter(|(_, anchor)| matches!(anchor.item, SemanticAnchorItem::Atomic(_)))
         .collect::<Vec<_>>();
     let [(order, anchor)] = anchors.as_slice() else {
-        panic!("one genuine atomic occurrence");
+        panic!("one atomic occurrence");
     };
     assert_eq!(anchor.affinity, affinity);
     let SemanticAnchorItem::Atomic(atomic) = anchor.item else {
@@ -288,7 +288,7 @@ fn preserved_oof(
 #[test]
 fn an_egc_straddling_out_of_flow_box_is_not_split_into_partially_combined_units() {
     // A + Extend is one canonical EGC (GB9). OOF remains transparent to the
-    // generic transformed scalar/EGC context, but its genuine box interrupts
+    // generic transformed scalar/EGC context, but its box interrupts
     // combination ownership. Reject the entire crossing unit; do not introduce
     // an artificial grapheme cut or select A/mark as two separate Cells.
     for affinity in [Affinity::Before, Affinity::After] {
@@ -315,7 +315,7 @@ fn an_egc_straddling_out_of_flow_box_is_not_split_into_partially_combined_units(
             assert_eq!(
                 output.inner.projection.graphemes.len(),
                 2,
-                "one genuine EGC plus its two edge cuts"
+                "one EGC plus its two edge cuts"
             );
             let relation = preserved_oof(output, &processed, affinity);
             assert_eq!(output.combined_cells().len(), 0);

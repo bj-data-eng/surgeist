@@ -1,4 +1,4 @@
-//! Genuine inline edges retain capture order around a scalar-interior wbr.
+//! Inline edges retain capture order around a scalar-interior wbr.
 use crate::*;
 fn capture(operation: WordSpaceTransform) -> ParagraphInput {
     let source = Source::new("A\u{3099}");
@@ -209,7 +209,7 @@ fn no_emission_retains_phase_i_replacement_projection_but_positive_interior_seam
                 })
             );
             // Keep the actual Wbr at2 and the same source/Phase-I replacement,
-            // but put physical Start at its genuine boundary1. This retains
+            // but put physical Start at its boundary1. This retains
             // independent coverage of Wbr no-emission and positive refusal.
             p.controls[0].at = 1;
             let a =

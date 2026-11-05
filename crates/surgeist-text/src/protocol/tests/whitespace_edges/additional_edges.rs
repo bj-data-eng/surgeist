@@ -1042,7 +1042,7 @@ fn discard_surviving_separator_stays_ordinary_at_soft_forced_and_block_ends_in_b
                 (PreparedBreakKind::ParagraphEnd, "A\u{3000}", None),
             ] {
                 if kind == PreparedBreakKind::Allowed && wrap == crate::Wrap::None {
-                    continue; // No soft endpoint is issued for genuine nowrap.
+                    continue; // No soft endpoint is issued for nowrap.
                 }
                 let source = Source::new(text);
                 let p = discard_edge_capture(

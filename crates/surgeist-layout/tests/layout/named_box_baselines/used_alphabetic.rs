@@ -326,7 +326,7 @@ fn capture(
         .with_baseline_reference(ALPHA);
     let prepared = system
         .prepare(&analysis, options)
-        .expect("the complete genuine used-Alphabetic producer must succeed before Layout");
+        .expect("the complete used-Alphabetic producer must succeed before Layout");
     assert_eq!(prepared.baseline_reference(), Some(ALPHA));
     assert_eq!(
         prepared
@@ -458,7 +458,7 @@ fn solve<S: l::LayoutScalar>(
                 .initial_containing_block(),
         )
     })
-    .expect("genuine used Alphabetic preparation must supply Layout Named(Alphabetic)")
+    .expect("used Alphabetic preparation must supply Layout Named(Alphabetic)")
 }
 fn child_input<S: l::LayoutScalar>(
     cw: bool,

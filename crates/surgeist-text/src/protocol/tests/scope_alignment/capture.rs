@@ -22,7 +22,7 @@ pub(super) fn style(size: f32, height: f64) -> Style {
     }
 }
 
-/// Genuine nested scopes and one original contribution. The scope inventory
+/// Nested scopes and one original contribution. The scope inventory
 /// ordinals are producer input, not substitute CapturedScope identities.
 pub(super) fn captured_input(inlines: usize) -> ContextualSourceInput {
     let source = Source::identified("A", Id::from_u64(1578001), 23);
@@ -95,7 +95,7 @@ fn inline_facts(
         ..
     } = &mut value.scopes[index]
     else {
-        panic!("fixture index is a genuine inline scope")
+        panic!("fixture index is an inline scope")
     };
     *alignment_boundary = boundary;
     *font_reference = reference;
@@ -117,10 +117,7 @@ fn rejected_limit(value: ContextualSourceInput, expected: ScopeAlignmentLimitKin
         } => {
             assert_eq!(kind, expected);
             assert_eq!(limit, 0);
-            assert!(
-                required > 0,
-                "zero must refuse a genuine positive requirement"
-            );
+            assert!(required > 0, "zero must refuse a positive requirement");
         }
         other => panic!("expected resource-specific limit, got {other:?}"),
     }
@@ -171,7 +168,7 @@ fn each_supplied_early_fact_requires_limits_even_if_it_requests_no_displacement(
 fn sparse_fact_rows_do_not_charge_every_ordinary_scope_or_count_two_fields_as_two_rows() {
     let mut value = captured_input(31);
     // Exactly one scope supplies both facts;31 ordinary inline scopes plus the
-    // domain are genuine topology, not31 additional feature records.
+    // domain are topology, not31 additional feature records.
     inline_facts(
         &mut value,
         17,

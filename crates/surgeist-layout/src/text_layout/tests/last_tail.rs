@@ -517,7 +517,7 @@ fn a_flow_box_does_not_invent_a_forced_barrier_for_missing_parent_continuation()
 }
 
 #[test]
-fn genuine_forced_segment_and_ordinary_cross_run_results_need_no_missing_tail_proof() {
+fn source_forced_segment_and_ordinary_cross_run_results_need_no_missing_tail_proof() {
     fn check<S: LayoutScalar>() {
         for forced in [false, true] {
             let mut style = ahem_style(10.0, 10.0);
@@ -885,7 +885,7 @@ fn intrinsic_first_refinement_is_not_filtered_by_a_later_fitting_none() {
             .unwrap();
         let measure = first.measurements().min_content_contribution();
         // Actual source/indication letters are0. NBSP retains raw10 and its
-        // independent authored word term is-20, giving a genuine-10 cell.
+        // independent authored word term is-20, giving a -10 cell.
         // It is neither residual DI nor collapsible trailing SPACE. The first
         // refinement occupies[-10,0], while the complete source word stays0.
         let glyphs: Vec<_> = first

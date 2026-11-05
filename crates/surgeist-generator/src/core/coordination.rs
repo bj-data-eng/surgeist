@@ -8409,7 +8409,7 @@ mod tests {
         expect_interruption(|| run_install(&live, observer, std::process::id(), None));
         let live_before = live.snapshot();
         let error = recover_fixture(&live, None, CLAIM_TOKEN_B, SYNTHETIC_ABANDONED_PID)
-            .expect_err("genuinely live bootstrap owner must block recovery");
+            .expect_err("live bootstrap owner must block recovery");
         assert_eq!(error.kind(), GeneratorErrorKind::LeaseActive);
         assert_eq!(live.snapshot(), live_before);
         live.assert_lock(None);
@@ -8689,7 +8689,7 @@ mod tests {
         }
 
         fn assert_fresh_recovery_and_reprobe(&self) {
-            self.recover(None).expect("recover genuine probe prefix");
+            self.recover(None).expect("recover probe prefix");
             self.assert_clean();
             let recovered = snapshot(&self.owner.corpus);
             self.recover(None).expect("repeat probe recovery");

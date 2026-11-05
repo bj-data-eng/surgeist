@@ -1,4 +1,4 @@
-//! Genuine source-less wbr occurrences through native Layout and retained paint.
+//! Source-less wbr occurrences through native Layout and retained paint.
 
 use super::*;
 

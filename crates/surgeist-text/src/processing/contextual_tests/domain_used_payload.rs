@@ -26,7 +26,7 @@ fn root_input(
         ..
     } = &mut input.scopes[0]
     else {
-        unreachable!("genuine root Block")
+        unreachable!("root Block")
     };
     *topology = SourceProcessingTopology::Complete;
     *writing_axis = Some(SourceWritingAxis::Vertical);
@@ -641,7 +641,7 @@ fn inner_rtl_levels_describe_the_actual_inverse_width_used_payload() {
         ..
     } = &mut input.scopes[0]
     else {
-        unreachable!("genuine complete vertical All root")
+        unreachable!("complete vertical All root")
     };
     *horizontal_inner_direction = Some(ParagraphBaseDirection::RightToLeft);
     let (processed, domain) = analyzed(input, "\u{3099}\u{5d0}");
@@ -652,7 +652,7 @@ fn inner_rtl_levels_describe_the_actual_inverse_width_used_payload() {
     assert_eq!(cell.parent_scope(), None);
     assert_eq!(cell.mode(), TextCombineUpright::All);
     assert_eq!(cell.inner_direction(), ParagraphBaseDirection::RightToLeft);
-    // A leading standalone mark and Alef are two genuine EGCs. The native
+    // A leading standalone mark and Alef are two EGCs. The native
     // multiunit inverse-width rule maps original U+3099 to U+FF9E, not Alef.
     assert_eq!(cell.selection_unit_count(), 2);
     assert_eq!(cell.used_unit_count(), 2);

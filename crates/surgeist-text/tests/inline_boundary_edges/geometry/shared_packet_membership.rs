@@ -99,9 +99,7 @@ fn owned(line: &t::FinalizedLine, owner: &t::InlineBoxSource) -> t::FinalizedInl
         .inline_box_pieces()
         .unwrap()
         .filter(|piece| &piece.owner() == owner);
-    let piece = found
-        .next()
-        .expect("one LTR fragment for this genuine sibling");
+    let piece = found.next().expect("one LTR fragment for this sibling");
     assert!(found.next().is_none());
     piece
 }

@@ -538,7 +538,7 @@ fn shy_case(owner: t::WordBreak, following: t::WordBreak, ordinary: bool, manual
         let offers = interior(&p);
         assert!(
             offers.iter().all(|offer| offer.view().boundary() == cut),
-            "only the genuine source-after-SHY relation may be admitted"
+            "only the source-after-SHY relation may be admitted"
         );
         let actual_ordinary = offers
             .iter()
@@ -753,7 +753,7 @@ fn source_free_normal_discretionary_control_keeps_actual_manual_offer() {
 }
 
 #[test]
-fn genuine_wbr_under_normal_and_keep_all_keeps_none_and_dictionary_auto_at_same_actual_endpoint() {
+fn wbr_under_normal_and_keep_all_keeps_none_and_dictionary_auto_at_same_actual_endpoint() {
     for word_break in [t::WordBreak::Normal, t::WordBreak::KeepAll] {
         let base = style(word_break);
         let (p, source) = control_input(
@@ -904,7 +904,7 @@ fn suppressed_source_shy_retains_whole_word_portion_and_measurement_tail() {
 }
 
 #[test]
-fn genuine_wbr_keeps_ordinary_permission_when_break_all_suppresses_its_auto_sibling() {
+fn wbr_keeps_ordinary_permission_when_break_all_suppresses_its_auto_sibling() {
     let mut observed = Vec::new();
     for direction in directions() {
         let base = style(t::WordBreak::BreakAll);
@@ -933,7 +933,7 @@ fn genuine_wbr_keeps_ordinary_permission_when_break_all_suppresses_its_auto_sibl
     assert_eq!(
         observed,
         [0, 0],
-        "genuine Wbr None sibling remains, Auto is suppressed"
+        "Wbr None sibling remains, Auto is suppressed"
     );
 }
 
@@ -1299,6 +1299,6 @@ fn inactive_source_shy_atomic_permissions_obey_each_actual_ancestor_and_do_not_b
     }
     assert!(
         observed.iter().all(|row| row.2 == row.3),
-        "each genuine atomic NCA owns only its own permission: {observed:?}"
+        "each atomic NCA owns only its own permission: {observed:?}"
     );
 }

@@ -2,7 +2,7 @@
 //! 877d6146487f15b15bc8dd0e3c625063a37b456a, retained raw61117–61130.
 //!
 //! The adapter owns the invoking Document, its current active association and
-//! exact Range identity, document element, mutation authority and genuine called
+//! exact Range identity, document element, mutation authority and called
 //! focusing continuation. No identity, mutation or focus fact is supplied here.
 //! The explicit NoActiveRange branch adopts the selected #1243 correction for
 //! the pinned setter's undefined reset of a null active range.
@@ -36,7 +36,7 @@ impl HtmlDesignModeInput {
     }
 }
 
-/// Source reads, writes and genuine called-algorithm obligations. All reads use
+/// Source reads, writes and called-algorithm obligations. All reads use
 /// current actual state at the reached stage, rather than an initial snapshot.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlDesignModeAction {
@@ -58,7 +58,7 @@ pub enum HtmlDesignModeAction {
     /// range reset or the explicit no-active-range disposition.
     ReadDocumentElement,
     /// Run HtmlFocusingCursor::new(HtmlFocusingFallback::Omitted) for that exact
-    /// element, with the trigger omitted. Retain the genuine child and its
+    /// element, with the trigger omitted. Retain the child and its
     /// actual operands until Complete; no Dialog predicate or unavailable fact
     /// can stand in for this call. Reentry must not restore an earlier flag.
     RunFocusingSteps,
@@ -80,7 +80,7 @@ pub enum HtmlDesignModeReply {
     ActiveRange,
     /// Answer to `ReadDocumentElement`: whether the Document currently has a document element.
     DocumentElementPresent(bool),
-    /// The genuine focusing child reached its own Complete action.
+    /// The focusing child reached its own Complete action.
     FocusingStepsCompleted,
     /// The exact pending flag write or both-boundary reset actually completed.
     Applied,

@@ -220,7 +220,7 @@ fn separate_calls_retain_separate_permissions_without_holding_the_window_loop() 
 fn dropping_real_prepared_handoff_preserves_the_exposed_request_and_retries_once() {
     let cancel = AtomicBool::new(false);
     let (mut session, mut hosted, top, _) = fixture();
-    // A genuine disconnected model target reaches step 7 without removing an
+    // A disconnected model target reaches step 7 without removing an
     // active tree node or manufacturing a post-prefix continuation.
     let mut batch = DomBatch::new();
     let target = batch.create_element_ns(top.document(), Namespace::html(), "div");

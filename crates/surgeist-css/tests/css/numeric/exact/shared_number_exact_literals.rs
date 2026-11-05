@@ -4,7 +4,7 @@
 //! CSS Values 4 permits implementation-defined supported precision/range;
 //! this contract does not claim a universal CSS ban on finite numeric domains.
 //! Cubic-bezier ordinary x coordinates have the inclusive [0,1] grammar,
-//! while range checking inside genuine math functions remains downstream.
+//! while range checking inside math functions remains downstream.
 //!
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types
 //! https://www.w3.org/TR/2023/CRD-css-easing-1-20230213/#cubic-bezier-easing-functions
@@ -158,7 +158,7 @@ fn scale3d_admits_signed_exact_percentages_in_each_operand() {
 }
 
 #[test]
-fn cubic_bezier_admits_genuine_signed_zero_with_enormous_exponents() {
+fn cubic_bezier_admits_signed_zero_with_enormous_exponents() {
     // A zero coefficient denotes zero even when its exponent cannot fit i128.
     for zero in [
         "-0e9999999999999999999999999999999999999999",
@@ -229,7 +229,7 @@ fn number_contexts_retain_exact_arity_separator_and_dimension_rejection() {
 }
 
 #[test]
-fn cubic_bezier_defers_range_checks_inside_genuine_number_math() {
+fn cubic_bezier_defers_range_checks_inside_number_math() {
     for value in [
         "cubic-bezier(calc(0 - 1), 0, 1, 1)",
         "cubic-bezier(0, 0, calc(1 + 1), 1)",
@@ -244,7 +244,7 @@ fn cubic_bezier_defers_range_checks_inside_genuine_number_math() {
 
 #[test]
 fn independent_scale_admits_historical_math_and_percentage_boundaries() {
-    // Transforms 2 §5 selects number/percentage factors with genuine checked math.
+    // Transforms 2 §5 selects number/percentage factors with checked math.
     // Keep the exact former unsupported-characterization stimuli as admission evidence.
     for value in ["calc(1)", "1 calc(2)", "50%", "1 50%"] {
         assert_clean_typed_property(&format!("scale: {value}"), CssKnownProperty::Scale);

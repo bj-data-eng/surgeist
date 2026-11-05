@@ -798,7 +798,7 @@ fn block_resource_failure_keeps_the_actual_generated_member_and_source_occurrenc
 
     // Keyframes prefix5 + aggregate1 + source admission2 + generated2
     // + member admission2 + first winner1 =P13. The same losing/winning
-    // source schedule has a genuine keyframe block index and Normal source.
+    // source schedule has a keyframe block index and Normal source.
     let value = rule("@keyframes k{from{opacity:0;opacity:1}}");
     let before = value.clone();
     let CssRule::Keyframes(frames) = &value else {
@@ -1182,7 +1182,7 @@ fn literal_universal_omission_protects_actual_nesting_and_scoped_anchor_payloads
         "*&.card"
     );
     // Whole Scope literal format is unselected, so no public literal path
-    // reaches its scoped Style payload. This is genuine parsed retention,
+    // reaches its scoped Style payload. This is parsed retention,
     // rather than an artificial conversion into an ordinary rule.
     let error = value.serialize_cssom(Default::default()).unwrap_err();
     assert_eq!(error.unavailable_format(), Some(CssRuleCssomFormat::Scope));

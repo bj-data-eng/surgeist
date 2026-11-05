@@ -118,7 +118,7 @@ fn processed() -> Arc<t::ProcessedSource> {
                 })
                 .collect(),
             // This is the published owning continuation profile, reduced to ASCII.
-            // S remains genuinely open across childBlock, rather than being cloned.
+            // S remains open across childBlock, rather than being cloned.
             events: vec![
                 E::EnterScope(0),
                 E::EnterParagraph(0),

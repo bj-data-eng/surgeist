@@ -143,7 +143,7 @@ fn published_lines(batch: &crate::CompletedLayoutBatchOf<u32, f64>) -> Vec<Final
 
 #[test]
 fn alternate_tab_cut_keeps_actual_css_grid_and_percentage_containing_width() {
-    // At first-line x15, A ends25, the genuine10px tab ends30, and B ends40.
+    // At first-line x15, A ends25, the 10px tab ends30, and B ends40.
     // Auto also fits SPACE+C through60: natural45, then D10 (residual0/50).
     // Balance cuts after B: natural25, then C SPACE D30 (residual20/30).
     // Population variance625 ->25, still2 lines. Every request retains60,
@@ -362,7 +362,7 @@ fn fitting_ordinary_trials(
         }
         if let Some(incoming) = &request.incoming {
             // Text authenticates exact receiving custody when it finalizes
-            // this request; retain the genuine originating ordinary offer.
+            // this request; retain the originating ordinary offer.
             let alternative = incoming.alternative();
             assert_eq!(
                 incoming.boundary(),
@@ -430,7 +430,7 @@ fn balancing_real_phrase_suffix_never_restores_normal_or_emergency_while_ordinar
     let repaired = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::AvoidShortLastLine);
     let balanced = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Balance);
     let pretty = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Pretty);
-    // Tail improves the genuine final pair to40/50. Body cannot reduce the
+    // Tail improves the final pair to40/50. Body cannot reduce the
     // protected final50, and every observed trial retains ordinary authority.
     assert_eq!(ordinary_facts(&pretty), [(5, 40.0), (10, 50.0)]);
     assert_eq!(ordinary_facts(&auto), [(7, 60.0), (10, 30.0)]);
@@ -605,7 +605,7 @@ fn balancing_fitting_words_keeps_ordinary_hyphen_trials_out_of_conditional_stage
     let auto = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Auto);
     let balanced = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Balance);
     let pretty = fitting_ordinary_trials(&paragraph, crate::TextWrapStyle::Pretty);
-    // The genuine whole-word cut improves60/45 to50/55; Body cannot undo the
+    // The whole-word cut improves60/45 to50/55; Body cannot undo the
     // protected final55 to explore conditional Normal/Anywhere opportunities.
     assert_eq!(ordinary_facts(&pretty), [(11, 50.0), (22, 55.0)]);
     assert_eq!(ordinary_facts(&auto), [(13, 60.0), (22, 45.0)]);

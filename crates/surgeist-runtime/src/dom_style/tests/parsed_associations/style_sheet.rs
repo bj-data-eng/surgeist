@@ -575,7 +575,7 @@ fn actual_source_tail_refuses_original_creation_without_replacing_either_operati
         ..
     } = progress
     else {
-        panic!("genuine BeforeToggle event")
+        panic!("BeforeToggle event")
     };
     let revision = session
         .style_execution()

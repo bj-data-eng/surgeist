@@ -905,7 +905,7 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
             flow, box_geometry, ..
         } = top_slot.allocation
         else {
-            panic!("the top-aligned fixture supplies a genuine in-flow atomic")
+            panic!("the top-aligned fixture supplies an in-flow atomic")
         };
         assert_eq!(
             (flow.before_baseline, box_geometry.border.origin.y),
@@ -3533,7 +3533,7 @@ fn numeric_rtl_visual_placement_and_internal_supplied_edge_semantics_all_flows_b
         assert_eq!(
             SuppliedLine::new(&supplied).edges().is_discarded(1),
             Some(false),
-            "a genuine interior source slot is not a line edge"
+            "an interior source slot is not a line edge"
         );
         let mut order = [usize::MAX; 3];
         assert_eq!(
@@ -4736,7 +4736,7 @@ fn supplied_line_bidi_and_actual_atomic_geometry_preserve_nested_levels_and_slot
             .collect::<Vec<_>>(),
         [1]
     );
-    // The actual box fitter retains the same genuine L2 producer/geometry join;
+    // The actual box fitter retains the same L2 producer/geometry join;
     // this is not an obsolete text-shaped input to a canonical tree.
     fn assert_lane<S: LayoutScalar>() {
         let report = super::fixtures::numeric_atomic_fit_with_flow(

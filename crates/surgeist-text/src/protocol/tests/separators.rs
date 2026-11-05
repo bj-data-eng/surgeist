@@ -75,7 +75,7 @@ fn glyphs(line: &FinalizedLine) -> Vec<(u32, f32)> {
 }
 
 #[test]
-fn genuine_separator_targets_use_real_metrics_ranges_and_original_extraction() {
+fn separator_targets_use_real_metrics_ranges_and_original_extraction() {
     for (operation, id, width, total) in [
         (WordSpaceTransform::Space, 3, 5.0, 25.0),
         (WordSpaceTransform::IdeographicSpace, 1, 20.0, 40.0),

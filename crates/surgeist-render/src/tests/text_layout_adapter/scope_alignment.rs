@@ -435,7 +435,7 @@ fn actual_nested_scope_glyphs_keep_their_instance_and_once_applied_ink_frame_in_
 #[test]
 fn scoped_scene_numeric_and_budget_failures_publish_no_prefix_and_keep_prior_preparation() {
     // Decoration bounds are qualified during preflight, before glyph ink.
-    // Author this genuine input without effects to reach glyph placement.
+    // Author this input without effects to reach glyph placement.
     let input = native(text::LineOrientation::SidewaysCounterclockwise, false);
     assert_eq!(input.decoration_views().count(), 0);
     let accepted = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();

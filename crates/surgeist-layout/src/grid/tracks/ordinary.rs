@@ -1366,7 +1366,7 @@ mod spanning_phases_tests {
         );
     }
     #[test]
-    fn genuine_zero_single_item_is_not_an_absent_growth_limit() {
+    fn source_zero_single_item_is_not_an_absent_growth_limit() {
         let tracks = [
             TrackSizingOf::minmax(MinTrackSizingOf::AUTO, MaxTrackSizingOf::px(10.0)),
             TrackSizingOf::minmax(MinTrackSizingOf::px(0.0), MaxTrackSizingOf::MAX_CONTENT),
@@ -1555,7 +1555,7 @@ mod spanning_phases_tests {
         };
         let phases = resolve_grid_contribution_rows(context, &rows).unwrap();
         // The percentage is Auto intrinsically. Fixed10 is occupied once;
-        // the genuine limited min-content40 leaves30 for that Auto minimum.
+        // the limited min-content40 leaves30 for that Auto minimum.
         assert_eq!(phases.base_sizes, vec![scalar(30.0), scalar(10.0)]);
         let invalid = resolve_grid_contribution_rows(
             SpanningTrackContext {

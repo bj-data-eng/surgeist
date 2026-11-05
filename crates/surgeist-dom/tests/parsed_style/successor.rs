@@ -184,7 +184,7 @@ fn queued_predecessor_reports_new_request_and_bare_cleanup_refuses() {
         .dom
         .parsed_style_notification_requirement(&token, &flag())
         .unwrap()
-        .expect("genuine new invocation remains");
+        .expect("new invocation remains");
     assert!(
         matches!(requirement, DomParsedHtmlStyleNotificationRequirement::Invocation { occurrence, phase: DomParsedHtmlStylePhase::InlinePolicyPending, .. } if &occurrence==completion.qualification().occurrence())
     );

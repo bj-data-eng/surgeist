@@ -1,4 +1,4 @@
-//! Named retained-subset qualification of genuine mixed ordinary/Cell tracking.
+//! Named retained-subset qualification of mixed ordinary/Cell tracking.
 //! Private Graph script/region buffers are outside these storage assertions;
 //! their complete inventory remains an owning-source review obligation.
 #[path = "combined_cell_allocated_tracking.rs"]
@@ -75,7 +75,7 @@ pub(super) fn prepare_mixed(
     assert!(inner.start < inner.end && inner.end <= count);
     assert!(text[inner.start..inner.end].starts_with('A'));
     assert!(text[inner.start..inner.end].ends_with('A'));
-    // The same glyph ID36 has different genuine horizontal advances in these
+    // The same glyph ID36 has different horizontal advances in these
     // distinct retained families: outside B1000 versus hwid's real B500.
     assert_eq!(
         sfnt::u16_at(sfnt::table(&parent_bytes, *b"hmtx"), 36 * 4),

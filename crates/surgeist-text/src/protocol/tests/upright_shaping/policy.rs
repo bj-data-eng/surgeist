@@ -609,7 +609,7 @@ fn explicit_zero_atom_heights_do_not_demand_gap_but_actual_glyph_tables_remain_s
         }
     }
     // An unrelated malformed MVAR is not demanded for qualified vhea1.0 or
-    // genuinely absent vhea. BASE still supplies the same1000-wide em box.
+    // absent vhea. BASE still supplies the same1000-wide em box.
     for absent in [false, true] {
         let mut bytes = metric_font(0, false);
         if absent {

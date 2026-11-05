@@ -949,11 +949,7 @@ fn select_whole(prepared: &PreparedText) -> SelectedLine {
             inline_boxes: None,
             segment: {
                 let mut segments = prepared.source_segments();
-                assert_eq!(
-                    segments.len(),
-                    1,
-                    "this fixture has one genuine source segment"
-                );
+                assert_eq!(segments.len(), 1, "this fixture has one source segment");
                 segments.next().unwrap()
             },
             boundary_context: Vec::new(),
@@ -1201,11 +1197,7 @@ fn selected_source_replacement_is_actual_retained_text_with_zero_authored_extent
             inline_boxes: None,
             segment: {
                 let mut segments = prepared.source_segments();
-                assert_eq!(
-                    segments.len(),
-                    1,
-                    "this fixture has one genuine source segment"
-                );
+                assert_eq!(segments.len(), 1, "this fixture has one source segment");
                 segments.next().unwrap()
             },
             boundary_context: Vec::new(),
@@ -1322,11 +1314,7 @@ fn source_less_discretionary_control_and_empty_replacement_keep_real_owners() {
             inline_boxes: None,
             segment: {
                 let mut segments = prepared.source_segments();
-                assert_eq!(
-                    segments.len(),
-                    1,
-                    "this fixture has one genuine source segment"
-                );
+                assert_eq!(segments.len(), 1, "this fixture has one source segment");
                 segments.next().unwrap()
             },
             boundary_context: Vec::new(),

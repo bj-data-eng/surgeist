@@ -270,7 +270,7 @@ fn matrix<S: l::LayoutScalar>() {
                 (l::TextGroupAlign::Right, l::TextAlign::Center, [40.0, 50.0]),
                 // Numeric Justify has no spacing slots. Its actual
                 // unexpandable Center fallback uses the reduced frame and
-                // leaves the genuine60/40 atomics unexpanded.
+                // leaves the 60/40 atomics unexpanded.
                 (l::TextGroupAlign::Left, l::TextAlign::Justify, [0.0, 10.0]),
                 (
                     l::TextGroupAlign::Right,
@@ -364,7 +364,7 @@ fn ordered_slots<S: l::LayoutScalar>() {
     }
 }
 #[test]
-fn genuine_resolved_atomic_slots_keep_source_identity_and_visual_order() {
+fn source_resolved_atomic_slots_keep_source_identity_and_visual_order() {
     ordered_slots::<f32>();
     ordered_slots::<f64>();
 }

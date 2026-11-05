@@ -1703,7 +1703,7 @@ impl std::fmt::Debug for DomSession {
 }
 /// Rejected creation returns the actual input owner. Structure, identities and
 /// effects stay unchanged; explicit parsed admission retains its original
-/// cumulative processing work and bound policy for a genuine retry.
+/// cumulative processing work and bound policy for a retry.
 pub struct DomSessionCreateError {
     dom: Dom,
     error: DomSessionCreateFailure,
@@ -2246,7 +2246,7 @@ impl DomStyleRuntime {
             .map_err(|_| DomStyleRuntimeError::Binding)?;
         Ok(state.reports.get(index).cloned())
     }
-    /// Genuine imported-resource waits.
+    /// Imported-resource waits.
     pub fn waiting_resources(&self) -> Result<usize, DomStyleRuntimeError> {
         let state = self.original()?;
         let state = state
@@ -3650,7 +3650,7 @@ mod tests {
                 .bound()
                 .unwrap()
                 .clone();
-            // These are genuine, nonmutating producer qualifications on this
+            // These are nonmutating producer qualifications on this
             // SAME retained request. Their spent work is never reset/refunded.
             // Warm the revision qualification before measuring its stable cost.
             lease.bind_cssom_root(&request, &root, &cancel).unwrap();

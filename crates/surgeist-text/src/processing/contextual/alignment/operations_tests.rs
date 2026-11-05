@@ -43,7 +43,7 @@ fn capture(count: usize) -> Arc<ProcessedSource> {
         font_reference: Some(reference),
     }));
     let mut events = vec![E::EnterScope(0), E::EnterParagraph(0)];
-    // Every target owns original content or a genuine descendant. Entry order
+    // Every target owns original content or a descendant. Entry order
     // descends despite the ascending inventory. One nested pair retains a real
     // ancestor relationship without turning the threshold case into deep nesting.
     events.extend([

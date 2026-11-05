@@ -1,4 +1,4 @@
-//! A genuine empty sibling can interpose between mixed-level box members.
+//! An empty sibling can interpose between mixed-level box members.
 use super::*;
 
 struct DonorFixture {

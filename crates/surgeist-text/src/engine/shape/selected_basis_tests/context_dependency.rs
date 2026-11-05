@@ -16,7 +16,7 @@ fn bang_font() -> Vec<u8> {
     assert_eq!(crate::test_fonts::u16_at(&gsub, ligature), font::R);
     assert_eq!(crate::test_fonts::u16_at(&gsub, ligature + 2), 2);
     assert_eq!(crate::test_fonts::u16_at(&gsub, ligature + 4), font::B);
-    // Genuine optional A35+A35 -> R58. Literal ! aliases A35; its source
+    // Optional A35+A35 -> R58. Literal ! aliases A35; its source
     // category and script remain punctuation/Common, independently of glyph ID.
     gsub[ligature + 4..ligature + 6].copy_from_slice(&font::A.to_be_bytes());
     let bytes = crate::test_fonts::replace_tables(&optional, vec![(*b"GSUB", gsub)]);

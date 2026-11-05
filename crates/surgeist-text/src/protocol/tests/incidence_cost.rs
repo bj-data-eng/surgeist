@@ -18,7 +18,7 @@ fn inline() -> crate::SourceProcessingScope {
 
 // Each paragraph has identical body/support: L owns "A ", R owns "B".
 // An outer inline begins before EnterParagraph and ends after ExitParagraph.
-// Padding consists of genuine empty scopes in the LAST paragraph only.
+// Padding consists of empty scopes in the LAST paragraph only.
 fn capture(paragraph_count: usize, padding_scopes: usize) -> Arc<crate::ProcessedSource> {
     assert!(paragraph_count >= 2);
     let source = Source::new("A B".repeat(paragraph_count));
@@ -317,7 +317,7 @@ fn shared_capture_keeps_local_global_cut_and_foreign_preparation_custody() {
             .collect();
         // EnterParagraph separates OuterBefore from LeftBefore, and
         // ExitParagraph separates RightAfter from OuterAfter. No original
-        // text/control pin chooses either side of those genuine event edges.
+        // text/control pin chooses either side of those event edges.
         for (first, expected) in [
             (
                 true,

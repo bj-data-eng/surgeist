@@ -381,7 +381,7 @@ fn tree<S: LayoutScalar>(fixture: &Fixture, rtl: bool) -> PublicLayoutTreeOf<S> 
         let kind = match row.occurrence.view().kind() {
             ParagraphControlKind::InlineBoundaryStart => InlineBoundaryKind::Start,
             ParagraphControlKind::InlineBoundaryEnd => InlineBoundaryKind::End,
-            _ => panic!("fixture has only genuine endpoint controls"),
+            _ => panic!("fixture has only endpoint controls"),
         };
         tree = tree.children(row.node, []).input(
             row.node,
@@ -1083,7 +1083,7 @@ fn computed_only_paragraph_retains_real_endpoints_in_nonformatted_completion() {
 }
 
 // A real Prepared-backed run need not have InlineText/TextControl native slots.
-// Its genuine empty Source still has captured endpoints and a computed force.
+// Its empty Source still has captured endpoints and a computed force.
 fn control_only_prepared_flow_rejects_native_gap_group<S: LayoutScalar>() {
     let f = prepare(empty_input(true, text::ParagraphStrut::DefaultFont));
     assert!(f.binding.origins.is_empty());
@@ -1151,7 +1151,7 @@ fn control_only_prepared_flow_rejects_native_gap_group<S: LayoutScalar>() {
         wrapping.clone(),
         Vec::new(),
     )
-    .expect("the genuine control-only Prepared flow needs no native gap request");
+    .expect("the control-only Prepared flow needs no native gap request");
     let prior = compute_layout_with_flow(
         &flow,
         0,
@@ -1881,7 +1881,7 @@ fn unproved_float<S: LayoutScalar>() {
     let group = computed_group(&requested, 1);
     assert_eq!(group.view().source_position().get(), 1);
     host.tree = insert_float::<S>(&mut requested, false);
-    // The native float is genuinely between the two original text nodes, but
+    // The native float is between the two original text nodes, but
     // has no captured event or paired endpoint proving its side of ScopeAfter.
     // Equal source1 cannot choose the preceding physical seam for this force.
     let error = match LayoutFlowInput::try_new(

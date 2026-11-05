@@ -18,7 +18,7 @@ fn assert_bad_url_range(source: &str, end: usize) {
         .expect_err("invalid trailing URL content");
     assert!(error.is_bad_url(), "{error:?}");
     let CssValueOrigin::Parsed(origin) = error.origin() else {
-        panic!("bad URL retains its genuine authored source");
+        panic!("bad URL retains its authored source");
     };
     assert_eq!(origin.source().as_str(), source);
     assert_eq!(origin.span().start().byte_offset().value(), 0);

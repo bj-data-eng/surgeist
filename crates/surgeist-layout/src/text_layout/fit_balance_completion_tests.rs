@@ -374,7 +374,7 @@ fn paragraph_tail_cannot_reactivate_manual_penultimate_indication_excluded_by_al
         ..ahem_style(10.0, 10.0)
     };
     // Real source SHY after XXXX SPACE as: Before indication A supplies10.
-    // Ordinary permits80/70; genuine complete-block Always requires40/90.
+    // Ordinary permits80/70; complete-block Always requires40/90.
     let paragraph = PreparedParagraph::plain(1, text::Source::new("XXXX as\u{ad}sociate"), style);
     let manual = paragraph
         .prepared

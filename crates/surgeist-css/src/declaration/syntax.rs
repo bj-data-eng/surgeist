@@ -324,7 +324,7 @@ impl CssDeclaration {
         self.occurrence.payload.parser_context
     }
 
-    /// Changes only the checked domain, retaining genuine original token provenance.
+    /// Changes only the checked domain, retaining original token provenance.
     pub(crate) fn into_page_context(self) -> Self {
         if self.declaration_context() == DeclarationContext::Page {
             return self;

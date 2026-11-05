@@ -16,7 +16,7 @@ fn row(baseline: f64, line_extent: f64, alignment: LineBoxAlignment) -> LineBoxS
 
 #[test]
 fn allocated_empty_paragraph_uses_only_real_box_metric_groups() {
-    // The genuine empty origin is a baseline anchor, not a font strut. The
+    // The empty origin is a baseline anchor, not a font strut. The
     // paragraph explicitly requests allocated contributions rather than font
     // metrics, so these literal used boxes are the only metric suppliers.
     let source = Source::new("");

@@ -178,7 +178,7 @@ fn deferred<S: LayoutScalar>() {
         }
         copy(&actual, "AB  ");
 
-        // Two genuine trailing SPACE units retain one character boundary.
+        // Two trailing SPACE units retain one character boundary.
         // No Direct boundary exists to satisfy a positive budget instead.
         let only = captured("  ", terminal);
         let exact = finite::<S>(&only, 0.0, TextAlignLast::Justify);

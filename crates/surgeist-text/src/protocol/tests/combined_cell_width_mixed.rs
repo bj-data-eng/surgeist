@@ -14,7 +14,7 @@ fn add_variable(static_font: &[u8], variable: &[u8]) -> Vec<u8> {
         *b"name", *b"cmap", *b"GSUB", *b"hmtx", *b"vhea", *b"vmtx", *b"BASE", *b"glyf", *b"loca",
         *b"maxp",
     ] {
-        // Ordinary Ahem has no GSUB; qualify that genuine absence separately.
+        // Ordinary Ahem has no GSUB; qualify that absence separately.
         if tag == *b"GSUB" && !has_table(static_font, tag) {
             continue;
         }
@@ -151,7 +151,7 @@ fn mixed_width_source() -> (
                     kind: ParagraphConnectionKind::Continuous,
                 })
                 .collect(),
-            // The genuine incident scopes and each real common ancestor all use
+            // The incident scopes and each real common ancestor all use
             // Word; each actual connection retains its own admitted policy row.
             boundary_policies: (0..8)
                 .map(|index| ParagraphBoundaryPolicy {
@@ -311,7 +311,7 @@ fn finalized(
     parent: &FontData,
     body: &FontData,
 ) {
-    // 3 ordinary advances10 +2 genuine outer cells10, independent of inner
+    // 3 ordinary advances10 +2 outer cells10, independent of inner
     // raw qwid advance12 and of variable X's overhanging outline width11.
     assert_eq!(line.feedback().advance, 50.0);
     let cells = line.cell_views().collect::<Vec<_>>();

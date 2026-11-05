@@ -1,4 +1,4 @@
-//! Optional repair of the genuine formatted Paragraph-ending pair.
+//! Optional repair of the formatted Paragraph-ending pair.
 
 use super::balance::{GroupProof, GroupReference, LineProof, Observations};
 use super::*;

@@ -540,7 +540,7 @@ fn zone_is_inapplicable_without_ordinary_prefix_and_intrinsics_ignore_it() {
     check::<f64>();
 }
 #[test]
-fn negative_zone_is_not_clamped_at_a_genuine_zero_gap() {
+fn negative_zone_is_not_clamped_at_a_zero_gap() {
     fn check<S: LayoutScalar>() {
         let font = super::canonical::fonts::positioned_ahem(&[
             (58, -1000),
@@ -604,7 +604,7 @@ fn zone_reference_is_natural_even_when_the_committed_fallback_is_justified() {
             Source::new("X Y associate"),
             style(WhiteSpace::Collapse, "A"),
         );
-        // Genuine fallback X SPACE Y: natural alignment30 in span100 gives U70.
+        // Fallback X SPACE Y: natural alignment30 in span100 gives U70.
         // Its actual justified line expands its retained interior space to100.
         for (zone, end, automatic) in [(60.0, 8, true), (70.0, 4, false)] {
             let mut policy = input(zone, 0.0, 0.0, false);
@@ -682,7 +682,7 @@ fn zone_resolution_is_consumed_only_by_a_real_fallback_and_preserves_numeric_fai
         )
         .map_err(Box::new)
     }
-    // No genuine before-word line: the huge but finite coefficient is unused.
+    // No before-word line: the huge but finite coefficient is unused.
     let p = PreparedParagraph::plain(
         1,
         Source::new("associate"),

@@ -631,7 +631,7 @@ fn mixed_sa_latin_facts<S: LayoutScalar>(
 #[test]
 fn sa_provider_run_end_before_word_joiner_cannot_split_the_native_fitting_line() {
     // UAX14 revision55 LB11 prohibits breaks before/after WJ. No earlier
-    // ZW SP* permission exists here. Genuine lexical fallback1 is unaffected.
+    // ZW SP* permission exists here. Lexical fallback1 is unaffected.
     fn lane<S: LayoutScalar>() -> Vec<(Vec<usize>, Vec<LineFact>)> {
         let mut observed = Vec::new();
         for (source, locale) in WJ_RUNS {

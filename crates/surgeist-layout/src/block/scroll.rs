@@ -59,7 +59,7 @@ impl<S: LayoutScalar> BlockScrollContributions<S> {
         &mut self,
         rect: ScrollRectOf<S>,
     ) -> Result<(), ScrollContributionErrorOf<S>> {
-        // A genuine line allocation remains a line even with a zero dimension.
+        // A line allocation remains a line even with a zero dimension.
         self.geometry.include_direct_line(rect);
         self.include_rect_end(LogicalAxis::Inline, rect, Edges::ZERO)?;
         self.include_rect_end(LogicalAxis::Block, rect, Edges::ZERO)

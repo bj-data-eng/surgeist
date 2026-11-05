@@ -81,7 +81,7 @@ pub(crate) enum CellPartSource {
     Generated(GeneratedSeparatorOwner),
 }
 
-/// A canonical Cell part and its genuine selected-local occurrence. The event
+/// A canonical Cell part and its selected-local occurrence. The event
 /// indexes SelectedRelation.events; presentation is its real interval or cut.
 #[derive(Clone, Copy)]
 pub(crate) struct CellPartOccurrence<'a> {
@@ -110,7 +110,7 @@ impl<'a> CellPartOccurrence<'a> {
     }
 }
 
-/// A genuine selected control anchor not already represented by a Cell part.
+/// A selected control anchor not already represented by a Cell part.
 #[derive(Clone, Copy)]
 pub(crate) struct CellControlOccurrence {
     control: usize,

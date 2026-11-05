@@ -261,7 +261,7 @@ fn unchanged(f: &Fixture, before: &(DomStamp, Vec<CssomSnapshot>, CssomSnapshot)
     );
 }
 #[test]
-fn two_document_and_inline_publication_returns_genuine_outputs_and_retains_locks() {
+fn two_document_and_inline_publication_returns_outputs_and_retains_locks() {
     let mut f = fixture(u64::MAX);
     let before = snapshots(&f);
     let mut batch = DomBatch::new();

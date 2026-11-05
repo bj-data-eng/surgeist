@@ -148,7 +148,7 @@ fn substitute(from: u16, to: u16) -> Vec<u8> {
     words(&[2, 8, 1, to, 1, 1, from])
 }
 
-/// BEH35 has isol35/init100/medi277/fina82, each genuine Ahem glyph advances1em.
+/// BEH35 has isol35/init100/medi277/fina82, each Ahem glyph advances1em.
 /// HAMZA36 is a real nonjoining letter for explicit source-context boundaries.
 pub fn arabic() -> Vec<u8> {
     rebuild(vec![

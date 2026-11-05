@@ -921,7 +921,7 @@ fn hosted_show_establishes_watcher_before_waiting_for_remembered_focus() {
         session.snapshot().relevant_global(subject).unwrap(),
         Some(top.global())
     );
-    // HTML877d's open-change guard passes for this genuinely connected,
+    // HTML877d's open-change guard passes for this connected,
     // fully active Document; setup reaches the watcher before Show step 7.
     show_publishes_open_and_retains_queued_task(
         session,
@@ -1597,7 +1597,7 @@ fn canceled_child_intention_joins_parent_queue_while_grandparent_observation_sur
             &cancel,
         )
         .unwrap();
-    let parent_request = context.requests.pop().expect("G's genuine child request");
+    let parent_request = context.requests.pop().expect("G's child request");
     assert_eq!(parent_request.subject(), parent);
     assert_eq!(
         parent_request.parent_operation(),
@@ -1619,7 +1619,7 @@ fn canceled_child_intention_joins_parent_queue_while_grandparent_observation_sur
             &cancel,
         )
         .unwrap();
-    let child_request = context.requests.pop().expect("P's genuine child request");
+    let child_request = context.requests.pop().expect("P's child request");
     assert_eq!(child_request.subject(), child);
     assert_eq!(
         child_request.parent_operation(),
@@ -1788,7 +1788,7 @@ fn canceled_child_intention_joins_parent_queue_while_grandparent_observation_sur
     assert_eq!(context.calls, ["G", "P", "C"]);
     assert!(context.requests.is_empty());
 
-    // This is a genuine monotonic readmission of the original lower observer.
+    // This is a monotonic readmission of the original lower observer.
     // It proves coexistence/retention, not a measured or one-short byte bound.
     let original_limits = source_limits();
     assert_eq!(original_limits.retained_bytes(), 32_000_000);
@@ -2641,7 +2641,7 @@ fn late_adapter_work_refusal_recovers_same_receipt_through_qualified_monotonic_p
     );
     let status = session.dom().pending_source_edit();
     assert_eq!(session.snapshot().stamp(), before);
-    // The genuine dispatcher receipt is already retained after the late work
+    // The dispatcher receipt is already retained after the late work
     // refusal. Cancellation now refuses acceptance, rather than interrupting
     // the earlier callback/dispatch phase exercised above.
     assert!(matches!(
@@ -2993,7 +2993,7 @@ fn tight_ancestor_bytes_cover_live_nested_nodes_and_allow_repeated_child_removal
         ));
         // Next iteration lowers the original parent to the same tight profile.
         // It must fit after the child node and reservation physically release;
-        // the two-job policy must also admit the next genuine child.
+        // the two-job policy must also admit the next child.
     }
     let receipt = serviced(
         permission

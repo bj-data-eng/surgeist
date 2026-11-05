@@ -107,7 +107,7 @@ fn populate(population: Population, managed: usize) -> Fixture {
         assert_eq!(result.peak_managed, peak);
         return result;
     }
-    // Reuse the genuine two-Document/Element/Text seed and finite admission.
+    // Reuse the two-Document/Element/Text seed and finite admission.
     // Its extra capacity is configuration, not an observed-storage oracle.
     let started = Instant::now();
     let mut result = fixture_with_capacity(SEED_NODES, Context::Detached, managed - SEED_NODES);

@@ -816,14 +816,14 @@ fn assert_fri07_c01_allocated_provider_space<S: LayoutScalar>(
 ) {
     let tree = fri07_c01_intrinsic_recomputation_tree(flex_basis);
     let batch = compute_layout(&tree, 1, fri07_c01_intrinsic_request())
-        .expect("a genuine intrinsic basis supports actual grown allocation");
+        .expect("an intrinsic basis supports actual grown allocation");
     let requests = tree.leaf_requests(2);
     assert!(
         requests.iter().any(|input| {
             input.known_content_size().width.is_none()
                 && input.content_sizing_request().axes().width.operation() == intrinsic
         }),
-        "the authored basis still issues a genuine {intrinsic:?} native query; requests={requests:?}"
+        "the authored basis still issues a {intrinsic:?} native query; requests={requests:?}"
     );
     assert_eq!(
         fri07_c01_intrinsic_output(&batch, 2).size.width,
@@ -2629,7 +2629,7 @@ fn assert_fri07_c03_composed_state_exact_round_bounds<S: LayoutScalar>() {
                 fri07_c03_composed_state_definite(30.0),
             ),
         ],
-        "the composed provider sequence retains genuine basis queries and actual normal allocations",
+        "the composed provider sequence retains basis queries and actual normal allocations",
     );
 }
 

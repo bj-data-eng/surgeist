@@ -173,7 +173,7 @@ impl<'a> BreakAll<'a> {
     ) -> Self {
         let classes = CodePointMapData::<Class>::new();
         let mut ideographic = vec![false; component.len()];
-        // Include complete EGCs intersecting the component. A genuine capture
+        // Include complete EGCs intersecting the component. A capture
         // boundary may intersect an EGC but cannot change its CSS properties.
         let first = graphemes.partition_point(|egc| egc.end <= component.start);
         let last = graphemes.partition_point(|egc| egc.start < component.end);

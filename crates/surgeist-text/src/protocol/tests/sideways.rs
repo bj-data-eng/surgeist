@@ -294,7 +294,7 @@ fn automatic_and_authored_features_keep_real_glyphs_source_and_clockwise_frame()
 }
 
 #[test]
-fn genuine_odd_level_rotates_geometry_without_reversing_original_source_authority() {
+fn odd_level_rotates_geometry_without_reversing_original_source_authority() {
     let mut s = system_with(crate::shaping_test_fonts::sideways_ahem());
     let p = capture(&mut s, "\u{5d0}", own_style(), true, CW);
     assert_eq!(

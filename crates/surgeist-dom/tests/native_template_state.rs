@@ -394,7 +394,7 @@ fn populated_owned_contents_remain_indestructible_after_actual_adoption_and_empt
             );
             let mut b = DomBatch::new();
             // Inserting a Fragment transfers its real children; the owned root
-            // itself remains parentless and retains its genuine Template host.
+            // itself remains parentless and retains its Template host.
             b.insert_before(fragment, receiver, None);
             apply(&mut dom, b);
         }

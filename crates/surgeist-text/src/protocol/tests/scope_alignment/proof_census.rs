@@ -8,7 +8,7 @@ const PHRASE: &[u8] = include_bytes!("../../../../tests/fixtures/fonts/phrase-ah
 
 fn fixture() -> (System, PreparedText, ScopeAlignmentLimits) {
     // The retained BudouX0.9.3 Japanese reference qualifies 日本へ as one
-    // phrase; its genuine internal normal cuts are1/2 after relaxation.
+    // phrase; its internal normal cuts are1/2 after relaxation.
     let body = Style {
         font: Font::new().family("Surgeist Phrase Ahem").family("Ahem"),
         size: 10.0,
@@ -313,7 +313,7 @@ fn history(
     let cut = arbitrary
         .opportunities()
         .first()
-        .expect("genuine arbitrary cut after the discharged native tiers");
+        .expect("arbitrary cut after the discharged native tiers");
     let request = request(
         prepared,
         cut.start(),

@@ -425,7 +425,7 @@ impl<S: LayoutScalar> TriangleTree<S> {
 }
 
 #[test]
-fn genuine_triangle_trial_reaches_and_fails_only_the_natural_tail_guard() {
+fn source_triangle_trial_reaches_and_fails_only_the_natural_tail_guard() {
     fn lane<S: LayoutScalar>() {
         clear_trials();
         let tree = TriangleTree::<S>::new(crate::TextWrapStyle::AvoidShortLastLine, false);

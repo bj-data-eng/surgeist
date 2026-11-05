@@ -768,7 +768,7 @@ fn distinct_empty_paragraphs_share_their_real_empty_domain_slot_in_any_inventory
     assert_eq!(first.domain(), second.domain());
     assert!(first.exit_position() < second.enter_position());
     // Only the domain marker is used by the parent's spanning region. A second
-    // genuine empty paragraph does not invent another physical content slot.
+    // empty paragraph does not invent another physical content slot.
     let baseline = compute(&fixture, true);
     let paragraphs = vec![
         fixture.parents[1].clone(),
@@ -902,7 +902,7 @@ fn nonempty_domain_with_terminal_empty_paragraph() -> IncidenceFixture {
                     paragraph_strut: text::ParagraphStrut::DefaultFont,
                 })
                 .collect(),
-            // Parent paragraphs own A/B. The child domain first owns genuine X,
+            // Parent paragraphs own A/B. The child domain first owns X,
             // then its distinct empty paragraph at the terminal content slot.
             events: vec![
                 E::EnterScope(0),
@@ -1081,7 +1081,7 @@ fn an_empty_paragraph_in_a_nonempty_domain_uses_its_authentic_terminal_run_slot(
 #[test]
 fn one_empty_paragraph_cannot_certify_a_nonempty_domain_with_its_real_neighbor_omitted() {
     let mut fixture = nonempty_domain_with_terminal_empty_paragraph();
-    // The actual tree now has an empty Box3 and the caller omits the genuine X
+    // The actual tree now has an empty Box3 and the caller omits the X
     // run. The supplied empty paragraph still belongs AFTER X in its authentic
     // source domain; it cannot turn that nonempty domain into an empty one.
     fixture.tree.nested.remove(&3);
@@ -1101,7 +1101,7 @@ fn one_empty_paragraph_cannot_certify_a_nonempty_domain_with_its_real_neighbor_o
         },
         Vec::new(),
     ) else {
-        panic!("missing genuine neighbor flow cannot establish empty-paragraph incidence")
+        panic!("missing neighbor flow cannot establish empty-paragraph incidence")
     };
     assert!(
         matches!(
@@ -1115,7 +1115,7 @@ fn one_empty_paragraph_cannot_certify_a_nonempty_domain_with_its_real_neighbor_o
 }
 
 #[test]
-fn unknown_child_inline_topology_preserves_genuine_empty_domain_authority() {
+fn unknown_child_inline_topology_preserves_empty_domain_authority() {
     let fixture = fixture_with_child_topology(
         Owners::SpanningBlock,
         1,

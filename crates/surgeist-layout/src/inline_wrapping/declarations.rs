@@ -74,7 +74,7 @@ impl WrapEdge {
         EdgeEffect { forced, avoided }
     }
 }
-/// A genuine non-atomic inline box, with phase-specific scope authority.
+/// A non-atomic inline box, with phase-specific scope authority.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InlineBoxRef<Node, Scope = CapturedScope> {
     NativePair { start: Node, end: Node },
@@ -123,7 +123,7 @@ pub enum InlineFormatterEdge {
     Start,
     End,
 }
-/// Source body immediately before or after a genuine visible delimiter.
+/// Source body immediately before or after a visible delimiter.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InlineDelimiterSide {
     Before,

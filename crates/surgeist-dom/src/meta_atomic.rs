@@ -289,7 +289,7 @@ impl std::error::Error for DomMetaAtomicError {
         }
     }
 }
-/// Genuine producer output for one actual Document, in first-occurrence order.
+/// Producer output for one actual Document, in first-occurrence order.
 /// Each distinct reached Document appears once, including unchanged publications.
 pub struct DomMetaRootCommit {
     pub(crate) root: NodeId,

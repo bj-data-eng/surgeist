@@ -169,7 +169,7 @@ impl CssRelativeSelectorList {
 }
 impl CssStyleSelectorList {
     /// Formats checked style selectors in their actual role: an ordinary list, a nested
-    /// style rule's list, or a scope body's list with its genuine scope anchors. A role
+    /// style rule's list, or a scope body's list with its scope anchors. A role
     /// whose anchor domain differs from the list's anchors is rejected rather than
     /// changing it; relative members are rejected in the ordinary role.
     pub fn serialize_cssom(

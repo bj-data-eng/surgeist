@@ -937,7 +937,7 @@ fn show_event(
             request: DomSourceRequest::Event(request),
             ..
         } => request,
-        other => panic!("genuine original beforetoggle required: {other:?}"),
+        other => panic!("original beforetoggle required: {other:?}"),
     }
 }
 #[test]

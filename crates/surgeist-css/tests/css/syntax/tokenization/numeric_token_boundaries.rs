@@ -4,7 +4,7 @@
 //! 4.3.10 and 4.3.13. Failed fraction/exponent lookahead leaves the
 //! following code points pending; exponent signs belong to successful numbers.
 //! The public checked token contract preserves spelling, lexical flags and
-//! genuine consumed origins. Simple decimal value goldens below are calculated
+//! consumed origins. Simple decimal value goldens below are calculated
 //! directly from s * (i + f * 10^-d) * 10^(t*e), the base-10 value §4.3.13
 //! interprets from the number and exponent parts, without host-float oracles.
 //! Existing huge-exponent/zero and exact-arithmetic suites remain separate.

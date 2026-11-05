@@ -1615,7 +1615,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
     pub(crate) fn usage(&self) -> &super::control::HtmlParseUsage {
         self.control.usage()
     }
-    /// The only fixture issuer moves the real admitted owners after a genuine
+    /// The only fixture issuer moves the real admitted owners after a
     /// fresh prologue/head transition. Production exclusive ownership is intact.
     #[cfg(test)]
     pub(crate) fn take_standalone_fixture(

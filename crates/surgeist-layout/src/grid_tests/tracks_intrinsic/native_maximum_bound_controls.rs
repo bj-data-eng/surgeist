@@ -50,7 +50,7 @@ fn actual_formal<S: LayoutScalar>(
     let mut session = crate::engine::ComputeSession::new(tree, Vec::new());
     session
         .compute_child(0, formal_input(known_width))
-        .expect("the genuine native Grid query completes")
+        .expect("the native Grid query completes")
 }
 
 fn inactive_and_active_finishing_budget<S: LayoutScalar>() {
@@ -120,7 +120,7 @@ fn exhausted_scrollbar_budget<S: LayoutScalar>() {
             definite,
         )
     })
-    .expect("the genuine saturated normal Grid completes");
+    .expect("the saturated normal Grid completes");
     for entries in [normal.unrounded_entries(), normal.final_entries()] {
         let output = entries
             .iter()

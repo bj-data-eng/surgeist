@@ -1,5 +1,5 @@
 //! Private child of text_layout::tests::box_incidence_cases.
-//! Genuine captured empty Inline between two original Ahem10 occurrences.
+//! Captured empty Inline between two original Ahem10 occurrences.
 use super::*;
 
 fn lane<S: LayoutScalar>() {
@@ -211,10 +211,10 @@ fn native_gap_on_prepared_formatter<S: LayoutScalar>() {
 }
 
 #[test]
-fn native_gap_group_on_genuine_prepared_empty_box_refuses_f32() {
+fn native_gap_group_on_prepared_empty_box_refuses_f32() {
     native_gap_on_prepared_formatter::<f32>();
 }
 #[test]
-fn native_gap_group_on_genuine_prepared_empty_box_refuses_f64() {
+fn native_gap_group_on_prepared_empty_box_refuses_f64() {
     native_gap_on_prepared_formatter::<f64>();
 }

@@ -78,11 +78,7 @@ fn first_request(prepared: &PreparedText) -> LineSelectionRequest {
         inline_boxes: None,
         segment: {
             let mut segments = prepared.source_segments();
-            assert_eq!(
-                segments.len(),
-                1,
-                "this fixture has one genuine source segment"
-            );
+            assert_eq!(segments.len(), 1, "this fixture has one source segment");
             segments.next().unwrap()
         },
         start: prepared.boundary_views().next().unwrap().handle(),
@@ -143,11 +139,7 @@ fn forced_event_stops_context_before_same_atom_endpoints() {
     let mut request = first_request(&fixture());
     request.segment = {
         let mut segments = prepared.source_segments();
-        assert_eq!(
-            segments.len(),
-            1,
-            "this fixture has one genuine source segment"
-        );
+        assert_eq!(segments.len(), 1, "this fixture has one source segment");
         segments.next().unwrap()
     };
     request.start = prepared.boundary_views().next().unwrap().handle();

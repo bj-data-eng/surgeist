@@ -163,7 +163,7 @@ fn two_body_custody(
     assert_eq!(
         tail_pieces.len(),
         1,
-        "a genuine trailing body survives independently of paint/advance"
+        "a trailing body survives independently of paint/advance"
     );
     assert_eq!(first_pieces[0].end_control(), None);
     assert_eq!(tail_pieces[0].end_control(), Some(closing.clone()));

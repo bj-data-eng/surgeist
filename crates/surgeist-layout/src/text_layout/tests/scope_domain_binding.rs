@@ -58,7 +58,7 @@ fn atomic_domain_shape(
     let mut source = Source::new(JAPANESE);
     let whole = text::Range::new(0, JAPANESE.encode_utf16().count());
     source.span(whole, owner.clone());
-    // Distinct genuine occurrences have the same anchor and real box metrics.
+    // Distinct occurrences have the same anchor and real box metrics.
     for node in [A0, A1] {
         source.inline_box(text::InlineBox::new(
             text::Id::from_u64(u64::from(node)),
@@ -712,7 +712,7 @@ fn parent_atomic_order_is_not_replaced_by_content_domain_schedule() {
         },
         Vec::new(),
     ) else {
-        panic!("the genuine parent atomic participants retain their own order");
+        panic!("the parent atomic participants retain their own order");
     };
     assert!(matches!(
         error.kind(),
@@ -971,7 +971,7 @@ fn plain_block_custody_allows_unmapped_layout_only_wrappers() {
             .location
     };
     // Baseline-less10px atomics contribute10px before the baseline; the
-    // genuine Ahem default-font strut adds its2px descent:10+2=12px.
+    // Ahem default-font strut adds its2px descent:10+2=12px.
     let parent = batch
         .placed_text()
         .iter()

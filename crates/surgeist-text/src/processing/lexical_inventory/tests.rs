@@ -351,7 +351,7 @@ fn preserved_converted_discarded_and_collapsed_spaces_retain_their_real_modes() 
 }
 
 #[test]
-fn contextual_trim_is_genuine_elimination_even_for_preserved_spaces() {
+fn contextual_trim_is_elimination_even_for_preserved_spaces() {
     let mut input = contextual(" A ", WhiteSpace::Preserve);
     input.scopes.push(SourceProcessingScope::Inline {
         horizontal_inner_direction: None,
@@ -682,7 +682,7 @@ fn identity_empty_execution_and_nonparticipating_capture_are_distinct_states() {
     let original = input.source.clone();
     let p = Arc::new(process_contextual_source(input).unwrap());
     let (LexicalContext::Captured(capture), inventory) = records(&p) else {
-        panic!("genuine eliminations retain their actual capture")
+        panic!("eliminations retain their actual capture")
     };
     ordinary(&p, &original, "");
     assert_eq!(capture.scopes.len(), 1);

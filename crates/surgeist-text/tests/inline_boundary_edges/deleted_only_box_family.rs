@@ -1,4 +1,4 @@
-//! A genuine deleted-only box retains source aliases independently of its family.
+//! A deleted-only box retains source aliases independently of its family.
 use super::*;
 
 #[test]

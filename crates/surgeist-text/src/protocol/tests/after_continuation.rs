@@ -635,7 +635,7 @@ fn simultaneous_after_and_before_share_real_aa_substitution_without_merging_rang
     let b = right.units().next().unwrap();
     assert!(
         !a.same_unit(&b),
-        "provider ligature does not erase the two genuine EGCs"
+        "provider ligature does not erase the two EGCs"
     );
     assert_eq!(a.alternatives().collect::<Vec<_>>(), [incoming]);
     assert_eq!(b.alternatives().collect::<Vec<_>>(), [outgoing]);
@@ -813,7 +813,7 @@ fn local_rtl_reversal_cannot_split_the_actual_cross_seam_grapheme_unit() {
         let receiver = p
             .unit_views()
             .find(|v| v.source_range() == Range::new(3, 4))
-            .expect("original leading NSM is its genuine unit after Control SHY");
+            .expect("original leading NSM is its unit after Control SHY");
         assert_eq!(receiver.level().get(), 0);
         let offer = cut(&p, 3, counts(2, 3));
         let first = finish(
@@ -1238,7 +1238,7 @@ fn indication_hard_separators_refuse_while_actual_tabs_keep_the_chosen_operation
             );
         }
     }
-    // The existing FontAdvance policy and its genuine U+0009 survive local S/L1.
+    // The existing FontAdvance policy and its U+0009 survive local S/L1.
     let p = capture(
         Source::new("AB\u{ad}CDE"),
         own_style("\t", HyphenationPlacement::LogicalAfter),
@@ -1657,7 +1657,7 @@ fn transparent_oof_does_not_split_the_actual_mixed_in_flow_rtl_run() {
         );
         observed.push((with_oof, first_x, last_x));
     }
-    // Both genuine boxes are in the same RLE run. Omitting a nonparticipating
+    // Both boxes are in the same RLE run. Omitting a nonparticipating
     // OOF anchor leaves L2 order last(width20),first(width10), after A20.
     assert_eq!(observed, [(false, 40.0, 20.0), (true, 40.0, 20.0)]);
 }

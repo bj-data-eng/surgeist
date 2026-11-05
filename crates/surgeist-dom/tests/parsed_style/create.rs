@@ -1,4 +1,4 @@
-//! Genuine reports and joined first-sheet publication, not final-text replay.
+//! Reports and joined first-sheet publication, not final-text replay.
 use super::*;
 use surgeist_css::query::media::CssMediaQueryList;
 use surgeist_css::source::CssUtf16InputLimits;
@@ -190,7 +190,7 @@ fn dropping_or_canceling_prepared_creation_publishes_nothing_and_retry_uses_same
     drop(retirement);
 }
 #[test]
-fn genuine_recovered_media_diagnostics_keep_the_original_source_after_retirement() {
+fn recovered_media_diagnostics_keep_the_original_source_after_retirement() {
     let (mut dom, document, id) = ready("<!doctype html><style media='screen and ('>later</style>");
     let cap = root(document);
     let mut hold = dom

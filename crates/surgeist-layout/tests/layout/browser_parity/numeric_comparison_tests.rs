@@ -399,7 +399,7 @@ fn numeric_collection_keeps_opaque_content_when_baseline_axis_cannot_align_colum
 }
 
 #[test]
-fn numeric_collection_keeps_genuinely_empty_boxes_in_row_baseline_alignment() {
+fn numeric_collection_keeps_empty_boxes_in_row_baseline_alignment() {
     let golden = analytic_flex_capture(
         "empty-flex-box-baseline-synthesis",
         r#"flex-direction="row" align-items="baseline""#,
@@ -410,7 +410,7 @@ fn numeric_collection_keeps_genuinely_empty_boxes_in_row_baseline_alignment() {
     );
     // This independent source is actually empty: aligning its bottom edges is
     // legitimate synthesis, with 25 - 20 = 5px translation for the first box.
-    assert_surgeist_matches(&golden).expect("empty boxes retain genuine baseline synthesis");
+    assert_surgeist_matches(&golden).expect("empty boxes retain baseline synthesis");
     assert!(
         collect_surgeist_numeric_mismatches(&golden)
             .unwrap()

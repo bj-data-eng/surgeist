@@ -439,7 +439,7 @@ fn collapse_and_han_segment_break_context_cross_none_wbr() {
 }
 
 #[test]
-fn published_japanese_phrase_detection_crosses_a_genuine_none_wbr() {
+fn published_japanese_phrase_detection_crosses_a_none_wbr() {
     let mut p = capture("今日は天気です。", 3, WhiteSpace::Preserve);
     base(&mut p).locale = Some("ja".into());
     base(&mut p).word_space_transform = WordSpaceTransform::SpaceAutoPhrase;
@@ -523,7 +523,7 @@ fn none_wbr_preserves_the_authored_grapheme_and_registered_mark_attachment() {
 }
 
 #[test]
-fn direct_paragraph_and_scalar_span_admission_use_only_genuine_wbr_decode_cuts() {
+fn direct_paragraph_and_scalar_span_admission_use_only_wbr_decode_cuts() {
     for wbr in [false, true] {
         let mut p = capture(
             Text::from_code_units(vec![0xd840, 0xdc00, 0xa, 0x6f22]),
@@ -694,7 +694,7 @@ fn an_empty_out_of_flow_child_wbr_cannot_split_parent_phase_one_decoding() {
         assert_eq!(
             processed.processed_text().code_units(),
             [0xd840, 0xdc00, 0x6f22],
-            "child Wbr={child_wbr}, genuine empty origin={empty_origin}"
+            "child Wbr={child_wbr}, empty origin={empty_origin}"
         );
         assert_eq!(
             processed.source().text().code_units(),

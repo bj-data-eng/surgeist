@@ -41,7 +41,7 @@ pub enum SourceProcessingTopology {
     Complete,
 }
 
-/// Genuine controls immediately inside this scope's own entry and exit.
+/// Controls immediately inside this scope's own entry and exit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SourceProcessingScopeBoundaries {
     pub start: usize,
@@ -175,7 +175,7 @@ pub struct SourceProcessingParagraph {
     pub paragraph_strut: ParagraphStrut,
 }
 
-/// A connection has two genuine original sides, including across domain holes.
+/// A connection has two original sides, including across domain holes.
 #[derive(Clone, Copy, Debug)]
 pub struct SourceProcessingConnection {
     pub before_origin: usize,
@@ -404,7 +404,7 @@ impl ProcessedParagraph {
     pub fn source_range(&self) -> Range {
         self.data().extent(&self.owner)
     }
-    /// Exact ordered original contributions, including genuine empty origins.
+    /// Exact ordered original contributions, including empty origins.
     pub fn source_pieces(&self) -> impl ExactSizeIterator<Item = Range> + '_ {
         self.data()
             .coverage
@@ -538,7 +538,7 @@ pub(super) struct ProcessingContext {
     pub(super) origins: Vec<(Range, usize)>,
     pub(super) boundaries: Vec<TrimBoundary>,
     pub(super) barriers: Vec<ProcessingBarrier>,
-    /// Genuine Wbr cuts with their actual formatting domain, without resets.
+    /// Wbr cuts with their actual formatting domain, without resets.
     pub(super) decode_boundaries: Vec<(usize, usize)>,
 }
 
@@ -687,7 +687,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
                             return Err(invalid(SourceProcessingError::Domain));
                         }
                         // Content capture may be deferred past the nominee's
-                        // paragraph exit. Its genuine occurrence still owns
+                        // paragraph exit. Its occurrence still owns
                         // the parent domain; the current live paragraph does
                         // not replace that association or lend foreign custody.
                         let nominee_paragraph = topology.events[topology.atomic_orders[*atomic]]
@@ -949,7 +949,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
             before,
             paragraph,
         });
-        // Each projected event retains its genuine original position and one
+        // Each projected event retains its original position and one
         // owning flow. Atomic content is independent of when the producer
         // captures it; plain Block boundaries remain in their parent flow.
         let flow_domain = match *event {
@@ -1183,7 +1183,7 @@ pub fn process_contextual_source(input: ContextualSourceInput) -> Result<Process
             .map(|i| input.origins[*i].aggregate)
             .collect();
         // Structural traversal through a child domain transfers no ownership.
-        // Include original ranges before processing and every genuine zero-width
+        // Include original ranges before processing and every zero-width
         // occurrence, retaining the entry point only for a truly itemless view.
         let mut owned = coverage.clone();
         owned.extend(capture.anchors.iter().map(|anchor| {

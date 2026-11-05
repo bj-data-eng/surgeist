@@ -318,7 +318,7 @@ fn sandbox_and_actual_permission_denial_do_not_create_candidate_references() {
 }
 
 #[test]
-fn genuinely_retired_target_document_exits_before_permission_and_candidate_insertion() {
+fn retired_target_document_exits_before_permission_and_candidate_insertion() {
     let (mut session, top) = fixture(0);
     let before = session.snapshot();
     let destination = body(&before, top.document());

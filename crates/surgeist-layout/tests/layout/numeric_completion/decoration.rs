@@ -210,7 +210,7 @@ fn zero_metric_decoration_barrier<S: l::LayoutScalar>(direction: l::Direction) {
     for decorated in [l::InlineBoundaryKind::Start, l::InlineBoundaryKind::End] {
         for border in [false, true] {
             let (a, b) = adjoining_blocks::<S>(direction);
-            // This separate box genuinely owns0/0 metrics, not an erased
+            // This separate box owns0/0 metrics, not an erased
             // allocation from the8/10 fixture. Its own BP component is positive.
             let mut participants = vec![a];
             participants.extend(pair_with_one_positive_side(
@@ -266,7 +266,7 @@ fn actual_forced_line_stops_collapsing_margins_without_terminal_phantom_extent()
 
 fn zero_forced_margin_barrier<S: l::LayoutScalar>(direction: l::Direction) {
     let (a, b) = adjoining_blocks::<S>(direction);
-    // These are the actual supplied0/0 metrics of a genuine Forced control;
+    // These are the actual supplied0/0 metrics of a Forced control;
     // ending semantics, not positive extent, make this a real zero-height line.
     let control = l::LayoutInputOf::line_break(
         l::LineBreakInputOf::new()

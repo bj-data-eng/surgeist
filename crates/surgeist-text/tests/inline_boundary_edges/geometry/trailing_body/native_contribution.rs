@@ -82,7 +82,7 @@ fn demanded_native_pair_retains_contribution_only_trailing_body_identity() {
         .opportunity_views()
         .filter(|view| view.kind() == t::PreparedBreakKind::Forced)
         .map(|view| view.handle());
-    let mandatory = forced.next().expect("one genuine captured mandatory break");
+    let mandatory = forced.next().expect("one captured mandatory break");
     assert!(forced.next().is_none());
     let tail_start = mandatory.view().boundary();
     assert!(p.boundary_consumes_control(&tail_start, force).unwrap());

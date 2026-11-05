@@ -1,4 +1,4 @@
-//! Original Cell units and word carriers around genuine ignored LF.
+//! Original Cell units and word carriers around ignored LF.
 
 #![cfg(feature = "text-accessibility")]
 
@@ -31,7 +31,7 @@ fn carrier<'a>(update: &'a TreeUpdate, original: &str) -> (NodeId, &'a Node) {
     // These particular originals are A, one or more LF Controls, then acute.
     // GB4/GB5 break before/after every LF: all original scalar boundaries are
     // host-EGC boundaries, including the standalone final mark. They become
-    // A+acute ONE EGC only after Cell use removes the genuine original LFs.
+    // A+acute ONE EGC only after Cell use removes the original LFs.
     assert_eq!(node.character_lengths(), lengths.as_slice());
     let mut offset = 0;
     for (&length, ch) in node.character_lengths().iter().zip(original.chars()) {
@@ -63,7 +63,7 @@ fn original_cell(original: &str) -> tabs::Captured {
     let count = original.encode_utf16().count();
     let cells = captured.analyzed.combined_cells().collect::<Vec<_>>();
     let [cell] = cells.as_slice() else {
-        panic!("one genuine captured All Cell")
+        panic!("one captured All Cell")
     };
     assert_eq!(cell.scope(), captured.processed.captured_scope(1).unwrap());
     assert_eq!(
@@ -194,7 +194,7 @@ fn logical_units(
 
 fn source_carrier(captured: &tabs::Captured, original: &str) {
     // No catalogue, font registration, preparation, or placement is needed to
-    // qualify the source semantics, genuine word membership and logical units.
+    // qualify the source semantics, word membership and logical units.
     let mut state = Accessibility::new(90_000);
     let update = captured
         .analyzed
@@ -301,7 +301,7 @@ fn placed_ignored_lf_stays_logical_without_borrowing_its_range_egc_closure_as_ax
         |cursor| layout.access_position(&state, cursor),
         |selection| layout.access_selection(&state, selection),
     );
-    // Especially LF end2 must not collapse back to its start1 as a genuine
+    // Especially LF end2 must not collapse back to its start1 as a
     // hard-line-break focus would; all physical Cell edges nevertheless stay2.
     assert_eq!(
         layout

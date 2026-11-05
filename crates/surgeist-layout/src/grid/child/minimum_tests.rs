@@ -151,7 +151,7 @@ fn assert_clip_and_fixed_cap<S: LayoutScalar>() {
     )];
     let GridMinimumPlan::ContentSuggestion(suggestion) = plan(&input, request, &tracks).unwrap()
     else {
-        panic!("the fixed maximum clamps a genuine content suggestion");
+        panic!("the fixed maximum clamps a content suggestion");
     };
     assert_eq!(suggestion.finish(scalar(40.0)).unwrap(), scalar(10.0));
     let tracks = [TrackSizingOf::AUTO];

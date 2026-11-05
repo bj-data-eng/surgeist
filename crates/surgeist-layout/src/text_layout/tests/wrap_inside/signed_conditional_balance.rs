@@ -1,4 +1,4 @@
-//! Genuine issued SHY receipts and paragraph-quality consumers retain signed box demand.
+//! Issued SHY receipts and paragraph-quality consumers retain signed box demand.
 use super::*;
 
 fn signed_run<S: LayoutScalar>(

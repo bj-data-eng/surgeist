@@ -95,7 +95,7 @@ fn acknowledged_cssom_receipt_survives_pending_identity_refusal_and_same_source_
     let (revision, receipt_sheet, frame, index, invocation, work) = {
         let op = lease.dom.source_operation.as_ref().unwrap();
         let Some(Receipt::Cssom { revision, sheet }) = &op.receipt else {
-            panic!("genuine CSSOM acknowledgment retained before private tail");
+            panic!("CSSOM acknowledgment retained before private tail");
         };
         assert_eq!(revision, cssom.revision());
         assert_eq!(sheet.as_ref(), Some(&actual_sheet));

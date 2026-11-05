@@ -29,8 +29,8 @@ fn actual_pair(fixture: &Fixture) -> (text::PreparedControl, text::PreparedContr
         end.view().kind(),
         &text::ParagraphControlKind::InlineBoundaryEnd
     );
-    let a = start.captured_control().expect("genuine captured start");
-    let b = end.captured_control().expect("genuine captured end");
+    let a = start.captured_control().expect("captured start");
+    let b = end.captured_control().expect("captured end");
     let scope = a.scope();
     assert_eq!(b.scope(), scope);
     assert_eq!(scope.entry_control(), Some(a));
@@ -147,7 +147,7 @@ fn collapsible_terminal_space_before_real_end_border_padding_is_trimmed_in_wide_
             );
             let lines = finalized_lines(&batch);
             let [line] = lines.as_slice() else {
-                panic!("A10 + retained end strip5 fits one genuine finite line")
+                panic!("A10 + retained end strip5 fits one finite line")
             };
             let selected = line.selected_line();
             let request = selected.request();
@@ -269,8 +269,8 @@ fn collapsible_leading_space_after_real_start_border_padding_is_trimmed() {
 #[test]
 fn a_following_real_sibling_keeps_internal_collapsible_space_and_real_end_strip() {
     fn lane<S: LayoutScalar>() {
-        // Genuine <span>A SPACE</span>B. Source capture really closes Inline1
-        // before the outside B origin, within its genuine parent Block0.
+        // <span>A SPACE</span>B. Source capture really closes Inline1
+        // before the outside B origin, within its parent Block0.
         let fixture = Fixture::new("A B", (0, 2), text::WhiteSpace::Collapse, false, false);
         let (_, end) = actual_pair(&fixture);
         assert_eq!(fixture.binding.origins.len(), 2);

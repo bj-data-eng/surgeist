@@ -515,7 +515,7 @@ pub(crate) fn run_glyph_frame(
     }
 }
 
-/// Map a genuine intrinsic Cell origin without manufacturing a font run.
+/// Map an intrinsic Cell origin without manufacturing a font run.
 /// Local Y is relative to the executed common inner baseline. The square already
 /// contains its enclosing scope displacement; the frame adds only inner geometry.
 pub(crate) fn cell_glyph_frame(

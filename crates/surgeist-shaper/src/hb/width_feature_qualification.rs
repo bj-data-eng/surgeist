@@ -658,7 +658,7 @@ fn contextual_matches_and_static_width_references_are_not_successful_width_opera
             ];
             let result = font.shape(observed("AB", Direction::LeftToRight, feature), &requests);
             assert_eq!(ids(&result), vec![u32::from(font::A), u32::from(font::R)]);
-            // In the shared case, hwid genuinely enables the lookup at A.
+            // In the shared case, hwid enables the lookup at A.
             // Its successful child at B inherits that launch provenance;
             // B's direct range mask does not re-gate a contextual child.
             // The ccmp-only launch cannot gain credit from the child's static

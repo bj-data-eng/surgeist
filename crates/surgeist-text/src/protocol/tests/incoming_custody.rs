@@ -471,7 +471,7 @@ fn atomic_pair(
     assert_eq!(request.incoming, continuation);
     assert_eq!(request.atomics.len(), 1);
     let second = finish_at_edges(p, request, ParagraphBaseDirection::LeftToRight)
-        .expect("genuine in-flow atomic must accept the issued After/Both receiving indication");
+        .expect("in-flow atomic must accept the issued After/Both receiving indication");
     assert_eq!(second.prepared_text(), *p);
     assert!(second.hyphenation_continuation().is_none());
     assert!(second.selected_line().request().alternative.is_none());

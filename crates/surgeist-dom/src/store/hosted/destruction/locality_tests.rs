@@ -862,7 +862,7 @@ fn operation_lookup_rejects_wrong_generation_source_and_reused_identity() {
 }
 
 /// These are the existing owning controller/issuer APIs, not an attestation of
-/// Window cleanup or public navigation completion. Every row has genuine issued
+/// Window cleanup or public navigation completion. Every row has issued
 /// identities; the storage owner is explicitly retired by its original helper.
 fn retained_controller_cycles(complete: bool, narrow: bool) {
     let mut f = Fixture::new();

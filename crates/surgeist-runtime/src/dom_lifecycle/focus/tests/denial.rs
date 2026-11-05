@@ -185,8 +185,7 @@ fn parked(
                         ..
                     }) => context.event = Some(event),
                     Ok(other) => {
-                        context.unexpected =
-                            Some(format!("unexpected genuine child entry: {other:?}"))
+                        context.unexpected = Some(format!("unexpected child entry: {other:?}"))
                     }
                     Err(error) => context.error = Some(error),
                 }
@@ -615,7 +614,7 @@ fn pruned_original_window_does_not_become_a_negative_focus_observation() {
     assert_eq!(
         owner.borrow().hosts[0].top_levels.len(),
         1,
-        "the genuinely empty retired B composition was pruned"
+        "the empty retired B composition was pruned"
     );
     let basis = case.session.snapshot().stamp();
     let mut dom = case.session.dom();

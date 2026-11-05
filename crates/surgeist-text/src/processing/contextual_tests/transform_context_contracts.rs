@@ -31,7 +31,7 @@ fn input(
         .map(|range| super::origin(&input.source, range))
         .collect();
     let SourceProcessingScope::Block { base_style, .. } = &mut input.scopes[0] else {
-        unreachable!("the genuine source fixture has an owning Block")
+        unreachable!("the source fixture has an owning Block")
     };
     base_style.text_transform = lower();
     input.paragraphs = vec![
@@ -910,7 +910,7 @@ fn foreign_combining_unit_requires_complete_coverage(marks: usize, suffix: bool)
         neighbor(),
     );
     let SourceProcessingScope::Block { base_style, .. } = &mut request.scopes[0] else {
-        unreachable!("fixture has its genuine Block owner")
+        unreachable!("fixture has its Block owner")
     };
     base_style.text_transform = TextTransform::none();
     let processed = capture(request);
@@ -968,7 +968,7 @@ fn one_captured_word_retains_its_mapping(
     let length = original.len();
     let mut request = super::input(original.as_str(), WhiteSpace::Preserve);
     let SourceProcessingScope::Block { base_style, .. } = &mut request.scopes[0] else {
-        unreachable!("fixture has its genuine Block owner")
+        unreachable!("fixture has its Block owner")
     };
     base_style.text_transform = TextTransform::Set(TextTransformSet::none().with_case(case));
     base_style.locale = locale.map(str::to_owned);
@@ -1177,7 +1177,7 @@ fn an_empty_raw_member_does_not_own_an_adjacent_japanese_phrase_separator() {
         Range::new(0, 3)
     );
 
-    // Only the empty middle is requested in the diagnostic cases. Its genuine
+    // Only the empty middle is requested in the diagnostic cases. Its
     // anchor is later than the preceding paragraph's canonical generated cut.
     for relationship in [
         Some(ParagraphConnectionKind::Continuous),

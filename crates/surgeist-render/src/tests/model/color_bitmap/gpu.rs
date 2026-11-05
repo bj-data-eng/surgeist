@@ -263,7 +263,7 @@ fn empty_intrinsic_transparent_sbix_preserves_foreground_alpha_direct_and_graph(
 fn empty_intrinsic_empty_colr_outline_preserves_foreground_alpha_direct_and_graph() {
     let bytes = ahem_color_font(valid_cpal());
     let mut colr = table_bytes(&bytes, b"COLR");
-    write_be_u16(&mut colr, 20, 3); // Ahem space is a genuine zero-contour glyph.
+    write_be_u16(&mut colr, 20, 3); // Ahem space is a zero-contour glyph.
     empty_intrinsic_keeps_two_foreground_layers(font_with_tables(&bytes, vec![(*b"COLR", colr)]));
 }
 

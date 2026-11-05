@@ -74,7 +74,7 @@ its host; same-document Template adoption does not normalize that history. Captu
 preserve the real role/cache/contents and related documents. `TemplateRelations`
 covers derived ownership/cache facts separately from shadow relations.
 
-Direct explicit destroy of genuinely owned contents returns InvalidDestruction,
+Direct explicit destroy of owned contents returns InvalidDestruction,
 even when empty, parentless or adopted elsewhere. Destroy the detached owning
 Template to retire its owned contents/nested/shadow closure atomically; old captures
 and shared inert Documents survive. A retained declarative-shadow reference is

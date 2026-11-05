@@ -250,7 +250,7 @@ pub(crate) fn family_payload(
     })
 }
 /// Raw caller-owned creation input, before any exact-kind target is formed.
-/// This borrows the genuine ingress operand and shares the diagnostic inventory.
+/// This borrows the ingress operand and shares the diagnostic inventory.
 #[cfg(test)]
 pub(in crate::store) fn new_kind(
     value: &NewNode,

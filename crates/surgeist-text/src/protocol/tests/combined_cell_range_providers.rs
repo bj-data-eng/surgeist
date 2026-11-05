@@ -70,7 +70,7 @@ pub(in crate::protocol::tests::combined_cells) fn qualified_optional_liga() -> V
         let ligatures = receipt.ligatures().collect::<Vec<_>>();
         if enabled {
             let [ligature] = ligatures.as_slice() else {
-                panic!("one genuine optional liga action");
+                panic!("one optional liga action");
             };
             assert_eq!(receipt.components(0), Some(&[0, 1][..]));
             assert_eq!(ligature.components(), [0, 1]);
@@ -297,7 +297,7 @@ fn family(bytes: &[u8]) -> String {
         .to_string()
 }
 
-fn genuine_fallback_faces() -> [Vec<u8>; 2] {
+fn fallback_faces() -> [Vec<u8>; 2] {
     // Exact maintained src/tests/fallback_coverage.rs::fonts recipe: Ahem
     // kana resource lacks X; real mark resource is renamed Bhem, not aliased.
     let primary = crate::shaping_test_fonts::kana_ahem();
@@ -390,7 +390,7 @@ fn genuine_fallback_faces() -> [Vec<u8>; 2] {
 
 #[test]
 fn a_single_real_cell_keeps_two_actual_fallback_faces_and_each_own_metric_piece() {
-    let bytes = genuine_fallback_faces();
+    let bytes = fallback_faces();
     let body_font = Font::new().family("Ahem").family("Bhem");
     assert_eq!(body_font.family, ["Ahem", "Bhem"]);
     let capture = captured_with_limits(

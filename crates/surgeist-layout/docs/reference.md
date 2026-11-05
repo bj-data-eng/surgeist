@@ -99,7 +99,7 @@ every suffix edit. Supply coherent current preparation and use ordinary changed-
 invalidation when changing the mode. See the pinned
 [Text 4 selection rule](../../../references/css-text-4--WD-css-text-4-20260814--106c5cd086ab.md#valdef-text-wrap-style-stable).
 `AvoidShortLastLine` attempts a bounded repair of the final two formatted lines
-in the final genuinely Paragraph-ending group. It preserves the ordinary line
+in the final Paragraph-ending group. It preserves the ordinary line
 count, terminal occurrence and earlier accepted prefix, including geometry and
 state. A final formatted Forced line followed by a nonformatted Paragraph receipt
 is not a target; earlier Forced groups remain ordinary, and content never moves
@@ -128,7 +128,7 @@ through an explicit native policy.
 
 `Pretty` processes hard groups in source order. At each actual entry it establishes
 an ordinary result, applies the same Tail preference when the group's final
-formatted occurrence genuinely ends Paragraph, then attempts body improvement.
+formatted occurrence ends Paragraph, then attempts body improvement.
 Body preserves this entry's ordinary formatted count and terminal occurrence;
 it can change the group's interior cuts. Earlier selected groups stay fixed.
 Changed line heights can change the next group's entry and ordinary count, so
@@ -172,7 +172,7 @@ does not change the child's own alignment context.
 Named coordinates use the child's border-box physical origin on an explicit
 axis. `BaselineCoordinateOf` accepts finite signed offsets, including positions
 outside the border box. `NamedBaselinesOf` retains separate first/last facts
-for each name: `Unknown`, genuinely `Absent`, or `Available`. Generic
+for each name: `Unknown`, `Absent`, or `Available`. Generic
 `BaselinesOf` projections do not establish named authority. A missing generic
 scalar likewise cannot prove named absence.
 
@@ -186,7 +186,7 @@ These measurement facts do not establish canonical Text placement authority.
 The child's non-inherited `NodeInputOf::baseline_source` selects its matching
 set. `BaselineSource::Auto` selects last for an inline-block and first otherwise;
 `First` and `Last` select their respective sets explicitly. Only that set is
-consulted. If the selected fact is genuinely absent, Layout synthesizes
+consulted. If the selected fact is absent, Layout synthesizes
 alphabetic at the line-under margin edge and central midway between line-over
 and line-under margin edges. Signed used margins remain part of that geometry.
 Unknown authority refuses the request; a coordinate on an incompatible axis
@@ -299,7 +299,7 @@ child's inline reference and `baseline_source` do not select Grid's set or name.
 Available named facts retain their actual physical border-frame coordinate and
 axis; a wrong axis is `LayoutInvalidInputOf::GridBaseline`. An unknown demanded
 fact is `LayoutMissingContext::NamedGridBaseline`, not evidence of absence.
-Genuine Absent facts allow Grid to synthesize alphabetic at the border line-under
+Absent facts allow Grid to synthesize alphabetic at the border line-under
 edge and central at the border-box midpoint. Actual margins enter the owning
 Grid contribution once, separately from this border point. Inline atomic
 margin-edge synthesis remains a different operation.
@@ -339,7 +339,7 @@ using the admitted captured boxes and complete extra native-pair inventory.
 It requires Complete captured topology and actual complete body coverage;
 Text's precise capability errors remain Text errors at `TextCapture`.
 Association-only metadata refuses `InlineBoxFragmentsRequireFlow` in both
-checked constructors. Genuine computed-only semantic flow can carry the same
+checked constructors. Computed-only semantic flow can carry the same
 explicit demand. The early wrap-edge receipt is still validated before final
 admission in `try_new_with_edges`.
 
@@ -383,7 +383,7 @@ Layout strut metrics and must match the corresponding issued semantic role.
 `LayoutFlowInput::try_new(tree, root, paragraphs, wrapping, scope_alignments)` also admits
 box/control-only flow with no Text paragraphs. `WrappingInput` supplies actual
 scope declarations and generated child-order proofs. `WrappingScopeInput::NativePair`
-declares genuine normalized endpoints; `Captured` declares an authentic inline
+declares normalized endpoints; `Captured` declares an authentic inline
 capture identity. `WrapInside::Avoid` ranks permitted fitting breaks through the
 same validated scope forest. A captured scope without endpoints supplies semantic
 ownership and no physical border or padding authority. Ordinary `compute_layout`
@@ -416,7 +416,7 @@ inline break; `Flex` partitions actual items only in a multiline flex container.
 Applicability follows the normalized box role. Flex exterior forces add no empty
 line, while collapsed items retain their real strut participation.
 
-Numeric inline forces use genuine participant cuts, including leading/terminal
+Numeric inline forces use participant cuts, including leading/terminal
 mandatory progress, and partition maximum-content groups. Propagation consumes
 actual first/last in-flow child evidence; `InlineChildOrderInput` distinguishes
 the paired box from its endpoints and declares prefix/suffix completeness.
@@ -426,7 +426,7 @@ Avoidance adds no ordinary opportunities.
 
 Text-backed soft edge avoidance selects one Text-issued original incidence of
 the existing boundary, with authentic generated-box order and association.
-Genuine empty captured boxes can have distinct before/after choices; one choice
+Empty captured boxes can have distinct before/after choices; one choice
 governs every participating scope. Each material box-metric assignment is fitted
 before preference selection. Missing correspondence returns
 `UnsupportedIncidence`; see the [original-cut contract](../../../references/text-wrap-edges--native-determination.md#original-box-cut-incidence).
@@ -460,7 +460,7 @@ early source styles or frozen as absent by the receipt. A numerical change alone
 can reuse its semantic proof; the normal metric/fit/cache owners consume the new
 values. See [the source-admission guide](how-to.md#prepare-native-forced-text-edges).
 
-Complete generated child order can include genuine inline scopes without physical
+Complete generated child order can include inline scopes without physical
 endpoints. Native spans establish the physical projection; canonical capture
 facts establish the full parent/order and consumed prefix or suffix. An empty
 in-flow child still determines first/last-child propagation. Admission rejects
@@ -491,11 +491,11 @@ allocated box struts with its existing metric groups; numeric-only native flow
 uses its existing metric owner. Equal glyph prefixes do not establish equal
 box assignment or float clearance.
 At paragraph completion, the outgoing frontier must close inline boxes whose
-genuine exits precede that paragraph's exit. After an actual Forced selection,
+exits precede that paragraph's exit. After an actual Forced selection,
 Text's issued ParagraphEnd selection can complete remaining boxes within the
 same actual scheduled paragraph. Layout retains this proof separately
 from the preceding original pin, which remains unchanged. The proof carries the
-genuine selected sequence, incoming box attribution and captured paragraph horizon
+selected sequence, incoming box attribution and captured paragraph horizon
 through measurement, replay and reuse. CSS phantom disposition is independent of
 numerical metric completeness: a strut-only Paragraph receiver retains completion
 custody but contributes no ordinary published line or block extent. See the
@@ -512,7 +512,7 @@ an actual Forced ending remain formatted even with zero extent. A terminal
 strut-only receiver does not inherit the preceding Forced status. These native
 results use the numeric owner directly and do not manufacture Text receipts.
 
-Captured paragraphs whose only prepared participants are genuine computed
+Captured paragraphs whose only prepared participants are computed
 mandatory boundaries can execute without host child nodes. Layout proves their
 unique native gap from the existing capture/domain/graph associations and orders
 shared-gap paragraphs by canonical events. Empty, leading and trailing gaps use
@@ -539,18 +539,18 @@ containing Block formatter and retain `InlineFlowMismatch` validation;
 its parent's endpoint formatter fields establish the parent's own used axes.
 
 Layout authenticates the actual captured scope/native pair and parent relation,
-then lowers checked Text contexts or uses the genuine numeric occurrence proof.
+then lowers checked Text contexts or uses the numeric occurrence proof.
 Selected BoxEdges surround their actual indivisible packet or authentic empty gap on the
 assigned sides. Flattened native containment, equal source cuts and bidi parity
 do not establish this ownership. Original levels and non-edge payload order stay
 unchanged; context-only controls add no flow. A failed BoxEdge request refuses
-without becoming a Contribution. Captured Contribution controls remain genuine
+without becoming a Contribution. Captured Contribution controls remain
 Contribution operations, including zero.
 
 The numeric formatter excludes actual BoxEdge operations from content L2 before
 ordering and retains their physical allocation. Ordinary Contributions remain
 supplied operands, including zero. A demanded and proven normal family can
-classify its genuine zero-component undecorated endpoints as transparent logical
+classify its zero-component undecorated endpoints as transparent logical
 aliases while retaining their Contribution operation and supplied metrics.
 `WrappingInput::gaps` carries resolved
 neighbor/formatter/delimiter/empty-parent attachments when actual facts cannot
@@ -565,7 +565,7 @@ baseline; supplied metrics independently determine line height. Node
 location/size/border/padding describe that strip; `NodeOutputOf::margin`
 retains actual physical margins. Individual nonzero components establish
 participation and shaping separation, so opposing margins or cancellation with
-border/padding do not turn a genuine empty pair into a phantom line. Actual
+border/padding do not turn an empty pair into a phantom line. Actual
 strut/baseline evidence remains independent.
 
 Text's lane-specific component receipt preserves the used native arithmetic
@@ -578,7 +578,7 @@ with [fragmented inline decoration work](https://github.com/bj-data-eng/surgeist
 Text-backed scopes use authenticated mixed-prefix and canonical source incidence,
 including transformed, collapsed and removed content. A semantic captured scope
 can span a whole typographic unit without physical endpoints. Paired endpoints
-at admitted decoded atom seams retain their genuine captured chronology,
+at admitted decoded atom seams retain their captured chronology,
 including inside a unit shared by same-font connected origins. Their used
 border/padding contributes once without separating the shared glyphs or granting
 an interior line cut. Layout validates that order and canonical pairing;
@@ -594,7 +594,7 @@ uses real selected text, boxes, controls, and any explicitly supplied Layout
 or zero-size line.
 
 For virtual phrase output, capture derives one association for each needed
-canonical Text scope from its genuine captured endpoint controls and the actual
+canonical Text scope from its captured endpoint controls and the actual
 validated control-node bindings. Inline scopes retain their distinct normalized
 Start/End node pair across paragraph cuts; domain scopes associate with each
 paragraph's actual container. `TextScopeBinding` and `TextScopeAssociation` expose
@@ -614,14 +614,14 @@ container association. Missing, foreign, reused, crossed or mismatched facts
 remain typed refusals. Needed scope, endpoint, container and tree dependencies
 participate in cache and invalidation checks.
 
-A genuine captured paragraph with no original, control, atomic, participant or
+A captured paragraph with no original, control, atomic, participant or
 generated-contributor inventory can associate an empty domain through the existing
 paragraph binding. Its supplied node and binding inventories must also be empty,
 and `line_strut` must be absent. This association adds no Text run, line, strut,
 fragment or placed Text output; ordinary Box geometry is unchanged. Removed-only
 source and omitted real bindings do not qualify. Empty incidence must be authentic
 and unambiguous, and an empty paragraph does not certify that its whole domain is
-empty. Unknown inline topology does not erase genuine canonical paragraph/domain
+empty. Unknown inline topology does not erase canonical paragraph/domain
 facts; missing facts needed by an active proof still refuse. See the [Text/Layout contract](../../../docs/text-layout-contract.md) for
 the shared ownership and placement boundary.
 
@@ -668,14 +668,14 @@ component. A 25% indent in an 80px block is 20px even when floats leave a 50px
 span. Negative and oversized indents retain their actual overflow.
 
 Default indentation follows the first formatted line. `each_line` instead affects
-the first line of an actual block container and lines after genuine forced
+the first line of an actual block container and lines after forced
 breaks; `hanging` inverts that predicate. Only accepted lines advance this state,
 including empty lines. Candidate retries and clearance do not consume it.
 Text-bearing and box/control-only inline runs use the same policy.
 
 Prepared Text hanging punctuation uses explicit First/Last formatted-container
 roles. Layout supplies actual First state and validates demanded Last assumptions
-against accepted Text, numeric, empty and Forced lines, including genuine later
+against accepted Text, numeric, empty and Forced lines, including later
 in-flow children. Endpoint-based replay permits a terminal punctuation candidate
 to absorb a former last line. Detached full-word/phrase trials retain prospective
 entry and remaining-flow authority without committing line history. Intrinsic
@@ -705,7 +705,7 @@ accepted candidates publish their actual float placements once.
 Retained source participation determines whether an encounter has preceding
 in-flow content, independently of zero or signed prefix advance. Hidden and
 absolute participants retain their own traversal and static-position effects.
-Separate paragraph bindings retain their genuine terminal receipts. A
+Separate paragraph bindings retain their terminal receipts. A
 strut-only Paragraph completion publishes no ordinary line; actual Forced
 endings remain real. A discarded-only soft endpoint contributes no phantom
 line. Minimum sizing includes the largest individual float contribution;
@@ -726,7 +726,7 @@ automatic variant dispositions do not turn meaningful content into phantom flow.
 `NodeInputOf::hyphenate_limit_lines` supplies a block-owned `NoLimit` or finite
 count. Only successfully committed formatted lines update remaining capacity;
 automatic cuts are suppressed at the cap, while admitted manual endings
-(including empty indications) remain permitted and consume capacity. A genuine
+(including empty indications) remain permitted and consume capacity. A
 nonhyphenated ending resets it. Trials, floats and administrative run splits do
 not themselves change it; nested block containers own separate state. Min-content
 uses only the static zero/nonzero policy, independently of actual line history:
@@ -736,7 +736,7 @@ no-limit retain refinement. Max-content stays unbroken. See the
 
 
 `NodeInputOf::hyphenate_limit_zone` supplies a signed length/percentage, default
-zero. For each automatic candidate with a genuine ordinary fallback immediately
+zero. For each automatic candidate with an ordinary fallback immediately
 before its word, Layout converges that fallback with no supplied spacing through
 the same shaping, allocation, float replay and height loops. Its own natural
 alignment measure and actual indentation determine the unused inline gap;
@@ -852,7 +852,7 @@ composition admits in-flow and positioned atomic boxes with their actual
 physical geometry and independently owned content orientation. Text glyphs
 retain Clockwise. Explicit used Alphabetic preparation also supports
 [`Named(Alphabetic)` matching](#numeric-inline-baseline-references); raw
-preparation retains its named-reference refusal. Genuine
+preparation retains its named-reference refusal.
 incoming native floats outside the paragraph binding remain Layout constraints.
 Physical Text baseline
 coordinates alone do not satisfy a named font-baseline request.
@@ -1091,7 +1091,7 @@ algorithm modes remain internal.
 
 Each `AxisSizingRequestOf` carries physical `AvailableSpaceOf` independently
 from its `SizingOperation`: Normal, MinContent or MaxContent. Finite space does
-not turn an intrinsic contribution into normal layout. Genuine imposed sizes,
+not turn an intrinsic contribution into normal layout. Imposed sizes,
 percentage-parent bases and the containing flow axes remain separate inputs.
 `SizingRequestOf` also retains qualified initial-containing-block, nearest
 scrollport and local containing-block limits for orthogonal fallback. Unknown
@@ -1151,7 +1151,7 @@ collapse through the box. External adjacent sibling margins still follow the
 ordinary collapse rules. The host leaf provider supplies finite content
 measurements selected from actual natural dimensions or the applicable fallback
 when the host treats natural dimensions as absent. A missing measurement provider
-does not mean absent natural dimensions; a genuine zero measurement is zero-sized
+does not mean absent natural dimensions; a zero measurement is zero-sized
 content, not absence.
 
 `ContainingLayoutContext` keeps the containing flow axes and

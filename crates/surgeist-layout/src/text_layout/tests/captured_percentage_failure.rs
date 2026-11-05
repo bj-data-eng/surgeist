@@ -21,7 +21,7 @@ fn captured_final_percent_failure_preserves_publication<S: LayoutScalar>(maximum
     assert!(host.node_input(2).atomic_inline_participation.is_none());
     assert_eq!(host.node_input(2).size, custody_atom::<S>(false, 0.0).size);
 
-    // This is a genuine successful constant-control publication, independent
+    // This is a successful constant-control publication, independent
     // of whether final-auto percentage settlement has yet been implemented.
     let baseline = custody_compute(&host, vec![binding.clone()], &[]);
     custody_assert_simple(&baseline, false, 0.72);

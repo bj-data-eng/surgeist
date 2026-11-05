@@ -810,7 +810,7 @@ fn last_child_after_force_propagates_to_outer_scope_with_all_closing_bp_outgoing
     run::<f64>(Case::After);
 }
 #[test]
-fn genuine_empty_first_child_stops_before_propagation_and_retains_outer_start_outgoing() {
+fn source_empty_first_child_stops_before_propagation_and_retains_outer_start_outgoing() {
     run::<f32>(Case::EmptyBefore);
     run::<f64>(Case::EmptyBefore);
 }

@@ -36,7 +36,7 @@ fn a_rule_list_without_a_context_is_an_ordinary_group_without_bindings() {
     );
     assert!(plain.is_clean(), "{plain:?}");
     assert_eq!(plain, group);
-    let fragment = plain.syntax().as_ref().expect("a genuine block");
+    let fragment = plain.syntax().as_ref().expect("a block");
     assert_eq!(fragment.body().rules().len(), 2);
     let origin = fragment.origin().span();
     assert_eq!(
@@ -119,7 +119,7 @@ fn a_feature_value_definition_block_is_read_under_the_kind_it_is_given() {
     ] {
         let report =
             CssBlockFragment::<CssFontFeatureValueBlock>::parse_definition(&parser(), source, kind);
-        let block = report.syntax().as_ref().expect("a genuine block").body();
+        let block = report.syntax().as_ref().expect("a block").body();
         assert_eq!(block.kind(), kind);
     }
 }

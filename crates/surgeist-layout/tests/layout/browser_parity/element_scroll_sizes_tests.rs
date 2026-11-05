@@ -566,7 +566,7 @@ fn actual_completed_output_without_canonical_scroll_geometry_is_refused() {
     let batch = super::super::compute_actual_batch(&tree, &g.name, request).unwrap();
     tree.apply_completed_batch(&batch);
     assert!(project("element-scroll", &tree.nodes[0]).is_ok());
-    // Remove authority from the genuine completed batch; no numeric substitute is supplied.
+    // Remove authority from the completed batch; no numeric substitute is supplied.
     tree.nodes[0].unrounded.scroll_geometry = None;
     assert!(
         project("element-scroll", &tree.nodes[0])

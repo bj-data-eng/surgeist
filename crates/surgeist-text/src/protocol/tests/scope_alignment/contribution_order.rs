@@ -166,7 +166,7 @@ fn nested_direct_and_common_chains_preserve_signed_rows_and_global_descendant_or
         (800, -200)
     );
     assert_eq!(font.charmap().map('X'), Some(GlyphId::new(58)));
-    // Font8/2 at size10 with half-leading -3,-4,-2 gives genuine signed
+    // Font8/2 at size10 with half-leading -3,-4,-2 gives signed
     // contributions5/-1,4/-2,6/0 for line heights4,2,6 respectively.
     let mut source = Source::identified("XXX", Id::from_u64(1578077), 61);
     for (index, height) in [4.0, 2.0, 6.0].into_iter().enumerate() {

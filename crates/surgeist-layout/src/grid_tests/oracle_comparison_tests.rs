@@ -6810,7 +6810,7 @@ mod root_layout_oracle {
     #[test]
     fn subgrid_traversal_percent_gap_uses_definite_content_box_basis() {
         // The own cyclic 20% gap contributes 0 intrinsically. Against parent
-        // gap 10, each internal side subtracts 5 from the genuine 40px leaf.
+        // gap 10, each internal side subtracts 5 from the 40px leaf.
         let expected_columns = TrackSizingSlice::definite_columns(100.0, 10.0)
             .track(GridTrack::auto())
             .track(GridTrack::auto())

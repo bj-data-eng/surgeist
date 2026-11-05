@@ -232,7 +232,7 @@ crate::serialization::specified_rule_serialization::specified_serialization!(Css
 /// An inherited economy-initial output-device hint, retaining the specified keyword.
 ///
 /// Applies to all elements, accepts no percentages, and animates discretely.
-/// User preferences and output-device decisions remain downstream. The genuine
+/// User preferences and output-device decisions remain downstream. The
 /// deprecated `color-adjust` shorthand uses this same grammar and sets only
 /// `print-color-adjust`, while retaining a distinct authored property identity.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -1,4 +1,4 @@
-//! Sideways Cells retain genuine vertical Source custody and horizontal payloads.
+//! Sideways Cells retain vertical Source custody and horizontal payloads.
 //! The current existing-callable RED is public prepare's Cell orientation gate.
 use super::*;
 use skrifa::raw::TableProvider;
@@ -130,7 +130,7 @@ fn font_premises(instance: EffectiveFontInstance<'_>) {
 }
 
 fn ordinary_controls(orientation: LineOrientation) {
-    // The genuine vertical capture has None combination, so ordinary sideways
+    // The vertical capture has None combination, so ordinary sideways
     // typography already succeeds before the Cell admission assertion is made.
     let mut ordinary = fixture(
         ContainerShape::Inline,
@@ -175,7 +175,7 @@ fn ordinary_controls(orientation: LineOrientation) {
             }
         );
     }
-    // All is ineffective under a genuinely horizontal source writing axis.
+    // All is ineffective under a horizontal source writing axis.
     let mut horizontal = fixture(
         ContainerShape::Inline,
         "A",
@@ -254,7 +254,7 @@ fn interaction(
         &Text::from(if empty { "" } else { "A" })
     );
     let [piece] = selection.source_pieces() else {
-        panic!("one genuine original occurrence");
+        panic!("one original occurrence");
     };
     assert_eq!(piece.local_range(), Range::new(0, 1));
     assert_eq!(piece.aggregate_range(), Range::new(0, 1));
@@ -311,7 +311,7 @@ fn interaction(
         unit.expanded_intersections().collect::<Vec<_>>(),
     ] {
         let [actual] = intersections.as_slice() else {
-            panic!("one genuine original contribution");
+            panic!("one original contribution");
         };
         assert_eq!(actual.origin(), piece.origin().clone());
         assert_eq!(actual.local_range(), Range::new(0, 1));
@@ -359,10 +359,10 @@ fn cell_case(
         ParagraphBaseDirection::LeftToRight
     );
     let prepared = fixture.system.prepare(&fixture.analyzed, options(orientation, named))
-        .expect("a genuine vertical Source Cell with matching horizontal typography must admit sideways preparation");
+        .expect("a vertical Source Cell with matching horizontal typography must admit sideways preparation");
     let cells = prepared.cell_views().collect::<Vec<_>>();
     let [cell] = cells.as_slice() else {
-        panic!("one genuine prepared Cell");
+        panic!("one prepared Cell");
     };
     assert_eq!(
         (cell.extent(), cell.before(), cell.after()),

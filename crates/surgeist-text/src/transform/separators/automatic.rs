@@ -34,7 +34,7 @@ enum RunRead {
     Qualified(usize),
 }
 
-/// Genuine adjacent original participants and their actual mixed occurrences.
+/// Adjacent original participants and their actual mixed occurrences.
 #[derive(Clone, Copy)]
 struct IncidentPair {
     left: usize,
@@ -178,7 +178,7 @@ impl PhraseReads {
     }
 
     /// This qualifies root output demand only. A foreign site remains readable
-    /// when a genuine casing/unit predicate later needs its context.
+    /// when a casing/unit predicate later needs its context.
     pub(in crate::transform) fn root_gap(&self, paragraph: &SourceContext<'_>, cut: usize) -> bool {
         match self.sites[cut] {
             Site::Captured { insertion, .. } => paragraph.owns_capture_cut(insertion.capture_cut),
@@ -219,7 +219,7 @@ impl PhraseReads {
         }
     }
 
-    /// Discovery and detector execution belong to the first genuine demand.
+    /// Discovery and detector execution belong to the first demand.
     /// Only a fully qualified actual run publishes indexed membership.
     fn run(
         &mut self,

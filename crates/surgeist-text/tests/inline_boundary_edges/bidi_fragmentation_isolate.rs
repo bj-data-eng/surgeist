@@ -49,7 +49,7 @@ fn captured_isolate() -> t::PreparedText {
             (t::Range::new(5, 6), 0),
         ]
     );
-    // X5a starts the genuine isolate at odd level1. Its two Latin L units get
+    // X5a starts the isolate at odd level1. Its two Latin L units get
     // level2 under I2; RLI/PDI themselves remain in their surrounding level0.
     // The separate After-affinity box Start inherits actual c level2.
     assert_eq!(
@@ -156,7 +156,7 @@ fn qualify_authority(p: &t::PreparedText) {
 }
 
 #[test]
-fn a_genuine_rli_group_keeps_one_captured_box_fragment_and_no_pseudo_source_glyphs() {
+fn a_rli_group_keeps_one_captured_box_fragment_and_no_pseudo_source_glyphs() {
     let p = captured_isolate();
     qualify_authority(&p); // Before construction of any fragment family.
     let (owner, domain) = sources(&p);

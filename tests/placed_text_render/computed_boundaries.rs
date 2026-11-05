@@ -407,7 +407,7 @@ fn assert_computed_scope_before(
                 .pieces()
                 .filter(|piece| piece.fragment().owner() == owner)
                 .collect::<Vec<_>>();
-            // Only the receiving A belongs to the genuine captured Inline.
+            // Only the receiving A belongs to the captured Inline.
             // The mandatory cause puts it on line one; neither an edge control
             // nor decoration is needed to retain that actual box's identity.
             assert_eq!(pieces.len(), 1);

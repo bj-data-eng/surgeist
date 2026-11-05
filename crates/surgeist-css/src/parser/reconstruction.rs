@@ -640,7 +640,7 @@ fn splice_bounded_syntax(
         BoundedParseSyntax::StyleBlock(Some(block)) => {
             let (_, parents) = parents
                 .split_first()
-                .expect("a style-block replay retains its genuine outer brace");
+                .expect("a style-block replay retains its outer brace");
             let (declarations, rules) = splice_style_body(
                 block.declarations(),
                 block.rules(),
@@ -659,7 +659,7 @@ fn splice_bounded_syntax(
         BoundedParseSyntax::GroupBlock(Some(block)) => {
             let (_, parents) = parents
                 .split_first()
-                .expect("group replay retains its genuine root brace");
+                .expect("group replay retains its root brace");
             let rules = splice_rule_list(block.body().rules(), parents, child_start, child_rules);
             BoundedParseSyntax::GroupBlock(Some(crate::rule::CssBlockFragment::from_parsed(
                 crate::rule::CssRuleList::from_parsed(rules),
@@ -669,7 +669,7 @@ fn splice_bounded_syntax(
         BoundedParseSyntax::ScopedBlock(Some(block)) => {
             let (_, parents) = parents
                 .split_first()
-                .expect("scoped replay retains its genuine root brace");
+                .expect("scoped replay retains its root brace");
             let rules = splice_rule_list(block.body().rules(), parents, child_start, child_rules);
             BoundedParseSyntax::ScopedBlock(Some(crate::rule::CssBlockFragment::from_parsed(
                 crate::rule::CssRuleList::from_parsed(rules),

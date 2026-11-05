@@ -2579,7 +2579,7 @@ impl TestTree {
                 })?;
                 // Native fixture validation forbids an authored strut here,
                 // and the boundary schema admits no decoration properties.
-                // These are genuine zero contributions, not absent Style facts.
+                // These are zero contributions, not absent Style facts.
                 let metrics = layout::InlineMetrics::try_new(
                     surgeist_layout::InlineBaselineContext::Physical,
                     0.0,
@@ -4118,7 +4118,7 @@ fn compare_range_rectangle_expectations(
     )
 }
 
-/// One browser Range rectangle assembled from genuine source intersections.
+/// One browser Range rectangle assembled from source intersections.
 /// These are allocation/range rectangles, not glyph ink bounds.
 struct NativeRangeRectangle {
     origin: surgeist_text::PreparedOrigin,
@@ -6975,7 +6975,7 @@ mod tests {
     }
     #[test]
     fn prepared_empty_transparent_controls_round_trip_without_fabricated_origin() {
-        // Exact producer-shaped source channel for the genuinely empty marked
+        // Exact producer-shaped source channel for the empty marked
         // span: two controls, no text occurrence, and no observed metrics.
         let style = serde_json::json!({"fontSize":16.0,"lineHeight":20.0,"whitespace":"collapse","wrap":"word","letterSpacing":0.0,"wordSpacing":0.0,"color":[0.0,0.0,0.0,1.0],"locale":null});
         let capture = serde_json::json!({"font":{"id":pinned_font::ID,"sha256":pinned_font::SHA256,"faceIndex":0,"family":"SurgeistParityAhem","style":"normal","weight":400,"stretch":"normal","features":"normal","variations":"normal","synthesis":"none","loaded":true},"direction":"ltr","writingMode":"horizontal-tb","baseStyle":style,"origins":[],"connections":[],"atomics":[],"controls":[{"child":0,"at":0,"kind":"inline-boundary-start"},{"child":1,"at":0,"kind":"inline-boundary-end"}],"order":[{"kind":"control","index":0,"affinity":"before"},{"kind":"control","index":1,"affinity":"before"}]});
@@ -7027,7 +7027,7 @@ mod tests {
         for fragment in line.fragments() {
             let surgeist_text::FinalizedFragmentOwner::Control(control) = fragment.view().owner()
             else {
-                panic!("the genuine nonvisual control keeps its actual owner")
+                panic!("the nonvisual control keeps its actual owner")
             };
             assert!(
                 tree.paragraphs[0]
@@ -7185,7 +7185,7 @@ mod tests {
     fn native_range_observation_uses_actual_font_band_instead_of_authored_line_strut() {
         // Authored input, not measured/source-substituted data: the maintained
         // helper captures original X, pinned Ahem10, LH10.5, no tracking/word spacing,
-        // no controls/atomics, one genuine source origin and an ordinary inline root.
+        // no controls/atomics, one source origin and an ordinary inline root.
         let golden = native_test_golden(&[("X", 10.0, 0.0)], false);
         let (tree, batch) =
             generated_native_batch(&golden, normal_inline_intrinsic_block_native_request(100.0));
@@ -7258,9 +7258,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             [(surgeist_text::Range::new(0, 1), 58, 10.0, 0.0)]
         );
-        let strut = fragment
-            .rect()
-            .expect("genuine source-fragment strut control");
+        let strut = fragment.rect().expect("source-fragment strut control");
         assert_eq!(strut.size().height, 10.5);
         assert_eq!(f64::from(strut.origin().y), baseline - 8.25);
         assert_eq!((strut.origin().x, strut.size().width), (0.0, 10.0));
@@ -7434,7 +7432,7 @@ mod tests {
             end = next;
         }
         assert_eq!(end, 4);
-        // One browser Range rectangle may cover several contiguous, genuinely
+        // One browser Range rectangle may cover several contiguous,
         // associated Text intersections on the same finalized line.
         assert_native_test_matches(&golden, formal_max_content_native_request()).unwrap();
     }

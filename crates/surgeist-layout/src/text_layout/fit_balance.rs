@@ -1,4 +1,4 @@
-//! Bounded selection over rolling, genuinely accepted Forced-group entries.
+//! Bounded selection over rolling, accepted Forced-group entries.
 
 use super::*;
 use crate::inline_wrapping::balance::{GroupTrial, choose_group, variance_order};

@@ -422,7 +422,7 @@ fn available_tree<S: l::LayoutScalar>(
         input.inline_baseline_context = l::InlineBaselineContext::Named(spec.name);
         input.baseline_source = preference;
     });
-    // Genuine ordinary Block lines establish first2/last8. The Central
+    // Ordinary Block lines establish first2/last8. The Central
     // producer has real12-unit content in its fixed10 border; no font is used.
     let heights = if spec.name == l::BaselineName::Alphabetic {
         (2.0, 6.0)
@@ -1030,7 +1030,7 @@ fn receiver_sizing_cache<S: l::LayoutScalar>() {
                 "the real size/child host cache must actually answer a warm request"
             );
             warm.apply_to(&mut host).unwrap();
-            // A genuine style/name change recomputes the same topology and
+            // A style/name change recomputes the same topology and
             // compares to a fresh public host, then returns to the old name.
             let other = if name == l::BaselineName::Alphabetic {
                 l::BaselineName::Central

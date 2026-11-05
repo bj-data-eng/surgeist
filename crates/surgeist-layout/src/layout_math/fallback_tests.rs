@@ -695,7 +695,7 @@ fn edge_debits_and_minimum_floor<S: LayoutScalar>() {
     assert_eq!(
         exhausted.resolve(PhysicalAxis::Vertical),
         Ok(nn(0.0)),
-        "a genuine post-debit zero dominates unavailable external bounds"
+        "a post-debit zero dominates unavailable external bounds"
     );
 }
 
@@ -978,7 +978,7 @@ fn block_to_opaque_callback<S: LayoutScalar>() {
             assert_eq!(content.size(), Size::new(n(100.0), n(content_height)));
         }
         drop(calls);
-        // The same genuine parent cannot manufacture missing ICB authority.
+        // The same parent cannot manufacture missing ICB authority.
         // Only the actual orthogonal Normal/Indefinite provider consumes this
         // required error; it is not a blanket rejection of every missing axis.
         let missing = OrthogonalFallbackOf::new(

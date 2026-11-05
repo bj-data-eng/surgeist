@@ -76,7 +76,7 @@ fn suffix<S: l::LayoutScalar>() {
     base.root(|root| root.text_wrap_style = l::TextWrapStyle::Balance);
     let balanced = base.compute(&[0]);
     assert_rows(&base, &balanced, &[(0, 4, 30.0), (4, 8, 40.0)]);
-    // The frame is unchanged; only the genuine selected legal cuts differ.
+    // The frame is unchanged; only the selected legal cuts differ.
     for (ordinary, balance) in old_receipts.iter().zip(base.receipts(&balanced)) {
         assert_eq!(
             ordinary.selected_line().request().context.tabs,
@@ -96,7 +96,7 @@ fn suffix<S: l::LayoutScalar>() {
     let changed = revised.compute(&[]);
     assert_rows(&revised, &changed, &[(0, 7, 60.0), (7, 11, 40.0)]);
 
-    // Keep the genuinely revised tree/capture/preparation, but carry the old
+    // Keep the revised tree/capture/preparation, but carry the old
     // host's actual published state into this same node graph. Root invalidation
     // must not replay revision3's paragraph or cuts into revision4.
     revised.host.published = base.host.published.clone();
@@ -164,7 +164,7 @@ fn warm_float<S: l::LayoutScalar>() {
         assert_float(&fixture, &warm, balance);
         assert!(
             fixture.host.hits[float].get() > before,
-            "warm evidence requires a genuine eligible float leaf CacheOf hit"
+            "warm evidence requires an eligible float leaf CacheOf hit"
         );
         warm.apply_to(&mut fixture.host).unwrap();
         let mut fresh = Advanced::<S>::new(&["AAA BB C"], 80.0, Some(t::Range::new(4, 6)), true);

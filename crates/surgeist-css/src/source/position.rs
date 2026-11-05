@@ -1115,7 +1115,7 @@ mod secondary_admission_tests {
     fn secondary_scalar_growth_one_short_and_preprocessing_cancellation_release_only_their_payload()
     {
         let text = "x".repeat(130);
-        // The first genuinely emitted scalar forms the original Control's
+        // The first emitted scalar forms the original Control's
         // four-char bank while the new Vec/old IntoIter growth headers coexist.
         let first_scalar_peak = size_of::<SecondarySourceFormation>()
             + size_of::<Vec<char>>()

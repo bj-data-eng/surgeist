@@ -244,7 +244,7 @@ fn distinct_bodies<S: LayoutScalar>(kind: Interruption) {
     assert_eq!(separator.source_index.get(), 4);
     match kind {
         Interruption::VisibleBreak => {
-            // A genuine forced control has a baseline point and no border box.
+            // A forced control has a baseline point and no border box.
             assert_eq!(separator.location, Point::new(n(33.0), n(10.0)));
             assert_eq!(separator.size, Size::ZERO);
         }
@@ -324,11 +324,11 @@ fn distinct_bodies<S: LayoutScalar>(kind: Interruption) {
 }
 
 #[test]
-fn genuine_visible_break_delimits_distinct_native_body_roots_f32() {
+fn source_visible_break_delimits_distinct_native_body_roots_f32() {
     distinct_bodies::<f32>(Interruption::VisibleBreak);
 }
 #[test]
-fn genuine_visible_break_delimits_distinct_native_body_roots_f64() {
+fn source_visible_break_delimits_distinct_native_body_roots_f64() {
     distinct_bodies::<f64>(Interruption::VisibleBreak);
 }
 #[test]
@@ -342,7 +342,7 @@ fn in_flow_block_delimits_distinct_native_body_roots_f64() {
 
 fn nested_auto_ancestors<S: LayoutScalar>() {
     let mut f = prepared_fixture::<S>([0, 0, 0, 1, 1, 1], true);
-    // P is a genuine undecorated Auto NativePair. Its exact zero Contribution
+    // P is an undecorated Auto NativePair. Its exact zero Contribution
     // occurrences are not promoted to BoxEdges; C keeps its real3/5 operation.
     f.boundary(30, InlineBoundaryKind::Start, 0.0);
     f.boundary(31, InlineBoundaryKind::End, 0.0);

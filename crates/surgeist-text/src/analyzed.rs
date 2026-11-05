@@ -69,7 +69,7 @@ impl AnalyzedSource {
             }
         })
     }
-    /// Genuine captured Raw/Joint authority of this completed output.
+    /// Captured Raw/Joint authority of this completed output.
     #[must_use]
     pub fn captured_owner(&self) -> Option<CapturedAnalysisOwner<'_>> {
         self.inner

@@ -468,7 +468,7 @@ fn protected_predefined_names_remain_valid_checked_references() {
 #[test]
 fn parsed_counter_style_reference_preserves_original_declaration_and_token_origins() {
     // Counter rules expose authored positions but no lexical name token. This
-    // existing named-reference declaration boundary also exposes genuine name,
+    // existing named-reference declaration boundary also exposes name,
     // value and component origins, so their source identity can be checked.
     let source = r"list-style-type: \31Name;";
     let report = CssParser::default().parse_block_contents(source);
@@ -513,7 +513,7 @@ fn parsed_counter_style_reference_preserves_original_declaration_and_token_origi
         CssComponentValueRef::Token(CssValueTokenRef::Ident("1Name"))
     ));
     let CssValueOrigin::Parsed(token_origin) = component.origin() else {
-        panic!("genuine parsed token origin");
+        panic!("parsed token origin");
     };
     assert_eq!(origin_text(token_origin), r"\31Name");
     assert!(token_origin.source().same_snapshot(value_origin.source()));

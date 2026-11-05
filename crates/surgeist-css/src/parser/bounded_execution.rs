@@ -308,7 +308,7 @@ mod tests {
 
     /// #1277: an unavailable parser thread is a refusal of its own, so its
     /// diagnostic code differs from the 256-level structural nesting limit
-    /// that the same input reaches when it is genuinely too deep.
+    /// that the same input reaches when it is too deep.
     #[test]
     fn parser_thread_refusal_is_not_reported_as_the_nesting_limit() {
         let refused = with_parser_thread_unavailable(|| {

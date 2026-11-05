@@ -88,7 +88,7 @@ fn sequence(names: &[&str]) -> (HtmlCapture, HtmlCaptureSubjectId, Vec<HtmlCaptu
     let dl = html(&mut b, &d, "dl");
     let members: Vec<_> = names.iter().map(|n| html(&mut b, &d, n)).collect();
     children(&mut b, &dl, &members);
-    // dl ancestry and all member children remain genuinely unavailable.
+    // dl ancestry and all member children remain unavailable.
     let c = b.finish().unwrap();
     let ids = members.iter().map(|n| c.subject_id(n).unwrap()).collect();
     let id = c.subject_id(&dl).unwrap();

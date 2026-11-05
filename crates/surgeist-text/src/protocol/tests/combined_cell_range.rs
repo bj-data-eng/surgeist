@@ -4,7 +4,7 @@
 //! Its prepared_cell("AA") helper issues two separate one-character origins,
 //! which cannot authorize a single original-local0..2 request. These tests
 //! instead reuse the existing widths single-origin factory with ALL three width
-//! tags genuinely authored off before Source capture. This is its actual unique
+//! tags authored off before Source capture. This is its actual unique
 //! combined-width Ahem derivative, not the observation helper's NoAction font.
 //! Its normal AA10/10, disabled-action receipts, H8/-2 metrics and .5 frame are
 //! qualified independently below. Placement reuses the observation helper.
@@ -228,7 +228,7 @@ pub(super) fn fixture() -> (Layout, PreparedOrigin) {
     assert_eq!(prepared.analyzed_source().identity(), analyzed.identity());
     let origins = prepared.origin_views().collect::<Vec<_>>();
     let [view] = origins.as_slice() else {
-        panic!("the genuine single-origin factory must retain one full origin");
+        panic!("the single-origin factory must retain one full origin");
     };
     assert_eq!(view.source(), processed.source());
     assert_eq!(view.local_range(), Range::new(0, 2));
@@ -326,9 +326,9 @@ fn second_original_a_range_uses_the_second_actual_inner_metric_rectangle() {
 fn full_original_aa_range_retains_two_distinct_inner_units_and_complete_source_coverage() {
     let (layout, origin) = fixture();
     let query = Range::new(0, 2);
-    let full = layout.source_range_fragments(&origin, query).expect(
-        "a full Cell Range must retain both genuine semantic EGCs rather than one square unit",
-    );
+    let full = layout
+        .source_range_fragments(&origin, query)
+        .expect("a full Cell Range must retain both semantic EGCs rather than one square unit");
     exact(
         &full,
         &origin,

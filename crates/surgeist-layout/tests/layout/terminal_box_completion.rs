@@ -595,7 +595,7 @@ fn check<S: l::LayoutScalar>(direction: l::Direction, forced: bool) {
 }
 
 #[test]
-fn genuine_terminal_force_completes_boxes_without_publishing_phantom_receiver() {
+fn source_terminal_force_completes_boxes_without_publishing_phantom_receiver() {
     for direction in [l::Direction::Ltr, l::Direction::Rtl] {
         check::<f32>(direction, true);
         check::<f64>(direction, true);
@@ -924,7 +924,7 @@ fn larger_phantom_tail_metrics_do_not_create_extent_or_mutate_prior_output() {
 
 #[test]
 fn phantom_completion_still_requires_the_actual_trailing_metric_witness() {
-    // Existing genuine metric-demand control: None is not zero or a font proxy.
+    // Existing metric-demand control: None is not zero or a font proxy.
     for direction in [l::Direction::Ltr, l::Direction::Rtl] {
         missing_trailing_metric::<f32>(direction);
         missing_trailing_metric::<f64>(direction);
@@ -973,7 +973,7 @@ fn omitted_paragraph_receipt<S: l::LayoutScalar>(direction: l::Direction) {
             atomics: vec![],
         })],
     })
-    .expect_err("dropping the genuine ParagraphEnd receipt cannot complete WholeParagraph");
+    .expect_err("dropping the ParagraphEnd receipt cannot complete WholeParagraph");
     assert!(
         matches!(
             error.detail(),

@@ -50,7 +50,7 @@ fn inspect(
 ) {
     let owner = unit
         .cell_unit()
-        .expect("a genuine Cell EGC has an actual Cell unit owner");
+        .expect("a Cell EGC has an actual Cell unit owner");
     assert_eq!(owner.kind(), SourceRangeCellUnitKind::Semantic { ordinal });
     assert_eq!((owner.line_index(), owner.cell_index()), (0, 0));
     assert_eq!(owner.presentation_range(), unit.presentation_range());
@@ -176,7 +176,7 @@ fn aa_cell_font_variants_expose_the_actual_font_frame_edges_and_semantic_identit
         );
     }
     // The actual original occurrence and containing Cell are shared; neither
-    // licenses collapsing these two genuine semantic-unit identities.
+    // licenses collapsing these two semantic-unit identities.
     assert_eq!(
         units[0].selected_intersections().next().unwrap().origin(),
         units[1].selected_intersections().next().unwrap().origin()

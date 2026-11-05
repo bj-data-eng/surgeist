@@ -184,7 +184,7 @@ fn original_toggle_cleanup_result_survives_native_checkpoint_work_refusal_withou
                 // Actual set_limits reads one Host, composition, cluster, empty
                 // Window and two Settings fields (6); task-count reads Host,
                 // composition, group and cluster (4); policy transition costs1.
-                // This admits that genuine policy update, leaving no next unit for
+                // This admits that policy update, leaving no next unit for
                 // NativeTaskRunning::checkpoint. No counter is seeded or refunded.
                 let cap = spent + (1 + 1 + 1 + 1 + 2) + (1 + 1 + 1 + 1) + 1;
                 let mut policy = session_limits().hosted;

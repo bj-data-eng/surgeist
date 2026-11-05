@@ -1,4 +1,4 @@
-//! Real-brace style-body parsing retains authored contents and genuine origins.
+//! Real-brace style-body parsing retains authored contents and origins.
 use crate::css::support::authored_syntax::assert_diagnostics;
 use surgeist_css::CssParser;
 use surgeist_css::component::CssValueOrigin;

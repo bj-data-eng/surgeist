@@ -19,7 +19,7 @@ pub(crate) struct ScopeMetricsData {
     pub(crate) upright_provenance: Option<UprightMetricProvenance>,
 }
 
-/// Cells demand the genuine text container before any body trial, including
+/// Cells demand the text container before any body trial, including
 /// when source processing proved that there is no provider input. An Inline
 /// owns its own metrics; a domain's derived RootInline uses that same actual
 /// Block/AtomicBlock/OutOfFlowBlock scope, never its lexical parent.
@@ -270,7 +270,7 @@ pub(crate) fn prepare_resources(
     };
     for custody in &shaped.scope_glyph_custody {
         // Actual extracted glyph custody, not a painted cluster source hull.
-        // Context is a genuine generated association, never a source root.
+        // Context is a generated association, never a source root.
         match *custody {
             GlyphCustody::Input(owner)
             | GlyphCustody::Context(owner)
@@ -764,7 +764,7 @@ fn prepared_retention(
     super::census::retained_prepared(data, analyzed, shaped, tables, budget)
 }
 
-/// Complete the genuine fixed container references before any Cell packet trial.
+/// Complete the fixed container references before any Cell packet trial.
 pub(crate) fn prepare_cell_tabs(
     data: &mut PreparedScopes,
     catalogue: &mut crate::catalogue::Catalogue,

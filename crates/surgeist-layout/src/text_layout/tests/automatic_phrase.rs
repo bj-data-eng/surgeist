@@ -385,7 +385,7 @@ fn automatic_phrase_multiple_occurrences_publish_one_scope_owner_at_each_placed_
             .count(),
         3
     );
-    // Boundary nodes keep only their genuine normalized control allocation.
+    // Boundary nodes keep only their normalized control allocation.
     assert!(
         batch
             .final_entries()

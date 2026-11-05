@@ -150,7 +150,7 @@ pub type OrthogonalFallbackLimit = OrthogonalFallbackLimitOf<DefaultScalar>;
 
 impl<S: LayoutScalar> OrthogonalFallbackLimitOf<S> {
     /// Qualifies the containing block's inner maximum, floored by its inner minimum.
-    /// Inputs are genuinely definite bounds; absence means a proven non-finite bound.
+    /// Inputs are definite bounds; absence means a proven non-finite bound.
     #[must_use]
     pub fn from_containing_bounds(
         minimum: Option<NonNegativeFiniteOf<S>>,
@@ -340,7 +340,7 @@ impl<S: LayoutScalar> OrthogonalFallbackOf<S> {
                 OrthogonalFallbackErrorOf::MissingScrollportLimit { axis },
             ),
         }
-        // Every candidate is nonnegative. A genuine zero determines the minimum
+        // Every candidate is nonnegative. A zero determines the minimum
         // even when another source has not supplied its authority.
         if smallest.is_some_and(|value| value.get() == S::ZERO) {
             return Ok(NonNegativeFiniteOf::ZERO);

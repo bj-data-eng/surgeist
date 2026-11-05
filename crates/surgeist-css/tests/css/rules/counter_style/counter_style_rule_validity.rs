@@ -222,7 +222,7 @@ fn eof_closed_empty_rule_is_retained_with_its_implicit_closure_diagnostic() {
     );
 }
 
-// Controls protect genuine grammar/combination failures and defining styles.
+// Controls protect grammar/combination failures and defining styles.
 valid_rule!(
     numeric_two_symbols_remain_valid,
     "system:numeric; symbols:a b;",

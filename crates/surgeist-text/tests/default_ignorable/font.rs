@@ -160,7 +160,7 @@ fn cmap_entries(entries: &[(u32, u32)]) -> Vec<u8> {
 }
 
 fn multiple(input: u16, output: &[u16]) -> Vec<u8> {
-    // MultipleSubst format1 -> one Sequence table, including genuine length zero.
+    // MultipleSubst format1 -> one Sequence table, including length zero.
     let mut data = words(&[1, short(10 + output.len() * 2), 1, 8, short(output.len())]);
     data.extend(words(output));
     data.extend(words(&[1, 1, input]));
@@ -314,7 +314,7 @@ pub fn variation(supported: bool, mapped_selector: bool) -> Vec<u8> {
     rewrite_tables(&bytes, vec![(*b"cmap", cmap)])
 }
 
-/// Genuine Mongolian ccmp: U1820(A35)+U180B(D100)->R58. The ordinary
+/// Mongolian ccmp: U1820(A35)+U180B(D100)->R58. The ordinary
 /// U1821 also maps to D100 as a positive same-script nominal control. U180F
 /// maps to a distinct visible Q277, so that unsupported selector cannot
 /// accidentally match the supported selector's component glyph.

@@ -182,7 +182,7 @@ fn allocation<Tree: crate::LayoutTree>(
     )
 }
 
-/// Only a genuinely requested input allocates this canonical initialized slot
+/// Only a requested input allocates this canonical initialized slot
 /// buffer. Its Vec header becomes the one shared Arc payload, not another
 /// embedded-header charge in each row or resource clone.
 pub(super) fn reserve_slots<Tree: crate::LayoutTree>(

@@ -164,7 +164,7 @@ impl<Node: Copy + Eq> NativeInlineBoxFragment<Node> {
     }
 }
 
-/// One genuine selected membership. Empty boxes have no invented operand/node.
+/// One selected membership. Empty boxes have no invented operand/node.
 #[derive(Clone, Copy)]
 pub struct NativeInlineBoxMemberView<'a, Node> {
     family: &'a NativeInlineBoxFamily<Node>,
@@ -540,7 +540,7 @@ fn clone_native_lines<S: LayoutScalar>(
     Ok(result)
 }
 
-/// Actual successful formatter computation, including a genuine empty formatter
+/// Actual successful formatter computation, including an empty formatter
 /// that establishes no line/run. Admission alone never creates this receipt.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct NativeFormatterCompletion<S: LayoutScalar> {

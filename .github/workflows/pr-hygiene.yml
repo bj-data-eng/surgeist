@@ -79,7 +79,9 @@ jobs:
           # The bracketed letters match the words without this file containing them.
           pattern='[c]odex|[c]laude'
           # Banned words, matched anywhere in a string, as in identifiers.
-          words='[h]onest|[n]obody'
+          general_words='[h]onest|[n]obody'
+          corpus_word='[g]enuine'
+          words="$general_words|$corpus_word"
           found=0
           report() {
             local text=${2//'%'/%25}
@@ -122,15 +124,25 @@ jobs:
           done < <(git grep -I -n -i -E "$pattern" -- . ':(exclude,glob)**/README' ':(exclude,glob)**/README.*' \
             | grep -avE '^\.gitignore:[0-9]+:(/\.[c]laude/\*|!/\.[c]laude/skills/)$' || true)
 
-          # Retained specification captures under references/ are verbatim
-          # sources and may contain the banned words; so may README files.
+          # Retained specification captures and README files are exempt.
+          word_paths=(. ':(exclude)references' ':(exclude,glob)**/README' ':(exclude,glob)**/README.*')
+          # The Layout corpus records byte hashes for retained captures,
+          # measurement helpers and semantic policy inputs.
+          corpus_paths=(
+            ':(exclude)crates/surgeist-layout/tests/layout/browser_parity/captured'
+            ':(exclude)crates/surgeist-layout/tests/layout/browser_parity/scripts/gentest'
+            ':(exclude)crates/surgeist-layout/semantic'
+          )
           while IFS= read -r match; do
             file=${match%%:*}
             rest=${match#*:}
             number=${rest%%:*}
             echo "::error file=$file,line=$number,title=Banned word in a file::${rest#*:}"
             found=1
-          done < <(git grep -I -n -i -E "$words" -- . ':(exclude)references' ':(exclude,glob)**/README' ':(exclude,glob)**/README.*' || true)
+          done < <(
+            git grep -I -n -i -E "$general_words" -- "${word_paths[@]}" || true
+            git grep -I -n -i -E "$corpus_word" -- "${word_paths[@]}" "${corpus_paths[@]}" || true
+          )
 
           if [ "$found" -ne 0 ]; then
             exit 1

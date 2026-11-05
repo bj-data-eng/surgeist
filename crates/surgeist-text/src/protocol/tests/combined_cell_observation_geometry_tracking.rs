@@ -1,5 +1,5 @@
 //! Actual executed outer Cell advances, independently of the fixed square or
-//! rounded endpoint subtraction. Child of the genuine tracking numeric fixture.
+//! rounded endpoint subtraction. Child of the tracking numeric fixture.
 
 use super::*;
 
@@ -94,7 +94,7 @@ fn negative_executed_cell_flow_remains_signed_while_its_square_stays_one_em() {
     let (prepared, line) = executed(10.0, -24.0, 0.0);
     let cells = line.cell_views().collect::<Vec<_>>();
     let [cell] = cells.as_slice() else {
-        panic!("one genuine signed-flow Cell");
+        panic!("one signed-flow Cell");
     };
     assert_eq!(cell.square().origin.x, 0.0);
     assert_eq!(cell.square().size, Size::new(10.0, 10.0));

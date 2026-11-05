@@ -225,7 +225,7 @@ fn assert_ordinary_independent_outputs(domain: &AnalyzedDomain, processed: &Arc<
 }
 
 #[test]
-fn source_continuous_all_requires_joint_ownership_in_genuine_member_order() {
+fn source_continuous_all_requires_joint_ownership_in_member_order() {
     let processed = captured(split(
         TextCombineUpright::All,
         SourceWritingAxis::Vertical,

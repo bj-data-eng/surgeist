@@ -1035,7 +1035,7 @@ fn retired_select_skip_requires_idle_even_inside_actual_beforetoggle_dispatch_re
     assert_eq!(dom.snapshot().stamp(), before.stamp());
 
     // Finish the actual trusted-executor protocol after leaving dispatch.
-    // Canceling Show's genuine beforetoggle returns before any open/focus/task
+    // Canceling Show's beforetoggle returns before any open/focus/task
     // effect; no synthetic receipt, flag setter or live service is substituted.
     drop(scope);
     let mut permit = Some(permit);

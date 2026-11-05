@@ -171,7 +171,7 @@ fn operation_bank_source_formation_admits_its_inline_candidate_header_once() {
     let canonical_revision = f.dom.revision;
     let slot = f.source.next_operation_slot(&f.work, &cancel()).unwrap();
     assert_eq!(slot, f.lease.operation.slot + 1);
-    // This is the original canonical bank and issuer Work. A genuine native
+    // This is the original canonical bank and issuer Work. A native
     // Document supplies the Draft payload; no hosted Global or activity state
     // is invented to exercise this preparation boundary.
     let backing = {

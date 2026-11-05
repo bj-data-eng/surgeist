@@ -83,7 +83,7 @@ fn observed(
         &"exact nonce".encode_utf16().collect::<Vec<_>>()
     );
     let allowed = match request.policy().policy().profile() {
-        None => true, // Genuine constructor-empty state.
+        None => true, // constructor-empty state.
         Some(profile) => {
             let mut allow = |_: HtmlCspLayout| Ok::<_, ()>(());
             match request

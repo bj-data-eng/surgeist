@@ -117,7 +117,7 @@ fn lazy_cursive_legitimate_null_anchors_and_unreached_bad_anchors_remain_complet
     lazy_set(&mut lookup.1, 28, 99);
     let gpos = font::layout_table(b"hwid", &[lookup]);
     font::with_font(true, false, None, Some(&gpos), &[], |font| {
-        // R is outside Coverage. A is covered but has a genuine null entry,
+        // R is outside Coverage. A is covered but has a null entry,
         // so neither route demands the bad B entry. No font-wide validation.
         for raw in ["R", "A"] {
             expect(
@@ -263,7 +263,7 @@ fn lazy_mark_nullable_absence_unmatched_reference_and_unselected_paths_are_compl
         lazy_set(&mut bad.1, 30, 99);
         let gpos = font::layout_table(b"hwid", &[bad.clone()]);
         font::with_font(true, false, None, Some(&gpos), &[], |font| {
-            // A genuinely absent matching base/mark2 prevents anchor demand.
+            // An absent matching base/mark2 prevents anchor demand.
             expect(
                 &lazy_shape(font, no_reference, &[enabled(feature)]),
                 feature,
@@ -272,7 +272,7 @@ fn lazy_mark_nullable_absence_unmatched_reference_and_unselected_paths_are_compl
             for request in [
                 Feature::new(feature.tag(), 0, ..),
                 // Default MonotoneGraphemes merges A and its marks to cluster0
-                // before feature masks. Range1..2 genuinely excludes them.
+                // before feature masks. Range1..2 excludes them.
                 Feature::new(feature.tag(), 1, 1..2),
             ] {
                 expect(

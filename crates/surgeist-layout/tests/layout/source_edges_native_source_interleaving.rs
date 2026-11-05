@@ -1,5 +1,5 @@
 //! A declared physical native outer
-//! box has no canonical InlineScope, but still contains a genuine source box.
+//! box has no canonical InlineScope, but still contains a source box.
 use std::slice;
 use surgeist_layout as layout;
 use surgeist_text as text;

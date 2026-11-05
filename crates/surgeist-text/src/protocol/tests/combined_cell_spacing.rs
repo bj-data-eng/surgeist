@@ -1,4 +1,4 @@
-//! Authored outer tracking around a genuine source-nonempty/provider-empty cell.
+//! Authored outer tracking around a source-nonempty/provider-empty cell.
 //! The independent Text3 half-tracking oracle uses the cell as one outer unit;
 //! no glyph, box, strut or width packet stands in for its empty inner payload.
 
@@ -226,7 +226,7 @@ fn tracked_cell_line(
     assert_eq!(line.measurements().alignment().advance(), advance);
     let cells = line.cell_views().collect::<Vec<_>>();
     let [cell] = cells.as_slice() else {
-        panic!("one genuine finalized cell");
+        panic!("one finalized cell");
     };
     assert_eq!(cell.square().origin.x, cell_start);
     assert_eq!(cell.square().size, Size::new(10.0, 10.0));

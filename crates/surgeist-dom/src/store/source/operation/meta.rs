@@ -147,7 +147,7 @@ enum HoldUse {
     Closed,
 }
 
-/// Exclusive admission and one genuine advance of the original Source lease.
+/// Exclusive admission and one advance of the original Source lease.
 /// Work/admission precedes Runtime bank formation. No mutable lease can escape.
 ///
 /// The original lease cannot advance beside its hold:
@@ -155,9 +155,9 @@ enum HoldUse {
 /// use surgeist_dom::{DomSourceLease, DomMetaAtomicLimits};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(lease: &mut DomSourceLease<'_>, limits: DomMetaAtomicLimits, cancel: &AtomicBool) {
-///     let hold = lease.begin_meta_runtime(limits, cancel).unwrap();
-///     let _ = lease.advance(cancel);
-///     let _ = hold.step(cancel);
+/// let hold = lease.begin_meta_runtime(limits, cancel).unwrap();
+/// let _ = lease.advance(cancel);
+/// let _ = hold.step(cancel);
 /// }
 /// ```
 /// Nor can a borrowed inline resolver open another advance:
@@ -165,9 +165,9 @@ enum HoldUse {
 /// use surgeist_dom::{DomSourceLease, DomMetaAtomicLimits};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(lease: &mut DomSourceLease<'_>, limits: DomMetaAtomicLimits, cancel: &AtomicBool) {
-///     let hold = lease.begin_meta_runtime(limits, cancel).unwrap();
-///     let _ = lease.advance_with_inline_styles(|_, _| unreachable!(), cancel);
-///     let _ = hold.step(cancel);
+/// let hold = lease.begin_meta_runtime(limits, cancel).unwrap();
+/// let _ = lease.advance_with_inline_styles(|_, _| unreachable!(), cancel);
+/// let _ = hold.step(cancel);
 /// }
 /// ```
 /// The hold prevents dropping its actual lease:
@@ -175,9 +175,9 @@ enum HoldUse {
 /// use surgeist_dom::{DomSourceLease, DomMetaAtomicLimits};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(mut lease: DomSourceLease<'_>, limits: DomMetaAtomicLimits, cancel: &AtomicBool) {
-///     let hold = lease.begin_meta_runtime(limits, cancel).unwrap();
-///     drop(lease);
-///     let _ = hold.step(cancel);
+/// let hold = lease.begin_meta_runtime(limits, cancel).unwrap();
+/// drop(lease);
+/// let _ = hold.step(cancel);
 /// }
 /// ```
 /// A second hold cannot borrow the same lease:
@@ -185,9 +185,9 @@ enum HoldUse {
 /// use surgeist_dom::{DomSourceLease, DomMetaAtomicLimits};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(lease: &mut DomSourceLease<'_>, limits: DomMetaAtomicLimits, cancel: &AtomicBool) {
-///     let hold = lease.begin_meta_runtime(limits, cancel).unwrap();
-///     let _ = lease.begin_meta_runtime(limits, cancel);
-///     let _ = hold.step(cancel);
+/// let hold = lease.begin_meta_runtime(limits, cancel).unwrap();
+/// let _ = lease.begin_meta_runtime(limits, cancel);
+/// let _ = hold.step(cancel);
 /// }
 /// ```
 /// Event acceptance remains behind that same exclusive borrow:
@@ -196,10 +196,10 @@ enum HoldUse {
 ///     DomSourceEventPublication};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(lease: &mut DomSourceLease<'_>, limits: DomMetaAtomicLimits, cancel: &AtomicBool,
-///     request: &DomSourceEventRequest, receipt: &mut Option<DomSourceEventPublication>) {
-///     let hold = lease.begin_meta_runtime(limits, cancel).unwrap();
-///     let _ = lease.accept_source_event(request, receipt, cancel);
-///     let _ = hold.step(cancel);
+/// request: &DomSourceEventRequest, receipt: &mut Option<DomSourceEventPublication>) {
+/// let hold = lease.begin_meta_runtime(limits, cancel).unwrap();
+/// let _ = lease.accept_source_event(request, receipt, cancel);
+/// let _ = hold.step(cancel);
 /// }
 /// ```
 /// Reacquiring the canonical Source owner also conflicts with its actual lease:
@@ -207,11 +207,11 @@ enum HoldUse {
 /// use surgeist_dom::{Dom, DomSourceOperationId, DomSourceLimits, DomMetaAtomicLimits};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(dom: &mut Dom, operation: DomSourceOperationId, source: DomSourceLimits,
-///     limits: DomMetaAtomicLimits, cancel: &AtomicBool) {
-///     let mut lease = dom.resume_source_edit(operation, source, cancel).unwrap();
-///     let hold = lease.begin_meta_runtime(limits, cancel).unwrap();
-///     let _ = dom.resume_source_edit(operation, source, cancel);
-///     let _ = hold.step(cancel);
+/// limits: DomMetaAtomicLimits, cancel: &AtomicBool) {
+/// let mut lease = dom.resume_source_edit(operation, source, cancel).unwrap();
+/// let hold = lease.begin_meta_runtime(limits, cancel).unwrap();
+/// let _ = dom.resume_source_edit(operation, source, cancel);
+/// let _ = hold.step(cancel);
 /// }
 /// ```
 #[must_use = "dispose represented Runtime backing before releasing its hold"]
@@ -580,7 +580,7 @@ use crate::{
 use surgeist_cssom::{CssomBatch, CssomEditGuard, CssomSheetId, CssomSnapshot};
 
 /// The one actual advance either parks a native boundary or returns the
-/// existing genuine progress, with its original inline evidence.
+/// existing progress, with its original inline evidence.
 #[expect(
     clippy::large_enum_variant,
     reason = "keep the affine prepared graph and its debit together without introducing an allocation or admission failure in this advance"

@@ -285,7 +285,7 @@ pub(super) fn complete(canonical: &mut Canonical<'_>, plan: &mut CombinedSourceP
         inverse_width(&units, &retained, &mut plan.parts);
         // Edge selection uses the pre-inversion sequence above. Final levels
         // describe the actual used scalars, retaining source bidi controls and
-        // the ignored forced-source BN entries in their genuine order.
+        // the ignored forced-source BN entries in their order.
         inputs.retain(|input| match *input {
             InnerInput::Part(part) => {
                 plan.retained[part]
@@ -500,7 +500,7 @@ fn rewrite(canonical: &mut Canonical<'_>, plan: &CombinedSourcePlan) -> Result<(
                     .is_some_and(|group| {
                         plan.group_for_part.get(cut).copied().flatten() == Some(group)
                     });
-                // A genuine disconnection, block or atomic fence is never consumed.
+                // A disconnection, block or atomic fence is never consumed.
                 // Other hard effects strictly inside this fixed cell are its actual
                 // suppressed forced controls, not an exterior paragraph boundary.
                 !within_cell || plan.fences.binary_search(&cut).is_ok()

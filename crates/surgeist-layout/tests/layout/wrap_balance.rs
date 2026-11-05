@@ -386,7 +386,7 @@ impl<S: l::LayoutScalar> Fixture<S> {
         for (i, (range, alignment, end)) in expected.iter().enumerate() {
             let line = finalized[i]
                 .as_ref()
-                .expect("each actual body line has a genuine source fragment");
+                .expect("each actual body line has a source fragment");
             assert_eq!(line.measurements().alignment().advance(), *alignment);
             assert_eq!(line.measurements().fit().advance(), *alignment);
             assert_eq!(line.feedback().advance, *alignment);

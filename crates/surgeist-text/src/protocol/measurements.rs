@@ -112,7 +112,7 @@ impl MarginEdgeFit {
         }
     }
     /// Unanchored positioned `NativeOccupied` atomic extrema constraining a
-    /// `CssComposed` selection. Genuine absence is distinct from a zero-width
+    /// `CssComposed` selection. Absence is distinct from a zero-width
     /// opaque interval. `NativeOnly` retains its separate width-only contract
     /// and returns `None` here.
     pub const fn native_occupied_bounds(self) -> Option<(f64, f64)> {
@@ -307,7 +307,7 @@ impl FinalizedLine {
             metrics.block_max - metrics.block_min,
         )
     }
-    /// Observations of genuine outer text contributions; never admission or replay
+    /// Observations of outer text contributions; never admission or replay
     /// capabilities. A Cell is one opaque contribution, including provider-empty Cells.
     /// Shared ordinary glyphs keep their actual per-contribution custody.
     pub fn edge_units(&self) -> impl ExactSizeIterator<Item = LineEdgeUnitView<'_>> {
@@ -468,7 +468,7 @@ mod atomic_fit_tests {
     #[test]
     fn positioned_opaque_envelope_and_final_css_flow_follow_the_native_mixing_policy() {
         // CSS100 + Native6/[0,10]; then CSS−100 + that Native; then
-        // the latter selection followed by a genuine CSS100 restoration.
+        // the latter selection followed by a CSS100 restoration.
         for (flow, opaque, expected) in [
             (106.0, Some((100.0, 110.0)), (0.0, 110.0, 110.0)),
             (-94.0, Some((-100.0, -90.0)), (-100.0, -90.0, 10.0)),

@@ -1,5 +1,5 @@
 //! Actual Cell allocation ownership, independent of glyph/geometry oracles.
-//! This child reuses the genuine registered-font/captured-source fixture. The
+//! This child reuses the registered-font/captured-source fixture. The
 //! expected storage comes from live capacities, row lengths and Rust type sizes;
 //! no production visitor is used to calculate the expected retention totals.
 
@@ -120,7 +120,7 @@ fn prepare(text: &str, whitespace: WhiteSpace) -> PreparedText {
         .unwrap()
 }
 
-// Outside X rows and the genuine Inline A cell share selected arenas. Both
+// Outside X rows and the Inline A cell share selected arenas. Both
 // registered families have the retained real wght axis, requested at max1;
 // the actual normalized coordinate buffers therefore cannot be hidden by an
 // all-empty/static-coordinate fixture.
@@ -139,7 +139,7 @@ fn mixed_variable() -> PreparedText {
             .collect(),
     );
     // The vertical-table authoring helper qualifies static outline bounds.
-    // Build those real tables before adding the genuine variable instance.
+    // Build those real tables before adding the variable instance.
     let static_parent = native_metric_font(include_bytes!(
         "../../../tests/fixtures/fonts/ahem/Ahem.ttf"
     ));
@@ -210,7 +210,7 @@ fn mixed_variable() -> PreparedText {
             ],
             controls: vec![],
             // Each actual local Continuous connection owns wrapping facts.
-            // Both incident styles and their genuine common ancestor Block0
+            // Both incident styles and their common ancestor Block0
             // use Word; retain the real connection identities/event positions.
             boundary_policies: vec![
                 ParagraphBoundaryPolicy {

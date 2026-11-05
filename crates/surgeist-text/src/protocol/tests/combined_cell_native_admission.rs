@@ -64,7 +64,7 @@ fn ordinary_native_tracking_admission_does_not_spend_an_unrelated_scope_ledger()
     system.register_fonts(font.clone()).unwrap();
     let prepared = system
         .prepare(&analyzed, PreparationOptions::default())
-        .expect("ordinary genuine Ahem BB preparation succeeds before Native admission is tested");
+        .expect("ordinary Ahem BB preparation succeeds before Native admission is tested");
     assert_eq!(prepared.analyzed_source().identity(), analyzed.identity());
     assert_eq!(prepared.analyzed_source().source(), &source);
     assert_eq!(prepared.cell_views().len(), 0);
@@ -204,7 +204,7 @@ fn ordinary_native_word_feedback_does_not_spend_an_unrelated_scope_ledger() {
     };
     let mut source = Source::identified("B B", Id::from_u64(784_989_750), 1);
     source.span(extent, style.clone());
-    // A genuine complete captured Block can retain a scope ledger without any
+    // A complete captured Block can retain a scope ledger without any
     // combined Cell. Its explicit limits are independent of spacing ownership.
     let processed = Arc::new(
         process_contextual_source(ContextualSourceInput {
@@ -417,7 +417,7 @@ fn ordinary_native_word_feedback_does_not_spend_an_unrelated_scope_ledger() {
     .expect("ordinary Native word feedback must not spend an unrelated scope ledger");
     assert_eq!(ledger.as_ref().unwrap().usage(), before);
     let [word] = shaped.word_spacing.as_slice() else {
-        panic!("one genuine exterior SPACE feedback receipt");
+        panic!("one exterior SPACE feedback receipt");
     };
     assert_eq!(word.atoms, 1..2);
     assert_eq!(word.base, 1);

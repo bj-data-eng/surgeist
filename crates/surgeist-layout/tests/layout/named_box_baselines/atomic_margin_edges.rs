@@ -372,7 +372,7 @@ fn edge_cache_and_publication<S: l::LayoutScalar>() {
         let accepted = semantic(&changed);
         changed.apply_to(&mut host).unwrap();
         let counts = (host.prepares.get(), host.commits);
-        // Genuine missing resolved participation must refuse despite warm box
+        // Missing resolved participation must refuse despite warm box
         // geometry; no cached result can authorize an unadmitted atomic role.
         host.change(1, |input| input.atomic_inline_participation = None);
         let error = host.compute(mode, &[1]).unwrap_err();

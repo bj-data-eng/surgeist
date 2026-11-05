@@ -158,7 +158,7 @@ fn check_nested(ancestors: usize, body_media_depth: usize) {
     let validation = CssParser::default()
         .parse_sheet(&source)
         .into_validation_result();
-    // This genuine distinct-grammar control completes before any nested assertion.
+    // This distinct-grammar control completes before any nested assertion.
     assert_style_semicolon_control();
     assert_nested_siblings(
         report.syntax(),

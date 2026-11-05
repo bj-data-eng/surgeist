@@ -18,7 +18,7 @@ fn checksum(bytes: &[u8]) -> u32 {
 }
 pub(super) fn rtl_font() -> Vec<u8> {
     // Licensed Ahem outlines/metrics are retained. This cmap-only derivative
-    // maps Hebrew Alef/Bet to original A/B, a genuine odd-level bidi fixture,
+    // maps Hebrew Alef/Bet to original A/B, an odd-level bidi fixture,
     // without claiming that these Latin outlines are Hebrew letter designs.
     let mut cmap = vec![0, 0, 0, 1, 0, 3, 0, 10];
     cmap.extend(12_u32.to_be_bytes());

@@ -242,7 +242,7 @@ fn replacement_priority_pairs_keep_winning_encounter_order_and_losing_raw_occurr
                 .value(),
             expected_name_start
         );
-        // Each genuine singleton projection retains its own ordinal; selection never renumbers it.
+        // Each singleton projection retains its own ordinal; selection never renumbers it.
         assert_eq!(winner.authored_ordinal(), 0);
         assert_eq!(
             winner.importance(),

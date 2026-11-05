@@ -980,8 +980,7 @@ fn malformed_consumed_inventory_coordinates_and_device_payload_never_synthesize(
 }
 
 #[test]
-fn genuine_variation_indices_validate_used_store_and_rows_even_at_default_or_inactive_coordinates()
-{
+fn variation_indices_validate_used_store_and_rows_even_at_default_or_inactive_coordinates() {
     let font = test_fonts::variable_ahem();
     let original = fixture::variation_base();
     let mut cases = Vec::new();

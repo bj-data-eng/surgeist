@@ -112,7 +112,7 @@ fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: Nest
         input,
         crate::SourceOccurrenceAssociations::default(),
     )
-    .expect("the genuine nested source authenticates Root -> P -> C complete proofs")
+    .expect("the nested source authenticates Root -> P -> C complete proofs")
     .into_parts();
     let f = prepare_captured(Arc::new(processed), Vec::new(), Vec::new());
     assert!(f.binding.nodes.is_empty());
@@ -197,7 +197,7 @@ fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: Nest
         ),
     };
     let baseline = construct(wrapping.clone())
-        .expect("the exact genuine nested complete proofs admit without native family demand");
+        .expect("the exact nested complete proofs admit without native family demand");
     assert!(!baseline.associations.has_prepared_execution(0));
     assert!(baseline.associations.runs().is_empty());
     assert!(baseline.wrapping.scope_pair(&parent).is_none());

@@ -52,7 +52,7 @@ pub enum SuppliedInlineParticipant {
         level: BidiLevel,
     },
     /// A complete upright cell. It is indivisible and non-whitespace at an
-    /// outer line edge even when its genuine inner provider input is empty.
+    /// outer line edge even when its inner provider input is empty.
     Cell {
         level: BidiLevel,
     },

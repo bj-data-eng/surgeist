@@ -253,7 +253,7 @@ fn preserved_space_width_is_paint_policy_while_selection_still_sees_space() {
 fn delayed_iota_preserves_repeated_noncontiguous_correspondence_and_real_removal() {
     // Root full uppercase expands 1F80 to 1F08 + delayed 0399. The acute
     // remains between those emissions. The separately Greek-owned psili is
-    // genuinely removed before the delayed iota is flushed.
+    // removed before the delayed iota is flushed.
     let mut source = Source::new("\u{1f80}\u{301}\u{313}");
     let mut greek = style(CaseTransform::Uppercase, false, false);
     greek.locale = Some("el".to_owned());

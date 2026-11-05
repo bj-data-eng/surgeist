@@ -547,7 +547,7 @@ fn source_edges_refuse_duplicate_descriptors_and_missing_or_duplicate_continuous
 fn source_edge_occurrence_cannot_borrow_its_endpoints_parent_domain() {
     let mut input = parent_child(InlineBoxKind::OutOfFlow);
     input.events.remove(9);
-    // Cursor 2 and both genuine parent endpoints are unchanged. Only the
+    // Cursor 2 and both parent endpoints are unchanged. Only the
     // occurrence now belongs to child domain1, after its real C origin.
     input.events.insert(7, SourceProcessingEvent::Connection(0));
     source_refuses(

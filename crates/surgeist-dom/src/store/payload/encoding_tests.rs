@@ -40,7 +40,7 @@ fn actual_slot_root_aggregate_preserves_projection_refusal_and_historical_readop
     let original = dom.snapshot();
     let cancel = AtomicBool::new(false);
     let mut batch = DomBatch::new();
-    // This genuine PI command reaches the immutable parser's failed-map path:
+    // This PI command reaches the immutable parser's failed-map path:
     // an actual reserved bank survives, while the observed attribute list is
     // empty. Capture its raw backing before projection, not an admission total.
     let pi_ticket = batch.create_processing_instruction(document, "target", "a='valid' broken");

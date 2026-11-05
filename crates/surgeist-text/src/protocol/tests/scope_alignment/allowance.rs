@@ -421,7 +421,7 @@ fn a_real_spacing_change_keeps_old_published_geometry_alive_inside_the_replay_se
             kind: ParagraphOriginKind::Authored,
         })
         .collect();
-    // The existing genuine event topology places X+space outside and the final
+    // The existing event topology places X+space outside and the final
     // X inside scope1. Preserved Ahem space is1000 font units, just like X.
     let (system, p, scope, caps) = fixture_from(input);
     let mut req = request(&p);

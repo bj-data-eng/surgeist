@@ -1,4 +1,4 @@
-//! Genuine styled wbr bindings, including text units without any source origin.
+//! Styled wbr bindings, including text units without any source origin.
 
 use super::*;
 
@@ -203,7 +203,7 @@ fn shared_order<S: LayoutScalar>() {
     let reversed = tree::<S>(&p, &[1, 3, 2, 4]);
     let mut wrong = binding;
     wrong.nodes = vec![1, 3, 2, 4];
-    // A and the mark remain in genuine source order. Generated scalar Text
+    // A and the mark remain in source order. Generated scalar Text
     // units have no origins; their actual control positions still govern order.
     rejects(&reversed, wrong, TextBindingError::ParticipantOrder);
 }

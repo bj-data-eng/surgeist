@@ -235,7 +235,7 @@ ordinary_case!(
 fn relative_ancestor_keeps_normal_atomic_line<S: LayoutScalar>() {
     use crate::test_support::text::{ParagraphPart, PreparedParagraph};
     font_premises();
-    // The same genuine producer pattern as relative_flow/relative_canonical:
+    // The same producer pattern as relative_flow/relative_canonical:
     // original X, actual captured atomic10x10.4, original X. No supplied native
     // bidi/measurement surrogate, generated glyph, or nominal output receipt.
     let text_style = ahem_style(10.0, 10.0);

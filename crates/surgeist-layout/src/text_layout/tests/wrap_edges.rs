@@ -188,7 +188,7 @@ impl Fixture {
                 node: match control.kind() {
                     ParagraphControlKind::InlineBoundaryStart => 20,
                     ParagraphControlKind::InlineBoundaryEnd => 21,
-                    _ => panic!("only genuine inline endpoints were authored"),
+                    _ => panic!("only inline endpoints were authored"),
                 },
             })
             .collect();
@@ -308,7 +308,7 @@ impl Fixture {
             assert_eq!(
                 input.wrapping.scope_pair(&self.scope),
                 Some((20, 21)),
-                "normalization must retain the genuine physical pair"
+                "normalization must retain the physical pair"
             );
         }
         compute_layout_with_flow(&input, 0, {
@@ -670,7 +670,7 @@ fn cross_origin_snapped_pair_admits_but_keeps_precise_edge_incidence_limits() {
                     },
                     Vec::new(),
                 )
-                .expect("all genuine declaration forms retain strict neutral association");
+                .expect("all declaration forms retain strict neutral association");
             }
             // The known hidden side is a nonmatch, not missing correspondence.
             // Avoid cannot alter any actual ending here. Late Line still
@@ -688,7 +688,7 @@ fn cross_origin_snapped_pair_admits_but_keeps_precise_edge_incidence_limits() {
                         WrapEdge::Line => assert_error(
                             fixture
                                 .compute::<S>(edges(before, edge), form)
-                                .expect_err("late Line requires its genuine early cause"),
+                                .expect_err("late Line requires its early cause"),
                             WrappingScopeError::SourceProcessingRequired,
                         ),
                         WrapEdge::Auto
@@ -760,7 +760,7 @@ fn authentic_logical_edge_supports_soft_incidence_and_late_line_requires_source_
                 &logical,
                 3,
             );
-            // The issued three-letter prefix has a genuine original box
+            // The issued three-letter prefix has an original box
             // edge even without physical controls. Authenticate that exact
             // shared cut instead of reconstructing an edge from UTF-16 alone.
             let prepared = &logical.binding.prepared;

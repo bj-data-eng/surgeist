@@ -296,7 +296,7 @@ pub(super) fn derive(data: &mut FamilyData, ledger: &mut Ledger) -> Result<()> {
         )?;
         // The shared kernel's association is not an operation. Source Start/End
         // still choose the first/last true logical member, independently of
-        // parent-directed BoxEdge geometry. Opaque Cells and genuine child-gap
+        // parent-directed BoxEdge geometry. Opaque Cells and child-gap
         // rows keep their existing authentic roles.
         for endpoint in &mut endpoints[first_endpoint..last_endpoint] {
             account::work(ledger, 1)?;

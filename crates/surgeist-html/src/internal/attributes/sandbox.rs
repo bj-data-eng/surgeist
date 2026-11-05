@@ -88,7 +88,7 @@ pub struct HtmlSandboxFlags {
 }
 
 impl HtmlSandboxFlags {
-    /// A genuinely empty restriction set, such as an absent element directive.
+    /// An empty restriction set, such as an absent element directive.
     /// This is distinct from parsing a present empty sandbox attribute.
     pub const fn empty() -> Self {
         Self { bits: 0 }
@@ -562,7 +562,7 @@ impl HtmlSandboxReport {
     pub fn author(&self) -> &HtmlSandboxAuthorState {
         &self.author
     }
-    /// None means genuinely unapplied names, not missing/invalid content.
+    /// None means unapplied names, not missing/invalid content.
     pub fn intrinsic(&self) -> Option<&HtmlSandboxDirectiveState> {
         self.attribute.intrinsic()
     }

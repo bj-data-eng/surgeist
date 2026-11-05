@@ -1,4 +1,4 @@
-//! Exterior OOF static sites use actual Cell outer edges, with genuine
+//! Exterior OOF static sites use actual Cell outer edges, with
 //! captured scope references, source affinity, caller placement and replay.
 use super::*;
 use skrifa::{GlyphId, MetadataProvider, raw::TableProvider};
@@ -12,7 +12,7 @@ fn native_reference() -> ScopeFontReference {
 }
 
 fn native_font() -> Vec<u8> {
-    // A matching Native CW profile genuinely uses horizontal metrics. Reuse
+    // A matching Native CW profile uses horizontal metrics. Reuse
     // the actual registered Ahem derivative, without adding unused V/BASE data.
     let bytes = crate::vertical_test_fonts::horizontal(800, -200, 0, 1000);
     let face = skrifa::FontRef::new(&bytes).unwrap();
@@ -284,7 +284,7 @@ fn qualify_native_site(affinity: Affinity, tracking: f64) {
         )
         .unwrap();
     let FontBaselineOutcome::Available(value) = baseline.outcome() else {
-        panic!("genuine Alphabetic0");
+        panic!("Alphabetic0");
     };
     assert_eq!(value.coordinate(), 0.0);
     assert_eq!(

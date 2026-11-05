@@ -9,7 +9,7 @@
 //! These nodes describe authored tests; the crate never evaluates whether a condition matches.
 //! `font-tech()` retains one shared [`CssFontTechHint`](crate::rule::font_face::CssFontTechHint), `font-format()` retains
 //! the distinct keyword or string [`CssFontFormat`](crate::rule::font_face::CssFontFormat), and `at-rule()` retains a
-//! genuine at-keyword argument through [`CssSupportsAtRule`]. Unknown names and
+//! at-keyword argument through [`CssSupportsAtRule`]. Unknown names and
 //! `@charset` remain authored predicates. Balanced invalid arguments use the
 //! general-enclosed fallback; lexical and resource failures remain terminal.
 //!

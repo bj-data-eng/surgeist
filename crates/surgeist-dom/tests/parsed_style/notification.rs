@@ -1,4 +1,4 @@
-//! Genuine original creation/rendering then guarded queue permission, no dispatch witness.
+//! Original creation/rendering then guarded queue permission, no dispatch witness.
 use super::rendering::{Ready, ready};
 use super::*;
 use surgeist_html::elements::style::HtmlStyleTrigger;
@@ -61,7 +61,7 @@ fn assert_next(value: &Ready, token: &DomStyleNotificationToken) {
         .dom
         .parsed_style_notification_requirement(token, &flag())
         .unwrap()
-        .expect("genuine ParserPopped remains");
+        .expect("ParserPopped remains");
     let DomParsedHtmlStyleNotificationRequirement::Occurrence {
         contribution,
         occurrence,

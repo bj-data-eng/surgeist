@@ -573,7 +573,7 @@ pub(super) fn select(
         };
         let attachment = Attachment::After { participant, atom };
         // After uses the actual receiver's event side as well as its full L1
-        // level. Genuine prefix controls keep their captured logical order.
+        // level. Prefix controls keep their captured logical order.
         let atom_cut = receiver.atoms.start;
         let position_cut = receiver.presentation.start;
         let mut indication = Output::default();
@@ -1067,7 +1067,7 @@ fn reorder(
 fn composition_error() -> crate::Error {
     crate::hyphenation::error(crate::HyphenationError::UnsupportedIndicationComposition)
 }
-/// A genuine OOF occurrence retains source/placement custody but has no L2
+/// An OOF occurrence retains source/placement custody but has no L2
 /// flow item. Its inherited observation level cannot split participating runs.
 fn is_out_of_flow(unit: &PresentationUnit, boxes: &[crate::InlineBox]) -> bool {
     matches!(unit.kind, PresentationUnitKind::Atomic { occurrence } if boxes[occurrence].kind() == crate::InlineBoxKind::OutOfFlow)

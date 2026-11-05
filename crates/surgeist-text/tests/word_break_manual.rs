@@ -5,7 +5,7 @@
 //! Thai/Lao line TCUs follow EGCs. Balinese expectations use current UAX14rev55
 //! LB28a/LB31 and the retained Unicode17 grapheme companion, not provider output.
 //! Ahem admits semantic preparation; no Thai/Lao/Balinese glyph coverage or
-//! geometry is assumed. ASCII cache checks use genuine Ahem glyph metrics.
+//! geometry is assumed. ASCII cache checks use Ahem glyph metrics.
 
 use icu_properties::{
     CodePointMapData,

@@ -1199,7 +1199,7 @@ impl Dom {
                 .document_fields_mut()
                 .ok_or(Error::UnsupportedState { subject: node.id() })?
                 .focused_area_designation = focused_area_designation;
-            // Only this genuinely new owned Document receives its original
+            // Only this new owned Document receives its original
             // qualified history. Captured current Documents are never reset.
             match interaction {
                 crate::dialog::DocumentInteractiveState::Known {

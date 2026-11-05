@@ -32,7 +32,7 @@ impl LineDirectionFacts {
 
 impl PreparedText {
     /// Observes canonical post-processing body facts at issued mixed boundaries.
-    /// A terminating B belongs to its preceding nonempty range. The genuine
+    /// A terminating B belongs to its preceding nonempty range. The
     /// source segment supplies empty-range context; crossing bodies is refused.
     pub fn line_direction_facts(
         &self,

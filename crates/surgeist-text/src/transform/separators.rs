@@ -7,7 +7,7 @@ use crate::projection::SourceProjection;
 use crate::protocol::paragraph::{ParagraphControlKind, SemanticAnchorItem};
 use crate::{Error, ErrorCode, ErrorDetail, InlineBoxKind, Result, TextTransformError};
 
-/// None is genuinely transparent; Some records the next actual item's forced role.
+/// None is transparent; Some records the next actual item's forced role.
 fn forced(
     event: &LogicalEvent,
     input: &SourceProjection,
@@ -176,7 +176,7 @@ fn capacity() -> Error {
 }
 
 /// A receipt is exact, or it retains every possible event seam between the two
-/// genuine origin occurrences. A flat capture never chooses a control's side.
+/// origin occurrences. A flat capture never chooses a control's side.
 pub(crate) struct ConnectionSeam {
     connection: usize,
     pub(crate) lower: usize,

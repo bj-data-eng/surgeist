@@ -1,4 +1,4 @@
-//! Ignoring Cf for character-unit properties stays inside genuine components.
+//! Ignoring Cf for character-unit properties stays inside components.
 //! These are new complete-basis/profile qualifications, not a historical RED.
 use super::*;
 

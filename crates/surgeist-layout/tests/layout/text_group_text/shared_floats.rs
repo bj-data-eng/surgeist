@@ -1,4 +1,4 @@
-//! Ordinary shared-BFC float custody through a genuine Text consumer.
+//! Ordinary shared-BFC float custody through a Text consumer.
 use super::*;
 
 fn px<S: l::LayoutScalar>(value: f64) -> l::PreferredSizeOf<S> {
@@ -104,7 +104,7 @@ fn assert_shared_text_packet<S: l::LayoutScalar>(
     assert!(request.controls.is_empty());
     assert!(request.atomics.is_empty());
     let t::PreparedTermination::Ordinary(offer) = &request.termination else {
-        panic!("the unchanged genuine paragraph ending terminates this fitting source");
+        panic!("the unchanged paragraph ending terminates this fitting source");
     };
     assert_eq!(offer.view().kind(), t::PreparedBreakKind::ParagraphEnd);
     assert_eq!(offer.view().boundary(), request.end);

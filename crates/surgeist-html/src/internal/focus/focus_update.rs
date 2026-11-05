@@ -133,7 +133,7 @@ pub enum HtmlFocusUpdateAction {
         chain: HtmlFocusUpdateChain,
     },
     /// Run the complete fire-a-focus-event child with these actual operand roles.
-    /// It must finish genuinely before FocusEventCompleted. Null event targets
+    /// It must finish before FocusEventCompleted. Null event targets
     /// skip this call; an area's Element anchor is not an event-target substitute.
     FireFocusEvent {
         /// The name of the event to fire.

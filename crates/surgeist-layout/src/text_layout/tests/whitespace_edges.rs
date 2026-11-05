@@ -227,7 +227,7 @@ fn maximum<S: LayoutScalar>() {
     );
     qualify(&output, &[88, 32, 10, 89], &[20.0, 10.0]);
     assert_eq!(output.report.inline_extent, S::from_f64(20.0));
-    // A genuine maximum request includes the retained conditional SPACE in
+    // A maximum request includes the retained conditional SPACE in
     // its actual intrinsic line allocation. Width None alone is not a purpose.
     assert_eq!(
         output.line_bounds[0].allocation.size().width,

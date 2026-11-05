@@ -564,7 +564,7 @@ fn original_observer_can_drain_parked_feedback_after_scope_and_receipt_completio
     let DomSourceProgress::Request(DomSourceRequest::Event(event)) =
         source.advance(&cancel()).unwrap()
     else {
-        panic!("genuine BeforeToggle");
+        panic!("BeforeToggle");
     };
     drop(source);
     let mut permit = Some(executor.begin_dispatch(&dom, &event, &cancel()).unwrap());

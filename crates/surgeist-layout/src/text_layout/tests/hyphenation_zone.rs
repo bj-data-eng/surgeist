@@ -1,5 +1,5 @@
 //! The native initial zero zone requires a strict positive natural gap.
-//! Zero-flow retained text supplies a genuine ordinary fallback before the word;
+//! Zero-flow retained text supplies an ordinary fallback before the word;
 //! automatic empty indications remain automatic and are subject to that gate.
 use super::*;
 use surgeist_text::{
@@ -334,7 +334,7 @@ fn qualify<S: LayoutScalar>() -> (Range, Option<PreparedBreakKind>, bool, f64, f
     )
 }
 #[test]
-fn initial_zero_zone_uses_the_genuine_zero_flow_ordinary_fallback() {
+fn initial_zero_zone_uses_the_zero_flow_ordinary_fallback() {
     // Both complete scalar paths qualify resources, fonts, ordinary/native
     // receipts and source custody before the intended semantic RED assertion.
     let actual = [qualify::<f32>(), qualify::<f64>()];

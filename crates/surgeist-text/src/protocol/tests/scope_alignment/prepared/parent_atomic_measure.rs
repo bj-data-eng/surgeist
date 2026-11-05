@@ -210,7 +210,7 @@ fn atomic_geometry(prepared: &PreparedText, line: &FinalizedLine, boxed: bool) {
         ..
     } = slot.allocation
     else {
-        panic!("genuine in-flow atomic")
+        panic!("in-flow atomic")
     };
     assert_eq!(fit, AtomicFitAllocation::NativeOccupied);
     assert_eq!(

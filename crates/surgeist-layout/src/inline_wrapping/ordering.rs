@@ -1843,7 +1843,7 @@ impl NativeOrderingData {
         if chosen.is_some() {
             return Ok(chosen);
         }
-        // With no selected part, only this owner's genuinely ordering-empty
+        // With no selected part, only this owner's ordering-empty
         // body and its OWN original anchor can authorize an endpoint-only edge.
         // No descendant row or coordinate becomes selected by this association.
         if !self.range_ordering_empty(&self.box_row(owner)?.range, body) {

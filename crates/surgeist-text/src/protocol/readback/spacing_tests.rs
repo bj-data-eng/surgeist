@@ -129,11 +129,7 @@ fn select(prepared: &PreparedText, alternative: Option<PreparedAlternative>) -> 
             inline_boxes: None,
             segment: {
                 let mut segments = prepared.source_segments();
-                assert_eq!(
-                    segments.len(),
-                    1,
-                    "this fixture has one genuine source segment"
-                );
+                assert_eq!(segments.len(), 1, "this fixture has one source segment");
                 segments.next().unwrap()
             },
             boundary_context: Vec::new(),
@@ -581,7 +577,7 @@ fn computed_replacement_spaces_keep_actual_alternative_and_empty_source_anchors(
 }
 
 #[test]
-fn preserved_trailing_space_is_unchanged_by_a_genuine_out_of_flow_occurrence() {
+fn preserved_trailing_space_is_unchanged_by_a_out_of_flow_occurrence() {
     for out_of_flow in [false, true] {
         let mut captured = input("X ", WhiteSpace::Preserve);
         if out_of_flow {

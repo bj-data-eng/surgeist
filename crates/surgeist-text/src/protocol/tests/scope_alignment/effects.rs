@@ -565,7 +565,7 @@ fn edge_leaves(orientation: LineOrientation) -> (PreparedText, CapturedScope) {
     *style = Some(decorated());
     *alignment_boundary = Some(ScopeAlignmentBoundary::NonInitial);
     *font_reference = Some(super::capture::reference());
-    // These are four genuine empty child inline boxes, each with its own
+    // These are four empty child inline boxes, each with its own
     // captured entry/exit controls. They request native control geometry, not
     // independent whole-scope allocations or a proxy for the parent's text.
     for child in 0..4 {
@@ -665,7 +665,7 @@ fn edge_request(prepared: &PreparedText) -> LineSelectionRequest {
     request.context.orientation = prepared.orientation();
     request.context.spacing = SpacingPolicy::None;
     request.context.available_inline = None;
-    // A genuine explicit containing-line allocation fixes both edges for every
+    // An explicit containing-line allocation fixes both edges for every
     // tested parent shift. Neither the8/2 glyphs nor the5px children can grow it.
     request.line_strut = Some(LineStrut {
         baseline: 20.0,
@@ -758,7 +758,7 @@ fn edge_rect(orientation: LineOrientation, u: f64, v: f64, w: f64, h: f64) -> Re
 }
 
 #[test]
-fn genuine_top_bottom_atomic_and_control_leaves_escape_parent_shift_in_one_fixed_accepted_line() {
+fn top_bottom_atomic_and_control_leaves_escape_parent_shift_in_one_fixed_accepted_line() {
     // CSS2§10.8.1, pinned visudet lines894–900: Top/Bottom children are excluded
     // from their parent's aligned subtree. Native baseline/Shift leaves remain
     // in that subtree. The same40px accepted line makes the difference visible.

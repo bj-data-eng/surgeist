@@ -1,5 +1,5 @@
 //! Ordinary final admission validates native-only generated child proofs
-//! against genuine captured empty boxes, without inventing source scope owners.
+//! against captured empty boxes, without inventing source scope owners.
 use super::*;
 
 struct DirectPairFixture<S: layout::LayoutScalar> {
@@ -49,7 +49,7 @@ fn native_only_input(direction: layout::Direction, empty: bool) -> text::Context
         });
     }
     // Literal original event construction; there is no second event parser or
-    // inferred pair. The genuine native pair is still explicitly declared.
+    // inferred pair. The native pair is still explicitly declared.
     let mut events = vec![
         E::EnterScope(0),
         E::EnterParagraph(0),
@@ -192,7 +192,7 @@ fn admit_native_order<S: layout::LayoutScalar>(
             }
         } else {
             let error = match result {
-                Ok(_) => panic!("complete N[B] cannot omit the genuine preceding empty child E"),
+                Ok(_) => panic!("complete N[B] cannot omit the preceding empty child E"),
                 Err(error) => error,
             };
             assert!(

@@ -134,7 +134,7 @@ fn request_identity<S: LayoutScalar>() {
         WrappingScopeError::NodeNotReachable,
         None,
         |_, input| {
-            // Node99 is genuinely absent from this supplied graph. A merely
+            // Node99 is absent from this supplied graph. A merely
             // different reachable formatter would not necessarily be foreign.
             input.native_inline_boxes[0].formatter = 99;
         },

@@ -222,7 +222,7 @@ fn avoid_short_last_line_native_targets_only_paragraph_and_keeps_permissions_f64
 
 fn ordinary_domains<S: l::LayoutScalar>() {
     for direction in [l::Direction::Ltr, l::Direction::Rtl] {
-        // A genuine oversized first atom is valid ordinary overflow. Optional
+        // An oversized first atom is valid ordinary overflow. Optional
         // quality must not turn advance70/capacity60 into a geometry error.
         let mut overflow = profile_tree::<S>(direction, 60.0, &[70.0, 10.0]);
         let capacity = crate::layout::native_request::sizing(

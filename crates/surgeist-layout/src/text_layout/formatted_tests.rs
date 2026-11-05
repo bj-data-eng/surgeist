@@ -125,7 +125,7 @@ fn external_completion_is_not_target_membership_in_accepted_endpoints() {
     });
     assert_eq!(state.observe(&binding, &ordinary), Some(false));
     assert_eq!(state.observe(&binding, &external), Some(true));
-    // Even a neutral actual run has a genuine completion occurrence. Absence
+    // Even a neutral actual run has a completion occurrence. Absence
     // of the prospective target from actual lines is not a false Last oracle.
     state.record(FormattedFlow {
         frame: None,
@@ -197,7 +197,7 @@ fn numeric_forced_lines() -> Vec<NumericFormattedLine> {
 }
 
 #[test]
-fn genuine_empty_forced_numeric_lines_disprove_both_tail_predicates() {
+fn source_empty_forced_numeric_lines_disprove_both_tail_predicates() {
     let p = prepared();
     let (mut state, binding) = state(&p);
     let end = endpoint(&p);

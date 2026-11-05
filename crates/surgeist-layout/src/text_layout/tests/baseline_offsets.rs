@@ -1117,7 +1117,7 @@ fn precision_participant<S: LayoutScalar>(
         )
     } else {
         // No child source, measurement callback or supplied baseline facts.
-        // Native layout must establish genuine absence before synthesizing
+        // Native layout must establish absence before synthesizing
         // the empty inline-block's bottom Alphabetic baseline at four units.
         LayoutInputOf::box_input(child(
             WritingMode::HorizontalTb,

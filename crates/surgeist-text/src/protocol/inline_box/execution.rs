@@ -360,7 +360,7 @@ pub(crate) fn build(
             let Gap::At(gap) = nodes[edge.node].gap else {
                 return Err(invalid(InlineBoxEdgeError::UnrepresentedIncidence));
             };
-            // The genuine original endpoint gap can be inside one retained
+            // The original endpoint gap can be inside one retained
             // provider/EGC packet. Close that incidence over the actual packet;
             // do not split it or fabricate a body packet for the empty owner.
             let mut insertion = gap;

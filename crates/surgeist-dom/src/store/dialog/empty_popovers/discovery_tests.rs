@@ -248,7 +248,7 @@ fn actual_show_proves_empty_popover_lists_without_visiting_hidden_raw_members() 
         let preparation = lease
             .prepare_focus(&focus_request, &host_source, &cancel)
             .unwrap()
-            .expect("bound genuine native Host");
+            .expect("bound native Host");
         assert_eq!(
             preparation.target(),
             crate::DomFocusTarget::RememberedHost(host)

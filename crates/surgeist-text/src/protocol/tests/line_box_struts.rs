@@ -258,7 +258,7 @@ fn conditional_identity_retains_box_alignment_without_freezing_candidate_geometr
         [1, 2, 3]
     );
     // Enumeration records actual permission only. The full ordinary frame is
-    // the genuine 40px-at20px overflow receipt; no prefix-fit proof is invented.
+    // the 40px-at20px overflow receipt; no prefix-fit proof is invented.
     let positive = whole(&p, vec![row(0.0, 10.0, LineBoxAlignment::Top)], None, 20.0);
     let negative = whole(&p, vec![row(-0.0, 10.0, LineBoxAlignment::Top)], None, 20.0);
     let positive = query(&positive);

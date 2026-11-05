@@ -1,4 +1,4 @@
-//! Genuine retained observing parent with an independently scoped child Show.
+//! Retained observing parent with an independently scoped child Show.
 use super::*;
 use crate::{
     DomEventCallback, DomEventListenerOptions, DomEventType, DomSourceRuntime,
@@ -467,7 +467,7 @@ fn observing_parent_prices_old_and_replacement_host_backings_until_physical_rele
             }
             assert_eq!(session.snapshot().stamp(), basis);
             drop(value);
-            // The same original counter/bank can retry once the genuine caller
+            // The same original counter/bank can retry once the caller
             // allocation releases; no Source policy increase or reset is used.
             hosted
                 .create_headless_host(&mut session.dom(), &cancel)
@@ -484,7 +484,7 @@ fn observing_parent_prices_old_and_replacement_host_backings_until_physical_rele
             }
             // The original allocation has physically dropped after replacement.
             // While the original Filler remains live, exactly that old backing
-            // can be used by a second genuine caller allocation. Its own inline
+            // can be used by a second caller allocation. Its own inline
             // descriptor/guard is included, rather than treated as free.
             assert!(old_backing >= size_of::<Filler>());
             let released = {

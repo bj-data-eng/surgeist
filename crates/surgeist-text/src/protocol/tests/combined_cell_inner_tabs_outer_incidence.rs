@@ -1,4 +1,4 @@
-//! One genuine original style owns both inner and ordinary CSS TAB occurrences.
+//! One original style owns both inner and ordinary CSS TAB occurrences.
 use super::*;
 
 fn mixed_capture() -> Captured {
@@ -39,7 +39,7 @@ fn mixed_capture() -> Captured {
             origins: (0..6)
                 .map(|at| ParagraphOrigin {
                     text_node: None,
-                    // All genuine originals refer to the one authored source, including
+                    // All originals refer to the one authored source, including
                     // its single full-range style. No context-only restyling occurs.
                     source: source.clone(),
                     local: Range::new(at, at + 1),
@@ -131,7 +131,7 @@ fn mixed_capture() -> Captured {
         })
         .unwrap(),
     );
-    // The first All10 box genuinely contains a nested All10 box. The existing
+    // The first All10 box contains a nested All10 box. The existing
     // WM4 box lookaround rejects both partial sequences, so its A/TAB/B remain
     // ordinary. The sibling All10 has no All ancestor across that box boundary
     // (Root is None), so precisely its A/TAB/B form one accepted Cell.

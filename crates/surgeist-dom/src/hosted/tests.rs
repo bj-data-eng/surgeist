@@ -17,7 +17,7 @@ impl DomHostedSource {
             .unwrap();
         size_of::<crate::store::EmptyPath<IdentitySlot>>() + path.inspect_storage_bytes()
     }
-    /// Canonical-owner fixtures need a genuinely metered, live Global token.
+    /// Canonical-owner fixtures need a metered, live Global token.
     /// This issues only that identity: no Window, constructor phase or external
     /// execution effect is asserted, and no canonical revision is reserved.
     pub(crate) fn issue_global_for_canonical_source_fixture(
@@ -398,7 +398,7 @@ fn hosted_growth_counts_actual_pages_and_empty_path_overlap_without_copying_old_
     let fixed = size_of::<Shared>();
     let work = size_of::<Work>() + 2 * size_of::<AtomicU64>();
     assert_eq!(retained(&source), fixed + old_bytes);
-    // Existing pages stay resident while the genuine new empty path is admitted.
+    // Existing pages stay resident while the new empty path is admitted.
     // There is no replacement backing or copied-old-row quota in OwnedBank.
     let refusal_limit = fixed + work + old_bytes + requested - 1;
     let old_limits = source.limits();

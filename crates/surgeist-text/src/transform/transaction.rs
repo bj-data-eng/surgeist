@@ -1,5 +1,5 @@
 //! One request-local source transformation transaction. Facts are immutable;
-//! stage effects and component mappings become ready only on genuine demand.
+//! stage effects and component mappings become ready only on demand.
 
 use super::{
     casing::{self, Input, Locale, Mapper, MappingError, Operation},
@@ -553,7 +553,7 @@ fn prefix_window(
     let mut values = Vec::new();
     let mut position = slot;
     while let Some((next, value, missing)) = shared.borrow_mut().peek(position, true)? {
-        // A genuine SPACE is a sufficient word reset; it is not a source fence.
+        // A SPACE is a sufficient word reset; it is not a source fence.
         if matches!(value.code_point, 0x20 | 0x3000) {
             break;
         }
@@ -567,7 +567,7 @@ fn prefix_window(
     Ok(values)
 }
 
-/// Publish facts for a genuinely requested ready stretch and its qualified
+/// Publish facts for a requested ready stretch and its qualified
 /// scalar prefix. Borrowed input is never subjected to its own casing here.
 fn word_facts(
     shared: &RefCell<TransformWork<'_, '_>>,
@@ -981,7 +981,7 @@ fn reset(cp: u32) -> bool {
     )
 }
 
-/// A contiguous interval of genuinely completed stage cells. Unread cells are
+/// A contiguous interval of completed stage cells. Unread cells are
 /// never omitted from its semantic stream.
 struct CompletedInterval {
     first: usize,
@@ -1462,7 +1462,7 @@ impl<'borrow, 'source> TransformWork<'borrow, 'source> {
     }
 }
 
-/// A genuine same-scope plain-text stretch. Storage-member markers do not
+/// A same-scope plain-text stretch. Storage-member markers do not
 /// delimit it; actual boxes, atomics and source disconnections do.
 struct SelectionRun {
     first: usize,

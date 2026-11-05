@@ -235,7 +235,7 @@ fn placed_pair(prepared: &text::PreparedText, opening: f64) -> text::Layout {
     }
     assert!(
         request.boundary_context.is_empty(),
-        "all genuine controls are selected in this whole paragraph"
+        "all controls are selected in this whole paragraph"
     );
     let line = prepared
         .select(request)

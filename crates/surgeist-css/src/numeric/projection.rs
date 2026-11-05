@@ -26,8 +26,8 @@ const ANGLE_OVERFLOW_ENDPOINT: f64 = f64::from_bits(f64::MAX.to_bits() - 31);
 /// a finite value outside the binary64 range converts to the closest supported
 /// value, `f64::MAX` with its sign, and an angle to the nearest supported
 /// multiple of 360deg. An infinity from an infinite operand or a defined
-/// exception (division by zero, pow(0, -1), log(0), tan asymptotes) is genuine
-/// and passes through unchanged; callers report it as non-finite operands.
+/// exception (division by zero, pow(0, -1), log(0), tan asymptotes) passes
+/// through unchanged; callers report it as non-finite operands.
 pub(crate) fn closest_supported_value(value: f64, finite_operands: bool, angle: bool) -> f64 {
     if value.is_infinite() && finite_operands {
         let endpoint = if angle {
@@ -199,7 +199,7 @@ impl Projection<'_> {
     /// One source-order accumulation step. A finite intermediate is itself a
     /// value that must be supported, so a finite pair that overflows converts
     /// before the next operand: `MAX * 0` is zero and `MAX - infinity` is the
-    /// genuine negative infinity, independent of grouping.
+    /// negative infinity, independent of grouping.
     fn step(&self, previous: f64, value: f64, product: bool, ty: CssNumericType) -> f64 {
         let result = if product {
             previous * value
@@ -233,7 +233,7 @@ impl Projection<'_> {
             Kind::Product(children) => self.resolved_terms(children, true, ty),
             Kind::Sum(children) => self.resolved_terms(children, false, ty),
             Kind::Negate(child) => self.arena[*child].resolved_magnitude.map(|value| -value),
-            // Division by zero is a genuine infinity; a nonzero finite divisor
+            // Division by zero is infinity; a nonzero finite divisor
             // can only overflow a finite quotient.
             Kind::Invert(child) => self.arena[*child]
                 .resolved_magnitude
@@ -1359,7 +1359,7 @@ fn prepare_specified_scaled_with_mode<'a>(
                         }
                         let value = if projection.mode == ProjectionMode::SpecifiedOutput {
                             // Dimension tokens are authored finite decimals.
-                            // Genuine infinities are constants or calculation
+                            // Infinities are constants or calculation
                             // results and never enter this leaf conversion.
                             closest_supported_value(
                                 projection_scale.map_or_else(

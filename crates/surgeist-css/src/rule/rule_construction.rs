@@ -155,7 +155,7 @@ impl CssRuleConstructionError {
             RuleConstructionKind::Import(_) => &[],
         }
     }
-    /// Returns the genuine parsed rule or condition position of an assembly failure,
+    /// Returns the parsed rule or condition position of an assembly failure,
     /// absent for source-free construction.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {

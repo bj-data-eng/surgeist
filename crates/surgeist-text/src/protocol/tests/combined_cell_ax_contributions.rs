@@ -220,7 +220,7 @@ fn uppercase_sharp_s_ax_deduplicates_actual_original_ancestry_and_unions_both_s_
 
 #[test]
 fn rtl_inner_tab_groups_reverse_bounds_without_reversing_original_ax_units() {
-    // Maintained genuine RTL native fixture: UAX9 W7/I2 gives AB and12 level2;
+    // Maintained RTL native fixture: UAX9 W7/I2 gives AB and12 level2;
     // TAB(S) resets to paragraph1. Real L2 is physical12,TAB,AB. This is not
     // a caller paint rotation or a guessed reversal of the LTR glyphs in AB.
     let bytes = tabs::qualified_font();
@@ -388,7 +388,7 @@ fn removed_only_space_cell_keeps_original_ax_semantics_without_donating_any_geom
 }
 
 #[test]
-fn native_css_tab_ax_uses_its_actual_nonprovider_band_and_retains_genuine_zero_width() {
+fn native_css_tab_ax_uses_its_actual_nonprovider_band_and_retains_zero_width() {
     // ch10 gives half-ch5. A period6 gap meets that floor without another
     // period: actual intrinsic0..6 fits E10 with scale1/centering2. Zero period
     // is the separately qualified native0..0 operation, centered by5; unlike
@@ -448,7 +448,7 @@ fn native_css_tab_ax_uses_its_actual_nonprovider_band_and_retains_genuine_zero_w
         let data = &layout.inner.lines[0].finalized.data;
         assert!(data.runs.is_empty() && data.font_runs.is_empty());
         let [cell] = data.cells.as_slice() else {
-            panic!("one genuine provider-free native Cell")
+            panic!("one provider-free native Cell")
         };
         assert!(cell.frame.is_none(), "no glyph/body baseline exists");
         let transform = cell.transform.expect("real independent native layout");

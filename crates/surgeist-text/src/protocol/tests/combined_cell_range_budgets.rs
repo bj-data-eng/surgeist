@@ -1,4 +1,4 @@
-//! Immutable operation limits over genuine mixed, multi-receipt placements.
+//! Immutable operation limits over mixed, multi-receipt placements.
 use super::*;
 use crate::{ScopeAlignmentError, ScopeAlignmentLimitKind, SourceRangeGeometry};
 
@@ -224,7 +224,7 @@ fn build(payload: Payload, limits: ScopeAlignmentLimits, bytes: &[u8]) -> Fixtur
         .collect::<Vec<_>>();
     // Select the actual SPACE opportunities among all admitted break sites;
     // the caller need not select the extra sites beside a composition.
-    // These are genuine SPACE opportunities and the issued segment end, not
+    // These are SPACE opportunities and the issued segment end, not
     // fabricated paragraph ends or cuts inside either composition.
     assert_eq!(offers.len(), CELLS);
     let participants = prepared.participants().collect::<Vec<_>>();
@@ -441,11 +441,11 @@ fn active_range_caps_are_source_immutable_and_fail_after_complete_real_setup() {
         ] {
             let cap = values(usage, kind).checked_sub(1).unwrap();
             // Observable phase receipts select a cap, not a mirrored buffer formula.
-            // If no genuine phase headroom exists, this fixture is insufficient;
+            // If no phase headroom exists, this fixture is insufficient;
             // failure here cannot be reported as successful Range-limit evidence.
             assert!(
                 cap >= setup_max(&adequate, kind),
-                "{payload:?}/{kind:?} needs a genuine setup/query cap window"
+                "{payload:?}/{kind:?} needs a setup/query cap window"
             );
             let limited = build(payload, with_limit(kind, cap), &bytes);
             // Holding a real ordinary query from the SAME mixed placement proves

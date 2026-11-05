@@ -12,7 +12,7 @@ enum Coupling {
 impl Coupling {
     fn change(self, request: &mut text::LineSelectionRequest) {
         // The second ACTUAL issued atomic has index1 even though all three
-        // genuine source occurrences have the same original source position0.
+        // source occurrences have the same original source position0.
         let text::AtomicLineAllocation::InFlow {
             flow, box_geometry, ..
         } = &mut request.atomics[1].allocation

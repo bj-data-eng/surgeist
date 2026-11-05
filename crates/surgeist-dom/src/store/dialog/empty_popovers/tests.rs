@@ -58,7 +58,7 @@ fn actual_hidden_popovers_qualify_with_raw_dialogs_but_unknown_history_does_not(
     assert!(draft.document_known_empty_popovers(first, &cancel).unwrap());
 
     // This is an unpublished negative raw-state fixture, not a claim that a
-    // modal/popover producer or full Show inserted this genuine Element.
+    // modal/popover producer or full Show inserted this Element.
     let formation = source::formation::Formation::new(&draft, &cancel)
         .unwrap()
         .unwrap();

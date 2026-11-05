@@ -25,7 +25,7 @@ pub(crate) struct Position {
     pub(super) line: usize,
     pub(crate) source: Cursor,
     target: Target,
-    /// Genuine source-less slot ownership, not a borrowed removal geometry.
+    /// Source-less slot ownership, not a borrowed removal geometry.
     slot: bool,
     /// Cut in the actual selected mixed-event stream, independent of source projection.
     cut: usize,
@@ -218,7 +218,7 @@ pub(super) fn prepare(lines: &[PlacedLine], cuts: &[usize]) -> Vec<Position> {
             }
             // Only the immutable binding's actual base events belong to this
             // cell. A selected unit's padded extent can also lend exterior
-            // removals, whose genuine aliases must remain separate.
+            // removals, whose aliases must remain separate.
             if cell_events
                 .peek()
                 .is_some_and(|(events, binding)| events.contains(&event) && binding.contains(&base))
@@ -565,7 +565,7 @@ fn distance(rect: Rect, point: Point, orientation: crate::LineOrientation) -> f6
     (point.x - rect.origin.x).hypot(dy)
 }
 /// Selects an actual eligible interaction row on the requested formatted line.
-/// Anchors and genuine struts participate alongside cluster edges; this does
+/// Anchors and struts participate alongside cluster edges; this does
 /// not reconstruct a caret from a source offset or a guessed rectangle.
 /// Horizontal proximity uses physical x; vertical axes use local inline distance.
 pub(super) fn nearest_on_line(layout: &PlacedLayout, line: usize, inline: f64) -> Option<usize> {
@@ -951,7 +951,7 @@ pub(crate) fn selection(
                                 if matches!(line.finalized.selected.prepared.analyzed.transform.events()[event], RelationEvent::Anchor { .. }))
                         })
                 });
-                // Retain an endpoint's genuine source-less occurrence slot,
+                // Retain an endpoint's source-less occurrence slot,
                 // including zero width. A borrowed removal edge is not a slot.
                 let endpoint_slot = [a, b]
                     .iter()
@@ -2130,7 +2130,7 @@ mod tests {
     }
 
     #[test]
-    fn genuine_same_source_controls_retain_middle_positions_and_foreign_placement() {
+    fn same_source_controls_retain_middle_positions_and_foreign_placement() {
         let layout = four_source_less_lines();
         let positions: Vec<_> = layout.positions().collect();
         assert_eq!(positions.len(), 4);

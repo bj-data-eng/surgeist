@@ -518,7 +518,7 @@ fn arithmetic_precision_handles_lexical_overflow_underflow_and_stable_hypot() {
     for (input, expected) in [
         // Operation-free leaves keep their exact coefficients; arithmetic
         // overflow converts to the closest finite value (#1297). A leaf that
-        // underflows to zero is a genuine division by zero.
+        // underflows to zero is a division by zero.
         ("calc(1e999)", exact.as_str()),
         ("calc(-1e999)", negative_exact.as_str()),
         ("calc(1e999 * 1)", max.as_str()),

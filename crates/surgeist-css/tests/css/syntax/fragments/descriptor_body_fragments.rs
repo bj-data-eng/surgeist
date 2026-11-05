@@ -1109,7 +1109,7 @@ fn failed_structural_child_depth_retains_native_error_and_later_palette_profile_
 #[test]
 fn real_rule_resource_recovery_keeps_the_next_native_top_level_sibling() {
     let deep = format!("{}x{}", "f(".repeat(256), ")".repeat(256));
-    // These are genuine whole-rule controls, secondary to the direct fronts.
+    // These are whole-rule controls, secondary to the direct fronts.
     for (head, tail) in [
         (
             "@font-face{font-family:A;bad:",

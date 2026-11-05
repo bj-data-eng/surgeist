@@ -146,10 +146,10 @@ pub(crate) struct GroupWinner<T> {
     pub(crate) trial: GroupTrial<T>,
 }
 
-/// Eligible groups only. The owning formatter restores its genuine group-entry
+/// Eligible groups only. The owning formatter restores its group-entry
 /// checkpoint before each invocation, stops at its actual terminal/count, and
 /// subsequently replays the winner's complete value/basis. Errors propagate;
-/// None means a genuinely inadmissible path, never a fabricated empty group.
+/// None means an inadmissible path, never a fabricated empty group.
 pub(crate) fn choose_group<T, E>(
     reference: &[NaturalResidual],
     auto: Option<GroupTrial<T>>,

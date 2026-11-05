@@ -220,7 +220,7 @@ fn pretty_ordinary_closure_replays_the_real_float_journal_and_agrees_with_a_fres
     fn lane<S: crate::LayoutScalar>() {
         let raw = "AAAAA BBBB C CCCCCCCCC\nXXXX as\u{ad}sociate\n";
         let paragraph = after_paragraph(raw);
-        // Native floats are genuine transparent run nodes, not Text atomic
+        // Native floats are transparent run nodes, not Text atomic
         // occurrences. Preserve the actual origin map and native encounter order.
         let mut binding = paragraph.binding(0);
         binding.nodes = vec![2, 1];

@@ -756,7 +756,7 @@ pub(crate) fn resolve(
         // Presentation contexts cannot extend beyond the selected projection.
         // Their endpoint values are therefore selected facts, already admitted.
         // Replay them after this assignment's original context, transporting
-        // only genuine event cuts, never interior expansion/grapheme cuts.
+        // only event cuts, never interior expansion/grapheme cuts.
         for incidence in &incidences {
             if incidence.participant < selected_start
                 || incidence.participant

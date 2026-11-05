@@ -181,7 +181,7 @@ fn resolve_flex_fraction<S: LayoutScalar>(
             fraction = fraction.max(flex_number(candidate)?);
         }
     }
-    // Every candidate comes from a genuine item span in the current owning
+    // Every candidate comes from an item span in the current owning
     // frame. A candidate from another item may legitimately exceed this demand.
     for item in items {
         let start = item.span.start - 1;

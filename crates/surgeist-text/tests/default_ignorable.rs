@@ -1108,7 +1108,7 @@ fn unqualified_aat_boundary(
         "one actual neutral native run owns both A/B endpoints: {neutral:?}"
     );
     let actual = candidates[0];
-    // Each fixture is untransformed BMP source: this genuine run association
+    // Each fixture is untransformed BMP source: this run association
     // maps one-to-one onto its original scalar invocation body.
     let actual_body = actual.source.start..actual.source.end;
     let error = try_observe(bytes, source, 3.0, direction).unwrap_err();
@@ -1242,7 +1242,7 @@ fn morx_skipped_di_retains_zero_allocation_while_ordinary_ligature_survives() {
                     .iter()
                     .all(|glyph| glyph.ink && glyph.range == text::Range::new(0, 3))
             {
-                failures.push(format!("skipped D GPOS={with_gpos} {direction:?}: expected only real R15, final15, DI0 and genuine joint source0..3; got {value:?}"));
+                failures.push(format!("skipped D GPOS={with_gpos} {direction:?}: expected only real R15, final15, DI0 and joint source0..3; got {value:?}"));
             }
             unqualified_aat_boundary(
                 &bytes,

@@ -783,7 +783,7 @@ fn lexical_comment_eof_preserves_explicit_or_implicit_brace_provenance() {
 }
 
 #[test]
-fn invalid_string_or_function_eof_keeps_only_genuine_admitted_body_units() {
+fn invalid_string_or_function_eof_keeps_only_admitted_body_units() {
     for source in ["{bad:\"1", "{bad:calc(1"] {
         let report = subsidiary(source, Kind::Swash);
         assert!(
@@ -1028,11 +1028,11 @@ fn defined_child_resource_failure_recovers_the_definition_and_preserves_child_an
 }
 
 #[test]
-fn genuine_rule_controls_confirm_provider_semantics_without_fabricating_fragment_input() {
+fn rule_controls_confirm_provider_semantics_without_fabricating_fragment_input() {
     let source = "@font-feature-values Demo{font-display:swap;@styleset{First:0 100 101}font-display:optional;@swash{bad:1.0;Good:+0002}}";
     let real = CssParser::default().parse_sheet(source);
     let [CssRule::FontFeatureValues(rule)] = real.syntax().rules() else {
-        panic!("genuine existing rule")
+        panic!("existing rule")
     };
     assert_eq!(rule.families()[0].as_str(), "Demo");
     let [first, styleset, last, swash] = rule.items() else {
@@ -1056,7 +1056,7 @@ fn genuine_rule_controls_confirm_provider_semantics_without_fabricating_fragment
     );
     assert!(real.clone().into_validation_result().is_err());
 
-    // Each direct input is a literal genuine block. No wrapper construction or offset adjustment.
+    // Each direct input is a literal block. No wrapper construction or offset adjustment.
     let direct = outer(
         "{font-display:swap;@styleset{First:0 100 101}font-display:optional;@swash{bad:1.0;Good:+0002}}",
     );

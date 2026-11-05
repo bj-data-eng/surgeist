@@ -20,7 +20,7 @@ impl ScopeIndexCapacity {
     }
 }
 
-/// `false` is the genuine cut immediately before an event; `true` is its body.
+/// `false` is the cut immediately before an event; `true` is its body.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct Position(usize, bool);
 
@@ -252,7 +252,7 @@ impl ScopeCutIndex {
         })
     }
 
-    /// Both actual incident contributions must be inside. At a genuine box
+    /// Both actual incident contributions must be inside. At a box
     /// seam the closing box has left and the opening box has not yet entered.
     pub(crate) fn inside(&self, cut: usize, enter: usize, exit: usize) -> Option<bool> {
         let left = (*self.left.get(cut)?)?;
@@ -261,7 +261,7 @@ impl ScopeCutIndex {
         Some(inside(left) && inside(right))
     }
 
-    /// Genuine structural frontiers provide the exterior side of this slice.
+    /// Structural frontiers provide the exterior side of this slice.
     /// Interior unknown contributions remain unknown; equal numeric cuts in a
     /// different slice do not supply source context.
     pub(crate) fn inside_in(
@@ -382,7 +382,7 @@ mod tests {
     use crate::*;
     use std::sync::Arc;
 
-    // Each origin is a genuine source contribution; the inline scope begins
+    // Each origin is a source contribution; the inline scope begins
     // before origin 1 and ends after origin 2, independently of typography.
     fn analyzed(parts: [&str; 4], mode: WhiteSpace) -> AnalyzedSource {
         let source = Source::new(parts.concat());
@@ -521,7 +521,7 @@ mod tests {
         let analyzed = analyzed(["A", "\u{301}", "B", "C"], WhiteSpace::Preserve);
         assert_eq!(analyzed.inner.projection.graphemes, [0, 2, 3, 4]);
         // The interior scalar seam is not a prepared boundary. The whole first
-        // TCU has consumed the genuine entering contribution at its trailing cut.
+        // TCU has consumed the entering contribution at its trailing cut.
         assert_eq!(incidences(&analyzed), [false, false, true, false, false]);
     }
 

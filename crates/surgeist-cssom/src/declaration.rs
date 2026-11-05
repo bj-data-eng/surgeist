@@ -81,7 +81,7 @@ impl CssomPreparedDeclaration {
             .map(|input| &input.version)
     }
 }
-/// Borrowed engine over a genuinely resolved current or captured block.
+/// Borrowed engine over a resolved current or captured block.
 pub(crate) struct DeclarationRead<'a> {
     block: &'a CssomBlock,
     limits: CssomDeclarationRequestLimits,

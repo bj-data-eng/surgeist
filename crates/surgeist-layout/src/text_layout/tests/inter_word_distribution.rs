@@ -1,4 +1,4 @@
-//! Two genuine Direct opportunities share the positive residual at one priority.
+//! Two Direct opportunities share the positive residual at one priority.
 use super::*;
 use surgeist_text as text;
 

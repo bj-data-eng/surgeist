@@ -4,7 +4,7 @@ use preflight::ActionPolicy;
 use std::mem::size_of;
 use surgeist_html::values::DocumentString;
 
-/// A genuine complete-empty Global registry and its owning immutable evidence.
+/// A complete-empty Global registry and its owning immutable evidence.
 /// The local registry identity is distinct from a consumer's canonical identity.
 #[derive(Debug)]
 pub struct HtmlEmptyGlobalRegistryCapture {

@@ -173,7 +173,7 @@ fn closure(unit: SourceRangeUnit<'_>, origins: &[PreparedOrigin; 2], selected: u
 }
 
 #[test]
-fn each_genuine_surrogate_origin_selects_only_itself_and_closes_the_same_actual_scalar() {
+fn each_surrogate_origin_selects_only_itself_and_closes_the_same_actual_scalar() {
     // Maintained source_custody fixture maps this real scalar to A35. The
     // native table wrapper is the same existing Cell metric owner, not a fake
     // provider or a claim that original Ahem covers arbitrary supplementary text.
@@ -305,7 +305,7 @@ fn an_actual_gpos_attached_mark_and_base_keep_exact_selection_but_share_egc_clos
 }
 
 #[test]
-fn a_genuine_inner_trimmed_space_has_removed_identity_and_no_borrowed_rectangle() {
+fn a_inner_trimmed_space_has_removed_identity_and_no_borrowed_rectangle() {
     // Existing source+font fixture already qualifies this exact provider-empty
     // Cell in allocated_empty. It remains a real E10 square, not an empty line.
     let bytes = qualified_font();

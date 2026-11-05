@@ -94,7 +94,7 @@ fn neutral_capture_stays_lazy_and_concurrent_queries_share_one_fact_allocation()
     for value in &values {
         assert!(Arc::ptr_eq(value, &values[0]));
         // Actual canonical Enter=2, Origin=3, Exit=4. No computed or
-        // connection bookkeeping changes these genuine original positions.
+        // connection bookkeeping changes these original positions.
         assert_eq!(value.scope_ranks(1), Some((2, 5)));
         assert_eq!(value.edges(0), [2, 5]);
     }

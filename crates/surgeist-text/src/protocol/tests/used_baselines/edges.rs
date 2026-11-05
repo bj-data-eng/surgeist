@@ -1,4 +1,4 @@
-//! Genuine RTL and finite/supplied geometry boundaries for named preparation.
+//! RTL and finite/supplied geometry boundaries for named preparation.
 use super::*;
 
 fn registered(bytes: Vec<u8>) -> System {
@@ -64,7 +64,7 @@ fn capture(source: Source, style: Style, rtl: bool, forced: bool) -> AnalyzedSou
 fn actual_captured_rtl_keeps_odd_level_source_order_and_carets_in_both_named_frames() {
     let original = crate::shaping_test_fonts::sideways_ahem();
     // Existing licensed fixture maps actual Alef to retained X outlines; it
-    // provides genuine Hebrew UBA semantics, not Hebrew glyph-design coverage.
+    // provides Hebrew UBA semantics, not Hebrew glyph-design coverage.
     let bytes = sfnt::replace_tables(
         &original,
         vec![(
@@ -267,7 +267,7 @@ fn placement(prepared: &PreparedText, line: &FinalizedLine, baseline: f64) -> Pl
 
 #[test]
 fn actual_decoration_overflow_refuses_placement_without_changing_a_retained_named_layout() {
-    // Actual BASE romn0 still supplies genuine requested Alphabetic authority.
+    // Actual BASE romn0 still supplies requested Alphabetic authority.
     // A nonzero b beside this enormous half-leading has a separate checked
     // finalization refusal, qualified below rather than bypassed here.
     let bytes = font(0);

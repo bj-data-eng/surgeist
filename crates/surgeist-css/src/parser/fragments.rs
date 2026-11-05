@@ -195,7 +195,7 @@ pub(crate) fn parse_group_block_with_context(
         )
         .into_parts();
         let BoundedParseSyntax::GroupBlock(block) = syntax else {
-            unreachable!("ordinary group replay preserves its genuine block carrier")
+            unreachable!("ordinary group replay preserves its block carrier")
         };
         let block = block.map(|block| {
             let (mut body, origin) = block.into_parts();
@@ -275,7 +275,7 @@ fn scoped_block_with_context(
         )
         .into_parts();
         let BoundedParseSyntax::ScopedBlock(block) = syntax else {
-            unreachable!("scoped replay preserves its genuine block carrier")
+            unreachable!("scoped replay preserves its block carrier")
         };
         let block = block.map(|block| {
             let (mut body, origin) = block.into_parts();
@@ -1390,7 +1390,7 @@ pub(crate) fn parse_style_block_with_context(
         );
         let (syntax, diagnostics) = report.into_parts();
         let BoundedParseSyntax::StyleBlock(block) = syntax else {
-            unreachable!("style-block replay preserves its genuine-brace carrier")
+            unreachable!("style-block replay preserves its brace carrier")
         };
         match block {
             Some(block) => conditional_chains::style_block(source, block, diagnostics),

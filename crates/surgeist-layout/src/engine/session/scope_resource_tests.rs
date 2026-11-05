@@ -111,7 +111,7 @@ impl Fixture {
                 ],
                 paragraphs: vec![text::SourceProcessingParagraph {
                     base_direction: text::ParagraphBaseDirection::LeftToRight,
-                    // A genuine root font strut8/2 is present on both semantic lines.
+                    // A root font strut8/2 is present on both semantic lines.
                     paragraph_strut: text::ParagraphStrut::DefaultFont,
                 }],
                 events: vec![
@@ -473,7 +473,7 @@ fn global_bridge(work: usize) {
             .all(|proof| proof.comparison_rows() == 1)
     );
     let previous = basis.clone();
-    // A fresh real same-flow session starts a genuine work ledger at0. Its
+    // A fresh real same-flow session starts a work ledger at0. Its
     // actual private global bridge consumes the real native pass products.
     let session = ComputeSession::with_flow(&flow, vec![]);
     let comparisons = WORK / PASS_WORK + usize::from(work > WORK);
@@ -520,7 +520,7 @@ fn global_bridge(work: usize) {
 }
 
 #[test]
-fn genuine_global_pass_bridge_admits_scope_payloads_and_propagates_typed_work_refusal() {
+fn source_global_pass_bridge_admits_scope_payloads_and_propagates_typed_work_refusal() {
     global_bridge(WORK);
     global_bridge(WORK + PASS_WORK);
 }

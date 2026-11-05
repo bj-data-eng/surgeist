@@ -653,7 +653,7 @@ fn frames_content_and_replay<S: l::LayoutScalar>() {
         content.overflow =
             l::ComputedOverflow::try_new(l::Overflow::Auto, l::Overflow::Auto).unwrap();
         // CSS Align3's block-scroll-container rule exports Auto's last set at
-        // block-end (right6 here); the genuine first content reference is4.
+        // block-end (right6 here); the first content reference is4.
         qualify_native_pair(&child, content.clone(), [4.0, 6.0], (6.0, 14.0));
         content.baseline_source = l::BaselineSource::First;
         qualify_native_pair(&child, content.clone(), [4.0, 4.0], (6.0, 14.0));
@@ -673,7 +673,7 @@ fn frames_content_and_replay<S: l::LayoutScalar>() {
         let content_box = output.scroll_geometry.unwrap().content_box();
         assert_eq!(content_box.origin(), l::Point::new(n(2.0), n(3.0)));
         assert_eq!(content_box.size(), l::Size::new(n(3.0), n(9.0)));
-        // The zero-gutter padding scrollport ends at x5, while the genuine
+        // The zero-gutter padding scrollport ends at x5, while the
         // H4 child allocation extends from content-left2 through x6.
         let range = output.scroll_geometry.unwrap().physical_range();
         assert_eq!((range.x().minimum(), range.x().maximum()), (n(0.0), n(1.0)));

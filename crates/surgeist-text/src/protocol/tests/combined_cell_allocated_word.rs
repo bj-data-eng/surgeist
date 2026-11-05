@@ -1,4 +1,4 @@
-//! Genuine exterior separator allocations remain separate from the retained
+//! Exterior separator allocations remain separate from the retained
 //! horizontal Cell's already executed inner word spacing.
 
 use super::*;
@@ -357,7 +357,7 @@ fn exercise(policy: SpacingPolicy) {
     let selected = mixed
         .prepared
         .select(value)
-        .expect("genuine exterior separator demand must admit a retained Cell");
+        .expect("exterior separator demand must admit a retained Cell");
     targets(&mixed, &selected);
     let natural = selected.finalize(allocations()).unwrap();
     flow(&mixed, &natural, space, policy, [0.0, 0.0]);

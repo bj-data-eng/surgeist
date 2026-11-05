@@ -89,7 +89,7 @@ fn declarations(
                     == t::ScopeRole::Domain
         })
         .map(|v| v.handle());
-    let ps = outer.next().expect("the genuine outer Inline start");
+    let ps = outer.next().expect("the outer Inline start");
     assert!(outer.next().is_none());
     let p_scope = ps.captured_control().unwrap().scope();
     let domain = p_scope.parent().unwrap();
@@ -100,7 +100,7 @@ fn declarations(
                 && v.handle().captured_control().unwrap().scope().parent() == Some(p_scope.clone())
         })
         .map(|v| v.handle());
-    let cs = inner.next().expect("the genuine captured child start");
+    let cs = inner.next().expect("the captured child start");
     assert!(inner.next().is_none());
     let c_scope = cs.captured_control().unwrap().scope();
     assert_eq!(c_scope.parent(), Some(p_scope.clone()));

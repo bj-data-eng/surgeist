@@ -400,7 +400,7 @@ pub(crate) enum CssSelectorConstructionErrorKind {
     ModifierWithoutValue,
     /// A decoded attribute operand cannot preserve its string identity.
     InvalidAttributeValue(crate::component::CssComponentValueError),
-    /// The decoded name is not a genuine identifier beginning with `-webkit-`.
+    /// The decoded name does not begin with `-webkit-` as required for an identifier.
     InvalidUnknownWebkitPseudoElementName,
     /// Intrinsic grammar or cumulative specified-output admission failed.
     Specified(crate::serialization::CssSerializationError),
@@ -443,8 +443,8 @@ impl CssSelectorConstructionError {
         is_empty_complex_rest => CssSelectorConstructionErrorKind::EmptyComplexRest,
         /// Returns whether an attribute modifier was supplied without an attribute value.
         is_modifier_without_value => CssSelectorConstructionErrorKind::ModifierWithoutValue,
-        /// Returns whether an unknown WebKit pseudo-element name is not a genuine identifier
-        /// beginning with `-webkit-`.
+        /// Returns whether an unknown WebKit pseudo-element name lacks the
+        /// required `-webkit-` identifier prefix.
         is_invalid_unknown_webkit_pseudo_element_name =>
             CssSelectorConstructionErrorKind::InvalidUnknownWebkitPseudoElementName,
     }

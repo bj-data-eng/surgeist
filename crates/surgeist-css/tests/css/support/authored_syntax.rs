@@ -239,12 +239,12 @@ pub fn grammar_checked_declaration(
     .unwrap()
 }
 
-/// The genuine body retained by a block-fragment report.
+/// The body retained by a block-fragment report.
 #[track_caller]
 pub fn fragment_body<T>(
     report: &CssParseReport<Option<CssBlockFragment<T>>>,
 ) -> &CssBlockFragment<T> {
-    report.syntax().as_ref().expect("retained genuine body")
+    report.syntax().as_ref().expect("retained body")
 }
 
 /// The diagnostic carrying `action` in an unclean block-fragment report whose

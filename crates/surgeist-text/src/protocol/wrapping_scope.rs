@@ -174,7 +174,7 @@ impl PreparedText {
         Ok(control < self.inner.tables.boundaries[boundary.index].participant)
     }
 
-    /// Whether this original control cut survives at a genuine emitted
+    /// Whether this original control cut survives at an emitted
     /// typographic-unit boundary. Pure coordinate translation remains exact;
     /// actual snapping or a straddling replacement returns false. Missing
     /// represented control output is an error rather than assumed exactness.

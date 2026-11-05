@@ -1,4 +1,4 @@
-//! Genuine producer/fence and actual output graph custody, without Runtime mirrors.
+//! Producer/fence and actual output graph custody, without Runtime mirrors.
 use super::super::tests::{begin_await, binding, envelope, flag, install, parse, qualifier, setup};
 use super::*;
 use surgeist_css::query::media::CssMediaQueryList;

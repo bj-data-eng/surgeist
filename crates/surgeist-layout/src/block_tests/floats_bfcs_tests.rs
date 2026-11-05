@@ -1152,7 +1152,7 @@ fn fri06_c12_t08_float_dominated_terminal_extent_stops_at_the_float_edge() {
             60.0,
         );
         floating.float_exclusion = FloatExclusion::Shape;
-        // Genuine numeric inline boxes preserve this float-edge experiment:
+        // Numeric inline boxes preserve this float-edge experiment:
         // the leading box has before/after-baseline extents 14.8/5.2; the
         // following 16px boxes therefore make the first line 21.2px high.
         let leading = NodeInputOf {

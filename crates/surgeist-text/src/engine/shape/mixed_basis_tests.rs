@@ -139,7 +139,7 @@ fn mixed_native_di_receipts_preserve_normal_clockwise_output_and_removed_source_
         vo.get('\u{2064}'),
         icu_properties::props::VerticalOrientation::Rotated
     );
-    // Assigned U2064 is genuine R/Cf/BN; reserved U2065 has VO=U.
+    // Assigned U2064 is R/Cf/BN; reserved U2065 has VO=U.
     assert!(
         icu_properties::CodePointSetData::new::<icu_properties::props::DefaultIgnorableCodePoint>()
             .contains('\u{2064}')

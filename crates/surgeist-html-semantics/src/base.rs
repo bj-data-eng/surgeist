@@ -206,7 +206,7 @@ pub enum HtmlAboutBaseUrl {
     Unavailable,
 }
 
-/// A genuinely influencing unavailable input, never a URL failure or CSP block.
+/// An unavailable input that affects the base URL, never a URL failure or CSP block.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlBaseMissing {
     DocumentFacts,

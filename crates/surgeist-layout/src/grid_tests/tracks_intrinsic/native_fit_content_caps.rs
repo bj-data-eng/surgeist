@@ -139,7 +139,7 @@ fn fallback<S: LayoutScalar>() -> OrthogonalFallbackOf<S> {
 }
 
 fn positioned_request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
-    // The native host declares the same genuine horizontal containing frame as
+    // The native host declares the same horizontal containing frame as
     // the source-qualified absolute-local profile: HTML/bodyLTR, hypothetical
     // Grid at inline-start0. Root/child direction remains independently varied.
     LayoutRootRequestOf::positioned_root_local(
@@ -225,7 +225,7 @@ fn qualify_source<S: LayoutScalar>(tree: &FitContentTree<S>, cap: f64, direction
         (SizingOperation::MaxContent, 80.0),
     ] {
         let measured = compute_layout(tree, 3, intrinsic_leaf_request(operation))
-            .expect("the genuine opaque leaf intrinsic control completes");
+            .expect("the opaque leaf intrinsic control completes");
         for entries in [measured.unrounded_entries(), measured.final_entries()] {
             assert_eq!(output(entries, 3).size, Size::new(n(width), n(40.0)));
             assert_eq!(
@@ -390,7 +390,7 @@ fn complete<S: LayoutScalar>(cap: f64, overflow: Overflow, widths: [f64; 2]) {
             "the host supplies no Text/font identity"
         );
         qualify_root_receipts(&batch);
-        // Both shrink-to-fit candidates genuinely query the child. The first
+        // Both shrink-to-fit candidates query the child. The first
         // track's MaxContent minimum forces BOTH root candidates to80; actual
         // Normal layout then receives accepted80, never the outer800 as known.
         for (operation, width) in [

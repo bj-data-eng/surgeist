@@ -1,4 +1,4 @@
-//! Native allocation and conditional fitting over genuine selected liga bases.
+//! Native allocation and conditional fitting over selected liga bases.
 use super::*;
 use surgeist_text as text;
 
@@ -682,7 +682,7 @@ fn conditional<S: LayoutScalar>() {
         assert_eq!(request.context.available_inline, Some(25.0));
         assert_eq!(request.context.end, text::LineEnd::Soft);
         let text::PreparedTermination::Conditional(opportunity) = &request.termination else {
-            panic!("cut2 must retain its genuine conditional authority")
+            panic!("cut2 must retain its conditional authority")
         };
         assert_eq!(opportunity.boundary(), request.end);
         assert_eq!(

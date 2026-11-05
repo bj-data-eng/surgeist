@@ -75,7 +75,7 @@ pub(crate) fn prepare(
         .filter(|range| !range.is_empty())
         .collect();
     intervals.sort_unstable_by_key(|range| (range.start, range.end));
-    // Original editing still snaps to genuine host EGC edges. A placed output
+    // Original editing still snaps to host EGC edges. A placed output
     // range can cover only one contribution of that EGC, so its source hull
     // need not itself be an original caret boundary. Exact output positions
     // are admitted independently by the selected presentation owner.

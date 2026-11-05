@@ -31,7 +31,7 @@ fn close_observation_retains_four_revisions_under_lower_phase_policy_and_cancel_
         assert_eq!(lease.dom.source_reserved_closing(&cancel).unwrap(), 4);
         lease.request_cancel();
         let DomSourceProgress::Complete(done) = lease.advance(&cancel).unwrap() else {
-            panic!("genuine cancellation before dispatch");
+            panic!("cancellation before dispatch");
         };
         assert!(done.cancellation_requested());
         assert_eq!(lease.dom.source_reserved_closing(&cancel).unwrap(), 0);

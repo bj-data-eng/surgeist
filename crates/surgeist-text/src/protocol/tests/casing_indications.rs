@@ -1,4 +1,4 @@
-//! Selected indications retain their own operation and genuine source authority.
+//! Selected indications retain their own operation and source authority.
 use super::*;
 
 fn upper(automatic: bool) -> Style {

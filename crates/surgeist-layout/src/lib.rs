@@ -76,7 +76,7 @@
 //! [`TextAlignLast`] select line alignment. [`TextWrapStyle`] selects ordinary
 //! or balanced breaks; [`TextWrapStyle::Stable`] retains ordinary line-local
 //! quality selection. [`TextWrapStyle::AvoidShortLastLine`] attempts bounded
-//! final-pair repair in a genuinely Paragraph-ending group. [`TextWrapStyle::Pretty`]
+//! final-pair repair in a Paragraph-ending group. [`TextWrapStyle::Pretty`]
 //! composes that repair with bounded body-line improvement at each actual group
 //! entry. See the [native quality policy](../docs/reference.md#node-input).
 //! These choices do not
@@ -154,30 +154,30 @@
 //!
 //! ```
 //! use surgeist_layout::{
-//!     ComputedOverflow, NodeInputOf, NodeOutputOf, Overflow, OverflowClipMarginOf,
-//!     ScrollGeometryOf, ScrollMarginOf, ScrollPaddingOf, ScrollbarWidthOf,
+//! ComputedOverflow, NodeInputOf, NodeOutputOf, Overflow, OverflowClipMarginOf,
+//! ScrollGeometryOf, ScrollMarginOf, ScrollPaddingOf, ScrollbarWidthOf,
 //! };
 //!
 //! fn normalized_input<S: surgeist_layout::LayoutScalar>() -> NodeInputOf<S> {
-//!     let mut input = NodeInputOf::<S>::default();
-//!     input.overflow = ComputedOverflow::try_new(Overflow::Auto, Overflow::Scroll).unwrap();
-//!     input.overflow_clip_margin = OverflowClipMarginOf::try_new(
-//!         surgeist_layout::OverflowClipBox::PaddingBox,
-//!         S::ZERO,
-//!     ).unwrap();
-//!     input.scrollbar_width = ScrollbarWidthOf::try_new(S::ZERO).unwrap();
-//!     input.scroll_padding = ScrollPaddingOf::default();
-//!     input.scroll_margin = ScrollMarginOf::try_new(S::ZERO, S::ZERO, S::ZERO, S::ZERO).unwrap();
-//!     input
+//! let mut input = NodeInputOf::<S>::default();
+//! input.overflow = ComputedOverflow::try_new(Overflow::Auto, Overflow::Scroll).unwrap();
+//! input.overflow_clip_margin = OverflowClipMarginOf::try_new(
+//! surgeist_layout::OverflowClipBox::PaddingBox,
+//! S::ZERO,
+//! ).unwrap();
+//! input.scrollbar_width = ScrollbarWidthOf::try_new(S::ZERO).unwrap();
+//! input.scroll_padding = ScrollPaddingOf::default();
+//! input.scroll_margin = ScrollMarginOf::try_new(S::ZERO, S::ZERO, S::ZERO, S::ZERO).unwrap();
+//! input
 //! }
 //!
 //! fn inspect<S: surgeist_layout::LayoutScalar>(output: NodeOutputOf<S>) {
-//!     let geometry: Option<ScrollGeometryOf<S>> = output.scroll_geometry;
-//!     if let Some(geometry) = geometry {
-//!         let x = geometry.physical_range().x();
-//!         let target = geometry.target();
-//!         let _ = (x.minimum(), x.maximum(), target.border_box(), target.snap_align());
-//!     }
+//! let geometry: Option<ScrollGeometryOf<S>> = output.scroll_geometry;
+//! if let Some(geometry) = geometry {
+//! let x = geometry.physical_range().x();
+//! let target = geometry.target();
+//! let _ = (x.minimum(), x.maximum(), target.border_box(), target.snap_align());
+//! }
 //! }
 //!
 //! let _ = normalized_input::<f32>();

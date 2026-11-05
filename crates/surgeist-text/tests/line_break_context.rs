@@ -60,7 +60,7 @@ fn prepare(
     let end = source.text().len();
     let mut suffix = style(following);
     if matches!(seam, Seam::Style(_)) {
-        // A genuine paint-only style change can leave word-break unchanged.
+        // A paint-only style change can leave word-break unchanged.
         suffix.brush = t::Brush::color(1.0, 0.0, 0.0, 1.0);
     }
     if let Seam::Style(at) | Seam::Source(at) = seam {

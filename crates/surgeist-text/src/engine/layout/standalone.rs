@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 //! The raw chooser retains its own ordinary/emergency policy and metric profile.
-//! Every candidate uses the same selected-line finalizer and genuine mixed cuts.
+//! Every candidate uses the same selected-line finalizer and mixed cuts.
 use super::super::{FinalizedLine, PreparedData, shape::ShapeContext};
 use super::{data::*, finalize_standalone, placement};
 use crate::protocol::prepared::AlternativeDefinition;
@@ -146,7 +146,7 @@ impl RawRoleBasis<'_> {
                     first &= !admitted;
                 }
                 FlowSegmentRole::Target => {
-                    // A genuine manual cut schedules the receiving Paragraph
+                    // A manual cut schedules the receiving Paragraph
                     // even if its indication is Before-only/empty at body end.
                     later_line |=
                         segment.alternative().is_some() || segment.outgoing().is_some() || forced;

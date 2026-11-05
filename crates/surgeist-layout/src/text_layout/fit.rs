@@ -161,7 +161,7 @@ struct CandidateBasis {
     minimum_block: Option<f64>,
 }
 
-/// A proposed line position and genuine earlier float/clearance constraint.
+/// A proposed line position and earlier float/clearance constraint.
 pub(crate) struct BlockPosition {
     pub proposed: f64,
     pub minimum: Option<f64>,
@@ -169,7 +169,7 @@ pub(crate) struct BlockPosition {
     pub height: f64,
 }
 
-/// Accepted logical allocation and any genuine following clearance movement.
+/// Accepted logical allocation and any following clearance movement.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct LineFlow {
     pub start: f64,
@@ -1682,7 +1682,7 @@ where
                         placed_start: fallback.placed_start,
                     });
                     if gap <= zone {
-                        // The genuine meaningful fallback's earlier None variant
+                        // The meaningful fallback's earlier None variant
                         // is already the ordinary ceiling. It cannot be discharged
                         // as phantom or by an automatic-only disposition.
                         if !query.conditional {
@@ -1972,7 +1972,7 @@ where
                     .as_ref()
                     .is_some_and(|candidate| candidate.fits)
                 {
-                    // A genuine earlier ordinary-method tier already fits;
+                    // An earlier ordinary-method tier already fits;
                     // exhausting it merely to obtain this later cut is false.
                     return Ok(None);
                 }
@@ -2153,7 +2153,7 @@ pub(crate) struct EncounterCallbacks<Replay, Accept, Reset, Checkpoint> {
 }
 
 /// Query authority follows the real prospective Soft method. A terminal Auto
-/// candidate may never have executed that basis; request a genuine ordinary
+/// candidate may never have executed that basis; request an ordinary
 /// trial without relabeling its issued termination, end role or alignment.
 fn conditional_query_frame(
     input: &FitInput<'_>,

@@ -1,5 +1,5 @@
 //! Public outer allocations over real B/B/Cell/B participants. The Cell keeps
-//! its genuine hwid packet; no inner A/A boundary becomes an outer slot.
+//! its hwid packet; no inner A/A boundary becomes an outer slot.
 
 use super::*;
 
@@ -97,7 +97,7 @@ fn exact_slots(mixed: &Mixed, selected: &SelectedLine, participants: &[PreparedP
         );
     }
     // The same issued Cell is the whole endpoint on BOTH exterior boundaries.
-    // Its two genuine originals are not issued as an interior fourth slot.
+    // Its two originals are not issued as an interior fourth slot.
     let SpacingSlotTarget::Boundary {
         visual_after: entering,
         ..
@@ -136,7 +136,7 @@ fn flow(mixed: &Mixed, line: &FinalizedLine, starts: [f64; 4], total: f64) {
     assert_eq!(line.feedback().advance, total);
     let cells = line.cell_views().collect::<Vec<_>>();
     let [cell] = cells.as_slice() else {
-        panic!("one genuine outer Cell");
+        panic!("one outer Cell");
     };
     assert_eq!(
         cell.source_cell().scope(),
@@ -270,7 +270,7 @@ fn actual_outer_cell_boundaries_accept_complete_allocations_without_spacing_inne
     );
     let mut value = request(&mixed.prepared);
     value.context.spacing = SpacingPolicy::InterCharacter;
-    // The genuine whole Cell receives allocations only at its exterior
+    // The whole Cell receives allocations only at its exterior
     // boundaries; its two inner A glyphs remain one outer target unit.
     let selected = mixed
         .prepared
@@ -281,7 +281,7 @@ fn actual_outer_cell_boundaries_accept_complete_allocations_without_spacing_inne
     flow(&mixed, &natural, [0.0, 14.0, 27.0, 40.0], 50.0);
     feedback(&natural, [0.0; 3]);
     // Authored boundary means4/3/3 plus complete amounts1/2/3 give5/5/6.
-    // Four genuine outer advances10 produce starts0/15/30/46 and total56.
+    // Four outer advances10 produce starts0/15/30/46 and total56.
     let expanded = selected
         .finalize(LineAllocations {
             spacing: complete(&selected),

@@ -267,7 +267,7 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
         .push(crate::NativeInlineBoxFamilyInput { formatter: 0 });
     acyclic.gaps = vec![group(p, q), group(d, r), group(c, e)];
     let valid = construct(acyclic.clone())
-        .expect("[P,Q], [D,R], [C,E] gives consistent C<D<E constraints over genuine ancestry");
+        .expect("[P,Q], [D,R], [C,E] gives consistent C<D<E constraints over ancestry");
     assert!(!valid.associations.has_prepared_execution(0));
     assert!(valid.associations.runs().is_empty());
     let valid_batch = compute_layout_with_flow(

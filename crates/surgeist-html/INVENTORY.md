@@ -862,7 +862,7 @@ source-static Checkbox/Radio observation using required presence and actual
 checkedness. Radio self belongs even with absent/empty name; other members need
 exact nonempty name, same ordinary tree and actual form owner. A disabled required
 member still contributes. A checked witness proves false despite unrelated gaps;
-otherwise genuinely influencing possible membership/checkedness remains Missing.
+otherwise influencing possible membership/checkedness remains Missing.
 [Checkable tests](../surgeist-html-semantics/tests/semantics/controls/checkable_input_missing.rs) cover these conditions,
 scratch release, admission, budgets, cancellation and atomicity. This performs
 neither validity execution nor radio-state normalization/transition.

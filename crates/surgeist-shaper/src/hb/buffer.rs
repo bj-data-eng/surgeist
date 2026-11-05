@@ -2157,7 +2157,7 @@ impl UnicodeBuffer {
         super::ordinary_symbol::install(&mut self.0, positions)
     }
 
-    /// Bind both genuine Unicode joining domains to this emitted Unicode body.
+    /// Bind both Unicode joining domains to this emitted Unicode body.
     ///
     /// `original_map` contains strictly increasing original-domain scalar
     /// indices, or `None` for computed presentation. `presentation_map` contains

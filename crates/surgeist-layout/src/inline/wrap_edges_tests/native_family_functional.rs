@@ -265,7 +265,7 @@ fn demanded_wraps<S: LayoutScalar>() {
     );
     boundary_position(&wide, 20, 20.0, 0.0, 3.0);
     boundary_position(&wide, 21, 63.0, 0.0, 5.0);
-    // Six ten-pixel borders plus the genuine 3/5 strips consume 68, not 60.
+    // Six ten-pixel borders plus the 3/5 strips consume 68, not 60.
     assert_eq!(
         output(&wide, 21).location.x + output(&wide, 21).size.width,
         n(68.0)

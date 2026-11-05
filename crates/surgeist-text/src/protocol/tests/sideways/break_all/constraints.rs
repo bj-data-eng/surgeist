@@ -280,7 +280,7 @@ fn latin_sa_and_general_letter_number_units_keep_source_based_break_all_semantic
         crate::LineBreak::Strict,
     );
     assert_eq!(cuts(&sa), [1]);
-    // Genuine ID letters retain Normal's ordinary cut and KeepAll's distinct
+    // ID letters retain Normal's ordinary cut and KeepAll's distinct
     // suppression. This is not a blanket replacement of every policy by ID.
     assert_eq!(classes.get('\u{4e00}'), UnicodeLineBreak::Ideographic);
     for (rule, expected) in [

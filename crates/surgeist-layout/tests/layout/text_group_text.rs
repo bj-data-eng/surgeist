@@ -480,7 +480,7 @@ impl Paragraph {
         assert_eq!(prepared.origin_views().count(), origin_nodes.len());
         assert_eq!(prepared.control_views().count(), control_nodes.len());
         assert_eq!(prepared.atomic_views().count(), atomic_nodes.len());
-        // Insert only genuine final roles. Text nodes receive their issued
+        // Insert only final roles. Text nodes receive their issued
         // participation after preparation; no dummy box input is ever queried.
         {
             let mut issued_origins = prepared.origin_views();
@@ -607,9 +607,7 @@ fn receipts<S: l::LayoutScalar>(
     }
     lines
         .into_iter()
-        .map(|line| {
-            line.expect("every tested formatted line has a genuine origin, including EmptyOrigin")
-        })
+        .map(|line| line.expect("every tested formatted line has an origin, including EmptyOrigin"))
         .collect()
 }
 fn glyph_extents(layout: &t::Layout) -> Vec<(f64, f64)> {

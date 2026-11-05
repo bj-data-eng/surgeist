@@ -210,7 +210,7 @@ fn line_sides<S: l::LayoutScalar>(explicit_last: bool) {
                 let original = l::compute_layout(&tree, 0, request).unwrap();
                 assert_geometry(&original, root_size, child_size, location, &context);
 
-                // A genuine host input edit recomputes through the public owner;
+                // A host input edit recomputes through the public owner;
                 // the first owned output batch must remain immutable. This host
                 // supplies no cache, so no warm-cache result is claimed.
                 if explicit_last {
