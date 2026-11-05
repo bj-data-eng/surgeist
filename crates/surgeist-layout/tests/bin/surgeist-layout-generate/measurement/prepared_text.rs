@@ -395,3 +395,24 @@ impl TextStyle {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Atomic;
+    use serde_json::json;
+
+    #[test]
+    fn prepared_atomic_wire_preserves_authored_percentage_size() {
+        let authored = json!({
+            "child": 1,
+            "at": 9,
+            "kind": "in-flow",
+            "authoredSize": {"width": "20px", "height": "50%"},
+            "precedingWrap": "word",
+            "followingWrap": "word",
+            "ancestorWrap": "word"
+        });
+        let atomic = serde_json::from_value::<Atomic>(authored.clone()).unwrap();
+        assert_eq!(serde_json::to_value(atomic).unwrap(), authored);
+    }
+}
