@@ -206,10 +206,12 @@ mod tests {
     }
 
     #[test]
-    fn prepared_range_publication_selects_the_fixed_owner() {
+    fn specialized_publication_selects_the_fixed_owner() {
         for command in [
             "--publish-prepared-range-qualification",
             "--check-published-prepared-range-qualification",
+            "--publish-flex-composition-qualification",
+            "--check-published-flex-composition-qualification",
         ] {
             assert_eq!(parse_arguments(&arguments(&[command])).unwrap().0, None);
             assert!(parse_arguments(&arguments(&[command, "other-root"])).is_err());
