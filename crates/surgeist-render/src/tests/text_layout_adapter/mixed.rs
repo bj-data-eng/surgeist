@@ -370,7 +370,7 @@ fn mixed_clockwise_and_upright_outlines_keep_distinct_metrics_pens_and_outer_tra
             Rect::new(-5.0, 1.0, 10.0, 14.0),
             Rect::new(0.0, -6.0, 10.0, 2.0),
         ];
-        let mut copied = None;
+        let mut shared = None;
         for (index, command) in scene.scene().commands.iter().enumerate() {
             let (run, transform) = outline(command);
             admitted(run, &bytes);
@@ -378,14 +378,13 @@ fn mixed_clockwise_and_upright_outlines_keep_distinct_metrics_pens_and_outer_tra
             assert_eq!(run.bounds().ink_rect(), Some(local[index]));
             assert_eq!(transform.as_array(), matrices[index]);
             assert_eq!(ink(run, transform), physical[index]);
-            assert_ne!(
-                run.font().bytes().as_ptr(),
-                runs[index].face().bytes().as_ptr()
-            );
-            if let Some(first) = copied {
+            let text_face = runs[index].face();
+            assert_eq!(run.font().admitted_face(), text_face.admitted_face());
+            assert!(std::ptr::eq(run.font().bytes(), text_face.bytes()));
+            if let Some(first) = shared {
                 assert_eq!(run.font().bytes().as_ptr(), first);
             } else {
-                copied = Some(run.font().bytes().as_ptr());
+                shared = Some(run.font().bytes().as_ptr());
             }
         }
     }

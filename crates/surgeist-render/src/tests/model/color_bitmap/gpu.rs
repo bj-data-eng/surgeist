@@ -195,7 +195,7 @@ fn real_gpu_one_text_layout_retains_outline_color_bitmap_and_image_resources() {
 }
 
 fn empty_intrinsic_keeps_two_foreground_layers(bytes: Vec<u8>) {
-    let empty = FontData::try_from_bytes(bytes.clone(), 0)
+    let empty = FontData::try_from_bytes(bytes.clone(), 0, surgeist_test::fixtures::FONT_LIMITS)
         .unwrap()
         .prepare_glyph_run(&instance(10.0), &one_glyph(), limits())
         .unwrap();

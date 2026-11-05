@@ -115,8 +115,12 @@ fn prepared_vello_pass_contains_no_wgpu_resource_or_submission_authority() {
         assert_prepared_vello_pass_basics(&observation);
     }
 
-    let font_data = FontData::try_from_bytes(AHEM_FONT_BYTES.to_vec(), 0)
-        .expect("the Ahem fixture must pass selected-glyph preflight");
+    let font_data = FontData::try_from_bytes(
+        AHEM_FONT_BYTES.to_vec(),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .expect("the Ahem fixture must pass selected-glyph preflight");
     let glyphs = [TextGlyph::try_new(AHEM_GLYPH_X, 3.0, 19.0, 8.0).unwrap()];
     let run = text_run_for(font_data, 16.0, Transform::identity(), &glyphs);
     let mut scene = VelloScene::default();
@@ -166,7 +170,12 @@ fn prepared_vello_pass_contains_no_wgpu_resource_or_submission_authority() {
 
 #[test]
 fn logical_glyph_native_narrowing_is_atomic_for_the_entire_run() {
-    let font = FontData::try_from_bytes(AHEM_FONT_BYTES.to_vec(), 0).unwrap();
+    let font = FontData::try_from_bytes(
+        AHEM_FONT_BYTES.to_vec(),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .unwrap();
     let seed = [TextGlyph::try_new(AHEM_GLYPH_X, 16_777_217.0, -0.5, -1.0).unwrap()];
     let mut scene = VelloScene::default();
     scene

@@ -9,7 +9,9 @@ It requires a compatible GPU; browser execution and application/window lifecycle
 belong to the integrating host. The current style-facing exports and intended
 crate boundary are described in the [architecture guide](docs/explanation.md).
 
-`FontData::prepare_glyph_run` admits immutable glyph resources without a GPU.
+`FontData` accepts raw OpenType, collections, WOFF and WOFF2 through
+`surgeist-font`. `FontData::prepare_glyph_run` admits immutable glyph resources
+without a GPU.
 It retains qualified outline paths, COLR paint operations or decoded sbix PNG
 pixels, with representation-derived `Ink` or proven `Empty` bounds. Direct and
 graph drawing consume those same resources. The [glyph admission

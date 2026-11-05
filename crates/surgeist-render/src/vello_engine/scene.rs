@@ -269,7 +269,7 @@ impl VelloScene {
         }
         let index = self.encoding.resources.glyph_runs.len();
         self.encoding.resources.glyph_runs.push(GlyphRun {
-            font: validated.font_data().data.clone(),
+            font: validated.backend_font().clone(),
             transform: VelloTransform::from_kurbo(
                 &(transform * kurbo::Affine::from(validated.transform())),
             ),

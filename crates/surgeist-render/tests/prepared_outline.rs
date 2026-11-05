@@ -1,15 +1,26 @@
 //! Public headless behavior. Geometry expectations come from the licensed Ahem
 //! glyph/source tables, not from the preparation output under test.
+use std::{error::Error as _, ptr};
+
+use surgeist_font::{
+    DecodeError, DecodeLimits, FontResource, InvalidKind, LimitKind, SourceFormat,
+};
 use surgeist_render::{
     Color, Error, ErrorCode, FontData, GlyphCapability, GlyphNumericPhase, GlyphPreparationError,
     GlyphResource, GlyphRunLimits, GlyphSynthesis, NormalizedCoordinate, PathElement,
     PreparedGlyphRun, Rect, Scene, TextGlyph, TextInstance, TextPaint, TextRunBoundsKind,
     Transform, VariationTable,
 };
+use surgeist_test::fixtures::FONT_LIMITS;
+
+#[path = "fixtures/font_wire.rs"]
+mod font_wire;
 
 const AHEM: &[u8] = include_bytes!("fixtures/fonts/ahem/Ahem.ttf");
 const AHEM_ORIGINAL: &[u8] =
     include_bytes!("../../surgeist-font/tests/fixtures/ahem-original/Ahem.woff2");
+const CFF: &[u8] =
+    include_bytes!("../../surgeist-font/tests/fixtures/source-code-pro/SourceCodePro-Regular.otf");
 const X: u32 = 58;
 
 fn limits() -> GlyphRunLimits {
@@ -24,7 +35,7 @@ fn instance(size: f32, coordinates: Vec<NormalizedCoordinate>, skew: f32) -> Tex
     .unwrap()
 }
 fn font(bytes: &[u8]) -> FontData {
-    FontData::try_from_bytes(bytes.to_vec(), 0).unwrap()
+    FontData::try_from_bytes(bytes.to_vec(), 0, surgeist_test::fixtures::FONT_LIMITS).unwrap()
 }
 fn glyph() -> TextGlyph {
     TextGlyph::try_new(X, -20.0, 30.0, -123.0).unwrap()
@@ -54,8 +65,7 @@ fn prepared_glyph_run_retains_real_ahem_ink_separately_from_negative_advance() {
     assert!(matches!(elements[1], PathElement::LineTo(p) if p.x() == 980.0 && p.y() == -770.0));
 }
 
-fn assert_em_square_ink(bytes: &[u8], glyph_id: u32) {
-    let font = FontData::try_from_bytes(bytes.to_vec(), 0).expect("admit the encoded font");
+fn prepare_em_square(font: &FontData, glyph_id: u32) -> PreparedGlyphRun {
     let instance = instance(20.0, vec![], 0.0);
     let glyph = TextGlyph::try_new(glyph_id, 0.0, 0.0, 20.0).unwrap();
     let prepared = font
@@ -67,55 +77,144 @@ fn assert_em_square_ink(bytes: &[u8], glyph_id: u32) {
         Some(Rect::try_new(0.0, -16.0, 20.0, 20.0).unwrap())
     );
     assert_eq!(prepared.path_elements().count(), 5);
+    assert_eq!(prepared.font().admitted_face(), font.admitted_face());
+    assert!(ptr::eq(
+        prepared.font().admitted_face().resource().bytes(),
+        font.admitted_face().resource().bytes()
+    ));
+    prepared
+}
+
+fn assert_em_square_ink(bytes: &[u8], glyph_id: u32, format: SourceFormat) {
+    let encoded = bytes.to_vec();
+    let backing = encoded.as_ptr();
+    let font = FontData::try_from_bytes(encoded, 0, FONT_LIMITS).expect("admit the encoded font");
+    let resource = font.admitted_face().resource();
+    assert_eq!(resource.source().format(), format);
+    assert_eq!(resource.source().bytes(), bytes);
+    assert_eq!(resource.source().bytes().as_ptr(), backing);
+    assert_eq!(
+        ptr::eq(resource.source().bytes(), resource.bytes()),
+        format == SourceFormat::Sfnt
+    );
+    prepare_em_square(&font, glyph_id);
 }
 
 #[test]
 fn standalone_woff1_prepares_literal_ahem_x_ink() {
-    assert_em_square_ink(AHEM, X);
-    assert_em_square_ink(&literal_woff1(), X);
+    assert_em_square_ink(AHEM, X, SourceFormat::Sfnt);
+    assert_em_square_ink(&font_wire::literal_woff1(AHEM), X, SourceFormat::Woff);
 }
 
 #[test]
 fn standalone_original_woff2_prepares_literal_ahem_x_ink() {
-    assert_em_square_ink(AHEM, X);
+    assert_em_square_ink(AHEM, X, SourceFormat::Sfnt);
     // Original Ahem 1.1 has X at 59 in its retained format 0 and 4 cmaps.
-    assert_em_square_ink(AHEM_ORIGINAL, 59);
+    assert_em_square_ink(AHEM_ORIGINAL, 59, SourceFormat::Woff2);
 }
 
-// Literal WOFF1 packaging of the retained 1.50 fixture. The directory uses
-// original tag order and the payload uses original physical table order.
-fn literal_woff1() -> Vec<u8> {
-    fn put32(bytes: &mut [u8], offset: usize, value: usize) {
-        bytes[offset..offset + 4].copy_from_slice(&u32::try_from(value).unwrap().to_be_bytes());
+fn cff_then_ahem_collection() -> Vec<u8> {
+    let mut bytes = b"ttcf\0\x01\0\0\0\0\0\x02\0\0\0\0\0\0\0\0".to_vec();
+    for (index, face) in [CFF, AHEM].into_iter().enumerate() {
+        let offset = bytes.len();
+        let field = 12 + index * 4;
+        let offset32 = u32::try_from(offset).unwrap();
+        bytes[field..field + 4].copy_from_slice(&offset32.to_be_bytes());
+        bytes.extend_from_slice(face);
+        for record in 0..usize::from(u16_at(face, 4)) {
+            let field = offset + 20 + 16 * record;
+            let absolute = u32_at(&bytes, field).checked_add(offset32).unwrap();
+            bytes[field..field + 4].copy_from_slice(&absolute.to_be_bytes());
+        }
+        bytes.resize(bytes.len().next_multiple_of(4), 0);
     }
+    bytes
+}
 
-    let count = usize::from(u16_at(AHEM, 4));
-    let mut wire = vec![0; 44 + 20 * count];
-    wire[..4].copy_from_slice(b"wOFF");
-    wire[4..8].copy_from_slice(&AHEM[..4]);
-    wire[12..14].copy_from_slice(&AHEM[4..6]);
-    let mut records = (0..count).collect::<Vec<_>>();
-    records.sort_unstable_by_key(|&index| u32_at(AHEM, 20 + 16 * index));
-    let mut decoded_len = 12 + 16 * count;
-    for index in records {
-        let record = 12 + 16 * index;
-        let entry = 44 + 20 * index;
-        let original = u32_at(AHEM, record + 8) as usize;
-        let len = u32_at(AHEM, record + 12) as usize;
-        let wire_offset = wire.len();
-        wire[entry..entry + 4].copy_from_slice(&AHEM[record..record + 4]);
-        put32(&mut wire, entry + 4, wire_offset);
-        put32(&mut wire, entry + 8, len);
-        put32(&mut wire, entry + 12, len);
-        wire[entry + 16..entry + 20].copy_from_slice(&AHEM[record + 4..record + 8]);
-        wire.extend_from_slice(&AHEM[original..original + len]);
-        wire.resize(wire.len().next_multiple_of(4), 0);
-        decoded_len += len.next_multiple_of(4);
-    }
-    let wire_len = wire.len();
-    put32(&mut wire, 8, wire_len);
-    put32(&mut wire, 16, decoded_len);
-    wire
+#[test]
+fn standalone_collection_admits_real_nonzero_face_and_refuses_missing_index() {
+    // The first face is real CFF. A substitution at index zero cannot
+    // produce Ahem's admitted TrueType em square.
+    let encoded = cff_then_ahem_collection();
+    let direct = FontData::try_from_bytes(encoded.clone(), 1, FONT_LIMITS).unwrap();
+    assert_eq!(direct.admitted_face().index(), 1);
+    assert_eq!(
+        direct.admitted_face().resource().source().format(),
+        SourceFormat::Collection
+    );
+    prepare_em_square(&direct, X);
+
+    let original = FontResource::decode(encoded.clone(), FONT_LIMITS)
+        .unwrap()
+        .face(1)
+        .unwrap();
+    let shared = FontData::from_face(original.clone());
+    assert_eq!(shared.admitted_face(), &original);
+    assert_ne!(direct.admitted_face(), &original);
+    assert_eq!(shared.admitted_face().resource().source().bytes(), encoded);
+    assert!(ptr::eq(
+        shared.admitted_face().resource().bytes(),
+        original.resource().bytes()
+    ));
+    prepare_em_square(&shared, X);
+
+    let length = encoded.len();
+    let error = FontData::try_from_bytes(encoded, 2, FONT_LIMITS).unwrap_err();
+    assert_eq!(error.code(), ErrorCode::InvalidInput);
+    let detail = error.invalid_value_diagnostic().unwrap();
+    assert_eq!(detail.field(), "font_data");
+    assert_eq!(detail.value(), format!("len={length}, index=2"));
+    assert!(error.source().is_none());
+}
+
+#[test]
+fn decode_and_selected_outline_refusals_preserve_prior_accepted_glyph_ink() {
+    let previous = prepare_em_square(&font(AHEM), X);
+    let woff = font_wire::literal_woff1(AHEM);
+    let truncated = FontData::try_from_bytes(woff[..8].to_vec(), 0, FONT_LIMITS).unwrap_err();
+    assert_eq!(truncated.code(), ErrorCode::InvalidInput);
+    assert!(
+        matches!(truncated.source().and_then(|error| error.downcast_ref::<DecodeError>()),
+        Some(DecodeError::InvalidContainer(error)) if error.kind() == InvalidKind::Truncated)
+    );
+
+    let capped = DecodeLimits::new(2 << 20, 0, 2 << 20, 256, 16, 1 << 20, 5 << 20);
+    let exhausted = FontData::try_from_bytes(woff, 0, capped).unwrap_err();
+    assert_eq!(exhausted.code(), ErrorCode::InvalidInput);
+    assert!(matches!(
+        exhausted
+            .source()
+            .and_then(|error| error.downcast_ref::<DecodeError>()),
+        Some(DecodeError::LimitExceeded {
+            kind: LimitKind::DecodedBytes,
+            limit: 0,
+            ..
+        })
+    ));
+
+    let cff = FontData::try_from_bytes(CFF.to_vec(), 0, FONT_LIMITS).unwrap();
+    assert_eq!(cff.admitted_face().resource().source().bytes(), CFF);
+    assert!(cff.admitted_face().table(*b"CFF ").is_some());
+    // The retained Source Code Pro format-4 cmap maps A to glyph 2.
+    let glyph = TextGlyph::try_new(2, 0.0, 0.0, 20.0).unwrap();
+    let error = cff
+        .prepare_glyph_run(&instance(20.0, vec![], 0.0), &[glyph], limits())
+        .unwrap_err();
+    assert_eq!(
+        diagnostic(&error),
+        GlyphPreparationError::UnsupportedOutline {
+            capability: GlyphCapability::PostScript
+        }
+    );
+    assert_eq!(
+        previous.bounds().ink_rect(),
+        Some(Rect::try_new(0.0, -16.0, 20.0, 20.0).unwrap())
+    );
+    assert_eq!(previous.path_elements().count(), 5);
+    assert_eq!(
+        previous.font().admitted_face().resource().source().bytes(),
+        AHEM
+    );
 }
 
 #[test]
@@ -241,17 +340,11 @@ fn prepared_glyph_run_present_malformed_variation_metadata_cannot_become_default
             .find(|r| outside[*r..*r + 4] == tag)
             .unwrap();
         outside[record + 8..record + 12].copy_from_slice(&u32::MAX.to_be_bytes());
-        assert_eq!(
-            diagnostic(
-                &font(&outside)
-                    .prepare_glyph_run(
-                        &instance(1000.0, coordinate.clone(), 0.0),
-                        &[glyph()],
-                        limits()
-                    )
-                    .unwrap_err()
-            ),
-            GlyphPreparationError::InvalidVariation { table }
+        let error = FontData::try_from_bytes(outside, 0, FONT_LIMITS).unwrap_err();
+        assert_eq!(error.code(), ErrorCode::InvalidInput);
+        assert!(
+            matches!(error.source().and_then(|source| source.downcast_ref::<DecodeError>()),
+            Some(DecodeError::InvalidContainer(error)) if error.kind() == InvalidKind::UnalignedOffset)
         );
     }
     let bytes = variable_ahem();
@@ -289,7 +382,7 @@ fn prepared_glyph_run_present_malformed_variation_metadata_cannot_become_default
 fn prepared_glyph_run_limits_refuse_whole_runs_and_retry_preserves_original_inputs() {
     let base = AHEM.to_vec();
     let base_capacity = base.capacity();
-    let font = FontData::try_from_bytes(base, 0).unwrap();
+    let font = FontData::try_from_bytes(base, 0, surgeist_test::fixtures::FONT_LIMITS).unwrap();
     let instance = instance(1000.0, vec![], 0.0);
     let glyphs = [glyph(), glyph()];
     for (limits, resource) in [
@@ -324,7 +417,8 @@ fn prepared_glyph_run_limits_refuse_whole_runs_and_retry_preserves_original_inpu
     let mut bytes = Vec::with_capacity(2 << 20);
     bytes.extend_from_slice(AHEM);
     let overcapacity_bytes = bytes.capacity();
-    let overcapacity = FontData::try_from_bytes(bytes, 0).unwrap();
+    let overcapacity =
+        FontData::try_from_bytes(bytes, 0, surgeist_test::fixtures::FONT_LIMITS).unwrap();
     let required = |font: &FontData| match diagnostic(
         &font
             .prepare_glyph_run(&instance, &[], GlyphRunLimits::new(0, 0, 0, 0))
@@ -342,7 +436,7 @@ fn prepared_glyph_run_limits_refuse_whole_runs_and_retry_preserves_original_inpu
     let mut padded = AHEM.to_vec();
     padded.extend([0; PADDING]);
     let padded_capacity = padded.capacity();
-    let padded = FontData::try_from_bytes(padded, 0).unwrap();
+    let padded = FontData::try_from_bytes(padded, 0, surgeist_test::fixtures::FONT_LIMITS).unwrap();
     for (font, capacity) in [
         (&font, base_capacity),
         (&overcapacity, overcapacity_bytes),

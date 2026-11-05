@@ -538,7 +538,12 @@ fn source_less_only_wbr_has_real_fit_and_intrinsics_without_authored_text() {
                     .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();
-        let font = render::FontData::try_from_bytes(bytes.clone(), 0).unwrap();
+        let font = render::FontData::try_from_bytes(
+            bytes.clone(),
+            0,
+            surgeist_test::fixtures::FONT_LIMITS,
+        )
+        .unwrap();
         let instance =
             render::TextInstance::try_new(10.0, vec![], render::GlyphSynthesis::none()).unwrap();
         let blank = font

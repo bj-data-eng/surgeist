@@ -503,7 +503,7 @@ fn font_data_rejects_unreadable_bytes_and_out_of_range_collection_indices() {
     ];
 
     for (case, bytes, index, expected_value) in cases {
-        let error = FontData::try_from_bytes(bytes, index)
+        let error = FontData::try_from_bytes(bytes, index, surgeist_test::fixtures::FONT_LIMITS)
             .expect_err("invalid font data must not construct FontData");
 
         assert_font_data_error(&error, &expected_value);
@@ -522,7 +522,7 @@ proptest! {
         index in any::<u32>(),
     ) {
         let expected_value = format!("len={}, index={index}", bytes.len());
-        let outcome = catch_unwind(AssertUnwindSafe(|| FontData::try_from_bytes(bytes, index)));
+        let outcome = catch_unwind(AssertUnwindSafe(|| FontData::try_from_bytes(bytes, index, surgeist_test::fixtures::FONT_LIMITS)));
 
         prop_assert!(outcome.is_ok());
         if let Ok(Err(error)) = outcome {
@@ -541,7 +541,12 @@ proptest! {
 
 #[test]
 fn selected_glyph_preflight_rejects_missing_outline_before_external_encoding() {
-    let font_data = FontData::try_from_bytes(AHEM_FONT_BYTES.to_vec(), 0).unwrap();
+    let font_data = FontData::try_from_bytes(
+        AHEM_FONT_BYTES.to_vec(),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .unwrap();
     let glyphs = [TextGlyph::try_new(u32::MAX, 0.0, 16.0, 8.0).unwrap()];
     let run = text_run_for(font_data, 16.0, Transform::identity(), &glyphs);
     let mut scene = VelloScene::default();
@@ -555,7 +560,12 @@ fn selected_glyph_preflight_rejects_missing_outline_before_external_encoding() {
 
 #[test]
 fn selected_glyph_preflight_validates_exact_outline_draw_settings() {
-    let font_data = FontData::try_from_bytes(AHEM_FONT_BYTES.to_vec(), 0).unwrap();
+    let font_data = FontData::try_from_bytes(
+        AHEM_FONT_BYTES.to_vec(),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .unwrap();
     let glyphs = [TextGlyph::try_new(AHEM_GLYPH_X, 3.0, 19.0, 9.0).unwrap()];
     let transform = Transform::try_new([1.25, 0.0, 0.0, 1.25, 2.0, -3.0]).unwrap();
     let run = text_run_for(font_data, 19.5, transform, &glyphs);
@@ -605,7 +615,12 @@ fn selected_glyph_preflight_validates_colr_palette_bitmap_and_png_inputs() {
 }
 
 fn assert_colr_glyph_preflight_cases() {
-    let color_font = FontData::try_from_bytes(ahem_color_font(valid_cpal()), 0).unwrap();
+    let color_font = FontData::try_from_bytes(
+        ahem_color_font(valid_cpal()),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .unwrap();
     let color_glyphs = [TextGlyph::try_new(AHEM_GLYPH_X, 0.0, 16.0, 8.0).unwrap()];
     let color_run = text_run_for(color_font, 16.0, Transform::identity(), &color_glyphs);
     let mut color_scene = VelloScene::default();
@@ -615,8 +630,12 @@ fn assert_colr_glyph_preflight_cases() {
     assert_render_failed_without_font_diagnostic(&color_error);
     assert_no_glyph_encoding(&color_scene);
 
-    let color_v1_font =
-        FontData::try_from_bytes(ahem_colr_v1_font_with_v0_root(valid_cpal()), 0).unwrap();
+    let color_v1_font = FontData::try_from_bytes(
+        ahem_colr_v1_font_with_v0_root(valid_cpal()),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .unwrap();
     let color_v1_run = text_run_for(color_v1_font, 16.0, Transform::identity(), &color_glyphs);
     assert_selected_glyph_trace(&color_v1_run, SelectedGlyphTrace::Colr);
     let mut color_v1_scene = VelloScene::default();
@@ -628,7 +647,12 @@ fn assert_colr_glyph_preflight_cases() {
 }
 
 fn assert_png_bitmap_glyph_preflight_cases() {
-    let bitmap_font = FontData::try_from_bytes(ahem_sbix_font(rgba_png()), 0).unwrap();
+    let bitmap_font = FontData::try_from_bytes(
+        ahem_sbix_font(rgba_png()),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .unwrap();
     let bitmap_glyphs = [TextGlyph::try_new(AHEM_GLYPH_X, 0.0, 16.0, 8.0).unwrap()];
     let bitmap_run = text_run_for(bitmap_font, 16.0, Transform::identity(), &bitmap_glyphs);
     assert_selected_glyph_trace(
@@ -645,8 +669,12 @@ fn assert_png_bitmap_glyph_preflight_cases() {
     assert_render_failed_without_font_diagnostic(&bitmap_error);
     assert_no_glyph_encoding(&bitmap_scene);
 
-    let invalid_palette_font =
-        FontData::try_from_bytes(ahem_color_font(invalid_cpal()), 0).unwrap();
+    let invalid_palette_font = FontData::try_from_bytes(
+        ahem_color_font(invalid_cpal()),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .unwrap();
     let color_glyphs = [TextGlyph::try_new(AHEM_GLYPH_X, 0.0, 16.0, 8.0).unwrap()];
     let invalid_palette_run = text_run_for(
         invalid_palette_font,
@@ -664,7 +692,12 @@ fn assert_png_bitmap_glyph_preflight_cases() {
     );
     assert_no_glyph_encoding(&invalid_palette_scene);
 
-    let malformed_png_font = FontData::try_from_bytes(ahem_sbix_font(malformed_png()), 0).unwrap();
+    let malformed_png_font = FontData::try_from_bytes(
+        ahem_sbix_font(malformed_png()),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .unwrap();
     let malformed_png_run = text_run_for(
         malformed_png_font,
         16.0,
@@ -678,8 +711,12 @@ fn assert_png_bitmap_glyph_preflight_cases() {
     assert_font_data_error(&png_error, font_data_value(&malformed_png_run).as_str());
     assert_no_glyph_encoding(&malformed_png_scene);
 
-    let short_header_font = FontData::try_from_bytes(ahem_sbix_font(png_without_height()), 0)
-        .expect("the short selected PNG header remains container-readable before glyph lowering");
+    let short_header_font = FontData::try_from_bytes(
+        ahem_sbix_font(png_without_height()),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .expect("the short selected PNG header remains container-readable before glyph lowering");
     let short_header_run = text_run_for(
         short_header_font,
         16.0,
@@ -705,6 +742,7 @@ fn assert_malformed_sbix_glyph_preflight_cases() {
             vec![(*b"sbix", vec![0])],
         ),
         0,
+        surgeist_test::fixtures::FONT_LIMITS,
     )
     .expect("the malformed sbix table remains container-readable before glyph lowering");
     let malformed_sbix_run = text_run_for(
@@ -723,10 +761,12 @@ fn assert_malformed_sbix_glyph_preflight_cases() {
     );
     assert_no_glyph_encoding(&malformed_sbix_scene);
 
-    let malformed_record_font =
-        FontData::try_from_bytes(ahem_sbix_font_with_truncated_selected_record(), 0).expect(
-            "the malformed selected sbix record remains container-readable before glyph lowering",
-        );
+    let malformed_record_font = FontData::try_from_bytes(
+        ahem_sbix_font_with_truncated_selected_record(),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .expect("the malformed selected sbix record remains container-readable before glyph lowering");
     let malformed_record_run = text_run_for(
         malformed_record_font,
         16.0,
@@ -743,9 +783,12 @@ fn assert_malformed_sbix_glyph_preflight_cases() {
     );
     assert_no_glyph_encoding(&malformed_record_scene);
 
-    let no_bitmap_font =
-        FontData::try_from_bytes(ahem_sbix_font_without_selected_glyph(rgba_png()), 0)
-            .expect("the sbix font without the selected bitmap remains container-readable");
+    let no_bitmap_font = FontData::try_from_bytes(
+        ahem_sbix_font_without_selected_glyph(rgba_png()),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .expect("the sbix font without the selected bitmap remains container-readable");
     let no_bitmap_run = text_run_for(no_bitmap_font, 16.0, Transform::identity(), &bitmap_glyphs);
     assert_selected_glyph_trace(&no_bitmap_run, SelectedGlyphTrace::Outline);
     let mut no_bitmap_scene = VelloScene::default();
@@ -766,6 +809,7 @@ fn assert_malformed_head_glyph_preflight_cases() {
             vec![(*b"head", vec![0])],
         ),
         0,
+        surgeist_test::fixtures::FONT_LIMITS,
     )
     .expect("the selected COLR font remains container-readable before head access");
     let malformed_colr_head_run = text_run_for(
@@ -792,6 +836,7 @@ fn assert_malformed_head_glyph_preflight_cases() {
             vec![(*b"head", vec![0])],
         ),
         0,
+        surgeist_test::fixtures::FONT_LIMITS,
     )
     .expect("the selected bitmap font remains container-readable before head access");
     let malformed_bitmap_head_run = text_run_for(
@@ -816,7 +861,12 @@ fn assert_malformed_head_glyph_preflight_cases() {
 
 #[test]
 fn selected_glyph_preflight_distinguishes_unsupported_image_from_malformed_data() {
-    let font_data = FontData::try_from_bytes(ahem_sbix_font(grayscale_png()), 0).unwrap();
+    let font_data = FontData::try_from_bytes(
+        ahem_sbix_font(grayscale_png()),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .unwrap();
     let glyphs = [TextGlyph::try_new(AHEM_GLYPH_X, 0.0, 16.0, 8.0).unwrap()];
     let run = text_run_for(font_data, 16.0, Transform::identity(), &glyphs);
     let mut unsupported_scene = VelloScene::default();
@@ -827,8 +877,12 @@ fn selected_glyph_preflight_distinguishes_unsupported_image_from_malformed_data(
     assert_render_failed_without_font_diagnostic(&error);
     assert_no_glyph_encoding(&unsupported_scene);
 
-    let malformed_font = FontData::try_from_bytes(ahem_sbix_font(malformed_grayscale_png()), 0)
-        .expect("the malformed grayscale PNG remains container-readable before frame decode");
+    let malformed_font = FontData::try_from_bytes(
+        ahem_sbix_font(malformed_grayscale_png()),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .expect("the malformed grayscale PNG remains container-readable before frame decode");
     let malformed_run = text_run_for(malformed_font, 16.0, Transform::identity(), &glyphs);
     let mut scene = VelloScene::default();
     let malformed_error = scene
@@ -840,7 +894,11 @@ fn selected_glyph_preflight_distinguishes_unsupported_image_from_malformed_data(
 
 #[test]
 fn ahem_font_data_validates_at_collection_index_zero() {
-    let font_data = FontData::try_from_bytes(AHEM_FONT_BYTES.to_vec(), 0);
+    let font_data = FontData::try_from_bytes(
+        AHEM_FONT_BYTES.to_vec(),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    );
 
     assert!(font_data.is_ok());
 }
@@ -872,7 +930,7 @@ fn malformed_lazy_font_tables_return_typed_errors_without_encoding_glyphs() {
     let glyphs = [TextGlyph::try_new(AHEM_GLYPH_X, 0.0, 16.0, 8.0).unwrap()];
 
     for (case, bytes) in cases {
-        let font_data = FontData::try_from_bytes(bytes, 0)
+        let font_data = FontData::try_from_bytes(bytes, 0, surgeist_test::fixtures::FONT_LIMITS)
             .expect("the selected lazy-table case must pass initial FontData construction");
         let run = text_run_for(font_data, 16.0, Transform::identity(), &glyphs);
         let expected_value = font_data_value(&run);
@@ -907,7 +965,8 @@ fn font_data_value(run: &TextRun<'_>) -> String {
         .font()
         .data
         .as_ref()
-        .expect("text-run fixture must carry FontData");
+        .expect("text-run fixture must carry FontData")
+        .font();
     format!(
         "len={}, index={}",
         font_data.bytes().len(),
@@ -1090,8 +1149,12 @@ fn assert_bdt_selected_bitmap(
     expected_ppem: u16,
     glyphs: &[TextGlyph],
 ) {
-    let font_data = FontData::try_from_bytes(ahem_bdt_font(kind, strikes), 0)
-        .expect("the BDT fixture must remain readable before selected bitmap lowering");
+    let font_data = FontData::try_from_bytes(
+        ahem_bdt_font(kind, strikes),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .expect("the BDT fixture must remain readable before selected bitmap lowering");
     let run = text_run_for(font_data, size, Transform::identity(), glyphs);
     assert_selected_glyph_trace(
         &run,
@@ -1115,8 +1178,12 @@ fn assert_bdt_outline_fallback(
     size: f32,
     glyphs: &[TextGlyph],
 ) {
-    let font_data = FontData::try_from_bytes(ahem_bdt_font(kind, strikes), 0)
-        .expect("the BDT fixture must remain readable before selected bitmap lowering");
+    let font_data = FontData::try_from_bytes(
+        ahem_bdt_font(kind, strikes),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .expect("the BDT fixture must remain readable before selected bitmap lowering");
     let run = text_run_for(font_data, size, Transform::identity(), glyphs);
     assert_selected_glyph_trace(&run, SelectedGlyphTrace::Outline);
     let mut scene = VelloScene::default();
@@ -1128,8 +1195,12 @@ fn assert_bdt_outline_fallback(
 }
 
 fn assert_bdt_sparse_invalid(kind: BdtKind, strikes: &[BdtStrikeFixture], glyphs: &[TextGlyph]) {
-    let font_data = FontData::try_from_bytes(ahem_bdt_font(kind, strikes), 0)
-        .expect("the malformed sparse BDT fixture must remain container-readable");
+    let font_data = FontData::try_from_bytes(
+        ahem_bdt_font(kind, strikes),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .expect("the malformed sparse BDT fixture must remain container-readable");
     let run = text_run_for(font_data, 16.0, Transform::identity(), glyphs);
     let expected_value = font_data_value(&run);
     let mut scene = VelloScene::default();
@@ -1166,6 +1237,7 @@ fn assert_cbdt_precedes_ebdt(glyphs: &[TextGlyph]) {
             (*b"EBDT", ebdt),
         ]),
         0,
+        surgeist_test::fixtures::FONT_LIMITS,
     )
     .expect("the combined BDT fixture must remain readable before glyph lowering");
     let run = text_run_for(font_data, 16.0, Transform::identity(), glyphs);
@@ -1253,9 +1325,12 @@ fn assert_bitmap_format_selection_cases(glyphs: &[TextGlyph]) {
     ];
 
     for case in cases {
-        let font_data =
-            FontData::try_from_bytes(ahem_bitmap_format_font(case.sbix, case.cbdt, case.ebdt), 0)
-                .expect("the bitmap format fixture must remain readable before glyph lowering");
+        let font_data = FontData::try_from_bytes(
+            ahem_bitmap_format_font(case.sbix, case.cbdt, case.ebdt),
+            0,
+            surgeist_test::fixtures::FONT_LIMITS,
+        )
+        .expect("the bitmap format fixture must remain readable before glyph lowering");
         let run = text_run_for(font_data, case.size, Transform::identity(), glyphs);
         assert_selected_glyph_trace(&run, case.expected.trace());
         let mut scene = VelloScene::default();
@@ -4471,13 +4546,18 @@ fn selected_color_bitmap_unsupported_instances_refuse_without_outline_substituti
             crate::GlyphPreparationError::UnsupportedImageInstance,
         ),
     ] {
-        let error = FontData::try_from_bytes(bytes, 0)
+        let error = FontData::try_from_bytes(bytes, 0, surgeist_test::fixtures::FONT_LIMITS)
             .unwrap()
             .prepare_glyph_run(&instance, &glyphs, limits)
             .unwrap_err();
         assert_eq!(error.glyph_preparation_diagnostic(), Some(&expected));
     }
-    let malformed = FontData::try_from_bytes(ahem_color_font(invalid_cpal()), 0).unwrap();
+    let malformed = FontData::try_from_bytes(
+        ahem_color_font(invalid_cpal()),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .unwrap();
     let ordinary =
         crate::TextInstance::try_new(16.0, vec![], crate::GlyphSynthesis::none()).unwrap();
     let error = malformed

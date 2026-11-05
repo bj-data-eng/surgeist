@@ -48,9 +48,14 @@ pub(super) fn text_run_for<'a>(
 }
 
 pub(super) fn ahem_font(name: &'static str) -> FontRef<'static> {
-    FontRef::new(AHEM_FONT_ID)
-        .named(name)
-        .with_data(FontData::try_from_bytes(AHEM_FONT_BYTES.to_vec(), 0).unwrap())
+    FontRef::new(AHEM_FONT_ID).named(name).with_data(
+        FontData::try_from_bytes(
+            AHEM_FONT_BYTES.to_vec(),
+            0,
+            surgeist_test::fixtures::FONT_LIMITS,
+        )
+        .unwrap(),
+    )
 }
 
 pub(super) fn add_planning_text(scene: &mut Scene, bounds: TextRunBounds) {

@@ -2,13 +2,15 @@ use super::{
     Paint, Point, PrimitiveFamily, PrimitiveOperation, Rect, Result, ShadowList, Transform,
     UnsupportedPrimitive, validation::*,
 };
-use std::borrow::Cow;
+use std::{borrow::Cow, sync::Arc};
+
+use surgeist_font::{DecodeLimits, FontFace, FontResource};
 
 mod prepared;
 pub(crate) use prepared::GlyphPaint;
-pub(crate) use prepared::qualify_placement as qualify_glyph_placement;
 #[cfg(feature = "render-text")]
-pub(crate) use prepared::{AdmittedGlyphFont, qualify_bounds_placement};
+pub(crate) use prepared::qualify_bounds_placement;
+pub(crate) use prepared::qualify_placement as qualify_glyph_placement;
 pub use prepared::{
     GlyphCapability, GlyphNumericPhase, GlyphPreparationError, GlyphResource, GlyphRunLimits,
     GlyphSynthesis, NormalizedCoordinate, PreparedGlyphRun, TextInstance, VariationTable,
@@ -446,7 +448,7 @@ pub struct FontRef<'a> {
     id: FontId,
     /// Optional caller-facing font name retained with the authored reference.
     pub name: Option<Cow<'a, str>>,
-    pub(crate) data: Option<FontData>,
+    pub(crate) data: Option<AuthoredFontData>,
 }
 
 impl<'a> FontRef<'a> {
@@ -476,7 +478,12 @@ impl<'a> FontRef<'a> {
     #[must_use]
     /// Returns this reference with validated owned font data.
     pub fn with_data(mut self, data: FontData) -> Self {
-        self.data = Some(data);
+        let backing = Arc::new(DecodedFontBytes(data.face.resource().clone()));
+        let backend = peniko::FontData::new(peniko::Blob::new(backing), data.index());
+        self.data = Some(AuthoredFontData {
+            font: data,
+            backend,
+        });
         self
     }
 
@@ -492,36 +499,79 @@ impl<'a> FontRef<'a> {
     }
 }
 
-/// Validated, owned OpenType font bytes and collection index.
+/// Retains an admitted OpenType face and its original encoded source.
 ///
-/// Construction verifies that the requested face is readable before GPU scene
-/// lowering. Selected glyph tables receive additional fallible preflight during
-/// rendering; malformed data never becomes an unwrap, fallback font, or silent omission.
+/// Selected glyphs receive additional fallible qualification before scene lowering.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FontData {
-    pub(crate) data: peniko::FontData,
+    face: FontFace,
 }
 
 impl FontData {
-    /// Validates and owns OpenType bytes at the requested collection index.
+    /// Decodes and admits the supplied font container under the caller's limits,
+    /// then selects its original collection index.
     ///
-    /// Returns [`crate::ErrorCode::InvalidInput`] before GPU work when the bytes
-    /// are malformed or the collection index is out of range.
-    pub fn try_from_bytes(bytes: Vec<u8>, index: u32) -> Result<Self> {
+    /// Container refusal returns [`crate::ErrorCode::InvalidInput`] with the
+    /// producer's [`surgeist_font::DecodeError`] as its source. An unavailable
+    /// index returns the invalid font-data diagnostic for that index.
+    pub fn try_from_bytes(bytes: Vec<u8>, index: u32, limits: DecodeLimits) -> Result<Self> {
         let byte_len = bytes.len();
-        skrifa::FontRef::from_index(bytes.as_slice(), index)
-            .map_err(|_| invalid_font_data(byte_len, index))?;
-        Ok(Self {
-            data: peniko::FontData::new(bytes.into(), index),
-        })
+        let resource = FontResource::decode(bytes, limits)
+            .map_err(|error| invalid_font_data(byte_len, index).with_source(error))?;
+        let face = resource
+            .face(index)
+            .ok_or_else(|| invalid_font_data(byte_len, index))?;
+        Ok(Self::from_face(face))
+    }
+
+    /// Retains an already admitted face without decoding or copying its bytes.
+    #[must_use]
+    pub const fn from_face(face: FontFace) -> Self {
+        Self { face }
+    }
+
+    /// Returns the actual shared face, including its resource and source provenance.
+    #[must_use]
+    pub const fn admitted_face(&self) -> &FontFace {
+        &self.face
     }
 
     pub(crate) fn bytes(&self) -> &[u8] {
-        self.data.data.as_ref()
+        self.face.resource().bytes()
     }
 
-    pub(crate) const fn index(&self) -> u32 {
-        self.data.index
+    pub(crate) fn index(&self) -> u32 {
+        self.face.index()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct AuthoredFontData {
+    font: FontData,
+    backend: peniko::FontData,
+}
+
+impl AuthoredFontData {
+    pub(crate) const fn font(&self) -> &FontData {
+        &self.font
+    }
+
+    pub(crate) const fn backend(&self) -> &peniko::FontData {
+        &self.backend
+    }
+}
+
+impl PartialEq for AuthoredFontData {
+    fn eq(&self, other: &Self) -> bool {
+        self.font == other.font
+    }
+}
+
+struct DecodedFontBytes(FontResource);
+
+impl AsRef<[u8]> for DecodedFontBytes {
+    fn as_ref(&self) -> &[u8] {
+        self.0.bytes()
     }
 }
 

@@ -440,9 +440,20 @@ impl FontData {
         glyphs: &[TextGlyph],
         limits: GlyphRunLimits,
     ) -> Result<PreparedGlyphRun> {
-        let font_bytes = font_backing_bytes(self.bytes().len())?;
+        let font_bytes = self.admitted_face().resource().retained_bytes();
         self.prepare_glyph_run_inner(instance, glyphs, limits, font_bytes)
             .map(|(outline, _)| outline)
+    }
+
+    #[cfg(feature = "render-text")]
+    pub(crate) fn prepare_glyph_run_with_accounted_font(
+        &self,
+        instance: &TextInstance,
+        glyphs: &[TextGlyph],
+        limits: GlyphRunLimits,
+    ) -> Result<(PreparedGlyphRun, usize)> {
+        // The placed layout budget accounts for each shared font resource once.
+        self.prepare_glyph_run_inner(instance, glyphs, limits, 0)
     }
 
     fn prepare_glyph_run_inner(
@@ -489,9 +500,6 @@ impl FontData {
                 .num_glyphs(),
         );
         validate_variations(&font, instance, glyphs, glyph_count)?;
-        // Blob::from(Vec) boxes the byte slice before sharing it. Charge that
-        // observable extent plus declared conservative logical owner headers,
-        // never the historical input Vec's discarded spare capacity.
         let base_bytes = font_bytes
             .checked_add(size_of::<PreparedGlyphRunData>() + 2 * size_of::<usize>())
             .and_then(|n| {
@@ -736,67 +744,6 @@ fn draw_outline(
         pen.finish_glyph()?;
     }
     Ok(())
-}
-
-fn font_backing_bytes(byte_len: usize) -> Result<usize> {
-    byte_len
-        .checked_add(size_of::<Box<[u8]>>() + 2 * size_of::<usize>())
-        .ok_or_else(|| Error::from(GlyphPreparationError::CapacityOverflow))
-}
-
-/// One invocation-local face copy whose backing is funded once by the adapter.
-#[cfg(feature = "render-text")]
-#[derive(Debug)]
-pub(crate) struct AdmittedGlyphFont {
-    font: FontData,
-    retained_bytes: usize,
-}
-
-#[cfg(feature = "render-text")]
-impl AdmittedGlyphFont {
-    pub(crate) fn copy_from(
-        bytes: &[u8],
-        index: u32,
-        scratch_limit: usize,
-        retained_limit: usize,
-    ) -> Result<Self> {
-        let retained_bytes = font_backing_bytes(bytes.len())?;
-        check_limit(GlyphResource::RetainedBytes, retained_bytes, retained_limit)?;
-        // Vec-to-box conversion may allocate while the original Vec remains live.
-        let overlap = bytes
-            .len()
-            .checked_mul(2)
-            .ok_or_else(|| Error::from(GlyphPreparationError::CapacityOverflow))?;
-        check_limit(GlyphResource::ScratchBytes, overlap, scratch_limit)?;
-        let mut copy = reserved(bytes.len(), GlyphResource::ScratchBytes)?;
-        let overlap = copy
-            .capacity()
-            .checked_add(bytes.len())
-            .ok_or_else(|| Error::from(GlyphPreparationError::CapacityOverflow))?;
-        check_limit(GlyphResource::ScratchBytes, overlap, scratch_limit)?;
-        copy.extend_from_slice(bytes);
-        let font = FontData::try_from_bytes(copy, index)?;
-        Ok(Self {
-            font,
-            retained_bytes,
-        })
-    }
-
-    pub(crate) const fn retained_bytes(&self) -> usize {
-        self.retained_bytes
-    }
-
-    pub(crate) fn prepare(
-        &self,
-        instance: &TextInstance,
-        glyphs: &[TextGlyph],
-        limits: GlyphRunLimits,
-    ) -> Result<(PreparedGlyphRun, usize)> {
-        // The actual face copy above is already charged by the invocation owner.
-        // Per-run owners and geometry remain charged by the shared outline core.
-        self.font
-            .prepare_glyph_run_inner(instance, glyphs, limits, 0)
-    }
 }
 
 fn validate_variations(

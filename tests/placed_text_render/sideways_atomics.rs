@@ -489,7 +489,9 @@ fn sideways_out_of_flow_child_keeps_horizontal_content_through_layout_and_render
 
 #[test]
 fn registered_chi_ink_is_asymmetric_before_clockwise_or_horizontal_placement() {
-    let font = render::FontData::try_from_bytes(AHEM.to_vec(), 0).unwrap();
+    let font =
+        render::FontData::try_from_bytes(AHEM.to_vec(), 0, surgeist_test::fixtures::FONT_LIMITS)
+            .unwrap();
     let instance =
         render::TextInstance::try_new(10.0, vec![], render::GlyphSynthesis::none()).unwrap();
     let glyphs = [render::TextGlyph::try_new(274, 0.0, 0.0, 10.0).unwrap()];

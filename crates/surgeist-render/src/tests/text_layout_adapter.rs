@@ -12,6 +12,11 @@ mod scope_alignment;
 mod sideways;
 mod upright;
 
+#[path = "../../tests/fixtures/font_wire.rs"]
+mod font_wire;
+
+use surgeist_font::{FontResource, SourceFormat};
+use surgeist_test::fixtures::FONT_LIMITS;
 use surgeist_text as text;
 
 use crate::{
@@ -22,6 +27,8 @@ use crate::{
 };
 
 const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
+const AHEM_ORIGINAL: &[u8] =
+    include_bytes!("../../../surgeist-font/tests/fixtures/ahem-original/Ahem.woff2");
 const ROOM: usize = 8 << 20;
 
 fn system(bytes: Vec<u8>) -> text::System {
@@ -183,6 +190,87 @@ fn actual_registered_layout_preserves_face_instance_glyphs_ink_and_single_placem
         paint.fill(),
         &Color::try_rgba(1.0, 0.0, 0.0, 0.5).unwrap().into()
     );
+}
+
+#[test]
+fn compressed_text_layouts_keep_exact_faces_through_render_admission_and_refresh() {
+    let woff = font_wire::literal_woff1(AHEM);
+    for (encoded, format, ids) in [
+        (woff.as_slice(), SourceFormat::Woff, [35, 58]),
+        (AHEM_ORIGINAL, SourceFormat::Woff2, [36, 59]),
+    ] {
+        let resource = FontResource::decode(encoded.to_vec(), FONT_LIMITS).unwrap();
+        let expected = resource.face(0).unwrap();
+        let mut system = text::System::default();
+        system.register_font_resource(resource.clone()).unwrap();
+        let original_publication = system.font_catalogue_identity().clone();
+        let source = text::Source::new("AX");
+        let original = system.layout(source.clone(), style(), options()).unwrap();
+        system.refresh_fonts().unwrap();
+        let refreshed_publication = system.font_catalogue_identity().clone();
+        let refreshed = system.layout(source, style(), options()).unwrap();
+        assert_ne!(original_publication, refreshed_publication);
+        assert_ne!(original.key(), refreshed.key());
+
+        let mut foreign = text::System::default();
+        foreign.register_font_resource(resource).unwrap();
+        let original_run = original.run_views().next().unwrap();
+        let instance = original_run.effective_instance().unwrap();
+        assert_eq!(
+            instance.metrics(&original_publication).unwrap().ascent(),
+            16.0
+        );
+        for wrong in [&refreshed_publication, foreign.font_catalogue_identity()] {
+            assert_eq!(
+                instance.metrics(wrong).unwrap_err().code,
+                text::ErrorCode::FontCatalogueMismatch
+            );
+        }
+        drop(system);
+        drop(foreign);
+
+        for (layout, publication) in [
+            (&original, &original_publication),
+            (&refreshed, &refreshed_publication),
+        ] {
+            let text_run = layout.run_views().next().unwrap();
+            assert_eq!(text_run.face().catalogue_identity(), publication);
+            assert_eq!(text_run.face().admitted_face(), &expected);
+            let prepared = prepare_text_layout(layout, Transform::identity(), limits()).unwrap();
+            assert!(std::ptr::eq(prepared.layout(), layout));
+            assert_eq!(prepared.scene().commands.len(), 1);
+            let (run, transform) = outline(&prepared.scene().commands[0]);
+            assert_eq!(transform, Transform::translation(0.0, 16.0).unwrap());
+            let face = run.font().admitted_face();
+            assert_eq!(face, &expected);
+            assert_eq!(
+                face.resource().source().identity(),
+                expected.resource().source().identity()
+            );
+            assert_eq!(face.resource().source().format(), format);
+            assert_eq!(face.resource().source().bytes(), encoded);
+            assert!(std::ptr::eq(
+                face.resource().bytes(),
+                text_run.face().bytes()
+            ));
+            assert_eq!(run.instance().size(), 20.0);
+            assert!(run.instance().coordinates().is_empty());
+            assert_eq!(run.instance().synthesis(), GlyphSynthesis::none());
+            // Original cmap IDs differ across revisions. Both fixtures have
+            // 1,000-unit square A/X ink and advances at UPEM 1,000.
+            assert_eq!(
+                run.glyphs(),
+                [
+                    TextGlyph::try_new(ids[0], 0.0, 0.0, 20.0).unwrap(),
+                    TextGlyph::try_new(ids[1], 20.0, 0.0, 20.0).unwrap(),
+                ]
+            );
+            assert_eq!(
+                run.bounds().ink_rect(),
+                Some(Rect::try_new(0.0, -16.0, 40.0, 20.0).unwrap())
+            );
+        }
+    }
 }
 
 #[test]
