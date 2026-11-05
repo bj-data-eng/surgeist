@@ -1437,9 +1437,10 @@ quantization enabled, `TextOverflow::Clip`, `TextAlignLast::Auto`, and zero inde
 The indent defaults to first-line scope. A nonzero indent with `each_line = true`,
 `first_line = false`, and `hanging = false` is unsupported by the standalone indent policy.
 
-`Style::default()` requests a 16-unit font with normal weight, width, and slant;
-the empty family list maps to generic sans-serif. It uses metric-relative line
-height `1.0`, zero letter/word spacing, opaque black, no decorations, automatic
+`Style::default()` requests a 16-unit font with normal weight, width, and slant.
+Its family list is empty. For ordinary shaping, specify a registered family
+name. The default style uses metric-relative line height `1.0`, zero letter/word
+spacing, opaque black, no decorations, automatic
 direction, preserved whitespace, word wrapping, normal word-break and
 overflow-wrap, and no text transform.
 
