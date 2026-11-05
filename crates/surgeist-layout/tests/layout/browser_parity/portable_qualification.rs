@@ -512,8 +512,8 @@ impl AdmittedRegistry {
 
 // This seal admits only the publisher's complete terminal artifact. Retained
 // projections and directory existence do not establish capture authority.
-const REGISTERED_BOX_TERMINAL_SHA256: &str =
-    "5143c6bf95677eb7bc019ba25057aa16b2bb7392eb36d417028715e4c55d541f";
+const REGISTERED_WRAPPING_WORLD_TERMINAL_SHA256: &str =
+    "10d7d03d6534fe06e4d66f98d2ad74fd6e56675c798a3aacc6ebc790154e6a00";
 const REGISTERED_MEASURED_GRID_TERMINAL_SHA256: &str =
     "7739607e8f25170b128e636d957a16f5a1f8e05b2431aeec3bd0f4c6c278d24e";
 
@@ -547,8 +547,8 @@ pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
         admit(
             owner,
             Registration {
-                edition: Edition::Exact(PublishedEdition::CanonicalBoxes),
-                terminal_sha256: REGISTERED_BOX_TERMINAL_SHA256,
+                edition: Edition::Exact(PublishedEdition::WrappingWorldCorners),
+                terminal_sha256: REGISTERED_WRAPPING_WORLD_TERMINAL_SHA256,
             },
         )?,
         admit(
