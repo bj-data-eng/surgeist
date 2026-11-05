@@ -399,6 +399,13 @@ impl Table {
             })?;
         let actual = project(path, node)?;
         for ((field, native), (_, browser)) in actual.fields().into_iter().zip(row.sizes.fields()) {
+            if let NumericComparisonSink::CollectAll { root, fields } = sink {
+                let source = super::exact_differences::source_path_from_diagnostic(root, path)?;
+                fields.push(super::exact_differences::ComparedField::element(
+                    source, field, browser, native,
+                ));
+                continue;
+            }
             if native == browser {
                 continue;
             }
@@ -408,6 +415,9 @@ impl Table {
                         "{path}: {} mismatch, expected {browser}, got {native}",
                         field.as_str()
                     )));
+                }
+                NumericComparisonSink::CollectAll { .. } => {
+                    unreachable!("complete field was collected above")
                 }
                 NumericComparisonSink::CollectNumeric(mismatches) => mismatches.push(
                     NumericMismatch::ElementScrollSize(ElementScrollSizeMismatch {

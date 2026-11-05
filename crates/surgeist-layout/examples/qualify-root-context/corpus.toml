@@ -1504,7 +1504,8 @@ hypothetical_direction = "ltr"
 root_direction = "variant"
 inline_offset = 0
 
-# Original collapsed-flex capture inventory; no semantic differences are qualified here.
+# Original collapsed-flex sources retain raw comparisons. Only wrapping has
+# exact semantic qualifications; labeled baseline authority remains open.
 
 [[records]]
 source = "html/flex/fri07_collapsed_strut_single_line.html"
@@ -1545,3 +1546,19 @@ containing_direction = "ltr"
 hypothetical_direction = "ltr"
 root_direction = "variant"
 inline_offset = 0
+
+[records.semantic_specifications.border_box_ltr]
+path = "semantic/collapsed-flex-wrapping-border_box_ltr.json"
+sha256 = "a9c6800b8dac1dd90e72f721f039824ad54b9c33b63d1002e10e5faff490ca6b"
+
+[records.semantic_specifications.border_box_rtl]
+path = "semantic/collapsed-flex-wrapping-border_box_rtl.json"
+sha256 = "993a1695985cea1dce5e6ca914b10c21d53e2f37b3ed30463ebf2e68cfc918f3"
+
+[records.semantic_specifications.content_box_ltr]
+path = "semantic/collapsed-flex-wrapping-content_box_ltr.json"
+sha256 = "9fa1d81b27349d598cbd4cdd47717bacfea24b4608fa1d27bd60577b0a8fabbe"
+
+[records.semantic_specifications.content_box_rtl]
+path = "semantic/collapsed-flex-wrapping-content_box_rtl.json"
+sha256 = "a8c7ae983c032157175f501c8776423c6fd6d7fa9c0594b5eb2b4dff15c18b85"
