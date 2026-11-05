@@ -441,6 +441,7 @@ impl HtmlConstructionAttributeEdit {
     /// checked, under this edit's exclusive ownership of the storage, that the target is an
     /// element whose backing has no other strong or weak owner. The commit checks it again, and a
     /// backing held by another owner is refused before the storage's attribute revision advances.
+    /// The borrow that advances it is taken last, once nothing else can refuse the step.
     fn exclusive_backing(&mut self) -> Result<&mut Vec<Attribute>, HtmlConstructionError> {
         let backing = self.shared_attributes()?;
         if Arc::strong_count(backing) != 1 || Arc::weak_count(backing) != 0 {
@@ -2309,10 +2310,10 @@ impl HtmlConstructionReadyAttributeSlot<'_> {
     /// Applies the prepaid step. Returns the attribute that `replace` or `pop` removed, and `None`
     /// for every other step.
     ///
-    /// No attribute changes until every check has passed. A backing that another owner holds, an
+    /// Nothing changes until every check has passed. A backing that another owner holds, an
     /// incoming attribute that is gone, or a position outside the backing refuses the commit with
-    /// the ready slot handed back, and its attributes, counts and incoming attribute as they were.
-    /// Dropping the refused slot poisons the edit.
+    /// the ready slot handed back, and its attributes, counts, incoming attribute and the
+    /// storage's attribute revision as they were. Dropping the refused slot poisons the edit.
     #[expect(
         clippy::result_large_err,
         reason = "a refusal hands the complete owner back without boxing it"
@@ -2331,11 +2332,17 @@ impl HtmlConstructionReadyAttributeSlot<'_> {
     }
     fn apply(&mut self) -> Result<Option<Attribute>, HtmlConstructionError> {
         let s = &mut self.slot;
+        // Everything that can refuse is checked against the attributes as they stand before the
+        // backing is taken for a change, which advances the storage's attribute revision.
+        let stored = s.edit.attributes()?.len();
         Ok(match &mut s.input {
             SlotInput::Reserve(_) => None,
             SlotInput::Append(incoming) => {
                 let before = s.edit.capacity.initialized_len;
                 let grown = plus(before, 1)?;
+                if incoming.is_empty() {
+                    return Err(HtmlConstructionErrorKind::CapacityMismatch.into());
+                }
                 let backing = s.edit.exclusive_backing()?;
                 let attribute = incoming
                     .pop()
@@ -2356,6 +2363,9 @@ impl HtmlConstructionReadyAttributeSlot<'_> {
                 None
             }
             SlotInput::Replace { index, incoming } => {
+                if *index >= stored || incoming.is_none() {
+                    return Err(HtmlConstructionErrorKind::CapacityMismatch.into());
+                }
                 let backing = s.edit.exclusive_backing()?;
                 let target = backing
                     .get_mut(*index)
@@ -2371,6 +2381,9 @@ impl HtmlConstructionReadyAttributeSlot<'_> {
                 Some(removed)
             }
             SlotInput::Swap(index) => {
+                if plus(*index, 1)? >= stored {
+                    return Err(HtmlConstructionErrorKind::CapacityMismatch.into());
+                }
                 let backing = s.edit.exclusive_backing()?;
                 let Some([first, second, ..]) = backing.get_mut(*index..) else {
                     return Err(HtmlConstructionErrorKind::CapacityMismatch.into());
@@ -2384,6 +2397,9 @@ impl HtmlConstructionReadyAttributeSlot<'_> {
             }
             SlotInput::Pop => {
                 let remaining = minus(s.edit.capacity.initialized_len, 1)?;
+                if stored == 0 {
+                    return Err(HtmlConstructionErrorKind::CapacityMismatch.into());
+                }
                 let backing = s.edit.exclusive_backing()?;
                 let value = backing
                     .pop()
@@ -3277,10 +3293,16 @@ mod tests {
             Arc::get_mut(ready.slot.edit.backing_mut().unwrap())
                 .unwrap()
                 .clear();
+            let revision = ready.slot.edit.storage.arena.attribute_revision;
             let (ready, error) = refused(ready);
             assert!(error.is_capacity_mismatch(), "step {step}: {error}");
-            // The refusal left the recorded length, so the lost attributes stay visible as such.
+            // The refusal left the recorded length, so the lost attributes stay visible as such,
+            // and it left the revision, which only a change to the attributes advances.
             assert_eq!(ready.slot.edit.capacity.initialized_len, 2, "step {step}");
+            assert_eq!(
+                ready.slot.edit.storage.arena.attribute_revision, revision,
+                "step {step}"
+            );
         }
     }
 
