@@ -5,6 +5,7 @@
 //! WHATWG source attribution is in `licenses/whatwg/NOTICE.md`.
 
 use super::*;
+use crate::internal::microsyntax::tokens::{DeclaredKeyword, declared_keyword};
 use crate::{
     internal::microsyntax::tokens::HtmlDuplicateTokenError,
     internal::microsyntax::tokens::HtmlSpaceSeparatedTokens,
@@ -160,6 +161,7 @@ impl HtmlSandboxFlags {
 struct KeywordDefinition {
     keyword: HtmlSandboxKeyword,
     spelling: &'static str,
+    declared: DeclaredKeyword,
     source: &'static str,
     removes: u16,
 }
@@ -179,6 +181,7 @@ macro_rules! sandbox_keywords {
             KeywordDefinition {
                 keyword: HtmlSandboxKeyword::$variant,
                 spelling: $spelling,
+                declared: declared_keyword!($spelling),
                 source: concat!(source!("attr-iframe-sandbox-"), $spelling),
                 removes: HtmlSandboxFlag::$first.bit() $(| HtmlSandboxFlag::$flag.bit())*,
             }
@@ -204,7 +207,7 @@ macro_rules! sandbox_keywords {
                 }
             }
             fn token(self) -> HtmlSpaceToken {
-                HtmlSpaceToken::new(self.keyword()).expect("sandbox keyword is one nonempty ASCII token")
+                HtmlSpaceToken::declared(KEYWORDS[self as usize].declared)
             }
         }
     };
@@ -591,21 +594,16 @@ impl HtmlValueInterpreter {
                 author: HtmlSandboxAuthorState::Unapplied,
             });
         }
-        let common = self.space_separated_tokens(raw.map(HtmlAttributeInput::value))?;
-        let tokens = match common.recovery() {
-            HtmlValueRecoveryState::Value(tokens) => tokens,
-            HtmlValueRecoveryState::Missing => {
-                attribute.intrinsic = Some(HtmlSandboxDirectiveState::Absent);
-                return Ok(HtmlSandboxReport {
-                    attribute,
-                    common: Some(common),
-                    author: HtmlSandboxAuthorState::Missing,
-                });
-            }
-            HtmlValueRecoveryState::Failed(_) => {
-                unreachable!("ASCII whitespace splitting has no failure after raw admission")
-            }
+        let Some(value) = raw.map(HtmlAttributeInput::value) else {
+            attribute.intrinsic = Some(HtmlSandboxDirectiveState::Absent);
+            return Ok(HtmlSandboxReport {
+                attribute,
+                common: Some(self.space_separated_tokens(None)?),
+                author: HtmlSandboxAuthorState::Missing,
+            });
         };
+        // The raw value was admitted above, and splitting on ASCII whitespace cannot fail.
+        let tokens = crate::internal::microsyntax::tokens::split_space_tokens(value);
         let duplicate = HtmlUnorderedTokenSet::new(
             HtmlTokenComparison::AsciiCaseInsensitive,
             tokens.tokens().iter().cloned(),
@@ -639,8 +637,49 @@ impl HtmlValueInterpreter {
         attribute.intrinsic = Some(HtmlSandboxDirectiveState::Present(project_flags(keywords)));
         Ok(HtmlSandboxReport {
             attribute,
-            common: Some(common),
+            common: Some(HtmlValueInterpreter::space_separated_report(value, tokens)),
             author,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every keyword's token is the token of its spelling, and the token names the keyword back.
+    #[test]
+    fn keyword_tokens_are_the_tokens_of_their_spellings() {
+        for definition in KEYWORDS {
+            let keyword = definition.keyword;
+            let token = keyword.token();
+            assert_eq!(token, HtmlSpaceToken::new(definition.spelling).unwrap());
+            assert_eq!(token.value().to_utf8().unwrap(), keyword.keyword());
+            assert_eq!(HtmlSandboxKeyword::from_token(&token), Some(keyword));
+        }
+    }
+
+    /// The report keeps the common token report of the raw value it splits, for an absent, an
+    /// empty and a present value.
+    #[test]
+    fn the_report_retains_the_common_token_report_of_its_raw_value() {
+        let interpreter = HtmlValueInterpreter::new(256);
+        let iframe = QualifiedName::new(Namespace::html(), None, "iframe");
+        for raw in [
+            None,
+            Some(""),
+            Some("  "),
+            Some("allow-forms  allow-scripts\tbogus"),
+        ] {
+            let attribute =
+                raw.map(|raw| Attribute::new(KnownHtmlAttribute::Sandbox.qualified_name(), raw));
+            let report = interpreter
+                .iframe_sandbox(&iframe, attribute.as_ref())
+                .unwrap();
+            let expected = interpreter
+                .space_separated_tokens(raw.map(DocumentString::from).as_ref())
+                .unwrap();
+            assert_eq!(report.common(), Some(&expected), "{raw:?}");
+        }
     }
 }

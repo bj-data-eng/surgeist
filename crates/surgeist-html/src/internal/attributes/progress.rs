@@ -217,17 +217,15 @@ impl HtmlValueInterpreter {
             return Ok((output, Err(ExactUnavailable::Unapplied)));
         }
         let common = self.floating_point_number(output.attribute.raw())?;
-        let (author, key) = match common.author() {
-            HtmlValueAuthorState::Missing => (HtmlProgressNumberAuthorState::Missing, Ok(None)),
-            HtmlValueAuthorState::Invalid(error) => (
+        let (author, key) = match (output.attribute.raw(), common.author()) {
+            (None, _) => (HtmlProgressNumberAuthorState::Missing, Ok(None)),
+            (Some(_), HtmlValueAuthorState::Invalid(error)) => (
                 HtmlProgressNumberAuthorState::Nonconforming(
                     HtmlProgressNumberAuthorError::Syntax(*error),
                 ),
                 Err(ExactUnavailable::Syntax),
             ),
-            _ => match strict_scientific_decimal_key(
-                output.attribute.raw().expect("present numeric grammar"),
-            ) {
+            (Some(raw), _) => match strict_scientific_decimal_key(raw) {
                 Ok(key) => (sign_author(&key, maximum), Ok(Some(key))),
                 Err(ScientificDecimalKeyError::RepresentationExhausted) => (
                     HtmlProgressNumberAuthorState::RepresentationUnavailable,

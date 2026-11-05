@@ -457,10 +457,23 @@ impl HtmlValueInterpreter {
     > {
         let mut report = self.admit(raw, HtmlValueSyntax::SpaceSeparatedTokens)?;
         if let Some(raw) = raw {
-            report.author = HtmlValueAuthorState::NotDefined;
-            report.recovery = HtmlValueRecoveryState::Value(tokens::split_space_tokens(raw));
+            report = Self::space_separated_report(raw, tokens::split_space_tokens(raw));
         }
         Ok(report)
+    }
+
+    /// The report of a present raw value that the caller has admitted and split, for a caller that
+    /// reads the tokens before the report takes them.
+    pub(crate) fn space_separated_report(
+        raw: &DocumentString,
+        tokens: HtmlSpaceSeparatedTokens,
+    ) -> HtmlValueReport<HtmlSpaceSeparatedTokens, HtmlSpaceSeparatedTokens> {
+        HtmlValueReport {
+            raw: Some(raw.clone()),
+            syntax: HtmlValueSyntax::SpaceSeparatedTokens,
+            author: HtmlValueAuthorState::NotDefined,
+            recovery: HtmlValueRecoveryState::Value(tokens),
+        }
     }
 
     /// Splits on commas and trims only ASCII whitespace at field boundaries.

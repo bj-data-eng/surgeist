@@ -3,6 +3,7 @@
 //! Grammar validity is independent of attribute-specific allowed keywords or
 //! further token restrictions. Those defining clauses require their own checks.
 
+use crate::internal::microsyntax::numeric::HtmlNonNegativeInteger;
 use crate::internal::values::DocumentString;
 use std::{collections::HashMap, error::Error, fmt, sync::Arc};
 
@@ -39,6 +40,25 @@ impl HtmlSpaceToken {
     pub(crate) fn declared(keyword: DeclaredKeyword) -> Self {
         Self {
             value: DocumentString::from(keyword.as_str()),
+        }
+    }
+
+    /// The token `first` `separator` `second`, for two integers written as their canonical decimal
+    /// digits around a declared separator. An integer's canonical digits are nonempty ASCII digits
+    /// and the separator is a declared keyword, so the join is nonempty with no whitespace.
+    pub(crate) fn integer_pair(
+        first: &HtmlNonNegativeInteger,
+        separator: DeclaredKeyword,
+        second: &HtmlNonNegativeInteger,
+    ) -> Self {
+        let mut text = String::with_capacity(
+            first.decimal_digits().len() + separator.as_str().len() + second.decimal_digits().len(),
+        );
+        text.push_str(first.decimal_digits());
+        text.push_str(separator.as_str());
+        text.push_str(second.decimal_digits());
+        Self {
+            value: DocumentString::from(text),
         }
     }
 
@@ -174,11 +194,70 @@ impl HtmlCommaToken {
         Ok(Self { value })
     }
 
+    /// The empty token, which a comma-separated list permits between adjacent commas.
+    pub(crate) fn empty() -> Self {
+        Self {
+            value: DocumentString::from(""),
+        }
+    }
+
+    /// The token of a declared comma keyword, which the compiler already proved to be one.
+    pub(crate) fn declared(keyword: DeclaredCommaKeyword) -> Self {
+        Self {
+            value: DocumentString::from(keyword.as_str()),
+        }
+    }
+
     /// Returns the exact token text.
     pub fn value(&self) -> &DocumentString {
         &self.value
     }
 }
+
+/// A literal that is one comma token: nonempty ASCII with no comma and no whitespace. The only way
+/// to build one is [`declared_comma_keyword!`], which checks the literal while compiling.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct DeclaredCommaKeyword(&'static str);
+
+impl DeclaredCommaKeyword {
+    /// The keyword, or `None` when the spelling is empty, not ASCII, or contains a comma or
+    /// whitespace. It is public to the crate for [`declared_comma_keyword!`] alone, which evaluates
+    /// it in a constant.
+    pub(crate) const fn checked(spelling: &'static str) -> Option<Self> {
+        let bytes = spelling.as_bytes();
+        if bytes.is_empty() {
+            return None;
+        }
+        let mut index = 0;
+        while index < bytes.len() {
+            let byte = bytes[index];
+            if !byte.is_ascii() || byte == b',' || is_ascii_whitespace_byte(byte) {
+                return None;
+            }
+            index += 1;
+        }
+        Some(Self(spelling))
+    }
+
+    /// The keyword's spelling.
+    pub(crate) const fn as_str(self) -> &'static str {
+        self.0
+    }
+}
+
+/// Builds a [`DeclaredCommaKeyword`] from a string literal, failing to compile when the literal is
+/// not one comma token.
+macro_rules! declared_comma_keyword {
+    ($spelling:literal) => {
+        const {
+            match $crate::internal::microsyntax::tokens::DeclaredCommaKeyword::checked($spelling) {
+                Some(keyword) => keyword,
+                None => panic!("a declared comma keyword is one nonempty ASCII comma token"),
+            }
+        }
+    };
+}
+pub(crate) use declared_comma_keyword;
 
 /// A rejected native token's grammar error, using UTF-16 code-unit offsets.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -804,6 +883,67 @@ pub(crate) fn split_comma_tokens(input: &DocumentString) -> HtmlCommaSeparatedTo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The token of two integers around a separator is what the token grammar accepts for the
+    /// spelled text, for small and for long integers.
+    #[test]
+    fn an_integer_pair_is_the_token_of_its_spelling() {
+        let long =
+            HtmlNonNegativeInteger::from_decimal_digits(&DocumentString::from("9".repeat(50)))
+                .unwrap();
+        let zero = HtmlNonNegativeInteger::from(0_u128);
+        for (first, second) in [
+            (
+                HtmlNonNegativeInteger::from(1_u128),
+                HtmlNonNegativeInteger::from(1_u128),
+            ),
+            (
+                HtmlNonNegativeInteger::from(16_u128),
+                HtmlNonNegativeInteger::from(4096_u128),
+            ),
+            (long.clone(), HtmlNonNegativeInteger::from(7_u128)),
+            (zero, long),
+        ] {
+            let token = HtmlSpaceToken::integer_pair(&first, declared_keyword!("x"), &second);
+            let spelled = format!("{}x{}", first.decimal_digits(), second.decimal_digits());
+            assert_eq!(token, HtmlSpaceToken::new(spelled.as_str()).unwrap());
+        }
+    }
+
+    /// A declared token is the token of its spelling, for the space and the comma grammars.
+    #[test]
+    fn declared_tokens_are_the_tokens_of_their_spellings() {
+        assert_eq!(
+            HtmlSpaceToken::declared(declared_keyword!("allow-forms")),
+            HtmlSpaceToken::new("allow-forms").unwrap()
+        );
+        assert_eq!(
+            HtmlCommaToken::declared(declared_comma_keyword!("image/*")),
+            HtmlCommaToken::new("image/*").unwrap()
+        );
+        assert_eq!(HtmlCommaToken::empty(), HtmlCommaToken::new("").unwrap());
+    }
+
+    /// A spelling is a declared comma keyword exactly when it is a nonempty ASCII comma token
+    /// without whitespace.
+    #[test]
+    fn declared_comma_keyword_check_agrees_with_the_comma_token_grammar() {
+        for spelling in [
+            "", " ", "a b", "a,b", ",", "a\tb", "audio/*", ".png", "é", "a", "x-y", "a;q=1",
+        ] {
+            let ascii_without_whitespace = !spelling.is_empty()
+                && spelling.is_ascii()
+                && !spelling
+                    .bytes()
+                    .any(|byte| is_ascii_whitespace(u16::from(byte)));
+            let expected = ascii_without_whitespace && HtmlCommaToken::new(spelling).is_ok();
+            assert_eq!(
+                DeclaredCommaKeyword::checked(spelling).is_some(),
+                expected,
+                "{spelling:?}"
+            );
+        }
+    }
 
     /// The constant whitespace predicate is the one the token checks use, for every byte.
     #[test]
