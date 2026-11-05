@@ -352,10 +352,10 @@ fn validate_observations(golden: &Golden) -> Result<(), Error> {
     Ok(())
 }
 
-fn verify_native(
+fn verify_native<'batch>(
     tree: &super::TestTree,
-    batch: &layout::CompletedLayoutBatch<usize>,
-) -> Result<(), Error> {
+    batch: &'batch layout::CompletedLayoutBatch<usize>,
+) -> Result<&'batch layout::PlacedTextOutput<usize>, Error> {
     let [binding] = tree.paragraphs.as_slice() else {
         return Err(invalid("expected one actual prepared paragraph"));
     };
@@ -392,18 +392,19 @@ fn verify_native(
             "prepared, allocated and actual atomic or font custody changed",
         ));
     }
-    Ok(())
+    Ok(placed)
 }
 
 pub(crate) fn compare(
     golden: &Golden,
+    observe_placement: impl FnOnce(&layout::PlacedTextOutput<usize>) -> Result<(), Error>,
 ) -> Result<(Vec<String>, Result<QualifiedComparison, QualificationError>), Error> {
     validate_observations(golden)?;
     let mut numeric =
         NumericComparisonSink::PreparedAtomicPercentage(Comparisons::new(golden.name.clone()));
     let mut custody = None;
     let result = super::compare_captured_with_batch(golden, &mut numeric, |tree, batch| {
-        custody = Some(verify_native(tree, batch));
+        custody = Some(verify_native(tree, batch).and_then(observe_placement));
         Ok(())
     })?;
     if !result.endpoint_unobservable_fields().is_empty() {

@@ -31,6 +31,8 @@ use qualification_catalogue::{Declaration, Record};
 const OWNER_DECLARATION: &str = "examples/qualify-root-context/corpus.toml";
 
 type Result<T> = std::result::Result<T, QualificationError>;
+type PlacementObserver<'a> = dyn FnMut(&surgeist_layout::PlacedTextOutput<usize>) -> std::result::Result<(), support::Error>
+    + 'a;
 
 #[derive(Clone, Copy)]
 pub(super) enum Edition {
@@ -386,7 +388,7 @@ impl AdmittedEdition {
         selected: &BTreeSet<String>,
         before_freshness: impl FnOnce(),
     ) -> Result<EditionRun> {
-        let cases = self.execute_cases(selected)?;
+        let cases = self.execute_cases(selected, &mut |_| Ok(()))?;
         before_freshness();
         Ok(EditionRun::finish(
             cases,
@@ -395,7 +397,11 @@ impl AdmittedEdition {
         ))
     }
 
-    fn execute_cases(&self, selected: &BTreeSet<String>) -> Result<Vec<CaseOutcome>> {
+    fn execute_cases(
+        &self,
+        selected: &BTreeSet<String>,
+        observe_placement: &mut PlacementObserver<'_>,
+    ) -> Result<Vec<CaseOutcome>> {
         let known: BTreeSet<_> = self.outputs().map(str::to_owned).collect();
         if !selected.is_subset(&known) {
             return Err(changed("selected output is outside the registered edition"));
@@ -441,7 +447,7 @@ impl AdmittedEdition {
                     )
                 }
                 AdmittedComparison::PreparedAtomicPercentage => {
-                    prepared_atomic_percentage::compare(&case.golden)
+                    prepared_atomic_percentage::compare(&case.golden, &mut *observe_placement)
                         .map(|(fields, qualified)| {
                             (fields, qualified.map_err(|error| error.to_string()))
                         })
@@ -506,6 +512,14 @@ impl AdmittedRegistry {
     }
 
     pub(super) fn execute_selected(&self, selected: &BTreeSet<String>) -> Result<EditionRun> {
+        self.execute_selected_with_placement(selected, &mut |_| Ok(()))
+    }
+
+    pub(super) fn execute_selected_with_placement(
+        &self,
+        selected: &BTreeSet<String>,
+        observe_placement: &mut PlacementObserver<'_>,
+    ) -> Result<EditionRun> {
         let known = self.outputs().collect::<BTreeSet<_>>();
         if !selected.is_subset(&known) {
             return Err(changed("selected output is outside the current registry"));
@@ -518,7 +532,7 @@ impl AdmittedRegistry {
                 .iter()
                 .filter_map(|output| output.strip_prefix(&prefix).map(str::to_owned))
                 .collect();
-            for mut outcome in edition.execute_cases(&edition_selection)? {
+            for mut outcome in edition.execute_cases(&edition_selection, observe_placement)? {
                 outcome.output = format!("{prefix}{}", outcome.output);
                 cases.push(outcome);
             }
