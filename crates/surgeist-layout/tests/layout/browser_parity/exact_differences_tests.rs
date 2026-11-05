@@ -872,6 +872,94 @@ fn current_prebinding_refuses_case_output_selector_and_either_packet_census_drif
     }
 }
 #[test]
+fn measured_grid_publication_compares_both_complete_domains_for_the_certified_leaf() {
+    const XML: &str = r#"<test name="fixed-published" measurement-version="4" observation-frame="root-border-local" use-rounding="false">
+<viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="grid" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-limits="unbounded"/>
+<input><div source-tag="div" grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" display="grid" position="absolute" direction="ltr" width="80px" height="40px" grid-template-columns="80px" grid-template-rows="40px">
+<text source-tag="div" display="flex" direction="ltr">HHHH&#x200b;HHHH</text></div></input>
+<expectations><node x="0" y="0" width="81" height="40"><node x="0" y="0" width="80" height="40"/></node></expectations>
+<element-scroll-sizes profile="horizontal-zero-edge-divs">
+<element node-path="0" client-width="80" client-height="40" scroll-width="80" scroll-height="40"/>
+<element node-path="0.0" client-width="80" client-height="40" scroll-width="81" scroll-height="40"/>
+</element-scroll-sizes>
+<measured-leaf profile="ahem-10px-zwsp" node-path="0.0" font-resource-sha256="e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c" first-advance="40" second-advance="40" full-advance="80"/>
+<diagnostics><world-rounded-layout node-path="0" x="0" y="0" width="81" height="40"/><world-rounded-layout node-path="0.0" x="0" y="0" width="80" height="40"/></diagnostics></test>"#;
+
+    let mut value = two_lineage_declaration();
+    value["profile"] = json!("canonical-measured-grid");
+    value["identities"]
+        .as_object_mut()
+        .unwrap()
+        .remove("focused");
+    value["identities"]["published"]["font_demand"] = json!("ahem-10px-zwsp");
+    value["representation"]["published_edition"] = json!("measured-grid-differences");
+    value["representation"]["current"]["domain"] = json!("layout-and-element-sizes");
+    let fields = [
+        "x",
+        "y",
+        "width",
+        "height",
+        "client-width",
+        "client-height",
+        "scroll-width",
+        "scroll-height",
+    ];
+    let selectors: Vec<_> = ["/", "/0"]
+        .into_iter()
+        .flat_map(|path| fields.map(|field| json!({"path":path,"field":field})))
+        .collect();
+    value["representation"]["current"]["selectors"] = json!(selectors);
+    for key in ["nodes", "unrounded_packets", "final_packets"] {
+        value["representation"]["current"][key] = json!(["/", "/0"]);
+    }
+    // Topology and both packet channels are authored. This test verifies
+    // admission and observation census before comparing the Native oracle.
+    let mut parent = oracle();
+    parent["children"] = json!(["/0"]);
+    let mut child = oracle();
+    child["path"] = json!("/0");
+    value["native"]["nodes"] = json!([parent, child]);
+
+    let parsed = ExactDifferenceSpec::parse(&value.to_string())
+        .unwrap_or_else(|error| panic!("measured Grid comparison declaration must parse: {error}"));
+    let identity =
+        CaseIdentity::from_verified_projection(value["identities"]["published"].clone()).unwrap();
+    let edition =
+        serde_json::from_value(value["representation"]["published_edition"].clone()).unwrap();
+    let authority = || CaptureAuthority::Published {
+        edition,
+        identity: &identity,
+    };
+    let golden = Golden::parse(XML).unwrap();
+    let resolved = parsed.resolve_against(authority(), &golden).unwrap();
+    let complete = complete_captured_comparison(&golden, &resolved).unwrap();
+    assert_eq!(complete.observations.len(), 16);
+    let differences: Vec<_> = complete.raw_differences().map(ComparedField::key).collect();
+    assert_eq!(
+        differences,
+        ["layout:/:Width", "element-size:/0:ScrollWidth"]
+    );
+
+    let mut without_witness = golden.clone();
+    without_witness.measured_leaf = None;
+    assert!(
+        parsed
+            .resolve_against(authority(), &without_witness)
+            .is_err()
+    );
+    let mut changed = value.clone();
+    changed["representation"]["current"]["selectors"]
+        .as_array_mut()
+        .unwrap()
+        .pop();
+    assert!(
+        spec(&changed)
+            .resolve_against(authority(), &golden)
+            .is_err()
+    );
+}
+
+#[test]
 fn published_resolution_refuses_a_different_frame_or_requested_census_before_native_execution() {
     let value = two_lineage_declaration();
     let parsed = spec(&value);
