@@ -75,6 +75,12 @@ fn parse_arguments(
         [mode] if mode == "--check-published-flex-text-differences" => {
             Ok((None, QualificationMode::CheckPublishedFlexText))
         }
+        [mode] if mode == "--publish-prepared-range-qualification" => {
+            Ok((None, QualificationMode::PublishPreparedRange))
+        }
+        [mode] if mode == "--check-published-prepared-range-qualification" => {
+            Ok((None, QualificationMode::CheckPublishedPreparedRange))
+        }
         [flag, source] if flag == "--fixture" && !source.starts_with("--") => {
             Ok((Some(source.as_str()), QualificationMode::Regular))
         }
@@ -128,7 +134,7 @@ fn parse_arguments(
             ))
         }
         _ => Err(
-            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --derive-canonical-box-qualification | --publish-measured-grid-differences | --check-published-measured-grid-differences | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source> | --prepared-range-capture --fixture <declared-source>",
+            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --derive-canonical-box-qualification | --publish-measured-grid-differences | --check-published-measured-grid-differences | --publish-prepared-range-qualification | --check-published-prepared-range-qualification | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source> | --prepared-range-capture --fixture <declared-source>",
         ),
     }
 }
@@ -208,8 +214,7 @@ mod tests {
             assert_eq!(parse_arguments(&arguments(&[command])).unwrap().0, None);
             assert!(parse_arguments(&arguments(&[command, "other-root"])).is_err());
             assert!(
-                parse_arguments(&arguments(&[command, "--fixture", "html/other.html"]))
-                    .is_err()
+                parse_arguments(&arguments(&[command, "--fixture", "html/other.html"])).is_err()
             );
         }
     }

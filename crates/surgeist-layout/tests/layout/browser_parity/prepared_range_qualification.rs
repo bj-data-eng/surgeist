@@ -8,7 +8,9 @@ pub const SOURCE: &str = "html/block/prepared_text_continuity_bidi.html";
 pub const POLICY_SOURCE: &str = "docs/text-layout-contract.md";
 const POLICY_ANCHOR: &str = "nonempty-text-range-fragments";
 const POLICY_HEADING: &str = "\n### Nonempty Text range fragments\n";
-const POLICY_SHA256: &str = "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0";
+pub(crate) const RETAINED_POLICY: &str = "semantic/prepared-range-policy.md";
+pub(crate) const POLICY_SHA256: &str =
+    "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0";
 
 pub struct PolicyIdentity(&'static str);
 

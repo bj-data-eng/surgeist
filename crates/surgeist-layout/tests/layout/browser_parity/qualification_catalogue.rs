@@ -261,7 +261,13 @@ impl Record {
 mod tests {
     use super::*;
 
-    const LIVE: &[u8] = include_bytes!("../../../examples/qualify-root-context/corpus.toml");
+    fn unannotated_catalogue() -> &'static [u8] {
+        let live = include_str!("../../../examples/qualify-root-context/corpus.toml");
+        live.split("\n[[specialized_publications]]")
+            .next()
+            .expect("catalogue prefix")
+            .as_bytes()
+    }
     const SPECIALIZED: &str = r#"
 
 [[specialized_publications]]
@@ -275,8 +281,10 @@ profile = "flex-composition"
 
     #[test]
     fn appended_publications_require_all_specialized_variants() {
-        let prior = Declaration::parse(LIVE).unwrap();
-        let appended = Declaration::parse(&[LIVE, SPECIALIZED.as_bytes()].concat()).unwrap();
+        let prior = Declaration::parse(unannotated_catalogue()).unwrap();
+        let appended =
+            Declaration::parse(&[unannotated_catalogue(), SPECIALIZED.as_bytes()].concat())
+                .unwrap();
         let mut selected = BTreeMap::new();
         for record in prior
             .records
@@ -321,7 +329,7 @@ profile = "flex-composition"
 
     #[test]
     fn specialized_publications_cannot_shadow_or_reuse_authority() {
-        let catalogue = Declaration::parse(LIVE).unwrap();
+        let catalogue = Declaration::parse(unannotated_catalogue()).unwrap();
         let legacy = catalogue
             .records
             .iter()
@@ -329,11 +337,13 @@ profile = "flex-composition"
             .unwrap()
             .source
             .as_str();
-        let inline = std::str::from_utf8(LIVE).unwrap().replacen(
-            "[[records]]\n",
-            "[[records]]\nspecialized_publication = \"prepared-range\"\n",
-            1,
-        );
+        let inline = std::str::from_utf8(unannotated_catalogue())
+            .unwrap()
+            .replacen(
+                "[[records]]\n",
+                "[[records]]\nspecialized_publication = \"prepared-range\"\n",
+                1,
+            );
         assert!(Declaration::parse(inline.as_bytes()).is_err());
         for appendix in [
             SPECIALIZED.repeat(2),
@@ -345,7 +355,10 @@ profile = "flex-composition"
                 "html/qualification/fixed-grid.html",
             ),
         ] {
-            assert!(Declaration::parse(&[LIVE, appendix.as_bytes()].concat()).is_err());
+            assert!(
+                Declaration::parse(&[unannotated_catalogue(), appendix.as_bytes()].concat())
+                    .is_err()
+            );
         }
     }
 }

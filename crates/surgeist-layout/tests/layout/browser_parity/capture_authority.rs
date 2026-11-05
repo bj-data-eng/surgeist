@@ -14,6 +14,7 @@ pub(crate) const MEASURED_GRID_EDITION: &str = "measured-grid-differences";
 pub(crate) const ARTIFACT_ROOT: &str =
     "tests/layout/browser_parity/captured/canonical-box-differences";
 const FLEX_TEXT_EDITION: &str = "flex-text-differences";
+pub(crate) const PREPARED_RANGE_EDITION: &str = "prepared-range-qualification";
 pub(crate) const TERMINAL: &str = "qualification.json";
 pub(crate) const TERMINAL_SCHEMA: u8 = 3;
 pub(crate) const ROOT_HELPER_INPUT: &str = "scripts/gentest/test_helper.js";
@@ -162,6 +163,11 @@ pub(crate) fn current_owner_bindings(
             || name.starts_with("html/")
         {
             format!("{ORIGINAL}/{name}")
+        } else if name == prepared_range_qualification::RETAINED_POLICY {
+            if hash != prepared_range_qualification::POLICY_SHA256 {
+                return Err(changed("prepared Range policy section identity"));
+            }
+            prepared_range_qualification::POLICY_SOURCE.to_owned()
         } else if semantic_paths.contains(name.as_str()) {
             name.clone()
         } else if matches!(
@@ -706,7 +712,7 @@ impl SpecializedProfile {
 
     fn from_edition(edition: &str) -> Option<Self> {
         match edition {
-            "prepared-range-qualification" => Some(Self::PreparedRange),
+            PREPARED_RANGE_EDITION => Some(Self::PreparedRange),
             "flex-composition-qualification" => Some(Self::FlexComposition),
             _ => None,
         }
@@ -958,7 +964,9 @@ impl Qualification {
             ));
         }
         if let SpecializedEvidence::PreparedRange { policy } = &case.evidence
-            && case.identity.policy_source_sha256 != policy.sha256
+            && (case.identity.policy_source_sha256 != policy.sha256
+                || policy.path != prepared_range_qualification::RETAINED_POLICY
+                || policy.sha256 != prepared_range_qualification::POLICY_SHA256)
         {
             return Err(malformed("specialized terminal policy identity changed"));
         }

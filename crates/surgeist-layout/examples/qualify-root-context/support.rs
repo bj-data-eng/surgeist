@@ -54,6 +54,8 @@ pub(super) enum QualificationMode {
     CheckPublishedMeasuredGrid,
     PublishFlexText,
     CheckPublishedFlexText,
+    PublishPreparedRange,
+    CheckPublishedPreparedRange,
 }
 
 impl QualificationMode {
@@ -69,7 +71,9 @@ impl QualificationMode {
 
     fn box_observations(self) -> BoxObservationRequest {
         match self {
-            Self::PreparedRangeCapture => BoxObservationRequest::PreparedRanges,
+            Self::PreparedRangeCapture
+            | Self::PublishPreparedRange
+            | Self::CheckPublishedPreparedRange => BoxObservationRequest::PreparedRanges,
             Self::FlexCompositionCapture => BoxObservationRequest::FlexComposition,
             Self::ElementScrollSizeDiagnostics => BoxObservationRequest::ElementScrollSizes,
             Self::FlexContentTextDiagnostics
@@ -175,7 +179,9 @@ fn select_records(
                 | QualificationMode::PublishMeasuredGrid
                 | QualificationMode::CheckPublishedMeasuredGrid
                 | QualificationMode::PublishFlexText
-                | QualificationMode::CheckPublishedFlexText => {
+                | QualificationMode::CheckPublishedFlexText
+                | QualificationMode::PublishPreparedRange
+                | QualificationMode::CheckPublishedPreparedRange => {
                     return Err("durable modes require the complete inventory".into());
                 }
             }
@@ -439,6 +445,8 @@ pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> 
             | QualificationMode::CheckPublishedMeasuredGrid
             | QualificationMode::PublishFlexText
             | QualificationMode::CheckPublishedFlexText
+            | QualificationMode::PublishPreparedRange
+            | QualificationMode::CheckPublishedPreparedRange
     ) {
         if fixture.is_some() {
             return Err("durable modes require the complete inventory".into());
@@ -651,7 +659,8 @@ fn validate_corpus(
     };
 
     let mode = validation.mode;
-    let prepared_range_policy = if mode == QualificationMode::PreparedRangeCapture {
+    let prepared_range_policy = if mode.box_observations() == BoxObservationRequest::PreparedRanges
+    {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
             .join(prepared_range::POLICY_SOURCE);
@@ -925,7 +934,9 @@ fn validate_corpus(
         | QualificationMode::PublishMeasuredGrid
         | QualificationMode::CheckPublishedMeasuredGrid
         | QualificationMode::PublishFlexText
-        | QualificationMode::CheckPublishedFlexText => {}
+        | QualificationMode::CheckPublishedFlexText
+        | QualificationMode::PublishPreparedRange
+        | QualificationMode::CheckPublishedPreparedRange => {}
     }
     if let Some(output) = validation.terminal_cases.as_mut() {
         **output = terminal_cases;
@@ -1144,7 +1155,9 @@ fn inventory_with_retained_helper(
         | QualificationMode::PublishMeasuredGrid
         | QualificationMode::CheckPublishedMeasuredGrid
         | QualificationMode::PublishFlexText
-        | QualificationMode::CheckPublishedFlexText => None,
+        | QualificationMode::CheckPublishedFlexText
+        | QualificationMode::PublishPreparedRange
+        | QualificationMode::CheckPublishedPreparedRange => None,
     };
     for (name, bytes) in INPUTS
         .iter()
@@ -1204,6 +1217,17 @@ fn inventory_with_retained_helper(
             &mut inventory.expected_inputs,
             access,
         )?;
+        inventory.global_inputs.push(path);
+    }
+    if matches!(
+        mode,
+        QualificationMode::PublishPreparedRange | QualificationMode::CheckPublishedPreparedRange
+    ) {
+        let path = RelativePath::new(
+            crate::parity_support::prepared_range_qualification::RETAINED_POLICY,
+        )?;
+        let bytes = publication::prepared_range_policy(owner)?;
+        inventory_input(root, &path, &bytes, &mut inventory.expected_inputs, access)?;
         inventory.global_inputs.push(path);
     }
     let original = owner.join("tests/layout/browser_parity");
