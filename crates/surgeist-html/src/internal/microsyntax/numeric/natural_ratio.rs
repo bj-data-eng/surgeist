@@ -326,6 +326,7 @@ fn check_scratch(output: &Vec<u8>, required: usize) -> Result<(), HtmlNaturalAri
 pub(crate) struct NaturalProductKernel<'a> {
     left: HtmlNaturalDigits<'a>,
     right: HtmlNaturalDigits<'a>,
+    capacity: usize,
     initialized: usize,
     row: usize,
     column: usize,
@@ -336,21 +337,25 @@ fn natural_product_capacity(left: usize, right: usize) -> Option<usize> {
         .filter(|&length| length <= isize::MAX as usize)
 }
 impl<'a> NaturalProductKernel<'a> {
-    pub(crate) fn new(left: HtmlNaturalDigits<'a>, right: HtmlNaturalDigits<'a>) -> Self {
-        Self {
+    /// A product kernel, or `None` when the operand lengths sum past what a vector can hold.
+    pub(crate) fn new(left: HtmlNaturalDigits<'a>, right: HtmlNaturalDigits<'a>) -> Option<Self> {
+        let capacity = natural_product_capacity(left.len(), right.len())?;
+        Some(Self {
             left,
             right,
+            capacity,
             initialized: 0,
             row: 0,
             column: 0,
             carry: 0,
-        }
+        })
     }
-    pub(crate) fn capacity(&self) -> Option<usize> {
-        natural_product_capacity(self.left.len(), self.right.len())
+    /// The scratch length the whole product occupies.
+    pub(crate) fn capacity(&self) -> usize {
+        self.capacity
     }
     pub(crate) fn step(&mut self, output: &mut Vec<u8>) -> bool {
-        let capacity = self.capacity().expect("caller checked product length");
+        let capacity = self.capacity;
         if self.initialized < capacity {
             output.push(0);
             self.initialized += 1;
@@ -436,20 +441,21 @@ impl<'a> HtmlNaturalComparison<'a> {
         slot: &mut Option<Self>,
         output: &'scratch mut Vec<u8>,
     ) -> Result<HtmlNaturalDifference<'a, 'scratch>, HtmlNaturalArithmeticError> {
-        let comparison = slot.as_ref().ok_or(HtmlNaturalArithmeticError::EmptySlot)?;
-        let ordering = comparison
-            .result
-            .ok_or(HtmlNaturalArithmeticError::NotReady)?;
+        let comparison = slot.take().ok_or(HtmlNaturalArithmeticError::EmptySlot)?;
+        // A refusal puts the comparison back, so the original slot is intact.
+        let Some(ordering) = comparison.result else {
+            *slot = Some(comparison);
+            return Err(HtmlNaturalArithmeticError::NotReady);
+        };
         let (large, small) = if ordering == Ordering::Less {
             (comparison.right, comparison.left)
         } else {
             (comparison.left, comparison.right)
         };
-        check_scratch(output, large.len())?;
-        // All fallible checks precede the sole ownership transfer.
-        let _completed = slot
-            .take()
-            .expect("shared preflight proved a completed comparison");
+        if let Err(error) = check_scratch(output, large.len()) {
+            *slot = Some(comparison);
+            return Err(error);
+        }
         Ok(HtmlNaturalDifference {
             kernel: NaturalDifferenceKernel::new(large, small),
             output,
@@ -522,11 +528,11 @@ impl<'input, 'scratch> HtmlNaturalProduct<'input, 'scratch> {
         right: HtmlNaturalDigits<'input>,
         output: &'scratch mut Vec<u8>,
     ) -> Result<Self, HtmlNaturalArithmeticError> {
-        let capacity = Self::required_capacity(left, right)
+        let kernel = NaturalProductKernel::new(left, right)
             .ok_or(HtmlNaturalArithmeticError::RepresentationExhausted)?;
-        check_scratch(output, capacity)?;
+        check_scratch(output, kernel.capacity())?;
         Ok(Self {
-            kernel: NaturalProductKernel::new(left, right),
+            kernel,
             output,
             finished: false,
         })
@@ -553,16 +559,13 @@ impl<'input, 'scratch> HtmlNaturalProduct<'input, 'scratch> {
     pub fn take(
         slot: &mut Option<Self>,
     ) -> Result<HtmlNaturalDigits<'scratch>, HtmlNaturalArithmeticError> {
-        let cursor = slot.as_ref().ok_or(HtmlNaturalArithmeticError::EmptySlot)?;
-        if !cursor.finished {
-            return Err(HtmlNaturalArithmeticError::NotReady);
+        match slot.take_if(|cursor| cursor.finished) {
+            Some(cursor) => Ok(HtmlNaturalDigits {
+                repr: NaturalDigitsRepr::Little(cursor.output.as_slice()),
+            }),
+            None if slot.is_none() => Err(HtmlNaturalArithmeticError::EmptySlot),
+            None => Err(HtmlNaturalArithmeticError::NotReady),
         }
-        let cursor = slot
-            .take()
-            .expect("shared preflight proved a completed cursor");
-        Ok(HtmlNaturalDigits {
-            repr: NaturalDigitsRepr::Little(cursor.output.as_slice()),
-        })
     }
 }
 /// Absolute difference authorized by a completed immutable comparison.
@@ -596,16 +599,13 @@ impl<'scratch> HtmlNaturalDifference<'_, 'scratch> {
     pub fn take(
         slot: &mut Option<Self>,
     ) -> Result<HtmlNaturalDigits<'scratch>, HtmlNaturalArithmeticError> {
-        let cursor = slot.as_ref().ok_or(HtmlNaturalArithmeticError::EmptySlot)?;
-        if !cursor.finished {
-            return Err(HtmlNaturalArithmeticError::NotReady);
+        match slot.take_if(|cursor| cursor.finished) {
+            Some(cursor) => Ok(HtmlNaturalDigits {
+                repr: NaturalDigitsRepr::Little(cursor.output.as_slice()),
+            }),
+            None if slot.is_none() => Err(HtmlNaturalArithmeticError::EmptySlot),
+            None => Err(HtmlNaturalArithmeticError::NotReady),
         }
-        let cursor = slot
-            .take()
-            .expect("shared preflight proved a completed cursor");
-        Ok(HtmlNaturalDigits {
-            repr: NaturalDigitsRepr::Little(cursor.output.as_slice()),
-        })
     }
 }
 
@@ -706,8 +706,9 @@ mod tests {
             let mut cursor = NaturalProductKernel::new(
                 HtmlNaturalDigits::integer(&a),
                 HtmlNaturalDigits::integer(&b),
-            );
-            let mut out = Vec::with_capacity(cursor.capacity().unwrap());
+            )
+            .expect("small operands have a representable product");
+            let mut out = Vec::with_capacity(cursor.capacity());
             let mut steps = 0;
             while !cursor.step(&mut out) {
                 steps += 1;
@@ -742,5 +743,92 @@ mod tests {
             while !cursor.step(&mut out) {}
             assert_eq!(text(&out), expected);
         }
+    }
+    /// The product slot gives its digits back only once finished. An empty slot and an unfinished
+    /// product refuse, and the unfinished product stays in its slot to be stepped on.
+    #[test]
+    fn a_product_leaves_its_slot_only_when_finished() {
+        let (left, right) = (integer("12"), integer("34"));
+        let mut scratch = Vec::with_capacity(4);
+        let mut slot: Option<HtmlNaturalProduct<'_, '_>> = None;
+        assert_eq!(
+            HtmlNaturalProduct::take(&mut slot).unwrap_err(),
+            HtmlNaturalArithmeticError::EmptySlot
+        );
+        slot = Some(
+            HtmlNaturalProduct::new(
+                HtmlNaturalDigits::integer(&left),
+                HtmlNaturalDigits::integer(&right),
+                &mut scratch,
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            HtmlNaturalProduct::take(&mut slot).unwrap_err(),
+            HtmlNaturalArithmeticError::NotReady
+        );
+        let product = slot
+            .as_mut()
+            .expect("a refusal keeps the product in its slot");
+        let mut steps = 0;
+        while !product.step() {
+            steps += 1;
+            assert!(steps < 1000, "the product finishes");
+        }
+        // 12 * 34 = 408, least significant digit first.
+        let digits = HtmlNaturalProduct::take(&mut slot).unwrap();
+        assert_eq!(
+            (digits.digit(0), digits.digit(1), digits.digit(2)),
+            (8, 0, 4)
+        );
+        assert_eq!(digits.len(), 3);
+        assert!(slot.is_none());
+        assert_eq!(
+            HtmlNaturalProduct::take(&mut slot).unwrap_err(),
+            HtmlNaturalArithmeticError::EmptySlot
+        );
+    }
+
+    /// A difference needs a finished comparison and scratch that holds it. Every refusal leaves
+    /// the comparison in its slot, so the same slot serves the retry with enough scratch.
+    #[test]
+    fn a_difference_takes_a_finished_comparison_and_refusals_keep_it() {
+        let (left, right) = (integer("5"), integer("3"));
+        let mut small = Vec::new();
+        let mut roomy = Vec::with_capacity(4);
+        let mut slot: Option<HtmlNaturalComparison<'_>> = None;
+        assert_eq!(
+            HtmlNaturalComparison::take_difference(&mut slot, &mut roomy).unwrap_err(),
+            HtmlNaturalArithmeticError::EmptySlot
+        );
+        slot = Some(HtmlNaturalComparison::new(
+            HtmlNaturalDigits::integer(&left),
+            HtmlNaturalDigits::integer(&right),
+        ));
+        assert_eq!(
+            HtmlNaturalComparison::take_difference(&mut slot, &mut roomy).unwrap_err(),
+            HtmlNaturalArithmeticError::NotReady
+        );
+        let comparison = slot.as_mut().expect("a refusal keeps the comparison");
+        while comparison.step().is_none() {}
+        assert_eq!(comparison.result(), Some(Ordering::Greater));
+        // Scratch without capacity refuses, and the finished comparison is still there.
+        assert!(matches!(
+            HtmlNaturalComparison::take_difference(&mut slot, &mut small).unwrap_err(),
+            HtmlNaturalArithmeticError::ScratchCapacity { required: 1, .. }
+        ));
+        assert_eq!(
+            slot.as_ref().map(HtmlNaturalComparison::result),
+            Some(Some(Ordering::Greater))
+        );
+        let mut difference =
+            Some(HtmlNaturalComparison::take_difference(&mut slot, &mut roomy).unwrap());
+        assert!(slot.is_none());
+        let cursor = difference.as_mut().unwrap();
+        while !cursor.step() {}
+        // 5 - 3 = 2.
+        let digits = HtmlNaturalDifference::take(&mut difference).unwrap();
+        assert_eq!((digits.len(), digits.digit(0)), (1, 2));
+        assert!(difference.is_none());
     }
 }
