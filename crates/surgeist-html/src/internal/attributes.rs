@@ -871,16 +871,12 @@ impl HtmlInputType {
     /// Selects the HTML missing-value default from the authoritative type rows.
     /// No attribute lookup, text inspection or allocation is performed.
     pub fn missing_value_default() -> Self {
-        INPUT_TYPE
-            .missing
-            .expect("input type has a missing-value default")
+        INPUT_TYPE_DEFAULTS.missing
     }
 }
 
 pub(crate) fn input_type_invalid_default() -> HtmlInputType {
-    INPUT_TYPE
-        .invalid
-        .expect("input type has an invalid-value default")
+    INPUT_TYPE_DEFAULTS.invalid
 }
 
 fn input_state_source(state: HtmlInputType) -> &'static str {
@@ -1367,6 +1363,32 @@ impl HtmlSlotAssignment {
 
 // One authoritative authored rules declaration. Its typed records drive both
 // metadata and execution; index rows are provenance references, never grammars.
+/// The values an enumerated attribute selects when it is missing, empty or invalid, for a rule that
+/// defines the missing and invalid values. A rule built with [`total_enum_rule!`] holds exactly these
+/// as its defaults, so a caller that needs a value is never handed an absent default.
+#[derive(Clone, Copy)]
+struct TotalEnumDefaults<T> {
+    missing: T,
+    invalid: T,
+    empty: Option<T>,
+}
+
+/// Defines an [`EnumRule`] whose missing and invalid values are defined, together with the
+/// [`TotalEnumDefaults`] constant that the rule's own defaults are taken from.
+macro_rules! total_enum_rule {
+    ($name:ident, $defaults:ident, $type:ty, $attribute:ident, $context:expr, [$($row:literal),+], $source:literal,
+     $missing:expr, $invalid:expr, $empty:expr, [$($keyword:tt)+] $(, vocabulary: $vocabulary:expr)?) => {
+        const $defaults: TotalEnumDefaults<$type> = TotalEnumDefaults {
+            missing: $missing,
+            invalid: $invalid,
+            empty: $empty,
+        };
+        enum_rule!($name, $type, $attribute, $context, [$($row),+], $source,
+            Some($defaults.missing), Some($defaults.invalid), $defaults.empty, [$($keyword)+]
+            $(, vocabulary: $vocabulary)?);
+    };
+}
+
 macro_rules! enum_rule {
     ($name:ident, $type:ty, $attribute:ident, $context:expr, [$($row:literal),+], $source:literal,
      $missing:expr, $invalid:expr, $empty:expr, [$($spelling:literal => ($canonical:literal, $state:expr)),+ $(,)?]
@@ -1480,8 +1502,8 @@ enum_rule!(TRACK_KIND, HtmlTrackKind, Kind, Context::Elements(&[KnownHtmlElement
     Some(HtmlTrackKind::Subtitles), Some(HtmlTrackKind::Metadata), None,
     ["subtitles" => ("subtitles", HtmlTrackKind::Subtitles), "captions" => ("captions", HtmlTrackKind::Captions),
      "descriptions" => ("descriptions", HtmlTrackKind::Descriptions), "chapters" => ("chapters", HtmlTrackKind::Chapters), "metadata" => ("metadata", HtmlTrackKind::Metadata)]);
-enum_rule!(INPUT_TYPE, HtmlInputType, Type, Context::Elements(&[KnownHtmlElement::Input]), [169], "attr-input-type",
-    Some(HtmlInputType::Text), Some(HtmlInputType::Text), None,
+total_enum_rule!(INPUT_TYPE, INPUT_TYPE_DEFAULTS, HtmlInputType, Type, Context::Elements(&[KnownHtmlElement::Input]), [169], "attr-input-type",
+    HtmlInputType::Text, HtmlInputType::Text, None,
     ["hidden" => ("hidden", HtmlInputType::Hidden), "text" => ("text", HtmlInputType::Text),
      "search" => ("search", HtmlInputType::Search), "tel" => ("tel", HtmlInputType::Telephone),
      "url" => ("url", HtmlInputType::Url), "email" => ("email", HtmlInputType::Email),
@@ -1498,10 +1520,10 @@ enum_rule!(BUTTON_TYPE, HtmlButtonTypeState, Type, Context::Elements(&[KnownHtml
     ["submit" => ("submit", HtmlButtonTypeState::Keyword(HtmlButtonType::Submit)),
      "reset" => ("reset", HtmlButtonTypeState::Keyword(HtmlButtonType::Reset)),
      "button" => ("button", HtmlButtonTypeState::Keyword(HtmlButtonType::Button))]);
-enum_rule!(CROSSORIGIN, HtmlCrossOriginState, Crossorigin,
+total_enum_rule!(CROSSORIGIN, CROSSORIGIN_DEFAULTS, HtmlCrossOriginState, Crossorigin,
     Context::Fetching { elements: &[KnownHtmlElement::Audio, KnownHtmlElement::Video, KnownHtmlElement::Img, KnownHtmlElement::Link, KnownHtmlElement::Script], script: ScriptApplicability::ClassicOrModule, hyperlink: false },
     [34], "cors-settings-attributes",
-    Some(HtmlCrossOriginState::NoCors), Some(HtmlCrossOriginState::Keyword(HtmlCrossOrigin::Anonymous)), Some(HtmlCrossOriginState::Keyword(HtmlCrossOrigin::Anonymous)),
+    HtmlCrossOriginState::NoCors, HtmlCrossOriginState::Keyword(HtmlCrossOrigin::Anonymous), Some(HtmlCrossOriginState::Keyword(HtmlCrossOrigin::Anonymous)),
     ["anonymous" => ("anonymous", HtmlCrossOriginState::Keyword(HtmlCrossOrigin::Anonymous)),
      "use-credentials" => ("use-credentials", HtmlCrossOriginState::Keyword(HtmlCrossOrigin::UseCredentials))]);
 enum_rule!(FETCHPRIORITY, HtmlFetchPriority, Fetchpriority,
@@ -1509,10 +1531,10 @@ enum_rule!(FETCHPRIORITY, HtmlFetchPriority, Fetchpriority,
     [51], "fetch-priority-attributes",
     Some(HtmlFetchPriority::Auto), Some(HtmlFetchPriority::Auto), None,
     ["high" => ("high", HtmlFetchPriority::High), "low" => ("low", HtmlFetchPriority::Low), "auto" => ("auto", HtmlFetchPriority::Auto)]);
-enum_rule!(REFERRERPOLICY, HtmlReferrerPolicy, Referrerpolicy,
+total_enum_rule!(REFERRERPOLICY, REFERRERPOLICY_DEFAULTS, HtmlReferrerPolicy, Referrerpolicy,
     Context::Fetching { elements: &[KnownHtmlElement::A, KnownHtmlElement::Area, KnownHtmlElement::Iframe, KnownHtmlElement::Img, KnownHtmlElement::Link, KnownHtmlElement::Script], script: ScriptApplicability::ClassicOrModule, hyperlink: true },
     [126], "referrer-policy-attributes",
-    Some(HtmlReferrerPolicy::Empty), Some(HtmlReferrerPolicy::Empty), None,
+    HtmlReferrerPolicy::Empty, HtmlReferrerPolicy::Empty, None,
     ["" => ("", HtmlReferrerPolicy::Empty),
      "no-referrer" => ("no-referrer", HtmlReferrerPolicy::NoReferrer),
      "no-referrer-when-downgrade" => ("no-referrer-when-downgrade", HtmlReferrerPolicy::NoReferrerWhenDowngrade),
@@ -2127,65 +2149,102 @@ fn enum_keyword_matches_with<T, E>(
     Ok(true)
 }
 
+/// How a raw value matched an enumerated attribute's keywords, before any default is chosen.
+enum EnumRecognition<'rule, T> {
+    Missing,
+    Keyword(&'rule Keyword<T>),
+    Empty,
+    Unrecognized,
+}
+
+/// Admits the value header, then each keyword's header and pairs until one matches.
+fn enum_recognition_with<'rule, T, E>(
+    rule: &'rule EnumRule<T>,
+    raw: Option<&DocumentString>,
+    mut admit: impl FnMut(bounded_rules::HtmlAttributeKeywordRead) -> Result<(), E>,
+) -> Result<EnumRecognition<'rule, T>, E> {
+    admit(bounded_rules::HtmlAttributeKeywordRead::ValueHeader)?;
+    let Some(value) = raw else {
+        return Ok(EnumRecognition::Missing);
+    };
+    for keyword in rule.keywords {
+        if enum_keyword_matches_with(value, keyword, rule.exact_keywords, &mut admit)? {
+            return Ok(EnumRecognition::Keyword(keyword));
+        }
+    }
+    Ok(if value.is_empty() {
+        EnumRecognition::Empty
+    } else {
+        EnumRecognition::Unrecognized
+    })
+}
+
 fn enum_value_selection_with<T: Copy + 'static, E>(
     rule: &EnumRule<T>,
     raw: Option<&DocumentString>,
-    mut admit: impl FnMut(bounded_rules::HtmlAttributeKeywordRead) -> Result<(), E>,
+    admit: impl FnMut(bounded_rules::HtmlAttributeKeywordRead) -> Result<(), E>,
 ) -> Result<EnumValueSelection<T>, E> {
-    admit(bounded_rules::HtmlAttributeKeywordRead::ValueHeader)?;
     let mut selection = EnumValueSelection {
         recognition: HtmlAttributeRecognition::Unapplied,
         author: HtmlAttributeAuthorState::Unapplied,
         intrinsic: None,
     };
-    match raw {
-        None => {
+    match enum_recognition_with(rule, raw, admit)? {
+        EnumRecognition::Missing => {
             selection.recognition = HtmlAttributeRecognition::Missing;
             selection.author = HtmlAttributeAuthorState::Missing;
             selection.intrinsic = rule.missing;
         }
-        Some(value) => {
-            let empty = value.is_empty();
-            let mut matched = None;
-            for keyword in rule.keywords {
-                if enum_keyword_matches_with(value, keyword, rule.exact_keywords, &mut admit)? {
-                    matched = Some(keyword);
-                    break;
-                }
-            }
-            if let Some(keyword) = matched {
-                selection.recognition = HtmlAttributeRecognition::Keyword {
-                    matched: keyword.spelling,
-                    canonical: keyword.canonical,
-                };
-                selection.author = if keyword.conforming {
-                    HtmlAttributeAuthorState::Conforming
-                } else {
-                    HtmlAttributeAuthorState::Nonconforming(
-                        HtmlAttributeConformanceError::NonconformingKeyword,
-                    )
-                };
-                selection.intrinsic = Some(keyword.state);
-            } else if empty {
-                selection.recognition = HtmlAttributeRecognition::Empty;
-                selection.intrinsic = rule.empty.or(rule.invalid);
-                selection.author = if rule.empty.is_some() {
-                    HtmlAttributeAuthorState::Conforming
-                } else {
-                    HtmlAttributeAuthorState::Nonconforming(
-                        HtmlAttributeConformanceError::UnrecognizedKeyword,
-                    )
-                };
+        EnumRecognition::Keyword(keyword) => {
+            selection.recognition = HtmlAttributeRecognition::Keyword {
+                matched: keyword.spelling,
+                canonical: keyword.canonical,
+            };
+            selection.author = if keyword.conforming {
+                HtmlAttributeAuthorState::Conforming
             } else {
-                selection.recognition = HtmlAttributeRecognition::Unrecognized;
-                selection.author = HtmlAttributeAuthorState::Nonconforming(
+                HtmlAttributeAuthorState::Nonconforming(
+                    HtmlAttributeConformanceError::NonconformingKeyword,
+                )
+            };
+            selection.intrinsic = Some(keyword.state);
+        }
+        EnumRecognition::Empty => {
+            selection.recognition = HtmlAttributeRecognition::Empty;
+            selection.intrinsic = rule.empty.or(rule.invalid);
+            selection.author = if rule.empty.is_some() {
+                HtmlAttributeAuthorState::Conforming
+            } else {
+                HtmlAttributeAuthorState::Nonconforming(
                     HtmlAttributeConformanceError::UnrecognizedKeyword,
-                );
-                selection.intrinsic = rule.invalid;
-            }
+                )
+            };
+        }
+        EnumRecognition::Unrecognized => {
+            selection.recognition = HtmlAttributeRecognition::Unrecognized;
+            selection.author = HtmlAttributeAuthorState::Nonconforming(
+                HtmlAttributeConformanceError::UnrecognizedKeyword,
+            );
+            selection.intrinsic = rule.invalid;
         }
     }
     Ok(selection)
+}
+
+/// The value a rule with defined defaults selects, by the same recognition as
+/// [`enum_value_selection_with`]. Every outcome has a value, so none is optional.
+fn total_enum_value_with<T: Copy + 'static, E>(
+    rule: &EnumRule<T>,
+    defaults: &TotalEnumDefaults<T>,
+    raw: Option<&DocumentString>,
+    admit: impl FnMut(bounded_rules::HtmlAttributeKeywordRead) -> Result<(), E>,
+) -> Result<T, E> {
+    Ok(match enum_recognition_with(rule, raw, admit)? {
+        EnumRecognition::Missing => defaults.missing,
+        EnumRecognition::Keyword(keyword) => keyword.state,
+        EnumRecognition::Empty => defaults.empty.unwrap_or(defaults.invalid),
+        EnumRecognition::Unrecognized => defaults.invalid,
+    })
 }
 
 impl HtmlValueInterpreter {
@@ -2833,11 +2892,7 @@ pub(crate) mod bounded_rules {
         raw: Option<&DocumentString>,
         admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
     ) -> Result<HtmlCrossOriginState, E> {
-        enum_value_selection_with(&CROSSORIGIN, raw, admit).map(|selection| {
-            selection
-                .intrinsic
-                .expect("CORS settings define every default state")
-        })
+        total_enum_value_with(&CROSSORIGIN, &CROSSORIGIN_DEFAULTS, raw, admit)
     }
 
     /// Referrer policy content-state processing, independently of element,
@@ -2849,11 +2904,7 @@ pub(crate) mod bounded_rules {
         raw: Option<&DocumentString>,
         admit: impl FnMut(HtmlAttributeKeywordRead) -> Result<(), E>,
     ) -> Result<HtmlReferrerPolicy, E> {
-        enum_value_selection_with(&REFERRERPOLICY, raw, admit).map(|selection| {
-            selection
-                .intrinsic
-                .expect("referrer policy defines every default state")
-        })
+        total_enum_value_with(&REFERRERPOLICY, &REFERRERPOLICY_DEFAULTS, raw, admit)
     }
 
     /// Shared source applicability for the captured candidacy consumer.
@@ -3131,3 +3182,154 @@ mod stylesheet_context_tests {
 
 pub(crate) mod media;
 pub(crate) mod script_type;
+
+#[cfg(test)]
+mod total_enum_tests {
+    use super::*;
+
+    /// The state-determination steps of HTML §2.3.2.2, "Keywords and enumerated attributes"
+    /// (references/html-language-foundations--877d6146487f--b55e73c31978.md, lines 2497-2512),
+    /// over a keyword table written out here: not specified selects the missing value default; an
+    /// ASCII case-insensitive keyword match selects its state; the empty string selects the empty
+    /// value default when one is defined; everything else selects the invalid value default.
+    fn oracle<T: Copy>(
+        keywords: &[(&str, T)],
+        missing: T,
+        invalid: T,
+        empty: Option<T>,
+        raw: Option<&str>,
+    ) -> T {
+        let Some(raw) = raw else { return missing };
+        if let Some((_, state)) = keywords
+            .iter()
+            .find(|(keyword, _)| keyword.eq_ignore_ascii_case(raw))
+        {
+            return *state;
+        }
+        if raw.is_empty()
+            && let Some(state) = empty
+        {
+            return state;
+        }
+        invalid
+    }
+
+    const RAW: [Option<&str>; 14] = [
+        None,
+        Some(""),
+        Some("anonymous"),
+        Some("ANONYMOUS"),
+        Some("Use-Credentials"),
+        Some("use-credentials "),
+        Some("no-referrer"),
+        Some("Origin"),
+        Some("origin-when-cross-origin"),
+        Some("unsafe-url"),
+        Some("text"),
+        Some("DATETIME-LOCAL"),
+        Some("anonymou"),
+        Some("é"),
+    ];
+
+    #[test]
+    fn crossorigin_processing_follows_the_enumerated_attribute_steps() {
+        use HtmlCrossOrigin::{Anonymous, UseCredentials};
+        let keywords = [
+            ("anonymous", HtmlCrossOriginState::Keyword(Anonymous)),
+            (
+                "use-credentials",
+                HtmlCrossOriginState::Keyword(UseCredentials),
+            ),
+        ];
+        for raw in RAW {
+            assert_eq!(
+                bounded_rules::crossorigin_processing_with(
+                    raw.map(DocumentString::from).as_ref(),
+                    |_| Ok::<(), std::convert::Infallible>(())
+                )
+                .unwrap_or_else(|never| match never {}),
+                oracle(
+                    &keywords,
+                    HtmlCrossOriginState::NoCors,
+                    HtmlCrossOriginState::Keyword(Anonymous),
+                    Some(HtmlCrossOriginState::Keyword(Anonymous)),
+                    raw
+                ),
+                "{raw:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn referrer_policy_processing_follows_the_enumerated_attribute_steps() {
+        let keywords = [
+            ("", HtmlReferrerPolicy::Empty),
+            ("no-referrer", HtmlReferrerPolicy::NoReferrer),
+            (
+                "no-referrer-when-downgrade",
+                HtmlReferrerPolicy::NoReferrerWhenDowngrade,
+            ),
+            ("same-origin", HtmlReferrerPolicy::SameOrigin),
+            ("origin", HtmlReferrerPolicy::Origin),
+            ("strict-origin", HtmlReferrerPolicy::StrictOrigin),
+            (
+                "origin-when-cross-origin",
+                HtmlReferrerPolicy::OriginWhenCrossOrigin,
+            ),
+            (
+                "strict-origin-when-cross-origin",
+                HtmlReferrerPolicy::StrictOriginWhenCrossOrigin,
+            ),
+            ("unsafe-url", HtmlReferrerPolicy::UnsafeUrl),
+        ];
+        for raw in RAW {
+            assert_eq!(
+                bounded_rules::referrerpolicy_processing_with(
+                    raw.map(DocumentString::from).as_ref(),
+                    |_| Ok::<(), std::convert::Infallible>(())
+                )
+                .unwrap_or_else(|never| match never {}),
+                oracle(
+                    &keywords,
+                    HtmlReferrerPolicy::Empty,
+                    HtmlReferrerPolicy::Empty,
+                    None,
+                    raw
+                ),
+                "{raw:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_input_type_and_colorspace_defaults_are_the_rules_own() {
+        assert_eq!(HtmlInputType::missing_value_default(), HtmlInputType::Text);
+        assert_eq!(input_type_invalid_default(), HtmlInputType::Text);
+        assert_eq!(
+            input_colorspace_default(),
+            HtmlInputColorSpace::LimitedSrgb
+        );
+        assert_eq!(
+            input_colorspace_invalid_default(),
+            HtmlInputColorSpace::LimitedSrgb
+        );
+        // The rules select these same defaults for a missing and an unrecognized value.
+        let interpreter = HtmlValueInterpreter::new(64);
+        let input = QualifiedName::new(Namespace::html(), None, "input");
+        let invalid = Attribute::new(KnownHtmlAttribute::Type.qualified_name(), "bogus");
+        assert_eq!(
+            interpreter
+                .input_type(&input, Some(&invalid))
+                .unwrap()
+                .intrinsic(),
+            Some(&input_type_invalid_default())
+        );
+        assert_eq!(
+            interpreter
+                .input_type(&input, None::<&Attribute>)
+                .unwrap()
+                .intrinsic(),
+            Some(&HtmlInputType::missing_value_default())
+        );
+    }
+}
