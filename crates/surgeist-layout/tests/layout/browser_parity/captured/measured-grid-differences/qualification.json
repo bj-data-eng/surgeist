@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "edition": "measured-grid-differences",
   "declaration": {
     "path": "corpus.toml",
@@ -10595,5 +10595,11 @@
     "tests/layout/browser_parity/xml/grid/grid_span_2_min_content_fit_content_30px_indefinite_hidden__border_box_rtl.xml": "7f5e365a15a000d54dd840496f96e3083cab320bc70efd31d0772844d875846a",
     "tests/layout/browser_parity/xml/grid/grid_span_2_min_content_fit_content_30px_indefinite_hidden__content_box_ltr.xml": "bdd2b62d2b1dff56e8a1f4827b5b487c288cc344521f9fe9a6351f287f0f968c",
     "tests/layout/browser_parity/xml/grid/grid_span_2_min_content_fit_content_30px_indefinite_hidden__content_box_rtl.xml": "5e4973de31de8f5b64ac2276d1e4b055a4ba3fcc0344e60e825df4500c68b60a"
+  },
+  "capture_validation": {
+    "producer_profile": "root-context-v4",
+    "producer_helper_sha256": "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee",
+    "validator_profile": "root-context-v4",
+    "validator_helper_sha256": "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee"
   }
 }

@@ -65,17 +65,19 @@ pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
             (Edition::CanonicalBoxDifferences, InputAccess::Prepare)
         }
         QualificationMode::CheckPublishedCanonicalBoxes
-        | QualificationMode::DeriveCanonicalBoxes => {
+        | QualificationMode::Derive(PublishedEdition::CanonicalBoxes) => {
             (Edition::CanonicalBoxDifferences, InputAccess::ReadOnly)
         }
         QualificationMode::PublishMeasuredGrid => {
             (Edition::MeasuredGridDifferences, InputAccess::Prepare)
         }
-        QualificationMode::CheckPublishedMeasuredGrid => {
+        QualificationMode::CheckPublishedMeasuredGrid
+        | QualificationMode::Derive(PublishedEdition::MeasuredGrid) => {
             (Edition::MeasuredGridDifferences, InputAccess::ReadOnly)
         }
         QualificationMode::PublishFlexText => (Edition::FlexTextDifferences, InputAccess::Prepare),
-        QualificationMode::CheckPublishedFlexText => {
+        QualificationMode::CheckPublishedFlexText
+        | QualificationMode::Derive(PublishedEdition::FlexText) => {
             (Edition::FlexTextDifferences, InputAccess::ReadOnly)
         }
         _ => return Err("expected a durable publication mode".into()),
@@ -157,7 +159,7 @@ fn finish(
     mode: QualificationMode,
 ) -> Result<()> {
     let published = edition.published();
-    let derive_terminal = mode == QualificationMode::DeriveCanonicalBoxes;
+    let derive_terminal = matches!(mode, QualificationMode::Derive(_));
     if let Some(published) = published
         && root != owner.join(published.artifact_root())
     {
@@ -819,6 +821,8 @@ fn terminal_authority(
     if fs::read(root.join("xml/generation-reports/all.json"))? != report_bytes {
         return Err("terminal report bytes changed".into());
     }
+    let retained_inputs = string_inputs(&inventory.expected_inputs);
+    let capture_validation = authority::CaptureValidation::from_retained(&retained_inputs)?;
     Ok(authority::Qualification {
         schema_version: authority::TERMINAL_SCHEMA,
         edition: edition.name().to_owned(),
@@ -843,8 +847,9 @@ fn terminal_authority(
             .to_owned(),
         },
         cases,
-        retained_inputs: string_inputs(&inventory.expected_inputs),
+        retained_inputs,
         current_owner_inputs,
+        capture_validation,
     })
 }
 

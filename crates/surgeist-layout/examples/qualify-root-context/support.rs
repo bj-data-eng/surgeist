@@ -45,7 +45,7 @@ pub(super) enum QualificationMode {
     CheckPublished,
     PublishCanonicalBoxes,
     CheckPublishedCanonicalBoxes,
-    DeriveCanonicalBoxes,
+    Derive(crate::parity_support::exact_differences::PublishedEdition),
     PublishMeasuredGrid,
     CheckPublishedMeasuredGrid,
     PublishFlexText,
@@ -68,10 +68,16 @@ impl QualificationMode {
             Self::ElementScrollSizeDiagnostics => BoxObservationRequest::ElementScrollSizes,
             Self::FlexContentTextDiagnostics
             | Self::PublishFlexText
-            | Self::CheckPublishedFlexText => BoxObservationRequest::FlexContentText,
+            | Self::CheckPublishedFlexText
+            | Self::Derive(crate::parity_support::exact_differences::PublishedEdition::FlexText) => {
+                BoxObservationRequest::FlexContentText
+            }
             Self::MeasuredLeafDiagnostics
             | Self::PublishMeasuredGrid
-            | Self::CheckPublishedMeasuredGrid => BoxObservationRequest::MeasuredLeaf,
+            | Self::CheckPublishedMeasuredGrid
+            | Self::Derive(
+                crate::parity_support::exact_differences::PublishedEdition::MeasuredGrid,
+            ) => BoxObservationRequest::MeasuredLeaf,
             _ => BoxObservationRequest::Geometry,
         }
     }
@@ -136,7 +142,7 @@ fn select_records(
                 | QualificationMode::CheckPublished
                 | QualificationMode::PublishCanonicalBoxes
                 | QualificationMode::CheckPublishedCanonicalBoxes
-                | QualificationMode::DeriveCanonicalBoxes
+                | QualificationMode::Derive(_)
                 | QualificationMode::PublishMeasuredGrid
                 | QualificationMode::CheckPublishedMeasuredGrid
                 | QualificationMode::PublishFlexText
@@ -381,7 +387,7 @@ pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> 
             | QualificationMode::CheckPublished
             | QualificationMode::PublishCanonicalBoxes
             | QualificationMode::CheckPublishedCanonicalBoxes
-            | QualificationMode::DeriveCanonicalBoxes
+            | QualificationMode::Derive(_)
             | QualificationMode::PublishMeasuredGrid
             | QualificationMode::CheckPublishedMeasuredGrid
             | QualificationMode::PublishFlexText
@@ -793,7 +799,7 @@ fn validate_corpus(
         | QualificationMode::CheckPublished
         | QualificationMode::PublishCanonicalBoxes
         | QualificationMode::CheckPublishedCanonicalBoxes
-        | QualificationMode::DeriveCanonicalBoxes
+        | QualificationMode::Derive(_)
         | QualificationMode::PublishMeasuredGrid
         | QualificationMode::CheckPublishedMeasuredGrid
         | QualificationMode::PublishFlexText
@@ -999,7 +1005,7 @@ fn inventory(
         | QualificationMode::CheckPublished
         | QualificationMode::PublishCanonicalBoxes
         | QualificationMode::CheckPublishedCanonicalBoxes
-        | QualificationMode::DeriveCanonicalBoxes
+        | QualificationMode::Derive(_)
         | QualificationMode::PublishMeasuredGrid
         | QualificationMode::CheckPublishedMeasuredGrid
         | QualificationMode::PublishFlexText
@@ -1020,7 +1026,21 @@ fn inventory(
         } else {
             None
         };
-        let bytes = augmented.as_deref().unwrap_or(bytes);
+        let retained = if name == crate::parity_support::capture_authority::ROOT_HELPER_INPUT
+            && matches!(access, InputAccess::ReadOnly)
+        {
+            publication::require_regular_input(root, &path)?;
+            let retained = fs::read(root.join(name))?;
+            let digest = Sha256Digest::from_bytes(&retained);
+            crate::parity_support::capture_authority::root_helper_profile(digest.as_str())?;
+            Some(retained)
+        } else {
+            None
+        };
+        let bytes = retained
+            .as_deref()
+            .or(augmented.as_deref())
+            .unwrap_or(bytes);
         inventory_input(root, &path, bytes, &mut inventory.expected_inputs, access)?;
         if name != "corpus.toml" {
             inventory.global_inputs.push(path);

@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "edition": "flex-text-differences",
   "declaration": {
     "path": "corpus.toml",
@@ -1167,5 +1167,11 @@
     "tests/layout/browser_parity/xml/flex/fri07_collapsed_strut_single_line__border_box_rtl.xml": "cc01070476de0dc10a3585bedb3f8ad0e1484993aa48e3f0b535fe6a37762813",
     "tests/layout/browser_parity/xml/flex/fri07_collapsed_strut_single_line__content_box_ltr.xml": "6b87be5b7a3198f54988a0077c40a04b993075dd43ad0b43abbe13a49bd19975",
     "tests/layout/browser_parity/xml/flex/fri07_collapsed_strut_single_line__content_box_rtl.xml": "f4de5a54bd81e97f8c2aacc2701808b588eea9827cff941d56343d0e1df7cef1"
+  },
+  "capture_validation": {
+    "producer_profile": "root-context-v4",
+    "producer_helper_sha256": "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee",
+    "validator_profile": "root-context-v4",
+    "validator_helper_sha256": "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee"
   }
 }

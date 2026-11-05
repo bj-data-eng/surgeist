@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "edition": "canonical-box-differences",
   "declaration": {
     "path": "corpus.toml",
@@ -847,5 +847,11 @@
     "tests/layout/browser_parity/xml/flex/fri07_collapsed_strut_wrapping__border_box_rtl.xml": "0838cce880d00d15bb0db18ba078ac671b1f93893e5b29663a53261a40cf4783",
     "tests/layout/browser_parity/xml/flex/fri07_collapsed_strut_wrapping__content_box_ltr.xml": "05b639aa1e7a260a4c037c00cf55bbf89827defa364838a32342da3c2392cf81",
     "tests/layout/browser_parity/xml/flex/fri07_collapsed_strut_wrapping__content_box_rtl.xml": "e07211bc64bd5070b1653c506c7b578e8a7d39d638ab9b0969bae209b60fed3f"
+  },
+  "capture_validation": {
+    "producer_profile": "root-context-v4",
+    "producer_helper_sha256": "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee",
+    "validator_profile": "root-context-v4",
+    "validator_helper_sha256": "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee"
   }
 }
