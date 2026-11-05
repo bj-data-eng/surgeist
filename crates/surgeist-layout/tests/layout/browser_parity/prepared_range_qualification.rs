@@ -688,4 +688,51 @@ mod tests {
         assert!(qualify(&golden, SOURCE, "border_box_rtl", &policy, &mut raw).is_err());
         assert!(raw.is_empty());
     }
+
+    #[test]
+    fn prepared_range_control_rows_keep_source_identity_when_coordinates_match_other_pieces() {
+        let original = include_str!(
+            "captured/prepared-range-differences/xml/block/prepared_text_continuity_bidi__border_box_rtl.xml"
+        );
+        let mut golden = Golden::parse(original).unwrap();
+        let rows = golden.expectations.children[1]
+            .range_rectangles
+            .as_mut()
+            .unwrap();
+        // The retained row ordinals name RLI and PDI. Each altered browser
+        // start is numerically equal to the other control's Native start.
+        rows[0].start = 24.0;
+        rows[2].start = 40.0;
+
+        let policy = PolicyIdentity::from_contract(CONTRACT).unwrap();
+        let mut raw = Vec::new();
+        let error = qualify(&golden, SOURCE, "border_box_rtl", &policy, &mut raw).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("prepared Range comparison changed")
+        );
+        let output: serde_json::Value = serde_json::from_slice(&raw).unwrap();
+        let ranges = output["ranges"].as_array().unwrap();
+        assert_eq!(ranges.len(), 5);
+        for (index, row, source, browser, native) in
+            [(1, 0, [1, 2], 24.0, 40.0), (3, 2, [4, 5], 40.0, 24.0)]
+        {
+            assert_eq!(
+                ranges[index],
+                serde_json::json!({
+                    "path": "/1",
+                    "row": row,
+                    "occurrence": 1,
+                    "line": 0,
+                    "edge": "left",
+                    "native_source": source,
+                    "browser_start": browser,
+                    "native_start": native,
+                    "browser_advance": 0.0,
+                    "native_advance": 0.0,
+                })
+            );
+        }
+    }
 }
