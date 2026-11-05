@@ -52,6 +52,50 @@ fn integer_rows(golden: &Golden) -> Vec<(String, ElementScrollSizeField, u32, u3
 }
 
 #[test]
+fn measured_leaf_xml_preserves_valid_evidence_and_refuses_mismatched_witnesses() {
+    const WITNESS: &str = r#"<measured-leaf profile="ahem-10px-zwsp" node-path="0.0" font-resource-sha256="e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c" first-advance="40" second-advance="40" full-advance="80"/>"#;
+    let sizes = table(&[("0", [80, 40, 80, 40]), ("0.0", [80, 40, 80, 40])]);
+    let base = xml(
+        "",
+        Some(r#"<div source-tag="div">HHHH&#x200b;HHHH</div>"#),
+        &sizes,
+    )
+    .replace(r#"display="block""#, r#"display="grid""#);
+    let measured = base.replace("</expectations>", &format!("</expectations>{WITNESS}"));
+    for (field, broken) in [
+        ("resource", measured.replace("e450dd6e", "00000000")),
+        (
+            "path",
+            measured.replace(r#"node-path="0.0" font"#, r#"node-path="0.1" font"#),
+        ),
+        ("source", measured.replace("HHHH&#x200b;HHHH", "HHHH HHHH")),
+        (
+            "advance",
+            measured.replace(r#"full-advance="80""#, r#"full-advance="81""#),
+        ),
+        (
+            "attribute",
+            measured.replace("<measured-leaf ", "<measured-leaf unknown=\"yes\" "),
+        ),
+        (
+            "duplicate",
+            measured.replace(WITNESS, &format!("{WITNESS}{WITNESS}")),
+        ),
+        ("missing DOM sizes", measured.replace(&sizes, "")),
+    ] {
+        let result = Golden::parse(&broken);
+        assert!(
+            result.is_err_and(|error| error.to_string().contains("measured-leaf")),
+            "{field} mismatch must refuse the measured leaf witness",
+        );
+    }
+    assert_ne!(
+        Golden::parse(&measured).unwrap(),
+        Golden::parse(&base).unwrap()
+    );
+}
+
+#[test]
 fn absent_observation_preserves_existing_capture_and_strict_first_error() {
     let mut g = Golden::parse(&xml("width=\"20px\" height=\"30px\"", None, "")).unwrap();
     assert!(!g.has_element_scroll_sizes());
