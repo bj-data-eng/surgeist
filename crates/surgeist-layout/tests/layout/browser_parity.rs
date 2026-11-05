@@ -2401,6 +2401,40 @@ fn current_registry_executes_all_measured_grid_variants() {
 }
 
 #[test]
+fn current_registry_qualifies_all_original_flex_text_variants() {
+    let registry = registered_current_edition().expect("current registry must authenticate");
+    let selection = select_parity_inventory(
+        support::fixture_files("xml").expect("original fixtures"),
+        Some(&registry),
+        Some("fri07_collapsed_strut_single_line"),
+    )
+    .expect("collapsed Flex text fixtures must be discoverable");
+    assert_eq!(selection.originals.len(), 4);
+    assert_eq!(
+        selection.current.len(),
+        4,
+        "the four proof-bound captures must be registered"
+    );
+    let run = registry
+        .execute_selected(&selection.current)
+        .expect("Flex text cases must execute");
+    assert_eq!(run.cases.len(), 4);
+    for case in &run.cases {
+        assert_eq!(
+            case.raw.as_ref().expect("complete raw comparison").len(),
+            15
+        );
+        assert!(
+            case.qualified.is_ok(),
+            "{}: {:?}",
+            case.output,
+            case.qualified
+        );
+    }
+    assert!(run.selected_cases_passed(), "{:?}", run.freshness_error);
+}
+
+#[test]
 fn runs_registered_current_browser_parity_qualification() {
     let admitted =
         registered_current_edition().expect("required current edition must authenticate");
