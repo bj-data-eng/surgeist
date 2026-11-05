@@ -751,7 +751,7 @@ impl Capture {
 
 /// The independent reader rejects duplicate fields before a Value can erase
 /// their occurrence. Serde's own parser retains its normal nesting bound.
-fn unique_json(raw: &str) -> Result<Value, Error> {
+pub(super) fn unique_json(raw: &str) -> Result<Value, Error> {
     use serde::{
         Deserialize, Deserializer,
         de::{self, MapAccess, SeqAccess, Visitor},

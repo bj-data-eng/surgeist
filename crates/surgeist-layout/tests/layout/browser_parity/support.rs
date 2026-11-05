@@ -18,6 +18,8 @@ mod root_diagnostics;
 pub use root_diagnostics::WorldRoundedLayout;
 #[path = "element_scroll_sizes.rs"]
 mod element_scroll_sizes;
+#[path = "exact_differences.rs"]
+pub(crate) mod exact_differences;
 pub use element_scroll_sizes::ElementScrollSizeMismatch;
 
 type Scalar = layout::Scalar;
@@ -254,6 +256,14 @@ fn compare_captured_expectations(
     golden: &Golden,
     numeric: &mut NumericComparisonSink,
 ) -> Result<ComparisonResult, Error> {
+    compare_captured_with_batch(golden, numeric, |_, _| Ok(()))
+}
+
+fn compare_captured_with_batch(
+    golden: &Golden,
+    numeric: &mut NumericComparisonSink,
+    inspect: impl FnOnce(&TestTree, &layout::CompletedLayoutBatch<usize>) -> Result<(), Error>,
+) -> Result<ComparisonResult, Error> {
     if let Some(table) = &golden.element_scroll_sizes {
         table.validate_source(&golden.root, &golden.viewport.root_context)?;
     }
@@ -268,6 +278,7 @@ fn compare_captured_expectations(
         .viewport
         .root_context
         .validate_native_origin(normal_root.location, normal_root.size)?;
+    inspect(&tree, &batch)?;
 
     compare_expectation_with_endpoint_accounting(
         &tree,
@@ -3552,11 +3563,15 @@ struct ComparisonPolicy<'a> {
 enum NumericComparisonSink {
     Strict,
     CollectNumeric(Vec<NumericMismatch>),
+    CollectAll {
+        root: String,
+        fields: Vec<exact_differences::ComparedField>,
+    },
 }
 
 impl NumericComparisonSink {
     fn is_collecting(&self) -> bool {
-        matches!(self, Self::CollectNumeric(_))
+        matches!(self, Self::CollectNumeric(_) | Self::CollectAll { .. })
     }
 
     fn number(
@@ -3566,6 +3581,14 @@ impl NumericComparisonSink {
         actual: Scalar,
         expected: Scalar,
     ) -> Result<(), Error> {
+        if let Self::CollectAll { root, fields } = self {
+            let source_path = exact_differences::source_path_from_diagnostic(root, path)?;
+            fields.push(
+                exact_differences::ComparedField::layout(source_path, field, expected, actual)
+                    .map_err(|error| Error::new(error.to_string()))?,
+            );
+            return Ok(());
+        }
         let Self::CollectNumeric(mismatches) = self else {
             return compare_number(path, field.as_str(), actual, expected);
         };

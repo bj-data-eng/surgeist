@@ -1,0 +1,490 @@
+use super::*;
+use serde_json::{Value, json};
+
+// Independently authored finite arithmetic: an empty 20x10 Flex box, zero
+// edges, Visible overflow, no named eligible items or scroll range. No value in
+// this oracle is read from Layout or from CompletedComparison.
+fn oracle() -> Value {
+    let point = json!({"x":0,"y":0});
+    let size = json!({"width":20,"height":10});
+    let rect = json!({"origin":point,"size":size});
+    let edges = json!({"top":0,"right":0,"bottom":0,"left":0});
+    let flow = json!({"writing_mode":"horizontal-tb","direction":"ltr"});
+    let pair = json!({"first":{"state":"absent"},"last":{"state":"absent"}});
+    let facts = json!({
+        "source_index":0,"location":point,"size":size,"content_size":size,
+        "border":edges,"padding":edges,"margin":edges,
+        "named_baselines":{"alphabetic":pair,"central":pair},
+        "scroll":{"state":"present","facts":{
+            "flow_axes":flow,"used_overflow_x":"visible","used_overflow_y":"visible",
+            "border_box":rect,"padding_box":rect,"content_box":rect,"scrollport":rect,
+            "clip_x":null,"clip_y":null,"scrollable_overflow":rect,
+            "range_x":{"minimum":0,"maximum":0},"range_y":{"minimum":0,"maximum":0},
+            "gutter_top":null,"gutter_right":null,"gutter_bottom":null,"gutter_left":null,
+            "scrollbar_size":{"width":0,"height":0},"resolved_scroll_padding":edges,
+            "optimal_viewing_region":rect,"scroll_snap_type":{"state":"none"},
+            "target":{"border_box":rect,"scroll_margin":edges,"flow_axes":flow,
+                "block_align":"none","inline_align":"none","snap_stop":"normal"}
+        }}
+    });
+    json!({"path":"/","role":"ordinary-box","children":[],
+        "unrounded":{"state":"present","facts":facts},"final_output":{"state":"present","facts":facts}})
+}
+fn identity() -> Value {
+    let hash = "a".repeat(64);
+    json!({"source":"html/empty-fixed.html","source_sha256":hash,"variant":"content_box_ltr",
+        "historical_sha256":null,"capture_sha256":hash,"record_sha256":hash,
+        "generator":"test","engine_version":"test",
+        "browser_executable":"chrome","browser_executable_sha256":hash,"browser_provenance":"test",
+        "profile_sha256":hash,"source_imports_sha256":hash,"inputs":{"base.css":hash},"linked_resources":{},
+        "font_demand":"none","policy_source_sha256":hash})
+}
+fn declaration() -> Value {
+    json!({"profile":"canonical-no-text-boxes","identity":identity(),
+        "policy":{"id":"fixed-box-mechanism","edition":"1","source":"docs/policy.md","source_sha256":"a".repeat(64)},
+        "reason":"Mechanism test of a source-derived fixed box",
+        "native":{"source_derivation":"20px by 10px empty Flex box; initial canonical geometry and named absence", "nodes":[oracle()]},
+        "differences":[{"domain":"layout","path":"/","field":"width","browser":21,"native":20}]})
+}
+const FIXED_XML: &str = r#"<test name="exact-fixed" measurement-version="4" observation-frame="root-border" use-rounding="false">
+<viewport root-context="block-flow-auto" parent-inline-extent="800px" parent-direction="ltr" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+<input><div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" display="flex" position="relative" direction="ltr" width="20px" height="10px"/></input>
+<expectations><node x="0" y="0" width="21" height="10"/></expectations>
+<diagnostics><world-rounded-layout node-path="0" x="0" y="0" width="21" height="10"/></diagnostics></test>"#;
+fn golden() -> Golden {
+    Golden::parse(FIXED_XML).unwrap()
+}
+fn spec(value: &Value) -> ExactDifferenceSpec {
+    ExactDifferenceSpec::parse(&value.to_string()).unwrap()
+}
+fn qualify(value: &Value, golden: &Golden) -> Result<QualifiedComparison> {
+    let spec = spec(value);
+    let identity = CaseIdentity::from_verified_projection(identity()).unwrap();
+    let resolved = spec.resolve_against(&identity, golden)?;
+    let completed = complete_captured_comparison(golden, &resolved)?;
+    resolved.qualify(&completed)
+}
+
+#[test]
+fn complete_source_derived_fixed_box_qualifies_while_raw_still_fails() {
+    let golden = golden();
+    let spec = spec(&declaration());
+    assert_eq!(
+        spec.policy_source(),
+        ("docs/policy.md", "a".repeat(64).as_str())
+    );
+    let identity = CaseIdentity::from_verified_projection(identity()).unwrap();
+    let resolved = spec.resolve_against(&identity, &golden).unwrap();
+    let complete = complete_captured_comparison(&golden, &resolved).unwrap();
+    assert_eq!(
+        complete.observations.len(),
+        4,
+        "equal requested fields are retained"
+    );
+    assert_eq!(
+        resolved.qualify(&complete).unwrap(),
+        QualifiedComparison {
+            raw: RawVerdict::Different { fields: 1 },
+            qualified: QualifiedVerdict::Intentional {
+                policy: "fixed-box-mechanism".into(),
+                edition: "1".into()
+            },
+        }
+    );
+    assert_eq!(
+        collect_surgeist_numeric_mismatches(&golden).unwrap().len(),
+        1
+    );
+    assert_eq!(
+        assert_surgeist_matches(&golden).unwrap_err().to_string(),
+        "exact-fixed: width mismatch, expected 21, got 20"
+    );
+}
+#[test]
+fn later_requested_field_and_unexpected_pass_refuse_a_declared_prefix() {
+    let mut golden = golden();
+    golden.expectations.height = Some(11.0);
+    assert!(
+        matches!(qualify(&declaration(), &golden), Err(QualificationError::DifferenceSetChanged {extra,..}) if extra == ["layout:/:Height"])
+    );
+    golden.expectations.width = Some(20.0);
+    golden.expectations.height = Some(10.0);
+    assert_eq!(
+        qualify(&declaration(), &golden),
+        Err(QualificationError::UnexpectedPass)
+    );
+}
+#[test]
+fn declared_pair_drift_below_browser_tolerance_is_exactly_rejected() {
+    let mut value = declaration();
+    value["differences"][0]["browser"] = json!(21.0625);
+    assert!(
+        matches!(qualify(&value, &golden()), Err(QualificationError::DifferenceSetChanged {changed,..}) if changed == ["layout:/:Width"])
+    );
+    assert!(numeric_values_match(21.0, 21.0625));
+}
+#[test]
+fn complete_packet_oracle_checks_unobserved_components_and_both_phases() {
+    let replacements = [
+        (
+            "/unrounded/facts/content_size/width",
+            json!(19),
+            "content_size.width",
+        ),
+        ("/final_output/facts/margin/left", json!(-1), "margin.left"),
+        (
+            "/unrounded/facts/named_baselines/central/last/state",
+            json!("unknown"),
+            "named_baselines.central.last.state",
+        ),
+        (
+            "/unrounded/facts/scroll/facts/range_x",
+            json!({"minimum":2,"maximum":2}),
+            "range_x.maximum",
+        ),
+        (
+            "/final_output/facts/scroll/facts/scrollable_overflow/origin/x",
+            json!(-1),
+            "scrollable_overflow.origin.x",
+        ),
+        (
+            "/unrounded/facts/scroll/facts/target/snap_stop",
+            json!("always"),
+            "target.snap_stop",
+        ),
+        ("/final_output", json!({"state":"absent"}), "final_output"),
+    ];
+    for (pointer, replacement, key) in replacements {
+        let mut value = declaration();
+        *value["native"]["nodes"][0].pointer_mut(pointer).unwrap() = replacement;
+        assert!(
+            matches!(qualify(&value, &golden()), Err(QualificationError::NativeOracleChanged {key: actual,..}) if actual.ends_with(key)),
+            "{pointer}"
+        );
+    }
+}
+#[test]
+fn source_census_and_closed_observation_profile_refuse_incomplete_or_inline_inputs() {
+    let mut value = declaration();
+    value["native"]["nodes"][0]["children"] = json!(["/0"]);
+    assert!(matches!(
+        qualify(&value, &golden()),
+        Err(QualificationError::IncompleteNativeOracle { .. })
+    ));
+    let mut golden = golden();
+    golden.root.text = Some("X".into());
+    assert!(matches!(
+        qualify(&declaration(), &golden),
+        Err(QualificationError::UnsupportedObservation { .. })
+    ));
+    golden.root.text = None;
+    golden.expectations.fragments = Some(Vec::new());
+    assert!(matches!(
+        qualify(&declaration(), &golden),
+        Err(QualificationError::UnsupportedObservation { .. })
+    ));
+}
+#[test]
+fn identity_drift_rejects_identical_geometry() {
+    let spec = spec(&declaration());
+    for field in [
+        "source_sha256",
+        "capture_sha256",
+        "browser_executable_sha256",
+        "profile_sha256",
+        "policy_source_sha256",
+    ] {
+        let mut value = identity();
+        value[field] = json!("b".repeat(64));
+        let identity = CaseIdentity::from_verified_projection(value).unwrap();
+        assert!(
+            matches!(
+                spec.resolve_against(&identity, &golden()),
+                Err(QualificationError::IdentityChanged { .. })
+            ),
+            "{field}"
+        );
+    }
+}
+#[test]
+fn parser_rejects_duplicates_unknown_missing_noncanonical_and_negative_extents() {
+    let raw = declaration().to_string();
+    assert!(
+        ExactDifferenceSpec::parse(&raw.replacen(
+            "\"reason\":",
+            "\"reason\":\"duplicate\",\"reason\":",
+            1
+        ))
+        .is_err()
+    );
+    for pointer in [
+        "/identity/historical_sha256",
+        "/native/nodes/0/unrounded/facts/scroll/facts/clip_x",
+        "/native/nodes/0/final_output/facts/scroll/facts/clip_y",
+        "/native/nodes/0/unrounded/facts/scroll/facts/gutter_top",
+        "/native/nodes/0/final_output/facts/scroll/facts/gutter_right",
+        "/native/nodes/0/unrounded/facts/scroll/facts/gutter_bottom",
+        "/native/nodes/0/final_output/facts/scroll/facts/gutter_left",
+        "/native/nodes/0/final_output/facts/source_index",
+    ] {
+        let mut value = declaration();
+        let (parent, key) = pointer.rsplit_once('/').unwrap();
+        value
+            .pointer_mut(parent)
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .remove(key);
+        assert!(
+            ExactDifferenceSpec::parse(&value.to_string()).is_err(),
+            "{pointer}"
+        );
+    }
+    let mut value = declaration();
+    value["native"]["nodes"][0]["unrounded"]["facts"]["size"]["width"] = json!(-1);
+    assert!(ExactDifferenceSpec::parse(&value.to_string()).is_err());
+    let mut value = declaration();
+    value["differences"][0]["browser"] = json!(21.01);
+    assert!(ExactDifferenceSpec::parse(&value.to_string()).is_err());
+    let mut value = declaration();
+    value["unowned"] = json!(true);
+    assert!(ExactDifferenceSpec::parse(&value.to_string()).is_err());
+    let mut value = declaration();
+    value["native"]["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .push(oracle());
+    assert!(matches!(
+        ExactDifferenceSpec::parse(&value.to_string()),
+        Err(QualificationError::DuplicateKey { .. })
+    ));
+}
+#[test]
+fn source_output_change_in_an_equal_field_cannot_preserve_qualification() {
+    let mut golden = golden();
+    golden
+        .root
+        .style
+        .attrs
+        .insert("height".into(), "11px".into());
+    golden.expectations.height = Some(11.0);
+    assert!(matches!(
+        qualify(&declaration(), &golden),
+        Err(QualificationError::NativeOracleChanged { .. })
+    ));
+}
+#[test]
+fn late_terminal_topology_failure_returns_no_completed_comparison() {
+    let mut golden = golden();
+    let spec = spec(&declaration());
+    let identity = CaseIdentity::from_verified_projection(identity()).unwrap();
+    let resolved = spec.resolve_against(&identity, &golden).unwrap();
+    golden
+        .expectations
+        .children
+        .push(golden.expectations.clone());
+    assert!(matches!(
+        complete_captured_comparison(&golden, &resolved),
+        Err(QualificationError::ComparisonFailure { .. })
+    ));
+}
+#[test]
+fn normalized_signed_zero_is_exact_and_dom_fields_keep_their_domain() {
+    assert_eq!(Number::new(-0.0).unwrap(), Number::new(0.0).unwrap());
+    let layout =
+        ComparedField::layout("/".into(), NumericComparisonField::ScrollWidth, 1.0, 0.0).unwrap();
+    let dom = ComparedField::element("/".into(), ElementScrollSizeField::ScrollWidth, 1, 0);
+    assert_ne!(layout.key(), dom.key());
+}
+
+fn element_golden(scroll_width: u32) -> Golden {
+    let raw = FIXED_XML
+        .replace("observation-frame=\"root-border\"", "observation-frame=\"root-border-local\"")
+        .replace("root-context=\"block-flow-auto\" parent-inline-extent=\"800px\" parent-direction=\"ltr\"", "root-context=\"absolute-root-local\" containing-width=\"800px\" containing-height=\"600px\" containing-direction=\"ltr\" hypothetical-direction=\"ltr\" hypothetical-display=\"flex\" hypothetical-anchor=\"inline-start\" hypothetical-inline-offset=\"0px\"")
+        .replace("display=\"flex\" position=\"relative\"", "source-tag=\"div\" display=\"flex\" position=\"absolute\"")
+        .replace("<diagnostics>", &format!("<element-scroll-sizes profile=\"horizontal-zero-edge-divs\"><element node-path=\"0\" client-width=\"20\" client-height=\"10\" scroll-width=\"{scroll_width}\" scroll-height=\"10\"/></element-scroll-sizes><diagnostics>"));
+    Golden::parse(&raw).unwrap()
+}
+#[test]
+fn complete_mixed_domain_ledger_retains_equal_integers_and_rejects_extra_scroll_differences() {
+    let value = declaration();
+    let spec = spec(&value);
+    let identity = CaseIdentity::from_verified_projection(identity()).unwrap();
+    let golden = element_golden(20);
+    let resolved = spec.resolve_against(&identity, &golden).unwrap();
+    let completed = complete_captured_comparison(&golden, &resolved).unwrap();
+    assert_eq!(
+        completed.observations.len(),
+        8,
+        "all four equal DOM integer fields are retained too"
+    );
+    resolved.qualify(&completed).unwrap();
+
+    let mut golden = element_golden(21);
+    golden.expectations.scroll_size = Some(Size::new(1.0, 0.0));
+    assert!(
+        matches!(qualify(&value, &golden), Err(QualificationError::DifferenceSetChanged {extra,..}) if extra == ["element-size:/:ScrollWidth", "layout:/:ScrollWidth"])
+    );
+    let mut value = value;
+    value["differences"].as_array_mut().unwrap().extend([
+        json!({"domain":"layout","path":"/","field":"scroll-width","browser":1,"native":0}),
+        json!({"domain":"element-size","path":"/","field":"scroll-width","browser":21,"native":20}),
+    ]);
+    assert_eq!(
+        qualify(&value, &golden).unwrap().raw,
+        RawVerdict::Different { fields: 3 }
+    );
+}
+
+// These are explicitly authored Native operations. Neither a historical viewport
+// nor a browser expectation supplies this standalone request or any Text metric.
+fn output_census_native_request() -> layout::LayoutRootRequest {
+    let width = layout::NonNegativeFiniteOf::new(100.0).unwrap();
+    layout::LayoutRootRequest::standalone(
+        layout::SizingRequest::new(
+            layout::Size::new(
+                layout::AxisSizingRequest::new(
+                    layout::AvailableSpace::Definite(width),
+                    layout::SizingOperation::Normal,
+                ),
+                layout::AxisSizingRequest::new(
+                    layout::AvailableSpace::Indefinite,
+                    layout::SizingOperation::Normal,
+                ),
+            ),
+            layout::OrthogonalFallbackOf::new(
+                layout::Size::NONE,
+                layout::NearestScrollportOf::Absent,
+                layout::Size::splat(layout::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
+        layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
+        layout::Size::new(Some(width), None),
+    )
+}
+
+#[test]
+fn completed_empty_native_inline_family_is_rejected_even_without_text_fragments_or_pieces() {
+    // Same source and request for both real computations. The sole added input
+    // is explicit complete Native family demand on an empty Block formatter.
+    // This follows the owning native-family empty-completion contract; no
+    // output packet or family is constructed by the test.
+    let mut golden = golden();
+    golden
+        .root
+        .style
+        .attrs
+        .insert("display".into(), "block".into());
+    golden
+        .root
+        .style
+        .attrs
+        .insert("width".into(), "100px".into());
+    golden.root.style.attrs.remove("height");
+    let source = source_census(&golden.root, &golden.expectations).unwrap();
+    let tree = TestTree::from_golden(&golden.root, None).unwrap();
+    assert!(tree.paragraphs.is_empty());
+    let request = output_census_native_request();
+
+    let ordinary = layout::compute_layout(&tree, 0, request).unwrap();
+    assert!(ordinary.placed_text().is_empty());
+    assert!(ordinary.unrounded_inline_fragments().is_empty());
+    assert!(ordinary.final_inline_fragments().is_empty());
+    assert_eq!(ordinary.native_inline_box_families().count(), 0);
+    assert_eq!(ordinary.native_inline_box_pieces().count(), 0);
+    assert!(snapshot_batch(&tree, &ordinary, &source).is_ok());
+
+    let flow = layout::LayoutFlowInput::try_new(
+        &tree,
+        0,
+        Vec::new(),
+        layout::WrappingInput {
+            native_inline_boxes: vec![layout::NativeInlineBoxFamilyInput { formatter: 0 }],
+            scopes: Vec::new(),
+            gaps: Vec::new(),
+            child_order: vec![layout::InlineChildOrderInput {
+                parent: layout::GeneratedBoxRef::Node(0),
+                children: Vec::new(),
+                prefix: layout::ChildOrderCompleteness::Complete,
+                suffix: layout::ChildOrderCompleteness::Complete,
+                formatting_context: 0,
+            }],
+        },
+        Vec::new(),
+    )
+    .unwrap();
+    let demanded = layout::compute_layout_with_flow(&flow, 0, request).unwrap();
+    assert!(demanded.placed_text().is_empty());
+    assert!(demanded.unrounded_inline_fragments().is_empty());
+    assert!(demanded.final_inline_fragments().is_empty());
+    let mut families = demanded.native_inline_box_families();
+    assert_eq!(families.next().unwrap().formatter(), 0);
+    assert!(families.next().is_none());
+    assert_eq!(
+        demanded.native_inline_box_pieces().count(),
+        0,
+        "a genuine empty completion has a family but no formatted piece"
+    );
+    assert_eq!(
+        snapshot_batch(&tree, &demanded, &source).unwrap_err(),
+        QualificationError::UnsupportedObservation {
+            owner: "/".into(),
+            category: "Text/fragment/native-inline output census".into(),
+        }
+    );
+}
+
+#[test]
+fn completed_prepared_text_and_both_fragment_channels_are_rejected_by_box_snapshot() {
+    // Author one actual X occurrence and its font/style inputs. Preparation and
+    // placement use the real pinned font and production Text/Layout providers;
+    // there are no supplied glyph, width, baseline or rectangle observations.
+    let style = json!({"fontSize":10.0,"lineHeight":10.5,"whitespace":"preserve",
+        "wrap":"word","letterSpacing":0.0,"wordSpacing":0.0,
+        "color":[0.0,0.0,0.0,1.0],"locale":null});
+    let capture = json!({
+        "font":{"id":pinned_font::ID,"sha256":pinned_font::SHA256,"faceIndex":0,
+            "family":"SurgeistParityAhem","style":"normal","weight":400,
+            "stretch":"normal","features":"normal","variations":"normal",
+            "synthesis":"none","loaded":true},
+        "direction":"ltr","writingMode":"horizontal-tb","baseStyle":style,
+        "origins":[{"child":0,"units":[88],"start":0,"end":1,"style":style}],
+        "connections":[],"atomics":[],"controls":[],
+        "order":[{"kind":"origin","index":0,"affinity":"before"}],
+    })
+    .to_string()
+    .replace('&', "&amp;")
+    .replace('"', "&quot;")
+    .replace('<', "&lt;");
+    let golden = Golden::parse(&format!(
+        r#"<test name="authored-output-census" measurement-version="2" use-rounding="true">
+<viewport width="100" height="max-content"/>
+<input><div display="block" layout-ready-inline-root="true"><prepared-paragraph capture="{capture}"/><text layout-input="prepared-text" occurrence="0"/></div></input>
+<expectations><node><node/></node></expectations></test>"#
+    ))
+    .unwrap();
+    let tree = TestTree::from_golden(&golden.root, None).unwrap();
+    let batch = compute_actual_batch(&tree, &golden.name, output_census_native_request()).unwrap();
+    assert!(!batch.placed_text().is_empty());
+    assert!(!batch.unrounded_inline_fragments().is_empty());
+    assert!(!batch.final_inline_fragments().is_empty());
+    assert_eq!(batch.native_inline_box_families().count(), 0);
+    assert_eq!(batch.native_inline_box_pieces().count(), 0);
+    // This is the authored root plus its one original Text child. It is a direct
+    // snapshot guard stimulus, never admission to the no-text source profile.
+    let source = vec![
+        ("/".to_owned(), vec!["/0".to_owned()]),
+        ("/0".to_owned(), Vec::new()),
+    ];
+    assert_eq!(
+        snapshot_batch(&tree, &batch, &source).unwrap_err(),
+        QualificationError::UnsupportedObservation {
+            owner: "/".into(),
+            category: "Text/fragment/native-inline output census".into(),
+        }
+    );
+    assert!(matches!(
+        source_census(&golden.root, &golden.expectations),
+        Err(QualificationError::UnsupportedObservation { .. })
+    ));
+}

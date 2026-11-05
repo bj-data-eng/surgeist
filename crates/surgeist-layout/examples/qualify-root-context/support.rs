@@ -238,7 +238,7 @@ struct Declaration {
     schema_version: u8,
     records: Vec<Record>,
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Record {
     source: RelativePath,
@@ -248,20 +248,32 @@ struct Record {
     #[serde(default)]
     historical_sha256: BTreeMap<String, Sha256Digest>,
     relation: Option<PairedObservation>,
+    semantic_specifications: Option<BTreeMap<String, SemanticReference>>,
 }
-#[derive(Clone, Copy, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct SemanticReference {
+    path: RelativePath,
+    sha256: Sha256Digest,
+}
+#[derive(Clone)]
+struct SemanticCase {
+    reference: SemanticReference,
+    record_sha256: Sha256Digest,
+}
+#[derive(Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 enum SourceKind {
     Original,
     Authored,
 }
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 enum ExpectedDisposition {
     Generated { metadata: ExpectedMetadata },
     Unsupported { reason: String },
 }
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(tag = "context", rename_all = "kebab-case", deny_unknown_fields)]
 enum ExpectedMetadata {
     AbsoluteLocal {
@@ -282,13 +294,13 @@ enum ExpectedMetadata {
         grid_reference_owners: Option<Vec<String>>,
     },
 }
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 enum ExpectedRootSize {
     Fixed { width: f64, height: f64 },
     FlexPair { item_width: f64, item_height: f64 },
 }
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct PairedObservation {
     peer: String,
@@ -300,6 +312,7 @@ struct ExpectedCase {
     historical: Option<RelativePath>,
     expected: ExpectedDisposition,
     relation: Option<PairedObservation>,
+    semantic: Option<SemanticCase>,
 }
 
 struct Inventory {
@@ -349,6 +362,26 @@ impl<'a> DeclarationInput<'a> {
                 return Err(
                     format!("duplicate qualification source: {}", record.source.as_str()).into(),
                 );
+            }
+        }
+        for record in &declaration.records {
+            if let Some(specifications) = &record.semantic_specifications {
+                if specifications.is_empty()
+                    || !matches!(&record.expected, ExpectedDisposition::Generated { .. })
+                {
+                    return Err(
+                        "semantic specifications require a nonempty Generated variant map".into(),
+                    );
+                }
+                for (variant, reference) in specifications {
+                    if !fixture_cases()
+                        .iter()
+                        .any(|(known, _)| *known == variant.as_str())
+                        || !reference.path.as_str().starts_with("semantic/")
+                    {
+                        return Err("semantic specification requires a registered variant and semantic/ input path".into());
+                    }
+                }
             }
         }
         declaration.expected()?;
@@ -668,6 +701,22 @@ fn validate_corpus(
                     let diagnostic = format!("{}: {error}", case.case.id());
                     eprintln!(
                         "qualify-root-context: fatal numeric comparison failure: {diagnostic}"
+                    );
+                    native_errors.push(diagnostic);
+                }
+            }
+        } else if case.semantic.is_some() {
+            match qualify_semantic_case(root, inventory, corpus, report, artifact, case, &golden) {
+                Ok(verdict) => eprintln!(
+                    "qualify-root-context: {} raw={:?}; qualified={:?}",
+                    case.case.id(),
+                    verdict.raw,
+                    verdict.qualified
+                ),
+                Err(error) => {
+                    let diagnostic = format!("{}: {error}", case.case.id());
+                    eprintln!(
+                        "qualify-root-context: exact semantic qualification refused: {diagnostic}"
                     );
                     native_errors.push(diagnostic);
                 }
@@ -1000,6 +1049,27 @@ fn inventory(
                 ExpectedDisposition::Generated { .. }
             ));
         }
+        let record_sha256 = semantic_record_digest(record)?;
+        if let Some(specifications) = &record.semantic_specifications {
+            for reference in specifications.values() {
+                let bytes = register_semantic_input(
+                    root,
+                    owner,
+                    &reference.path,
+                    &reference.sha256,
+                    &mut inventory,
+                    access,
+                )?;
+                let spec = crate::parity_support::exact_differences::ExactDifferenceSpec::parse(
+                    std::str::from_utf8(&bytes)?,
+                )?;
+                let (source, digest) = spec.policy_source();
+                let source = RelativePath::new(source)?;
+                let expected: Sha256Digest =
+                    serde_json::from_value(serde_json::Value::String(digest.to_owned()))?;
+                register_semantic_input(root, owner, &source, &expected, &mut inventory, access)?;
+            }
+        }
         let mut cases = Vec::new();
         for (variant, _) in fixture_cases() {
             let output = RelativePath::new(format!("xml/{family}__{variant}.xml"))?;
@@ -1035,6 +1105,14 @@ fn inventory(
                 historical,
                 expected: record.expected.clone(),
                 relation: record.relation.clone(),
+                semantic: record
+                    .semantic_specifications
+                    .as_ref()
+                    .and_then(|specs| specs.get(variant))
+                    .map(|reference| SemanticCase {
+                        reference: reference.clone(),
+                        record_sha256: record_sha256.clone(),
+                    }),
             });
             cases.push(case);
         }
@@ -1662,6 +1740,377 @@ fn assert_invalid_inventory(
     }
 }
 
+fn semantic_identity_changed(component: impl Into<String>) -> Box<dyn Error + Send + Sync> {
+    crate::parity_support::exact_differences::QualificationError::IdentityChanged {
+        component: component.into(),
+    }
+    .into()
+}
+
+fn semantic_record_digest(record: &Record) -> Result<Sha256Digest> {
+    let mut value = serde_json::to_value(record)?;
+    value
+        .as_object_mut()
+        .ok_or("record projection must be an object")?
+        .remove("semantic_specifications");
+    // The selected record's semantic basis is independent of its own spec hash.
+    Ok(Sha256Digest::from_bytes(&serde_json::to_vec(&value)?))
+}
+
+fn register_semantic_input(
+    root: &Path,
+    owner: &Path,
+    path: &RelativePath,
+    expected: &Sha256Digest,
+    inventory: &mut Inventory,
+    access: InputAccess,
+) -> Result<Vec<u8>> {
+    publication::require_regular_input(owner, path)?;
+    let bytes = fs::read(owner.join(path.as_str()))?;
+    if &Sha256Digest::from_bytes(&bytes) != expected {
+        return Err(semantic_identity_changed(format!(
+            "registered semantic input {}",
+            path.as_str()
+        )));
+    }
+    if let Some(registered) = inventory.expected_inputs.get(path) {
+        if registered != expected {
+            return Err(semantic_identity_changed(
+                "registered semantic input conflicts with capture input",
+            ));
+        }
+    } else {
+        inventory_input(root, path, &bytes, &mut inventory.expected_inputs, access)?;
+        inventory.global_inputs.push(path.clone());
+    }
+    Ok(bytes)
+}
+
+// Generator owns the report. This closed Layout projection consumes its actual
+// verified bytes without adding Generator getters or another capture protocol.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SemanticCaptureMetadata {
+    schema_version: u8,
+    generator: String,
+    engine_version: String,
+    #[serde(rename = "host_executable_sha256")]
+    _host_executable_sha256: Sha256Digest,
+    browser_executable: RelativePath,
+    browser_executable_sha256: Sha256Digest,
+    browser_provenance: String,
+    #[serde(rename = "contract_sha256")]
+    _contract_sha256: Sha256Digest,
+    inputs: BTreeMap<RelativePath, Sha256Digest>,
+    source_imports: Vec<serde_json::Value>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SemanticArtifact {
+    name: String,
+    source: RelativePath,
+    output: RelativePath,
+    variant: String,
+    source_sha256: Sha256Digest,
+    linked_resources: BTreeMap<RelativePath, Sha256Digest>,
+    // This internal job hash includes the registered semantic input itself and
+    // therefore cannot be pinned by that input without a hash cycle.
+    #[serde(rename = "job_sha256")]
+    _job_sha256: Sha256Digest,
+    output_sha256: Sha256Digest,
+}
+
+fn qualify_semantic_case(
+    root: &Path,
+    inventory: &Inventory,
+    corpus: &BrowserCorpus,
+    report: &browser::BrowserGenerationReport,
+    artifact: &browser::BrowserGeneratedArtifact,
+    case: &ExpectedCase,
+    golden: &crate::parity_support::Golden,
+) -> Result<crate::parity_support::exact_differences::QualifiedComparison> {
+    use crate::parity_support::exact_differences::{
+        CaseIdentity, ExactDifferenceSpec, complete_captured_comparison,
+    };
+    let semantic = case
+        .semantic
+        .as_ref()
+        .ok_or("missing registered semantic specification")?;
+    let reference = &semantic.reference;
+    publication::require_regular_input(root, &reference.path)?;
+    let spec_bytes = fs::read(root.join(reference.path.as_str()))?;
+    if Sha256Digest::from_bytes(&spec_bytes) != reference.sha256
+        || inventory.expected_inputs.get(&reference.path) != Some(&reference.sha256)
+    {
+        return Err(semantic_identity_changed("semantic specification bytes"));
+    }
+    let spec = ExactDifferenceSpec::parse(std::str::from_utf8(&spec_bytes)?)?;
+    let (policy_path, expected_policy) = spec.policy_source();
+    let policy_path = RelativePath::new(policy_path)?;
+    publication::require_regular_input(root, &policy_path)?;
+    let policy = Sha256Digest::from_bytes(&fs::read(root.join(policy_path.as_str()))?);
+    if policy.as_str() != expected_policy
+        || inventory.expected_inputs.get(&policy_path) != Some(&policy)
+    {
+        return Err(semantic_identity_changed("Native policy source"));
+    }
+    let report_value: serde_json::Value = serde_json::from_slice(&report.to_bytes()?)?;
+    let metadata: SemanticCaptureMetadata = serde_json::from_value(
+        report_value
+            .get("metadata")
+            .ok_or("missing report metadata")?
+            .clone(),
+    )?;
+    if metadata.schema_version != 4 || metadata.inputs != inventory.expected_inputs {
+        return Err(semantic_identity_changed("capture metadata input census"));
+    }
+    let captured: SemanticArtifact = serde_json::from_value(serde_json::to_value(artifact)?)?;
+    if captured.name != case.case.id()
+        || captured.source != case.source
+        || captured.output != *case.case.output()
+        || captured.variant != case.case.variant()
+        || inventory.expected_inputs.get(&case.source) != Some(&captured.source_sha256)
+    {
+        return Err(semantic_identity_changed("source/variant/capture record"));
+    }
+    publication::require_regular_input(root, artifact.output())?;
+    let xml = fs::read(root.join(artifact.output().as_str()))?;
+    if Sha256Digest::from_bytes(&xml) != captured.output_sha256
+        || crate::parity_support::Golden::parse(std::str::from_utf8(&xml)?)? != *golden
+    {
+        return Err(semantic_identity_changed("actual capture XML"));
+    }
+    let historical = case
+        .historical
+        .as_ref()
+        .map(|path| -> Result<Sha256Digest> {
+            publication::require_regular_input(root, path)?;
+            let digest = Sha256Digest::from_bytes(&fs::read(root.join(path.as_str()))?);
+            if inventory.expected_inputs.get(path) != Some(&digest) {
+                return Err(semantic_identity_changed("historical XML"));
+            }
+            Ok(digest)
+        })
+        .transpose()?;
+    // Excluding only the declaration and registered semantic specs avoids a
+    // self hash cycle. The full selected semantic record is pinned separately;
+    // all source/helper/font/resource/profile/policy inputs remain exact.
+    let inputs: BTreeMap<_, _> = metadata
+        .inputs
+        .iter()
+        .filter(|(path, _)| {
+            path.as_str() != "corpus.toml"
+                && !inventory.cases.iter().any(|case| {
+                    case.semantic
+                        .as_ref()
+                        .is_some_and(|semantic| &semantic.reference.path == *path)
+                })
+        })
+        .map(|(path, digest)| (path.as_str(), digest.as_str()))
+        .collect();
+    let observation = if golden.has_element_scroll_sizes() {
+        BoxObservationRequest::ElementScrollSizes
+    } else {
+        BoxObservationRequest::Geometry
+    };
+    let request_name = match observation {
+        BoxObservationRequest::Geometry => "geometry",
+        BoxObservationRequest::ElementScrollSizes => "element-scroll-sizes",
+    };
+    let profile = Sha256Digest::from_bytes(&serde_json::to_vec(&(
+        "canonical-no-text-boxes",
+        corpus.browser(),
+        semantic.record_sha256.as_str(),
+        case.case.variant(),
+        request_name,
+        observation.input_bytes().map(Sha256Digest::from_bytes),
+    ))?);
+    let identity = CaseIdentity::from_verified_projection(serde_json::json!({
+        "source":case.source.as_str(),"source_sha256":captured.source_sha256.as_str(),"variant":case.case.variant(),
+        "historical_sha256":historical.as_ref().map(Sha256Digest::as_str),"capture_sha256":captured.output_sha256.as_str(),
+        "record_sha256":semantic.record_sha256.as_str(),"generator":metadata.generator,"engine_version":metadata.engine_version,
+        "browser_executable":metadata.browser_executable.as_str(),
+        "browser_executable_sha256":metadata.browser_executable_sha256.as_str(),"browser_provenance":metadata.browser_provenance,
+        "profile_sha256":profile.as_str(),"source_imports_sha256":Sha256Digest::from_bytes(&serde_json::to_vec(&metadata.source_imports)?).as_str(),
+        "inputs":inputs,"linked_resources":captured.linked_resources,"font_demand":"none","policy_source_sha256":policy.as_str()
+    }))?;
+    let resolved = spec.resolve_against(&identity, golden)?;
+    let completed = complete_captured_comparison(golden, &resolved)?;
+    resolved.qualify(&completed).map_err(Into::into)
+}
+
+#[cfg(test)]
+mod semantic_registration_tests {
+    use super::*;
+
+    fn reference() -> SemanticReference {
+        SemanticReference {
+            path: RelativePath::new("semantic/fixed.json").unwrap(),
+            sha256: Sha256Digest::from_bytes(b"authored semantic input"),
+        }
+    }
+
+    #[test]
+    fn semantic_registration_accepts_only_generated_known_variants_and_paths() {
+        let base = r#"schema_version = 3
+[[records]]
+source = "html/fixed.html"
+source_sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "flex"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+"#;
+        let digest = reference().sha256;
+        let appended = |variant: &str, path: &str| {
+            format!(
+                "{base}\n[records.semantic_specifications.{variant}]\npath = {path:?}\nsha256 = \"{}\"\n",
+                digest.as_str()
+            )
+        };
+        assert!(
+            DeclarationInput::parse(appended("content_box_ltr", "semantic/fixed.json").as_bytes())
+                .is_ok()
+        );
+        for (variant, path) in [
+            ("future_variant", "semantic/fixed.json"),
+            ("content_box_ltr", "other/fixed.json"),
+        ] {
+            assert!(DeclarationInput::parse(appended(variant, path).as_bytes()).is_err());
+        }
+        let unsupported = format!(
+            r#"schema_version = 3
+[[records]]
+source = "html/unsupported.html"
+source_sha256 = "{}"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "genuinely outside the source profile"
+[records.semantic_specifications.content_box_ltr]
+path = "semantic/fixed.json"
+sha256 = "{}"
+"#,
+            digest.as_str(),
+            digest.as_str()
+        );
+        assert!(DeclarationInput::parse(unsupported.as_bytes()).is_err());
+    }
+
+    #[test]
+    fn semantic_record_identity_excludes_only_registration_digests() {
+        let mut input = DeclarationInput::parse(DECLARATION).unwrap();
+        let record = input.declaration.records.last_mut().unwrap();
+        let original = semantic_record_digest(record).unwrap();
+        record.semantic_specifications =
+            Some(BTreeMap::from([("content_box_ltr".into(), reference())]));
+        assert_eq!(semantic_record_digest(record).unwrap(), original);
+        record
+            .semantic_specifications
+            .as_mut()
+            .unwrap()
+            .get_mut("content_box_ltr")
+            .unwrap()
+            .sha256 = Sha256Digest::from_bytes(b"another authored spec");
+        assert_eq!(semantic_record_digest(record).unwrap(), original);
+        record.historical_sha256.clear();
+        assert_ne!(
+            semantic_record_digest(record).unwrap(),
+            original,
+            "historical authority is semantic identity"
+        );
+    }
+
+    #[test]
+    fn semantic_inputs_authenticate_preparation_and_read_only_checks_without_repair() {
+        struct Temporary(PathBuf);
+        impl Drop for Temporary {
+            fn drop(&mut self) {
+                fs::remove_dir_all(&self.0).unwrap();
+            }
+        }
+        let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let source = Temporary(Invocation::new(owner).unwrap().root);
+        let capture = Temporary(Invocation::new(owner).unwrap().root);
+        fs::create_dir(source.0.join("semantic")).unwrap();
+        let reference = reference();
+        let bytes = b"authored semantic input";
+        fs::write(source.0.join(reference.path.as_str()), bytes).unwrap();
+        let fresh_inventory = || Inventory {
+            fixtures: Vec::new(),
+            cases: Vec::new(),
+            global_inputs: Vec::new(),
+            expected_inputs: BTreeMap::new(),
+        };
+        let mut inventory = fresh_inventory();
+        assert_eq!(
+            register_semantic_input(
+                &capture.0,
+                &source.0,
+                &reference.path,
+                &reference.sha256,
+                &mut inventory,
+                InputAccess::Prepare
+            )
+            .unwrap(),
+            bytes
+        );
+        assert_eq!(inventory.global_inputs, [reference.path.clone()]);
+        assert_eq!(inventory.expected_inputs[&reference.path], reference.sha256);
+        let mut inventory = fresh_inventory();
+        register_semantic_input(
+            &capture.0,
+            &source.0,
+            &reference.path,
+            &reference.sha256,
+            &mut inventory,
+            InputAccess::ReadOnly,
+        )
+        .unwrap();
+        fs::write(capture.0.join(reference.path.as_str()), b"changed capture").unwrap();
+        let mut inventory = fresh_inventory();
+        assert!(
+            register_semantic_input(
+                &capture.0,
+                &source.0,
+                &reference.path,
+                &reference.sha256,
+                &mut inventory,
+                InputAccess::ReadOnly
+            )
+            .is_err()
+        );
+        assert_eq!(
+            fs::read(capture.0.join(reference.path.as_str())).unwrap(),
+            b"changed capture"
+        );
+        fs::write(source.0.join(reference.path.as_str()), b"changed owner").unwrap();
+        let mut inventory = fresh_inventory();
+        assert!(
+            register_semantic_input(
+                &capture.0,
+                &source.0,
+                &reference.path,
+                &reference.sha256,
+                &mut inventory,
+                InputAccess::Prepare
+            )
+            .is_err()
+        );
+        assert_eq!(
+            fs::read(capture.0.join(reference.path.as_str())).unwrap(),
+            b"changed capture"
+        );
+    }
+}
+
 #[cfg(test)]
 mod numeric_diagnostic_tests {
     use super::*;
@@ -1871,6 +2320,7 @@ mod numeric_diagnostic_tests {
             historical: None,
             expected: record.expected,
             relation: None,
+            semantic: None,
         }
     }
 
