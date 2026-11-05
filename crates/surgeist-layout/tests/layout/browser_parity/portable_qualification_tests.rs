@@ -16,7 +16,6 @@ const VARIANTS: [&str; 4] = [
 const SOURCE: &str = "html/qualification/portable-empty.html";
 const POLICY: &str = "docs/portable-fixed-box-policy.md";
 const OWNER_SOURCE: &str = "tests/layout/browser_parity/html/qualification/portable-empty.html";
-const OWNER_DECLARATION: &str = "examples/qualify-root-context/corpus.toml";
 const BASE_CSS: &str = "scripts/gentest/test_base_style.css";
 const OWNER_GLOBAL: &str = "tests/layout/browser_parity/scripts/gentest/test_base_style.css";
 const OWNER_BROWSER: &str = "tests/layout/browser_parity/corpus.toml";
@@ -296,11 +295,11 @@ impl Fixture {
             put(&root, path, contents);
         }
         let mut record = json!({"source":SOURCE,"source_sha256":sha256(SOURCE_BYTES),
-            "source_kind":"authored","historical_sha256":{},
+            "source_kind":"authored","historical_sha256":{},"relation":null,
             "expected":{"kind":"generated","metadata":{"context":"absolute-local",
                 "root_writing_mode":"horizontal-tb","hypothetical_display":"flex",
                 "containing_direction":"ltr","hypothetical_direction":"ltr",
-                "root_direction":"variant","inline_offset":0}},"semantic_specifications":{}});
+                "root_direction":"variant","inline_offset":0.0,"root_size":null}},"semantic_specifications":{}});
         let record_sha256 = semantic_record_digest(&record).unwrap();
         let settings = BrowserSettingsWitness::from_official_json(SETTINGS.as_bytes()).unwrap();
         let excluded: BTreeSet<_> = VARIANTS.iter().map(|variant| spec_path(variant)).collect();
@@ -409,10 +408,6 @@ impl Fixture {
         // current_owner_bindings helper. Every expected owner file exists and
         // its digest comes from the actual bytes written into this temp owner.
         let mut owner_files = BTreeMap::from([
-            (
-                OWNER_DECLARATION.to_owned(),
-                fs::read(root.join("corpus.toml")).unwrap(),
-            ),
             (OWNER_SOURCE.to_owned(), SOURCE_BYTES.to_vec()),
             (POLICY.to_owned(), POLICY_BYTES.to_vec()),
             (OWNER_GLOBAL.to_owned(), base[BASE_CSS].clone()),
@@ -435,7 +430,12 @@ impl Fixture {
                 )
             })
             .collect();
-        self.terminal = json!({"schema_version":1,"edition":"canonical-box-differences",
+        put(
+            &self.owner,
+            OWNER_DECLARATION,
+            &fs::read(root.join("corpus.toml")).unwrap(),
+        );
+        self.terminal = json!({"schema_version":2,"edition":"canonical-box-differences",
             "declaration":{"path":"corpus.toml","sha256":retained["corpus.toml"]},
             "records":[{"source":SOURCE,"sha256":record_sha256,"value":record}],
             "browser_settings":settings,"report":{"path":REPORT,"sha256":sha256(&report_raw)},
@@ -636,7 +636,7 @@ inline_offset = 0
         .unwrap()
         .execute_selected(&selected)
         .unwrap();
-    assert!(after.selected_cases_passed());
+    assert!(after.registered_coverage_complete());
     assert!(!after.current_coverage_complete());
     assert_eq!(after.cases.len(), before.cases.len());
     for (current, original) in after.cases.iter().zip(&before.cases) {
@@ -644,6 +644,120 @@ inline_offset = 0
         assert_eq!(current.raw, original.raw);
         assert_intentional(current);
     }
+}
+
+#[test]
+fn valid_catalogue_edits_to_the_selected_record_or_spec_registration_refuse() {
+    for (original, replacement) in [
+        ("inline_offset = 0", "inline_offset = 1"),
+        (
+            "semantic/portable-empty-border_box_ltr.json",
+            "semantic/moved-border_box_ltr.json",
+        ),
+    ] {
+        let fixture = Fixture::new();
+        let live = fs::read_to_string(fixture.owner.join(OWNER_DECLARATION)).unwrap();
+        assert!(live.contains(original));
+        put(
+            &fixture.owner,
+            OWNER_DECLARATION,
+            live.replacen(original, replacement, 1).as_bytes(),
+        );
+        assert!(matches!(
+            admission_error(&fixture),
+            QualificationError::IdentityChanged { component }
+                if component.contains("selected live record changed")
+        ));
+    }
+}
+
+#[test]
+fn live_catalogue_rejects_unknown_fields_and_colliding_case_names() {
+    let fixture = Fixture::new();
+    let live = fs::read_to_string(fixture.owner.join(OWNER_DECLARATION)).unwrap();
+    let other = live.split_once("[[records]]").unwrap().1.replacen(
+        SOURCE,
+        "html/grid/portable-empty.html",
+        1,
+    );
+    for (candidate, message) in [
+        (
+            live.replacen("schema_version = 3", "schema_version = 3\nextra = 0", 1),
+            "live catalogue",
+        ),
+        (
+            format!("{live}\n[[records]]{other}"),
+            "duplicate qualification case stem",
+        ),
+    ] {
+        put(&fixture.owner, OWNER_DECLARATION, candidate.as_bytes());
+        let error = admission_error(&fixture);
+        assert!(
+            matches!(&error, QualificationError::IdentityChanged { component } if component.contains(message)),
+            "{error}"
+        );
+    }
+}
+
+#[test]
+fn live_catalogue_rejects_invalid_history_specification_and_peer_bindings() {
+    let fixture = Fixture::new();
+    let live = fs::read_to_string(fixture.owner.join(OWNER_DECLARATION)).unwrap();
+    let other = live
+        .split_once("[[records]]")
+        .unwrap()
+        .1
+        .replace(SOURCE, "html/grid/another-grid.html");
+    let different_specs = other.replace("semantic/portable-empty-", "semantic/another-grid-");
+    let history = different_specs.replacen(
+        "[records.historical_sha256]",
+        &format!(
+            "[records.historical_sha256]\nbogus = {:?}",
+            sha256(b"unrelated history")
+        ),
+        1,
+    );
+    let missing_peer = different_specs.replacen(
+        "source_kind = \"authored\"",
+        "source_kind = \"authored\"\nrelation = { peer = \"missing-peer\", world_phase_change = false }",
+        1,
+    );
+    for (record, message) in [
+        (
+            history,
+            "authored source cannot declare historical variants",
+        ),
+        (other, "duplicate semantic specification path"),
+        (
+            missing_peer,
+            "paired source requires a declared Generated peer",
+        ),
+    ] {
+        put(
+            &fixture.owner,
+            OWNER_DECLARATION,
+            format!("{live}\n[[records]]{record}").as_bytes(),
+        );
+        let error = admission_error(&fixture);
+        assert!(
+            matches!(&error, QualificationError::IdentityChanged { component } if component.contains(message)),
+            "{error}"
+        );
+    }
+}
+
+#[test]
+fn terminal_registration_cannot_replace_the_registration_in_retained_bytes() {
+    let mut fixture = Fixture::new();
+    fixture.rewrite_terminal(|terminal| {
+        terminal["records"][0]["value"]["semantic_specifications"][VARIANTS[0]]["path"] =
+            json!("semantic/moved-border_box_ltr.json");
+    });
+    assert!(matches!(
+        admission_error(&fixture),
+        QualificationError::IdentityChanged { component }
+            if component.contains("retained record projection")
+    ));
 }
 
 #[test]

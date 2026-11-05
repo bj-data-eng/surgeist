@@ -33,7 +33,7 @@ fn registered_current_box_edition_qualifies_without_generator() {
         );
     }
     assert!(
-        run.current_coverage_complete(),
+        run.registered_coverage_complete(),
         "registered current box requirements must qualify"
     );
 }

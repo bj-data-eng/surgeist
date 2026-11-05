@@ -17,7 +17,15 @@ use surgeist_generator::{GeneratorErrorKind, RelativePath, Sha256Digest};
 
 use crate::adapter::{AdapterError, LayoutAdapter, fixture_cases};
 use crate::browser_profile::BrowserManifest;
+use crate::fixture_variants;
 use crate::measurement::{BoxObservationRequest, OBSERVATION_REQUEST_INPUT};
+
+#[path = "../../tests/layout/browser_parity/qualification_catalogue.rs"]
+mod qualification_catalogue;
+use qualification_catalogue::{
+    Declaration, ExpectedDisposition, ExpectedMetadata, ExpectedRootSize, PairedObservation,
+    Record, SemanticReference, SourceKind,
+};
 
 #[path = "publication.rs"]
 mod publication;
@@ -35,6 +43,7 @@ pub(super) enum QualificationMode {
     CheckPublished,
     PublishCanonicalBoxes,
     CheckPublishedCanonicalBoxes,
+    DeriveCanonicalBoxes,
 }
 
 impl QualificationMode {
@@ -104,7 +113,8 @@ fn select_records(
                 QualificationMode::Publish
                 | QualificationMode::CheckPublished
                 | QualificationMode::PublishCanonicalBoxes
-                | QualificationMode::CheckPublishedCanonicalBoxes => {
+                | QualificationMode::CheckPublishedCanonicalBoxes
+                | QualificationMode::DeriveCanonicalBoxes => {
                     return Err("durable modes require the complete inventory".into());
                 }
             }
@@ -237,79 +247,10 @@ const INPUTS: &[(&str, &[u8])] = &[
     ),
 ];
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Declaration {
-    schema_version: u8,
-    records: Vec<Record>,
-}
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct Record {
-    source: RelativePath,
-    source_sha256: Sha256Digest,
-    source_kind: SourceKind,
-    expected: ExpectedDisposition,
-    #[serde(default)]
-    historical_sha256: BTreeMap<String, Sha256Digest>,
-    relation: Option<PairedObservation>,
-    semantic_specifications: Option<BTreeMap<String, SemanticReference>>,
-}
-#[derive(Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct SemanticReference {
-    path: RelativePath,
-    sha256: Sha256Digest,
-}
 #[derive(Clone)]
 struct SemanticCase {
     reference: SemanticReference,
     record_sha256: Sha256Digest,
-}
-#[derive(Clone, Copy, Deserialize, Serialize)]
-#[serde(rename_all = "kebab-case")]
-enum SourceKind {
-    Original,
-    Authored,
-}
-#[derive(Clone, Deserialize, Serialize)]
-#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
-enum ExpectedDisposition {
-    Generated { metadata: ExpectedMetadata },
-    Unsupported { reason: String },
-}
-#[derive(Clone, Deserialize, Serialize)]
-#[serde(tag = "context", rename_all = "kebab-case", deny_unknown_fields)]
-enum ExpectedMetadata {
-    AbsoluteLocal {
-        hypothetical_display: String,
-        containing_direction: String,
-        hypothetical_direction: String,
-        root_direction: String,
-        root_writing_mode: String,
-        inline_offset: f64,
-        root_size: Option<ExpectedRootSize>,
-    },
-    BlockFlow {
-        parent_direction: String,
-        root_direction: String,
-        root_writing_mode: String,
-        root_position: String,
-        atomic_paragraphs: Option<usize>,
-        grid_reference_owners: Option<Vec<String>>,
-    },
-}
-#[derive(Clone, Deserialize, Serialize)]
-#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
-enum ExpectedRootSize {
-    Fixed { width: f64, height: f64 },
-    FlexPair { item_width: f64, item_height: f64 },
-}
-#[derive(Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct PairedObservation {
-    peer: String,
-    world_phase_change: bool,
 }
 struct ExpectedCase {
     source: RelativePath,
@@ -356,39 +297,7 @@ struct DeclarationInput<'a> {
 
 impl<'a> DeclarationInput<'a> {
     fn parse(bytes: &'a [u8]) -> Result<Self> {
-        let declaration: Declaration =
-            surgeist_generator::parse_manifest(std::str::from_utf8(bytes)?, "corpus.toml")?;
-        if declaration.schema_version != 3 {
-            return Err("qualification declaration schema_version must be 3".into());
-        }
-        let mut sources = std::collections::BTreeSet::new();
-        for record in &declaration.records {
-            if !sources.insert(record.source.clone()) {
-                return Err(
-                    format!("duplicate qualification source: {}", record.source.as_str()).into(),
-                );
-            }
-        }
-        for record in &declaration.records {
-            if let Some(specifications) = &record.semantic_specifications {
-                if specifications.is_empty()
-                    || !matches!(&record.expected, ExpectedDisposition::Generated { .. })
-                {
-                    return Err(
-                        "semantic specifications require a nonempty Generated variant map".into(),
-                    );
-                }
-                for (variant, reference) in specifications {
-                    if !fixture_cases()
-                        .iter()
-                        .any(|(known, _)| *known == variant.as_str())
-                        || !reference.path.as_str().starts_with("semantic/")
-                    {
-                        return Err("semantic specification requires a registered variant and semantic/ input path".into());
-                    }
-                }
-            }
-        }
+        let declaration = Declaration::parse(bytes)?;
         declaration.expected()?;
         Ok(Self { bytes, declaration })
     }
@@ -446,6 +355,7 @@ pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> 
             | QualificationMode::CheckPublished
             | QualificationMode::PublishCanonicalBoxes
             | QualificationMode::CheckPublishedCanonicalBoxes
+            | QualificationMode::DeriveCanonicalBoxes
     ) {
         if fixture.is_some() {
             return Err("durable modes require the complete inventory".into());
@@ -834,7 +744,8 @@ fn validate_corpus(
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
         | QualificationMode::PublishCanonicalBoxes
-        | QualificationMode::CheckPublishedCanonicalBoxes => {}
+        | QualificationMode::CheckPublishedCanonicalBoxes
+        | QualificationMode::DeriveCanonicalBoxes => {}
     }
     if let Some(output) = validation.terminal_cases.as_mut() {
         **output = terminal_cases;
@@ -1033,7 +944,8 @@ fn inventory(
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
         | QualificationMode::PublishCanonicalBoxes
-        | QualificationMode::CheckPublishedCanonicalBoxes => None,
+        | QualificationMode::CheckPublishedCanonicalBoxes
+        | QualificationMode::DeriveCanonicalBoxes => None,
     };
     for (name, bytes) in INPUTS
         .iter()
@@ -1080,29 +992,7 @@ fn inventory(
             &mut inventory.expected_inputs,
             access,
         )?;
-        let family = record
-            .source
-            .as_str()
-            .strip_prefix("html/")
-            .and_then(|path| path.strip_suffix(".html"))
-            .ok_or("qualification source must be an html/*.html path")?;
-        let stem = family.rsplit('/').next().ok_or("missing source stem")?;
-        match record.source_kind {
-            SourceKind::Original => {
-                assert!(matches!(
-                    &record.expected,
-                    ExpectedDisposition::Generated { .. }
-                ));
-                assert_eq!(record.historical_sha256.len(), fixture_cases().len());
-            }
-            SourceKind::Authored => assert!(record.historical_sha256.is_empty()),
-        }
-        if record.relation.is_some() {
-            assert!(matches!(
-                &record.expected,
-                ExpectedDisposition::Generated { .. }
-            ));
-        }
+        let (family, stem) = record.source_names()?;
         let record_sha256 = semantic_record_digest(record)?;
         if let Some(specifications) = &record.semantic_specifications {
             for reference in specifications.values() {

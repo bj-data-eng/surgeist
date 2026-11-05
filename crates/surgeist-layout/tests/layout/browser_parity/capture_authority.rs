@@ -10,6 +10,7 @@ pub(crate) const EDITION: &str = "canonical-box-differences";
 pub(crate) const ARTIFACT_ROOT: &str =
     "tests/layout/browser_parity/captured/canonical-box-differences";
 pub(crate) const TERMINAL: &str = "qualification.json";
+pub(crate) const TERMINAL_SCHEMA: u8 = 2;
 type Result<T> = std::result::Result<T, QualificationError>;
 fn malformed(reason: impl Into<String>) -> QualificationError {
     QualificationError::MalformedDeclaration {
@@ -51,9 +52,7 @@ pub(crate) fn current_owner_bindings(
     path(receipt_sidecar)?;
     let mut bindings = BTreeMap::new();
     for (name, hash) in retained {
-        let owner = if name == "corpus.toml" {
-            "examples/qualify-root-context/corpus.toml".to_owned()
-        } else if name == "browser-owner.toml" {
+        let owner = if name == "browser-owner.toml" {
             format!("{ORIGINAL}/corpus.toml")
         } else if let Some(tail) = name.strip_prefix("historical/") {
             format!("{ORIGINAL}/xml/{tail}")
@@ -66,7 +65,8 @@ pub(crate) fn current_owner_bindings(
             name.clone()
         } else if matches!(
             name.as_str(),
-            "origin/source-receipt.json"
+            "corpus.toml"
+                | "origin/source-receipt.json"
                 | "origin/source-provenance.json"
                 | "origin/selected-originals.json"
         ) {
@@ -473,7 +473,7 @@ impl Qualification {
         Ok(value)
     }
     fn validate(&self) -> Result<()> {
-        if self.schema_version != 1
+        if self.schema_version != TERMINAL_SCHEMA
             || self.edition != EDITION
             || self.declaration.path != "corpus.toml"
             || self.report.path != "xml/generation-reports/all.json"

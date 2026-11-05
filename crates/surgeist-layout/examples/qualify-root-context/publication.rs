@@ -61,30 +61,65 @@ pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
         QualificationMode::PublishCanonicalBoxes => {
             (Edition::CanonicalBoxDifferences, InputAccess::Prepare)
         }
-        QualificationMode::CheckPublishedCanonicalBoxes => {
+        QualificationMode::CheckPublishedCanonicalBoxes
+        | QualificationMode::DeriveCanonicalBoxes => {
             (Edition::CanonicalBoxDifferences, InputAccess::ReadOnly)
         }
         _ => return Err("expected a durable publication mode".into()),
     };
+    let parent = edition_parent(owner)?;
+    let retained =
+        if edition == Edition::CanonicalBoxDifferences && matches!(access, InputAccess::ReadOnly) {
+            let root = parent.join(edition.name());
+            require_directory(&root)?;
+            require_regular_input(&root, &RelativePath::new("corpus.toml")?)?;
+            Some(fs::read(root.join("corpus.toml"))?)
+        } else {
+            None
+        };
     let input = match edition {
         Edition::RootContextV4 => edition_input(DECLARATION)?,
-        Edition::CanonicalBoxDifferences => canonical_input(owner, DECLARATION)?,
+        Edition::CanonicalBoxDifferences => {
+            canonical_input(owner, retained.as_deref().unwrap_or(DECLARATION))?
+        }
     };
+    if retained.is_some() {
+        let selected = input
+            .declaration
+            .records
+            .iter()
+            .map(|record| {
+                Ok((
+                    record.source.as_str().to_owned(),
+                    serde_json::to_value(record)?,
+                ))
+            })
+            .collect::<Result<BTreeMap<_, _>>>()?;
+        Declaration::parse(DECLARATION)?.check_live_records(&selected)?;
+    }
     let declaration = &input.declaration;
     // Verify the original owner's complete import before claiming any selected
     // member. This is read-only and never acquires the pinned source or browser.
     let origin = Origin::read(owner, &declaration.records)?;
-    let parent = edition_parent(owner)?;
+    let derive_terminal = mode == QualificationMode::DeriveCanonicalBoxes;
     match access {
         InputAccess::Prepare => with_new_edition(&parent, edition, |root| {
             CorpusLocation::new(owner, root)?;
-            finish(owner, root, &input, &origin, access, edition)
+            finish(owner, root, &input, &origin, access, edition, false)
         }),
         InputAccess::ReadOnly => {
             let root = parent.join(edition.name());
             require_directory(&root)?;
             CorpusLocation::new(owner, &root)?;
-            finish(owner, &root, &input, &origin, access, edition)
+            finish(
+                owner,
+                &root,
+                &input,
+                &origin,
+                access,
+                edition,
+                derive_terminal,
+            )
         }
     }
 }
@@ -114,6 +149,7 @@ fn finish(
     origin: &Origin,
     access: InputAccess,
     edition: Edition,
+    derive_terminal: bool,
 ) -> Result<()> {
     if edition == Edition::CanonicalBoxDifferences && root != owner.join(authority::ARTIFACT_ROOT) {
         return Err("canonical edition root differs from fixed artifact identity".into());
@@ -126,7 +162,9 @@ fn finish(
         if edition == Edition::CanonicalBoxDifferences && matches!(access, InputAccess::ReadOnly) {
             require_regular_input(root, &RelativePath::new(authority::TERMINAL)?)?;
             let bytes = fs::read(root.join(authority::TERMINAL))?;
-            authority::Qualification::parse(std::str::from_utf8(&bytes)?)?;
+            if !derive_terminal {
+                authority::Qualification::parse(std::str::from_utf8(&bytes)?)?;
+            }
             Some(bytes)
         } else {
             None
@@ -234,6 +272,9 @@ fn finish(
         match access {
             InputAccess::Prepare => {
                 emit_terminal(root, &snapshot.expected_inputs, &bytes)?;
+            }
+            InputAccess::ReadOnly if derive_terminal => {
+                std::io::stdout().lock().write_all(&bytes)?;
             }
             InputAccess::ReadOnly => {
                 if stored_terminal.as_deref() != Some(bytes.as_slice()) {
@@ -581,16 +622,7 @@ fn canonical_input<'a>(owner: &Path, current: &'a [u8]) -> Result<DeclarationInp
         {
             return Err("canonical edition requires complete Generated original variants with absolute-local authority".into());
         }
-        let family = record
-            .source
-            .as_str()
-            .strip_prefix("html/")
-            .and_then(|p| p.strip_suffix(".html"))
-            .ok_or("current source must be an html/*.html path")?;
-        let stem = family
-            .rsplit('/')
-            .next()
-            .ok_or("missing current source stem")?;
+        let (family, stem) = record.source_names()?;
         let record_sha256 = semantic_record_digest(record)?;
         for (variant, reference) in specifications {
             require_regular_input(owner, &reference.path)?;
@@ -754,7 +786,7 @@ fn terminal_authority(
         return Err("terminal report bytes changed".into());
     }
     Ok(authority::Qualification {
-        schema_version: 1,
+        schema_version: authority::TERMINAL_SCHEMA,
         edition: authority::EDITION.to_owned(),
         declaration: authority::PathDigest {
             path: "corpus.toml".to_owned(),

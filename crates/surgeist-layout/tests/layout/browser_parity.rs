@@ -2285,7 +2285,7 @@ fn combined_inventory_filter_selects_current_edition_without_a_historical_match(
     let run = edition
         .execute_selected(&selected.current)
         .expect("current cases execute");
-    assert!(run.current_coverage_complete());
+    assert!(run.registered_coverage_complete());
     assert!(
         run.cases
             .iter()
@@ -2311,7 +2311,7 @@ fn combined_inventory_filter_preserves_original_only_execution_without_current_c
     let run = edition
         .execute_selected(&selected.current)
         .expect("empty current selection");
-    assert!(!run.current_coverage_complete());
+    assert!(!run.registered_coverage_complete());
 }
 
 #[test]
@@ -2346,7 +2346,7 @@ fn combined_inventory_filter_executes_equal_named_original_and_current_cases_sep
     let run = edition
         .execute_selected(&selected.current)
         .expect("current cases execute");
-    assert!(run.current_coverage_complete());
+    assert!(run.registered_coverage_complete());
     assert!(
         run.cases
             .iter()
@@ -2362,7 +2362,7 @@ fn current_edition_path_filter_executes_all_registered_cases() {
         .execute_selected(&selected)
         .expect("registered selection must execute");
     assert!(
-        run.current_coverage_complete(),
+        run.registered_coverage_complete(),
         "edition-path filter skipped required current execution: {} of {} cases",
         run.cases.len(),
         run.declared_cases
@@ -2422,7 +2422,8 @@ fn runs_registered_current_browser_parity_qualification() {
     if filter.is_none() {
         assert!(
             run.current_coverage_complete(),
-            "current declared observable coverage is incomplete"
+            "current declared observable coverage is incomplete: {}",
+            run.uncovered.join(", ")
         );
     } else {
         eprintln!("filtered current qualification; no whole-edition coverage claim");
@@ -2473,6 +2474,13 @@ fn runs_all_checked_in_browser_parity_xml() {
                             failures.push(format!("current/{} raw failure: {error}", case.output))
                         }
                     }
+                }
+                if filter.is_none() {
+                    failures.extend(
+                        run.uncovered
+                            .into_iter()
+                            .map(|case| format!("current/{case}: missing capture authority")),
+                    );
                 }
                 if let Some(error) = run.freshness_error {
                     failures.push(error);
