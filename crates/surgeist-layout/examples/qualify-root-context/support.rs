@@ -1,5 +1,6 @@
 //! Invocation-owned corpus and assertions; no historical corpus is rewritten.
 
+use crate::parity_support::exact_differences::PublishedEdition;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fs;
@@ -48,13 +49,9 @@ pub(super) enum QualificationMode {
     FlexCompositionCapture,
     Publish,
     CheckPublished,
-    PublishCanonicalBoxes,
-    CheckPublishedCanonicalBoxes,
-    Derive(crate::parity_support::exact_differences::PublishedEdition),
-    PublishMeasuredGrid,
-    CheckPublishedMeasuredGrid,
-    PublishFlexText,
-    CheckPublishedFlexText,
+    PublishExact(PublishedEdition),
+    CheckPublishedExact(PublishedEdition),
+    Derive(PublishedEdition),
     PublishSpecialized(SpecializedProfile),
     CheckPublishedSpecialized(SpecializedProfile),
 }
@@ -93,17 +90,13 @@ impl QualificationMode {
             }
             Self::ElementScrollSizeDiagnostics => BoxObservationRequest::ElementScrollSizes,
             Self::FlexContentTextDiagnostics
-            | Self::PublishFlexText
-            | Self::CheckPublishedFlexText
-            | Self::Derive(crate::parity_support::exact_differences::PublishedEdition::FlexText) => {
-                BoxObservationRequest::FlexContentText
-            }
+            | Self::PublishExact(PublishedEdition::FlexText)
+            | Self::CheckPublishedExact(PublishedEdition::FlexText)
+            | Self::Derive(PublishedEdition::FlexText) => BoxObservationRequest::FlexContentText,
             Self::MeasuredLeafDiagnostics
-            | Self::PublishMeasuredGrid
-            | Self::CheckPublishedMeasuredGrid
-            | Self::Derive(
-                crate::parity_support::exact_differences::PublishedEdition::MeasuredGrid,
-            ) => BoxObservationRequest::MeasuredLeaf,
+            | Self::PublishExact(PublishedEdition::MeasuredGrid)
+            | Self::CheckPublishedExact(PublishedEdition::MeasuredGrid)
+            | Self::Derive(PublishedEdition::MeasuredGrid) => BoxObservationRequest::MeasuredLeaf,
             _ => BoxObservationRequest::Geometry,
         }
     }
@@ -189,13 +182,9 @@ fn select_records(
                 QualificationMode::Regular => {}
                 QualificationMode::Publish
                 | QualificationMode::CheckPublished
-                | QualificationMode::PublishCanonicalBoxes
-                | QualificationMode::CheckPublishedCanonicalBoxes
+                | QualificationMode::PublishExact(_)
+                | QualificationMode::CheckPublishedExact(_)
                 | QualificationMode::Derive(_)
-                | QualificationMode::PublishMeasuredGrid
-                | QualificationMode::CheckPublishedMeasuredGrid
-                | QualificationMode::PublishFlexText
-                | QualificationMode::CheckPublishedFlexText
                 | QualificationMode::PublishSpecialized(_)
                 | QualificationMode::CheckPublishedSpecialized(_) => {
                     return Err("durable modes require the complete inventory".into());
@@ -454,13 +443,9 @@ pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> 
         mode,
         QualificationMode::Publish
             | QualificationMode::CheckPublished
-            | QualificationMode::PublishCanonicalBoxes
-            | QualificationMode::CheckPublishedCanonicalBoxes
+            | QualificationMode::PublishExact(_)
+            | QualificationMode::CheckPublishedExact(_)
             | QualificationMode::Derive(_)
-            | QualificationMode::PublishMeasuredGrid
-            | QualificationMode::CheckPublishedMeasuredGrid
-            | QualificationMode::PublishFlexText
-            | QualificationMode::CheckPublishedFlexText
             | QualificationMode::PublishSpecialized(_)
             | QualificationMode::CheckPublishedSpecialized(_)
     ) {
@@ -945,13 +930,9 @@ fn validate_corpus(
         | QualificationMode::FlexCompositionCapture
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
-        | QualificationMode::PublishCanonicalBoxes
-        | QualificationMode::CheckPublishedCanonicalBoxes
+        | QualificationMode::PublishExact(_)
+        | QualificationMode::CheckPublishedExact(_)
         | QualificationMode::Derive(_)
-        | QualificationMode::PublishMeasuredGrid
-        | QualificationMode::CheckPublishedMeasuredGrid
-        | QualificationMode::PublishFlexText
-        | QualificationMode::CheckPublishedFlexText
         | QualificationMode::PublishSpecialized(_)
         | QualificationMode::CheckPublishedSpecialized(_) => {}
     }
@@ -1166,13 +1147,9 @@ fn inventory_with_retained_helper(
         | QualificationMode::FlexCompositionCapture
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
-        | QualificationMode::PublishCanonicalBoxes
-        | QualificationMode::CheckPublishedCanonicalBoxes
+        | QualificationMode::PublishExact(_)
+        | QualificationMode::CheckPublishedExact(_)
         | QualificationMode::Derive(_)
-        | QualificationMode::PublishMeasuredGrid
-        | QualificationMode::CheckPublishedMeasuredGrid
-        | QualificationMode::PublishFlexText
-        | QualificationMode::CheckPublishedFlexText
         | QualificationMode::PublishSpecialized(_)
         | QualificationMode::CheckPublishedSpecialized(_) => None,
     };

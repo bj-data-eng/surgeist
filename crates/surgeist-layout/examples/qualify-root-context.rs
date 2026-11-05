@@ -47,9 +47,10 @@ fn parse_arguments(
         [mode] if mode == "--check-published-root-context-v4" => {
             Ok((None, QualificationMode::CheckPublished))
         }
-        [mode] if mode == "--publish-canonical-box-differences" => {
-            Ok((None, QualificationMode::PublishCanonicalBoxes))
-        }
+        [mode] if mode == "--publish-canonical-box-differences" => Ok((
+            None,
+            QualificationMode::PublishExact(PublishedEdition::CanonicalBoxes),
+        )),
         [mode] if mode == "--derive-canonical-box-qualification" => Ok((
             None,
             QualificationMode::Derive(PublishedEdition::CanonicalBoxes),
@@ -61,21 +62,38 @@ fn parse_arguments(
         [mode] if mode == "--derive-flex-text-qualification" => {
             Ok((None, QualificationMode::Derive(PublishedEdition::FlexText)))
         }
-        [mode] if mode == "--check-published-canonical-box-differences" => {
-            Ok((None, QualificationMode::CheckPublishedCanonicalBoxes))
-        }
-        [mode] if mode == "--publish-measured-grid-differences" => {
-            Ok((None, QualificationMode::PublishMeasuredGrid))
-        }
-        [mode] if mode == "--check-published-measured-grid-differences" => {
-            Ok((None, QualificationMode::CheckPublishedMeasuredGrid))
-        }
-        [mode] if mode == "--publish-flex-text-differences" => {
-            Ok((None, QualificationMode::PublishFlexText))
-        }
-        [mode] if mode == "--check-published-flex-text-differences" => {
-            Ok((None, QualificationMode::CheckPublishedFlexText))
-        }
+        [mode] if mode == "--check-published-canonical-box-differences" => Ok((
+            None,
+            QualificationMode::CheckPublishedExact(PublishedEdition::CanonicalBoxes),
+        )),
+        [mode] if mode == "--publish-measured-grid-differences" => Ok((
+            None,
+            QualificationMode::PublishExact(PublishedEdition::MeasuredGrid),
+        )),
+        [mode] if mode == "--check-published-measured-grid-differences" => Ok((
+            None,
+            QualificationMode::CheckPublishedExact(PublishedEdition::MeasuredGrid),
+        )),
+        [mode] if mode == "--publish-flex-text-differences" => Ok((
+            None,
+            QualificationMode::PublishExact(PublishedEdition::FlexText),
+        )),
+        [mode] if mode == "--check-published-flex-text-differences" => Ok((
+            None,
+            QualificationMode::CheckPublishedExact(PublishedEdition::FlexText),
+        )),
+        [mode] if mode == "--publish-grid-static-position-differences" => Ok((
+            None,
+            QualificationMode::PublishExact(PublishedEdition::GridStaticPosition),
+        )),
+        [mode] if mode == "--check-published-grid-static-position-differences" => Ok((
+            None,
+            QualificationMode::CheckPublishedExact(PublishedEdition::GridStaticPosition),
+        )),
+        [mode] if mode == "--derive-grid-static-position-qualification" => Ok((
+            None,
+            QualificationMode::Derive(PublishedEdition::GridStaticPosition),
+        )),
         [mode] if mode == "--publish-prepared-range-qualification" => Ok((
             None,
             QualificationMode::PublishSpecialized(SpecializedProfile::PreparedRange),
@@ -145,7 +163,7 @@ fn parse_arguments(
             ))
         }
         _ => Err(
-            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --derive-canonical-box-qualification | --publish-measured-grid-differences | --check-published-measured-grid-differences | --publish-prepared-range-qualification | --check-published-prepared-range-qualification | --publish-flex-composition-qualification | --check-published-flex-composition-qualification | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source> | --prepared-range-capture --fixture <declared-source>",
+            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --derive-canonical-box-qualification | --publish-measured-grid-differences | --check-published-measured-grid-differences | --publish-grid-static-position-differences | --check-published-grid-static-position-differences | --derive-grid-static-position-qualification | --publish-prepared-range-qualification | --check-published-prepared-range-qualification | --publish-flex-composition-qualification | --check-published-flex-composition-qualification | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source> | --prepared-range-capture --fixture <declared-source>",
         ),
     }
 }
@@ -165,11 +183,11 @@ mod tests {
         for (flag, mode) in [
             (
                 "--publish-canonical-box-differences",
-                QualificationMode::PublishCanonicalBoxes,
+                QualificationMode::PublishExact(PublishedEdition::CanonicalBoxes),
             ),
             (
                 "--check-published-canonical-box-differences",
-                QualificationMode::CheckPublishedCanonicalBoxes,
+                QualificationMode::CheckPublishedExact(PublishedEdition::CanonicalBoxes),
             ),
             (
                 "--derive-canonical-box-qualification",
@@ -195,19 +213,19 @@ mod tests {
         for (flag, mode) in [
             (
                 "--publish-measured-grid-differences",
-                QualificationMode::PublishMeasuredGrid,
+                QualificationMode::PublishExact(PublishedEdition::MeasuredGrid),
             ),
             (
                 "--check-published-measured-grid-differences",
-                QualificationMode::CheckPublishedMeasuredGrid,
+                QualificationMode::CheckPublishedExact(PublishedEdition::MeasuredGrid),
             ),
             (
                 "--publish-flex-text-differences",
-                QualificationMode::PublishFlexText,
+                QualificationMode::PublishExact(PublishedEdition::FlexText),
             ),
             (
                 "--check-published-flex-text-differences",
-                QualificationMode::CheckPublishedFlexText,
+                QualificationMode::CheckPublishedExact(PublishedEdition::FlexText),
             ),
         ] {
             assert_eq!(parse_arguments(&arguments(&[flag])), Ok((None, mode)));

@@ -671,13 +671,15 @@ fn whole_current_declaration_and_shared_input_freshness_still_refuse_stale_binar
 fn fixed_editions_create_distinct_exclusive_targets() {
     let parent = Directory::new();
     let old = create_edition(&parent.0, Edition::RootContextV4).unwrap();
-    let current = create_edition(&parent.0, Edition::CanonicalBoxDifferences).unwrap();
-    let measured = create_edition(&parent.0, Edition::MeasuredGridDifferences).unwrap();
+    let current =
+        create_edition(&parent.0, Edition::Exact(PublishedEdition::CanonicalBoxes)).unwrap();
+    let measured =
+        create_edition(&parent.0, Edition::Exact(PublishedEdition::MeasuredGrid)).unwrap();
     assert_eq!(measured, parent.0.join(authority::MEASURED_GRID_EDITION));
-    assert!(create_edition(&parent.0, Edition::MeasuredGridDifferences).is_err());
+    assert!(create_edition(&parent.0, Edition::Exact(PublishedEdition::MeasuredGrid)).is_err());
     assert_eq!(old, parent.0.join("root-context-v4"));
     assert_eq!(current, parent.0.join(authority::EDITION));
-    assert!(create_edition(&parent.0, Edition::CanonicalBoxDifferences).is_err());
+    assert!(create_edition(&parent.0, Edition::Exact(PublishedEdition::CanonicalBoxes)).is_err());
 }
 #[test]
 fn retained_publication_selects_only_its_own_specifications() {

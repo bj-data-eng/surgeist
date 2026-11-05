@@ -14,9 +14,7 @@ use crate::parity_support::prepared_range_qualification as prepared_range;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Edition {
     RootContextV4,
-    CanonicalBoxDifferences,
-    MeasuredGridDifferences,
-    FlexTextDifferences,
+    Exact(PublishedEdition),
     Specialized(SpecializedProfile),
 }
 impl Edition {
@@ -30,9 +28,7 @@ impl Edition {
     fn published(self) -> Option<PublishedEdition> {
         match self {
             Self::RootContextV4 | Self::Specialized(_) => None,
-            Self::CanonicalBoxDifferences => Some(PublishedEdition::CanonicalBoxes),
-            Self::MeasuredGridDifferences => Some(PublishedEdition::MeasuredGrid),
-            Self::FlexTextDifferences => Some(PublishedEdition::FlexText),
+            Self::Exact(edition) => Some(edition),
         }
     }
     fn lineage(self) -> SemanticLineage {
@@ -62,24 +58,9 @@ pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
     let (edition, access) = match mode {
         QualificationMode::Publish => (Edition::RootContextV4, InputAccess::Prepare),
         QualificationMode::CheckPublished => (Edition::RootContextV4, InputAccess::ReadOnly),
-        QualificationMode::PublishCanonicalBoxes => {
-            (Edition::CanonicalBoxDifferences, InputAccess::Prepare)
-        }
-        QualificationMode::CheckPublishedCanonicalBoxes
-        | QualificationMode::Derive(PublishedEdition::CanonicalBoxes) => {
-            (Edition::CanonicalBoxDifferences, InputAccess::ReadOnly)
-        }
-        QualificationMode::PublishMeasuredGrid => {
-            (Edition::MeasuredGridDifferences, InputAccess::Prepare)
-        }
-        QualificationMode::CheckPublishedMeasuredGrid
-        | QualificationMode::Derive(PublishedEdition::MeasuredGrid) => {
-            (Edition::MeasuredGridDifferences, InputAccess::ReadOnly)
-        }
-        QualificationMode::PublishFlexText => (Edition::FlexTextDifferences, InputAccess::Prepare),
-        QualificationMode::CheckPublishedFlexText
-        | QualificationMode::Derive(PublishedEdition::FlexText) => {
-            (Edition::FlexTextDifferences, InputAccess::ReadOnly)
+        QualificationMode::PublishExact(edition) => (Edition::Exact(edition), InputAccess::Prepare),
+        QualificationMode::CheckPublishedExact(edition) | QualificationMode::Derive(edition) => {
+            (Edition::Exact(edition), InputAccess::ReadOnly)
         }
         QualificationMode::PublishSpecialized(profile) => {
             (Edition::Specialized(profile), InputAccess::Prepare)

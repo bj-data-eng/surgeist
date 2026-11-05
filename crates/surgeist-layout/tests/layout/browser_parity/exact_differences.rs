@@ -456,6 +456,8 @@ pub(crate) enum PublishedEdition {
     MeasuredGrid,
     #[serde(rename = "flex-text-differences")]
     FlexText,
+    #[serde(rename = "grid-static-position-differences")]
+    GridStaticPosition,
 }
 
 impl PublishedEdition {
@@ -471,12 +473,22 @@ impl PublishedEdition {
             Self::CanonicalBoxes => super::capture_authority::ARTIFACT_ROOT,
             Self::MeasuredGrid => "tests/layout/browser_parity/captured/measured-grid-differences",
             Self::FlexText => "tests/layout/browser_parity/captured/flex-text-differences",
+            Self::GridStaticPosition => {
+                "tests/layout/browser_parity/captured/grid-static-position-differences"
+            }
         }
     }
     fn domain(self) -> CurrentDomain {
         match self {
-            Self::CanonicalBoxes => CurrentDomain::Layout,
+            Self::CanonicalBoxes | Self::GridStaticPosition => CurrentDomain::Layout,
             Self::MeasuredGrid | Self::FlexText => CurrentDomain::LayoutAndElementSizes,
+        }
+    }
+    fn profile(self) -> Profile {
+        match self {
+            Self::CanonicalBoxes | Self::GridStaticPosition => Profile::NoTextBoxes,
+            Self::MeasuredGrid => Profile::MeasuredGrid,
+            Self::FlexText => Profile::FlexContentText,
         }
     }
 }
@@ -510,7 +522,7 @@ struct RawSpec {
     native: NativeOracle,
     differences: Vec<ComparedField>,
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 enum Profile {
     #[serde(rename = "canonical-no-text-boxes")]
     NoTextBoxes,
@@ -518,15 +530,6 @@ enum Profile {
     MeasuredGrid,
     #[serde(rename = "canonical-flex-content-text")]
     FlexContentText,
-}
-impl Profile {
-    fn published_edition(&self) -> PublishedEdition {
-        match self {
-            Self::NoTextBoxes => PublishedEdition::CanonicalBoxes,
-            Self::MeasuredGrid => PublishedEdition::MeasuredGrid,
-            Self::FlexContentText => PublishedEdition::FlexText,
-        }
-    }
 }
 pub(crate) struct ExactDifferenceSpec(RawSpec);
 pub(crate) struct ResolvedSpec<'a> {
@@ -764,12 +767,14 @@ impl ExactDifferenceSpec {
                 )));
             }
             if *lineage == CaptureLineage::Published
-                && spec.representation.published_edition != Some(spec.profile.published_edition())
+                && !spec
+                    .representation
+                    .published_edition
+                    .is_some_and(|edition| edition.profile() == spec.profile)
             {
-                return Err(malformed(format!(
-                    "published identity requires the {} edition association",
-                    spec.profile.published_edition().name(),
-                )));
+                return Err(malformed(
+                    "published identity requires a matching edition association",
+                ));
             }
             let expected_font = match spec.profile {
                 Profile::NoTextBoxes => FontDemand::None,
