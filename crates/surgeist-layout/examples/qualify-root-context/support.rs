@@ -2379,8 +2379,7 @@ mod numeric_diagnostic_tests {
     use super::*;
 
     fn declaration() -> Declaration {
-        surgeist_generator::parse_manifest(std::str::from_utf8(DECLARATION).unwrap(), "corpus.toml")
-            .unwrap()
+        Declaration::parse(DECLARATION).unwrap()
     }
 
     #[test]
@@ -2664,8 +2663,7 @@ mod custody_applicability_tests {
     use super::*;
 
     fn declaration() -> Declaration {
-        surgeist_generator::parse_manifest(std::str::from_utf8(DECLARATION).unwrap(), "corpus.toml")
-            .unwrap()
+        Declaration::parse(DECLARATION).unwrap()
     }
 
     fn source(named: bool) -> String {
