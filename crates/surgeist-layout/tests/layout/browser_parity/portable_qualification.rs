@@ -510,7 +510,7 @@ fn compare_prepared_range(
 }
 
 pub struct AdmittedRegistry {
-    editions: [AdmittedEdition; 9],
+    editions: [AdmittedEdition; 10],
     owner: PathBuf,
     selected_records: BTreeMap<String, Value>,
 }
@@ -588,6 +588,9 @@ const REGISTERED_ORIGINAL_SUBGRID_BODY_TERMINAL_SHA256: &str =
 const REGISTERED_PREPARED_ATOMIC_PERCENTAGE_TERMINAL_SHA256: &str =
     "061f5f4e425e0cd19c2c3abfa471b0a7d08ed52dff856e586573f08a46a70094";
 
+const REGISTERED_HORIZONTAL_BR_FONT_BAND_TERMINAL_SHA256: &str =
+    "c13507fa022b56d7722cd2d867c934e855add0a9e281725fa5f79b232a1c0e17";
+
 pub(super) fn admit_grid_static_positions(owner: &Path) -> Result<AdmittedEdition> {
     admit(
         owner,
@@ -647,6 +650,13 @@ pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
             Registration {
                 edition: Edition::Specialized(SpecializedProfile::PreparedAtomicPercentage),
                 terminal_sha256: REGISTERED_PREPARED_ATOMIC_PERCENTAGE_TERMINAL_SHA256,
+            },
+        )?,
+        admit(
+            owner,
+            Registration {
+                edition: Edition::Specialized(SpecializedProfile::HorizontalBrFontBand),
+                terminal_sha256: REGISTERED_HORIZONTAL_BR_FONT_BAND_TERMINAL_SHA256,
             },
         )?,
         admit_grid_static_positions(owner)?,
