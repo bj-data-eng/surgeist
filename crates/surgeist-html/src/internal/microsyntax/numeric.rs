@@ -193,21 +193,194 @@ fn ascii_digit_string(bytes: Vec<u8>) -> Result<String, HtmlDecimalDigitsError> 
     })
 }
 
-/// Takes an unmetered writer's digit buffer as a string. The buffer moves into the string, so the
-/// digits are never held twice, and it keeps its capacity, which `retained_buffer_bytes` reports.
-/// Writers push only ASCII digits, so one scan proves the buffer is UTF-8 and nothing is copied.
-/// The conversion has no validation outcome: were a byte not an ASCII digit, it would still be one
-/// character, as every byte of a digit buffer always has been.
-fn ascii_digits(bytes: Vec<u8>) -> String {
+/// One decimal digit. Only the units digit of a number makes one, so a digit string never holds
+/// anything else.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct Digit(u8);
+impl Digit {
+    /// The units digit of `value`.
+    fn units(value: u64) -> Self {
+        Self((value % 10) as u8)
+    }
+    fn is_zero(self) -> bool {
+        self.0 == 0
+    }
+    fn character(self) -> char {
+        char::from(b'0' + self.0)
+    }
+}
+
+/// Which computed places an unmetered digit string keeps.
+#[derive(Clone, Copy, Debug)]
+enum Keep {
+    /// From the most significant nonzero place down to the units place, or a lone zero when every
+    /// place is zero: an integer.
+    Integer,
+    /// From the most significant place down to the least significant nonzero place, or nothing
+    /// when every place is zero: the fractional digits, whose leading zeroes retain scale and
+    /// whose trailing zeroes add nothing.
+    Fraction,
+}
+
+/// The places a block of an unmetered digit string covers in one pass.
+const DIGIT_BLOCK: usize = 256;
+
+/// The digits of an unmetered operation, written into their string most significant first.
+///
+/// A carry or borrow runs from the least significant place upward, so `step` computes the digit of
+/// one place and the state for the next, and the places are visited in that order. The string needs
+/// the most significant digit first, so one pass finds the places to keep and records the state
+/// before every block of [`DIGIT_BLOCK`] places, and a second pass recomputes the blocks from the
+/// top down and writes each block's digits in reverse. The string is the only buffer of the
+/// digits: nothing is copied into it, and the working storage is one state per block and one
+/// block of digits. It starts with `capacity` bytes, or the digits it holds if they are more, and
+/// the state after the last place comes back with it.
+fn digit_string<S: Copy>(
+    places: usize,
+    keep: Keep,
+    capacity: usize,
+    start: S,
+    step: impl Fn(S, usize) -> (Digit, S),
+) -> (String, S) {
+    let mut state = start;
+    let mut checkpoints = Vec::new();
+    let (mut lowest, mut highest) = (None, None);
+    for place in 0..places {
+        if place % DIGIT_BLOCK == 0 {
+            checkpoints.push(state);
+        }
+        let (digit, next) = step(state, place);
+        if !digit.is_zero() {
+            lowest.get_or_insert(place);
+            highest = Some(place);
+        }
+        state = next;
+    }
+    let range = match keep {
+        Keep::Integer => Some((0, highest.unwrap_or(0))),
+        Keep::Fraction => lowest.map(|lowest| (lowest, places.saturating_sub(1))),
+    };
+    let Some((low, high)) = range else {
+        #[cfg(test)]
+        count_digit_steps(places);
+        return (String::with_capacity(capacity), state);
+    };
+    let kept = high.saturating_sub(low).saturating_add(1);
+    let mut digits = String::with_capacity(capacity.max(kept));
+    for (block, &checkpoint) in checkpoints.iter().enumerate().rev() {
+        let first = block.saturating_mul(DIGIT_BLOCK);
+        if first > high {
+            continue;
+        }
+        let end = places.min(first.saturating_add(DIGIT_BLOCK));
+        if end <= low {
+            break;
+        }
+        let mut block_state = checkpoint;
+        let mut block_digits = Vec::with_capacity(end.saturating_sub(first));
+        for place in first..end {
+            let (digit, next) = step(block_state, place);
+            block_digits.push(digit);
+            block_state = next;
+        }
+        for (offset, digit) in block_digits.iter().enumerate().rev() {
+            if (low..=high).contains(&(first + offset)) {
+                digits.push(digit.character());
+            }
+        }
+    }
     #[cfg(test)]
-    count_digit_steps(bytes.len());
-    String::from_utf8(bytes).unwrap_or_else(|rejected| {
-        rejected
-            .as_bytes()
-            .iter()
-            .map(|&byte| char::from(byte))
-            .collect()
+    count_digit_steps(
+        digits.len()
+            + match keep {
+                Keep::Integer => digits.len(),
+                Keep::Fraction => places,
+            },
+    );
+    (digits, state)
+}
+
+/// The value of the digit `place` positions above the units place of `digits`, written most
+/// significant first, or zero above the first digit.
+fn digit_at(digits: &[u8], place: usize) -> u64 {
+    digits
+        .len()
+        .checked_sub(place.saturating_add(1))
+        .and_then(|index| digits.get(index))
+        .map_or(0, |&digit| u64::from(digit - b'0'))
+}
+
+/// The digits of `input * multiplier + carry`, as the integer a decimal's whole part holds.
+fn product_string(input: &[u8], multiplier: u32, carry: u64, capacity: usize) -> String {
+    // The carry past the input has at most as many digits as a u64.
+    let places = input.len().saturating_add(20);
+    digit_string(places, Keep::Integer, capacity, carry, |carry, place| {
+        let product = digit_at(input, place) * u64::from(multiplier) + carry;
+        (Digit::units(product), product / 10)
     })
+    .0
+}
+
+/// The digits of `left + right + carry`.
+fn sum_string(left: &[u8], right: &[u8], carry: u8, capacity: usize) -> String {
+    let places = left.len().max(right.len()).saturating_add(1);
+    digit_string(places, Keep::Integer, capacity, carry, |carry, place| {
+        let sum = digit_at(left, place) + digit_at(right, place) + u64::from(carry);
+        (Digit::units(sum), (sum / 10) as u8)
+    })
+    .0
+}
+
+/// The digits of the integer quotient of `input` by `divisor`, and the remainder.
+fn quotient_string(input: &[u8], divisor: NonZeroU32) -> (String, u32) {
+    let divisor = u64::from(divisor.get());
+    let mut remainder = 0;
+    let mut quotient = String::with_capacity(input.len());
+    for &digit in input {
+        let partial = remainder * 10 + u64::from(digit - b'0');
+        remainder = partial % divisor;
+        let digit = Digit::units(partial / divisor);
+        if !digit.is_zero() || !quotient.is_empty() {
+            quotient.push(digit.character());
+        }
+    }
+    if quotient.is_empty() {
+        quotient.push('0');
+    }
+    #[cfg(test)]
+    count_digit_steps(quotient.len());
+    (quotient, remainder as u32)
+}
+
+/// The fractional digits of `left + right`, kept at the larger scale with trailing zeroes
+/// dropped, and the carry into the whole part.
+fn fraction_sum_string(left: &[u8], right: &[u8]) -> (String, u8) {
+    let scale = left.len().max(right.len());
+    digit_string(scale, Keep::Fraction, scale, 0, |carry: u8, place| {
+        let sum = fraction_digit(left, scale, place)
+            + fraction_digit(right, scale, place)
+            + u64::from(carry);
+        (Digit::units(sum), (sum / 10) as u8)
+    })
+}
+
+/// The fractional digits of `input * multiplier`, kept at the scale of `input` with trailing
+/// zeroes dropped, and the carry into the whole part.
+fn fraction_product_string(input: &[u8], multiplier: u32) -> (String, u64) {
+    let scale = input.len();
+    digit_string(scale, Keep::Fraction, scale, 0, |carry: u64, place| {
+        let product = fraction_digit(input, scale, place) * u64::from(multiplier) + carry;
+        (Digit::units(product), product / 10)
+    })
+}
+
+/// The value of the fractional digit `place` positions above the last of `scale` places, or zero
+/// where `digits` is shorter than the scale.
+fn fraction_digit(digits: &[u8], scale: usize, place: usize) -> u64 {
+    scale
+        .checked_sub(place.saturating_add(1))
+        .and_then(|index| digits.get(index))
+        .map_or(0, |&digit| u64::from(digit - b'0'))
 }
 
 /// Observed cumulative capacity of every variable allocation made by one
@@ -1255,24 +1428,24 @@ impl HtmlNonNegativeInteger {
         if multiplier == 0 || self.is_zero() {
             return Self::from(0);
         }
-        let mut output = Vec::with_capacity(capacity_hint(self.digits.len(), 10));
-        write_product(self.digits.as_bytes(), multiplier, 0, &mut output);
         Self {
-            digits: ascii_digits(output),
+            digits: product_string(
+                self.digits.as_bytes(),
+                multiplier,
+                0,
+                capacity_hint(self.digits.len(), 10),
+            ),
         }
     }
 
     pub(crate) fn added_to(&self, other: &Self) -> Self {
-        let mut output =
-            Vec::with_capacity(capacity_hint(self.digits.len().max(other.digits.len()), 1));
-        write_sum(
-            self.digits.as_bytes(),
-            other.digits.as_bytes(),
-            0,
-            &mut output,
-        );
         Self {
-            digits: ascii_digits(output),
+            digits: sum_string(
+                self.digits.as_bytes(),
+                other.digits.as_bytes(),
+                0,
+                capacity_hint(self.digits.len().max(other.digits.len()), 1),
+            ),
         }
     }
 
@@ -1287,14 +1460,8 @@ impl HtmlNonNegativeInteger {
     /// Divides an exact magnitude by a bounded nonzero integer.
     /// The remainder is strictly less than the divisor.
     pub(crate) fn quotient_remainder(&self, divisor: NonZeroU32) -> (Self, u32) {
-        let mut output = Vec::with_capacity(self.digits.len());
-        let remainder = write_quotient(self.digits.as_bytes(), divisor, &mut output);
-        (
-            Self {
-                digits: ascii_digits(output),
-            },
-            remainder,
-        )
+        let (digits, remainder) = quotient_string(self.digits.as_bytes(), divisor);
+        (Self { digits }, remainder)
     }
 
     /// Returns normalized ASCII decimal magnitude digits.
@@ -1443,20 +1610,20 @@ impl HtmlFloatingPointNumber {
                 remaining -= step;
             }
             let digits = coefficient.digits;
-            let (integer, fraction) = if digits.len() > scale {
+            // The fraction keeps the scale in its capacity and drops its trailing zeroes.
+            let mut fraction = String::with_capacity(scale);
+            let integer = if digits.len() > scale {
                 let split = digits.len() - scale;
-                (
-                    HtmlNonNegativeInteger {
-                        digits: digits[..split].to_owned(),
-                    },
-                    digits.as_bytes()[split..].to_vec(),
-                )
+                fraction.push_str(digits[split..].trim_end_matches('0'));
+                HtmlNonNegativeInteger {
+                    digits: digits[..split].to_owned(),
+                }
             } else {
-                let mut fraction = vec![b'0'; scale];
-                fraction[scale - digits.len()..].copy_from_slice(digits.as_bytes());
-                (HtmlNonNegativeInteger::from(0), fraction)
+                fraction.extend(std::iter::repeat_n('0', scale - digits.len()));
+                fraction.push_str(digits.trim_end_matches('0'));
+                HtmlNonNegativeInteger::from(0)
             };
-            HtmlNonNegativeDecimal::from_unmetered_fraction(integer, fraction)
+            HtmlNonNegativeDecimal { integer, fraction }
         };
         HtmlSignedDecimal::from_magnitude(magnitude, bits >> 63 != 0)
     }
@@ -1610,28 +1777,18 @@ impl HtmlNonNegativeDecimal {
 
     /// Adds exact decimal quantities, preserving significant fractional zeroes.
     pub(crate) fn added_to(&self, other: &Self) -> Self {
-        let mut fraction = vec![b'0'; self.fraction.len().max(other.fraction.len())];
-        let carry = write_fraction_sum(
-            self.fraction.as_bytes(),
-            other.fraction.as_bytes(),
-            &mut fraction,
-        );
-        let mut integer = Vec::with_capacity(capacity_hint(
-            self.integer.digits.len().max(other.integer.digits.len()),
-            1,
-        ));
-        write_sum(
+        let (fraction, carry) =
+            fraction_sum_string(self.fraction.as_bytes(), other.fraction.as_bytes());
+        let digits = sum_string(
             self.integer.digits.as_bytes(),
             other.integer.digits.as_bytes(),
             carry,
-            &mut integer,
+            capacity_hint(self.integer.digits.len().max(other.integer.digits.len()), 1),
         );
-        Self::from_unmetered_fraction(
-            HtmlNonNegativeInteger {
-                digits: ascii_digits(integer),
-            },
+        Self {
+            integer: HtmlNonNegativeInteger { digits },
             fraction,
-        )
+        }
     }
 
     /// Multiplies an exact decimal quantity by a bounded nonnegative integer.
@@ -1639,25 +1796,20 @@ impl HtmlNonNegativeDecimal {
         if multiplier == 0 || self.is_zero() {
             return HtmlNonNegativeInteger::from(0).into();
         }
-        let mut fraction = vec![b'0'; self.fraction.len()];
-        let carry = write_fraction_product(self.fraction.as_bytes(), multiplier, &mut fraction);
-        let mut integer = Vec::with_capacity(capacity_hint(self.integer.digits.len(), 10));
-        write_product(
+        let (fraction, carry) = fraction_product_string(self.fraction.as_bytes(), multiplier);
+        let digits = product_string(
             self.integer.digits.as_bytes(),
             multiplier,
             carry,
-            &mut integer,
+            capacity_hint(self.integer.digits.len(), 10),
         );
-        Self::from_unmetered_fraction(
-            HtmlNonNegativeInteger {
-                digits: ascii_digits(integer),
-            },
+        Self {
+            integer: HtmlNonNegativeInteger { digits },
             fraction,
-        )
+        }
     }
 
-    // Only the arithmetic above constructs these ASCII digit buffers. Leading
-    // fractional zeroes retain scale; removing trailing zeroes is lossless.
+    // Leading fractional zeroes retain scale; removing trailing zeroes is lossless.
     /// A decimal from a fraction buffer that a metered operation reserved.
     fn from_metered_fraction(
         integer: HtmlNonNegativeInteger,
@@ -1669,15 +1821,6 @@ impl HtmlNonNegativeDecimal {
             fraction: ascii_digit_string(fraction)?,
         })
     }
-    /// A decimal from a fraction buffer that an unmetered operation built.
-    fn from_unmetered_fraction(integer: HtmlNonNegativeInteger, mut fraction: Vec<u8>) -> Self {
-        trim_trailing_zeroes(&mut fraction);
-        Self {
-            integer,
-            fraction: ascii_digits(fraction),
-        }
-    }
-
     /// Returns the exact integer part.
     pub fn integer_part(&self) -> &HtmlNonNegativeInteger {
         &self.integer
@@ -3533,16 +3676,105 @@ mod tests {
         }
     }
 
+    fn long_integer(text: &str) -> HtmlNonNegativeInteger {
+        HtmlNonNegativeInteger::from_decimal_digits(&DocumentString::from(text)).unwrap()
+    }
+
+    /// The digits of an unmetered operation written most significant first match the metered
+    /// operation, which is a separate implementation, across the block boundaries of the two-pass
+    /// writer and through runs of nines that carry the whole way.
     #[test]
-    fn unmetered_digit_buffers_move_into_their_strings() {
-        let bytes = b"4096".to_vec();
-        let (at, capacity) = (bytes.as_ptr(), bytes.capacity());
-        let digits = ascii_digits(bytes);
-        assert_eq!(digits, "4096");
-        assert_eq!(digits.as_ptr(), at, "the digits are moved, not copied");
-        assert_eq!(digits.capacity(), capacity);
-        // A byte that is not an ASCII digit is still one character, as it always was.
-        assert_eq!(ascii_digits(vec![b'1', 0xE9, b'2']), "1\u{e9}2");
+    fn unmetered_integer_arithmetic_matches_the_metered_operations_across_blocks() {
+        let unlimited = (usize::MAX, usize::MAX);
+        let operands = [
+            "9".repeat(DIGIT_BLOCK - 1),
+            "9".repeat(DIGIT_BLOCK),
+            "9".repeat(DIGIT_BLOCK + 1),
+            "9".repeat(3 * DIGIT_BLOCK + 7),
+            format!("1{}", "0".repeat(2 * DIGIT_BLOCK)),
+            format!("{}{}", "1".repeat(DIGIT_BLOCK), "9".repeat(DIGIT_BLOCK)),
+            "123456789".repeat(100),
+            "7".to_owned(),
+            "1".to_owned(),
+        ];
+        for left in &operands {
+            let left = long_integer(left);
+            for multiplier in [1_u32, 2, 7, 10, 99_999, u32::MAX] {
+                let metered = left
+                    .try_multiplied_by(multiplier, unlimited.0, unlimited.1)
+                    .unwrap();
+                assert_eq!(left.multiplied_by(multiplier), metered.value);
+            }
+            for right in &operands {
+                let right = long_integer(right);
+                let metered = left.try_added_to(&right, unlimited.0, unlimited.1).unwrap();
+                assert_eq!(left.added_to(&right), metered.value);
+            }
+            for divisor in [1_u32, 3, 7, 10, 999_999_937] {
+                let divisor = NonZeroU32::new(divisor).unwrap();
+                let metered = left
+                    .try_quotient_remainder(divisor, unlimited.0, unlimited.1)
+                    .unwrap();
+                assert_eq!(left.quotient_remainder(divisor), metered.value);
+            }
+        }
+    }
+
+    /// The same for decimals, whose fraction carries into the whole part and keeps its scale.
+    #[test]
+    fn unmetered_decimal_arithmetic_matches_the_metered_operations_across_blocks() {
+        let unlimited = (usize::MAX, usize::MAX);
+        let decimal = |whole: &str, fraction: &str| {
+            if fraction.is_empty() {
+                return long_integer(whole).into();
+            }
+            HtmlNonNegativeDecimal::with_fraction_digits(
+                long_integer(whole),
+                &DocumentString::from(fraction),
+            )
+            .unwrap()
+        };
+        let operands = [
+            decimal("0", &"9".repeat(DIGIT_BLOCK + 3)),
+            decimal(&"9".repeat(DIGIT_BLOCK + 1), &"9".repeat(2 * DIGIT_BLOCK)),
+            decimal("1", &format!("{}5", "0".repeat(DIGIT_BLOCK + 10))),
+            decimal("12", "5"),
+            decimal("0", "05"),
+            decimal("42", ""),
+        ];
+        for left in &operands {
+            for multiplier in [1_u32, 2, 3, 99_999, u32::MAX] {
+                let metered = left
+                    .try_multiplied_by(multiplier, unlimited.0, unlimited.1)
+                    .unwrap();
+                assert_eq!(left.multiplied_by(multiplier), metered.value);
+            }
+            for right in &operands {
+                let metered = left.try_added_to(right, unlimited.0, unlimited.1).unwrap();
+                assert_eq!(left.added_to(right), metered.value);
+            }
+        }
+    }
+
+    /// The writer keeps the places its kind keeps and returns the carry out of the last place.
+    #[test]
+    fn a_digit_string_keeps_integer_and_fraction_places_and_returns_the_final_state() {
+        // 999 + 1 across three places: the carry runs through the nines and out.
+        let (digits, carry) = digit_string(4, Keep::Integer, 0, 1_u8, |carry, place| {
+            let sum = if place < 3 { 9 } else { 0 } + u64::from(carry);
+            (Digit::units(sum), (sum / 10) as u8)
+        });
+        assert_eq!((digits.as_str(), carry), ("1000", 0));
+        // Every place zero: an integer is a lone zero, a fraction is empty.
+        let zeros = |_: (), _| (Digit::units(0), ());
+        assert_eq!(digit_string(5, Keep::Integer, 0, (), zeros).0, "0");
+        assert_eq!(digit_string(5, Keep::Fraction, 0, (), zeros).0, "");
+        // Fractional places keep leading zeroes and drop trailing ones: 0.0500 -> "05".
+        let fraction = digit_string(4, Keep::Fraction, 4, (), |(), place| {
+            (Digit::units(if place == 2 { 5 } else { 0 }), ())
+        });
+        assert_eq!(fraction.0, "05");
+        assert!(fraction.0.capacity() >= 4);
     }
 
     /// The predecessor of a positive integer against machine subtraction, and against the digits

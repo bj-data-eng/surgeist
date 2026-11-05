@@ -5,7 +5,7 @@
 //! pair's fields are private to this module and only [`Order::of`] builds one, so a caller cannot
 //! hand the subtraction an operand pair outside its domain.
 
-use super::{HtmlNonNegativeDecimal, HtmlNonNegativeInteger, ascii_digits, trim_trailing_zeroes};
+use super::{Digit, HtmlNonNegativeDecimal, HtmlNonNegativeInteger, Keep, digit_at, digit_string};
 use std::cmp::Ordering;
 
 /// The exact order of two magnitudes. A pair that differs carries the gap between its members.
@@ -60,11 +60,7 @@ impl Magnitude for HtmlNonNegativeInteger {
     }
     fn gap(larger: &Self, smaller: &Self) -> Self {
         Self {
-            digits: difference_string(subtract_digits(
-                larger.digits.as_bytes(),
-                smaller.digits.as_bytes(),
-                0,
-            )),
+            digits: subtract_digits(larger.digits.as_bytes(), smaller.digits.as_bytes(), 0),
         }
     }
 }
@@ -77,71 +73,62 @@ impl Magnitude for HtmlNonNegativeDecimal {
     /// larger one, which the larger decimal's order covers.
     fn gap(larger: &Self, smaller: &Self) -> Self {
         let scale = larger.fraction.len().max(smaller.fraction.len());
-        let mut fraction = vec![b'0'; scale];
-        let mut borrow = 0;
-        for (index, place) in fraction.iter_mut().enumerate().rev() {
-            let left = larger
-                .fraction
-                .as_bytes()
-                .get(index)
-                .copied()
-                .unwrap_or(b'0');
-            let right = smaller
-                .fraction
-                .as_bytes()
-                .get(index)
-                .copied()
-                .unwrap_or(b'0');
-            let difference = i16::from(left - b'0') - i16::from(right - b'0') - i16::from(borrow);
-            borrow = u8::from(difference < 0);
-            *place = b'0' + difference.rem_euclid(10) as u8;
-        }
-        trim_trailing_zeroes(&mut fraction);
+        let (fraction, borrow) =
+            digit_string(scale, Keep::Fraction, scale, 0, |borrow: u8, place| {
+                let difference = fraction_digit(larger.fraction.as_bytes(), scale, place)
+                    - fraction_digit(smaller.fraction.as_bytes(), scale, place)
+                    - i64::from(borrow);
+                (
+                    Digit::units(difference.rem_euclid(10) as u64),
+                    u8::from(difference < 0),
+                )
+            });
         Self {
             integer: HtmlNonNegativeInteger {
-                digits: difference_string(subtract_digits(
+                digits: subtract_digits(
                     larger.integer.digits.as_bytes(),
                     smaller.integer.digits.as_bytes(),
                     borrow,
-                )),
+                ),
             },
-            fraction: fraction_string(fraction),
+            fraction,
         }
     }
 }
 
-/// The string of a fraction buffer, with the buffer's capacity.
-fn fraction_string(digits: Vec<u8>) -> String {
-    ascii_digits(digits)
+/// The value of the fractional digit `place` positions above the last of `scale` places, or zero
+/// where `digits` is shorter than the scale.
+fn fraction_digit(digits: &[u8], scale: usize, place: usize) -> i64 {
+    scale
+        .checked_sub(place.saturating_add(1))
+        .and_then(|index| digits.get(index))
+        .map_or(0, |&digit| i64::from(digit - b'0'))
 }
 
-/// The string of a difference's integer digits, with exactly their length as capacity.
-fn difference_string(mut digits: Vec<u8>) -> String {
-    digits.shrink_to_fit();
-    ascii_digits(digits)
-}
-
-/// The canonical digits of `larger - smaller - borrow`, most significant first.
+/// The canonical digits of `larger - smaller - borrow`, most significant first, with exactly
+/// their length as capacity.
 ///
 /// Canonical digits have no leading zeroes, so the larger magnitude is at least as long as the
 /// smaller one and its digits cover the smaller one's. Only a [`Gap`] reaches this function: the
 /// larger magnitude exceeds the smaller one, and with a fraction's borrow it still covers
 /// `smaller + borrow`, so the subtraction leaves no borrow past the most significant digit.
-fn subtract_digits(larger: &[u8], smaller: &[u8], mut borrow: u8) -> Vec<u8> {
-    let mut right = smaller.iter().rev();
-    let mut reversed = Vec::with_capacity(larger.len());
-    for digit in larger.iter().rev() {
-        let difference = i16::from(digit - b'0')
-            - i16::from(right.next().map_or(0, |digit| digit - b'0'))
-            - i16::from(borrow);
-        borrow = u8::from(difference < 0);
-        reversed.push(b'0' + difference.rem_euclid(10) as u8);
-    }
-    while reversed.len() > 1 && reversed.last() == Some(&b'0') {
-        reversed.pop();
-    }
-    reversed.reverse();
-    reversed
+fn subtract_digits(larger: &[u8], smaller: &[u8], borrow: u8) -> String {
+    digit_string(
+        larger.len(),
+        Keep::Integer,
+        0,
+        borrow,
+        |borrow: u8, place| {
+            let difference = digit_at(larger, place) as i64
+                - digit_at(smaller, place) as i64
+                - i64::from(borrow);
+            (
+                Digit::units(difference.rem_euclid(10) as u64),
+                u8::from(difference < 0),
+            )
+        },
+    )
+    .0
 }
 
 #[cfg(test)]
