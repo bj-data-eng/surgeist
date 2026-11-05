@@ -10,11 +10,10 @@ fn prepare_nbsp(
 ) -> crate::Result<(Arc<ProcessedSource>, PreparedText)> {
     let (processed, analyzed) = captured("\u{a0}", WhiteSpace::Preserve, word);
     source_custody(&processed, &analyzed, &[0], word);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(font.to_vec()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(font.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system.prepare(&analyzed, options)?;
     assert_eq!(prepared.analyzed_source().identity(), analyzed.identity());
     assert!(prepared.cell_views().next().unwrap().has_provider_input());

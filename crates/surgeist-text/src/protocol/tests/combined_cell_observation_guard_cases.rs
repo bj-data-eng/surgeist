@@ -213,11 +213,10 @@ fn ordinary(layout: &Layout, origin: &PreparedOrigin, range: Range) {
 fn one_real_root_original_distinguishes_ordinary_partial_and_crossing_cell_queries() {
     let font = digit_font();
     let (processed, analyzed) = digits_source();
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(font.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(font.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(
             &analyzed,
@@ -357,11 +356,10 @@ fn provider_empty_cell_keeps_its_authentic_owned_range_without_fabricated_geomet
     );
     assert_eq!(piece.local(), Range::new(0, 1));
     assert!(!piece.is_used() && !piece.has_presentation_emission());
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(font.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(font.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(
             &analyzed,

@@ -101,11 +101,10 @@ fn native(raw: &str, height: f64, forced: bool, whitespace: t::WhiteSpace) -> Na
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(wrapping).unwrap();
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(bytes, surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(
             &analyzed,

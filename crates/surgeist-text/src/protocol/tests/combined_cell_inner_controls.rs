@@ -427,11 +427,10 @@ fn qualify(kind: InputKind) {
         LineOrientation::SidewaysClockwise,
         LineOrientation::SidewaysCounterclockwise,
     ] {
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        system.register_fonts(bytes.clone()).unwrap();
+        let mut system = System::default();
+        system
+            .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+            .unwrap();
         // A separately authored None capture of the same actual source/control
         // sequence must prepare successfully before the Cell refusal is tested.
         let (ordinary_source, ordinary) = captured(kind, TextCombineUpright::None, orientation);

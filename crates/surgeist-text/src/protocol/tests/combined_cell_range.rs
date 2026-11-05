@@ -161,11 +161,10 @@ fn ordinary_control(bytes: &[u8]) {
     .unwrap();
     assert_eq!(analyzed.combined_cells().len(), 0);
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::Word);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.to_vec()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap();

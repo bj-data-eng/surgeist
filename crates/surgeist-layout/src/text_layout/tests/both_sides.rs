@@ -115,10 +115,8 @@ fn prepare(
         text::AnalysisTypography::HorizontalComposition,
     )?;
     let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::Word);
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })?;
-    system.register_fonts(AHEM.to_vec())?;
+    let mut system = text::System::default();
+    system.register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)?;
     system.prepare(&analyzed, text::PreparationOptions::default())
 }
 

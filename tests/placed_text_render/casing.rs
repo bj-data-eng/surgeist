@@ -124,11 +124,10 @@ fn casing_expansion_changes_actual_fit_and_intrinsic_widths() {
     // Original Ahem has ß134 and S53, each1000units at UPEM1000.
     // Full Unicode uppercase is SS. Break-all supplies the legal S|S cut;
     // fitting operates on the two actual10px glyphs, not source length1.
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     for uppercase in [false, true] {
         let (batch, _, source) = capture(
             &mut system,
@@ -228,11 +227,10 @@ fn casing_expansion_changes_actual_fit_and_intrinsic_widths() {
 
 #[test]
 fn receiving_expansion_selection_and_paint_retain_exact_original_occurrence() {
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let (batch, origin, source) = capture(
         &mut system,
         true,
@@ -332,11 +330,10 @@ fn receiving_expansion_selection_and_paint_retain_exact_original_occurrence() {
 #[test]
 fn casing_expansion_enriches_original_accessibility_with_actual_geometry() {
     for uppercase in [false, true] {
-        let mut system = text::System::new(text::SystemOptions {
-            font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        system.register_fonts(AHEM.to_vec()).unwrap();
+        let mut system = text::System::default();
+        system
+            .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+            .unwrap();
         let (batch, _, _) = capture(
             &mut system,
             uppercase,

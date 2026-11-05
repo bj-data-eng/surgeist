@@ -10,11 +10,9 @@ fn style(size: f32) -> Style {
     }
 }
 fn system(bytes: Vec<u8>) -> System {
-    let mut s = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    s.register_fonts(bytes).unwrap();
+    let mut s = System::default();
+    s.register_fonts(bytes, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     s
 }
 fn input(
@@ -694,7 +692,10 @@ fn own_formatting_font_survives_catalogue_replacement_and_system_drop() {
     let p = fonts.prepare(&a, PreparationOptions::default()).unwrap();
     let old = fonts.font_catalogue_identity().clone();
     fonts
-        .register_fonts(crate::test_fonts::variable_ahem())
+        .register_fonts(
+            crate::test_fonts::variable_ahem(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     assert_ne!(fonts.font_catalogue_identity(), &old);
     let o = p.origin_views().next().unwrap().handle();
@@ -720,10 +721,7 @@ fn wholly_removed_original_needs_no_fabricated_font_and_newline_modes_stay_disti
         ParagraphBaseDirection::LeftToRight,
     );
     capture.paragraph_strut = ParagraphStrut::AllocatedContributions;
-    let mut no_fonts = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut no_fonts = System::default();
     let p = no_fonts
         .prepare(
             &AnalyzedSource::from_paragraph(

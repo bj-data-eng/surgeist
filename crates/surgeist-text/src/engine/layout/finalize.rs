@@ -3702,10 +3702,7 @@ fn same_paint_font(a: &PreparedRun, b: &PreparedRun) -> bool {
 mod tests {
     use super::*;
     use crate::protocol::*;
-    use crate::{
-        FinalizedFragmentOwner, Font, FontCatalogueMode, Source, Style, System, SystemOptions,
-        WhiteSpace,
-    };
+    use crate::{FinalizedFragmentOwner, Font, Source, Style, System, WhiteSpace};
     use crate::{
         ParagraphAnchor, ParagraphAnchorItem, ParagraphBoundaryDefinition, ParagraphBoundaryPolicy,
         ParagraphControl, ParagraphControlKind, ParagraphOrigin, ParagraphOriginKind,
@@ -3808,12 +3805,12 @@ mod tests {
             crate::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut system = System::default();
         system
-            .register_fonts(include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
+            .register_fonts(
+                include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+                crate::test_fonts::FONT_LIMITS,
+            )
             .unwrap();
         let analyzed = crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word);
         let prepared = system
@@ -4191,12 +4188,12 @@ mod tests {
 
     #[test]
     fn raw_standalone_keeps_characterized_global_leading_policy() {
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut system = System::default();
         system
-            .register_fonts(include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
+            .register_fonts(
+                include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+                crate::test_fonts::FONT_LIMITS,
+            )
             .unwrap();
         for (quantize, baseline) in [(false, 38.4), (true, 38.0)] {
             let mut source = Source::new("X");
@@ -4264,10 +4261,7 @@ mod tests {
         .unwrap();
         // No font is registered or requested: the sole actual allocation owns
         // all metrics, including its used negative outer margins.
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut system = System::default();
         let prepared = system
             .prepare(&analyzed, PreparationOptions::default())
             .unwrap();
@@ -4747,12 +4741,12 @@ mod tests {
         );
         assert_eq!(analyzed.inner.analysis.levels[4], 2);
 
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut system = System::default();
         system
-            .register_fonts(include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
+            .register_fonts(
+                include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+                crate::test_fonts::FONT_LIMITS,
+            )
             .unwrap();
         let prepared = system
             .prepare(&analyzed, PreparationOptions::default())

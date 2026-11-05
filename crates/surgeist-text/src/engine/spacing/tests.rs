@@ -65,11 +65,10 @@ fn shared_word_geometry_keeps_its_diagnostic_outside_the_payload_allowance() {
         Wrap::Word,
     );
     assert_eq!(analyzed.source(), &source);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap();

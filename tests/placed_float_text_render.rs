@@ -52,13 +52,11 @@ impl layout::LayoutTree for Tree {
 
 #[test]
 fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = text::System::default();
     system
         .register_fonts(
             include_bytes!("../crates/surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+            surgeist_test::fixtures::FONT_LIMITS,
         )
         .unwrap();
     let style = text::Style {

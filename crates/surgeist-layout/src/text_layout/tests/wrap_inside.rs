@@ -230,11 +230,10 @@ fn captured_with_profile(
     )
     .unwrap();
     let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, style.wrap);
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(font.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(font.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(&analyzed, text::PreparationOptions::default())
         .unwrap();

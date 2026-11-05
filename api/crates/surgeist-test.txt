@@ -131,3 +131,4 @@ pub const fn surgeist_test::fixtures::layout_ready::SchemaVersion::current() -> 
 pub const fn surgeist_test::fixtures::layout_ready::SchemaVersion::get(self) -> u16
 pub const fn surgeist_test::fixtures::layout_ready::SchemaVersion::new(value: u16) -> Self
 pub const surgeist_test::fixtures::CURRENT_SCHEMA_VERSION: surgeist_test::fixtures::layout_ready::SchemaVersion
+pub const surgeist_test::fixtures::FONT_LIMITS: surgeist_font::DecodeLimits

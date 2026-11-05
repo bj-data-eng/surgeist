@@ -125,10 +125,7 @@ fn finite_effective_size_cannot_overflow_binary32() {
 
 #[test]
 fn renderable_text_without_a_usable_face_refuses_without_publishing_layout() {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .expect("an empty registered-only catalogue is valid");
+    let mut system = System::default();
     let source = Source::new("AX");
     let before = system.stats();
     let catalogue = system.font_catalogue_identity().clone();
@@ -143,7 +140,7 @@ fn renderable_text_without_a_usable_face_refuses_without_publishing_layout() {
     assert_eq!(system.font_catalogue_identity(), &catalogue);
     assert_eq!(source.text().code_units(), [0x0041, 0x0058]);
     system
-        .register_fonts(AHEM.to_vec())
+        .register_fonts(AHEM.to_vec(), crate::common::FONT_LIMITS)
         .expect("a refused request does not prevent later real admission");
     let admitted = system
         .layout(source, font_style(Font::new().family("Ahem")), options())

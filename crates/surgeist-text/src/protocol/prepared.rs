@@ -345,7 +345,7 @@ pub(crate) enum SelectedMappingKind {
 /// Issues canonical units from actual atoms, executed deletions and captured
 /// anchor occurrences. No preliminary item/source offset issues a public handle.
 pub(crate) fn prepare_tables(
-    catalogue: &mut crate::catalogue::Catalogue,
+    catalogue: &mut surgeist_font::FontCatalogue,
     styles: &[ResolvedStyleRun],
     analyzed: &AnalyzedData,
     shaped: &ShapedData,
@@ -739,7 +739,7 @@ pub(crate) fn visit_cell_allocations(
 }
 
 fn issue_opportunities(
-    catalogue: &mut crate::catalogue::Catalogue,
+    catalogue: &mut surgeist_font::FontCatalogue,
     analyzed: &AnalyzedData,
     styles: &[ResolvedStyleRun],
     tables: &mut PreparedTables,
@@ -1521,7 +1521,7 @@ fn used_placement(
 }
 
 fn indication(
-    catalogue: &mut crate::catalogue::Catalogue,
+    catalogue: &mut surgeist_font::FontCatalogue,
     styles: &[ResolvedStyleRun],
     authored: &crate::Style,
     style: usize,
@@ -1542,11 +1542,9 @@ fn indication(
                     IndicationResolution::Convention,
                 ),
                 None => {
-                    let identity = catalogue.identity().clone();
                     let (text, primary) = crate::engine::shape::automatic_hyphen(
                         catalogue.query(),
                         &styles[style].style,
-                        &identity,
                     )?;
                     (text, IndicationResolution::Primary(primary))
                 }
@@ -1890,7 +1888,7 @@ fn disappearing_space_wrap(analyzed: &AnalyzedData, atom: usize) -> Option<crate
 /// Performs actual alternative font matching while the original
 /// catalogue capture is still owned by preparation. No finalizer can requery it.
 pub(crate) fn prepare_indication_fonts(
-    catalogue: &mut crate::catalogue::Catalogue,
+    catalogue: &mut surgeist_font::FontCatalogue,
     analyzed: &std::sync::Arc<AnalyzedData>,
     styles: &[ResolvedStyleRun],
     tables: &PreparedTables,
@@ -1903,14 +1901,14 @@ pub(crate) fn prepare_indication_fonts(
     let mut alternatives = Vec::with_capacity(tables.alternatives.len());
     for (alternative, row) in tables.alternatives.iter().enumerate() {
         if let IndicationResolution::Primary(font) = &row.resolution
-            && catalogue.identity() != font.catalogue_identity()
+            && catalogue.publication() != font.catalogue_identity()
         {
             return Err(crate::Error::new(
                 crate::ErrorCode::FontCatalogueMismatch,
                 "indication primary belongs to a different preparation catalogue",
             )
             .with_detail(crate::ErrorDetail::FontCatalogueMismatch {
-                expected: catalogue.identity().clone(),
+                expected: catalogue.publication().clone(),
                 actual: font.catalogue_identity().clone(),
             }));
         }
@@ -1992,7 +1990,7 @@ pub(crate) fn prepare_indication_fonts(
                 )?,
             };
             let inserted_atoms = inserted_atoms.start - offset..inserted_atoms.end - offset;
-            let catalogue_identity = catalogue.identity().clone();
+            let catalogue_identity = catalogue.publication().clone();
             let provenance = crate::engine::upright::UprightProvenance::Alternative {
                 original: &analyzed.projection,
                 originals: &original_atoms[side.clone()],

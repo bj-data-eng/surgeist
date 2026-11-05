@@ -23,8 +23,8 @@
 use super::AHEM;
 use crate::test_fonts::{table, u16_at, u32_at};
 use crate::{
-    Alignment, Direction, Font, FontCatalogueMode, Id, LineHeight, Options, Range, Source, Style,
-    System, SystemOptions, TextTransform, WhiteSpace,
+    Alignment, Direction, Font, Id, LineHeight, Options, Range, Source, Style, System,
+    TextTransform, WhiteSpace,
 };
 use skrifa::MetadataProvider;
 
@@ -122,11 +122,10 @@ fn casing_fixture_has_real_distinct_cmap_metrics_outlines_and_checksums() {
 fn baseline(bytes: Vec<u8>, text: &str, units: &[u16], expected: &[(u32, f32)], width: f64) {
     let source = Source::identified(text, Id::from_u64(6302), 12);
     assert_eq!(source.text().code_units(), units);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let layout = system
         .layout(
             source.clone(),

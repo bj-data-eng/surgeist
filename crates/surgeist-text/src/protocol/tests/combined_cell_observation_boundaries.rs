@@ -41,11 +41,10 @@ fn prepared_cell(
         &(0..text.len()).collect::<Vec<_>>(),
         0.0,
     );
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(font.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(font.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(
             &analyzed,

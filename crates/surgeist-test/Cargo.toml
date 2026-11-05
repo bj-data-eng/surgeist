@@ -10,3 +10,6 @@ description = "Shared test infrastructure and integration fixtures for Surgeist.
 [lib]
 name = "surgeist_test"
 path = "src/lib.rs"
+
+[dependencies]
+surgeist-font = { path = "../surgeist-font", version = "=0.1.0" }

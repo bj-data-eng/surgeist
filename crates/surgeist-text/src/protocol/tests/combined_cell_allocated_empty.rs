@@ -96,11 +96,10 @@ fn zero_targets(text: &str, whitespace: WhiteSpace, policy: SpacingPolicy) {
         (0..text.len()).collect()
     };
     source_custody(&processed, &analyzed, &used, 0.0);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(font.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(font.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(
             &analyzed,

@@ -202,12 +202,13 @@ fn setup(
     assert_eq!(pieces[0].kind(), ParagraphOriginKind::Authored);
     let analyzed = crate::test_wrapping::bind_missing(output, Wrap::Word);
     let body = composition_font();
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(parent_font()).unwrap();
-    system.register_fonts(body.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(parent_font(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
+    system
+        .register_fonts(body.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     assert_eq!(system.registered_font_faces().count(), 2);
     (system, processed, analyzed, body)
 }

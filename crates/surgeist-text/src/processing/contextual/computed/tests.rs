@@ -257,13 +257,11 @@ fn real_native_finalization_consumes_computed_forces_without_host_control_or_fra
         base_style.size = 10.0;
         base_style.line_height = LineHeight::Absolute(10.0);
         let analyzed = crate::test_wrapping::bind_missing(&analyze(raw), Wrap::Word);
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut system = System::default();
         system
             .register_fonts(
                 include_bytes!("../../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+                crate::test_fonts::FONT_LIMITS,
             )
             .unwrap();
         let prepared = system

@@ -554,11 +554,10 @@ fn assert_payload(
 #[test]
 fn preserved_inner_word_spacing_is_measured_before_normal_compression_and_retained_on_replay() {
     let font = qualified_font();
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(font.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(font.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     assert_eq!(system.registered_font_faces().count(), 1);
     // Same actual registered font/instance: SPACE4 splits2/2, not after-only4.
     native_control(&mut system, &font, 0.0, [0.0, 10.0, 20.0], 30.0);
@@ -622,11 +621,10 @@ fn collapsed_inner_edge_spaces_keep_selection_custody_but_add_no_word_term_to_us
     let font = qualified_font();
     let (processed, analyzed) = captured(" A ", WhiteSpace::Collapse, 4.0);
     source_custody(&processed, &analyzed, &[1], 4.0);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(font.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(font.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(
             &analyzed,
@@ -668,11 +666,10 @@ fn collapsed_whitespace_only_with_word_spacing_keeps_one_em_and_no_provider_inpu
     let font = qualified_font();
     let (processed, analyzed) = captured(" ", WhiteSpace::Collapse, 4.0);
     source_custody(&processed, &analyzed, &[], 4.0);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(font.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(font.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(
             &analyzed,

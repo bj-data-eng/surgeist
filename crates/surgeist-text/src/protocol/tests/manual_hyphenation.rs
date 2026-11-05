@@ -46,11 +46,10 @@ fn prepare(bytes: &[u8], text: &str) -> PreparedText {
             .unwrap(),
         crate::Wrap::Word,
     );
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.to_vec()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     system
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap()
@@ -349,11 +348,10 @@ fn raw_bare_shy(primary_hyphen: bool) {
     // cannot alter the independent 20px contributions or the fit threshold.
     let source = Source::new("X\u{ad}XX");
     let original = [88, 0xad, 88, 88];
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let unbroken = system
         .layout(
             source.clone(),

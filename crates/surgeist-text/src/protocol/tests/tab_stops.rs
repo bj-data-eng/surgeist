@@ -705,10 +705,7 @@ fn block_space_and_tab_zero_have_distinct_owners_and_scale_once() {
 }
 #[test]
 fn zero_tab_is_fontless_but_still_needs_actual_line_metrics() {
-    let mut empty = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut empty = System::default();
     let zero = Style {
         white_space: WhiteSpace::Preserve,
         tab_size: crate::TabSize::spaces(0.0).unwrap(),
@@ -1303,11 +1300,10 @@ fn grid_phase_does_not_require_an_overflowing_coordinate_difference() {
 fn absent_zero_metric_uses_quarter_em_half_ch_threshold() {
     let fixture =
         crate::shaping_test_fonts::range_ligature_ahem(&[35, 35], &[(32, 3), (65, 35), (66, 36)]);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(fixture).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(fixture, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let p = css(
         &mut system,
         "A\tB",
@@ -1667,10 +1663,7 @@ fn mixed_isolate_order_keeps_tab_at_its_post_l1_l2_slot() {
 }
 #[test]
 fn zero_tab_layout_keeps_source_and_refuses_fabricated_range_font_metrics() {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     let mut input = captured(
         "\t",
         Style {
@@ -1780,11 +1773,10 @@ fn tab_size_value_and_dimension_change_style_cache_identity() {
 #[test]
 fn block_space_metric_uses_actual_used_direction_and_zero_keeps_even_level() {
     let fixture = crate::shaping_test_fonts::directional_space_ahem();
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(fixture).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(fixture, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     // Literal authored tables: SPACE glyph3=500units, rtla replaces it with
     // glyph0=1000; ordinary LTR ZERO19=1000, but rtla would replace it
     // with SPACE500. UPEM1000 at20px gives10/20/20 for the requested profiles.
@@ -1861,12 +1853,12 @@ fn block_space_metric_uses_actual_used_direction_and_zero_keeps_even_level() {
 
 #[test]
 fn zero_en_metric_stays_ltr_even_when_block_and_paragraph_are_rtl() {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     system
-        .register_fonts(crate::shaping_test_fonts::directional_space_ahem())
+        .register_fonts(
+            crate::shaping_test_fonts::directional_space_ahem(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     for direction in [
         ParagraphBaseDirection::LeftToRight,
@@ -2067,11 +2059,10 @@ fn tab_interval_numeric_failures_preserve_retained_results() {
 fn missing_space_metric_is_distinct_from_missing_capture_and_zero_bypasses_it() {
     let fixture =
         crate::shaping_test_fonts::range_ligature_ahem(&[35, 35], &[(48, 19), (65, 35), (66, 36)]);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(fixture).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(fixture, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let own = Style {
         white_space: WhiteSpace::Preserve,
         tab_size: crate::TabSize::spaces(2.0).unwrap(),

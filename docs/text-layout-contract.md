@@ -41,9 +41,9 @@ Exact source endpoints and projected carets are distinct. An endpoint within a s
 
 A preparation has an opaque owner-issued identity. Clones retain the same identity; independently prepared equal strings do not gain interchangeable unit handles. An internally shared allocation token with identity comparison is sufficient: do not hash content into a supposedly unique public identity. Source ID/revision and font generation are observable provenance, not substitutes for this identity. Use `usize` for source/unit indices and checked arithmetic; do not inherit Parley's compressed `u8`/`u16` text length/offset fields as public limits.
 
-`PreparedText` retains strong ownership of every font resource it uses. A face consists of immutable font bytes, collection index and text-owned resource identity. An `EffectiveFontInstance` additionally carries the resolved normalized coordinates for every variation axis, the actual shaping size and concrete synthesis parameters. Coordinates are the actual canonical values passed to shaping/metrics, not merely authored variation settings. Synthetic skew and emboldening must have concrete executable values, not an unconsumed suggestion. The synthesis resolver records its executable skew transform and emboldening displacement once for both text geometry and render admission. Fontique’s boolean faux-bold suggestion alone is insufficient; an unresolved suggestion is a typed unsupported-instance error, never silently ignored. The applicable font-synthesis feature issue owns which synthesis is requested/permitted; #1080/#1082 own converting the selected result to these concrete executable parameters.
+`PreparedText` retains strong ownership of every font resource it uses. A face refers to the immutable decoded resource and original collection index owned by Font. Text retains the catalogue publication associated with its selected face. An `EffectiveFontInstance` additionally carries the resolved normalized coordinates for every variation axis, the actual shaping size and concrete synthesis parameters. Coordinates are the actual canonical values passed to shaping/metrics, not merely authored variation settings. Synthetic skew and emboldening must have concrete executable values, not an unconsumed suggestion. The synthesis resolver records its executable skew transform and emboldening displacement once for both text geometry and render admission. Fontique’s boolean faux-bold suggestion alone is insufficient; an unresolved suggestion is a typed unsupported-instance error, never silently ignored. The applicable font-synthesis feature issue owns which synthesis is requested/permitted; #1080/#1082 own converting the selected result to these concrete executable parameters.
 
-Font catalogue changes publish a new immutable catalogue identity and invalidate preparation cache lookup for new requests. Existing preparations retain their old fonts and remain valid for reading/finalization. Each consuming adapter rejects joining them into a newly captured composed result whose source/style/font identities differ. A numeric generation counter must fail on exhaustion rather than saturate and reuse an identity. Refresh must actually publish the refreshed catalogue and replay registrations, rather than merely advance a counter. Provide concrete safe font registration and a `RegisteredOnly` catalogue mode for reproducible tests; preserve the default system catalogue behavior. This is not a font-provider trait.
+Applications supply fonts to the Font-owned catalogue. Text starts with an empty catalogue and requires a matching registered face for ordinary shaping. Registration and refresh publish a new immutable identity and invalidate Text cache lookup for new requests. Refresh replays the original admitted resources. Generation exhaustion preserves the preceding publication. Existing preparations retain their exact faces and remain valid for reading and finalization. Consuming adapters check their source, style and publication associations before composing a new result. Installed-font discovery and native fallback are deferred.
 
 ### Text transformations and correspondence
 
@@ -1690,7 +1690,7 @@ neither an eligible family face nor such a default, return a precise missing-pri
 failure for this auto-indication probe. This bounded failure does not make family
 list misses universally invalid under CSS Fonts.
 
-The current native raw-font catalogue has no CSS `@font-face` range restriction
+The current application-registered font catalogue has no CSS `@font-face` range restriction
 or separate default-primary capture. Its indication probe therefore qualifies
 ordered unrestricted native families and resolved generics, without the metric
 strut query's Latin/Han fallback. This does not complete CSS font-face range or
@@ -2531,7 +2531,7 @@ This is a mechanism-level extraction inventory proven by the installed 0.9 sourc
 | `analysis/mod.rs`, `analysis/cluster.rs`, `bidi.rs` | Unicode/cluster analysis and bidi facts. | Additional CSS feature semantics stay in their existing issues. |
 | `resolve/mod.rs`, `resolve/range.rs`, relevant `style/` conversion | Font-family, feature/variation/style resolution for the current owned source model. | Tree builder and upstream style front door are not required; adapt `setting.rs`/`inline_box.rs` conversions to the existing owned setting/inline-box values instead of retaining parallel public models. |
 | `shape/mod.rs`, `shape/cache.rs`, `convert.rs` | Shaper buffers/plans/instances, fallback shaping, source clusters and safe provider conversions. | Replace external-input unwraps and compact-offset assumptions. |
-| `context.rs`, `builder.rs`, `font.rs` | Necessary preparation orchestration and safe Fontique calls, folded into existing `System`. | Do not ingest parallel public builder/context/font APIs. |
+| `context.rs`, `builder.rs`, `font.rs` | Preparation orchestration and registered candidate lookup through Font. | Do not ingest parallel public builder/context/font APIs. |
 | `layout/data.rs`, `layout/run.rs`, cluster/line access mechanisms | Shaped storage, normalized coordinates, effective font metrics, cluster/source mapping and finalized line access. | Separate shaped data from line placement; do not preserve provider-chosen composed wrapping. |
 | `layout/line_break.rs`, `layout/alignment.rs` | Selected-line finalization/line-edge and glyph-adjustment mechanisms; required simple standalone chooser subset. | Composed break/float choice, box allocation and placement stay in layout. Consolidate duplicated L2 reorder. |
 | `editing/cursor.rs`, `editing/selection.rs`, needed layout cursor helpers | Cursor, word/visual movement and selections over committed lines. | `PlainEditor` editing orchestration is not required by the current wrapper. |
@@ -2542,13 +2542,12 @@ The baseline is Parley `0.9.0`, crates.io checksum `8fad031076f48f0d4d85ce1aea9b
 
 | Provider | Resolved version | Text requested features (`default-features = false`) | Role |
 | --- | --- | --- | --- |
-| Fontique | 0.9.0 | `std`, `system` | Safe font catalogue/matching/fallback and byte resources; native implementation remains external. |
+| [surgeist-font](../crates/surgeist-font/README.md) | 0.1.0 | none | Shared admitted resources, registered catalogue and candidate lookup. |
 | [surgeist-shaper](../crates/surgeist-shaper/README.md) | 0.1.0 (Harfrust 0.6.2 origin) | `std` | Owned shaping provider. Parley 0.9 is not Swash-backed. |
 | Skrifa | 0.42.1 | `std` | Same-instance font/outline metrics. Render independently owns its Skrifa feature needs. |
 | ICU normalizer/properties/segmenter | 2.2.0 each | `compiled_data` | Current Unicode analysis data. Segmenter's `auto`/LSTM feature is not implied by current Parley behavior. |
 | Parley Data | 0.9.0 | `baked` | Unicode analysis data; package use does not preserve the Parley intermediary. |
-| Parlance | 0.1.0 | `std` | Font attributes/settings shared with Fontique. |
-| Linebender resource handle | 0.1.1 | `std` | Safe immutable resource handles where the retained provider API requires them. |
+| Parlance | 0.1.0 | `std` | Font attributes and settings shared with Font. |
 | AccessKit (optional) | 0.24.1 | none | `text-accessibility` directly activates this provider and owned projection, without `parley/accesskit`. |
 
 Keep the current empty default feature set. The owned caches and accessibility maps use the standard library and private LRU; they do not retain the upstream Hashbrown helper calls or require a direct Hashbrown dependency. Remove the text leaf's render feature/dependency through #1082 after moving consumers. COSMIC Text and fontdb are not Text dependencies; their former Swash stack is not the source for a new owned font stack. Do not ingest Fontique's native unsafe implementations. Source ingestion preserves original copyright and Apache-2.0 OR MIT attribution, records derived file identities/modifications, and obeys the repository's safe Rust policy. No new source acquisition is needed to define this contract.

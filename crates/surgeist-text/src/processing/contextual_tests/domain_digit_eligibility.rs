@@ -102,10 +102,7 @@ fn assert_activation(
         Some(processed.captured_origin(0).unwrap().index)
     );
     let identity = output.identity();
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     assert_eq!(system.registered_font_faces().count(), 0);
     let stats = system.stats();
     let error = system

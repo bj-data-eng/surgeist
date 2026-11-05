@@ -15,12 +15,13 @@ type Raw = (usize, u32, f64, f32);
 fn resources() -> (System, Vec<u8>) {
     let bytes = native_metric_font(&combined_tab_width_ahem());
     qualify_combined_tab_width(&bytes);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(parent_font()).unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(parent_font(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     assert_eq!(system.registered_font_faces().count(), 2);
     (system, bytes)
 }

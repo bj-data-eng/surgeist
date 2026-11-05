@@ -1,20 +1,19 @@
 use super::*;
 use crate::{
-    FontCatalogueMode, FontData, System, SystemOptions,
+    FontData, System,
     test_fonts::{remove_tables, replace_tables, table, variable_ahem},
 };
 
 const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 fn system() -> System {
-    System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap()
+    System::default()
 }
 fn registered(bytes: Vec<u8>) -> (System, FontData) {
     let mut system = system();
-    system.register_fonts(bytes).unwrap();
+    system
+        .register_fonts(bytes, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let data = system.registered_font_faces().next().unwrap().to_owned();
     (system, data)
 }
@@ -39,7 +38,7 @@ fn glyph_free_registered_ahem_metrics_have_literal_scaled_center_and_resource_li
     assert_eq!(face.bytes(), AHEM);
     assert_eq!(face.index(), 0);
     assert_eq!(face.catalogue_identity(), &basis);
-    assert!(face.is_same_face(&data.face()));
+    assert_eq!(face, data);
     // The result outlives the temporary instance, not its actual strong resource.
     let metrics = data
         .unsynthesized_instance(20.0, &[])
@@ -151,11 +150,13 @@ fn publication_qualification_is_separate_from_preserved_resource_equality() {
         ErrorCode::FontCatalogueMismatch
     );
     assert_eq!(system.stats(), stats);
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    system
+        .register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let faces: Vec<_> = system.registered_font_faces().collect();
     assert_eq!(faces.len(), 2);
-    assert!(old.face().is_same_face(&faces[0]));
-    assert!(!faces[0].is_same_face(&faces[1]));
+    assert_eq!(old, faces[0]);
+    assert_ne!(faces[0], faces[1]);
     assert!(
         faces
             .iter()
@@ -169,8 +170,12 @@ fn registered_query_uses_request_then_real_collection_face_order_only() {
     let mut system = system();
     assert_eq!(system.registered_font_faces().count(), 0);
     let collection = crate::test_fonts::two_face_collection(AHEM.to_vec());
-    system.register_fonts(collection.clone()).unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    system
+        .register_fonts(collection.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
+    system
+        .register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let faces: Vec<_> = system.registered_font_faces().collect();
     assert_eq!(
         faces.iter().map(|face| face.index()).collect::<Vec<_>>(),
@@ -179,7 +184,7 @@ fn registered_query_uses_request_then_real_collection_face_order_only() {
     assert_eq!(faces[0].bytes(), collection);
     assert_eq!(faces[1].bytes(), collection);
     assert_eq!(faces[2].bytes(), AHEM);
-    assert!(!faces[0].is_same_face(&faces[1]));
+    assert_ne!(faces[0], faces[1]);
     assert!(
         faces
             .iter()
@@ -308,7 +313,7 @@ fn used_table_refusals_are_precise_without_claiming_earlier_registration_as_metr
         let mut actual = system();
         let prior = actual.font_catalogue_identity().clone();
         let stats = actual.stats();
-        match actual.register_fonts(bytes.clone()) {
+        match actual.register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS) {
             Ok(()) => {
                 let data = actual.registered_font_faces().next().unwrap().to_owned();
                 assert_eq!(
@@ -327,13 +332,14 @@ fn used_table_refusals_are_precise_without_claiming_earlier_registration_as_metr
                 assert_eq!(actual.stats(), stats);
             }
         }
-        // Owner-private preflight covers the used-table branch even where public
-        // registration rejects first. No public raw resource/token issuer exists.
-        let candidate = FontData {
-            data: bytes.into(),
-            index: 0,
-            catalogue: authority.font_catalogue_identity().clone(),
-        };
+        // Structural admission permits malformed table payloads. Exercise the
+        // metric reader even when provider registration rejects the payload.
+        let resource =
+            surgeist_font::FontResource::decode(bytes, crate::test_fonts::FONT_LIMITS).unwrap();
+        let candidate = FontData::from_face(
+            resource.face(0).unwrap(),
+            authority.font_catalogue_identity().clone(),
+        );
         assert_eq!(
             candidate
                 .unsynthesized_instance(20.0, &[])
@@ -374,27 +380,16 @@ fn used_table_refusals_are_precise_without_claiming_earlier_registration_as_metr
         let mut duplicate = base.clone();
         let other = if record == 12 { 28 } else { 12 };
         duplicate[other..other + 4].copy_from_slice(&tag);
-        for (bytes, reason) in [
-            (inaccessible, TableError::Inaccessible),
-            (duplicate, TableError::Duplicate),
+        for (bytes, expected) in [
+            (inaccessible, surgeist_font::InvalidKind::UnalignedOffset),
+            (duplicate, surgeist_font::InvalidKind::TableOrder),
         ] {
-            let candidate = FontData {
-                data: bytes.into(),
-                index: 0,
-                catalogue: authority.font_catalogue_identity().clone(),
-            };
-            assert_eq!(
-                candidate
-                    .unsynthesized_instance(20.0, &[])
-                    .unwrap()
-                    .metrics(authority.font_catalogue_identity())
-                    .unwrap_err()
-                    .detail(),
-                Some(&ErrorDetail::FontMetricTable {
-                    table: which,
-                    reason
-                })
-            );
+            let outcome =
+                surgeist_font::FontResource::decode(bytes, crate::test_fonts::FONT_LIMITS);
+            assert!(matches!(
+                outcome,
+                Err(surgeist_font::DecodeError::InvalidContainer(error)) if error.kind() == expected
+            ));
         }
     }
 }

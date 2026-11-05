@@ -63,10 +63,7 @@ fn fixture() -> (PreparedText, PreparedAtomic) {
         crate::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     assert_eq!(system.registered_font_faces().count(), 0);
     let p = system
         .prepare(

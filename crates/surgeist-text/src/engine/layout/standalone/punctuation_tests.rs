@@ -1,17 +1,16 @@
 //! Real raw chooser coverage; expected advances are Ahem's retained full em.
 use crate::{
-    Font, FontCatalogueMode, HangingPunctuation, HangingPunctuationEnd, HyphenateCharacter,
-    HyphenationPlacement, Hyphens, NativeHyphenationConvention, Options, Range, Source, Style,
-    System, SystemOptions, Text,
+    Font, HangingPunctuation, HangingPunctuationEnd, HyphenateCharacter, HyphenationPlacement,
+    Hyphens, NativeHyphenationConvention, Options, Range, Source, Style, System, Text,
 };
 
 fn system() -> (System, Style) {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     system
-        .register_fonts(include_bytes!("../../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
+        .register_fonts(
+            include_bytes!("../../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     let style = Style {
         font: Font::new().family("Ahem"),

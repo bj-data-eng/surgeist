@@ -24,7 +24,7 @@ optional standalone paint adapter and consumes Text directly.
 | Captured box/paragraph processing and issued views | [src/processing/contextual.rs](src/processing/contextual.rs), [owning tests](src/processing/contextual_tests.rs) |
 | Supplied-level mixed-line ordering and edge decisions | [src/supplied_line.rs](src/supplied_line.rs); Layout owns its consuming adapter |
 | Text style inputs, supported features, options, and diagnostics | [src/style.rs](src/style.rs), [src/style_support.rs](src/style_support.rs), [src/options.rs](src/options.rs), [src/error.rs](src/error.rs) |
-| Layout construction and cache identity | [src/system.rs](src/system.rs), [src/catalogue.rs](src/catalogue.rs), [src/cache.rs](src/cache.rs) |
+| Layout construction and cache identity | [src/system.rs](src/system.rs), [Font catalogue](../surgeist-font/README.md), [src/cache.rs](src/cache.rs) |
 | Font-independent immutable analysis and owned engine phases | [src/analyzed.rs](src/analyzed.rs), [src/engine/mod.rs](src/engine/mod.rs), [source provenance](docs/owned-engine-provenance.md) |
 | Canonical font resources/instances and glyph-free same-instance metrics | [src/font.rs](src/font.rs), [metrics](src/font/metrics.rs) |
 | Layout outputs, geometry, movement, and optional projections | [src/layout.rs](src/layout.rs), [src/geometry.rs](src/geometry.rs) |

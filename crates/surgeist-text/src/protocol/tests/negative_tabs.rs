@@ -55,11 +55,9 @@ fn prepare(value: ParagraphInput, demand: TabPreparation) -> crate::Result<Prepa
         &AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)?,
         crate::Wrap::Word,
     );
-    let mut s = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    s.register_fonts(AHEM.to_vec()).unwrap();
+    let mut s = System::default();
+    s.register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     s.prepare(&analyzed, PreparationOptions::try_new(1.0, demand)?)
 }
 

@@ -45,12 +45,12 @@ fn analyzed(text: &str, complete: &str) -> AnalyzedSource {
     .unwrap()
 }
 fn system() -> System {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     system
-        .register_fonts(crate::shaping_test_fonts::math_ahem())
+        .register_fonts(
+            crate::shaping_test_fonts::math_ahem(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     system
 }

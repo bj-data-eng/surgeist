@@ -17,7 +17,7 @@ use skrifa::{
 };
 
 use crate::{
-    Error, ErrorCode, ErrorDetail, FontCatalogueIdentity, FontMetricField as Field,
+    CataloguePublication, Error, ErrorCode, ErrorDetail, FontMetricField as Field,
     FontMetricNumericError as Numeric, FontMetricPhase as Phase, FontMetricTable as Table,
     FontMetricTableError as TableError, Result,
 };
@@ -106,7 +106,7 @@ impl<'a> EffectiveFontInstance<'a> {
     /// Static and qualified MVAR metrics use the exact canonical coordinates.
     /// Concrete synthesis leaves these line metrics unchanged. A usable strike top is normalized to
     /// center; fallback is ascent/2 and actual size/18, not raw UPEM/18.
-    pub fn metrics(&self, expected_catalogue: &FontCatalogueIdentity) -> Result<FontMetrics<'a>> {
+    pub fn metrics(&self, expected_catalogue: &CataloguePublication) -> Result<FontMetrics<'a>> {
         if self.face.catalogue_identity() != expected_catalogue {
             return Err(Error::new(
                 ErrorCode::FontCatalogueMismatch,

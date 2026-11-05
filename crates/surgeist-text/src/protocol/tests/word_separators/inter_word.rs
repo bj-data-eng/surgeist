@@ -366,11 +366,10 @@ fn natural_shared_provider_geometry_stays_usable_until_a_real_interword_allocati
     let parsed = skrifa::FontRef::new(&bytes).unwrap();
     assert!(parsed.gsub().is_ok());
     assert_eq!(parsed.charmap().map(' '), Some(GlyphId::new(58)));
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let source = Source::identified("A A", Id::from_u64(1564022), 1);
     for orientation in [
         LineOrientation::Horizontal,
@@ -583,11 +582,10 @@ fn contextual(source: &Source, style: Style, cuts: &[usize]) -> AnalyzedSource {
 fn register(bytes: Vec<u8>) -> System {
     let parsed = skrifa::FontRef::new(&bytes).unwrap();
     assert_eq!(parsed.head().unwrap().units_per_em(), 1000);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     system
 }
 

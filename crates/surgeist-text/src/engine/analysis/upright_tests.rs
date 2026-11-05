@@ -5,15 +5,14 @@ use icu_properties::{CodePointMapData, props::BidiClass};
 
 use crate::{
     Affinity, AnalysisTypography, AnalyzedSource, CaseTransform, ContextualSourceInput, Direction,
-    DocumentSegmentBreaks, Error, ErrorCode, ErrorDetail, Font, FontCatalogueMode, Id, LineHeight,
-    LineOrientation, Options, ParagraphAnchor, ParagraphAnchorItem, ParagraphBaseDirection,
-    ParagraphConnection, ParagraphConnectionKind, ParagraphControl, ParagraphControlKind,
-    ParagraphInput, ParagraphOrigin, ParagraphOriginKind, ParagraphStrut, ParagraphTerminalEdge,
+    DocumentSegmentBreaks, Error, ErrorCode, ErrorDetail, Font, Id, LineHeight, LineOrientation,
+    Options, ParagraphAnchor, ParagraphAnchorItem, ParagraphBaseDirection, ParagraphConnection,
+    ParagraphConnectionKind, ParagraphControl, ParagraphControlKind, ParagraphInput,
+    ParagraphOrigin, ParagraphOriginKind, ParagraphStrut, ParagraphTerminalEdge,
     PreparationOptions, ProtocolContextField, ProtocolError, Range, Source,
     SourceProcessingEnvelope, SourceProcessingEvent, SourceProcessingParagraph,
-    SourceProcessingScope, SourceProcessingTopology, Style, System, SystemOptions, Text,
-    TextTransform, TextTransformSet, WhiteSpace, WhiteSpaceTrim, Wrap, WrappingPolicy,
-    process_contextual_source,
+    SourceProcessingScope, SourceProcessingTopology, Style, System, Text, TextTransform,
+    TextTransformSet, WhiteSpace, WhiteSpaceTrim, Wrap, WrappingPolicy, process_contextual_source,
 };
 
 use super::wrapping::Event;
@@ -730,10 +729,7 @@ fn wrapping_derivation_preserves_actual_typography_body_and_source_with_new_pair
 
 #[test]
 fn orientation_mismatches_precede_fonts_and_matching_upright_demands_a_font() {
-    let mut s = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut s = System::default();
     assert_eq!(s.registered_font_faces().count(), 0);
     let a = AnalyzedSource::new(source("A"), style(), upright(RTL)).unwrap();
     let identity = a.identity();
@@ -784,11 +780,9 @@ fn orientation_mismatches_precede_fonts_and_matching_upright_demands_a_font() {
 
 #[test]
 fn warm_horizontal_layout_cannot_substitute_for_upright_analysis_and_prior_receipts_survive() {
-    let mut s = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    s.register_fonts(AHEM.to_vec()).unwrap();
+    let mut s = System::default();
+    s.register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let original = source("A");
     let h = AnalyzedSource::new(original.clone(), style(), H).unwrap();
     let first = s.layout_analyzed(&h, Options::default()).unwrap();

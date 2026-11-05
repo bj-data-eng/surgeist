@@ -84,10 +84,8 @@ fn try_observe(
         },
         text::AnalysisTypography::HorizontalComposition,
     )?;
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })?;
-    system.register_fonts(bytes.to_vec())?;
+    let mut system = text::System::default();
+    system.register_fonts(bytes.to_vec(), crate::common::FONT_LIMITS)?;
     let prepared = system.prepare(&analyzed, text::PreparationOptions::default())?;
     let units = prepared
         .unit_views()
@@ -1256,3 +1254,5 @@ fn morx_skipped_di_retains_zero_allocation_while_ordinary_ligature_survives() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+mod common;

@@ -112,7 +112,7 @@ pub(crate) fn multiply(field: &'static str, a: f64, b: f64) -> Result<f64> {
     Ok(value)
 }
 pub(crate) fn prepare(
-    catalogue: &mut crate::catalogue::Catalogue,
+    catalogue: &mut surgeist_font::FontCatalogue,
     analyzed: &crate::engine::AnalyzedData,
     styles: &[crate::engine::resolve::ResolvedStyleRun],
     alternatives: &[crate::protocol::prepared::PreparedIndicationFonts],
@@ -142,7 +142,7 @@ pub(crate) fn prepare(
             }
         }
     }
-    let catalogue_identity = catalogue.identity().clone();
+    let catalogue_identity = catalogue.publication().clone();
     for index in needed {
         let size = analyzed.styles[index].style.authored().tab_size;
         let mut metric = ResolvedTab {
@@ -162,11 +162,8 @@ pub(crate) fn prepare(
             .ok_or_else(|| capability(crate::ProtocolContextField::TabReference))?;
         if size.spaces {
             let block = crate::ValidatedStyle::for_processed(reference.style().clone())?;
-            let block_style = crate::engine::resolve::resolve_default(
-                catalogue.collection_mut(),
-                &block,
-                options.scale(),
-            )?;
+            let block_style =
+                crate::engine::resolve::resolve_default(catalogue, &block, options.scale())?;
             let block_styles = [block_style];
             let input = crate::engine::ShapingInput {
                 formatting_breaks: &[],

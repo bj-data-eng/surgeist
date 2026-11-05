@@ -1,7 +1,9 @@
 # How-to
 
 These procedures assume the [first layout test](getting-started.md) succeeds and
-the calling Rust target already depends on `surgeist-text`.
+the calling Rust target already depends on `surgeist-text` and `surgeist-font`.
+The composition and edit examples use the registered `system` and the named
+`base_style` from [font registration](#register-application-fonts).
 
 ## Compose text with styled spans
 
@@ -9,19 +11,19 @@ Use the [composer](../src/composer.rs) when constructing text incrementally so
 that ranges follow the UTF-16 code units you append:
 
 ```rust
-use surgeist_text::{Options, Style, System, source};
+use surgeist_text::{Options, Style, source};
 
 let source = source(|text| {
     text.push("Hello ");
-    text.with(Style { size: 20.0, ..Style::default() }, |text| {
+    text.with(Style { size: 20.0, ..base_style.clone() }, |text| {
         text.push("world");
     });
 });
 assert_eq!(source.text().code_units(), "Hello world".encode_utf16().collect::<Vec<_>>());
 assert_eq!(source.spans()[0].range(), surgeist_text::Range::new(6, 11));
 
-let layout = System::default()
-    .layout(source, Style::default(), Options::default())
+let layout = system
+    .layout(source, base_style.clone(), Options::default())
     .expect("composed text should build");
 assert!(!layout.glyph_runs().is_empty());
 ```
@@ -63,11 +65,9 @@ and exercised by the inline-box, selection, hit, and movement tests in
 Use the fallible edit path for ranges that can come from callers:
 
 ```rust
-use surgeist_text::{Edit, Options, Source, Style, System};
-
-let mut system = System::default();
+use surgeist_text::{Edit, Options, Source};
 let layout = system
-    .layout(Source::new("hello"), Style::default(), Options::default())
+    .layout(Source::new("hello"), base_style.clone(), Options::default())
     .expect("initial layout should build");
 let edited = layout
     .apply(Edit::Insert { index: 2, text: "y".into() })
@@ -78,7 +78,7 @@ assert_eq!(edited.revision(), 1);
 assert_eq!(layout.source().text().code_units(), "hello".encode_utf16().collect::<Vec<_>>());
 
 let updated = system
-    .layout(edited, Style::default(), Options::default())
+    .layout(edited, base_style.clone(), Options::default())
     .expect("edited source should build");
 assert_eq!(updated.source().text().code_units(), "heyllo".encode_utf16().collect::<Vec<_>>());
 ```
@@ -95,52 +95,47 @@ Reuse one `System` and submit identical source, styles, and options. Compare
 `System::stats()`. The `repeated_layout_uses_cache` test in
 [src/tests.rs](../src/tests.rs) demonstrates a repeat hit.
 
-`System::refresh_fonts()` rediscovers configured system fonts, replays registered
-bytes, and publishes a new catalogue identity with a checked generation. It
-clears current cached layouts only on success. The next build is a miss; old
-layouts retain their original keys and actual selected font bytes. Registration
-has the same atomic cache invalidation behavior. See [src/system.rs](../src/system.rs).
+`System::refresh_fonts()` replays the admitted application resources and publishes
+a new catalogue identity. A successful publication clears current cached layouts,
+so the next build is a miss. Old layouts retain their original keys and selected
+faces. Registration has the same cache behavior. See [src/system.rs](../src/system.rs).
 
-## Register fonts without system discovery
+## Register application fonts
+
+A new `System::default()` has an empty catalogue. Open an explicit font file,
+admit it with caller-chosen limits, and name its real family in the style.
 
 ```rust
-use surgeist_text::{Font, FontCatalogueMode, Options, Source, Style, System, SystemOptions};
+use surgeist_font::{DecodeLimits, FontResource};
+use surgeist_text::{Font, Options, Source, Style, System};
 
-let mut system = System::new(SystemOptions {
-    font_catalogue: FontCatalogueMode::RegisteredOnly,
-})?;
-let font_file_bytes = std::fs::read("tests/fixtures/fonts/ahem/Ahem.ttf")
-    .expect("read the bundled test font from the crate directory");
-system.register_fonts(font_file_bytes)?;
-let layout = system.layout(
-    Source::new("AX"),
-    Style { font: Font::new().family("Ahem"), size: 20.0, ..Style::default() },
-    Options::default(),
-)?;
-# Ok::<(), surgeist_text::Error>(())
+let limits = DecodeLimits::new(1 << 20, 1 << 20, 1 << 20, 64, 4, 1 << 20, 3 << 20);
+let file = std::fs::File::open("tests/fixtures/fonts/ahem/Ahem.ttf")?;
+let font = FontResource::read_from(file, limits)?;
+let mut system = System::default();
+system.register_font_resource(font)?;
+let base_style = Style { font: Font::new().family("Ahem"), size: 20.0, ..Style::default() };
+let layout = system.layout(Source::new("AX"), base_style.clone(), Options::default())?;
+assert!(!layout.glyph_runs().is_empty());
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-Supply owned bytes and request the file's real family name. Every face must be
-admitted or the live system remains unchanged. Repeated registrations append;
-they do not promise same-family replacement or character coverage. Registered
-bytes remain available across refresh. Use `SystemOptions::default()` for normal
-system discovery in addition to registrations. The bundled [Ahem fixture](../tests/fixtures/fonts/ahem/PROVENANCE.md)
-is for deterministic tests; callers choose their own appropriately licensed fonts.
+If the application already holds encoded bytes, use
+`system.register_fonts(bytes, limits)`. To transfer a populated Font catalogue
+into Text, use `System::new(catalogue)`. Every face must pass admission before the
+system publishes the registration. Repeated registrations append in request
+order. Supply an ordered list of explicit family names when the text needs
+fallback choices. The bundled Ahem fixture is for deterministic tests.
+See [the fixture provenance](../tests/fixtures/fonts/ahem/PROVENANCE.md)
+and [Font admission](../../surgeist-font/README.md).
 
 ## Read metrics without shaping text
 
-After registering an appropriately licensed font, retain its actual face and
-publication. No sample text or layout is needed:
+Use the registered `system` from the preceding example. Retain its actual face
+and publication before reading metrics.
 
 ```rust
-use surgeist_text::{FontCatalogueMode, System, SystemOptions};
-
-let mut system = System::new(SystemOptions {
-    font_catalogue: FontCatalogueMode::RegisteredOnly,
-})?;
-let bytes = std::fs::read("tests/fixtures/fonts/ahem/Ahem.ttf")?;
-system.register_fonts(bytes)?;
-let face = system.registered_font_faces().next().expect("registered face").to_owned();
+let face = system.registered_font_faces().next().expect("registered face");
 let basis = face.catalogue_identity().clone();
 let metrics = face.unsynthesized_instance(20.0, &[])?.metrics(&basis)?;
 assert_eq!(metrics.ascent(), 16.0);

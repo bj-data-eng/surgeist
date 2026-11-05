@@ -292,11 +292,10 @@ fn verify_mixed(
 fn one_style_keeps_outer_tab_origin_demand_and_inner_container_zero_grid_distinct() {
     let bytes = qualified_font();
     let capture = mixed_capture();
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(&capture.analyzed, options(LineOrientation::Vertical))
         .unwrap();

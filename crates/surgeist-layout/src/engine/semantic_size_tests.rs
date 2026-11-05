@@ -89,10 +89,7 @@ fn fixture<S: LayoutScalar>(
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
-    let mut fonts = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut fonts = t::System::default();
     fonts
         .register_fonts(
             include_bytes!(concat!(
@@ -100,6 +97,7 @@ fn fixture<S: LayoutScalar>(
                 "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
             ))
             .to_vec(),
+            surgeist_test::fixtures::FONT_LIMITS,
         )
         .unwrap();
     let prepared = fonts

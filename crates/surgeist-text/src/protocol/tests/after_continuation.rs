@@ -77,11 +77,10 @@ fn capture_input(input: ParagraphInput, bytes: &[u8]) -> PreparedText {
             .unwrap(),
         crate::Wrap::Word,
     );
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.to_vec()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     system
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap()
@@ -1225,11 +1224,10 @@ fn indication_hard_separators_refuse_while_actual_tabs_keep_the_chosen_operation
                 .unwrap(),
                 crate::Wrap::Word,
             );
-            let mut system = System::new(SystemOptions {
-                font_catalogue: FontCatalogueMode::RegisteredOnly,
-            })
-            .unwrap();
-            system.register_fonts(AHEM.to_vec()).unwrap();
+            let mut system = System::default();
+            system
+                .register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
+                .unwrap();
             hyphenation_reason(
                 &system
                     .prepare(&analyzed, PreparationOptions::default())
@@ -1313,11 +1311,10 @@ fn incoming_css_tab_is_glyph_free_and_retains_its_real_source_anchor() {
             .unwrap(),
         crate::Wrap::Word,
     );
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let p = system
         .prepare(
             &analyzed,

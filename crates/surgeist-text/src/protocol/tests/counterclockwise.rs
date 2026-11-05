@@ -62,11 +62,10 @@ fn paragraph(source: Source, style: Style, rtl: bool) -> ParagraphInput {
     }
 }
 fn system_with(bytes: Vec<u8>) -> System {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     system
 }
 fn analyze(value: ParagraphInput) -> AnalyzedSource {

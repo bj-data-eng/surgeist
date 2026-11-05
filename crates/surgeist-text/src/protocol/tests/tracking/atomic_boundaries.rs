@@ -131,11 +131,10 @@ fn captured(
             crate::Direction::RightToLeft
         }
     );
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.to_vec()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     if orientation == LineOrientation::Vertical {
         let font = skrifa::FontRef::new(bytes).unwrap();
         for tag in [b"BASE", b"vhea", b"vmtx"] {

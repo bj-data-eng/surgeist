@@ -22,7 +22,7 @@ pub(crate) enum PhraseModel {
 }
 
 impl PhraseModel {
-    pub(crate) fn for_language(language: Option<fontique::Language>) -> Option<Self> {
+    pub(crate) fn for_language(language: Option<parlance::Language>) -> Option<Self> {
         language
             .filter(|language| {
                 language.language() == "ja"

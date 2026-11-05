@@ -4,12 +4,11 @@
 //! They do not accept shaped widths, glyph packets, levels or break receipts.
 
 use surgeist_text::{
-    Affinity, AnalyzedSource, DocumentSegmentBreaks, Font, FontCatalogueMode, Id, InlineBox,
-    InlineBoxKind, LineHeight, ParagraphAnchor, ParagraphAnchorItem, ParagraphBaseDirection,
+    Affinity, AnalyzedSource, DocumentSegmentBreaks, Font, Id, InlineBox, InlineBoxKind,
+    LineHeight, ParagraphAnchor, ParagraphAnchorItem, ParagraphBaseDirection,
     ParagraphBoundaryDefinition, ParagraphBoundaryPolicy, ParagraphConnection,
     ParagraphConnectionKind, ParagraphControl, ParagraphControlKind, ParagraphInput,
     ParagraphOrigin, ParagraphOriginKind, PreparationOptions, PreparedText, Source, Style, System,
-    SystemOptions,
 };
 
 use crate::{
@@ -379,11 +378,10 @@ impl PreparedParagraph {
         )
         .expect("test supplies complete original paragraph facts");
         let analyzed = in_flat_wrapping_context(analyzed, ancestor_wrap);
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        system.register_fonts(facts.font.to_vec()).unwrap();
+        let mut system = System::default();
+        system
+            .register_fonts(facts.font.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+            .unwrap();
         let prepared = system.prepare(&analyzed, options).unwrap();
         let origins = prepared
             .origin_views()

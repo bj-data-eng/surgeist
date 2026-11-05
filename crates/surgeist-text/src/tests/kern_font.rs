@@ -85,14 +85,15 @@ fn prepare(kerning: bool) -> PreparedText {
         AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
             .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::None);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     // Original and derivative coexist. Every later face observation must be
     // the derivative selected by its distinct family, never host fallback.
-    system.register_fonts(ORIGINAL.to_vec()).unwrap();
-    system.register_fonts(KERN_FONT.to_vec()).unwrap();
+    system
+        .register_fonts(ORIGINAL.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
+    system
+        .register_fonts(KERN_FONT.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     system
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap()

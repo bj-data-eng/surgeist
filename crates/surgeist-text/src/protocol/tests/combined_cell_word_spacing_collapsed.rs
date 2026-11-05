@@ -140,11 +140,10 @@ fn interior_collapsed_zero_space_adds_neither_provider_glyph_nor_extra_word_term
     let font = qualified_font();
     let (processed, analyzed) = captured("A  A", WhiteSpace::Collapse, 4.0);
     custody(&processed, &analyzed);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(font.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(font.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     assert_eq!(system.registered_font_faces().count(), 1);
     let prepared = system
         .prepare(

@@ -319,11 +319,10 @@ fn fixture(case: Case<'_>) -> Fixture {
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
     let bytes = font();
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(bytes.clone(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(&analyzed, text::PreparationOptions::default())
         .unwrap();
@@ -1030,11 +1029,10 @@ fn collapsed_sibling_space_permission_controls_actual_narrow_layout() {
             )
             .unwrap();
             let bytes = font();
-            let mut system = text::System::new(text::SystemOptions {
-                font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-            })
-            .unwrap();
-            system.register_fonts(bytes.clone()).unwrap();
+            let mut system = text::System::default();
+            system
+                .register_fonts(bytes.clone(), surgeist_test::fixtures::FONT_LIMITS)
+                .unwrap();
             let prepared = system
                 .prepare(&analyzed, text::PreparationOptions::default())
                 .unwrap();

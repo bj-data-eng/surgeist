@@ -921,17 +921,16 @@ fn leading_float_uses_the_actual_legal_break_reshaped_association() {
         text::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let mut fonts = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut fonts = text::System::default();
     // The required shared X cell is20px; the actual float band is18px.
     // Each legal singleton reshapes to A12.5 with its line-edge gap suppressed.
     let bytes = super::canonical::fonts::with_advances(
         &super::canonical::fonts::ligature_ahem(),
         &[(58, 1600)],
     );
-    fonts.register_fonts(bytes.clone()).unwrap();
+    fonts
+        .register_fonts(bytes.clone(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let prepared = fonts
         .prepare(&analyzed, text::PreparationOptions::default())
         .unwrap();

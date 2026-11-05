@@ -45,11 +45,10 @@ fn prepare(input: ParagraphInput) -> PreparedText {
         AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
             .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     system
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap()

@@ -5,9 +5,7 @@
 #[path = "../src/test_fonts.rs"]
 mod test_fonts;
 
-use surgeist_text::{
-    ErrorCode, ErrorDetail, FontCatalogueMode, FontData, FontMetricTable, System, SystemOptions,
-};
+use surgeist_text::{ErrorCode, ErrorDetail, FontData, FontMetricTable, System};
 use test_fonts::{
     remove_tables, replace_tables, table, two_face_collection, u16_at, variable_ahem,
     variable_ahem_with_tuple,
@@ -17,10 +15,7 @@ const AHEM: &[u8] = include_bytes!("fixtures/fonts/ahem/Ahem.ttf");
 const ACTIVE: (i16, i16, i16) = (0, 16384, 16384);
 
 fn system() -> System {
-    System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap()
+    System::default()
 }
 fn put16(bytes: &mut [u8], at: usize, value: i16) {
     bytes[at..at + 2].copy_from_slice(&value.to_be_bytes());
@@ -210,7 +205,7 @@ fn query(label: &str, actual: &System, data: &FontData, q: Query<'_>, failures: 
 }
 fn run_font(label: &str, bytes: Vec<u8>, queries: &[Query<'_>], failures: &mut Vec<String>) {
     let mut actual = system();
-    if let Err(error) = actual.register_fonts(bytes.clone()) {
+    if let Err(error) = actual.register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS) {
         failures.push(format!(
             "{label}: registration refused before metrics: {error:?}"
         ));
@@ -641,7 +636,7 @@ fn reject_font(
     let mut actual = system();
     let before = actual.font_catalogue_identity().clone();
     let stats = actual.stats();
-    if let Err(error) = actual.register_fonts(bytes.clone()) {
+    if let Err(error) = actual.register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS) {
         // This is an earlier public capability refusal, never executed metrics.
         eprintln!("{label} coords={coords:?}: registration before metrics: {error:?}");
         assert_eq!(error.code, ErrorCode::FontLoadFailed);
@@ -817,7 +812,9 @@ fn static_metrics_and_instance_input_validation_remain_executable_controls() {
     // rather than issuing any test-only raw FontData or catalogue token.
     let bytes = two_face_collection(AHEM.to_vec());
     let mut actual = system();
-    actual.register_fonts(bytes.clone()).unwrap();
+    actual
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let faces: Vec<_> = actual
         .registered_font_faces()
         .map(|face| face.to_owned())
@@ -843,7 +840,9 @@ fn static_metrics_and_instance_input_validation_remain_executable_controls() {
         assert_eq!(data.bytes(), bytes);
     }
     let mut actual = system();
-    actual.register_fonts(variable_ahem()).unwrap();
+    actual
+        .register_fonts(variable_ahem(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let data = actual.registered_font_faces().next().unwrap().to_owned();
     let stats = actual.stats();
     for coords in [&[0, 0][..], &[16385][..], &[-16385][..]] {
@@ -866,7 +865,9 @@ fn static_metrics_and_instance_input_validation_remain_executable_controls() {
 fn catalogue_mismatch_precedes_variation_and_retained_resource_uses_original_basis() {
     let mut actual = system();
     let bytes = with_mvar(&typo(&variable_ahem()), primary());
-    actual.register_fonts(bytes.clone()).unwrap();
+    actual
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let data = actual.registered_font_faces().next().unwrap().to_owned();
     let old = data.catalogue_identity().clone();
     actual.refresh_fonts().unwrap();
@@ -899,7 +900,10 @@ fn catalogue_mismatch_precedes_variation_and_retained_resource_uses_original_bas
     // A malformed present MVAR must still lose to a mismatched publication.
     let mut other = system();
     other
-        .register_fonts(with_mvar(&variable_ahem(), vec![0]))
+        .register_fonts(
+            with_mvar(&variable_ahem(), vec![0]),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     let malformed = other.registered_font_faces().next().unwrap().to_owned();
     assert_eq!(

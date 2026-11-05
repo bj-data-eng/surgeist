@@ -4,12 +4,9 @@ use surgeist_text::*;
 const AHEM: &[u8] = include_bytes!("fixtures/fonts/ahem/Ahem.ttf");
 
 fn registered_ahem() -> System {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .expect("the registered-only catalogue initializes");
+    let mut system = System::default();
     system
-        .register_fonts(AHEM.to_vec())
+        .register_fonts(AHEM.to_vec(), crate::common::FONT_LIMITS)
         .expect("the retained Ahem fixture registers");
     system
 }
@@ -421,3 +418,5 @@ mod forced_break_adjacency;
 
 #[path = "utf16_interactions/unicode_hard_separators.rs"]
 mod unicode_hard_separators;
+
+mod common;

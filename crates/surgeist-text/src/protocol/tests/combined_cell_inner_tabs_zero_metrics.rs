@@ -54,11 +54,10 @@ fn zero_numeric_inner_tab_skips_missing_space_metrics_but_keeps_real_container_m
         LineOrientation::SidewaysClockwise,
         LineOrientation::SidewaysCounterclockwise,
     ] {
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        system.register_fonts(bytes.clone()).unwrap();
+        let mut system = System::default();
+        system
+            .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+            .unwrap();
         assert_eq!(system.registered_font_faces().count(), 1);
 
         // The same actual font cannot provide a demanded numeric SPACE metric.

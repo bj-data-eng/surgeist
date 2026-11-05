@@ -1,7 +1,5 @@
 //! Nonempty whitespace lines retain the metrics of their selected source.
-use crate::{
-    Font, FontCatalogueMode, Id, LineHeight, Options, Range, Source, Style, System, SystemOptions,
-};
+use crate::{Font, Id, LineHeight, Options, Range, Source, Style, System};
 
 const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
@@ -17,11 +15,10 @@ fn standalone_whitespace_line_does_not_inherit_an_unselected_tall_span() {
     let mut actual = Vec::new();
     let mut expected = Vec::new();
     for quantize in [false, true] {
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        system.register_fonts(AHEM.to_vec()).unwrap();
+        let mut system = System::default();
+        system
+            .register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
+            .unwrap();
         for text in ["X\n ", "X\n  "] {
             for tall in [false, true] {
                 let mut source = Source::identified(text, id, 3);

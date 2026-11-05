@@ -1,8 +1,8 @@
 //! Repository-authored static font: a framed four-digit hexadecimal depiction.
 //! All coordinates, contours, cmap, metrics and checksums are actual font data.
 
-use linebender_resource_handle::Blob;
 use skrifa::{MetadataProvider, raw::TableProvider};
+use surgeist_font::{DecodeLimits, FontFace, FontResource};
 
 use crate::{Error, ErrorCode, Result};
 
@@ -10,6 +10,19 @@ const EM: u16 = 1000;
 const ADVANCE: u16 = 900;
 const ASCENT: i16 = 800;
 const DESCENT: i16 = -200;
+// At most 161 glyphs including .notdef. Each has at most 64 four-point
+// contours, so its header, flags and signed deltas occupy at most 1,420 bytes.
+// The nine other tables, directory and alignment take less than 8 KiB.
+const MAX_SFNT_BYTES: usize = 256 * 1024;
+const ADMISSION_LIMITS: DecodeLimits = DecodeLimits::new(
+    MAX_SFNT_BYTES,
+    MAX_SFNT_BYTES,
+    MAX_SFNT_BYTES,
+    10,
+    1,
+    4 * 1024,
+    MAX_SFNT_BYTES + 8 * 1024,
+);
 const HEX: [[u8; 5]; 16] = [
     [7, 5, 5, 5, 7],
     [2, 6, 2, 2, 7],
@@ -105,7 +118,7 @@ fn checksum(bytes: &[u8]) -> u32 {
     })
 }
 
-pub(crate) fn make() -> Result<Blob<u8>> {
+pub(crate) fn make() -> Result<FontFace> {
     let values: Vec<_> = (0..=159).filter(|&cp| super::is_visible(cp)).collect();
     let count = u16::try_from(values.len() + 1).expect("the closed Cc repertoire fits u16");
     let mut glyf = Vec::new();
@@ -247,13 +260,27 @@ pub(crate) fn make() -> Result<Blob<u8>> {
         (*b"post", post),
     ];
     tables.sort_unstable_by_key(|(tag, _)| *tag);
+    let directory_len = 12 + tables.len() * 16;
+    let sfnt_len = tables
+        .iter()
+        .try_fold(directory_len, |length, (_, data)| {
+            length.checked_next_multiple_of(4)?.checked_add(data.len())
+        })
+        .filter(|&length| length <= MAX_SFNT_BYTES)
+        .ok_or_else(invalid)?;
     let mut bytes = Vec::new();
+    bytes.try_reserve_exact(sfnt_len).map_err(|_| {
+        Error::new(
+            ErrorCode::FontLoadFailed,
+            "could not allocate the intrinsic control font",
+        )
+    })?;
     u32_be(&mut bytes, 0x0001_0000);
     u16_be(&mut bytes, tables.len() as u16);
     for n in [128, 3, 32] {
         u16_be(&mut bytes, n);
     }
-    bytes.resize(12 + tables.len() * 16, 0);
+    bytes.resize(directory_len, 0);
     let mut head_offset = 0;
     for (i, (tag, data)) in tables.into_iter().enumerate() {
         while !bytes.len().is_multiple_of(4) {
@@ -278,7 +305,9 @@ pub(crate) fn make() -> Result<Blob<u8>> {
     face.hmtx().map_err(|_| invalid())?;
     face.maxp().map_err(|_| invalid())?;
     face.cmap().map_err(|_| invalid())?;
-    Ok(Blob::from(bytes))
+    FontResource::decode(bytes, ADMISSION_LIMITS)?
+        .face(0)
+        .ok_or_else(invalid)
 }
 
 fn invalid() -> Error {
@@ -289,7 +318,7 @@ fn invalid() -> Error {
 }
 
 /// Admit the complete authored resource through its actual production readers
-/// before Catalogue retains it. A partial directory parse is insufficient.
+/// before the shaping context retains it.
 pub(crate) fn validate(font: &crate::FontData) -> Result<()> {
     let instance = crate::EffectiveFontInstance::qualify_synthesized(
         font.face(),

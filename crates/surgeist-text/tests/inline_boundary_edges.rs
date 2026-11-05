@@ -147,11 +147,10 @@ fn prepare_capture(
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(fixture.to_vec()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(fixture.to_vec(), crate::common::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(&analyzed, t::PreparationOptions::default())
         .unwrap();
@@ -676,11 +675,10 @@ fn real_font_tables_qualify_joining_and_ligature_oracles() {
                 1000
             );
         }
-        let mut system = t::System::new(t::SystemOptions {
-            font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        system.register_fonts(bytes.clone()).unwrap();
+        let mut system = t::System::default();
+        system
+            .register_fonts(bytes.clone(), crate::common::FONT_LIMITS)
+            .unwrap();
         let layout = system
             .layout(
                 t::Source::new(value),
@@ -789,3 +787,5 @@ fn source_free_bidi_after_start_cannot_select_the_captured_opening_endpoint_outg
 
 #[path = "inline_boundary_edges/boundary_incidences.rs"]
 mod boundary_incidences;
+
+mod common;

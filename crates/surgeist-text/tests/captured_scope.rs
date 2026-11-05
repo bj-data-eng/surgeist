@@ -23,11 +23,10 @@ fn style(operation: WordSpaceTransform) -> Style {
 }
 
 fn system() -> System {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(AHEM.to_vec(), crate::common::FONT_LIMITS)
+        .unwrap();
     system
 }
 
@@ -618,3 +617,5 @@ fn standalone_preparation_does_not_acquire_contextual_authority() {
             .all(|view| view.capture_position().is_none())
     );
 }
+
+mod common;

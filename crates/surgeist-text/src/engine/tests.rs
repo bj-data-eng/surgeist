@@ -1,17 +1,16 @@
 use crate::shaping_test_fonts::{arabic_ahem, ligature_ahem, mark_ahem};
 use crate::{
-    ErrorCode, ErrorDetail, Font, FontCatalogueMode, Glyph, Id, InlineBox, InlineBoxKind,
-    LineHeight, Options, Range, ShapingRefusalReason, Size, Source, Style, System, SystemOptions,
+    ErrorCode, ErrorDetail, Font, Glyph, Id, InlineBox, InlineBoxKind, LineHeight, Options, Range,
+    ShapingRefusalReason, Size, Source, Style, System,
 };
 
 const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 fn system(bytes: Vec<u8>) -> System {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     system
 }
 
@@ -207,10 +206,7 @@ fn empty_source_has_real_font_strut_and_zero_width_while_authored_space_has_adva
 
 #[test]
 fn fontless_actual_boxes_wrap_by_occurrence_without_inventing_font_or_text_rows() {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     let mut source = Source::new("");
     source.inline_box(InlineBox::new(
         Id::from_u64(1),

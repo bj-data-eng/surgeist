@@ -87,21 +87,21 @@ anchors inside the replaced interval move to the inserted end. Later coordinates
 shift by the code-unit length difference. Applying an edit returns a `Source`; a new
 layout request performs validation and shaping for that version.
 
-Each `System` owns direct provider scratch and an in-memory layout cache. Repeated identical
-requests reuse cached layouts; counters expose hits, misses, font refreshes, and
-invalidations. Registration validates all faces off-side before publishing any
-of them. `refresh_fonts()` constructs a fresh configured font collection and
-source cache, then replays the actual retained registered bytes. Both operations
-check generation exhaustion first and invalidate layouts only on success.
-Failures preserve the current catalogue, cache and statistics.
+Each `System` owns shaping scratch and an in-memory layout cache. Repeated
+identical requests reuse cached layouts. Counters expose hits, misses, font
+refreshes, and invalidations. The application supplies admitted resources to the
+shared Font catalogue, which validates complete registrations and owns the
+checked publication identity. Text invalidates its layout lookup after Font
+publishes a registration or refresh. A refusal preserves the current catalogue,
+cache, and statistics. The layout cache has no aggregate size cap.
 
-Registered-only mode excludes system discovery and fallback without inventing a
-generic default family. System mode keeps the provider's normal matching and
-fallback behavior. A publication identifies registrations and discovery; it is
-not an eager snapshot of every lazily loaded system font file. Each retained
-layout owns the actual selected font bytes, so refresh or System disposal does
-not invalidate historical output. No cache size limit is imposed. See
-[src/catalogue.rs](../src/catalogue.rs) and [src/system.rs](../src/system.rs).
+Text resolves the style's ordered explicit family names against the current
+publication and evaluates nominal coverage for the actual shaping clusters. An
+empty catalogue or a request with no usable family produces `NoUsableFontFace`
+when the layout needs a face. A retained layout owns its actual selected faces
+and their original publication, so refresh and System disposal preserve its
+readback. See [the Font catalogue](../../surgeist-font/README.md) and
+[System](../src/system.rs).
 
 ## Font-independent and positioned accessibility
 

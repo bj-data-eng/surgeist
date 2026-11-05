@@ -56,12 +56,13 @@ fn input(value: &str, base_style: Style, direction: ParagraphBaseDirection) -> P
 }
 
 fn catalogue() -> System {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
-    system.register_fonts(PHRASE_FONT.to_vec()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
+    system
+        .register_fonts(PHRASE_FONT.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     system
 }
 

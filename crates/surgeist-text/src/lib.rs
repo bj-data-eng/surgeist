@@ -9,7 +9,6 @@
 mod accessibility;
 mod analyzed;
 mod cache;
-mod catalogue;
 mod composer;
 mod control;
 mod edit;
@@ -45,8 +44,7 @@ pub use analyzed::{
     AnalysisIdentity, AnalysisTypography, AnalyzedCombinedCell, AnalyzedCombinedSourcePiece,
     AnalyzedDomain, AnalyzedSource, CapturedAnalysisOwner,
 };
-pub use cache::{FontGeneration, Key, OptionsKey, SourceKey, Stats, StyleKey};
-pub use catalogue::{FontCatalogueIdentity, FontCatalogueMode};
+pub use cache::{Key, OptionsKey, SourceKey, Stats, StyleKey};
 pub use composer::{Composer, Mark, compose, source};
 pub use edit::{Edit, TextEdit};
 pub use error::{
@@ -168,7 +166,8 @@ pub use supplied_line::{
     BidiLevel, BidiLevelError, InlineWhitespaceEdge, SuppliedInlineParticipant, SuppliedLine,
     SuppliedLineEdges, SuppliedLineError, SuppliedVisualOrder,
 };
-pub use system::{Builder, System, SystemOptions};
+use surgeist_font::CataloguePublication;
+pub use system::{Builder, System};
 pub use text::Text;
 pub use views::{GlyphPlacement, RunView};
 pub use wrapping::{

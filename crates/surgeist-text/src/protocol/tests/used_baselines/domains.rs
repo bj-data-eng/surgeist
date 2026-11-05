@@ -60,11 +60,10 @@ fn system() -> System {
             .collect::<Vec<_>>(),
         [(*b"grek", -100), (*b"latn", 100)]
     );
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     system
 }
 

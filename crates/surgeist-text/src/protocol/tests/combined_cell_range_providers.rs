@@ -115,11 +115,10 @@ fn one_actual_optional_liga_glyph_keeps_two_semantic_units_and_the_retained_logi
             .features
             .is_empty()
     );
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(
             &capture.analyzed,
@@ -421,12 +420,11 @@ fn a_single_real_cell_keeps_two_actual_fallback_faces_and_each_own_metric_piece(
         capture.processed.source().spans()[0].style().font.family,
         ["Ahem", "Bhem"]
     );
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     for face in &bytes {
-        system.register_fonts(face.clone()).unwrap();
+        system
+            .register_fonts(face.clone(), crate::test_fonts::FONT_LIMITS)
+            .unwrap();
     }
     assert_eq!(system.registered_font_faces().count(), 2);
     let prepared = system

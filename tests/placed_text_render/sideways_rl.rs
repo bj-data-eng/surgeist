@@ -5,11 +5,10 @@ use super::*;
 fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
     const AHEM: &[u8] =
         include_bytes!("../../crates/surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let source = text::Source::identified("AB", text::Id::from_u64(1520001), 3);
     let style = text::Style {
         font: text::Font::new().family("Ahem"),

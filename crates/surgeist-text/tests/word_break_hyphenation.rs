@@ -69,11 +69,10 @@ fn prepare_input(input: t::ParagraphInput) -> t::PreparedText {
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), crate::common::FONT_LIMITS)
+        .unwrap();
     system
         .prepare(&analyzed, t::PreparationOptions::default())
         .unwrap()
@@ -1302,3 +1301,5 @@ fn inactive_source_shy_atomic_permissions_obey_each_actual_ancestor_and_do_not_b
         "each atomic NCA owns only its own permission: {observed:?}"
     );
 }
+
+mod common;

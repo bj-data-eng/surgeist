@@ -199,11 +199,10 @@ fn covered_zero_intrinsic_width_packet_suppresses_its_own_word_term_and_retains_
     let (processed, analyzed) = captured(" ", WhiteSpace::Preserve, 4.0);
     source_custody(&processed, &analyzed, &[0], 4.0);
     assert_eq!(processed.source().text(), &Text::from(" "));
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(font.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(font.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     assert_eq!(system.registered_font_faces().count(), 1);
     // Normal NBSP153 intrinsic10 has WS4 and occupied width14>E10.
     // Covered hwid253 intrinsic0 suppresses that term and is the first fit.

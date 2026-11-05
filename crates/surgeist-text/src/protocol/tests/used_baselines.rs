@@ -177,7 +177,7 @@ fn placed(prepared: &PreparedText, line: FinalizedLine, baseline: f64) -> crate:
     .unwrap()
 }
 
-fn raw_reference(run: &crate::RunView<'_>, catalogue: &crate::FontCatalogueIdentity) {
+fn raw_reference(run: &crate::RunView<'_>, catalogue: &crate::CataloguePublication) {
     let instance = run.effective_instance().unwrap();
     assert_eq!(instance.font_size(), 10.0);
     assert_eq!(instance.axis_count(), 0);
@@ -208,11 +208,10 @@ fn explicit_alphabetic_preserves_raw_metrics_and_places_font_zero_beyond_the_sha
     // This is new-front functional qualification, not a raw-Physical RED.
     let bytes = font(100);
     qualify(&bytes, 100);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let face = system.registered_font_faces().next().unwrap().to_owned();
     assert_eq!(face.bytes(), bytes);
     assert_eq!(face.index(), 0);

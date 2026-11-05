@@ -4,7 +4,7 @@ use super::{
     EffectiveFontInstance, Field, Numeric, Phase, Table, TableError, finite, numeric, table,
     table_error,
 };
-use crate::{Error, ErrorCode, ErrorDetail, FontCatalogueIdentity, Result};
+use crate::{CataloguePublication, Error, ErrorCode, ErrorDetail, Result};
 use icu_properties::{PropertyNamesShort, PropertyParser, props::Script};
 use skrifa::{
     FontRef, Tag,
@@ -176,7 +176,7 @@ impl<'a> EffectiveFontInstance<'a> {
     /// classifier, vhea reference, advance or ink-box inference is supplied.
     pub fn baseline(
         &self,
-        expected: &FontCatalogueIdentity,
+        expected: &CataloguePublication,
         script: FontBaselineScript,
         axis: FontBaselineAxis,
         name: FontBaseline,
@@ -324,7 +324,7 @@ impl<'instance, 'font> Reader<'instance, 'font> {
         script: FontBaselineScript,
         axis: FontBaselineAxis,
         name: FontBaseline,
-        expected: &FontCatalogueIdentity,
+        expected: &CataloguePublication,
     ) -> Result<FontBaselineOutcome> {
         use FontBaselineAxis::{HorizontalY, VerticalX};
         use FontBaselineProvenance as P;

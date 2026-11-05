@@ -489,12 +489,12 @@ impl Capture {
         let analyzed = analyzed
             .with_wrapping_policies(same_origin)
             .map_err(|error| fail(error.to_string()))?;
-        let mut system = text::System::new(text::SystemOptions {
-            font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-        })
-        .map_err(|error| fail(error.to_string()))?;
+        let mut system = text::System::default();
         system
-            .register_fonts(pinned_font::BYTES.to_vec())
+            .register_fonts(
+                pinned_font::BYTES.to_vec(),
+                surgeist_test::fixtures::FONT_LIMITS,
+            )
             .map_err(|error| fail(error.to_string()))?;
         let prepared = system
             .prepare(

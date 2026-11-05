@@ -14,11 +14,10 @@ fn script(tag: [u8; 4]) -> FontBaselineScript {
     FontBaselineScript::from_iso15924(tag).unwrap()
 }
 fn registered(bytes: Vec<u8>) -> (System, FontData) {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let data = system.registered_font_faces().next().unwrap().to_owned();
     (system, data)
 }

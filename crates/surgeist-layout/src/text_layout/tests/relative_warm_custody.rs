@@ -579,10 +579,7 @@ fn custody_inner_named_recompute<S: LayoutScalar>() {
     // authority, then reissue all preparation-owned handles used below.
     // PreparedParagraph caches old handles privately; mutating only .prepared
     // would leave foreign-preparation origin/atomic inputs and is not lawful.
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = text::System::default();
     system
         .register_fonts(
             include_bytes!(concat!(
@@ -590,6 +587,7 @@ fn custody_inner_named_recompute<S: LayoutScalar>() {
                 "/../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf"
             ))
             .to_vec(),
+            surgeist_test::fixtures::FONT_LIMITS,
         )
         .unwrap();
     let mut outer_binding = outer.binding(0);

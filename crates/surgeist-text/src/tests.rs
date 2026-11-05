@@ -1,5 +1,25 @@
 use super::layout::decoration_top;
 use super::*;
+use crate::test_fonts::{AHEM, FONT_LIMITS};
+
+fn ahem_system() -> crate::System {
+    let mut system = crate::System::default();
+    system.register_fonts(AHEM.to_vec(), FONT_LIMITS).unwrap();
+    system
+}
+
+fn ahem_style() -> crate::Style {
+    crate::Style {
+        font: crate::Font::new().family("Ahem"),
+        ..crate::Style::default()
+    }
+}
+
+fn ahem_builder(system: &mut crate::System, text: impl Into<crate::Text>) -> crate::Builder<'_> {
+    let mut builder = system.builder(text);
+    builder.default_style(ahem_style());
+    builder
+}
 
 mod catalogue;
 mod fallback_coverage;
@@ -140,10 +160,10 @@ fn rejects_invalid_text_brush_channels() {
 
 #[test]
 fn builds_plain_text_layout() {
-    let mut system = System::default();
-    let mut builder = system.builder("hello world");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "hello world");
     builder.options(Options {
-        width: Some(100.0),
+        width: Some(240.0),
         ..Options::default()
     });
 
@@ -155,12 +175,12 @@ fn builds_plain_text_layout() {
 
 #[test]
 fn wrap_none_preserves_single_visual_line() {
-    let mut system = System::default();
+    let mut system = ahem_system();
     let style = Style {
         wrap: Wrap::None,
-        ..Style::default()
+        ..ahem_style()
     };
-    let mut builder = system.builder("hello world");
+    let mut builder = ahem_builder(&mut system, "hello world");
     builder.default_style(style).options(Options {
         width: Some(16.0),
         ..Options::default()
@@ -174,8 +194,8 @@ fn wrap_none_preserves_single_visual_line() {
 
 #[test]
 fn overflow_wrap_anywhere_breaks_unspaced_text() {
-    let mut system = System::default();
-    let mut normal = system.builder("abcdefghijklmnop");
+    let mut system = ahem_system();
+    let mut normal = ahem_builder(&mut system, "abcdefghijklmnop");
     normal.options(Options {
         width: Some(32.0),
         ..Options::default()
@@ -183,9 +203,9 @@ fn overflow_wrap_anywhere_breaks_unspaced_text() {
     let normal = normal.build().expect("normal layout should build");
     let style = Style {
         overflow_wrap: OverflowWrap::Anywhere,
-        ..Style::default()
+        ..ahem_style()
     };
-    let mut anywhere = system.builder("abcdefghijklmnop");
+    let mut anywhere = ahem_builder(&mut system, "abcdefghijklmnop");
     anywhere.default_style(style).options(Options {
         width: Some(32.0),
         ..Options::default()
@@ -199,32 +219,31 @@ fn overflow_wrap_anywhere_breaks_unspaced_text() {
 
 #[test]
 fn supported_flow_controls_have_distinct_cache_keys() {
-    let mut system = System::default();
-    let normal = system
-        .builder("alpha beta gamma")
+    let mut system = ahem_system();
+    let normal = ahem_builder(&mut system, "alpha beta gamma")
         .build()
         .expect("normal flow should build");
 
-    let mut nowrap_builder = system.builder("alpha beta gamma");
+    let mut nowrap_builder = ahem_builder(&mut system, "alpha beta gamma");
     nowrap_builder.default_style(Style {
         wrap: Wrap::None,
-        ..Style::default()
+        ..ahem_style()
     });
     let nowrap = nowrap_builder.build().expect("nowrap flow should build");
 
-    let mut break_all_builder = system.builder("alpha beta gamma");
+    let mut break_all_builder = ahem_builder(&mut system, "alpha beta gamma");
     break_all_builder.default_style(Style {
         word_break: WordBreak::BreakAll,
-        ..Style::default()
+        ..ahem_style()
     });
     let break_all = break_all_builder
         .build()
         .expect("break-all flow should build");
 
-    let mut anywhere_builder = system.builder("alpha beta gamma");
+    let mut anywhere_builder = ahem_builder(&mut system, "alpha beta gamma");
     anywhere_builder.default_style(Style {
         overflow_wrap: OverflowWrap::Anywhere,
-        ..Style::default()
+        ..ahem_style()
     });
     let anywhere = anywhere_builder
         .build()
@@ -237,11 +256,11 @@ fn supported_flow_controls_have_distinct_cache_keys() {
 
 #[test]
 fn preserve_whitespace_flow_keeps_source_ranges_stable() {
-    let mut system = System::default();
-    let mut builder = system.builder("a  b\nc");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "a  b\nc");
     builder.default_style(Style {
         white_space: WhiteSpace::Preserve,
-        ..Style::default()
+        ..ahem_style()
     });
 
     let layout = builder.build().expect("preserved whitespace should build");
@@ -287,12 +306,12 @@ fn flow_policy_support_matrix_keeps_behavior_gaps_unsupported() {
 
 #[test]
 fn uses_valid_locale_for_shaping() {
-    let mut system = System::default();
+    let mut system = ahem_system();
     let style = Style {
         locale: Some("en-US".to_owned()),
-        ..Style::default()
+        ..ahem_style()
     };
-    let mut builder = system.builder("hello");
+    let mut builder = ahem_builder(&mut system, "hello");
     builder.default_style(style);
 
     let layout = builder.build().expect("valid locale should build");
@@ -317,16 +336,17 @@ fn rejects_invalid_locale() {
 
 #[test]
 fn uses_font_fallbacks_features_and_variations() {
-    let mut system = System::default();
+    let mut system = ahem_system();
     let style = Style {
         font: Font::new()
-            .family("Arial")
+            .family("MissingFixtureFamily")
             .family("serif")
+            .family("Ahem")
             .feature(r#""liga" on"#)
             .variation(r#""wght" 700"#),
-        ..Style::default()
+        ..ahem_style()
     };
-    let mut builder = system.builder("hello");
+    let mut builder = ahem_builder(&mut system, "hello");
     builder.default_style(style);
 
     let layout = builder.build().expect("valid font settings should build");
@@ -336,25 +356,25 @@ fn uses_font_fallbacks_features_and_variations() {
 
 #[test]
 fn numeric_font_weight_shapes_and_changes_cache_key() {
-    let mut system = System::default();
+    let mut system = ahem_system();
     let first_style = Style {
-        font: Font::new().weight(Weight::Number(
+        font: Font::new().family("Ahem").weight(Weight::Number(
             FontWeightValue::try_new(450.0).expect("weight is valid"),
         )),
-        ..Style::default()
+        ..ahem_style()
     };
     let second_style = Style {
-        font: Font::new().weight(Weight::Number(
+        font: Font::new().family("Ahem").weight(Weight::Number(
             FontWeightValue::try_new(500.0).expect("weight is valid"),
         )),
-        ..Style::default()
+        ..ahem_style()
     };
 
-    let mut first = system.builder("weight");
+    let mut first = ahem_builder(&mut system, "weight");
     first.default_style(first_style);
     let first = first.build().expect("numeric weight should shape");
 
-    let mut second = system.builder("weight");
+    let mut second = ahem_builder(&mut system, "weight");
     second.default_style(second_style);
     let second = second.build().expect("numeric weight should shape");
 
@@ -380,23 +400,23 @@ fn text_style_support_reports_numeric_font_weight_supported() {
 
 #[test]
 fn font_width_ratio_shapes_and_changes_cache_key() {
-    let mut system = System::default();
+    let mut system = ahem_system();
     let condensed = Style {
-        font: Font::new().width(Width::Ratio(
+        font: Font::new().family("Ahem").width(Width::Ratio(
             FontWidthRatio::try_new(0.875).expect("width is valid"),
         )),
-        ..Style::default()
+        ..ahem_style()
     };
     let expanded = Style {
-        font: Font::new().width(Width::ExtraExpanded),
-        ..Style::default()
+        font: Font::new().family("Ahem").width(Width::ExtraExpanded),
+        ..ahem_style()
     };
 
-    let mut first = system.builder("width");
+    let mut first = ahem_builder(&mut system, "width");
     first.default_style(condensed);
     let first = first.build().expect("width ratio should shape");
 
-    let mut second = system.builder("width");
+    let mut second = ahem_builder(&mut system, "width");
     second.default_style(expanded);
     let second = second.build().expect("expanded width should shape");
 
@@ -584,17 +604,17 @@ fn default_flow_policy_values_are_explicit_noops() {
     assert_eq!(Options::default().text_overflow, TextOverflow::Clip);
     assert_eq!(Options::default().text_align_last, TextAlignLast::Auto);
 
-    let mut system = System::default();
+    let mut system = ahem_system();
     let style = Style {
         text_transform: TextTransform::none(),
-        ..Style::default()
+        ..ahem_style()
     };
     let options = Options {
         text_overflow: TextOverflow::Clip,
         text_align_last: TextAlignLast::Auto,
         ..Options::default()
     };
-    let mut builder = system.builder("Flow 123");
+    let mut builder = ahem_builder(&mut system, "Flow 123");
     builder.default_style(style);
     builder.options(options);
 
@@ -608,16 +628,15 @@ fn default_flow_policy_values_are_explicit_noops() {
 
 #[test]
 fn default_flow_policy_values_preserve_cache_identity() {
-    let mut system = System::default();
-    let first = system
-        .builder("flow")
+    let mut system = ahem_system();
+    let first = ahem_builder(&mut system, "flow")
         .build()
         .expect("default flow policy should build");
 
-    let mut second = system.builder("flow");
+    let mut second = ahem_builder(&mut system, "flow");
     second.default_style(Style {
         text_transform: TextTransform::none(),
-        ..Style::default()
+        ..ahem_style()
     });
     second.options(Options {
         text_overflow: TextOverflow::Clip,
@@ -701,8 +720,8 @@ fn default_indent_targets_first_line() {
 
 #[test]
 fn first_line_indent_offsets_first_line() {
-    let mut system = System::default();
-    let mut builder = system.builder("hello\nworld");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "hello\nworld");
     builder.options(Options {
         indent: Indent {
             amount: 10.0,
@@ -725,8 +744,8 @@ fn first_line_indent_offsets_first_line() {
 
 #[test]
 fn first_line_false_without_other_scope_skips_indent() {
-    let mut system = System::default();
-    let mut builder = system.builder("hello");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "hello");
     builder.options(Options {
         indent: Indent {
             amount: 10.0,
@@ -844,8 +863,8 @@ fn public_text_style_contract_is_enumerable() {
 
 #[test]
 fn auto_direction_reports_resolved_base_direction() {
-    let mut system = System::default();
-    let mut builder = system.builder("שלום");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "שלום");
 
     let layout = builder.build().expect("layout should build");
 
@@ -871,14 +890,12 @@ fn rejects_unselected_explicit_base_direction() {
 
 #[test]
 fn repeated_layout_uses_cache() {
-    let mut system = System::default();
+    let mut system = ahem_system();
 
-    let first = system
-        .builder("hello")
+    let first = ahem_builder(&mut system, "hello")
         .build()
         .expect("first layout should build");
-    let second = system
-        .builder("hello")
+    let second = ahem_builder(&mut system, "hello")
         .build()
         .expect("second layout should build from cache");
 
@@ -957,8 +974,8 @@ fn inline_box_vertical_align_is_public_and_validated() {
 
     assert_eq!(box_.vertical_align(), align);
 
-    let mut system = System::default();
-    let mut builder = system.builder("ab");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "ab");
     builder.inline_box(box_);
 
     builder.build().expect("finite aligned inline box is valid");
@@ -1039,13 +1056,13 @@ fn cache_key_requires_normalized_parts() {
 
 #[test]
 fn source_identity_and_revision_participate_in_cache_key() {
-    let mut system = System::default();
+    let mut system = ahem_system();
 
-    let mut first = system.builder("hello");
+    let mut first = ahem_builder(&mut system, "hello");
     first.identity(Id::from_u64(42), 1);
     let first_layout = first.build().expect("first layout should build");
 
-    let mut second = system.builder("hello");
+    let mut second = ahem_builder(&mut system, "hello");
     second.identity(Id::from_u64(42), 2);
     let second_layout = second.build().expect("second layout should build");
 
@@ -1060,8 +1077,8 @@ fn source_identity_and_revision_participate_in_cache_key() {
 
 #[test]
 fn projection_outputs_expose_semantic_accessors() {
-    let mut system = System::default();
-    let mut builder = system.builder("hello");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "hello");
     let layout = builder.build().expect("layout should build");
 
     let metrics = layout.metrics();
@@ -1075,8 +1092,10 @@ fn projection_outputs_expose_semantic_accessors() {
 
 #[test]
 fn cache_stats_expose_counters_without_field_access() {
-    let mut system = System::default();
-    system.builder("hello").build().expect("layout builds");
+    let mut system = ahem_system();
+    ahem_builder(&mut system, "hello")
+        .build()
+        .expect("layout builds");
 
     let stats = system.stats();
 
@@ -1086,12 +1105,12 @@ fn cache_stats_expose_counters_without_field_access() {
 
 #[test]
 fn layout_preserves_authored_source_identity() {
-    let mut system = System::default();
+    let mut system = ahem_system();
     let mut source = Source::identified("  hello  ", Id::from_u64(9), 7);
     source.set_identity(Some(Id::from_u64(9)), 8);
 
     let layout = system
-        .layout(source, Style::default(), Options::default())
+        .layout(source, ahem_style(), Options::default())
         .expect("layout should build");
 
     assert_eq!(layout.source().id(), Some(Id::from_u64(9)));
@@ -1104,19 +1123,19 @@ fn layout_preserves_authored_source_identity() {
 
 #[test]
 fn style_span_changes_cache_key() {
-    let mut system = System::default();
-    let mut first = system.builder("hello");
+    let mut system = ahem_system();
+    let mut first = ahem_builder(&mut system, "hello");
     let first_style = Style {
         underline: Decoration::solid(),
-        ..Style::default()
+        ..ahem_style()
     };
     first.span(Range::new(0, 5), first_style);
     let first_layout = first.build().expect("first layout should build");
 
-    let mut second = system.builder("hello");
+    let mut second = ahem_builder(&mut system, "hello");
     let second_style = Style {
         strikethrough: Decoration::solid(),
-        ..Style::default()
+        ..ahem_style()
     };
     second.span(Range::new(0, 5), second_style);
     let second_layout = second.build().expect("second layout should build");
@@ -1128,18 +1147,18 @@ fn style_span_changes_cache_key() {
 
 #[test]
 fn overlapping_spans_resolve_in_declaration_order() {
-    let mut system = System::default();
+    let mut system = ahem_system();
     let first_brush = Brush::color(1.0, 0.0, 0.0, 1.0);
     let second_brush = Brush::color(0.0, 0.0, 1.0, 1.0);
     let first_style = Style {
         brush: first_brush,
-        ..Style::default()
+        ..ahem_style()
     };
     let second_style = Style {
         brush: second_brush,
-        ..Style::default()
+        ..ahem_style()
     };
-    let mut builder = system.builder("abcd");
+    let mut builder = ahem_builder(&mut system, "abcd");
     builder
         .span(Range::new(0, 4), first_style)
         .span(Range::new(1, 3), second_style);
@@ -1161,15 +1180,13 @@ fn overlapping_spans_resolve_in_declaration_order() {
 
 #[test]
 fn font_refresh_invalidates_cached_layouts() {
-    let mut system = System::default();
-    system
-        .builder("hello")
+    let mut system = ahem_system();
+    ahem_builder(&mut system, "hello")
         .build()
         .expect("layout should build");
 
     system.refresh_fonts().expect("font refresh should succeed");
-    system
-        .builder("hello")
+    ahem_builder(&mut system, "hello")
         .build()
         .expect("layout after refresh should build");
 
@@ -1181,8 +1198,8 @@ fn font_refresh_invalidates_cached_layouts() {
 
 #[test]
 fn selection_geometry_for_non_empty_range() {
-    let mut system = System::default();
-    let mut builder = system.builder("hello world");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "hello world");
     let layout = builder.build().expect("layout should build");
 
     let selection = Selection::new(
@@ -1201,8 +1218,8 @@ fn selection_geometry_for_non_empty_range() {
 
 #[test]
 fn selection_paint_projects_concrete_brush_with_geometry() {
-    let mut system = System::default();
-    let mut builder = system.builder("hello world");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "hello world");
     let layout = builder.build().expect("layout should build");
     let paint =
         SelectionPaint::try_color(Brush::color(0.1, 0.2, 0.9, 0.5)).expect("paint is valid");
@@ -1265,8 +1282,8 @@ fn support_matrix_reports_concrete_selection_color_supported() {
 
 #[test]
 fn selection_geometry_for_multi_line_range() {
-    let mut system = System::default();
-    let mut builder = system.builder("hello world");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "hello world");
     builder.options(Options {
         width: Some(48.0),
         ..Options::default()
@@ -1288,8 +1305,8 @@ fn selection_geometry_for_multi_line_range() {
 
 #[test]
 fn cursor_geometry_for_empty_text() {
-    let mut system = System::default();
-    let mut builder = system.builder("");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "");
     let layout = builder.build().expect("empty layout should build");
     let cursor = layout
         .cursor(Cursor::new(0, Affinity::After))
@@ -1300,8 +1317,8 @@ fn cursor_geometry_for_empty_text() {
 
 #[test]
 fn cursor_geometry_for_bidi_boundary() {
-    let mut system = System::default();
-    let mut builder = system.builder("abc שלום def");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "abc שלום def");
     let layout = builder.build().expect("layout should build");
     let before_rtl = layout
         .cursor(Cursor::new(4, Affinity::After))
@@ -1321,8 +1338,8 @@ fn cursor_geometry_for_bidi_boundary() {
 
 #[test]
 fn selection_geometry_for_bidi_range() {
-    let mut system = System::default();
-    let mut builder = system.builder("abc שלום def");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "abc שלום def");
     let layout = builder.build().expect("layout should build");
     let selection = Selection::new(
         Cursor::new(0, Affinity::After),
@@ -1343,8 +1360,8 @@ fn selection_geometry_for_bidi_range() {
 
 #[test]
 fn inline_box_participates_in_layout() {
-    let mut system = System::default();
-    let mut builder = system.builder("hello world");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "hello world");
     builder.inline_box(InlineBox::new(
         Id::from_u64(7),
         InlineBoxKind::InFlow,
@@ -1361,13 +1378,12 @@ fn inline_box_participates_in_layout() {
 
 #[test]
 fn out_of_flow_inline_box_preserves_metrics_and_reports_anchor() {
-    let mut system = System::default();
-    let plain = system
-        .builder("hello world")
+    let mut system = ahem_system();
+    let plain = ahem_builder(&mut system, "hello world")
         .build()
         .expect("plain layout should build");
     let plain_metrics = plain.metrics();
-    let mut builder = system.builder("hello world");
+    let mut builder = ahem_builder(&mut system, "hello world");
     builder.inline_box(InlineBox::new(
         Id::from_u64(8),
         InlineBoxKind::OutOfFlow,
@@ -1388,8 +1404,8 @@ fn out_of_flow_inline_box_preserves_metrics_and_reports_anchor() {
 
 #[test]
 fn positioned_inline_boxes_preserve_requested_vertical_align_and_line() {
-    let mut system = System::default();
-    let mut builder = system.builder("a\nb");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "a\nb");
     builder.inline_box(
         InlineBox::new(
             Id::from_u64(7),
@@ -1454,8 +1470,8 @@ fn inline_box_vertical_align_changes_source_cache_key() {
 
 #[test]
 fn inline_metric_facts_report_lines_runs_and_inline_boxes() {
-    let mut system = System::default();
-    let mut builder = system.builder("hello world");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "hello world");
     builder.inline_box(
         InlineBox::new(
             Id::from_u64(15),
@@ -1487,8 +1503,8 @@ fn inline_metric_facts_report_lines_runs_and_inline_boxes() {
 #[test]
 fn inline_metric_facts_report_requested_baseline_shift() {
     let shift = BaselineShift::try_new(4.0).expect("finite shift");
-    let mut system = System::default();
-    let mut builder = system.builder("ab");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "ab");
     builder.inline_box(
         InlineBox::new(
             Id::from_u64(16),
@@ -1522,9 +1538,8 @@ fn support_matrix_reports_inline_box_vertical_align_supported() {
 
 #[test]
 fn inline_metric_facts_report_run_line_indices_at_line_boundaries() {
-    let mut system = System::default();
-    let layout = system
-        .builder("a\nb")
+    let mut system = ahem_system();
+    let layout = ahem_builder(&mut system, "a\nb")
         .build()
         .expect("multiline layout should build");
     let facts = layout.inline_metric_facts();
@@ -1540,8 +1555,8 @@ fn inline_metric_facts_report_run_line_indices_at_line_boundaries() {
 
 #[test]
 fn hit_detects_inline_box() {
-    let mut system = System::default();
-    let mut builder = system.builder("hello world");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "hello world");
     builder.inline_box(InlineBox::new(
         Id::from_u64(7),
         InlineBoxKind::InFlow,
@@ -1556,8 +1571,8 @@ fn hit_detects_inline_box() {
 
 #[test]
 fn hit_detects_text_and_empty_space() {
-    let mut system = System::default();
-    let mut builder = system.builder("hello");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "hello");
     let layout = builder.build().expect("layout should build");
 
     assert!(matches!(layout.hit(Point::new(1.0, 1.0)), Hit::Text(_)));
@@ -1567,8 +1582,8 @@ fn hit_detects_text_and_empty_space() {
 
 #[test]
 fn movement_handles_clusters() {
-    let mut system = System::default();
-    let mut builder = system.builder("hello");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "hello");
     let layout = builder.build().expect("layout should build");
 
     let moved = layout
@@ -1580,8 +1595,8 @@ fn movement_handles_clusters() {
 
 #[test]
 fn glyphs_report_cluster_source_ranges() {
-    let mut system = System::default();
-    let mut builder = system.builder("ab");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "ab");
     let layout = builder.build().expect("layout should build");
     let runs = layout.glyph_runs();
     let ranges = runs
@@ -1595,8 +1610,8 @@ fn glyphs_report_cluster_source_ranges() {
 
 #[test]
 fn clusters_report_source_ranges_and_bounds() {
-    let mut system = System::default();
-    let mut builder = system.builder("ab");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "ab");
     let layout = builder.build().expect("layout should build");
 
     let clusters = layout.clusters();
@@ -1625,8 +1640,8 @@ fn clusters_report_source_ranges_and_bounds() {
 
 #[test]
 fn movement_handles_line_and_document_boundaries() {
-    let mut system = System::default();
-    let mut builder = system.builder("alpha\nbeta\ngamma");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "alpha\nbeta\ngamma");
     let layout = builder.build().expect("layout should build");
 
     assert_eq!(
@@ -1657,8 +1672,8 @@ fn movement_handles_line_and_document_boundaries() {
 
 #[test]
 fn movement_handles_previous_and_next_line() {
-    let mut system = System::default();
-    let mut builder = system.builder("alpha\nbeta\ngamma");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "alpha\nbeta\ngamma");
     let layout = builder.build().expect("layout should build");
 
     let previous = layout
@@ -1674,8 +1689,8 @@ fn movement_handles_previous_and_next_line() {
 
 #[test]
 fn movement_can_extend_selection() {
-    let mut system = System::default();
-    let mut builder = system.builder("hello");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "hello");
     let layout = builder.build().expect("layout should build");
     let selection = Selection::collapsed(Cursor::new(0, Affinity::After));
 
@@ -1690,8 +1705,8 @@ fn movement_can_extend_selection() {
 
 #[test]
 fn movement_without_extend_collapses_selection() {
-    let mut system = System::default();
-    let mut builder = system.builder("hello");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "hello");
     let layout = builder.build().expect("layout should build");
     let selection = Selection::new(
         Cursor::new(0, Affinity::After),
@@ -1708,8 +1723,8 @@ fn movement_without_extend_collapses_selection() {
 
 #[test]
 fn edits_validate_ranges() {
-    let mut system = System::default();
-    let mut builder = system.builder("hello");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "hello");
     let layout = builder.build().expect("layout should build");
 
     let replaced = layout
@@ -1750,9 +1765,9 @@ fn edits_validate_ranges() {
 #[test]
 fn source_revision_exhaustion_refuses_edit_without_publishing_changed_source() {
     let source = Source::identified("hello", Id::from_u64(41), u64::MAX);
-    let mut system = System::default();
+    let mut system = ahem_system();
     let layout = system
-        .layout(source.clone(), Style::default(), Options::default())
+        .layout(source.clone(), ahem_style(), Options::default())
         .expect("the original maximum-revision source is valid for layout");
     let key = layout.key();
     let lines = layout.lines();
@@ -1785,7 +1800,7 @@ fn source_revision_exhaustion_refuses_edit_without_publishing_changed_source() {
     assert_eq!(system.stats(), stats);
 
     let cached = system
-        .layout(source.clone(), Style::default(), Options::default())
+        .layout(source.clone(), ahem_style(), Options::default())
         .expect("the unchanged original source remains a cached request");
     assert_eq!(cached.source(), &source);
     assert_eq!(cached.key(), key);
@@ -1904,11 +1919,11 @@ fn text_edit_revalidates_target_source_before_applying() {
 
 #[test]
 fn edits_project_ranges_and_revision() {
-    let mut system = System::default();
-    let mut builder = system.builder("abcdef");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "abcdef");
     builder
         .identity(Id::from_u64(3), 4)
-        .span(Range::new(2, 5), Style::default())
+        .span(Range::new(2, 5), ahem_style())
         .inline_box(InlineBox::new(
             Id::from_u64(9),
             InlineBoxKind::OutOfFlow,
@@ -1960,8 +1975,8 @@ fn edits_project_ranges_and_revision() {
 
 #[test]
 fn edit_insert_targets_source_index() {
-    let mut system = System::default();
-    let mut builder = system.builder("hello");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "hello");
     builder.identity(Id::from_u64(5), 9);
     let layout = builder.build().expect("layout should build");
 
@@ -1981,16 +1996,16 @@ fn edit_insert_targets_source_index() {
 
 #[test]
 fn glyph_runs_preserve_resolved_brush() {
-    let mut system = System::default();
+    let mut system = ahem_system();
     let brush = Brush::color(0.2, 0.4, 0.6, 1.0);
     let decoration_brush = Brush::color(0.7, 0.2, 0.1, 1.0);
     let style = Style {
         size: 20.0,
         brush,
         underline: Decoration::solid().with_brush(DecorationBrush::Color(decoration_brush)),
-        ..Style::default()
+        ..ahem_style()
     };
-    let mut builder = system.builder("hello");
+    let mut builder = ahem_builder(&mut system, "hello");
     builder.default_style(style.clone());
     let layout = builder.build().expect("layout should build");
 
@@ -2004,8 +2019,8 @@ fn glyph_runs_preserve_resolved_brush() {
 
 #[test]
 fn glyph_runs_expose_resolved_font_data() {
-    let mut system = System::default();
-    let mut builder = system.builder("effect text");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "effect text");
     let layout = builder.build().expect("layout should build");
     let runs = layout.glyph_runs();
     let data = runs.first().expect("actual resolved glyph run").font();
@@ -2190,16 +2205,16 @@ fn composer_identity_and_revision_update_source_fields() {
 
 #[test]
 fn composed_source_builds_through_layout_system() {
-    let mut system = System::default();
+    let mut system = ahem_system();
     let source = source(|t| {
         t.push("hello ");
-        t.with(Style::default(), |t| {
+        t.with(ahem_style(), |t| {
             t.push("layout");
         });
     });
 
     let layout = system
-        .layout(source, Style::default(), Options::default())
+        .layout(source, ahem_style(), Options::default())
         .expect("composed source should build");
 
     assert_eq!(layout.metrics().line_count(), 1);
@@ -2212,7 +2227,7 @@ fn decoration_offsets_are_measured_from_baseline() {
 
 #[test]
 fn typed_decoration_values_project_to_layout_runs() {
-    let mut system = System::default();
+    let mut system = ahem_system();
     let brush = Brush::color(0.2, 0.4, 0.6, 1.0);
     let decoration_brush = Brush::color(0.7, 0.2, 0.1, 1.0);
     let style = Style {
@@ -2221,9 +2236,9 @@ fn typed_decoration_values_project_to_layout_runs() {
             .with_offset(DecorationOffset::try_absolute(2.0).expect("offset is finite"))
             .with_thickness(DecorationThickness::try_absolute(1.5).expect("thickness is positive"))
             .with_brush(DecorationBrush::Color(decoration_brush)),
-        ..Style::default()
+        ..ahem_style()
     };
-    let mut builder = system.builder("decor");
+    let mut builder = ahem_builder(&mut system, "decor");
     builder.default_style(style);
 
     let layout = builder.build().expect("typed decoration should build");
@@ -2239,14 +2254,14 @@ fn typed_decoration_values_project_to_layout_runs() {
 
 #[test]
 fn decoration_text_color_brush_uses_resolved_run_brush() {
-    let mut system = System::default();
+    let mut system = ahem_system();
     let brush = Brush::color(0.2, 0.4, 0.6, 1.0);
     let style = Style {
         brush,
         underline: Decoration::solid(),
-        ..Style::default()
+        ..ahem_style()
     };
-    let mut builder = system.builder("decor");
+    let mut builder = ahem_builder(&mut system, "decor");
     builder.default_style(style);
 
     let layout = builder.build().expect("text-color decoration should build");
@@ -2272,8 +2287,8 @@ fn decoration_metric_values_reject_invalid_numbers() {
 #[cfg(feature = "text-accessibility")]
 #[test]
 fn accessibility_projection_preserves_cursor_and_selection() {
-    let mut system = System::default();
-    let mut builder = system.builder("hello");
+    let mut system = ahem_system();
+    let mut builder = ahem_builder(&mut system, "hello");
     let layout = builder.build().expect("layout should build");
     let mut accessibility = Accessibility::default();
     let parent = accesskit::NodeId(100);

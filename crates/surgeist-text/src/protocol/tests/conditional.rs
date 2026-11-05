@@ -327,12 +327,11 @@ fn glyphs(line: &FinalizedLine) -> Vec<(Range, u32)> {
 
 #[test]
 fn conditional_cuts_reshape_optional_ligatures_with_the_retained_instance() {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     let fixture = crate::shaping_test_fonts::ligature_ahem();
-    system.register_fonts(fixture.clone()).unwrap();
+    system
+        .register_fonts(fixture.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = prepare(&mut system, input("AA", OverflowWrap::Anywhere));
     let whole = prepared
         .select(request(&prepared))
@@ -366,12 +365,11 @@ fn conditional_cuts_reshape_optional_ligatures_with_the_retained_instance() {
 
 #[test]
 fn conditional_cut_and_continuation_keep_actual_arabic_base_context() {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     let fixture = crate::shaping_test_fonts::arabic_ahem();
-    system.register_fonts(fixture.clone()).unwrap();
+    system
+        .register_fonts(fixture.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let mut value = input("\u{628}\u{628}\u{628}", OverflowWrap::Anywhere);
     value.base_direction = ParagraphBaseDirection::RightToLeft;
     let prepared = prepare(&mut system, value);
@@ -1522,12 +1520,12 @@ fn deleted_bridge_relations_keep_real_original_endpoints_and_logical_before_styl
 #[test]
 fn conditional_context_uses_base_capture_after_actual_hyphen_variant_trial() {
     use paragraph::{ParagraphReplacement, ParagraphReplacementDefinition};
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     system
-        .register_fonts(crate::shaping_test_fonts::arabic_nonjoining_ahem())
+        .register_fonts(
+            crate::shaping_test_fonts::arabic_nonjoining_ahem(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     let mut value = input(
         "\u{621}\u{628}\u{628}\u{ad}\u{628}\u{621}",
@@ -1604,12 +1602,12 @@ fn conditional_context_uses_base_capture_after_actual_hyphen_variant_trial() {
 
 #[test]
 fn conditional_provider_and_numeric_refusals_leave_prior_actual_results_valid() {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     system
-        .register_fonts(crate::shaping_test_fonts::arabic_ahem())
+        .register_fonts(
+            crate::shaping_test_fonts::arabic_ahem(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     let mut value = input(
         "\u{628}\u{61c}\u{61c}\u{61c}\u{61c}\u{61c}\u{61c}\u{628}",

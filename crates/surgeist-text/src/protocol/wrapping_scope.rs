@@ -283,12 +283,12 @@ mod tests {
         let analyzed =
             AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
                 .unwrap();
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut system = System::default();
         system
-            .register_fonts(include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
+            .register_fonts(
+                include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+                crate::test_fonts::FONT_LIMITS,
+            )
             .unwrap();
         system
             .prepare(&analyzed, PreparationOptions::default())

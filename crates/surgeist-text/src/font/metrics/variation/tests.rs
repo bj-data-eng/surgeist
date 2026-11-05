@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    FontCatalogueMode, FontData as Resource, System, SystemOptions,
+    FontData as Resource, System,
     test_fonts::{replace_tables, table, variable_ahem},
 };
 
@@ -49,11 +49,10 @@ fn fixture(data: Vec<u8>) -> Vec<u8> {
     replace_tables(&base, vec![(*b"OS/2", os2), (*b"MVAR", data)])
 }
 fn registered(bytes: Vec<u8>) -> (System, Resource) {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let resource = system.registered_font_faces().next().unwrap().to_owned();
     (system, resource)
 }

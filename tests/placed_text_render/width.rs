@@ -86,11 +86,10 @@ pub(super) fn width_ahem() -> Vec<u8> {
 }
 
 fn system(bytes: &[u8]) -> text::System {
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(bytes.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     system
 }
 

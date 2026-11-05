@@ -19,11 +19,10 @@ fn style(wrap: text::Wrap) -> text::Style {
 }
 
 fn system(bytes: &[u8]) -> text::System {
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(bytes.to_vec(), crate::common::FONT_LIMITS)
+        .unwrap();
     system
 }
 
@@ -528,3 +527,5 @@ fn unsupported_default_ignorable_with_visible_space_is_still_empty_ink() {
     zero_advance_and_caret(&ignored);
     assert_eq!(ignored.ink, text::LineOutlineInk::Empty);
 }
+
+mod common;

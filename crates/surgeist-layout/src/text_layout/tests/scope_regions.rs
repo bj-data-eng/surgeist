@@ -33,11 +33,10 @@ fn block(style: &text::Style) -> text::SourceProcessingScope {
 }
 fn prepare(input: text::ContextualSourceInput) -> Vec<text::PreparedText> {
     let processed = Arc::new(text::process_contextual_source(input).unwrap());
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(FONT.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(FONT.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     processed
         .paragraphs()
         .map(|paragraph| {

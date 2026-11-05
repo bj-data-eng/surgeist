@@ -15,11 +15,10 @@ use VerticalGlyphMetricProvenance as P;
 const X: u32 = 58;
 
 fn registered(bytes: Vec<u8>) -> (System, FontData) {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let data = system.registered_font_faces().next().unwrap().to_owned();
     assert_eq!(data.index(), 0);
     assert_eq!(data.bytes(), bytes);
@@ -532,27 +531,32 @@ fn native_vhea_one_point_one_is_a_supported_version() {
     );
 }
 
+fn refuse_directory(bytes: Vec<u8>, expected: surgeist_font::InvalidKind) {
+    let error = System::default()
+        .register_fonts(bytes, crate::test_fonts::FONT_LIMITS)
+        .expect_err("invalid table directory must be refused before selection");
+    assert_eq!(error.code, ErrorCode::FontLoadFailed);
+    assert!(matches!(
+        error.detail(),
+        Some(ErrorDetail::FontDecode(surgeist_font::DecodeError::InvalidContainer(error)))
+            if error.kind() == expected
+    ));
+}
+
 #[test]
-fn consumed_vertical_directory_errors_are_not_synthesized_away() {
+fn invalid_vertical_directory_refuses_before_metric_synthesis() {
+    use surgeist_font::InvalidKind;
+
     let base = fixture::native();
     let record = directory_record(&base, *b"vhea");
     let mut inaccessible = base.clone();
     inaccessible[record + 8..record + 12].copy_from_slice(&u32::MAX.to_be_bytes());
     let mut duplicate = replace_tables(&base, vec![(*b"vheZ", table(&base, *b"vhea").to_vec())]);
     let extra = directory_record(&duplicate, *b"vheZ");
-    // Adjacent sorted equal tags, preserving every original required table.
     duplicate[extra..extra + 4].copy_from_slice(b"vhea");
-    for (bytes, reason) in [
-        (inaccessible, FontMetricTableError::Inaccessible),
-        (duplicate, FontMetricTableError::Duplicate),
-    ] {
-        let (_, data) = registered(bytes);
-        table_error(
-            query(&data, X, 10.0).unwrap_err(),
-            FontMetricTable::Vhea,
-            reason,
-        );
-    }
+
+    refuse_directory(inaccessible, InvalidKind::UnalignedOffset);
+    refuse_directory(duplicate, InvalidKind::TableOrder);
 }
 
 #[test]
@@ -630,7 +634,7 @@ fn native_required_loca_and_glyf_errors_are_not_empty_but_absence_does_not_read_
 }
 
 #[test]
-fn irrelevant_glyf_vorg_is_ignored_even_if_malformed_or_inaccessible() {
+fn irrelevant_glyf_vorg_payload_is_ignored_after_directory_admission() {
     for native in [false, true] {
         let base = if native {
             fixture::native()
@@ -639,27 +643,24 @@ fn irrelevant_glyf_vorg_is_ignored_even_if_malformed_or_inaccessible() {
         };
         let bad = replace_tables(&base, vec![(*b"VORG", vec![0])]);
         let mut inaccessible = bad.clone();
-        let record = (0..usize::from(u16_at(&bad, 4)))
-            .map(|i| 12 + i * 16)
-            .find(|&at| bad[at..at + 4] == *b"VORG")
-            .unwrap();
+        let record = directory_record(&inaccessible, *b"VORG");
         inaccessible[record + 8..record + 12].copy_from_slice(&u32::MAX.to_be_bytes());
-        for bytes in [bad, inaccessible] {
-            let (_, data) = registered(bytes);
-            let (values, provenance) = if native {
-                ([12.0, 5.0, 9.0], native_provenance(false))
-            } else {
-                ([10.0, 5.0, 8.0], synthesized(L::Hhea))
-            };
-            check(
-                &query(&data, X, 10.0).unwrap(),
-                &data,
-                X,
-                10.0,
-                values,
-                provenance,
-            );
-        }
+        refuse_directory(inaccessible, surgeist_font::InvalidKind::UnalignedOffset);
+
+        let (_, data) = registered(bad);
+        let (values, provenance) = if native {
+            ([12.0, 5.0, 9.0], native_provenance(false))
+        } else {
+            ([10.0, 5.0, 8.0], synthesized(L::Hhea))
+        };
+        check(
+            &query(&data, X, 10.0).unwrap(),
+            &data,
+            X,
+            10.0,
+            values,
+            provenance,
+        );
     }
 }
 

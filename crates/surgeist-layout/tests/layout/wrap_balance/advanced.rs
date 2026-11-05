@@ -282,11 +282,10 @@ impl<S: l::LayoutScalar> Advanced<S> {
                 ancestor_wrap: t::Wrap::Word,
             })
             .collect();
-        let mut fonts = t::System::new(t::SystemOptions {
-            font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        fonts.register_fonts(AHEM.to_vec()).unwrap();
+        let mut fonts = t::System::default();
+        fonts
+            .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+            .unwrap();
         let prepared = fonts
             .prepare(
                 &analyzed.with_wrapping_policies(policies).unwrap(),

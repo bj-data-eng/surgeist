@@ -87,11 +87,10 @@ fn prepare(analyzed: &AnalyzedSource) -> (System, PreparedText, Vec<u8>) {
         crate::test_fonts::u16_at(crate::test_fonts::table(&bytes, *b"hmtx"), 35 * 4),
         1000
     );
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(
             analyzed,

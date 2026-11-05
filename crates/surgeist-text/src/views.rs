@@ -147,7 +147,7 @@ impl RunView<'_> {
     /// font and paint origin.
     pub fn baseline(
         &self,
-        expected: &crate::FontCatalogueIdentity,
+        expected: &crate::CataloguePublication,
         axis: crate::FontBaselineAxis,
         name: crate::FontBaseline,
     ) -> Result<crate::FontBaselineMeasurement<'_>> {

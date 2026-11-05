@@ -173,11 +173,10 @@ fn fixture<S: l::LayoutScalar>() -> (
         })
         .collect::<Vec<_>>();
     assert_eq!(parent_paragraphs, [p0, p2]);
-    let mut fonts = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    fonts.register_fonts(AHEM.to_vec()).unwrap();
+    let mut fonts = t::System::default();
+    fonts
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let mut inputs: Vec<_> = (0..7)
         .map(|_| l::LayoutInputOf::box_input(l::NodeInputOf::default()))
         .collect();

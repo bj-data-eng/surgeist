@@ -337,11 +337,10 @@ fn fixture_with_child_topology(
         })
         .unwrap(),
     );
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let prepared: Vec<_> = processed
         .paragraphs()
         .map(|paragraph| {
@@ -924,11 +923,10 @@ fn nonempty_domain_with_terminal_empty_paragraph() -> IncidenceFixture {
         })
         .unwrap(),
     );
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let prepared: Vec<_> = processed
         .paragraphs()
         .map(|paragraph| {
@@ -1186,11 +1184,10 @@ fn flat_empty_preparation_without_canonical_paragraph_identity_cannot_associate_
         text::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(&analyzed, text::PreparationOptions::default())
         .unwrap();

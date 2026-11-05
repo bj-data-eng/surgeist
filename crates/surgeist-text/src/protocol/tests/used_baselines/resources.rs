@@ -2,11 +2,10 @@
 use super::*;
 
 fn registered(bytes: Vec<u8>) -> System {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     system
 }
 
@@ -221,7 +220,9 @@ fn an_actual_fallback_face_uses_its_legacy_kana_reference_instead_of_the_primary
         Some(1000.0)
     );
     let mut system = registered(primary.clone());
-    system.register_fonts(fallback.clone()).unwrap();
+    system
+        .register_fonts(fallback.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let input = analyzed(
         Source::new("A\u{3078}"),
         Style {

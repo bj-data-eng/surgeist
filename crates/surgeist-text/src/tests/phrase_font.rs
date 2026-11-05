@@ -26,14 +26,15 @@ fn style() -> Style {
 }
 
 fn system() -> System {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     // Both faces coexist, so the requested derivative must select its own
     // family/resource even where original Ahem could otherwise supply fallback.
-    system.register_fonts(ORIGINAL.to_vec()).unwrap();
-    system.register_fonts(PHRASE_FONT.to_vec()).unwrap();
+    system
+        .register_fonts(ORIGINAL.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
+    system
+        .register_fonts(PHRASE_FONT.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     system
 }
 

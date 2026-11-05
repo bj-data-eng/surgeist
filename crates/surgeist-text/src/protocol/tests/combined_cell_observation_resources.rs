@@ -83,11 +83,10 @@ fn retained_outer_edge_capacity_and_header_are_owned_once_for_visible_and_provid
     ] {
         let font = qualified_font();
         let (processed, analyzed) = captured(text, whitespace, 0.0);
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        system.register_fonts(font).unwrap();
+        let mut system = System::default();
+        system
+            .register_fonts(font, crate::test_fonts::FONT_LIMITS)
+            .unwrap();
         let prepared = system
             .prepare(
                 &analyzed,

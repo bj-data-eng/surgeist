@@ -230,11 +230,10 @@ fn fixture() -> Fixture {
 fn fixture_in_direction(direction: l::Direction) -> Fixture {
     let bytes = chi_font();
     qualify_font(&bytes);
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(bytes.clone(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let face = system.registered_font_faces().next().unwrap().to_owned();
     assert_eq!(face.bytes(), bytes);
     assert_eq!(face.index(), 0);

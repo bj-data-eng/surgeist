@@ -436,12 +436,13 @@ fn fixture_with_profile(
     assert_eq!(scope.style().unwrap().letter_spacing, tracking);
     assert_eq!(scope.style().unwrap().word_spacing, 0.0);
     assert!(scope.style().unwrap().font.features.is_empty());
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(parent.clone()).unwrap();
-    system.register_fonts(body.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(parent.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
+    system
+        .register_fonts(body.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     assert_eq!(system.registered_font_faces().count(), 2);
     let parent = system
         .registered_font_faces()

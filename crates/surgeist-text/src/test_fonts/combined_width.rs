@@ -348,17 +348,15 @@ mod tests {
 
     #[test]
     fn renamed_family_is_selected_by_real_registered_only_text_shaping() {
-        use crate::{
-            Font, FontCatalogueMode, Id, LineHeight, Options, Source, Style, System, SystemOptions,
-            WhiteSpace, Wrap,
-        };
+        use crate::{Font, Id, LineHeight, Options, Source, Style, System, WhiteSpace, Wrap};
         let bytes = combined_width_ahem();
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        system.register_fonts(AHEM.to_vec()).unwrap();
-        system.register_fonts(bytes.clone()).unwrap();
+        let mut system = System::default();
+        system
+            .register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
+            .unwrap();
+        system
+            .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+            .unwrap();
         for (setting, glyph, advance) in [
             (None, 35, 10.0),
             (Some("\"hwid\" off"), 35, 10.0),

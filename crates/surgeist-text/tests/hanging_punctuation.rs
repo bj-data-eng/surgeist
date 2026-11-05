@@ -74,11 +74,10 @@ fn prepare(value: t::ParagraphInput, bytes: &[u8]) -> t::PreparedText {
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.to_vec()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(bytes.to_vec(), crate::common::FONT_LIMITS)
+        .unwrap();
     let p = system
         .prepare(&analyzed, t::PreparationOptions::default())
         .unwrap();
@@ -811,11 +810,10 @@ fn authored_declarations_and_resolved_role_identity_are_retained() {
     assert_eq!(measures(&yes), measures(&yes_again));
     assert_ne!(measures(&yes), measures(&no));
     assert_eq!(yes.feedback().advance, 20.0);
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), crate::common::FONT_LIMITS)
+        .unwrap();
     let source = t::Source::identified("A.", t::Id::from_u64(71073), 9);
     let options = t::Options {
         width: Some(15.0),
@@ -1317,11 +1315,10 @@ fn captured_enclosing_inline_continues_without_its_later_end_decoration() {
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), crate::common::FONT_LIMITS)
+        .unwrap();
     let p = system
         .prepare(&analyzed, t::PreparationOptions::default())
         .unwrap();
@@ -1574,3 +1571,5 @@ fn complete_spacing_remaps_punctuation_advance_without_reclassifying_natural_ove
         assert_eq!(measures(&natural), natural_measure);
     }
 }
+
+mod common;

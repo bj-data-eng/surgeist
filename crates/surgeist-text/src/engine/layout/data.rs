@@ -104,7 +104,7 @@ pub(crate) struct HorizontalRunMetrics {
 pub(crate) struct PreparedRun {
     pub(crate) font: FontData,
     pub(crate) font_size: f32,
-    pub(crate) font_attrs: fontique::Attributes,
+    pub(crate) font_attrs: surgeist_font::FontAttributes,
     pub(crate) synthesis: FontSynthesis,
     pub(crate) coords: Vec<i16>,
     pub(crate) style: usize,

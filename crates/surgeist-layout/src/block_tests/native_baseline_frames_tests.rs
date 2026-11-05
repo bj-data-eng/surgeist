@@ -114,11 +114,10 @@ impl Paragraph {
             text::AnalyzedSource::from_paragraph(input, typography).unwrap(),
             text::Wrap::None,
         );
-        let mut system = text::System::new(text::SystemOptions {
-            font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        system.register_fonts(AHEM.to_vec()).unwrap();
+        let mut system = text::System::default();
+        system
+            .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+            .unwrap();
         let orientation = match mode {
             WritingMode::HorizontalTb => text::LineOrientation::Horizontal,
             WritingMode::SidewaysRl => text::LineOrientation::SidewaysClockwise,
@@ -855,11 +854,10 @@ fn wrapping_paragraph() -> Paragraph {
         .unwrap(),
         text::Wrap::Word,
     );
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     Paragraph {
         prepared: system
             .prepare(

@@ -431,7 +431,9 @@ fn one_lexical_word_survives_a_real_registered_face_change() {
             .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::Word);
     let mut owner = system();
-    owner.register_fonts(secondary.clone()).unwrap();
+    owner
+        .register_fonts(secondary.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let p = owner
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap();

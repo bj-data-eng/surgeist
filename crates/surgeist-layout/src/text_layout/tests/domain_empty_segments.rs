@@ -138,11 +138,10 @@ fn fixture(empty: Empty) -> Fixture {
         .map(|raw| raw.captured_paragraph())
         .collect();
     assert_eq!(raws.len(), 3);
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let mut prepared = Vec::new();
     for member in [0, 1] {
         let analyzed = text::AnalyzedDomain::from_processed_paragraph(

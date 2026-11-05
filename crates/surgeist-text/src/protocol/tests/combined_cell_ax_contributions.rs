@@ -255,11 +255,10 @@ fn rtl_inner_tab_groups_reverse_bounds_without_reversing_original_ax_units() {
         [0x41, 0x42, 9, 0x31, 0x32]
     );
     let mut state = source_controls(&capture.analyzed, &["A", "B", "\t", "1", "2"]);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let options = PreparationOptions::try_new(1.0, TabPreparation::CssStops)
         .unwrap()
         .with_orientation(LineOrientation::Vertical);
@@ -362,11 +361,10 @@ fn removed_only_space_cell_keeps_original_ax_semantics_without_donating_any_geom
     assert!(!piece.is_used() && !piece.has_presentation_emission());
     let mut state = source_controls(&analyzed, &[" "]);
     let bytes = super::super::super::qualified_font();
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(
             &analyzed,
@@ -424,11 +422,10 @@ fn native_css_tab_ax_uses_its_actual_nonprovider_band_and_retains_zero_width() {
         );
         assert!(piece.is_used() && piece.has_presentation_emission());
         let mut state = source_controls(&capture.analyzed, &["\t"]);
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        system.register_fonts(bytes.clone()).unwrap();
+        let mut system = System::default();
+        system
+            .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+            .unwrap();
         let prepared = system
             .prepare(
                 &capture.analyzed,

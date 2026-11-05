@@ -1,6 +1,6 @@
 use super::*;
 use crate::{
-    FontCatalogueMode, FontData, System, SystemOptions,
+    FontData, System,
     test_fonts::{
         remove_tables, replace_tables, table, u16_at, variable_ahem, variable_ahem_with_tuple,
     },
@@ -8,11 +8,10 @@ use crate::{
 const AHEM: &[u8] = include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf");
 const X: u32 = 58;
 fn registered(bytes: Vec<u8>) -> (System, FontData) {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let data = system.registered_font_faces().next().unwrap().to_owned();
     (system, data)
 }
@@ -88,7 +87,9 @@ fn actual_outline_retains_resource_and_catalogue_and_proves_empty_separately() {
     assert!(retained.instance().face().is_same_face(&data.face()));
     assert_eq!(geometry(&data, 3, 360.0).unwrap().bounds(), None); // actual space loca
     assert_eq!(system.stats(), stats);
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    system
+        .register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     assert_eq!(
         data.unsynthesized_instance(360.0, &[])
             .unwrap()

@@ -24,11 +24,10 @@ fn normal_fit() -> WordFixture {
     let font = qualified_nbsp_font(false);
     let (processed, analyzed) = captured("\u{a0}", WhiteSpace::Preserve, -2.0);
     source_custody(&processed, &analyzed, &[0], -2.0);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(font.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(font.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(
             &analyzed,

@@ -683,7 +683,9 @@ fn actual_default_body_and_captured_tab_fonts_keep_independent_metrics() {
     assert_eq!(b.charmap().map('X'), Some(GlyphId::new(58)));
     assert_eq!(b.vmtx().unwrap().v_metrics()[58].advance.get(), 1800);
     let mut system = system_with(&default);
-    system.register_fonts(body.clone()).unwrap();
+    system
+        .register_fonts(body.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let mut own = style(None, LineHeight::MetricsRelative(1.2));
     own.font = Font::new().family("Ahem").family("Bhem");
     for (strut, expected) in [

@@ -273,11 +273,10 @@ fn authored_sbix_fixture_selects_middle_strike_offsets_and_decodes_red_pixel() {
 #[cfg(feature = "render-text")]
 fn assert_registered_adapter(bytes: Vec<u8>, size: f32, ink: Rect) {
     use surgeist_text as text;
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(bytes.clone(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let input = system
         .layout(
             text::Source::new("X"),

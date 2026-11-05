@@ -175,11 +175,10 @@ fn native(
     )
     .unwrap();
     let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, text::Wrap::None);
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let orientation = match mode {
         WritingMode::HorizontalTb => text::LineOrientation::Horizontal,
         WritingMode::SidewaysRl => text::LineOrientation::SidewaysClockwise,
@@ -1075,11 +1074,10 @@ fn precision_native(control: bool) -> (Native, TextParagraphBinding<u32>) {
     );
     // Reprepare this actual captured source with the same explicit named
     // reference as the atomic fixture; retain only the newly issued handles.
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(
             &paragraph.prepared.analyzed_source(),

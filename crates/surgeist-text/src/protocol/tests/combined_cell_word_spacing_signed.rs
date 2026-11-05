@@ -265,11 +265,10 @@ fn case(font: &[u8], expected: Expected) {
     assert_eq!(processed.source().text(), &Text::from(" "));
     assert_eq!(processed.source().text().len(), 1); // UTF-16, not its two UTF-8 bytes.
     source_custody(&processed, &analyzed, &[0], expected.word);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(font.to_vec()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(font.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     assert_eq!(system.registered_font_faces().count(), 1);
     let prepared = system
         .prepare(

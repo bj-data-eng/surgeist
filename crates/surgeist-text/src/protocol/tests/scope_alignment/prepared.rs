@@ -132,12 +132,11 @@ fn scoped_fonts() -> (Vec<u8>, Vec<u8>) {
     )
 }
 fn system(parent: &[u8], child: &[u8]) -> System {
-    let mut s = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    s.register_fonts(parent.to_vec()).unwrap();
-    s.register_fonts(child.to_vec()).unwrap();
+    let mut s = System::default();
+    s.register_fonts(parent.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
+    s.register_fonts(child.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     s
 }
 fn analyze(value: ContextualSourceInput) -> (Arc<ProcessedSource>, AnalyzedSource) {
@@ -377,11 +376,9 @@ fn dormant_context_does_not_create_scope_resources_or_targets_and_font_query_zer
     inline(&mut value, 1, None, None, Some(style(10.0, 10.0)));
     value.scope_alignment_limits = Some(ScopeAlignmentLimits::new(4096, 0, 1_000_000, 16_777_216));
     let (capture, analysis) = analyze(value);
-    let mut s = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    s.register_fonts(AHEM.to_vec()).unwrap();
+    let mut s = System::default();
+    s.register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let p = s.prepare(&analysis, PreparationOptions::default()).unwrap();
     assert_eq!(p.scope_alignment_usage().unwrap().font_queries(), 0);
     assert_eq!(
@@ -561,11 +558,9 @@ pub(super) fn two_leaves() -> ContextualSourceInput {
 #[test]
 fn a_real_scoped_glyph_moves_with_its_carets_selection_and_signed_envelope_once() {
     let (capture, analysis) = analyze(two_leaves());
-    let mut s = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    s.register_fonts(AHEM.to_vec()).unwrap();
+    let mut s = System::default();
+    s.register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let p = s.prepare(&analysis, PreparationOptions::default()).unwrap();
     let selected = select(&p);
     let scope = selected.scopes().next().unwrap();
@@ -671,11 +666,9 @@ fn a_real_scoped_glyph_moves_with_its_carets_selection_and_signed_envelope_once(
 #[test]
 fn selected_scope_allocations_require_complete_unique_current_handles_and_preserve_prior_results() {
     let (_, analysis) = analyze(two_leaves());
-    let mut s = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    s.register_fonts(AHEM.to_vec()).unwrap();
+    let mut s = System::default();
+    s.register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let p = s.prepare(&analysis, PreparationOptions::default()).unwrap();
     let first = select(&p);
     let handle = first.scopes().next().unwrap();
@@ -776,11 +769,9 @@ fn a_empty_dormant_inline_does_not_demand_missing_reference_or_unavailable_font(
     ];
     value.scope_alignment_limits = Some(ScopeAlignmentLimits::new(4096, 0, 1_000_000, 16_777_216));
     let (capture, analysis) = analyze(value);
-    let mut s = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    s.register_fonts(AHEM.to_vec()).unwrap();
+    let mut s = System::default();
+    s.register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let p = s.prepare(&analysis, PreparationOptions::default()).unwrap();
     assert_eq!(p.scope_alignment_usage().unwrap().font_queries(), 0);
     assert_eq!(

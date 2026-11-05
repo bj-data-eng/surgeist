@@ -32,6 +32,9 @@ surgeist-template = { path = "crates/surgeist-template", version = "=0.1.0" }
 surgeist-text = { path = "crates/surgeist-text", version = "=0.1.0" }
 surgeist-window = { path = "crates/surgeist-window", version = "=0.1.0" }
 
+[dev-dependencies]
+surgeist-test = { path = "crates/surgeist-test", version = "=0.1.0" }
+
 [features]
 default = []
 dialog-system = ["surgeist-dialog/system"]

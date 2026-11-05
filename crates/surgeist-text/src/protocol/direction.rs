@@ -93,7 +93,7 @@ mod tests {
     use super::*;
     use crate::{
         AnalyzedSource, Font, ParagraphInput, ParagraphOrigin, ParagraphOriginKind, ParagraphStrut,
-        PreparationOptions, Source, Style, System, SystemOptions,
+        PreparationOptions, Source, Style, System,
     };
 
     fn prepared(text: &str, base_direction: ParagraphBaseDirection) -> PreparedText {
@@ -101,12 +101,12 @@ mod tests {
     }
 
     fn prepare_input(input: ParagraphInput) -> PreparedText {
-        let mut system = System::new(SystemOptions {
-            font_catalogue: crate::FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut system = System::default();
         system
-            .register_fonts(include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
+            .register_fonts(
+                include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+                crate::test_fonts::FONT_LIMITS,
+            )
             .unwrap();
         let analyzed =
             AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)

@@ -98,11 +98,10 @@ fn before_enter_and_after_exit_computed_occurrences_use_the_parent_frame_not_the
             AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
-        let mut fonts = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        fonts.register_fonts(AHEM.to_vec()).unwrap();
+        let mut fonts = System::default();
+        fonts
+            .register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
+            .unwrap();
         let prepared = fonts
             .prepare(
                 &crate::test_wrapping::bind_missing(&analyzed, Wrap::Word),

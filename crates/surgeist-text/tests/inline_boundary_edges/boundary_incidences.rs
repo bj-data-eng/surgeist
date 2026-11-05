@@ -77,11 +77,10 @@ fn input(text: &str, ranges: &[(usize, usize)]) -> t::ContextualSourceInput {
     }
 }
 fn prepare_processed(processed: &Arc<t::ProcessedSource>, bytes: &[u8]) -> Vec<t::PreparedText> {
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.to_vec()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(bytes.to_vec(), crate::common::FONT_LIMITS)
+        .unwrap();
     processed
         .paragraphs()
         .map(|paragraph| {
@@ -781,11 +780,10 @@ fn incidence_capabilities_keep_preparation_capture_role_and_domain_errors_distin
         t::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), crate::common::FONT_LIMITS)
+        .unwrap();
     let flat = system
         .prepare(&flat, t::PreparationOptions::default())
         .unwrap();

@@ -192,11 +192,10 @@ fn fixture(shape: Shape) -> Fixture {
         .map(|raw| raw.captured_paragraph())
         .collect();
     assert_eq!(raws.len(), paragraph_count);
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let analyze = |member| {
         let batch = text::AnalyzedDomain::from_processed_paragraph(
             processed.paragraphs().nth(member).unwrap(),

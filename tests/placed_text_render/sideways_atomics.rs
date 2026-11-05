@@ -216,11 +216,10 @@ fn placed(batch: &layout::CompletedLayoutBatch<usize>, container: usize) -> &tex
 }
 
 fn assert_composition(kind: text::InlineBoxKind) {
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     // Ahem chi is deliberately asymmetric: UPEM1000, advance1000,
     // outline x0..1000/y400..600. At size10 its ink is x0..10/y-6..-4.
     // These licensed fixture facts are also qualified by Render's owning

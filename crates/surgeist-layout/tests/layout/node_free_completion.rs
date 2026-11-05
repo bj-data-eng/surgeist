@@ -155,11 +155,10 @@ impl<S: l::LayoutScalar> Fixture<S> {
             })
             .collect();
         let analyzed = analyzed.with_wrapping_policies(missing).unwrap();
-        let mut fonts = t::System::new(t::SystemOptions {
-            font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        fonts.register_fonts(AHEM.to_vec()).unwrap();
+        let mut fonts = t::System::default();
+        fonts
+            .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+            .unwrap();
         let prepared = fonts
             .prepare(&analyzed, t::PreparationOptions::default())
             .unwrap();
@@ -781,11 +780,10 @@ impl<S: l::LayoutScalar> SharedGap<S> {
         }
         assert_eq!(scopes[1].parent(), Some(scopes[0].clone()));
         assert_eq!(scopes[3].parent(), Some(scopes[2].clone()));
-        let mut fonts = t::System::new(t::SystemOptions {
-            font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        fonts.register_fonts(AHEM.to_vec()).unwrap();
+        let mut fonts = t::System::default();
+        fonts
+            .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+            .unwrap();
         let prepared = capture
             .paragraphs()
             .map(|paragraph| {
@@ -1349,11 +1347,10 @@ impl<S: l::LayoutScalar> BlockFence<S> {
             .into_iter()
             .map(|i| capture.captured_scope(i).unwrap())
             .collect::<Vec<_>>();
-        let mut fonts = t::System::new(t::SystemOptions {
-            font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        fonts.register_fonts(AHEM.to_vec()).unwrap();
+        let mut fonts = t::System::default();
+        fonts
+            .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+            .unwrap();
         let prepared = capture
             .paragraphs()
             .map(|paragraph| {
@@ -2106,11 +2103,10 @@ impl<S: l::LayoutScalar> Fixture<S> {
                 ancestor_wrap: t::Wrap::None,
             })
             .collect();
-        let mut fonts = t::System::new(t::SystemOptions {
-            font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        fonts.register_fonts(AHEM.to_vec()).unwrap();
+        let mut fonts = t::System::default();
+        fonts
+            .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+            .unwrap();
         let prepared = fonts
             .prepare(
                 &analyzed.with_wrapping_policies(policies).unwrap(),

@@ -55,11 +55,10 @@ fn capture(text: &str) -> tabs::Captured {
 }
 
 fn prepared_layout(capture: &tabs::Captured, bytes: &[u8]) -> (PreparedText, Layout) {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.to_vec()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(
             &capture.analyzed,
@@ -317,11 +316,10 @@ fn a_inner_trimmed_space_has_removed_identity_and_no_borrowed_rectangle() {
         (1, 0)
     );
     assert_eq!(source.presentation_code_points().len(), 0);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(
             &analyzed,

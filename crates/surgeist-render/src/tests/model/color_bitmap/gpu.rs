@@ -10,11 +10,10 @@ fn registered_layout(
     alpha: f32,
 ) -> surgeist_text::Layout {
     use surgeist_text as text;
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(bytes, surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     system
         .layout(
             text::Source::new(source),

@@ -71,12 +71,12 @@ omits unsupported geometry. Positioned accessibility, interaction and paint
 readback share the committed layout. Shaping boundaries inside an original pair
 still return a precise error.
 
-`System` discovers system fonts by default or uses explicitly registered font
-bytes. Registration and refresh publish a new issuer-qualified catalogue identity
-and invalidate cached layouts atomically; retained analyses and layouts keep their
-actual source and selected resources. `System::layout_analyzed` enriches the same
+`System` starts with an empty application font catalogue. Supply admitted resources
+or bounded encoded bytes and name their families in the style. Successful
+registration and refresh publish a new catalogue identity and invalidate cached
+layouts. Retained analyses and layouts keep their actual source and selected faces. `System::layout_analyzed` enriches the same
 immutable analysis, while `System::layout` performs the same phases as a convenience.
-See [font registration](docs/how-to.md#register-fonts-without-system-discovery).
+See [font registration](docs/how-to.md#register-application-fonts).
 `System::prepare` retains the same analysis and actual resources. Its issued
 handles admit a complete `LineSelectionRequest`; selected spacing allocation and
 finalization produce immutable line-local output. `Layout::from_finalized_lines`

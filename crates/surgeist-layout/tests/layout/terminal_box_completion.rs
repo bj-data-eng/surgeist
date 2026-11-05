@@ -197,11 +197,10 @@ impl<S: l::LayoutScalar> Fixture<S> {
             })
             .collect();
         let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
-        let mut fonts = t::System::new(t::SystemOptions {
-            font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        fonts.register_fonts(AHEM.to_vec()).unwrap();
+        let mut fonts = t::System::default();
+        fonts
+            .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+            .unwrap();
         let prepared = fonts
             .prepare(&analyzed, t::PreparationOptions::default())
             .unwrap();

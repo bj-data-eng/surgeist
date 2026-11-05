@@ -48,12 +48,12 @@ fn capture_with_breaks(
         crate::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     system
-        .register_fonts(crate::shaping_test_fonts::width_ahem())
+        .register_fonts(
+            crate::shaping_test_fonts::width_ahem(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     system
         .prepare(
@@ -253,12 +253,12 @@ fn actual_preserved_space_range_and_exact_selection_use_blank_twenty_pixel_targe
 
 #[test]
 fn width_style_hashing_distinguishes_warm_and_fresh_raw_layout_results() {
-    let mut warm = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
+    let mut warm = System::default();
+    warm.register_fonts(
+        crate::shaping_test_fonts::width_ahem(),
+        crate::test_fonts::FONT_LIMITS,
+    )
     .unwrap();
-    warm.register_fonts(crate::shaping_test_fonts::width_ahem())
-        .unwrap();
     let source = Source::identified("A A", crate::Id::from_u64(6321), 2);
     for (enabled, expected, advance) in [
         (false, vec![(35, 10.0), (3, 5.0), (35, 10.0)], 25.0),
@@ -274,12 +274,12 @@ fn width_style_hashing_distinguishes_warm_and_fresh_raw_layout_results() {
             ..crate::Options::default()
         };
         let actual = warm.layout(source.clone(), style.clone(), options).unwrap();
-        let mut fresh = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut fresh = System::default();
         fresh
-            .register_fonts(crate::shaping_test_fonts::width_ahem())
+            .register_fonts(
+                crate::shaping_test_fonts::width_ahem(),
+                crate::test_fonts::FONT_LIMITS,
+            )
             .unwrap();
         let other = fresh.layout(source.clone(), style, options).unwrap();
         let observe = |layout: &crate::Layout| {

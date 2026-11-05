@@ -49,17 +49,17 @@ mod word_separators;
 
 use super::*;
 use crate::{
-    AnalyzedSource, Font, FontCatalogueMode, ParagraphStrut, PresentationMappingKind, Source,
-    Style, System, SystemOptions, WhiteSpace,
+    AnalyzedSource, Font, ParagraphStrut, PresentationMappingKind, Source, Style, System,
+    WhiteSpace,
 };
 
 fn system() -> System {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     system
-        .register_fonts(include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
+        .register_fonts(
+            include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     system
 }
@@ -673,11 +673,10 @@ fn native_unforced_break_keeps_arabic_joining_on_both_sides() {
     }
 
     let fixture = crate::shaping_test_fonts::arabic_ahem();
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(fixture.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(fixture.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let source = Source::new("\u{628}\u{628}\u{628}");
     let analyzed = AnalyzedSource::from_paragraph(
         ParagraphInput {

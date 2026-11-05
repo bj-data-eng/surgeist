@@ -166,11 +166,10 @@ fn provider_empty_source_cell_has_an_outer_edge_without_an_inner_cluster_or_ink_
     let font = qualified_font();
     let (processed, analyzed) = captured(" ", WhiteSpace::Collapse, 0.0);
     source_custody(&processed, &analyzed, &[], 0.0);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(font).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(font, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(
             &analyzed,

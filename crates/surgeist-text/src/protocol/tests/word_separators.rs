@@ -94,11 +94,10 @@ fn system(bytes: &[u8], separator: char, zero: bool, native_zero: bool) -> Syste
         assert!(parsed.table_data(skrifa::Tag::new(b"vhea")).is_none());
         assert!(parsed.table_data(skrifa::Tag::new(b"vmtx")).is_none());
     }
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.to_vec()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let face = system.registered_font_faces().next().unwrap().to_owned();
     assert_eq!(face.bytes(), bytes);
     assert_eq!(face.index(), 0);

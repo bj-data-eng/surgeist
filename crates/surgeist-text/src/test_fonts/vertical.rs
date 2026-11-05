@@ -227,18 +227,17 @@ pub(crate) fn cff() -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{FontCatalogueMode, FontData, System, SystemOptions};
+    use crate::{FontData, System};
     use skrifa::{
         outline::{DrawSettings, OutlineGlyphFormat, OutlinePen},
         raw::TableProvider,
     };
 
     fn registered(bytes: &[u8], axes: usize) -> FontData {
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        system.register_fonts(bytes.to_vec()).unwrap();
+        let mut system = System::default();
+        system
+            .register_fonts(bytes.to_vec(), crate::test_fonts::FONT_LIMITS)
+            .unwrap();
         let faces = system.registered_font_faces().collect::<Vec<_>>();
         assert_eq!(faces.len(), 1);
         assert_eq!(faces[0].index(), 0);

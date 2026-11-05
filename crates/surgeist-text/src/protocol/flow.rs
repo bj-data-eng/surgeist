@@ -607,12 +607,12 @@ mod tests {
     use super::*;
 
     fn prepare(text: &str) -> PreparedText {
-        let mut system = crate::System::new(crate::SystemOptions {
-            font_catalogue: crate::FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut system = crate::System::default();
         system
-            .register_fonts(include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
+            .register_fonts(
+                include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+                crate::test_fonts::FONT_LIMITS,
+            )
             .unwrap();
         let analyzed = crate::AnalyzedSource::new(
             crate::Source::new(text),
@@ -787,12 +787,12 @@ mod tests {
     fn phrase_query_binds_the_full_target_and_repeatable_recipe_identity() {
         // The published Japanese model's upstream reference qualifies AAAAA as
         // one phrase; Latin Ahem supplies real glyphs without script fallback.
-        let mut system = crate::System::new(crate::SystemOptions {
-            font_catalogue: crate::FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut system = crate::System::default();
         system
-            .register_fonts(include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
+            .register_fonts(
+                include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+                crate::test_fonts::FONT_LIMITS,
+            )
             .unwrap();
         let analyzed = crate::AnalyzedSource::new(
             crate::Source::new("AAAAA"),

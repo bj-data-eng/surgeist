@@ -19,7 +19,7 @@ impl PartialEq for ResourceKey {
 pub(super) struct InstanceKey {
     pub(super) resource: ResourceKey,
     pub(super) synthesis: crate::FontSynthesis,
-    pub(super) suggested_variations: Vec<(surgeist_shaper::Tag, f32)>,
+    pub(super) suggested_variations: Vec<parlance::FontVariation>,
     pub(super) variations: Vec<parlance::FontVariation>,
     pub(super) coords: Vec<i16>,
 }

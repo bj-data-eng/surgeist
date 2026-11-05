@@ -134,11 +134,10 @@ fn prepare(
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), crate::common::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(&analyzed, t::PreparationOptions::default())
         .unwrap();
@@ -297,3 +296,5 @@ fn word_break_changes_preserve_opening_punctuation_context_across_spaces() {
         "LB14 OP SP* protection forbids cut3 before A in '(  A': {mismatches:?}"
     );
 }
+
+mod common;

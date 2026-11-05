@@ -57,11 +57,10 @@ fn ordinary_native_tracking_admission_does_not_spend_an_unrelated_scope_ledger()
     );
     assert_eq!(analyzed.source(), &source);
     assert_eq!(analyzed.combined_cells().len(), 0);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(font.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(font.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(&analyzed, PreparationOptions::default())
         .expect("ordinary Ahem BB preparation succeeds before Native admission is tested");
@@ -273,11 +272,10 @@ fn ordinary_native_word_feedback_does_not_spend_an_unrelated_scope_ledger() {
             .collect::<Vec<_>>(),
         [processed.captured_paragraph(0).unwrap()]
     );
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(font.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(font.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap();

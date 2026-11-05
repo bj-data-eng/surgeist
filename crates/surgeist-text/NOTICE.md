@@ -48,17 +48,6 @@ they do not establish general linguistic quality. Training data and training
 software are not bundled, and the model license does not establish permission
 to redistribute that underlying corpus. The project license remains unchanged.
 
-### fontique 0.9.0
-
-This product depends on Fontique, distributed by the Parley Authors:
-
-* License: [Apache License 2.0](licenses/fontique/LICENSE-APACHE) or
-  [MIT](licenses/fontique/LICENSE-MIT)
-* Homepage: [Fontique](https://github.com/linebender/parley)
-
-Fontique supplies safe catalogue, registration and font selection interfaces.
-Its native implementation remains an external dependency.
-
 ### surgeist-shaper 0.1.0 (Harfrust 0.6.2 origin)
 
 This product depends directly on the owned Shaper crate, derived from Harfrust:
@@ -142,16 +131,6 @@ This product depends on ICU4X segmentation, distributed by the ICU4X Project Dev
 * Homepage: [ICU4X](https://icu4x.unicode.org/)
 
 The Text interaction map uses compiled Unicode grapheme boundary data.
-
-### linebender_resource_handle 0.1.1
-
-This product depends on Linebender resource handles:
-
-* License: [Apache License 2.0](licenses/linebender-resource-handle/LICENSE-APACHE) or
-  [MIT](licenses/linebender-resource-handle/LICENSE-MIT)
-* Homepage: [Linebender resource handles](https://github.com/linebender/raw_resource_handle)
-
-The catalogue retains registered immutable font bytes through its safe Blob API.
 
 ### parlance 0.1.0 and parley_data 0.9.0
 

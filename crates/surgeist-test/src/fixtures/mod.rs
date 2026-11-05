@@ -2,6 +2,10 @@
 
 pub mod layout_ready;
 
+/// Finite admission caps for repository-owned font fixtures.
+pub const FONT_LIMITS: surgeist_font::DecodeLimits =
+    surgeist_font::DecodeLimits::new(16 << 20, 32 << 20, 16 << 20, 2048, 64, 32 << 20, 80 << 20);
+
 pub use layout_ready::{
     ArtifactPaths, CURRENT_SCHEMA_VERSION, FixtureExpectation, FixtureIdentity, FixturePath,
     FixtureStatus, FixtureStatusKind, GeneratorProvenance, LayoutReadyFixtureMetadata, SchemaError,

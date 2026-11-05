@@ -110,8 +110,8 @@ impl Metadata {
         Self {
             family,
             size: run.font_size,
-            weight: run.font_attrs.weight.value(),
-            italic: matches!(run.font_attrs.style, fontique::FontStyle::Italic),
+            weight: run.font_attrs.weight().value(),
+            italic: matches!(run.font_attrs.style(), parlance::FontStyle::Italic),
             locale,
         }
     }
@@ -552,7 +552,7 @@ fn update(
                                     line.finalized.selected.prepared.styles[cluster.style]
                                         .style
                                         .font_style,
-                                    fontique::FontStyle::Italic
+                                    parlance::FontStyle::Italic
                                 ),
                                 locale: locales.uniform(cluster.source),
                             }
@@ -1101,10 +1101,7 @@ pub(crate) mod tests {
             contributes,
         );
     }
-    use crate::{
-        FontCatalogueMode, Id, InlineBox, InlineBoxKind, Options, Size, Source, Style, System,
-        SystemOptions, Text,
-    };
+    use crate::{Id, InlineBox, InlineBoxKind, Options, Size, Source, Style, System, Text};
     use std::collections::BTreeSet;
 
     fn captured_surrogate_halves(
@@ -1310,10 +1307,7 @@ pub(crate) mod tests {
                 Size::new(20.0, 20.0),
             ));
         }
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .expect("no glyph font needed for boxes");
+        let mut system = System::default();
         let layout = system
             .layout(
                 source,

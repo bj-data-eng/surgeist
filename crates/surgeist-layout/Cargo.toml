@@ -30,6 +30,8 @@ layout-golden-generate = [
 ]
 
 [dev-dependencies]
+surgeist-font = { path = "../surgeist-font", version = "=0.1.0" }
+surgeist-test = { path = "../surgeist-test", version = "=0.1.0" }
 proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
 roxmltree = "=0.21.1"
 serde = { version = "=1.0.228", features = ["derive"] }

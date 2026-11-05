@@ -6,8 +6,8 @@
 use super::AHEM;
 use crate::test_fonts::{replace_tables, table, u16_at, u32_at};
 use crate::{
-    Alignment, Font, FontCatalogueMode, Id, Layout, LineHeight, Options, Range, Source, Style,
-    System, SystemOptions, TextTransform, WhiteSpace,
+    Alignment, Font, Id, Layout, LineHeight, Options, Range, Source, Style, System, TextTransform,
+    WhiteSpace,
 };
 use skrifa::{
     GlyphId, MetadataProvider,
@@ -134,11 +134,10 @@ fn math_fixture_cmap_metrics_outlines_and_checksums_are_real_sfnt_data() {
 }
 
 fn layout(text: &str, width: Option<f64>) -> Layout {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(super::math_ahem()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(super::math_ahem(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     system
         .layout(
             Source::identified(text, Id::from_u64(6304), 14),

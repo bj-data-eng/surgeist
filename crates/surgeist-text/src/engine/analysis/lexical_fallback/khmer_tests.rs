@@ -37,10 +37,7 @@ fn fallback_offsets(analyzed: &AnalyzedSource) -> Vec<usize> {
         .collect()
 }
 fn prepare(analyzed: &AnalyzedSource) -> crate::PreparedText {
-    let mut system = crate::System::new(crate::SystemOptions {
-        font_catalogue: crate::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = crate::System::default();
     system
         .register_fonts(
             include_bytes!(concat!(
@@ -48,6 +45,7 @@ fn prepare(analyzed: &AnalyzedSource) -> crate::PreparedText {
                 "/tests/fixtures/fonts/ahem/Ahem.ttf"
             ))
             .to_vec(),
+            crate::test_fonts::FONT_LIMITS,
         )
         .unwrap();
     let prepared = system

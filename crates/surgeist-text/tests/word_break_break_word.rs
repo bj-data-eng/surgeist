@@ -43,11 +43,10 @@ fn style(word: t::WordBreak, overflow: t::OverflowWrap) -> t::Style {
 }
 
 fn system() -> t::System {
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), crate::common::FONT_LIMITS)
+        .unwrap();
     system
 }
 
@@ -1032,3 +1031,5 @@ fn standalone_prefers_ordinary_space_and_retains_raw_following_owner_parity() {
         }
     }
 }
+
+mod common;

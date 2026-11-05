@@ -36,11 +36,10 @@ fn prepare(input: ParagraphInput, fixture: &[u8]) -> PreparedText {
             .unwrap(),
         crate::Wrap::Word,
     );
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(fixture.to_vec()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(fixture.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     // Returning only the immutable preparation also tests retained font custody.
     system
         .prepare(&analyzed, PreparationOptions::default())

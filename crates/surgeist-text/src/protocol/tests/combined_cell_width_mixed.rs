@@ -203,12 +203,13 @@ fn mixed_width_source() -> (
     assert_eq!(domain.outputs().len(), 1);
     let analyzed = crate::test_wrapping::bind_missing(domain.outputs().next().unwrap(), Wrap::Word);
     source_cells(&analyzed, &processed);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(parent.clone()).unwrap();
-    system.register_fonts(body.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(parent.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
+    system
+        .register_fonts(body.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     assert_eq!(system.registered_font_faces().count(), 2);
     let parent = system
         .registered_font_faces()

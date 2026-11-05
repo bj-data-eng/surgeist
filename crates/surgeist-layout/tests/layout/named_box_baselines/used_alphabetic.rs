@@ -156,7 +156,7 @@ fn qualify_font(bytes: &[u8]) {
 }
 fn raw_instance(
     instance: t::EffectiveFontInstance<'_>,
-    catalogue: &t::FontCatalogueIdentity,
+    catalogue: &surgeist_font::CataloguePublication,
     size: f32,
 ) {
     assert_eq!(instance.font_size(), size);
@@ -1004,11 +1004,10 @@ fn actual<S: l::LayoutScalar>(bytes: &[u8], parent: &Captured, child: &Captured,
 fn core<S: l::LayoutScalar>() {
     let bytes = font();
     qualify_font(&bytes);
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(bytes.clone(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let face = system.registered_font_faces().next().unwrap().to_owned();
     assert_eq!(face.bytes(), bytes);
     for size in [5.0, 10.0] {

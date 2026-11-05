@@ -144,11 +144,10 @@ fn qualified_native_upright_reaches_placed_geometry() {
 
     let bytes = native_font();
     qualify_font(&bytes);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let faces = system.registered_font_faces().collect::<Vec<_>>();
     assert_eq!(faces.len(), 1);
     let face = faces[0].to_owned();
