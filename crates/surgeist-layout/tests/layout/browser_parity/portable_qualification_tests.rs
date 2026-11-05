@@ -591,6 +591,62 @@ fn every_retained_output_and_control_artifact_is_byte_pinned_and_required() {
     }
 }
 #[test]
+fn adding_unrelated_grid_registrations_preserves_the_qualified_box_cohort() {
+    let fixture = Fixture::new();
+    let selected = fixture.all();
+    let before = fixture
+        .admit()
+        .unwrap()
+        .execute_selected(&selected)
+        .unwrap();
+    assert!(before.current_coverage_complete());
+
+    let mut live = fs::read(fixture.owner.join(OWNER_DECLARATION)).unwrap();
+    let mut grid = format!(
+        r#"
+
+[[records]]
+source = "html/grid/added-grid.html"
+source_sha256 = {:?}
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+"#,
+        sha256(b"unrelated Grid source")
+    );
+    for variant in VARIANTS {
+        grid.push_str(&format!(
+            "\n[records.semantic_specifications.{variant}]\npath = \"semantic/added-grid-{variant}.json\"\nsha256 = {:?}\n",
+            sha256(variant.as_bytes())
+        ));
+    }
+    live.extend_from_slice(grid.as_bytes());
+    put(&fixture.owner, OWNER_DECLARATION, &live);
+
+    let after = fixture
+        .admit()
+        .unwrap()
+        .execute_selected(&selected)
+        .unwrap();
+    assert!(after.selected_cases_passed());
+    assert!(!after.current_coverage_complete());
+    assert_eq!(after.cases.len(), before.cases.len());
+    for (current, original) in after.cases.iter().zip(&before.cases) {
+        assert_eq!(current.output, original.output);
+        assert_eq!(current.raw, original.raw);
+        assert_intentional(current);
+    }
+}
+
+#[test]
 fn current_owner_byte_drift_or_missing_owner_refuses_unchanged_retained_artifacts() {
     for path in [
         OWNER_DECLARATION.to_owned(),
