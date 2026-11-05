@@ -4368,7 +4368,39 @@ fn compare_range_rectangle_expectations_with_translation(
     actual: &[layout::InlineFragmentOutputEntry<usize>],
     placed: &surgeist_text::Layout,
     expected: &[InlineRangeRectangleExpectation],
+    translation: impl FnMut(PhysicalStartEdge) -> Result<Scalar, Error>,
+) -> Result<(), Error> {
+    visit_range_rectangle_pairs(path, actual, placed, expected, translation, |pair| {
+        compare_number(
+            path,
+            &format!("Range rectangle[{}] physical flow-inline start", pair.index),
+            pair.native_start,
+            pair.browser_start,
+        )?;
+        compare_number(
+            path,
+            &format!("Range rectangle[{}] advance", pair.index),
+            pair.native_advance,
+            pair.browser_advance,
+        )
+    })
+}
+
+struct RangeRectanglePair {
+    index: usize,
+    native_start: Scalar,
+    browser_start: Scalar,
+    native_advance: Scalar,
+    browser_advance: Scalar,
+}
+
+fn visit_range_rectangle_pairs(
+    path: &str,
+    actual: &[layout::InlineFragmentOutputEntry<usize>],
+    placed: &surgeist_text::Layout,
+    expected: &[InlineRangeRectangleExpectation],
     mut translation: impl FnMut(PhysicalStartEdge) -> Result<Scalar, Error>,
+    mut visit: impl FnMut(RangeRectanglePair) -> Result<(), Error>,
 ) -> Result<(), Error> {
     let actual = native_range_rectangles(path, actual, placed)?;
     if actual.len() != expected.len() {
@@ -4423,18 +4455,13 @@ fn compare_range_rectangle_expectations_with_translation(
             expected.line_index,
         )?;
         let (start, advance) = range_rectangle_values(row.rect, expected.physical_start_edge);
-        compare_number(
-            path,
-            &format!("Range rectangle[{index}] physical flow-inline start"),
-            start + offset,
-            expected.start,
-        )?;
-        compare_number(
-            path,
-            &format!("Range rectangle[{index}] advance"),
-            advance,
-            expected.advance,
-        )?;
+        visit(RangeRectanglePair {
+            index,
+            native_start: start + offset,
+            browser_start: expected.start,
+            native_advance: advance,
+            browser_advance: expected.advance,
+        })?;
     }
     Ok(())
 }
@@ -7724,6 +7751,92 @@ mod tests {
         assert_eq!(rectangles.len(), 1);
         assert_eq!(rectangles[0].source, surgeist_text::Range::new(0, 1));
         assert_eq!(rectangles[0].rect.size().width, 0.0);
+    }
+
+    #[test]
+    fn range_comparison_visits_all_pdi_pairs_and_detects_a_later_difference() {
+        for variant in [
+            "border_box_ltr",
+            "content_box_ltr",
+            "border_box_rtl",
+            "content_box_rtl",
+        ] {
+            let golden =
+                generated_native_golden(&format!("prepared_text_continuity_bidi__{variant}"));
+            let (_, batch) = generated_native_batch(&golden, formal_max_content_native_request());
+            let placed = batch.placed_text()[0].layout();
+            let rtl = variant.ends_with("_rtl");
+            let native_starts = if rtl {
+                [24.0, 40.0, 40.0, 24.0, 56.0]
+            } else {
+                [0.0, 16.0, 16.0, 48.0, 0.0]
+            };
+            let mut browser_starts = native_starts;
+            if rtl {
+                browser_starts[3] = 72.0;
+            }
+            // The 16px Ahem cells form three glyphs on the first line and one
+            // on the second. RLI and PDI remain separate zero-advance rows.
+            let advances = [16.0, 0.0, 32.0, 0.0, 16.0];
+            for changed_last_advance in [false, true] {
+                let mut row = 0;
+                let mut differences = 0;
+                for (source, expected) in [0, 2, 4].into_iter().zip(&golden.expectations.children) {
+                    let origin = golden.root.children[source]
+                        .prepared_origin
+                        .as_ref()
+                        .unwrap();
+                    let fragments = batch
+                        .unrounded_inline_fragments()
+                        .iter()
+                        .filter(|entry| {
+                            entry
+                                .fragment()
+                                .finalized_fragment()
+                                .view()
+                                .origin()
+                                .as_ref()
+                                == Some(origin)
+                        })
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    let mut expected = expected.range_rectangles.clone().unwrap();
+                    if source == 4 && changed_last_advance {
+                        expected[0].advance = 17.0;
+                    }
+                    visit_range_rectangle_pairs(
+                        variant,
+                        &fragments,
+                        placed,
+                        &expected,
+                        |_| Ok(0.0),
+                        |pair| {
+                            assert_eq!(pair.native_start, native_starts[row]);
+                            assert_eq!(pair.browser_start, browser_starts[row]);
+                            assert_eq!(pair.native_advance, advances[row]);
+                            assert_eq!(
+                                pair.browser_advance,
+                                if changed_last_advance && row == 4 {
+                                    17.0
+                                } else {
+                                    advances[row]
+                                },
+                            );
+                            differences += usize::from(pair.native_start != pair.browser_start);
+                            differences += usize::from(pair.native_advance != pair.browser_advance);
+                            row += 1;
+                            Ok(())
+                        },
+                    )
+                    .unwrap();
+                }
+                assert_eq!(row, 5);
+                assert_eq!(
+                    differences,
+                    usize::from(rtl) + usize::from(changed_last_advance)
+                );
+            }
+        }
     }
 
     #[test]
