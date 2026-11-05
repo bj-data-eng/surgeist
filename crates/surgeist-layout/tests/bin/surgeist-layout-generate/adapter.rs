@@ -6,6 +6,7 @@ use crate::measurement::{
 };
 use crate::original_subgrid_body_profile;
 use crate::prepared_atomic_percentage_profile;
+use crate::vertical_br_font_band_profile;
 use crate::xml::{escape_attr, generate_xml};
 use serde_json::Value;
 
@@ -246,6 +247,17 @@ impl LayoutAdapter {
                 "horizontal break font-band capture requires its exact source".into(),
             ));
         }
+        if request == BoxObservationRequest::VerticalBrFontBand
+            && !vertical_br_font_band_profile::source_digest(input.fixture().source().as_str())
+                .is_some_and(|expected| {
+                    surgeist_generator::Sha256Digest::from_bytes(input.source_bytes()).as_str()
+                        == expected
+                })
+        {
+            return Err(AdapterError::Preparation(
+                "vertical break font-band capture requires its exact source".into(),
+            ));
+        }
         let source = std::str::from_utf8(input.source_bytes()).map_err(|error| {
             AdapterError::Preparation(format!("fixture source is not UTF-8: {error}"))
         })?;
@@ -306,6 +318,12 @@ impl LayoutAdapter {
                 format!("globalThis.captureOriginalPreparedAtomicPercentage({bytes})")
             } else if request == BoxObservationRequest::HorizontalBrFontBand {
                 format!("({script})()")
+            } else if request == BoxObservationRequest::VerticalBrFontBand {
+                let source = serde_json::to_string(source)
+                    .map_err(|error| AdapterError::Preparation(error.to_string()))?;
+                let style = serde_json::to_string(style)
+                    .map_err(|error| AdapterError::Preparation(error.to_string()))?;
+                format!("globalThis.captureOriginalVerticalBrFontBand({source}, {style})")
             } else {
                 let font = crate::pinned_font::AHEM_STYLESHEET_WOFF2_SHA256;
                 format!("({script})({font:?})")
@@ -511,11 +529,25 @@ fn helper_setup_expression(
             "horizontal break font-band capture helper changed".into(),
         ));
     }
+    if request == BoxObservationRequest::VerticalBrFontBand
+        && surgeist_generator::Sha256Digest::from_bytes(helper.as_bytes()).as_str()
+            != vertical_br_font_band_profile::HELPER_SHA256
+    {
+        return Err(AdapterError::Preparation(
+            "vertical break font-band capture helper changed".into(),
+        ));
+    }
     let specialized_helper;
     let helper = if request == BoxObservationRequest::PreparedAtomicPercentage {
         specialized_helper = format!(
             "{helper}\n globalThis.captureOriginalPreparedAtomicPercentage = ({});",
             prepared_atomic_percentage_profile::SCRIPT,
+        );
+        specialized_helper.as_str()
+    } else if request == BoxObservationRequest::VerticalBrFontBand {
+        specialized_helper = format!(
+            "{helper}\n globalThis.captureOriginalVerticalBrFontBand = ({});",
+            vertical_br_font_band_profile::SCRIPT,
         );
         specialized_helper.as_str()
     } else {
@@ -561,7 +593,10 @@ fn helper_setup_expression(
     };
     let context = serde_json::to_string(&context)
         .map_err(|error| AdapterError::Preparation(error.to_string()))?;
-    let install_helper = if request == BoxObservationRequest::PreparedAtomicPercentage {
+    let install_helper = if matches!(
+        request,
+        BoxObservationRequest::PreparedAtomicPercentage | BoxObservationRequest::VerticalBrFontBand
+    ) {
         format!("(0, eval)({helper});")
     } else {
         format!("if (typeof getTestData !== 'function') {{ (0, eval)({helper}); }}")

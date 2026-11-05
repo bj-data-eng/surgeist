@@ -16,6 +16,8 @@ use root_context::parse_root_context;
 #[path = "root_diagnostics.rs"]
 mod root_diagnostics;
 pub use root_diagnostics::WorldRoundedLayout;
+#[path = "br_font_band.rs"]
+pub(crate) mod br_font_band;
 #[path = "capture_authority.rs"]
 pub(crate) mod capture_authority;
 #[path = "element_scroll_sizes.rs"]
@@ -31,8 +33,6 @@ mod flex_composition_tests;
 mod flex_content_text;
 #[path = "flex_text_projection.rs"]
 mod flex_text_projection;
-#[path = "horizontal_br_font_band.rs"]
-pub(crate) mod horizontal_br_font_band;
 #[path = "measured_leaf.rs"]
 mod measured_leaf;
 #[path = "original_subgrid_body.rs"]
@@ -452,13 +452,13 @@ fn compare_captured_with_batch(
     numeric: &mut NumericComparisonSink,
     inspect: impl FnOnce(&TestTree, &layout::CompletedLayoutBatch<usize>) -> Result<(), Error>,
 ) -> Result<ComparisonResult, Error> {
-    compare_captured_with_projection(golden, numeric, BrFontBandProjection::Unsupported, inspect)
+    compare_captured_with_projection(golden, numeric, None, inspect)
 }
 
 fn compare_captured_with_projection(
     golden: &Golden,
     numeric: &mut NumericComparisonSink,
-    br_font_band: BrFontBandProjection,
+    br_font_band: Option<BrFontBandProfile>,
     inspect: impl FnOnce(&TestTree, &layout::CompletedLayoutBatch<usize>) -> Result<(), Error>,
 ) -> Result<ComparisonResult, Error> {
     if let Some(basis) = &golden.prepared_atomic_basis {
@@ -549,14 +549,14 @@ pub(super) fn assert_native_input_matches(
     golden: &Golden,
     request: layout::LayoutRootRequest,
 ) -> Result<(), Error> {
-    assert_native_input_matches_with_projection(golden, request, BrFontBandProjection::Unsupported)
+    assert_native_input_matches_with_projection(golden, request, None)
 }
 
 #[cfg(test)]
 fn assert_native_input_matches_with_projection(
     golden: &Golden,
     request: layout::LayoutRootRequest,
-    br_font_band: BrFontBandProjection,
+    br_font_band: Option<BrFontBandProfile>,
 ) -> Result<(), Error> {
     if let Some(table) = &golden.element_scroll_sizes {
         table.validate_source(&golden.root, &golden.viewport.root_context)?;
@@ -3665,7 +3665,7 @@ fn compare_expectation(
         use_rounding,
         FragmentCursors::new(unrounded_inline_fragments, final_inline_fragments),
         ComparisonPolicy {
-            br_font_band: BrFontBandProjection::Unsupported,
+            br_font_band: None,
             element_scroll_sizes: None,
             frame: ComparisonFrame::ParentLocal,
             numeric: &mut NumericComparisonSink::Strict,
@@ -3811,13 +3811,13 @@ enum ComparisonFrame {
 }
 
 #[derive(Clone, Copy)]
-enum BrFontBandProjection {
-    Unsupported,
-    HorizontalPinned,
+pub(crate) enum BrFontBandProfile {
+    Horizontal,
+    Vertical,
 }
 
 struct ComparisonPolicy<'a> {
-    br_font_band: BrFontBandProjection,
+    br_font_band: Option<BrFontBandProfile>,
     element_scroll_sizes: Option<&'a element_scroll_sizes::Table>,
     frame: ComparisonFrame,
     numeric: &'a mut NumericComparisonSink,
@@ -4943,20 +4943,19 @@ fn compare_browser_br_font_band(
     pending: &PendingBrowserControl,
     expected: BrowserBrFontBand,
     use_rounding: bool,
-    projection: BrFontBandProjection,
+    profile: Option<BrFontBandProfile>,
 ) -> Result<(), Error> {
     let path = &pending.path;
     let node = pending.node;
     let parent = validate_browser_br_band_source(tree, node, pending.context.as_ref(), path)?;
-    let actual = match projection {
-        BrFontBandProjection::Unsupported => None,
-        BrFontBandProjection::HorizontalPinned => {
-            project_horizontal_browser_br_font_band(tree, parent, node, use_rounding)
-                .map_err(|reason| Error::new(format!("{path}: {reason}")))?
-        }
+    let actual = if let Some(profile) = profile {
+        project_prepared_browser_br_font_band(tree, parent, node, use_rounding, profile)
+            .map_err(|reason| Error::new(format!("{path}: {reason}")))?
+    } else {
+        None
     };
     let actual = actual.ok_or_else(|| Error::new(format!(
-            "{path}: unsupported browser BR font-band observation (x={}, y={}, width={}, height={}): no qualified horizontal pinned-font projection",
+            "{path}: unsupported browser BR font-band observation (x={}, y={}, width={}, height={}): no qualified pinned-font projection",
             expected.x, expected.y, expected.width, expected.height
         )))?;
     for (field, actual, expected) in [
@@ -4974,18 +4973,29 @@ fn compare_browser_br_font_band(
     Ok(())
 }
 
-fn project_horizontal_browser_br_font_band(
+fn project_prepared_browser_br_font_band(
     tree: &TestTree,
     parent: usize,
     node: usize,
     use_rounding: bool,
+    profile: BrFontBandProfile,
 ) -> Result<Option<BrowserBrFontBand>, Error> {
     let input = &tree.nodes[node];
     let layout::LayoutInput::TextControl(control) = &input.layout_input else {
         return Ok(None);
     };
+    let writing_mode = tree.box_node_input(parent).writing_mode;
     if tree.nodes[parent].parent.is_some()
-        || tree.box_node_input(parent).writing_mode != layout::WritingMode::HorizontalTb
+        || !matches!(
+            (profile, writing_mode),
+            (
+                BrFontBandProfile::Horizontal,
+                layout::WritingMode::HorizontalTb
+            ) | (
+                BrFontBandProfile::Vertical,
+                layout::WritingMode::VerticalLr | layout::WritingMode::VerticalRl
+            )
+        )
     {
         return Ok(None);
     }
@@ -5030,33 +5040,58 @@ fn project_horizontal_browser_br_font_band(
         || instance.font_size() != 20.0
         || instance.axis_count() != 0
         || instance.synthesis() != surgeist_text::FontSynthesis::default()
-        || metrics.basis()
-            != (surgeist_text::BreakFontMetricBasis::Horizontal {
-                font_origin_offset: 0.0,
-            })
     {
         return Ok(None);
     }
-    let x = f64::from(input.unrounded.location.x);
-    let baseline = f64::from(fragment.baseline().y);
-    let y = baseline - metrics.ascent();
-    let bottom = baseline + metrics.descent();
-    // This profile measures direct children of the capture root. Chromium's
-    // pre-leading Ahem20 metrics are integral. The browser observation rounds
-    // the root-local rectangle corners for the rounded capture.
-    let (x, y, bottom) = if use_rounding {
+    let point = input.unrounded.location;
+    let baseline = fragment.baseline();
+    let (x, y, right, bottom) = match (profile, metrics.basis()) {
         (
-            browser_round_corner(x),
-            browser_round_corner(y),
-            browser_round_corner(bottom),
-        )
-    } else {
-        (x, y, bottom)
+            BrFontBandProfile::Horizontal,
+            surgeist_text::BreakFontMetricBasis::Horizontal { font_origin_offset },
+        ) if font_origin_offset == 0.0 => {
+            let x = f64::from(point.x);
+            let baseline = f64::from(baseline.y);
+            (
+                x,
+                baseline - metrics.ascent(),
+                x,
+                baseline + metrics.descent(),
+            )
+        }
+        (BrFontBandProfile::Vertical, surgeist_text::BreakFontMetricBasis::UprightCentral) => {
+            let ordinary = instance
+                .metrics(instance.face().catalogue_identity())
+                .map_err(|error| {
+                    Error::new(format!("BR font-band ordinary font metrics: {error}"))
+                })?;
+            // Chromium splits the primary font's ordinary integer height
+            // around Central. Text's upright em sides serve Native layout.
+            let height = ordinary.ascent() - ordinary.descent();
+            if height <= 0.0 || height.fract() != 0.0 {
+                return Ok(None);
+            }
+            let descent = (height / 2.0).floor();
+            let ascent = height - descent;
+            let baseline = f64::from(baseline.x);
+            let y = f64::from(point.y);
+            // Line-over is physically right in both vertical writing modes.
+            (baseline - descent, y, baseline + ascent, y)
+        }
+        _ => return Ok(None),
     };
+    // This profile measures direct children in capture-root coordinates.
+    let [x, y, right, bottom] = [x, y, right, bottom].map(|corner| {
+        if use_rounding {
+            browser_round_corner(corner)
+        } else {
+            corner
+        }
+    });
     Ok(Some(BrowserBrFontBand {
         x: x as Scalar,
         y: y as Scalar,
-        width: 0.0,
+        width: (right - x) as Scalar,
         height: (bottom - y) as Scalar,
     }))
 }
@@ -7742,7 +7777,7 @@ mod tests {
                 batch.final_inline_fragments(),
             ),
             ComparisonPolicy {
-                br_font_band: BrFontBandProjection::Unsupported,
+                br_font_band: None,
                 element_scroll_sizes: golden.element_scroll_sizes.as_ref(),
                 frame: ComparisonFrame::ParentLocal,
                 numeric: &mut NumericComparisonSink::Strict,
@@ -9740,7 +9775,7 @@ mod tests {
             true,
             FragmentCursors::new(&[], &[]),
             ComparisonPolicy {
-                br_font_band: BrFontBandProjection::Unsupported,
+                br_font_band: None,
                 element_scroll_sizes: None,
                 frame: ComparisonFrame::ParentLocal,
                 numeric: &mut NumericComparisonSink::Strict,
@@ -9765,7 +9800,7 @@ mod tests {
             true,
             FragmentCursors::new(&[], &[]),
             ComparisonPolicy {
-                br_font_band: BrFontBandProjection::Unsupported,
+                br_font_band: None,
                 element_scroll_sizes: None,
                 frame: ComparisonFrame::ParentLocal,
                 numeric: &mut NumericComparisonSink::Strict,
@@ -9790,7 +9825,7 @@ mod tests {
                 true,
                 FragmentCursors::new(&[], &[],),
                 ComparisonPolicy {
-                    br_font_band: BrFontBandProjection::Unsupported,
+                    br_font_band: None,
                     element_scroll_sizes: None,
                     frame: ComparisonFrame::ParentLocal,
                     numeric: &mut NumericComparisonSink::Strict
@@ -9813,7 +9848,7 @@ mod tests {
                 true,
                 FragmentCursors::new(&[], &[],),
                 ComparisonPolicy {
-                    br_font_band: BrFontBandProjection::Unsupported,
+                    br_font_band: None,
                     element_scroll_sizes: None,
                     frame: ComparisonFrame::ParentLocal,
                     numeric: &mut NumericComparisonSink::Strict
@@ -9835,7 +9870,7 @@ mod tests {
                 true,
                 FragmentCursors::new(&[], &[],),
                 ComparisonPolicy {
-                    br_font_band: BrFontBandProjection::Unsupported,
+                    br_font_band: None,
                     element_scroll_sizes: None,
                     frame: ComparisonFrame::ParentLocal,
                     numeric: &mut NumericComparisonSink::Strict
@@ -9857,7 +9892,7 @@ mod tests {
                 true,
                 FragmentCursors::new(&[], &[],),
                 ComparisonPolicy {
-                    br_font_band: BrFontBandProjection::Unsupported,
+                    br_font_band: None,
                     element_scroll_sizes: None,
                     frame: ComparisonFrame::ParentLocal,
                     numeric: &mut NumericComparisonSink::Strict
@@ -9879,7 +9914,7 @@ mod tests {
                 true,
                 FragmentCursors::new(&[], &[],),
                 ComparisonPolicy {
-                    br_font_band: BrFontBandProjection::Unsupported,
+                    br_font_band: None,
                     element_scroll_sizes: None,
                     frame: ComparisonFrame::ParentLocal,
                     numeric: &mut NumericComparisonSink::Strict
@@ -9905,7 +9940,7 @@ mod tests {
                 true,
                 FragmentCursors::new(&[], &[],),
                 ComparisonPolicy {
-                    br_font_band: BrFontBandProjection::Unsupported,
+                    br_font_band: None,
                     element_scroll_sizes: None,
                     frame: ComparisonFrame::ParentLocal,
                     numeric: &mut NumericComparisonSink::Strict
@@ -13750,7 +13785,7 @@ mod source_root_frame_tests {
                 batch.final_inline_fragments(),
             ),
             ComparisonPolicy {
-                br_font_band: BrFontBandProjection::Unsupported,
+                br_font_band: None,
                 element_scroll_sizes: None,
                 frame: ComparisonFrame::RootBorder,
                 numeric: &mut NumericComparisonSink::Strict,
@@ -13770,7 +13805,7 @@ mod source_root_frame_tests {
                     batch.final_inline_fragments(),
                 ),
                 ComparisonPolicy {
-                    br_font_band: BrFontBandProjection::Unsupported,
+                    br_font_band: None,
                     element_scroll_sizes: None,
                     frame: ComparisonFrame::ParentLocal,
                     numeric: &mut NumericComparisonSink::Strict

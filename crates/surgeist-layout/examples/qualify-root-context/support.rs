@@ -27,6 +27,7 @@ use crate::parity_support::capture_authority::{self, SpecializedProfile};
 use crate::parity_support::exact_differences::flex_composition_qualification;
 use crate::parity_support::{original_subgrid_body, prepared_atomic_percentage};
 use crate::prepared_atomic_percentage_profile::SOURCE as PREPARED_ATOMIC_SOURCE;
+use crate::vertical_br_font_band_profile::SOURCES as VERTICAL_BR_SOURCES;
 
 #[path = "../../tests/layout/browser_parity/qualification_catalogue.rs"]
 mod qualification_catalogue;
@@ -54,6 +55,7 @@ pub(super) enum QualificationMode {
     OriginalSubgridBodyCapture,
     PreparedAtomicPercentageCapture,
     HorizontalBrFontBandCapture,
+    VerticalBrFontBandCapture,
     Publish,
     CheckPublished,
     PublishExact(PublishedEdition),
@@ -109,6 +111,11 @@ impl QualificationMode {
             | Self::PublishSpecialized(SpecializedProfile::HorizontalBrFontBand)
             | Self::CheckPublishedSpecialized(SpecializedProfile::HorizontalBrFontBand) => {
                 BoxObservationRequest::HorizontalBrFontBand
+            }
+            Self::VerticalBrFontBandCapture
+            | Self::PublishSpecialized(SpecializedProfile::VerticalBrFontBand)
+            | Self::CheckPublishedSpecialized(SpecializedProfile::VerticalBrFontBand) => {
+                BoxObservationRequest::VerticalBrFontBand
             }
             Self::ElementScrollSizeDiagnostics => BoxObservationRequest::ElementScrollSizes,
             Self::FlexContentTextDiagnostics
@@ -175,6 +182,15 @@ fn select_records(
             .records
             .retain(|record| record.source.as_str() != HORIZONTAL_BR_SOURCE);
     }
+    if mode == QualificationMode::VerticalBrFontBandCapture {
+        if !fixture.is_some_and(|source| VERTICAL_BR_SOURCES.contains(&source)) {
+            return Err("vertical break font-band capture requires a declared fixture".into());
+        }
+    } else {
+        declaration
+            .records
+            .retain(|record| !VERTICAL_BR_SOURCES.contains(&record.source.as_str()));
+    }
     if matches!(
         mode,
         QualificationMode::ElementScrollSizeDiagnostics
@@ -225,7 +241,8 @@ fn select_records(
                 | QualificationMode::FlexCompositionCapture
                 | QualificationMode::OriginalSubgridBodyCapture
                 | QualificationMode::PreparedAtomicPercentageCapture
-                | QualificationMode::HorizontalBrFontBandCapture => {
+                | QualificationMode::HorizontalBrFontBandCapture
+                | QualificationMode::VerticalBrFontBandCapture => {
                     return Err("specialized qualification requires a Generated fixture".into());
                 }
                 QualificationMode::ElementScrollSizeDiagnostics
@@ -498,6 +515,9 @@ pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> 
         }
         (QualificationMode::Regular, Some(HORIZONTAL_BR_SOURCE)) => {
             QualificationMode::HorizontalBrFontBandCapture
+        }
+        (QualificationMode::Regular, Some(source)) if VERTICAL_BR_SOURCES.contains(&source) => {
+            QualificationMode::VerticalBrFontBandCapture
         }
         _ => mode,
     };
@@ -830,9 +850,13 @@ fn validate_corpus(
                     case.case.variant(),
                     &Golden::parse(&historical)?,
                 )?;
-            } else if mode.box_observations() == BoxObservationRequest::HorizontalBrFontBand {
-                use crate::parity_support::{Golden, horizontal_br_font_band};
-                horizontal_br_font_band::verify_historical(
+            } else if matches!(
+                mode.box_observations(),
+                BoxObservationRequest::HorizontalBrFontBand
+                    | BoxObservationRequest::VerticalBrFontBand
+            ) {
+                use crate::parity_support::{Golden, br_font_band};
+                br_font_band::verify_historical(
                     &Golden::parse(current)?,
                     &Golden::parse(&historical)?,
                 )?;
@@ -984,10 +1008,17 @@ fn validate_corpus(
             if let Err(error) = verdict {
                 native_errors.push(format!("{}: {error}", case.case.id()));
             }
-        } else if observation == BoxObservationRequest::HorizontalBrFontBand {
-            if let Err(error) =
-                crate::parity_support::horizontal_br_font_band::compare_authenticated(&golden)
-            {
+        } else if matches!(
+            observation,
+            BoxObservationRequest::HorizontalBrFontBand | BoxObservationRequest::VerticalBrFontBand
+        ) {
+            use crate::parity_support::{BrFontBandProfile, br_font_band};
+            let profile = if observation == BoxObservationRequest::VerticalBrFontBand {
+                BrFontBandProfile::Vertical
+            } else {
+                BrFontBandProfile::Horizontal
+            };
+            if let Err(error) = br_font_band::compare_authenticated(&golden, profile) {
                 native_errors.push(format!("{}: {error}", case.case.id()));
             }
         } else if mode.collects_numeric_differences() {
@@ -1106,6 +1137,7 @@ fn validate_corpus(
         | QualificationMode::OriginalSubgridBodyCapture
         | QualificationMode::PreparedAtomicPercentageCapture
         | QualificationMode::HorizontalBrFontBandCapture
+        | QualificationMode::VerticalBrFontBandCapture
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
         | QualificationMode::PublishExact(_)
@@ -1326,6 +1358,7 @@ fn inventory_with_retained_helper(
         | QualificationMode::OriginalSubgridBodyCapture
         | QualificationMode::PreparedAtomicPercentageCapture
         | QualificationMode::HorizontalBrFontBandCapture
+        | QualificationMode::VerticalBrFontBandCapture
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
         | QualificationMode::PublishExact(_)
@@ -1413,7 +1446,8 @@ fn inventory_with_retained_helper(
         Some(
             SpecializedProfile::OriginalSubgridBody
             | SpecializedProfile::PreparedAtomicPercentage
-            | SpecializedProfile::HorizontalBrFontBand,
+            | SpecializedProfile::HorizontalBrFontBand
+            | SpecializedProfile::VerticalBrFontBand,
         )
         | None => {}
     }
@@ -1618,6 +1652,7 @@ fn qualify_xml(xml: &str, case: &ExpectedCase) -> Result<()> {
             root_direction,
             root_writing_mode,
             inline_offset,
+            block_offset,
             root_size,
         } => {
             assert_eq!(
@@ -1648,6 +1683,14 @@ fn qualify_xml(xml: &str, case: &ExpectedCase) -> Result<()> {
                 px_attribute(viewport, "hypothetical-inline-offset")?,
                 *inline_offset
             );
+            if let Some(block_offset) = block_offset {
+                assert_eq!(
+                    px_attribute(viewport, "hypothetical-block-offset")?,
+                    *block_offset
+                );
+            } else {
+                assert_eq!(viewport.attribute("hypothetical-block-offset"), None);
+            }
             for (containing, fallback) in [
                 ("containing-width", "fallback-icb-width"),
                 ("containing-height", "fallback-icb-height"),

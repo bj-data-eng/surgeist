@@ -314,7 +314,7 @@ enum AdmittedComparison {
         variant: String,
     },
     PreparedAtomicPercentage,
-    HorizontalBrFontBand,
+    BrFontBand(support::BrFontBandProfile),
     FlexComposition {
         variant: String,
         inputs: Rc<flex::Inputs>,
@@ -447,8 +447,8 @@ impl AdmittedEdition {
                         },
                     )
                 }
-                AdmittedComparison::HorizontalBrFontBand => {
-                    support::horizontal_br_font_band::compare_authenticated(&case.golden)
+                AdmittedComparison::BrFontBand(profile) => {
+                    support::br_font_band::compare_authenticated(&case.golden, *profile)
                         .map(|()| {
                             let matched = QualifiedComparison {
                                 raw: RawVerdict::Matches,
@@ -1032,7 +1032,8 @@ fn admit_specialized(
         SpecializedProfile::PreparedRange
         | SpecializedProfile::OriginalSubgridBody
         | SpecializedProfile::PreparedAtomicPercentage
-        | SpecializedProfile::HorizontalBrFontBand => None,
+        | SpecializedProfile::HorizontalBrFontBand
+        | SpecializedProfile::VerticalBrFontBand => None,
         SpecializedProfile::FlexComposition => Some(Rc::new(flex::Inputs::load(root)?)),
     };
     terminal
@@ -1088,16 +1089,22 @@ fn admit_specialized(
                         AdmittedComparison::OriginalSubgridBody { variant },
                     )
                 }
-                SpecializedProfile::HorizontalBrFontBand => {
+                SpecializedProfile::HorizontalBrFontBand
+                | SpecializedProfile::VerticalBrFontBand => {
                     let current = support::Golden::parse(xml)
                         .map_err(|error| malformed(error.to_string()))?;
                     let historical = std::str::from_utf8(&historical)
                         .map_err(|error| malformed(error.to_string()))?;
                     let historical = support::Golden::parse(historical)
                         .map_err(|error| malformed(error.to_string()))?;
-                    support::horizontal_br_font_band::verify_historical(&current, &historical)
+                    support::br_font_band::verify_historical(&current, &historical)
                         .map_err(|error| malformed(error.to_string()))?;
-                    (Ok(current), AdmittedComparison::HorizontalBrFontBand)
+                    let projection = if profile == SpecializedProfile::HorizontalBrFontBand {
+                        support::BrFontBandProfile::Horizontal
+                    } else {
+                        support::BrFontBandProfile::Vertical
+                    };
+                    (Ok(current), AdmittedComparison::BrFontBand(projection))
                 }
                 SpecializedProfile::PreparedAtomicPercentage => {
                     let source = read_pinned(

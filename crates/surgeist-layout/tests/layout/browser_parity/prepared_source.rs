@@ -1896,7 +1896,7 @@ mod tests {
         super::super::assert_native_input_matches_with_projection(
             &golden,
             request,
-            super::super::BrFontBandProjection::HorizontalPinned,
+            Some(super::super::BrFontBandProfile::Horizontal),
         )
         .unwrap();
 
@@ -1909,7 +1909,7 @@ mod tests {
         let error = super::super::assert_native_input_matches_with_projection(
             &wrong_band,
             request,
-            super::super::BrFontBandProjection::HorizontalPinned,
+            Some(super::super::BrFontBandProfile::Horizontal),
         )
         .unwrap_err()
         .to_string();

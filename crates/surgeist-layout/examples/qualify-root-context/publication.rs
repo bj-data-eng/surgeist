@@ -139,10 +139,13 @@ fn specialized_input(bytes: &[u8], profile: SpecializedProfile) -> Result<Declar
         .declaration
         .records
         .retain(|record| record.specialized_publication == Some(profile));
-    if !matches!(
-        input.declaration.records.as_slice(),
-        [record] if record.source.as_str() == profile.source()
-    ) {
+    if input.declaration.records.len() != profile.sources().len()
+        || input
+            .declaration
+            .records
+            .iter()
+            .any(|record| !profile.sources().contains(&record.source.as_str()))
+    {
         return Err("specialized publication requires its canonical declaration".into());
     }
     Ok(input)
@@ -219,6 +222,9 @@ fn finish(
     }
     if edition == Edition::Specialized(SpecializedProfile::HorizontalBrFontBand) {
         require_horizontal_br_inputs(owner)?;
+    }
+    if edition == Edition::Specialized(SpecializedProfile::VerticalBrFontBand) {
+        require_vertical_br_inputs(owner)?;
     }
     let published = edition.published();
     let has_terminal = edition != Edition::RootContextV4;
@@ -306,6 +312,9 @@ fn finish(
     }
     if edition == Edition::Specialized(SpecializedProfile::HorizontalBrFontBand) {
         require_horizontal_br_inputs(owner)?;
+    }
+    if edition == Edition::Specialized(SpecializedProfile::VerticalBrFontBand) {
+        require_vertical_br_inputs(owner)?;
     }
     let current = Origin::read(owner, &declaration.records)?;
     current.inputs(
@@ -459,6 +468,23 @@ fn require_horizontal_br_inputs(owner: &Path) -> Result<()> {
         require_regular_input(owner, &path)?;
         if fs::read(owner.join(path.as_str()))? != bytes {
             return Err(format!("current horizontal break font-band input differs: {name}").into());
+        }
+    }
+    Ok(())
+}
+
+fn require_vertical_br_inputs(owner: &Path) -> Result<()> {
+    use crate::vertical_br_font_band_profile as profile;
+    for (name, bytes) in [
+        ("vertical_br_font_band.js", profile::SCRIPT.as_bytes()),
+        ("vertical_br_font_band_request.json", profile::REQUEST),
+    ] {
+        let path = RelativePath::new(format!(
+            "tests/bin/surgeist-layout-generate/measurement/{name}"
+        ))?;
+        require_regular_input(owner, &path)?;
+        if fs::read(owner.join(path.as_str()))? != bytes {
+            return Err(format!("current vertical break font-band input differs: {name}").into());
         }
     }
     Ok(())
@@ -911,10 +937,6 @@ fn specialized_cases(
     report: &browser::BrowserGenerationReport,
     profile: SpecializedProfile,
 ) -> Result<Vec<authority::QualifiedCase>> {
-    let [record] = input.declaration.records.as_slice() else {
-        return Err("expected one specialized declaration".into());
-    };
-    let record_sha256 = semantic_record_digest(record)?.as_str().to_owned();
     let settings = authority::BrowserSettingsWitness::from_official_json(&serde_json::to_vec(
         corpus.browser(),
     )?)?;
@@ -928,6 +950,13 @@ fn specialized_cases(
         .map(|generated| {
             let artifact: authority::CapturedArtifact =
                 serde_json::from_value(serde_json::to_value(generated)?)?;
+            let record = input
+                .declaration
+                .records
+                .iter()
+                .find(|record| record.source.as_str() == artifact.source)
+                .ok_or("specialized output has no declared source")?;
+            let record_sha256 = semantic_record_digest(record)?.as_str().to_owned();
             let output_sha256 = authority::sha256(&fs::read(root.join(&artifact.output))?);
             let predecessor = format!(
                 "historical/{}",
@@ -974,7 +1003,10 @@ fn specialized_cases(
                     authority::prepared_atomic_percentage_evidence()
                 }
                 SpecializedProfile::HorizontalBrFontBand => {
-                    crate::parity_support::horizontal_br_font_band::evidence()
+                    crate::parity_support::br_font_band::horizontal_evidence()
+                }
+                SpecializedProfile::VerticalBrFontBand => {
+                    crate::parity_support::br_font_band::vertical_evidence()
                 }
             };
             let verified = authority::identity_from_verified_inputs(authority::IdentityInputs {

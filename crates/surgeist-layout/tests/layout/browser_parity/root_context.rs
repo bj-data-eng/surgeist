@@ -19,6 +19,7 @@ pub enum QualifiedRootContext {
         hypothetical_direction: layout::Direction,
         hypothetical_display: String,
         hypothetical_inline_offset: Scalar,
+        hypothetical_block_offset: Option<Scalar>,
         fallback: RootFallback,
     },
     BlockFlowAuto {
@@ -77,6 +78,7 @@ pub(super) fn parse_root_context(
             "hypothetical-display",
             "hypothetical-anchor",
             "hypothetical-inline-offset",
+            "hypothetical-block-offset",
         ][..],
         "block-flow-auto" => &["parent-inline-extent", "parent-direction"][..],
         _ => return Err(Error::new(format!("unsupported root context {kind}"))),
@@ -161,12 +163,24 @@ pub(super) fn parse_root_context(
                     Error::new("hypothetical-inline-offset requires signed CSS pixels")
                 })?;
             let hypothetical_inline_offset = parse_number(raw)?;
+            let hypothetical_block_offset = node
+                .attribute("hypothetical-block-offset")
+                .map(|offset| {
+                    offset
+                        .strip_suffix("px")
+                        .ok_or_else(|| {
+                            Error::new("hypothetical-block-offset requires signed CSS pixels")
+                        })
+                        .and_then(parse_number)
+                })
+                .transpose()?;
             QualifiedRootContext::AbsoluteRootLocal {
                 containing_size,
                 containing_direction: direction("containing-direction")?,
                 hypothetical_direction,
                 hypothetical_display,
                 hypothetical_inline_offset,
+                hypothetical_block_offset,
                 fallback,
             }
         }
@@ -240,6 +254,7 @@ impl RootContext {
                 containing_size,
                 containing_direction,
                 hypothetical_inline_offset,
+                hypothetical_block_offset,
                 fallback,
                 ..
             } => {
@@ -252,6 +267,15 @@ impl RootContext {
                 .map_err(|error| {
                     Error::new(format!("invalid hypothetical inline offset: {error:?}"))
                 })?;
+                let local = if let Some(offset) = hypothetical_block_offset {
+                    local
+                        .with_hypothetical_block_offset(*offset)
+                        .map_err(|error| {
+                            Error::new(format!("invalid hypothetical block offset: {error:?}"))
+                        })?
+                } else {
+                    local
+                };
                 layout::LayoutRootRequest::positioned_root_local(local).map_err(|error| {
                     Error::new(format!("invalid root-local available space: {error:?}"))
                 })?
