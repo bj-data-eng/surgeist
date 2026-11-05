@@ -17,7 +17,7 @@ path = "src/lib.rs"
 surgeist-text = { path = "../surgeist-text", version = "=0.1.0", default-features = false }
 surgeist-generator = { path = "../surgeist-generator", version = "=0.2.0", default-features = false, features = ["browser-corpus"], optional = true }
 serde = { version = "=1.0.228", features = ["derive"], optional = true }
-serde_json = { version = "=1.0.145", features = ["raw_value"], optional = true }
+serde_json = { version = "=1.0.145", features = ["float_roundtrip", "raw_value"], optional = true }
 serde_path_to_error = { version = "=0.1.20", optional = true }
 
 [features]
@@ -35,7 +35,7 @@ surgeist-test = { path = "../surgeist-test", version = "=0.1.0" }
 proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
 roxmltree = "=0.21.1"
 serde = { version = "=1.0.228", features = ["derive"] }
-serde_json = { version = "=1.0.145", features = ["raw_value"] }
+serde_json = { version = "=1.0.145", features = ["float_roundtrip", "raw_value"] }
 sha2 = "=0.10.9"
 surgeist-generator = { path = "../surgeist-generator", version = "=0.2.0", default-features = false }
 
