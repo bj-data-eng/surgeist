@@ -1,7 +1,7 @@
 //! Invocation-owned corpus and assertions; no historical corpus is rewritten.
 
 use crate::parity_support::exact_differences::PublishedEdition;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fs;
 use std::io::Write;
@@ -323,6 +323,7 @@ const INPUTS: &[(&str, &[u8])] = &[
 struct SemanticCase {
     reference: SemanticReference,
     record_sha256: Sha256Digest,
+    published_edition: Option<PublishedEdition>,
 }
 struct ExpectedCase {
     source: RelativePath,
@@ -579,20 +580,30 @@ fn focused_geometry_predecessors(
     cases: &[ExpectedCase],
     mode: QualificationMode,
 ) -> Result<BTreeMap<String, String>> {
-    if mode.box_observations() == BoxObservationRequest::Geometry
-        && !mode.collects_numeric_differences()
-        && cases.iter().any(|case| case.semantic.is_some())
+    if mode.box_observations() != BoxObservationRequest::Geometry
+        || mode.collects_numeric_differences()
     {
-        let mut predecessors = publication::verified_grid_static_predecessors(owner)?;
-        predecessors.retain(|output, _| {
-            cases
-                .iter()
-                .any(|case| case.case.output().as_str() == output)
-        });
-        Ok(predecessors)
-    } else {
-        Ok(BTreeMap::new())
+        return Ok(BTreeMap::new());
     }
+    let selected: BTreeSet<_> = cases
+        .iter()
+        .filter(|case| {
+            case.semantic
+                .as_ref()
+                .and_then(|semantic| semantic.published_edition)
+                == Some(PublishedEdition::GridStaticPosition)
+        })
+        .map(|case| case.case.output().as_str())
+        .collect();
+    if selected.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+    let mut predecessors = publication::verified_grid_static_predecessors(owner)?;
+    predecessors.retain(|output, _| selected.contains(output.as_str()));
+    if predecessors.len() != selected.len() {
+        return Err("missing selected Grid static-position qualification".into());
+    }
+    Ok(predecessors)
 }
 
 fn corpus_for_inventory(
@@ -1290,8 +1301,9 @@ fn inventory_with_retained_helper(
         )?;
         let (family, stem) = record.source_names()?;
         let record_sha256 = semantic_record_digest(record)?;
+        let mut semantic_cases = BTreeMap::new();
         if let Some(specifications) = &record.semantic_specifications {
-            for reference in specifications.values() {
+            for (variant, reference) in specifications {
                 let bytes = register_semantic_input(
                     root,
                     owner,
@@ -1308,6 +1320,14 @@ fn inventory_with_retained_helper(
                 let expected: Sha256Digest =
                     serde_json::from_value(serde_json::Value::String(digest.to_owned()))?;
                 register_semantic_input(root, owner, &source, &expected, &mut inventory, access)?;
+                semantic_cases.insert(
+                    variant.as_str(),
+                    SemanticCase {
+                        reference: reference.clone(),
+                        record_sha256: record_sha256.clone(),
+                        published_edition: spec.published_edition(),
+                    },
+                );
             }
         }
         let mut cases = Vec::new();
@@ -1345,14 +1365,7 @@ fn inventory_with_retained_helper(
                 historical,
                 expected: record.expected.clone(),
                 relation: record.relation.clone(),
-                semantic: record
-                    .semantic_specifications
-                    .as_ref()
-                    .and_then(|specs| specs.get(variant))
-                    .map(|reference| SemanticCase {
-                        reference: reference.clone(),
-                        record_sha256: record_sha256.clone(),
-                    }),
+                semantic: semantic_cases.remove(variant),
             });
             cases.push(case);
         }
