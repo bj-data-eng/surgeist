@@ -2069,3 +2069,18 @@ hypothetical_direction = "ltr"
 root_direction = "variant"
 root_writing_mode = "horizontal-tb"
 inline_offset = 0
+
+[[records]]
+source = "html/qualification/subgrid-cyclic-row-gap.html"
+source_sha256 = "e4ffe86a3489099f2c0fcdbfad075a9d5c5f4c818c6700c4de0a776ecfe18e2b"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
