@@ -338,6 +338,8 @@ mod tests {
             "--check-published-prepared-atomic-percentage-qualification",
             "--publish-horizontal-br-font-band-qualification",
             "--check-published-horizontal-br-font-band-qualification",
+            "--publish-vertical-br-font-band-qualification",
+            "--check-published-vertical-br-font-band-qualification",
         ] {
             assert_eq!(parse_arguments(&arguments(&[command])).unwrap().0, None);
             assert!(parse_arguments(&arguments(&[command, "other-root"])).is_err());
