@@ -67,6 +67,55 @@ fn qualify(value: &Value, golden: &Golden) -> Result<QualifiedComparison> {
 }
 
 #[test]
+fn wrapping_world_corner_height_is_checked_separately_from_root_local_height() {
+    let mut value: Value = serde_json::from_str(include_str!(
+        "captured/canonical-box-differences/semantic/collapsed-flex-wrapping-border_box_ltr.json"
+    ))
+    .unwrap();
+    let edition = json!("wrapping-world-corner-differences");
+    value["representation"]["published_edition"] = edition.clone();
+    value["representation"]["current"]["selectors"]
+        .as_array_mut()
+        .unwrap()
+        .insert(4, json!({"path":"/","field":"world-corner-height"}));
+    value["differences"].as_array_mut().unwrap().push(json!({
+        "domain":"world-corner","path":"/","field":"height","browser":157,"native":68
+    }));
+    let specification = ExactDifferenceSpec::parse(&value.to_string()).unwrap();
+    let edition: PublishedEdition = serde_json::from_value(edition).unwrap();
+    let identity =
+        CaseIdentity::from_verified_projection(value["identities"]["published"].clone()).unwrap();
+    let authority = || CaptureAuthority::Published {
+        edition,
+        identity: &identity,
+    };
+    let mut golden = Golden::parse(include_str!(
+        "captured/canonical-box-differences/xml/flex/fri07_collapsed_strut_wrapping__border_box_ltr.xml"
+    ))
+    .unwrap();
+    let resolved = specification.resolve_against(authority(), &golden).unwrap();
+    let complete = complete_captured_comparison(&golden, &resolved).unwrap();
+    assert_eq!(
+        resolved.qualify(&complete).unwrap().raw,
+        RawVerdict::Different { fields: 13 }
+    );
+
+    let root_world = golden
+        .world_rounding_diagnostics
+        .iter_mut()
+        .find(|row| row.node_path == "0")
+        .unwrap();
+    root_world.height -= 1.0;
+    assert_eq!(golden.expectations.height, Some(157.0));
+    let resolved = specification.resolve_against(authority(), &golden).unwrap();
+    let complete = complete_captured_comparison(&golden, &resolved).unwrap();
+    assert!(matches!(
+        resolved.qualify(&complete),
+        Err(QualificationError::DifferenceSetChanged { .. })
+    ));
+}
+
+#[test]
 fn complete_source_derived_fixed_box_qualifies_while_raw_still_fails() {
     let golden = golden();
     let spec = spec(&declaration());
