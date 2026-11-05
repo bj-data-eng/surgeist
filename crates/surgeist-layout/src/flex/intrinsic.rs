@@ -283,7 +283,7 @@ where
         {
             min_main
         }
-        _ if !needs_stretched_cross_measure => {
+        _ if !needs_stretched_cross_measure && !item.flex_basis_is_definite => {
             if constants.axes.main_logical_axis() == LogicalAxis::Inline {
                 item.max_content_main_size
                     .clamp_max_before_min_optional(style_min, style_max)
@@ -295,18 +295,34 @@ where
         }
         _ => {
             let child_known = intrinsic_item_known_size(constants, item);
-            let child_available = constants
+            let mut child_available = constants
                 .axes
                 .with_cross_size(input.sizing_request().axes(), cross_available);
+            let mut percentage_parent = constants.percentage_parent_size;
+            let sizing_mode = if item.flex_basis_is_definite {
+                // The initial layout uses the flex basis as a known size.
+                // Its content extent cannot supply this intrinsic contribution.
+                child_available = constants.axes.with_main_size(
+                    child_available,
+                    constants
+                        .axes
+                        .main_size(child_available)
+                        .with_operation(crate::SizingOperation::MaxContent),
+                );
+                percentage_parent = constants.axes.with_main_size(percentage_parent, None);
+                SizingMode::ContentSize
+            } else {
+                SizingMode::InherentSize
+            };
             let measured = constants.axes.main_size(
                 tree.compute_child(
                     item.node,
                     ComputeInputOf::for_child(
                         RunMode::ComputeSize,
-                        SizingMode::InherentSize,
+                        sizing_mode,
                         constants.axes.main_requested_axis(),
                         child_known,
-                        constants.percentage_parent_size,
+                        percentage_parent,
                         ContainingLayoutContext::new(
                             constants.flow_axes,
                             ParentFormattingContext::Flex,
@@ -317,6 +333,7 @@ where
                 )?
                 .size,
             );
+            let measured = style_preferred.map_or(measured, |preferred| measured.max(preferred));
 
             if constants.axes.main_logical_axis() == LogicalAxis::Inline {
                 measured.clamp_max_before_min_optional(style_min, style_max)
