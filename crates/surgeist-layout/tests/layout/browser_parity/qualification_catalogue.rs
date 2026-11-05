@@ -317,6 +317,54 @@ profile = "flex-composition"
 "#;
 
     #[test]
+    fn semantic_publication_supersedes_only_its_exact_predecessor() {
+        const SOURCE: &str = "html/flex/fri07_collapsed_strut_wrapping.html";
+        let prefix = unannotated_catalogue();
+        let prior = Declaration::parse(prefix).unwrap();
+        let old = prior
+            .records
+            .iter()
+            .find(|record| record.source.as_str() == SOURCE)
+            .unwrap();
+        let old_specs = old.semantic_specifications.as_ref().unwrap();
+        let digest = Sha256Digest::from_bytes(serde_json::to_vec(old_specs).unwrap());
+        let mut appendix = format!(
+            "\n[[semantic_publications]]\nsource = {SOURCE:?}\nreplaces_sha256 = {:?}\n",
+            digest.as_str(),
+        );
+        for (variant, _) in fixture_cases() {
+            appendix.push_str(&format!(
+                "[semantic_publications.specifications.{variant}]\npath = \"semantic/successor-{variant}.json\"\nsha256 = {:?}\n",
+                old_specs[variant].sha256.as_str()
+            ));
+        }
+        let parse = |suffix: &str| Declaration::parse(&[prefix, suffix.as_bytes()].concat());
+        let active = parse(&appendix).unwrap();
+        let successor = active
+            .records
+            .iter()
+            .find(|record| record.source.as_str() == SOURCE)
+            .unwrap();
+        assert_eq!(successor.historical_sha256, old.historical_sha256);
+        assert_eq!(successor.source_sha256, old.source_sha256);
+        let successor = successor.semantic_specifications.as_ref().unwrap();
+        assert_eq!(successor.len(), 4);
+        assert_eq!(
+            successor["border_box_ltr"].path.as_str(),
+            "semantic/successor-border_box_ltr.json"
+        );
+        assert!(parse(&appendix.replace(digest.as_str(), &"0".repeat(64))).is_err());
+        assert!(parse(&appendix.repeat(2)).is_err());
+        assert!(
+            parse(&appendix.replace(
+                "semantic/successor-border_box_ltr.json",
+                old_specs["border_box_ltr"].path.as_str()
+            ))
+            .is_err()
+        );
+    }
+
+    #[test]
     fn appended_publications_require_all_specialized_variants() {
         let prior = Declaration::parse(unannotated_catalogue()).unwrap();
         let appended =
