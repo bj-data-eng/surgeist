@@ -2019,3 +2019,38 @@ hypothetical_direction = "ltr"
 root_direction = "variant"
 root_writing_mode = "horizontal-tb"
 inline_offset = 0
+
+[[records]]
+source = "html/flex/flex_basis_unconstraint_row.html"
+source_sha256 = "22cb1b85b428dd3c7a5c268ba1999e1b4dddb4ccf48fc38763d2131257ef6ec9"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "9a35a0aa991a2ce104c82412a3232150c33082e5200f44d55604e11b4476c80b"
+content_box_ltr = "dcc466fbed7e909c4280ae2e835c8351ff323356eb13909caf5016c8b062baab"
+border_box_rtl = "99547d8ee027ca8d8a95dbd7f1c93746d9a1435544f8c18255c9f5d6b30bf010"
+content_box_rtl = "56a13ed35b7f352d3dd303af89f12e63bee74a7662186ea991081526d121f6c3"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "flex"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/qualification/flex-basis-with-block-content.html"
+source_sha256 = "c3fc0ac9103e36493f4a2be33b030daacfb9f59c4048cab35494db5832a897b9"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "flex"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
