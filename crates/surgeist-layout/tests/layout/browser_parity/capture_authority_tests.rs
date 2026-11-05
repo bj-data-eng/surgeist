@@ -335,6 +335,57 @@ fn terminal_wire_preserves_publisher_bytes_and_rejects_broken_associations() {
 }
 
 #[test]
+fn current_terminal_requires_distinct_producer_and_validator_authority() {
+    const HELPER: &str = "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee";
+    let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(ARTIFACT_ROOT)
+        .join(TERMINAL);
+    let mut terminal: Value = serde_json::from_slice(&std::fs::read(file).unwrap()).unwrap();
+    terminal["schema_version"] = json!(3);
+    terminal["capture_validation"] = json!({
+        "producer_profile": "root-context-v4",
+        "producer_helper_sha256": HELPER,
+        "validator_profile": "root-context-v4",
+        "validator_helper_sha256": HELPER,
+    });
+    Qualification::parse(&terminal.to_string()).expect("explicit capture and validation authority");
+
+    for (pointer, value) in [
+        ("/capture_validation/producer_profile", json!("unknown")),
+        (
+            "/capture_validation/producer_helper_sha256",
+            json!("e".repeat(64)),
+        ),
+        ("/capture_validation/validator_profile", json!("unknown")),
+        (
+            "/capture_validation/validator_helper_sha256",
+            json!("e".repeat(64)),
+        ),
+        (
+            "/retained_inputs/scripts~1gentest~1test_helper.js",
+            json!("e".repeat(64)),
+        ),
+        (
+            "/current_owner_inputs/tests~1layout~1browser_parity~1scripts~1gentest~1test_helper.js",
+            json!("e".repeat(64)),
+        ),
+    ] {
+        let mut altered = terminal.clone();
+        *altered.pointer_mut(pointer).unwrap() = value;
+        assert!(
+            Qualification::parse(&altered.to_string()).is_err(),
+            "{pointer}"
+        );
+    }
+    terminal["schema_version"] = json!(2);
+    terminal
+        .as_object_mut()
+        .unwrap()
+        .remove("capture_validation");
+    assert!(Qualification::parse(&terminal.to_string()).is_err());
+}
+
+#[test]
 fn live_owner_bindings_cover_all_roles_and_refuse_unknown_or_overlapping_paths() {
     let roles = [
         (
