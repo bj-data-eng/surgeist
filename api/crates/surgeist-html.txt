@@ -1439,6 +1439,9 @@ impl surgeist_html::attributes::srcset::HtmlSrcsetDensity
 pub fn surgeist_html::attributes::srcset::HtmlSrcsetDensity::from_decimal_syntax(syntax: impl core::convert::Into<surgeist_html::values::DocumentString>) -> core::result::Result<Self, surgeist_html::attributes::srcset::HtmlSrcsetDensityError>
 pub fn surgeist_html::attributes::srcset::HtmlSrcsetDensity::syntax(&self) -> &surgeist_html::values::DocumentString
 pub fn surgeist_html::attributes::srcset::HtmlSrcsetDensity::to_floating_point_number(&self) -> core::result::Result<surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber, surgeist_html::attributes::srcset::HtmlSrcsetDensityProjectionError>
+impl core::cmp::Eq for surgeist_html::attributes::srcset::HtmlSrcsetDensity
+impl core::cmp::PartialEq for surgeist_html::attributes::srcset::HtmlSrcsetDensity
+pub fn surgeist_html::attributes::srcset::HtmlSrcsetDensity::eq(&self, other: &Self) -> bool
 impl core::convert::TryFrom<surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber> for surgeist_html::attributes::srcset::HtmlSrcsetDensity
 pub type surgeist_html::attributes::srcset::HtmlSrcsetDensity::Error = surgeist_html::attributes::srcset::HtmlSrcsetDensityError
 pub fn surgeist_html::attributes::srcset::HtmlSrcsetDensity::try_from(value: surgeist_html::microsyntax::numeric::HtmlFloatingPointNumber) -> core::result::Result<Self, Self::Error>
@@ -2574,7 +2577,7 @@ pub fn surgeist_html::bounded::construction::HtmlConstructionOperation::next_act
 pub fn surgeist_html::bounded::construction::HtmlConstructionOperation::try_ready(self) -> core::result::Result<surgeist_html::bounded::construction::HtmlConstructionReadyOperation, surgeist_html::bounded::construction::HtmlConstructionRefusal<Self>>
 pub struct surgeist_html::bounded::construction::HtmlConstructionReadyAttributeSlot<'a>
 impl surgeist_html::bounded::construction::HtmlConstructionReadyAttributeSlot<'_>
-pub fn surgeist_html::bounded::construction::HtmlConstructionReadyAttributeSlot<'_>::commit(self) -> core::option::Option<surgeist_html::values::Attribute>
+pub fn surgeist_html::bounded::construction::HtmlConstructionReadyAttributeSlot<'_>::commit(self) -> core::result::Result<core::option::Option<surgeist_html::values::Attribute>, surgeist_html::bounded::construction::HtmlConstructionRefusal<Self>>
 pub struct surgeist_html::bounded::construction::HtmlConstructionReadyInitialization
 impl surgeist_html::bounded::construction::HtmlConstructionReadyInitialization
 pub fn surgeist_html::bounded::construction::HtmlConstructionReadyInitialization::abort(self) -> surgeist_html::bounded::construction::HtmlConstructionRetired
@@ -7125,6 +7128,7 @@ pub fn surgeist_html::vocabulary::KnownHtmlElement::local_name(self) -> &'static
 pub fn surgeist_html::vocabulary::KnownHtmlElement::qualified_name(self) -> surgeist_html::values::QualifiedName
 impl surgeist_html::vocabulary::KnownHtmlElement
 pub fn surgeist_html::vocabulary::KnownHtmlElement::from_name(name: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized) -> core::option::Option<Self>
+impl surgeist_html::vocabulary::KnownHtmlElement
 pub fn surgeist_html::vocabulary::KnownHtmlElement::inventory_row(self) -> &'static surgeist_html::vocabulary::ElementInventoryRow
 pub struct surgeist_html::vocabulary::AttributeInventoryRow
 impl surgeist_html::vocabulary::AttributeInventoryRow
