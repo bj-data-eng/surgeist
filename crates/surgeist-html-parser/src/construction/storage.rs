@@ -39,6 +39,10 @@ pub(super) struct SessionStorage {
     pub(super) construction: ConstructionOwner,
     pub(super) payloads: PayloadStorage,
     pub(super) failed_text_append: Option<text_append::FailedTextAppend>,
+    /// The units the text append being applied added to the end of the last
+    /// child, from the append's commit until the children-changed hook takes
+    /// them. Set exactly when the hook's stage is `AppendChildren`.
+    pub(super) appended_units: Option<NonZeroUsize>,
     /// A `Join::StyleOrder` row at or after this registry slot is the current
     /// list of its tree's style elements: every change to that list since the
     /// row was built has been applied to it. A change that cannot be applied
@@ -154,6 +158,7 @@ impl SessionStorage {
             standalone_ineligibility: None,
             construction,
             failed_text_append: None,
+            appended_units: None,
             style_order_floor: 0,
             main_tree_styleless: true,
             style_subtree: None,

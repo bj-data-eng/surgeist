@@ -414,13 +414,16 @@ impl SessionStorage {
                     effects.new_parent
                 };
                 if let Some(parent) = parent {
-                    self.refresh_textarea(
-                        control,
-                        parent,
-                        removal.then_some(effects.root),
-                        false,
-                        effects.stage == FormEffectStage::AppendChildren,
-                    )?;
+                    let cause = if effects.stage == FormEffectStage::AppendChildren {
+                        // The stage and the units are set together.
+                        let Some(added) = self.appended_units.take() else {
+                            return Err(latch_registry_row(control));
+                        };
+                        TextareaRefresh::Append { added }
+                    } else {
+                        TextareaRefresh::Rebuild
+                    };
+                    self.refresh_textarea(control, parent, removal.then_some(effects.root), cause)?;
                     self.association_children(control, parent, removal.then_some(effects.root))?;
                 }
                 if removal && effects.insert {

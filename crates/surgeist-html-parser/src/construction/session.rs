@@ -376,7 +376,7 @@ impl ParserArenaSession {
             }
             Err(error) => return Err(error),
         }
-        match storage.refresh_textarea(control, node, None, true, false) {
+        match storage.refresh_textarea(control, node, None, TextareaRefresh::Reset) {
             Err(SessionError::Stop(stop)) => Err(SessionError::Stop(stop)),
             Err(error) => Err(latch_effect_fault(control, error)),
             Ok(()) => Ok(()),
@@ -456,6 +456,7 @@ impl ParserArenaSession {
             construction,
             payloads,
             failed_text_append: _,
+            appended_units: _,
             style_order_floor: _,
             main_tree_styleless: _,
             style_subtree: _,

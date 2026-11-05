@@ -3,19 +3,32 @@
 use super::*;
 use surgeist_html::{construction::HtmlNodeKind, elements::form::HtmlTextareaRawValueAction};
 
+/// Why a textarea's raw value is refreshed from its children.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum TextareaRefresh {
+    /// The element left the stack of open elements: the dirty flag resets and
+    /// the value is rebuilt.
+    Reset,
+    /// The children changed in a way only a rebuild from every child answers.
+    Rebuild,
+    /// Text was appended to the end of the last child and nothing else
+    /// changed: the new value is the old one with those units at its end.
+    Append { added: NonZeroUsize },
+}
+
 /// How a refresh produces the new raw value.
 enum RawValue {
     /// Copies the text of every child into a new backing.
     Copy(Utf16Buffer),
     /// Appends the units that the last child gained to the end of the old backing.
-    Extend,
+    Extend(NonZeroUsize),
 }
 impl RawValue {
     /// Returns what a refused refresh holds to the accounting owner.
     fn release(self, control: &mut ParseControl) -> Result<(), HtmlParseStop> {
         match self {
             Self::Copy(raw) => raw.release(control),
-            Self::Extend => Ok(()),
+            Self::Extend(_) => Ok(()),
         }
     }
 }
@@ -32,18 +45,16 @@ impl SessionStorage {
     /// Child text is direct Text children in the actual source view. A moved
     /// root is excluded for removal, even if the fixed final links reinsert it.
     ///
-    /// `appended` says that text was appended to the end of the last child and
-    /// nothing else changed. The new raw value is then the old one with those
-    /// units at its end, and the old backing is extended in place instead of
-    /// copying every child's text again.
+    /// An `Append` refresh extends the old backing in place with the units the
+    /// last child gained, instead of copying every child's text again.
     pub(super) fn refresh_textarea(
         &mut self,
         control: &mut ParseControl,
         node: usize,
         detached: Option<usize>,
-        reset: bool,
-        appended: bool,
+        cause: TextareaRefresh,
     ) -> Result<(), SessionError> {
+        let reset = cause == TextareaRefresh::Reset;
         let Some((slot, mut state)) = self.textarea_slot(control, node)? else {
             return Ok(());
         };
@@ -66,10 +77,9 @@ impl SessionStorage {
             return Ok(());
         }
         let dispose_previous = self.releasable_string(control, state.raw, false)?;
-        let mut raw = if appended && dispose_previous && !reset {
-            RawValue::Extend
-        } else {
-            RawValue::Copy(Utf16Buffer::new(control)?)
+        let mut raw = match cause {
+            TextareaRefresh::Append { added } if dispose_previous => RawValue::Extend(added),
+            _ => RawValue::Copy(Utf16Buffer::new(control)?),
         };
         let mut group = None;
         let mut units = 0usize;
@@ -139,13 +149,12 @@ impl SessionStorage {
         };
         let raw = match raw {
             RawValue::Copy(raw) => raw,
-            RawValue::Extend => {
+            RawValue::Extend(added) => {
                 // The children and the raw value must agree on what was added.
-                let added = match units.checked_sub(old_units) {
-                    Some(added) if added > 0 => added,
-                    _ => return Err(latch_registry_row(control)),
-                };
-                return self.extend_textarea_raw(control, node, slot, state, group, added);
+                if units.checked_sub(old_units) != Some(added.get()) {
+                    return Err(latch_registry_row(control));
+                }
+                return self.extend_textarea_raw(control, node, slot, state, group, added.get());
             }
         };
         let raw = raw.freeze(control)?;

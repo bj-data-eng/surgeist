@@ -607,6 +607,11 @@ impl SessionStorage {
                     return Err(error);
                 }
                 if children_changed {
+                    self.appended_units = if at_end {
+                        Some(NonZeroUsize::new(added).ok_or_else(|| latch_registry_row(control))?)
+                    } else {
+                        None
+                    };
                     self.effects.form = Some(FormEffects {
                         root: parent,
                         old_parent: None,

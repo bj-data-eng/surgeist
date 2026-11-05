@@ -34,7 +34,7 @@ use crate::parser::{
     buffer::{FrozenUtf16, Utf16Buffer},
     tokenizer::token::{Doctype, HtmlParseTextOrigin, Tag, TagKind, Text, TokenKind},
 };
-use std::num::NonZeroU32;
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
 use std::{mem, sync::Weak};
 
@@ -198,6 +198,7 @@ mod storage_release;
 mod storage_script;
 mod storage_strings;
 mod storage_textarea;
+use storage_textarea::TextareaRefresh;
 mod storage_tree;
 use form_effects::{FormEffectPass, FormEffectStage, FormEffects};
 use storage::SessionStorage;
