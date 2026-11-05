@@ -26,7 +26,9 @@ The later TTF is referenced from Render's existing fixture, without duplication.
 [Adobe Source Code Pro](https://github.com/adobe-fonts/source-code-pro/blob/d3f1a5962cde503f9409c21e58527611d4a19ef1/OTF/SourceCodePro-Regular.otf),
 release `2.042R-u/1.062R-i/1.026R-vf`.
 The original [SIL Open Font License 1.1 and copyright](source-code-pro/LICENSE.md)
-are retained unchanged. This is a CFF/OpenType and shaping-table control.
+are retained unchanged, including their CRLF line endings. The local Git
+attribute records that byte-preservation requirement. This is a CFF/OpenType
+and shaping-table control.
 
 - Font: 131,128 bytes; SHA-256 `9f9664e2edf6f045c11e774f9bd0be6993971f2544a39061a5ce478b96b051f8`.
 - License: SHA-256 `7c940e28a5388e9bba866cf0e408edda45fe0899ba98665b8f6ab31dc5e4b8ff`.
