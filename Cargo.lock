@@ -3751,6 +3751,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "surgeist-font"
+version = "0.1.0"
+
+[[package]]
 name = "surgeist-fuzz"
 version = "0.1.0"
 dependencies = [
