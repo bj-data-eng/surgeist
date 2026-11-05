@@ -539,7 +539,11 @@ height. Native source-fragment height must not be substituted for that observati
 The V4 prepared Range request binds the original HTML, its pinned TTF preload,
 the effective loaded face, and the root's border frame. The four-variant
 [receipt](captured/prepared-range-differences/raw-comparisons.jsonl) records
-every box field and Range row. The two LTR controls match. The RTL policy
+every box field and Range row. Each byte-pinned browser row ordinal binds to
+ordered Text query units and piece occurrences. Qualification checks each
+piece's finalized-line issuer and local and aggregate UTF-16 intersections
+before grouping pieces or comparing coordinates. The two LTR controls match.
+The RTL policy
 accepts only the occurrence 1, line 0, zero-advance PDI start at browser x=72
 and Native x=24. Qualification checks the actual Native node packets and
 issued fragments in both phases, selected lines, glyph positions, effective
