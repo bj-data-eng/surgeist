@@ -264,6 +264,8 @@ line-name fixtures `subgrid_line_names_004_b_to_b_minus_1` and
 fixtures, so any future failures should report their concrete mismatch or
 validation kind.
 
+## Prepared Range qualification
+
 The Text-migration accounting records four executed historical successors and
 twelve additional native representatives: 14 match, and the two RTL continuity
 variants retain an executed zero-width PDI Range observation difference.

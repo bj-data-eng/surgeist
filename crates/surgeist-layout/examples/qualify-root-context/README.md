@@ -8,7 +8,10 @@ Run one ordinary declared source with:
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --fixture html/subgrid/subgrid_baseline_inline_column_inner_col1_first.html
 ~~~
 
-Omitting the fixture selects the complete declared inventory. Numeric diagnostics remain a separate explicit mode; every numeric difference is still fatal and does not become an approved intentional difference.
+Omitting the fixture selects the ordinary geometry cohort. The
+[prepared Range recipe](../../tests/layout/browser_parity/README.md#prepared-range-qualification)
+selects its own capture profile. Numeric diagnostics use an explicit mode and
+fail on every numeric difference.
 
 ## Element scroll sizes
 
@@ -85,9 +88,9 @@ rewritten when qualification gains records.
 
 Append new records after that byte boundary in the one canonical inventory.
 Shortening, editing or reordering the prior prefix refuses, as do duplicate or
-shadowed source keys anywhere in the complete current declaration. Ordinary,
-focused and numeric qualification continue to use the complete growing canonical
-declaration. A successful fixed-edition check does not qualify appended records.
+shadowed source keys anywhere in the complete current declaration. Current
+capture commands select records from the canonical declaration according to
+their request profile. The fixed-edition check covers only its sealed records.
 
 Both modes still compare the whole current canonical file with the current
 executable before and after validation. Shared helper/base/font/browser-owner
