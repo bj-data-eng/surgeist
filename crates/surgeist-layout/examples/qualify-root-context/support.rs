@@ -20,7 +20,7 @@ use crate::adapter::{AdapterError, LayoutAdapter, fixture_cases};
 use crate::browser_profile::BrowserManifest;
 use crate::measurement::{
     BoxObservationRequest, FLEX_COMPOSITION_SOURCE, OBSERVATION_REQUEST_INPUT,
-    ORIGINAL_SUBGRID_BODY_SOURCE,
+    original_subgrid_body_profile::SOURCE as ORIGINAL_SUBGRID_BODY_SOURCE,
 };
 use crate::parity_support::capture_authority::{self, SpecializedProfile};
 use crate::parity_support::exact_differences::flex_composition_qualification;

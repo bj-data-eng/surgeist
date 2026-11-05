@@ -2,7 +2,7 @@
 
 use crate::measurement::{
     BoxObservationRequest, FLEX_COMPOSITION_SOURCE, FLEX_COMPOSITION_SOURCE_SHA256,
-    ORIGINAL_SUBGRID_BODY_SOURCE, ORIGINAL_SUBGRID_BODY_SOURCE_SHA256,
+    original_subgrid_body_profile,
 };
 use crate::xml::{escape_attr, generate_xml};
 use serde_json::Value;
@@ -218,9 +218,9 @@ impl LayoutAdapter {
             ));
         }
         if request == BoxObservationRequest::OriginalSubgridBody
-            && (input.fixture().source().as_str() != ORIGINAL_SUBGRID_BODY_SOURCE
+            && (input.fixture().source().as_str() != original_subgrid_body_profile::SOURCE
                 || surgeist_generator::Sha256Digest::from_bytes(input.source_bytes()).as_str()
-                    != ORIGINAL_SUBGRID_BODY_SOURCE_SHA256)
+                    != original_subgrid_body_profile::SOURCE_SHA256)
         {
             return Err(AdapterError::Preparation(
                 "original subgrid body capture requires its exact source".into(),
@@ -459,6 +459,14 @@ fn helper_setup_expression(
     {
         return Err(AdapterError::Preparation(
             "root-context source profile does not qualify the captured base stylesheet".into(),
+        ));
+    }
+    if request == BoxObservationRequest::OriginalSubgridBody
+        && surgeist_generator::Sha256Digest::from_bytes(helper.as_bytes()).as_str()
+            != original_subgrid_body_profile::HELPER_SHA256
+    {
+        return Err(AdapterError::Preparation(
+            "original subgrid body capture helper changed".into(),
         ));
     }
     let helper = serde_json::to_string(helper).map_err(|error| {
@@ -1005,7 +1013,7 @@ mod tests {
         let source = include_str!(
             "../../layout/browser_parity/html/subgrid/subgrid_gap_percentage_border_bottom.html"
         );
-        let source_path = RelativePath::new(ORIGINAL_SUBGRID_BODY_SOURCE).unwrap();
+        let source_path = RelativePath::new(original_subgrid_body_profile::SOURCE).unwrap();
         let setup = |helper: &str| {
             helper_setup_expression(
                 helper,

@@ -40,11 +40,11 @@
   "browser_settings": {"source":"chrome-for-testing","version":"149.0.7827.115","version_output":"Google Chrome for Testing 149.0.7827.115","cache_root":"tmp/surgeist-browser","provenance_format":"chrome-for-testing/{version} ({repository_relative_executable})","launch":{"batch_size":50,"navigation_timeout_ms":10000,"dom_poll_interval_ms":25,"arguments":["headless=new","mute-audio","disable-background-networking","disable-background-timer-throttling","disable-backgrounding-occluded-windows","disable-breakpad","disable-client-side-phishing-detection","disable-component-extensions-with-background-pages","disable-component-update","disable-default-apps","disable-dev-shm-usage","disable-domain-reliability","disable-features=TranslateUI,MediaRouter,OptimizationHints,AutofillServerCommunication","disable-hang-monitor","disable-ipc-flooding-protection","disable-popup-blocking","disable-prompt-on-repost","disable-renderer-backgrounding","disable-sync","enable-automation","enable-blink-features=IdleDetection,CSSGridLanesLayout","enable-features=NetworkService,NetworkServiceInProcess","force-color-profile=srgb","lang=en_US","metrics-recording-only","no-default-browser-check","no-first-run","use-mock-keychain"]}},
   "report": {
     "path": "xml/generation-reports/all.json",
-    "sha256": "bf83dce0fdc43f0af3e18025f77b2e5dc76603f3710981a382199c42f7ddb429"
+    "sha256": "039795a4a94840b3fab3384f8e4088c8ad684ee84669ffe61b0d33c84c8100e2"
   },
   "ownership": {
     "path": "xml/generation-ownership.json",
-    "sha256": "9db7efd25b26823ca3fe75f6a9aebc90ded245466e5109afe82dd61c2380ecae"
+    "sha256": "f04bf27de9209f37035dd50838599632f29eeb28edf7aa5205c7ad10c258e2ee"
   },
   "cases": [
     {

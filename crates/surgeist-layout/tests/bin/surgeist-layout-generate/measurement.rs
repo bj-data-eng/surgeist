@@ -16,6 +16,8 @@ mod element_scroll_sizes;
 mod flex_content_text;
 #[path = "measurement/measured_leaf.rs"]
 mod measured_leaf;
+#[path = "measurement/original_subgrid_body_profile.rs"]
+pub(super) mod original_subgrid_body_profile;
 pub(super) use flex_content_text::FlexContentText;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -32,11 +34,6 @@ pub(super) enum BoxObservationRequest {
 pub(super) const FLEX_COMPOSITION_SOURCE: &str = "html/flex/fri07_flex_composition.html";
 pub(super) const FLEX_COMPOSITION_SOURCE_SHA256: &str =
     "19acedc9894eed500890b91f48f9eb0e7f19a3db440f06cbaa6356e7ce73192e";
-pub(super) const ORIGINAL_SUBGRID_BODY_SOURCE: &str =
-    "html/subgrid/subgrid_gap_percentage_border_bottom.html";
-pub(super) const ORIGINAL_SUBGRID_BODY_SOURCE_SHA256: &str =
-    "db5cc28750958aa0df6c0692caafd131d284858e435e9fb0a1f6330527deb568";
-
 pub(super) const OBSERVATION_REQUEST_INPUT: &str = "observation-request.json";
 pub(super) const MEASURED_LEAF_SCRIPT_INPUT: &str = "scripts/gentest/measured_leaf.js";
 pub(super) const MEASURED_LEAF_SCRIPT: &str = include_str!("measurement/measured_leaf.js");
@@ -75,8 +72,8 @@ impl BoxObservationRequest {
                 include_str!("measurement/flex_content_text.js"),
             )),
             Self::OriginalSubgridBody => Some((
-                "scripts/gentest/original_subgrid_body.js",
-                include_str!("measurement/original_subgrid_body.js"),
+                original_subgrid_body_profile::SCRIPT_PATH,
+                original_subgrid_body_profile::SCRIPT,
             )),
             Self::Geometry
             | Self::ElementScrollSizes
@@ -99,9 +96,7 @@ impl BoxObservationRequest {
             Self::FlexContentText => {
                 Some(include_bytes!("measurement/flex_content_text_request.json"))
             }
-            Self::OriginalSubgridBody => Some(include_bytes!(
-                "measurement/original_subgrid_body_request.json"
-            )),
+            Self::OriginalSubgridBody => Some(original_subgrid_body_profile::REQUEST),
         }
     }
 }

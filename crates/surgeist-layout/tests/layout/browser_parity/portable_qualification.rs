@@ -543,7 +543,7 @@ const REGISTERED_RELATIVE_INSET_TERMINAL_SHA256: &str =
     "c9f7b4fb0b97275842a1ba027e3006f63e6f73f81fa04b7cbc179e383d25fbac";
 
 const REGISTERED_ORIGINAL_SUBGRID_BODY_TERMINAL_SHA256: &str =
-    "ee82940689e4bfb1cc8a069cad8e7aab3e2be2dd7fc8d7a039fca84bc3661beb";
+    "1f641fd40e947203fdb7db547d9376968199e1a2239a0fd10d055851f6140d9d";
 
 pub(super) fn admit_grid_static_positions(owner: &Path) -> Result<AdmittedEdition> {
     admit(

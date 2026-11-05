@@ -544,7 +544,7 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
                     original_subgrid_body::PROOF_SCRIPT_PATH,
                     proof_sha256.as_str(),
                 ),
-                (ROOT_HELPER_INPUT, FLEX_COMPOSITION_HELPER_SHA256),
+                (ROOT_HELPER_INPUT, original_subgrid_body::HELPER_SHA256),
             ] {
                 if full_inputs.get(path).map(String::as_str) != Some(expected)
                     || excluded_specs.contains(path)

@@ -11,15 +11,12 @@ use super::{
     compare_captured_with_batch,
 };
 
-pub(crate) const SOURCE: &str = "html/subgrid/subgrid_gap_percentage_border_bottom.html";
-pub(crate) const SOURCE_SHA256: &str =
-    "db5cc28750958aa0df6c0692caafd131d284858e435e9fb0a1f6330527deb568";
-pub(crate) const PROOF_SCRIPT_PATH: &str = "scripts/gentest/original_subgrid_body.js";
-pub(crate) const PROOF_SCRIPT: &[u8] =
-    include_bytes!("../../bin/surgeist-layout-generate/measurement/original_subgrid_body.js");
-pub(crate) const REQUEST: &[u8] = include_bytes!(
-    "../../bin/surgeist-layout-generate/measurement/original_subgrid_body_request.json"
-);
+#[path = "../../bin/surgeist-layout-generate/measurement/original_subgrid_body_profile.rs"]
+mod profile;
+pub(crate) use profile::{
+    HELPER_SHA256, REQUEST, SCRIPT_PATH as PROOF_SCRIPT_PATH, SOURCE, SOURCE_SHA256,
+};
+pub(crate) const PROOF_SCRIPT: &[u8] = profile::SCRIPT.as_bytes();
 
 const STEM: &str = "subgrid_gap_percentage_border_bottom";
 const GRID_BORDERS: [&str; 4] = ["border-top", "border-right", "border-bottom", "border-left"];

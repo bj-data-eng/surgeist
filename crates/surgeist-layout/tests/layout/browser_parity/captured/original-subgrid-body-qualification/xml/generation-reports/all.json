@@ -3,7 +3,7 @@
     "schema_version": 4,
     "generator": "surgeist-layout-root-context-qualification",
     "engine_version": "0.2.0",
-    "host_executable_sha256": "8c6014f8aef8472e71caa69217165009e93ce2aedf4a76525c652f77f66ce927",
+    "host_executable_sha256": "6a11a78e66224f9db16222d29d2810c43f01c1b46c514b8c38f3d6d474924c45",
     "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
     "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
     "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
