@@ -827,7 +827,9 @@ fn assert_original_flex_observations(observed: &[exact_differences::ComparedFiel
                 native_height[index],
             ),
         ] {
-            expected.push(ComparedField::layout(path.to_owned(), field, browser, native).unwrap());
+            expected.push(
+                ComparedField::layout(path.to_owned(), field, browser, Some(native)).unwrap(),
+            );
         }
         for (field, (browser, native)) in [
             Element::ClientWidth,

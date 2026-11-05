@@ -273,7 +273,8 @@ enum Field {
         path: String,
         field: LayoutField,
         browser: Number,
-        native: Number,
+        #[serde(deserialize_with = "explicit_nullable")]
+        native: Option<Number>,
     },
     ElementSize {
         path: String,
@@ -340,7 +341,7 @@ impl ComparedField {
         match &self.0 {
             Field::Layout {
                 browser, native, ..
-            } => !numeric_values_match(browser.0, native.0),
+            } => native.is_none_or(|native| !numeric_values_match(browser.0, native.0)),
             Field::ElementSize {
                 browser, native, ..
             } => browser != native,
@@ -350,7 +351,7 @@ impl ComparedField {
         path: String,
         field: NumericComparisonField,
         browser: Scalar,
-        native: Scalar,
+        native: Option<Scalar>,
     ) -> Result<Self> {
         let field = match field {
             NumericComparisonField::X => LayoutField::X,
@@ -364,7 +365,7 @@ impl ComparedField {
             path,
             field,
             browser: Number::new(browser)?,
-            native: Number::new(native)?,
+            native: native.map(Number::new).transpose()?,
         }))
     }
     pub(super) fn element(
@@ -797,6 +798,19 @@ impl ExactDifferenceSpec {
         }
         for difference in &spec.differences {
             source_path(difference.path())?;
+            if matches!(
+                difference.0,
+                Field::Layout {
+                    field: LayoutField::X
+                        | LayoutField::Y
+                        | LayoutField::Width
+                        | LayoutField::Height,
+                    native: None,
+                    ..
+                }
+            ) {
+                return Err(malformed("absent Native value requires a scroll span"));
+            }
             if let Field::ElementSize {
                 browser, native, ..
             } = &difference.0

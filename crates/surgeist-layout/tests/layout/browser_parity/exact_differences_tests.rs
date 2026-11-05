@@ -240,6 +240,7 @@ fn parser_rejects_duplicates_unknown_missing_noncanonical_and_negative_extents()
         "/native/nodes/0/unrounded/facts/scroll/facts/gutter_bottom",
         "/native/nodes/0/final_output/facts/scroll/facts/gutter_left",
         "/native/nodes/0/final_output/facts/source_index",
+        "/differences/0/native",
     ] {
         let mut value = declaration();
         let (parent, key) = pointer.rsplit_once('/').unwrap();
@@ -257,6 +258,13 @@ fn parser_rejects_duplicates_unknown_missing_noncanonical_and_negative_extents()
     let mut value = declaration();
     value["native"]["nodes"][0]["unrounded"]["facts"]["size"]["width"] = json!(-1);
     assert!(ExactDifferenceSpec::parse(&value.to_string()).is_err());
+    let mut value = declaration();
+    value["differences"][0]["native"] = Value::Null;
+    assert!(matches!(
+        ExactDifferenceSpec::parse(&value.to_string()),
+        Err(QualificationError::MalformedDeclaration { reason })
+            if reason == "absent Native value requires a scroll span"
+    ));
     let mut value = declaration();
     value["differences"][0]["browser"] = json!(21.01);
     assert!(ExactDifferenceSpec::parse(&value.to_string()).is_err());
@@ -307,8 +315,13 @@ fn late_terminal_topology_failure_returns_no_completed_comparison() {
 #[test]
 fn normalized_signed_zero_is_exact_and_dom_fields_keep_their_domain() {
     assert_eq!(Number::new(-0.0).unwrap(), Number::new(0.0).unwrap());
-    let layout =
-        ComparedField::layout("/".into(), NumericComparisonField::ScrollWidth, 1.0, 0.0).unwrap();
+    let layout = ComparedField::layout(
+        "/".into(),
+        NumericComparisonField::ScrollWidth,
+        1.0,
+        Some(0.0),
+    )
+    .unwrap();
     let dom = ComparedField::element("/".into(), ElementScrollSizeField::ScrollWidth, 1, 0);
     assert_ne!(layout.key(), dom.key());
 }

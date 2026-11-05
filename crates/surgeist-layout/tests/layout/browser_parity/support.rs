@@ -3735,8 +3735,13 @@ impl NumericComparisonSink {
         if let Self::CollectAll { root, fields } = self {
             let source_path = exact_differences::source_path_from_diagnostic(root, path)?;
             fields.push(
-                exact_differences::ComparedField::layout(source_path, field, expected, actual)
-                    .map_err(|error| Error::new(error.to_string()))?,
+                exact_differences::ComparedField::layout(
+                    source_path,
+                    field,
+                    expected,
+                    Some(actual),
+                )
+                .map_err(|error| Error::new(error.to_string()))?,
             );
             return Ok(());
         }
@@ -3756,6 +3761,30 @@ impl NumericComparisonSink {
                 browser_value: expected,
                 native_value: actual,
             }));
+        }
+        Ok(())
+    }
+
+    fn missing_native_scroll_spans(&mut self, path: &str, browser: Size) -> Result<(), Error> {
+        let Self::CollectAll { root, fields } = self else {
+            return Err(Error::new(format!(
+                "{path}: scroll geometry mismatch, expected canonical geometry"
+            )));
+        };
+        let source_path = exact_differences::source_path_from_diagnostic(root, path)?;
+        for (field, expected) in [
+            (NumericComparisonField::ScrollWidth, browser.width),
+            (NumericComparisonField::ScrollHeight, browser.height),
+        ] {
+            fields.push(
+                exact_differences::ComparedField::layout(
+                    source_path.clone(),
+                    field,
+                    expected,
+                    None,
+                )
+                .map_err(|error| Error::new(error.to_string()))?,
+            );
         }
         Ok(())
     }
@@ -3945,26 +3974,27 @@ fn compare_expectation_in_source_order(
     }
 
     if let Some(expected_scroll_size) = expected.scroll_size {
-        let scroll_geometry = actual.scroll_geometry.ok_or_else(|| {
-            Error::new(format!(
-                "{path}: scroll geometry mismatch, expected canonical geometry"
-            ))
-        })?;
-        let range = scroll_geometry.physical_range();
-        let x_span = range.x().maximum() - range.x().minimum();
-        let y_span = range.y().maximum() - range.y().minimum();
-        comparison_state.numeric.number(
-            path,
-            NumericComparisonField::ScrollWidth,
-            x_span,
-            expected_scroll_size.width,
-        )?;
-        comparison_state.numeric.number(
-            path,
-            NumericComparisonField::ScrollHeight,
-            y_span,
-            expected_scroll_size.height,
-        )?;
+        if let Some(scroll_geometry) = actual.scroll_geometry {
+            let range = scroll_geometry.physical_range();
+            let x_span = range.x().maximum() - range.x().minimum();
+            let y_span = range.y().maximum() - range.y().minimum();
+            comparison_state.numeric.number(
+                path,
+                NumericComparisonField::ScrollWidth,
+                x_span,
+                expected_scroll_size.width,
+            )?;
+            comparison_state.numeric.number(
+                path,
+                NumericComparisonField::ScrollHeight,
+                y_span,
+                expected_scroll_size.height,
+            )?;
+        } else {
+            comparison_state
+                .numeric
+                .missing_native_scroll_spans(path, expected_scroll_size)?;
+        }
     }
 
     if let Some(table) = comparison_state.element_scroll_sizes {
