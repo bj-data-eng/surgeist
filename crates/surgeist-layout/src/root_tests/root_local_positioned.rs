@@ -403,6 +403,82 @@ fn fixed_orthogonal_root<S: LayoutScalar>() {
     }
 }
 
+fn orthogonal_root_clamps_definite_calculation<S: LayoutScalar>() {
+    let mut style = root_style::<S>(Direction::Rtl);
+    style.display = Display::Flex;
+    style.writing_mode = WritingMode::SidewaysRl;
+    style.size = Size::new(
+        PreferredSizeOf::value(LengthPercentageOf::from_coefficients(n(-64.0), n(0.25)).unwrap()),
+        PreferredSizeOf::percent(n(0.25)),
+    );
+    style.min_size.width = MinSizeOf::px(n(12.0));
+    let tree = PublicLayoutTreeOf::new().children(0, []).style(0, style);
+    let context = RootLocalPositionedContextOf::horizontal_auto_insets(
+        Size::new(nn(192.0), nn(80.0)),
+        Direction::Ltr,
+        n(160.0),
+        fallback(),
+    )
+    .unwrap();
+    let request = LayoutRootRequestOf::positioned_root_local(context).unwrap();
+    let batch = compute_layout(&tree, 0, request).unwrap();
+    for finalized in [false, true] {
+        // The definite width calculation resolves to -16 before the normal
+        // zero/minimum floor. The unconstrained height is 25% of 80.
+        assert_eq!(
+            output(&batch, 0, finalized).size,
+            Size::new(n(12.0), n(20.0))
+        );
+    }
+}
+
+fn fixed_orthogonal_root_exclusions<S: LayoutScalar>() {
+    let mut fixed = root_style::<S>(Direction::Rtl);
+    fixed.display = Display::Flex;
+    fixed.writing_mode = WritingMode::SidewaysRl;
+    fixed.size = Size::new(PreferredSizeOf::px(n(72.0)), PreferredSizeOf::px(n(40.0)));
+    let local = request(0.0, Direction::Ltr);
+    let assert_refused = |style, request, reason| {
+        let tree = PublicLayoutTreeOf::new().children(0, []).style(0, style);
+        let error = compute_layout(&tree, 0, request).unwrap_err();
+        assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
+        assert_eq!(error.operation(), LayoutOperation::RootLayout);
+        assert!(
+            matches!(error.kind(), LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::RootContext(actual)) if *actual == reason),
+            "{error:?}"
+        );
+    };
+    for preferred in [
+        PreferredSizeOf::AUTO,
+        PreferredSizeOf::MIN_CONTENT,
+        PreferredSizeOf::MAX_CONTENT,
+    ] {
+        let mut auto_width = fixed.clone();
+        auto_width.size.width = preferred.clone();
+        assert_refused(auto_width, local, RootContextMismatch::WritingMode);
+        let mut auto_height = fixed.clone();
+        auto_height.size.height = preferred;
+        assert_refused(auto_height, local, RootContextMismatch::WritingMode);
+    }
+    let mut padded = fixed.clone();
+    padded.padding.left = LengthOf::px(n(1.0));
+    assert_refused(padded, local, RootContextMismatch::BoxEdges);
+    let mut aligned = fixed.clone();
+    aligned.align_self = Some(AlignItems::Start);
+    assert_refused(aligned, local, RootContextMismatch::Alignment);
+    let mut ratio = fixed.clone();
+    ratio.aspect_ratio = AspectRatioOf::new(S::ONE);
+    assert_refused(ratio, local, RootContextMismatch::AspectRatio);
+    let initial = LayoutRootRequestOf::positioned_auto_insets(
+        PositionedRootContextOf::horizontal_auto_insets(
+            Size::new(nn(192.0), nn(80.0)),
+            Direction::Ltr,
+            fallback(),
+        ),
+    );
+    assert_refused(fixed, initial, RootContextMismatch::WritingMode);
+}
+
 fn independent_fallback<S: LayoutScalar>() {
     let mut root = root_style::<S>(Direction::Ltr);
     root.size.width = PreferredSizeOf::px(n(30.0));
@@ -664,6 +740,16 @@ lanes!(
     root_local_fixed_orthogonal_f32,
     root_local_fixed_orthogonal_f64,
     fixed_orthogonal_root
+);
+lanes!(
+    root_local_fixed_orthogonal_calculation_f32,
+    root_local_fixed_orthogonal_calculation_f64,
+    orthogonal_root_clamps_definite_calculation
+);
+lanes!(
+    root_local_fixed_orthogonal_exclusions_f32,
+    root_local_fixed_orthogonal_exclusions_f64,
+    fixed_orthogonal_root_exclusions
 );
 lanes!(
     root_local_independent_fallback_f32,
