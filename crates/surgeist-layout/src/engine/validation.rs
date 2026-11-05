@@ -76,7 +76,7 @@ pub(crate) fn validate_layout_request_with_text_graph<Tree>(
 where
     Tree: LayoutTree,
 {
-    let graph = discover_graph(tree, root)?;
+    let graph = discover_graph(tree, root, LayoutOperation::CacheInvalidation)?;
     validate_layout_request_with_graph(tree, root, changed_nodes, paragraphs, graph)
 }
 
@@ -101,6 +101,7 @@ pub(crate) fn validate_layout_request_with_graph<Tree: LayoutTree>(
 pub(crate) fn discover_graph<Tree: crate::Traverse, M>(
     tree: &Tree,
     root: Tree::Node,
+    operation: LayoutOperation,
 ) -> LayoutResultOf<Tree::Node, ValidationGraph<Tree::Node>, Tree::Scalar, M> {
     let mut graph = ValidationGraph {
         nodes: vec![root],
@@ -127,7 +128,7 @@ pub(crate) fn discover_graph<Tree: crate::Traverse, M>(
                         container: graph.nodes[parent],
                         subject: child,
                     },
-                    LayoutOperation::CacheInvalidation,
+                    operation,
                     LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::TreeTopologyCycle),
                 ));
             }

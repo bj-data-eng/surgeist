@@ -40,8 +40,9 @@ type ComputeLayoutResult<Tree> = LayoutResultOf<
 /// in-flow inline block before preparing its surrounding text.
 ///
 /// The actual paragraph container must be the principal Block root of the
-/// supplied root-local positioned request. Both its authored preferred
-/// dimensions must resolve independently of its contents. The actual atomic
+/// supplied root-local positioned request. Its authored preferred dimensions
+/// must resolve without leaf measurement or a content-dependent scrollbar
+/// reservation. The actual atomic
 /// must be a direct child reachable by exactly one path in the container's
 /// acyclic topology. Only the container and atomic need box inputs for this
 /// query. The caller supplies the same immutable box inputs, topology and
@@ -77,7 +78,7 @@ where
     let LayoutRootContextOf::RootLocalPositioned(frame) = request.context() else {
         return Err(unsupported());
     };
-    let graph = validation::discover_graph(tree, container)?;
+    let graph = validation::discover_graph(tree, container, LayoutOperation::RootLayout)?;
     let mut direct_atomic = graph.children[0]
         .iter()
         .copied()
