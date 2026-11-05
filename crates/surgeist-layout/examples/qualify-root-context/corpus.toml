@@ -1959,3 +1959,43 @@ hypothetical_direction = "ltr"
 root_direction = "variant"
 root_writing_mode = "horizontal-tb"
 inline_offset = 0
+
+[[records]]
+source = "html/block/block_margin_y_simple_positive_percentage_other.html"
+source_sha256 = "2146de200e90d5ed568a4b4d4c31479b2330590e8553e0f2ec4fa723a3d34506"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "7c1ffb054f43a21c1f4d890fc185449e5e3856b2f5577b967cfd19eb47d168a1"
+content_box_ltr = "1491e998568f8dc8af17cae05d7e47c355ce31b66f8d9caf3fedb60bd80ed45c"
+border_box_rtl = "5b87290b0d1557a9996e9025461179f7a6b8dae685e1caf89b81402d669537f8"
+content_box_rtl = "e33856155f83f8ea3a0669dc933b6a6486ed1062a348c3ec15571e5bfbf60586"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
+
+[[records]]
+source = "html/block/block_margin_y_simple_positive_percentage_self.html"
+source_sha256 = "40f16e809b4aa790199c24a1ce1e1c0507703558cf150e9a95678c77f21bb1a2"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "2131f697615807b2771c52c8056eb6bb592c6dcd900bed4088e09cad9932a906"
+content_box_ltr = "86ccb274375c8a2f2518769c7f355f0f61fa5d61544fbdb7b5ce25ee44417416"
+border_box_rtl = "ccedae56a9c4905b2ecfe9486033d095f46f06750c5dbbb168ffd6026291a3a6"
+content_box_rtl = "5fc7b573e63164ffb96e4be29ef896a896b800a6d0facb29dc5813e3a2ca8ff1"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0

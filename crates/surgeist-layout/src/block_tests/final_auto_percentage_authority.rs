@@ -320,3 +320,125 @@ fn decreasing_auto_block_parent_does_not_resolve_cyclic_child_block_percentage_f
 fn decreasing_auto_block_parent_does_not_resolve_cyclic_child_block_percentage_f64() {
     decreasing_auto_block_keeps_percentage_block_automatic::<f64>();
 }
+
+fn assert_auto_height_retains_percentage_margins<S: LayoutScalar>() {
+    use crate::geometry::{LogicalEdgesOf, LogicalSizeOf};
+
+    for mode in [
+        WritingMode::HorizontalTb,
+        WritingMode::VerticalLr,
+        WritingMode::VerticalRl,
+    ] {
+        let flow = FlowAxes::new(mode, Direction::Ltr);
+        for definite_inline in [false, true] {
+            for width_on_margin_child in [false, true] {
+                let fixed_inline = |fixed| {
+                    if fixed {
+                        PreferredSizeOf::px(scalar::<S>(50.0))
+                    } else {
+                        PreferredSizeOf::AUTO
+                    }
+                };
+                let root = NodeInputOf {
+                    display: Display::Block,
+                    writing_mode: mode,
+                    size: flow.physical_size(LogicalSizeOf::new(
+                        fixed_inline(definite_inline),
+                        PreferredSizeOf::AUTO,
+                    )),
+                    ..NodeInputOf::default()
+                };
+                let percentage = LengthAutoOf::percent(scalar(0.1));
+                let margin_child = NodeInputOf {
+                    display: Display::Block,
+                    writing_mode: mode,
+                    size: flow.physical_size(LogicalSizeOf::new(
+                        fixed_inline(width_on_margin_child),
+                        PreferredSizeOf::px(scalar(10.0)),
+                    )),
+                    margin: flow.physical_edges(LogicalEdgesOf::new(
+                        LengthAutoOf::ZERO,
+                        LengthAutoOf::ZERO,
+                        percentage,
+                        percentage,
+                    )),
+                    ..NodeInputOf::default()
+                };
+                let sibling = NodeInputOf {
+                    display: Display::Block,
+                    writing_mode: mode,
+                    size: flow.physical_size(LogicalSizeOf::new(
+                        fixed_inline(!width_on_margin_child),
+                        PreferredSizeOf::px(scalar(10.0)),
+                    )),
+                    ..NodeInputOf::default()
+                };
+                let tree = PublicLayoutTreeOf::new()
+                    .children(0, [1, 2])
+                    .children(1, [])
+                    .children(2, [])
+                    .style(0, root)
+                    .style(1, margin_child)
+                    .style(2, sibling);
+                let inline =
+                    definite_inline.then(|| NonNegativeFiniteOf::new(scalar(50.0)).unwrap());
+                let parent = flow.physical_size(LogicalSizeOf::new(inline, None));
+                let axes = flow.physical_size(LogicalSizeOf::new(
+                    AxisSizingRequestOf::new(
+                        inline.map_or(AvailableSpaceOf::Indefinite, AvailableSpaceOf::Definite),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ));
+                let request = crate::test_support::requests::NativeRootFrameOf::new(
+                    flow,
+                    parent,
+                    OrthogonalFallbackOf::new(
+                        parent,
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                )
+                .request(axes);
+                let batch = compute_layout(&tree, 0, request).unwrap();
+                for entries in [batch.unrounded_entries(), batch.final_entries()] {
+                    let output = |node| {
+                        entries
+                            .iter()
+                            .find(|entry| entry.node() == node)
+                            .unwrap()
+                            .output()
+                    };
+                    let context = (mode, definite_inline, width_on_margin_child);
+                    assert_eq!(output(0).size, physical(mode, 50.0, 30.0), "{context:?}");
+                    for (node, offset) in [(1, 5.0), (2, 20.0)] {
+                        let position = match mode {
+                            WritingMode::HorizontalTb => Point::new(S::ZERO, scalar(offset)),
+                            WritingMode::VerticalLr => Point::new(scalar(offset), S::ZERO),
+                            WritingMode::VerticalRl => Point::new(scalar(20.0 - offset), S::ZERO),
+                            _ => unreachable!("fixture only uses horizontal and upright vertical"),
+                        };
+                        assert_eq!(output(node).size, physical(mode, 50.0, 10.0), "{context:?}");
+                        assert_eq!(output(node).location, position, "{context:?}");
+                    }
+                    let margins = flow.logical_edges(output(1).margin);
+                    assert_eq!(
+                        (margins.block_start, margins.block_end),
+                        (scalar(5.0), scalar(5.0)),
+                        "{context:?}",
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn final_auto_height_retains_resolved_percentage_margins_f32() {
+    assert_auto_height_retains_percentage_margins::<f32>();
+}
+
+#[test]
+fn final_auto_height_retains_resolved_percentage_margins_f64() {
+    assert_auto_height_retains_percentage_margins::<f64>();
+}
