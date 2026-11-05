@@ -6751,7 +6751,8 @@ fn assert_flex_basis_does_not_replace_intrinsic_content<S: LayoutScalar>() {
         ..Fri07C01CompositionTree::new()
     };
 
-    for root_request in [normal, max_content, normal] {
+    for (index, root_request) in [normal, max_content, normal].into_iter().enumerate() {
+        tree.cache_queries.borrow_mut().clear();
         let batch = compute_layout(&tree, 1, root_request).expect("flex layout succeeds");
         for entries in [batch.unrounded_entries(), batch.final_entries()] {
             let output = |node| fri07_c01_composition_output(entries, node);
@@ -6759,27 +6760,81 @@ fn assert_flex_basis_does_not_replace_intrinsic_content<S: LayoutScalar>() {
             assert_eq!(output(3).size, Size::new(scalar(20.0), scalar(100.0)));
             assert_eq!(output(5).size, Size::new(scalar(20.0), scalar(10.0)));
         }
+        if index == 2 {
+            assert!(tree.cache_queries.borrow().iter().any(|(_, hit)| *hit));
+        }
         batch
             .apply_to(&mut tree)
             .expect("cache publication succeeds");
+    }
+
+    for (shrink, expected) in [(1.0, 0.0), (0.0, 50.0)] {
+        let empty = PublicLayoutTreeOf::new()
+            .children(1, [3])
+            .children(3, [])
+            .style(1, root.clone())
+            .style(
+                3,
+                NodeInputOf {
+                    flex_shrink: FlexShrinkOf::try_new(scalar(shrink)).unwrap(),
+                    ..item.clone()
+                },
+            );
+        let batch = compute_layout(&empty, 1, normal).expect("empty flex layout succeeds");
+        for node in [1, 3] {
+            let output = fri07_c01_composition_output(batch.unrounded_entries(), node);
+            assert_eq!(
+                output.size.width,
+                scalar(expected),
+                "empty, shrink {shrink}"
+            );
+        }
+    }
+
+    let mut preferred = item.clone();
+    preferred.size.width = px(35.0);
+    let mut padded = item.clone();
+    padded.box_sizing = BoxSizing::ContentBox;
+    padded.padding.left = LengthOf::px(scalar(5.0));
+    padded.padding.right = LengthOf::px(scalar(5.0));
+    let mut minimum = item.clone();
+    minimum.min_size.width = MinSizeOf::px(scalar(35.0));
+    let mut maximum = item.clone();
+    maximum.max_size.width = MaxSizeOf::px(scalar(15.0));
+    for (label, style, expected) in [
+        ("preferred", preferred, 35.0),
+        ("padding", padded, 30.0),
+        ("minimum", minimum, 35.0),
+        ("maximum", maximum, 15.0),
+    ] {
+        let constrained = tree.tree.clone().style(3, style);
+        let batch =
+            compute_layout(&constrained, 1, normal).expect("constrained flex layout succeeds");
+        let output = |node| fri07_c01_composition_output(batch.unrounded_entries(), node);
+        assert_eq!(output(1).size.width, scalar(expected), "{label}: root");
+        assert_eq!(output(3).size.width, scalar(expected), "{label}: item");
+        assert_eq!(output(5).size.width, scalar(20.0), "{label}: block");
     }
 
     let definite_root = NodeInputOf {
         size: Size::new(px(100.0), PreferredSizeOf::AUTO),
         ..root
     };
-    let definite_tree = PublicLayoutTreeOf::new()
-        .children(1, [3])
-        .children(3, [5])
-        .children(5, [])
-        .style(1, definite_root)
-        .style(3, item)
-        .style(5, block);
-    let batch = compute_layout(&definite_tree, 1, normal).expect("definite flex layout succeeds");
-    let output = |node| fri07_c01_composition_output(batch.unrounded_entries(), node);
-    assert_eq!(output(1).size.width, scalar(100.0));
-    assert_eq!(output(3).size.width, scalar(50.0));
-    assert_eq!(output(5).size.width, scalar(20.0));
+    for (grow, expected) in [(0.0, 50.0), (1.0, 100.0)] {
+        let definite = tree.tree.clone().style(1, definite_root.clone()).style(
+            3,
+            NodeInputOf {
+                flex_grow: FlexGrowOf::try_new(scalar(grow)).unwrap(),
+                ..item.clone()
+            },
+        );
+        let batch = compute_layout(&definite, 1, normal).expect("definite flex layout succeeds");
+        let output = |node| fri07_c01_composition_output(batch.unrounded_entries(), node);
+        assert_eq!(output(1).size.width, scalar(100.0));
+        assert_eq!(output(3).size.width, scalar(expected));
+        assert_eq!(output(3).content_size.width, scalar(expected));
+        assert_eq!(output(5).size.width, scalar(20.0));
+    }
 }
 
 #[test]
