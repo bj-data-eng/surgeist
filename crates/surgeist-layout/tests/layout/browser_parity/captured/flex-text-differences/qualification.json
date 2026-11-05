@@ -1,0 +1,1171 @@
+{
+  "schema_version": 2,
+  "edition": "flex-text-differences",
+  "declaration": {
+    "path": "corpus.toml",
+    "sha256": "fcec66c9132ea201df177665517877c7f31038639bbc78127e26960d5401ab59"
+  },
+  "records": [
+    {
+      "source": "html/flex/fri07_collapsed_strut_single_line.html",
+      "sha256": "0409020c513d9949c248d79036220d1d2a50cd67095ba4b95c0208bd2454279e",
+      "value": {
+        "expected": {
+          "kind": "generated",
+          "metadata": {
+            "containing_direction": "ltr",
+            "context": "absolute-local",
+            "hypothetical_direction": "ltr",
+            "hypothetical_display": "flex",
+            "inline_offset": 0.0,
+            "root_direction": "variant",
+            "root_size": null,
+            "root_writing_mode": "horizontal-tb"
+          }
+        },
+        "historical_sha256": {
+          "border_box_ltr": "d2adc703ffd8386e2f1bdeb5a0c8da2a2dc982c6e6966f467c4a12814824383f",
+          "border_box_rtl": "cc01070476de0dc10a3585bedb3f8ad0e1484993aa48e3f0b535fe6a37762813",
+          "content_box_ltr": "6b87be5b7a3198f54988a0077c40a04b993075dd43ad0b43abbe13a49bd19975",
+          "content_box_rtl": "f4de5a54bd81e97f8c2aacc2701808b588eea9827cff941d56343d0e1df7cef1"
+        },
+        "relation": null,
+        "semantic_specifications": {
+          "border_box_ltr": {
+            "path": "semantic/collapsed-flex-text-border_box_ltr.json",
+            "sha256": "53941ca0729874fc2647eaedc7a3184b955dc0b82b77dbe3492361984878b117"
+          },
+          "border_box_rtl": {
+            "path": "semantic/collapsed-flex-text-border_box_rtl.json",
+            "sha256": "27061275fb1d30713187a39b00e5d0c2a798c2f2bb5cd6fbff2a1e1e4e7522ac"
+          },
+          "content_box_ltr": {
+            "path": "semantic/collapsed-flex-text-content_box_ltr.json",
+            "sha256": "be5c603ffea2bff6ddbdce106ecc91f521a9e00c62498bce2a6758f251df3fed"
+          },
+          "content_box_rtl": {
+            "path": "semantic/collapsed-flex-text-content_box_rtl.json",
+            "sha256": "0f5feaa5d6b92e77cf5a80790e37b32b010ac7ea4599f3a34c276201949ae9da"
+          }
+        },
+        "source": "html/flex/fri07_collapsed_strut_single_line.html",
+        "source_kind": "original",
+        "source_sha256": "4208c20c25da2183ce9831c629bdf18e4bd35be0a5c6875e1840d972ecd1cbad"
+      }
+    }
+  ],
+  "browser_settings": {"source":"chrome-for-testing","version":"149.0.7827.115","version_output":"Google Chrome for Testing 149.0.7827.115","cache_root":"tmp/surgeist-browser","provenance_format":"chrome-for-testing/{version} ({repository_relative_executable})","launch":{"batch_size":50,"navigation_timeout_ms":10000,"dom_poll_interval_ms":25,"arguments":["headless=new","mute-audio","disable-background-networking","disable-background-timer-throttling","disable-backgrounding-occluded-windows","disable-breakpad","disable-client-side-phishing-detection","disable-component-extensions-with-background-pages","disable-component-update","disable-default-apps","disable-dev-shm-usage","disable-domain-reliability","disable-features=TranslateUI,MediaRouter,OptimizationHints,AutofillServerCommunication","disable-hang-monitor","disable-ipc-flooding-protection","disable-popup-blocking","disable-prompt-on-repost","disable-renderer-backgrounding","disable-sync","enable-automation","enable-blink-features=IdleDetection,CSSGridLanesLayout","enable-features=NetworkService,NetworkServiceInProcess","force-color-profile=srgb","lang=en_US","metrics-recording-only","no-default-browser-check","no-first-run","use-mock-keychain"]}},
+  "report": {
+    "path": "xml/generation-reports/all.json",
+    "sha256": "6bf416c74f9ca6db669a769a5238019da539a70febfa018cc0e1eae465b631f1"
+  },
+  "ownership": {
+    "path": "xml/generation-ownership.json",
+    "sha256": "6c31b1d1f8f01d865a8df3500d91d335a0ab7f333b741c6df7cd360516710b56"
+  },
+  "cases": [
+    {
+      "case": {
+        "name": "fri07_collapsed_strut_single_line__border_box_ltr",
+        "source": "html/flex/fri07_collapsed_strut_single_line.html",
+        "variant": "border_box_ltr",
+        "output": {
+          "path": "xml/flex/fri07_collapsed_strut_single_line__border_box_ltr.xml",
+          "sha256": "73b0fb098404d36a6cbce40107652b4b7ecf2305f8010d7579928eb089562774"
+        },
+        "record_sha256": "0409020c513d9949c248d79036220d1d2a50cd67095ba4b95c0208bd2454279e"
+      },
+      "spec": {
+        "path": "semantic/collapsed-flex-text-border_box_ltr.json",
+        "sha256": "53941ca0729874fc2647eaedc7a3184b955dc0b82b77dbe3492361984878b117"
+      },
+      "policy": {
+        "path": "semantic/collapsed-flex-text-policy.md",
+        "sha256": "6baf58289a91efd51ddd851bcb4bfe4b291e49243c4cf7762638175b66dcb224"
+      },
+      "historical": {
+        "path": "historical/flex/fri07_collapsed_strut_single_line__border_box_ltr.xml",
+        "sha256": "d2adc703ffd8386e2f1bdeb5a0c8da2a2dc982c6e6966f467c4a12814824383f"
+      },
+      "requirements": {
+        "case_id": "fri07_collapsed_strut_single_line__border_box_ltr",
+        "output": "xml/flex/fri07_collapsed_strut_single_line__border_box_ltr.xml",
+        "frame": "root-border-local",
+        "domain": "layout-and-element-sizes",
+        "selectors": [
+          {
+            "path": "/",
+            "field": "x"
+          },
+          {
+            "path": "/",
+            "field": "y"
+          },
+          {
+            "path": "/",
+            "field": "width"
+          },
+          {
+            "path": "/",
+            "field": "height"
+          },
+          {
+            "path": "/",
+            "field": "client-width"
+          },
+          {
+            "path": "/",
+            "field": "client-height"
+          },
+          {
+            "path": "/",
+            "field": "scroll-width"
+          },
+          {
+            "path": "/",
+            "field": "scroll-height"
+          },
+          {
+            "path": "/0",
+            "field": "x"
+          },
+          {
+            "path": "/0",
+            "field": "y"
+          },
+          {
+            "path": "/0",
+            "field": "width"
+          },
+          {
+            "path": "/0",
+            "field": "height"
+          },
+          {
+            "path": "/0",
+            "field": "client-width"
+          },
+          {
+            "path": "/0",
+            "field": "client-height"
+          },
+          {
+            "path": "/0",
+            "field": "scroll-width"
+          },
+          {
+            "path": "/0",
+            "field": "scroll-height"
+          },
+          {
+            "path": "/1",
+            "field": "x"
+          },
+          {
+            "path": "/1",
+            "field": "y"
+          },
+          {
+            "path": "/1",
+            "field": "width"
+          },
+          {
+            "path": "/1",
+            "field": "height"
+          },
+          {
+            "path": "/1",
+            "field": "client-width"
+          },
+          {
+            "path": "/1",
+            "field": "client-height"
+          },
+          {
+            "path": "/1",
+            "field": "scroll-width"
+          },
+          {
+            "path": "/1",
+            "field": "scroll-height"
+          },
+          {
+            "path": "/2",
+            "field": "x"
+          },
+          {
+            "path": "/2",
+            "field": "y"
+          },
+          {
+            "path": "/2",
+            "field": "width"
+          },
+          {
+            "path": "/2",
+            "field": "height"
+          },
+          {
+            "path": "/2",
+            "field": "client-width"
+          },
+          {
+            "path": "/2",
+            "field": "client-height"
+          },
+          {
+            "path": "/2",
+            "field": "scroll-width"
+          },
+          {
+            "path": "/2",
+            "field": "scroll-height"
+          },
+          {
+            "path": "/3",
+            "field": "x"
+          },
+          {
+            "path": "/3",
+            "field": "y"
+          },
+          {
+            "path": "/3",
+            "field": "width"
+          },
+          {
+            "path": "/3",
+            "field": "height"
+          },
+          {
+            "path": "/3",
+            "field": "client-width"
+          },
+          {
+            "path": "/3",
+            "field": "client-height"
+          },
+          {
+            "path": "/3",
+            "field": "scroll-width"
+          },
+          {
+            "path": "/3",
+            "field": "scroll-height"
+          }
+        ],
+        "nodes": [
+          "/",
+          "/0",
+          "/1",
+          "/2",
+          "/3"
+        ],
+        "unrounded_packets": [
+          "/",
+          "/0",
+          "/0/0",
+          "/0/0/0",
+          "/1",
+          "/1/0",
+          "/1/0/0",
+          "/2",
+          "/2/0",
+          "/2/0/0",
+          "/3",
+          "/3/0",
+          "/3/0/0"
+        ],
+        "final_packets": [
+          "/",
+          "/0",
+          "/0/0",
+          "/0/0/0",
+          "/1",
+          "/1/0",
+          "/1/0/0",
+          "/2",
+          "/2/0",
+          "/2/0/0",
+          "/3",
+          "/3/0",
+          "/3/0/0"
+        ]
+      },
+      "identity": {
+        "source": "html/flex/fri07_collapsed_strut_single_line.html",
+        "source_sha256": "4208c20c25da2183ce9831c629bdf18e4bd35be0a5c6875e1840d972ecd1cbad",
+        "variant": "border_box_ltr",
+        "historical_sha256": "d2adc703ffd8386e2f1bdeb5a0c8da2a2dc982c6e6966f467c4a12814824383f",
+        "capture_sha256": "73b0fb098404d36a6cbce40107652b4b7ecf2305f8010d7579928eb089562774",
+        "record_sha256": "0409020c513d9949c248d79036220d1d2a50cd67095ba4b95c0208bd2454279e",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "661e658402dff8f926ee125c2e48294065d0a5202adbc0d9d96130a52fb2310e",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/flex/fri07_collapsed_strut_single_line__border_box_ltr.xml": "d2adc703ffd8386e2f1bdeb5a0c8da2a2dc982c6e6966f467c4a12814824383f",
+          "historical/flex/fri07_collapsed_strut_single_line__border_box_rtl.xml": "cc01070476de0dc10a3585bedb3f8ad0e1484993aa48e3f0b535fe6a37762813",
+          "historical/flex/fri07_collapsed_strut_single_line__content_box_ltr.xml": "6b87be5b7a3198f54988a0077c40a04b993075dd43ad0b43abbe13a49bd19975",
+          "historical/flex/fri07_collapsed_strut_single_line__content_box_rtl.xml": "f4de5a54bd81e97f8c2aacc2701808b588eea9827cff941d56343d0e1df7cef1",
+          "html/flex/fri07_collapsed_strut_single_line.html": "4208c20c25da2183ce9831c629bdf18e4bd35be0a5c6875e1840d972ecd1cbad",
+          "observation-request.json": "1148009cb8ef089475a09c1a9cda8ab19ac8693c0f4af141f0f2586e173742e5",
+          "origin/selected-originals.json": "023723104f100be2d9f4775e0f87f04e31f6bf073e276e9b2e0de28da600fc2a",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/flex_content_text.js": "dbc5513b959c33231ea177c294458723e0fafeb154c6af4a391406f73708f189",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee",
+          "semantic/collapsed-flex-text-policy.md": "6baf58289a91efd51ddd851bcb4bfe4b291e49243c4cf7762638175b66dcb224"
+        },
+        "linked_resources": {},
+        "font_demand": "ahem-10px-flex-direct-text",
+        "policy_source_sha256": "6baf58289a91efd51ddd851bcb4bfe4b291e49243c4cf7762638175b66dcb224"
+      }
+    },
+    {
+      "case": {
+        "name": "fri07_collapsed_strut_single_line__border_box_rtl",
+        "source": "html/flex/fri07_collapsed_strut_single_line.html",
+        "variant": "border_box_rtl",
+        "output": {
+          "path": "xml/flex/fri07_collapsed_strut_single_line__border_box_rtl.xml",
+          "sha256": "a692f584b18cb2114e1d1beefe241d1144ecd4d214355b54dd0eafdc823fe71f"
+        },
+        "record_sha256": "0409020c513d9949c248d79036220d1d2a50cd67095ba4b95c0208bd2454279e"
+      },
+      "spec": {
+        "path": "semantic/collapsed-flex-text-border_box_rtl.json",
+        "sha256": "27061275fb1d30713187a39b00e5d0c2a798c2f2bb5cd6fbff2a1e1e4e7522ac"
+      },
+      "policy": {
+        "path": "semantic/collapsed-flex-text-policy.md",
+        "sha256": "6baf58289a91efd51ddd851bcb4bfe4b291e49243c4cf7762638175b66dcb224"
+      },
+      "historical": {
+        "path": "historical/flex/fri07_collapsed_strut_single_line__border_box_rtl.xml",
+        "sha256": "cc01070476de0dc10a3585bedb3f8ad0e1484993aa48e3f0b535fe6a37762813"
+      },
+      "requirements": {
+        "case_id": "fri07_collapsed_strut_single_line__border_box_rtl",
+        "output": "xml/flex/fri07_collapsed_strut_single_line__border_box_rtl.xml",
+        "frame": "root-border-local",
+        "domain": "layout-and-element-sizes",
+        "selectors": [
+          {
+            "path": "/",
+            "field": "x"
+          },
+          {
+            "path": "/",
+            "field": "y"
+          },
+          {
+            "path": "/",
+            "field": "width"
+          },
+          {
+            "path": "/",
+            "field": "height"
+          },
+          {
+            "path": "/",
+            "field": "client-width"
+          },
+          {
+            "path": "/",
+            "field": "client-height"
+          },
+          {
+            "path": "/",
+            "field": "scroll-width"
+          },
+          {
+            "path": "/",
+            "field": "scroll-height"
+          },
+          {
+            "path": "/0",
+            "field": "x"
+          },
+          {
+            "path": "/0",
+            "field": "y"
+          },
+          {
+            "path": "/0",
+            "field": "width"
+          },
+          {
+            "path": "/0",
+            "field": "height"
+          },
+          {
+            "path": "/0",
+            "field": "client-width"
+          },
+          {
+            "path": "/0",
+            "field": "client-height"
+          },
+          {
+            "path": "/0",
+            "field": "scroll-width"
+          },
+          {
+            "path": "/0",
+            "field": "scroll-height"
+          },
+          {
+            "path": "/1",
+            "field": "x"
+          },
+          {
+            "path": "/1",
+            "field": "y"
+          },
+          {
+            "path": "/1",
+            "field": "width"
+          },
+          {
+            "path": "/1",
+            "field": "height"
+          },
+          {
+            "path": "/1",
+            "field": "client-width"
+          },
+          {
+            "path": "/1",
+            "field": "client-height"
+          },
+          {
+            "path": "/1",
+            "field": "scroll-width"
+          },
+          {
+            "path": "/1",
+            "field": "scroll-height"
+          },
+          {
+            "path": "/2",
+            "field": "x"
+          },
+          {
+            "path": "/2",
+            "field": "y"
+          },
+          {
+            "path": "/2",
+            "field": "width"
+          },
+          {
+            "path": "/2",
+            "field": "height"
+          },
+          {
+            "path": "/2",
+            "field": "client-width"
+          },
+          {
+            "path": "/2",
+            "field": "client-height"
+          },
+          {
+            "path": "/2",
+            "field": "scroll-width"
+          },
+          {
+            "path": "/2",
+            "field": "scroll-height"
+          },
+          {
+            "path": "/3",
+            "field": "x"
+          },
+          {
+            "path": "/3",
+            "field": "y"
+          },
+          {
+            "path": "/3",
+            "field": "width"
+          },
+          {
+            "path": "/3",
+            "field": "height"
+          },
+          {
+            "path": "/3",
+            "field": "client-width"
+          },
+          {
+            "path": "/3",
+            "field": "client-height"
+          },
+          {
+            "path": "/3",
+            "field": "scroll-width"
+          },
+          {
+            "path": "/3",
+            "field": "scroll-height"
+          }
+        ],
+        "nodes": [
+          "/",
+          "/0",
+          "/1",
+          "/2",
+          "/3"
+        ],
+        "unrounded_packets": [
+          "/",
+          "/0",
+          "/0/0",
+          "/0/0/0",
+          "/1",
+          "/1/0",
+          "/1/0/0",
+          "/2",
+          "/2/0",
+          "/2/0/0",
+          "/3",
+          "/3/0",
+          "/3/0/0"
+        ],
+        "final_packets": [
+          "/",
+          "/0",
+          "/0/0",
+          "/0/0/0",
+          "/1",
+          "/1/0",
+          "/1/0/0",
+          "/2",
+          "/2/0",
+          "/2/0/0",
+          "/3",
+          "/3/0",
+          "/3/0/0"
+        ]
+      },
+      "identity": {
+        "source": "html/flex/fri07_collapsed_strut_single_line.html",
+        "source_sha256": "4208c20c25da2183ce9831c629bdf18e4bd35be0a5c6875e1840d972ecd1cbad",
+        "variant": "border_box_rtl",
+        "historical_sha256": "cc01070476de0dc10a3585bedb3f8ad0e1484993aa48e3f0b535fe6a37762813",
+        "capture_sha256": "a692f584b18cb2114e1d1beefe241d1144ecd4d214355b54dd0eafdc823fe71f",
+        "record_sha256": "0409020c513d9949c248d79036220d1d2a50cd67095ba4b95c0208bd2454279e",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "c91ad7bebcf941f9a4dc245f8490fc5059ce2080bf39a3800d6cae622008a7c5",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/flex/fri07_collapsed_strut_single_line__border_box_ltr.xml": "d2adc703ffd8386e2f1bdeb5a0c8da2a2dc982c6e6966f467c4a12814824383f",
+          "historical/flex/fri07_collapsed_strut_single_line__border_box_rtl.xml": "cc01070476de0dc10a3585bedb3f8ad0e1484993aa48e3f0b535fe6a37762813",
+          "historical/flex/fri07_collapsed_strut_single_line__content_box_ltr.xml": "6b87be5b7a3198f54988a0077c40a04b993075dd43ad0b43abbe13a49bd19975",
+          "historical/flex/fri07_collapsed_strut_single_line__content_box_rtl.xml": "f4de5a54bd81e97f8c2aacc2701808b588eea9827cff941d56343d0e1df7cef1",
+          "html/flex/fri07_collapsed_strut_single_line.html": "4208c20c25da2183ce9831c629bdf18e4bd35be0a5c6875e1840d972ecd1cbad",
+          "observation-request.json": "1148009cb8ef089475a09c1a9cda8ab19ac8693c0f4af141f0f2586e173742e5",
+          "origin/selected-originals.json": "023723104f100be2d9f4775e0f87f04e31f6bf073e276e9b2e0de28da600fc2a",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/flex_content_text.js": "dbc5513b959c33231ea177c294458723e0fafeb154c6af4a391406f73708f189",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee",
+          "semantic/collapsed-flex-text-policy.md": "6baf58289a91efd51ddd851bcb4bfe4b291e49243c4cf7762638175b66dcb224"
+        },
+        "linked_resources": {},
+        "font_demand": "ahem-10px-flex-direct-text",
+        "policy_source_sha256": "6baf58289a91efd51ddd851bcb4bfe4b291e49243c4cf7762638175b66dcb224"
+      }
+    },
+    {
+      "case": {
+        "name": "fri07_collapsed_strut_single_line__content_box_ltr",
+        "source": "html/flex/fri07_collapsed_strut_single_line.html",
+        "variant": "content_box_ltr",
+        "output": {
+          "path": "xml/flex/fri07_collapsed_strut_single_line__content_box_ltr.xml",
+          "sha256": "7a8123b177ebec45840b3be8b42a05be77e9a92ba6682eae3a5f53fb06cde64b"
+        },
+        "record_sha256": "0409020c513d9949c248d79036220d1d2a50cd67095ba4b95c0208bd2454279e"
+      },
+      "spec": {
+        "path": "semantic/collapsed-flex-text-content_box_ltr.json",
+        "sha256": "be5c603ffea2bff6ddbdce106ecc91f521a9e00c62498bce2a6758f251df3fed"
+      },
+      "policy": {
+        "path": "semantic/collapsed-flex-text-policy.md",
+        "sha256": "6baf58289a91efd51ddd851bcb4bfe4b291e49243c4cf7762638175b66dcb224"
+      },
+      "historical": {
+        "path": "historical/flex/fri07_collapsed_strut_single_line__content_box_ltr.xml",
+        "sha256": "6b87be5b7a3198f54988a0077c40a04b993075dd43ad0b43abbe13a49bd19975"
+      },
+      "requirements": {
+        "case_id": "fri07_collapsed_strut_single_line__content_box_ltr",
+        "output": "xml/flex/fri07_collapsed_strut_single_line__content_box_ltr.xml",
+        "frame": "root-border-local",
+        "domain": "layout-and-element-sizes",
+        "selectors": [
+          {
+            "path": "/",
+            "field": "x"
+          },
+          {
+            "path": "/",
+            "field": "y"
+          },
+          {
+            "path": "/",
+            "field": "width"
+          },
+          {
+            "path": "/",
+            "field": "height"
+          },
+          {
+            "path": "/",
+            "field": "client-width"
+          },
+          {
+            "path": "/",
+            "field": "client-height"
+          },
+          {
+            "path": "/",
+            "field": "scroll-width"
+          },
+          {
+            "path": "/",
+            "field": "scroll-height"
+          },
+          {
+            "path": "/0",
+            "field": "x"
+          },
+          {
+            "path": "/0",
+            "field": "y"
+          },
+          {
+            "path": "/0",
+            "field": "width"
+          },
+          {
+            "path": "/0",
+            "field": "height"
+          },
+          {
+            "path": "/0",
+            "field": "client-width"
+          },
+          {
+            "path": "/0",
+            "field": "client-height"
+          },
+          {
+            "path": "/0",
+            "field": "scroll-width"
+          },
+          {
+            "path": "/0",
+            "field": "scroll-height"
+          },
+          {
+            "path": "/1",
+            "field": "x"
+          },
+          {
+            "path": "/1",
+            "field": "y"
+          },
+          {
+            "path": "/1",
+            "field": "width"
+          },
+          {
+            "path": "/1",
+            "field": "height"
+          },
+          {
+            "path": "/1",
+            "field": "client-width"
+          },
+          {
+            "path": "/1",
+            "field": "client-height"
+          },
+          {
+            "path": "/1",
+            "field": "scroll-width"
+          },
+          {
+            "path": "/1",
+            "field": "scroll-height"
+          },
+          {
+            "path": "/2",
+            "field": "x"
+          },
+          {
+            "path": "/2",
+            "field": "y"
+          },
+          {
+            "path": "/2",
+            "field": "width"
+          },
+          {
+            "path": "/2",
+            "field": "height"
+          },
+          {
+            "path": "/2",
+            "field": "client-width"
+          },
+          {
+            "path": "/2",
+            "field": "client-height"
+          },
+          {
+            "path": "/2",
+            "field": "scroll-width"
+          },
+          {
+            "path": "/2",
+            "field": "scroll-height"
+          },
+          {
+            "path": "/3",
+            "field": "x"
+          },
+          {
+            "path": "/3",
+            "field": "y"
+          },
+          {
+            "path": "/3",
+            "field": "width"
+          },
+          {
+            "path": "/3",
+            "field": "height"
+          },
+          {
+            "path": "/3",
+            "field": "client-width"
+          },
+          {
+            "path": "/3",
+            "field": "client-height"
+          },
+          {
+            "path": "/3",
+            "field": "scroll-width"
+          },
+          {
+            "path": "/3",
+            "field": "scroll-height"
+          }
+        ],
+        "nodes": [
+          "/",
+          "/0",
+          "/1",
+          "/2",
+          "/3"
+        ],
+        "unrounded_packets": [
+          "/",
+          "/0",
+          "/0/0",
+          "/0/0/0",
+          "/1",
+          "/1/0",
+          "/1/0/0",
+          "/2",
+          "/2/0",
+          "/2/0/0",
+          "/3",
+          "/3/0",
+          "/3/0/0"
+        ],
+        "final_packets": [
+          "/",
+          "/0",
+          "/0/0",
+          "/0/0/0",
+          "/1",
+          "/1/0",
+          "/1/0/0",
+          "/2",
+          "/2/0",
+          "/2/0/0",
+          "/3",
+          "/3/0",
+          "/3/0/0"
+        ]
+      },
+      "identity": {
+        "source": "html/flex/fri07_collapsed_strut_single_line.html",
+        "source_sha256": "4208c20c25da2183ce9831c629bdf18e4bd35be0a5c6875e1840d972ecd1cbad",
+        "variant": "content_box_ltr",
+        "historical_sha256": "6b87be5b7a3198f54988a0077c40a04b993075dd43ad0b43abbe13a49bd19975",
+        "capture_sha256": "7a8123b177ebec45840b3be8b42a05be77e9a92ba6682eae3a5f53fb06cde64b",
+        "record_sha256": "0409020c513d9949c248d79036220d1d2a50cd67095ba4b95c0208bd2454279e",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "02b688e3a47747f7b82ad3bc253cd25dad692b90aa112c6fc3a4e16b673c5de9",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/flex/fri07_collapsed_strut_single_line__border_box_ltr.xml": "d2adc703ffd8386e2f1bdeb5a0c8da2a2dc982c6e6966f467c4a12814824383f",
+          "historical/flex/fri07_collapsed_strut_single_line__border_box_rtl.xml": "cc01070476de0dc10a3585bedb3f8ad0e1484993aa48e3f0b535fe6a37762813",
+          "historical/flex/fri07_collapsed_strut_single_line__content_box_ltr.xml": "6b87be5b7a3198f54988a0077c40a04b993075dd43ad0b43abbe13a49bd19975",
+          "historical/flex/fri07_collapsed_strut_single_line__content_box_rtl.xml": "f4de5a54bd81e97f8c2aacc2701808b588eea9827cff941d56343d0e1df7cef1",
+          "html/flex/fri07_collapsed_strut_single_line.html": "4208c20c25da2183ce9831c629bdf18e4bd35be0a5c6875e1840d972ecd1cbad",
+          "observation-request.json": "1148009cb8ef089475a09c1a9cda8ab19ac8693c0f4af141f0f2586e173742e5",
+          "origin/selected-originals.json": "023723104f100be2d9f4775e0f87f04e31f6bf073e276e9b2e0de28da600fc2a",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/flex_content_text.js": "dbc5513b959c33231ea177c294458723e0fafeb154c6af4a391406f73708f189",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee",
+          "semantic/collapsed-flex-text-policy.md": "6baf58289a91efd51ddd851bcb4bfe4b291e49243c4cf7762638175b66dcb224"
+        },
+        "linked_resources": {},
+        "font_demand": "ahem-10px-flex-direct-text",
+        "policy_source_sha256": "6baf58289a91efd51ddd851bcb4bfe4b291e49243c4cf7762638175b66dcb224"
+      }
+    },
+    {
+      "case": {
+        "name": "fri07_collapsed_strut_single_line__content_box_rtl",
+        "source": "html/flex/fri07_collapsed_strut_single_line.html",
+        "variant": "content_box_rtl",
+        "output": {
+          "path": "xml/flex/fri07_collapsed_strut_single_line__content_box_rtl.xml",
+          "sha256": "5a8dc26c763e710f9a1685f9c9f24e0affc63c43443cf8e7ab5b3e2906a83e17"
+        },
+        "record_sha256": "0409020c513d9949c248d79036220d1d2a50cd67095ba4b95c0208bd2454279e"
+      },
+      "spec": {
+        "path": "semantic/collapsed-flex-text-content_box_rtl.json",
+        "sha256": "0f5feaa5d6b92e77cf5a80790e37b32b010ac7ea4599f3a34c276201949ae9da"
+      },
+      "policy": {
+        "path": "semantic/collapsed-flex-text-policy.md",
+        "sha256": "6baf58289a91efd51ddd851bcb4bfe4b291e49243c4cf7762638175b66dcb224"
+      },
+      "historical": {
+        "path": "historical/flex/fri07_collapsed_strut_single_line__content_box_rtl.xml",
+        "sha256": "f4de5a54bd81e97f8c2aacc2701808b588eea9827cff941d56343d0e1df7cef1"
+      },
+      "requirements": {
+        "case_id": "fri07_collapsed_strut_single_line__content_box_rtl",
+        "output": "xml/flex/fri07_collapsed_strut_single_line__content_box_rtl.xml",
+        "frame": "root-border-local",
+        "domain": "layout-and-element-sizes",
+        "selectors": [
+          {
+            "path": "/",
+            "field": "x"
+          },
+          {
+            "path": "/",
+            "field": "y"
+          },
+          {
+            "path": "/",
+            "field": "width"
+          },
+          {
+            "path": "/",
+            "field": "height"
+          },
+          {
+            "path": "/",
+            "field": "client-width"
+          },
+          {
+            "path": "/",
+            "field": "client-height"
+          },
+          {
+            "path": "/",
+            "field": "scroll-width"
+          },
+          {
+            "path": "/",
+            "field": "scroll-height"
+          },
+          {
+            "path": "/0",
+            "field": "x"
+          },
+          {
+            "path": "/0",
+            "field": "y"
+          },
+          {
+            "path": "/0",
+            "field": "width"
+          },
+          {
+            "path": "/0",
+            "field": "height"
+          },
+          {
+            "path": "/0",
+            "field": "client-width"
+          },
+          {
+            "path": "/0",
+            "field": "client-height"
+          },
+          {
+            "path": "/0",
+            "field": "scroll-width"
+          },
+          {
+            "path": "/0",
+            "field": "scroll-height"
+          },
+          {
+            "path": "/1",
+            "field": "x"
+          },
+          {
+            "path": "/1",
+            "field": "y"
+          },
+          {
+            "path": "/1",
+            "field": "width"
+          },
+          {
+            "path": "/1",
+            "field": "height"
+          },
+          {
+            "path": "/1",
+            "field": "client-width"
+          },
+          {
+            "path": "/1",
+            "field": "client-height"
+          },
+          {
+            "path": "/1",
+            "field": "scroll-width"
+          },
+          {
+            "path": "/1",
+            "field": "scroll-height"
+          },
+          {
+            "path": "/2",
+            "field": "x"
+          },
+          {
+            "path": "/2",
+            "field": "y"
+          },
+          {
+            "path": "/2",
+            "field": "width"
+          },
+          {
+            "path": "/2",
+            "field": "height"
+          },
+          {
+            "path": "/2",
+            "field": "client-width"
+          },
+          {
+            "path": "/2",
+            "field": "client-height"
+          },
+          {
+            "path": "/2",
+            "field": "scroll-width"
+          },
+          {
+            "path": "/2",
+            "field": "scroll-height"
+          },
+          {
+            "path": "/3",
+            "field": "x"
+          },
+          {
+            "path": "/3",
+            "field": "y"
+          },
+          {
+            "path": "/3",
+            "field": "width"
+          },
+          {
+            "path": "/3",
+            "field": "height"
+          },
+          {
+            "path": "/3",
+            "field": "client-width"
+          },
+          {
+            "path": "/3",
+            "field": "client-height"
+          },
+          {
+            "path": "/3",
+            "field": "scroll-width"
+          },
+          {
+            "path": "/3",
+            "field": "scroll-height"
+          }
+        ],
+        "nodes": [
+          "/",
+          "/0",
+          "/1",
+          "/2",
+          "/3"
+        ],
+        "unrounded_packets": [
+          "/",
+          "/0",
+          "/0/0",
+          "/0/0/0",
+          "/1",
+          "/1/0",
+          "/1/0/0",
+          "/2",
+          "/2/0",
+          "/2/0/0",
+          "/3",
+          "/3/0",
+          "/3/0/0"
+        ],
+        "final_packets": [
+          "/",
+          "/0",
+          "/0/0",
+          "/0/0/0",
+          "/1",
+          "/1/0",
+          "/1/0/0",
+          "/2",
+          "/2/0",
+          "/2/0/0",
+          "/3",
+          "/3/0",
+          "/3/0/0"
+        ]
+      },
+      "identity": {
+        "source": "html/flex/fri07_collapsed_strut_single_line.html",
+        "source_sha256": "4208c20c25da2183ce9831c629bdf18e4bd35be0a5c6875e1840d972ecd1cbad",
+        "variant": "content_box_rtl",
+        "historical_sha256": "f4de5a54bd81e97f8c2aacc2701808b588eea9827cff941d56343d0e1df7cef1",
+        "capture_sha256": "5a8dc26c763e710f9a1685f9c9f24e0affc63c43443cf8e7ab5b3e2906a83e17",
+        "record_sha256": "0409020c513d9949c248d79036220d1d2a50cd67095ba4b95c0208bd2454279e",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "616c7089cb6b6b642ff090173a8ef0a2551cd16bc3a507dd8f8a8b19c4d9ac01",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/flex/fri07_collapsed_strut_single_line__border_box_ltr.xml": "d2adc703ffd8386e2f1bdeb5a0c8da2a2dc982c6e6966f467c4a12814824383f",
+          "historical/flex/fri07_collapsed_strut_single_line__border_box_rtl.xml": "cc01070476de0dc10a3585bedb3f8ad0e1484993aa48e3f0b535fe6a37762813",
+          "historical/flex/fri07_collapsed_strut_single_line__content_box_ltr.xml": "6b87be5b7a3198f54988a0077c40a04b993075dd43ad0b43abbe13a49bd19975",
+          "historical/flex/fri07_collapsed_strut_single_line__content_box_rtl.xml": "f4de5a54bd81e97f8c2aacc2701808b588eea9827cff941d56343d0e1df7cef1",
+          "html/flex/fri07_collapsed_strut_single_line.html": "4208c20c25da2183ce9831c629bdf18e4bd35be0a5c6875e1840d972ecd1cbad",
+          "observation-request.json": "1148009cb8ef089475a09c1a9cda8ab19ac8693c0f4af141f0f2586e173742e5",
+          "origin/selected-originals.json": "023723104f100be2d9f4775e0f87f04e31f6bf073e276e9b2e0de28da600fc2a",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/flex_content_text.js": "dbc5513b959c33231ea177c294458723e0fafeb154c6af4a391406f73708f189",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee",
+          "semantic/collapsed-flex-text-policy.md": "6baf58289a91efd51ddd851bcb4bfe4b291e49243c4cf7762638175b66dcb224"
+        },
+        "linked_resources": {},
+        "font_demand": "ahem-10px-flex-direct-text",
+        "policy_source_sha256": "6baf58289a91efd51ddd851bcb4bfe4b291e49243c4cf7762638175b66dcb224"
+      }
+    }
+  ],
+  "retained_inputs": {
+    "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+    "corpus.toml": "fcec66c9132ea201df177665517877c7f31038639bbc78127e26960d5401ab59",
+    "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+    "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+    "historical/flex/fri07_collapsed_strut_single_line__border_box_ltr.xml": "d2adc703ffd8386e2f1bdeb5a0c8da2a2dc982c6e6966f467c4a12814824383f",
+    "historical/flex/fri07_collapsed_strut_single_line__border_box_rtl.xml": "cc01070476de0dc10a3585bedb3f8ad0e1484993aa48e3f0b535fe6a37762813",
+    "historical/flex/fri07_collapsed_strut_single_line__content_box_ltr.xml": "6b87be5b7a3198f54988a0077c40a04b993075dd43ad0b43abbe13a49bd19975",
+    "historical/flex/fri07_collapsed_strut_single_line__content_box_rtl.xml": "f4de5a54bd81e97f8c2aacc2701808b588eea9827cff941d56343d0e1df7cef1",
+    "html/flex/fri07_collapsed_strut_single_line.html": "4208c20c25da2183ce9831c629bdf18e4bd35be0a5c6875e1840d972ecd1cbad",
+    "observation-request.json": "1148009cb8ef089475a09c1a9cda8ab19ac8693c0f4af141f0f2586e173742e5",
+    "origin/selected-originals.json": "023723104f100be2d9f4775e0f87f04e31f6bf073e276e9b2e0de28da600fc2a",
+    "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+    "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+    "scripts/gentest/flex_content_text.js": "dbc5513b959c33231ea177c294458723e0fafeb154c6af4a391406f73708f189",
+    "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+    "scripts/gentest/test_helper.js": "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee",
+    "semantic/collapsed-flex-text-border_box_ltr.json": "53941ca0729874fc2647eaedc7a3184b955dc0b82b77dbe3492361984878b117",
+    "semantic/collapsed-flex-text-border_box_rtl.json": "27061275fb1d30713187a39b00e5d0c2a798c2f2bb5cd6fbff2a1e1e4e7522ac",
+    "semantic/collapsed-flex-text-content_box_ltr.json": "be5c603ffea2bff6ddbdce106ecc91f521a9e00c62498bce2a6758f251df3fed",
+    "semantic/collapsed-flex-text-content_box_rtl.json": "0f5feaa5d6b92e77cf5a80790e37b32b010ac7ea4599f3a34c276201949ae9da",
+    "semantic/collapsed-flex-text-policy.md": "6baf58289a91efd51ddd851bcb4bfe4b291e49243c4cf7762638175b66dcb224"
+  },
+  "current_owner_inputs": {
+    "semantic/collapsed-flex-text-border_box_ltr.json": "53941ca0729874fc2647eaedc7a3184b955dc0b82b77dbe3492361984878b117",
+    "semantic/collapsed-flex-text-border_box_rtl.json": "27061275fb1d30713187a39b00e5d0c2a798c2f2bb5cd6fbff2a1e1e4e7522ac",
+    "semantic/collapsed-flex-text-content_box_ltr.json": "be5c603ffea2bff6ddbdce106ecc91f521a9e00c62498bce2a6758f251df3fed",
+    "semantic/collapsed-flex-text-content_box_rtl.json": "0f5feaa5d6b92e77cf5a80790e37b32b010ac7ea4599f3a34c276201949ae9da",
+    "semantic/collapsed-flex-text-policy.md": "6baf58289a91efd51ddd851bcb4bfe4b291e49243c4cf7762638175b66dcb224",
+    "tests/bin/surgeist-layout-generate/measurement/flex_content_text.js": "dbc5513b959c33231ea177c294458723e0fafeb154c6af4a391406f73708f189",
+    "tests/bin/surgeist-layout-generate/measurement/flex_content_text_request.json": "1148009cb8ef089475a09c1a9cda8ab19ac8693c0f4af141f0f2586e173742e5",
+    "tests/layout/browser_parity/corpus.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+    "tests/layout/browser_parity/fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+    "tests/layout/browser_parity/fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+    "tests/layout/browser_parity/html/.surgeist-source.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+    "tests/layout/browser_parity/html/flex/fri07_collapsed_strut_single_line.html": "4208c20c25da2183ce9831c629bdf18e4bd35be0a5c6875e1840d972ecd1cbad",
+    "tests/layout/browser_parity/scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee",
+    "tests/layout/browser_parity/xml/flex/fri07_collapsed_strut_single_line__border_box_ltr.xml": "d2adc703ffd8386e2f1bdeb5a0c8da2a2dc982c6e6966f467c4a12814824383f",
+    "tests/layout/browser_parity/xml/flex/fri07_collapsed_strut_single_line__border_box_rtl.xml": "cc01070476de0dc10a3585bedb3f8ad0e1484993aa48e3f0b535fe6a37762813",
+    "tests/layout/browser_parity/xml/flex/fri07_collapsed_strut_single_line__content_box_ltr.xml": "6b87be5b7a3198f54988a0077c40a04b993075dd43ad0b43abbe13a49bd19975",
+    "tests/layout/browser_parity/xml/flex/fri07_collapsed_strut_single_line__content_box_rtl.xml": "f4de5a54bd81e97f8c2aacc2701808b588eea9827cff941d56343d0e1df7cef1"
+  }
+}

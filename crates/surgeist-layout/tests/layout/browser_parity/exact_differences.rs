@@ -1,4 +1,4 @@
-//! Layout-private exact qualification of captured ordinary box batches.
+//! Layout-private exact qualification of captured box and Flex text batches.
 //! Authored oracles are inputs, never copied from a completed batch.
 use super::capture_authority::{CanonicalField, CurrentDomain, CurrentRequirements, Selector};
 use super::*;
@@ -233,10 +233,18 @@ enum Packet {
     Absent,
     Present { facts: Box<NodeFacts> },
 }
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 enum SourceRole {
     OrdinaryBox,
+    AnonymousFlexItem,
+    PreparedText,
+}
+
+struct SourceNode {
+    path: String,
+    role: SourceRole,
+    children: Vec<String>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -410,6 +418,8 @@ enum FontDemand {
     None,
     #[serde(rename = "ahem-10px-zwsp")]
     AhemZwsp,
+    #[serde(rename = "ahem-10px-flex-direct-text")]
+    AhemFlexDirectText,
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -436,10 +446,13 @@ impl CaptureLineage {
 
 /// The fixed Layout-owned edition association; no caller-supplied edition text.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "kebab-case")]
 pub(crate) enum PublishedEdition {
-    CanonicalBoxDifferences,
-    MeasuredGridDifferences,
+    #[serde(rename = "canonical-box-differences")]
+    CanonicalBoxes,
+    #[serde(rename = "measured-grid-differences")]
+    MeasuredGrid,
+    #[serde(rename = "flex-text-differences")]
+    FlexText,
 }
 
 impl PublishedEdition {
@@ -452,16 +465,15 @@ impl PublishedEdition {
 
     pub(crate) fn artifact_root(self) -> &'static str {
         match self {
-            Self::CanonicalBoxDifferences => super::capture_authority::ARTIFACT_ROOT,
-            Self::MeasuredGridDifferences => {
-                "tests/layout/browser_parity/captured/measured-grid-differences"
-            }
+            Self::CanonicalBoxes => super::capture_authority::ARTIFACT_ROOT,
+            Self::MeasuredGrid => "tests/layout/browser_parity/captured/measured-grid-differences",
+            Self::FlexText => "tests/layout/browser_parity/captured/flex-text-differences",
         }
     }
     fn domain(self) -> CurrentDomain {
         match self {
-            Self::CanonicalBoxDifferences => CurrentDomain::Layout,
-            Self::MeasuredGridDifferences => CurrentDomain::LayoutAndElementSizes,
+            Self::CanonicalBoxes => CurrentDomain::Layout,
+            Self::MeasuredGrid | Self::FlexText => CurrentDomain::LayoutAndElementSizes,
         }
     }
 }
@@ -496,23 +508,27 @@ struct RawSpec {
     differences: Vec<ComparedField>,
 }
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "kebab-case")]
 enum Profile {
-    CanonicalNoTextBoxes,
-    CanonicalMeasuredGrid,
+    #[serde(rename = "canonical-no-text-boxes")]
+    NoTextBoxes,
+    #[serde(rename = "canonical-measured-grid")]
+    MeasuredGrid,
+    #[serde(rename = "canonical-flex-content-text")]
+    FlexContentText,
 }
 impl Profile {
     fn published_edition(&self) -> PublishedEdition {
         match self {
-            Self::CanonicalNoTextBoxes => PublishedEdition::CanonicalBoxDifferences,
-            Self::CanonicalMeasuredGrid => PublishedEdition::MeasuredGridDifferences,
+            Self::NoTextBoxes => PublishedEdition::CanonicalBoxes,
+            Self::MeasuredGrid => PublishedEdition::MeasuredGrid,
+            Self::FlexContentText => PublishedEdition::FlexText,
         }
     }
 }
 pub(crate) struct ExactDifferenceSpec(RawSpec);
 pub(crate) struct ResolvedSpec<'a> {
     spec: &'a RawSpec,
-    source: Vec<(String, Vec<String>)>,
+    source: Vec<SourceNode>,
     current: Option<&'a CurrentRequirements>,
 }
 pub(crate) struct CompletedComparison {
@@ -743,9 +759,13 @@ impl ExactDifferenceSpec {
                     spec.profile.published_edition().name(),
                 )));
             }
-            let measured = matches!(spec.profile, Profile::CanonicalMeasuredGrid);
-            if measured != (identity.font_demand == FontDemand::AhemZwsp)
-                || measured && *lineage != CaptureLineage::Published
+            let expected_font = match spec.profile {
+                Profile::NoTextBoxes => FontDemand::None,
+                Profile::MeasuredGrid => FontDemand::AhemZwsp,
+                Profile::FlexContentText => FontDemand::AhemFlexDirectText,
+            };
+            if identity.font_demand != expected_font
+                || expected_font != FontDemand::None && *lineage != CaptureLineage::Published
             {
                 return Err(malformed(
                     "font demand or capture lineage disagrees with the source profile",
@@ -760,6 +780,11 @@ impl ExactDifferenceSpec {
         unique(&spec.native.nodes, |n| n.path.clone())?;
         unique(&spec.differences, ComparedField::key)?;
         for node in &spec.native.nodes {
+            if node.role != SourceRole::OrdinaryBox
+                && !matches!(spec.profile, Profile::FlexContentText)
+            {
+                return Err(malformed("Native role is outside the source profile"));
+            }
             source_path(&node.path)?;
             unique(&node.children, Clone::clone)?;
             for child in &node.children {
@@ -850,12 +875,21 @@ impl ExactDifferenceSpec {
                 key: "current representative case/output".to_owned(),
             });
         }
+        let mut packets = self
+            .0
+            .native
+            .nodes
+            .iter()
+            .map(|node| &node.path)
+            .collect::<Vec<_>>();
+        packets.sort();
         let mut nodes = self
             .0
             .native
             .nodes
             .iter()
-            .map(|n| n.path.clone())
+            .filter(|node| node.role == SourceRole::OrdinaryBox)
+            .map(|node| node.path.clone())
             .collect::<Vec<_>>();
         nodes.sort();
         if self.0.native.nodes.iter().any(|n| {
@@ -869,8 +903,11 @@ impl ExactDifferenceSpec {
         let selectors = canonical_selectors(required, &nodes);
         if required.domain != edition.domain()
             || required.nodes != nodes
-            || required.unrounded_packets != nodes
-            || required.final_packets != nodes
+            || required
+                .unrounded_packets
+                .iter()
+                .ne(packets.iter().copied())
+            || required.final_packets.iter().ne(packets)
             || required.selectors != selectors
         {
             return Err(QualificationError::IncompleteRepresentation {
@@ -908,8 +945,8 @@ impl ExactDifferenceSpec {
             return Err(QualificationError::IdentityChanged { component });
         }
         let measured_path = match self.0.profile {
-            Profile::CanonicalNoTextBoxes => None,
-            Profile::CanonicalMeasuredGrid => {
+            Profile::NoTextBoxes | Profile::FlexContentText => None,
+            Profile::MeasuredGrid => {
                 let leaf = golden.measured_leaf.as_ref().ok_or_else(|| {
                     unsupported(
                         "/",
@@ -919,7 +956,16 @@ impl ExactDifferenceSpec {
                 Some(format!("/{}", leaf.child_index))
             }
         };
-        let source = source_census(&golden.root, &golden.expectations, measured_path.as_deref())?;
+        let flex_text = matches!(self.0.profile, Profile::FlexContentText);
+        if flex_text != golden.has_flex_content_text() {
+            return Err(unsupported("/", "Flex content text capture authority"));
+        }
+        let source = source_census(
+            &golden.root,
+            &golden.expectations,
+            measured_path.as_deref(),
+            flex_text,
+        )?;
         let current = if let Some(edition) = edition {
             let current = self.0.representation.current.as_ref().ok_or_else(|| {
                 QualificationError::IncompleteRepresentation {
@@ -936,7 +982,7 @@ impl ExactDifferenceSpec {
                 historical_sha256: identity.historical_sha256.clone(),
             };
             let required = self.prebind_current(edition, &selected)?;
-            verify_current_requirements(&required, golden, &source)?;
+            verify_current_requirements(&required, golden, &source, edition)?;
             Some(current)
         } else {
             None
@@ -947,13 +993,18 @@ impl ExactDifferenceSpec {
                 key: "source census".to_owned(),
             });
         }
-        for (path, children) in &source {
+        for SourceNode {
+            path,
+            role,
+            children,
+        } in &source
+        {
             let node = expected
                 .get(path)
                 .ok_or_else(|| QualificationError::IncompleteNativeOracle { key: path.clone() })?;
-            if &node.children != children {
+            if &node.children != children || &node.role != role {
                 return Err(QualificationError::IncompleteNativeOracle {
-                    key: format!("{path}:ordered children"),
+                    key: format!("{path}:role or ordered children"),
                 });
             }
         }
@@ -1006,14 +1057,16 @@ fn canonical_selectors(required: &CurrentRequirements, nodes: &[String]) -> Vec<
 fn verify_current_requirements(
     required: &CurrentRequirements,
     golden: &Golden,
-    source: &[(String, Vec<String>)],
+    source: &[SourceNode],
+    edition: PublishedEdition,
 ) -> Result<()> {
-    let measured = required.domain == CurrentDomain::LayoutAndElementSizes;
     if !matches!(
         &golden.viewport.root_context,
         RootContext::Qualified(root_context::QualifiedRootContext::AbsoluteRootLocal { .. })
-    ) || golden.has_element_scroll_sizes() != measured
-        || golden.measured_leaf.is_some() != measured
+    ) || golden.has_element_scroll_sizes()
+        != (edition.domain() == CurrentDomain::LayoutAndElementSizes)
+        || golden.measured_leaf.is_some() != (edition == PublishedEdition::MeasuredGrid)
+        || golden.has_flex_content_text() != (edition == PublishedEdition::FlexText)
     {
         return Err(QualificationError::IncompleteRepresentation {
             key: "current root-border-local observation frame or domain".to_owned(),
@@ -1043,7 +1096,8 @@ fn verify_current_requirements(
     verify_geometry(&golden.expectations, "/", required)?;
     let mut nodes = source
         .iter()
-        .map(|(path, _)| path.clone())
+        .filter(|node| node.role == SourceRole::OrdinaryBox)
+        .map(|node| node.path.clone())
         .collect::<Vec<_>>();
     nodes.sort();
     if nodes != required.nodes {
@@ -1105,15 +1159,20 @@ fn source_census(
     root: &Node,
     expectation: &Expectation,
     measured_path: Option<&str>,
-) -> Result<Vec<(String, Vec<String>)>> {
+    flex_text: bool,
+) -> Result<Vec<SourceNode>> {
     fn walk(
         node: &Node,
         expected: &Expectation,
         path: String,
         measured_path: Option<&str>,
-        out: &mut Vec<(String, Vec<String>)>,
+        flex_text: bool,
+        out: &mut Vec<SourceNode>,
     ) -> Result<()> {
-        let role_matches = if measured_path == Some(path.as_str()) {
+        let flex_label = flex_text && path != "/";
+        let role_matches = if flex_label {
+            node.kind == NodeKind::Text && node.text.is_some() && node.children.is_empty()
+        } else if measured_path == Some(path.as_str()) {
             node.kind == NodeKind::Text && node.text.is_some()
         } else {
             node.kind == NodeKind::Div && node.text.is_none()
@@ -1159,16 +1218,49 @@ fn source_census(
                 }
             })
             .collect();
-        out.push((path, children.clone()));
-        for ((child, expectation), path) in
-            node.children.iter().zip(&expected.children).zip(children)
-        {
-            walk(child, expectation, path, measured_path, out)?;
+        if flex_label {
+            let wrapper = format!("{path}/0");
+            let leaf = format!("{wrapper}/0");
+            out.extend([
+                SourceNode {
+                    path,
+                    role: SourceRole::OrdinaryBox,
+                    children: vec![wrapper.clone()],
+                },
+                SourceNode {
+                    path: wrapper,
+                    role: SourceRole::AnonymousFlexItem,
+                    children: vec![leaf.clone()],
+                },
+                SourceNode {
+                    path: leaf,
+                    role: SourceRole::PreparedText,
+                    children: Vec::new(),
+                },
+            ]);
+        } else {
+            out.push(SourceNode {
+                path,
+                role: SourceRole::OrdinaryBox,
+                children: children.clone(),
+            });
+            for ((child, expectation), path) in
+                node.children.iter().zip(&expected.children).zip(children)
+            {
+                walk(child, expectation, path, measured_path, flex_text, out)?;
+            }
         }
         Ok(())
     }
     let mut out = Vec::new();
-    walk(root, expectation, "/".to_owned(), measured_path, &mut out)?;
+    walk(
+        root,
+        expectation,
+        "/".to_owned(),
+        measured_path,
+        flex_text,
+        &mut out,
+    )?;
     Ok(out)
 }
 
@@ -1314,28 +1406,28 @@ fn compare_native(expected: &NativeNode, actual: &NativeNode) -> Result<()> {
 fn snapshot_batch(
     tree: &TestTree,
     batch: &layout::CompletedLayoutBatch<usize>,
-    source: &[(String, Vec<String>)],
+    source: &[SourceNode],
 ) -> Result<Vec<NativeNode>> {
-    if !batch.placed_text().is_empty()
-        || !batch.unrounded_inline_fragments().is_empty()
-        || !batch.final_inline_fragments().is_empty()
-        || batch.native_inline_box_families().next().is_some()
-        || batch.native_inline_box_pieces().next().is_some()
-        || !tree.paragraphs.is_empty()
+    let flex_text = source
+        .iter()
+        .any(|node| node.role != SourceRole::OrdinaryBox);
+    if flex_text != tree.flex_projection.is_some() {
+        return Err(unsupported("/", "validated Flex Text projection census"));
+    }
+    if !flex_text
+        && (!batch.placed_text().is_empty()
+            || !batch.unrounded_inline_fragments().is_empty()
+            || !batch.final_inline_fragments().is_empty()
+            || batch.native_inline_box_families().next().is_some()
+            || batch.native_inline_box_pieces().next().is_some()
+            || !tree.paragraphs.is_empty())
     {
         return Err(unsupported(
             "/",
             "Text/fragment/native-inline output census",
         ));
     }
-    if tree.nodes.len() != source.len()
-        || tree.nodes.iter().any(|n| {
-            n.synthetic
-                || n.layout_input
-                    .as_box()
-                    .is_none_or(|input| input.display.is_inline_level())
-        })
-    {
+    if tree.nodes.len() != source.len() {
         return Err(unsupported("/", "synthetic/non-box lowered source"));
     }
     fn packets(
@@ -1392,13 +1484,42 @@ fn snapshot_batch(
     let mut association = BTreeMap::new();
     associate(tree, 0, "/".to_owned(), &mut association)?;
     let mut nodes = Vec::new();
-    for (path, children) in source {
+    for SourceNode {
+        path,
+        role,
+        children,
+    } in source
+    {
         let node = *association
             .get(path)
             .ok_or_else(|| QualificationError::IncompleteNativeOracle { key: path.clone() })?;
+        let actual = &tree.nodes[node];
+        let matches_role = match role {
+            SourceRole::OrdinaryBox => {
+                !actual.synthetic
+                    && actual
+                        .layout_input
+                        .as_box()
+                        .is_some_and(|input| !input.display.is_inline_level())
+            }
+            SourceRole::AnonymousFlexItem => {
+                actual.synthetic
+                    && actual
+                        .layout_input
+                        .as_box()
+                        .is_some_and(|input| input.display == layout::Display::Block)
+            }
+            SourceRole::PreparedText => {
+                actual.synthetic
+                    && matches!(actual.layout_input, layout::LayoutInput::InlineText(_))
+            }
+        };
+        if !matches_role {
+            return Err(unsupported(path, "synthetic/non-box lowered source"));
+        }
         nodes.push(NativeNode {
             path: path.clone(),
-            role: SourceRole::OrdinaryBox,
+            role: *role,
             children: children.clone(),
             unrounded: unrounded.remove(&node).unwrap_or(Packet::Absent),
             final_output: final_output.remove(&node).unwrap_or(Packet::Absent),

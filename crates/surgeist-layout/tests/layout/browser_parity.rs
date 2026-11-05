@@ -498,10 +498,8 @@ fn fri06_c12_t08_representative_xml_has_strict_ordinary_geometry() {
         let root_before = format!("{:?}", golden.root);
         let mut expectations = golden.expectations.clone();
         clear_browser_control_observations(&mut expectations);
-        let ordinary_geometry = support::Golden {
-            expectations,
-            ..golden
-        };
+        let mut ordinary_geometry = golden;
+        ordinary_geometry.expectations = expectations;
         assert_eq!(format!("{:?}", ordinary_geometry.root), root_before);
 
         if let Err(error) = support::assert_surgeist_matches(&ordinary_geometry) {
@@ -2400,6 +2398,40 @@ fn current_registry_executes_all_measured_grid_variants() {
             .sum::<usize>(),
         306
     );
+}
+
+#[test]
+fn current_registry_qualifies_all_original_flex_text_variants() {
+    let registry = registered_current_edition().expect("current registry must authenticate");
+    let selection = select_parity_inventory(
+        support::fixture_files("xml").expect("original fixtures"),
+        Some(&registry),
+        Some("fri07_collapsed_strut_single_line"),
+    )
+    .expect("collapsed Flex text fixtures must be discoverable");
+    assert_eq!(selection.originals.len(), 4);
+    assert_eq!(
+        selection.current.len(),
+        4,
+        "the four proof-bound captures must be registered"
+    );
+    let run = registry
+        .execute_selected(&selection.current)
+        .expect("Flex text cases must execute");
+    assert_eq!(run.cases.len(), 4);
+    for case in &run.cases {
+        assert_eq!(
+            case.raw.as_ref().expect("complete raw comparison").len(),
+            15
+        );
+        assert!(
+            case.qualified.is_ok(),
+            "{}: {:?}",
+            case.output,
+            case.qualified
+        );
+    }
+    assert!(run.selected_cases_passed(), "{:?}", run.freshness_error);
 }
 
 #[test]

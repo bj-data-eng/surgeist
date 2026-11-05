@@ -1,6 +1,7 @@
 //! Layout-private portable data and one identity calculation. This module uses
 //! no Generator types. Callers authenticate bytes/censuses before calculation.
 use super::exact_differences::{CaseIdentity, QualificationError};
+use super::flex_content_text;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, value::RawValue};
 use sha2::{Digest as _, Sha256};
@@ -10,6 +11,7 @@ pub(crate) const EDITION: &str = "canonical-box-differences";
 pub(crate) const MEASURED_GRID_EDITION: &str = "measured-grid-differences";
 pub(crate) const ARTIFACT_ROOT: &str =
     "tests/layout/browser_parity/captured/canonical-box-differences";
+const FLEX_TEXT_EDITION: &str = "flex-text-differences";
 pub(crate) const TERMINAL: &str = "qualification.json";
 pub(crate) const TERMINAL_SCHEMA: u8 = 2;
 const OBSERVATION_REQUEST: &str = "observation-request.json";
@@ -63,7 +65,14 @@ pub(crate) fn current_owner_bindings(
         let owner = if name == "browser-owner.toml" {
             format!("{ORIGINAL}/corpus.toml")
         } else if name == OBSERVATION_REQUEST {
-            "tests/bin/surgeist-layout-generate/measurement/measured_leaf_request.json".to_owned()
+            let file = if hash == &sha256(flex_content_text::REQUEST) {
+                "flex_content_text_request.json"
+            } else {
+                "measured_leaf_request.json"
+            };
+            format!("tests/bin/surgeist-layout-generate/measurement/{file}")
+        } else if name == flex_content_text::SCRIPT_PATH {
+            "tests/bin/surgeist-layout-generate/measurement/flex_content_text.js".to_owned()
         } else if name == MEASURED_LEAF_SCRIPT {
             "tests/bin/surgeist-layout-generate/measurement/measured_leaf.js".to_owned()
         } else if let Some(tail) = name.strip_prefix("historical/") {
@@ -349,11 +358,14 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
     }
     let (profile, font_demand) = match (observation_request, observation_input_sha256) {
         ("geometry", None) | ("element-scroll-sizes", Some(_))
-            if !full_inputs.contains_key(MEASURED_LEAF_SCRIPT) =>
+            if !full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
+                && !full_inputs.contains_key(flex_content_text::SCRIPT_PATH) =>
         {
             ("canonical-no-text-boxes", "none")
         }
-        ("measured-leaf", Some(request_sha256)) => {
+        ("measured-leaf", Some(request_sha256))
+            if !full_inputs.contains_key(flex_content_text::SCRIPT_PATH) =>
+        {
             if request_sha256 != sha256(MEASURED_LEAF_REQUEST_BYTES) {
                 return Err(changed("measured leaf request identity"));
             }
@@ -373,6 +385,19 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
                 }
             }
             ("canonical-measured-grid", "ahem-10px-zwsp")
+        }
+        ("flex-content-text", Some(request_sha256))
+            if !full_inputs.contains_key(MEASURED_LEAF_SCRIPT) =>
+        {
+            if request_sha256 != sha256(flex_content_text::REQUEST) {
+                return Err(changed("Flex content text request identity"));
+            }
+            for (name, bytes) in flex_content_text::CAPTURE_INPUTS {
+                if full_inputs.get(name) != Some(&sha256(bytes)) || excluded_specs.contains(name) {
+                    return Err(changed(format!("Flex content text input: {name}")));
+                }
+            }
+            ("canonical-flex-content-text", flex_content_text::PROFILE)
         }
         _ => return Err(malformed("unsupported observation request/input binding")),
     };
@@ -535,7 +560,10 @@ impl Qualification {
     }
     fn validate(&self) -> Result<()> {
         if self.schema_version != TERMINAL_SCHEMA
-            || !matches!(self.edition.as_str(), EDITION | MEASURED_GRID_EDITION)
+            || !matches!(
+                self.edition.as_str(),
+                EDITION | MEASURED_GRID_EDITION | FLEX_TEXT_EDITION
+            )
             || self.declaration.path != "corpus.toml"
             || self.report.path != "xml/generation-reports/all.json"
             || self.ownership.path != "xml/generation-ownership.json"

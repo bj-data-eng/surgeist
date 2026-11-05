@@ -22,6 +22,10 @@ pub(crate) mod capture_authority;
 mod element_scroll_sizes;
 #[path = "exact_differences.rs"]
 pub(crate) mod exact_differences;
+#[path = "flex_content_text.rs"]
+mod flex_content_text;
+#[path = "flex_text_projection.rs"]
+mod flex_text_projection;
 #[path = "measured_leaf.rs"]
 mod measured_leaf;
 pub use element_scroll_sizes::ElementScrollSizeMismatch;
@@ -53,11 +57,36 @@ pub struct Golden {
     pub world_rounding_diagnostics: Vec<WorldRoundedLayout>,
     pub(crate) element_scroll_sizes: Option<element_scroll_sizes::Table>,
     pub(crate) measured_leaf: Option<measured_leaf::MeasuredLeaf>,
+    flex_content_text: Option<flex_content_text::Proof>,
 }
 
 impl Golden {
     pub fn has_element_scroll_sizes(&self) -> bool {
         self.element_scroll_sizes.is_some()
+    }
+
+    pub fn has_flex_content_text(&self) -> bool {
+        self.flex_content_text.is_some()
+    }
+
+    /// Bind the retained source and capture report before admitting prepared Flex text.
+    pub fn parse_with_flex_content_text(
+        xml: &str,
+        report: &str,
+        source_path: &str,
+        source_bytes: &[u8],
+        output_path: &str,
+    ) -> Result<Self, Error> {
+        let mut golden = Self::parse(xml)?;
+        golden.flex_content_text = Some(flex_content_text::bind(
+            &golden,
+            xml,
+            report,
+            source_path,
+            source_bytes,
+            output_path,
+        )?);
+        Ok(golden)
     }
 
     pub fn parse_file(path: impl AsRef<Path>) -> Result<Self, Error> {
@@ -145,6 +174,7 @@ impl Golden {
             world_rounding_diagnostics,
             element_scroll_sizes,
             measured_leaf,
+            flex_content_text: None,
         })
     }
 }
@@ -277,9 +307,18 @@ fn compare_captured_with_batch(
     let request = root_request(&golden.viewport.root_context)?;
     validate_grid_alignment_profile(&golden.root, true)?;
     let mut tree = TestTree::from_golden(&golden.root, Some(&golden.viewport.root_context))?;
+    if let Some(proof) = &golden.flex_content_text {
+        flex_content_text::lower(&mut tree, golden, proof)?;
+    }
     validate_capture_analytic_profile(&tree, &golden.viewport.root_context)?;
     let batch = compute_actual_batch(&tree, &golden.name, request)?;
+    if golden.flex_content_text.is_some() {
+        flex_text_projection::validate_batch_targets(&tree, &batch)?;
+    }
     tree.apply_completed_batch(&batch);
+    if golden.flex_content_text.is_some() {
+        tree.flex_projection = Some(flex_text_projection::validate(&tree, &batch)?);
+    }
     let normal_root = tree.nodes[0].unrounded;
     golden
         .viewport
@@ -287,16 +326,22 @@ fn compare_captured_with_batch(
         .validate_native_origin(normal_root.location, normal_root.size)?;
     inspect(&tree, &batch)?;
 
+    let fragments = if tree.flex_projection.is_some() {
+        // The Flex projection checked every fragment against its source occurrence.
+        FragmentCursors::new(&[], &[])
+    } else {
+        FragmentCursors::new(
+            batch.unrounded_inline_fragments(),
+            batch.final_inline_fragments(),
+        )
+    };
     compare_expectation_with_endpoint_accounting(
         &tree,
         0,
         &golden.expectations,
         &golden.name,
         golden.use_rounding,
-        FragmentCursors::new(
-            batch.unrounded_inline_fragments(),
-            batch.final_inline_fragments(),
-        ),
+        fragments,
         ComparisonPolicy {
             element_scroll_sizes: golden.element_scroll_sizes.as_ref(),
             frame: ComparisonFrame::RootBorder,
@@ -2486,6 +2531,8 @@ struct TestTree {
     nodes: Vec<TestNode>,
     paragraphs: Vec<layout::TextParagraphBinding<usize>>,
     placed_text: Vec<layout::PlacedTextOutput<usize>>,
+    flex_text: Vec<flex_content_text::LoweredOccurrence>,
+    flex_projection: Option<flex_text_projection::ValidatedProjection>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -2794,7 +2841,7 @@ impl TestTree {
             }
             containing_flow
                 .ok_or_else(|| Error::new("anonymous grid text wrapper requires a grid flow"))?;
-            children = vec![self.push_synthetic_grid_text_wrapper(
+            children = vec![self.push_synthetic_text_wrapper(
                 children,
                 InheritedTextContext {
                     font_family,
@@ -2833,7 +2880,7 @@ impl TestTree {
         Ok(id)
     }
 
-    fn push_synthetic_grid_text_wrapper(
+    fn push_synthetic_text_wrapper(
         &mut self,
         text_children: Vec<usize>,
         inherited: InheritedTextContext,
@@ -3424,6 +3471,7 @@ fn compare_expectation_with_endpoint_accounting(
     policy: ComparisonPolicy<'_>,
 ) -> Result<ComparisonResult, Error> {
     if policy.numeric.is_collecting()
+        && tree.flex_projection.is_none()
         && (!tree.paragraphs.is_empty()
             || tree
                 .nodes
@@ -3805,6 +3853,9 @@ fn compare_expectation_in_source_order(
                 .expect("requested element table retains its source path"),
             path,
             &tree.nodes[node],
+            tree.flex_projection
+                .as_ref()
+                .is_some_and(|projection| projection.is_collapsed_source(node)),
             comparison_state.numeric,
         )?;
         comparison_state.element_scroll_next += 1;
@@ -3946,6 +3997,13 @@ fn consume_unobserved_boundary(
 fn comparison_source_children(tree: &TestTree, node: usize) -> Vec<usize> {
     let mut children = Vec::new();
     for child in tree.nodes[node].children.iter().copied() {
+        if tree
+            .flex_projection
+            .as_ref()
+            .is_some_and(|projection| projection.is_synthetic_node(child))
+        {
+            continue;
+        }
         if tree.nodes[child].synthetic {
             children.extend(comparison_source_children(tree, child));
         } else {
@@ -8328,6 +8386,8 @@ mod tests {
         TestTree {
             paragraphs: Vec::new(),
             placed_text: Vec::new(),
+            flex_text: Vec::new(),
+            flex_projection: None,
             nodes: vec![TestNode {
                 non_box_input: layout::NodeInput::non_box(),
                 layout_input: layout::LayoutInput::LineBreak(input),
@@ -8422,6 +8482,8 @@ mod tests {
         let tree = TestTree {
             paragraphs: Vec::new(),
             placed_text: Vec::new(),
+            flex_text: Vec::new(),
+            flex_projection: None,
             nodes: vec![
                 node(
                     layout::LayoutInput::box_input(block_input()),
@@ -11375,6 +11437,8 @@ mod tests {
         let mut tree = TestTree {
             paragraphs: Vec::new(),
             placed_text: Vec::new(),
+            flex_text: Vec::new(),
+            flex_projection: None,
             nodes: vec![TestNode {
                 non_box_input: layout::NodeInput::non_box(),
                 layout_input: layout::LayoutInput::box_input(node_input),

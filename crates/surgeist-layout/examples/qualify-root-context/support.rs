@@ -18,10 +18,7 @@ use surgeist_generator::{GeneratorErrorKind, RelativePath, Sha256Digest};
 use crate::adapter::{AdapterError, LayoutAdapter, fixture_cases};
 use crate::browser_profile::BrowserManifest;
 use crate::fixture_variants;
-use crate::measurement::{
-    BoxObservationRequest, MEASURED_LEAF_SCRIPT, MEASURED_LEAF_SCRIPT_INPUT,
-    OBSERVATION_REQUEST_INPUT,
-};
+use crate::measurement::{BoxObservationRequest, OBSERVATION_REQUEST_INPUT};
 
 #[path = "../../tests/layout/browser_parity/qualification_catalogue.rs"]
 mod qualification_catalogue;
@@ -43,6 +40,7 @@ pub(super) enum QualificationMode {
     NumericDiagnostics,
     ElementScrollSizeDiagnostics,
     MeasuredLeafDiagnostics,
+    FlexContentTextDiagnostics,
     Publish,
     CheckPublished,
     PublishCanonicalBoxes,
@@ -50,6 +48,8 @@ pub(super) enum QualificationMode {
     DeriveCanonicalBoxes,
     PublishMeasuredGrid,
     CheckPublishedMeasuredGrid,
+    PublishFlexText,
+    CheckPublishedFlexText,
 }
 
 impl QualificationMode {
@@ -59,12 +59,16 @@ impl QualificationMode {
             Self::NumericDiagnostics
                 | Self::ElementScrollSizeDiagnostics
                 | Self::MeasuredLeafDiagnostics
+                | Self::FlexContentTextDiagnostics
         )
     }
 
     fn box_observations(self) -> BoxObservationRequest {
         match self {
             Self::ElementScrollSizeDiagnostics => BoxObservationRequest::ElementScrollSizes,
+            Self::FlexContentTextDiagnostics
+            | Self::PublishFlexText
+            | Self::CheckPublishedFlexText => BoxObservationRequest::FlexContentText,
             Self::MeasuredLeafDiagnostics
             | Self::PublishMeasuredGrid
             | Self::CheckPublishedMeasuredGrid => BoxObservationRequest::MeasuredLeaf,
@@ -82,6 +86,7 @@ fn select_records(
         mode,
         QualificationMode::ElementScrollSizeDiagnostics
             | QualificationMode::MeasuredLeafDiagnostics
+            | QualificationMode::FlexContentTextDiagnostics
     ) {
         return select_scroll_size_records(declaration, fixture);
     }
@@ -124,7 +129,8 @@ fn select_records(
                     return Err("numeric diagnostics require a Generated fixture".into());
                 }
                 QualificationMode::ElementScrollSizeDiagnostics
-                | QualificationMode::MeasuredLeafDiagnostics => unreachable!("selected above"),
+                | QualificationMode::MeasuredLeafDiagnostics
+                | QualificationMode::FlexContentTextDiagnostics => unreachable!("selected above"),
                 QualificationMode::Regular => {}
                 QualificationMode::Publish
                 | QualificationMode::CheckPublished
@@ -132,7 +138,9 @@ fn select_records(
                 | QualificationMode::CheckPublishedCanonicalBoxes
                 | QualificationMode::DeriveCanonicalBoxes
                 | QualificationMode::PublishMeasuredGrid
-                | QualificationMode::CheckPublishedMeasuredGrid => {
+                | QualificationMode::CheckPublishedMeasuredGrid
+                | QualificationMode::PublishFlexText
+                | QualificationMode::CheckPublishedFlexText => {
                     return Err("durable modes require the complete inventory".into());
                 }
             }
@@ -376,6 +384,8 @@ pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> 
             | QualificationMode::DeriveCanonicalBoxes
             | QualificationMode::PublishMeasuredGrid
             | QualificationMode::CheckPublishedMeasuredGrid
+            | QualificationMode::PublishFlexText
+            | QualificationMode::CheckPublishedFlexText
     ) {
         if fixture.is_some() {
             return Err("durable modes require the complete inventory".into());
@@ -561,6 +571,7 @@ struct SemanticCapture<'a> {
     inventory: &'a Inventory,
     corpus: &'a BrowserCorpus,
     report: &'a browser::BrowserGenerationReport,
+    flex_report: Option<&'a str>,
     lineage: SemanticLineage,
     requirements:
         Option<&'a BTreeMap<String, crate::parity_support::capture_authority::CurrentRequirements>>,
@@ -626,11 +637,17 @@ fn validate_corpus(
             .count()
     );
     let mut terminal_cases = Vec::new();
+    let flex_report = if mode.box_observations() == BoxObservationRequest::FlexContentText {
+        Some(String::from_utf8(report.to_bytes()?)?)
+    } else {
+        None
+    };
     let capture = SemanticCapture {
         root,
         inventory,
         corpus,
         report,
+        flex_report: flex_report.as_deref(),
         lineage: validation.lineage,
         requirements: validation.requirements,
     };
@@ -645,7 +662,7 @@ fn validate_corpus(
         let xml = fs::read_to_string(root.join(artifact.output().as_str()))?;
         // Source certificates and parsing remain fatal in every mode.
         qualify_xml(&xml, case)?;
-        let golden = crate::parity_support::Golden::parse(&xml)?;
+        let golden = parse_capture_golden(root, artifact, &xml, capture.flex_report)?;
         if golden.has_element_scroll_sizes()
             != (mode.box_observations() != BoxObservationRequest::Geometry)
         {
@@ -771,13 +788,16 @@ fn validate_corpus(
         | QualificationMode::NumericDiagnostics
         | QualificationMode::ElementScrollSizeDiagnostics
         | QualificationMode::MeasuredLeafDiagnostics
+        | QualificationMode::FlexContentTextDiagnostics
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
         | QualificationMode::PublishCanonicalBoxes
         | QualificationMode::CheckPublishedCanonicalBoxes
         | QualificationMode::DeriveCanonicalBoxes
         | QualificationMode::PublishMeasuredGrid
-        | QualificationMode::CheckPublishedMeasuredGrid => {}
+        | QualificationMode::CheckPublishedMeasuredGrid
+        | QualificationMode::PublishFlexText
+        | QualificationMode::CheckPublishedFlexText => {}
     }
     if let Some(output) = validation.terminal_cases.as_mut() {
         **output = terminal_cases;
@@ -974,13 +994,16 @@ fn inventory(
         | QualificationMode::NumericDiagnostics
         | QualificationMode::ElementScrollSizeDiagnostics
         | QualificationMode::MeasuredLeafDiagnostics
+        | QualificationMode::FlexContentTextDiagnostics
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
         | QualificationMode::PublishCanonicalBoxes
         | QualificationMode::CheckPublishedCanonicalBoxes
         | QualificationMode::DeriveCanonicalBoxes
         | QualificationMode::PublishMeasuredGrid
-        | QualificationMode::CheckPublishedMeasuredGrid => None,
+        | QualificationMode::CheckPublishedMeasuredGrid
+        | QualificationMode::PublishFlexText
+        | QualificationMode::CheckPublishedFlexText => None,
     };
     for (name, bytes) in INPUTS
         .iter()
@@ -1008,12 +1031,12 @@ fn inventory(
         inventory_input(root, &path, bytes, &mut inventory.expected_inputs, access)?;
         inventory.global_inputs.push(path);
     }
-    if mode.box_observations() == BoxObservationRequest::MeasuredLeaf {
-        let path = RelativePath::new(MEASURED_LEAF_SCRIPT_INPUT)?;
+    if let Some((path, script)) = mode.box_observations().proof_script() {
+        let path = RelativePath::new(path)?;
         inventory_input(
             root,
             &path,
-            MEASURED_LEAF_SCRIPT.as_bytes(),
+            script.as_bytes(),
             &mut inventory.expected_inputs,
             access,
         )?;
@@ -1688,7 +1711,10 @@ fn qualify_tampering(
     let result = browser::check_corpus(corpus, adapter);
     fs::remove_file(undeclared)?;
     assert_invalid_inventory(result);
-    if adapter.observations == BoxObservationRequest::ElementScrollSizes {
+    if matches!(
+        adapter.observations,
+        BoxObservationRequest::ElementScrollSizes | BoxObservationRequest::FlexContentText
+    ) {
         match browser::check_corpus(
             corpus,
             &QualificationAdapter::for_mode(QualificationMode::Regular),
@@ -1702,17 +1728,23 @@ fn qualify_tampering(
             }
             other => panic!("expected registered-request adapter refusal, received {other:?}"),
         }
-        let path = root.join(OBSERVATION_REQUEST_INPUT);
-        let original = fs::read(&path)?;
-        fs::write(&path, b"{}\n")?;
-        let changed = browser::check_corpus(corpus, adapter);
-        fs::write(&path, &original)?;
-        assert_invalid_inventory(changed);
-        fs::remove_file(&path)?;
-        let missing = browser::check_corpus(corpus, adapter);
-        fs::write(&path, original)?;
-        assert_invalid_inventory(missing);
-        return Ok(6);
+        let mut checked = 4;
+        for path in std::iter::once(OBSERVATION_REQUEST_INPUT)
+            .chain(adapter.observations.proof_script().map(|(path, _)| path))
+        {
+            let path = root.join(path);
+            let original = fs::read(&path)?;
+            fs::write(&path, b"{}\n")?;
+            let changed = browser::check_corpus(corpus, adapter);
+            fs::write(&path, &original)?;
+            assert_invalid_inventory(changed);
+            fs::remove_file(&path)?;
+            let missing = browser::check_corpus(corpus, adapter);
+            fs::write(&path, original)?;
+            assert_invalid_inventory(missing);
+            checked += 2;
+        }
+        return Ok(checked);
     }
     Ok(3)
 }
@@ -1778,6 +1810,29 @@ use crate::parity_support::capture_authority::{
     PathDigest, QualifiedCase, identity_from_verified_inputs,
 };
 
+fn parse_capture_golden(
+    root: &Path,
+    artifact: &browser::BrowserGeneratedArtifact,
+    xml: &str,
+    flex_report: Option<&str>,
+) -> Result<crate::parity_support::Golden> {
+    use crate::parity_support::Golden;
+    match flex_report {
+        Some(report) => {
+            let source = artifact.source();
+            publication::require_regular_input(root, source)?;
+            Ok(Golden::parse_with_flex_content_text(
+                xml,
+                report,
+                source.as_str(),
+                &fs::read(root.join(source.as_str()))?,
+                artifact.output().as_str(),
+            )?)
+        }
+        None => Ok(Golden::parse(xml)?),
+    }
+}
+
 fn qualify_semantic_case(
     capture: &SemanticCapture<'_>,
     artifact: &browser::BrowserGeneratedArtifact,
@@ -1792,6 +1847,7 @@ fn qualify_semantic_case(
         inventory,
         corpus,
         report,
+        flex_report,
         lineage,
         requirements,
     } = capture;
@@ -1844,7 +1900,8 @@ fn qualify_semantic_case(
     publication::require_regular_input(root, artifact.output())?;
     let xml = fs::read(root.join(artifact.output().as_str()))?;
     if Sha256Digest::from_bytes(&xml).as_str() != captured.output_sha256
-        || crate::parity_support::Golden::parse(std::str::from_utf8(&xml)?)? != *golden
+        || parse_capture_golden(root, artifact, std::str::from_utf8(&xml)?, *flex_report)?
+            != *golden
     {
         return Err(semantic_identity_changed("actual capture XML"));
     }
@@ -1869,7 +1926,9 @@ fn qualify_semantic_case(
                 .map(|s| s.reference.path.as_str().to_owned())
         })
         .collect();
-    let (observation, request_name) = if golden.measured_leaf.is_some() {
+    let (observation, request_name) = if golden.has_flex_content_text() {
+        (BoxObservationRequest::FlexContentText, "flex-content-text")
+    } else if golden.measured_leaf.is_some() {
         (BoxObservationRequest::MeasuredLeaf, "measured-leaf")
     } else if golden.has_element_scroll_sizes() {
         (

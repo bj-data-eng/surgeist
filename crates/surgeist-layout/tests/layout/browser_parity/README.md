@@ -74,7 +74,7 @@ match an original. Any mismatch or incomplete observation fails. Historical
 missing-root-context errors remain raw failures; a current capture never turns
 them into historical passes.
 
-The ordinary default-feature test target runs both registered editions.
+The ordinary default-feature test target runs all registered editions.
 
 ```sh
 cargo test --offline --locked -j 1 -p surgeist-layout --test layout runs_registered_current_browser_parity_qualification
@@ -88,6 +88,13 @@ fit-content(10px), and thirteen-track intrinsic sizing. The measured Ahem
 leaf witness binds four or sixteen characters on each side of U+200B.
 The comparison checks Layout geometry and DOM integer sizes in both box
 modes and directions. Hidden captures include both Layout scroll-range spans.
+
+The [Flex text edition](captured/flex-text-differences/qualification.json)
+covers four collapsed single-line variants. It binds the original WOFF2
+face and direct text occurrences before preparing the labels. The raw
+comparison covers the five original elements. Qualification also checks
+both packet channels for the anonymous items and text leaves, and
+verifies the shared placed baseline.
 
 The reader authenticates each terminal seal, retained inputs and outputs,
 browser profile, policy, and per-variant identity. It compares the retained
@@ -111,6 +118,8 @@ cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-ge
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-canonical-box-differences
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --publish-measured-grid-differences
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-measured-grid-differences
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --publish-flex-text-differences
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-flex-text-differences
 ```
 
 Publication uses the already-acquired pinned browser and refuses an existing

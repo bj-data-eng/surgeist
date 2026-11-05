@@ -1770,6 +1770,11 @@ impl Style {
         self.font_family.as_deref() == Some("ahem")
             && matches!(&self.font_size, Some(Dimension { unit: Unit::Px, value: Some(Scalar::Number(size)) }) if *size == 10.0)
     }
+    pub(super) fn has_direct_flex_text_style(&self) -> bool {
+        self.has_reference_font()
+            && matches!(self.flex_direction.as_deref(), None | Some("row"))
+            && matches!(&self.line_height, Some(Dimension { unit: Unit::Px, value: Some(Scalar::Number(height)) }) if *height == 10.0)
+    }
     pub(super) fn has_atomic_metric_font(&self) -> bool {
         self.has_reference_font()
             && matches!(&self.line_height, Some(Dimension { unit: Unit::Px, value: Some(Scalar::Number(height)) }) if *height == 0.0)
