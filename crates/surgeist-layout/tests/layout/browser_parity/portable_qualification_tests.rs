@@ -1362,3 +1362,30 @@ fn ordinary_prepared_range_keeps_a_late_unclassified_difference_in_raw_output() 
             .contains("prepared Range comparison changed")
     );
 }
+
+#[test]
+fn registered_sideways_flex_preserves_both_policies_and_complete_raw_fields() {
+    let registry = admit_registered(Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap();
+    let selected = registry
+        .outputs()
+        .filter(|path| path.contains("/flex-composition-qualification/"))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(selected.len(), 4);
+    let run = registry.execute_selected(&selected).unwrap();
+    assert!(run.selected_cases_passed());
+    for case in &run.cases {
+        let rtl = case.output.ends_with("_rtl.xml");
+        let fields = case.raw.as_ref().unwrap();
+        assert_eq!(fields.len(), if rtl { 10 } else { 9 });
+        assert_eq!(
+            fields
+                .iter()
+                .filter(|field| field.contains("path: \"/3/0\"") && field.contains("field: Y,"))
+                .count(),
+            usize::from(rtl)
+        );
+        let verdict = format!("{:?}", case.qualified.as_ref().unwrap().qualified);
+        assert!(verdict.contains("flexbox-collapse-two-round-struts"));
+        assert_eq!(verdict.contains("classic-scrollbar-logical-end"), rtl);
+    }
+}
