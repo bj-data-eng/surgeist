@@ -6,9 +6,9 @@ use surgeist_layout as layout;
 #[path = "prepared_source.rs"]
 mod prepared_source;
 use crate::{atomic_paragraph_metrics, grid_alignment_reference};
+use surgeist_layout::{ComputeInput, ComputeOutput};
 #[cfg(test)]
-use surgeist_layout::GridSpan;
-use surgeist_layout::{ComputeInput, ComputeOutput, LayoutTree as _};
+use surgeist_layout::{GridSpan, LayoutTree as _};
 #[path = "root_context.rs"]
 mod root_context;
 pub use root_context::RootContext;
@@ -22,6 +22,8 @@ pub(crate) mod capture_authority;
 mod element_scroll_sizes;
 #[path = "exact_differences.rs"]
 pub(crate) mod exact_differences;
+#[path = "flex_composition.rs"]
+mod flex_composition;
 #[cfg(test)]
 #[path = "flex_composition_tests.rs"]
 mod flex_composition_tests;
@@ -64,6 +66,7 @@ pub struct Golden {
     pub(crate) element_scroll_sizes: Option<element_scroll_sizes::Table>,
     pub(crate) measured_leaf: Option<measured_leaf::MeasuredLeaf>,
     flex_content_text: Option<flex_content_text::Proof>,
+    flex_composition_image: Option<flex_composition::Proof>,
     prepared_range_frame: bool,
 }
 
@@ -106,11 +109,45 @@ impl Golden {
     }
 
     pub fn parse(raw: &str) -> Result<Self, Error> {
+        Self::parse_with_capture(raw, None)
+    }
+
+    pub fn parse_with_flex_composition(
+        raw: &str,
+        report: &str,
+        source_path: &str,
+        source_bytes: &[u8],
+        output_path: &str,
+    ) -> Result<Self, Error> {
+        Self::parse_with_capture(
+            raw,
+            Some(flex_composition::Capture {
+                report,
+                source_path,
+                source_bytes,
+                output_path,
+            }),
+        )
+    }
+
+    fn parse_with_capture(
+        raw: &str,
+        image_capture: Option<flex_composition::Capture<'_>>,
+    ) -> Result<Self, Error> {
         let document = roxmltree::Document::parse(raw).map_err(|source| Error {
             message: source.to_string(),
         })?;
         let test = document.root_element();
         expect_tag(test, "test")?;
+        if image_capture.is_none()
+            && test
+                .descendants()
+                .any(|node| node.is_element() && node.tag_name().name() == "flex-composition-image")
+        {
+            return Err(Error::new(
+                "Flex composition image requires capture authority",
+            ));
+        }
 
         if test
             .descendants()
@@ -198,7 +235,7 @@ impl Golden {
             false
         };
 
-        Ok(Self {
+        let mut golden = Self {
             name,
             use_rounding: parse_bool(test.attribute("use-rounding").unwrap_or("true"))?,
             viewport: Viewport { root_context },
@@ -208,8 +245,14 @@ impl Golden {
             element_scroll_sizes,
             measured_leaf,
             flex_content_text: None,
+            flex_composition_image: None,
             prepared_range_frame,
-        })
+        };
+        if let Some(capture) = image_capture {
+            golden.flex_composition_image =
+                Some(flex_composition::bind(capture, test, &golden, raw)?);
+        }
+        Ok(golden)
     }
 }
 
@@ -343,6 +386,9 @@ fn compare_captured_with_batch(
     let mut tree = TestTree::from_golden(&golden.root, Some(&golden.viewport.root_context))?;
     if let Some(proof) = &golden.flex_content_text {
         flex_content_text::lower(&mut tree, golden, proof)?;
+    }
+    if let Some(proof) = &golden.flex_composition_image {
+        flex_composition::lower(&mut tree, golden, proof)?;
     }
     validate_capture_analytic_profile(&tree, &golden.viewport.root_context)?;
     let batch = compute_actual_batch(&tree, &golden.name, request)?;
@@ -515,7 +561,7 @@ fn validate_capture_analytic_profile(tree: &TestTree, context: &RootContext) -> 
         let orthogonal = inherited || own_axes.inline_axis() != containing_axes.inline_axis();
         if orthogonal {
             flags[node] |= 2;
-            if flags[node] & 1 == 0 && tree.has_leaf_measurement(node) {
+            if flags[node] & 1 == 0 && row.has_analytic_text_measurement() {
                 return Err(Error::new("UnsupportedAnalyticOrthogonalTextProfile"));
             }
         }
@@ -532,7 +578,7 @@ fn validate_capture_analytic_profile(tree: &TestTree, context: &RootContext) -> 
             flags[node] |= 4;
             continue;
         }
-        if flags[node] & 1 != 0 || !tree.has_leaf_measurement(node) {
+        if flags[node] & 1 != 0 || !row.has_analytic_text_measurement() {
             continue;
         }
         let input = tree.box_node_input(node);
@@ -2560,6 +2606,12 @@ struct TestNode {
     shape_bands: Option<Vec<FixtureShapeBand>>,
 }
 
+impl TestNode {
+    fn has_analytic_text_measurement(&self) -> bool {
+        self.layout_input.as_box().is_some() && self.children.is_empty() && self.text.is_some()
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 struct TestTree {
     nodes: Vec<TestNode>,
@@ -2567,6 +2619,7 @@ struct TestTree {
     placed_text: Vec<layout::PlacedTextOutput<usize>>,
     flex_text: Vec<flex_content_text::LoweredOccurrence>,
     flex_projection: Option<flex_text_projection::ValidatedProjection>,
+    replaced_image: Option<(usize, layout::Size)>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -3379,10 +3432,10 @@ impl layout::LayoutTree for TestTree {
     }
 
     fn has_leaf_measurement(&self, node: Self::Node) -> bool {
-        let node = &self.nodes[node];
-        // Only fixture text supplies intrinsic content measurements. Empty
-        // ordinary boxes retain their native container formatting algorithm.
-        node.layout_input.as_box().is_some() && node.children.is_empty() && node.text.is_some()
+        if self.replaced_image.is_some_and(|(image, _)| image == node) {
+            return true;
+        }
+        self.nodes[node].has_analytic_text_measurement()
     }
 
     fn measure_leaf(
@@ -3390,6 +3443,11 @@ impl layout::LayoutTree for TestTree {
         node: Self::Node,
         input: layout::LeafMeasureInput,
     ) -> Option<Result<layout::Size, Self::MeasureError>> {
+        if let Some((image, natural)) = self.replaced_image
+            && image == node
+        {
+            return Some(Ok(flex_composition::measure(natural, input)));
+        }
         if !self.has_leaf_measurement(node) {
             return None;
         }
@@ -8567,6 +8625,7 @@ mod tests {
             placed_text: Vec::new(),
             flex_text: Vec::new(),
             flex_projection: None,
+            replaced_image: None,
             nodes: vec![TestNode {
                 non_box_input: layout::NodeInput::non_box(),
                 layout_input: layout::LayoutInput::LineBreak(input),
@@ -8663,6 +8722,7 @@ mod tests {
             placed_text: Vec::new(),
             flex_text: Vec::new(),
             flex_projection: None,
+            replaced_image: None,
             nodes: vec![
                 node(
                     layout::LayoutInput::box_input(block_input()),
@@ -11618,6 +11678,7 @@ mod tests {
             placed_text: Vec::new(),
             flex_text: Vec::new(),
             flex_projection: None,
+            replaced_image: None,
             nodes: vec![TestNode {
                 non_box_input: layout::NodeInput::non_box(),
                 layout_input: layout::LayoutInput::box_input(node_input),

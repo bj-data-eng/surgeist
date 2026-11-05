@@ -626,7 +626,8 @@ struct SemanticCapture<'a> {
     inventory: &'a Inventory,
     corpus: &'a BrowserCorpus,
     report: &'a browser::BrowserGenerationReport,
-    flex_report: Option<&'a str>,
+    bound_report: Option<&'a str>,
+    observation: BoxObservationRequest,
     lineage: SemanticLineage,
     requirements:
         Option<&'a BTreeMap<String, crate::parity_support::capture_authority::CurrentRequirements>>,
@@ -704,7 +705,11 @@ fn validate_corpus(
             .count()
     );
     let mut terminal_cases = Vec::new();
-    let flex_report = if mode.box_observations() == BoxObservationRequest::FlexContentText {
+    let observation = mode.box_observations();
+    let bound_report = if matches!(
+        observation,
+        BoxObservationRequest::FlexContentText | BoxObservationRequest::FlexComposition
+    ) {
         Some(String::from_utf8(report.to_bytes()?)?)
     } else {
         None
@@ -714,7 +719,8 @@ fn validate_corpus(
         inventory,
         corpus,
         report,
-        flex_report: flex_report.as_deref(),
+        bound_report: bound_report.as_deref(),
+        observation,
         lineage: validation.lineage,
         requirements: validation.requirements,
     };
@@ -729,7 +735,13 @@ fn validate_corpus(
         let xml = fs::read_to_string(root.join(artifact.output().as_str()))?;
         // Source certificates and parsing remain fatal in every mode.
         qualify_xml(&xml, case)?;
-        let golden = parse_capture_golden(root, artifact, &xml, capture.flex_report)?;
+        let golden = parse_capture_golden(
+            root,
+            artifact,
+            &xml,
+            capture.observation,
+            capture.bound_report,
+        )?;
         if golden.has_prepared_range_frame()
             != (mode.box_observations() == BoxObservationRequest::PreparedRanges)
         {
@@ -1943,23 +1955,25 @@ fn parse_capture_golden(
     root: &Path,
     artifact: &browser::BrowserGeneratedArtifact,
     xml: &str,
-    flex_report: Option<&str>,
+    observation: BoxObservationRequest,
+    bound_report: Option<&str>,
 ) -> Result<crate::parity_support::Golden> {
     use crate::parity_support::Golden;
-    match flex_report {
-        Some(report) => {
-            let source = artifact.source();
-            publication::require_regular_input(root, source)?;
-            Ok(Golden::parse_with_flex_content_text(
-                xml,
-                report,
-                source.as_str(),
-                &fs::read(root.join(source.as_str()))?,
-                artifact.output().as_str(),
-            )?)
-        }
-        None => Ok(Golden::parse(xml)?),
-    }
+    let parse = match observation {
+        BoxObservationRequest::FlexContentText => Golden::parse_with_flex_content_text,
+        BoxObservationRequest::FlexComposition => Golden::parse_with_flex_composition,
+        _ => return Ok(Golden::parse(xml)?),
+    };
+    let report = bound_report.ok_or("missing bound capture report")?;
+    let source = artifact.source();
+    publication::require_regular_input(root, source)?;
+    Ok(parse(
+        xml,
+        report,
+        source.as_str(),
+        &fs::read(root.join(source.as_str()))?,
+        artifact.output().as_str(),
+    )?)
 }
 
 fn qualify_semantic_case(
@@ -1976,7 +1990,8 @@ fn qualify_semantic_case(
         inventory,
         corpus,
         report,
-        flex_report,
+        bound_report,
+        observation,
         lineage,
         requirements,
     } = capture;
@@ -2029,8 +2044,13 @@ fn qualify_semantic_case(
     publication::require_regular_input(root, artifact.output())?;
     let xml = fs::read(root.join(artifact.output().as_str()))?;
     if Sha256Digest::from_bytes(&xml).as_str() != captured.output_sha256
-        || parse_capture_golden(root, artifact, std::str::from_utf8(&xml)?, *flex_report)?
-            != *golden
+        || parse_capture_golden(
+            root,
+            artifact,
+            std::str::from_utf8(&xml)?,
+            *observation,
+            *bound_report,
+        )? != *golden
     {
         return Err(semantic_identity_changed("actual capture XML"));
     }
