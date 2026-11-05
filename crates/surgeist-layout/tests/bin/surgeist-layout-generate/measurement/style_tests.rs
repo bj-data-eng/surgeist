@@ -20,7 +20,12 @@ fn decode_style(style: Value, unsupported: bool) -> Result<DecodedMeasurement, M
     if unsupported {
         node["unsupportedReason"] = json!("unsupported fixture");
     }
-    measurement::decode(&node.to_string(), "style-contract", "border_box_ltr")
+    measurement::decode(
+        &node.to_string(),
+        "style-contract",
+        "border_box_ltr",
+        measurement::BoxObservationRequest::Geometry,
+    )
 }
 
 #[test]

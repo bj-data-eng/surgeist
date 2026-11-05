@@ -55,8 +55,18 @@ fn parse_arguments(
         [mode, flag, source] if mode == "--numeric-diagnostics" && flag == "--fixture" => {
             Ok((Some(source.as_str()), QualificationMode::NumericDiagnostics))
         }
+        [mode, flag, source]
+            if mode == "--element-scroll-size-diagnostics"
+                && flag == "--fixture"
+                && !source.starts_with("--") =>
+        {
+            Ok((
+                Some(source.as_str()),
+                QualificationMode::ElementScrollSizeDiagnostics,
+            ))
+        }
         _ => Err(
-            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source>",
+            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source>",
         ),
     }
 }
@@ -68,6 +78,38 @@ mod tests {
 
     fn arguments(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).to_owned()).collect()
+    }
+
+    #[test]
+    fn element_scroll_size_cli_requires_one_explicit_source() {
+        assert_eq!(
+            parse_arguments(&arguments(&[
+                "--element-scroll-size-diagnostics",
+                "--fixture",
+                "html/grid/case.html",
+            ])),
+            Ok((
+                Some("html/grid/case.html"),
+                QualificationMode::ElementScrollSizeDiagnostics
+            ))
+        );
+        for invalid in [
+            vec!["--element-scroll-size-diagnostics"],
+            vec!["--element-scroll-size-diagnostics", "--fixture"],
+            vec![
+                "--element-scroll-size-diagnostics",
+                "--fixture",
+                "--numeric-diagnostics",
+            ],
+            vec![
+                "--element-scroll-size-diagnostics",
+                "--fixture",
+                "html/grid/case.html",
+                "extra",
+            ],
+        ] {
+            assert!(parse_arguments(&arguments(&invalid)).is_err());
+        }
     }
 
     #[test]

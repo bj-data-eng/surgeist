@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<script src="../../scripts/gentest/test_helper.js"></script>
+<link rel="stylesheet" type="text/css" href="../../scripts/gentest/test_base_style.css">
+<title>Root context element-scroll-unreachable</title>
+</head>
+<body dir="ltr"><div id="test-root" style="display:grid;width:200px;height:120px;grid-template-columns:200px;grid-template-rows:40px 40px 40px;gap:0px;justify-items:start;align-items:start;justify-content:start;align-content:start;">
+  <div style="position:relative;display:block;width:20.25px;height:30.25px;overflow:visible;grid-column:1;grid-row:1;">
+    <div style="position:absolute;display:block;left:-15px;right:-14.75px;top:-9px;bottom:auto;width:10px;height:8px;"></div>
+  </div>
+  <div style="position:relative;display:block;width:20.25px;height:30.25px;overflow:clip;grid-column:1;grid-row:2;">
+    <div style="position:absolute;display:block;left:-15px;right:-14.75px;top:-9px;bottom:auto;width:10px;height:8px;"></div>
+  </div>
+  <div style="position:relative;display:block;width:20.25px;height:30.25px;overflow:hidden;grid-column:1;grid-row:3;">
+    <div style="position:absolute;display:block;left:-15px;right:-14.75px;top:-9px;bottom:auto;width:10px;height:8px;"></div>
+  </div>
+</div></body>
+</html>

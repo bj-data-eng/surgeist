@@ -1028,6 +1028,45 @@ pub(super) fn validate_writing_mode(
 }
 
 impl Style {
+    pub(super) fn element_scroll_size_unsupported_reason(&self) -> Option<&'static str> {
+        if !matches!(
+            self.display.as_deref(),
+            Some("block" | "flex" | "grid" | "grid-lanes")
+        ) {
+            return Some("element scroll sizes require a non-inline ordinary element box");
+        }
+        if self.writing_mode.as_deref() != Some("horizontal-tb")
+            || !matches!(self.direction.as_deref(), Some("ltr" | "rtl"))
+        {
+            return Some("element scroll sizes require captured horizontal-tb mode and direction");
+        }
+        if [self.overflow_x.as_deref(), self.overflow_y.as_deref()]
+            .into_iter()
+            .any(|value| !matches!(value, Some("visible" | "clip" | "hidden")))
+        {
+            return Some(
+                "element scroll sizes support only captured Visible, Clip or Hidden overflow",
+            );
+        }
+        if self.scrollbar_gutter.as_deref() != Some("auto") {
+            return Some("element scroll sizes require captured Auto scrollbar gutter");
+        }
+        for edges in [&self.border, &self.padding].into_iter().flatten() {
+            if [&edges.top, &edges.right, &edges.bottom, &edges.left]
+                .into_iter()
+                .flatten()
+                .any(|value| {
+                    value.unit != Unit::Px || !matches!(value.value, Some(Scalar::Number(0.0)))
+                })
+            {
+                return Some("element scroll sizes require zero authored border and padding edges");
+            }
+        }
+        // scrollbar_width is the helper's host scrollbar thickness. These
+        // overflow modes and Auto gutter do not install or reserve that space.
+        None
+    }
+
     pub fn writing_mode(&self) -> &str {
         self.writing_mode.as_deref().unwrap_or("horizontal-tb")
     }

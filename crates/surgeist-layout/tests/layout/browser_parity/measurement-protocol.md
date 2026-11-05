@@ -196,6 +196,44 @@ Normal/Indefinite inline requests; no universal fallback cap is applied. Genuine
 Prepared paragraphs retain their independent source/font/context path; the
 absolute-local closure does not admit unqualified typed-inline channels.
 
+### Explicit element scroll sizes
+
+The qualifier's `--element-scroll-size-diagnostics --fixture <declared-source>`
+mode requests four DOM integer observations in addition to existing geometry.
+The canonical invocation input `observation-request.json` is registered in the
+same input/report contract as source resources. Preparation and validation bind
+the request to that input. Ordinary generation omits this input and sideband.
+
+The closed profile is V4 `absolute-root-local`, horizontal ordinary source DIV
+boxes, including DIV-backed opaque text leaves, with zero padding, borders and
+installed/reserved gutters. Visible, Clip and Hidden overflow are supported.
+Inline, boxless, replaced, prepared/control, vertical and Auto/Scroll profiles
+refuse; unsupported occurrences cannot disappear from a partial table.
+
+The optional `element-scroll-sizes` sibling follows `expectations` and precedes
+`diagnostics`, with `profile="horizontal-zero-edge-divs"`. Its `element` rows
+carry `node-path`, `client-width`, `client-height`, `scroll-width` and
+`scroll-height`. Paths cover the complete original source tree in preorder,
+starting at `0`; anonymous Native text helpers do not acquire source rows.
+Duplicate, missing, reordered, unknown or misplaced rows/payloads refuse.
+
+All four values come from the same selected smart-rounded or unrounded wire
+object, before layout-number conversion. They are lossless integers in
+`0..=i32::MAX`, with client extents no greater than scroll extents. The reader
+compares them exactly, separately from ordinary layout tolerances. Historical
+expectation trees and their operational scroll-range spans are unchanged.
+World-rounded diagnostics never supply semantic values.
+
+Native comparison uses the same computation's unrounded canonical scrollport
+and complete scrollable overflow. For horizontal flow with port edges
+`L,T,R,B` and overflow edges `Xmin,Ymin,Xmax,Ymax`, scrolling width is
+`max(R,Xmax)-L` in LTR and `R-min(L,Xmin)` in RTL; height is
+`max(B,Ymax)-T`. Client sizes are the port extents. Round each represented local
+extent to the nearest integer, positive halves upward, after lossless widening;
+adding `0.5` in f32 would corrupt some already integral values. Visible/Clip
+operational ranges remain zero. A missing or unsupported projection invalidates
+the complete case rather than becoming a numeric difference.
+
 ### Functional qualification before adoption
 
 Use the real [qualification example](../../../examples/qualify-root-context.rs)

@@ -17,6 +17,7 @@ use surgeist_generator::{GeneratorErrorKind, RelativePath, Sha256Digest};
 
 use crate::adapter::{AdapterError, LayoutAdapter, fixture_cases};
 use crate::browser_profile::BrowserManifest;
+use crate::measurement::{BoxObservationRequest, OBSERVATION_REQUEST_INPUT};
 
 #[path = "publication.rs"]
 mod publication;
@@ -29,8 +30,25 @@ pub(super) enum QualificationMode {
     StylesheetCustody,
     FontCustody,
     NumericDiagnostics,
+    ElementScrollSizeDiagnostics,
     Publish,
     CheckPublished,
+}
+
+impl QualificationMode {
+    fn collects_numeric_differences(self) -> bool {
+        matches!(
+            self,
+            Self::NumericDiagnostics | Self::ElementScrollSizeDiagnostics
+        )
+    }
+
+    fn box_observations(self) -> BoxObservationRequest {
+        match self {
+            Self::ElementScrollSizeDiagnostics => BoxObservationRequest::ElementScrollSizes,
+            _ => BoxObservationRequest::Geometry,
+        }
+    }
 }
 
 fn select_records(
@@ -38,6 +56,9 @@ fn select_records(
     fixture: Option<&str>,
     mode: QualificationMode,
 ) -> Result<()> {
+    if mode == QualificationMode::ElementScrollSizeDiagnostics {
+        return select_scroll_size_records(declaration, fixture);
+    }
     match (mode, fixture) {
         (QualificationMode::StylesheetCustody, None) => {
             return Err("stylesheet custody qualification requires one declared fixture".into());
@@ -76,6 +97,7 @@ fn select_records(
                 QualificationMode::NumericDiagnostics => {
                     return Err("numeric diagnostics require a Generated fixture".into());
                 }
+                QualificationMode::ElementScrollSizeDiagnostics => unreachable!("selected above"),
                 QualificationMode::Regular => {}
                 QualificationMode::Publish | QualificationMode::CheckPublished => {
                     return Err("durable modes require the complete inventory".into());
@@ -96,6 +118,68 @@ fn select_records(
             _ => {}
         }
     }
+    Ok(())
+}
+
+fn select_scroll_size_records(declaration: &mut Declaration, fixture: Option<&str>) -> Result<()> {
+    let source = fixture.ok_or("element scroll-size diagnostics require one declared fixture")?;
+    let initial = declaration
+        .records
+        .iter()
+        .position(|record| record.source.as_str() == source)
+        .ok_or("focused qualification requires one declared source")?;
+    // Select the declared relation closure in original source order. This mode
+    // can qualify the existing phase pair without copying either authored case.
+    let mut selected = std::collections::BTreeSet::from([initial]);
+    loop {
+        let peers: Vec<_> = selected
+            .iter()
+            .filter_map(|index| {
+                declaration.records[*index]
+                    .relation
+                    .as_ref()
+                    .map(|relation| relation.peer.clone())
+            })
+            .collect();
+        let mut changed = false;
+        for peer in peers {
+            let matches: Vec<_> = declaration
+                .records
+                .iter()
+                .enumerate()
+                .filter_map(|(index, record)| {
+                    (Path::new(record.source.as_str())
+                        .file_stem()
+                        .and_then(|value| value.to_str())
+                        == Some(peer.as_str()))
+                    .then_some(index)
+                })
+                .collect();
+            let [index] = matches.as_slice() else {
+                return Err(
+                    format!("declared observation peer must identify one source: {peer}").into(),
+                );
+            };
+            changed |= selected.insert(*index);
+        }
+        if !changed {
+            break;
+        }
+    }
+    for index in &selected {
+        if !matches!(
+            &declaration.records[*index].expected,
+            ExpectedDisposition::Generated { .. }
+        ) {
+            return Err("element scroll-size diagnostics require Generated declarations".into());
+        }
+    }
+    let mut index = 0;
+    declaration.records.retain(|_| {
+        let keep = selected.contains(&index);
+        index += 1;
+        keep
+    });
     Ok(())
 }
 
@@ -279,7 +363,18 @@ struct OwnerBrowserDeclaration {
     browser: BrowserManifest,
 }
 
-struct QualificationAdapter;
+#[derive(Clone, Copy)]
+struct QualificationAdapter {
+    observations: BoxObservationRequest,
+}
+
+impl QualificationAdapter {
+    fn for_mode(mode: QualificationMode) -> Self {
+        Self {
+            observations: mode.box_observations(),
+        }
+    }
+}
 impl BrowserCorpusAdapter for QualificationAdapter {
     type Error = AdapterError;
 
@@ -287,14 +382,15 @@ impl BrowserCorpusAdapter for QualificationAdapter {
         &self,
         input: FixtureInput<'_>,
     ) -> std::result::Result<PreparedFixture, Self::Error> {
-        LayoutAdapter.prepare(input)
+        LayoutAdapter.prepare_with_observations(input, self.observations)
     }
     fn lower(
         &self,
         fixture: &FixtureSpec,
         measurement: serde_json::Value,
     ) -> std::result::Result<Vec<CaseOutcome>, Self::Error> {
-        let outcomes = LayoutAdapter.lower(fixture, measurement)?;
+        let outcomes =
+            LayoutAdapter.lower_with_observations(fixture, measurement, self.observations)?;
         for outcome in &outcomes {
             if let CaseOutcome::Unsupported { case_id, reason } = outcome {
                 eprintln!("qualify-root-context: {case_id}: Unsupported: {reason}");
@@ -415,7 +511,7 @@ fn qualify(
     let inventory = prepare_inventory(root, owner, &input, mode)?;
     let corpus = corpus_for_inventory(root, owner, settings, &inventory, focused, expected)?;
     let request = GenerationRequest::new(corpus.clone(), browser_path, None, None)?;
-    let report = browser::generate(request, QualificationAdapter)?;
+    let report = browser::generate(request, QualificationAdapter::for_mode(mode))?;
     validate_corpus(
         root,
         &inventory,
@@ -503,7 +599,7 @@ fn validate_corpus(
         report.to_bytes()?
     );
     assert_eq!(
-        browser::check_corpus(corpus, &LayoutAdapter)?.to_bytes()?,
+        browser::check_corpus(corpus, &QualificationAdapter::for_mode(mode))?.to_bytes()?,
         report.to_bytes()?
     );
 
@@ -545,6 +641,15 @@ fn validate_corpus(
         // Source certificates and parsing remain fatal in every mode.
         qualify_xml(&xml, case)?;
         let golden = crate::parity_support::Golden::parse(&xml)?;
+        if golden.has_element_scroll_sizes()
+            != (mode.box_observations() == BoxObservationRequest::ElementScrollSizes)
+        {
+            return Err(format!(
+                "{}: element scroll-size coverage differs from the registered request",
+                case.case.id()
+            )
+            .into());
+        }
         if let ExpectedDisposition::Generated {
             metadata:
                 ExpectedMetadata::BlockFlow {
@@ -556,7 +661,7 @@ fn validate_corpus(
             qualify_grid_reference_census(&golden.root, owners)?;
             crate::parity_support::assert_grid_alignment_reference_inputs(&golden, owners)?;
         }
-        if mode == QualificationMode::NumericDiagnostics {
+        if mode.collects_numeric_differences() {
             match collect_numeric_case(&golden, case, &mut std::io::stdout().lock()) {
                 Ok(mismatches) => numeric.record_case(mismatches)?,
                 Err(error) => {
@@ -578,16 +683,21 @@ fn validate_corpus(
         validation.filesystem_tampering
             && matches!(case.expected, ExpectedDisposition::Generated { .. })
     }) {
-        qualify_tampering(root, corpus, &first.source, first.case.output())?;
-        3
+        qualify_tampering(
+            root,
+            corpus,
+            &first.source,
+            first.case.output(),
+            &QualificationAdapter::for_mode(mode),
+        )?
     } else {
         0
     };
     assert_eq!(
-        browser::check_corpus(corpus, &LayoutAdapter)?.to_bytes()?,
+        browser::check_corpus(corpus, &QualificationAdapter::for_mode(mode))?.to_bytes()?,
         report.to_bytes()?
     );
-    if mode == QualificationMode::NumericDiagnostics {
+    if mode.collects_numeric_differences() {
         eprintln!(
             "qualify-root-context: raw numeric diagnostics: {} of {} Generated cases completed, {} mismatches, {} fatal comparison failures; source-bound historical trees and {tamper_count} filesystem tamper refusals qualified; no classification or conformance approval",
             numeric.completed_cases,
@@ -624,6 +734,7 @@ fn validate_corpus(
         ),
         QualificationMode::Regular
         | QualificationMode::NumericDiagnostics
+        | QualificationMode::ElementScrollSizeDiagnostics
         | QualificationMode::Publish
         | QualificationMode::CheckPublished => {}
     }
@@ -631,15 +742,39 @@ fn validate_corpus(
 }
 
 #[derive(Serialize)]
-struct NumericDiagnostic<'a> {
+struct NumericDiagnostic<'a, T> {
     kind: &'static str,
     case: &'a str,
     source: &'a str,
     variant: &'a str,
     path: &'a str,
     field: &'static str,
-    browser: surgeist_layout::Scalar,
-    native: surgeist_layout::Scalar,
+    browser: T,
+    native: T,
+}
+
+fn write_numeric_diagnostic<T: Serialize>(
+    kind: &'static str,
+    case: &ExpectedCase,
+    path: &str,
+    field: &'static str,
+    browser: T,
+    native: T,
+    output: &mut impl Write,
+) -> Result<()> {
+    let diagnostic = NumericDiagnostic {
+        kind,
+        case: case.case.id(),
+        source: case.source.as_str(),
+        variant: case.case.variant(),
+        path,
+        field,
+        browser,
+        native,
+    };
+    serde_json::to_writer(&mut *output, &diagnostic)?;
+    output.write_all(b"\n")?;
+    Ok(())
 }
 
 fn collect_numeric_case(
@@ -651,18 +786,28 @@ fn collect_numeric_case(
     // source and capability checks succeed. Failed cases emit no partial set.
     let mismatches = crate::parity_support::collect_surgeist_numeric_mismatches(golden)?;
     for mismatch in &mismatches {
-        let diagnostic = NumericDiagnostic {
-            kind: "numeric-mismatch",
-            case: case.case.id(),
-            source: case.source.as_str(),
-            variant: case.case.variant(),
-            path: mismatch.path(),
-            field: mismatch.field().as_str(),
-            browser: mismatch.browser_value(),
-            native: mismatch.native_value(),
-        };
-        serde_json::to_writer(&mut *output, &diagnostic)?;
-        output.write_all(b"\n")?;
+        match mismatch {
+            crate::parity_support::NumericMismatch::Layout(value) => write_numeric_diagnostic(
+                "numeric-mismatch",
+                case,
+                value.path(),
+                value.field().as_str(),
+                value.browser_value(),
+                value.native_value(),
+                output,
+            )?,
+            crate::parity_support::NumericMismatch::ElementScrollSize(value) => {
+                write_numeric_diagnostic(
+                    "element-scroll-size-mismatch",
+                    case,
+                    value.path(),
+                    value.field().as_str(),
+                    value.browser_value(),
+                    value.native_value(),
+                    output,
+                )?
+            }
+        }
     }
     output.flush()?;
     Ok(mismatches.len())
@@ -783,6 +928,7 @@ fn inventory(
         }
         QualificationMode::Regular
         | QualificationMode::NumericDiagnostics
+        | QualificationMode::ElementScrollSizeDiagnostics
         | QualificationMode::Publish
         | QualificationMode::CheckPublished => None,
     };
@@ -806,6 +952,11 @@ fn inventory(
         if name != "corpus.toml" {
             inventory.global_inputs.push(path);
         }
+    }
+    if let Some(bytes) = mode.box_observations().input_bytes() {
+        let path = RelativePath::new(OBSERVATION_REQUEST_INPUT)?;
+        inventory_input(root, &path, bytes, &mut inventory.expected_inputs, access)?;
+        inventory.global_inputs.push(path);
     }
     let original = owner.join("tests/layout/browser_parity");
     let authored = owner.join("examples/qualify-root-context");
@@ -1396,6 +1547,23 @@ fn qualify_pairs(root: &Path, cases: &[ExpectedCase]) -> Result<()> {
             observation_section(&right, "expectations")?,
             &format!("{}~{}", case.case.id(), peer.case.id()),
         );
+        let left_sizes = left
+            .root_element()
+            .children()
+            .find(|node| node.has_tag_name("element-scroll-sizes"));
+        let right_sizes = right
+            .root_element()
+            .children()
+            .find(|node| node.has_tag_name("element-scroll-sizes"));
+        match (left_sizes, right_sizes) {
+            (Some(left), Some(right)) => compare_observation_tree(
+                left,
+                right,
+                &format!("{}~{} element scroll sizes", case.case.id(), peer.case.id()),
+            ),
+            (None, None) => {}
+            _ => return Err("paired element scroll-size coverage differs".into()),
+        }
         if relation.world_phase_change {
             let left_world = world_observations(&left)?;
             let right_world = world_observations(&right)?;
@@ -1435,23 +1603,50 @@ fn qualify_tampering(
     corpus: &BrowserCorpus,
     source: &RelativePath,
     output: &RelativePath,
-) -> Result<()> {
+    adapter: &QualificationAdapter,
+) -> Result<usize> {
     for path in [source, output] {
         let path = root.join(path.as_str());
         let original = fs::read(&path)?;
         let mut modified = original.clone();
         modified.push(b'\n');
         fs::write(&path, modified)?;
-        let result = browser::check_corpus(corpus, &LayoutAdapter);
+        let result = browser::check_corpus(corpus, adapter);
         fs::write(&path, original)?;
         assert_invalid_inventory(result);
     }
     let undeclared = root.join("scripts/gentest/undeclared.js");
     fs::write(&undeclared, b"// undeclared input\n")?;
-    let result = browser::check_corpus(corpus, &LayoutAdapter);
+    let result = browser::check_corpus(corpus, adapter);
     fs::remove_file(undeclared)?;
     assert_invalid_inventory(result);
-    Ok(())
+    if adapter.observations == BoxObservationRequest::ElementScrollSizes {
+        match browser::check_corpus(
+            corpus,
+            &QualificationAdapter::for_mode(QualificationMode::Regular),
+        ) {
+            Err(GenerationError::Adapter {
+                stage: "check preparation",
+                error: AdapterError::Preparation(detail),
+                ..
+            }) => {
+                assert!(detail.starts_with(OBSERVATION_REQUEST_INPUT), "{detail}");
+            }
+            other => panic!("expected registered-request adapter refusal, received {other:?}"),
+        }
+        let path = root.join(OBSERVATION_REQUEST_INPUT);
+        let original = fs::read(&path)?;
+        fs::write(&path, b"{}\n")?;
+        let changed = browser::check_corpus(corpus, adapter);
+        fs::write(&path, &original)?;
+        assert_invalid_inventory(changed);
+        fs::remove_file(&path)?;
+        let missing = browser::check_corpus(corpus, adapter);
+        fs::write(&path, original)?;
+        assert_invalid_inventory(missing);
+        return Ok(6);
+    }
+    Ok(3)
 }
 
 fn assert_invalid_inventory(
@@ -1474,6 +1669,90 @@ mod numeric_diagnostic_tests {
     fn declaration() -> Declaration {
         surgeist_generator::parse_manifest(std::str::from_utf8(DECLARATION).unwrap(), "corpus.toml")
             .unwrap()
+    }
+
+    #[test]
+    fn scroll_size_selection_preserves_the_declared_phase_pair() {
+        let mut input = declaration();
+        select_records(
+            &mut input,
+            Some("html/qualification/block-translation-0-75.html"),
+            QualificationMode::ElementScrollSizeDiagnostics,
+        )
+        .unwrap();
+        assert_eq!(
+            input
+                .records
+                .iter()
+                .map(|record| record.source.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "html/qualification/block-translation-0-25.html",
+                "html/qualification/block-translation-0-75.html",
+            ]
+        );
+        assert_eq!(
+            input.expected().unwrap().generated(),
+            2 * fixture_cases().len()
+        );
+        assert!(
+            input.records[1]
+                .relation
+                .as_ref()
+                .unwrap()
+                .world_phase_change
+        );
+        assert!(
+            select_records(
+                &mut declaration(),
+                None,
+                QualificationMode::ElementScrollSizeDiagnostics
+            )
+            .is_err()
+        );
+        assert!(
+            select_records(
+                &mut declaration(),
+                Some("html/missing.html"),
+                QualificationMode::ElementScrollSizeDiagnostics
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn scroll_size_inventory_authenticates_request_and_refuses_changed_input_without_repair() {
+        struct TemporaryCorpus(PathBuf);
+        impl Drop for TemporaryCorpus {
+            fn drop(&mut self) {
+                fs::remove_dir_all(&self.0).unwrap();
+            }
+        }
+        let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let invocation = Invocation::new(owner).unwrap();
+        let root = TemporaryCorpus(invocation.root);
+        let mut input = DeclarationInput::parse(DECLARATION).unwrap();
+        select_records(
+            &mut input.declaration,
+            Some("html/grid/grid_fit_content_percent_indefinite_max_content_hidden.html"),
+            QualificationMode::ElementScrollSizeDiagnostics,
+        )
+        .unwrap();
+        let mode = QualificationMode::ElementScrollSizeDiagnostics;
+        let prepared = inventory(&root.0, owner, &input, mode, InputAccess::Prepare).unwrap();
+        let path = RelativePath::new(OBSERVATION_REQUEST_INPUT).unwrap();
+        let bytes = mode.box_observations().input_bytes().unwrap();
+        assert_eq!(fs::read(root.0.join(path.as_str())).unwrap(), bytes);
+        assert!(prepared.global_inputs.contains(&path));
+        assert_eq!(
+            prepared.expected_inputs[&path],
+            Sha256Digest::from_bytes(bytes)
+        );
+        let checked = inventory(&root.0, owner, &input, mode, InputAccess::ReadOnly).unwrap();
+        assert_eq!(checked.expected_inputs, prepared.expected_inputs);
+        fs::write(root.0.join(path.as_str()), b"{}\n").unwrap();
+        assert!(inventory(&root.0, owner, &input, mode, InputAccess::ReadOnly).is_err());
+        assert_eq!(fs::read(root.0.join(path.as_str())).unwrap(), b"{}\n");
     }
 
     #[test]

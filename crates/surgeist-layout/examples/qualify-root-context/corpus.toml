@@ -1473,3 +1473,33 @@ containing_direction = "ltr"
 hypothetical_direction = "ltr"
 root_direction = "variant"
 inline_offset = 0
+
+[[records]]
+source = "html/qualification/element-scroll-reachable.html"
+source_sha256 = "ead216771451aff3b3044cc4df5e8f019972ca874217342b1a2b930780252e6d"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/qualification/element-scroll-unreachable.html"
+source_sha256 = "c6681422764404f14f65cfb390c2685390ab6947a3ba443ad2a2a6588fab36e4"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0

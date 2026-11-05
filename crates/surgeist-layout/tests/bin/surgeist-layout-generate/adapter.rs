@@ -168,6 +168,31 @@ impl BrowserCorpusAdapter for LayoutAdapter {
     type Error = AdapterError;
 
     fn prepare(&self, input: FixtureInput<'_>) -> Result<PreparedFixture, Self::Error> {
+        self.prepare_with_observations(input, crate::measurement::BoxObservationRequest::Geometry)
+    }
+
+    fn lower(
+        &self,
+        fixture: &FixtureSpec,
+        measurement: Value,
+    ) -> Result<Vec<CaseOutcome>, Self::Error> {
+        self.lower_with_observations(
+            fixture,
+            measurement,
+            crate::measurement::BoxObservationRequest::Geometry,
+        )
+    }
+}
+
+impl LayoutAdapter {
+    pub fn prepare_with_observations(
+        &self,
+        input: FixtureInput<'_>,
+        request: crate::measurement::BoxObservationRequest,
+    ) -> Result<PreparedFixture, AdapterError> {
+        let request_path = RelativePath::new(crate::measurement::OBSERVATION_REQUEST_INPUT)
+            .map_err(|error| AdapterError::Preparation(error.to_string()))?;
+        admit_box_observation_request(input.input_bytes(&request_path), request)?;
         let source = std::str::from_utf8(input.source_bytes()).map_err(|error| {
             AdapterError::Preparation(format!("fixture source is not UTF-8: {error}"))
         })?;
@@ -210,11 +235,12 @@ impl BrowserCorpusAdapter for LayoutAdapter {
         .map_err(|error| AdapterError::Preparation(error.to_string()))
     }
 
-    fn lower(
+    pub fn lower_with_observations(
         &self,
         fixture: &FixtureSpec,
         measurement: Value,
-    ) -> Result<Vec<CaseOutcome>, Self::Error> {
+        request: crate::measurement::BoxObservationRequest,
+    ) -> Result<Vec<CaseOutcome>, AdapterError> {
         let raw = measurement
             .as_str()
             .ok_or_else(|| AdapterError::Transport {
@@ -246,8 +272,9 @@ impl BrowserCorpusAdapter for LayoutAdapter {
                         ),
                     });
                 }
-                let measurement = crate::measurement::decode(raw.get(), case.id(), variant)
-                    .map_err(|source| AdapterError::Measurement(Box::new(source)))?;
+                let measurement =
+                    crate::measurement::decode(raw.get(), case.id(), variant, request)
+                        .map_err(|source| AdapterError::Measurement(Box::new(source)))?;
                 Ok(match measurement {
                     crate::measurement::DecodedMeasurement::Unsupported { reason } => {
                         CaseOutcome::Unsupported {
@@ -265,6 +292,26 @@ impl BrowserCorpusAdapter for LayoutAdapter {
             })
             .collect()
     }
+}
+
+fn admit_box_observation_request(
+    bytes: Option<&[u8]>,
+    expected: crate::measurement::BoxObservationRequest,
+) -> Result<(), AdapterError> {
+    let actual =
+        crate::measurement::BoxObservationRequest::from_input_bytes(bytes).map_err(|detail| {
+            AdapterError::Preparation(format!(
+                "{}: {detail}",
+                crate::measurement::OBSERVATION_REQUEST_INPUT
+            ))
+        })?;
+    if actual != expected {
+        return Err(AdapterError::Preparation(format!(
+            "{}: registered observation request {actual:?} differs from requested {expected:?}",
+            crate::measurement::OBSERVATION_REQUEST_INPUT,
+        )));
+    }
+    Ok(())
 }
 
 fn linked_resources(source: &RelativePath, raw: &str) -> Result<Vec<RelativePath>, String> {
@@ -433,6 +480,122 @@ mod tests {
             fields.insert(key.to_string(), node);
         }
         Value::String(Value::Object(fields).to_string())
+    }
+
+    #[test]
+    fn preparation_binds_registered_request_and_refuses_missing_wrong_or_unrequested_input() {
+        use crate::measurement::BoxObservationRequest::{ElementScrollSizes, Geometry};
+        assert!(admit_box_observation_request(None, Geometry).is_ok());
+        assert!(
+            admit_box_observation_request(ElementScrollSizes.input_bytes(), ElementScrollSizes)
+                .is_ok()
+        );
+        for (bytes, expected) in [
+            (None, ElementScrollSizes),
+            (ElementScrollSizes.input_bytes(), Geometry),
+            (Some(b"{}".as_slice()), Geometry),
+            (Some(b"{}".as_slice()), ElementScrollSizes),
+        ] {
+            assert!(matches!(
+                admit_box_observation_request(bytes, expected),
+                Err(AdapterError::Preparation(_))
+            ));
+        }
+    }
+
+    fn element_size_box() -> Value {
+        let mut node = supported_box();
+        node["style"]["position"] = serde_json::json!("absolute");
+        node["style"]["overflowX"] = serde_json::json!("visible");
+        node["style"]["overflowY"] = serde_json::json!("visible");
+        node["style"]["scrollbarGutter"] = serde_json::json!("auto");
+        node["viewport"] = serde_json::json!({"rootContext":{"kind":"absolute-root-local",
+            "containingWidth":800,"containingHeight":600,"containingDirection":"ltr",
+            "hypotheticalDirection":"ltr","hypotheticalDisplay":"block",
+            "hypotheticalAnchor":"inline-start","hypotheticalInlineOffset":0,
+            "fallback":{"initialContainingBlock":{"width":800,"height":600},
+                "nearestScrollport":"none","containingLimits":{"width":"unbounded","height":"unbounded"}}}});
+        node
+    }
+
+    #[test]
+    fn explicit_geometry_lowering_is_byte_identical_to_the_trait_front_door() {
+        let measurement = envelope(std::array::from_fn(|_| element_size_box()));
+        let old = LayoutAdapter
+            .lower(&fixture(), measurement.clone())
+            .unwrap();
+        let explicit = LayoutAdapter
+            .lower_with_observations(
+                &fixture(),
+                measurement,
+                crate::measurement::BoxObservationRequest::Geometry,
+            )
+            .unwrap();
+        for (old, explicit) in old.into_iter().zip(explicit) {
+            match (old, explicit) {
+                (
+                    CaseOutcome::Generated {
+                        case_id: old_id,
+                        bytes: old_bytes,
+                    },
+                    CaseOutcome::Generated { case_id, bytes },
+                ) => {
+                    assert_eq!(case_id, old_id);
+                    assert_eq!(bytes, old_bytes);
+                }
+                outcomes => panic!("expected complete generated geometry cases: {outcomes:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn requested_element_sizes_lower_all_declared_variants_and_refuse_an_unsupported_case() {
+        let mut unsupported = element_size_box();
+        unsupported["style"]["overflowX"] = serde_json::json!("auto");
+        let outcomes = LayoutAdapter
+            .lower_with_observations(
+                &fixture(),
+                envelope([
+                    element_size_box(),
+                    unsupported,
+                    element_size_box(),
+                    element_size_box(),
+                ]),
+                crate::measurement::BoxObservationRequest::ElementScrollSizes,
+            )
+            .unwrap();
+        assert_eq!(outcomes.len(), fixture().cases().len());
+        for (index, outcome) in outcomes.into_iter().enumerate() {
+            match outcome {
+                CaseOutcome::Generated { case_id, bytes } => {
+                    assert_ne!(index, 1);
+                    assert_eq!(case_id, fixture().cases()[index].id());
+                    let xml = std::str::from_utf8(&bytes).unwrap();
+                    let document = roxmltree::Document::parse(xml).unwrap();
+                    let table = document
+                        .root_element()
+                        .children()
+                        .find(|node| node.has_tag_name("element-scroll-sizes"))
+                        .unwrap();
+                    assert_eq!(
+                        table.attribute("profile"),
+                        Some("horizontal-zero-edge-divs")
+                    );
+                    let row = table.first_element_child().unwrap();
+                    assert_eq!(row.attribute("node-path"), Some("0"));
+                    assert_eq!(row.attribute("client-width"), Some("10"));
+                    assert_eq!(row.attribute("client-height"), Some("20"));
+                    assert_eq!(row.attribute("scroll-width"), Some("10"));
+                    assert_eq!(row.attribute("scroll-height"), Some("20"));
+                    assert!(row.next_sibling_element().is_none());
+                }
+                CaseOutcome::Unsupported { case_id, reason } => {
+                    assert_eq!(index, 1);
+                    assert_eq!(case_id, fixture().cases()[index].id());
+                    assert!(reason.contains("Visible, Clip or Hidden"), "{reason}");
+                }
+            }
+        }
     }
 
     #[test]
