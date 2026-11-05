@@ -286,6 +286,7 @@ fn definite_inline_atomic_refuses_a_cycle_through_a_sibling() {
     let error =
         measure_definite_inline_atomic_size(&tree, CONTAINER, ATOMIC, request(Direction::Ltr))
             .unwrap_err();
+    assert_eq!(error.operation(), LayoutOperation::RootLayout);
     assert!(matches!(
         error.kind(),
         LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::TreeTopologyCycle)
