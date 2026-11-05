@@ -2952,6 +2952,38 @@ fn name_storage_holds_two_nodes_for_each_name_and_a_repeat_allocates_nothing() {
 }
 
 #[test]
+fn a_lookup_takes_steps_in_proportion_to_the_bits_of_its_own_name() {
+    // Two hundred kept names `b`, `ab`, `aab`, ... lie on one path of the tree, one branch for
+    // each. A probe that is short, and so ends long before the path does, takes the zero side at
+    // each of the branches past its end. It differs from every kept name at or before its own
+    // end marker, so a lookup needs to read the branches at bit positions up to the end of the
+    // probe, 17 for each unit and one for the marker, and the same again to place a new branch:
+    // twice (17 * (units + 1)) steps, and two more for the leaf and the end of each search.
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+    let mut names = Names::new().unwrap();
+    let mut kept: Vec<Vec<u16>> = Vec::new();
+    for depth in 0..200 {
+        let name = units(&format!("{}b", "a".repeat(depth)));
+        assert!(!names.insert(&name, &kept[..], kept.len(), &mut c).unwrap());
+        kept.push(name);
+    }
+    let mut deepest = 0;
+    for probe in ["a", "aa", "ac", "az", "ax", "aaz", "ay", "aq", "aaq", "aax"] {
+        let probe = units(probe);
+        let before = c.usage().work(HtmlParseWorkCategory::StateStep);
+        assert!(!names.insert(&probe, &kept[..], kept.len(), &mut c).unwrap());
+        let steps = c.usage().work(HtmlParseWorkCategory::StateStep) - before;
+        deepest = deepest.max(steps);
+        assert!(
+            steps <= 2 * 17 * (probe.len() as u64 + 1) + 2,
+            "{probe:04x?} took {steps} steps"
+        );
+        kept.push(probe);
+    }
+    assert!(deepest > 0);
+}
+
+#[test]
 fn names_report_a_repeat_exactly_when_an_equal_name_was_recorded() {
     // The oracle is a set of whole names. The alphabet puts the extremes of the unit range,
     // units that differ in one low bit, and a surrogate in names of every length up to five, so
