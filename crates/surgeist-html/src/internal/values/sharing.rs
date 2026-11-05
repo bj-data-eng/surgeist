@@ -329,10 +329,40 @@ fn owner_id() -> Option<u64> {
         .ok()
 }
 
+/// The four strings of one attribute, in the order they are read.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum AttributePart {
+    #[default]
+    NamespaceUri,
+    Prefix,
+    LocalName,
+    Value,
+}
+impl AttributePart {
+    /// The position of this part among the four, which offsets the part's read tags.
+    fn position(self) -> u8 {
+        match self {
+            Self::NamespaceUri => 0,
+            Self::Prefix => 1,
+            Self::LocalName => 2,
+            Self::Value => 3,
+        }
+    }
+    /// The part read after this one, or `None` after the last.
+    fn next(self) -> Option<Self> {
+        match self {
+            Self::NamespaceUri => Some(Self::Prefix),
+            Self::Prefix => Some(Self::LocalName),
+            Self::LocalName => Some(Self::Value),
+            Self::Value => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 struct Cursor {
     attribute: usize,
-    part: usize,
+    part: AttributePart,
     offset: usize,
     len: usize,
     units: bool,
@@ -463,29 +493,30 @@ impl Value for OrderedAttributes {
         }
         let attribute = &self.as_slice()[cursor.attribute];
         let string = match cursor.part {
-            0 => attribute.name().namespace().uri(),
-            1 => attribute.name().prefix(),
-            2 => Some(attribute.name().local_name()),
-            3 => Some(attribute.value()),
-            _ => unreachable!("four components per attribute"),
+            AttributePart::NamespaceUri => attribute.name().namespace().uri(),
+            AttributePart::Prefix => attribute.name().prefix(),
+            AttributePart::LocalName => Some(attribute.name().local_name()),
+            AttributePart::Value => Some(attribute.value()),
         };
         let result = if let Some(string) = string {
-            let tag = 2 + cursor.part as u8;
+            let tag = 2 + cursor.part.position();
             read_string(string, cursor, tag)?
         } else {
             Read {
                 word: Word {
-                    tag: 9 + cursor.part as u8,
+                    tag: 9 + cursor.part.position(),
                     value: 0,
                 },
                 payload: HtmlValuePoolUsage::default(),
             }
         };
         if !cursor.units {
-            cursor.part += 1;
-            if cursor.part == 4 {
-                cursor.part = 0;
-                cursor.attribute += 1;
+            match cursor.part.next() {
+                Some(part) => cursor.part = part,
+                None => {
+                    cursor.part = AttributePart::NamespaceUri;
+                    cursor.attribute += 1;
+                }
             }
             cursor.done = cursor.attribute == self.len();
         }
@@ -788,3 +819,31 @@ concrete_pool!(
     HtmlAttributePoolResult,
     OrderedAttributes
 );
+
+#[cfg(test)]
+mod attribute_part_tests {
+    use super::AttributePart;
+
+    /// An attribute is read as its namespace URI, prefix, local name and value, in that order,
+    /// and the tags of the four reads are offset by the part's position among them.
+    #[test]
+    fn the_four_parts_of_an_attribute_are_read_in_order() {
+        let mut parts = vec![AttributePart::default()];
+        while let Some(next) = parts.last().and_then(|part| part.next()) {
+            parts.push(next);
+        }
+        assert_eq!(
+            parts,
+            [
+                AttributePart::NamespaceUri,
+                AttributePart::Prefix,
+                AttributePart::LocalName,
+                AttributePart::Value
+            ]
+        );
+        assert_eq!(
+            parts.iter().map(|part| part.position()).collect::<Vec<_>>(),
+            [0, 1, 2, 3]
+        );
+    }
+}
