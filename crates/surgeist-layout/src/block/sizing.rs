@@ -9,12 +9,14 @@ use crate::{
     PreferredSizeOf, Size, SizingAlgorithm,
 };
 
+type BlockSizeLimits<S> = (Size<Option<S>>, Size<Option<S>>);
+
 pub(super) fn transfer_block_ratio_inline_limits<S: LayoutScalar>(
     flow: crate::FlowAxes,
     ratio: crate::AspectRatioOf<S>,
     min: Size<Option<S>>,
     max: Size<Option<S>>,
-) -> Result<(Size<Option<S>>, Size<Option<S>>), LengthResolutionStatus<S>> {
+) -> Result<BlockSizeLimits<S>, LengthResolutionStatus<S>> {
     let mut min = flow.logical_size(min);
     let mut max = flow.logical_size(max);
     let transfer = |block: S| {
