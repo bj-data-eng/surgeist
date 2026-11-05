@@ -119,6 +119,7 @@ impl ParseControl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::HtmlParseLimitsBuilder;
 
     fn control() -> ParseControl {
         ParseControl::new(
@@ -265,5 +266,139 @@ mod tests {
         c.release_document_string(allocation).unwrap();
         assert_eq!(current(&c, HtmlParseResource::ManagedUtf16Units), 0);
         assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 0);
+    }
+
+    fn limited(
+        configure: impl FnOnce(HtmlParseLimitsBuilder) -> HtmlParseLimitsBuilder,
+    ) -> ParseControl {
+        let limits = configure(crate::parser::tree_builder::tests::limits(100).into_builder())
+            .finish()
+            .unwrap();
+        ParseControl::new(limits, crate::HtmlParseCancellation::new())
+    }
+
+    #[test]
+    fn a_capacity_limit_met_while_the_backing_grows_hands_back_the_string_and_a_ticket_that_releases()
+     {
+        // Five units in a backing of eight hold sixteen bytes and the fixed wrapper. Nine more
+        // units need sixteen slots, thirty-two bytes, which the limit cannot hold beside the
+        // wrapper.
+        let wrapper = size_of::<Vec<u16>>() as u64;
+        let mut c = limited(|builder| builder.managed_capacity_bytes(16 + wrapper + 15));
+        let (value, mut allocation) = registered(&mut c, &[1, 2, 3, 4, 5]);
+        let before = current(&c, HtmlParseResource::ManagedCapacityBytes);
+        let refused = c
+            .extend_managed_document_string(&mut allocation, value, &[6; 9])
+            .err()
+            .unwrap();
+        assert!(matches!(
+            refused.stop,
+            HtmlParseStop::LimitExceeded {
+                resource: HtmlParseResource::ManagedCapacityBytes,
+                ..
+            }
+        ));
+        assert_eq!(c.stop(), Some(refused.stop));
+        // Nothing was reserved or appended, so the ticket still names the value as it was.
+        assert_eq!(refused.value.code_units(), [1, 2, 3, 4, 5]);
+        assert_eq!(refused.value.shared_code_units().capacity(), 8);
+        assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), before);
+        assert_eq!(current(&c, HtmlParseResource::ManagedUtf16Units), 5);
+        drop(refused.value);
+        c.release_document_string(allocation).unwrap();
+        assert_eq!(current(&c, HtmlParseResource::ManagedUtf16Units), 0);
+        assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 0);
+    }
+
+    #[test]
+    fn a_cancelled_control_refuses_an_extension_before_it_changes_anything() {
+        let cancellation = crate::HtmlParseCancellation::new();
+        let mut c = ParseControl::new(
+            crate::parser::tree_builder::tests::limits(100),
+            cancellation.clone(),
+        );
+        let (value, mut allocation) = registered(&mut c, &[1, 2, 3]);
+        cancellation.cancel();
+        let refused = c
+            .extend_managed_document_string(&mut allocation, value, &[4])
+            .err()
+            .unwrap();
+        assert_eq!(refused.stop, HtmlParseStop::Cancelled);
+        assert_eq!(refused.value.code_units(), [1, 2, 3]);
+        assert_eq!(current(&c, HtmlParseResource::ManagedUtf16Units), 3);
+        drop(refused.value);
+        c.release_document_string(allocation).unwrap();
+        assert_eq!(current(&c, HtmlParseResource::ManagedUtf16Units), 0);
+        assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 0);
+    }
+
+    /// Cuts the work of one extension at every credit. The extension that completes is the one
+    /// whose cut holds all its work, and every shorter cut hands the string back with a ticket
+    /// that releases to zero.
+    fn assert_every_work_cut_is_exact(initial: &[u16], appended: &[u16]) {
+        let registered_work = {
+            let mut c = control();
+            let (value, allocation) = registered(&mut c, initial);
+            let used = current(&c, HtmlParseResource::WorkCredits);
+            drop(value);
+            c.release_document_string(allocation).unwrap();
+            used
+        };
+        let total = {
+            let mut c = control();
+            let (value, mut allocation) = registered(&mut c, initial);
+            let extended = c
+                .extend_managed_document_string(&mut allocation, value, appended)
+                .ok()
+                .unwrap();
+            let total = current(&c, HtmlParseResource::WorkCredits) - registered_work;
+            drop(extended);
+            c.release_document_string(allocation).unwrap();
+            total
+        };
+        assert!(total > 0);
+        let mut expected: Vec<u16> = initial.to_vec();
+        expected.extend_from_slice(appended);
+        for room in 0..=total {
+            let mut c = limited(|builder| builder.work_credits(registered_work + room));
+            let (value, mut allocation) = registered(&mut c, initial);
+            let result = c.extend_managed_document_string(&mut allocation, value, appended);
+            let value = match result {
+                Ok(value) => {
+                    assert_eq!(room, total, "a cut of {room} credits completes");
+                    assert_eq!(value.code_units(), expected);
+                    value
+                }
+                Err(refused) => {
+                    assert!(
+                        room < total,
+                        "the whole work of {total} credits is admitted"
+                    );
+                    assert!(matches!(
+                        refused.stop,
+                        HtmlParseStop::LimitExceeded {
+                            resource: HtmlParseResource::WorkCredits,
+                            ..
+                        }
+                    ));
+                    assert_eq!(refused.value.code_units(), initial, "cut of {room}");
+                    refused.value
+                }
+            };
+            drop(value);
+            c.release_document_string(allocation).unwrap();
+            assert_eq!(current(&c, HtmlParseResource::ManagedUtf16Units), 0);
+            assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 0);
+        }
+    }
+
+    #[test]
+    fn every_work_cut_of_an_extension_within_the_capacity_is_exact() {
+        assert_every_work_cut_is_exact(&[1, 2, 3, 4, 5], &[6, 7]);
+    }
+
+    #[test]
+    fn every_work_cut_of_an_extension_that_grows_the_backing_is_exact() {
+        assert_every_work_cut_is_exact(&[1, 2, 3, 4, 5, 6, 7, 8], &[9; 300]);
     }
 }

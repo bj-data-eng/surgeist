@@ -401,6 +401,91 @@ fn textarea_text_appended_before_a_later_child_rebuilds_the_raw_value() {
     storage_zero(&c);
 }
 
+/// A textarea holding the text A, a span and the text B, in that order, with the tokens after
+/// them still to come.
+fn textarea_with_two_texts<'a>(
+    source: &'a crate::HtmlSource,
+) -> (
+    ParseControl,
+    ParserArenaSession,
+    ParserNode,
+    ParserNode,
+    ParserNode,
+    crate::parser::tokenizer::tests::LexerFixture<'a>,
+) {
+    let (mut c, mut session, node, mut tokenizer) = textarea_owner(source, limits());
+    let mut a = next_text(&mut tokenizer, &mut c);
+    let first = session
+        .insert_text(&mut c, &node, None, &mut a, None)
+        .unwrap()
+        .unwrap()
+        ._node;
+    let span = next_fixture_tag(&mut tokenizer, &mut c, &[115, 112, 97, 110]);
+    let child = session
+        .allocate_html_tag_for_creation(
+            &mut c,
+            &mut Some(span),
+            &node,
+            None,
+            crate::construction::CreationContext::Ordinary,
+        )
+        .unwrap();
+    session.insert(&mut c, &node, &child, None, None).unwrap();
+    // The span is the last child, so the text after it starts a node of its own.
+    let mut b = next_text(&mut tokenizer, &mut c);
+    session
+        .insert_text(&mut c, &node, None, &mut b, None)
+        .unwrap();
+    (c, session, node, first, child, tokenizer)
+}
+
+fn raw_units(
+    session: &mut ParserArenaSession,
+    c: &mut ParseControl,
+    node: &ParserNode,
+) -> Vec<u16> {
+    session
+        .textarea_raw_value(c, node)
+        .unwrap()
+        .code_units()
+        .to_vec()
+}
+
+#[test]
+fn textarea_text_appended_after_two_text_children_extends_the_raw_value_of_both() {
+    let source = crate::HtmlSource::utf8("<textarea>A<span>BC");
+    let (mut c, mut session, node, _, _, mut tokenizer) = textarea_with_two_texts(&source);
+    assert_eq!(raw_units(&mut session, &mut c, &node), [65, 66]);
+    let backing = raw_backing(&mut session, &mut c, &node);
+    let mut text = next_text(&mut tokenizer, &mut c);
+    session
+        .insert_text(&mut c, &node, None, &mut text, None)
+        .unwrap();
+    // The raw value is the text of both children, the second now holding B and C.
+    assert_eq!(raw_units(&mut session, &mut c, &node), [65, 66, 67]);
+    assert_eq!(raw_backing(&mut session, &mut c, &node), backing);
+    tokenizer.release(&mut c).unwrap();
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn textarea_text_appended_after_a_child_was_removed_extends_the_rebuilt_raw_value() {
+    let source = crate::HtmlSource::utf8("<textarea>A<span>BC");
+    let (mut c, mut session, node, first, child, mut tokenizer) = textarea_with_two_texts(&source);
+    // Moving the first text into the span leaves the second as the only text child.
+    session.insert(&mut c, &child, &first, None, None).unwrap();
+    assert_eq!(raw_units(&mut session, &mut c, &node), [66]);
+    let mut text = next_text(&mut tokenizer, &mut c);
+    session
+        .insert_text(&mut c, &node, None, &mut text, None)
+        .unwrap();
+    assert_eq!(raw_units(&mut session, &mut c, &node), [66, 67]);
+    tokenizer.release(&mut c).unwrap();
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
 #[test]
 fn textarea_repeated_reset_retires_backing_but_keeps_initialized_slots_bounded() {
     // Registry slots: initial raw/textarea/form3, name/namespace/attrs3,
