@@ -941,6 +941,21 @@ mod tests {
     }
 
     #[test]
+    fn prepared_range_policy_reserves_the_title_and_anchor() {
+        let rejected = [
+            "Nonempty Text range fragments\n=============================",
+            "### Nonempty **Text** range fragments",
+            "### [Nonempty Text range fragments](#conflicting-policy)",
+            "<a id=\"nonempty-text-range-fragments\"></a>",
+        ]
+        .map(|heading| {
+            let shadowed = format!("{heading}\n\nConflicting policy.\n\n{CONTRACT}");
+            PolicyIdentity::from_contract(&shadowed).is_err()
+        });
+        assert_eq!(rejected, [true; 4]);
+    }
+
+    #[test]
     fn prepared_range_verdict_identifies_the_adopted_policy_revision() {
         let original = include_str!(
             "captured/prepared-range-differences/xml/block/prepared_text_continuity_bidi__border_box_rtl.xml"
