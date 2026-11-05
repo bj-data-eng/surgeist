@@ -18,7 +18,9 @@ use surgeist_generator::{GeneratorErrorKind, RelativePath, Sha256Digest};
 use crate::adapter::{AdapterError, LayoutAdapter, fixture_cases};
 use crate::browser_profile::BrowserManifest;
 use crate::fixture_variants;
-use crate::measurement::{BoxObservationRequest, OBSERVATION_REQUEST_INPUT};
+use crate::measurement::{
+    BoxObservationRequest, FLEX_COMPOSITION_SOURCE, OBSERVATION_REQUEST_INPUT,
+};
 
 #[path = "../../tests/layout/browser_parity/qualification_catalogue.rs"]
 mod qualification_catalogue;
@@ -42,6 +44,7 @@ pub(super) enum QualificationMode {
     MeasuredLeafDiagnostics,
     FlexContentTextDiagnostics,
     PreparedRangeCapture,
+    FlexCompositionCapture,
     Publish,
     CheckPublished,
     PublishCanonicalBoxes,
@@ -67,6 +70,7 @@ impl QualificationMode {
     fn box_observations(self) -> BoxObservationRequest {
         match self {
             Self::PreparedRangeCapture => BoxObservationRequest::PreparedRanges,
+            Self::FlexCompositionCapture => BoxObservationRequest::FlexComposition,
             Self::ElementScrollSizeDiagnostics => BoxObservationRequest::ElementScrollSizes,
             Self::FlexContentTextDiagnostics
             | Self::PublishFlexText
@@ -99,6 +103,15 @@ fn select_records(
         declaration
             .records
             .retain(|record| record.source.as_str() != prepared_source);
+    }
+    if mode == QualificationMode::FlexCompositionCapture {
+        if fixture != Some(FLEX_COMPOSITION_SOURCE) {
+            return Err("Flex composition qualification requires its declared fixture".into());
+        }
+    } else {
+        declaration
+            .records
+            .retain(|record| record.source.as_str() != FLEX_COMPOSITION_SOURCE);
     }
     if matches!(
         mode,
@@ -146,8 +159,9 @@ fn select_records(
                 QualificationMode::NumericDiagnostics => {
                     return Err("numeric diagnostics require a Generated fixture".into());
                 }
-                QualificationMode::PreparedRangeCapture => {
-                    return Err("prepared Range qualification requires a Generated fixture".into());
+                QualificationMode::PreparedRangeCapture
+                | QualificationMode::FlexCompositionCapture => {
+                    return Err("specialized qualification requires a Generated fixture".into());
                 }
                 QualificationMode::ElementScrollSizeDiagnostics
                 | QualificationMode::MeasuredLeafDiagnostics
@@ -408,6 +422,11 @@ impl BrowserCorpusAdapter for QualificationAdapter {
 }
 
 pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> {
+    let mode = if mode == QualificationMode::Regular && fixture == Some(FLEX_COMPOSITION_SOURCE) {
+        QualificationMode::FlexCompositionCapture
+    } else {
+        mode
+    };
     let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
     if matches!(
         mode,
@@ -539,7 +558,7 @@ fn qualify(
             lineage: SemanticLineage::Focused,
             requirements: None,
             terminal_cases: None,
-            prepared_range_raw: &mut std::io::stdout(),
+            policy_raw: &mut std::io::stdout(),
         },
     )
 }
@@ -600,14 +619,15 @@ struct Validation<'a> {
     requirements:
         Option<&'a BTreeMap<String, crate::parity_support::capture_authority::CurrentRequirements>>,
     terminal_cases: Option<&'a mut Vec<crate::parity_support::capture_authority::QualifiedCase>>,
-    prepared_range_raw: &'a mut dyn Write,
+    policy_raw: &'a mut dyn Write,
 }
 struct SemanticCapture<'a> {
     root: &'a Path,
     inventory: &'a Inventory,
     corpus: &'a BrowserCorpus,
     report: &'a browser::BrowserGenerationReport,
-    flex_report: Option<&'a str>,
+    bound_report: Option<&'a str>,
+    observation: BoxObservationRequest,
     lineage: SemanticLineage,
     requirements:
         Option<&'a BTreeMap<String, crate::parity_support::capture_authority::CurrentRequirements>>,
@@ -625,7 +645,10 @@ fn validate_corpus(
     report: &browser::BrowserGenerationReport,
     mut validation: Validation<'_>,
 ) -> Result<()> {
-    use crate::parity_support::prepared_range_qualification as prepared_range;
+    use crate::parity_support::{
+        exact_differences::flex_composition_qualification,
+        prepared_range_qualification as prepared_range,
+    };
 
     let mode = validation.mode;
     let prepared_range_policy = if mode == QualificationMode::PreparedRangeCapture {
@@ -635,6 +658,13 @@ fn validate_corpus(
         Some(prepared_range::PolicyIdentity::from_contract(
             &fs::read_to_string(path)?,
         )?)
+    } else {
+        None
+    };
+    let flex_composition = if mode == QualificationMode::FlexCompositionCapture {
+        Some(flex_composition_qualification::Inputs::load(Path::new(
+            env!("CARGO_MANIFEST_DIR"),
+        ))?)
     } else {
         None
     };
@@ -685,7 +715,11 @@ fn validate_corpus(
             .count()
     );
     let mut terminal_cases = Vec::new();
-    let flex_report = if mode.box_observations() == BoxObservationRequest::FlexContentText {
+    let observation = mode.box_observations();
+    let bound_report = if matches!(
+        observation,
+        BoxObservationRequest::FlexContentText | BoxObservationRequest::FlexComposition
+    ) {
         Some(String::from_utf8(report.to_bytes()?)?)
     } else {
         None
@@ -695,7 +729,8 @@ fn validate_corpus(
         inventory,
         corpus,
         report,
-        flex_report: flex_report.as_deref(),
+        bound_report: bound_report.as_deref(),
+        observation,
         lineage: validation.lineage,
         requirements: validation.requirements,
     };
@@ -710,7 +745,13 @@ fn validate_corpus(
         let xml = fs::read_to_string(root.join(artifact.output().as_str()))?;
         // Source certificates and parsing remain fatal in every mode.
         qualify_xml(&xml, case)?;
-        let golden = parse_capture_golden(root, artifact, &xml, capture.flex_report)?;
+        let golden = parse_capture_golden(
+            root,
+            artifact,
+            &xml,
+            capture.observation,
+            capture.bound_report,
+        )?;
         if golden.has_prepared_range_frame()
             != (mode.box_observations() == BoxObservationRequest::PreparedRanges)
         {
@@ -760,9 +801,22 @@ fn validate_corpus(
                 case.source.as_str(),
                 case.case.variant(),
                 policy,
-                &mut *validation.prepared_range_raw,
+                &mut *validation.policy_raw,
             ) {
                 native_errors.push(format!("{}: {error}", case.case.id()));
+            }
+        } else if let Some(inputs) = &flex_composition {
+            match flex_composition_qualification::qualify(
+                &golden,
+                case.case.variant(),
+                inputs,
+                &mut *validation.policy_raw,
+            ) {
+                Ok((collapse, scrollbar)) => eprintln!(
+                    "qualify-root-context: {} qualified {collapse} collapse and {scrollbar} scrollbar differences",
+                    case.case.id()
+                ),
+                Err(error) => native_errors.push(format!("{}: {error}", case.case.id())),
             }
         } else if mode.collects_numeric_differences() {
             match collect_numeric_case(&golden, case, &mut std::io::stdout().lock()) {
@@ -862,6 +916,7 @@ fn validate_corpus(
         | QualificationMode::MeasuredLeafDiagnostics
         | QualificationMode::FlexContentTextDiagnostics
         | QualificationMode::PreparedRangeCapture
+        | QualificationMode::FlexCompositionCapture
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
         | QualificationMode::PublishCanonicalBoxes
@@ -1042,6 +1097,17 @@ fn inventory(
     mode: QualificationMode,
     access: InputAccess,
 ) -> Result<Inventory> {
+    inventory_with_retained_helper(root, owner, input, mode, access, None)
+}
+
+fn inventory_with_retained_helper(
+    root: &Path,
+    owner: &Path,
+    input: &DeclarationInput<'_>,
+    mode: QualificationMode,
+    access: InputAccess,
+    retained_helper: Option<&[u8]>,
+) -> Result<Inventory> {
     let mut inventory = Inventory {
         fixtures: Vec::new(),
         cases: Vec::new(),
@@ -1069,6 +1135,7 @@ fn inventory(
         | QualificationMode::MeasuredLeafDiagnostics
         | QualificationMode::FlexContentTextDiagnostics
         | QualificationMode::PreparedRangeCapture
+        | QualificationMode::FlexCompositionCapture
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
         | QualificationMode::PublishCanonicalBoxes
@@ -1104,6 +1171,15 @@ fn inventory(
             Some(retained)
         } else {
             None
+        };
+        let bytes = if name == crate::parity_support::capture_authority::ROOT_HELPER_INPUT
+            && let Some(helper) = retained_helper
+        {
+            let digest = Sha256Digest::from_bytes(helper);
+            crate::parity_support::capture_authority::root_helper_profile(digest.as_str())?;
+            helper
+        } else {
+            bytes
         };
         let bytes = retained
             .as_deref()
@@ -1902,23 +1978,25 @@ fn parse_capture_golden(
     root: &Path,
     artifact: &browser::BrowserGeneratedArtifact,
     xml: &str,
-    flex_report: Option<&str>,
+    observation: BoxObservationRequest,
+    bound_report: Option<&str>,
 ) -> Result<crate::parity_support::Golden> {
     use crate::parity_support::Golden;
-    match flex_report {
-        Some(report) => {
-            let source = artifact.source();
-            publication::require_regular_input(root, source)?;
-            Ok(Golden::parse_with_flex_content_text(
-                xml,
-                report,
-                source.as_str(),
-                &fs::read(root.join(source.as_str()))?,
-                artifact.output().as_str(),
-            )?)
-        }
-        None => Ok(Golden::parse(xml)?),
-    }
+    let parse = match observation {
+        BoxObservationRequest::FlexContentText => Golden::parse_with_flex_content_text,
+        BoxObservationRequest::FlexComposition => Golden::parse_with_flex_composition,
+        _ => return Ok(Golden::parse(xml)?),
+    };
+    let report = bound_report.ok_or("missing bound capture report")?;
+    let source = artifact.source();
+    publication::require_regular_input(root, source)?;
+    Ok(parse(
+        xml,
+        report,
+        source.as_str(),
+        &fs::read(root.join(source.as_str()))?,
+        artifact.output().as_str(),
+    )?)
 }
 
 fn qualify_semantic_case(
@@ -1935,7 +2013,8 @@ fn qualify_semantic_case(
         inventory,
         corpus,
         report,
-        flex_report,
+        bound_report,
+        observation,
         lineage,
         requirements,
     } = capture;
@@ -1988,8 +2067,13 @@ fn qualify_semantic_case(
     publication::require_regular_input(root, artifact.output())?;
     let xml = fs::read(root.join(artifact.output().as_str()))?;
     if Sha256Digest::from_bytes(&xml).as_str() != captured.output_sha256
-        || parse_capture_golden(root, artifact, std::str::from_utf8(&xml)?, *flex_report)?
-            != *golden
+        || parse_capture_golden(
+            root,
+            artifact,
+            std::str::from_utf8(&xml)?,
+            *observation,
+            *bound_report,
+        )? != *golden
     {
         return Err(semantic_identity_changed("actual capture XML"));
     }
@@ -2730,3 +2814,7 @@ mod custody_applicability_tests {
 #[cfg(test)]
 #[path = "prepared_range_tests.rs"]
 mod prepared_range_tests;
+
+#[cfg(test)]
+#[path = "flex_composition_tests.rs"]
+mod flex_composition_tests;

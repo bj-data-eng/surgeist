@@ -240,6 +240,7 @@ fn parser_rejects_duplicates_unknown_missing_noncanonical_and_negative_extents()
         "/native/nodes/0/unrounded/facts/scroll/facts/gutter_bottom",
         "/native/nodes/0/final_output/facts/scroll/facts/gutter_left",
         "/native/nodes/0/final_output/facts/source_index",
+        "/differences/0/native",
     ] {
         let mut value = declaration();
         let (parent, key) = pointer.rsplit_once('/').unwrap();
@@ -257,6 +258,13 @@ fn parser_rejects_duplicates_unknown_missing_noncanonical_and_negative_extents()
     let mut value = declaration();
     value["native"]["nodes"][0]["unrounded"]["facts"]["size"]["width"] = json!(-1);
     assert!(ExactDifferenceSpec::parse(&value.to_string()).is_err());
+    let mut value = declaration();
+    value["differences"][0]["native"] = Value::Null;
+    assert!(matches!(
+        ExactDifferenceSpec::parse(&value.to_string()),
+        Err(QualificationError::MalformedDeclaration { reason })
+            if reason == "absent Native value requires a scroll span"
+    ));
     let mut value = declaration();
     value["differences"][0]["browser"] = json!(21.01);
     assert!(ExactDifferenceSpec::parse(&value.to_string()).is_err());
@@ -307,8 +315,13 @@ fn late_terminal_topology_failure_returns_no_completed_comparison() {
 #[test]
 fn normalized_signed_zero_is_exact_and_dom_fields_keep_their_domain() {
     assert_eq!(Number::new(-0.0).unwrap(), Number::new(0.0).unwrap());
-    let layout =
-        ComparedField::layout("/".into(), NumericComparisonField::ScrollWidth, 1.0, 0.0).unwrap();
+    let layout = ComparedField::layout(
+        "/".into(),
+        NumericComparisonField::ScrollWidth,
+        1.0,
+        Some(0.0),
+    )
+    .unwrap();
     let dom = ComparedField::element("/".into(), ElementScrollSizeField::ScrollWidth, 1, 0);
     assert_ne!(layout.key(), dom.key());
 }
@@ -1074,4 +1087,66 @@ fn completed_batch_keeps_raw_differences_when_native_oracle_qualification_fails(
         Err(QualificationError::NativeOracleChanged { .. })
     ));
     assert_eq!(completed.raw_differences().count(), 1);
+}
+
+#[test]
+fn sideways_flex_composition_refuses_an_unexplained_raw_pair() {
+    const SOURCE: &str = "html/flex/fri07_flex_composition.html";
+    const SOURCE_BYTES: &[u8] = include_bytes!("html/flex/fri07_flex_composition.html");
+    const REPORT: &str =
+        include_str!("captured/flex-composition-differences/xml/generation-reports/all.json");
+    const XML: &str = include_str!(
+        "captured/flex-composition-differences/xml/flex/fri07_flex_composition__border_box_rtl.xml"
+    );
+    const OUTPUT: &str = "xml/flex/fri07_flex_composition__border_box_rtl.xml";
+
+    let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let inputs = flex_composition_qualification::Inputs::load(owner).unwrap();
+    let golden =
+        Golden::parse_with_flex_composition(XML, REPORT, SOURCE, SOURCE_BYTES, OUTPUT).unwrap();
+
+    for (browser_y, difference_kind) in [(0.0, "unchanged"), (1.0, "changed"), (15.0, "missing")] {
+        let mut golden = golden.clone();
+        golden.expectations.children[3].children[0].y = Some(browser_y);
+        let mut raw = Vec::new();
+        let result =
+            flex_composition_qualification::qualify(&golden, "border_box_rtl", &inputs, &mut raw);
+        let receipt: Value = serde_json::from_slice(&raw).unwrap();
+        let selector = "layout:/3/0:Y".to_owned();
+        match difference_kind {
+            "unchanged" => {
+                assert_eq!(result.unwrap(), (9, 1));
+                assert_eq!(
+                    receipt["qualified"][0]["fields"].as_array().unwrap().len(),
+                    9
+                );
+                assert_eq!(
+                    receipt["qualified"][1]["fields"].as_array().unwrap().len(),
+                    1
+                );
+            }
+            "changed" => assert!(matches!(
+                result,
+                Err(QualificationError::DifferenceSetChanged { changed, .. }) if changed == [selector]
+            )),
+            "missing" => assert!(matches!(
+                result,
+                Err(QualificationError::DifferenceSetChanged { missing, .. }) if missing == [selector]
+            )),
+            _ => unreachable!(),
+        }
+        assert_eq!(receipt["observations"].as_array().unwrap().len(), 34);
+        assert_eq!(receipt["native_packets"].as_array().unwrap().len(), 7);
+        if difference_kind != "unchanged" {
+            assert!(receipt["qualified"].is_null());
+        }
+    }
+
+    let mut golden = golden;
+    golden.expectations.children[3].children[0].width = Some(121.0);
+    let mut raw = Vec::new();
+    assert!(matches!(
+        flex_composition_qualification::qualify(&golden, "border_box_rtl", &inputs, &mut raw),
+        Err(QualificationError::DifferenceSetChanged { extra, .. }) if extra == ["layout:/3/0:Width"]
+    ));
 }

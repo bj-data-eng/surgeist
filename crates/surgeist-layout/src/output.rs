@@ -565,11 +565,11 @@ impl<S: LayoutScalar> PositionedRootContextOf<S> {
     }
 }
 
-/// A horizontal absolute root observed in its own border-box frame.
+/// An absolute root observed in its own border-box frame.
 ///
-/// The producer certifies the authentic containing block and a signed offset
-/// along the independently authenticated hypothetical inline progression, mapped
-/// over the same full physical containing width. This progression need not have
+/// The producer certifies the authentic horizontal containing block and a
+/// signed offset along the independently authenticated hypothetical inline
+/// progression, mapped over the same full physical containing width. This progression need not have
 /// the containing block's direction. The producer retains the hypothetical
 /// direction, anchor, and mapping proof; the projected scalar is sufficient for
 /// local sizing. The containing direction still supplies the actual containing
@@ -581,12 +581,13 @@ impl<S: LayoutScalar> PositionedRootContextOf<S> {
 /// layout proof belongs to the producer; computed blockification alone does not
 /// supply it.
 ///
-/// All root insets are Auto and margins are zero. Padding and border require
-/// the root's own inline preferred size to resolve definite against
-/// the full containing width; authored box-sizing and min/max constraints then
-/// retain their normal meaning. Auto or intrinsic inline preferred sizes require
-/// zero padding and border: this profile does not supply a general edge-aware
-/// shrink-to-fit formula.
+/// All root insets are Auto and margins are zero. A horizontal root can carry
+/// padding and border when its inline preferred size resolves definite against
+/// the full containing width. Auto and intrinsic inline sizing require zero
+/// padding and border. Orthogonal roots require zero padding and border and
+/// definite preferred sizes on both physical axes. Each preferred size uses
+/// its own full containing-block basis. Normal sizing applies authored
+/// box-sizing and min/max constraints.
 ///
 /// Root-local continuous coordinates are established
 /// before canonical geometry and publication rounding. Percentage bases use the

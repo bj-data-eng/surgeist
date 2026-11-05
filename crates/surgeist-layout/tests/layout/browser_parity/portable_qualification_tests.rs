@@ -447,7 +447,7 @@ impl Fixture {
             "capture_validation":{
                 "producer_profile":"root-context-v4",
                 "producer_helper_sha256":sha256(PRODUCER_HELPER_BYTES),
-                "validator_profile":"root-context-prepared-range-v1",
+                "validator_profile":"root-context-flex-composition-v1",
                 "validator_helper_sha256":sha256(VALIDATOR_HELPER_BYTES),
             },
             "declaration":{"path":"corpus.toml","sha256":retained["corpus.toml"]},
