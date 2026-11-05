@@ -395,7 +395,7 @@ fn raw_none_suppresses_the_explicit_and_automatic_hyphenation_endings() {
 }
 
 #[test]
-fn raw_nonautomatic_or_unqualified_language_words_keep_honest_unbroken_overflow() {
+fn raw_nonautomatic_or_unqualified_language_words_keep_unbroken_overflow() {
     for (hyphens, locale) in [
         (Hyphens::Manual, Some("en-US")),
         (Hyphens::None, Some("en-US")),

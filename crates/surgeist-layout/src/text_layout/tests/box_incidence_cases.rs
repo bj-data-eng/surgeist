@@ -1901,7 +1901,7 @@ fn realization_inventory(f: &Case, force: bool, t_edge: WrapEdges) -> WrappingIn
         false,
     );
     if !force {
-        // Honest generated parenting changes with actual source ownership.
+        // Generated parenting changes with source ownership.
         // Flat native text traversal is not an assertion that A/B lie outside S.
         let child = |box_| GeneratedChildBoxInput {
             box_,

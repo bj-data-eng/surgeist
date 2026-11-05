@@ -21,7 +21,7 @@ pub(crate) enum BodyAdmission {
     TerminalAdvanceRegression,
     TerminalFullnessRegression,
     PairRegression,
-    NoBodyImprovement,
+    BodyNotImproved,
     Improved,
 }
 
@@ -75,7 +75,7 @@ impl BodyScore {
         } else if self.pair_minimum < reference.pair_minimum {
             BodyAdmission::PairRegression
         } else if self.mean >= reference.mean {
-            BodyAdmission::NoBodyImprovement
+            BodyAdmission::BodyNotImproved
         } else {
             BodyAdmission::Improved
         }
@@ -203,7 +203,7 @@ mod tests {
         );
         assert_eq!(
             reference.admission(reference),
-            BodyAdmission::NoBodyImprovement
+            BodyAdmission::BodyNotImproved
         );
     }
 

@@ -68,7 +68,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 1
           persist-credentials: false
-      - name: Reject tool names in the title, body, commit messages, paths and files
+      - name: Reject tool names and banned words in the title, body, commit messages, paths and files
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -76,8 +76,10 @@ jobs:
           EXPECTED_COMMITS: ${{ github.event.pull_request.commits }}
         run: |
           set -euo pipefail
-          # The bracketed letters match the names without this file containing them.
+          # The bracketed letters match the words without this file containing them.
           pattern='[c]odex|[c]laude'
+          # Banned words, matched anywhere in a string, as in identifiers.
+          words='[h]onest|[n]obody'
           found=0
           report() {
             local text=${2//'%'/%25}
@@ -88,23 +90,26 @@ jobs:
 
           pr_text=$(gh api "repos/$REPO/pulls/$NUMBER" --jq '.title + "\n" + (.body // "")')
           while IFS= read -r line; do
-            report "Tool name in the pull request" "$line"
-          done < <(printf '%s\n' "$pr_text" | grep -aiE "$pattern" || true)
+            report "Tool name or banned word in the pull request" "$line"
+          done < <(printf '%s\n' "$pr_text" | grep -aiE "$pattern|$words" || true)
 
           fetched=$(gh api --paginate "repos/$REPO/pulls/$NUMBER/commits" --jq '.[].sha' | wc -l | tr -d ' ')
           if [ "$fetched" -lt "$EXPECTED_COMMITS" ]; then
             echo "::warning title=Commits not checked::Only $fetched of $EXPECTED_COMMITS commits could be read; the rest were not checked for tool names."
           fi
           while IFS= read -r line; do
-            report "Tool name in a commit message" "$line"
+            report "Tool name or banned word in a commit message" "$line"
           done < <(gh api --paginate "repos/$REPO/pulls/$NUMBER/commits" \
             --jq '.[] | .sha[0:9] as $sha | .commit.message | split("\n")[] | $sha + ": " + .' \
-            | grep -aiE "$pattern" || true)
+            | grep -aiE "$pattern|$words" || true)
 
           # The local tooling folder's skill links are allowed as paths.
           while IFS= read -r path; do
             report "Tool name in a path" "$path"
           done < <(git ls-files | grep -aiE "$pattern" | grep -avE '^\.[c]laude/skills/' || true)
+          while IFS= read -r path; do
+            report "Banned word in a path" "$path"
+          done < <(git ls-files | grep -avE '^references/' | grep -aiE "$words" || true)
 
           # Files named README may name tools. So may the two .gitignore
           # lines that ignore the local tooling folder except its skill links.
@@ -117,10 +122,20 @@ jobs:
           done < <(git grep -I -n -i -E "$pattern" -- . ':(exclude,glob)**/README' ':(exclude,glob)**/README.*' \
             | grep -avE '^\.gitignore:[0-9]+:(/\.[c]laude/\*|!/\.[c]laude/skills/)$' || true)
 
+          # Retained specification captures under references/ are verbatim
+          # sources and may contain the banned words; so may README files.
+          while IFS= read -r match; do
+            file=${match%%:*}
+            rest=${match#*:}
+            number=${rest%%:*}
+            echo "::error file=$file,line=$number,title=Banned word in a file::${rest#*:}"
+            found=1
+          done < <(git grep -I -n -i -E "$words" -- . ':(exclude)references' ':(exclude,glob)**/README' ':(exclude,glob)**/README.*' || true)
+
           if [ "$found" -ne 0 ]; then
             exit 1
           fi
-          echo "No tool names found."
+          echo "No tool names or banned words found."
 
   branch-name:
     name: Branch follows branch/<topic>

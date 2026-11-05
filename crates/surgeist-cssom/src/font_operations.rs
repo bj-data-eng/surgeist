@@ -204,7 +204,7 @@ impl CssomBatch {
             Ok(true)
         })
     }
-    /// Checked typed ingress retains the carrier's honest original provenance.
+    /// Checked typed ingress retains the carrier's original provenance.
     pub fn set_font_feature_families(
         &mut self,
         id: &CssomRuleId,

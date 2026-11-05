@@ -2883,7 +2883,7 @@ latch, before a nested constructor can reclaim storage. This observation stays
 distinct from the entry's after-cleanup snapshot and current retained usage.
 Prefix cleanup and retained safe-evidence disposal are separate operations;
 reclaimed live storage does not refund work, cumulative fees or high-water
-values. Initialization pulls no tokens: evidence is honestly absent before its
+values. Initialization pulls no tokens: evidence is absent before its
 owner exists, or the actual initialized empty prefix after failure while taking
 a ready driver, rather than fabricated diagnostics. This internal producer serves the
 [public success/failure boundary](#decoded-unicode-parsing) without exposing a

@@ -213,8 +213,8 @@ fn assert_ordinary_independent_outputs(domain: &AnalyzedDomain, processed: &Arc<
             output.inner.projection.atoms[0].source,
             Range::new(i, i + 1)
         );
-        // No selected cell exists here. The real ordinary preparation path
-        // therefore reaches its own honest missing-font refusal in an empty
+        // No selected cell exists here. The ordinary preparation path
+        // therefore reaches its own missing-font refusal in an empty
         // registered-only catalogue, rather than the cell capability guard.
         let mut system = empty_catalogue();
         let error = system

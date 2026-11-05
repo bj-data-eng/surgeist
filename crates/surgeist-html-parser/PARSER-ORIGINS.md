@@ -378,7 +378,7 @@ effects in `../surgeist-html/src/internal/elements/input.rs` and `src/constructi
 No additional upstream parser source is ingested. The selected HTML
 [radio-button group clause](../../references/html-language-forms-tables-templates--877d6146487f--2dfc6f632608.md#radio-button-group)
 governs exact name/tree/form-owner membership and the five qualifying triggers.
-The existing effect owner retains one fixed traversal phase, including an honest
+The existing effect owner retains one fixed traversal phase, including a
 partial phase on cancellation or exhaustion. Attribute edits and removal reuse
 `src/construction/mutation.rs`, extracted from the existing
 Details owner; provenance retirement and rebinding retain their original

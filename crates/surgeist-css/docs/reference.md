@@ -5971,7 +5971,7 @@ profile and its `em`/`ex` exclusion are historical admission evidence; they do n
 restrict this selected Page3 consumer domain.
 
 `CssDeclaration::try_from_components` with `CssPropertyTarget::PageProperty` or
-`CssPropertyTarget::MarginProperty` checks detached components with honest
+`CssPropertyTarget::MarginProperty` checks detached components with
 component origins. Pending property reentry
 uses the same selected domain; the caller supplies a complete replacement and
 owns variable lookup. `rule::CssBlockFragment::<CssPageBody>::parse` yields a `CssPageBody`, retaining the

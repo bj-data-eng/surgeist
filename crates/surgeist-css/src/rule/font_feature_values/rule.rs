@@ -598,7 +598,7 @@ impl CssFontFeatureValuesFamilyList {
     pub fn families(&self) -> &[CssFontFaceFamily] {
         &self.families
     }
-    /// Returns the complete original input, or honest programmatic provenance.
+    /// Returns the complete original input, or programmatic provenance.
     #[must_use]
     pub const fn origin(&self) -> &crate::component::CssValueOrigin {
         &self.origin

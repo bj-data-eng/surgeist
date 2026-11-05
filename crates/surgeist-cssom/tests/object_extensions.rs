@@ -93,7 +93,7 @@ fn seven_maps_are_distinct_same_identity_children_with_scalar_sequence_and_cardi
 }
 
 #[test]
-fn map_iteration_is_ordered_snapshot_projection_with_honest_conversion_errors() {
+fn map_iteration_is_ordered_snapshot_projection_with_conversion_errors() {
     let (mut store, _, ids) = create(
         "@font-feature-values A { @styleset { wide:4294967296; good:2; } }",
         Default::default(),

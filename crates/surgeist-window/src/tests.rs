@@ -6134,7 +6134,7 @@ fn test_runner_accessibility_pre_resume_is_terminal_without_effects() {
     assert_eq!(
         runner.handler().callbacks,
         0,
-        "terminal ingress invokes nobody"
+        "terminal ingress invokes no callback"
     );
     assert!(runner.host().accessibility_updates_for_test().is_empty());
 }

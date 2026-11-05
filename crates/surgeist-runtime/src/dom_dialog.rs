@@ -947,7 +947,7 @@ mod payload_tests {
             )
             .unwrap()
         else {
-            panic!("the original retained event must finish after honest admission");
+            panic!("the original retained event must finish after admission");
         };
         assert_eq!(calls, (0..LISTENERS).collect::<Vec<_>>());
         assert_eq!(receipt.callbacks(), LISTENERS);

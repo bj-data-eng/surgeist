@@ -3679,7 +3679,7 @@ mod merge_cleanup_tests {
             before.resource(HtmlParseResource::SourceMapEntries)
         );
         // Reservation may admit spare capacity before the logical cause cap;
-        // retained capacity is honest and reclaimed with the evidence owner.
+        // retained capacity is counted and reclaimed with the evidence owner.
         assert!(
             c.usage()
                 .resource(HtmlParseResource::ManagedCapacityBytes)
