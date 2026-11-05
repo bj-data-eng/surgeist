@@ -6,8 +6,6 @@ use super::{
     Attributes, Context, ElementScrollSize, MeasurementError, MeasurementErrorKind, WireNode,
 };
 
-pub(crate) const FONT_RESOURCE: &str =
-    "e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c";
 const SOURCE_UNITS: [u16; 9] = [72, 72, 72, 72, 8203, 72, 72, 72, 72];
 
 #[derive(Deserialize)]
@@ -43,17 +41,14 @@ impl WireMeasuredLeaf {
                     "expected the path of a direct Grid child",
                 )
             })?;
-        let leaf = root
-            .children
-            .as_deref()
-            .and_then(|children| children.get(child_index))
-            .ok_or_else(|| {
-                context.error(
-                    field,
-                    MeasurementErrorKind::InvalidValue,
-                    "observed child is absent",
-                )
-            })?;
+        let children = context.required(root.children.as_deref(), "children")?;
+        let leaf = children.get(child_index).ok_or_else(|| {
+            context.error(
+                field,
+                MeasurementErrorKind::InvalidValue,
+                "observed child is absent",
+            )
+        })?;
         let style = context.required(leaf.style.as_ref(), "measuredLeaf.style")?;
         let root_style = context.required(root.style.as_ref(), "style")?;
         let (variant_box, variant_direction) =
@@ -76,15 +71,21 @@ impl WireMeasuredLeaf {
         )?;
         context.compatible(
             self.source_units == SOURCE_UNITS
+                && root.text_content.is_none()
+                && !children
+                    .iter()
+                    .enumerate()
+                    .any(|(index, child)| index != child_index && has_text(child))
                 && leaf
                     .text_content
                     .as_ref()
                     .is_some_and(|text| text.encode_utf16().eq(self.source_units)),
             field,
-            "measured source does not match the captured leaf",
+            "measured source does not identify the single captured text leaf",
         )?;
         context.compatible(
-            self.font_resource_sha256 == FONT_RESOURCE && self.advances == [40, 40, 80],
+            self.font_resource_sha256 == crate::pinned_font::AHEM_STYLESHEET_WOFF2_SHA256
+                && self.advances == [40, 40, 80],
             field,
             "measured font resource or advances changed",
         )?;
@@ -107,4 +108,12 @@ impl WireMeasuredLeaf {
             ("full-advance", full.to_string()),
         ])
     }
+}
+
+fn has_text(node: &WireNode) -> bool {
+    node.text_content.is_some()
+        || node
+            .children
+            .as_ref()
+            .is_some_and(|children| children.iter().any(has_text))
 }

@@ -227,7 +227,7 @@ impl LayoutAdapter {
                     "measured leaf capture script changed or is missing".into(),
                 ));
             }
-            let font = crate::measurement::MEASURED_LEAF_FONT_RESOURCE;
+            let font = crate::pinned_font::AHEM_STYLESHEET_WOFF2_SHA256;
             format!("({script})({font:?})")
         } else {
             "getTestData()".into()
@@ -617,6 +617,13 @@ mod tests {
         absent[0].as_object_mut().unwrap().remove("measuredLeaf");
         assert!(matches!(
             LayoutAdapter.lower_with_observations(&fixture(), envelope(absent), MeasuredLeaf),
+            Err(AdapterError::Measurement(error)) if error.field_path == "measuredLeaf"
+        ));
+        let mut extra = measured_leaf_variants();
+        let leaf = extra[0]["children"][0].clone();
+        extra[0]["children"].as_array_mut().unwrap().push(leaf);
+        assert!(matches!(
+            LayoutAdapter.lower_with_observations(&fixture(), envelope(extra), MeasuredLeaf),
             Err(AdapterError::Measurement(error)) if error.field_path == "measuredLeaf"
         ));
         for (field, value) in [

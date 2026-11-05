@@ -647,6 +647,15 @@ fn validate_corpus(
             )
             .into());
         }
+        if golden.measured_leaf.is_some()
+            != (mode.box_observations() == BoxObservationRequest::MeasuredLeaf)
+        {
+            return Err(format!(
+                "{}: measured-leaf coverage differs from the registered request",
+                case.case.id()
+            )
+            .into());
+        }
         if let ExpectedDisposition::Generated {
             metadata:
                 ExpectedMetadata::BlockFlow {

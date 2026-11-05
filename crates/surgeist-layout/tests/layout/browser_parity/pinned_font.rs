@@ -1,8 +1,10 @@
-//! One fixture resource, shared as bytes; producer and reader schemas stay independent.
+//! Pinned fixture font resources. Producer and reader schemas stay independent.
 
 pub const ID: &str = "ahem-ttf-f0a92cd0";
 pub const SHA256: &str = "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc";
 pub const BYTES: &[u8] = include_bytes!("fonts/Ahem.ttf");
+pub const AHEM_STYLESHEET_WOFF2_SHA256: &str =
+    "e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c";
 
 fn word(bytes: &[u8], offset: usize) -> Option<u16> {
     Some(u16::from_be_bytes(

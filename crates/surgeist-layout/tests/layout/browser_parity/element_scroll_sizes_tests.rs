@@ -57,7 +57,7 @@ fn measured_leaf_xml_preserves_valid_evidence_and_refuses_mismatched_witnesses()
     let sizes = table(&[("0", [80, 40, 80, 40]), ("0.0", [80, 40, 80, 40])]);
     let base = xml(
         "",
-        Some(r#"<div source-tag="div">HHHH&#x200b;HHHH</div>"#),
+        Some(r#"<text source-tag="div">HHHH&#x200b;HHHH</text>"#),
         &sizes,
     )
     .replace(r#"display="block""#, r#"display="grid""#);
@@ -82,6 +82,12 @@ fn measured_leaf_xml_preserves_valid_evidence_and_refuses_mismatched_witnesses()
             measured.replace(WITNESS, &format!("{WITNESS}{WITNESS}")),
         ),
         ("missing DOM sizes", measured.replace(&sizes, "")),
+        (
+            "normalized root role",
+            measured
+                .replace("<input><div", "<input><text")
+                .replace("</div></input>", "</text></input>"),
+        ),
     ] {
         let result = Golden::parse(&broken);
         assert!(
@@ -89,10 +95,9 @@ fn measured_leaf_xml_preserves_valid_evidence_and_refuses_mismatched_witnesses()
             "{field} mismatch must refuse the measured leaf witness",
         );
     }
-    assert_ne!(
-        Golden::parse(&measured).unwrap(),
-        Golden::parse(&base).unwrap()
-    );
+    let admitted = Golden::parse(&measured).unwrap();
+    assert_eq!(admitted.measured_leaf.as_ref().unwrap().child_index, 0);
+    assert_ne!(admitted, Golden::parse(&base).unwrap());
 }
 
 #[test]

@@ -22,6 +22,8 @@ pub(crate) mod capture_authority;
 mod element_scroll_sizes;
 #[path = "exact_differences.rs"]
 pub(crate) mod exact_differences;
+#[path = "measured_leaf.rs"]
+mod measured_leaf;
 pub use element_scroll_sizes::ElementScrollSizeMismatch;
 
 type Scalar = layout::Scalar;
@@ -50,6 +52,7 @@ pub struct Golden {
     pub expectations: Expectation,
     pub world_rounding_diagnostics: Vec<WorldRoundedLayout>,
     pub(crate) element_scroll_sizes: Option<element_scroll_sizes::Table>,
+    pub(crate) measured_leaf: Option<measured_leaf::MeasuredLeaf>,
 }
 
 impl Golden {
@@ -131,6 +134,7 @@ impl Golden {
         let root_context = parse_root_context(viewport, test.attribute("measurement-version"))?;
         root_context.validate_root(&root)?;
         let element_scroll_sizes = element_scroll_sizes::parse(test, &root, &root_context)?;
+        let measured_leaf = measured_leaf::parse(test, &root, element_scroll_sizes.as_ref())?;
 
         Ok(Self {
             name,
@@ -140,6 +144,7 @@ impl Golden {
             expectations,
             world_rounding_diagnostics,
             element_scroll_sizes,
+            measured_leaf,
         })
     }
 }

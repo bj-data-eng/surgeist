@@ -25,7 +25,6 @@ pub(super) enum BoxObservationRequest {
 pub(super) const OBSERVATION_REQUEST_INPUT: &str = "observation-request.json";
 pub(super) const MEASURED_LEAF_SCRIPT_INPUT: &str = "scripts/gentest/measured_leaf.js";
 pub(super) const MEASURED_LEAF_SCRIPT: &str = include_str!("measurement/measured_leaf.js");
-pub(super) use measured_leaf::FONT_RESOURCE as MEASURED_LEAF_FONT_RESOURCE;
 
 impl BoxObservationRequest {
     pub fn from_input_bytes(input: Option<&[u8]>) -> Result<Self, &'static str> {
