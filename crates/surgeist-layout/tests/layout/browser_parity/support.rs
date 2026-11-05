@@ -423,6 +423,58 @@ fn validate_capture_analytic_profile(tree: &TestTree, context: &RootContext) -> 
             }
         }
     }
+    // Complete orthogonal admission first so its established refusal keeps
+    // precedence. Bit 4 tracks hidden ancestry only for baseline consumption.
+    for (node, row) in tree.nodes.iter().enumerate() {
+        let hidden = row.parent.is_some_and(|parent| flags[parent] & 4 != 0)
+            || row
+                .layout_input
+                .as_box()
+                .is_some_and(|input| input.display == layout::Display::None);
+        if hidden {
+            flags[node] |= 4;
+            continue;
+        }
+        if flags[node] & 1 != 0 || !tree.has_leaf_measurement(node) {
+            continue;
+        }
+        let input = tree.box_node_input(node);
+        let Some(parent) = row.parent else {
+            continue;
+        };
+        let Some(container) = tree.nodes[parent].layout_input.as_box() else {
+            continue;
+        };
+        if container.display != layout::Display::Flex
+            || input.position == layout::Position::Absolute
+            || input
+                .align_self
+                .unwrap_or(container.align_items.unwrap_or(layout::AlignItems::Stretch))
+                != layout::AlignItems::Baseline
+        {
+            continue;
+        }
+        let container_axes = layout::FlowAxes::new(container.writing_mode, container.direction);
+        let cross_axis = if container.flex_direction.is_row() {
+            container_axes.block_axis()
+        } else {
+            container_axes.inline_axis()
+        };
+        let own_axes = layout::FlowAxes::new(input.writing_mode, input.direction);
+        let auto_cross_margin = match cross_axis {
+            layout::PhysicalAxis::Horizontal => {
+                input.margin.left.is_auto() || input.margin.right.is_auto()
+            }
+            layout::PhysicalAxis::Vertical => {
+                input.margin.top.is_auto() || input.margin.bottom.is_auto()
+            }
+        };
+        if own_axes.block_axis() == cross_axis && !auto_cross_margin {
+            // This direct opaque item supplies Size only. Its source content
+            // has no selected line/font baseline; a box edge is no substitute.
+            return Err(Error::new("UnsupportedAnalyticBaselineTextProfile"));
+        }
+    }
     Ok(())
 }
 
