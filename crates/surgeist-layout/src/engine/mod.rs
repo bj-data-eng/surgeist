@@ -151,7 +151,7 @@ where
         }
     }
     let mut session = session::ComputeSession::new(tree, Vec::new());
-    let (input, _) = root::root_compute_input(&mut session, container, container_style, request)?;
+    let input = root::root_compute_input(&mut session, container, container_style, request)?.input;
     crate::block::measure_definite_inline_atomic(&mut session, container, atomic, input)
 }
 

@@ -89,7 +89,10 @@ where
     Tree: Compute<'input, M>,
 {
     let style = tree.node_input(root);
-    let (input, align_to_parent) = root_compute_input(tree, root, style, request)?;
+    let RootComputeInput {
+        input,
+        align_to_parent,
+    } = root_compute_input(tree, root, style, request)?;
     let axes = input.containing_flow_axes();
     let output = tree.compute_child(root, input)?;
     let root_edges = resolve_root_edges(tree, root, style, axes, input.parent())?;
@@ -135,12 +138,17 @@ where
     Ok(())
 }
 
+pub(super) struct RootComputeInput<S: LayoutScalar> {
+    pub(super) input: ComputeInputOf<S>,
+    align_to_parent: bool,
+}
+
 pub(super) fn root_compute_input<'input, Tree, M>(
     tree: &mut Tree,
     root: Tree::Node,
     style: &'input NodeInputOf<Tree::Scalar>,
     request: crate::LayoutRootRequestOf<Tree::Scalar>,
-) -> LayoutResultOf<Tree::Node, (ComputeInputOf<Tree::Scalar>, bool), Tree::Scalar, M>
+) -> LayoutResultOf<Tree::Node, RootComputeInput<Tree::Scalar>, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
@@ -249,10 +257,10 @@ where
             available,
         )?);
     }
-    Ok((
-        ComputeInputOf::root_layout(known, parent, containing, sizing_request),
+    Ok(RootComputeInput {
+        input: ComputeInputOf::root_layout(known, parent, containing, sizing_request),
         align_to_parent,
-    ))
+    })
 }
 
 fn root_context_error<Node, S: LayoutScalar, M>(
