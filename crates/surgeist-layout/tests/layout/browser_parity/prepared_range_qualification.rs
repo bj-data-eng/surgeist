@@ -790,6 +790,15 @@ mod tests {
     }
 
     #[test]
+    fn prepared_range_policy_rejects_a_shadowed_owner_section() {
+        let extended = format!("{CONTRACT}\n### Unrelated owner section\n\nMore context.\n");
+        assert!(PolicyIdentity::from_contract(&extended).is_ok());
+        let shadowed =
+            format!("{extended}\n### Nonempty Text range fragments\n\nConflicting policy.\n");
+        assert!(PolicyIdentity::from_contract(&shadowed).is_err());
+    }
+
+    #[test]
     fn prepared_range_verdict_identifies_the_adopted_policy_revision() {
         let original = include_str!(
             "captured/prepared-range-differences/xml/block/prepared_text_continuity_bidi__border_box_rtl.xml"
