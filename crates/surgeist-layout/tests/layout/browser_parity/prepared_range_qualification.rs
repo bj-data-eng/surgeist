@@ -8,7 +8,7 @@ use surgeist_text::Range;
 pub const SOURCE: &str = "html/block/prepared_text_continuity_bidi.html";
 pub const POLICY_SOURCE: &str = "docs/text-layout-contract.md";
 pub(crate) const POLICY_ANCHOR: &str = "nonempty-text-range-fragments";
-const POLICY_TITLE: &str = "Nonempty Text range fragments";
+const POLICY_HEADING: &str = "### Nonempty Text range fragments";
 pub(crate) const RETAINED_POLICY: &str = "semantic/prepared-range-policy.md";
 pub(crate) const POLICY_SHA256: &str =
     "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0";
@@ -22,17 +22,22 @@ impl PolicyIdentity {
     }
 
     pub fn verified_section(contract: &str) -> Result<&str, Error> {
-        let mut offset = 0;
-        let mut headings = contract.split_inclusive('\n').filter_map(|line| {
-            offset += line.len();
-            is_policy_heading(line).then_some(offset)
-        });
-        let start = headings
-            .next()
-            .ok_or_else(|| Error::new("missing prepared Range policy section"))?;
-        if headings.next().is_some() {
-            return Err(Error::new("duplicate prepared Range policy section"));
+        // The policy title and anchor are reserved throughout the owner document.
+        // Search the source independently of heading syntax or inline punctuation.
+        let title = normalized_title(POLICY_ANCHOR);
+        if normalized_title(contract).matches(title.as_str()).count() > 1 {
+            return Err(Error::new(
+                "duplicate prepared Range policy title or anchor",
+            ));
         }
+        let mut offset = 0;
+        let start = contract
+            .split_inclusive('\n')
+            .find_map(|line| {
+                offset += line.len();
+                (line.trim_end() == POLICY_HEADING).then_some(offset)
+            })
+            .ok_or_else(|| Error::new("missing prepared Range policy section"))?;
         let section = &contract[start..];
         let length = section
             .split_inclusive('\n')
@@ -50,25 +55,12 @@ impl PolicyIdentity {
         Ok(section)
     }
 }
-fn is_policy_heading(line: &str) -> bool {
-    let line = line.trim_end();
-    let heading = line.trim_start_matches(' ');
-    let marker_len = heading.bytes().take_while(|byte| *byte == b'#').count();
-    if line.len() - heading.len() > 3 || !(1..=6).contains(&marker_len) {
-        return false;
-    }
-    let title = &heading[marker_len..];
-    if !title.starts_with([' ', '\t']) {
-        return false;
-    }
-    let title = title.trim_start_matches([' ', '\t']);
-    let before_closing_marker = title.trim_end_matches('#');
-    let title = if before_closing_marker.ends_with([' ', '\t']) {
-        before_closing_marker.trim_end_matches([' ', '\t'])
-    } else {
-        title
-    };
-    title.eq_ignore_ascii_case(POLICY_TITLE)
+fn normalized_title(source: &str) -> String {
+    source
+        .bytes()
+        .filter(u8::is_ascii_alphanumeric)
+        .map(|byte| char::from(byte.to_ascii_lowercase()))
+        .collect()
 }
 
 const FONT_SIZE: f64 = 16.0;
