@@ -1690,11 +1690,12 @@ neither an eligible family face nor such a default, return a precise missing-pri
 failure for this auto-indication probe. This bounded failure does not make family
 list misses universally invalid under CSS Fonts.
 
-The current application-registered font catalogue has no CSS `@font-face` range restriction
-or separate default-primary capture. Its indication probe therefore qualifies
-ordered unrestricted native families and resolved generics, without the metric
-strut query's Latin/Han fallback. This does not complete CSS font-face range or
-default-font integration. Preserve existing strut selection independently.
+The current application catalogue resolves explicitly named registered families
+in style order. Registered faces have unrestricted Unicode ranges, so the
+indication probe uses the first matching face and checks U+2010 on that face.
+The metric strut also uses the explicit family list. CSS font-face ranges,
+generic family resolution and a captured default primary font are separate
+integration work.
 Specified strings, empty strings and suppressed hyphenation do not require this
 auto-indication probe; nonempty specified strings still need normal shaping
 resources.
