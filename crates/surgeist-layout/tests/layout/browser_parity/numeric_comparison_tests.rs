@@ -559,24 +559,9 @@ fn captured_flex_baselines_use_original_prepared_text() {
             root: golden.name.clone(),
             fields: Vec::new(),
         };
+        let rtl = variant.ends_with("_rtl");
         let result = compare_captured_with_batch(&golden, &mut numeric, |tree, batch| {
-            let children = &tree.nodes[0].children;
-            assert_eq!(children.len(), 4);
-            let [first, second] = batch.placed_text() else {
-                panic!("only the two visible labels have placed text");
-            };
-            for (placed, node, length) in [(first, children[0], 4), (second, children[2], 4)] {
-                assert_eq!(tree.nodes[placed.container()].parent, Some(node));
-                assert_eq!(tree.nodes[node].unrounded.location.y, 0.0);
-                let lines = placed.layout().lines();
-                assert_eq!(lines.len(), 1);
-                assert_eq!(lines[0].range(), surgeist_text::Range::new(0, length));
-                // The face's ascent is 800 of 1000 units at 10px with zero leading.
-                assert_eq!(lines[0].baseline(), 8.0);
-            }
-            for node in [children[1], children[3]] {
-                assert_eq!(tree.nodes[node].unrounded.size, layout::Size::ZERO);
-            }
+            assert_original_flex_packets(tree, batch, rtl);
             Ok(())
         });
         if let Err(error) = result {
@@ -586,9 +571,215 @@ fn captured_flex_baselines_use_original_prepared_text() {
         let NumericComparisonSink::CollectAll { fields, .. } = numeric else {
             unreachable!("comparison owns the exact collection");
         };
-        assert_original_flex_observations(&fields, variant.ends_with("_rtl"));
+        assert_original_flex_observations(&fields, rtl);
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+fn assert_original_flex_packets(
+    tree: &TestTree,
+    batch: &layout::CompletedLayoutBatch<usize>,
+    rtl: bool,
+) {
+    use layout::{Direction, Point, Size, SourceIndex};
+    let flow = layout::FlowAxes::new(
+        layout::WritingMode::HorizontalTb,
+        if rtl { Direction::Rtl } else { Direction::Ltr },
+    );
+    let children = &tree.nodes[0].children;
+    assert_eq!(children.len(), 4);
+    assert_eq!(tree.nodes.len(), 13);
+    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        assert_eq!(entries.len(), 13);
+        let packet = |node| {
+            entries
+                .iter()
+                .find(|entry| entry.node() == node)
+                .expect("each admitted node has a packet")
+                .output()
+        };
+        assert_original_flex_box(packet(0), 0, 0.0, Size::new(180.0, 60.0), 0.0, 180.0, flow);
+        for (index, &source) in children.iter().enumerate() {
+            let [wrapper] = tree.nodes[source].children[..] else {
+                panic!("each label has one anonymous item");
+            };
+            let [text] = tree.nodes[wrapper].children[..] else {
+                panic!("each anonymous item has one text leaf");
+            };
+            let (x, height) = match (index, rtl) {
+                (0, false) => (0.0, 20.0),
+                (0, true) => (150.0, 20.0),
+                (2, false) => (30.0, 25.0),
+                (2, true) => (120.0, 25.0),
+                _ => {
+                    assert_eq!(
+                        packet(source),
+                        layout::NodeOutput::with_source_index(SourceIndex::new(index))
+                    );
+                    for node in [wrapper, text] {
+                        assert_eq!(packet(node), layout::NodeOutput::new());
+                    }
+                    continue;
+                }
+            };
+            // The 40px min-content word overflows the 30px inner Flex
+            // container from inline-start, which is the right edge in RTL.
+            let anonymous_x = if rtl { -10.0 } else { 0.0 };
+            assert_original_flex_box(
+                packet(source),
+                index,
+                x,
+                Size::new(30.0, height),
+                anonymous_x,
+                40.0,
+                flow,
+            );
+            assert_original_flex_box(
+                packet(wrapper),
+                0,
+                anonymous_x,
+                Size::new(40.0, height),
+                0.0,
+                40.0,
+                flow,
+            );
+            assert_eq!(
+                packet(text),
+                layout::NodeOutput {
+                    size: Size::new(40.0, 10.0),
+                    content_size: Size::new(40.0, 10.0),
+                    ..layout::NodeOutput::new()
+                }
+            );
+        }
+    }
+
+    let [first, second] = batch.placed_text() else {
+        panic!("only the two visible labels have placed text");
+    };
+    let label_range = surgeist_text::Range::new(0, 4);
+    for (placed, source) in [(first, children[0]), (second, children[2])] {
+        let wrapper = tree.nodes[source].children[0];
+        let text = tree.nodes[wrapper].children[0];
+        assert_eq!(placed.container(), wrapper);
+        assert_eq!(placed.nodes(), &[text]);
+        let lines = placed.layout().lines();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].range(), label_range);
+        // The face's ascent is 800 of 1000 units at 10px with zero leading.
+        assert_eq!(lines[0].baseline(), 8.0);
+        for fragments in [
+            batch.unrounded_inline_fragments(),
+            batch.final_inline_fragments(),
+        ] {
+            assert_eq!(fragments.len(), 8);
+            let mut fragments = fragments
+                .iter()
+                .filter(|entry| entry.owner() == &layout::InlineFragmentOwner::Node(text))
+                .map(|entry| {
+                    let fragment = entry.fragment();
+                    let range = fragment.finalized_fragment().view().local_range().unwrap();
+                    (range, fragment)
+                })
+                .collect::<Vec<_>>();
+            // Both visible labels are one LTR word, including in the RTL
+            // paragraph. Each character covers one unit and advances 10px.
+            fragments.sort_by_key(|(range, _)| range.start);
+            assert_eq!(fragments.len(), label_range.len());
+            for (index, (range, fragment)) in fragments.into_iter().enumerate() {
+                assert_eq!(range, surgeist_text::Range::new(index, index + 1));
+                assert_eq!(fragment.line_index(), 0);
+                assert_eq!(fragment.baseline().y, 8.0);
+                assert_eq!(
+                    fragment.rect(),
+                    Some(
+                        layout::ScrollRect::try_new(
+                            Point::new(index as Scalar * 10.0, 0.0),
+                            Size::new(10.0, 10.0),
+                        )
+                        .unwrap()
+                    )
+                );
+            }
+        }
+    }
+}
+
+fn assert_original_flex_box(
+    output: layout::NodeOutput,
+    source_index: usize,
+    x: Scalar,
+    size: layout::Size<Scalar>,
+    overflow_x: Scalar,
+    overflow_width: Scalar,
+    flow: layout::FlowAxes,
+) {
+    use layout::{Edges, Point, Size};
+    let layout::NodeOutput {
+        named_baselines,
+        source_index: actual_index,
+        location,
+        size: actual_size,
+        content_size,
+        scroll_geometry,
+        border,
+        padding,
+        margin,
+    } = output;
+    assert_eq!(named_baselines, layout::NamedBaselinesOf::unknown());
+    assert_eq!(actual_index, layout::SourceIndex::new(source_index));
+    assert_eq!(location, Point::new(x, 0.0));
+    assert_eq!(actual_size, size);
+    let overflow_size = Size::new(overflow_width, size.height);
+    assert_eq!(content_size, overflow_size);
+    assert_eq!([border, padding, margin], [Edges::ZERO; 3]);
+
+    let scroll = scroll_geometry.expect("visible boxes publish performed scroll geometry");
+    let box_rect = layout::ScrollRect::try_new(Point::ZERO, size).unwrap();
+    for rect in [
+        scroll.border_box(),
+        scroll.padding_box(),
+        scroll.content_box(),
+        scroll.scrollport(),
+        scroll.optimal_viewing_region(),
+        scroll.target().border_box(),
+    ] {
+        assert_eq!(rect, box_rect);
+    }
+    assert_eq!(
+        scroll.scrollable_overflow(),
+        layout::ScrollRect::try_new(Point::new(overflow_x, 0.0), overflow_size).unwrap()
+    );
+    assert_eq!(scroll.flow_axes(), flow);
+    assert_eq!(scroll.target().flow_axes(), flow);
+    assert_eq!(scroll.used_overflow_x(), layout::Overflow::Visible);
+    assert_eq!(scroll.used_overflow_y(), layout::Overflow::Visible);
+    assert_eq!(scroll.overflow_clip().x(), None);
+    assert_eq!(scroll.overflow_clip().y(), None);
+    for interval in [scroll.physical_range().x(), scroll.physical_range().y()] {
+        assert_eq!((interval.minimum(), interval.maximum()), (0.0, 0.0));
+    }
+    let gutters = scroll.gutters();
+    assert_eq!(
+        [
+            gutters.top(),
+            gutters.right(),
+            gutters.bottom(),
+            gutters.left()
+        ],
+        [None; 4]
+    );
+    assert_eq!(scroll.scrollbar_size(), Size::ZERO);
+    assert_eq!(scroll.resolved_scroll_padding(), Edges::ZERO);
+    assert_eq!(scroll.scroll_snap_type(), layout::ScrollSnapType::None);
+    let target = scroll.target();
+    let margin = target.scroll_margin();
+    assert_eq!(
+        [margin.top(), margin.right(), margin.bottom(), margin.left()],
+        [0.0; 4]
+    );
+    assert_eq!(target.snap_align(), layout::ScrollSnapAlign::default());
+    assert_eq!(target.snap_stop(), layout::ScrollSnapStop::Normal);
 }
 
 fn assert_original_flex_observations(observed: &[exact_differences::ComparedField], rtl: bool) {
