@@ -50,6 +50,24 @@ pub(super) const GRID_TEMPLATE_AREA_CAPTURE_SCRIPT: &str = r#"(() => {
   return true;
 })()"#;
 
+// Inspect parsed declarations under the authenticated inline-and-base profile.
+// Physical border fields cannot represent logical declaration precedence.
+const LOGICAL_BORDER_CAPTURE_GUARD: &str = r#"(() => {
+  if (typeof captureRootContext !== "function" || window.__surgeistLogicalBorderCaptureInstalled) return;
+
+  const readRootContext = captureRootContext;
+  captureRootContext = function(root) {
+    const context = readRootContext(root);
+    for (const element of [root, ...root.querySelectorAll("[style]")]) {
+      if (Array.from(element.style).some(property => /^border-(block|inline)(-|$)/.test(property))) {
+        throw new Error("Root context: UnrepresentedLogicalBorder");
+      }
+    }
+    return context;
+  };
+  window.__surgeistLogicalBorderCaptureInstalled = true;
+})()"#;
+
 #[cfg(test)]
 pub(super) fn browser_fixture_document(raw: &str, base_url: &str) -> Result<String, String> {
     fixture_document(raw, base_url)
@@ -459,7 +477,7 @@ fn helper_setup_expression(
     let context = serde_json::to_string(&context)
         .map_err(|error| AdapterError::Preparation(error.to_string()))?;
     Ok(format!(
-        "(async () => {{ const pinnedFontBytes = {bytes}; if (typeof getTestData !== 'function') {{ (0, eval)({helper}); }}\n{GRID_TEMPLATE_AREA_CAPTURE_SCRIPT}\nif (typeof configureRootContextCapture === 'function') {{ configureRootContextCapture(...{context}); await document.fonts.ready; }}{prepare_image} if (typeof prepareNamedReferenceFont === 'function') {{ await prepareNamedReferenceFont(); }} if (typeof preparePinnedTextFont === 'function') {{ await preparePinnedTextFont(pinnedFontBytes); }} return true; }})()"
+        "(async () => {{ const pinnedFontBytes = {bytes}; if (typeof getTestData !== 'function') {{ (0, eval)({helper}); }}\n{GRID_TEMPLATE_AREA_CAPTURE_SCRIPT};\n{LOGICAL_BORDER_CAPTURE_GUARD};\nif (typeof configureRootContextCapture === 'function') {{ configureRootContextCapture(...{context}); await document.fonts.ready; }}{prepare_image} if (typeof prepareNamedReferenceFont === 'function') {{ await prepareNamedReferenceFont(); }} if (typeof preparePinnedTextFont === 'function') {{ await preparePinnedTextFont(pinnedFontBytes); }} return true; }})()"
     ))
 }
 
