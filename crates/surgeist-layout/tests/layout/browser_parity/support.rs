@@ -28,7 +28,10 @@ mod flex_content_text;
 mod flex_text_projection;
 #[path = "measured_leaf.rs"]
 mod measured_leaf;
+#[path = "prepared_range_qualification.rs"]
+pub mod prepared_range_qualification;
 pub use element_scroll_sizes::ElementScrollSizeMismatch;
+use prepared_range_qualification::Comparisons as PreparedRangeComparisons;
 
 type Scalar = layout::Scalar;
 
@@ -3498,7 +3501,7 @@ fn compare_expectation_with_endpoint_accounting(
     fragment_cursors: FragmentCursors<'_>,
     policy: ComparisonPolicy<'_>,
 ) -> Result<ComparisonResult, Error> {
-    if policy.numeric.is_collecting()
+    if policy.numeric.collects_boxes_only()
         && tree.flex_projection.is_none()
         && (!tree.paragraphs.is_empty()
             || tree
@@ -3646,6 +3649,7 @@ struct ComparisonPolicy<'a> {
 enum NumericComparisonSink {
     Strict,
     CollectNumeric(Vec<NumericMismatch>),
+    PreparedRanges(PreparedRangeComparisons),
     CollectAll {
         root: String,
         fields: Vec<exact_differences::ComparedField>,
@@ -3653,7 +3657,7 @@ enum NumericComparisonSink {
 }
 
 impl NumericComparisonSink {
-    fn is_collecting(&self) -> bool {
+    fn collects_boxes_only(&self) -> bool {
         matches!(self, Self::CollectNumeric(_) | Self::CollectAll { .. })
     }
 
@@ -3664,6 +3668,9 @@ impl NumericComparisonSink {
         actual: Scalar,
         expected: Scalar,
     ) -> Result<(), Error> {
+        if let Self::PreparedRanges(comparisons) = self {
+            return comparisons.record_box(path, field, actual, expected);
+        }
         if let Self::CollectAll { root, fields } = self {
             let source_path = exact_differences::source_path_from_diagnostic(root, path)?;
             fields.push(
@@ -3690,6 +3697,24 @@ impl NumericComparisonSink {
             }));
         }
         Ok(())
+    }
+
+    fn range(&mut self, path: &str, pair: RangeRectanglePair) -> Result<(), Error> {
+        if let Self::PreparedRanges(comparisons) = self {
+            return comparisons.record_range(path, pair);
+        }
+        compare_number(
+            path,
+            &format!("Range rectangle[{}] physical flow-inline start", pair.index),
+            pair.native_start,
+            pair.browser_start,
+        )?;
+        compare_number(
+            path,
+            &format!("Range rectangle[{}] advance", pair.index),
+            pair.native_advance,
+            pair.browser_advance,
+        )
     }
 
     fn optional_number(
@@ -3774,14 +3799,23 @@ fn compare_expectation_in_source_order(
 ) -> Result<(), Error> {
     validate_observation_expectation_category(expected)
         .map_err(|error| Error::new(format!("{path}: {error}")))?;
-    if comparison_state.numeric.is_collecting()
-        && (expected.fragments.is_some()
-            || expected.range_rectangles.is_some()
-            || expected.browser_control.is_some()
-            || expected.browser_br_font_band.is_some())
+    let other_text_observations = expected.fragments.is_some()
+        || expected.browser_control.is_some()
+        || expected.browser_br_font_band.is_some();
+    if comparison_state.numeric.collects_boxes_only()
+        && (other_text_observations || expected.range_rectangles.is_some())
     {
         return Err(Error::new(format!(
             "{path}: numeric collection supports only box geometry and scroll observations"
+        )));
+    }
+    if matches!(
+        comparison_state.numeric,
+        NumericComparisonSink::PreparedRanges(_)
+    ) && other_text_observations
+    {
+        return Err(Error::new(format!(
+            "{path}: prepared Range collection supports only box and Range observations"
         )));
     }
     let selected_output_is_present = if use_rounding {
@@ -3907,6 +3941,7 @@ fn compare_expectation_in_source_order(
             path,
             unrounded_fragments,
             expected_range_rectangles,
+            comparison_state.numeric,
         )?;
     }
     if let Some(expected_browser_control) = expected.browser_control {
@@ -4170,6 +4205,7 @@ fn compare_range_rectangle_expectations(
     path: &str,
     actual: &[layout::InlineFragmentOutputEntry<usize>],
     expected: &[InlineRangeRectangleExpectation],
+    numeric: &mut NumericComparisonSink,
 ) -> Result<(), Error> {
     let root = range_rectangle_root(tree, owner)?;
     let binding = tree
@@ -4200,12 +4236,13 @@ fn compare_range_rectangle_expectations(
             "Range inline root has ambiguous placed Text results",
         ));
     }
-    compare_range_rectangle_expectations_with_translation(
+    visit_range_rectangle_pairs(
         path,
         actual,
         placed.layout(),
         expected,
         |edge| range_rectangle_ancestor_translation(tree, owner, edge),
+        |pair| numeric.range(path, pair),
     )
 }
 
@@ -4391,6 +4428,7 @@ fn range_rectangle_values(rect: layout::ScrollRect, edge: PhysicalStartEdge) -> 
     }
 }
 
+#[cfg(test)]
 fn compare_range_rectangle_expectations_with_translation(
     path: &str,
     actual: &[layout::InlineFragmentOutputEntry<usize>],
@@ -4399,23 +4437,16 @@ fn compare_range_rectangle_expectations_with_translation(
     translation: impl FnMut(PhysicalStartEdge) -> Result<Scalar, Error>,
 ) -> Result<(), Error> {
     visit_range_rectangle_pairs(path, actual, placed, expected, translation, |pair| {
-        compare_number(
-            path,
-            &format!("Range rectangle[{}] physical flow-inline start", pair.index),
-            pair.native_start,
-            pair.browser_start,
-        )?;
-        compare_number(
-            path,
-            &format!("Range rectangle[{}] advance", pair.index),
-            pair.native_advance,
-            pair.browser_advance,
-        )
+        NumericComparisonSink::Strict.range(path, pair)
     })
 }
 
 struct RangeRectanglePair {
     index: usize,
+    source_segment_id: u64,
+    line_index: usize,
+    physical_start_edge: PhysicalStartEdge,
+    native_source: surgeist_text::Range,
     native_start: Scalar,
     browser_start: Scalar,
     native_advance: Scalar,
@@ -4485,6 +4516,10 @@ fn visit_range_rectangle_pairs(
         let (start, advance) = range_rectangle_values(row.rect, expected.physical_start_edge);
         visit(RangeRectanglePair {
             index,
+            source_segment_id: row.source_segment_id,
+            line_index: row.line_index,
+            physical_start_edge: expected.physical_start_edge,
+            native_source: row.source,
             native_start: start + offset,
             browser_start: expected.start,
             native_advance: advance,

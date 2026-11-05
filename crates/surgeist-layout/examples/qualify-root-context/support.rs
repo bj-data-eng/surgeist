@@ -714,7 +714,16 @@ fn validate_corpus(
             qualify_grid_reference_census(&golden.root, owners)?;
             crate::parity_support::assert_grid_alignment_reference_inputs(&golden, owners)?;
         }
-        if mode.collects_numeric_differences() {
+        if mode == QualificationMode::PreparedRangeCapture {
+            if let Err(error) = crate::parity_support::prepared_range_qualification::qualify(
+                &golden,
+                case.source.as_str(),
+                case.case.variant(),
+                &mut std::io::stdout().lock(),
+            ) {
+                native_errors.push(format!("{}: {error}", case.case.id()));
+            }
+        } else if mode.collects_numeric_differences() {
             match collect_numeric_case(&golden, case, &mut std::io::stdout().lock()) {
                 Ok(mismatches) => numeric.record_case(mismatches)?,
                 Err(error) => {
