@@ -113,6 +113,18 @@ Inspect the generated diff, explain each delta from its source change, and run
 the corresponding check. Keep the source and generated changes together in
 review. Missing prerequisites or an unexplained delta stop the refresh handoff.
 
+## Qualify Registered Text Rendering
+
+Run this command from the workspace root. It replays the registered Layout
+capture and passes its completed Text placement through headless Render
+admission. The witness checks the actual stored glyph draws.
+
+```sh
+cargo run --offline --locked -j 1 -p surgeist --features render-text --example qualify-registered-text-render
+```
+
+Expect `Qualified one registered browser capture through Native Render`.
+
 ## Locate Corpus And Audit Tooling
 
 Ordinary CSSOM property accessors have a separate root-owned
