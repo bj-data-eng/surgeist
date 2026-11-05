@@ -153,6 +153,12 @@ fn write_u16(data: &mut [u8], offset: usize, value: u16) {
 fn write_u32(data: &mut [u8], offset: usize, value: u32) {
     data[offset..offset + 4].copy_from_slice(&value.to_be_bytes());
 }
+fn supported_flavor(flavor: [u8; 4]) -> Result<(), DecodeError> {
+    match &flavor {
+        b"\0\x01\0\0" | b"OTTO" | b"true" | b"typ1" => Ok(()),
+        _ => Err(DecodeError::UnsupportedFlavor(flavor)),
+    }
+}
 
 pub(super) fn decode(source: &FontSource, limits: DecodeLimits) -> Result<Vec<u8>, DecodeError> {
     let budget = Budget::new(limits, source.retained_bytes()?)?;
@@ -184,6 +190,9 @@ pub(super) fn decode(source: &FontSource, limits: DecodeLimits) -> Result<Vec<u8
         start: reader.u32()? as usize,
         length: reader.u32()? as usize,
     };
+    if !collection {
+        supported_flavor(flavor)?;
+    }
     reader.kind = InvalidKind::WoffDirectory;
     let mut tables = Buffer::new(&budget);
     tables.reserve(count)?;
@@ -252,7 +261,7 @@ pub(super) fn decode(source: &FontSource, limits: DecodeLimits) -> Result<Vec<u8
             }
             total_indices = add(total_indices, count)?;
             check(LimitKind::Tables, total_indices, limits.tables())?;
-            scan.take(4)?;
+            supported_flavor(scan.tag()?)?;
             for _ in 0..count {
                 scan.uint255()?;
             }
@@ -700,11 +709,11 @@ mod tests {
         let result = glyph::reconstruct(&transformed_glyph(), 6, &budget).unwrap();
         assert_eq!(
             &*result.glyf,
-            &[
-                0, 1, 0, 5, 0, 6, 0, 5, 0, 6, 0, 0, 0, 0, 0x37, 5, 6, 0, 0, 0
-            ]
+            &[0, 1, 0, 5, 0, 6, 0, 5, 0, 6, 0, 0, 0, 0, 0x37, 5, 6, 0]
         );
-        assert_eq!(&*result.loca, &[0, 0, 0, 10, 0, 10]);
+        // 14 header/end-point/instruction bytes + one flag + x/y bytes = 17;
+        // word alignment adds one byte, and short loca stores 18 / 2 = 9.
+        assert_eq!(&*result.loca, &[0, 0, 0, 9, 0, 9]);
     }
     #[test]
     fn extra_transform_substream_bytes_are_rejected() {
