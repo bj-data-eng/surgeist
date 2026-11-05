@@ -2,6 +2,8 @@ use std::any::Any;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
 
+#[path = "browser_parity/portable_qualification.rs"]
+mod portable_qualification;
 #[path = "browser_parity/support.rs"]
 mod support;
 
@@ -2206,6 +2208,56 @@ fn original_br_metric_fixtures_complete_ordinary_checks_before_font_band_refusal
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
+fn registered_current_edition() -> Result<portable_qualification::AdmittedEdition, String> {
+    portable_qualification::admit_registered(Path::new(env!("CARGO_MANIFEST_DIR")))
+        .map_err(|error| error.to_string())
+}
+
+#[test]
+fn runs_registered_current_browser_parity_qualification() {
+    let admitted =
+        registered_current_edition().expect("required current edition must authenticate");
+    let filter = std::env::var("SURGEIST_PARITY_FILTER").ok();
+    let selected = admitted
+        .outputs()
+        .filter(|output| filter.as_ref().is_none_or(|filter| output.contains(filter)))
+        .map(str::to_owned)
+        .collect::<BTreeSet<_>>();
+    if selected.is_empty() {
+        // An original-only filter does not claim coverage of the current edition.
+        assert!(
+            filter.is_some(),
+            "registered current edition must not be empty"
+        );
+        return;
+    }
+    let run = admitted
+        .execute_selected(&selected)
+        .expect("selection must belong to edition");
+    let mut failures = Vec::new();
+    for case in &run.cases {
+        eprintln!(
+            "current/{} raw={:?}; qualified={:?}",
+            case.output, case.raw, case.qualified
+        );
+        if let Err(error) = &case.qualified {
+            failures.push(format!("current/{}: {error}", case.output));
+        }
+    }
+    if let Some(error) = &run.freshness_error {
+        failures.push(error.clone());
+    }
+    assert!(run.selected_cases_passed(), "{}", failures.join("\n"));
+    if filter.is_none() {
+        assert!(
+            run.current_coverage_complete(),
+            "current declared observable coverage is incomplete"
+        );
+    } else {
+        eprintln!("filtered current qualification; no whole-edition coverage claim");
+    }
+}
+
 #[test]
 fn runs_all_checked_in_browser_parity_xml() {
     let fixtures = support::fixture_files("xml").expect("fixtures should load");
@@ -2229,6 +2281,37 @@ fn runs_all_checked_in_browser_parity_xml() {
                 .entry(classified_error_kind(&golden, &error))
                 .or_default() += 1;
             failures.push(format!("{} failed: {error}", fixture.display()));
+        }
+    }
+
+    match registered_current_edition() {
+        Err(error) => failures.push(format!("current edition admission failed: {error}")),
+        Ok(admitted) => {
+            let selected = admitted
+                .outputs()
+                .filter(|output| filter.as_ref().is_none_or(|filter| output.contains(filter)))
+                .map(str::to_owned)
+                .collect::<BTreeSet<_>>();
+            match admitted.execute_selected(&selected) {
+                Err(error) => failures.push(format!("current edition execution failed: {error}")),
+                Ok(run) => {
+                    for case in run.cases {
+                        match case.raw {
+                            Ok(differences) if differences.is_empty() => {}
+                            Ok(differences) => failures.push(format!(
+                                "current/{} raw differences:\n{}",
+                                case.output,
+                                differences.join("\n")
+                            )),
+                            Err(error) => failures
+                                .push(format!("current/{} raw failure: {error}", case.output)),
+                        }
+                    }
+                    if let Some(error) = run.freshness_error {
+                        failures.push(error);
+                    }
+                }
+            }
         }
     }
 

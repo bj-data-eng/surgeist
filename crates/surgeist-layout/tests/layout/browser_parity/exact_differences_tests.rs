@@ -530,6 +530,11 @@ fn two_lineage_declaration() -> Value {
     let mut value = declaration();
     value["identities"]["published"] = published_identity();
     value["representation"]["published_edition"] = json!("canonical-box-differences");
+    value["representation"]["current"] = json!({
+        "case_id":"fixed-published","output":"xml/fixed-published.xml","frame":"root-border-local","domain":"layout",
+        "selectors":[{"path":"/","field":"x"},{"path":"/","field":"y"},{"path":"/","field":"width"},{"path":"/","field":"height"}],
+        "nodes":["/"],"unrounded_packets":["/"],"final_packets":["/"]
+    });
     value
 }
 
@@ -539,7 +544,8 @@ fn explicit_authority_dispatches_one_lineage_before_comparing_identical_geometry
     let spec = spec(&value);
     let focused = CaseIdentity::from_verified_projection(identity()).unwrap();
     let published = CaseIdentity::from_verified_projection(published_identity()).unwrap();
-    let golden = golden();
+    let mut golden = element_golden(20);
+    golden.element_scroll_sizes = None;
     for authority in [
         CaptureAuthority::Focused(&focused),
         CaptureAuthority::Published {
@@ -599,7 +605,11 @@ fn missing_selected_lineage_refuses_even_when_the_other_identity_matches() {
                     edition: PublishedEdition::CanonicalBoxDifferences,
                     identity: &published,
                 },
-                &golden(),
+                &{
+                    let mut g = element_golden(20);
+                    g.element_scroll_sizes = None;
+                    g
+                },
             )
             .is_ok()
     );
@@ -789,4 +799,129 @@ fn every_declared_lineage_validates_its_own_paths_and_hashes() {
             );
         }
     }
+}
+
+fn fixed_current_selection() -> super::super::capture_authority::CaseSelection {
+    super::super::capture_authority::CaseSelection {
+        name: "fixed-published".into(),
+        source: "html/empty-fixed.html".into(),
+        source_sha256: "a".repeat(64),
+        variant: "content_box_ltr".into(),
+        output: "xml/fixed-published.xml".into(),
+        record_sha256: "a".repeat(64),
+        historical_sha256: None,
+    }
+}
+#[test]
+fn published_parse_can_remain_unresolved_but_admission_cannot_execute_it() {
+    let mut value = two_lineage_declaration();
+    value["representation"]
+        .as_object_mut()
+        .unwrap()
+        .remove("current");
+    let parsed = spec(&value);
+    assert!(matches!(
+        parsed.require_published_context(PublishedEdition::CanonicalBoxDifferences),
+        Err(QualificationError::IncompleteRepresentation { .. })
+    ));
+    let identity = CaseIdentity::from_verified_projection(published_identity()).unwrap();
+    let mut golden = element_golden(20);
+    golden.element_scroll_sizes = None;
+    assert!(matches!(
+        parsed.resolve_against(
+            CaptureAuthority::Published {
+                edition: PublishedEdition::CanonicalBoxDifferences,
+                identity: &identity
+            },
+            &golden
+        ),
+        Err(QualificationError::IncompleteRepresentation { .. })
+    ));
+}
+#[test]
+fn current_prebinding_refuses_case_output_selector_and_either_packet_census_drift() {
+    let value = two_lineage_declaration();
+    assert!(
+        spec(&value)
+            .prebind_current(
+                PublishedEdition::CanonicalBoxDifferences,
+                &fixed_current_selection()
+            )
+            .is_ok()
+    );
+    for (pointer, replacement) in [
+        ("/representation/current/case_id", json!("other")),
+        ("/representation/current/output", json!("xml/other.xml")),
+        ("/representation/current/selectors", json!([])),
+        ("/representation/current/nodes", json!([])),
+        ("/representation/current/unrounded_packets", json!([])),
+        ("/representation/current/final_packets", json!([])),
+    ] {
+        let mut changed = value.clone();
+        *changed.pointer_mut(pointer).unwrap() = replacement;
+        assert!(
+            matches!(
+                spec(&changed).prebind_current(
+                    PublishedEdition::CanonicalBoxDifferences,
+                    &fixed_current_selection()
+                ),
+                Err(QualificationError::IncompleteRepresentation { .. })
+            ),
+            "{pointer}"
+        );
+    }
+}
+#[test]
+fn published_resolution_refuses_a_different_frame_or_requested_census_before_native_execution() {
+    let value = two_lineage_declaration();
+    let parsed = spec(&value);
+    let identity = CaseIdentity::from_verified_projection(published_identity()).unwrap();
+    assert!(matches!(
+        parsed.resolve_against(
+            CaptureAuthority::Published {
+                edition: PublishedEdition::CanonicalBoxDifferences,
+                identity: &identity
+            },
+            &golden()
+        ),
+        Err(QualificationError::IncompleteRepresentation { .. })
+    ));
+    let mut g = element_golden(20);
+    g.element_scroll_sizes = None;
+    g.expectations.height = None;
+    assert!(matches!(
+        parsed.resolve_against(
+            CaptureAuthority::Published {
+                edition: PublishedEdition::CanonicalBoxDifferences,
+                identity: &identity
+            },
+            &g
+        ),
+        Err(QualificationError::IncompleteRepresentation { .. })
+    ));
+}
+
+#[test]
+fn completed_batch_keeps_raw_differences_when_native_oracle_qualification_fails() {
+    let mut value = declaration();
+    value["native"]["nodes"][0]["unrounded"]["facts"]["size"]["width"] = json!(19);
+    let parsed = spec(&value);
+    let identity = CaseIdentity::from_verified_projection(identity()).unwrap();
+    let golden = golden();
+    let resolved = parsed
+        .resolve_against(CaptureAuthority::Focused(&identity), &golden)
+        .unwrap();
+    let completed = complete_captured_comparison(&golden, &resolved).unwrap();
+    assert_eq!(
+        completed
+            .raw_differences()
+            .map(ComparedField::key)
+            .collect::<Vec<_>>(),
+        ["layout:/:Width"]
+    );
+    assert!(matches!(
+        resolved.qualify(&completed),
+        Err(QualificationError::NativeOracleChanged { .. })
+    ));
+    assert_eq!(completed.raw_differences().count(), 1);
 }

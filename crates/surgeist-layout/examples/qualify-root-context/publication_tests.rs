@@ -57,7 +57,7 @@ fn exclusive_creation_preserves_existing_directory_and_file_targets() {
         } else {
             fs::write(&target, b"retain").unwrap();
         }
-        assert!(create_edition(&parent.0).is_err());
+        assert!(create_edition(&parent.0, Edition::RootContextV4).is_err());
         let retained = if directory {
             target.join("owned-diagnostic")
         } else {
@@ -77,7 +77,7 @@ fn simultaneous_exclusive_creators_have_one_winner_without_replacing_its_files()
             let barrier = barrier.clone();
             std::thread::spawn(move || {
                 barrier.wait();
-                create_edition(&parent).is_ok()
+                create_edition(&parent, Edition::RootContextV4).is_ok()
             })
         })
         .collect::<Vec<_>>();
@@ -89,14 +89,14 @@ fn simultaneous_exclusive_creators_have_one_winner_without_replacing_its_files()
     assert_eq!(winners, 1);
     let diagnostic = parent.0.join(EDITION).join("owned-diagnostic");
     fs::write(&diagnostic, b"retain winner").unwrap();
-    assert!(create_edition(&parent.0).is_err());
+    assert!(create_edition(&parent.0, Edition::RootContextV4).is_err());
     assert_eq!(fs::read(diagnostic).unwrap(), b"retain winner");
 }
 
 #[test]
 fn failed_stage_retains_unregistered_candidate_and_refuses_automatic_retry() {
     let parent = Directory::new();
-    let error = with_new_edition(&parent.0, |root| {
+    let error = with_new_edition(&parent.0, Edition::RootContextV4, |root| {
         fs::write(root.join("preparation-diagnostic"), b"actual partial input")?;
         Err("stage refused".into())
     })
@@ -109,7 +109,7 @@ fn failed_stage_retains_unregistered_candidate_and_refuses_automatic_retry() {
     );
     let mut called = false;
     assert!(
-        with_new_edition(&parent.0, |_| {
+        with_new_edition(&parent.0, Edition::RootContextV4, |_| {
             called = true;
             Ok(())
         })
@@ -127,7 +127,7 @@ fn linked_target_and_linked_input_refuse_without_touching_foreign_files() {
     let foreign = Directory::new();
     fs::write(foreign.0.join("input"), b"foreign").unwrap();
     symlink(&foreign.0, parent.0.join(EDITION)).unwrap();
-    assert!(create_edition(&parent.0).is_err());
+    assert!(create_edition(&parent.0, Edition::RootContextV4).is_err());
     symlink(foreign.0.join("input"), parent.0.join("input")).unwrap();
     let path = RelativePath::new("input").unwrap();
     assert!(
@@ -181,15 +181,15 @@ fn complete_input_census_refuses_extra_empty_directories_files_and_missing_input
         InputAccess::Prepare,
     )
     .unwrap();
-    check_input_census(&root.0, &expected).unwrap();
+    check_input_census(&root.0, &expected, None).unwrap();
     fs::create_dir(root.0.join("unregistered")).unwrap();
-    assert!(check_input_census(&root.0, &expected).is_err());
+    assert!(check_input_census(&root.0, &expected, None).is_err());
     fs::remove_dir(root.0.join("unregistered")).unwrap();
     fs::write(root.0.join("html/extra.html"), b"unowned").unwrap();
-    assert!(check_input_census(&root.0, &expected).is_err());
+    assert!(check_input_census(&root.0, &expected, None).is_err());
     fs::remove_file(root.0.join("html/extra.html")).unwrap();
     fs::remove_file(root.0.join(path.as_str())).unwrap();
-    assert!(check_input_census(&root.0, &expected).is_err());
+    assert!(check_input_census(&root.0, &expected, None).is_err());
 }
 
 #[test]
@@ -278,7 +278,7 @@ fn complete_durable_inventory_is_admitted_without_browser_or_output() {
     )
     .expect("the complete source-qualified inventory is admitted");
     assert_eq!(corpus.fixtures().len(), declaration.records.len());
-    check_input_census(&root.0, &snapshot.expected_inputs).unwrap();
+    check_input_census(&root.0, &snapshot.expected_inputs, None).unwrap();
     assert!(!root.0.join("xml").exists());
     assert!(!root.0.join(".surgeist-generator").exists());
 }
@@ -334,7 +334,7 @@ fn browser_free_check_of_incomplete_real_inventory_refuses_without_writing() {
         other => panic!("expected missing-report refusal, received {other:?}"),
     }
     // No browser/cache acquisition, repair, output directory or machine journals.
-    check_input_census(&root.0, &snapshot.expected_inputs).unwrap();
+    check_input_census(&root.0, &snapshot.expected_inputs, None).unwrap();
     assert!(!root.0.join("xml").exists());
     assert!(!root.0.join(".surgeist-generator").exists());
     let reports = root.0.join("xml/generation-reports");
@@ -445,7 +445,7 @@ fn sealed_edition_reconstructs_same_inputs_and_cases_after_unique_append() {
         fs::metadata(&manifest).unwrap().modified().unwrap(),
         modified
     );
-    check_input_census(&root.0, &checked.expected_inputs).unwrap();
+    check_input_census(&root.0, &checked.expected_inputs, None).unwrap();
     // Output bytes cannot select the source prefix or be repaired by checking.
     fs::write(&manifest, b"schema_version = 3\n").unwrap();
     assert!(
@@ -615,4 +615,78 @@ fn whole_current_declaration_and_shared_input_freshness_still_refuse_stale_binar
             .contains("current source owner differs from this executable")
     );
     assert_eq!(fs::read(helper).unwrap(), b"changed current helper");
+}
+
+#[test]
+fn fixed_editions_create_distinct_exclusive_targets() {
+    let parent = Directory::new();
+    let old = create_edition(&parent.0, Edition::RootContextV4).unwrap();
+    let current = create_edition(&parent.0, Edition::CanonicalBoxDifferences).unwrap();
+    assert_eq!(old, parent.0.join("root-context-v4"));
+    assert_eq!(current, parent.0.join(authority::EDITION));
+    assert!(create_edition(&parent.0, Edition::CanonicalBoxDifferences).is_err());
+}
+#[test]
+fn terminal_output_has_explicit_exact_byte_custody_outside_the_input_map() {
+    let root = Directory::new();
+    let expected = BTreeMap::new();
+    let bytes = b"derived terminal bytes\n";
+    fs::write(root.0.join(authority::TERMINAL), bytes).unwrap();
+    assert!(check_input_census(&root.0, &expected, None).is_err());
+    check_input_census(&root.0, &expected, Some(bytes)).unwrap();
+    assert!(check_input_census(&root.0, &expected, Some(b"changed")).is_err());
+    assert_eq!(fs::read(root.0.join(authority::TERMINAL)).unwrap(), bytes);
+}
+#[test]
+fn official_browser_settings_witness_keeps_focused_profile_serialization_exact() {
+    let owner: OwnerBrowserDeclaration = surgeist_generator::parse_manifest(
+        std::str::from_utf8(owner_bytes().unwrap()).unwrap(),
+        "browser-owner.toml",
+    )
+    .unwrap();
+    let settings = owner.browser.settings().unwrap();
+    let witness = authority::BrowserSettingsWitness::from_official_json(
+        &serde_json::to_vec(&settings).unwrap(),
+    )
+    .unwrap();
+    let old = serde_json::to_vec(&(
+        "canonical-no-text-boxes",
+        &settings,
+        "record",
+        "variant",
+        "geometry",
+        Option::<Sha256Digest>::None,
+    ))
+    .unwrap();
+    let shared = serde_json::to_vec(&(
+        "canonical-no-text-boxes",
+        &witness,
+        "record",
+        "variant",
+        "geometry",
+        Option::<&str>::None,
+    ))
+    .unwrap();
+    assert_eq!(
+        old, shared,
+        "the official typed serializer remains the profile authority"
+    );
+}
+
+#[test]
+fn late_terminal_census_failure_removes_only_the_owned_terminal_output() {
+    let root = Directory::new();
+    fs::write(root.0.join("unexpected-input"), b"late input").unwrap();
+    assert!(emit_terminal(&root.0, &BTreeMap::new(), b"terminal bytes").is_err());
+    assert!(!root.0.join(authority::TERMINAL).exists());
+    assert_eq!(
+        fs::read(root.0.join("unexpected-input")).unwrap(),
+        b"late input"
+    );
+    fs::write(root.0.join(authority::TERMINAL), b"preexisting authority").unwrap();
+    assert!(emit_terminal(&root.0, &BTreeMap::new(), b"replacement").is_err());
+    assert_eq!(
+        fs::read(root.0.join(authority::TERMINAL)).unwrap(),
+        b"preexisting authority"
+    );
 }

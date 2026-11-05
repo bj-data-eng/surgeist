@@ -8,6 +8,29 @@ use surgeist_generator::CorpusLocation;
 use surgeist_generator::browser::{SourceImportProvenance, SourceImportSpec};
 
 const EDITION: &str = "root-context-v4";
+use crate::parity_support::capture_authority as authority;
+use crate::parity_support::exact_differences::{ExactDifferenceSpec, PublishedEdition};
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Edition {
+    RootContextV4,
+    CanonicalBoxDifferences,
+}
+impl Edition {
+    fn name(self) -> &'static str {
+        match self {
+            Self::RootContextV4 => EDITION,
+            Self::CanonicalBoxDifferences => authority::EDITION,
+        }
+    }
+    fn lineage(self) -> SemanticLineage {
+        match self {
+            Self::RootContextV4 => SemanticLineage::Focused,
+            Self::CanonicalBoxDifferences => {
+                SemanticLineage::Published(PublishedEdition::CanonicalBoxDifferences)
+            }
+        }
+    }
+}
 const PARENT: &str = "tests/layout/browser_parity/captured";
 const ORIGINAL: &str = "tests/layout/browser_parity";
 
@@ -32,33 +55,46 @@ fn edition_input(current: &[u8]) -> Result<DeclarationInput<'_>> {
 
 pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
     require_current_inputs(owner)?;
-    let input = edition_input(DECLARATION)?;
-    let declaration = &input.declaration;
-    let access = match mode {
-        QualificationMode::Publish => InputAccess::Prepare,
-        QualificationMode::CheckPublished => InputAccess::ReadOnly,
+    let (edition, access) = match mode {
+        QualificationMode::Publish => (Edition::RootContextV4, InputAccess::Prepare),
+        QualificationMode::CheckPublished => (Edition::RootContextV4, InputAccess::ReadOnly),
+        QualificationMode::PublishCanonicalBoxes => {
+            (Edition::CanonicalBoxDifferences, InputAccess::Prepare)
+        }
+        QualificationMode::CheckPublishedCanonicalBoxes => {
+            (Edition::CanonicalBoxDifferences, InputAccess::ReadOnly)
+        }
         _ => return Err("expected a durable publication mode".into()),
     };
+    let input = match edition {
+        Edition::RootContextV4 => edition_input(DECLARATION)?,
+        Edition::CanonicalBoxDifferences => canonical_input(owner, DECLARATION)?,
+    };
+    let declaration = &input.declaration;
     // Verify the original owner's complete import before claiming any selected
     // member. This is read-only and never acquires the pinned source or browser.
     let origin = Origin::read(owner, &declaration.records)?;
     let parent = edition_parent(owner)?;
     match access {
-        InputAccess::Prepare => with_new_edition(&parent, |root| {
+        InputAccess::Prepare => with_new_edition(&parent, edition, |root| {
             CorpusLocation::new(owner, root)?;
-            finish(owner, root, &input, &origin, access)
+            finish(owner, root, &input, &origin, access, edition)
         }),
         InputAccess::ReadOnly => {
-            let root = parent.join(EDITION);
+            let root = parent.join(edition.name());
             require_directory(&root)?;
             CorpusLocation::new(owner, &root)?;
-            finish(owner, &root, &input, &origin, access)
+            finish(owner, &root, &input, &origin, access, edition)
         }
     }
 }
 
-fn with_new_edition(parent: &Path, action: impl FnOnce(&Path) -> Result<()>) -> Result<()> {
-    let root = create_edition(parent)?;
+fn with_new_edition(
+    parent: &Path,
+    edition: Edition,
+    action: impl FnOnce(&Path) -> Result<()>,
+) -> Result<()> {
+    let root = create_edition(parent, edition)?;
     let result = action(&root);
     // Retain partial preparation, capture and validation failures. Registration
     // is separate; existence or even a generated report is no approval marker.
@@ -77,12 +113,31 @@ fn finish(
     input: &DeclarationInput<'_>,
     origin: &Origin,
     access: InputAccess,
+    edition: Edition,
 ) -> Result<()> {
+    if edition == Edition::CanonicalBoxDifferences && root != owner.join(authority::ARTIFACT_ROOT) {
+        return Err("canonical edition root differs from fixed artifact identity".into());
+    }
     let declaration = &input.declaration;
     let expected = declaration.expected()?;
     let mut snapshot = inventory(root, owner, input, QualificationMode::Regular, access)?;
     origin.inputs(root, &mut snapshot, access)?;
-    check_input_census(root, &snapshot.expected_inputs)?;
+    let stored_terminal =
+        if edition == Edition::CanonicalBoxDifferences && matches!(access, InputAccess::ReadOnly) {
+            require_regular_input(root, &RelativePath::new(authority::TERMINAL)?)?;
+            let bytes = fs::read(root.join(authority::TERMINAL))?;
+            authority::Qualification::parse(std::str::from_utf8(&bytes)?)?;
+            Some(bytes)
+        } else {
+            None
+        };
+    check_input_census(root, &snapshot.expected_inputs, stored_terminal.as_deref())?;
+    let requirements = if edition == Edition::CanonicalBoxDifferences {
+        prebind_current_cases(root, &snapshot)?
+    } else {
+        BTreeMap::new()
+    };
+    let mut terminal_cases = Vec::new();
     let owner_declaration: OwnerBrowserDeclaration = surgeist_generator::parse_manifest(
         std::str::from_utf8(owner_bytes()?)?,
         "browser-owner.toml",
@@ -121,6 +176,10 @@ fn finish(
         Validation {
             mode: QualificationMode::Regular,
             filesystem_tampering: false,
+            lineage: edition.lineage(),
+            requirements: (edition == Edition::CanonicalBoxDifferences).then_some(&requirements),
+            terminal_cases: (edition == Edition::CanonicalBoxDifferences)
+                .then_some(&mut terminal_cases),
         },
     )?;
     // Catch source/input changes during the invocation, as well as stale binaries
@@ -144,7 +203,48 @@ fn finish(
         QualificationMode::Regular,
         InputAccess::ReadOnly,
     )?;
-    check_input_census(root, &snapshot.expected_inputs)?;
+    check_input_census(root, &snapshot.expected_inputs, stored_terminal.as_deref())?;
+    if edition == Edition::CanonicalBoxDifferences {
+        Invocation {
+            root: root.to_path_buf(),
+        }
+        .check_terminal()?;
+        if browser::check_corpus(
+            &corpus,
+            &QualificationAdapter::for_mode(QualificationMode::Regular),
+        )?
+        .to_bytes()?
+            != report.to_bytes()?
+        {
+            return Err("checked report changed before terminal authority".into());
+        }
+        let bytes = terminal_authority(
+            TerminalInput {
+                owner,
+                root,
+                input,
+                inventory: &snapshot,
+                corpus: &corpus,
+                report: &report,
+                origin: &current,
+            },
+            terminal_cases,
+        )?
+        .to_bytes()?;
+        match access {
+            InputAccess::Prepare => {
+                emit_terminal(root, &snapshot.expected_inputs, &bytes)?;
+            }
+            InputAccess::ReadOnly => {
+                if stored_terminal.as_deref() != Some(bytes.as_slice()) {
+                    return Err(
+                        "terminal qualification differs from complete current derivation".into(),
+                    );
+                }
+                check_input_census(root, &snapshot.expected_inputs, Some(&bytes))?;
+            }
+        }
+    }
     eprintln!(
         "qualify-root-context: durable edition validated at {}; registration is a separate reviewed change",
         root.display()
@@ -216,9 +316,9 @@ fn edition_parent(owner: &Path) -> Result<PathBuf> {
     Ok(parent)
 }
 
-fn create_edition(parent: &Path) -> Result<PathBuf> {
+fn create_edition(parent: &Path, edition: Edition) -> Result<PathBuf> {
     require_directory(parent)?;
-    let root = parent.join(EDITION);
+    let root = parent.join(edition.name());
     // This single system operation supplies exclusive name creation. In
     // particular, an entry racing in after parent admission is not overwritten.
     fs::create_dir(&root)?;
@@ -246,12 +346,17 @@ pub(super) fn require_regular_input(root: &Path, path: &RelativePath) -> Result<
     Ok(())
 }
 
-fn check_input_census(root: &Path, expected: &BTreeMap<RelativePath, Sha256Digest>) -> Result<()> {
+fn check_input_census(
+    root: &Path,
+    expected: &BTreeMap<RelativePath, Sha256Digest>,
+    terminal: Option<&[u8]>,
+) -> Result<()> {
     fn visit(
         root: &Path,
         directory: &Path,
         expected: &BTreeMap<RelativePath, Sha256Digest>,
         seen: &mut BTreeSet<RelativePath>,
+        terminal: Option<&[u8]>,
     ) -> Result<()> {
         for entry in fs::read_dir(directory)? {
             let entry = entry?;
@@ -269,6 +374,15 @@ fn check_input_census(root: &Path, expected: &BTreeMap<RelativePath, Sha256Diges
             }
             let relative = RelativePath::new(relative)?;
             let kind = entry.file_type()?;
+            if directory == root
+                && relative.as_str() == authority::TERMINAL
+                && let Some(expected) = terminal
+            {
+                if !kind.is_file() || fs::read(&path)? != expected {
+                    return Err("non-regular or changed terminal qualification output".into());
+                }
+                continue;
+            }
             if kind.is_dir() {
                 let prefix = format!("{}/", relative.as_str());
                 if !expected.keys().any(|key| key.as_str().starts_with(&prefix)) {
@@ -278,7 +392,7 @@ fn check_input_census(root: &Path, expected: &BTreeMap<RelativePath, Sha256Diges
                     )
                     .into());
                 }
-                visit(root, &path, expected, seen)?;
+                visit(root, &path, expected, seen, terminal)?;
             } else if kind.is_file() {
                 if expected.get(&relative) != Some(&Sha256Digest::from_bytes(fs::read(&path)?)) {
                     return Err(format!(
@@ -294,8 +408,11 @@ fn check_input_census(root: &Path, expected: &BTreeMap<RelativePath, Sha256Diges
         }
         Ok(())
     }
+    if terminal.is_some() {
+        require_regular_input(root, &RelativePath::new(authority::TERMINAL)?)?;
+    }
     let mut seen = BTreeSet::new();
-    visit(root, root, expected, &mut seen)?;
+    visit(root, root, expected, &mut seen, terminal)?;
     if seen.len() != expected.len() {
         return Err("publication input census is incomplete".into());
     }
@@ -307,6 +424,7 @@ struct Origin {
     provenance: Vec<u8>,
     selected: Vec<u8>,
     font_provenance: Vec<u8>,
+    receipt_owner: RelativePath,
 }
 
 #[derive(Serialize)]
@@ -401,6 +519,10 @@ impl Origin {
             provenance: serde_json::to_vec(&provenance)?,
             selected: serde_json::to_vec(&selected)?,
             font_provenance: fs::read(original.join("fonts/PROVENANCE.md"))?,
+            receipt_owner: RelativePath::new(format!(
+                "{ORIGINAL}/{}",
+                provenance.sidecar().as_str()
+            ))?,
         })
     }
 
@@ -427,6 +549,266 @@ impl Origin {
         }
         Ok(())
     }
+}
+
+fn canonical_input<'a>(owner: &Path, current: &'a [u8]) -> Result<DeclarationInput<'a>> {
+    let mut input = DeclarationInput::parse(current)?;
+    // The whole canonical bytes remain the sealed input. This is a selection
+    // from that one parsed inventory, not a rewritten or second declaration.
+    input
+        .declaration
+        .records
+        .retain(|record| record.semantic_specifications.is_some());
+    if input.declaration.records.is_empty() {
+        return Err("canonical semantic edition has no selected records".into());
+    }
+    let variants = fixture_cases()
+        .into_iter()
+        .map(|(v, _)| v.to_owned())
+        .collect::<BTreeSet<_>>();
+    for record in &input.declaration.records {
+        let specifications = record
+            .semantic_specifications
+            .as_ref()
+            .ok_or("missing selected specifications")?;
+        if !matches!(
+            &record.expected,
+            ExpectedDisposition::Generated {
+                metadata: ExpectedMetadata::AbsoluteLocal { .. }
+            }
+        ) || !matches!(record.source_kind, SourceKind::Original)
+            || specifications.keys().cloned().collect::<BTreeSet<_>>() != variants
+        {
+            return Err("canonical edition requires complete Generated original variants with absolute-local authority".into());
+        }
+        let family = record
+            .source
+            .as_str()
+            .strip_prefix("html/")
+            .and_then(|p| p.strip_suffix(".html"))
+            .ok_or("current source must be an html/*.html path")?;
+        let stem = family
+            .rsplit('/')
+            .next()
+            .ok_or("missing current source stem")?;
+        let record_sha256 = semantic_record_digest(record)?;
+        for (variant, reference) in specifications {
+            require_regular_input(owner, &reference.path)?;
+            let bytes = fs::read(owner.join(reference.path.as_str()))?;
+            if Sha256Digest::from_bytes(&bytes) != reference.sha256 {
+                return Err("registered Published specification changed".into());
+            }
+            let selected = authority::CaseSelection {
+                name: format!("{stem}__{variant}"),
+                source: record.source.as_str().to_owned(),
+                source_sha256: record.source_sha256.as_str().to_owned(),
+                variant: variant.clone(),
+                output: format!("xml/{family}__{variant}.xml"),
+                record_sha256: record_sha256.as_str().to_owned(),
+                historical_sha256: Some(
+                    record
+                        .historical_sha256
+                        .get(variant)
+                        .ok_or("missing current historical variant")?
+                        .as_str()
+                        .to_owned(),
+                ),
+            };
+            ExactDifferenceSpec::parse(std::str::from_utf8(&bytes)?)?
+                .prebind_current(PublishedEdition::CanonicalBoxDifferences, &selected)?;
+        }
+    }
+    Ok(input)
+}
+
+// A failed write or final census must not leave terminal authority behind. The
+// exclusive open proves this invocation owns the only path it may remove.
+fn emit_terminal(
+    root: &Path,
+    expected: &BTreeMap<RelativePath, Sha256Digest>,
+    bytes: &[u8],
+) -> Result<()> {
+    let path = root.join(authority::TERMINAL);
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)?;
+    let result = (|| -> Result<()> {
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        check_input_census(root, expected, Some(bytes))
+    })();
+    drop(file);
+    if let Err(error) = result {
+        fs::remove_file(path)
+            .map_err(|cleanup| format!("terminal cleanup failed after {error}: {cleanup}"))?;
+        return Err(error);
+    }
+    Ok(())
+}
+
+fn prebind_current_cases(
+    root: &Path,
+    inventory: &Inventory,
+) -> Result<BTreeMap<String, authority::CurrentRequirements>> {
+    let mut requirements = BTreeMap::new();
+    for case in &inventory.cases {
+        let semantic = case
+            .semantic
+            .as_ref()
+            .ok_or("selected current representative has no semantic declaration")?;
+        require_regular_input(root, &semantic.reference.path)?;
+        let bytes = fs::read(root.join(semantic.reference.path.as_str()))?;
+        if Sha256Digest::from_bytes(&bytes) != semantic.reference.sha256 {
+            return Err("pre-execution specification bytes changed".into());
+        }
+        let historical_sha256 = case
+            .historical
+            .as_ref()
+            .map(|p| {
+                inventory
+                    .expected_inputs
+                    .get(p)
+                    .map(|s| s.as_str().to_owned())
+                    .ok_or("missing prebound historical identity")
+            })
+            .transpose()?;
+        let selected = authority::CaseSelection {
+            name: case.case.id().to_owned(),
+            source: case.source.as_str().to_owned(),
+            variant: case.case.variant().to_owned(),
+            output: case.case.output().as_str().to_owned(),
+            source_sha256: inventory
+                .expected_inputs
+                .get(&case.source)
+                .ok_or("missing prebound source identity")?
+                .as_str()
+                .to_owned(),
+            record_sha256: semantic.record_sha256.as_str().to_owned(),
+            historical_sha256,
+        };
+        let spec = ExactDifferenceSpec::parse(std::str::from_utf8(&bytes)?)?;
+        let binding = spec.prebind_current(PublishedEdition::CanonicalBoxDifferences, &selected)?;
+        if requirements.insert(selected.name, binding).is_some() {
+            return Err("duplicate prebound current representative".into());
+        }
+    }
+    if requirements.is_empty() || requirements.len() != inventory.cases.len() {
+        return Err("incomplete prebound current coverage".into());
+    }
+    Ok(requirements)
+}
+
+struct TerminalInput<'a> {
+    owner: &'a Path,
+    root: &'a Path,
+    input: &'a DeclarationInput<'a>,
+    inventory: &'a Inventory,
+    corpus: &'a BrowserCorpus,
+    report: &'a browser::BrowserGenerationReport,
+    origin: &'a Origin,
+}
+fn terminal_authority(
+    context: TerminalInput<'_>,
+    cases: Vec<authority::QualifiedCase>,
+) -> Result<authority::Qualification> {
+    let TerminalInput {
+        owner,
+        root,
+        input,
+        inventory,
+        corpus,
+        report,
+        origin,
+    } = context;
+    if cases.len() != inventory.cases.len() || cases.len() != report.generated().len() {
+        return Err("terminal current coverage is incomplete".into());
+    }
+    let actual = cases
+        .iter()
+        .map(|c| (c.case.name.as_str(), c.case.output.path.as_str()))
+        .collect::<BTreeSet<_>>();
+    let expected = inventory
+        .cases
+        .iter()
+        .map(|c| (c.case.id(), c.case.output().as_str()))
+        .collect::<BTreeSet<_>>();
+    if actual != expected {
+        return Err("terminal current representative census changed".into());
+    }
+    let records = input
+        .declaration
+        .records
+        .iter()
+        .map(|record| {
+            Ok(authority::RecordProjection {
+                source: record.source.as_str().to_owned(),
+                sha256: semantic_record_digest(record)?.as_str().to_owned(),
+                value: serde_json::to_value(record)?,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let current_owner_inputs = current_owner_inputs(owner, inventory, &cases, origin)?;
+    let report_bytes = report.to_bytes()?;
+    if fs::read(root.join("xml/generation-reports/all.json"))? != report_bytes {
+        return Err("terminal report bytes changed".into());
+    }
+    Ok(authority::Qualification {
+        schema_version: 1,
+        edition: authority::EDITION.to_owned(),
+        declaration: authority::PathDigest {
+            path: "corpus.toml".to_owned(),
+            sha256: Sha256Digest::from_bytes(input.bytes).as_str().to_owned(),
+        },
+        records,
+        browser_settings: authority::BrowserSettingsWitness::from_official_json(
+            &serde_json::to_vec(corpus.browser())?,
+        )?,
+        report: authority::PathDigest {
+            path: "xml/generation-reports/all.json".to_owned(),
+            sha256: Sha256Digest::from_bytes(&report_bytes).as_str().to_owned(),
+        },
+        ownership: authority::PathDigest {
+            path: "xml/generation-ownership.json".to_owned(),
+            sha256: Sha256Digest::from_bytes(&fs::read(
+                root.join("xml/generation-ownership.json"),
+            )?)
+            .as_str()
+            .to_owned(),
+        },
+        cases,
+        retained_inputs: string_inputs(&inventory.expected_inputs),
+        current_owner_inputs,
+    })
+}
+
+fn current_owner_inputs(
+    owner: &Path,
+    inventory: &Inventory,
+    cases: &[authority::QualifiedCase],
+    origin: &Origin,
+) -> Result<BTreeMap<String, String>> {
+    let semantic = cases
+        .iter()
+        .flat_map(|c| [c.spec.path.as_str(), c.policy.path.as_str()])
+        .collect::<BTreeSet<_>>();
+    let receipt_sidecar = origin
+        .receipt_owner
+        .as_str()
+        .strip_prefix(&format!("{ORIGINAL}/"))
+        .ok_or("source receipt owner is outside its corpus")?;
+    let current = authority::current_owner_bindings(
+        &string_inputs(&inventory.expected_inputs),
+        &semantic,
+        receipt_sidecar,
+    )?;
+    for (source, digest) in &current {
+        require_regular_input(owner, &RelativePath::new(source)?)?;
+        if Sha256Digest::from_bytes(fs::read(owner.join(source))?).as_str() != digest {
+            return Err("current semantic owner differs from retained input".into());
+        }
+    }
+    Ok(current)
 }
 
 #[cfg(test)]
