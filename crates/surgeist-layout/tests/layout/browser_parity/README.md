@@ -74,40 +74,40 @@ match an original. Any mismatch or incomplete observation fails. Historical
 missing-root-context errors remain raw failures; a current capture never turns
 them into historical passes.
 
-The registered [canonical box edition](captured/canonical-box-differences/qualification.json)
-also runs through the ordinary default-feature test target:
+The ordinary default-feature test target runs both registered editions.
 
 ```sh
 cargo test --offline --locked -j 1 -p surgeist-layout --test layout runs_registered_current_browser_parity_qualification
 ```
 
-This separate current-qualified result covers the declared four wrapping
-variants. Before execution, it authenticates the registered terminal seal,
-complete retained inputs and outputs, live source owners, browser profile,
-policy and per-variant identity. The retained catalogue supplies the captured
-records. Freshness compares their complete selected records with the live
-catalogue and checks exact bytes for the remaining live inputs. The unfiltered
-run requires capture authority for all registered variants. The canonical
-declaration and semantic specifications bind every requested box selector and both complete Native
-packet channels before capture. Qualification requires the independently
-authored full Native oracle and the exact expected difference set; changed or
-additional differences, unexpected passes, missing coverage and late freshness
-failures fail qualification. Raw differences remain available independently.
-This result certifies only those explicit current requirements, including the
-root-border-local frame. It does not cover the historical world-corner
-auto-height function or other source cohorts, and does not claim browser
-conformance. Missing required artifacts fail closed.
+The [canonical box edition](captured/canonical-box-differences/qualification.json)
+covers four collapsed Flex wrapping variants. The
+[measured Grid edition](captured/measured-grid-differences/qualification.json)
+covers four visible min-content and fit-content(10px) variants. It requires
+the retained Ahem leaf witness and compares all Layout and DOM integer fields.
+
+The reader authenticates each terminal seal, retained inputs and outputs,
+browser profile, policy, and per-variant identity. It compares the retained
+selected records with one live catalogue and checks exact bytes for the other
+live inputs. Unfiltered execution requires capture authority for every
+registered variant across the editions. Each qualification checks the full
+independent Native oracle, both packet channels, and the exact raw difference
+set. A missing field, new or changed difference, unexpected pass, or late
+freshness failure fails qualification. Raw differences remain available
+independently.
 
 `SURGEIST_PARITY_FILTER` can select a fixture substring for diagnosis. Filtered
 execution makes no complete-edition coverage claim. Run without it for the
 full declared cohort. These checked-in comparisons need no browser or fixture
 regeneration.
 
-The existing publication owner creates and validates this immutable edition:
+The publication owner creates and validates each immutable edition.
 
 ```sh
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --publish-canonical-box-differences
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-canonical-box-differences
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --publish-measured-grid-differences
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-measured-grid-differences
 ```
 
 Publication uses the already-acquired pinned browser and refuses an existing
