@@ -205,7 +205,7 @@ where
             )
         }
         crate::LayoutRootContextOf::RootLocalPositioned(context) => {
-            admit_positioned_root(root, style, Some(context.containing_size()))?;
+            admit_positioned_root(root, style, Some(context))?;
             (
                 context.containing_flow_axes(),
                 crate::ParentFormattingContext::BlockFlow,
@@ -227,35 +227,29 @@ where
             parent,
         )?);
     }
+    let inline_axis = FlowAxes::new(style.writing_mode, style.direction).inline_axis();
     if matches!(
         request.context(),
         crate::LayoutRootContextOf::PositionedAutoInsets(_)
             | crate::LayoutRootContextOf::RootLocalPositioned(_)
-    ) && style.size.width.is_auto()
+    ) && root_physical_axis_value(
+        Size::new(&style.size.width, &style.size.height),
+        inline_axis,
+    )
+    .is_auto()
     {
-        // Both constructors issue a real definite inline request. The local
-        // constructor has already checked and reduced the authenticated offset.
-        let available = sizing_request
-            .axes()
-            .width
-            .space()
-            .definite_size()
-            .ok_or_else(|| {
-                LayoutErrorOf::new(
-                    LayoutErrorSiteOf::Node(root),
-                    LayoutOperation::RootLayout,
-                    LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::RequiredBasis),
-                )
-            })?;
-        known.width = Some(positioned_auto_inline_size(
-            tree,
-            root,
-            style,
-            containing,
-            sizing_request,
-            parent,
-            available,
-        )?);
+        known = root_known_on_axis(
+            inline_axis,
+            positioned_auto_inline_size(
+                tree,
+                root,
+                style,
+                containing,
+                sizing_request,
+                parent,
+                inline_axis,
+            )?,
+        );
     }
     Ok(RootComputeInput {
         input: ComputeInputOf::root_layout(known, parent, containing, sizing_request),
@@ -341,12 +335,25 @@ where
 fn admit_positioned_root<Node, S: LayoutScalar, M>(
     root: Node,
     style: &NodeInputOf<S>,
-    local_containing_size: Option<Size<crate::NonNegativeFiniteOf<S>>>,
+    local_context: Option<crate::RootLocalPositionedContextOf<S>>,
 ) -> LayoutResultOf<Node, (), S, M>
 where
     Node: Copy,
 {
     let horizontal = style.writing_mode == crate::WritingMode::HorizontalTb;
+    let local_containing_size = local_context.map(|context| context.containing_size());
+    let has_block_offset = local_context
+        .and_then(|context| context.hypothetical_block_offset())
+        .is_some();
+    let orthogonal_auto_inline = has_block_offset
+        && matches!(
+            style.writing_mode,
+            crate::WritingMode::VerticalLr | crate::WritingMode::VerticalRl
+        )
+        && style.display == crate::Display::Block
+        && style.block_generation == crate::BlockGeneration::Principal
+        && !style.item_is_table
+        && style.size.height.is_auto();
     let edges = match local_containing_size {
         Some(size) if horizontal => RootEdgeProfile::DefiniteInline {
             percentage_parent: size.width,
@@ -354,9 +361,11 @@ where
         _ => RootEdgeProfile::Zero,
     };
     admit_root_box(root, style, crate::Position::Absolute, edges)?;
+    let writing_mode_error = || root_context_error(root, crate::RootContextMismatch::WritingMode);
+    if has_block_offset && !orthogonal_auto_inline {
+        return Err(writing_mode_error());
+    }
     if !horizontal {
-        let writing_mode_error =
-            || root_context_error(root, crate::RootContextMismatch::WritingMode);
         let basis = local_containing_size.ok_or_else(writing_mode_error)?;
         // Resolve only for admission. The normal box algorithm retains the
         // original preferred dimensions and owns their min/max constraints.
@@ -364,6 +373,9 @@ where
             (PhysicalAxis::Horizontal, &style.size.width, basis.width),
             (PhysicalAxis::Vertical, &style.size.height, basis.height),
         ] {
+            if orthogonal_auto_inline && axis == PhysicalAxis::Vertical {
+                continue;
+            }
             let resolved = resolve_preferred_sizing(
                 preferred,
                 SizingAlgorithm::Block,
@@ -405,34 +417,56 @@ fn positioned_auto_inline_size<'input, Tree, M>(
     containing: crate::ContainingLayoutContext,
     sizing_request: SizingRequestOf<Tree::Scalar>,
     parent: Size<Option<Tree::Scalar>>,
-    available: crate::NonNegativeFiniteOf<Tree::Scalar>,
+    inline_axis: PhysicalAxis,
 ) -> LayoutResultOf<Tree::Node, Tree::Scalar, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
+    let available = root_physical_axis_value(sizing_request.axes(), inline_axis)
+        .space()
+        .definite_size()
+        .ok_or_else(|| {
+            LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(root),
+                LayoutOperation::RootLayout,
+                LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::RequiredBasis),
+            )
+        })?
+        .get();
+    let opposite_axis = inline_axis.other();
+    let opposite_parent = root_physical_axis_value(parent, opposite_axis);
     let opposite = match resolve_preferred_sizing(
-        &style.size.height,
+        root_physical_axis_value(
+            Size::new(&style.size.width, &style.size.height),
+            opposite_axis,
+        ),
         SizingAlgorithm::Block,
-        PhysicalAxis::Vertical,
-        parent.height,
+        opposite_axis,
+        opposite_parent,
         false,
     )
     .map_err(|error| sizing_resolution_error(root, error))?
     {
         ResolvedPreferredSize::Definite(value) => {
             let minimum = resolve_minimum_optional(
-                &style.min_size.height,
+                root_physical_axis_value(
+                    Size::new(&style.min_size.width, &style.min_size.height),
+                    opposite_axis,
+                ),
                 SizingAlgorithm::Block,
-                PhysicalAxis::Vertical,
-                parent.height,
+                opposite_axis,
+                opposite_parent,
                 false,
             )
             .map_err(|error| sizing_resolution_error(root, error))?;
             let maximum = resolve_maximum_optional(
-                &style.max_size.height,
+                root_physical_axis_value(
+                    Size::new(&style.max_size.width, &style.max_size.height),
+                    opposite_axis,
+                ),
                 SizingAlgorithm::Block,
-                PhysicalAxis::Vertical,
-                parent.height,
+                opposite_axis,
+                opposite_parent,
                 false,
             )
             .map_err(|error| sizing_resolution_error(root, error))?;
@@ -456,25 +490,37 @@ where
                 })
         })
         .transpose()?;
+    let known_opposite =
+        opposite.map_or(Size::NONE, |value| root_known_on_axis(opposite_axis, value));
     let query = |tree: &mut Tree, operation| {
         let mut axes = sizing_request.axes();
-        axes.width = axes.width.with_operation(operation);
+        let requested_axis = match inline_axis {
+            PhysicalAxis::Horizontal => {
+                axes.width = axes.width.with_operation(operation);
+                crate::RequestedAxis::Horizontal
+            }
+            PhysicalAxis::Vertical => {
+                axes.height = axes.height.with_operation(operation);
+                crate::RequestedAxis::Vertical
+            }
+        };
         tree.compute_child(
             root,
             ComputeInputOf::for_child(
                 crate::RunMode::ComputeSize,
                 crate::SizingMode::ContentSize,
-                crate::RequestedAxis::Horizontal,
-                Size::new(None, opposite),
+                requested_axis,
+                known_opposite,
                 parent,
                 containing,
                 sizing_request.with_axes(axes),
             ),
         )
     };
-    let minimum_content = query(tree, SizingOperation::MinContent)?.size.width;
-    let maximum_content = query(tree, SizingOperation::MaxContent)?.size.width;
-    let available = available.get();
+    let minimum_content =
+        root_physical_axis_value(query(tree, SizingOperation::MinContent)?.size, inline_axis);
+    let maximum_content =
+        root_physical_axis_value(query(tree, SizingOperation::MaxContent)?.size, inline_axis);
     for value in [minimum_content, maximum_content] {
         if !value.is_finite() || value < Tree::Scalar::ZERO {
             return Err(crate::error::sizing_resolution_error(
@@ -486,18 +532,24 @@ where
         }
     }
     let minimum = resolve_minimum_optional(
-        &style.min_size.width,
+        root_physical_axis_value(
+            Size::new(&style.min_size.width, &style.min_size.height),
+            inline_axis,
+        ),
         SizingAlgorithm::Block,
-        PhysicalAxis::Horizontal,
-        parent.width,
+        inline_axis,
+        root_physical_axis_value(parent, inline_axis),
         false,
     )
     .map_err(|error| sizing_resolution_error(root, error))?;
     let maximum = resolve_maximum_optional(
-        &style.max_size.width,
+        root_physical_axis_value(
+            Size::new(&style.max_size.width, &style.max_size.height),
+            inline_axis,
+        ),
         SizingAlgorithm::Block,
-        PhysicalAxis::Horizontal,
-        parent.width,
+        inline_axis,
+        root_physical_axis_value(parent, inline_axis),
         false,
     )
     .map_err(|error| sizing_resolution_error(root, error))?;

@@ -575,31 +575,33 @@ impl<S: LayoutScalar> PositionedRootContextOf<S> {
 /// local sizing. The containing direction still supplies the actual containing
 /// flow axes, not a global static-anchor alignment.
 ///
-/// Every observed descendant must be independent of the omitted static block
-/// translation. This capability does not establish document-space placement,
-/// external clipping, or containing parent overflow. Source-specific hypothetical
-/// layout proof belongs to the producer; computed blockification alone does not
-/// supply it.
+/// Root-local coordinates omit document-space translation and establish the
+/// continuous border-box frame before publication rounding. The producer
+/// supplies the hypothetical frame and proves that the subtree's observations
+/// can use local coordinates.
 ///
 /// All root insets are Auto and margins are zero. A horizontal root can carry
 /// padding and border when its inline preferred size resolves definite against
 /// the full containing width. Auto and intrinsic inline sizing require zero
-/// padding and border. Orthogonal roots require zero padding and border and
-/// definite preferred sizes on both physical axes. Each preferred size uses
-/// its own full containing-block basis. Normal sizing applies authored
-/// box-sizing and min/max constraints.
+/// padding and border. Orthogonal roots require zero padding and border.
+/// Their preferred sizes must resolve definite on both physical axes, except
+/// that a vertical-lr or vertical-rl principal Block can fit its Auto inline
+/// size using an explicit hypothetical block-start offset and a definite
+/// opposite preferred size.
 ///
-/// Root-local continuous coordinates are established
-/// before canonical geometry and publication rounding. Percentage bases use the
-/// full containing size, independently of reduced inline fitting space; Auto
-/// block sizing has indefinite physical availability, not invented remaining
-/// block space. Profiles needing the omitted translation require another real
-/// capability rather than this one.
+/// This offset is the hypothetical position relative to the ICB's physical top.
+/// The vertical root uses the nonnegative remaining ICB height as fit-content
+/// availability. Each percentage uses the full containing-block extent on its
+/// physical axis.
+/// Normal sizing applies authored box sizing and min/max constraints.
+/// Without a supplied block-start offset the request's physical height
+/// availability is indefinite.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RootLocalPositionedContextOf<S: LayoutScalar = DefaultScalar> {
     containing_size: Size<NonNegativeFiniteOf<S>>,
     containing_direction: crate::Direction,
     hypothetical_inline_offset: S,
+    hypothetical_block_offset: Option<S>,
     orthogonal_fallback: crate::OrthogonalFallbackOf<S>,
 }
 
@@ -621,8 +623,22 @@ impl<S: LayoutScalar> RootLocalPositionedContextOf<S> {
             containing_size,
             containing_direction,
             hypothetical_inline_offset: crate::scalar::canonical_zero(hypothetical_inline_offset),
+            hypothetical_block_offset: None,
             orthogonal_fallback,
         })
+    }
+    /// Supplies the hypothetical block-start offset in the horizontal
+    /// containing frame. It is relative to the absolute containing block's
+    /// physical top edge and independent of the published root-local origin.
+    pub fn with_hypothetical_block_offset(
+        mut self,
+        offset: S,
+    ) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
+        if !offset.is_finite() {
+            return Err(crate::FiniteScalarErrorOf::NonFinite { value: offset });
+        }
+        self.hypothetical_block_offset = Some(crate::scalar::canonical_zero(offset));
+        Ok(self)
     }
     #[must_use]
     pub const fn containing_size(self) -> Size<NonNegativeFiniteOf<S>> {
@@ -635,6 +651,11 @@ impl<S: LayoutScalar> RootLocalPositionedContextOf<S> {
     #[must_use]
     pub const fn hypothetical_inline_offset(self) -> S {
         self.hypothetical_inline_offset
+    }
+    /// The supplied physical top offset, when available.
+    #[must_use]
+    pub const fn hypothetical_block_offset(self) -> Option<S> {
+        self.hypothetical_block_offset
     }
     #[must_use]
     pub const fn orthogonal_fallback(self) -> crate::OrthogonalFallbackOf<S> {
@@ -746,21 +767,29 @@ impl<S: LayoutScalar> LayoutRootRequestOf<S> {
     pub fn positioned_root_local(
         context: RootLocalPositionedContextOf<S>,
     ) -> Result<Self, NonNegativeFiniteScalarErrorOf<S>> {
-        let available = match NonNegativeFiniteOf::new(
-            context.containing_size.width.get() - context.hypothetical_inline_offset,
+        let remaining = |extent: NonNegativeFiniteOf<S>, offset: S| match NonNegativeFiniteOf::new(
+            extent.get() - offset,
         ) {
-            Ok(value) => value,
-            Err(NonNegativeFiniteScalarErrorOf::Negative { .. }) => NonNegativeFiniteOf::ZERO,
-            Err(error @ NonNegativeFiniteScalarErrorOf::NonFinite { .. }) => return Err(error),
+            Ok(value) => Ok(AvailableSpaceOf::Definite(value)),
+            Err(NonNegativeFiniteScalarErrorOf::Negative { .. }) => {
+                Ok(AvailableSpaceOf::Definite(NonNegativeFiniteOf::ZERO))
+            }
+            Err(error @ NonNegativeFiniteScalarErrorOf::NonFinite { .. }) => Err(error),
         };
+        let width = remaining(
+            context.containing_size.width,
+            context.hypothetical_inline_offset,
+        )?;
+        let height = context
+            .hypothetical_block_offset
+            .map(|offset| remaining(context.containing_size.height, offset))
+            .transpose()?
+            .unwrap_or(AvailableSpaceOf::Indefinite);
         Ok(Self::new(
             SizingRequestOf::new(
                 Size::new(
-                    AxisSizingRequestOf::new(
-                        AvailableSpaceOf::Definite(available),
-                        SizingOperation::Normal,
-                    ),
-                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                    AxisSizingRequestOf::new(width, SizingOperation::Normal),
+                    AxisSizingRequestOf::new(height, SizingOperation::Normal),
                 ),
                 context.orthogonal_fallback,
             ),
