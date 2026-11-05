@@ -2485,78 +2485,123 @@ fn runs_registered_current_browser_parity_qualification() {
 
 #[test]
 fn runs_all_checked_in_browser_parity_xml() {
+    let filter = std::env::var("SURGEIST_PARITY_FILTER").ok();
     let fixtures = support::fixture_files("xml").expect("fixtures should load");
+    run_raw_browser_parity(fixtures, filter.as_deref()).unwrap_or_else(|error| panic!("{error}"));
+}
+
+#[test]
+fn raw_corpus_reports_current_differences_with_many_historical_failures() {
+    let fixtures = support::fixture_files("xml").expect("fixtures should load");
+    let error = run_raw_browser_parity(fixtures, Some("xml/flex/"))
+        .expect_err("historical and current Flex comparisons contain raw failures");
+    assert!(error.contains("MissingRootContextAuthority"), "{error}");
+    assert!(
+        error.contains("fri07_collapsed_strut_wrapping__border_box_ltr.xml raw differences:"),
+        "the raw report must show the current comparison after historical failures"
+    );
+}
+
+#[test]
+fn raw_corpus_reports_a_missing_xml_and_still_executes_later_originals() {
+    let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let original =
+        owner.join("tests/layout/browser_parity/xml/block/block_basic__border_box_ltr.xml");
+    let missing = original.with_file_name("missing_test_input__border_box_ltr.xml");
+    let mut fixtures = support::fixture_files("xml")
+        .expect("fixtures should load")
+        .into_iter()
+        .filter(|fixture| fixture != &original && parity_path_matches(fixture, "xml/block/"))
+        .take(80)
+        .collect::<Vec<_>>();
+    assert_eq!(fixtures.len(), 80);
+    fixtures.extend([missing, original]);
+    let error = run_raw_browser_parity(fixtures, Some("xml/block/"))
+        .expect_err("original raw execution reports every failure");
+    assert!(
+        error.contains("missing_test_input__border_box_ltr.xml"),
+        "{error}"
+    );
+    assert!(
+        error.contains("block_basic__border_box_ltr.xml failed: MissingRootContextAuthority"),
+        "the original after the unreadable input must execute"
+    );
+}
+
+fn run_raw_browser_parity(fixtures: Vec<PathBuf>, filter: Option<&str>) -> Result<(), String> {
     assert!(
         !fixtures.is_empty(),
         "expected at least one browser parity XML fixture"
     );
 
-    let mut failures = Vec::new();
+    let mut historical = Vec::new();
+    let mut current = Vec::new();
     let mut by_suite = BTreeMap::<String, usize>::new();
     let mut by_kind = BTreeMap::<String, usize>::new();
-    let filter = std::env::var("SURGEIST_PARITY_FILTER").ok();
     let edition = registered_current_edition();
-    let selection = select_parity_inventory(fixtures, edition.as_ref().ok(), filter.as_deref())
-        .unwrap_or_else(|error| panic!("{error}"));
+    let selection = select_parity_inventory(fixtures, edition.as_ref().ok(), filter)?;
     for fixture in selection.originals {
-        let golden = support::Golden::parse_file(&fixture).expect("fixture should parse");
-        if let Err(error) = support::assert_surgeist_matches(&golden) {
-            let error = error.to_string();
-            *by_suite.entry(suite_name(&fixture)).or_default() += 1;
-            *by_kind
-                .entry(classified_error_kind(&golden, &error))
-                .or_default() += 1;
-            failures.push(format!("{} failed: {error}", fixture.display()));
-        }
+        let (kind, error) = match support::Golden::parse_file(&fixture) {
+            Ok(golden) => match support::assert_surgeist_matches(&golden) {
+                Ok(()) => continue,
+                Err(error) => {
+                    let error = error.to_string();
+                    (classified_error_kind(&golden, &error), error)
+                }
+            },
+            Err(error) => ("InvalidFixtureInput".to_owned(), error.to_string()),
+        };
+        *by_suite.entry(suite_name(&fixture)).or_default() += 1;
+        *by_kind.entry(kind).or_default() += 1;
+        historical.push(format!("{} failed: {error}", fixture.display()));
     }
 
     match edition {
-        Err(error) => failures.push(format!("current edition admission failed: {error}")),
+        Err(error) => current.push(format!("current edition admission failed: {error}")),
         Ok(admitted) => match admitted.execute_selected(&selection.current) {
-            Err(error) => failures.push(format!("current edition execution failed: {error}")),
+            Err(error) => current.push(format!("current edition execution failed: {error}")),
             Ok(run) => {
                 for case in run.cases {
                     match case.raw {
                         Ok(differences) if differences.is_empty() => {}
-                        Ok(differences) => failures.push(format!(
+                        Ok(differences) => current.push(format!(
                             "current/{} raw differences:\n{}",
                             case.output,
                             differences.join("\n")
                         )),
                         Err(error) => {
-                            failures.push(format!("current/{} raw failure: {error}", case.output))
+                            current.push(format!("current/{} raw failure: {error}", case.output))
                         }
                     }
                 }
                 if filter.is_none() {
-                    failures.extend(
+                    current.extend(
                         run.uncovered
                             .into_iter()
                             .map(|case| format!("current/{case}: missing capture authority")),
                     );
                 }
                 if let Some(error) = run.freshness_error {
-                    failures.push(error);
+                    current.push(error);
                 }
             }
         },
     }
 
-    if !failures.is_empty() {
-        let shown = failures.iter().take(80).cloned().collect::<Vec<_>>();
-        panic!(
-            "{} browser parity fixtures failed:\n\nBy suite:\n{}\n\nBy kind:\n{}\n\nFirst failures:\n{}{}",
-            failures.len(),
-            count_lines(&by_suite),
-            count_lines(&by_kind),
-            shown.join("\n"),
-            if failures.len() > shown.len() {
-                format!("\n... {} more", failures.len() - shown.len())
-            } else {
-                String::new()
-            }
-        );
+    if historical.is_empty() && current.is_empty() {
+        return Ok(());
     }
+
+    Err(format!(
+        "{} browser parity fixtures failed:\n\nHistorical failures ({}):\n\nBy suite:\n{}\n\nBy kind:\n{}\n\nHistorical failure details:\n{}\n\nCurrent raw failures ({}):\n{}",
+        historical.len() + current.len(),
+        historical.len(),
+        count_lines(&by_suite),
+        count_lines(&by_kind),
+        historical.join("\n"),
+        current.len(),
+        current.join("\n")
+    ))
 }
 
 fn suite_name(path: &Path) -> String {

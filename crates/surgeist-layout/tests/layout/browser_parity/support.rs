@@ -36,7 +36,7 @@ mod measured_leaf;
 #[path = "prepared_range_qualification.rs"]
 pub mod prepared_range_qualification;
 pub use element_scroll_sizes::ElementScrollSizeMismatch;
-use prepared_range_qualification::Comparisons as PreparedRangeComparisons;
+use prepared_range_qualification::{Comparisons as PreparedRangeComparisons, RangePieceKey};
 
 type Scalar = layout::Scalar;
 
@@ -4327,11 +4327,18 @@ fn compare_range_rectangle_expectations(
             "Range inline root has ambiguous placed Text results",
         ));
     }
+    let row_pieces = match numeric {
+        NumericComparisonSink::PreparedRanges(comparisons) => {
+            Some(comparisons.row_pieces(path, expected)?)
+        }
+        _ => None,
+    };
     visit_range_rectangle_pairs(
         path,
         actual,
         placed.layout(),
         expected,
+        row_pieces.as_deref(),
         |edge| range_rectangle_ancestor_translation(tree, owner, edge),
         |pair| numeric.range(path, pair),
     )
@@ -4343,6 +4350,7 @@ struct NativeRangeRectangle {
     origin: surgeist_text::PreparedOrigin,
     line: surgeist_text::FinalizedLine,
     source: surgeist_text::Range,
+    pieces: Vec<RangePieceKey>,
     source_segment_id: u64,
     line_index: usize,
     rect: layout::ScrollRect,
@@ -4353,10 +4361,64 @@ struct NativeRangeOrigin<'a> {
     entries: Vec<&'a layout::InlineFragmentOutputEntry<usize>>,
 }
 
+fn prepared_range_piece_key(
+    path: &str,
+    origin: &surgeist_text::PreparedOrigin,
+    entries: &[&layout::InlineFragmentOutputEntry<usize>],
+    unit: surgeist_text::SourceRangeUnit<'_>,
+    ordinal: usize,
+) -> Result<RangePieceKey, Error> {
+    let changed = || {
+        Error::new(format!(
+            "{path}: prepared Range query unit {ordinal} custody changed"
+        ))
+    };
+    let mut selected = unit.selected_intersections();
+    let item = selected.next().ok_or_else(changed)?;
+    if selected.next().is_some() || item.origin() != *origin {
+        return Err(changed());
+    }
+    let local = item.local_range();
+    let aggregate = item.aggregate_range();
+    let mut expanded = unit.expanded_intersections();
+    if !expanded.next().is_some_and(|item| {
+        item.origin() == *origin
+            && item.local_range() == local
+            && item.aggregate_range() == aggregate
+    }) || expanded.next().is_some()
+    {
+        return Err(changed());
+    }
+    let mut fragments = unit.fragments();
+    let issuer = fragments.next().ok_or_else(changed)?;
+    if fragments.next().is_some()
+        || !entries
+            .iter()
+            .any(|entry| entry.fragment().finalized_fragment() == &issuer)
+    {
+        return Err(changed());
+    }
+    let mut pieces = unit.pieces();
+    if !matches!(
+        pieces.next(),
+        Some(surgeist_text::SourceRangeGeometry::Line(_))
+    ) || pieces.next().is_some()
+    {
+        return Err(changed());
+    }
+    Ok(RangePieceKey {
+        unit: ordinal,
+        piece: 0,
+        local: [local.start, local.end],
+        aggregate: [aggregate.start, aggregate.end],
+    })
+}
+
 fn native_range_rectangles(
     path: &str,
     actual: &[layout::InlineFragmentOutputEntry<usize>],
     placed: &surgeist_text::Layout,
+    row_pieces: Option<&[&[RangePieceKey]]>,
 ) -> Result<Vec<NativeRangeRectangle>, Error> {
     let mut groups = Vec::<NativeRangeOrigin<'_>>::new();
     let mut seen = Vec::new();
@@ -4419,7 +4481,7 @@ fn native_range_rectangles(
                 ))
             })?;
         let source_segment_id = fragment_source_id(entries[0].fragment())?;
-        for unit in observed.units() {
+        for (ordinal, unit) in observed.units().enumerate() {
             let line = unit.finalized_line();
             let line_index = unit.line_index();
             if !entries.iter().any(|entry| {
@@ -4430,15 +4492,33 @@ fn native_range_rectangles(
                     "{path}: Range placement does not retain the actual source line"
                 )));
             }
-            let mut intersections = unit.selected_intersections();
-            let Some(first) = intersections.next() else {
-                // Generated definitions/anchors do not own original-source text.
-                continue;
+            let bound = row_pieces
+                .map(|rows| {
+                    let key = prepared_range_piece_key(path, &origin, &entries, unit, ordinal)?;
+                    let mut owners = rows.iter().copied().filter(|row| row.contains(&key));
+                    let row = owners
+                    .next()
+                    .filter(|_| owners.next().is_none())
+                    .ok_or_else(|| Error::new(format!(
+                        "{path}: prepared Range query unit {ordinal} has no unique authored row"
+                    )))?;
+                    Ok::<_, Error>((key, row))
+                })
+                .transpose()?;
+            let key = bound.map(|(key, _)| key);
+            let source = if let Some(key) = key {
+                surgeist_text::Range::new(key.aggregate[0], key.aggregate[1])
+            } else {
+                let mut intersections = unit.selected_intersections();
+                let Some(first) = intersections.next() else {
+                    // Generated definitions/anchors do not own original-source text.
+                    continue;
+                };
+                intersections.fold(first.aggregate_range(), |range, next| {
+                    let next = next.aggregate_range();
+                    surgeist_text::Range::new(range.start.min(next.start), range.end.max(next.end))
+                })
             };
-            let source = intersections.fold(first.aggregate_range(), |range, next| {
-                let next = next.aggregate_range();
-                surgeist_text::Range::new(range.start.min(next.start), range.end.max(next.end))
-            });
             for piece in unit.pieces() {
                 let rect = piece.rect();
                 let rect = layout::ScrollRect::try_new(
@@ -4450,11 +4530,28 @@ fn native_range_rectangles(
                     origin: origin.clone(),
                     line: line.clone(),
                     source,
+                    pieces: key.into_iter().collect(),
                     source_segment_id,
                     line_index,
                     rect,
                 };
-                if let Some(previous) = rectangles.last_mut() {
+                if let Some((key, row)) = bound {
+                    if row.first() != Some(&key) {
+                        let changed = || {
+                            Error::new(format!(
+                                "{path}: Native Range pieces no longer form their authored row"
+                            ))
+                        };
+                        let previous = rectangles.last_mut().ok_or_else(changed)?;
+                        if !row.starts_with(&previous.pieces)
+                            || row.get(previous.pieces.len()) != Some(&key)
+                            || !merge_native_range_rectangles(previous, &next)?
+                        {
+                            return Err(changed());
+                        }
+                        continue;
+                    }
+                } else if let Some(previous) = rectangles.last_mut() {
                     // The complete canonical query accounts for source gaps
                     // between consecutive observations. Non-geometric custody
                     // may bridge them; an actual zero-width piece stays a row
@@ -4507,6 +4604,7 @@ fn merge_native_range_rectangles(
     )
     .map_err(|_| Error::new("coalesced Range rectangle is not finite"))?;
     previous.source.end = next.source.end;
+    previous.pieces.extend_from_slice(&next.pieces);
     Ok(true)
 }
 
@@ -4527,7 +4625,7 @@ fn compare_range_rectangle_expectations_with_translation(
     expected: &[InlineRangeRectangleExpectation],
     translation: impl FnMut(PhysicalStartEdge) -> Result<Scalar, Error>,
 ) -> Result<(), Error> {
-    visit_range_rectangle_pairs(path, actual, placed, expected, translation, |pair| {
+    visit_range_rectangle_pairs(path, actual, placed, expected, None, translation, |pair| {
         NumericComparisonSink::Strict.range(path, pair)
     })
 }
@@ -4538,6 +4636,7 @@ struct RangeRectanglePair {
     line_index: usize,
     physical_start_edge: PhysicalStartEdge,
     native_source: surgeist_text::Range,
+    native_pieces: Vec<RangePieceKey>,
     native_start: Scalar,
     browser_start: Scalar,
     native_advance: Scalar,
@@ -4549,10 +4648,11 @@ fn visit_range_rectangle_pairs(
     actual: &[layout::InlineFragmentOutputEntry<usize>],
     placed: &surgeist_text::Layout,
     expected: &[InlineRangeRectangleExpectation],
+    row_pieces: Option<&[&[RangePieceKey]]>,
     mut translation: impl FnMut(PhysicalStartEdge) -> Result<Scalar, Error>,
     mut visit: impl FnMut(RangeRectanglePair) -> Result<(), Error>,
 ) -> Result<(), Error> {
-    let actual = native_range_rectangles(path, actual, placed)?;
+    let actual = native_range_rectangles(path, actual, placed, row_pieces)?;
     if actual.len() != expected.len() {
         return Err(Error::new(format!(
             "{path}: Range rectangle count mismatch, expected {}, got {}",
@@ -4567,27 +4667,48 @@ fn visit_range_rectangle_pairs(
             row.source_segment_id == expected.source_segment_id
                 && row.line_index == expected.line_index
         };
-        let actual_index = actual
-            .iter()
-            .enumerate()
-            .find(|(i, row)| {
-                let (start, advance) =
-                    range_rectangle_values(row.rect, expected.physical_start_edge);
-                !matched[*i]
-                    && identity(row)
-                    && ComparisonTolerance::browser_parity()
-                        .contains(start + offset - expected.start)
-                    && ComparisonTolerance::browser_parity().contains(advance - expected.advance)
-            })
-            .or_else(|| {
-                actual
-                    .iter()
-                    .enumerate()
-                    .find(|(i, row)| !matched[*i] && identity(row))
-            })
-            .map(|(i, _)| i)
-            .or_else(|| matched.iter().position(|matched| !matched))
-            .expect("equal Range observation counts leave an unmatched source rectangle");
+        let actual_index = if let Some(rows) = row_pieces {
+            let pieces = rows.get(index).ok_or_else(|| {
+                Error::new(format!(
+                    "{path}: missing Native source binding for Range row {index}"
+                ))
+            })?;
+            let mut matches = actual.iter().enumerate().filter(|(i, row)| {
+                !matched[*i] && identity(row) && row.pieces.as_slice() == *pieces
+            });
+            let (index, _) = matches
+                .next()
+                .filter(|_| matches.next().is_none())
+                .ok_or_else(|| {
+                    Error::new(format!(
+                        "{path}: expected the authored Native pieces for Range row {index}"
+                    ))
+                })?;
+            index
+        } else {
+            actual
+                .iter()
+                .enumerate()
+                .find(|(i, row)| {
+                    let (start, advance) =
+                        range_rectangle_values(row.rect, expected.physical_start_edge);
+                    !matched[*i]
+                        && identity(row)
+                        && ComparisonTolerance::browser_parity()
+                            .contains(start + offset - expected.start)
+                        && ComparisonTolerance::browser_parity()
+                            .contains(advance - expected.advance)
+                })
+                .or_else(|| {
+                    actual
+                        .iter()
+                        .enumerate()
+                        .find(|(i, row)| !matched[*i] && identity(row))
+                })
+                .map(|(i, _)| i)
+                .or_else(|| matched.iter().position(|matched| !matched))
+                .expect("equal Range observation counts leave an unmatched source rectangle")
+        };
         matched[actual_index] = true;
         let row = &actual[actual_index];
         compare_range_rectangle_identity(
@@ -4611,6 +4732,7 @@ fn visit_range_rectangle_pairs(
             line_index: row.line_index,
             physical_start_edge: expected.physical_start_edge,
             native_source: row.source,
+            native_pieces: row.pieces.clone(),
             native_start: start + offset,
             browser_start: expected.start,
             native_advance: advance,
@@ -7543,6 +7665,7 @@ mod tests {
             "canonical-native-font-band",
             &actual,
             batch.placed_text()[0].layout(),
+            None,
         )
         .unwrap();
         let [observation] = observed.as_slice() else {
@@ -7585,7 +7708,7 @@ mod tests {
             .cloned()
             .collect::<Vec<_>>();
         let placed = batch.placed_text()[0].layout();
-        native_range_rectangles("same-placement", &actual, placed).unwrap();
+        native_range_rectangles("same-placement", &actual, placed, None).unwrap();
 
         // Equal captured preparation and input values do not authorize a fresh
         // finalized-line owner to lend geometry to this batch's source rows.
@@ -7596,11 +7719,16 @@ mod tests {
             fresh.placed_text()[0].layout().analyzed_source().identity()
         );
         assert!(
-            native_range_rectangles("fresh-placement", &actual, fresh.placed_text()[0].layout())
-                .err()
-                .unwrap()
-                .to_string()
-                .contains("actual source line")
+            native_range_rectangles(
+                "fresh-placement",
+                &actual,
+                fresh.placed_text()[0].layout(),
+                None
+            )
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("actual source line")
         );
 
         // Re-reading the exact same authored source makes a distinct prepared
@@ -7612,7 +7740,8 @@ mod tests {
             native_range_rectangles(
                 "foreign-preparation",
                 &actual,
-                other.placed_text()[0].layout()
+                other.placed_text()[0].layout(),
+                None,
             )
             .err()
             .unwrap()
@@ -7634,7 +7763,7 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(!first_line.is_empty());
         assert!(
-            native_range_rectangles("omitted-line", &first_line, placed)
+            native_range_rectangles("omitted-line", &first_line, placed, None)
                 .err()
                 .unwrap()
                 .to_string()
@@ -7778,6 +7907,7 @@ mod tests {
                 .view()
                 .aggregate_range()
                 .unwrap(),
+            pieces: Vec::new(),
             source_segment_id: 0,
             line_index: entry.fragment().line_index(),
             rect: entry.fragment().rect().unwrap(),
@@ -7806,9 +7936,13 @@ mod tests {
             })
             .cloned()
             .collect::<Vec<_>>();
-        let rectangles =
-            native_range_rectangles("actual-lines", &actual, batch.placed_text()[0].layout())
-                .unwrap();
+        let rectangles = native_range_rectangles(
+            "actual-lines",
+            &actual,
+            batch.placed_text()[0].layout(),
+            None,
+        )
+        .unwrap();
         assert_eq!(rectangles.len(), 2);
         assert_eq!(rectangles[0].origin, rectangles[1].origin);
         assert_ne!(rectangles[0].line, rectangles[1].line);
@@ -7850,6 +7984,7 @@ mod tests {
             "directional-controls",
             &actual,
             batch.placed_text()[0].layout(),
+            None,
         )
         .unwrap();
         assert_eq!(
@@ -7900,6 +8035,7 @@ mod tests {
             "preserved-zero-space",
             actual,
             batch.placed_text()[0].layout(),
+            None,
         )
         .unwrap();
         assert_eq!(rectangles.len(), 1);
@@ -7963,6 +8099,7 @@ mod tests {
                         &fragments,
                         placed,
                         &expected,
+                        None,
                         |_| Ok(0.0),
                         |pair| {
                             assert_eq!(pair.native_start, native_starts[row]);

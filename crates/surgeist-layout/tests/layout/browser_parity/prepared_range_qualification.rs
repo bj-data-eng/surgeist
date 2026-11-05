@@ -57,6 +57,7 @@ struct RangeComparison {
     line: usize,
     edge: &'static str,
     native_source: [usize; 2],
+    native_pieces: Vec<RangePieceKey>,
     browser_start: Scalar,
     native_start: Scalar,
     browser_advance: Scalar,
@@ -70,7 +71,147 @@ pub(super) struct Comparisons {
     ranges: Vec<RangeComparison>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+pub(super) struct RangePieceKey {
+    pub(super) unit: usize,
+    pub(super) piece: usize,
+    pub(super) local: [usize; 2],
+    pub(super) aggregate: [usize; 2],
+}
+
+struct RangeSelector {
+    path: &'static str,
+    row: usize,
+    occurrence: u64,
+    line: usize,
+    source: [usize; 2],
+    pieces: &'static [RangePieceKey],
+    advance: Scalar,
+}
+
+// Source intervals use aggregate UTF-16 units.
+const RANGE_SELECTORS: [RangeSelector; 5] = [
+    RangeSelector {
+        path: "/0",
+        row: 0,
+        occurrence: 0,
+        line: 0,
+        source: [0, 1],
+        pieces: &[RangePieceKey {
+            unit: 0,
+            piece: 0,
+            local: [0, 1],
+            aggregate: [0, 1],
+        }],
+        advance: 16.0,
+    },
+    RangeSelector {
+        path: "/1",
+        row: 0,
+        occurrence: 1,
+        line: 0,
+        source: [1, 2],
+        pieces: &[RangePieceKey {
+            unit: 0,
+            piece: 0,
+            local: [0, 1],
+            aggregate: [1, 2],
+        }],
+        advance: 0.0,
+    },
+    RangeSelector {
+        path: "/1",
+        row: 1,
+        occurrence: 1,
+        line: 0,
+        source: [2, 4],
+        pieces: &[
+            RangePieceKey {
+                unit: 1,
+                piece: 0,
+                local: [1, 2],
+                aggregate: [2, 3],
+            },
+            RangePieceKey {
+                unit: 2,
+                piece: 0,
+                local: [2, 3],
+                aggregate: [3, 4],
+            },
+        ],
+        advance: 32.0,
+    },
+    RangeSelector {
+        path: "/1",
+        row: 2,
+        occurrence: 1,
+        line: 0,
+        source: [4, 5],
+        pieces: &[RangePieceKey {
+            unit: 3,
+            piece: 0,
+            local: [3, 4],
+            aggregate: [4, 5],
+        }],
+        advance: 0.0,
+    },
+    RangeSelector {
+        path: "/2",
+        row: 0,
+        occurrence: 2,
+        line: 1,
+        source: [6, 7],
+        pieces: &[RangePieceKey {
+            unit: 0,
+            piece: 0,
+            local: [1, 2],
+            aggregate: [6, 7],
+        }],
+        advance: 16.0,
+    },
+];
+
 impl Comparisons {
+    pub(super) fn row_pieces(
+        &self,
+        path: &str,
+        browser: &[InlineRangeRectangleExpectation],
+    ) -> Result<Vec<&'static [RangePieceKey]>, Error> {
+        let owner = exact_differences::source_path_from_diagnostic(&self.case, path)?;
+        let mut row_pieces = Vec::new();
+        for RangeSelector {
+            path: owner_path,
+            row,
+            occurrence,
+            line,
+            pieces,
+            ..
+        } in RANGE_SELECTORS
+        {
+            if owner_path != owner {
+                continue;
+            }
+            let item = browser
+                .get(row)
+                .ok_or_else(|| Error::new(format!("{path}: missing prepared Range row {row}")))?;
+            if item.source_segment_id != occurrence
+                || item.line_index != line
+                || item.physical_start_edge != PhysicalStartEdge::Left
+            {
+                return Err(Error::new(format!(
+                    "{path}: prepared Range row {row} identity changed"
+                )));
+            }
+            row_pieces.push(pieces);
+        }
+        if row_pieces.len() != browser.len() {
+            return Err(Error::new(format!(
+                "{path}: prepared Range row census changed"
+            )));
+        }
+        Ok(row_pieces)
+    }
+
     pub(super) fn record_box(
         &mut self,
         path: &str,
@@ -108,6 +249,7 @@ impl Comparisons {
             line: pair.line_index,
             edge,
             native_source: [pair.native_source.start, pair.native_source.end],
+            native_pieces: pair.native_pieces,
             browser_start: pair.browser_start,
             native_start: pair.native_start,
             browser_advance: pair.browser_advance,
@@ -186,14 +328,9 @@ fn verify_comparisons(comparisons: &Comparisons, rtl: bool) -> Result<(), Error>
     } else {
         [0.0, 16.0, 16.0, 48.0, 0.0]
     };
-    let selectors = [
-        ("/0", 0, 0, 0, [0, 1], 16.0),
-        ("/1", 0, 1, 0, [1, 2], 0.0),
-        ("/1", 1, 1, 0, [2, 4], 32.0),
-        ("/1", 2, 1, 0, [4, 5], 0.0),
-        ("/2", 0, 2, 1, [6, 7], 16.0),
-    ];
-    if comparisons.boxes.len() != box_fields.len() || comparisons.ranges.len() != selectors.len() {
+    if comparisons.boxes.len() != box_fields.len()
+        || comparisons.ranges.len() != RANGE_SELECTORS.len()
+    {
         return Err(Error::new("prepared Range observation census changed"));
     }
     for (actual, (field, value)) in comparisons.boxes.iter().zip(box_fields) {
@@ -209,8 +346,21 @@ fn verify_comparisons(comparisons: &Comparisons, rtl: bool) -> Result<(), Error>
             )));
         }
     }
-    for (index, (actual, (path, row, occurrence, line, source, advance))) in
-        comparisons.ranges.iter().zip(selectors).enumerate()
+    for (
+        index,
+        (
+            actual,
+            RangeSelector {
+                path,
+                row,
+                occurrence,
+                line,
+                source,
+                pieces,
+                advance,
+            },
+        ),
+    ) in comparisons.ranges.iter().zip(RANGE_SELECTORS).enumerate()
     {
         let native_start = starts[index];
         let browser_start = if rtl && source == [4, 5] {
@@ -225,6 +375,7 @@ fn verify_comparisons(comparisons: &Comparisons, rtl: bool) -> Result<(), Error>
             line,
             edge: "left",
             native_source: source,
+            native_pieces: pieces.to_vec(),
             browser_start,
             native_start,
             browser_advance: advance,
@@ -687,5 +838,62 @@ mod tests {
         raw.clear();
         assert!(qualify(&golden, SOURCE, "border_box_rtl", &policy, &mut raw).is_err());
         assert!(raw.is_empty());
+    }
+
+    #[test]
+    fn prepared_range_control_rows_keep_source_identity_when_coordinates_match_other_pieces() {
+        let original = include_str!(
+            "captured/prepared-range-differences/xml/block/prepared_text_continuity_bidi__border_box_rtl.xml"
+        );
+        let mut golden = Golden::parse(original).unwrap();
+        let rows = golden.expectations.children[1]
+            .range_rectangles
+            .as_mut()
+            .unwrap();
+        // The retained row ordinals name RLI and PDI. Each altered browser
+        // start is numerically equal to the other control's Native start.
+        rows[0].start = 24.0;
+        rows[2].start = 40.0;
+
+        let policy = PolicyIdentity::from_contract(CONTRACT).unwrap();
+        let mut raw = Vec::new();
+        let error = qualify(&golden, SOURCE, "border_box_rtl", &policy, &mut raw).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("prepared Range comparison changed")
+        );
+        let output: serde_json::Value = serde_json::from_slice(&raw).unwrap();
+        let ranges = output["ranges"].as_array().unwrap();
+        assert_eq!(ranges.len(), 5);
+        assert_eq!(
+            ranges[2]["native_pieces"],
+            serde_json::json!([
+                {"unit": 1, "piece": 0, "local": [1, 2], "aggregate": [2, 3]},
+                {"unit": 2, "piece": 0, "local": [2, 3], "aggregate": [3, 4]},
+            ]),
+            "the combined X rectangle retains both query pieces"
+        );
+        for (index, row, source, browser, native) in
+            [(1, 0, [1, 2], 24.0, 40.0), (3, 2, [4, 5], 40.0, 24.0)]
+        {
+            assert_eq!(
+                ranges[index],
+                serde_json::json!({
+                    "path": "/1",
+                    "row": row,
+                    "occurrence": 1,
+                    "line": 0,
+                    "edge": "left",
+                    "native_source": source,
+                    "native_pieces": [{"unit": if row == 0 { 0 } else { 3 }, "piece": 0,
+                        "local": [source[0] - 1, source[1] - 1], "aggregate": source}],
+                    "browser_start": browser,
+                    "native_start": native,
+                    "browser_advance": 0.0,
+                    "native_advance": 0.0,
+                })
+            );
+        }
     }
 }
