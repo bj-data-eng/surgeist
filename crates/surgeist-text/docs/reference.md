@@ -1459,8 +1459,18 @@ context in either front; the raw profile does not provide CSS `plaintext`'s
 per-paragraph automatic base selection.
 
 `Text` owns immutable exact UTF-16 units, including isolated surrogates.
-`Text::from_code_units` takes owned units; string conversions encode them
-losslessly. `code_units()` lends the original units. Ranges, cursor indices,
+`Text::from_code_units` takes owned units. String conversions encode them
+losslessly. `code_units()` lends the original units.
+
+`Source::push` and `Composer::push` reuse spare capacity while the source
+owns its text buffer exclusively. Growth is amortized across unshared
+appends. Appending while a retained snapshot shares the buffer copies the
+existing units, so retaining a snapshot between each append can require
+copying each accumulated prefix. When the units are available together,
+pass the vector to `Text::from_code_units` and construct the source with
+`Source::new` or `Source::identified`.
+
+Ranges, cursor indices,
 glyph/cluster ranges, and inline-box anchors use UTF-16 code-unit offsets.
 `Range::new` does not validate ordering. `SourcePosition::try_new` and
 `SourceRange::try_new` validate bounds/order against specific `Text`; pair
