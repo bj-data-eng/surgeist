@@ -40,38 +40,7 @@ pub(super) fn bind(
     let report = capture_authority::unique_json(capture.report).map_err(invalid)?;
     let current = &report["metadata"];
     let metadata: CaptureMetadata = serde_json::from_value(current.clone()).map_err(invalid)?;
-    let retained = capture_authority::unique_json(RETAINED_REPORT).map_err(invalid)?;
-    let sealed = &retained["metadata"];
-    // The publication checks its own contract before admitting the report.
-    // The pinned gutter control independently fixes its measurement environment.
-    let same_environment = [
-        "engine_version",
-        "browser_executable",
-        "browser_executable_sha256",
-        "browser_provenance",
-    ]
-    .into_iter()
-    .all(|key| current[key] == sealed[key])
-        && [
-            "browser-owner.toml",
-            "fonts/Ahem.ttf",
-            "observation-request.json",
-            "scripts/gentest/test_base_style.css",
-            capture_authority::ROOT_HELPER_INPUT,
-        ]
-        .into_iter()
-        .all(|key| current["inputs"][key] == sealed["inputs"][key]);
-    let lineage_matches = if capture.published {
-        metadata.generator == capture_authority::FIXED_GENERATOR
-            && metadata.source_imports.is_empty()
-    } else {
-        ["generator", "contract_sha256", "source_imports"]
-            .into_iter()
-            .all(|key| current[key] == sealed[key])
-    };
-    if !same_environment || !lineage_matches {
-        return Err(invalid("capture environment changed"));
-    }
+    require_control_environment(current, &metadata, RETAINED_REPORT, capture.published)?;
     if metadata.schema_version != 4
         || metadata.inputs.get(SOURCE) != Some(&source_digest)
         || metadata.inputs.get("observation-request.json")
@@ -159,6 +128,47 @@ pub(super) fn bind(
         viewport: golden.viewport.clone(),
         natural_size: layout::Size::new(80.0, 40.0),
     })
+}
+
+fn require_control_environment(
+    current: &serde_json::Value,
+    metadata: &CaptureMetadata,
+    control_report: &str,
+    published: bool,
+) -> Result<(), Error> {
+    let retained = capture_authority::unique_json(control_report).map_err(invalid)?;
+    let sealed = &retained["metadata"];
+    // The publication checks its own contract before admitting the report.
+    // The pinned gutter control independently fixes its measurement environment.
+    let same_environment = [
+        "engine_version",
+        "browser_executable",
+        "browser_executable_sha256",
+        "browser_provenance",
+    ]
+    .into_iter()
+    .all(|key| current[key] == sealed[key])
+        && [
+            "browser-owner.toml",
+            "fonts/Ahem.ttf",
+            "observation-request.json",
+            "scripts/gentest/test_base_style.css",
+            capture_authority::ROOT_HELPER_INPUT,
+        ]
+        .into_iter()
+        .all(|key| current["inputs"][key] == sealed["inputs"][key]);
+    let lineage_matches = if published {
+        metadata.generator == capture_authority::FIXED_GENERATOR
+            && metadata.source_imports.is_empty()
+    } else {
+        ["generator", "contract_sha256", "source_imports"]
+            .into_iter()
+            .all(|key| current[key] == sealed[key])
+    };
+    if !same_environment || !lineage_matches {
+        return Err(invalid("capture environment changed"));
+    }
+    Ok(())
 }
 
 pub(super) fn lower(tree: &mut TestTree, golden: &Golden, proof: &Proof) -> Result<(), Error> {
