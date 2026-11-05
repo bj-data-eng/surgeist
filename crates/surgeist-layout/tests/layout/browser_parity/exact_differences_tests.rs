@@ -1088,3 +1088,91 @@ fn completed_batch_keeps_raw_differences_when_native_oracle_qualification_fails(
     ));
     assert_eq!(completed.raw_differences().count(), 1);
 }
+
+#[test]
+fn sideways_flex_composition_checks_every_native_packet_and_raw_pair() {
+    const SOURCE: &str = "html/flex/fri07_flex_composition.html";
+    const RECEIPT: &str = "captured/flex-composition-differences";
+    const SOURCE_BYTES: &[u8] = include_bytes!("html/flex/fri07_flex_composition.html");
+    const REPORT: &str =
+        include_str!("captured/flex-composition-differences/xml/generation-reports/all.json");
+    let corpus =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/layout/browser_parity");
+    for (direction, oracle) in [
+        (
+            "ltr",
+            include_str!("../../../semantic/flex-composition-ltr-native.json"),
+        ),
+        (
+            "rtl",
+            include_str!("../../../semantic/flex-composition-rtl-native.json"),
+        ),
+    ] {
+        let expected: NativeOracle = serde_json::from_str(oracle).unwrap();
+        let expected_raw = sideways_flex_expected_pairs(direction);
+        for sizing in ["border_box", "content_box"] {
+            let variant = format!("{sizing}_{direction}");
+            let output = format!("xml/flex/fri07_flex_composition__{variant}.xml");
+            let xml = std::fs::read_to_string(corpus.join(RECEIPT).join(&output)).unwrap();
+            let golden =
+                Golden::parse_with_flex_composition(&xml, REPORT, SOURCE, SOURCE_BYTES, &output)
+                    .unwrap();
+            let census = source_census(&golden.root, &golden.expectations, None, false).unwrap();
+            let mut sink = NumericComparisonSink::CollectAll {
+                root: golden.name.clone(),
+                fields: Vec::new(),
+            };
+            compare_captured_with_batch(&golden, &mut sink, |tree, batch| {
+                let actual = snapshot_batch(tree, batch, &census).unwrap();
+                assert_eq!(actual.len(), expected.nodes.len());
+                for (actual, expected) in actual.iter().zip(&expected.nodes) {
+                    compare_native(expected, actual)
+                        .unwrap_or_else(|error| panic!("{variant}: {error}"));
+                }
+                Ok(())
+            })
+            .unwrap();
+            let NumericComparisonSink::CollectAll { fields, .. } = sink else {
+                unreachable!()
+            };
+            assert_eq!(fields.len(), 34, "{variant}");
+            let differences = fields
+                .into_iter()
+                .filter(ComparedField::differs)
+                .collect::<Vec<_>>();
+            assert_eq!(differences, expected_raw, "{variant}");
+        }
+    }
+}
+
+fn sideways_flex_expected_pairs(direction: &str) -> Vec<ComparedField> {
+    use NumericComparisonField::{Height, ScrollHeight, ScrollWidth, Width, X, Y};
+
+    // Browser operands come from the historical capture. Native operands
+    // follow the two-pass strut, hidden packets and logical-end gutter.
+    let rtl = direction == "rtl";
+    let mut rows = vec![
+        (
+            "/0",
+            Y,
+            if rtl { 134.0 } else { 6.0 },
+            Some(if rtl { 113.0 } else { 27.0 }),
+        ),
+        ("/2", Y, if rtl { 92.0 } else { 58.0 }, Some(0.0)),
+        ("/2", Width, 100.0, Some(0.0)),
+        ("/2", Height, 30.0, Some(0.0)),
+        ("/2", ScrollWidth, 40.0, None),
+        ("/2", ScrollHeight, 0.0, None),
+        ("/2/0", X, -40.0, Some(0.0)),
+        ("/2/0", Width, 140.0, Some(0.0)),
+        ("/2/0", Height, 15.0, Some(0.0)),
+    ];
+    if rtl {
+        rows.push(("/3/0", Y, 0.0, Some(15.0)));
+    }
+    rows.into_iter()
+        .map(|(path, field, browser, native)| {
+            ComparedField::layout(path.into(), field, browser, native).unwrap()
+        })
+        .collect()
+}
