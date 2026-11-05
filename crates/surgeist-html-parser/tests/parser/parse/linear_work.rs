@@ -798,6 +798,8 @@ fn assert_measures_at_most_two_point_two_times(
 }
 
 const LONG_RUN_SIZES: [usize; 4] = [1_000, 2_000, 4_000, 8_000];
+/// Sizes for the runs whose growth shows only past the first few thousand units.
+const LONGER_RUN_SIZES: [usize; 4] = [2_000, 4_000, 8_000, 16_000];
 
 #[test]
 fn work_of_one_long_comment_at_most_doubles_with_its_length() {
@@ -865,6 +867,36 @@ fn work_of_long_whitespace_and_null_runs_inside_the_body_at_most_doubles_with_th
             format!("<!doctype html><body>{}", unit.repeat(n))
         });
     }
+}
+
+#[test]
+fn work_of_a_long_text_run_in_a_closed_textarea_at_most_doubles_with_its_length() {
+    // Each character appends to the one text child, and the textarea's value is that child's text.
+    assert_measures_at_most_two_point_two_times(
+        LONGER_RUN_SIZES,
+        |n| format!("<!doctype html><textarea>{}</textarea>", "a".repeat(n)),
+        &[TOTAL_WORK, RESERVATION_WORK, COPY_WORK],
+    );
+}
+
+#[test]
+fn work_of_a_long_text_run_with_lines_in_a_closed_textarea_at_most_doubles_with_its_length() {
+    // Three units for each repeat, and the largest size is the most the source map limit of the
+    // long-input limits holds.
+    assert_measures_at_most_two_point_two_times(
+        [1_500, 3_000, 6_000, 12_000],
+        |n| format!("<!doctype html><textarea>{}</textarea>", "a\nb".repeat(n)),
+        &[TOTAL_WORK, RESERVATION_WORK, COPY_WORK],
+    );
+}
+
+#[test]
+fn work_of_a_long_text_run_in_an_unclosed_textarea_at_most_doubles_with_its_length() {
+    assert_measures_at_most_two_point_two_times(
+        LONGER_RUN_SIZES,
+        |n| format!("<!doctype html><textarea>{}", "a".repeat(n)),
+        &[TOTAL_WORK, RESERVATION_WORK, COPY_WORK],
+    );
 }
 
 #[test]

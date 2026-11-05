@@ -2830,3 +2830,71 @@ fn report_value_sharing_oversized_bank_pass_through_in_document() {
 fn report_value_sharing_oversized_bank_pass_through_in_fragment() {
     assert_oversized_report_banks(true);
 }
+
+/// Counts of the history groups and association rows of a textarea holding `n` characters, taken
+/// from the parser before it extended the textarea's raw value in place. Each character after the
+/// first is appended to the text child and resets the raw value, which adds four history groups
+/// (two for the text, a copy of its group and the reset of the raw value) and fourteen association
+/// rows. These are fixed numbers, so a change to the provenance of the raw value fails them.
+const TEXTAREA_PROVENANCE: [(usize, usize, usize); 5] = [
+    (2, 25, 135),
+    (3, 29, 149),
+    (10, 57, 247),
+    (20, 97, 387),
+    (40, 177, 667),
+];
+
+#[test]
+fn textarea_text_keeps_its_raw_value_and_one_provenance_step_for_each_character() {
+    for (n, history, rows) in TEXTAREA_PROVENANCE {
+        let text = "a".repeat(n);
+        let report = HtmlDocumentParseRequest::offline(
+            HtmlSource::utf8(format!("<!doctype html><textarea>{text}</textarea>")),
+            limits(),
+        )
+        .parse()
+        .unwrap();
+        let document = report.document().unwrap();
+        let mut stack = vec![document.root().id()];
+        let (mut textareas, mut texts) = (0, 0);
+        while let Some(id) = stack.pop() {
+            let node = document.node(&id).unwrap();
+            match node.kind() {
+                HtmlNodeKind::Element(e)
+                    if e.name().local_name() == &DocumentString::from("textarea") =>
+                {
+                    textareas += 1;
+                    let children: Vec<_> = node.children().collect();
+                    assert_eq!(children.len(), 1, "{n} characters make one text child");
+                }
+                HtmlNodeKind::Text(value) if value == &DocumentString::from(text.as_str()) => {
+                    texts += 1;
+                }
+                _ => {}
+            }
+            stack.extend(node.children());
+        }
+        assert_eq!((textareas, texts), (1, 1), "{n} characters");
+        let mut metadata = report.metadata();
+        let mut raw = None;
+        loop {
+            match metadata.advance() {
+                HtmlParseMetadataStep::Record(record) => {
+                    if let Some(value) = record.textarea_raw_value() {
+                        assert!(raw.replace(value.clone()).is_none());
+                    }
+                }
+                HtmlParseMetadataStep::Skipped => {}
+                HtmlParseMetadataStep::Complete => break,
+                HtmlParseMetadataStep::Fault(fault) => panic!("{fault}"),
+            }
+        }
+        assert_eq!(
+            raw,
+            Some(DocumentString::from(text.as_str())),
+            "{n} characters"
+        );
+        assert_eq!(report.history_view().len(), history, "{n} characters");
+        assert_eq!(report.associations().len(), rows, "{n} characters");
+    }
+}

@@ -2647,6 +2647,7 @@ source units can refuse the parse.
 | Repeated input | Work credits | Capacity bytes (live, high water) | Peak transient bytes | Atomic layout bytes | Auxiliary entries (high water) | Source map entries | Managed UTF-16 units | Retained diagnostics |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | Text `a` (implied `html`, `head` and `body`, or inside `body`) | 35,861 to 36,258 | 4,404 to 4,927 | 4,905 to 5,048 | 1,465 to 1,664 | 23.2 to 25.0 | 13.96 to 14.00 | 2.00 to 2.04 | 0 |
+| Text `a` inside `textarea` (after `<textarea>`, closed or not) | 60,733 to 65,727 | 6,558 to 6,566 | 7,364 to 7,464 | 1,792 to 2,936 | 45.0 to 58.6 | 25.00 to 25.03 | 3.00 to 3.03 | 0 |
 | Character reference `&amp;` (per source unit of the five) | 6,670 to 7,303 | 655 to 788 | 655 to 788 | 183 to 224 | 5.04 to 5.50 | 2.80 to 2.82 | 0.40 to 0.44 | 0 |
 | Ambiguous `< ` (per source unit of the two) | 38,962 to 42,027 | 4,639 to 5,599 | 5,340 to 6,439 | 1,465 to 1,792 | 24.7 to 26.5 | 18.44 to 18.50 | 2.00 to 2.04 | 0.497 to 0.500 |
 | One attribute name of `a`s (per name unit) | 3,964 to 4,409 | 567 to 698 | 751 to 917 | 366 to 448 | 0 to 0.03 | 4.00 to 4.02 | 1.00 to 1.05 | 0 |
@@ -2692,13 +2693,24 @@ branches, and the walk that places a new branch the same, so a name takes at mos
 linear in their total length. A name past two hundred kept names on one path takes 4 steps where
 the full walk took 202.
 
-Text inside `textarea` is the one text run whose cost is not linear in its length, a known
-exception tracked as "surgeist-html-parser: keep textarea text accumulation linear". The work
-credits for each unit of a run grow with the length of the run, closed or not: 63,530, 64,947,
-68,533, 76,297, 92,202 and 124,167 for each unit at 1,000, 2,000, 4,000, 8,000, 16,000 and
-32,000 units, against 32,054 falling to 31,389 over the same lengths for the same text in
-`body`, and the copied bytes for each unit grow from 20,380 to 50,774 over the same lengths. A caller sizing `work_credits` for
-`textarea` content should use the figure for the longest run it admits.
+Text inside `textarea` is linear in its length, like text in `body`, at about 1.7 times the cost
+of a unit there. The `textarea` row was measured on the source of the change that made it linear, by
+the method above: `<textarea>` followed by `a` repeated at the same ten sizes, unclosed, with the
+generous limits and the totals divided by the repeated units. The other rows were measured on
+earlier source, so the `body` text row of the same run, 35,875 to 36,263 credits for each unit,
+differs a little from the row above it; against that, `textarea` costs 21,350 to 24,034 reserved
+bytes and 18,672 to 19,954 copied bytes for each unit, where `body` costs 15,198 to 15,336 and
+11,124 to 11,456. Each character appended to the one text child also resets the textarea's raw
+value, a separate string with its own provenance, which adds two history groups and seven
+association rows to the two and seven of the text itself (4 and 14 for each unit, against 2 and 7
+in `body`). The reset appends the character to the end of the raw value's backing in place,
+growing it by capacity doubling, so no unit is copied again: the units copied for each character no
+longer grow with the text so far. The caller sizing `work_credits` for `textarea` content uses the
+high end of the row. A reset from every child's text, which copies all of it, remains for every
+other change of the children (a child removed, inserted or moved, and text inserted before a
+reference sibling) and for the reset when the element leaves the stack of open elements, which
+runs once. The parser changes a textarea's children only by inserting the first text node, which
+resets the value from one short child, and by appending to it.
 
 <a id="group-walk-cost"></a>
 

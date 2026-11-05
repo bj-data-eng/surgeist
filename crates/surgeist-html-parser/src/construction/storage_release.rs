@@ -76,6 +76,7 @@ impl SessionStorage {
             construction,
             payloads,
             failed_text_append,
+            appended_units: _,
             style_order_floor: _,
             main_tree_styleless: _,
             style_subtree: _,

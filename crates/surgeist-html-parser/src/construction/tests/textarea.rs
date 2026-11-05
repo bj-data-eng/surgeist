@@ -232,10 +232,11 @@ fn textarea_same_parent_reference_removal_runs_old_view_before_insertion() {
 }
 
 #[test]
-fn textarea_raw_coexistence_has_exact_43_unit_admission_and_retained_terminal_prefix() {
+fn textarea_raw_extension_has_exact_42_unit_admission_and_retained_terminal_prefix() {
     // textarea name8 + HTML URI28; A(native1,raw1)=38. B adds lexical1,
-    // merged2, new raw2 while old raw1 coexists: exact peak43, then current42.
-    for cap in [42, 43] {
+    // merged2 and one raw unit appended in place to the raw backing, which
+    // has no second copy to coexist with: exact peak42, then current42.
+    for cap in [41, 42] {
         let source = crate::HtmlSource::utf8("<textarea>AB");
         let caps = limits()
             .into_builder()
@@ -260,7 +261,7 @@ fn textarea_raw_coexistence_has_exact_43_unit_admission_and_retained_terminal_pr
         let result = session.insert_text(&mut c, &node, None, &mut b, None);
         assert!(b.is_none());
         assert_eq!(native_text(&session, &text), [65, 66]);
-        if cap == 43 {
+        if cap == 42 {
             assert!(result.is_ok());
             assert_eq!(
                 session
@@ -279,7 +280,7 @@ fn textarea_raw_coexistence_has_exact_43_unit_admission_and_retained_terminal_pr
                 c.usage()
                     .resource(HtmlParseResource::ManagedUtf16Units)
                     .high_water,
-                43
+                42
             );
             assert!(matches!(
                 session.active().unwrap().payloads.values[old_raw],
@@ -307,6 +308,182 @@ fn textarea_raw_coexistence_has_exact_43_unit_admission_and_retained_terminal_pr
         }
         storage_zero(&c);
     }
+}
+
+/// The address of the raw value's shared backing, which an in-place extension keeps.
+fn raw_backing(session: &mut ParserArenaSession, c: &mut ParseControl, node: &ParserNode) -> usize {
+    Arc::as_ptr(
+        session
+            .textarea_raw_value(c, node)
+            .unwrap()
+            .shared_code_units(),
+    ) as usize
+}
+
+#[test]
+fn textarea_text_appended_at_the_end_extends_the_raw_backing_in_place() {
+    let source = crate::HtmlSource::utf8("<textarea>ABC");
+    let (mut c, mut session, node, mut tokenizer) = textarea_owner(&source, limits());
+    let mut a = next_text(&mut tokenizer, &mut c);
+    session
+        .insert_text(&mut c, &node, None, &mut a, None)
+        .unwrap();
+    let backing = raw_backing(&mut session, &mut c, &node);
+    let mut rows = session.active().unwrap().payloads.values.len();
+    for (appended, expected) in [(66, vec![65, 66]), (67, vec![65, 66, 67])] {
+        let mut text = next_text(&mut tokenizer, &mut c);
+        let before = session.textarea_state(&mut c, &node).unwrap().raw;
+        session
+            .insert_text(&mut c, &node, None, &mut text, None)
+            .unwrap();
+        assert_eq!(
+            session
+                .textarea_raw_value(&mut c, &node)
+                .unwrap()
+                .code_units(),
+            expected,
+            "after {appended}"
+        );
+        assert_eq!(raw_backing(&mut session, &mut c, &node), backing);
+        // The value moved to a new row, and the row it left keeps only its origins.
+        let storage = session.active().unwrap();
+        assert!(matches!(
+            storage.payloads.values[before],
+            RetainedPayload::HistoricalString { .. }
+        ));
+        assert_ne!(session.textarea_state(&mut c, &node).unwrap().raw, before);
+        let now = session.active().unwrap().payloads.values.len();
+        assert!(now > rows);
+        rows = now;
+    }
+    tokenizer.release(&mut c).unwrap();
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn textarea_text_appended_before_a_later_child_rebuilds_the_raw_value() {
+    let source = crate::HtmlSource::utf8("<textarea>A<span>B");
+    let (mut c, mut session, node, mut tokenizer) = textarea_owner(&source, limits());
+    let mut a = next_text(&mut tokenizer, &mut c);
+    let text = session
+        .insert_text(&mut c, &node, None, &mut a, None)
+        .unwrap()
+        .unwrap()
+        ._node;
+    let span = next_fixture_tag(&mut tokenizer, &mut c, &[115, 112, 97, 110]);
+    let child = session
+        .allocate_html_tag_for_creation(
+            &mut c,
+            &mut Some(span),
+            &node,
+            None,
+            crate::construction::CreationContext::Ordinary,
+        )
+        .unwrap();
+    session.insert(&mut c, &node, &child, None, None).unwrap();
+    // The text goes to the end of the first child, which is not the last child, so the
+    // units it adds are not at the end of the raw value that the last child ends.
+    let mut b = next_text(&mut tokenizer, &mut c);
+    session
+        .insert_text(&mut c, &node, Some(&child), &mut b, None)
+        .unwrap();
+    tokenizer.release(&mut c).unwrap();
+    assert_eq!(native_text(&session, &text), [65, 66]);
+    assert_eq!(
+        session
+            .textarea_raw_value(&mut c, &node)
+            .unwrap()
+            .code_units(),
+        [65, 66]
+    );
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+/// A textarea holding the text A, a span and the text B, in that order, with the tokens after
+/// them still to come.
+fn textarea_with_two_texts<'a>(
+    source: &'a crate::HtmlSource,
+) -> (
+    ParseControl,
+    ParserArenaSession,
+    ParserNode,
+    ParserNode,
+    ParserNode,
+    crate::parser::tokenizer::tests::LexerFixture<'a>,
+) {
+    let (mut c, mut session, node, mut tokenizer) = textarea_owner(source, limits());
+    let mut a = next_text(&mut tokenizer, &mut c);
+    let first = session
+        .insert_text(&mut c, &node, None, &mut a, None)
+        .unwrap()
+        .unwrap()
+        ._node;
+    let span = next_fixture_tag(&mut tokenizer, &mut c, &[115, 112, 97, 110]);
+    let child = session
+        .allocate_html_tag_for_creation(
+            &mut c,
+            &mut Some(span),
+            &node,
+            None,
+            crate::construction::CreationContext::Ordinary,
+        )
+        .unwrap();
+    session.insert(&mut c, &node, &child, None, None).unwrap();
+    // The span is the last child, so the text after it starts a node of its own.
+    let mut b = next_text(&mut tokenizer, &mut c);
+    session
+        .insert_text(&mut c, &node, None, &mut b, None)
+        .unwrap();
+    (c, session, node, first, child, tokenizer)
+}
+
+fn raw_units(
+    session: &mut ParserArenaSession,
+    c: &mut ParseControl,
+    node: &ParserNode,
+) -> Vec<u16> {
+    session
+        .textarea_raw_value(c, node)
+        .unwrap()
+        .code_units()
+        .to_vec()
+}
+
+#[test]
+fn textarea_text_appended_after_two_text_children_extends_the_raw_value_of_both() {
+    let source = crate::HtmlSource::utf8("<textarea>A<span>BC");
+    let (mut c, mut session, node, _, _, mut tokenizer) = textarea_with_two_texts(&source);
+    assert_eq!(raw_units(&mut session, &mut c, &node), [65, 66]);
+    let backing = raw_backing(&mut session, &mut c, &node);
+    let mut text = next_text(&mut tokenizer, &mut c);
+    session
+        .insert_text(&mut c, &node, None, &mut text, None)
+        .unwrap();
+    // The raw value is the text of both children, the second now holding B and C.
+    assert_eq!(raw_units(&mut session, &mut c, &node), [65, 66, 67]);
+    assert_eq!(raw_backing(&mut session, &mut c, &node), backing);
+    tokenizer.release(&mut c).unwrap();
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+}
+
+#[test]
+fn textarea_text_appended_after_a_child_was_removed_extends_the_rebuilt_raw_value() {
+    let source = crate::HtmlSource::utf8("<textarea>A<span>BC");
+    let (mut c, mut session, node, first, child, mut tokenizer) = textarea_with_two_texts(&source);
+    // Moving the first text into the span leaves the second as the only text child.
+    session.insert(&mut c, &child, &first, None, None).unwrap();
+    assert_eq!(raw_units(&mut session, &mut c, &node), [66]);
+    let mut text = next_text(&mut tokenizer, &mut c);
+    session
+        .insert_text(&mut c, &node, None, &mut text, None)
+        .unwrap();
+    assert_eq!(raw_units(&mut session, &mut c, &node), [66, 67]);
+    tokenizer.release(&mut c).unwrap();
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
 }
 
 #[test]

@@ -17,6 +17,9 @@ pub(super) enum FormEffectStage {
     Adoption,
     Insertion,
     InsertionChildren,
+    /// The children changed because text was appended to the end of the last
+    /// child of the parent, and by nothing else.
+    AppendChildren,
     IdChange,
 }
 
@@ -393,7 +396,9 @@ impl SessionStorage {
             }
             if matches!(
                 effects.stage,
-                FormEffectStage::RemovalChildren | FormEffectStage::InsertionChildren
+                FormEffectStage::RemovalChildren
+                    | FormEffectStage::InsertionChildren
+                    | FormEffectStage::AppendChildren
             ) {
                 let removal = effects.stage == FormEffectStage::RemovalChildren;
                 // A fragment's retained insertion owner completes every sibling
@@ -409,7 +414,16 @@ impl SessionStorage {
                     effects.new_parent
                 };
                 if let Some(parent) = parent {
-                    self.refresh_textarea(control, parent, removal.then_some(effects.root), false)?;
+                    let cause = if effects.stage == FormEffectStage::AppendChildren {
+                        // The stage and the units are set together.
+                        let Some(added) = self.appended_units.take() else {
+                            return Err(latch_registry_row(control));
+                        };
+                        TextareaRefresh::Append { added }
+                    } else {
+                        TextareaRefresh::Rebuild
+                    };
+                    self.refresh_textarea(control, parent, removal.then_some(effects.root), cause)?;
                     self.association_children(control, parent, removal.then_some(effects.root))?;
                 }
                 if removal && effects.insert {
@@ -518,7 +532,8 @@ impl SessionStorage {
                             // The children stages returned above.
                             FormEffectStage::Adoption
                             | FormEffectStage::RemovalChildren
-                            | FormEffectStage::InsertionChildren => {
+                            | FormEffectStage::InsertionChildren
+                            | FormEffectStage::AppendChildren => {
                                 return Err(latch_registry_row(control));
                             }
                         }
@@ -540,7 +555,8 @@ impl SessionStorage {
                             // The children stages returned above.
                             FormEffectStage::Adoption
                             | FormEffectStage::RemovalChildren
-                            | FormEffectStage::InsertionChildren => {
+                            | FormEffectStage::InsertionChildren
+                            | FormEffectStage::AppendChildren => {
                                 return Err(latch_registry_row(control));
                             }
                         };

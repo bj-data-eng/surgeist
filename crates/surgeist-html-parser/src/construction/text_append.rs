@@ -62,6 +62,9 @@ pub(super) struct RegisteredTextAppend {
     pub(super) incoming_slot: usize,
     pub(super) incoming: DocumentString,
     pub(super) dispose_old: bool,
+    /// Whether the text goes to the end of the parent's children, so that the
+    /// node it joins is the last child.
+    pub(super) at_end: bool,
 }
 
 /// What a committed append still holds before the registry row that adopts it
@@ -303,6 +306,7 @@ impl SessionStorage {
             incoming_slot,
             incoming,
             dispose_old,
+            at_end,
         } = append;
         control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let HtmlNodeKind::Text(old) = self
@@ -603,11 +607,20 @@ impl SessionStorage {
                     return Err(error);
                 }
                 if children_changed {
+                    self.appended_units = if at_end {
+                        Some(NonZeroUsize::new(added).ok_or_else(|| latch_registry_row(control))?)
+                    } else {
+                        None
+                    };
                     self.effects.form = Some(FormEffects {
                         root: parent,
                         old_parent: None,
                         new_parent: Some(parent),
-                        stage: FormEffectStage::InsertionChildren,
+                        stage: if at_end {
+                            FormEffectStage::AppendChildren
+                        } else {
+                            FormEffectStage::InsertionChildren
+                        },
                         insert: false,
                         cause: InsertionCause::NonParser,
                         next: None,

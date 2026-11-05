@@ -24,6 +24,7 @@ pub(crate) use finalization::{
     FinalizationCut, FinalizationObservation, FinalizationTransferObservation,
     FinalizationTransferStage,
 };
+mod string_extension;
 mod text_append;
 pub(crate) use construction::ConstructionAllocation;
 

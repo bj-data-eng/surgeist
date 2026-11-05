@@ -14,7 +14,7 @@ use surgeist_html_parser::{
 /// formatting list and the pending text of a table; take the meta elements whose values the
 /// CSS-delegated budgets parse; and sanitize input values of the color, range and number
 /// types through the same budgets.
-const DOCUMENTS: [(&str, &str); 3] = [
+const DOCUMENTS: [(&str, &str); 4] = [
     (
         "text, formatting, template and table",
         "<!doctype html>  \n<html><head><title>t &amp; u</title></head>\
@@ -37,6 +37,10 @@ const DOCUMENTS: [(&str, &str); 3] = [
          <input type=range min=0 max=10 step=2 value=5><input type=range value=99>\
          <input type=number min=1 max=9 value=4><input type=number value=abc>\
          </form>",
+    ),
+    (
+        "textarea text that grows the raw value's backing",
+        "<!doctype html><body><form><textarea name=t>abcdefghijklmnopqrstuvwxyz0123456789</textarea></form>",
     ),
 ];
 
@@ -92,6 +96,70 @@ fn a_parse_succeeds_under_a_byte_limit_exactly_when_the_limit_holds_its_measured
                     limit >= peak,
                     "{name}: {resource:?} limit {limit} against a measured peak of {peak}"
                 );
+            }
+        }
+    }
+}
+
+/// Parses a textarea whose raw value is extended by each of its thirty-seven characters, under
+/// limits of the logical resources the extension charges or admits. The parse succeeds exactly
+/// when the limit holds what the run under generous limits reports, and a refused parse hands
+/// every owner back.
+#[test]
+fn a_textarea_parse_succeeds_under_a_logical_limit_exactly_when_the_limit_holds_its_peak() {
+    type Select = fn(HtmlParseLimits, u64) -> HtmlParseLimits;
+    let limited: [(HtmlParseResource, Select); 4] = [
+        (HtmlParseResource::ManagedUtf16Units, |limits, cap| {
+            limits
+                .into_builder()
+                .managed_utf16_units(cap)
+                .finish()
+                .unwrap()
+        }),
+        (HtmlParseResource::SourceMapEntries, |limits, cap| {
+            limits
+                .into_builder()
+                .source_map_entries(cap)
+                .finish()
+                .unwrap()
+        }),
+        (HtmlParseResource::AuxiliaryEntries, |limits, cap| {
+            limits
+                .into_builder()
+                .auxiliary_entries(cap)
+                .finish()
+                .unwrap()
+        }),
+        (HtmlParseResource::WorkCredits, |limits, cap| {
+            limits.into_builder().work_credits(cap).finish().unwrap()
+        }),
+    ];
+    let (_, document) = DOCUMENTS[3];
+    let report = HtmlDocumentParseRequest::offline(HtmlSource::utf8(document), roomy_limits())
+        .parse()
+        .unwrap();
+    for (resource, select) in limited {
+        let peak = report.usage().resource(resource).high_water();
+        assert!(peak > 0, "{resource:?} was never used");
+        let spread = (0..24).map(|step| peak >> step).chain([0, 1]);
+        let mut limits: Vec<u64> = (peak.saturating_sub(300)..=peak + 3)
+            .chain(spread)
+            .collect();
+        limits.sort_unstable();
+        limits.dedup();
+        for limit in limits {
+            let result = HtmlDocumentParseRequest::offline(
+                HtmlSource::utf8(document),
+                select(roomy_limits(), limit),
+            )
+            .parse();
+            assert_eq!(
+                result.is_ok(),
+                limit >= peak,
+                "{resource:?} limit {limit} against a measured peak of {peak}"
+            );
+            if let Err(failure) = result {
+                assert_eq!(failure.cleanup_error(), None, "{resource:?} limit {limit}");
             }
         }
     }
