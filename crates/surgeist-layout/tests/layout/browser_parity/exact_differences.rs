@@ -446,11 +446,13 @@ impl CaptureLineage {
 
 /// The fixed Layout-owned edition association; no caller-supplied edition text.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "kebab-case")]
 pub(crate) enum PublishedEdition {
-    CanonicalBoxDifferences,
-    MeasuredGridDifferences,
-    FlexTextDifferences,
+    #[serde(rename = "canonical-box-differences")]
+    CanonicalBoxes,
+    #[serde(rename = "measured-grid-differences")]
+    MeasuredGrid,
+    #[serde(rename = "flex-text-differences")]
+    FlexText,
 }
 
 impl PublishedEdition {
@@ -463,21 +465,15 @@ impl PublishedEdition {
 
     pub(crate) fn artifact_root(self) -> &'static str {
         match self {
-            Self::CanonicalBoxDifferences => super::capture_authority::ARTIFACT_ROOT,
-            Self::MeasuredGridDifferences => {
-                "tests/layout/browser_parity/captured/measured-grid-differences"
-            }
-            Self::FlexTextDifferences => {
-                "tests/layout/browser_parity/captured/flex-text-differences"
-            }
+            Self::CanonicalBoxes => super::capture_authority::ARTIFACT_ROOT,
+            Self::MeasuredGrid => "tests/layout/browser_parity/captured/measured-grid-differences",
+            Self::FlexText => "tests/layout/browser_parity/captured/flex-text-differences",
         }
     }
     fn domain(self) -> CurrentDomain {
         match self {
-            Self::CanonicalBoxDifferences => CurrentDomain::Layout,
-            Self::MeasuredGridDifferences | Self::FlexTextDifferences => {
-                CurrentDomain::LayoutAndElementSizes
-            }
+            Self::CanonicalBoxes => CurrentDomain::Layout,
+            Self::MeasuredGrid | Self::FlexText => CurrentDomain::LayoutAndElementSizes,
         }
     }
 }
@@ -512,18 +508,20 @@ struct RawSpec {
     differences: Vec<ComparedField>,
 }
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "kebab-case")]
 enum Profile {
-    CanonicalNoTextBoxes,
-    CanonicalMeasuredGrid,
-    CanonicalFlexContentText,
+    #[serde(rename = "canonical-no-text-boxes")]
+    NoTextBoxes,
+    #[serde(rename = "canonical-measured-grid")]
+    MeasuredGrid,
+    #[serde(rename = "canonical-flex-content-text")]
+    FlexContentText,
 }
 impl Profile {
     fn published_edition(&self) -> PublishedEdition {
         match self {
-            Self::CanonicalNoTextBoxes => PublishedEdition::CanonicalBoxDifferences,
-            Self::CanonicalMeasuredGrid => PublishedEdition::MeasuredGridDifferences,
-            Self::CanonicalFlexContentText => PublishedEdition::FlexTextDifferences,
+            Self::NoTextBoxes => PublishedEdition::CanonicalBoxes,
+            Self::MeasuredGrid => PublishedEdition::MeasuredGrid,
+            Self::FlexContentText => PublishedEdition::FlexText,
         }
     }
 }
@@ -762,9 +760,9 @@ impl ExactDifferenceSpec {
                 )));
             }
             let expected_font = match spec.profile {
-                Profile::CanonicalNoTextBoxes => FontDemand::None,
-                Profile::CanonicalMeasuredGrid => FontDemand::AhemZwsp,
-                Profile::CanonicalFlexContentText => FontDemand::AhemFlexDirectText,
+                Profile::NoTextBoxes => FontDemand::None,
+                Profile::MeasuredGrid => FontDemand::AhemZwsp,
+                Profile::FlexContentText => FontDemand::AhemFlexDirectText,
             };
             if identity.font_demand != expected_font
                 || expected_font != FontDemand::None && *lineage != CaptureLineage::Published
@@ -783,7 +781,7 @@ impl ExactDifferenceSpec {
         unique(&spec.differences, ComparedField::key)?;
         for node in &spec.native.nodes {
             if node.role != SourceRole::OrdinaryBox
-                && !matches!(spec.profile, Profile::CanonicalFlexContentText)
+                && !matches!(spec.profile, Profile::FlexContentText)
             {
                 return Err(malformed("Native role is outside the source profile"));
             }
@@ -947,8 +945,8 @@ impl ExactDifferenceSpec {
             return Err(QualificationError::IdentityChanged { component });
         }
         let measured_path = match self.0.profile {
-            Profile::CanonicalNoTextBoxes | Profile::CanonicalFlexContentText => None,
-            Profile::CanonicalMeasuredGrid => {
+            Profile::NoTextBoxes | Profile::FlexContentText => None,
+            Profile::MeasuredGrid => {
                 let leaf = golden.measured_leaf.as_ref().ok_or_else(|| {
                     unsupported(
                         "/",
@@ -958,7 +956,7 @@ impl ExactDifferenceSpec {
                 Some(format!("/{}", leaf.child_index))
             }
         };
-        let flex_text = matches!(self.0.profile, Profile::CanonicalFlexContentText);
+        let flex_text = matches!(self.0.profile, Profile::FlexContentText);
         if flex_text != golden.has_flex_content_text() {
             return Err(unsupported("/", "Flex content text capture authority"));
         }
@@ -1067,8 +1065,8 @@ fn verify_current_requirements(
         RootContext::Qualified(root_context::QualifiedRootContext::AbsoluteRootLocal { .. })
     ) || golden.has_element_scroll_sizes()
         != (edition.domain() == CurrentDomain::LayoutAndElementSizes)
-        || golden.measured_leaf.is_some() != (edition == PublishedEdition::MeasuredGridDifferences)
-        || golden.has_flex_content_text() != (edition == PublishedEdition::FlexTextDifferences)
+        || golden.measured_leaf.is_some() != (edition == PublishedEdition::MeasuredGrid)
+        || golden.has_flex_content_text() != (edition == PublishedEdition::FlexText)
     {
         return Err(QualificationError::IncompleteRepresentation {
             key: "current root-border-local observation frame or domain".to_owned(),

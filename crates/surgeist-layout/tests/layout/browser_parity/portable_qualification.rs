@@ -435,21 +435,21 @@ pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
         admit(
             owner,
             Registration {
-                edition: PublishedEdition::CanonicalBoxDifferences,
+                edition: PublishedEdition::CanonicalBoxes,
                 terminal_sha256: REGISTERED_BOX_TERMINAL_SHA256,
             },
         )?,
         admit(
             owner,
             Registration {
-                edition: PublishedEdition::MeasuredGridDifferences,
+                edition: PublishedEdition::MeasuredGrid,
                 terminal_sha256: REGISTERED_MEASURED_GRID_TERMINAL_SHA256,
             },
         )?,
         admit(
             owner,
             Registration {
-                edition: PublishedEdition::FlexTextDifferences,
+                edition: PublishedEdition::FlexText,
                 terminal_sha256: REGISTERED_FLEX_TEXT_TERMINAL_SHA256,
             },
         )?,
@@ -595,11 +595,11 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
         .collect();
     let mut consumed = BTreeSet::new();
     let mut cases = Vec::new();
-    let measured = edition == PublishedEdition::MeasuredGridDifferences;
-    let flex_text = edition == PublishedEdition::FlexTextDifferences;
+    let measured = edition == PublishedEdition::MeasuredGrid;
+    let flex_text = edition == PublishedEdition::FlexText;
     let (observation_request, observation_input_sha256) = match edition {
-        PublishedEdition::CanonicalBoxDifferences => ("geometry", None),
-        PublishedEdition::MeasuredGridDifferences | PublishedEdition::FlexTextDifferences => {
+        PublishedEdition::CanonicalBoxes => ("geometry", None),
+        PublishedEdition::MeasuredGrid | PublishedEdition::FlexText => {
             let request = terminal
                 .retained_inputs
                 .get("observation-request.json")

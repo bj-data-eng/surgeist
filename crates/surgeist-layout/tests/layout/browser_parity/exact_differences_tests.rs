@@ -568,7 +568,7 @@ fn explicit_authority_dispatches_one_lineage_before_comparing_identical_geometry
     for authority in [
         CaptureAuthority::Focused(&focused),
         CaptureAuthority::Published {
-            edition: PublishedEdition::CanonicalBoxDifferences,
+            edition: PublishedEdition::CanonicalBoxes,
             identity: &published,
         },
     ] {
@@ -584,7 +584,7 @@ fn explicit_authority_dispatches_one_lineage_before_comparing_identical_geometry
     for authority in [
         CaptureAuthority::Focused(&published),
         CaptureAuthority::Published {
-            edition: PublishedEdition::CanonicalBoxDifferences,
+            edition: PublishedEdition::CanonicalBoxes,
             identity: &focused,
         },
     ] {
@@ -602,7 +602,7 @@ fn missing_selected_lineage_refuses_even_when_the_other_identity_matches() {
     assert!(matches!(
         focused_only.resolve_against(
             CaptureAuthority::Published {
-                edition: PublishedEdition::CanonicalBoxDifferences,
+                edition: PublishedEdition::CanonicalBoxes,
                 identity: &focused,
             },
             &golden(),
@@ -621,7 +621,7 @@ fn missing_selected_lineage_refuses_even_when_the_other_identity_matches() {
         published_only
             .resolve_against(
                 CaptureAuthority::Published {
-                    edition: PublishedEdition::CanonicalBoxDifferences,
+                    edition: PublishedEdition::CanonicalBoxes,
                     identity: &published,
                 },
                 &{
@@ -840,7 +840,7 @@ fn published_parse_can_remain_unresolved_but_admission_cannot_execute_it() {
         .remove("current");
     let parsed = spec(&value);
     assert!(matches!(
-        parsed.require_published_context(PublishedEdition::CanonicalBoxDifferences),
+        parsed.require_published_context(PublishedEdition::CanonicalBoxes),
         Err(QualificationError::IncompleteRepresentation { .. })
     ));
     let identity = CaseIdentity::from_verified_projection(published_identity()).unwrap();
@@ -849,7 +849,7 @@ fn published_parse_can_remain_unresolved_but_admission_cannot_execute_it() {
     assert!(matches!(
         parsed.resolve_against(
             CaptureAuthority::Published {
-                edition: PublishedEdition::CanonicalBoxDifferences,
+                edition: PublishedEdition::CanonicalBoxes,
                 identity: &identity
             },
             &golden
@@ -862,10 +862,7 @@ fn current_prebinding_refuses_case_output_selector_and_either_packet_census_drif
     let value = two_lineage_declaration();
     assert!(
         spec(&value)
-            .prebind_current(
-                PublishedEdition::CanonicalBoxDifferences,
-                &fixed_current_selection()
-            )
+            .prebind_current(PublishedEdition::CanonicalBoxes, &fixed_current_selection())
             .is_ok()
     );
     for (pointer, replacement) in [
@@ -880,10 +877,8 @@ fn current_prebinding_refuses_case_output_selector_and_either_packet_census_drif
         *changed.pointer_mut(pointer).unwrap() = replacement;
         assert!(
             matches!(
-                spec(&changed).prebind_current(
-                    PublishedEdition::CanonicalBoxDifferences,
-                    &fixed_current_selection()
-                ),
+                spec(&changed)
+                    .prebind_current(PublishedEdition::CanonicalBoxes, &fixed_current_selection()),
                 Err(QualificationError::IncompleteRepresentation { .. })
             ),
             "{pointer}"
@@ -1034,7 +1029,7 @@ fn published_resolution_refuses_a_different_frame_or_requested_census_before_nat
     assert!(matches!(
         parsed.resolve_against(
             CaptureAuthority::Published {
-                edition: PublishedEdition::CanonicalBoxDifferences,
+                edition: PublishedEdition::CanonicalBoxes,
                 identity: &identity
             },
             &golden()
@@ -1047,7 +1042,7 @@ fn published_resolution_refuses_a_different_frame_or_requested_census_before_nat
     assert!(matches!(
         parsed.resolve_against(
             CaptureAuthority::Published {
-                edition: PublishedEdition::CanonicalBoxDifferences,
+                edition: PublishedEdition::CanonicalBoxes,
                 identity: &identity
             },
             &g

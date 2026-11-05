@@ -659,7 +659,7 @@ sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     let input = canonical_input(
         &retained,
         &declaration,
-        PublishedEdition::CanonicalBoxDifferences,
+        PublishedEdition::CanonicalBoxes,
         InputAccess::ReadOnly,
     )
     .unwrap();
@@ -673,7 +673,7 @@ sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         canonical_input(
             owner,
             &declaration,
-            PublishedEdition::CanonicalBoxDifferences,
+            PublishedEdition::CanonicalBoxes,
             InputAccess::Prepare,
         )
         .is_err()

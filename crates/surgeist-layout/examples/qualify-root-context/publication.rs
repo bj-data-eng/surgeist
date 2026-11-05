@@ -24,9 +24,9 @@ impl Edition {
     fn published(self) -> Option<PublishedEdition> {
         match self {
             Self::RootContextV4 => None,
-            Self::CanonicalBoxDifferences => Some(PublishedEdition::CanonicalBoxDifferences),
-            Self::MeasuredGridDifferences => Some(PublishedEdition::MeasuredGridDifferences),
-            Self::FlexTextDifferences => Some(PublishedEdition::FlexTextDifferences),
+            Self::CanonicalBoxDifferences => Some(PublishedEdition::CanonicalBoxes),
+            Self::MeasuredGridDifferences => Some(PublishedEdition::MeasuredGrid),
+            Self::FlexTextDifferences => Some(PublishedEdition::FlexText),
         }
     }
     fn lineage(self) -> SemanticLineage {
