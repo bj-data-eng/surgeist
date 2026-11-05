@@ -25,6 +25,9 @@ pub mod dialog {
 pub mod dom {
     pub use surgeist_dom::*;
 }
+pub mod font {
+    pub use surgeist_font::*;
+}
 pub mod html {
     pub use surgeist_html::*;
 }
@@ -69,5 +72,23 @@ mod tests {
     #[test]
     fn exposes_crate_identity() {
         assert_eq!(super::crate_name(), "surgeist");
+    }
+
+    #[test]
+    fn exposes_shared_font_faces_to_standalone_render() {
+        let encoded =
+            include_bytes!("../crates/surgeist-font/tests/fixtures/ahem-original/Ahem.woff2");
+        let resource = super::font::FontResource::decode(
+            encoded.to_vec(),
+            surgeist_test::fixtures::FONT_LIMITS,
+        )
+        .unwrap();
+        let face = resource.face(0).unwrap();
+        let render_font = super::render::FontData::from_face(face.clone());
+        assert_eq!(render_font.admitted_face(), &face);
+        assert_eq!(
+            render_font.admitted_face().resource().source().bytes(),
+            encoded
+        );
     }
 }

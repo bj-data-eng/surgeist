@@ -21,6 +21,13 @@ positioning and provider completion/custody. Text consumes it directly and owns
 its shaping adapter, font selection, paragraph interpretation and text/line
 composition. Shaper does not depend on Text, Layout, Runtime or the facade.
 
+[Font](../crates/surgeist-font/README.md) admits raw OpenType, collections, WOFF
+and WOFF2. It owns immutable font resources, source provenance, face identity
+and publication of application registrations. Text and Render depend directly
+on Font. Text selects faces in context and shapes text. Render qualifies and
+draws the selected glyph representations using the shared face. Applications
+supply font resources. Installed-font discovery and native fallback are deferred.
+
 ### Language Values, Authored State And Live Identity
 
 [CSS](../crates/surgeist-css/README.md) owns authored syntax, recovery and

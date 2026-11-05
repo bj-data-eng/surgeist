@@ -3671,6 +3671,7 @@ dependencies = [
  "surgeist-cssom",
  "surgeist-dialog",
  "surgeist-dom",
+ "surgeist-font",
  "surgeist-html",
  "surgeist-html-parser",
  "surgeist-html-semantics",
