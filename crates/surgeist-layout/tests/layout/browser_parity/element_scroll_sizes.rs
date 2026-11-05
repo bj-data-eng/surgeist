@@ -432,7 +432,13 @@ impl Table {
                 ));
                 continue;
             }
-            if native == browser && !matches!(sink, NumericComparisonSink::PreparedRanges(_)) {
+            if native == browser
+                && !matches!(
+                    sink,
+                    NumericComparisonSink::PreparedRanges(_)
+                        | NumericComparisonSink::PreparedAtomicPercentage(_)
+                )
+            {
                 continue;
             }
             match sink {
@@ -442,7 +448,8 @@ impl Table {
                         field.as_str()
                     )));
                 }
-                NumericComparisonSink::PreparedRanges(_) => {
+                NumericComparisonSink::PreparedRanges(_)
+                | NumericComparisonSink::PreparedAtomicPercentage(_) => {
                     return Err(invalid(
                         path,
                         "prepared Range comparison excludes element sizes",

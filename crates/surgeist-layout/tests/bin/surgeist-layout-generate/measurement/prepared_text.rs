@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{Context, MeasurementError, nonnegative};
+use super::{Context, MeasurementError, nonnegative, present};
 
 use crate::pinned_font;
 
@@ -105,11 +105,33 @@ pub(super) struct Atomic {
     pub child: usize,
     pub at: usize,
     pub kind: AtomicKind,
-    pub width: f64,
-    pub height: f64,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub width: Option<f64>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub height: Option<f64>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub authored_size: Option<AuthoredAtomicSize>,
     pub preceding_wrap: Wrap,
     pub following_wrap: Wrap,
     pub ancestor_wrap: Wrap,
+}
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct AuthoredAtomicSize {
+    pub width: String,
+    pub height: String,
 }
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -247,8 +269,33 @@ impl Paragraph {
                 format!("preparedParagraph.atomics[{index}]"),
                 "atomic occurrences need distinct real children and an original anchor",
             )?;
-            nonnegative(atomic.width, context, "preparedParagraph.atomic.width")?;
-            nonnegative(atomic.height, context, "preparedParagraph.atomic.height")?;
+            match (atomic.width, atomic.height, &atomic.authored_size) {
+                (Some(width), Some(height), None) => {
+                    nonnegative(width, context, "preparedParagraph.atomic.width")?;
+                    nonnegative(height, context, "preparedParagraph.atomic.height")?;
+                }
+                (None, None, Some(size)) => {
+                    let dimension = |value: &str, suffix: &str| {
+                        value
+                            .strip_suffix(suffix)
+                            .and_then(|number| number.parse::<f64>().ok())
+                            .is_some_and(|value| value.is_finite() && value >= 0.0)
+                    };
+                    context.ensure(
+                        matches!(self.writing_mode, WritingMode::HorizontalTb)
+                            && matches!(atomic.kind, AtomicKind::InFlow)
+                            && dimension(&size.width, "px")
+                            && dimension(&size.height, "%"),
+                        format!("preparedParagraph.atomics[{index}].authoredSize"),
+                        "authored sizing requires an in-flow horizontal atomic with pixel width and percentage height",
+                    )?;
+                }
+                _ => context.compatible(
+                    false,
+                    "preparedParagraph.atomics",
+                    "atomic dimensions must be authored or fixed, with both axes",
+                )?,
+            }
             if !matches!(self.writing_mode, WritingMode::HorizontalTb) {
                 context.ensure(
                     matches!(atomic.kind, AtomicKind::InFlow),
@@ -393,5 +440,26 @@ impl TextStyle {
         )?;
         super::finite(self.word_spacing, context, "preparedParagraph.wordSpacing")?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Atomic;
+    use serde_json::json;
+
+    #[test]
+    fn prepared_atomic_wire_preserves_authored_percentage_size() {
+        let authored = json!({
+            "child": 1,
+            "at": 9,
+            "kind": "in-flow",
+            "authoredSize": {"width": "20px", "height": "50%"},
+            "precedingWrap": "word",
+            "followingWrap": "word",
+            "ancestorWrap": "word"
+        });
+        let atomic = serde_json::from_value::<Atomic>(authored.clone()).unwrap();
+        assert_eq!(serde_json::to_value(atomic).unwrap(), authored);
     }
 }

@@ -2107,3 +2107,27 @@ grid_reference_owners = []
 [[specialized_publications]]
 source = "html/subgrid/subgrid_gap_percentage_border_bottom.html"
 profile = "original-subgrid-body"
+
+[[records]]
+source = "html/block/fri06_atomic_inline_percentage_block_size.html"
+source_sha256 = "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "72aa5f891e75aa835e696bd3361cdae102494b2be66241e50d4073dbffe649c0"
+content_box_ltr = "7fa253f2c3aed0a78dc4d98959a1193d042fca8ea096bd642cb607fc330c95db"
+border_box_rtl = "9d0b898351553f0531f4125e96271ea1f1130f0bbf375347bf798955dfdb05ee"
+content_box_rtl = "068ed88008131bd58e8a40b0ba0db404b04fcd009b565eea8a3e3d031469af95"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[specialized_publications]]
+source = "html/block/fri06_atomic_inline_percentage_block_size.html"
+profile = "prepared-atomic-percentage"

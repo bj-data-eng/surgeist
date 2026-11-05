@@ -18,6 +18,8 @@ mod measurement;
 mod original_subgrid_body_profile;
 #[path = "../layout/browser_parity/pinned_font.rs"]
 mod pinned_font;
+#[path = "surgeist-layout-generate/measurement/prepared_atomic_percentage_profile.rs"]
+mod prepared_atomic_percentage_profile;
 #[path = "surgeist-layout-generate/xml.rs"]
 mod xml;
 

@@ -132,6 +132,18 @@ fn style(value: &Value) -> Result<text::Style, Error> {
 
 impl Capture {
     pub fn parse(raw: &str, children: usize) -> Result<Self, Error> {
+        Self::parse_with_atomic_measure(raw, children, |_, _, _| {
+            Err(fail(
+                "authored atomic size requires its actual containing frame",
+            ))
+        })
+    }
+
+    pub(super) fn parse_with_atomic_measure(
+        raw: &str,
+        children: usize,
+        mut measure: impl FnMut(usize, &str, &str) -> Result<text::Size, Error>,
+    ) -> Result<Self, Error> {
         // serde_json's Value parser alone permits duplicate keys, so use its
         // streaming visitor before admitting the independently owned schema.
         let raw = unique_json(raw)?;
@@ -285,8 +297,18 @@ impl Capture {
         let mut control_children = Vec::new();
         let mut controls = Vec::new();
         for (occurrence, row) in array(&value["atomics"])?.iter().enumerate() {
-            let row = object(
-                row,
+            let authored = row.get("authoredSize").is_some();
+            let fields = if authored {
+                &[
+                    "child",
+                    "at",
+                    "kind",
+                    "authoredSize",
+                    "precedingWrap",
+                    "followingWrap",
+                    "ancestorWrap",
+                ][..]
+            } else {
                 &[
                     "child",
                     "at",
@@ -296,8 +318,9 @@ impl Capture {
                     "precedingWrap",
                     "followingWrap",
                     "ancestorWrap",
-                ],
-            )?;
+                ][..]
+            };
+            let row = object(row, fields)?;
             let child = index(&row["child"])?;
             if child >= children || !roles.insert(child) {
                 return Err(fail("atomic child is missing or repeated"));
@@ -316,13 +339,22 @@ impl Capture {
             if at > source.text().len() {
                 return Err(fail("atomic anchor exceeds original source"));
             }
+            let size = if authored {
+                if vertical || kind != text::InlineBoxKind::InFlow {
+                    return Err(fail("authored size requires an in-flow horizontal atomic"));
+                }
+                let sizing = object(&row["authoredSize"], &["width", "height"])?;
+                measure(child, string(&sizing["width"])?, string(&sizing["height"])?)?
+            } else {
+                text::Size::new(extent(&row["width"])?, extent(&row["height"])?)
+            };
             source.inline_box(text::InlineBox::new(
                 text::Id::from_u64(
                     u64::try_from(child).map_err(|_| fail("child identity out of range"))?,
                 ),
                 kind,
                 at,
-                text::Size::new(extent(&row["width"])?, extent(&row["height"])?),
+                size,
             ));
             if kind == text::InlineBoxKind::InFlow {
                 for definition in [
@@ -823,6 +855,38 @@ mod tests {
     fn original_capture() -> Value {
         let style = json!({"fontSize":10.0,"lineHeight":12.0,"whitespace":"preserve","wrap":"word","letterSpacing":0.0,"wordSpacing":0.0,"color":[0.0,0.0,0.0,1.0],"locale":"en"});
         json!({"font":{"id":pinned_font::ID,"sha256":pinned_font::SHA256,"faceIndex":0,"family":"SurgeistParityAhem","style":"normal","weight":400,"stretch":"normal","features":"normal","variations":"normal","synthesis":"none","loaded":true},"direction":"ltr","writingMode":"horizontal-tb","baseStyle":style,"origins":[{"child":0,"units":[88,32,88],"start":0,"end":3,"style":style}],"connections":[],"atomics":[],"controls":[],"order":[{"kind":"origin","index":0,"affinity":"before"}]})
+    }
+
+    #[test]
+    fn authored_atomic_percentage_requires_the_actual_containing_frame() {
+        let mut raw = original_capture();
+        let mut style = raw["baseStyle"].clone();
+        style["fontSize"] = json!(16.0);
+        style["lineHeight"] = json!(20.0);
+        style["whitespace"] = json!("collapse");
+        raw["baseStyle"] = style.clone();
+        raw["origins"] = json!([
+            {"child":0,"units":"\n  basis ".encode_utf16().collect::<Vec<_>>(),"start":0,"end":9,"style":style},
+            {"child":2,"units":" definite\n".encode_utf16().collect::<Vec<_>>(),"start":9,"end":19,"style":style}
+        ]);
+        raw["connections"] = json!([
+            {"preceding":0,"following":1,"kind":"continuous",
+             "precedingWrap":"word","followingWrap":"word","ancestorWrap":"word"}
+        ]);
+        raw["atomics"] = json!([
+            {"child":1,"at":9,"kind":"in-flow","authoredSize":{"width":"20px","height":"50%"},
+             "precedingWrap":"word","followingWrap":"word","ancestorWrap":"word"}
+        ]);
+        raw["order"] = json!([
+            {"kind":"origin","index":0,"affinity":"before"},
+            {"kind":"atomic","index":0,"affinity":"before"},
+            {"kind":"origin","index":1,"affinity":"before"}
+        ]);
+        let error = Capture::parse(&raw.to_string(), 3).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "prepared source: authored atomic size requires its actual containing frame"
+        );
     }
 
     #[test]

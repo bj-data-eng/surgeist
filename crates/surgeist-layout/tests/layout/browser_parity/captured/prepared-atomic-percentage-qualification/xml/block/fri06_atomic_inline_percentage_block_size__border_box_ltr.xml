@@ -1,0 +1,31 @@
+<test name="fri06_atomic_inline_percentage_block_size__border_box_ltr" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="block" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" layout-ready-inline-root="true" display="block" direction="ltr" position="absolute" font-size="16px" line-height="20px" width="180px" height="80px">
+      <prepared-paragraph capture="{&quot;font&quot;:{&quot;id&quot;:&quot;ahem-ttf-f0a92cd0&quot;,&quot;sha256&quot;:&quot;f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc&quot;,&quot;faceIndex&quot;:0,&quot;family&quot;:&quot;SurgeistParityAhem&quot;,&quot;style&quot;:&quot;normal&quot;,&quot;weight&quot;:400,&quot;stretch&quot;:&quot;normal&quot;,&quot;features&quot;:&quot;normal&quot;,&quot;variations&quot;:&quot;normal&quot;,&quot;synthesis&quot;:&quot;none&quot;,&quot;loaded&quot;:true},&quot;direction&quot;:&quot;ltr&quot;,&quot;writingMode&quot;:&quot;horizontal-tb&quot;,&quot;baseStyle&quot;:{&quot;fontSize&quot;:16.0,&quot;lineHeight&quot;:20.0,&quot;whitespace&quot;:&quot;collapse&quot;,&quot;wrap&quot;:&quot;word&quot;,&quot;letterSpacing&quot;:0.0,&quot;wordSpacing&quot;:0.0,&quot;color&quot;:[0.0,0.501960813999176,0.0,1.0],&quot;locale&quot;:&quot;en&quot;},&quot;origins&quot;:[{&quot;child&quot;:0,&quot;units&quot;:[10,32,32,98,97,115,105,115,32],&quot;start&quot;:0,&quot;end&quot;:9,&quot;style&quot;:{&quot;fontSize&quot;:16.0,&quot;lineHeight&quot;:20.0,&quot;whitespace&quot;:&quot;collapse&quot;,&quot;wrap&quot;:&quot;word&quot;,&quot;letterSpacing&quot;:0.0,&quot;wordSpacing&quot;:0.0,&quot;color&quot;:[0.0,0.501960813999176,0.0,1.0],&quot;locale&quot;:&quot;en&quot;}},{&quot;child&quot;:2,&quot;units&quot;:[32,100,101,102,105,110,105,116,101,10],&quot;start&quot;:9,&quot;end&quot;:19,&quot;style&quot;:{&quot;fontSize&quot;:16.0,&quot;lineHeight&quot;:20.0,&quot;whitespace&quot;:&quot;collapse&quot;,&quot;wrap&quot;:&quot;word&quot;,&quot;letterSpacing&quot;:0.0,&quot;wordSpacing&quot;:0.0,&quot;color&quot;:[0.0,0.501960813999176,0.0,1.0],&quot;locale&quot;:&quot;en&quot;}}],&quot;connections&quot;:[{&quot;preceding&quot;:0,&quot;following&quot;:1,&quot;kind&quot;:&quot;continuous&quot;,&quot;precedingWrap&quot;:&quot;word&quot;,&quot;followingWrap&quot;:&quot;word&quot;,&quot;ancestorWrap&quot;:&quot;word&quot;}],&quot;atomics&quot;:[{&quot;child&quot;:1,&quot;at&quot;:9,&quot;kind&quot;:&quot;in-flow&quot;,&quot;authoredSize&quot;:{&quot;width&quot;:&quot;20px&quot;,&quot;height&quot;:&quot;50%&quot;},&quot;precedingWrap&quot;:&quot;word&quot;,&quot;followingWrap&quot;:&quot;word&quot;,&quot;ancestorWrap&quot;:&quot;word&quot;}],&quot;controls&quot;:[],&quot;order&quot;:[{&quot;kind&quot;:&quot;origin&quot;,&quot;index&quot;:0,&quot;affinity&quot;:&quot;before&quot;},{&quot;kind&quot;:&quot;atomic&quot;,&quot;index&quot;:0,&quot;affinity&quot;:&quot;before&quot;},{&quot;kind&quot;:&quot;origin&quot;,&quot;index&quot;:1,&quot;affinity&quot;:&quot;before&quot;}]}"/>
+      <text layout-input="prepared-text" occurrence="0"/>
+      <div source-tag="span" display="inline-block" direction="ltr" font-size="16px" line-height="20px" width="20px" height="50%"/>
+      <text layout-input="prepared-text" occurrence="1"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="180" height="80">
+      <node>
+        <range-fragments>
+          <range-fragment origin="0" line="0" physical_start_edge="left" start="0" advance="96"/>
+        </range-fragments>
+      </node>
+      <node x="96" y="0" width="20" height="40"/>
+      <node>
+        <range-fragments>
+          <range-fragment origin="1" line="1" physical_start_edge="left" start="0" advance="128"/>
+        </range-fragments>
+      </node>
+    </node>
+  </expectations>
+  <prepared-range-frame profile="prepared-range-root-border-v1"/>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="180" height="80" scroll-width="180" scroll-height="80" client-width="180" client-height="80"/>
+    <world-rounded-layout node-path="0.1" x="96" y="0" width="20" height="40" scroll-width="20" scroll-height="40" client-width="20" client-height="40"/>
+  </diagnostics>
+</test>

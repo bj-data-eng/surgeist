@@ -253,6 +253,9 @@ mod output;
 #[cfg(test)]
 #[path = "../tests/layout/browser_parity/pinned_font.rs"]
 mod pinned_font;
+#[cfg(test)]
+#[path = "../tests/bin/surgeist-layout-generate/measurement/prepared_atomic_percentage_profile.rs"]
+mod prepared_atomic_percentage_profile;
 pub use baseline_offset::{BaselineOffset, BaselineOffsetOf, BaselineOffsetResolutionError};
 pub use hyphenation::{HyphenateLimitLast, HyphenateLimitLines};
 mod inline_wrapping;
@@ -306,7 +309,7 @@ pub(crate) use engine::round_layout;
 pub(crate) use engine::{compute_hidden, compute_root};
 pub use engine::{
     compute_layout, compute_layout_invalidated, compute_layout_with_flow,
-    compute_layout_with_flow_invalidated,
+    compute_layout_with_flow_invalidated, measure_definite_inline_atomic_size,
 };
 pub use error::{
     AtomicInlineParticipationRoleError, CalcSizeBehaviorBasis, FloatExclusionRoleError,

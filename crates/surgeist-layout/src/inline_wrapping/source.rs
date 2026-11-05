@@ -7,8 +7,8 @@ use super::{
     *,
 };
 use crate::{
-    Display, Float, InlineBoundaryInputOf, InlineBoundaryKind, LayoutResultOf, LayoutTree,
-    LineBreakInputOf, NodeInputOf, Position, Traverse,
+    Display, Float, InlineBoundaryInputOf, InlineBoundaryKind, LayoutOperation, LayoutResultOf,
+    LayoutTree, LineBreakInputOf, NodeInputOf, Position, Traverse,
     engine::validation::{ValidationGraph, discover_graph},
 };
 use surgeist_text::{
@@ -174,7 +174,7 @@ pub fn process_wrapping_source<Source: WrapEdgeSource>(
         origins: input.origins.len(),
         atomics: input.source.boxes().len(),
     };
-    let graph = discover_graph(source, root)?;
+    let graph = discover_graph(source, root, LayoutOperation::CacheInvalidation)?;
     let snapshot =
         project(source, &graph, &inventory, &occurrences).map_err(|reason| error(root, reason))?;
     for location in &snapshot.locations {
@@ -1064,7 +1064,7 @@ impl<Node: Copy + Eq> ResolvedWrapEdges<Node> {
         paragraphs: &[crate::TextParagraphBinding<Node>],
         wrapping: &WrappingInput<Node>,
     ) -> LayoutResultOf<Node, ValidationGraph<Node>, Tree::Scalar, Tree::MeasureError> {
-        let graph = discover_graph(tree, root)?;
+        let graph = discover_graph(tree, root, LayoutOperation::CacheInvalidation)?;
         let actual = project(tree, &graph, &self.inventory, &self.occurrences)
             .map_err(|reason| error(root, reason))?;
         if actual != self.snapshot {

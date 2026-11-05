@@ -448,6 +448,34 @@ struct InlineRunRequest<'context, 'input, Node, S: LayoutScalar> {
     adjoining_margin: S,
 }
 
+pub(super) fn inline_atomic_child_request<S: LayoutScalar>(
+    constants: &Constants<S>,
+    child_run_mode: RunMode,
+    pass_sizing_request: crate::SizingRequestOf<S>,
+    available_inline_extent: AxisSizingRequestOf<S>,
+) -> ComputeInputOf<S> {
+    ComputeInputOf::<S>::for_child(
+        child_run_mode,
+        SizingMode::InherentSize,
+        RequestedAxis::Both,
+        Size::NONE,
+        constants.definite_child_containing_block_size(),
+        ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::BlockFlow),
+        pass_sizing_request.with_axes(
+            constants.flow_axes.physical_size(LogicalSizeOf::new(
+                available_inline_extent,
+                super::in_flow::in_flow_child_block_request(
+                    constants
+                        .flow_axes
+                        .logical_size(pass_sizing_request.axes())
+                        .block,
+                ),
+            )),
+        ),
+    )
+    .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars)
+}
+
 fn layout_inline_run_children<'input, Tree, S, M>(
     tree: &mut Tree,
     container: <Tree as Traverse>::Node,
@@ -680,26 +708,12 @@ where
             )
             .transpose_with_node(tree, child)?;
         let named_demand = named_atomic_demand(&child_style, constants.inline_baseline_context);
-        let mut child_request = ComputeInputOf::<S>::for_child(
+        let mut child_request = inline_atomic_child_request(
+            constants,
             child_run_mode,
-            SizingMode::InherentSize,
-            RequestedAxis::Both,
-            Size::NONE,
-            constants.definite_child_containing_block_size(),
-            ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::BlockFlow),
-            pass_sizing_request.with_axes(
-                constants.flow_axes.physical_size(LogicalSizeOf::new(
-                    available_inline_extent,
-                    super::in_flow::in_flow_child_block_request(
-                        constants
-                            .flow_axes
-                            .logical_size(pass_sizing_request.axes())
-                            .block,
-                    ),
-                )),
-            ),
+            pass_sizing_request,
+            available_inline_extent,
         )
-        .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
         .with_named_baseline_demand(named_demand);
         let packet = if !child_style.float.is_none() && text_binding.is_some() {
             // Use the ordinary block owner's complete float child request. The

@@ -11,6 +11,7 @@ use sha2::{Digest as _, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::fixture_variants::fixture_cases;
+use crate::prepared_atomic_percentage_profile as atomic_percentage;
 
 pub(crate) const EDITION: &str = "canonical-box-differences";
 pub(crate) const MEASURED_GRID_EDITION: &str = "measured-grid-differences";
@@ -150,6 +151,10 @@ pub(crate) fn current_owner_bindings(
                 ("flex_content_text_request.json", flex_content_text::REQUEST),
                 ("prepared_range_request.json", PREPARED_RANGE_REQUEST_BYTES),
                 (
+                    "prepared_atomic_percentage_request.json",
+                    atomic_percentage::REQUEST,
+                ),
+                (
                     "original_subgrid_body_request.json",
                     original_subgrid_body::REQUEST,
                 ),
@@ -166,10 +171,17 @@ pub(crate) fn current_owner_bindings(
             "tests/bin/surgeist-layout-generate/measurement/flex_content_text.js".to_owned()
         } else if name == original_subgrid_body::PROOF_SCRIPT_PATH {
             "tests/bin/surgeist-layout-generate/measurement/original_subgrid_body.js".to_owned()
+        } else if name == atomic_percentage::SCRIPT_PATH {
+            "tests/bin/surgeist-layout-generate/measurement/prepared_atomic_percentage.js"
+                .to_owned()
         } else if name == MEASURED_LEAF_SCRIPT {
             "tests/bin/surgeist-layout-generate/measurement/measured_leaf.js".to_owned()
         } else if let Some(tail) = name.strip_prefix("historical/") {
-            format!("{ORIGINAL}/xml/{tail}")
+            if retained.get(OBSERVATION_REQUEST) == Some(&sha256(atomic_percentage::REQUEST)) {
+                format!("{ORIGINAL}/historical/prepared-text-v1/{tail}")
+            } else {
+                format!("{ORIGINAL}/xml/{tail}")
+            }
         } else if name.starts_with("scripts/")
             || name.starts_with("fonts/")
             || name.starts_with("html/")
@@ -461,6 +473,13 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
             "original subgrid body proof requires its observation request",
         ));
     }
+    if observation_request != SpecializedProfile::PreparedAtomicPercentage.observation_request()
+        && full_inputs.contains_key(atomic_percentage::SCRIPT_PATH)
+    {
+        return Err(changed(
+            "prepared atomic percentage proof requires its observation request",
+        ));
+    }
     let (profile, font_demand) = match (observation_request, observation_input_sha256) {
         ("geometry", None)
             if !full_inputs.contains_key(OBSERVATION_REQUEST)
@@ -553,6 +572,40 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
                 }
             }
             ("canonical-original-subgrid-body", "none")
+        }
+        ("prepared-atomic-percentage", Some(request_sha256)) => {
+            let proof_sha256 = sha256(atomic_percentage::SCRIPT.as_bytes());
+            if case.source != atomic_percentage::SOURCE
+                || artifact.source_sha256 != atomic_percentage::SOURCE_SHA256
+                || request_sha256 != sha256(atomic_percentage::REQUEST)
+                || policy_sha256 != proof_sha256
+                || !artifact.linked_resources.is_empty()
+                || full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
+                || full_inputs.contains_key(flex_content_text::SCRIPT_PATH)
+            {
+                return Err(changed("prepared atomic percentage capture profile"));
+            }
+            for (path, expected) in [
+                (atomic_percentage::SOURCE, atomic_percentage::SOURCE_SHA256),
+                (OBSERVATION_REQUEST, request_sha256),
+                (atomic_percentage::SCRIPT_PATH, proof_sha256.as_str()),
+                (ROOT_HELPER_INPUT, atomic_percentage::HELPER_SHA256),
+                (
+                    "scripts/gentest/test_base_style.css",
+                    pinned_font::ROOT_CONTEXT_STYLESHEET_SHA256,
+                ),
+                ("fonts/Ahem.ttf", pinned_font::SHA256),
+            ] {
+                if full_inputs.get(path).map(String::as_str) != Some(expected)
+                    || excluded_specs.contains(path)
+                {
+                    return Err(changed(format!("prepared atomic percentage input: {path}")));
+                }
+            }
+            (
+                "canonical-prepared-atomic-percentage",
+                "ahem-16px-prepared-ranges",
+            )
         }
         ("prepared-ranges" | "flex-composition", Some(request_sha256))
             if !full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
@@ -754,6 +807,7 @@ pub(crate) enum SpecializedProfile {
     PreparedRange,
     FlexComposition,
     OriginalSubgridBody,
+    PreparedAtomicPercentage,
 }
 
 impl SpecializedProfile {
@@ -775,6 +829,9 @@ impl SpecializedProfile {
             Self::OriginalSubgridBody => {
                 "tests/layout/browser_parity/captured/original-subgrid-body-qualification"
             }
+            Self::PreparedAtomicPercentage => {
+                "tests/layout/browser_parity/captured/prepared-atomic-percentage-qualification"
+            }
         }
     }
 
@@ -783,6 +840,7 @@ impl SpecializedProfile {
             Self::PreparedRange => "prepared-ranges",
             Self::FlexComposition => "flex-composition",
             Self::OriginalSubgridBody => "original-subgrid-body",
+            Self::PreparedAtomicPercentage => "prepared-atomic-percentage",
         }
     }
 
@@ -791,6 +849,7 @@ impl SpecializedProfile {
             Self::PreparedRange => prepared_range_qualification::SOURCE,
             Self::FlexComposition => flex_composition::SOURCE,
             Self::OriginalSubgridBody => original_subgrid_body::SOURCE,
+            Self::PreparedAtomicPercentage => atomic_percentage::SOURCE,
         }
     }
 
@@ -799,9 +858,19 @@ impl SpecializedProfile {
             Self::PreparedRange,
             Self::FlexComposition,
             Self::OriginalSubgridBody,
+            Self::PreparedAtomicPercentage,
         ]
         .into_iter()
         .find(|profile| profile.edition() == edition)
+    }
+}
+
+pub(crate) fn prepared_atomic_percentage_evidence() -> SpecializedEvidence {
+    SpecializedEvidence::PreparedAtomicPercentage {
+        proof_script: PathDigest {
+            path: atomic_percentage::SCRIPT_PATH.to_owned(),
+            sha256: sha256(atomic_percentage::SCRIPT.as_bytes()),
+        },
     }
 }
 
@@ -820,6 +889,9 @@ pub(crate) enum SpecializedEvidence {
     OriginalSubgridBody {
         proof_script: PathDigest,
     },
+    PreparedAtomicPercentage {
+        proof_script: PathDigest,
+    },
 }
 
 impl SpecializedEvidence {
@@ -828,13 +900,15 @@ impl SpecializedEvidence {
             Self::PreparedRange { .. } => SpecializedProfile::PreparedRange,
             Self::FlexComposition { .. } => SpecializedProfile::FlexComposition,
             Self::OriginalSubgridBody { .. } => SpecializedProfile::OriginalSubgridBody,
+            Self::PreparedAtomicPercentage { .. } => SpecializedProfile::PreparedAtomicPercentage,
         }
     }
 
     pub(crate) fn policy_digest(&self) -> String {
         match self {
             Self::PreparedRange { policy } => policy.sha256.clone(),
-            Self::OriginalSubgridBody { proof_script } => proof_script.sha256.clone(),
+            Self::OriginalSubgridBody { proof_script }
+            | Self::PreparedAtomicPercentage { proof_script } => proof_script.sha256.clone(),
             Self::FlexComposition {
                 collapse_policy,
                 scrollbar_policy,
@@ -848,7 +922,8 @@ impl SpecializedEvidence {
     pub(crate) fn bindings(&self) -> Vec<&PathDigest> {
         match self {
             Self::PreparedRange { policy } => vec![policy],
-            Self::OriginalSubgridBody { proof_script } => vec![proof_script],
+            Self::OriginalSubgridBody { proof_script }
+            | Self::PreparedAtomicPercentage { proof_script } => vec![proof_script],
             Self::FlexComposition {
                 collapse_policy,
                 scrollbar_policy,
@@ -1083,6 +1158,9 @@ impl Qualification {
             }
             SpecializedEvidence::OriginalSubgridBody { .. } => {
                 original_subgrid_body::evidence() == case.evidence
+            }
+            SpecializedEvidence::PreparedAtomicPercentage { .. } => {
+                prepared_atomic_percentage_evidence() == case.evidence
             }
         };
         if !evidence_matches || case.identity.policy_source_sha256 != case.evidence.policy_digest()

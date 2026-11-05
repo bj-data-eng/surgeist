@@ -24,7 +24,8 @@ use crate::measurement::{
 use crate::original_subgrid_body_profile::SOURCE as ORIGINAL_SUBGRID_BODY_SOURCE;
 use crate::parity_support::capture_authority::{self, SpecializedProfile};
 use crate::parity_support::exact_differences::flex_composition_qualification;
-use crate::parity_support::original_subgrid_body;
+use crate::parity_support::{original_subgrid_body, prepared_atomic_percentage};
+use crate::prepared_atomic_percentage_profile::SOURCE as PREPARED_ATOMIC_SOURCE;
 
 #[path = "../../tests/layout/browser_parity/qualification_catalogue.rs"]
 mod qualification_catalogue;
@@ -50,6 +51,7 @@ pub(super) enum QualificationMode {
     PreparedRangeCapture,
     FlexCompositionCapture,
     OriginalSubgridBodyCapture,
+    PreparedAtomicPercentageCapture,
     Publish,
     CheckPublished,
     PublishExact(PublishedEdition),
@@ -95,6 +97,11 @@ impl QualificationMode {
             | Self::PublishSpecialized(SpecializedProfile::OriginalSubgridBody)
             | Self::CheckPublishedSpecialized(SpecializedProfile::OriginalSubgridBody) => {
                 BoxObservationRequest::OriginalSubgridBody
+            }
+            Self::PreparedAtomicPercentageCapture
+            | Self::PublishSpecialized(SpecializedProfile::PreparedAtomicPercentage)
+            | Self::CheckPublishedSpecialized(SpecializedProfile::PreparedAtomicPercentage) => {
+                BoxObservationRequest::PreparedAtomicPercentage
             }
             Self::ElementScrollSizeDiagnostics => BoxObservationRequest::ElementScrollSizes,
             Self::FlexContentTextDiagnostics
@@ -142,6 +149,15 @@ fn select_records(
         declaration
             .records
             .retain(|record| record.source.as_str() != ORIGINAL_SUBGRID_BODY_SOURCE);
+    }
+    if mode == QualificationMode::PreparedAtomicPercentageCapture {
+        if fixture != Some(PREPARED_ATOMIC_SOURCE) {
+            return Err("prepared atomic percentage capture requires its declared fixture".into());
+        }
+    } else {
+        declaration
+            .records
+            .retain(|record| record.source.as_str() != PREPARED_ATOMIC_SOURCE);
     }
     if matches!(
         mode,
@@ -191,7 +207,8 @@ fn select_records(
                 }
                 QualificationMode::PreparedRangeCapture
                 | QualificationMode::FlexCompositionCapture
-                | QualificationMode::OriginalSubgridBodyCapture => {
+                | QualificationMode::OriginalSubgridBodyCapture
+                | QualificationMode::PreparedAtomicPercentageCapture => {
                     return Err("specialized qualification requires a Generated fixture".into());
                 }
                 QualificationMode::ElementScrollSizeDiagnostics
@@ -458,6 +475,9 @@ pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> 
         }
         (QualificationMode::Regular, Some(ORIGINAL_SUBGRID_BODY_SOURCE)) => {
             QualificationMode::OriginalSubgridBodyCapture
+        }
+        (QualificationMode::Regular, Some(PREPARED_ATOMIC_SOURCE)) => {
+            QualificationMode::PreparedAtomicPercentageCapture
         }
         _ => mode,
     };
@@ -790,7 +810,7 @@ fn validate_corpus(
                     case.case.variant(),
                     &Golden::parse(&historical)?,
                 )?;
-            } else {
+            } else if mode.box_observations() != BoxObservationRequest::PreparedAtomicPercentage {
                 qualify_historical_geometry(current, &historical, case.case.id())?;
             }
         }
@@ -807,7 +827,9 @@ fn validate_corpus(
     let observation = mode.box_observations();
     let bound_report = if matches!(
         observation,
-        BoxObservationRequest::FlexContentText | BoxObservationRequest::FlexComposition
+        BoxObservationRequest::FlexContentText
+            | BoxObservationRequest::FlexComposition
+            | BoxObservationRequest::PreparedAtomicPercentage
     ) {
         Some(String::from_utf8(report.to_bytes()?)?)
     } else {
@@ -843,7 +865,11 @@ fn validate_corpus(
             mode.specialized_profile().is_some(),
         )?;
         if golden.has_prepared_range_frame()
-            != (mode.box_observations() == BoxObservationRequest::PreparedRanges)
+            != matches!(
+                observation,
+                BoxObservationRequest::PreparedRanges
+                    | BoxObservationRequest::PreparedAtomicPercentage
+            )
         {
             return Err(format!(
                 "{}: prepared Range frame differs from the registered request",
@@ -907,6 +933,22 @@ fn validate_corpus(
                     case.case.id()
                 ),
                 Err(error) => native_errors.push(format!("{}: {error}", case.case.id())),
+            }
+        } else if observation == BoxObservationRequest::PreparedAtomicPercentage {
+            let historical = case
+                .historical
+                .as_ref()
+                .ok_or("missing historical atomic case")?;
+            prepared_atomic_percentage::verify_historical(
+                &golden,
+                &crate::parity_support::Golden::parse_file(root.join(historical.as_str()))?,
+            )?;
+            let (raw, verdict) = prepared_atomic_percentage::compare(&golden)?;
+            for difference in raw {
+                eprintln!("qualify-root-context: {}: {difference}", case.case.id());
+            }
+            if let Err(error) = verdict {
+                native_errors.push(format!("{}: {error}", case.case.id()));
             }
         } else if observation == BoxObservationRequest::OriginalSubgridBody {
             let (raw, verdict) = original_subgrid_body::compare(&golden, case.case.variant())?;
@@ -1030,6 +1072,7 @@ fn validate_corpus(
         | QualificationMode::PreparedRangeCapture
         | QualificationMode::FlexCompositionCapture
         | QualificationMode::OriginalSubgridBodyCapture
+        | QualificationMode::PreparedAtomicPercentageCapture
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
         | QualificationMode::PublishExact(_)
@@ -1248,6 +1291,7 @@ fn inventory_with_retained_helper(
         | QualificationMode::PreparedRangeCapture
         | QualificationMode::FlexCompositionCapture
         | QualificationMode::OriginalSubgridBodyCapture
+        | QualificationMode::PreparedAtomicPercentageCapture
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
         | QualificationMode::PublishExact(_)
@@ -1332,7 +1376,10 @@ fn inventory_with_retained_helper(
                 register_semantic_input(root, owner, &path, &digest, &mut inventory, access)?;
             }
         }
-        Some(SpecializedProfile::OriginalSubgridBody) | None => {}
+        Some(
+            SpecializedProfile::OriginalSubgridBody | SpecializedProfile::PreparedAtomicPercentage,
+        )
+        | None => {}
     }
     let original = owner.join("tests/layout/browser_parity");
     let authored = owner.join("examples/qualify-root-context");
@@ -1389,8 +1436,15 @@ fn inventory_with_retained_helper(
             let output = RelativePath::new(format!("xml/{family}__{variant}.xml"))?;
             let historical = if matches!(record.source_kind, SourceKind::Original) {
                 let historical = RelativePath::new(format!("historical/{family}__{variant}.xml"))?;
-                publication::require_regular_input(&original, &output)?;
-                let bytes = fs::read(original.join(output.as_str()))?;
+                let owner_path = if record.source.as_str() == PREPARED_ATOMIC_SOURCE {
+                    RelativePath::new(format!(
+                        "historical/prepared-text-v1/{family}__{variant}.xml"
+                    ))?
+                } else {
+                    output.clone()
+                };
+                publication::require_regular_input(&original, &owner_path)?;
+                let bytes = fs::read(original.join(owner_path.as_str()))?;
                 let digest = record
                     .historical_sha256
                     .get(variant)
@@ -2115,6 +2169,9 @@ fn parse_capture_golden(
     use crate::parity_support::Golden;
     let parse = match observation {
         BoxObservationRequest::FlexContentText => Golden::parse_with_flex_content_text,
+        BoxObservationRequest::PreparedAtomicPercentage => {
+            Golden::parse_with_prepared_atomic_percentage
+        }
         BoxObservationRequest::FlexComposition if published => {
             Golden::parse_with_published_flex_composition
         }
