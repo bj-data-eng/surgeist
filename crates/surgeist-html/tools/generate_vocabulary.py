@@ -185,7 +185,7 @@ pub const VOCABULARY_SOURCE: VocabularySource = VocabularySource {{
 }};
 
 #[rustfmt::skip]
-static ELEMENT_INVENTORY: &[ElementInventoryRow] = &[
+static ELEMENT_INVENTORY: [ElementInventoryRow; {len(elements)}] = [
 '''
     for number, (row, names) in enumerate(zip(elements, row_names), 1):
         values = [cell["text"] for cell in row]
@@ -195,7 +195,25 @@ static ELEMENT_INVENTORY: &[ElementInventoryRow] = &[
         for field, value in zip(("description", "categories", "parents", "children", "attributes", "interface"), values[1:]):
             output += f"        {field}: {rust_string(value)},\n"
         output += "        references: " + array(rust_string(ref) for ref in references(row[:1])) + ",\n    },\n"
-    output += "];\n\n#[rustfmt::skip]\nstatic ATTRIBUTE_INVENTORY: &[AttributeInventoryRow] = &[\n"
+    output += "];\n\n"
+    # Each element maps to the first row that mentions it, by a literal index into the
+    # fixed-size array, so that the compiler rejects an index outside the table.
+    first_row = {}
+    for index, names in enumerate(row_names):
+        for name in names:
+            first_row.setdefault(name, index)
+    output += """impl KnownHtmlElement {
+    /// Returns the source index row mentioning this element.
+    ///
+    /// The heading elements share their single original index row.
+    #[rustfmt::skip]
+    pub fn inventory_row(self) -> &'static ElementInventoryRow {
+        match self {
+"""
+    for name in element_names:
+        output += f"            Self::{variant(name)} => &ELEMENT_INVENTORY[{first_row[name]}],\n"
+    output += "        }\n    }\n}\n\n"
+    output += "#[rustfmt::skip]\nstatic ATTRIBUTE_INVENTORY: &[AttributeInventoryRow] = &[\n"
     known = set(element_names)
     for number, row in enumerate(attributes, 1):
         values = [cell["text"] for cell in row]
