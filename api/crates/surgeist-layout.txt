@@ -1867,8 +1867,10 @@ impl<S: surgeist_layout::LayoutScalar> surgeist_layout::RootLocalPositionedConte
 pub const fn surgeist_layout::RootLocalPositionedContextOf<S>::containing_flow_axes(self) -> surgeist_layout::FlowAxes
 pub const fn surgeist_layout::RootLocalPositionedContextOf<S>::containing_size(self) -> surgeist_layout::Size<surgeist_layout::NonNegativeFiniteOf<S>>
 pub fn surgeist_layout::RootLocalPositionedContextOf<S>::horizontal_auto_insets(containing_size: surgeist_layout::Size<surgeist_layout::NonNegativeFiniteOf<S>>, containing_direction: surgeist_layout::Direction, hypothetical_inline_offset: S, orthogonal_fallback: surgeist_layout::OrthogonalFallbackOf<S>) -> core::result::Result<Self, surgeist_layout::FiniteScalarErrorOf<S>>
+pub const fn surgeist_layout::RootLocalPositionedContextOf<S>::hypothetical_block_offset(self) -> core::option::Option<S>
 pub const fn surgeist_layout::RootLocalPositionedContextOf<S>::hypothetical_inline_offset(self) -> S
 pub const fn surgeist_layout::RootLocalPositionedContextOf<S>::orthogonal_fallback(self) -> surgeist_layout::OrthogonalFallbackOf<S>
+pub fn surgeist_layout::RootLocalPositionedContextOf<S>::with_hypothetical_block_offset(self, offset: S) -> core::result::Result<Self, surgeist_layout::FiniteScalarErrorOf<S>>
 pub struct surgeist_layout::ScrollGeometryOf<S: surgeist_layout::LayoutScalar>
 impl<S: surgeist_layout::LayoutScalar> surgeist_layout::ScrollGeometryOf<S>
 pub const fn surgeist_layout::ScrollGeometryOf<S>::border_box(self) -> surgeist_layout::ScrollRectOf<S>
