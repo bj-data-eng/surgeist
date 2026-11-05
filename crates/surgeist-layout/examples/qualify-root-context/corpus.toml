@@ -2084,3 +2084,22 @@ hypothetical_direction = "ltr"
 root_direction = "variant"
 root_writing_mode = "horizontal-tb"
 inline_offset = 0
+
+[[records]]
+source = "html/subgrid/subgrid_gap_percentage_border_bottom.html"
+source_sha256 = "db5cc28750958aa0df6c0692caafd131d284858e435e9fb0a1f6330527deb568"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "d843805defb38f2bd2a0636f011cddf62748093ee9c658c136d12493f93d526e"
+content_box_ltr = "8476029b36326901e7084d79201a18a03d13337d6fdbfc7533b347d25361074d"
+border_box_rtl = "f9c5422586daec1c1ab24142127cdede6c94651dd9d239acbfbb5690f9e1f846"
+content_box_rtl = "ed024235405c53ff26b76ff06e6addfb2f8457a1f5e956a66fabc4ae6c2c59be"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "block-flow"
+parent_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+root_position = "relative"
+grid_reference_owners = []
