@@ -956,24 +956,29 @@ where
                 ),
             },
         )?;
-        let margin = intrinsic_contribution_margin(
-            child_style,
-            constants.flow_axes,
-            constants.node_inner_size,
-        )
-        .map_err(|status| crate::error::value_resolution_error(child, status))?;
-        let logical_margin = grid.sizing_flow_axes.logical_edges(margin);
+        let contribution_margin = |parent_size| {
+            intrinsic_contribution_margin(child_style, constants.flow_axes, parent_size)
+                .map_err(|status| crate::error::value_resolution_error(child, status))
+        };
         let column_contribution_size =
             grid_axis_size(grid.sizing_flow_axes, output.size, GridAxisKind::Column);
         let row_contribution_size =
             grid_axis_size(grid.sizing_flow_axes, output.size, GridAxisKind::Row);
 
         if contributes_column {
+            // The item can change its ordinary grid area's inline size. Resolve
+            // cyclic percentages against zero while preserving fixed terms.
+            let margin_basis = if grid.style.display.inner_display() == Display::Grid {
+                Size::splat(Some(Tree::Scalar::ZERO))
+            } else {
+                constants.node_inner_size
+            };
+            let margin = contribution_margin(margin_basis)?;
             let child_flow_axes = FlowAxes::new(child_style.writing_mode, child_style.direction);
             let block_auto_margins = block_auto_margins_for_intrinsic_contribution(
                 child_style,
                 constants.flow_axes,
-                constants.node_inner_size,
+                margin_basis,
                 child_flow_axes,
             )
             .map_err(|status| crate::error::value_resolution_error(child, status))?;
@@ -1006,7 +1011,7 @@ where
                         .intrinsic_shim(member)
                 });
             let column_contribution = column_contribution_size
-                + logical_margin.inline_sum()
+                + grid.sizing_flow_axes.logical_edges(margin).inline_sum()
                 + column_baseline_shim.before
                 + column_baseline_shim.after;
             column_receipts.push(GridContributionReceipt {
@@ -1022,6 +1027,7 @@ where
         }
 
         if contributes_row || row_baseline_candidate {
+            let margin = contribution_margin(constants.node_inner_size)?;
             let child_flow_axes = FlowAxes::new(child_style.writing_mode, child_style.direction);
             let block_auto_margins = block_auto_margins_for_intrinsic_contribution(
                 child_style,
@@ -1057,7 +1063,8 @@ where
                 start: row_start,
                 end: row_end,
                 contributes_to_row_size: contributes_row,
-                contribution: row_contribution_size + logical_margin.block_sum(),
+                contribution: row_contribution_size
+                    + grid.sizing_flow_axes.logical_edges(margin).block_sum(),
                 baseline_member,
             });
         }

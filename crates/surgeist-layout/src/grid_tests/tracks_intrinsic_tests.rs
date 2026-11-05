@@ -4555,8 +4555,7 @@ fn grid_auto_placed_intrinsic_items_size_their_placed_tracks() {
 }
 
 #[test]
-fn grid_intrinsic_column_sizing_resolves_horizontal_percent_margins_against_containing_inline_size()
-{
+fn grid_intrinsic_columns_exclude_cyclic_margins_then_resolve_used_margins() {
     let mut tree = OracleTree::new()
         .measure_when(
             2,
@@ -4629,7 +4628,11 @@ fn grid_intrinsic_column_sizing_resolves_horizontal_percent_margins_against_cont
     )
     .unwrap();
 
-    assert_eq!(output.content_size.width, 220.0);
+    // The 20px auto track is the child's containing block. Each 50%
+    // margin resolves to 10px after sizing and does not grow the track.
+    assert_eq!(output.content_size.width, 200.0);
+    let child = tree.layout(2).unwrap();
+    assert_eq!((child.margin.left, child.margin.right), (10.0, 10.0));
 }
 
 #[test]

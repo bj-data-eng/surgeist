@@ -1335,7 +1335,7 @@ fn cyclic_grid_percentage_margin_uses_the_final_track_only_for_placement() {
     for box_sizing in [BoxSizing::BorderBox, BoxSizing::ContentBox] {
         for direction in [Direction::Ltr, Direction::Rtl] {
             for (column, container_width, track_width, margin) in [
-                (TrackComponentOf::px(100.0_f64), 100.0, 100.0, 1.0),
+                (TrackComponentOf::px(100.0_f64), 120.0, 100.0, 1.0),
                 (TrackComponentOf::AUTO, 50.0, 50.0, 0.5),
             ] {
                 let tree = PublicLayoutTreeOf::new()
@@ -1354,6 +1354,7 @@ fn cyclic_grid_percentage_margin_uses_the_final_track_only_for_placement() {
                             ),
                             grid_template_columns: vec![column],
                             grid_template_rows: vec![TrackComponentOf::px(10.0); 2],
+                            justify_content: Some(AlignContent::Start),
                             ..NodeInputOf::default()
                         },
                     )
@@ -1396,7 +1397,7 @@ fn cyclic_grid_percentage_margin_uses_the_final_track_only_for_placement() {
                 let track_probe = unrounded(2);
                 let x = match direction {
                     Direction::Ltr => margin,
-                    Direction::Rtl => track_width - 50.0 - margin,
+                    Direction::Rtl => container_width - 50.0 - margin,
                 };
                 let actual = (track_probe.size.width, child.margin, child.location.x);
                 let expected = (track_width, Edges::all(margin), x);
