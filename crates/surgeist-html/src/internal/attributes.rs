@@ -3305,10 +3305,7 @@ mod total_enum_tests {
     fn the_input_type_and_colorspace_defaults_are_the_rules_own() {
         assert_eq!(HtmlInputType::missing_value_default(), HtmlInputType::Text);
         assert_eq!(input_type_invalid_default(), HtmlInputType::Text);
-        assert_eq!(
-            input_colorspace_default(),
-            HtmlInputColorSpace::LimitedSrgb
-        );
+        assert_eq!(input_colorspace_default(), HtmlInputColorSpace::LimitedSrgb);
         assert_eq!(
             input_colorspace_invalid_default(),
             HtmlInputColorSpace::LimitedSrgb
