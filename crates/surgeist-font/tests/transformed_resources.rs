@@ -1,4 +1,4 @@
-use surgeist_font::{DecodeError, DecodeLimits, FontResource};
+use surgeist_font::{DecodeError, DecodeLimits, FontResource, InvalidKind};
 
 fn limits() -> DecodeLimits {
     DecodeLimits::new(2 << 20, 4 << 20, 2 << 20, 1000, 20, 32 << 20, 40 << 20)
@@ -356,4 +356,79 @@ fn signed_word_coordinates_can_preserve_a_short_loca_flag_run() {
     let resource = FontResource::decode(alternate_widths(1, 55000, false, true), limits()).unwrap();
     assert!(resource.face(0).unwrap().table(*b"glyf").unwrap().len() <= 131070);
     assert_alternate_points(&resource, 1, 55000, false, true);
+}
+
+#[test]
+fn overlap_on_a_repeated_first_flag_preserves_short_loca() {
+    // REC WOFF2 §5.1 stores overlap on the first physical TrueType flag
+    // byte. The ordinary repeat count can still cover three identical
+    // points: 14 header/end-point/instruction bytes + [0x79, 2] = 16.
+    // Splitting off a singleton instead would take 18 bytes after alignment,
+    // making 8,000 otherwise representable glyphs exceed short loca.
+    let glyphs = 8000usize;
+    let bbox = 4 * glyphs.div_ceil(32);
+    let mut outline = vec![0, 0, 0, 1];
+    outline.extend_from_slice(&(glyphs as u16).to_be_bytes());
+    outline.extend_from_slice(&0u16.to_be_bytes());
+    for length in [glyphs * 2, glyphs, glyphs * 3, glyphs * 4, 0, bbox, 0] {
+        outline.extend_from_slice(&(length as u32).to_be_bytes());
+    }
+    for _ in 0..glyphs {
+        outline.extend_from_slice(&[0, 1]);
+    }
+    outline.resize(outline.len() + glyphs, 3); // One contour of three points.
+    outline.resize(outline.len() + glyphs * 7 + bbox, 0); // Flags, triplets, instructions, bbox map.
+    outline.resize(outline.len() + glyphs.div_ceil(8), 255); // Overlap on every glyph.
+    let mut directory = vec![10];
+    base128(glyphs * 16, &mut directory);
+    base128(outline.len(), &mut directory);
+    directory.push(11);
+    base128((glyphs + 1) * 2, &mut directory);
+    base128(0, &mut directory);
+    let encoded = wrap(&directory, 2, &outline, [0, 1, 0, 0]);
+    let resource = FontResource::decode(encoded, limits()).unwrap();
+    let face = resource.face(0).unwrap();
+    let glyf = face.table(*b"glyf").unwrap();
+    let loca = face.table(*b"loca").unwrap();
+    assert_eq!(glyf.len(), glyphs * 16);
+    assert_eq!(loca.len(), (glyphs + 1) * 2);
+    let expected = [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0x79, 2];
+    assert!(glyf.chunks_exact(16).all(|glyph| glyph == expected));
+    for (index, word) in loca.chunks_exact(2).enumerate() {
+        assert_eq!(
+            usize::from(u16::from_be_bytes(word.try_into().unwrap())),
+            index * 8
+        );
+    }
+}
+
+fn implicit_bbox_outline(first_y: u16) -> Vec<u8> {
+    // Two on-curve points: (0, first_y) and (0, first_y + 1). Both delta
+    // words fit; the inferred bounding box must also fit the SFNT i16 fields.
+    let mut outline = vec![0, 0, 0, 0, 0, 1, 0, 0];
+    for length in [2u32, 1, 2, 6, 0, 4, 0] {
+        outline.extend_from_slice(&length.to_be_bytes());
+    }
+    outline.extend_from_slice(&[0, 1, 2, 127, 1, 0, 0]);
+    outline.extend_from_slice(&first_y.to_be_bytes());
+    outline.extend_from_slice(&[1, 0, 0, 0, 0, 0]); // Delta, instructions, bbox map.
+    let mut directory = vec![10];
+    base128(0, &mut directory); // Reconstructed glyf length is reference-only.
+    base128(outline.len(), &mut directory);
+    directory.extend_from_slice(&[11, 4, 0]);
+    wrap(&directory, 2, &outline, [0, 1, 0, 0])
+}
+
+#[test]
+fn inferred_glyph_bounds_must_fit_signed_sfnt_fields() {
+    let control = FontResource::decode(implicit_bbox_outline(32766), limits()).unwrap();
+    let face = control.face(0).unwrap();
+    assert_eq!(
+        &face.table(*b"glyf").unwrap()[8..10],
+        &32767i16.to_be_bytes()
+    );
+    assert!(matches!(
+        FontResource::decode(implicit_bbox_outline(32767), limits()),
+        Err(DecodeError::InvalidContainer(error)) if error.kind() == InvalidKind::WoffGlyph
+    ));
 }
