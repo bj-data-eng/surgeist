@@ -749,9 +749,9 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
     let measured = edition == PublishedEdition::MeasuredGrid;
     let flex_text = edition == PublishedEdition::FlexText;
     let (observation_request, observation_input_sha256) = match edition {
-        PublishedEdition::CanonicalBoxes | PublishedEdition::GridStaticPosition => {
-            ("geometry", None)
-        }
+        PublishedEdition::CanonicalBoxes
+        | PublishedEdition::GridStaticPosition
+        | PublishedEdition::RelativeInsets => ("geometry", None),
         PublishedEdition::MeasuredGrid | PublishedEdition::FlexText => {
             let request = terminal
                 .retained_inputs
