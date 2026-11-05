@@ -1001,17 +1001,17 @@ where
         } else {
             logical_location.block + logical_child_size.block
         };
-        // Normal intrinsic demand uses only the accepted border geometry and
-        // margins. Performed child content may include recursive visual
-        // overflow, which belongs exclusively to the scroll contributions.
-        let border_inline_start = match constants.flow_axes.inline_axis() {
-            PhysicalAxis::Horizontal => flow_location.x - constants.content_box_inset.left,
-            PhysicalAxis::Vertical => flow_location.y - constants.content_box_inset.top,
-        };
-        let border_inline_span = (border_inline_start + logical_child_size.inline).max(S::ZERO)
-            - border_inline_start.min(S::ZERO);
-        let child_inline_demand = (logical_child_margin.inline_sum() + logical_child_size.inline)
-            .max(border_inline_span + logical_child_margin.inline_end);
+        // Intrinsic demand uses the signed margin box in logical flow.
+        // The separate scroll contributions retain the full physical span.
+        let margin_inline_end = constants
+            .flow_axes
+            .logical_point(flow_location, output.size, containing_size)
+            .inline
+            + logical_child_size.inline
+            + logical_child_margin.inline_end
+            - constants.logical_content_box_inset().inline_start;
+        let child_inline_demand =
+            (logical_child_size.inline + logical_child_margin.inline_sum()).max(margin_inline_end);
         intrinsic_inline_demand = intrinsic_inline_demand.max(child_inline_demand);
         // Export normal baseline facts; relative movement belongs to visual
         // placement, not to the baseline used by a parent's normal line.
