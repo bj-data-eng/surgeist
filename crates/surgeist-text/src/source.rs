@@ -272,9 +272,7 @@ impl Source {
 
     pub fn push(&mut self, text: impl Into<Text>) -> Range {
         let start = SourcePosition::from_unchecked(self.text.len());
-        let mut units = self.text.code_units().to_vec();
-        units.extend_from_slice(text.into().code_units());
-        self.text = Text::from_code_units(units);
+        self.text.append_units(text.into().code_units());
         SourceRange::from_unchecked(start, SourcePosition::from_unchecked(self.text.len())).range()
     }
 

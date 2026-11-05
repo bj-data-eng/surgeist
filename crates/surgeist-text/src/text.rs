@@ -2,13 +2,13 @@ use std::sync::Arc;
 
 /// Immutable exact UTF-16 source text, including isolated surrogate code units.
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
-pub struct Text(Arc<[u16]>);
+pub struct Text(Arc<Vec<u16>>);
 
 impl Text {
     /// Owns the supplied code units without repairing or normalizing them.
     #[must_use]
     pub fn from_code_units(units: Vec<u16>) -> Self {
-        Self(units.into())
+        Self(Arc::new(units))
     }
 
     /// Borrows the original code units.
@@ -26,6 +26,12 @@ impl Text {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+
+    pub(crate) fn append_units(&mut self, units: &[u16]) {
+        if !units.is_empty() {
+            Arc::make_mut(&mut self.0).extend_from_slice(units);
+        }
     }
 
     pub(crate) fn is_scalar_boundary(&self, index: usize) -> bool {
