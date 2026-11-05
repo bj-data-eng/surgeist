@@ -590,8 +590,9 @@ impl<S: LayoutScalar> PositionedRootContextOf<S> {
 /// opposite preferred size.
 ///
 /// This offset is the hypothetical position relative to the ICB's physical top.
-/// The vertical root fits within the nonnegative remaining ICB height. Each
-/// percentage uses the full containing-block extent on its physical axis.
+/// The vertical root uses the nonnegative remaining ICB height as fit-content
+/// availability. Each percentage uses the full containing-block extent on its
+/// physical axis.
 /// Normal sizing applies authored box sizing and min/max constraints.
 /// Without a supplied block-start offset the request's physical height
 /// availability is indefinite.
