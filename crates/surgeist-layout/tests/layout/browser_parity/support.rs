@@ -3731,8 +3731,8 @@ fn compare_expectation_with_endpoint_accounting(
         table.finish(comparison_state.element_scroll_next)?;
     }
     let mut result = ComparisonResult::default();
-    let mut unsupported_band = None;
-    for pending in std::mem::take(&mut comparison_state.pending_browser_controls) {
+    let pending_controls = std::mem::take(&mut comparison_state.pending_browser_controls);
+    for pending in &pending_controls {
         if let Some(field) = compare_browser_control_expectation(
             tree,
             pending.node,
@@ -3743,23 +3743,11 @@ fn compare_expectation_with_endpoint_accounting(
         )? {
             result.record_endpoint_unobservable(field);
         }
-        if let Some(band) = pending.band {
-            validate_browser_br_band_source(
-                tree,
-                pending.node,
-                pending.context.as_ref(),
-                &pending.path,
-            )?;
-            if unsupported_band.is_none() {
-                unsupported_band = Some((pending.path, band));
-            }
-        }
     }
-    if let Some((path, band)) = unsupported_band {
-        return Err(Error::new(format!(
-            "{path}: unsupported browser BR font-band observation (x={}, y={}, width={}, height={}): native control points and line metrics do not provide a font band",
-            band.x, band.y, band.width, band.height
-        )));
+    for pending in &pending_controls {
+        if let Some(band) = pending.band {
+            compare_browser_br_font_band(tree, pending, band, use_rounding)?;
+        }
     }
     Ok(result)
 }
@@ -4920,12 +4908,135 @@ fn range_rectangle_ancestor_translation(
     Ok(translation)
 }
 
+fn compare_browser_br_font_band(
+    tree: &TestTree,
+    pending: &PendingBrowserControl,
+    expected: BrowserBrFontBand,
+    use_rounding: bool,
+) -> Result<(), Error> {
+    let path = &pending.path;
+    let node = pending.node;
+    let parent = validate_browser_br_band_source(tree, node, pending.context.as_ref(), path)?;
+    let actual = project_horizontal_browser_br_font_band(tree, parent, node, use_rounding)
+        .map_err(|reason| Error::new(format!("{path}: {reason}")))?
+        .ok_or_else(|| Error::new(format!(
+            "{path}: unsupported browser BR font-band observation (x={}, y={}, width={}, height={}): no qualified horizontal pinned-font projection",
+            expected.x, expected.y, expected.width, expected.height
+        )))?;
+    for (field, actual, expected) in [
+        ("x", actual.x, expected.x),
+        ("y", actual.y, expected.y),
+        ("width", actual.width, expected.width),
+        ("height", actual.height, expected.height),
+    ] {
+        if actual != expected {
+            return Err(Error::new(format!(
+                "{path}: BR font-band {field} mismatch, expected {expected}, got {actual}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn project_horizontal_browser_br_font_band(
+    tree: &TestTree,
+    parent: usize,
+    node: usize,
+    use_rounding: bool,
+) -> Result<Option<BrowserBrFontBand>, Error> {
+    let input = &tree.nodes[node];
+    let layout::LayoutInput::TextControl(control) = &input.layout_input else {
+        return Ok(None);
+    };
+    if tree.nodes[parent].parent.is_some()
+        || tree.box_node_input(parent).writing_mode != layout::WritingMode::HorizontalTb
+    {
+        return Ok(None);
+    }
+    let [fragment] = input
+        .unrounded_inline_fragments
+        .as_deref()
+        .unwrap_or_default()
+    else {
+        return Err(Error::new(
+            "BR font-band requires exactly one Native control fragment",
+        ));
+    };
+    if fragment.finalized_fragment().view().owner()
+        != surgeist_text::FinalizedFragmentOwner::Control(control.occurrence().clone())
+    {
+        return Err(Error::new(
+            "BR font-band fragment has a foreign control occurrence",
+        ));
+    }
+    let mut placements = tree
+        .placed_text
+        .iter()
+        .filter(|placed| placed.container() == parent && placed.nodes().contains(&node));
+    let placed = placements
+        .next()
+        .ok_or_else(|| Error::new("BR font-band has no placed control result"))?;
+    if placements.next().is_some() {
+        return Err(Error::new(
+            "BR font-band has ambiguous placed control results",
+        ));
+    }
+    let metrics = placed
+        .layout()
+        .placed_break_font_metrics(fragment.line_index(), fragment.finalized_fragment())
+        .map_err(|error| Error::new(format!("BR font-band placement association: {error}")))?;
+    let Some(metrics) = metrics else {
+        return Ok(None);
+    };
+    let instance = metrics.instance();
+    if instance.face().bytes() != pinned_font::BYTES
+        || instance.face().index() != 0
+        || instance.font_size() != 20.0
+        || instance.axis_count() != 0
+        || instance.synthesis() != surgeist_text::FontSynthesis::default()
+        || metrics.font_origin_offset() != 0.0
+    {
+        return Ok(None);
+    }
+    let x = f64::from(input.unrounded.location.x);
+    let baseline = f64::from(fragment.baseline().y);
+    let y = baseline - metrics.ascent();
+    let bottom = baseline + metrics.descent();
+    // This profile measures direct children of the capture root. Chromium's
+    // pre-leading Ahem20 metrics are integral. The browser observation rounds
+    // the root-local rectangle corners for the rounded capture.
+    let (x, y, bottom) = if use_rounding {
+        (
+            browser_round_corner(x),
+            browser_round_corner(y),
+            browser_round_corner(bottom),
+        )
+    } else {
+        (x, y, bottom)
+    };
+    Ok(Some(BrowserBrFontBand {
+        x: x as Scalar,
+        y: y as Scalar,
+        width: 0.0,
+        height: (bottom - y) as Scalar,
+    }))
+}
+
+fn browser_round_corner(value: f64) -> f64 {
+    let lower = value.floor();
+    if value - lower < 0.5 {
+        lower
+    } else {
+        lower + 1.0
+    }
+}
+
 fn validate_browser_br_band_source(
     tree: &TestTree,
     node: usize,
     context: Option<&OwnedBrowserControlContext>,
     path: &str,
-) -> Result<(), Error> {
+) -> Result<usize, Error> {
     let context = context.ok_or_else(|| {
         Error::new(format!(
             "{path}: BR font-band requires an actual source-child association"
@@ -4949,7 +5060,7 @@ fn validate_browser_br_band_source(
             "{path}: BR font-band source mismatch, expected an authentic visible inline BR in its actual parent frame"
         )));
     }
-    Ok(())
+    Ok(context.parent)
 }
 
 fn semantic_br_flow(tree: &TestTree, node: usize) -> Option<layout::FlowAxes> {
