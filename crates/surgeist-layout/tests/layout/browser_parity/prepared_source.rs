@@ -1893,6 +1893,19 @@ mod tests {
     }
 
     #[test]
+    fn ordinary_comparison_requires_explicit_br_font_band_profile() {
+        let golden = opaque_break_observation_golden();
+        let error =
+            super::super::assert_native_input_matches(&golden, opaque_break_observation_request())
+                .unwrap_err()
+                .to_string();
+        assert!(
+            error.contains("unsupported browser BR font-band observation"),
+            "{error}"
+        );
+    }
+
+    #[test]
     fn placed_break_metrics_require_the_actual_finalized_line() {
         let golden = opaque_break_observation_golden();
         let request = opaque_break_observation_request();
