@@ -2054,3 +2054,18 @@ hypothetical_direction = "ltr"
 root_direction = "variant"
 root_writing_mode = "horizontal-tb"
 inline_offset = 0
+
+[[records]]
+source = "html/qualification/flex-basis-with-wide-block-content.html"
+source_sha256 = "3a20e79b4ac4da284aebcbf36b058b658d9b4913bde5dcc8557d8b0225d5ea55"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "flex"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0

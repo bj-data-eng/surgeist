@@ -6816,6 +6816,21 @@ fn assert_flex_basis_does_not_replace_intrinsic_content<S: LayoutScalar>() {
         assert_eq!(output(5).size.width, scalar(20.0), "{label}: block");
     }
 
+    for (grow, expected) in [(0.0, 50.0), (1.0, 80.0)] {
+        let mut wide_item = item.clone();
+        wide_item.min_size.width = MinSizeOf::ZERO;
+        wide_item.flex_grow = FlexGrowOf::try_new(scalar(grow)).unwrap();
+        let mut wide_block = block.clone();
+        wide_block.size.width = px(80.0);
+        let wide = tree.tree.clone().style(3, wide_item).style(5, wide_block);
+        let batch = compute_layout(&wide, 1, normal).expect("wide flex content layout succeeds");
+        let output = |node| fri07_c01_composition_output(batch.unrounded_entries(), node);
+        assert_eq!(output(1).size.width, scalar(expected), "grow {grow}: root");
+        assert_eq!(output(3).size.width, scalar(expected), "grow {grow}: item");
+        assert_eq!(output(3).content_size.width, scalar(80.0), "item content");
+        assert_eq!(output(5).size.width, scalar(80.0), "block width");
+    }
+
     let definite_root = NodeInputOf {
         size: Size::new(px(100.0), PreferredSizeOf::AUTO),
         ..root
