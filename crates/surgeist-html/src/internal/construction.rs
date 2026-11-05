@@ -1285,16 +1285,52 @@ fn ready_or_recover(
     })
 }
 
+/// The storage a builder holds, or the fact that an operation could not hand it back.
+#[derive(Debug)]
+enum BuilderStorage {
+    Held(bounded::HtmlConstructionStorage),
+    /// An operation took the storage and its abort was refused, so no storage remains. No native
+    /// command can cause this, since only a publication shares its arena. Every handle operation
+    /// and `finish` report the shared-allocation cause, and `usage` reports what the storage held
+    /// when it was last held.
+    Lost {
+        usage: HtmlConstructionUsage,
+    },
+}
+
 #[derive(Debug)]
 struct Builder {
-    storage: bounded::HtmlConstructionStorage,
+    storage: BuilderStorage,
     /// The root issued when the builder was created, which the storage keeps for its life.
     root: HtmlBuilderNode,
     limits: HtmlConstructionLimits,
 }
 impl Builder {
-    fn storage(&self) -> &bounded::HtmlConstructionStorage {
-        &self.storage
+    fn storage(&self) -> Result<&bounded::HtmlConstructionStorage, HtmlConstructionError> {
+        match &self.storage {
+            BuilderStorage::Held(storage) => Ok(storage),
+            BuilderStorage::Lost { .. } => {
+                Err(HtmlConstructionErrorKind::SharedAllocationAliased.into())
+            }
+        }
+    }
+    /// The usage of the held storage, or of the storage that was last held.
+    fn usage(&self) -> HtmlConstructionUsage {
+        match &self.storage {
+            BuilderStorage::Held(storage) => storage.usage(),
+            BuilderStorage::Lost { usage } => *usage,
+        }
+    }
+    /// Hands the storage to an operation. The builder holds none until the operation hands it
+    /// back.
+    fn take_storage(&mut self) -> Result<bounded::HtmlConstructionStorage, HtmlConstructionError> {
+        let usage = self.usage();
+        match std::mem::replace(&mut self.storage, BuilderStorage::Lost { usage }) {
+            BuilderStorage::Held(storage) => Ok(storage),
+            BuilderStorage::Lost { .. } => {
+                Err(HtmlConstructionErrorKind::SharedAllocationAliased.into())
+            }
+        }
     }
     fn new(
         limits: HtmlConstructionLimits,
@@ -1318,13 +1354,15 @@ impl Builder {
         let (storage, outcome) = drive_native(storage, command);
         let root = outcome?.ok_or(HtmlConstructionErrorKind::OperationNotReady)?;
         Ok(Self {
-            storage: storage.ok_or(HtmlConstructionErrorKind::OperationNotReady)?,
+            storage: BuilderStorage::Held(
+                storage.ok_or(HtmlConstructionErrorKind::SharedAllocationAliased)?,
+            ),
             root,
             limits,
         })
     }
     fn index(&self, node: &HtmlBuilderNode) -> Result<usize, HtmlConstructionError> {
-        self.storage().position(node)
+        self.storage()?.position(node)
     }
     fn admit(
         &self,
@@ -1335,7 +1373,7 @@ impl Builder {
         depth: usize,
     ) -> Result<HtmlConstructionUsage, HtmlConstructionError> {
         admit(
-            self.storage(),
+            self.storage()?,
             self.limits,
             nodes,
             edges,
@@ -1346,18 +1384,16 @@ impl Builder {
     }
 
     /// Runs `command` on the storage. The storage moves into the operation and comes back on every
-    /// outcome. The empty arena of the same identity stands in meanwhile; it stays only if the
-    /// operation could not hand the storage back, which no native command can cause, and every
-    /// handle then reports an unknown node.
+    /// outcome. It stays lost only if the operation could not hand it back, which no native command
+    /// can cause.
     fn apply(
         &mut self,
         command: bounded::operations::HtmlConstructionCommand,
     ) -> Result<Option<HtmlBuilderNode>, HtmlConstructionError> {
-        let vacated = self.storage.vacated();
-        let storage = std::mem::replace(&mut self.storage, vacated);
+        let storage = self.take_storage()?;
         let (storage, outcome) = drive_native(storage, command);
         if let Some(storage) = storage {
-            self.storage = storage;
+            self.storage = BuilderStorage::Held(storage);
         }
         outcome
     }
@@ -1370,7 +1406,7 @@ impl Builder {
             .ok_or_else(|| HtmlConstructionErrorKind::OperationNotReady.into())
     }
     fn depth(&self, index: usize) -> Result<usize, HtmlConstructionError> {
-        Ok(self.storage().native_depth(index))
+        Ok(self.storage()?.native_depth(index))
     }
     fn append(
         &mut self,
@@ -1378,7 +1414,7 @@ impl Builder {
         kind: HtmlNodeKind,
     ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
         let parent_position = self.index(parent)?;
-        let parent_view = self.storage().node(parent)?;
+        let parent_view = self.storage()?.node(parent)?;
         if !matches!(
             parent_view.kind(),
             HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment | HtmlNodeKind::Element(_)
@@ -1401,8 +1437,8 @@ impl Builder {
             units,
             depth,
         )?;
-        let previous_usage = self.storage().usage();
-        let previous_len = self.storage().len();
+        let previous_usage = self.usage();
+        let previous_len = self.storage()?.len();
         let created =
             self.apply_creating(bounded::operations::HtmlConstructionCommand::Create { kind })?;
         if let Err(error) = self.apply(bounded::operations::HtmlConstructionCommand::Insert {
@@ -1410,18 +1446,23 @@ impl Builder {
             parent: parent.clone(),
             before: None,
         }) {
-            self.storage
-                .rollback_native_append(previous_len, previous_usage);
+            self.roll_back_append(previous_len, previous_usage);
             return Err(error);
         }
         Ok(created)
+    }
+    /// Undoes an uncommitted append. Storage that was lost has nothing to undo.
+    fn roll_back_append(&mut self, len: usize, usage: HtmlConstructionUsage) {
+        if let BuilderStorage::Held(storage) = &mut self.storage {
+            storage.rollback_native_append(len, usage);
+        }
     }
     fn template_contents(
         &self,
         template: &HtmlBuilderNode,
     ) -> Result<Option<HtmlBuilderNode>, HtmlConstructionError> {
         Ok(self
-            .storage()
+            .storage()?
             .node(template)?
             .template_contents()
             .map(bounded::HtmlConstructionNode::handle))
@@ -1432,7 +1473,7 @@ impl Builder {
         properties: HtmlShadowRootProperties,
     ) -> Result<HtmlBuilderNode, HtmlConstructionError> {
         let host_position = self.index(host)?;
-        let view = self.storage().node(host)?;
+        let view = self.storage()?.node(host)?;
         if !matches!(view.kind(), HtmlNodeKind::Element(_)) {
             return Err(HtmlConstructionErrorKind::ShadowHostMustBeElement.into());
         }
@@ -1444,8 +1485,8 @@ impl Builder {
             .checked_add(1)
             .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
         self.admit(1, 1, 0, 0, depth)?;
-        let previous_usage = self.storage().usage();
-        let previous_len = self.storage().len();
+        let previous_usage = self.usage();
+        let previous_len = self.storage()?.len();
         let contents = self.apply_creating(
             bounded::operations::HtmlConstructionCommand::CreateShadowContents { properties },
         )?;
@@ -1453,8 +1494,7 @@ impl Builder {
             host: host.clone(),
             contents: contents.clone(),
         }) {
-            self.storage
-                .rollback_native_append(previous_len, previous_usage);
+            self.roll_back_append(previous_len, previous_usage);
             return Err(error);
         }
         Ok(contents)
@@ -1463,12 +1503,14 @@ impl Builder {
     /// the publication's own validation, which the append steps are meant to make impossible, so
     /// no half-published builder is worth keeping.
     fn finish(self) -> Result<bounded::HtmlConstructionResult, HtmlConstructionError> {
-        let root = self
-            .storage
+        let BuilderStorage::Held(storage) = self.storage else {
+            return Err(HtmlConstructionErrorKind::SharedAllocationAliased.into());
+        };
+        let root = storage
             .node_at(0)
             .ok_or(HtmlConstructionErrorKind::UnknownNode)?
             .handle();
-        let mut operation = self.storage.prepare_finish(root);
+        let mut operation = storage.prepare_finish(root);
         while let Some(action) = operation.next_action()? {
             action
                 .perform()
@@ -1560,7 +1602,7 @@ macro_rules! authoring_methods {
         }
         /// Current admitted usage; rejected appends never change it.
         pub fn usage(&self) -> HtmlConstructionUsage {
-            self.builder.storage().usage()
+            self.builder.usage()
         }
         /// Appends exact shared element values without HTML normalization or a
         /// general content-conformance check. HTML templates get separate contents.
@@ -1673,13 +1715,13 @@ mod tests {
     /// What an operation that cannot hand the storage back leaves: no native command can cause it,
     /// because only a publication shares its arena, so the test produces the state directly.
     fn lose_storage(builder: &mut Builder) {
-        let vacated = builder.storage.vacated();
-        drop(std::mem::replace(&mut builder.storage, vacated));
+        drop(builder.take_storage().unwrap());
     }
 
     #[test]
     fn a_builder_without_storage_reports_the_loss_and_the_usage_it_last_held() {
-        let mut builder = HtmlFragment::builder(HtmlConstructionLimits::new(4, 4, 0, 8, 3)).unwrap();
+        let mut builder =
+            HtmlFragment::builder(HtmlConstructionLimits::new(4, 4, 0, 8, 3)).unwrap();
         let root = builder.root();
         let comment = builder.append_comment(&root, "c").unwrap();
         let usage = builder.usage();
@@ -1698,7 +1740,9 @@ mod tests {
             let error = outcome.expect_err("a builder without storage refuses every operation");
             assert!(error.is_shared_allocation_aliased(), "{error}");
         }
-        let error = builder.finish().expect_err("a builder without storage cannot finish");
+        let error = builder
+            .finish()
+            .expect_err("a builder without storage cannot finish");
         assert!(error.is_shared_allocation_aliased(), "{error}");
     }
 
@@ -1712,10 +1756,9 @@ mod tests {
             NativeRoot::Fragment,
         )
         .unwrap();
-        let usage = builder.storage().usage();
-        let records = builder.storage().len();
-        let vacated = builder.storage.vacated();
-        let storage = std::mem::replace(&mut builder.storage, vacated);
+        let usage = builder.usage();
+        let records = builder.storage().unwrap().len();
+        let storage = builder.take_storage().unwrap();
         let operation =
             storage.prepare(bounded::operations::HtmlConstructionCommand::CreateFragment);
         let Err((Some(storage), error)) = ready_or_recover(operation) else {
@@ -1723,7 +1766,7 @@ mod tests {
         };
         assert!(error.is_operation_not_ready());
         assert_eq!((storage.usage(), storage.len()), (usage, records));
-        builder.storage = storage;
+        builder.storage = BuilderStorage::Held(storage);
         // The builder keeps working with the recovered storage.
         let root = builder.root.clone();
         builder
@@ -1868,7 +1911,7 @@ mod tests {
                 let mut builder = Builder::new(limits, NativeRoot::Fragment).unwrap();
                 let root = builder.root.clone();
                 let result = builder.append(&root, kind.clone());
-                (result.map(|_| ()), builder.storage().usage())
+                (result.map(|_| ()), builder.usage())
             };
             let roomy = HtmlConstructionLimits::new(8, 8, 8, 1_000, 8);
             let (result, committed) = append(roomy);

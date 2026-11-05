@@ -3302,7 +3302,10 @@ mod native_finish_tests {
         builder
             .append(&root, HtmlNodeKind::Comment("c".into()))
             .unwrap();
-        builder.storage.arena.records[1].parent = None;
+        let BuilderStorage::Held(storage) = &mut builder.storage else {
+            panic!("a fresh builder holds its storage");
+        };
+        storage.arena.records[1].parent = None;
         let outcome = catch_unwind(AssertUnwindSafe(|| builder.finish()));
         let Ok(result) = outcome else {
             panic!("finish panicked on a refused publication");
