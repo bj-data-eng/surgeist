@@ -454,3 +454,97 @@ fn numeric_collection_does_not_require_baselines_from_a_nonparticipating_hidden_
             .is_empty()
     );
 }
+
+#[test]
+fn captured_flex_baselines_use_original_prepared_text() {
+    const ORIGINAL: &str = "html/flex/fri07_collapsed_strut_single_line.html";
+    const STYLESHEET: &str = "scripts/gentest/test_base_style.css";
+    let source = include_bytes!("html/flex/fri07_collapsed_strut_single_line.html");
+    let stylesheet = include_bytes!("scripts/gentest/test_base_style.css");
+    let encoded_font =
+        include_bytes!("../../../../surgeist-font/tests/fixtures/ahem-original/Ahem.woff2");
+    let raw_report =
+        include_str!("captured/flex-content-baselines/xml/generation-reports/all.json");
+    let report = capture_authority::unique_json(raw_report).unwrap();
+    let inputs = &report["metadata"]["inputs"];
+    assert_eq!(inputs[ORIGINAL], capture_authority::sha256(source));
+    assert_eq!(inputs[STYLESHEET], capture_authority::sha256(stylesheet));
+    assert_eq!(
+        capture_authority::sha256(stylesheet),
+        pinned_font::ROOT_CONTEXT_STYLESHEET_SHA256
+    );
+    assert_eq!(
+        capture_authority::sha256(encoded_font),
+        pinned_font::AHEM_STYLESHEET_WOFF2_SHA256
+    );
+
+    macro_rules! capture {
+        ($variant:literal) => {
+            (
+                $variant,
+                include_str!(concat!(
+                    "captured/flex-content-baselines/xml/flex/fri07_collapsed_strut_single_line__",
+                    $variant,
+                    ".xml"
+                )),
+            )
+        };
+    }
+    let captures = [
+        capture!("border_box_ltr"),
+        capture!("border_box_rtl"),
+        capture!("content_box_ltr"),
+        capture!("content_box_rtl"),
+    ];
+    let artifacts = report["generated"].as_array().unwrap();
+    assert_eq!(artifacts.len(), captures.len());
+
+    let mut failures = Vec::new();
+    for (variant, xml) in captures {
+        let artifact = artifacts
+            .iter()
+            .find(|artifact| artifact["variant"] == variant)
+            .expect("each box and direction variant is in the capture report");
+        assert_eq!(artifact["source"], ORIGINAL);
+        assert_eq!(artifact["source_sha256"], inputs[ORIGINAL]);
+        assert_eq!(
+            artifact["output_sha256"],
+            capture_authority::sha256(xml.as_bytes())
+        );
+
+        let golden = Golden::parse(xml).expect("original V4 capture parses");
+        assert_eq!(artifact["name"], golden.name);
+        assert!(golden.has_element_scroll_sizes());
+        let labels = golden
+            .root
+            .children
+            .iter()
+            .map(|child| child.text.as_deref().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(labels, ["base", "small strut", "peer", "large strut"]);
+
+        let mut numeric = NumericComparisonSink::CollectNumeric(Vec::new());
+        let result = compare_captured_with_batch(&golden, &mut numeric, |tree, batch| {
+            let children = &tree.nodes[0].children;
+            assert_eq!(children.len(), 4);
+            let [first, second] = batch.placed_text() else {
+                panic!("only the two visible labels have placed text");
+            };
+            for (placed, node, length) in [(first, children[0], 4), (second, children[2], 4)] {
+                assert_eq!(tree.nodes[placed.container()].parent, Some(node));
+                assert_eq!(tree.nodes[node].unrounded.location.y, 0.0);
+                let lines = placed.layout().lines();
+                assert_eq!(lines.len(), 1);
+                assert_eq!(lines[0].range(), surgeist_text::Range::new(0, length));
+            }
+            for node in [children[1], children[3]] {
+                assert_eq!(tree.nodes[node].unrounded.size, layout::Size::ZERO);
+            }
+            Ok(())
+        });
+        if let Err(error) = result {
+            failures.push(format!("{variant}: {error}"));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}

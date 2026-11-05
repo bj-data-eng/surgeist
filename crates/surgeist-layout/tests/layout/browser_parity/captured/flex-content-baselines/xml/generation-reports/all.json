@@ -1,0 +1,80 @@
+{
+  "metadata": {
+    "schema_version": 4,
+    "generator": "surgeist-layout-root-context-focused",
+    "engine_version": "0.2.0",
+    "host_executable_sha256": "7a552a8d0e052cee9be0ea6cb7785b646796298c0decce69c9b5e6836b416e96",
+    "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+    "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+    "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+    "contract_sha256": "f3b1ffbe56331b9f5d9b83cabe76a215ab7af6147530e2271a347726cb8739e2",
+    "inputs": {
+      "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+      "corpus.toml": "d9b9eff16a9b9096c0d6836cc1f57fb9cb1ef1d74656820a6e585a5c551aae04",
+      "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+      "historical/flex/fri07_collapsed_strut_single_line__border_box_ltr.xml": "d2adc703ffd8386e2f1bdeb5a0c8da2a2dc982c6e6966f467c4a12814824383f",
+      "historical/flex/fri07_collapsed_strut_single_line__border_box_rtl.xml": "cc01070476de0dc10a3585bedb3f8ad0e1484993aa48e3f0b535fe6a37762813",
+      "historical/flex/fri07_collapsed_strut_single_line__content_box_ltr.xml": "6b87be5b7a3198f54988a0077c40a04b993075dd43ad0b43abbe13a49bd19975",
+      "historical/flex/fri07_collapsed_strut_single_line__content_box_rtl.xml": "f4de5a54bd81e97f8c2aacc2701808b588eea9827cff941d56343d0e1df7cef1",
+      "html/flex/fri07_collapsed_strut_single_line.html": "4208c20c25da2183ce9831c629bdf18e4bd35be0a5c6875e1840d972ecd1cbad",
+      "observation-request.json": "b1993616718ea52830d67c0bce32d23efb1a47e1bff980c220863d54e4dc9b23",
+      "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+      "scripts/gentest/test_helper.js": "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee"
+    },
+    "source_imports": []
+  },
+  "filter": null,
+  "summary": {
+    "generated": 4,
+    "unsupported": 0,
+    "expected_fail": 0,
+    "quarantined": 0,
+    "failed_to_generate": 0
+  },
+  "generated": [
+    {
+      "name": "fri07_collapsed_strut_single_line__border_box_ltr",
+      "source": "html/flex/fri07_collapsed_strut_single_line.html",
+      "output": "xml/flex/fri07_collapsed_strut_single_line__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "source_sha256": "4208c20c25da2183ce9831c629bdf18e4bd35be0a5c6875e1840d972ecd1cbad",
+      "linked_resources": {},
+      "job_sha256": "2739433a16c3947876530c30688692f24cd2c62717e4e13be8cf2332543e36d2",
+      "output_sha256": "a4dffff10a9d334464eeee197ef1b64cfd22dde85457dd977f9e284cb2add9be"
+    },
+    {
+      "name": "fri07_collapsed_strut_single_line__border_box_rtl",
+      "source": "html/flex/fri07_collapsed_strut_single_line.html",
+      "output": "xml/flex/fri07_collapsed_strut_single_line__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "source_sha256": "4208c20c25da2183ce9831c629bdf18e4bd35be0a5c6875e1840d972ecd1cbad",
+      "linked_resources": {},
+      "job_sha256": "2739433a16c3947876530c30688692f24cd2c62717e4e13be8cf2332543e36d2",
+      "output_sha256": "a9ab00ae1d76a9041ee0fba7b2c4b83d51a898cca487b42c91fe8bb174dba0ef"
+    },
+    {
+      "name": "fri07_collapsed_strut_single_line__content_box_ltr",
+      "source": "html/flex/fri07_collapsed_strut_single_line.html",
+      "output": "xml/flex/fri07_collapsed_strut_single_line__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "source_sha256": "4208c20c25da2183ce9831c629bdf18e4bd35be0a5c6875e1840d972ecd1cbad",
+      "linked_resources": {},
+      "job_sha256": "2739433a16c3947876530c30688692f24cd2c62717e4e13be8cf2332543e36d2",
+      "output_sha256": "937369088b07d98fa122eae02e30ecb289ba332124d3642e8149b33c89a96edb"
+    },
+    {
+      "name": "fri07_collapsed_strut_single_line__content_box_rtl",
+      "source": "html/flex/fri07_collapsed_strut_single_line.html",
+      "output": "xml/flex/fri07_collapsed_strut_single_line__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "source_sha256": "4208c20c25da2183ce9831c629bdf18e4bd35be0a5c6875e1840d972ecd1cbad",
+      "linked_resources": {},
+      "job_sha256": "2739433a16c3947876530c30688692f24cd2c62717e4e13be8cf2332543e36d2",
+      "output_sha256": "a9cc2167b8fac3ba82895fb3db39e7524f21dafb4a7c6f543e59c1edd38cadc8"
+    }
+  ],
+  "unsupported": [],
+  "expected_fail": [],
+  "quarantined": [],
+  "failed_to_generate": []
+}
