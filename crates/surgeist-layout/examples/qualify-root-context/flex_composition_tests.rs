@@ -69,6 +69,7 @@ fn replay(owner: &Path, root: &Path, current: &[u8]) -> Result<Vec<u8>> {
             lineage: SemanticLineage::Focused,
             requirements: None,
             terminal_cases: None,
+            geometry_predecessors: BTreeMap::new(),
             policy_raw: &mut raw,
         },
     )?;

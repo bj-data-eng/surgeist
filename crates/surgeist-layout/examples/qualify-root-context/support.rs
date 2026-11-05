@@ -552,6 +552,21 @@ fn qualify(
 ) -> Result<()> {
     let expected = input.declaration.expected()?;
     let inventory = prepare_inventory(root, owner, &input, mode)?;
+    let geometry_predecessors = if mode.box_observations() == BoxObservationRequest::Geometry
+        && !mode.collects_numeric_differences()
+        && inventory.cases.iter().any(|case| case.semantic.is_some())
+    {
+        let mut predecessors = publication::verified_grid_static_predecessors(owner)?;
+        predecessors.retain(|output, _| {
+            inventory
+                .cases
+                .iter()
+                .any(|case| case.case.output().as_str() == output)
+        });
+        predecessors
+    } else {
+        BTreeMap::new()
+    };
     let corpus = corpus_for_inventory(root, owner, settings, &inventory, focused, expected)?;
     let request = GenerationRequest::new(corpus.clone(), browser_path, None, None)?;
     let report = browser::generate(request, QualificationAdapter::for_mode(mode))?;
@@ -567,6 +582,7 @@ fn qualify(
             lineage: SemanticLineage::Focused,
             requirements: None,
             terminal_cases: None,
+            geometry_predecessors,
             policy_raw: &mut std::io::stdout(),
         },
     )
@@ -628,6 +644,7 @@ struct Validation<'a> {
     requirements:
         Option<&'a BTreeMap<String, crate::parity_support::capture_authority::CurrentRequirements>>,
     terminal_cases: Option<&'a mut Vec<crate::parity_support::capture_authority::QualifiedCase>>,
+    geometry_predecessors: BTreeMap<String, String>,
     policy_raw: &'a mut dyn Write,
 }
 struct SemanticCapture<'a> {
@@ -840,6 +857,17 @@ fn validate_corpus(
                     native_errors.push(diagnostic);
                 }
             }
+        } else if let Some(digest) = validation
+            .geometry_predecessors
+            .remove(artifact.output().as_str())
+        {
+            if capture_authority::sha256(xml.as_bytes()) != digest {
+                return Err(format!(
+                    "{}: predecessor geometry differs from qualified capture",
+                    case.case.id()
+                )
+                .into());
+            }
         } else if case.semantic.is_some() {
             match qualify_semantic_case(&capture, artifact, case, &golden) {
                 Ok(result) => {
@@ -866,6 +894,9 @@ fn validate_corpus(
             eprintln!("qualify-root-context: Native comparison failed: {diagnostic}");
             native_errors.push(diagnostic);
         }
+    }
+    if !validation.geometry_predecessors.is_empty() {
+        return Err("missing qualified geometry predecessors".into());
     }
     qualify_pairs(root, &inventory.cases)?;
     let tamper_count = if let Some(first) = inventory.cases.iter().find(|case| {

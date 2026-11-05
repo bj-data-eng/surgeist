@@ -766,15 +766,16 @@ impl ExactDifferenceSpec {
                     "capture lineages disagree on shared semantic basis: {component}"
                 )));
             }
-            if *lineage == CaptureLineage::Published
-                && !spec
-                    .representation
-                    .published_edition
-                    .is_some_and(|edition| edition.profile() == spec.profile)
-            {
-                return Err(malformed(
-                    "published identity requires a matching edition association",
-                ));
+            if *lineage == CaptureLineage::Published {
+                let edition = spec.representation.published_edition.ok_or_else(|| {
+                    malformed("published identity requires an edition association")
+                })?;
+                if edition.profile() != spec.profile {
+                    return Err(malformed(format!(
+                        "published edition {} disagrees with the source profile",
+                        edition.name(),
+                    )));
+                }
             }
             let expected_font = match spec.profile {
                 Profile::NoTextBoxes => FontDemand::None,
