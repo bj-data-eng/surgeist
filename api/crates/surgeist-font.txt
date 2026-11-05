@@ -6,9 +6,11 @@ pub mod surgeist_font
 pub surgeist_font::CatalogueError::FacesNotAdmitted
 pub surgeist_font::CatalogueError::FacesNotAdmitted::admitted: usize
 pub surgeist_font::CatalogueError::FacesNotAdmitted::expected: u32
+pub surgeist_font::CatalogueError::ForeignFamily
 pub surgeist_font::CatalogueError::GenerationExhausted
 pub surgeist_font::CatalogueError::GenerationExhausted::generation: u64
-pub surgeist_font::CatalogueError::ProviderSourceConflict
+pub surgeist_font::CatalogueError::ProviderResourceConflict
+pub surgeist_font::CatalogueError::StaleFamily
 impl core::error::Error for surgeist_font::CatalogueError
 impl core::fmt::Display for surgeist_font::CatalogueError
 pub fn surgeist_font::CatalogueError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -52,6 +54,13 @@ pub surgeist_font::LimitKind::LiveBytes
 pub surgeist_font::LimitKind::TableBytes
 pub surgeist_font::LimitKind::Tables
 pub surgeist_font::LimitKind::WorkspaceBytes
+#[non_exhaustive] pub enum surgeist_font::ReadFontError
+pub surgeist_font::ReadFontError::Decode(surgeist_font::DecodeError)
+pub surgeist_font::ReadFontError::Read(std::io::error::Error)
+impl core::error::Error for surgeist_font::ReadFontError
+pub fn surgeist_font::ReadFontError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_font::ReadFontError
+pub fn surgeist_font::ReadFontError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_font::SourceFormat
 pub surgeist_font::SourceFormat::Collection
 pub surgeist_font::SourceFormat::Sfnt
@@ -77,9 +86,22 @@ pub const fn surgeist_font::DecodeLimits::new(encoded_bytes: usize, decoded_byte
 pub const fn surgeist_font::DecodeLimits::table_bytes(self) -> usize
 pub const fn surgeist_font::DecodeLimits::tables(self) -> usize
 pub const fn surgeist_font::DecodeLimits::workspace_bytes(self) -> usize
+pub struct surgeist_font::FontAttributes
+impl surgeist_font::FontAttributes
+pub const fn surgeist_font::FontAttributes::new(width: parlance::font::FontWidth, style: parlance::font::FontStyle, weight: parlance::font::FontWeight) -> Self
+pub struct surgeist_font::FontCandidate
+impl surgeist_font::FontCandidate
+pub fn surgeist_font::FontCandidate::charmap(&self) -> core::option::Option<surgeist_font::NominalCharmap<'_>>
+pub const fn surgeist_font::FontCandidate::face(&self) -> &surgeist_font::FontFace
+pub const fn surgeist_font::FontCandidate::family(&self) -> &surgeist_font::FontFamily
+pub const fn surgeist_font::FontCandidate::publication(&self) -> &surgeist_font::CataloguePublication
+pub const fn surgeist_font::FontCandidate::synthesis(&self) -> &surgeist_font::FontSynthesisSuggestions
 pub struct surgeist_font::FontCatalogue
 impl surgeist_font::FontCatalogue
+pub fn surgeist_font::FontCatalogue::family_by_name(&mut self, name: &str) -> core::option::Option<surgeist_font::FontFamily>
+pub fn surgeist_font::FontCatalogue::family_names(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = &str> + '_
 pub const fn surgeist_font::FontCatalogue::publication(&self) -> &surgeist_font::CataloguePublication
+pub fn surgeist_font::FontCatalogue::query(&mut self) -> surgeist_font::FontQuery<'_>
 pub fn surgeist_font::FontCatalogue::refresh(&mut self) -> core::result::Result<surgeist_font::CataloguePublication, surgeist_font::CatalogueError>
 pub fn surgeist_font::FontCatalogue::register(&mut self, resource: surgeist_font::FontResource) -> core::result::Result<surgeist_font::CataloguePublication, surgeist_font::CatalogueError>
 pub fn surgeist_font::FontCatalogue::registered_faces(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_font::FontFace> + '_
@@ -96,6 +118,12 @@ impl core::cmp::PartialEq for surgeist_font::FontFace
 pub fn surgeist_font::FontFace::eq(&self, other: &Self) -> bool
 impl core::hash::Hash for surgeist_font::FontFace
 pub fn surgeist_font::FontFace::hash<H: core::hash::Hasher>(&self, state: &mut H)
+pub struct surgeist_font::FontFamily
+impl surgeist_font::FontFamily
+pub const fn surgeist_font::FontFamily::publication(&self) -> &surgeist_font::CataloguePublication
+pub struct surgeist_font::FontQuery<'a>
+impl<'a> surgeist_font::FontQuery<'a>
+pub fn surgeist_font::FontQuery<'a>::visit_candidates<B>(&mut self, families: &[surgeist_font::FontFamily], attributes: surgeist_font::FontAttributes, visit: impl core::ops::function::FnMut(&surgeist_font::FontCandidate) -> core::ops::control_flow::ControlFlow<B>) -> core::result::Result<core::ops::control_flow::ControlFlow<B>, surgeist_font::CatalogueError>
 pub struct surgeist_font::FontResource(_)
 impl surgeist_font::FontResource
 pub fn surgeist_font::FontResource::bytes(&self) -> &[u8]
@@ -105,6 +133,8 @@ pub fn surgeist_font::FontResource::face_count(&self) -> u32
 pub fn surgeist_font::FontResource::from_sfnt(bytes: alloc::vec::Vec<u8>, limits: surgeist_font::DecodeLimits) -> core::result::Result<Self, surgeist_font::DecodeError>
 pub fn surgeist_font::FontResource::identity(&self) -> surgeist_font::ResourceId
 pub fn surgeist_font::FontResource::source(&self) -> &surgeist_font::FontSource
+impl surgeist_font::FontResource
+pub fn surgeist_font::FontResource::read_from(reader: impl std::io::Read, limits: surgeist_font::DecodeLimits) -> core::result::Result<Self, surgeist_font::ReadFontError>
 impl core::fmt::Debug for surgeist_font::FontResource
 pub fn surgeist_font::FontResource::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_font::FontSource(_)
@@ -114,10 +144,18 @@ pub fn surgeist_font::FontSource::format(&self) -> surgeist_font::SourceFormat
 pub fn surgeist_font::FontSource::identity(&self) -> surgeist_font::SourceId
 impl core::fmt::Debug for surgeist_font::FontSource
 pub fn surgeist_font::FontSource::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_font::FontSynthesisSuggestions(_)
+impl surgeist_font::FontSynthesisSuggestions
+pub fn surgeist_font::FontSynthesisSuggestions::embolden(&self) -> bool
+pub fn surgeist_font::FontSynthesisSuggestions::skew(&self) -> core::option::Option<f32>
+pub fn surgeist_font::FontSynthesisSuggestions::variation_settings(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = parlance::tag::FontVariation> + '_
 pub struct surgeist_font::InvalidContainer
 impl surgeist_font::InvalidContainer
 pub const fn surgeist_font::InvalidContainer::kind(self) -> surgeist_font::InvalidKind
 pub const fn surgeist_font::InvalidContainer::offset(self) -> usize
+pub struct surgeist_font::NominalCharmap<'a>(_)
+impl surgeist_font::NominalCharmap<'_>
+pub fn surgeist_font::NominalCharmap<'_>::glyph_id(&self, codepoint: char) -> core::option::Option<u32>
 pub struct surgeist_font::ResourceId(_)
 impl core::cmp::Eq for surgeist_font::ResourceId
 impl core::cmp::PartialEq for surgeist_font::ResourceId

@@ -111,3 +111,151 @@ fn refusal_of_one_collection_face_publishes_nothing() {
         vec![previous.face(0).unwrap()]
     );
 }
+
+#[test]
+fn a_candidate_reuses_the_exact_registered_backing() {
+    use std::ops::ControlFlow;
+
+    use surgeist_font::FontAttributes;
+
+    let ahem = decode(AHEM);
+    let mut catalogue = FontCatalogue::registered_only();
+    catalogue.register(ahem.clone()).unwrap();
+    let family = catalogue.family_by_name("Ahem").unwrap();
+    let publication = catalogue.publication().clone();
+
+    let mut calls = 0;
+    let outcome = catalogue
+        .query()
+        .visit_candidates(
+            &[family.clone(), family],
+            FontAttributes::default(),
+            |font| {
+                calls += 1;
+                ControlFlow::Break(font.clone())
+            },
+        )
+        .unwrap();
+    let ControlFlow::Break(candidate) = outcome else {
+        panic!("registered Ahem should produce a candidate");
+    };
+    assert_eq!(calls, 1);
+    assert_eq!(candidate.publication(), &publication);
+    assert_eq!(candidate.face(), &ahem.face(0).unwrap());
+    assert_eq!(
+        candidate.face().resource().bytes().as_ptr(),
+        ahem.bytes().as_ptr()
+    );
+    assert_eq!(candidate.charmap().unwrap().glyph_id('\u{10ffff}'), None);
+    assert_ne!(candidate.charmap().unwrap().glyph_id('A').unwrap(), 0);
+    assert!(!candidate.synthesis().embolden());
+
+    catalogue.refresh().unwrap();
+    drop(catalogue);
+    assert_eq!(candidate.face().resource().source().bytes(), AHEM);
+}
+
+#[test]
+fn stale_and_foreign_families_are_rejected_before_visiting_any_candidate() {
+    use std::ops::ControlFlow;
+
+    use surgeist_font::FontAttributes;
+
+    let mut catalogue = FontCatalogue::registered_only();
+    let mut other = FontCatalogue::registered_only();
+    let resource = decode(AHEM);
+    catalogue.register(resource.clone()).unwrap();
+    other.register(resource).unwrap();
+    let stale = catalogue.family_by_name("Ahem").unwrap();
+    let foreign = other.family_by_name("Ahem").unwrap();
+    assert_eq!(
+        stale.publication().generation(),
+        foreign.publication().generation()
+    );
+    catalogue.refresh().unwrap();
+    let current = catalogue.family_by_name("Ahem").unwrap();
+    let mut query = catalogue.query();
+    for (family, expected) in [
+        (stale, CatalogueError::StaleFamily),
+        (foreign, CatalogueError::ForeignFamily),
+    ] {
+        let outcome = query.visit_candidates(
+            &[current.clone(), family],
+            FontAttributes::default(),
+            |_| -> ControlFlow<()> {
+                panic!("all handles must be checked before any visit");
+            },
+        );
+        assert_eq!(outcome.unwrap_err(), expected);
+    }
+}
+
+#[test]
+fn unrelated_names_produce_no_candidate() {
+    use std::ops::ControlFlow;
+
+    use surgeist_font::FontAttributes;
+
+    let mut catalogue = FontCatalogue::registered_only();
+    catalogue.register(decode(AHEM)).unwrap();
+    assert!(catalogue.family_by_name("UnregisteredFamily").is_none());
+    assert_eq!(catalogue.family_names().collect::<Vec<_>>(), ["Ahem"]);
+    let outcome = catalogue
+        .query()
+        .visit_candidates(&[], FontAttributes::default(), |_| -> ControlFlow<()> {
+            panic!("a registered font does not become an implicit generic fallback");
+        })
+        .unwrap();
+    assert_eq!(outcome, ControlFlow::Continue(()));
+}
+
+#[test]
+fn candidate_order_preserves_best_then_default_for_each_requested_family() {
+    use std::ops::ControlFlow;
+
+    use parlance::{FontStyle, FontWeight, FontWidth};
+    use surgeist_font::FontAttributes;
+
+    let regular = decode(AHEM);
+    let mut bold_bytes = regular.bytes().to_vec();
+    let table_count = u16::from_be_bytes(bold_bytes[4..6].try_into().unwrap());
+    let os2 = bold_bytes[12..12 + 16 * usize::from(table_count)]
+        .chunks_exact(16)
+        .find(|record| &record[..4] == b"OS/2")
+        .unwrap();
+    let offset = usize::try_from(u32::from_be_bytes(os2[8..12].try_into().unwrap())).unwrap();
+    // OpenType OS/2 places usWeightClass at byte 4. Keep the name and
+    // all other attributes, and give the second fixture a bold weight.
+    bold_bytes[offset + 4..offset + 6].copy_from_slice(&700u16.to_be_bytes());
+    let bold = decode(&bold_bytes);
+    let cff = decode(CFF);
+    let mut catalogue = FontCatalogue::registered_only();
+    for resource in [&regular, &bold, &cff] {
+        catalogue.register(resource.clone()).unwrap();
+    }
+    let families = [
+        catalogue.family_by_name("Ahem").unwrap(),
+        catalogue.family_by_name("Source Code Pro").unwrap(),
+    ];
+    let mut faces = Vec::new();
+    let result = catalogue
+        .query()
+        .visit_candidates(
+            &families,
+            FontAttributes::new(FontWidth::default(), FontStyle::Normal, FontWeight::BOLD),
+            |font| {
+                faces.push(font.face().clone());
+                ControlFlow::<()>::Continue(())
+            },
+        )
+        .unwrap();
+    assert_eq!(result, ControlFlow::Continue(()));
+    assert_eq!(
+        faces,
+        [
+            bold.face(0).unwrap(),
+            regular.face(0).unwrap(),
+            cff.face(0).unwrap()
+        ]
+    );
+}

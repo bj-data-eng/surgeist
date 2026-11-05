@@ -5,10 +5,16 @@ use std::{
     sync::Arc,
 };
 
-use fontique::{Collection, CollectionOptions, SourceId as ProviderSourceId};
+use fontique::{Collection, CollectionOptions, SourceCache, SourceKind};
 use linebender_resource_handle::Blob;
 
 use crate::{FontFace, FontResource};
+
+mod query;
+
+pub use query::{
+    FontAttributes, FontCandidate, FontFamily, FontQuery, FontSynthesisSuggestions, NominalCharmap,
+};
 
 /// Identity of one successful catalogue publication.
 ///
@@ -71,7 +77,7 @@ impl fmt::Debug for CataloguePublication {
     }
 }
 
-/// A catalogue transition failed and left the preceding publication intact.
+/// A catalogue operation failed and left the current publication intact.
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum CatalogueError {
@@ -79,8 +85,12 @@ pub enum CatalogueError {
     GenerationExhausted { generation: u64 },
     /// Provider face records did not cover each original index exactly once.
     FacesNotAdmitted { expected: u32, admitted: usize },
-    /// Provider source identifiers could not unambiguously identify a registration.
-    ProviderSourceConflict,
+    /// A family handle belongs to a different catalogue issuer.
+    ForeignFamily,
+    /// A family handle was issued before the current publication.
+    StaleFamily,
+    /// A provider result could not be associated with its exact registered face.
+    ProviderResourceConflict,
 }
 
 impl fmt::Display for CatalogueError {
@@ -93,8 +103,10 @@ impl fmt::Display for CatalogueError {
                 f,
                 "font provider admitted {admitted} face records without covering original indices 0..{expected} exactly once"
             ),
-            Self::ProviderSourceConflict => {
-                f.write_str("font provider source identifiers conflict")
+            Self::ForeignFamily => f.write_str("font family belongs to a different catalogue"),
+            Self::StaleFamily => f.write_str("font family belongs to a preceding publication"),
+            Self::ProviderResourceConflict => {
+                f.write_str("font provider resource association conflicts")
             }
         }
     }
@@ -154,6 +166,28 @@ impl FontCatalogue {
         })
     }
 
+    /// Enumerates registered family names in provider order.
+    pub fn family_names(&mut self) -> impl Iterator<Item = &str> + '_ {
+        self.provider.collection.family_names()
+    }
+
+    /// Resolves a registered family name using provider name matching.
+    pub fn family_by_name(&mut self, name: &str) -> Option<FontFamily> {
+        let id = self.provider.collection.family_id(name)?;
+        Some(FontFamily::new(id, self.publication.clone()))
+    }
+
+    /// Borrows this publication for one or more registered candidate queries.
+    pub fn query(&mut self) -> FontQuery<'_> {
+        FontQuery::new(
+            self.provider
+                .collection
+                .query(&mut self.provider.source_cache),
+            &self.provider.resources,
+            &self.publication,
+        )
+    }
+
     /// Replays every registered resource into a fresh provider collection.
     ///
     /// The successful publication keeps the original resource identities and
@@ -173,7 +207,8 @@ impl FontCatalogue {
 #[derive(Clone)]
 struct RegisteredProvider {
     collection: Collection,
-    sources: HashMap<ProviderSourceId, FontResource>,
+    source_cache: SourceCache,
+    resources: HashMap<u64, FontResource>,
 }
 
 impl RegisteredProvider {
@@ -183,15 +218,20 @@ impl RegisteredProvider {
                 shared: false,
                 system_fonts: false,
             }),
-            sources: HashMap::new(),
+            source_cache: SourceCache::default(),
+            resources: HashMap::new(),
         }
     }
 
     fn register(&mut self, resource: &FontResource) -> Result<(), CatalogueError> {
         // Provider scans borrow the already admitted bytes through this Blob.
         let data = Blob::new(Arc::new(ResourceBytes(resource.clone())));
+        let id = data.id();
+        let Entry::Vacant(entry) = self.resources.entry(id) else {
+            return Err(CatalogueError::ProviderResourceConflict);
+        };
         let families = self.collection.register_fonts(data, None);
-        let fonts = families.iter().flat_map(|(_, fonts)| fonts);
+        let mut fonts = families.iter().flat_map(|(_, fonts)| fonts);
         let expected = resource.face_count();
         let mut admitted: Vec<_> = fonts.clone().map(fontique::FontInfo::index).collect();
         admitted.sort_unstable();
@@ -202,15 +242,13 @@ impl RegisteredProvider {
             });
         }
 
-        // Fontique issues one memory source for all faces of a registration.
-        let mut sources = fonts.map(|font| font.source().id());
-        let source = sources.next().expect("the admitted face set is nonempty");
-        if sources.any(|other| other != source) {
-            return Err(CatalogueError::ProviderSourceConflict);
+        // Only the exact original memory Blob is eligible for later queries.
+        if !fonts.all(|font| {
+            matches!(font.source().kind(), SourceKind::Memory(blob)
+                if blob.id() == id && std::ptr::eq(blob.as_ref(), resource.bytes()))
+        }) {
+            return Err(CatalogueError::ProviderResourceConflict);
         }
-        let Entry::Vacant(entry) = self.sources.entry(source) else {
-            return Err(CatalogueError::ProviderSourceConflict);
-        };
         entry.insert(resource.clone());
         Ok(())
     }
@@ -245,5 +283,27 @@ mod tests {
         assert_eq!(catalogue.refresh(), Err(error));
         assert_eq!(catalogue.publication(), &before);
         assert!(catalogue.registered_faces().next().is_none());
+    }
+
+    #[test]
+    fn a_provider_candidate_cannot_rebind_to_equal_bytes_from_another_resource() {
+        let bytes = include_bytes!("../../surgeist-render/tests/fixtures/fonts/ahem/Ahem.ttf");
+        let capacity = 1 << 20;
+        let limits = DecodeLimits::new(capacity, capacity, capacity, 100, 1, capacity, capacity);
+        let original = FontResource::decode(bytes.to_vec(), limits).unwrap();
+        let unrelated = FontResource::decode(bytes.to_vec(), limits).unwrap();
+        let mut catalogue = FontCatalogue::registered_only();
+        catalogue.register(original).unwrap();
+        let family = catalogue.family_by_name("Ahem").unwrap();
+        let slot = catalogue.provider.resources.values_mut().next().unwrap();
+        *slot = unrelated;
+
+        let outcome =
+            catalogue
+                .query()
+                .visit_candidates::<()>(&[family], FontAttributes::default(), |_| {
+                    panic!("unrelated backing must be rejected before the callback")
+                });
+        assert_eq!(outcome, Err(CatalogueError::ProviderResourceConflict));
     }
 }

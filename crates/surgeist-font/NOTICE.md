@@ -49,6 +49,14 @@ the authors named in its retained legal material.
 * Additional attribution: [supplied license](licenses/miniz_oxide/LICENSE)
 * Homepage: [miniz_oxide](https://github.com/Frommi/miniz_oxide)
 
+### Parlance 0.1.0
+
+The catalogue shares font attributes and variation settings with consumers
+using Parlance, distributed by the Parley Authors.
+
+* License: [Apache-2.0](licenses/parlance/LICENSE-APACHE) or [MIT](licenses/parlance/LICENSE-MIT)
+* Homepage: [Parlance](https://github.com/linebender/parley)
+
 ### Wuff 0.2.9 adapted decoder algorithms
 
 The WOFF2 reconstruction adapts Wuff's library algorithms, distributed by the

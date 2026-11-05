@@ -13,12 +13,19 @@ use std::{
 };
 
 mod brotli;
+mod buffer;
 mod catalogue;
+mod input;
 mod sfnt;
 mod woff1;
 mod woff2;
 
-pub use catalogue::{CatalogueError, CataloguePublication, FontCatalogue};
+pub use catalogue::{
+    CatalogueError, CataloguePublication, FontAttributes, FontCandidate, FontCatalogue, FontFamily,
+    FontQuery, FontSynthesisSuggestions, NominalCharmap,
+};
+
+pub use input::ReadFontError;
 
 /// Caller policy; zero is a valid rejecting cap. No limits are inferred.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

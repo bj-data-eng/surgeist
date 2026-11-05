@@ -118,6 +118,17 @@ preserves the preceding publication. `registered_faces()` yields strong handles
 in registration and face order. Refresh issues a new publication over the same
 admitted resources, with their identities and backing intact.
 
+Resolve registered family names, then visit matching candidates in the
+requested family order. A candidate carries the original face, a nominal
+character map, and synthesis suggestions for the consumer. Family handles
+belong to a single publication. A successful registration or refresh makes
+previous handles stale. Strong faces already returned remain usable.
+Applications supply the family names for their font selection policy.
+
+To ingest a font from an explicit file or another byte stream, pass an open
+reader to `FontResource::read_from` with the decode limits. It retains the
+actual bytes read and distinguishes input errors from admission errors.
+
 A publication identifies both its issuing catalogue and its generation.
 Numeric generations alone cannot identify a publication. Catalogue metadata
 and provider allocations are outside a resource's decode limits.

@@ -3773,6 +3773,7 @@ dependencies = [
  "fontique",
  "linebender_resource_handle",
  "miniz_oxide",
+ "parlance",
 ]
 
 [[package]]
