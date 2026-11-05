@@ -6,8 +6,9 @@ editions. Historical [HTML](../html/) and [raw XML](../xml/) remain unchanged.
 The root-context-v4 edition is created only by the maintained
 [qualify-root-context host](../../../../examples/qualify-root-context/README.md#durable-root-context-edition).
 The [Grid static-position edition](../../../../examples/qualify-root-context/README.md#grid-static-position-edition)
-uses the same host and retains the exact browser observations alongside the
-Layout packet and difference specifications.
+and [relative inset edition](../../../../examples/qualify-root-context/README.md#relative-inset-edition)
+use the same host and retain exact browser observations alongside the Layout
+packet and difference specifications.
 Inputs inside an edition are immutable capture witnesses of their handwritten
 owners; generated XML/report/ledger bytes belong to Generator. Never copy XML
 alone, hand-edit observations, relabel historical captures or reuse an existing

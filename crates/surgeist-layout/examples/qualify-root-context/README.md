@@ -136,3 +136,15 @@ root-context capture byte for byte.
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --publish-grid-static-position-differences
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-grid-static-position-differences
 ~~~
+
+## Relative inset edition
+
+The [relative inset policy](../../semantic/relative-inset-policy.md) covers
+the original auto-height fixture in both box modes and directions. The edition
+checks every requested coordinate and size, both Native packet channels, and
+the three exact block-axis differences per variant.
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --publish-relative-inset-differences
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-relative-inset-differences
+~~~
