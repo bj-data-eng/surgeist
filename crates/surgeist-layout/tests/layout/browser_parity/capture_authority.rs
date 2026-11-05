@@ -23,6 +23,10 @@ const OBSERVATION_REQUEST: &str = "observation-request.json";
 const MEASURED_LEAF_SCRIPT: &str = "scripts/gentest/measured_leaf.js";
 const MEASURED_LEAF_REQUEST_BYTES: &[u8] =
     include_bytes!("../../bin/surgeist-layout-generate/measurement/measured_leaf_request.json");
+const PREPARED_RANGE_REQUEST_BYTES: &[u8] =
+    include_bytes!("../../bin/surgeist-layout-generate/measurement/prepared_range_request.json");
+pub(super) const FLEX_COMPOSITION_REQUEST_BYTES: &[u8] =
+    include_bytes!("../../bin/surgeist-layout-generate/measurement/flex_composition_request.json");
 const MEASURED_LEAF_SCRIPT_BYTES: &[u8] =
     include_bytes!("../../bin/surgeist-layout-generate/measurement/measured_leaf.js");
 
@@ -129,11 +133,18 @@ pub(crate) fn current_owner_bindings(
         } else if name == "browser-owner.toml" {
             format!("{ORIGINAL}/corpus.toml")
         } else if name == OBSERVATION_REQUEST {
-            let file = if hash == &sha256(flex_content_text::REQUEST) {
-                "flex_content_text_request.json"
-            } else {
-                "measured_leaf_request.json"
-            };
+            let file = [
+                ("measured_leaf_request.json", MEASURED_LEAF_REQUEST_BYTES),
+                ("flex_content_text_request.json", flex_content_text::REQUEST),
+                ("prepared_range_request.json", PREPARED_RANGE_REQUEST_BYTES),
+                (
+                    "flex_composition_request.json",
+                    FLEX_COMPOSITION_REQUEST_BYTES,
+                ),
+            ]
+            .into_iter()
+            .find_map(|(file, bytes)| (hash == &sha256(bytes)).then_some(file))
+            .ok_or_else(|| changed("unregistered observation request identity"))?;
             format!("tests/bin/surgeist-layout-generate/measurement/{file}")
         } else if name == flex_content_text::SCRIPT_PATH {
             "tests/bin/surgeist-layout-generate/measurement/flex_content_text.js".to_owned()

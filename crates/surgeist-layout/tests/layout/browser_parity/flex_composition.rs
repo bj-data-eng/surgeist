@@ -7,8 +7,6 @@ const SOURCE: &str = "html/flex/fri07_flex_composition.html";
 const SOURCE_BYTES: &[u8] = include_bytes!("html/flex/fri07_flex_composition.html");
 const RETAINED_REPORT: &str =
     include_str!("captured/flex-composition-differences/xml/generation-reports/all.json");
-const REQUEST: &[u8] =
-    include_bytes!("captured/flex-composition-differences/observation-request.json");
 
 pub(super) struct Capture<'a> {
     pub report: &'a str,
@@ -62,7 +60,8 @@ pub(super) fn bind(
     }
     if metadata.schema_version != 4
         || metadata.inputs.get(SOURCE) != Some(&source_digest)
-        || metadata.inputs.get("observation-request.json") != Some(&sha256(REQUEST))
+        || metadata.inputs.get("observation-request.json")
+            != Some(&sha256(capture_authority::FLEX_COMPOSITION_REQUEST_BYTES))
         || metadata
             .inputs
             .get("scripts/gentest/test_base_style.css")

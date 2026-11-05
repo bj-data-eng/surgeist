@@ -81,7 +81,7 @@ impl BoxObservationRequest {
             ),
             Self::PreparedRanges => Some(include_bytes!("measurement/prepared_range_request.json")),
             Self::FlexComposition => {
-                Some(b"{\"schema_version\":1,\"flex_composition\":\"fixed-sideways-root-v1\"}\n")
+                Some(include_bytes!("measurement/flex_composition_request.json"))
             }
             Self::MeasuredLeaf => Some(include_bytes!("measurement/measured_leaf_request.json")),
             Self::FlexContentText => {

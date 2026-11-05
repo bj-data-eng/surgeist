@@ -430,7 +430,11 @@ fn live_owner_bindings_cover_all_roles_and_refuse_unknown_or_overlapping_paths()
     let mut retained = BTreeMap::new();
     let mut expected = BTreeMap::new();
     for (index, (input, owner)) in roles.into_iter().enumerate() {
-        let hash = sha256(format!("independent input {index}").as_bytes());
+        let hash = if input == OBSERVATION_REQUEST {
+            sha256(MEASURED_LEAF_REQUEST_BYTES)
+        } else {
+            sha256(format!("independent input {index}").as_bytes())
+        };
         retained.insert(input.to_owned(), hash.clone());
         expected.insert(owner.to_owned(), hash);
     }
