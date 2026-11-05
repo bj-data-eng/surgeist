@@ -667,6 +667,94 @@ fn fri08_c02_auto_fill_repeat<S: LayoutScalar>() -> TrackComponentOf<S> {
     )
 }
 
+fn qualify_ordinary_intrinsic_auto_repeat<S: LayoutScalar>() {
+    let scalar = S::from_f64;
+    let group = |second| {
+        vec![
+            TrackComponentOf::px(scalar(10.0)),
+            TrackComponentOf::line_names(["inside"]),
+            second,
+        ]
+    };
+    let mut failures = Vec::new();
+    for display in [Display::Grid, Display::InlineGrid] {
+        for (repeat, suffix_start) in [
+            (
+                TrackRepetitionOf::auto_fill_components(group(TrackComponentOf::AUTO)).unwrap(),
+                23.0,
+            ),
+            (
+                TrackRepetitionOf::auto_fill_components(group(TrackComponentOf::px(scalar(5.0))))
+                    .unwrap(),
+                85.0,
+            ),
+            (
+                TrackRepetitionOf::count_components(2, group(TrackComponentOf::AUTO)).unwrap(),
+                37.0,
+            ),
+        ] {
+            let kind = repeat.repeat();
+            let mut tree = PublicLayoutTreeOf::<S>::new().children(1, [2, 3]).style(
+                1,
+                NodeInputOf {
+                    display,
+                    size: Size::new(
+                        PreferredSizeOf::px(scalar(100.0)),
+                        PreferredSizeOf::px(scalar(20.0)),
+                    ),
+                    grid_template_columns: vec![
+                        TrackComponentOf::px(scalar(7.0)),
+                        TrackComponentOf::Repeat(repeat),
+                        TrackComponentOf::line_names(["suffix"]),
+                        TrackComponentOf::px(scalar(11.0)),
+                    ],
+                    grid_template_rows: vec![TrackComponentOf::px(scalar(20.0))],
+                    gap: Size::new(LengthOf::px(scalar(2.0)), LengthOf::ZERO),
+                    justify_content: Some(AlignContent::Start),
+                    ..NodeInputOf::default()
+                },
+            );
+            for (node, name) in [(2, "inside"), (3, "suffix")] {
+                tree = tree.style(
+                    node,
+                    NodeInputOf {
+                        size: Size::new(PreferredSizeOf::px(S::ZERO), PreferredSizeOf::px(S::ZERO)),
+                        raw_grid_column: RawGridPlacement::new(
+                            RawGridLine::NamedLine {
+                                name: name.to_string(),
+                                index: 1,
+                            },
+                            RawGridLine::Auto,
+                        ),
+                        ..NodeInputOf::default()
+                    },
+                );
+            }
+            let batch = fri08_c01_placement_compute(&tree);
+            let inside = fri08_c01_placement_output(&batch, 2).location.x;
+            let suffix = fri08_c01_placement_output(&batch, 3).location.x;
+            // The zero-width markers do not enlarge the Auto track. Its first
+            // named line is at 21px. The suffix follows one intrinsic group,
+            // four fixed groups, or two explicitly counted groups.
+            let expected = (scalar(21.0), scalar(suffix_start));
+            if (inside, suffix) != expected {
+                failures.push(format!("{display:?} {kind:?} suffix {suffix_start}: actual {inside:?}, {suffix:?}; expected {expected:?}"));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn ordinary_intrinsic_auto_repeat_keeps_one_named_group_f32() {
+    qualify_ordinary_intrinsic_auto_repeat::<f32>();
+}
+
+#[test]
+fn ordinary_intrinsic_auto_repeat_keeps_one_named_group_f64() {
+    qualify_ordinary_intrinsic_auto_repeat::<f64>();
+}
+
 #[test]
 fn fri08_c02_auto_fit_spanning_item_keeps_every_covered_repetition_open() {
     let tree = PublicLayoutTreeOf::<f32>::new()
