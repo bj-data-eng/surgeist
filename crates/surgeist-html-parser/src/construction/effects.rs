@@ -703,7 +703,7 @@ impl SessionStorage {
                         self.insert_indices(c, parent, node, None)
                     }
                     (FragmentStage::Insert, None) => {
-                        self.refresh_textarea(c, parent, None, false)?;
+                        self.refresh_textarea(c, parent, None, false, false)?;
                         self.write_current_effect(
                             c,
                             Some(EffectFrame::InsertionPostConnection {

@@ -276,6 +276,7 @@ impl SessionStorage {
                     incoming_slot: ticket,
                     incoming: value,
                     dispose_old,
+                    at_end: before_index.is_none(),
                 },
             )
             .map(Some)
