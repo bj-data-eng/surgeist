@@ -18,6 +18,11 @@ const POLICY: &str = "docs/portable-fixed-box-policy.md";
 const OWNER_SOURCE: &str = "tests/layout/browser_parity/html/qualification/portable-empty.html";
 const BASE_CSS: &str = "scripts/gentest/test_base_style.css";
 const OWNER_GLOBAL: &str = "tests/layout/browser_parity/scripts/gentest/test_base_style.css";
+const PRODUCER_HELPER: &str = "scripts/gentest/test_helper.js";
+const VALIDATOR_HELPER: &str = "tests/layout/browser_parity/scripts/gentest/test_helper.js";
+const PRODUCER_HELPER_BYTES: &[u8] =
+    include_bytes!("captured/canonical-box-differences/scripts/gentest/test_helper.js");
+const VALIDATOR_HELPER_BYTES: &[u8] = include_bytes!("scripts/gentest/test_helper.js");
 const OWNER_BROWSER: &str = "tests/layout/browser_parity/corpus.toml";
 const RECEIPT: &str = "origin/source-receipt.json";
 const PROVENANCE: &str = "origin/source-provenance.json";
@@ -269,6 +274,7 @@ impl Fixture {
         let base = BTreeMap::from([
             (SOURCE.to_owned(), SOURCE_BYTES.to_vec()),
             (POLICY.to_owned(), POLICY_BYTES.to_vec()),
+            (PRODUCER_HELPER.to_owned(), PRODUCER_HELPER_BYTES.to_vec()),
             (
                 BASE_CSS.to_owned(),
                 b"div { box-sizing: var(--box-sizing); direction: var(--direction); }\n".to_vec(),
@@ -412,6 +418,7 @@ impl Fixture {
             (OWNER_SOURCE.to_owned(), SOURCE_BYTES.to_vec()),
             (POLICY.to_owned(), POLICY_BYTES.to_vec()),
             (OWNER_GLOBAL.to_owned(), base[BASE_CSS].clone()),
+            (VALIDATOR_HELPER.to_owned(), VALIDATOR_HELPER_BYTES.to_vec()),
             (OWNER_BROWSER.to_owned(), base["browser-owner.toml"].clone()),
             (OWNER_RECEIPT.to_owned(), base[RECEIPT].clone()),
         ]);
@@ -436,7 +443,13 @@ impl Fixture {
             OWNER_DECLARATION,
             &fs::read(root.join("corpus.toml")).unwrap(),
         );
-        self.terminal = json!({"schema_version":2,"edition":"canonical-box-differences",
+        self.terminal = json!({"schema_version":3,"edition":"canonical-box-differences",
+            "capture_validation":{
+                "producer_profile":"root-context-v4",
+                "producer_helper_sha256":sha256(PRODUCER_HELPER_BYTES),
+                "validator_profile":"root-context-prepared-range-v1",
+                "validator_helper_sha256":sha256(VALIDATOR_HELPER_BYTES),
+            },
             "declaration":{"path":"corpus.toml","sha256":retained["corpus.toml"]},
             "records":[{"source":SOURCE,"sha256":record_sha256,"value":record}],
             "browser_settings":settings,"report":{"path":REPORT,"sha256":sha256(&report_raw)},
@@ -569,6 +582,7 @@ fn every_retained_output_and_control_artifact_is_byte_pinned_and_required() {
         SOURCE.into(),
         POLICY.into(),
         BASE_CSS.into(),
+        PRODUCER_HELPER.into(),
         "browser-owner.toml".into(),
         RECEIPT.into(),
         PROVENANCE.into(),
@@ -769,6 +783,7 @@ fn current_owner_byte_drift_or_missing_owner_refuses_unchanged_retained_artifact
         OWNER_SOURCE.to_owned(),
         POLICY.to_owned(),
         OWNER_GLOBAL.to_owned(),
+        VALIDATOR_HELPER.to_owned(),
         OWNER_BROWSER.to_owned(),
         OWNER_RECEIPT.to_owned(),
         spec_path(VARIANTS[0]),
