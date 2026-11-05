@@ -123,6 +123,27 @@ impl Golden {
             raw,
             Some(flex_composition::Capture {
                 report,
+                published: false,
+                source_path,
+                source_bytes,
+                output_path,
+            }),
+        )
+    }
+
+    /// The caller has authenticated the complete fixed publication report.
+    pub fn parse_with_published_flex_composition(
+        raw: &str,
+        report: &str,
+        source_path: &str,
+        source_bytes: &[u8],
+        output_path: &str,
+    ) -> Result<Self, Error> {
+        Self::parse_with_capture(
+            raw,
+            Some(flex_composition::Capture {
+                report,
+                published: true,
                 source_path,
                 source_bytes,
                 output_path,

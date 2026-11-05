@@ -1,0 +1,2101 @@
+{
+  "source_derivation": "Derived from original html/flex/fri07_flex_composition.html SHA-256 19acedc9894eed500890b91f48f9eb0e7f19a3db440f06cbaa6356e7ce73192e and scripts/gentest/test_base_style.css SHA-256 5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6, without any completed batch or browser expectation input. Pinned CSS Writing Modes 4 physical mapping and CSS Flexbox 1 (2025-10-14) sections 4.4 and 9.4 plus Layout's flexbox-collapse-two-round-struts policy. The sideways-rl column-reverse root collects image, scroller, collapsed item, and opposite-block-progression item along +x. First-round cross sizes 80,30,40 plus two gaps of 6 stretch by 6 each, giving a 36px strut. Replay keeps collection gaps, so 116+6>120 starts a line with the zero-main strut and the 40px item. Line sizes 80,40 plus one gap of 6 stretch by 27 each. Definite item heights align at wrap-reversed cross-start. The collapsed slot and its descendant publish hidden packets with their source indices. The nested scroller has a 70x60 border box, 50px leftward block overflow from the 120px definite cross width, and one 15px classic gutter at Native inline-end (scroll/box_geometry.rs). Its empty child shrinks from 100px to 45px and starts at scrollport y=0 in LTR or y=15 in RTL. CSS Overflow 3 section 4.2 leaves scrollbar edge placement UA-defined. The parent's complete envelope unions the child with the padding seed. Its operational range independently excludes the gutter. The SVG has natural size 80x40. The source-bound replaced leaf retains authored 40x80 allocation. Per measurement.rs the perform-layout callback has no known content sizes, so flex_composition.rs returns the natural size. scroll/construction.rs places the measured rectangle against physical right and inline-start. Union with the padding seed gives local envelope (-40,0,80,80) and content_size 80x80. Captured normalized image Clip/Clip uses content-box plus zero margin. Both ranges are zero, and the complete image envelope does not propagate to the root through Clip. The measured leaf issues Unknown named facts. The performed empty Flex items issue Absent named facts, and nonempty Flex and hidden packets retain Unknown. Initial scroll padding and target margins are zero. No snap facts are enabled. Every coordinate and extent is integral in both packet phases.",
+  "nodes": [
+    {
+      "path": "/",
+      "role": "ordinary-box",
+      "children": [
+        "/0",
+        "/1",
+        "/2",
+        "/3"
+      ],
+      "unrounded": {
+        "state": "present",
+        "facts": {
+          "source_index": 0,
+          "location": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 120,
+            "height": 180
+          },
+          "content_size": {
+            "width": 120,
+            "height": 180
+          },
+          "border": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "padding": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "margin": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "named_baselines": {
+            "alphabetic": {
+              "first": {
+                "state": "unknown"
+              },
+              "last": {
+                "state": "unknown"
+              }
+            },
+            "central": {
+              "first": {
+                "state": "unknown"
+              },
+              "last": {
+                "state": "unknown"
+              }
+            }
+          },
+          "scroll": {
+            "state": "present",
+            "facts": {
+              "flow_axes": {
+                "writing_mode": "sideways-rl",
+                "direction": "ltr"
+              },
+              "used_overflow_x": "auto",
+              "used_overflow_y": "auto",
+              "border_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 180
+                }
+              },
+              "padding_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 180
+                }
+              },
+              "content_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 180
+                }
+              },
+              "scrollport": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 180
+                }
+              },
+              "clip_x": {
+                "minimum": 0,
+                "maximum": 120
+              },
+              "clip_y": {
+                "minimum": 0,
+                "maximum": 180
+              },
+              "scrollable_overflow": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 180
+                }
+              },
+              "range_x": {
+                "minimum": 0,
+                "maximum": 0
+              },
+              "range_y": {
+                "minimum": 0,
+                "maximum": 0
+              },
+              "gutter_top": null,
+              "gutter_right": null,
+              "gutter_bottom": null,
+              "gutter_left": null,
+              "scrollbar_size": {
+                "width": 0,
+                "height": 0
+              },
+              "resolved_scroll_padding": {
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "optimal_viewing_region": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 180
+                }
+              },
+              "scroll_snap_type": {
+                "state": "none"
+              },
+              "target": {
+                "border_box": {
+                  "origin": {
+                    "x": 0,
+                    "y": 0
+                  },
+                  "size": {
+                    "width": 120,
+                    "height": 180
+                  }
+                },
+                "scroll_margin": {
+                  "top": 0,
+                  "right": 0,
+                  "bottom": 0,
+                  "left": 0
+                },
+                "flow_axes": {
+                  "writing_mode": "sideways-rl",
+                  "direction": "ltr"
+                },
+                "block_align": "none",
+                "inline_align": "none",
+                "snap_stop": "normal"
+              }
+            }
+          }
+        }
+      },
+      "final_output": {
+        "state": "present",
+        "facts": {
+          "source_index": 0,
+          "location": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 120,
+            "height": 180
+          },
+          "content_size": {
+            "width": 120,
+            "height": 180
+          },
+          "border": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "padding": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "margin": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "named_baselines": {
+            "alphabetic": {
+              "first": {
+                "state": "unknown"
+              },
+              "last": {
+                "state": "unknown"
+              }
+            },
+            "central": {
+              "first": {
+                "state": "unknown"
+              },
+              "last": {
+                "state": "unknown"
+              }
+            }
+          },
+          "scroll": {
+            "state": "present",
+            "facts": {
+              "flow_axes": {
+                "writing_mode": "sideways-rl",
+                "direction": "ltr"
+              },
+              "used_overflow_x": "auto",
+              "used_overflow_y": "auto",
+              "border_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 180
+                }
+              },
+              "padding_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 180
+                }
+              },
+              "content_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 180
+                }
+              },
+              "scrollport": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 180
+                }
+              },
+              "clip_x": {
+                "minimum": 0,
+                "maximum": 120
+              },
+              "clip_y": {
+                "minimum": 0,
+                "maximum": 180
+              },
+              "scrollable_overflow": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 180
+                }
+              },
+              "range_x": {
+                "minimum": 0,
+                "maximum": 0
+              },
+              "range_y": {
+                "minimum": 0,
+                "maximum": 0
+              },
+              "gutter_top": null,
+              "gutter_right": null,
+              "gutter_bottom": null,
+              "gutter_left": null,
+              "scrollbar_size": {
+                "width": 0,
+                "height": 0
+              },
+              "resolved_scroll_padding": {
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "optimal_viewing_region": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 180
+                }
+              },
+              "scroll_snap_type": {
+                "state": "none"
+              },
+              "target": {
+                "border_box": {
+                  "origin": {
+                    "x": 0,
+                    "y": 0
+                  },
+                  "size": {
+                    "width": 120,
+                    "height": 180
+                  }
+                },
+                "scroll_margin": {
+                  "top": 0,
+                  "right": 0,
+                  "bottom": 0,
+                  "left": 0
+                },
+                "flow_axes": {
+                  "writing_mode": "sideways-rl",
+                  "direction": "ltr"
+                },
+                "block_align": "none",
+                "inline_align": "none",
+                "snap_stop": "normal"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "/0",
+      "role": "ordinary-box",
+      "children": [],
+      "unrounded": {
+        "state": "present",
+        "facts": {
+          "source_index": 0,
+          "location": {
+            "x": 0,
+            "y": 27
+          },
+          "size": {
+            "width": 50,
+            "height": 40
+          },
+          "content_size": {
+            "width": 50,
+            "height": 40
+          },
+          "border": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "padding": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "margin": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "named_baselines": {
+            "alphabetic": {
+              "first": {
+                "state": "absent"
+              },
+              "last": {
+                "state": "absent"
+              }
+            },
+            "central": {
+              "first": {
+                "state": "absent"
+              },
+              "last": {
+                "state": "absent"
+              }
+            }
+          },
+          "scroll": {
+            "state": "present",
+            "facts": {
+              "flow_axes": {
+                "writing_mode": "vertical-lr",
+                "direction": "ltr"
+              },
+              "used_overflow_x": "visible",
+              "used_overflow_y": "visible",
+              "border_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 50,
+                  "height": 40
+                }
+              },
+              "padding_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 50,
+                  "height": 40
+                }
+              },
+              "content_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 50,
+                  "height": 40
+                }
+              },
+              "scrollport": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 50,
+                  "height": 40
+                }
+              },
+              "clip_x": null,
+              "clip_y": null,
+              "scrollable_overflow": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 50,
+                  "height": 40
+                }
+              },
+              "range_x": {
+                "minimum": 0,
+                "maximum": 0
+              },
+              "range_y": {
+                "minimum": 0,
+                "maximum": 0
+              },
+              "gutter_top": null,
+              "gutter_right": null,
+              "gutter_bottom": null,
+              "gutter_left": null,
+              "scrollbar_size": {
+                "width": 0,
+                "height": 0
+              },
+              "resolved_scroll_padding": {
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "optimal_viewing_region": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 50,
+                  "height": 40
+                }
+              },
+              "scroll_snap_type": {
+                "state": "none"
+              },
+              "target": {
+                "border_box": {
+                  "origin": {
+                    "x": 0,
+                    "y": 0
+                  },
+                  "size": {
+                    "width": 50,
+                    "height": 40
+                  }
+                },
+                "scroll_margin": {
+                  "top": 0,
+                  "right": 0,
+                  "bottom": 0,
+                  "left": 0
+                },
+                "flow_axes": {
+                  "writing_mode": "vertical-lr",
+                  "direction": "ltr"
+                },
+                "block_align": "none",
+                "inline_align": "none",
+                "snap_stop": "normal"
+              }
+            }
+          }
+        }
+      },
+      "final_output": {
+        "state": "present",
+        "facts": {
+          "source_index": 0,
+          "location": {
+            "x": 0,
+            "y": 27
+          },
+          "size": {
+            "width": 50,
+            "height": 40
+          },
+          "content_size": {
+            "width": 50,
+            "height": 40
+          },
+          "border": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "padding": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "margin": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "named_baselines": {
+            "alphabetic": {
+              "first": {
+                "state": "absent"
+              },
+              "last": {
+                "state": "absent"
+              }
+            },
+            "central": {
+              "first": {
+                "state": "absent"
+              },
+              "last": {
+                "state": "absent"
+              }
+            }
+          },
+          "scroll": {
+            "state": "present",
+            "facts": {
+              "flow_axes": {
+                "writing_mode": "vertical-lr",
+                "direction": "ltr"
+              },
+              "used_overflow_x": "visible",
+              "used_overflow_y": "visible",
+              "border_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 50,
+                  "height": 40
+                }
+              },
+              "padding_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 50,
+                  "height": 40
+                }
+              },
+              "content_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 50,
+                  "height": 40
+                }
+              },
+              "scrollport": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 50,
+                  "height": 40
+                }
+              },
+              "clip_x": null,
+              "clip_y": null,
+              "scrollable_overflow": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 50,
+                  "height": 40
+                }
+              },
+              "range_x": {
+                "minimum": 0,
+                "maximum": 0
+              },
+              "range_y": {
+                "minimum": 0,
+                "maximum": 0
+              },
+              "gutter_top": null,
+              "gutter_right": null,
+              "gutter_bottom": null,
+              "gutter_left": null,
+              "scrollbar_size": {
+                "width": 0,
+                "height": 0
+              },
+              "resolved_scroll_padding": {
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "optimal_viewing_region": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 50,
+                  "height": 40
+                }
+              },
+              "scroll_snap_type": {
+                "state": "none"
+              },
+              "target": {
+                "border_box": {
+                  "origin": {
+                    "x": 0,
+                    "y": 0
+                  },
+                  "size": {
+                    "width": 50,
+                    "height": 40
+                  }
+                },
+                "scroll_margin": {
+                  "top": 0,
+                  "right": 0,
+                  "bottom": 0,
+                  "left": 0
+                },
+                "flow_axes": {
+                  "writing_mode": "vertical-lr",
+                  "direction": "ltr"
+                },
+                "block_align": "none",
+                "inline_align": "none",
+                "snap_stop": "normal"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "/1",
+      "role": "ordinary-box",
+      "children": [],
+      "unrounded": {
+        "state": "present",
+        "facts": {
+          "source_index": 1,
+          "location": {
+            "x": 0,
+            "y": 100
+          },
+          "size": {
+            "width": 40,
+            "height": 80
+          },
+          "content_size": {
+            "width": 80,
+            "height": 80
+          },
+          "border": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "padding": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "margin": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "named_baselines": {
+            "alphabetic": {
+              "first": {
+                "state": "unknown"
+              },
+              "last": {
+                "state": "unknown"
+              }
+            },
+            "central": {
+              "first": {
+                "state": "unknown"
+              },
+              "last": {
+                "state": "unknown"
+              }
+            }
+          },
+          "scroll": {
+            "state": "present",
+            "facts": {
+              "flow_axes": {
+                "writing_mode": "sideways-rl",
+                "direction": "ltr"
+              },
+              "used_overflow_x": "clip",
+              "used_overflow_y": "clip",
+              "border_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 40,
+                  "height": 80
+                }
+              },
+              "padding_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 40,
+                  "height": 80
+                }
+              },
+              "content_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 40,
+                  "height": 80
+                }
+              },
+              "scrollport": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 40,
+                  "height": 80
+                }
+              },
+              "clip_x": {
+                "minimum": 0,
+                "maximum": 40
+              },
+              "clip_y": {
+                "minimum": 0,
+                "maximum": 80
+              },
+              "scrollable_overflow": {
+                "origin": {
+                  "x": -40,
+                  "y": 0
+                },
+                "size": {
+                  "width": 80,
+                  "height": 80
+                }
+              },
+              "range_x": {
+                "minimum": 0,
+                "maximum": 0
+              },
+              "range_y": {
+                "minimum": 0,
+                "maximum": 0
+              },
+              "gutter_top": null,
+              "gutter_right": null,
+              "gutter_bottom": null,
+              "gutter_left": null,
+              "scrollbar_size": {
+                "width": 0,
+                "height": 0
+              },
+              "resolved_scroll_padding": {
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "optimal_viewing_region": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 40,
+                  "height": 80
+                }
+              },
+              "scroll_snap_type": {
+                "state": "none"
+              },
+              "target": {
+                "border_box": {
+                  "origin": {
+                    "x": 0,
+                    "y": 0
+                  },
+                  "size": {
+                    "width": 40,
+                    "height": 80
+                  }
+                },
+                "scroll_margin": {
+                  "top": 0,
+                  "right": 0,
+                  "bottom": 0,
+                  "left": 0
+                },
+                "flow_axes": {
+                  "writing_mode": "sideways-rl",
+                  "direction": "ltr"
+                },
+                "block_align": "none",
+                "inline_align": "none",
+                "snap_stop": "normal"
+              }
+            }
+          }
+        }
+      },
+      "final_output": {
+        "state": "present",
+        "facts": {
+          "source_index": 1,
+          "location": {
+            "x": 0,
+            "y": 100
+          },
+          "size": {
+            "width": 40,
+            "height": 80
+          },
+          "content_size": {
+            "width": 80,
+            "height": 80
+          },
+          "border": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "padding": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "margin": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "named_baselines": {
+            "alphabetic": {
+              "first": {
+                "state": "unknown"
+              },
+              "last": {
+                "state": "unknown"
+              }
+            },
+            "central": {
+              "first": {
+                "state": "unknown"
+              },
+              "last": {
+                "state": "unknown"
+              }
+            }
+          },
+          "scroll": {
+            "state": "present",
+            "facts": {
+              "flow_axes": {
+                "writing_mode": "sideways-rl",
+                "direction": "ltr"
+              },
+              "used_overflow_x": "clip",
+              "used_overflow_y": "clip",
+              "border_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 40,
+                  "height": 80
+                }
+              },
+              "padding_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 40,
+                  "height": 80
+                }
+              },
+              "content_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 40,
+                  "height": 80
+                }
+              },
+              "scrollport": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 40,
+                  "height": 80
+                }
+              },
+              "clip_x": {
+                "minimum": 0,
+                "maximum": 40
+              },
+              "clip_y": {
+                "minimum": 0,
+                "maximum": 80
+              },
+              "scrollable_overflow": {
+                "origin": {
+                  "x": -40,
+                  "y": 0
+                },
+                "size": {
+                  "width": 80,
+                  "height": 80
+                }
+              },
+              "range_x": {
+                "minimum": 0,
+                "maximum": 0
+              },
+              "range_y": {
+                "minimum": 0,
+                "maximum": 0
+              },
+              "gutter_top": null,
+              "gutter_right": null,
+              "gutter_bottom": null,
+              "gutter_left": null,
+              "scrollbar_size": {
+                "width": 0,
+                "height": 0
+              },
+              "resolved_scroll_padding": {
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "optimal_viewing_region": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 40,
+                  "height": 80
+                }
+              },
+              "scroll_snap_type": {
+                "state": "none"
+              },
+              "target": {
+                "border_box": {
+                  "origin": {
+                    "x": 0,
+                    "y": 0
+                  },
+                  "size": {
+                    "width": 40,
+                    "height": 80
+                  }
+                },
+                "scroll_margin": {
+                  "top": 0,
+                  "right": 0,
+                  "bottom": 0,
+                  "left": 0
+                },
+                "flow_axes": {
+                  "writing_mode": "sideways-rl",
+                  "direction": "ltr"
+                },
+                "block_align": "none",
+                "inline_align": "none",
+                "snap_stop": "normal"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "/2",
+      "role": "ordinary-box",
+      "children": [
+        "/2/0"
+      ],
+      "unrounded": {
+        "state": "present",
+        "facts": {
+          "source_index": 2,
+          "location": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 0,
+            "height": 0
+          },
+          "content_size": {
+            "width": 0,
+            "height": 0
+          },
+          "border": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "padding": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "margin": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "named_baselines": {
+            "alphabetic": {
+              "first": {
+                "state": "unknown"
+              },
+              "last": {
+                "state": "unknown"
+              }
+            },
+            "central": {
+              "first": {
+                "state": "unknown"
+              },
+              "last": {
+                "state": "unknown"
+              }
+            }
+          },
+          "scroll": {
+            "state": "absent"
+          }
+        }
+      },
+      "final_output": {
+        "state": "present",
+        "facts": {
+          "source_index": 2,
+          "location": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 0,
+            "height": 0
+          },
+          "content_size": {
+            "width": 0,
+            "height": 0
+          },
+          "border": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "padding": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "margin": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "named_baselines": {
+            "alphabetic": {
+              "first": {
+                "state": "unknown"
+              },
+              "last": {
+                "state": "unknown"
+              }
+            },
+            "central": {
+              "first": {
+                "state": "unknown"
+              },
+              "last": {
+                "state": "unknown"
+              }
+            }
+          },
+          "scroll": {
+            "state": "absent"
+          }
+        }
+      }
+    },
+    {
+      "path": "/2/0",
+      "role": "ordinary-box",
+      "children": [],
+      "unrounded": {
+        "state": "present",
+        "facts": {
+          "source_index": 0,
+          "location": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 0,
+            "height": 0
+          },
+          "content_size": {
+            "width": 0,
+            "height": 0
+          },
+          "border": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "padding": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "margin": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "named_baselines": {
+            "alphabetic": {
+              "first": {
+                "state": "unknown"
+              },
+              "last": {
+                "state": "unknown"
+              }
+            },
+            "central": {
+              "first": {
+                "state": "unknown"
+              },
+              "last": {
+                "state": "unknown"
+              }
+            }
+          },
+          "scroll": {
+            "state": "absent"
+          }
+        }
+      },
+      "final_output": {
+        "state": "present",
+        "facts": {
+          "source_index": 0,
+          "location": {
+            "x": 0,
+            "y": 0
+          },
+          "size": {
+            "width": 0,
+            "height": 0
+          },
+          "content_size": {
+            "width": 0,
+            "height": 0
+          },
+          "border": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "padding": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "margin": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "named_baselines": {
+            "alphabetic": {
+              "first": {
+                "state": "unknown"
+              },
+              "last": {
+                "state": "unknown"
+              }
+            },
+            "central": {
+              "first": {
+                "state": "unknown"
+              },
+              "last": {
+                "state": "unknown"
+              }
+            }
+          },
+          "scroll": {
+            "state": "absent"
+          }
+        }
+      }
+    },
+    {
+      "path": "/3",
+      "role": "ordinary-box",
+      "children": [
+        "/3/0"
+      ],
+      "unrounded": {
+        "state": "present",
+        "facts": {
+          "source_index": 3,
+          "location": {
+            "x": 46,
+            "y": 120
+          },
+          "size": {
+            "width": 70,
+            "height": 60
+          },
+          "content_size": {
+            "width": 120,
+            "height": 60
+          },
+          "border": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "padding": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "margin": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "named_baselines": {
+            "alphabetic": {
+              "first": {
+                "state": "unknown"
+              },
+              "last": {
+                "state": "unknown"
+              }
+            },
+            "central": {
+              "first": {
+                "state": "unknown"
+              },
+              "last": {
+                "state": "unknown"
+              }
+            }
+          },
+          "scroll": {
+            "state": "present",
+            "facts": {
+              "flow_axes": {
+                "writing_mode": "sideways-rl",
+                "direction": "ltr"
+              },
+              "used_overflow_x": "auto",
+              "used_overflow_y": "auto",
+              "border_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 70,
+                  "height": 60
+                }
+              },
+              "padding_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 70,
+                  "height": 60
+                }
+              },
+              "content_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 70,
+                  "height": 45
+                }
+              },
+              "scrollport": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 70,
+                  "height": 45
+                }
+              },
+              "clip_x": {
+                "minimum": 0,
+                "maximum": 70
+              },
+              "clip_y": {
+                "minimum": 0,
+                "maximum": 45
+              },
+              "scrollable_overflow": {
+                "origin": {
+                  "x": -50,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 60
+                }
+              },
+              "range_x": {
+                "minimum": -50,
+                "maximum": 0
+              },
+              "range_y": {
+                "minimum": 0,
+                "maximum": 0
+              },
+              "gutter_top": null,
+              "gutter_right": null,
+              "gutter_bottom": {
+                "origin": {
+                  "x": 0,
+                  "y": 45
+                },
+                "size": {
+                  "width": 70,
+                  "height": 15
+                }
+              },
+              "gutter_left": null,
+              "scrollbar_size": {
+                "width": 0,
+                "height": 15
+              },
+              "resolved_scroll_padding": {
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "optimal_viewing_region": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 70,
+                  "height": 45
+                }
+              },
+              "scroll_snap_type": {
+                "state": "none"
+              },
+              "target": {
+                "border_box": {
+                  "origin": {
+                    "x": 0,
+                    "y": 0
+                  },
+                  "size": {
+                    "width": 70,
+                    "height": 60
+                  }
+                },
+                "scroll_margin": {
+                  "top": 0,
+                  "right": 0,
+                  "bottom": 0,
+                  "left": 0
+                },
+                "flow_axes": {
+                  "writing_mode": "sideways-rl",
+                  "direction": "ltr"
+                },
+                "block_align": "none",
+                "inline_align": "none",
+                "snap_stop": "normal"
+              }
+            }
+          }
+        }
+      },
+      "final_output": {
+        "state": "present",
+        "facts": {
+          "source_index": 3,
+          "location": {
+            "x": 46,
+            "y": 120
+          },
+          "size": {
+            "width": 70,
+            "height": 60
+          },
+          "content_size": {
+            "width": 120,
+            "height": 60
+          },
+          "border": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "padding": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "margin": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "named_baselines": {
+            "alphabetic": {
+              "first": {
+                "state": "unknown"
+              },
+              "last": {
+                "state": "unknown"
+              }
+            },
+            "central": {
+              "first": {
+                "state": "unknown"
+              },
+              "last": {
+                "state": "unknown"
+              }
+            }
+          },
+          "scroll": {
+            "state": "present",
+            "facts": {
+              "flow_axes": {
+                "writing_mode": "sideways-rl",
+                "direction": "ltr"
+              },
+              "used_overflow_x": "auto",
+              "used_overflow_y": "auto",
+              "border_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 70,
+                  "height": 60
+                }
+              },
+              "padding_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 70,
+                  "height": 60
+                }
+              },
+              "content_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 70,
+                  "height": 45
+                }
+              },
+              "scrollport": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 70,
+                  "height": 45
+                }
+              },
+              "clip_x": {
+                "minimum": 0,
+                "maximum": 70
+              },
+              "clip_y": {
+                "minimum": 0,
+                "maximum": 45
+              },
+              "scrollable_overflow": {
+                "origin": {
+                  "x": -50,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 60
+                }
+              },
+              "range_x": {
+                "minimum": -50,
+                "maximum": 0
+              },
+              "range_y": {
+                "minimum": 0,
+                "maximum": 0
+              },
+              "gutter_top": null,
+              "gutter_right": null,
+              "gutter_bottom": {
+                "origin": {
+                  "x": 0,
+                  "y": 45
+                },
+                "size": {
+                  "width": 70,
+                  "height": 15
+                }
+              },
+              "gutter_left": null,
+              "scrollbar_size": {
+                "width": 0,
+                "height": 15
+              },
+              "resolved_scroll_padding": {
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "optimal_viewing_region": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 70,
+                  "height": 45
+                }
+              },
+              "scroll_snap_type": {
+                "state": "none"
+              },
+              "target": {
+                "border_box": {
+                  "origin": {
+                    "x": 0,
+                    "y": 0
+                  },
+                  "size": {
+                    "width": 70,
+                    "height": 60
+                  }
+                },
+                "scroll_margin": {
+                  "top": 0,
+                  "right": 0,
+                  "bottom": 0,
+                  "left": 0
+                },
+                "flow_axes": {
+                  "writing_mode": "sideways-rl",
+                  "direction": "ltr"
+                },
+                "block_align": "none",
+                "inline_align": "none",
+                "snap_stop": "normal"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "path": "/3/0",
+      "role": "ordinary-box",
+      "children": [],
+      "unrounded": {
+        "state": "present",
+        "facts": {
+          "source_index": 0,
+          "location": {
+            "x": -50,
+            "y": 0
+          },
+          "size": {
+            "width": 120,
+            "height": 45
+          },
+          "content_size": {
+            "width": 120,
+            "height": 45
+          },
+          "border": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "padding": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "margin": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "named_baselines": {
+            "alphabetic": {
+              "first": {
+                "state": "absent"
+              },
+              "last": {
+                "state": "absent"
+              }
+            },
+            "central": {
+              "first": {
+                "state": "absent"
+              },
+              "last": {
+                "state": "absent"
+              }
+            }
+          },
+          "scroll": {
+            "state": "present",
+            "facts": {
+              "flow_axes": {
+                "writing_mode": "sideways-rl",
+                "direction": "ltr"
+              },
+              "used_overflow_x": "visible",
+              "used_overflow_y": "visible",
+              "border_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 45
+                }
+              },
+              "padding_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 45
+                }
+              },
+              "content_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 45
+                }
+              },
+              "scrollport": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 45
+                }
+              },
+              "clip_x": null,
+              "clip_y": null,
+              "scrollable_overflow": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 45
+                }
+              },
+              "range_x": {
+                "minimum": 0,
+                "maximum": 0
+              },
+              "range_y": {
+                "minimum": 0,
+                "maximum": 0
+              },
+              "gutter_top": null,
+              "gutter_right": null,
+              "gutter_bottom": null,
+              "gutter_left": null,
+              "scrollbar_size": {
+                "width": 0,
+                "height": 0
+              },
+              "resolved_scroll_padding": {
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "optimal_viewing_region": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 45
+                }
+              },
+              "scroll_snap_type": {
+                "state": "none"
+              },
+              "target": {
+                "border_box": {
+                  "origin": {
+                    "x": 0,
+                    "y": 0
+                  },
+                  "size": {
+                    "width": 120,
+                    "height": 45
+                  }
+                },
+                "scroll_margin": {
+                  "top": 0,
+                  "right": 0,
+                  "bottom": 0,
+                  "left": 0
+                },
+                "flow_axes": {
+                  "writing_mode": "sideways-rl",
+                  "direction": "ltr"
+                },
+                "block_align": "none",
+                "inline_align": "none",
+                "snap_stop": "normal"
+              }
+            }
+          }
+        }
+      },
+      "final_output": {
+        "state": "present",
+        "facts": {
+          "source_index": 0,
+          "location": {
+            "x": -50,
+            "y": 0
+          },
+          "size": {
+            "width": 120,
+            "height": 45
+          },
+          "content_size": {
+            "width": 120,
+            "height": 45
+          },
+          "border": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "padding": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "margin": {
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "named_baselines": {
+            "alphabetic": {
+              "first": {
+                "state": "absent"
+              },
+              "last": {
+                "state": "absent"
+              }
+            },
+            "central": {
+              "first": {
+                "state": "absent"
+              },
+              "last": {
+                "state": "absent"
+              }
+            }
+          },
+          "scroll": {
+            "state": "present",
+            "facts": {
+              "flow_axes": {
+                "writing_mode": "sideways-rl",
+                "direction": "ltr"
+              },
+              "used_overflow_x": "visible",
+              "used_overflow_y": "visible",
+              "border_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 45
+                }
+              },
+              "padding_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 45
+                }
+              },
+              "content_box": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 45
+                }
+              },
+              "scrollport": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 45
+                }
+              },
+              "clip_x": null,
+              "clip_y": null,
+              "scrollable_overflow": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 45
+                }
+              },
+              "range_x": {
+                "minimum": 0,
+                "maximum": 0
+              },
+              "range_y": {
+                "minimum": 0,
+                "maximum": 0
+              },
+              "gutter_top": null,
+              "gutter_right": null,
+              "gutter_bottom": null,
+              "gutter_left": null,
+              "scrollbar_size": {
+                "width": 0,
+                "height": 0
+              },
+              "resolved_scroll_padding": {
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "optimal_viewing_region": {
+                "origin": {
+                  "x": 0,
+                  "y": 0
+                },
+                "size": {
+                  "width": 120,
+                  "height": 45
+                }
+              },
+              "scroll_snap_type": {
+                "state": "none"
+              },
+              "target": {
+                "border_box": {
+                  "origin": {
+                    "x": 0,
+                    "y": 0
+                  },
+                  "size": {
+                    "width": 120,
+                    "height": 45
+                  }
+                },
+                "scroll_margin": {
+                  "top": 0,
+                  "right": 0,
+                  "bottom": 0,
+                  "left": 0
+                },
+                "flow_axes": {
+                  "writing_mode": "sideways-rl",
+                  "direction": "ltr"
+                },
+                "block_align": "none",
+                "inline_align": "none",
+                "snap_stop": "normal"
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

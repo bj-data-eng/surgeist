@@ -1,17 +1,20 @@
 //! Layout-private portable data and one identity calculation. This module uses
 //! no Generator types. Callers authenticate bytes/censuses before calculation.
-use super::exact_differences::{CaseIdentity, QualificationError};
-use super::flex_content_text;
+use super::exact_differences::{CaseIdentity, QualificationError, flex_composition_qualification};
+use super::{flex_composition, flex_content_text, pinned_font, prepared_range_qualification};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, value::RawValue};
 use sha2::{Digest as _, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
+
+use crate::fixture_variants::fixture_cases;
 
 pub(crate) const EDITION: &str = "canonical-box-differences";
 pub(crate) const MEASURED_GRID_EDITION: &str = "measured-grid-differences";
 pub(crate) const ARTIFACT_ROOT: &str =
     "tests/layout/browser_parity/captured/canonical-box-differences";
 const FLEX_TEXT_EDITION: &str = "flex-text-differences";
+pub(crate) const FIXED_GENERATOR: &str = "surgeist-layout-root-context-qualification";
 pub(crate) const TERMINAL: &str = "qualification.json";
 pub(crate) const TERMINAL_SCHEMA: u8 = 3;
 pub(crate) const ROOT_HELPER_INPUT: &str = "scripts/gentest/test_helper.js";
@@ -21,8 +24,15 @@ const ROOT_CONTEXT_V4_HELPER_SHA256: &str =
     "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee";
 const OBSERVATION_REQUEST: &str = "observation-request.json";
 const MEASURED_LEAF_SCRIPT: &str = "scripts/gentest/measured_leaf.js";
+const ELEMENT_SCROLL_SIZES_REQUEST_BYTES: &[u8] = include_bytes!(
+    "../../bin/surgeist-layout-generate/measurement/element_scroll_sizes_request.json"
+);
 const MEASURED_LEAF_REQUEST_BYTES: &[u8] =
     include_bytes!("../../bin/surgeist-layout-generate/measurement/measured_leaf_request.json");
+const PREPARED_RANGE_REQUEST_BYTES: &[u8] =
+    include_bytes!("../../bin/surgeist-layout-generate/measurement/prepared_range_request.json");
+pub(super) const FLEX_COMPOSITION_REQUEST_BYTES: &[u8] =
+    include_bytes!("../../bin/surgeist-layout-generate/measurement/flex_composition_request.json");
 const MEASURED_LEAF_SCRIPT_BYTES: &[u8] =
     include_bytes!("../../bin/surgeist-layout-generate/measurement/measured_leaf.js");
 
@@ -129,11 +139,18 @@ pub(crate) fn current_owner_bindings(
         } else if name == "browser-owner.toml" {
             format!("{ORIGINAL}/corpus.toml")
         } else if name == OBSERVATION_REQUEST {
-            let file = if hash == &sha256(flex_content_text::REQUEST) {
-                "flex_content_text_request.json"
-            } else {
-                "measured_leaf_request.json"
-            };
+            let file = [
+                ("measured_leaf_request.json", MEASURED_LEAF_REQUEST_BYTES),
+                ("flex_content_text_request.json", flex_content_text::REQUEST),
+                ("prepared_range_request.json", PREPARED_RANGE_REQUEST_BYTES),
+                (
+                    "flex_composition_request.json",
+                    FLEX_COMPOSITION_REQUEST_BYTES,
+                ),
+            ]
+            .into_iter()
+            .find_map(|(file, bytes)| (hash == &sha256(bytes)).then_some(file))
+            .ok_or_else(|| changed("unregistered observation request identity"))?;
             format!("tests/bin/surgeist-layout-generate/measurement/{file}")
         } else if name == flex_content_text::SCRIPT_PATH {
             "tests/bin/surgeist-layout-generate/measurement/flex_content_text.js".to_owned()
@@ -146,6 +163,11 @@ pub(crate) fn current_owner_bindings(
             || name.starts_with("html/")
         {
             format!("{ORIGINAL}/{name}")
+        } else if name == prepared_range_qualification::RETAINED_POLICY {
+            if hash != prepared_range_qualification::POLICY_SHA256 {
+                return Err(changed("prepared Range policy section identity"));
+            }
+            prepared_range_qualification::POLICY_SOURCE.to_owned()
         } else if semantic_paths.contains(name.as_str()) {
             name.clone()
         } else if matches!(
@@ -421,8 +443,19 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
         return Err(changed("source/variant/capture mapping"));
     }
     let (profile, font_demand) = match (observation_request, observation_input_sha256) {
-        ("geometry", None) | ("element-scroll-sizes", Some(_))
-            if !full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
+        ("geometry", None)
+            if !full_inputs.contains_key(OBSERVATION_REQUEST)
+                && !full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
+                && !full_inputs.contains_key(flex_content_text::SCRIPT_PATH) =>
+        {
+            ("canonical-no-text-boxes", "none")
+        }
+        ("element-scroll-sizes", Some(request_sha256))
+            if request_sha256 == sha256(ELEMENT_SCROLL_SIZES_REQUEST_BYTES)
+                && full_inputs.get(OBSERVATION_REQUEST).map(String::as_str)
+                    == Some(request_sha256)
+                && !excluded_specs.contains(OBSERVATION_REQUEST)
+                && !full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
                 && !full_inputs.contains_key(flex_content_text::SCRIPT_PATH) =>
         {
             ("canonical-no-text-boxes", "none")
@@ -469,6 +502,67 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
                 }
             }
             ("canonical-flex-content-text", flex_content_text::PROFILE)
+        }
+        ("prepared-ranges" | "flex-composition", Some(request_sha256))
+            if !full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
+                && !full_inputs.contains_key(flex_content_text::SCRIPT_PATH) =>
+        {
+            let ranges =
+                observation_request == SpecializedProfile::PreparedRange.observation_request();
+            let (source, request, profile, font) = if ranges {
+                (
+                    prepared_range_qualification::SOURCE,
+                    PREPARED_RANGE_REQUEST_BYTES,
+                    "canonical-prepared-ranges",
+                    "ahem-16px-prepared-ranges",
+                )
+            } else {
+                (
+                    flex_composition::SOURCE,
+                    FLEX_COMPOSITION_REQUEST_BYTES,
+                    "canonical-flex-composition",
+                    "none",
+                )
+            };
+            const FONT_PATH: &str = "fonts/Ahem.ttf";
+            let resources_match = if ranges {
+                artifact.linked_resources.len() == 1
+                    && artifact.linked_resources.get(FONT_PATH).map(String::as_str)
+                        == Some(pinned_font::SHA256)
+            } else {
+                artifact.linked_resources.is_empty()
+            };
+            let helper = full_inputs
+                .get(ROOT_HELPER_INPUT)
+                .and_then(|hash| root_helper_profile(hash).ok());
+            let helper_matches = match helper {
+                Some(RootCaptureProfile::RootContextFlexCompositionV1) => true,
+                Some(RootCaptureProfile::RootContextPreparedRangeV1) => ranges,
+                _ => false,
+            };
+            if case.source != source
+                || request_sha256 != sha256(request)
+                || !resources_match
+                || !helper_matches
+                || excluded_specs.contains(ROOT_HELPER_INPUT)
+            {
+                return Err(changed("specialized capture profile"));
+            }
+            for (path, digest) in [
+                (OBSERVATION_REQUEST, request_sha256),
+                (
+                    "scripts/gentest/test_base_style.css",
+                    pinned_font::ROOT_CONTEXT_STYLESHEET_SHA256,
+                ),
+                (FONT_PATH, pinned_font::SHA256),
+            ] {
+                if full_inputs.get(path).map(String::as_str) != Some(digest)
+                    || excluded_specs.contains(path)
+                {
+                    return Err(changed(format!("specialized observation input: {path}")));
+                }
+            }
+            (profile, font)
         }
         _ => return Err(malformed("unsupported observation request/input binding")),
     };
@@ -593,7 +687,7 @@ pub(crate) struct RecordProjection {
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct QualifiedCase {
+pub(crate) struct ExactCase {
     pub(crate) case: CaseDescriptor,
     pub(crate) spec: PathDigest,
     pub(crate) policy: PathDigest,
@@ -602,6 +696,138 @@ pub(crate) struct QualifiedCase {
     pub(crate) requirements: CurrentRequirements,
     pub(crate) identity: IdentityProjection,
 }
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum SpecializedProfile {
+    PreparedRange,
+    FlexComposition,
+}
+
+impl SpecializedProfile {
+    pub(crate) fn edition(self) -> &'static str {
+        self.artifact_root()
+            .rsplit('/')
+            .next()
+            .expect("fixed edition path")
+    }
+
+    pub(crate) fn artifact_root(self) -> &'static str {
+        match self {
+            Self::PreparedRange => {
+                "tests/layout/browser_parity/captured/prepared-range-qualification"
+            }
+            Self::FlexComposition => {
+                "tests/layout/browser_parity/captured/flex-composition-qualification"
+            }
+        }
+    }
+
+    pub(crate) fn observation_request(self) -> &'static str {
+        match self {
+            Self::PreparedRange => "prepared-ranges",
+            Self::FlexComposition => "flex-composition",
+        }
+    }
+
+    pub(crate) fn source(self) -> &'static str {
+        match self {
+            Self::PreparedRange => prepared_range_qualification::SOURCE,
+            Self::FlexComposition => flex_composition::SOURCE,
+        }
+    }
+
+    fn from_edition(edition: &str) -> Option<Self> {
+        [Self::PreparedRange, Self::FlexComposition]
+            .into_iter()
+            .find(|profile| profile.edition() == edition)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(tag = "profile", rename_all = "kebab-case", deny_unknown_fields)]
+pub(crate) enum SpecializedEvidence {
+    PreparedRange {
+        policy: PathDigest,
+    },
+    FlexComposition {
+        collapse_policy: PathDigest,
+        scrollbar_policy: PathDigest,
+        native_oracle: PathDigest,
+        gutter_control: PathDigest,
+    },
+}
+
+impl SpecializedEvidence {
+    fn profile(&self) -> SpecializedProfile {
+        match self {
+            Self::PreparedRange { .. } => SpecializedProfile::PreparedRange,
+            Self::FlexComposition { .. } => SpecializedProfile::FlexComposition,
+        }
+    }
+
+    pub(crate) fn policy_digest(&self) -> String {
+        match self {
+            Self::PreparedRange { policy } => policy.sha256.clone(),
+            Self::FlexComposition {
+                collapse_policy,
+                scrollbar_policy,
+                ..
+            } => {
+                sha256(format!("{}{}", collapse_policy.sha256, scrollbar_policy.sha256).as_bytes())
+            }
+        }
+    }
+
+    pub(crate) fn bindings(&self) -> Vec<&PathDigest> {
+        match self {
+            Self::PreparedRange { policy } => vec![policy],
+            Self::FlexComposition {
+                collapse_policy,
+                scrollbar_policy,
+                native_oracle,
+                gutter_control,
+            } => vec![
+                collapse_policy,
+                scrollbar_policy,
+                native_oracle,
+                gutter_control,
+            ],
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SpecializedCase {
+    pub(crate) case: CaseDescriptor,
+    pub(crate) historical: PathDigest,
+    pub(crate) evidence: SpecializedEvidence,
+    pub(crate) identity: IdentityProjection,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(untagged)]
+pub(crate) enum QualifiedCase {
+    Exact(ExactCase),
+    Specialized(SpecializedCase),
+}
+
+impl QualifiedCase {
+    pub(crate) fn descriptor(&self) -> &CaseDescriptor {
+        match self {
+            Self::Exact(case) => &case.case,
+            Self::Specialized(case) => &case.case,
+        }
+    }
+
+    fn identity(&self) -> &IdentityProjection {
+        match self {
+            Self::Exact(case) => &case.identity,
+            Self::Specialized(case) => &case.identity,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Qualification {
@@ -631,11 +857,13 @@ impl Qualification {
         Ok(value)
     }
     fn validate(&self) -> Result<()> {
+        let specialized = SpecializedProfile::from_edition(&self.edition);
         if self.schema_version != TERMINAL_SCHEMA
-            || !matches!(
-                self.edition.as_str(),
-                EDITION | MEASURED_GRID_EDITION | FLEX_TEXT_EDITION
-            )
+            || (specialized.is_none()
+                && !matches!(
+                    self.edition.as_str(),
+                    EDITION | MEASURED_GRID_EDITION | FLEX_TEXT_EDITION
+                ))
             || self.declaration.path != "corpus.toml"
             || self.report.path != "xml/generation-reports/all.json"
             || self.ownership.path != "xml/generation-ownership.json"
@@ -644,35 +872,20 @@ impl Qualification {
         {
             return Err(malformed("invalid terminal edition/census"));
         }
+        if specialized.is_some()
+            && (self.records.len() != 1 || self.cases.len() != fixture_cases().len())
+        {
+            return Err(malformed("incomplete specialized terminal census"));
+        }
         if self.capture_validation != CaptureValidation::from_retained(&self.retained_inputs)?
             || self.current_owner_inputs.get(ROOT_HELPER_OWNER)
                 != Some(&self.capture_validation.validator_helper_sha256)
         {
             return Err(changed("terminal producer or current validation authority"));
         }
-        for entry in [&self.declaration, &self.report, &self.ownership]
-            .into_iter()
-            .chain(self.cases.iter().flat_map(|c| {
-                [&c.case.output, &c.spec, &c.policy]
-                    .into_iter()
-                    .chain(c.historical.iter())
-            }))
-        {
+        for entry in [&self.declaration, &self.report, &self.ownership] {
             path(&entry.path)?;
             digest(&entry.sha256)?;
-        }
-        let mut cases = BTreeSet::new();
-        let mut outputs = BTreeSet::new();
-        for case in &self.cases {
-            if !cases.insert(&case.case.name) || !outputs.insert(&case.case.output.path) {
-                return Err(malformed("duplicate terminal case/output"));
-            }
-            if case.requirements.case_id != case.case.name
-                || case.requirements.output != case.case.output.path
-            {
-                return Err(malformed("terminal requirement mapping changed"));
-            }
-            digest(&case.case.record_sha256)?;
         }
         let mut records = BTreeMap::new();
         for record in &self.records {
@@ -681,9 +894,7 @@ impl Qualification {
             if semantic_record_digest(&record.value)? != record.sha256
                 || record.value.get("source").and_then(Value::as_str)
                     != Some(record.source.as_str())
-                || records
-                    .insert(record.source.as_str(), record.sha256.as_str())
-                    .is_some()
+                || records.insert(record.source.as_str(), record).is_some()
             {
                 return Err(malformed("terminal semantic record projection changed"));
             }
@@ -691,18 +902,51 @@ impl Qualification {
         if self.retained_inputs.get("corpus.toml") != Some(&self.declaration.sha256) {
             return Err(malformed("terminal declaration input seal changed"));
         }
+
+        let mut names = BTreeSet::new();
+        let mut outputs = BTreeSet::new();
+        let mut variants = BTreeSet::new();
         for case in &self.cases {
-            if records.get(case.case.source.as_str()).copied()
-                != Some(case.case.record_sha256.as_str())
-                || self.retained_inputs.get(&case.spec.path) != Some(&case.spec.sha256)
-                || self.retained_inputs.get(&case.policy.path) != Some(&case.policy.sha256)
-            {
-                return Err(malformed("terminal record/spec/policy association changed"));
+            let descriptor = case.descriptor();
+            path(&descriptor.output.path)?;
+            digest(&descriptor.output.sha256)?;
+            digest(&descriptor.record_sha256)?;
+            if !names.insert(&descriptor.name) || !outputs.insert(&descriptor.output.path) {
+                return Err(malformed("duplicate terminal case/output"));
             }
-            if case.identity.source != case.case.source
-                || case.identity.variant != case.case.variant
-                || case.identity.capture_sha256 != case.case.output.sha256
-                || case.identity.record_sha256 != case.case.record_sha256
+            let Some(record) = records.get(descriptor.source.as_str()) else {
+                return Err(malformed("terminal case source is missing"));
+            };
+            if record.sha256 != descriptor.record_sha256 {
+                return Err(malformed("terminal case record association changed"));
+            }
+            match (case, specialized) {
+                (QualifiedCase::Exact(case), None) => {
+                    if case.requirements.case_id != descriptor.name
+                        || case.requirements.output != descriptor.output.path
+                    {
+                        return Err(malformed("terminal requirement mapping changed"));
+                    }
+                    for entry in [&case.spec, &case.policy] {
+                        self.require_retained(entry)?;
+                    }
+                    if let Some(historical) = &case.historical {
+                        path(&historical.path)?;
+                        digest(&historical.sha256)?;
+                    }
+                }
+                (QualifiedCase::Specialized(case), Some(profile))
+                    if variants.insert(descriptor.variant.as_str()) =>
+                {
+                    self.validate_specialized(case, profile, record)?;
+                }
+                _ => return Err(malformed("terminal edition or variant association changed")),
+            }
+            let identity = case.identity();
+            if identity.source != descriptor.source
+                || identity.variant != descriptor.variant
+                || identity.capture_sha256 != descriptor.output.sha256
+                || identity.record_sha256 != descriptor.record_sha256
             {
                 return Err(malformed("stored projection/case association changed"));
             }
@@ -712,6 +956,70 @@ impl Qualification {
                 path(name)?;
                 digest(hash)?;
             }
+        }
+        Ok(())
+    }
+
+    fn require_retained(&self, entry: &PathDigest) -> Result<()> {
+        path(&entry.path)?;
+        digest(&entry.sha256)?;
+        if self.retained_inputs.get(&entry.path) != Some(&entry.sha256) {
+            return Err(malformed("terminal evidence differs from retained input"));
+        }
+        Ok(())
+    }
+
+    fn validate_specialized(
+        &self,
+        case: &SpecializedCase,
+        profile: SpecializedProfile,
+        record: &RecordProjection,
+    ) -> Result<()> {
+        let source = profile.source();
+        let family = source
+            .strip_prefix("html/")
+            .and_then(|path| path.strip_suffix(".html"))
+            .expect("fixed original source path");
+        let stem = family.rsplit('/').next().expect("fixed source name");
+        let variant = &case.case.variant;
+        if case.evidence.profile() != profile
+            || case.case.source != source
+            || record.value["specialized_publication"]
+                != serde_json::to_value(profile).map_err(|error| malformed(error.to_string()))?
+            || record.value["source_kind"] != "original"
+            || record.value["source_sha256"] != case.identity.source_sha256
+            || self.retained_inputs.get(source) != Some(&case.identity.source_sha256)
+            || !fixture_cases().iter().any(|(key, _)| *key == variant)
+            || case.case.name != format!("{stem}__{variant}")
+            || case.case.output.path != format!("xml/{family}__{variant}.xml")
+            || case.historical.path != format!("historical/{family}__{variant}.xml")
+            || record.value["historical_sha256"][variant] != case.historical.sha256
+            || case.identity.historical_sha256.as_ref() != Some(&case.historical.sha256)
+        {
+            return Err(malformed(
+                "specialized terminal source or predecessor changed",
+            ));
+        }
+        let evidence_matches = match &case.evidence {
+            SpecializedEvidence::PreparedRange { policy } => {
+                policy.path == prepared_range_qualification::RETAINED_POLICY
+                    && policy.sha256 == prepared_range_qualification::POLICY_SHA256
+            }
+            SpecializedEvidence::FlexComposition { .. } => {
+                flex_composition_qualification::evidence(variant).as_ref() == Some(&case.evidence)
+            }
+        };
+        if !evidence_matches || case.identity.policy_source_sha256 != case.evidence.policy_digest()
+        {
+            return Err(malformed("specialized terminal policy identity changed"));
+        }
+        let mut evidence_paths = BTreeSet::from([case.historical.path.as_str()]);
+        self.require_retained(&case.historical)?;
+        for entry in case.evidence.bindings() {
+            if !evidence_paths.insert(entry.path.as_str()) {
+                return Err(malformed("duplicate specialized evidence path"));
+            }
+            self.require_retained(entry)?;
         }
         Ok(())
     }

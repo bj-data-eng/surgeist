@@ -226,7 +226,7 @@ impl Fixture {
         admit(
             &self.owner,
             Registration {
-                edition: PublishedEdition::CanonicalBoxes,
+                edition: Edition::Exact(PublishedEdition::CanonicalBoxes),
                 terminal_sha256: &self.terminal_sha256,
             },
         )
@@ -568,7 +568,7 @@ fn external_terminal_anchor_rejects_even_semantically_identical_changed_bytes() 
         admit(
             &fixture.owner,
             Registration {
-                edition: PublishedEdition::CanonicalBoxes,
+                edition: Edition::Exact(PublishedEdition::CanonicalBoxes),
                 terminal_sha256: &"0".repeat(64)
             }
         ),
@@ -1309,5 +1309,93 @@ fn reissued_omission_of_source_spec_policy_global_or_receipt_owner_pins_is_refus
                 .remove(&path);
         });
         expect_changed(&fixture);
+    }
+}
+
+#[test]
+fn registered_prepared_range_preserves_raw_differences_and_exact_controls() {
+    let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let registry = admit_registered(owner).unwrap();
+    let selected: BTreeSet<_> = registry
+        .outputs()
+        .filter(|path| path.contains("/prepared-range-qualification/"))
+        .collect();
+    assert_eq!(selected.len(), 4);
+    let run = registry.execute_selected(&selected).unwrap();
+    assert!(run.selected_cases_passed());
+    for case in &run.cases {
+        let fields = case.raw.as_ref().unwrap();
+        if case.output.ends_with("_rtl.xml") {
+            assert_eq!(fields.len(), 1);
+            for detail in ["72.0", "24.0", "native_pieces", "aggregate"] {
+                assert!(fields[0].contains(detail), "{}", fields[0]);
+            }
+            assert_eq!(
+                case.qualified.as_ref().unwrap().raw,
+                RawVerdict::Different { fields: 1 }
+            );
+        } else {
+            assert!(fields.is_empty());
+            assert!(case.qualified.is_ok());
+        }
+    }
+}
+
+#[test]
+fn ordinary_prepared_range_keeps_a_late_unclassified_difference_in_raw_output() {
+    let original = include_str!(
+        "captured/prepared-range-qualification/xml/block/prepared_text_continuity_bidi__border_box_rtl.xml"
+    );
+    let changed = original.replace(
+        "start=\"56\" advance=\"16\"",
+        "start=\"56.015625\" advance=\"16\"",
+    );
+    assert_ne!(original, changed);
+    let golden = support::Golden::parse(&changed).unwrap();
+    let (raw, qualified) = compare_prepared_range(&golden, "border_box_rtl").unwrap();
+    assert_eq!(raw.len(), 2);
+    assert!(raw[0].contains("browser_start: 72.0"));
+    assert!(raw[1].contains("browser_start: 56.015625"));
+    assert!(
+        qualified
+            .unwrap_err()
+            .contains("prepared Range comparison changed")
+    );
+}
+
+#[test]
+fn registered_sideways_flex_preserves_both_policies_and_complete_raw_fields() {
+    let registry = admit_registered(Path::new(env!("CARGO_MANIFEST_DIR"))).unwrap();
+    let selected = registry
+        .outputs()
+        .filter(|path| path.contains("/flex-composition-qualification/"))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(selected.len(), 4);
+    let run = registry.execute_selected(&selected).unwrap();
+    assert!(run.selected_cases_passed());
+    for case in &run.cases {
+        let rtl = case.output.ends_with("_rtl.xml");
+        let fields = case.raw.as_ref().unwrap();
+        assert_eq!(fields.len(), if rtl { 10 } else { 9 });
+        assert_eq!(
+            fields
+                .iter()
+                .filter(|field| field.contains("path: \"/3/0\"") && field.contains("field: Y,"))
+                .count(),
+            usize::from(rtl)
+        );
+        let QualifiedVerdict::IntentionalFields(assignments) =
+            &case.qualified.as_ref().unwrap().qualified
+        else {
+            panic!("sideways Flex requires policy-specific assignments");
+        };
+        assert_eq!(assignments.len(), if rtl { 2 } else { 1 });
+        assert_eq!(assignments[0].policy, "flexbox-collapse-two-round-struts");
+        assert_eq!(assignments[0].fields.len(), 9);
+        if rtl {
+            assert_eq!(assignments[1].policy, "classic-scrollbar-logical-end");
+            assert_eq!(assignments[1].fields.len(), 1);
+            assert!(assignments[1].fields[0].contains("path: \"/3/0\""));
+        }
     }
 }

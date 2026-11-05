@@ -1150,3 +1150,44 @@ fn sideways_flex_composition_refuses_an_unexplained_raw_pair() {
         Err(QualificationError::DifferenceSetChanged { extra, .. }) if extra == ["layout:/3/0:Width"]
     ));
 }
+
+#[test]
+fn sideways_fixed_capture_retains_the_gutter_control_environment() {
+    const REPORT: &str =
+        include_str!("captured/flex-composition-qualification/xml/generation-reports/all.json");
+    const XML: &str = include_str!(
+        "captured/flex-composition-qualification/xml/flex/fri07_flex_composition__border_box_rtl.xml"
+    );
+    const SOURCE: &str = "html/flex/fri07_flex_composition.html";
+    const SOURCE_BYTES: &[u8] = include_bytes!("html/flex/fri07_flex_composition.html");
+    const OUTPUT: &str = "xml/flex/fri07_flex_composition__border_box_rtl.xml";
+    let parse = |report: &str| {
+        Golden::parse_with_published_flex_composition(XML, report, SOURCE, SOURCE_BYTES, OUTPUT)
+    };
+    parse(REPORT).unwrap();
+    assert!(
+        Golden::parse_with_flex_composition(XML, REPORT, SOURCE, SOURCE_BYTES, OUTPUT).is_err()
+    );
+
+    let report: serde_json::Value = serde_json::from_str(REPORT).unwrap();
+    for pointer in [
+        "/metadata/generator",
+        "/metadata/engine_version",
+        "/metadata/browser_executable",
+        "/metadata/browser_executable_sha256",
+        "/metadata/browser_provenance",
+        "/metadata/inputs/browser-owner.toml",
+        "/metadata/inputs/fonts~1Ahem.ttf",
+        "/metadata/inputs/observation-request.json",
+        "/metadata/inputs/scripts~1gentest~1test_base_style.css",
+        "/metadata/inputs/scripts~1gentest~1test_helper.js",
+    ] {
+        let mut changed = report.clone();
+        *changed.pointer_mut(pointer).unwrap() = serde_json::json!("changed");
+        let error = parse(&changed.to_string()).unwrap_err();
+        assert!(
+            error.to_string().contains("capture environment changed"),
+            "{pointer}: {error}"
+        );
+    }
+}

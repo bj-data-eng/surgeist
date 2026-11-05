@@ -3,15 +3,18 @@
 use super::{Error, Golden, Node, TestTree, Viewport, capture_authority, layout, one_child};
 use capture_authority::{CaptureMetadata, CapturedArtifact, RootCaptureProfile, sha256};
 
-const SOURCE: &str = "html/flex/fri07_flex_composition.html";
+pub(super) const SOURCE: &str = "html/flex/fri07_flex_composition.html";
 const SOURCE_BYTES: &[u8] = include_bytes!("html/flex/fri07_flex_composition.html");
 const RETAINED_REPORT: &str =
     include_str!("captured/flex-composition-differences/xml/generation-reports/all.json");
-const REQUEST: &[u8] =
-    include_bytes!("captured/flex-composition-differences/observation-request.json");
+
+// This report is the browser environment witness pinned by the gutter control.
+const RETAINED_REPORT_SHA256: &str =
+    "65bb238d03aae80b366fa1f481be42137799466f74c1a35fafdb40d2460478a2";
 
 pub(super) struct Capture<'a> {
     pub report: &'a str,
+    pub published: bool,
     pub source_path: &'a str,
     pub source_bytes: &'a [u8],
     pub output_path: &'a str,
@@ -41,28 +44,11 @@ pub(super) fn bind(
     let report = capture_authority::unique_json(capture.report).map_err(invalid)?;
     let current = &report["metadata"];
     let metadata: CaptureMetadata = serde_json::from_value(current.clone()).map_err(invalid)?;
-    let retained = capture_authority::unique_json(RETAINED_REPORT).map_err(invalid)?;
-    let sealed = &retained["metadata"];
-    // The qualifier executable may be rebuilt. The browser and capture
-    // contract must still match the environment of the gutter control.
-    if [
-        "generator",
-        "engine_version",
-        "browser_executable",
-        "browser_executable_sha256",
-        "browser_provenance",
-        "contract_sha256",
-        "source_imports",
-    ]
-    .into_iter()
-    .any(|key| current[key] != sealed[key])
-        || current["inputs"]["browser-owner.toml"] != sealed["inputs"]["browser-owner.toml"]
-    {
-        return Err(invalid("capture environment changed"));
-    }
+    require_control_environment(current, &metadata, RETAINED_REPORT, capture.published)?;
     if metadata.schema_version != 4
         || metadata.inputs.get(SOURCE) != Some(&source_digest)
-        || metadata.inputs.get("observation-request.json") != Some(&sha256(REQUEST))
+        || metadata.inputs.get("observation-request.json")
+            != Some(&sha256(capture_authority::FLEX_COMPOSITION_REQUEST_BYTES))
         || metadata
             .inputs
             .get("scripts/gentest/test_base_style.css")
@@ -148,6 +134,50 @@ pub(super) fn bind(
     })
 }
 
+fn require_control_environment(
+    current: &serde_json::Value,
+    metadata: &CaptureMetadata,
+    control_report: &str,
+    published: bool,
+) -> Result<(), Error> {
+    if sha256(control_report.as_bytes()) != RETAINED_REPORT_SHA256 {
+        return Err(invalid("gutter control report identity changed"));
+    }
+    let retained = capture_authority::unique_json(control_report).map_err(invalid)?;
+    let sealed = &retained["metadata"];
+    // The publication checks its own contract before admitting the report.
+    // The pinned gutter control independently fixes its measurement environment.
+    let same_environment = [
+        "engine_version",
+        "browser_executable",
+        "browser_executable_sha256",
+        "browser_provenance",
+    ]
+    .into_iter()
+    .all(|key| current[key] == sealed[key])
+        && [
+            "browser-owner.toml",
+            "fonts/Ahem.ttf",
+            "observation-request.json",
+            "scripts/gentest/test_base_style.css",
+            capture_authority::ROOT_HELPER_INPUT,
+        ]
+        .into_iter()
+        .all(|key| current["inputs"][key] == sealed["inputs"][key]);
+    let lineage_matches = if published {
+        metadata.generator == capture_authority::FIXED_GENERATOR
+            && metadata.source_imports.is_empty()
+    } else {
+        ["generator", "contract_sha256", "source_imports"]
+            .into_iter()
+            .all(|key| current[key] == sealed[key])
+    };
+    if !same_environment || !lineage_matches {
+        return Err(invalid("capture environment changed"));
+    }
+    Ok(())
+}
+
 pub(super) fn lower(tree: &mut TestTree, golden: &Golden, proof: &Proof) -> Result<(), Error> {
     if golden.root != *proof.root || golden.viewport != proof.viewport {
         return Err(invalid("authenticated source projection changed"));
@@ -183,4 +213,31 @@ pub(super) fn measure(natural: layout::Size, input: layout::LeafMeasureInput) ->
             .or_else(|| known.width.map(|width| width / ratio))
             .unwrap_or(natural.height),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fixed_capture_refuses_a_replaced_control_report_with_matching_metadata() {
+        let report =
+            include_str!("captured/flex-composition-qualification/xml/generation-reports/all.json");
+        let mut current = capture_authority::unique_json(report).unwrap()["metadata"].clone();
+        let metadata = serde_json::from_value(current.clone()).unwrap();
+        require_control_environment(&current, &metadata, RETAINED_REPORT, true).unwrap();
+
+        let mut control = capture_authority::unique_json(RETAINED_REPORT).unwrap();
+        let substituted = serde_json::json!("0".repeat(64));
+        current["browser_executable_sha256"] = substituted.clone();
+        control["metadata"]["browser_executable_sha256"] = substituted;
+        let metadata = serde_json::from_value(current.clone()).unwrap();
+        let error = require_control_environment(&current, &metadata, &control.to_string(), true)
+            .expect_err("a replacement report cannot redefine the control environment");
+        assert!(
+            error
+                .to_string()
+                .contains("gutter control report identity changed")
+        );
+    }
 }

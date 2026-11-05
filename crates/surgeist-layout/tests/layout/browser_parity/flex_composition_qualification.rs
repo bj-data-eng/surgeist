@@ -1,5 +1,6 @@
 //! Exact qualification for the fixed sideways Flex composition source.
 
+use super::super::capture_authority::{PathDigest, SpecializedEvidence};
 use super::*;
 
 #[derive(Serialize)]
@@ -34,6 +35,45 @@ const SCROLLBAR_CONTROL: Evidence = Evidence {
     sha256: "edcff878101c01973ca991b95a8f7ada4dce5859f9074c63fc1afa91581a71b7",
 };
 
+const NATIVE_ORACLES: [Evidence; 2] = [
+    Evidence {
+        source: "semantic/flex-composition-ltr-native.json",
+        sha256: "240a1fcae707b8f9c43e93388a310320d7d117c5148c8ea21069e6f01d28141a",
+    },
+    Evidence {
+        source: "semantic/flex-composition-rtl-native.json",
+        sha256: "c9c8024b63447230291bae870a8cc743ee0be950f33d50f2d83ebb58d552f08a",
+    },
+];
+
+pub(crate) fn input_pins() -> [(&'static str, &'static str); 5] {
+    [
+        (COLLAPSE.source, COLLAPSE.sha256),
+        (SCROLLBAR.source, SCROLLBAR.sha256),
+        (SCROLLBAR_CONTROL.source, SCROLLBAR_CONTROL.sha256),
+        (NATIVE_ORACLES[0].source, NATIVE_ORACLES[0].sha256),
+        (NATIVE_ORACLES[1].source, NATIVE_ORACLES[1].sha256),
+    ]
+}
+
+pub(crate) fn evidence(variant: &str) -> Option<SpecializedEvidence> {
+    let oracle = match variant {
+        "border_box_ltr" | "content_box_ltr" => &NATIVE_ORACLES[0],
+        "border_box_rtl" | "content_box_rtl" => &NATIVE_ORACLES[1],
+        _ => return None,
+    };
+    let pin = |path: &str, sha256: &str| PathDigest {
+        path: path.to_owned(),
+        sha256: sha256.to_owned(),
+    };
+    Some(SpecializedEvidence::FlexComposition {
+        collapse_policy: pin(COLLAPSE.source, COLLAPSE.sha256),
+        scrollbar_policy: pin(SCROLLBAR.source, SCROLLBAR.sha256),
+        native_oracle: pin(oracle.source, oracle.sha256),
+        gutter_control: pin(SCROLLBAR_CONTROL.source, SCROLLBAR_CONTROL.sha256),
+    })
+}
+
 pub(crate) struct Inputs {
     ltr: NativeOracle,
     rtl: NativeOracle,
@@ -54,23 +94,17 @@ fn checked_input(owner: &Path, source: &str, digest: &str) -> Result<Vec<u8>> {
 
 impl Inputs {
     pub(crate) fn load(owner: &Path) -> Result<Self> {
-        for policy in [&COLLAPSE, &SCROLLBAR] {
-            checked_input(owner, policy.source, policy.sha256)?;
+        let [collapse, scrollbar, control, ltr, rtl] = input_pins();
+        for (path, digest) in [collapse, scrollbar, control] {
+            checked_input(owner, path, digest)?;
         }
-        checked_input(owner, SCROLLBAR_CONTROL.source, SCROLLBAR_CONTROL.sha256)?;
-        let read_oracle = |source, digest| {
-            serde_json::from_slice(&checked_input(owner, source, digest)?)
+        let read_oracle = |(path, digest)| {
+            serde_json::from_slice(&checked_input(owner, path, digest)?)
                 .map_err(|error| malformed(error.to_string()))
         };
         Ok(Self {
-            ltr: read_oracle(
-                "semantic/flex-composition-ltr-native.json",
-                "240a1fcae707b8f9c43e93388a310320d7d117c5148c8ea21069e6f01d28141a",
-            )?,
-            rtl: read_oracle(
-                "semantic/flex-composition-rtl-native.json",
-                "c9c8024b63447230291bae870a8cc743ee0be950f33d50f2d83ebb58d552f08a",
-            )?,
+            ltr: read_oracle(ltr)?,
+            rtl: read_oracle(rtl)?,
         })
     }
 }
@@ -98,6 +132,64 @@ pub(crate) fn qualify(
     inputs: &Inputs,
     raw: &mut dyn std::io::Write,
 ) -> Result<(usize, usize)> {
+    let comparison = compare(golden, variant, inputs)?;
+    let counts = comparison.counts;
+    write_receipt(raw, golden, &comparison.completed, comparison.assignments())?;
+    comparison.into_outcomes().1?;
+    Ok(counts)
+}
+
+pub(crate) struct Comparison {
+    completed: CompletedComparison,
+    expected: Vec<ComparedField>,
+    counts: (usize, usize),
+    verification: Result<()>,
+}
+
+impl Comparison {
+    fn assignments(&self) -> Option<[Assignment<'_>; 2]> {
+        self.verification.is_ok().then(|| {
+            let (collapse, scrollbar) = self.expected.split_at(self.counts.0);
+            [
+                Assignment {
+                    policy_id: COLLAPSE.id,
+                    fields: collapse,
+                },
+                Assignment {
+                    policy_id: SCROLLBAR.id,
+                    fields: scrollbar,
+                },
+            ]
+        })
+    }
+
+    pub(crate) fn into_outcomes(self) -> (Vec<String>, Result<QualifiedComparison>) {
+        let raw: Vec<_> = self
+            .completed
+            .raw_differences()
+            .map(|field| format!("{field:?}"))
+            .collect();
+        let qualified = self.verification.map(|()| {
+            let (collapse, scrollbar) = self.expected.split_at(self.counts.0);
+            let assignments = [(COLLAPSE, collapse), (SCROLLBAR, scrollbar)]
+                .into_iter()
+                .filter(|(_, fields)| !fields.is_empty())
+                .map(|(policy, fields)| PolicyAssignment {
+                    policy: policy.id.to_owned(),
+                    edition: policy.edition.to_owned(),
+                    fields: fields.iter().map(|field| format!("{field:?}")).collect(),
+                })
+                .collect();
+            QualifiedComparison {
+                raw: RawVerdict::Different { fields: raw.len() },
+                qualified: QualifiedVerdict::IntentionalFields(assignments),
+            }
+        });
+        (raw, qualified)
+    }
+}
+
+pub(crate) fn compare(golden: &Golden, variant: &str, inputs: &Inputs) -> Result<Comparison> {
     let rtl = match variant {
         "border_box_ltr" | "content_box_ltr" => false,
         "border_box_rtl" | "content_box_rtl" => true,
@@ -124,22 +216,12 @@ pub(crate) fn qualify(
         .and_then(|()| verify_selectors(&completed, oracle))
         .and_then(|()| completed.verify_differences(&expected))
         .and_then(|_| verify_native_control(golden, image, &source, oracle));
-    let qualified = verification.is_ok().then(|| {
-        let (collapse, scrollbar) = expected.split_at(counts.0);
-        [
-            Assignment {
-                policy_id: COLLAPSE.id,
-                fields: collapse,
-            },
-            Assignment {
-                policy_id: SCROLLBAR.id,
-                fields: scrollbar,
-            },
-        ]
-    });
-    write_receipt(raw, golden, &completed, qualified)?;
-    verification?;
-    Ok(counts)
+    Ok(Comparison {
+        completed,
+        expected,
+        counts,
+        verification,
+    })
 }
 
 fn verify_native_control(

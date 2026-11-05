@@ -76,12 +76,12 @@ impl BoxObservationRequest {
     pub fn input_bytes(self) -> Option<&'static [u8]> {
         match self {
             Self::Geometry => None,
-            Self::ElementScrollSizes => Some(
-                b"{\"schema_version\":1,\"element_scroll_sizes\":\"horizontal-zero-edge-divs\"}\n",
-            ),
+            Self::ElementScrollSizes => Some(include_bytes!(
+                "measurement/element_scroll_sizes_request.json"
+            )),
             Self::PreparedRanges => Some(include_bytes!("measurement/prepared_range_request.json")),
             Self::FlexComposition => {
-                Some(b"{\"schema_version\":1,\"flex_composition\":\"fixed-sideways-root-v1\"}\n")
+                Some(include_bytes!("measurement/flex_composition_request.json"))
             }
             Self::MeasuredLeaf => Some(include_bytes!("measurement/measured_leaf_request.json")),
             Self::FlexContentText => {

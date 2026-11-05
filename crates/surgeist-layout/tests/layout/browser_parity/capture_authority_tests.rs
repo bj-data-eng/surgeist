@@ -10,6 +10,7 @@ struct Fixture {
     excluded: BTreeSet<String>,
     settings: BrowserSettingsWitness,
     xml: String,
+    policy: String,
 }
 impl Fixture {
     fn new(record: &str) -> Self {
@@ -18,7 +19,7 @@ impl Fixture {
         let xml = sha256(b"independent XML bytes");
         let inputs = BTreeMap::from([
             ("html/fixed.html".to_owned(), hash.clone()),
-            ("policy.md".to_owned(), policy),
+            ("policy.md".to_owned(), policy.clone()),
             ("base.css".to_owned(), hash.clone()),
             ("corpus.toml".to_owned(), "c".repeat(64)),
             ("semantic/one.json".to_owned(), "d".repeat(64)),
@@ -47,6 +48,7 @@ impl Fixture {
             excluded: BTreeSet::from(["semantic/one.json".into(), "semantic/two.json".into()]),
             settings: BrowserSettingsWitness::from_official_json(SETTINGS.as_bytes()).unwrap(),
             xml,
+            policy,
         }
     }
     fn verified(&self) -> Result<VerifiedIdentity> {
@@ -65,7 +67,7 @@ impl Fixture {
             excluded_specs: &self.excluded,
             actual_xml_sha256: &self.xml,
             historical_sha256: None,
-            policy_sha256: &self.inputs["policy.md"],
+            policy_sha256: &self.policy,
             browser_settings: &self.settings,
             observation_request: request,
             observation_input_sha256: request_sha,
@@ -225,6 +227,78 @@ fn flex_text_identity_binds_the_request_script_and_font_stylesheet() {
 }
 
 #[test]
+fn specialized_identity_binds_exact_observation_authority() {
+    for (request, font, report, xml) in [
+        (
+            "prepared-ranges",
+            "ahem-16px-prepared-ranges",
+            include_str!("captured/prepared-range-differences/xml/generation-reports/all.json"),
+            include_bytes!("captured/prepared-range-differences/xml/block/prepared_text_continuity_bidi__border_box_ltr.xml").as_slice(),
+        ),
+        (
+            "flex-composition",
+            "none",
+            include_str!("captured/flex-composition-differences/xml/generation-reports/all.json"),
+            include_bytes!("captured/flex-composition-differences/xml/flex/fri07_flex_composition__border_box_ltr.xml").as_slice(),
+        ),
+    ] {
+        let report = unique_json(report).unwrap();
+        let mut fixture = Fixture::new(&"a".repeat(64));
+        fixture.metadata = serde_json::from_value(report["metadata"].clone()).unwrap();
+        fixture.artifact = serde_json::from_value(report["generated"][0].clone()).unwrap();
+        fixture.case.name.clone_from(&fixture.artifact.name);
+        fixture.case.source.clone_from(&fixture.artifact.source);
+        fixture.case.variant.clone_from(&fixture.artifact.variant);
+        fixture.case.output.path.clone_from(&fixture.artifact.output);
+        fixture.case.output.sha256.clone_from(&fixture.artifact.output_sha256);
+        fixture.xml = sha256(xml);
+        fixture.inputs = fixture.metadata.inputs.clone();
+        let request_sha = fixture.inputs[OBSERVATION_REQUEST].clone();
+        let verified = fixture
+            .with_observation(request, Some(&request_sha))
+            .unwrap_or_else(|error| panic!("{request}: exact captured identity refused: {error}"));
+        assert_eq!(verified.projection().font_demand, font);
+        assert_eq!(verified.projection().inputs[OBSERVATION_REQUEST], request_sha);
+        assert!(fixture.with_observation(request, None).is_err());
+        assert!(
+            fixture
+                .with_observation(request, Some(&sha256(b"other request")))
+                .is_err()
+        );
+        assert!(fixture.with_observation("geometry", None).is_err());
+        assert!(
+            fixture
+                .with_observation("element-scroll-sizes", Some(&request_sha))
+                .is_err()
+        );
+
+        for key in [
+            OBSERVATION_REQUEST,
+            ROOT_HELPER_INPUT,
+            "scripts/gentest/test_base_style.css",
+            "fonts/Ahem.ttf",
+        ] {
+            fixture.excluded.insert(key.to_owned());
+            assert!(
+                fixture.with_observation(request, Some(&request_sha)).is_err(),
+                "excluded {request} identity input {key}"
+            );
+            fixture.excluded.remove(key);
+            let original = fixture.inputs.insert(key.to_owned(), sha256(b"changed")).unwrap();
+            fixture.metadata.inputs = fixture.inputs.clone();
+            assert!(
+                fixture.with_observation(request, Some(&request_sha)).is_err(),
+                "changed {request} identity input {key}"
+            );
+            fixture.inputs.insert(key.to_owned(), original);
+            fixture.metadata.inputs = fixture.inputs.clone();
+        }
+        fixture.artifact.linked_resources.insert("fonts/Ahem.ttf".into(), sha256(b"changed"));
+        assert!(fixture.with_observation(request, Some(&request_sha)).is_err());
+    }
+}
+
+#[test]
 fn lossless_settings_witness_preserves_the_existing_profile_tuple_bytes() {
     let fixture = Fixture::new(&"a".repeat(64));
     let verified = fixture.verified().unwrap();
@@ -335,6 +409,104 @@ fn terminal_wire_preserves_publisher_bytes_and_rejects_broken_associations() {
 }
 
 #[test]
+fn specialized_terminal_requires_complete_current_and_historical_bindings() {
+    const SOURCE: &str = "html/block/prepared_text_continuity_bidi.html";
+    const POLICY: &str = "semantic/prepared-range-policy.md";
+    const POLICY_SHA: &str = "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0";
+    let report: Value = serde_json::from_str(include_str!(
+        "captured/prepared-range-differences/xml/generation-reports/all.json"
+    ))
+    .unwrap();
+    let mut retained: BTreeMap<String, String> =
+        serde_json::from_value(report["metadata"]["inputs"].clone()).unwrap();
+    retained.insert(POLICY.into(), POLICY_SHA.into());
+    let generated = report["generated"].as_array().unwrap();
+    let historical = generated
+        .iter()
+        .map(|artifact| {
+            let output = artifact["output"].as_str().unwrap();
+            let predecessor = output.replacen("xml/", "historical/", 1);
+            (
+                artifact["variant"].as_str().unwrap().to_owned(),
+                retained[&predecessor].clone(),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let projection = json!({
+        "source": SOURCE,
+        "source_kind": "original",
+        "source_sha256": retained[SOURCE],
+        "historical_sha256": historical,
+        "specialized_publication": "prepared-range"
+    });
+    let record_sha = semantic_record_digest(&projection).unwrap();
+    let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(ARTIFACT_ROOT)
+        .join(TERMINAL);
+    let mut terminal: Value = serde_json::from_slice(&std::fs::read(file).unwrap()).unwrap();
+    let mut template = terminal["cases"][0]["identity"].clone();
+    template["source"] = json!(SOURCE);
+    template["source_sha256"] = json!(retained[SOURCE]);
+    template["record_sha256"] = json!(record_sha);
+    template["policy_source_sha256"] = json!(POLICY_SHA);
+    template["font_demand"] = json!("ahem-16px-prepared-ranges");
+    terminal["edition"] = json!("prepared-range-qualification");
+    terminal["records"] = json!([{"source": SOURCE, "sha256": record_sha, "value": projection}]);
+    terminal["declaration"]["sha256"] = json!(retained["corpus.toml"]);
+    terminal["capture_validation"] = json!(CaptureValidation::from_retained(&retained).unwrap());
+    terminal["cases"] = json!(generated.iter().map(|artifact| {
+        let mut identity = template.clone();
+        let variant = artifact["variant"].as_str().unwrap();
+        let predecessor = artifact["output"].as_str().unwrap().replacen("xml/", "historical/", 1);
+        identity["variant"] = json!(variant);
+        identity["capture_sha256"] = artifact["output_sha256"].clone();
+        identity["historical_sha256"] = json!(retained[&predecessor]);
+        json!({
+            "case": {
+                "name": artifact["name"], "source": SOURCE, "variant": variant,
+                "output": {"path": artifact["output"], "sha256": artifact["output_sha256"]},
+                "record_sha256": record_sha
+            },
+            "historical": {"path": predecessor, "sha256": retained[&predecessor]},
+            "evidence": {"profile": "prepared-range", "policy": {"path": POLICY, "sha256": POLICY_SHA}},
+            "identity": identity
+        })
+    }).collect::<Vec<_>>());
+    terminal["retained_inputs"] = json!(retained);
+    let valid = Qualification::parse(&terminal.to_string())
+        .expect("all four specialized variants bind to their captured predecessors");
+    let serialized = valid.to_bytes().unwrap();
+    assert_eq!(
+        serde_json::from_slice::<Value>(&serialized).unwrap(),
+        terminal
+    );
+
+    for (pointer, replacement) in [
+        ("/edition", json!("flex-composition-qualification")),
+        ("/cases/0/historical", Value::Null),
+        (
+            "/cases/0/historical/path",
+            terminal["cases"][1]["historical"]["path"].clone(),
+        ),
+        ("/cases/0/historical/sha256", json!("0".repeat(64))),
+        ("/cases/0/identity/historical_sha256", Value::Null),
+        ("/cases/0/evidence/policy/sha256", json!("0".repeat(64))),
+    ] {
+        let mut changed = terminal.clone();
+        *changed.pointer_mut(pointer).unwrap() = replacement;
+        assert!(
+            Qualification::parse(&changed.to_string()).is_err(),
+            "{pointer}"
+        );
+    }
+    let mut incomplete = terminal.clone();
+    incomplete["cases"].as_array_mut().unwrap().pop();
+    assert!(Qualification::parse(&incomplete.to_string()).is_err());
+    terminal["cases"][0]["spec"] = json!({"path": POLICY, "sha256": POLICY_SHA});
+    assert!(Qualification::parse(&terminal.to_string()).is_err());
+}
+
+#[test]
 fn current_terminal_requires_distinct_producer_and_validator_authority() {
     const VALIDATOR: &str = "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c";
     const HELPER: &str = "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee";
@@ -430,7 +602,11 @@ fn live_owner_bindings_cover_all_roles_and_refuse_unknown_or_overlapping_paths()
     let mut retained = BTreeMap::new();
     let mut expected = BTreeMap::new();
     for (index, (input, owner)) in roles.into_iter().enumerate() {
-        let hash = sha256(format!("independent input {index}").as_bytes());
+        let hash = if input == OBSERVATION_REQUEST {
+            sha256(MEASURED_LEAF_REQUEST_BYTES)
+        } else {
+            sha256(format!("independent input {index}").as_bytes())
+        };
         retained.insert(input.to_owned(), hash.clone());
         expected.insert(owner.to_owned(), hash);
     }
@@ -456,4 +632,41 @@ fn live_owner_bindings_cover_all_roles_and_refuse_unknown_or_overlapping_paths()
     }
     retained.insert("unknown.bin".into(), "a".repeat(64));
     assert!(current_owner_bindings(&retained, &semantic, "html/.surgeist-source.json").is_err());
+}
+
+#[test]
+fn live_owner_bindings_require_the_exact_specialized_request() {
+    const REQUESTS: [(&str, &[u8]); 2] = [
+        (
+            "prepared_range_request.json",
+            include_bytes!(
+                "../../bin/surgeist-layout-generate/measurement/prepared_range_request.json"
+            ),
+        ),
+        (
+            "flex_composition_request.json",
+            include_bytes!("captured/flex-composition-differences/observation-request.json"),
+        ),
+    ];
+    let mut retained = BTreeMap::from([(
+        "origin/source-receipt.json".into(),
+        sha256(b"independently authored source receipt"),
+    )]);
+    for (file, bytes) in REQUESTS {
+        let digest = sha256(bytes);
+        retained.insert(OBSERVATION_REQUEST.into(), digest.clone());
+        let owners =
+            current_owner_bindings(&retained, &BTreeSet::new(), "html/.surgeist-source.json")
+                .unwrap();
+        assert_eq!(
+            owners.get(&format!(
+                "tests/bin/surgeist-layout-generate/measurement/{file}"
+            )),
+            Some(&digest)
+        );
+    }
+    retained.insert(OBSERVATION_REQUEST.into(), sha256(b"unknown request"));
+    assert!(
+        current_owner_bindings(&retained, &BTreeSet::new(), "html/.surgeist-source.json").is_err()
+    );
 }

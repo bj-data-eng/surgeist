@@ -10,20 +10,26 @@ use surgeist_generator::browser::{SourceImportProvenance, SourceImportSpec};
 const EDITION: &str = "root-context-v4";
 use crate::parity_support::capture_authority as authority;
 use crate::parity_support::exact_differences::{ExactDifferenceSpec, PublishedEdition};
+use crate::parity_support::prepared_range_qualification as prepared_range;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Edition {
     RootContextV4,
     CanonicalBoxDifferences,
     MeasuredGridDifferences,
     FlexTextDifferences,
+    Specialized(SpecializedProfile),
 }
 impl Edition {
     fn name(self) -> &'static str {
-        self.published().map_or(EDITION, PublishedEdition::name)
+        if let Self::Specialized(profile) = self {
+            profile.edition()
+        } else {
+            self.published().map_or(EDITION, PublishedEdition::name)
+        }
     }
     fn published(self) -> Option<PublishedEdition> {
         match self {
-            Self::RootContextV4 => None,
+            Self::RootContextV4 | Self::Specialized(_) => None,
             Self::CanonicalBoxDifferences => Some(PublishedEdition::CanonicalBoxes),
             Self::MeasuredGridDifferences => Some(PublishedEdition::MeasuredGrid),
             Self::FlexTextDifferences => Some(PublishedEdition::FlexText),
@@ -75,10 +81,16 @@ pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
         | QualificationMode::Derive(PublishedEdition::FlexText) => {
             (Edition::FlexTextDifferences, InputAccess::ReadOnly)
         }
+        QualificationMode::PublishSpecialized(profile) => {
+            (Edition::Specialized(profile), InputAccess::Prepare)
+        }
+        QualificationMode::CheckPublishedSpecialized(profile) => {
+            (Edition::Specialized(profile), InputAccess::ReadOnly)
+        }
         _ => return Err("expected a durable publication mode".into()),
     };
     let parent = edition_parent(owner)?;
-    let retained = if edition.published().is_some() && matches!(access, InputAccess::ReadOnly) {
+    let retained = if edition != Edition::RootContextV4 && matches!(access, InputAccess::ReadOnly) {
         let root = parent.join(edition.name());
         require_directory(&root)?;
         require_regular_input(&root, &RelativePath::new("corpus.toml")?)?;
@@ -87,11 +99,25 @@ pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
     } else {
         None
     };
-    let input = match edition.published() {
-        None => edition_input(DECLARATION)?,
-        Some(published) => match &retained {
-            Some((root, declaration)) => canonical_input(root, declaration, published, access)?,
-            None => canonical_input(owner, DECLARATION, published, access)?,
+    let input = match edition {
+        Edition::Specialized(profile) => {
+            let bytes = retained.as_ref().map_or(DECLARATION, |(_, bytes)| bytes);
+            specialized_input(bytes, profile)?
+        }
+        Edition::RootContextV4 => edition_input(DECLARATION)?,
+        _ => match &retained {
+            Some((root, declaration)) => canonical_input(
+                root,
+                declaration,
+                edition.published().expect("exact edition"),
+                access,
+            )?,
+            None => canonical_input(
+                owner,
+                DECLARATION,
+                edition.published().expect("exact edition"),
+                access,
+            )?,
         },
     };
     if retained.is_some() {
@@ -126,6 +152,34 @@ pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
     }
 }
 
+fn specialized_input(bytes: &[u8], profile: SpecializedProfile) -> Result<DeclarationInput<'_>> {
+    let mut input = DeclarationInput::parse(bytes)?;
+    input
+        .declaration
+        .records
+        .retain(|record| record.specialized_publication == Some(profile));
+    if !matches!(
+        input.declaration.records.as_slice(),
+        [record] if record.source.as_str() == profile.source()
+    ) {
+        return Err("specialized publication requires its canonical declaration".into());
+    }
+    Ok(input)
+}
+
+pub(super) fn prepared_range_policy(owner: &Path) -> Result<Vec<u8>> {
+    let repository = owner
+        .parent()
+        .and_then(Path::parent)
+        .ok_or("Layout owner has no repository root")?;
+    let path = RelativePath::new(prepared_range::POLICY_SOURCE)?;
+    require_regular_input(repository, &path)?;
+    let contract = fs::read_to_string(repository.join(path.as_str()))?;
+    Ok(prepared_range::PolicyIdentity::verified_section(&contract)?
+        .as_bytes()
+        .to_vec())
+}
+
 fn with_new_edition(
     parent: &Path,
     edition: Edition,
@@ -154,6 +208,7 @@ fn finish(
     mode: QualificationMode,
 ) -> Result<()> {
     let published = edition.published();
+    let has_terminal = edition != Edition::RootContextV4;
     let derive_terminal = matches!(mode, QualificationMode::Derive(_));
     if let Some(published) = published
         && root != owner.join(published.artifact_root())
@@ -164,7 +219,7 @@ fn finish(
     let expected = declaration.expected()?;
     let mut snapshot = inventory(root, owner, input, mode, access)?;
     origin.inputs(root, &mut snapshot, access)?;
-    let stored_terminal = if published.is_some() && matches!(access, InputAccess::ReadOnly) {
+    let stored_terminal = if has_terminal && matches!(access, InputAccess::ReadOnly) {
         require_regular_input(root, &RelativePath::new(authority::TERMINAL)?)?;
         let bytes = fs::read(root.join(authority::TERMINAL))?;
         if !derive_terminal {
@@ -237,7 +292,10 @@ fn finish(
     )?;
     inventory(root, owner, input, mode, InputAccess::ReadOnly)?;
     check_input_census(root, &snapshot.expected_inputs, stored_terminal.as_deref())?;
-    if let Some(published) = published {
+    if has_terminal {
+        if let Edition::Specialized(profile) = edition {
+            terminal_cases = specialized_cases(root, input, &snapshot, &corpus, &report, profile)?;
+        }
         Invocation {
             root: root.to_path_buf(),
         }
@@ -256,7 +314,7 @@ fn finish(
                 corpus: &corpus,
                 report: &report,
                 origin: &current,
-                edition: published,
+                edition,
             },
             terminal_cases,
         )?
@@ -761,6 +819,100 @@ fn prebind_current_cases(
     Ok(requirements)
 }
 
+fn specialized_cases(
+    root: &Path,
+    input: &DeclarationInput<'_>,
+    inventory: &Inventory,
+    corpus: &BrowserCorpus,
+    report: &browser::BrowserGenerationReport,
+    profile: SpecializedProfile,
+) -> Result<Vec<authority::QualifiedCase>> {
+    let [record] = input.declaration.records.as_slice() else {
+        return Err("expected one specialized declaration".into());
+    };
+    let record_sha256 = semantic_record_digest(record)?.as_str().to_owned();
+    let settings = authority::BrowserSettingsWitness::from_official_json(&serde_json::to_vec(
+        corpus.browser(),
+    )?)?;
+    let retained = string_inputs(&inventory.expected_inputs);
+    let report_json: serde_json::Value = serde_json::from_slice(&report.to_bytes()?)?;
+    let metadata: authority::CaptureMetadata =
+        serde_json::from_value(report_json["metadata"].clone())?;
+    report
+        .generated()
+        .iter()
+        .map(|generated| {
+            let artifact: authority::CapturedArtifact =
+                serde_json::from_value(serde_json::to_value(generated)?)?;
+            let output_sha256 = authority::sha256(&fs::read(root.join(&artifact.output))?);
+            let predecessor = format!(
+                "historical/{}",
+                artifact
+                    .output
+                    .strip_prefix("xml/")
+                    .ok_or("invalid output path")?
+            );
+            let historical = authority::PathDigest {
+                sha256: retained
+                    .get(&predecessor)
+                    .ok_or("missing historical input")?
+                    .clone(),
+                path: predecessor,
+            };
+            let case = authority::CaseDescriptor {
+                name: artifact.name.clone(),
+                source: artifact.source.clone(),
+                variant: artifact.variant.clone(),
+                output: authority::PathDigest {
+                    path: artifact.output.clone(),
+                    sha256: artifact.output_sha256.clone(),
+                },
+                record_sha256: record_sha256.clone(),
+            };
+            let evidence = match profile {
+                SpecializedProfile::PreparedRange => {
+                    authority::SpecializedEvidence::PreparedRange {
+                        policy: authority::PathDigest {
+                            path: prepared_range::RETAINED_POLICY.to_owned(),
+                            sha256: retained
+                                .get(prepared_range::RETAINED_POLICY)
+                                .ok_or("missing Range policy input")?
+                                .clone(),
+                        },
+                    }
+                }
+                SpecializedProfile::FlexComposition => {
+                    flex_composition_qualification::evidence(&artifact.variant)
+                        .ok_or("invalid Flex composition variant")?
+                }
+            };
+            let verified = authority::identity_from_verified_inputs(authority::IdentityInputs {
+                metadata: &metadata,
+                artifact: &artifact,
+                case: &case,
+                full_inputs: &retained,
+                excluded_specs: &BTreeSet::new(),
+                actual_xml_sha256: &output_sha256,
+                historical_sha256: Some(&historical.sha256),
+                policy_sha256: &evidence.policy_digest(),
+                browser_settings: &settings,
+                observation_request: profile.observation_request(),
+                observation_input_sha256: retained
+                    .get(OBSERVATION_REQUEST_INPUT)
+                    .map(String::as_str),
+            })?;
+            Ok(authority::QualifiedCase::Specialized(
+                authority::SpecializedCase {
+                    case,
+                    historical,
+                    evidence,
+                    identity: verified.projection().clone(),
+                },
+            ))
+        })
+        .collect()
+}
+
 struct TerminalInput<'a> {
     owner: &'a Path,
     root: &'a Path,
@@ -769,7 +921,7 @@ struct TerminalInput<'a> {
     corpus: &'a BrowserCorpus,
     report: &'a browser::BrowserGenerationReport,
     origin: &'a Origin,
-    edition: PublishedEdition,
+    edition: Edition,
 }
 fn terminal_authority(
     context: TerminalInput<'_>,
@@ -790,7 +942,10 @@ fn terminal_authority(
     }
     let actual = cases
         .iter()
-        .map(|c| (c.case.name.as_str(), c.case.output.path.as_str()))
+        .map(|case| {
+            let case = case.descriptor();
+            (case.name.as_str(), case.output.path.as_str())
+        })
         .collect::<BTreeSet<_>>();
     let expected = inventory
         .cases
@@ -857,7 +1012,11 @@ fn current_owner_inputs(
 ) -> Result<BTreeMap<String, String>> {
     let semantic = cases
         .iter()
-        .flat_map(|c| [c.spec.path.as_str(), c.policy.path.as_str()])
+        .flat_map(|case| match case {
+            authority::QualifiedCase::Exact(case) => vec![&case.spec, &case.policy],
+            authority::QualifiedCase::Specialized(case) => case.evidence.bindings(),
+        })
+        .map(|binding| binding.path.as_str())
         .collect::<BTreeSet<_>>();
     let receipt_sidecar = origin
         .receipt_owner
@@ -870,6 +1029,12 @@ fn current_owner_inputs(
         receipt_sidecar,
     )?;
     for (source, digest) in &current {
+        if source == prepared_range::POLICY_SOURCE {
+            if authority::sha256(&prepared_range_policy(owner)?) != *digest {
+                return Err("current prepared Range policy differs from retained input".into());
+            }
+            continue;
+        }
         require_regular_input(owner, &RelativePath::new(source)?)?;
         if Sha256Digest::from_bytes(fs::read(owner.join(source))?).as_str() != digest {
             return Err("current semantic owner differs from retained input".into());

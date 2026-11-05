@@ -1,22 +1,44 @@
 //! Exact comparison of the prepared continuity fixture under the Native source-anchor policy.
 
 use super::*;
+use exact_differences::{QualifiedComparison, QualifiedVerdict, RawVerdict};
 use serde::Serialize;
 use surgeist_text::Range;
 
 pub const SOURCE: &str = "html/block/prepared_text_continuity_bidi.html";
 pub const POLICY_SOURCE: &str = "docs/text-layout-contract.md";
-const POLICY_ANCHOR: &str = "nonempty-text-range-fragments";
-const POLICY_HEADING: &str = "\n### Nonempty Text range fragments\n";
-const POLICY_SHA256: &str = "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0";
+pub(crate) const POLICY_ANCHOR: &str = "nonempty-text-range-fragments";
+const POLICY_HEADING: &str = "### Nonempty Text range fragments";
+pub(crate) const RETAINED_POLICY: &str = "semantic/prepared-range-policy.md";
+pub(crate) const POLICY_SHA256: &str =
+    "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0";
 
-pub struct PolicyIdentity(String);
+pub struct PolicyIdentity(&'static str);
 
 impl PolicyIdentity {
     pub fn from_contract(contract: &str) -> Result<Self, Error> {
-        let (_, section) = contract
-            .split_once(POLICY_HEADING)
+        Self::verified_section(contract)?;
+        Ok(Self(POLICY_SHA256))
+    }
+
+    pub fn verified_section(contract: &str) -> Result<&str, Error> {
+        // The policy title and anchor are reserved throughout the owner document.
+        // Search the source independently of heading syntax or inline punctuation.
+        let title = normalized_title(POLICY_ANCHOR);
+        if normalized_title(contract).matches(title.as_str()).count() > 1 {
+            return Err(Error::new(
+                "duplicate prepared Range policy title or anchor",
+            ));
+        }
+        let mut offset = 0;
+        let start = contract
+            .split_inclusive('\n')
+            .find_map(|line| {
+                offset += line.len();
+                (line.trim_end() == POLICY_HEADING).then_some(offset)
+            })
             .ok_or_else(|| Error::new("missing prepared Range policy section"))?;
+        let section = &contract[start..];
         let length = section
             .split_inclusive('\n')
             .take_while(|line| {
@@ -26,13 +48,21 @@ impl PolicyIdentity {
             })
             .map(str::len)
             .sum();
-        let digest = capture_authority::sha256(&section.as_bytes()[..length]);
-        if digest != POLICY_SHA256 {
+        let section = &section[..length];
+        if capture_authority::sha256(section.as_bytes()) != POLICY_SHA256 {
             return Err(Error::new("prepared Range policy section changed"));
         }
-        Ok(Self(digest))
+        Ok(section)
     }
 }
+fn normalized_title(source: &str) -> String {
+    source
+        .bytes()
+        .filter(u8::is_ascii_alphanumeric)
+        .map(|byte| char::from(byte.to_ascii_lowercase()))
+        .collect()
+}
+
 const FONT_SIZE: f64 = 16.0;
 const LINE_HEIGHT: f64 = 20.0;
 // The font has ascent 800 at UPEM 1000. The remaining leading is split
@@ -266,6 +296,92 @@ pub fn qualify(
     policy: &PolicyIdentity,
     mut raw: impl std::io::Write,
 ) -> Result<(), Error> {
+    let result = compare(golden, source, variant)?;
+    serde_json::to_writer(&mut raw, &result.observations).map_err(|e| Error::new(e.to_string()))?;
+    writeln!(raw).map_err(|e| Error::new(e.to_string()))?;
+
+    let (_, qualified) = result.into_outcomes()?;
+    if matches!(qualified?.qualified, QualifiedVerdict::Intentional { .. }) {
+        writeln!(
+            raw,
+            "{{\"case\":\"{}\",\"verdict\":\"intentional\",\"policy\":\"{POLICY_SOURCE}#{POLICY_ANCHOR}\",\"policy_sha256\":\"{}\"}}",
+            golden.name, policy.0
+        )
+    } else {
+        writeln!(
+            raw,
+            "{{\"case\":\"{}\",\"verdict\":\"matching-control\"}}",
+            golden.name
+        )
+    }
+    .map_err(|e| Error::new(e.to_string()))
+}
+
+pub(crate) struct PreparedComparison {
+    observations: Comparisons,
+    complete: bool,
+    intentional: Result<bool, Error>,
+}
+
+fn incomplete() -> Error {
+    Error::new("prepared Range capture requires complete observations")
+}
+
+impl PreparedComparison {
+    pub(crate) fn into_outcomes(
+        self,
+    ) -> Result<(Vec<String>, Result<QualifiedComparison, Error>), Error> {
+        let fields = self.raw_differences()?;
+        let qualified = self.intentional.map(|intentional| {
+            if intentional {
+                QualifiedComparison {
+                    raw: RawVerdict::Different {
+                        fields: fields.len(),
+                    },
+                    qualified: QualifiedVerdict::Intentional {
+                        policy: format!("{POLICY_SOURCE}#{POLICY_ANCHOR}"),
+                        edition: POLICY_SHA256.to_owned(),
+                    },
+                }
+            } else {
+                QualifiedComparison {
+                    raw: RawVerdict::Matches,
+                    qualified: QualifiedVerdict::MatchingControl,
+                }
+            }
+        });
+        Ok((fields, qualified))
+    }
+
+    fn raw_differences(&self) -> Result<Vec<String>, Error> {
+        if !self.complete {
+            return Err(incomplete());
+        }
+        Ok(self
+            .observations
+            .boxes
+            .iter()
+            .filter(|field| field.browser != field.native)
+            .map(|field| format!("{field:?}"))
+            .chain(
+                self.observations
+                    .ranges
+                    .iter()
+                    .filter(|row| {
+                        row.browser_start != row.native_start
+                            || row.browser_advance != row.native_advance
+                    })
+                    .map(|row| format!("{row:?}")),
+            )
+            .collect())
+    }
+}
+
+pub(crate) fn compare(
+    golden: &Golden,
+    source: &str,
+    variant: &str,
+) -> Result<PreparedComparison, Error> {
     let rtl = match variant {
         "border_box_ltr" | "content_box_ltr" => false,
         "border_box_rtl" | "content_box_rtl" => true,
@@ -293,30 +409,21 @@ pub fn qualify(
     let NumericComparisonSink::PreparedRanges(comparisons) = sink else {
         unreachable!("prepared Range collector remains selected");
     };
-    serde_json::to_writer(&mut raw, &comparisons).map_err(|e| Error::new(e.to_string()))?;
-    writeln!(raw).map_err(|e| Error::new(e.to_string()))?;
-
-    if !comparison.endpoint_unobservable_fields().is_empty() {
-        return Err(Error::new(
-            "prepared Range capture requires complete observations",
-        ));
-    }
-    custody.ok_or_else(|| Error::new("missing completed Native batch"))??;
-    verify_comparisons(&comparisons, rtl)?;
-    if rtl {
-        writeln!(
-            raw,
-            "{{\"case\":\"{}\",\"verdict\":\"intentional\",\"policy\":\"{POLICY_SOURCE}#{POLICY_ANCHOR}\",\"policy_sha256\":\"{}\"}}",
-            golden.name, policy.0
-        )
+    let complete = comparison.endpoint_unobservable_fields().is_empty();
+    let intentional = if complete {
+        custody
+            .ok_or_else(|| Error::new("missing completed Native batch"))
+            .and_then(|native| native)
+            .and_then(|()| verify_comparisons(&comparisons, rtl))
+            .map(|()| rtl)
     } else {
-        writeln!(
-            raw,
-            "{{\"case\":\"{}\",\"verdict\":\"matching-control\"}}",
-            golden.name
-        )
-    }
-    .map_err(|e| Error::new(e.to_string()))
+        Err(incomplete())
+    };
+    Ok(PreparedComparison {
+        observations: comparisons,
+        complete,
+        intentional,
+    })
 }
 
 fn verify_comparisons(comparisons: &Comparisons, rtl: bool) -> Result<(), Error> {
@@ -787,6 +894,57 @@ mod tests {
         assert_ne!(changed, CONTRACT);
         assert!(PolicyIdentity::from_contract(&changed).is_err());
         assert!(PolicyIdentity::from_contract("missing policy").is_err());
+    }
+
+    #[test]
+    fn prepared_range_policy_rejects_a_shadowed_owner_section() {
+        let extended = format!("{CONTRACT}\n### Unrelated owner section\n\nMore context.\n");
+        assert!(PolicyIdentity::from_contract(&extended).is_ok());
+        let shadowed =
+            format!("{extended}\n### Nonempty Text range fragments\n\nConflicting policy.\n");
+        assert!(PolicyIdentity::from_contract(&shadowed).is_err());
+    }
+
+    #[test]
+    fn prepared_range_policy_rejects_shadowing_at_document_boundaries() {
+        let rejected = [
+            format!("### Nonempty Text range fragments\n\nConflicting policy.\n\n{CONTRACT}"),
+            format!("{CONTRACT}\n### Nonempty Text range fragments"),
+            format!("{CONTRACT}\n### Nonempty Text range fragments   \n\nConflicting policy.\n"),
+        ]
+        .map(|shadowed| PolicyIdentity::from_contract(&shadowed).is_err());
+        assert_eq!(rejected, [true, true, true]);
+    }
+
+    #[test]
+    fn prepared_range_policy_rejects_equivalent_atx_headings() {
+        let rejected = [
+            " ### Nonempty Text range fragments",
+            "### Nonempty Text range fragments ###",
+            "## Nonempty Text range fragments",
+            "###\tNonempty Text range fragments",
+            "### Nonempty text range fragments",
+        ]
+        .map(|heading| {
+            let shadowed = format!("{heading}\n\nConflicting policy.\n\n{CONTRACT}");
+            PolicyIdentity::from_contract(&shadowed).is_err()
+        });
+        assert_eq!(rejected, [true; 5]);
+    }
+
+    #[test]
+    fn prepared_range_policy_reserves_the_title_and_anchor() {
+        let rejected = [
+            "Nonempty Text range fragments\n=============================",
+            "### Nonempty **Text** range fragments",
+            "### [Nonempty Text range fragments](#conflicting-policy)",
+            "<a id=\"nonempty-text-range-fragments\"></a>",
+        ]
+        .map(|heading| {
+            let shadowed = format!("{heading}\n\nConflicting policy.\n\n{CONTRACT}");
+            PolicyIdentity::from_contract(&shadowed).is_err()
+        });
+        assert_eq!(rejected, [true; 4]);
     }
 
     #[test]

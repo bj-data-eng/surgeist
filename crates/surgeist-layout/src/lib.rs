@@ -219,6 +219,10 @@
 //! ```
 
 #[cfg(test)]
+#[path = "../tests/layout/browser_parity/fixture_variants.rs"]
+mod fixture_variants;
+
+#[cfg(test)]
 use surgeist_text::{BidiLevel, BidiLevelError, InlineWhitespaceEdge};
 
 #[cfg(test)]

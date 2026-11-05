@@ -421,6 +421,8 @@ enum FontDemand {
     AhemZwsp,
     #[serde(rename = "ahem-10px-flex-direct-text")]
     AhemFlexDirectText,
+    #[serde(rename = "ahem-16px-prepared-ranges")]
+    AhemPreparedRanges,
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -543,11 +545,20 @@ impl CompletedComparison {
 }
 #[derive(Debug, PartialEq)]
 pub(crate) enum RawVerdict {
+    Matches,
     Different { fields: usize },
 }
 #[derive(Debug, PartialEq)]
+pub(crate) struct PolicyAssignment {
+    pub(crate) policy: String,
+    pub(crate) edition: String,
+    pub(crate) fields: Vec<String>,
+}
+#[derive(Debug, PartialEq)]
 pub(crate) enum QualifiedVerdict {
+    MatchingControl,
     Intentional { policy: String, edition: String },
+    IntentionalFields(Vec<PolicyAssignment>),
 }
 #[derive(Debug, PartialEq)]
 pub(crate) struct QualifiedComparison {

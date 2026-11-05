@@ -1,0 +1,331 @@
+{
+  "schema_version": 3,
+  "edition": "prepared-range-qualification",
+  "declaration": {
+    "path": "corpus.toml",
+    "sha256": "c570592082a4540bd4f60d6ad5eb70717c5d517106addd8f882905882d7ea0b2"
+  },
+  "records": [
+    {
+      "source": "html/block/prepared_text_continuity_bidi.html",
+      "sha256": "17592053e0339a6132eea5df385ad0710aa52caa5515a03a3847efb3a6ca516e",
+      "value": {
+        "expected": {
+          "kind": "generated",
+          "metadata": {
+            "containing_direction": "ltr",
+            "context": "absolute-local",
+            "hypothetical_direction": "ltr",
+            "hypothetical_display": "block",
+            "inline_offset": 0.0,
+            "root_direction": "variant",
+            "root_size": null,
+            "root_writing_mode": "horizontal-tb"
+          }
+        },
+        "historical_sha256": {
+          "border_box_ltr": "95953046fd090fde97bbeed6cfaf3eff838f29838a3a214a2c8e044b8afdc860",
+          "border_box_rtl": "5ac8e10f2cf0c001678c4c7e56817c6b1e7d8373c55d2aeb52a8c524c964f877",
+          "content_box_ltr": "0d8325c41247c8e815632eb658abe0114705c5affcc89ca17d9de3c94c94e995",
+          "content_box_rtl": "41b983a5ba287b4f47ee2a1fc4f05f39237041f7a25ea05d2eebf77b63951b5d"
+        },
+        "relation": null,
+        "semantic_specifications": null,
+        "source": "html/block/prepared_text_continuity_bidi.html",
+        "source_kind": "original",
+        "source_sha256": "48cc2e77ec658cacd9de207a16b1b9d41fbe33f3e494161b4f88da584e52f3ba",
+        "specialized_publication": "prepared-range"
+      }
+    }
+  ],
+  "browser_settings": {"source":"chrome-for-testing","version":"149.0.7827.115","version_output":"Google Chrome for Testing 149.0.7827.115","cache_root":"tmp/surgeist-browser","provenance_format":"chrome-for-testing/{version} ({repository_relative_executable})","launch":{"batch_size":50,"navigation_timeout_ms":10000,"dom_poll_interval_ms":25,"arguments":["headless=new","mute-audio","disable-background-networking","disable-background-timer-throttling","disable-backgrounding-occluded-windows","disable-breakpad","disable-client-side-phishing-detection","disable-component-extensions-with-background-pages","disable-component-update","disable-default-apps","disable-dev-shm-usage","disable-domain-reliability","disable-features=TranslateUI,MediaRouter,OptimizationHints,AutofillServerCommunication","disable-hang-monitor","disable-ipc-flooding-protection","disable-popup-blocking","disable-prompt-on-repost","disable-renderer-backgrounding","disable-sync","enable-automation","enable-blink-features=IdleDetection,CSSGridLanesLayout","enable-features=NetworkService,NetworkServiceInProcess","force-color-profile=srgb","lang=en_US","metrics-recording-only","no-default-browser-check","no-first-run","use-mock-keychain"]}},
+  "report": {
+    "path": "xml/generation-reports/all.json",
+    "sha256": "876d26922b2af2f45a2f1ac3c42b506b08520c3768ef177ccce8adf34309f54a"
+  },
+  "ownership": {
+    "path": "xml/generation-ownership.json",
+    "sha256": "d5967e70da1fe024e2fce49e3bd914250133b3c24b8c743f4767b09df87f48b0"
+  },
+  "cases": [
+    {
+      "case": {
+        "name": "prepared_text_continuity_bidi__border_box_ltr",
+        "source": "html/block/prepared_text_continuity_bidi.html",
+        "variant": "border_box_ltr",
+        "output": {
+          "path": "xml/block/prepared_text_continuity_bidi__border_box_ltr.xml",
+          "sha256": "1412e62f26afb5560c412616f4cef4c17c42e8655b119711f17ef2d37373f29e"
+        },
+        "record_sha256": "17592053e0339a6132eea5df385ad0710aa52caa5515a03a3847efb3a6ca516e"
+      },
+      "historical": {
+        "path": "historical/block/prepared_text_continuity_bidi__border_box_ltr.xml",
+        "sha256": "95953046fd090fde97bbeed6cfaf3eff838f29838a3a214a2c8e044b8afdc860"
+      },
+      "evidence": {
+        "profile": "prepared-range",
+        "policy": {
+          "path": "semantic/prepared-range-policy.md",
+          "sha256": "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0"
+        }
+      },
+      "identity": {
+        "source": "html/block/prepared_text_continuity_bidi.html",
+        "source_sha256": "48cc2e77ec658cacd9de207a16b1b9d41fbe33f3e494161b4f88da584e52f3ba",
+        "variant": "border_box_ltr",
+        "historical_sha256": "95953046fd090fde97bbeed6cfaf3eff838f29838a3a214a2c8e044b8afdc860",
+        "capture_sha256": "1412e62f26afb5560c412616f4cef4c17c42e8655b119711f17ef2d37373f29e",
+        "record_sha256": "17592053e0339a6132eea5df385ad0710aa52caa5515a03a3847efb3a6ca516e",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "0c90fccef1161de2f720f05bfb8e5be7bc1ec13ec2b195624944a5332f5dda06",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/prepared_text_continuity_bidi__border_box_ltr.xml": "95953046fd090fde97bbeed6cfaf3eff838f29838a3a214a2c8e044b8afdc860",
+          "historical/block/prepared_text_continuity_bidi__border_box_rtl.xml": "5ac8e10f2cf0c001678c4c7e56817c6b1e7d8373c55d2aeb52a8c524c964f877",
+          "historical/block/prepared_text_continuity_bidi__content_box_ltr.xml": "0d8325c41247c8e815632eb658abe0114705c5affcc89ca17d9de3c94c94e995",
+          "historical/block/prepared_text_continuity_bidi__content_box_rtl.xml": "41b983a5ba287b4f47ee2a1fc4f05f39237041f7a25ea05d2eebf77b63951b5d",
+          "html/block/prepared_text_continuity_bidi.html": "48cc2e77ec658cacd9de207a16b1b9d41fbe33f3e494161b4f88da584e52f3ba",
+          "observation-request.json": "e04da2c3ef3ed2ffb69cac235335ef74ba4467b0ee66a91802ef466bfd6ae606",
+          "origin/selected-originals.json": "0dc44cba937ed907243cf09d5140e6c5491345ab1d5c84fd012bb039f69bf4cb",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+          "semantic/prepared-range-policy.md": "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0"
+        },
+        "linked_resources": {
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc"
+        },
+        "font_demand": "ahem-16px-prepared-ranges",
+        "policy_source_sha256": "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0"
+      }
+    },
+    {
+      "case": {
+        "name": "prepared_text_continuity_bidi__border_box_rtl",
+        "source": "html/block/prepared_text_continuity_bidi.html",
+        "variant": "border_box_rtl",
+        "output": {
+          "path": "xml/block/prepared_text_continuity_bidi__border_box_rtl.xml",
+          "sha256": "9de2fa9846fe2301135f32b9120b5f3bfafd178940c3a88f5bb6ab7632782bcd"
+        },
+        "record_sha256": "17592053e0339a6132eea5df385ad0710aa52caa5515a03a3847efb3a6ca516e"
+      },
+      "historical": {
+        "path": "historical/block/prepared_text_continuity_bidi__border_box_rtl.xml",
+        "sha256": "5ac8e10f2cf0c001678c4c7e56817c6b1e7d8373c55d2aeb52a8c524c964f877"
+      },
+      "evidence": {
+        "profile": "prepared-range",
+        "policy": {
+          "path": "semantic/prepared-range-policy.md",
+          "sha256": "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0"
+        }
+      },
+      "identity": {
+        "source": "html/block/prepared_text_continuity_bidi.html",
+        "source_sha256": "48cc2e77ec658cacd9de207a16b1b9d41fbe33f3e494161b4f88da584e52f3ba",
+        "variant": "border_box_rtl",
+        "historical_sha256": "5ac8e10f2cf0c001678c4c7e56817c6b1e7d8373c55d2aeb52a8c524c964f877",
+        "capture_sha256": "9de2fa9846fe2301135f32b9120b5f3bfafd178940c3a88f5bb6ab7632782bcd",
+        "record_sha256": "17592053e0339a6132eea5df385ad0710aa52caa5515a03a3847efb3a6ca516e",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "835271556e660c0ff355d2b310ee8176c6e75d81a71b6917324f4dd5818d78a1",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/prepared_text_continuity_bidi__border_box_ltr.xml": "95953046fd090fde97bbeed6cfaf3eff838f29838a3a214a2c8e044b8afdc860",
+          "historical/block/prepared_text_continuity_bidi__border_box_rtl.xml": "5ac8e10f2cf0c001678c4c7e56817c6b1e7d8373c55d2aeb52a8c524c964f877",
+          "historical/block/prepared_text_continuity_bidi__content_box_ltr.xml": "0d8325c41247c8e815632eb658abe0114705c5affcc89ca17d9de3c94c94e995",
+          "historical/block/prepared_text_continuity_bidi__content_box_rtl.xml": "41b983a5ba287b4f47ee2a1fc4f05f39237041f7a25ea05d2eebf77b63951b5d",
+          "html/block/prepared_text_continuity_bidi.html": "48cc2e77ec658cacd9de207a16b1b9d41fbe33f3e494161b4f88da584e52f3ba",
+          "observation-request.json": "e04da2c3ef3ed2ffb69cac235335ef74ba4467b0ee66a91802ef466bfd6ae606",
+          "origin/selected-originals.json": "0dc44cba937ed907243cf09d5140e6c5491345ab1d5c84fd012bb039f69bf4cb",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+          "semantic/prepared-range-policy.md": "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0"
+        },
+        "linked_resources": {
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc"
+        },
+        "font_demand": "ahem-16px-prepared-ranges",
+        "policy_source_sha256": "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0"
+      }
+    },
+    {
+      "case": {
+        "name": "prepared_text_continuity_bidi__content_box_ltr",
+        "source": "html/block/prepared_text_continuity_bidi.html",
+        "variant": "content_box_ltr",
+        "output": {
+          "path": "xml/block/prepared_text_continuity_bidi__content_box_ltr.xml",
+          "sha256": "eb16e4d52b45b0f0a94f88b82bc261fdb563024f47221b6bec6b9241fe5e841a"
+        },
+        "record_sha256": "17592053e0339a6132eea5df385ad0710aa52caa5515a03a3847efb3a6ca516e"
+      },
+      "historical": {
+        "path": "historical/block/prepared_text_continuity_bidi__content_box_ltr.xml",
+        "sha256": "0d8325c41247c8e815632eb658abe0114705c5affcc89ca17d9de3c94c94e995"
+      },
+      "evidence": {
+        "profile": "prepared-range",
+        "policy": {
+          "path": "semantic/prepared-range-policy.md",
+          "sha256": "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0"
+        }
+      },
+      "identity": {
+        "source": "html/block/prepared_text_continuity_bidi.html",
+        "source_sha256": "48cc2e77ec658cacd9de207a16b1b9d41fbe33f3e494161b4f88da584e52f3ba",
+        "variant": "content_box_ltr",
+        "historical_sha256": "0d8325c41247c8e815632eb658abe0114705c5affcc89ca17d9de3c94c94e995",
+        "capture_sha256": "eb16e4d52b45b0f0a94f88b82bc261fdb563024f47221b6bec6b9241fe5e841a",
+        "record_sha256": "17592053e0339a6132eea5df385ad0710aa52caa5515a03a3847efb3a6ca516e",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "640c0142b7b2830030866d9ecba86d002ded0ae33571b83958b102c392a87f8d",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/prepared_text_continuity_bidi__border_box_ltr.xml": "95953046fd090fde97bbeed6cfaf3eff838f29838a3a214a2c8e044b8afdc860",
+          "historical/block/prepared_text_continuity_bidi__border_box_rtl.xml": "5ac8e10f2cf0c001678c4c7e56817c6b1e7d8373c55d2aeb52a8c524c964f877",
+          "historical/block/prepared_text_continuity_bidi__content_box_ltr.xml": "0d8325c41247c8e815632eb658abe0114705c5affcc89ca17d9de3c94c94e995",
+          "historical/block/prepared_text_continuity_bidi__content_box_rtl.xml": "41b983a5ba287b4f47ee2a1fc4f05f39237041f7a25ea05d2eebf77b63951b5d",
+          "html/block/prepared_text_continuity_bidi.html": "48cc2e77ec658cacd9de207a16b1b9d41fbe33f3e494161b4f88da584e52f3ba",
+          "observation-request.json": "e04da2c3ef3ed2ffb69cac235335ef74ba4467b0ee66a91802ef466bfd6ae606",
+          "origin/selected-originals.json": "0dc44cba937ed907243cf09d5140e6c5491345ab1d5c84fd012bb039f69bf4cb",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+          "semantic/prepared-range-policy.md": "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0"
+        },
+        "linked_resources": {
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc"
+        },
+        "font_demand": "ahem-16px-prepared-ranges",
+        "policy_source_sha256": "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0"
+      }
+    },
+    {
+      "case": {
+        "name": "prepared_text_continuity_bidi__content_box_rtl",
+        "source": "html/block/prepared_text_continuity_bidi.html",
+        "variant": "content_box_rtl",
+        "output": {
+          "path": "xml/block/prepared_text_continuity_bidi__content_box_rtl.xml",
+          "sha256": "9b3b8498ce0e09a043e359dac813c964fcf24907cd29cb99ac141319d2ef854a"
+        },
+        "record_sha256": "17592053e0339a6132eea5df385ad0710aa52caa5515a03a3847efb3a6ca516e"
+      },
+      "historical": {
+        "path": "historical/block/prepared_text_continuity_bidi__content_box_rtl.xml",
+        "sha256": "41b983a5ba287b4f47ee2a1fc4f05f39237041f7a25ea05d2eebf77b63951b5d"
+      },
+      "evidence": {
+        "profile": "prepared-range",
+        "policy": {
+          "path": "semantic/prepared-range-policy.md",
+          "sha256": "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0"
+        }
+      },
+      "identity": {
+        "source": "html/block/prepared_text_continuity_bidi.html",
+        "source_sha256": "48cc2e77ec658cacd9de207a16b1b9d41fbe33f3e494161b4f88da584e52f3ba",
+        "variant": "content_box_rtl",
+        "historical_sha256": "41b983a5ba287b4f47ee2a1fc4f05f39237041f7a25ea05d2eebf77b63951b5d",
+        "capture_sha256": "9b3b8498ce0e09a043e359dac813c964fcf24907cd29cb99ac141319d2ef854a",
+        "record_sha256": "17592053e0339a6132eea5df385ad0710aa52caa5515a03a3847efb3a6ca516e",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "602eb81f88e6f273d03ab3e1cac3a7815280d649a4e6bdfa6248567664e5158b",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/prepared_text_continuity_bidi__border_box_ltr.xml": "95953046fd090fde97bbeed6cfaf3eff838f29838a3a214a2c8e044b8afdc860",
+          "historical/block/prepared_text_continuity_bidi__border_box_rtl.xml": "5ac8e10f2cf0c001678c4c7e56817c6b1e7d8373c55d2aeb52a8c524c964f877",
+          "historical/block/prepared_text_continuity_bidi__content_box_ltr.xml": "0d8325c41247c8e815632eb658abe0114705c5affcc89ca17d9de3c94c94e995",
+          "historical/block/prepared_text_continuity_bidi__content_box_rtl.xml": "41b983a5ba287b4f47ee2a1fc4f05f39237041f7a25ea05d2eebf77b63951b5d",
+          "html/block/prepared_text_continuity_bidi.html": "48cc2e77ec658cacd9de207a16b1b9d41fbe33f3e494161b4f88da584e52f3ba",
+          "observation-request.json": "e04da2c3ef3ed2ffb69cac235335ef74ba4467b0ee66a91802ef466bfd6ae606",
+          "origin/selected-originals.json": "0dc44cba937ed907243cf09d5140e6c5491345ab1d5c84fd012bb039f69bf4cb",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+          "semantic/prepared-range-policy.md": "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0"
+        },
+        "linked_resources": {
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc"
+        },
+        "font_demand": "ahem-16px-prepared-ranges",
+        "policy_source_sha256": "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0"
+      }
+    }
+  ],
+  "retained_inputs": {
+    "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+    "corpus.toml": "c570592082a4540bd4f60d6ad5eb70717c5d517106addd8f882905882d7ea0b2",
+    "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+    "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+    "historical/block/prepared_text_continuity_bidi__border_box_ltr.xml": "95953046fd090fde97bbeed6cfaf3eff838f29838a3a214a2c8e044b8afdc860",
+    "historical/block/prepared_text_continuity_bidi__border_box_rtl.xml": "5ac8e10f2cf0c001678c4c7e56817c6b1e7d8373c55d2aeb52a8c524c964f877",
+    "historical/block/prepared_text_continuity_bidi__content_box_ltr.xml": "0d8325c41247c8e815632eb658abe0114705c5affcc89ca17d9de3c94c94e995",
+    "historical/block/prepared_text_continuity_bidi__content_box_rtl.xml": "41b983a5ba287b4f47ee2a1fc4f05f39237041f7a25ea05d2eebf77b63951b5d",
+    "html/block/prepared_text_continuity_bidi.html": "48cc2e77ec658cacd9de207a16b1b9d41fbe33f3e494161b4f88da584e52f3ba",
+    "observation-request.json": "e04da2c3ef3ed2ffb69cac235335ef74ba4467b0ee66a91802ef466bfd6ae606",
+    "origin/selected-originals.json": "0dc44cba937ed907243cf09d5140e6c5491345ab1d5c84fd012bb039f69bf4cb",
+    "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+    "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+    "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+    "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+    "semantic/prepared-range-policy.md": "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0"
+  },
+  "current_owner_inputs": {
+    "docs/text-layout-contract.md": "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0",
+    "tests/bin/surgeist-layout-generate/measurement/prepared_range_request.json": "e04da2c3ef3ed2ffb69cac235335ef74ba4467b0ee66a91802ef466bfd6ae606",
+    "tests/layout/browser_parity/corpus.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+    "tests/layout/browser_parity/fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+    "tests/layout/browser_parity/fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+    "tests/layout/browser_parity/html/.surgeist-source.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+    "tests/layout/browser_parity/html/block/prepared_text_continuity_bidi.html": "48cc2e77ec658cacd9de207a16b1b9d41fbe33f3e494161b4f88da584e52f3ba",
+    "tests/layout/browser_parity/scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+    "tests/layout/browser_parity/xml/block/prepared_text_continuity_bidi__border_box_ltr.xml": "95953046fd090fde97bbeed6cfaf3eff838f29838a3a214a2c8e044b8afdc860",
+    "tests/layout/browser_parity/xml/block/prepared_text_continuity_bidi__border_box_rtl.xml": "5ac8e10f2cf0c001678c4c7e56817c6b1e7d8373c55d2aeb52a8c524c964f877",
+    "tests/layout/browser_parity/xml/block/prepared_text_continuity_bidi__content_box_ltr.xml": "0d8325c41247c8e815632eb658abe0114705c5affcc89ca17d9de3c94c94e995",
+    "tests/layout/browser_parity/xml/block/prepared_text_continuity_bidi__content_box_rtl.xml": "41b983a5ba287b4f47ee2a1fc4f05f39237041f7a25ea05d2eebf77b63951b5d"
+  },
+  "capture_validation": {
+    "producer_profile": "root-context-flex-composition-v1",
+    "producer_helper_sha256": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+    "validator_profile": "root-context-flex-composition-v1",
+    "validator_helper_sha256": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+  }
+}
