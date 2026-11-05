@@ -61,16 +61,6 @@ impl KnownHtmlElement {
                 .find(|known| exact_string(name.local_name(), known.local_name()))
         })?
     }
-
-    /// Returns the source index row mentioning this element.
-    ///
-    /// The heading elements share their single original index row.
-    pub fn inventory_row(self) -> &'static ElementInventoryRow {
-        element_inventory()
-            .iter()
-            .find(|row| row.html_elements.contains(&self))
-            .expect("generated element inventory includes every recognized element")
-    }
 }
 
 impl KnownHtmlAttribute {
@@ -273,7 +263,7 @@ impl AttributeInventoryRow {
 
 /// Returns all original element-index rows, including foreign and open families.
 pub fn element_inventory() -> &'static [ElementInventoryRow] {
-    ELEMENT_INVENTORY
+    &ELEMENT_INVENTORY
 }
 
 /// Returns all contextual rows in the ordinary attribute index.
@@ -569,7 +559,7 @@ pub const VOCABULARY_SOURCE: VocabularySource = VocabularySource {
 };
 
 #[rustfmt::skip]
-static ELEMENT_INVENTORY: &[ElementInventoryRow] = &[
+static ELEMENT_INVENTORY: [ElementInventoryRow; 111] = [
     ElementInventoryRow {
         row: 1,
         name: "a",
@@ -1903,6 +1893,130 @@ static ELEMENT_INVENTORY: &[ElementInventoryRow] = &[
         references: &["https://html.spec.whatwg.org/commit-snapshots/877d6146487f15b15bc8dd0e3c625063a37b456a/#autonomous-custom-element"],
     },
 ];
+
+impl KnownHtmlElement {
+    /// Returns the source index row mentioning this element.
+    ///
+    /// The heading elements share their single original index row.
+    #[rustfmt::skip]
+    pub fn inventory_row(self) -> &'static ElementInventoryRow {
+        match self {
+            Self::A => &ELEMENT_INVENTORY[0],
+            Self::Abbr => &ELEMENT_INVENTORY[1],
+            Self::Address => &ELEMENT_INVENTORY[2],
+            Self::Area => &ELEMENT_INVENTORY[3],
+            Self::Article => &ELEMENT_INVENTORY[4],
+            Self::Aside => &ELEMENT_INVENTORY[5],
+            Self::Audio => &ELEMENT_INVENTORY[6],
+            Self::B => &ELEMENT_INVENTORY[7],
+            Self::Base => &ELEMENT_INVENTORY[8],
+            Self::Bdi => &ELEMENT_INVENTORY[9],
+            Self::Bdo => &ELEMENT_INVENTORY[10],
+            Self::Blockquote => &ELEMENT_INVENTORY[11],
+            Self::Body => &ELEMENT_INVENTORY[12],
+            Self::Br => &ELEMENT_INVENTORY[13],
+            Self::Button => &ELEMENT_INVENTORY[14],
+            Self::Canvas => &ELEMENT_INVENTORY[15],
+            Self::Caption => &ELEMENT_INVENTORY[16],
+            Self::Cite => &ELEMENT_INVENTORY[17],
+            Self::Code => &ELEMENT_INVENTORY[18],
+            Self::Col => &ELEMENT_INVENTORY[19],
+            Self::Colgroup => &ELEMENT_INVENTORY[20],
+            Self::Data => &ELEMENT_INVENTORY[21],
+            Self::Datalist => &ELEMENT_INVENTORY[22],
+            Self::Dd => &ELEMENT_INVENTORY[23],
+            Self::Del => &ELEMENT_INVENTORY[24],
+            Self::Details => &ELEMENT_INVENTORY[25],
+            Self::Dfn => &ELEMENT_INVENTORY[26],
+            Self::Dialog => &ELEMENT_INVENTORY[27],
+            Self::Div => &ELEMENT_INVENTORY[28],
+            Self::Dl => &ELEMENT_INVENTORY[29],
+            Self::Dt => &ELEMENT_INVENTORY[30],
+            Self::Em => &ELEMENT_INVENTORY[31],
+            Self::Embed => &ELEMENT_INVENTORY[32],
+            Self::Fieldset => &ELEMENT_INVENTORY[33],
+            Self::Figcaption => &ELEMENT_INVENTORY[34],
+            Self::Figure => &ELEMENT_INVENTORY[35],
+            Self::Footer => &ELEMENT_INVENTORY[36],
+            Self::Form => &ELEMENT_INVENTORY[37],
+            Self::H1 => &ELEMENT_INVENTORY[38],
+            Self::H2 => &ELEMENT_INVENTORY[38],
+            Self::H3 => &ELEMENT_INVENTORY[38],
+            Self::H4 => &ELEMENT_INVENTORY[38],
+            Self::H5 => &ELEMENT_INVENTORY[38],
+            Self::H6 => &ELEMENT_INVENTORY[38],
+            Self::Head => &ELEMENT_INVENTORY[39],
+            Self::Header => &ELEMENT_INVENTORY[40],
+            Self::Hgroup => &ELEMENT_INVENTORY[41],
+            Self::Hr => &ELEMENT_INVENTORY[42],
+            Self::Html => &ELEMENT_INVENTORY[43],
+            Self::I => &ELEMENT_INVENTORY[44],
+            Self::Iframe => &ELEMENT_INVENTORY[45],
+            Self::Img => &ELEMENT_INVENTORY[46],
+            Self::Input => &ELEMENT_INVENTORY[47],
+            Self::Ins => &ELEMENT_INVENTORY[48],
+            Self::Kbd => &ELEMENT_INVENTORY[49],
+            Self::Label => &ELEMENT_INVENTORY[50],
+            Self::Legend => &ELEMENT_INVENTORY[51],
+            Self::Li => &ELEMENT_INVENTORY[52],
+            Self::Link => &ELEMENT_INVENTORY[53],
+            Self::Main => &ELEMENT_INVENTORY[54],
+            Self::Map => &ELEMENT_INVENTORY[55],
+            Self::Mark => &ELEMENT_INVENTORY[56],
+            Self::Menu => &ELEMENT_INVENTORY[58],
+            Self::Meta => &ELEMENT_INVENTORY[59],
+            Self::Meter => &ELEMENT_INVENTORY[60],
+            Self::Nav => &ELEMENT_INVENTORY[61],
+            Self::Noscript => &ELEMENT_INVENTORY[62],
+            Self::Object => &ELEMENT_INVENTORY[63],
+            Self::Ol => &ELEMENT_INVENTORY[64],
+            Self::Optgroup => &ELEMENT_INVENTORY[65],
+            Self::Option => &ELEMENT_INVENTORY[66],
+            Self::Output => &ELEMENT_INVENTORY[67],
+            Self::P => &ELEMENT_INVENTORY[68],
+            Self::Picture => &ELEMENT_INVENTORY[69],
+            Self::Pre => &ELEMENT_INVENTORY[70],
+            Self::Progress => &ELEMENT_INVENTORY[71],
+            Self::Q => &ELEMENT_INVENTORY[72],
+            Self::Rp => &ELEMENT_INVENTORY[73],
+            Self::Rt => &ELEMENT_INVENTORY[74],
+            Self::Ruby => &ELEMENT_INVENTORY[75],
+            Self::S => &ELEMENT_INVENTORY[76],
+            Self::Samp => &ELEMENT_INVENTORY[77],
+            Self::Script => &ELEMENT_INVENTORY[78],
+            Self::Search => &ELEMENT_INVENTORY[79],
+            Self::Section => &ELEMENT_INVENTORY[80],
+            Self::Select => &ELEMENT_INVENTORY[81],
+            Self::Selectedcontent => &ELEMENT_INVENTORY[82],
+            Self::Slot => &ELEMENT_INVENTORY[83],
+            Self::Small => &ELEMENT_INVENTORY[84],
+            Self::Source => &ELEMENT_INVENTORY[85],
+            Self::Span => &ELEMENT_INVENTORY[86],
+            Self::Strong => &ELEMENT_INVENTORY[87],
+            Self::Style => &ELEMENT_INVENTORY[88],
+            Self::Sub => &ELEMENT_INVENTORY[89],
+            Self::Summary => &ELEMENT_INVENTORY[90],
+            Self::Sup => &ELEMENT_INVENTORY[91],
+            Self::Table => &ELEMENT_INVENTORY[93],
+            Self::Tbody => &ELEMENT_INVENTORY[94],
+            Self::Td => &ELEMENT_INVENTORY[95],
+            Self::Template => &ELEMENT_INVENTORY[96],
+            Self::Textarea => &ELEMENT_INVENTORY[97],
+            Self::Tfoot => &ELEMENT_INVENTORY[98],
+            Self::Th => &ELEMENT_INVENTORY[99],
+            Self::Thead => &ELEMENT_INVENTORY[100],
+            Self::Time => &ELEMENT_INVENTORY[101],
+            Self::Title => &ELEMENT_INVENTORY[102],
+            Self::Tr => &ELEMENT_INVENTORY[103],
+            Self::Track => &ELEMENT_INVENTORY[104],
+            Self::U => &ELEMENT_INVENTORY[105],
+            Self::Ul => &ELEMENT_INVENTORY[106],
+            Self::Var => &ELEMENT_INVENTORY[107],
+            Self::Video => &ELEMENT_INVENTORY[108],
+            Self::Wbr => &ELEMENT_INVENTORY[109],
+        }
+    }
+}
 
 #[rustfmt::skip]
 static ATTRIBUTE_INVENTORY: &[AttributeInventoryRow] = &[

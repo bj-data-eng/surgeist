@@ -804,10 +804,12 @@ impl HtmlConstructionOperation {
             _ => None,
         }
     }
-    fn fail<T>(&mut self, error: HtmlConstructionError) -> Result<T, HtmlConstructionError> {
+    /// Latches `error` as the operation's first failure unless one is already latched, and
+    /// returns the failure that is latched.
+    fn fail(&mut self, error: HtmlConstructionError) -> HtmlConstructionError {
         let latched = self.failure.get_or_insert(error).clone();
         self.phase = Phase::Failed;
-        Err(latched)
+        latched
     }
     /// The next action to describe and perform. `Ok(None)` means the operation is ready. It
     /// returns the latched failure, or the not-ready error while an observation awaits `accept`.
@@ -1079,9 +1081,7 @@ impl<'a> HtmlConstructionAction<'a> {
         if !matches!(operation.phase, Phase::ReserveChildren(_))
             || capacity < operation.push_required()
         {
-            let reason = operation
-                .fail::<()>(HtmlConstructionErrorKind::CapacityMismatch.error())
-                .unwrap_err();
+            let reason = operation.fail(HtmlConstructionErrorKind::CapacityMismatch.error());
             return Err(HtmlConstructionActionFailure {
                 reason,
                 allocation: None,
@@ -1104,7 +1104,7 @@ impl<'a> HtmlConstructionAction<'a> {
                 })
             }
             Err((error, allocation)) => {
-                let reason = operation.fail::<()>(error).unwrap_err();
+                let reason = operation.fail(error);
                 Err(HtmlConstructionActionFailure { reason, allocation })
             }
         }
@@ -3302,7 +3302,10 @@ mod native_finish_tests {
         builder
             .append(&root, HtmlNodeKind::Comment("c".into()))
             .unwrap();
-        builder.storage.arena.records[1].parent = None;
+        let BuilderStorage::Held(storage) = &mut builder.storage else {
+            panic!("a fresh builder holds its storage");
+        };
+        storage.arena.records[1].parent = None;
         let outcome = catch_unwind(AssertUnwindSafe(|| builder.finish()));
         let Ok(result) = outcome else {
             panic!("finish panicked on a refused publication");

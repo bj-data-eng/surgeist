@@ -3,6 +3,7 @@
 //! physical allocation ledger, work/cancellation budget or runtime effect.
 
 use super::*;
+use crate::internal::microsyntax::tokens::declared_keyword;
 use crate::{
     internal::microsyntax::numeric::HtmlNonNegativeInteger,
     internal::microsyntax::tokens::HtmlDuplicateTokenError,
@@ -203,12 +204,7 @@ impl HtmlBitmapIconSize {
         &self.height
     }
     fn token(&self) -> HtmlSpaceToken {
-        HtmlSpaceToken::new(format!(
-            "{}x{}",
-            self.width.decimal_digits(),
-            self.height.decimal_digits()
-        ))
-        .expect("positive integer digits and x form one space token")
+        HtmlSpaceToken::integer_pair(&self.width, declared_keyword!("x"), &self.height)
     }
 }
 /// One icon size keyword (HTML877d #rel-icon).
@@ -222,7 +218,7 @@ pub enum HtmlIconSize {
 impl HtmlIconSize {
     fn token(&self) -> HtmlSpaceToken {
         match self {
-            Self::Scalable => HtmlSpaceToken::new("any").expect("literal space token"),
+            Self::Scalable => HtmlSpaceToken::declared(declared_keyword!("any")),
             Self::Bitmap(size) => size.token(),
         }
     }
@@ -611,24 +607,44 @@ fn icon_size(token: &HtmlSpaceToken) -> Result<HtmlIconSize, HtmlIconSizeError> 
         Err(error) => Err(error),
         Ok(HtmlIconSizeShape::Scalable) => Ok(HtmlIconSize::Scalable),
         Ok(HtmlIconSizeShape::Bitmap { width, height }) => {
+            // The cursor recognized each range as a run of ASCII digits; reading it checks that again.
             let dimension = |range: std::ops::Range<usize>| {
-                HtmlNonNegativeInteger::from_decimal_digits(&DocumentString::from_utf16(
-                    units[range].to_vec(),
-                ))
-                .expect("canonical positive decimal proof")
+                units
+                    .get(range)
+                    .and_then(|digits| {
+                        HtmlNonNegativeInteger::from_decimal_digits(&DocumentString::from_utf16(
+                            digits.to_vec(),
+                        ))
+                        .ok()
+                    })
+                    .ok_or(HtmlIconSizeError::DimensionDigits)
             };
-            HtmlBitmapIconSize::new(dimension(width.clone()), dimension(height.clone()))
-                .map(HtmlIconSize::Bitmap)
+            HtmlBitmapIconSize::new(dimension(width)?, dimension(height)?).map(HtmlIconSize::Bitmap)
         }
     }
 }
 
-fn rule(attribute: KnownHtmlAttribute, element: Option<KnownHtmlElement>) -> RuleMetadata {
-    let (rows, source, context): (&'static [u16], &'static str, Context) = match attribute {
-        KnownHtmlAttribute::Accesskey => {
-            (&[4], source!("the-accesskey-attribute"), Context::Global)
+/// The three token-list attributes this owner declares.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DeclarationRole {
+    Accesskey,
+    Blocking,
+    Sizes,
+}
+impl DeclarationRole {
+    fn attribute(self) -> KnownHtmlAttribute {
+        match self {
+            Self::Accesskey => KnownHtmlAttribute::Accesskey,
+            Self::Blocking => KnownHtmlAttribute::Blocking,
+            Self::Sizes => KnownHtmlAttribute::Sizes,
         }
-        KnownHtmlAttribute::Blocking => (
+    }
+}
+
+fn rule(role: DeclarationRole, element: Option<KnownHtmlElement>) -> RuleMetadata {
+    let (rows, source, context): (&'static [u16], &'static str, Context) = match role {
+        DeclarationRole::Accesskey => (&[4], source!("the-accesskey-attribute"), Context::Global),
+        DeclarationRole::Blocking => (
             &[18],
             match element {
                 Some(KnownHtmlElement::Link) => source!("attr-link-blocking"),
@@ -642,15 +658,14 @@ fn rule(attribute: KnownHtmlAttribute, element: Option<KnownHtmlElement>) -> Rul
                 KnownHtmlElement::Style,
             ]),
         ),
-        KnownHtmlAttribute::Sizes => (
+        DeclarationRole::Sizes => (
             &[144],
             source!("attr-link-sizes"),
             Context::Elements(&[KnownHtmlElement::Link]),
         ),
-        _ => unreachable!("only declaration attribute rules enter this private owner"),
     };
     RuleMetadata {
-        attribute,
+        attribute: role.attribute(),
         rows,
         source,
         context,
@@ -663,12 +678,12 @@ impl HtmlValueInterpreter {
         &self,
         element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
-        attribute: KnownHtmlAttribute,
+        role: DeclarationRole,
         required_role: Option<KnownHtmlElement>,
     ) -> Result<HtmlTokenDeclarationInput, HtmlValueAdmissionError> {
         self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let mut input = report(
-            rule(attribute, KnownHtmlElement::from_name(element)),
+            rule(role, KnownHtmlElement::from_name(element)),
             element,
             raw,
         );
@@ -708,8 +723,7 @@ impl HtmlValueInterpreter {
         element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
     ) -> Result<HtmlAccessKeyReport, HtmlValueAdmissionError> {
-        let mut input =
-            self.declaration_input(element, raw, KnownHtmlAttribute::Accesskey, None)?;
+        let mut input = self.declaration_input(element, raw, DeclarationRole::Accesskey, None)?;
         if raw.is_some() && input.common.is_some() {
             input.duplicate = HtmlOrderedTokenSet::new(
                 HtmlTokenComparison::CaseSensitive,
@@ -748,7 +762,7 @@ impl HtmlValueInterpreter {
         required_role: Option<KnownHtmlElement>,
     ) -> Result<HtmlBlockingReport, HtmlValueAdmissionError> {
         let mut input =
-            self.declaration_input(element, raw, KnownHtmlAttribute::Blocking, required_role)?;
+            self.declaration_input(element, raw, DeclarationRole::Blocking, required_role)?;
         if input.common.is_none() {
             return Ok(HtmlBlockingReport {
                 input,
@@ -760,7 +774,7 @@ impl HtmlValueInterpreter {
                 t.value().code_units(),
                 || Ok::<(), std::convert::Infallible>(()),
             )
-            .expect("infallible ordinary blocking-token comparison")
+            .unwrap_or_else(|never| match never {})
         }) {
             HtmlBlockingTokens::Render
         } else {
@@ -864,7 +878,7 @@ impl HtmlValueInterpreter {
         required_role: Option<KnownHtmlElement>,
     ) -> Result<HtmlIconSizesReport, HtmlValueAdmissionError> {
         let mut input =
-            self.declaration_input(element, raw, KnownHtmlAttribute::Sizes, required_role)?;
+            self.declaration_input(element, raw, DeclarationRole::Sizes, required_role)?;
         let keywords = if input.common.is_some() && raw.is_some() {
             input.duplicate = HtmlUnorderedTokenSet::new(
                 HtmlTokenComparison::AsciiCaseInsensitive,
@@ -880,11 +894,16 @@ impl HtmlValueInterpreter {
                     result: icon_size(token),
                 })
                 .collect();
-            if let Some(keyword) = keywords.iter().find(|k| k.result.is_err()) {
+            if let Some((token_index, reason)) = keywords.iter().find_map(|k| {
+                k.result
+                    .as_ref()
+                    .err()
+                    .map(|&reason| (k.token_index, reason))
+            }) {
                 input.author = HtmlTokenDeclarationAuthorState::Nonconforming(
                     HtmlTokenDeclarationError::InvalidIconSize {
-                        token_index: keyword.token_index,
-                        reason: *keyword.result.as_ref().unwrap_err(),
+                        token_index,
+                        reason,
                     },
                 );
             } else if let Some(error) = &input.duplicate {

@@ -309,7 +309,9 @@ impl SessionStorage {
             if position.is_none() {
                 c.release(HtmlParseResource::ManagedAttributes, 1)?;
             }
-            drop(ready.commit());
+            ready.commit().map_err(|refusal| {
+                construction_owner::construction_error(c, refusal.into_parts().1)
+            })?;
             Ok::<_, SessionError>(())
         })();
         if result.is_ok() {

@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::internal::microsyntax::numeric::{
-    self, HtmlNumericParseError, HtmlScientificDecimalKey, ScientificDecimalKeyError,
+    self, HtmlBinary64Rounding, HtmlScientificDecimalKey, ScientificDecimalKeyError,
 };
 use crate::{
     internal::microsyntax::numeric::HtmlFloatingPointNumber,
@@ -103,11 +103,20 @@ impl Error for HtmlSrcsetWidthError {}
 
 /// A positive mathematical density and its exact valid HTML decimal spelling.
 /// Equality preserves spelling; list uniqueness uses exact mathematical values.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct HtmlSrcsetDensity {
     syntax: DocumentString,
     key: HtmlScientificDecimalKey,
+    /// The binary64 rounding of the spelling, checked together with the key. It is a function
+    /// of the spelling, so equality does not compare it.
+    rounding: HtmlBinary64Rounding,
 }
+impl PartialEq for HtmlSrcsetDensity {
+    fn eq(&self, other: &Self) -> bool {
+        self.syntax == other.syntax && self.key == other.key
+    }
+}
+impl Eq for HtmlSrcsetDensity {}
 impl HtmlSrcsetDensity {
     /// Checks complete author grammar and mathematical positivity before rounding.
     /// Uses ordinary native allocations, not a resource/cancellation guarantee.
@@ -115,16 +124,21 @@ impl HtmlSrcsetDensity {
         syntax: impl Into<DocumentString>,
     ) -> Result<Self, HtmlSrcsetDensityError> {
         let syntax = syntax.into();
-        let key = numeric::strict_scientific_decimal_key(&syntax).map_err(|error| match error {
-            ScientificDecimalKeyError::Syntax(_) => HtmlSrcsetDensityError::InvalidSyntax,
-            ScientificDecimalKeyError::RepresentationExhausted => {
-                HtmlSrcsetDensityError::RepresentationExhausted
-            }
-        })?;
-        if !key.is_positive() {
+        let decimal =
+            numeric::strict_decimal_units(syntax.code_units()).map_err(|error| match error {
+                ScientificDecimalKeyError::Syntax(_) => HtmlSrcsetDensityError::InvalidSyntax,
+                ScientificDecimalKeyError::RepresentationExhausted => {
+                    HtmlSrcsetDensityError::RepresentationExhausted
+                }
+            })?;
+        if !decimal.key.is_positive() {
             return Err(HtmlSrcsetDensityError::Nonpositive);
         }
-        Ok(Self { syntax, key })
+        Ok(Self {
+            syntax,
+            key: decimal.key,
+            rounding: decimal.rounding,
+        })
     }
     /// The exact decimal spelling that was checked, in UTF-16 code units.
     pub fn syntax(&self) -> &DocumentString {
@@ -134,12 +148,9 @@ impl HtmlSrcsetDensity {
     pub fn to_floating_point_number(
         &self,
     ) -> Result<HtmlFloatingPointNumber, HtmlSrcsetDensityProjectionError> {
-        match numeric::validate_floating_point_number(&self.syntax) {
-            Ok(value) => Ok(value),
-            Err(HtmlNumericParseError::FloatingPointOverflow) => {
-                Err(HtmlSrcsetDensityProjectionError)
-            }
-            Err(_) => unreachable!("checked density owns complete strict numeric grammar"),
+        match self.rounding {
+            HtmlBinary64Rounding::Finite(value) => Ok(value),
+            HtmlBinary64Rounding::Overflow => Err(HtmlSrcsetDensityProjectionError),
         }
     }
 }
@@ -364,8 +375,7 @@ fn list_violations(candidates: &[HtmlSrcsetCandidate]) -> Vec<(usize, HtmlSrcset
     let mut findings = Vec::new();
     let mut widths = HashMap::new();
     let mut densities = HashMap::new();
-    let one = numeric::strict_scientific_decimal_key(&DocumentString::from("1"))
-        .expect("literal positive integer");
+    let one = HtmlScientificDecimalKey::one();
     let any_width = candidates
         .iter()
         .any(|c| matches!(c.descriptor, HtmlSrcsetDescriptor::Width(_)));
@@ -1071,7 +1081,7 @@ impl HtmlValueInterpreter {
             width_seen,
             all_width,
             &mut result,
-        );
+        )?;
         Ok(result)
     }
 }
@@ -1084,14 +1094,14 @@ fn check_context(
     width_seen: bool,
     all_width: Option<bool>,
     result: &mut HtmlSrcsetReport,
-) {
+) -> Result<(), HtmlSrcsetInterpretationError> {
     let Some(context) = context else {
         result.context_author = if !present && matches!(role, Role::Link) {
             HtmlSrcsetContextAuthorState::NotRequired
         } else {
             HtmlSrcsetContextAuthorState::Unchecked
         };
-        return;
+        return Ok(());
     };
     let attributes = context.attributes();
     let mut unchecked = false;
@@ -1183,7 +1193,7 @@ fn check_context(
                         HtmlSrcsetFollowingImageObservation::Element { name, attributes }
                             if KnownHtmlElement::from_name(name) == Some(KnownHtmlElement::Img) =>
                         {
-                            if !allows_auto_sizes(interpreter, name, attributes) {
+                            if !allows_auto_sizes(interpreter, name, attributes)? {
                                 result
                                     .context_violations
                                     .push(HtmlSrcsetContextViolation::SizesRequired);
@@ -1211,32 +1221,77 @@ fn check_context(
     } else {
         HtmlSrcsetContextAuthorState::NotRequired
     };
+    Ok(())
 }
 fn allows_auto_sizes(
     interpreter: &HtmlValueInterpreter,
     name: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
     attributes: &(impl crate::internal::values::semantic_input::HtmlAttributesInput + ?Sized),
-) -> bool {
+) -> Result<bool, HtmlValueAdmissionError> {
     // Reuse the existing enum owner; no CSS sizes evaluation is required here.
-    let loading = interpreter
-        .loading(name, attribute(attributes, "loading"))
-        .expect("surrounding raw values were admitted before context evaluation");
+    let loading = interpreter.loading(name, attribute(attributes, "loading"))?;
     if loading.intrinsic() != Some(&HtmlLoading::Lazy) {
-        return false;
+        return Ok(false);
     }
-    attribute(attributes, "sizes").is_some_and(|sizes| {
+    Ok(attribute(attributes, "sizes").is_some_and(|sizes| {
         ascii_keyword(sizes.value(), "auto")
             || sizes.value().code_units().get(..5).is_some_and(|units| {
                 ascii_keyword(&DocumentString::from_utf16(units.to_vec()), "auto,")
             })
-    })
+    }))
 }
 
+/// One descriptor token: its whole range, the range before its last unit, and that last unit.
+/// The tokenizer builds it from at least one consumed unit, so the last unit always exists.
+#[derive(Clone, Copy, Debug)]
+struct LexicalDescriptor {
+    range: HtmlSrcsetRawRange,
+    prefix: HtmlSrcsetRawRange,
+    suffix: u16,
+}
+/// A descriptor token under construction: the offset of its first unit and of its last
+/// consumed unit, and that last unit.
+#[derive(Clone, Copy, Debug)]
+struct DescriptorSpan {
+    start: usize,
+    last: usize,
+    suffix: u16,
+}
+impl DescriptorSpan {
+    fn begin(position: usize, unit: u16) -> Self {
+        Self {
+            start: position,
+            last: position,
+            suffix: unit,
+        }
+    }
+    fn extended(self, position: usize, unit: u16) -> Self {
+        Self {
+            last: position,
+            suffix: unit,
+            ..self
+        }
+    }
+    fn consume(span: Option<Self>, position: usize, unit: u16) -> Self {
+        span.map_or_else(
+            || Self::begin(position, unit),
+            |span| span.extended(position, unit),
+        )
+    }
+    /// The finished token, ending where the tokenizer stopped consuming it.
+    fn finish(self, end: usize) -> LexicalDescriptor {
+        LexicalDescriptor {
+            range: range(self.start, end),
+            prefix: range(self.start, self.last),
+            suffix: self.suffix,
+        }
+    }
+}
 #[derive(Clone, Debug)]
 struct LexicalCandidate {
     range: HtmlSrcsetRawRange,
     url: HtmlSrcsetRawRange,
-    descriptors: Vec<HtmlSrcsetRawRange>,
+    descriptors: Vec<LexicalDescriptor>,
 }
 struct LexicalResult {
     candidates: Vec<LexicalCandidate>,
@@ -1245,8 +1300,10 @@ struct LexicalResult {
 }
 #[derive(Clone, Copy)]
 enum DescriptorState {
-    InDescriptor,
-    InParens,
+    /// Between the units of a descriptor, with the descriptor so far, if any unit was consumed.
+    InDescriptor(Option<DescriptorSpan>),
+    /// Inside parentheses, which always belong to a descriptor that has begun.
+    InParens(DescriptorSpan),
     AfterDescriptor,
 }
 fn range(start: usize, end: usize) -> HtmlSrcsetRawRange {
@@ -1355,57 +1412,59 @@ fn tokenize(raw: &DocumentString) -> LexicalResult {
             {
                 position += 1;
             }
-            let mut state = DescriptorState::InDescriptor;
-            let mut descriptor_start = None;
+            let mut state = DescriptorState::InDescriptor(None);
             loop {
                 let current = units.get(position).copied();
                 match state {
-                    DescriptorState::InDescriptor => match current {
+                    DescriptorState::InDescriptor(span) => match current {
                         None => {
-                            if let Some(start) = descriptor_start {
-                                descriptors.push(range(start, position));
+                            if let Some(span) = span {
+                                descriptors.push(span.finish(position));
                             }
                             break;
                         }
                         Some(44) => {
-                            if let Some(start) = descriptor_start {
-                                descriptors.push(range(start, position));
+                            if let Some(span) = span {
+                                descriptors.push(span.finish(position));
                             }
                             last_separator = Some(position);
                             position += 1;
                             break;
                         }
                         Some(u) if crate::internal::microsyntax::tokens::is_ascii_whitespace(u) => {
-                            if let Some(start) = descriptor_start.take() {
-                                descriptors.push(range(start, position));
+                            if let Some(span) = span {
+                                descriptors.push(span.finish(position));
                             }
                             state = DescriptorState::AfterDescriptor;
                         }
                         Some(40) => {
-                            descriptor_start.get_or_insert(position);
-                            state = DescriptorState::InParens;
+                            state = DescriptorState::InParens(DescriptorSpan::consume(
+                                span, position, 40,
+                            ));
                         }
-                        _ => {
-                            descriptor_start.get_or_insert(position);
+                        Some(u) => {
+                            state = DescriptorState::InDescriptor(Some(DescriptorSpan::consume(
+                                span, position, u,
+                            )));
                         }
                     },
-                    DescriptorState::InParens => match current {
+                    DescriptorState::InParens(span) => match current {
                         None => {
-                            descriptors.push(range(
-                                descriptor_start.expect("opening paren starts a descriptor"),
-                                position,
-                            ));
+                            descriptors.push(span.finish(position));
                             break;
                         }
-                        Some(41) => state = DescriptorState::InDescriptor,
-                        _ => {}
+                        Some(41) => {
+                            state =
+                                DescriptorState::InDescriptor(Some(span.extended(position, 41)));
+                        }
+                        Some(u) => state = DescriptorState::InParens(span.extended(position, u)),
                     },
                     DescriptorState::AfterDescriptor => match current {
                         None => break,
                         Some(u) if crate::internal::microsyntax::tokens::is_ascii_whitespace(u) => {
                         }
                         _ => {
-                            state = DescriptorState::InDescriptor;
+                            state = DescriptorState::InDescriptor(None);
                             continue;
                         }
                     },
@@ -1477,20 +1536,19 @@ fn parse_candidates(raw: &DocumentString) -> Result<ParsedResult, HtmlSrcsetInte
                 Some(index),
             ));
         }
-        for &descriptor_range in &lexical.descriptors {
-            let units = &raw.code_units()[descriptor_range.start..descriptor_range.end];
-            let (suffix, prefix) = units
-                .split_last()
-                .expect("tokenizer emits nonempty descriptors");
-            let prefix = DocumentString::from_utf16(prefix.to_vec());
-            match *suffix {
-                119 | 104
-                    if !prefix.is_empty()
-                        && prefix.code_units().iter().all(|u| (48..=57).contains(u)) =>
-                {
-                    let value = HtmlNonNegativeInteger::from_decimal_digits(&prefix)
-                        .expect("whole digit grammar proved");
-                    let is_width = *suffix == 119;
+        for &descriptor in &lexical.descriptors {
+            let descriptor_range = descriptor.range;
+            let suffix = descriptor.suffix;
+            let prefix = copied(raw, descriptor.prefix);
+            // A width or height value is a nonempty run of ASCII digits and nothing else.
+            let integer = if matches!(suffix, 119 | 104) {
+                HtmlNonNegativeInteger::from_decimal_digits(&prefix).ok()
+            } else {
+                None
+            };
+            match (suffix, integer) {
+                (119 | 104, Some(value)) => {
+                    let is_width = suffix == 119;
                     if is_width {
                         if width.is_some() || density.is_some() {
                             failed = true;
@@ -1528,9 +1586,9 @@ fn parse_candidates(raw: &DocumentString) -> Result<ParsedResult, HtmlSrcsetInte
                         height = Some(value);
                     }
                 }
-                120 => {
-                    let key = match numeric::strict_scientific_decimal_key(&prefix) {
-                        Ok(key) => key,
+                (120, _) => {
+                    let decimal = match numeric::strict_decimal_units(prefix.code_units()) {
+                        Ok(decimal) => decimal,
                         Err(ScientificDecimalKeyError::Syntax(_)) => {
                             failed = true;
                             author_diagnostics.push(author_diagnostic(
@@ -1544,12 +1602,14 @@ fn parse_candidates(raw: &DocumentString) -> Result<ParsedResult, HtmlSrcsetInte
                             return Err(HtmlSrcsetInterpretationError::RepresentationExhausted);
                         }
                     };
-                    if key.is_positive() {
+                    let rounding = decimal.rounding;
+                    if decimal.key.is_positive() {
                         if lexical.descriptors.len() == 1 {
                             author_descriptor =
                                 Some(HtmlSrcsetDescriptor::Density(HtmlSrcsetDensity {
                                     syntax: prefix,
-                                    key,
+                                    key: decimal.key,
+                                    rounding,
                                 }));
                         }
                     } else {
@@ -1562,11 +1622,14 @@ fn parse_candidates(raw: &DocumentString) -> Result<ParsedResult, HtmlSrcsetInte
                     if width.is_some() || density.is_some() || height.is_some() {
                         failed = true;
                     }
-                    // Source recovery consumes the descriptor's valid numeric prefix.
-                    match numeric::parse_floating_point_number(&copied(raw, descriptor_range)) {
-                        Ok(value) if value.value() >= 0.0 => density = Some(value),
-                        Ok(_) => failed = true,
-                        Err(HtmlNumericParseError::FloatingPointOverflow) => {
+                    // Source recovery consumes the descriptor's valid numeric prefix, which the
+                    // strict grammar has just accepted whole, so both read the same token.
+                    match rounding {
+                        HtmlBinary64Rounding::Finite(value) if value.value() >= 0.0 => {
+                            density = Some(value);
+                        }
+                        HtmlBinary64Rounding::Finite(_) => failed = true,
+                        HtmlBinary64Rounding::Overflow => {
                             diagnostics.push(parse_diagnostic(
                                 HtmlSrcsetParseError::DensityConversionOverflow,
                                 descriptor_range,
@@ -1575,7 +1638,6 @@ fn parse_candidates(raw: &DocumentString) -> Result<ParsedResult, HtmlSrcsetInte
                             failed = true;
                             overflow = true;
                         }
-                        Err(_) => unreachable!("strict numeric guard proved recoverable prefix"),
                     }
                 }
                 _ => {
@@ -1668,6 +1730,60 @@ fn parse_candidates(raw: &DocumentString) -> Result<ParsedResult, HtmlSrcsetInte
 mod tests {
     use super::*;
 
+    /// The binary64 projection of a density is the source recovery conversion of its spelling:
+    /// the checked spelling is a valid number whole, so recovery reads the same token.
+    #[test]
+    fn a_density_projects_as_the_recovery_conversion_of_its_spelling() {
+        for spelling in [
+            "1",
+            "1.5",
+            "0.25",
+            ".5",
+            "1e3",
+            "1E-3",
+            "000.0100",
+            "123456789.987654321",
+            "1.7976931348623157e308",
+            "4.9e-324",
+            "1e-400",
+            "1e999",
+            "9e999999",
+        ] {
+            let density = HtmlSrcsetDensity::from_decimal_syntax(spelling).unwrap();
+            match numeric::parse_floating_point_number(&DocumentString::from(spelling)) {
+                Ok(value) => {
+                    assert_eq!(density.to_floating_point_number(), Ok(value), "{spelling}")
+                }
+                Err(error) => {
+                    assert_eq!(
+                        error,
+                        crate::internal::microsyntax::numeric::HtmlNumericParseError::FloatingPointOverflow
+                    );
+                    assert_eq!(
+                        density.to_floating_point_number(),
+                        Err(HtmlSrcsetDensityProjectionError),
+                        "{spelling}"
+                    );
+                }
+            }
+        }
+        for rejected in ["", "0", "-1", "0.0e5", "+1", "1x", " 1", "2."] {
+            assert!(
+                HtmlSrcsetDensity::from_decimal_syntax(rejected).is_err(),
+                "{rejected:?}"
+            );
+        }
+        // Equality compares the spelling and the exact key, not the projection derived from them.
+        assert_eq!(
+            HtmlSrcsetDensity::from_decimal_syntax("1").unwrap(),
+            HtmlSrcsetDensity::from_decimal_syntax("1").unwrap()
+        );
+        assert_ne!(
+            HtmlSrcsetDensity::from_decimal_syntax("1").unwrap(),
+            HtmlSrcsetDensity::from_decimal_syntax("1.0").unwrap()
+        );
+    }
+
     #[test]
     fn descriptor_rewind_keeps_ranges_and_parenthesized_whitespace_without_copying_tokens() {
         let raw = DocumentString::from("a 2w \t(foo, bar) ,b 3x");
@@ -1680,7 +1796,7 @@ mod tests {
         let descriptors: Vec<_> = lexed.candidates[0]
             .descriptors
             .iter()
-            .map(|&r| copied(&raw, r))
+            .map(|&d| copied(&raw, d.range))
             .collect();
         assert_eq!(
             descriptors,
@@ -1689,14 +1805,19 @@ mod tests {
                 DocumentString::from("(foo, bar)")
             ]
         );
-        assert_eq!(lexed.candidates[0].descriptors[0], range(2, 4));
-        assert_eq!(lexed.candidates[0].descriptors[1], range(6, 16));
+        assert_eq!(lexed.candidates[0].descriptors[0].range, range(2, 4));
+        assert_eq!(lexed.candidates[0].descriptors[1].range, range(6, 16));
+        // Each token splits into the units before its last unit, and that last unit.
+        assert_eq!(lexed.candidates[0].descriptors[0].prefix, range(2, 3));
+        assert_eq!(lexed.candidates[0].descriptors[0].suffix, u16::from(b'w'));
+        assert_eq!(lexed.candidates[0].descriptors[1].prefix, range(6, 15));
+        assert_eq!(lexed.candidates[0].descriptors[1].suffix, u16::from(b')'));
         assert_eq!(
             copied(&raw, lexed.candidates[1].url),
             DocumentString::from("b")
         );
         assert_eq!(
-            copied(&raw, lexed.candidates[1].descriptors[0]),
+            copied(&raw, lexed.candidates[1].descriptors[0].range),
             DocumentString::from("3x")
         );
         assert!(lexed.diagnostics.is_empty());

@@ -265,3 +265,31 @@ fn inventory_source_identity_selects_the_html_edition_independently_of_the_parse
             .ends_with("/#attributes-3")
     );
 }
+
+/// Every recognized element names the first original index row that mentions it, and that row
+/// mentions it. The expected row is found by scanning the printed inventory in order.
+#[test]
+fn every_element_has_the_first_inventory_row_that_mentions_it() {
+    assert_eq!(KnownHtmlElement::ALL.len(), 113);
+    assert_eq!(element_inventory().len(), 111);
+    for element in KnownHtmlElement::ALL {
+        let expected = element_inventory()
+            .iter()
+            .find(|row| row.html_elements().contains(element))
+            .unwrap_or_else(|| panic!("{element:?} is mentioned by an inventory row"));
+        let row = element.inventory_row();
+        assert_eq!(row.row(), expected.row(), "{element:?}");
+        assert!(row.html_elements().contains(element), "{element:?}");
+    }
+    // The heading elements share their single original index row.
+    let headings = KnownHtmlElement::H1.inventory_row();
+    for heading in [
+        KnownHtmlElement::H2,
+        KnownHtmlElement::H3,
+        KnownHtmlElement::H4,
+        KnownHtmlElement::H5,
+        KnownHtmlElement::H6,
+    ] {
+        assert_eq!(heading.inventory_row().row(), headings.row());
+    }
+}

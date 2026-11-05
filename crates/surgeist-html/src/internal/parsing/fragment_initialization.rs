@@ -177,7 +177,7 @@ pub fn fragment_tokenizer_state(
     html_tokenizer_state(effective, |choices| {
         Ok::<_, Infallible>(choices.iter().any(|local| exact(name.local_name(), local)))
     })
-    .unwrap()
+    .unwrap_or_else(|never| match never {})
 }
 
 /// Selects only the fragment's initial insertion mode from its exact context name.
@@ -191,7 +191,7 @@ pub fn fragment_insertion_mode(
     fixed_insertion_mode(FixedInsertionScope::Fragment, |local| {
         Ok::<_, Infallible>(exact(name.local_name(), local))
     })
-    .unwrap()
+    .unwrap_or_else(|never| match never {})
     .unwrap_or(HtmlFragmentInsertionMode::InBody)
 }
 

@@ -3,7 +3,9 @@
 //! WHATWG source attribution is in the crate notice.
 
 use super::*;
-use crate::internal::microsyntax::tokens::ascii_lowercase;
+use crate::internal::microsyntax::tokens::{
+    DeclaredCommaKeyword, ascii_lowercase, declared_comma_keyword,
+};
 use crate::{
     internal::microsyntax::tokens::HtmlCommaSeparatedTokens,
     internal::microsyntax::tokens::HtmlCommaToken, internal::microsyntax::tokens::HtmlTokenError,
@@ -64,18 +66,18 @@ impl HtmlAcceptSpecifier {
     }
     /// Returns the `audio/*` specifier.
     pub fn audio() -> Self {
-        Self::literal("audio/*")
+        Self::literal(declared_comma_keyword!("audio/*"))
     }
     /// Returns the `video/*` specifier.
     pub fn video() -> Self {
-        Self::literal("video/*")
+        Self::literal(declared_comma_keyword!("video/*"))
     }
     /// Returns the `image/*` specifier.
     pub fn image() -> Self {
-        Self::literal("image/*")
+        Self::literal(declared_comma_keyword!("image/*"))
     }
-    fn literal(value: &str) -> Self {
-        Self::new(HtmlCommaToken::new(value).expect("defining literal is one comma token"))
+    fn literal(keyword: DeclaredCommaKeyword) -> Self {
+        Self::new(HtmlCommaToken::declared(keyword))
     }
     /// HTML requires only a leading dot, in addition to comma-token grammar.
     /// A suffix, registered type, filename grammar or scalar string is not required.
@@ -431,35 +433,34 @@ impl HtmlValueInterpreter {
                 processing: HtmlAcceptProcessingState::Unapplied,
             });
         }
-        let processing_tokens: Option<Vec<_>> = raw.map(|attribute| {
-            crate::internal::microsyntax::tokens::split_comma_tokens(attribute.value())
-                .tokens()
-                .iter()
-                .cloned()
-                .map(HtmlAcceptSpecifier::new)
-                .collect()
-        });
         // Reuse the common splitter. Only author grammar's zero-set and literal
         // terminal comma need additional observations; no second delimiter scan.
-        let author_fields = raw.map(|attribute| {
-            let units = attribute.value().code_units();
-            if units
-                .iter()
-                .all(|&u| crate::internal::microsyntax::tokens::is_ascii_whitespace(u))
-            {
-                return Vec::new();
+        let (processing_tokens, author_fields) = match raw {
+            None => (None, None),
+            Some(attribute) => {
+                let processing: Vec<_> =
+                    crate::internal::microsyntax::tokens::split_comma_tokens(attribute.value())
+                        .tokens()
+                        .iter()
+                        .cloned()
+                        .map(HtmlAcceptSpecifier::new)
+                        .collect();
+                let units = attribute.value().code_units();
+                let author = if units
+                    .iter()
+                    .all(|&u| crate::internal::microsyntax::tokens::is_ascii_whitespace(u))
+                {
+                    Vec::new()
+                } else {
+                    let mut fields = processing.clone();
+                    if units.last() == Some(&u16::from(b',')) {
+                        fields.push(HtmlAcceptSpecifier::new(HtmlCommaToken::empty()));
+                    }
+                    fields
+                };
+                (Some(processing), Some(author))
             }
-            let mut fields = processing_tokens
-                .as_ref()
-                .expect("present raw has processing tokens")
-                .clone();
-            if units.last() == Some(&u16::from(b',')) {
-                fields.push(HtmlAcceptSpecifier::new(
-                    HtmlCommaToken::new("").expect("empty comma token is permitted"),
-                ));
-            }
-            fields
-        });
+        };
         let mime = author_fields
             .as_ref()
             .map_or(HtmlAcceptMimeConformance::NotRequired, |fields| {

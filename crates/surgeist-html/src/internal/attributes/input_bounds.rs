@@ -15,7 +15,10 @@ use crate::{
     internal::microsyntax::temporal::HtmlWeek,
     internal::microsyntax::temporal::input_coordinate::HtmlInputTemporalCoordinate,
     internal::microsyntax::temporal::input_coordinate::HtmlInputTemporalCoordinateUnit,
-    internal::values::interpretation::HtmlValueAuthorState,
+    internal::microsyntax::temporal::input_coordinate::HtmlInputTemporalStepError,
+    internal::microsyntax::temporal::input_coordinate::TemporalState,
+    internal::values::interpretation::HtmlDefinedAuthorState,
+    internal::values::interpretation::HtmlDefinedValueReport,
     internal::values::interpretation::HtmlValueFailure,
     internal::values::interpretation::HtmlValueRecoveryState,
     internal::values::interpretation::HtmlValueReport,
@@ -113,16 +116,6 @@ fn recovered_value<A, R>(report: &HtmlValueReport<A, R>) -> Option<&R> {
     }
 }
 impl HtmlInputNumericCommonReport {
-    fn author(&self, role: KnownHtmlAttribute) -> HtmlInputNumericAuthorState {
-        match self {
-            Self::FloatingPoint(report) => author(report, role),
-            Self::Date(report) => author(report, role),
-            Self::Month(report) => author(report, role),
-            Self::Week(report) => author(report, role),
-            Self::Time(report) => author(report, role),
-            Self::LocalDateTime(report) => author(report, role),
-        }
-    }
     fn converted(&self) -> Option<HtmlInputNumericAttributeValue> {
         use HtmlInputNumericAttributeValue::{FloatingPoint, Temporal};
         Some(match self {
@@ -140,6 +133,7 @@ impl HtmlInputNumericCommonReport {
 #[derive(Clone, Debug, PartialEq)]
 pub struct HtmlInputNumericAttributeReport {
     attribute: HtmlAttributeReport<()>,
+    state: HtmlInputType,
     common: Option<HtmlInputNumericCommonReport>,
     converted: Option<HtmlInputNumericAttributeValue>,
     author: HtmlInputNumericAuthorState,
@@ -184,10 +178,7 @@ impl HtmlInputNumericAttributeReport {
     /// The actual input state that the caller supplied. It is never inferred
     /// from a `type` attribute.
     pub fn input_state(&self) -> HtmlInputType {
-        match self.attribute.supplied_context {
-            SuppliedContext::Input(state) => state,
-            _ => unreachable!("input numeric reports always carry their supplied state"),
-        }
+        self.state
     }
     /// The clause that defines the supplied input state.
     pub fn input_state_source_clause(&self) -> &'static str {
@@ -526,16 +517,34 @@ impl HtmlInputNumericConstraintsReport {
     }
 }
 
-fn rule(attribute: KnownHtmlAttribute) -> RuleMetadata {
-    let (rows, source): (&'static [u16], _) = match attribute {
-        KnownHtmlAttribute::Min => (&[97], source!("attr-input-min")),
-        KnownHtmlAttribute::Max => (&[92], source!("attr-input-max")),
-        KnownHtmlAttribute::Step => (&[154], source!("attr-input-step")),
-        KnownHtmlAttribute::Value => (&[175], source!("attr-input-value")),
-        _ => unreachable!("only the four selected input roles have rules"),
+/// The four attributes this owner observes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum InputBoundRole {
+    Min,
+    Max,
+    Step,
+    Value,
+}
+impl InputBoundRole {
+    fn attribute(self) -> KnownHtmlAttribute {
+        match self {
+            Self::Min => KnownHtmlAttribute::Min,
+            Self::Max => KnownHtmlAttribute::Max,
+            Self::Step => KnownHtmlAttribute::Step,
+            Self::Value => KnownHtmlAttribute::Value,
+        }
+    }
+}
+
+fn rule(role: InputBoundRole) -> RuleMetadata {
+    let (rows, source): (&'static [u16], _) = match role {
+        InputBoundRole::Min => (&[97], source!("attr-input-min")),
+        InputBoundRole::Max => (&[92], source!("attr-input-max")),
+        InputBoundRole::Step => (&[154], source!("attr-input-step")),
+        InputBoundRole::Value => (&[175], source!("attr-input-value")),
     };
     RuleMetadata {
-        attribute,
+        attribute: role.attribute(),
         rows,
         source,
         context: Context::Elements(&[KnownHtmlElement::Input]),
@@ -543,37 +552,45 @@ fn rule(attribute: KnownHtmlAttribute) -> RuleMetadata {
     }
 }
 
-fn computed_state(state: HtmlInputType) -> bool {
-    matches!(state, HtmlInputType::Number | HtmlInputType::Range)
+/// How an input state treats numeric bounds: Number and Range compute binary64 constraints, the
+/// five temporal states compute exact coordinates, and every other state has none.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BoundsState {
+    Computed(ComputedState),
+    Temporal(TemporalState),
+    Other,
 }
-fn temporal_state(state: HtmlInputType) -> bool {
-    matches!(
-        state,
-        HtmlInputType::Date
-            | HtmlInputType::Month
-            | HtmlInputType::Week
-            | HtmlInputType::Time
-            | HtmlInputType::LocalDateTime
-    )
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ComputedState {
+    Number,
+    Range,
+}
+impl BoundsState {
+    fn of(state: HtmlInputType) -> Self {
+        match state {
+            HtmlInputType::Number => Self::Computed(ComputedState::Number),
+            HtmlInputType::Range => Self::Computed(ComputedState::Range),
+            _ => TemporalState::of(state).map_or(Self::Other, Self::Temporal),
+        }
+    }
 }
 fn author<A, R>(
-    common: &HtmlValueReport<A, R>,
-    role: KnownHtmlAttribute,
+    common: &HtmlDefinedValueReport<A, R>,
+    role: InputBoundRole,
 ) -> HtmlInputNumericAuthorState {
     match common.author() {
-        HtmlValueAuthorState::Missing => HtmlInputNumericAuthorState::Missing,
-        HtmlValueAuthorState::Valid(_) => HtmlInputNumericAuthorState::Conforming,
-        HtmlValueAuthorState::Invalid(error) => {
+        HtmlDefinedAuthorState::Missing => HtmlInputNumericAuthorState::Missing,
+        HtmlDefinedAuthorState::Valid(_) => HtmlInputNumericAuthorState::Conforming,
+        HtmlDefinedAuthorState::Invalid(error) => {
             HtmlInputNumericAuthorState::Nonconforming(HtmlValueFailure::Syntax(*error))
         }
-        HtmlValueAuthorState::Unrepresentable(error) if role == KnownHtmlAttribute::Step => {
+        HtmlDefinedAuthorState::Unrepresentable(error) if role == InputBoundRole::Step => {
             // Step requires successful parsing to a number greater than zero.
             HtmlInputNumericAuthorState::Nonconforming(HtmlValueFailure::Representation(*error))
         }
         // Min/max/value require the whole author grammar, not successful
         // binary64 conversion. Unrepresentable explicitly certifies that grammar.
-        HtmlValueAuthorState::Unrepresentable(_) => HtmlInputNumericAuthorState::Conforming,
-        HtmlValueAuthorState::NotDefined => unreachable!("selected author grammars are defined"),
+        HtmlDefinedAuthorState::Unrepresentable(_) => HtmlInputNumericAuthorState::Conforming,
     }
 }
 
@@ -582,13 +599,14 @@ impl HtmlValueInterpreter {
         &self,
         element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
-        role: KnownHtmlAttribute,
+        role: InputBoundRole,
         state: HtmlInputType,
     ) -> Result<HtmlInputNumericAttributeReport, HtmlValueAdmissionError> {
         let mut attribute = report(rule(role), element, raw);
         attribute.supplied_context = SuppliedContext::Input(state);
         let mut result = HtmlInputNumericAttributeReport {
             attribute,
+            state,
             common: None,
             converted: None,
             author: HtmlInputNumericAuthorState::Unapplied,
@@ -597,23 +615,27 @@ impl HtmlValueInterpreter {
         if result.applicability() != HtmlAttributeApplicability::Applicable {
             return Ok(result);
         }
-        if !computed_state(state) && !temporal_state(state) {
-            result.author = if raw.is_none() {
-                HtmlInputNumericAuthorState::Missing
-            } else {
-                HtmlInputNumericAuthorState::NotChecked
-            };
-            result.attribute.context_author = if raw.is_some() && role != KnownHtmlAttribute::Value
-            {
-                HtmlAttributeContextAuthorState::Nonconforming(
-                    HtmlAttributeContextConformanceError::InputStateForbidsAttribute,
-                )
-            } else {
-                HtmlAttributeContextAuthorState::NotRequired
-            };
-            return Ok(result);
-        }
-        if role == KnownHtmlAttribute::Step
+        let temporal = match BoundsState::of(state) {
+            BoundsState::Other => {
+                result.author = if raw.is_none() {
+                    HtmlInputNumericAuthorState::Missing
+                } else {
+                    HtmlInputNumericAuthorState::NotChecked
+                };
+                result.attribute.context_author = if raw.is_some() && role != InputBoundRole::Value
+                {
+                    HtmlAttributeContextAuthorState::Nonconforming(
+                        HtmlAttributeContextConformanceError::InputStateForbidsAttribute,
+                    )
+                } else {
+                    HtmlAttributeContextAuthorState::NotRequired
+                };
+                return Ok(result);
+            }
+            BoundsState::Computed(_) => None,
+            BoundsState::Temporal(temporal) => Some(temporal),
+        };
+        if role == InputBoundRole::Step
             && raw.is_some_and(|raw| ascii_keyword(raw.value(), HtmlInputNumericStep::ANY_KEYWORD))
         {
             result.any_keyword = true;
@@ -621,32 +643,70 @@ impl HtmlValueInterpreter {
             return Ok(result);
         }
         let input = raw.map(HtmlAttributeInput::value);
-        let common = if role == KnownHtmlAttribute::Step || computed_state(state) {
-            HtmlInputNumericCommonReport::FloatingPoint(self.floating_point_number(input)?)
-        } else {
-            match state {
-                HtmlInputType::Date => HtmlInputNumericCommonReport::Date(self.date(input)?),
-                HtmlInputType::Month => HtmlInputNumericCommonReport::Month(self.month(input)?),
-                HtmlInputType::Week => HtmlInputNumericCommonReport::Week(self.week(input)?),
-                HtmlInputType::Time => HtmlInputNumericCommonReport::Time(self.time(input)?),
-                HtmlInputType::LocalDateTime => {
-                    HtmlInputNumericCommonReport::LocalDateTime(self.local_date_time(input)?)
-                }
-                _ => unreachable!("only supported temporal states dispatch here"),
+        // The step attribute is always a floating-point number; the other roles follow the state.
+        let (common, author) = match temporal.filter(|_| role != InputBoundRole::Step) {
+            None => {
+                let report = self.floating_point_number_defined(input)?;
+                let author = if role == InputBoundRole::Step
+                    && let HtmlDefinedAuthorState::Valid(value) = report.author()
+                    && value.value() <= 0.0
+                {
+                    HtmlInputNumericAuthorState::StepMustBePositive
+                } else {
+                    author(&report, role)
+                };
+                (
+                    HtmlInputNumericCommonReport::FloatingPoint(report.into_report()),
+                    author,
+                )
+            }
+            Some(TemporalState::Date) => {
+                let report = self.date_defined(input)?;
+                let author = author(&report, role);
+                (
+                    HtmlInputNumericCommonReport::Date(report.into_report()),
+                    author,
+                )
+            }
+            Some(TemporalState::Month) => {
+                let report = self.month_defined(input)?;
+                let author = author(&report, role);
+                (
+                    HtmlInputNumericCommonReport::Month(report.into_report()),
+                    author,
+                )
+            }
+            Some(TemporalState::Week) => {
+                let report = self.week_defined(input)?;
+                let author = author(&report, role);
+                (
+                    HtmlInputNumericCommonReport::Week(report.into_report()),
+                    author,
+                )
+            }
+            Some(TemporalState::Time) => {
+                let report = self.time_defined(input)?;
+                let author = author(&report, role);
+                (
+                    HtmlInputNumericCommonReport::Time(report.into_report()),
+                    author,
+                )
+            }
+            Some(TemporalState::LocalDateTime) => {
+                let report = self.local_date_time_defined(input)?;
+                let author = author(&report, role);
+                (
+                    HtmlInputNumericCommonReport::LocalDateTime(report.into_report()),
+                    author,
+                )
             }
         };
-        result.author = common.author(role);
-        if role == KnownHtmlAttribute::Value
+        result.author = author;
+        if role == InputBoundRole::Value
             && state != HtmlInputType::Range
             && raw.is_some_and(|raw| raw.value().is_empty())
         {
             result.author = HtmlInputNumericAuthorState::Conforming;
-        } else if role == KnownHtmlAttribute::Step
-            && let HtmlInputNumericCommonReport::FloatingPoint(ref float) = common
-            && let HtmlValueAuthorState::Valid(value) = float.author()
-            && value.value() <= 0.0
-        {
-            result.author = HtmlInputNumericAuthorState::StepMustBePositive;
         }
         result.converted = common.converted();
         result.common = Some(common);
@@ -673,13 +733,10 @@ impl HtmlValueInterpreter {
             sum.checked_add(raw.map_or(0, |raw| raw.value().code_units().len()))
                 .ok_or(HtmlInputNumericConstraintsError::InputCodeUnitsOverflow)
         })?;
-        let minimum =
-            self.input_numeric_attribute(element, minimum, KnownHtmlAttribute::Min, state)?;
-        let maximum =
-            self.input_numeric_attribute(element, maximum, KnownHtmlAttribute::Max, state)?;
-        let step = self.input_numeric_attribute(element, step, KnownHtmlAttribute::Step, state)?;
-        let value =
-            self.input_numeric_attribute(element, value, KnownHtmlAttribute::Value, state)?;
+        let minimum = self.input_numeric_attribute(element, minimum, InputBoundRole::Min, state)?;
+        let maximum = self.input_numeric_attribute(element, maximum, InputBoundRole::Max, state)?;
+        let step = self.input_numeric_attribute(element, step, InputBoundRole::Step, state)?;
+        let value = self.input_numeric_attribute(element, value, InputBoundRole::Value, state)?;
         let failure = [&minimum, &maximum, &step, &value]
             .into_iter()
             .find(|side| side.applicability() != HtmlAttributeApplicability::Applicable);
@@ -688,23 +745,26 @@ impl HtmlValueInterpreter {
                 attribute: side.attribute(),
                 reason: side.applicability(),
             }
-        } else if temporal_state(state) {
-            HtmlInputNumericConstraintsOutcome::ComputedTemporal(temporal_constraints(
-                &minimum, &maximum, &step, &value, state,
-            ))
-        } else if !computed_state(state) {
-            HtmlInputNumericConstraintsOutcome::InapplicableInputState(state)
         } else {
-            HtmlInputNumericConstraintsOutcome::Computed(
-                select_input_numeric_constraints(
-                    minimum.numeric_content(),
-                    maximum.numeric_content(),
-                    step.numeric_step(),
-                    value.numeric_content(),
-                    state,
-                )
-                .expect("computed_state qualified Number or Range"),
-            )
+            match BoundsState::of(state) {
+                BoundsState::Temporal(temporal) => {
+                    HtmlInputNumericConstraintsOutcome::ComputedTemporal(temporal_constraints(
+                        &minimum, &maximum, &step, &value, temporal,
+                    ))
+                }
+                BoundsState::Other => {
+                    HtmlInputNumericConstraintsOutcome::InapplicableInputState(state)
+                }
+                BoundsState::Computed(computed) => {
+                    HtmlInputNumericConstraintsOutcome::Computed(select_computed_constraints(
+                        minimum.numeric_content(),
+                        maximum.numeric_content(),
+                        step.numeric_step(),
+                        value.numeric_content(),
+                        computed,
+                    ))
+                }
+            }
         };
         Ok(HtmlInputNumericConstraintsReport {
             minimum,
@@ -717,9 +777,6 @@ impl HtmlValueInterpreter {
     }
 }
 
-fn number(value: f64) -> HtmlFloatingPointNumber {
-    HtmlFloatingPointNumber::try_from(value).expect("selected finite Number/Range constants")
-}
 /// Already-converted content facts. Ordinary reports and controlled Range
 /// construction share this fixed selection owner; no raw value is copied.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -791,19 +848,31 @@ pub fn select_input_numeric_constraints(
     value: HtmlInputNumericContent,
     state: HtmlInputType,
 ) -> Option<HtmlInputNumericConstraints> {
-    if !computed_state(state) {
-        return None;
+    match BoundsState::of(state) {
+        BoundsState::Computed(computed) => {
+            Some(select_computed_constraints(min, max, step, value, computed))
+        }
+        BoundsState::Temporal(_) | BoundsState::Other => None,
     }
-    if state == HtmlInputType::Range {
-        return Some(select_range_constraints(min, max, step, value).constraints);
+}
+
+fn select_computed_constraints(
+    min: HtmlInputNumericContent,
+    max: HtmlInputNumericContent,
+    step: HtmlInputNumericStep,
+    value: HtmlInputNumericContent,
+    state: ComputedState,
+) -> HtmlInputNumericConstraints {
+    match state {
+        ComputedState::Range => select_range_constraints(min, max, step, value).constraints,
+        ComputedState::Number => assemble_constraints(
+            NumericBound::select(min, None),
+            NumericBound::select(max, None),
+            min,
+            step,
+            value,
+        ),
     }
-    Some(assemble_constraints(
-        NumericBound::select(min, None),
-        NumericBound::select(max, None),
-        min,
-        step,
-        value,
-    ))
 }
 
 /// The Range state's constraints together with its two bounds. The state defaults a missing or
@@ -822,7 +891,10 @@ pub(crate) fn select_range_constraints(
     step: HtmlInputNumericStep,
     value: HtmlInputNumericContent,
 ) -> HtmlInputRangeBounds {
-    let (default_minimum, default_maximum) = (number(0.0), number(100.0));
+    let (default_minimum, default_maximum) = (
+        HtmlFloatingPointNumber::ZERO,
+        HtmlFloatingPointNumber::ONE_HUNDRED,
+    );
     let minimum = NumericBound::select(min, Some(default_minimum));
     let maximum = NumericBound::select(max, Some(default_maximum));
     HtmlInputRangeBounds {
@@ -865,18 +937,18 @@ fn select_numeric_step(
     match step {
         HtmlInputNumericStep::Any => (None, HtmlInputNumericStepOrigin::Any),
         HtmlInputNumericStep::Absent => (
-            Some(number(1.0)),
+            Some(HtmlFloatingPointNumber::ONE),
             HtmlInputNumericStepOrigin::MissingDefault,
         ),
         HtmlInputNumericStep::Failed => (
-            Some(number(1.0)),
+            Some(HtmlFloatingPointNumber::ONE),
             HtmlInputNumericStepOrigin::ParseFailureDefault,
         ),
         HtmlInputNumericStep::Value(value) if value.value() > 0.0 => {
             (Some(value), HtmlInputNumericStepOrigin::Recovered)
         }
         HtmlInputNumericStep::Value(_) => (
-            Some(number(1.0)),
+            Some(HtmlFloatingPointNumber::ONE),
             HtmlInputNumericStepOrigin::NonPositiveDefault,
         ),
     }
@@ -893,7 +965,10 @@ fn select_numeric_step_base(
         (_, HtmlInputNumericContent::Value(value)) => {
             (value, HtmlInputNumericStepBaseOrigin::ValueContent)
         }
-        _ => (number(0.0), HtmlInputNumericStepBaseOrigin::Zero),
+        _ => (
+            HtmlFloatingPointNumber::ZERO,
+            HtmlInputNumericStepBaseOrigin::Zero,
+        ),
     }
 }
 
@@ -930,10 +1005,9 @@ fn temporal_constraints(
     max: &HtmlInputNumericAttributeReport,
     step: &HtmlInputNumericAttributeReport,
     value: &HtmlInputNumericAttributeReport,
-    state: HtmlInputType,
+    state: TemporalState,
 ) -> HtmlInputTemporalConstraints {
-    let fallback = HtmlInputTemporalCoordinate::default_step_base_for(state)
-        .expect("temporal dispatch requires a selected temporal state");
+    let fallback = HtmlInputTemporalCoordinate::default_step_base_of(state);
     let (step_base, step_base_origin) = if let Some(value) = min.temporal() {
         (
             value.clone(),
@@ -944,7 +1018,7 @@ fn temporal_constraints(
     } else {
         (
             fallback,
-            if state == HtmlInputType::Week {
+            if state == TemporalState::Week {
                 HtmlInputNumericStepBaseOrigin::StateDefault
             } else {
                 HtmlInputNumericStepBaseOrigin::Zero
@@ -959,20 +1033,13 @@ fn temporal_constraints(
             HtmlInputNumericStepOrigin::MissingDefault,
         )
     } else if let Some(number) = step.floating_point() {
-        if number.value() > 0.0 {
-            (
-                Some(
-                    step_base
-                        .scale_step(number)
-                        .expect("recovered step was checked positive"),
-                ),
-                HtmlInputNumericStepOrigin::Recovered,
-            )
-        } else {
-            (
+        match step_base.scale_step(number) {
+            Ok(scaled) => (Some(scaled), HtmlInputNumericStepOrigin::Recovered),
+            // The owner refuses exactly the steps that are zero or negative.
+            Err(HtmlInputTemporalStepError) => (
                 Some(step_base.default_allowed_step()),
                 HtmlInputNumericStepOrigin::NonPositiveDefault,
-            )
+            ),
         }
     } else {
         (
@@ -1073,5 +1140,86 @@ impl HtmlFloatingPointNumber {
             KnownHtmlAttribute::Max.qualified_name(),
             self.to_plain_decimal_string(),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every input state the pinned type attribute defines, from its keyword table.
+    fn all_states() -> Vec<HtmlInputType> {
+        (0..)
+            .map_while(crate::internal::attributes::input_type_keyword)
+            .map(|(_, state)| state)
+            .collect()
+    }
+
+    /// HTML877d #the-min-and-max-attributes and #the-step-attribute apply to Number and Range, and
+    /// to the five temporal states; the other input states have no numeric bounds.
+    #[test]
+    fn only_number_range_and_the_temporal_states_compute_bounds() {
+        let states = all_states();
+        assert_eq!(states.len(), 22);
+        for state in states {
+            let expected = match state {
+                HtmlInputType::Number => BoundsState::Computed(ComputedState::Number),
+                HtmlInputType::Range => BoundsState::Computed(ComputedState::Range),
+                HtmlInputType::Date => BoundsState::Temporal(TemporalState::Date),
+                HtmlInputType::Month => BoundsState::Temporal(TemporalState::Month),
+                HtmlInputType::Week => BoundsState::Temporal(TemporalState::Week),
+                HtmlInputType::Time => BoundsState::Temporal(TemporalState::Time),
+                HtmlInputType::LocalDateTime => BoundsState::Temporal(TemporalState::LocalDateTime),
+                _ => BoundsState::Other,
+            };
+            assert_eq!(BoundsState::of(state), expected, "{state:?}");
+        }
+    }
+
+    /// Each role's report names the input state it was made for and the role's own attribute, for
+    /// every state, whether the state computes bounds or not.
+    #[test]
+    fn every_role_report_names_its_input_state_and_attribute() {
+        let interpreter = HtmlValueInterpreter::new(64);
+        let input = QualifiedName::new(Namespace::html(), None, "input");
+        let (min, max, step, value) = (
+            Attribute::new(KnownHtmlAttribute::Min.qualified_name(), "1"),
+            Attribute::new(KnownHtmlAttribute::Max.qualified_name(), "9"),
+            Attribute::new(KnownHtmlAttribute::Step.qualified_name(), "2"),
+            Attribute::new(KnownHtmlAttribute::Value.qualified_name(), "3"),
+        );
+        for state in all_states() {
+            let report = interpreter
+                .input_numeric_constraints(
+                    &input,
+                    Some(&min),
+                    Some(&max),
+                    Some(&step),
+                    Some(&value),
+                    state,
+                )
+                .unwrap();
+            for (side, attribute) in [
+                (report.minimum(), KnownHtmlAttribute::Min),
+                (report.maximum(), KnownHtmlAttribute::Max),
+                (report.step(), KnownHtmlAttribute::Step),
+                (report.value(), KnownHtmlAttribute::Value),
+            ] {
+                assert_eq!(side.input_state(), state);
+                assert_eq!(side.attribute(), attribute);
+            }
+        }
+    }
+
+    /// The constants the Number and Range selection uses are the finite numbers they name.
+    #[test]
+    fn the_selection_constants_are_the_numbers_they_name() {
+        for (constant, value) in [
+            (HtmlFloatingPointNumber::ZERO, 0.0),
+            (HtmlFloatingPointNumber::ONE, 1.0),
+            (HtmlFloatingPointNumber::ONE_HUNDRED, 100.0),
+        ] {
+            assert_eq!(constant, HtmlFloatingPointNumber::try_from(value).unwrap());
+        }
     }
 }

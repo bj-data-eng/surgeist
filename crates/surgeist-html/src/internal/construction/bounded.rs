@@ -605,13 +605,6 @@ impl HtmlConstructionStorage {
     pub fn retire(self) -> HtmlConstructionRetirement {
         HtmlConstructionRetirement::new(self)
     }
-    /// An empty storage of the same identity, which stands in while an operation owns the real
-    /// one. It allocates nothing; every handle resolves to an unknown node in it.
-    pub(super) fn vacated(&self) -> Self {
-        Self {
-            arena: Arena::vacated(&self.arena.identity),
-        }
-    }
     pub(super) fn native_depth(&self, position: usize) -> usize {
         self.arena.records[position].depth
     }

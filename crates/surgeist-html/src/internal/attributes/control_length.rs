@@ -7,7 +7,8 @@
 use super::*;
 use crate::{
     internal::microsyntax::numeric::HtmlNonNegativeInteger,
-    internal::values::interpretation::HtmlValueAuthorState,
+    internal::values::interpretation::HtmlDefinedAuthorState,
+    internal::values::interpretation::HtmlDefinedValueReport,
     internal::values::interpretation::HtmlValueFailure,
     internal::values::interpretation::HtmlValueRecoveryState,
     internal::values::interpretation::HtmlValueReport,
@@ -494,18 +495,35 @@ impl HtmlControlLengthBoundsReport {
     }
 }
 
+/// The three attributes this owner reads as nonnegative integers.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ControlIntegerRole {
+    Size,
+    Minlength,
+    Maxlength,
+}
+impl ControlIntegerRole {
+    fn attribute(self) -> KnownHtmlAttribute {
+        match self {
+            Self::Size => KnownHtmlAttribute::Size,
+            Self::Minlength => KnownHtmlAttribute::Minlength,
+            Self::Maxlength => KnownHtmlAttribute::Maxlength,
+        }
+    }
+}
+
 fn metadata(
-    attribute: KnownHtmlAttribute,
+    role: ControlIntegerRole,
     element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
 ) -> RuleMetadata {
     let textarea = KnownHtmlElement::from_name(element) == Some(KnownHtmlElement::Textarea);
-    let (rows, source, context): (&'static [u16], _, _) = match attribute {
-        KnownHtmlAttribute::Size => (
+    let (rows, source, context): (&'static [u16], _, _) = match role {
+        ControlIntegerRole::Size => (
             &[143],
             source!("attr-input-size"),
             Context::Elements(&[KnownHtmlElement::Input]),
         ),
-        KnownHtmlAttribute::Minlength => (
+        ControlIntegerRole::Minlength => (
             &[99],
             if textarea {
                 source!("attr-textarea-minlength")
@@ -514,7 +532,7 @@ fn metadata(
             },
             Context::Elements(&[KnownHtmlElement::Input, KnownHtmlElement::Textarea]),
         ),
-        KnownHtmlAttribute::Maxlength => (
+        ControlIntegerRole::Maxlength => (
             &[94],
             if textarea {
                 source!("attr-textarea-maxlength")
@@ -523,10 +541,9 @@ fn metadata(
             },
             Context::Elements(&[KnownHtmlElement::Input, KnownHtmlElement::Textarea]),
         ),
-        _ => unreachable!("private control integer rule"),
     };
     RuleMetadata {
-        attribute,
+        attribute: role.attribute(),
         rows,
         source,
         context,
@@ -555,22 +572,21 @@ fn compare(left: &HtmlNonNegativeInteger, right: &HtmlNonNegativeInteger) -> Ord
 }
 
 fn author(
-    common: &HtmlValueReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
+    common: &HtmlDefinedValueReport<HtmlNonNegativeInteger, HtmlNonNegativeInteger>,
     positive: bool,
 ) -> HtmlControlIntegerAuthorState {
     match common.author() {
-        HtmlValueAuthorState::Missing => HtmlControlIntegerAuthorState::Missing,
-        HtmlValueAuthorState::Valid(value) if positive && value.is_zero() => {
+        HtmlDefinedAuthorState::Missing => HtmlControlIntegerAuthorState::Missing,
+        HtmlDefinedAuthorState::Valid(value) if positive && value.is_zero() => {
             HtmlControlIntegerAuthorState::ZeroMustBePositive
         }
-        HtmlValueAuthorState::Valid(_) => HtmlControlIntegerAuthorState::Conforming,
-        HtmlValueAuthorState::Invalid(error) => {
+        HtmlDefinedAuthorState::Valid(_) => HtmlControlIntegerAuthorState::Conforming,
+        HtmlDefinedAuthorState::Invalid(error) => {
             HtmlControlIntegerAuthorState::Nonconforming(HtmlValueFailure::Syntax(*error))
         }
-        HtmlValueAuthorState::Unrepresentable(error) => {
+        HtmlDefinedAuthorState::Unrepresentable(error) => {
             HtmlControlIntegerAuthorState::Nonconforming(HtmlValueFailure::Representation(*error))
         }
-        HtmlValueAuthorState::NotDefined => unreachable!("nonnegative integer has author grammar"),
     }
 }
 
@@ -578,7 +594,7 @@ impl HtmlValueInterpreter {
     // All request raw values have been admitted before this shared owner runs.
     fn control_integer(
         &self,
-        selected: KnownHtmlAttribute,
+        selected: ControlIntegerRole,
         element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         state: Option<HtmlInputType>,
@@ -629,11 +645,11 @@ impl HtmlValueInterpreter {
                 _ => HtmlAttributeContextAuthorState::Conforming,
             }
         };
-        let common = self.nonnegative_integer(raw.map(HtmlAttributeInput::value))?;
-        let author = author(&common, selected == KnownHtmlAttribute::Size);
+        let common = self.nonnegative_integer_defined(raw.map(HtmlAttributeInput::value))?;
+        let author = author(&common, selected == ControlIntegerRole::Size);
         Ok(IntegerObservation {
             attribute,
-            common: Some(common),
+            common: Some(common.into_report()),
             author,
             application,
         })
@@ -666,7 +682,7 @@ impl HtmlValueInterpreter {
         state: Option<HtmlInputType>,
     ) -> Result<HtmlInputSizeReport, HtmlValueAdmissionError> {
         self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
-        let integer = self.control_integer(KnownHtmlAttribute::Size, element, raw, state)?;
+        let integer = self.control_integer(ControlIntegerRole::Size, element, raw, state)?;
         let content =
             (integer.application == HtmlControlAttributeApplication::Applicable).then(|| {
                 match integer.recovered() {
@@ -705,9 +721,9 @@ impl HtmlValueInterpreter {
             .try_fold(0usize, |total, raw| total.checked_add(raw.len()))
             .ok_or(HtmlControlLengthError::InputCodeUnitsOverflow)?;
         let minimum =
-            self.length_attribute(KnownHtmlAttribute::Minlength, element, minimum, input_state)?;
+            self.length_attribute(ControlIntegerRole::Minlength, element, minimum, input_state)?;
         let maximum =
-            self.length_attribute(KnownHtmlAttribute::Maxlength, element, maximum, input_state)?;
+            self.length_attribute(ControlIntegerRole::Maxlength, element, maximum, input_state)?;
         let pair = pair_author(&minimum, &maximum);
         let text = initial_text_author(&maximum, initial_text);
         Ok(HtmlControlLengthBoundsReport {
@@ -722,7 +738,7 @@ impl HtmlValueInterpreter {
 
     fn length_attribute(
         &self,
-        selected: KnownHtmlAttribute,
+        selected: ControlIntegerRole,
         element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         state: Option<HtmlInputType>,

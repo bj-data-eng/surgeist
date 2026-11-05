@@ -52,7 +52,12 @@ impl SessionStorage {
             for slot in retire_slots.iter().flatten() {
                 self.retire_field_group(control, *slot)?;
             }
-            ready.commit().ok_or_else(|| latch_registry_row(control))
+            ready
+                .commit()
+                .map_err(|refusal| {
+                    construction_owner::construction_error(control, refusal.into_parts().1)
+                })?
+                .ok_or_else(|| latch_registry_row(control))
         })();
         // `node` named an element when the edit began and the edit only changes
         // its attributes, so the record is still an element; the container row

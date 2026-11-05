@@ -37,9 +37,9 @@ impl HtmlInputColorSpace {
     }
 }
 
-enum_rule!(INPUT_COLORSPACE, HtmlInputColorSpace, Colorspace,
+total_enum_rule!(INPUT_COLORSPACE, INPUT_COLORSPACE_DEFAULTS, HtmlInputColorSpace, Colorspace,
     Context::Elements(&[KnownHtmlElement::Input]), [25], "attr-input-colorspace",
-    Some(HtmlInputColorSpace::LimitedSrgb), Some(HtmlInputColorSpace::LimitedSrgb), None,
+    HtmlInputColorSpace::LimitedSrgb, HtmlInputColorSpace::LimitedSrgb, None,
     ["limited-srgb" => ("limited-srgb", HtmlInputColorSpace::LimitedSrgb),
      "display-p3" => ("display-p3", HtmlInputColorSpace::DisplayP3)]);
 
@@ -50,14 +50,10 @@ pub(super) fn colorspace_keyword(index: usize) -> Option<(&'static str, HtmlInpu
         .map(|row| (row.spelling, row.state))
 }
 pub(super) fn colorspace_invalid_default() -> HtmlInputColorSpace {
-    INPUT_COLORSPACE
-        .invalid
-        .expect("source-defined colorspace invalid default")
+    INPUT_COLORSPACE_DEFAULTS.invalid
 }
 pub(super) fn colorspace_default() -> HtmlInputColorSpace {
-    INPUT_COLORSPACE
-        .missing
-        .expect("source-defined colorspace default")
+    INPUT_COLORSPACE_DEFAULTS.missing
 }
 
 impl HtmlValueInterpreter {

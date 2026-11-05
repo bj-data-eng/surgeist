@@ -44,7 +44,7 @@ pub struct HtmlInputTemporalCoordinate {
 
 /// The five input states that define a temporal string-to-number conversion.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum TemporalState {
+pub(crate) enum TemporalState {
     Date,
     Month,
     Week,
@@ -52,7 +52,7 @@ enum TemporalState {
     LocalDateTime,
 }
 impl TemporalState {
-    fn of(state: HtmlInputType) -> Option<Self> {
+    pub(crate) fn of(state: HtmlInputType) -> Option<Self> {
         Some(match state {
             HtmlInputType::Date => Self::Date,
             HtmlInputType::Month => Self::Month,
@@ -115,12 +115,11 @@ impl TemporalState {
 
 impl HtmlInputTemporalCoordinate {
     /// Actual source fallback without requiring successful content conversion.
-    pub(crate) fn default_step_base_for(state: HtmlInputType) -> Option<Self> {
-        let state = TemporalState::of(state)?;
-        Some(Self {
+    pub(crate) fn default_step_base_of(state: TemporalState) -> Self {
+        Self {
             state,
             value: HtmlInteger::from(state.definition().3).into(),
-        })
+        }
     }
 
     /// Returns the input state whose conversion produced this quantity.
@@ -337,7 +336,9 @@ mod tests {
                 "60000",
             ),
         ] {
-            let value = HtmlInputTemporalCoordinate::default_step_base_for(state).unwrap();
+            let value = HtmlInputTemporalCoordinate::default_step_base_of(
+                TemporalState::of(state).expect("a temporal input state"),
+            );
             assert_eq!(value.state(), state);
             assert_eq!(
                 value.value().as_document_string(),
@@ -354,10 +355,7 @@ mod tests {
             HtmlInputType::Range,
             HtmlInputType::Text,
         ] {
-            assert_eq!(
-                HtmlInputTemporalCoordinate::default_step_base_for(state),
-                None
-            );
+            assert_eq!(TemporalState::of(state), None);
         }
     }
 }
