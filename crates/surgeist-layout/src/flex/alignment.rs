@@ -55,10 +55,10 @@ impl<S: LayoutScalar> FlexItemBaseline<S> {
         size: Size<S>,
         location: Point<S>,
         axes: FlexAxes,
-        alignment: AlignItems,
+        shares_baseline: bool,
     ) -> Point<Option<S>> {
         if axes.main_logical_axis() == LogicalAxis::Inline
-            && alignment != AlignItems::Baseline
+            && !shares_baseline
             && self.flow_axes.inline_axis() == axes.main_physical_axis()
             && let Some(last) = self.measured.last_block_baseline(self.flow_axes)
         {
@@ -336,14 +336,11 @@ pub(super) fn last_vertical_baseline<Node, S: LayoutScalar>(
 ) -> Option<Point<Option<S>>> {
     let line = lines.last()?;
     let line_items = &items[line.start..line.end];
-    let item = line_items
-        .iter()
-        .rev()
-        .find(|item| {
-            constants.axes.main_logical_axis() == LogicalAxis::Block
-                || item.align_self == AlignItems::Baseline
-        })
-        .or_else(|| line_items.last())?;
+    let sharing = line_items.iter().rev().find(|item| {
+        constants.axes.main_logical_axis() == LogicalAxis::Inline
+            && item.participates_in_baseline(constants.axes)
+    });
+    let item = sharing.or_else(|| line_items.last())?;
     let container = constants
         .node_outer_size
         .unwrap_or(constants.node_inner_size.unwrap_or(Size::<S>::ZERO));
@@ -367,7 +364,7 @@ pub(super) fn last_vertical_baseline<Node, S: LayoutScalar>(
         item.target_size,
         location,
         constants.axes,
-        item.align_self,
+        sharing.is_some(),
     ))
 }
 
@@ -399,19 +396,15 @@ pub(super) fn last_final_vertical_baseline<Node, S: LayoutScalar>(
 ) -> Option<Point<Option<S>>> {
     let line = lines.last()?;
     let line_items = &items[line.start..line.end];
-    let item = line_items
-        .iter()
-        .rev()
-        .find(|item| {
-            constants.axes.main_logical_axis() == LogicalAxis::Block
-                || item.align_self == AlignItems::Baseline
-        })
-        .or_else(|| line_items.last())?;
+    let sharing = line_items.iter().rev().find(|item| {
+        constants.axes.main_logical_axis() == LogicalAxis::Inline && item.shares_baseline
+    });
+    let item = sharing.or_else(|| line_items.last())?;
     Some(item.baseline.translated_end_item(
         item.output.size,
         item.normal_location,
         constants.axes,
-        item.align_self,
+        sharing.is_some(),
     ))
 }
 
@@ -594,7 +587,7 @@ impl<Node, S: LayoutScalar> ResolvedFlexItem<Node, S> {
         axes.cross_start_edge(self.margin_is_auto) || axes.cross_end_edge(self.margin_is_auto)
     }
 
-    fn participates_in_baseline(&self, axes: FlexAxes) -> bool {
+    pub(super) fn participates_in_baseline(&self, axes: FlexAxes) -> bool {
         self.align_self == AlignItems::Baseline
             && self.baseline.axis(self.target_size) == axes.cross_physical_axis()
             && !self.has_auto_cross_margin(axes)
@@ -722,6 +715,7 @@ mod final_baseline_selection_tests {
             output,
             margin: Edges::ZERO,
             align_self,
+            shares_baseline: align_self == AlignItems::Baseline,
             baseline: FlexItemBaseline::from_output(output, default_flow_axes::<S>()),
             location: Point::new(S::ZERO, S::from_f64(location_y)),
             normal_location: Point::new(S::ZERO, S::from_f64(location_y)),
