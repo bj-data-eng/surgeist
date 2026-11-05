@@ -588,7 +588,9 @@ fn focused_geometry_predecessors(
     let mut selected = BTreeMap::<_, BTreeSet<_>>::new();
     for case in cases {
         if let Some(
-            edition @ (PublishedEdition::GridStaticPosition | PublishedEdition::RelativeInsets),
+            edition @ (PublishedEdition::GridStaticPosition
+            | PublishedEdition::RelativeInsets
+            | PublishedEdition::WrappingWorldCorners),
         ) = case
             .semantic
             .as_ref()
@@ -2097,6 +2099,7 @@ fn qualify_semantic_case(
 ) -> Result<SemanticResult> {
     use crate::parity_support::exact_differences::{
         CaptureAuthority, ExactDifferenceSpec, complete_captured_comparison,
+        verify_wrapping_world_predecessor,
     };
     let SemanticCapture {
         root,
@@ -2173,9 +2176,16 @@ fn qualify_semantic_case(
         .as_ref()
         .map(|path| -> Result<Sha256Digest> {
             publication::require_regular_input(root, path)?;
-            let digest = Sha256Digest::from_bytes(&fs::read(root.join(path.as_str()))?);
+            let bytes = fs::read(root.join(path.as_str()))?;
+            let digest = Sha256Digest::from_bytes(&bytes);
             if inventory.expected_inputs.get(path) != Some(&digest) {
                 return Err(semantic_identity_changed("historical XML"));
+            }
+            if matches!(
+                lineage,
+                SemanticLineage::Published(PublishedEdition::WrappingWorldCorners)
+            ) {
+                verify_wrapping_world_predecessor(golden, &bytes)?;
             }
             Ok(digest)
         })

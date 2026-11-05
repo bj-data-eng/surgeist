@@ -18,6 +18,7 @@ use support::capture_authority::{
 use support::exact_differences::{
     CaptureAuthority, ExactDifferenceSpec, PublishedEdition, QualificationError,
     QualifiedComparison, complete_captured_comparison, flex_composition_qualification as flex,
+    verify_wrapping_world_predecessor,
 };
 
 #[path = "qualification_catalogue.rs"]
@@ -809,11 +810,12 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
             return Err(changed("canonical policy binding"));
         }
         read_pinned(&root, &case.policy)?;
-        let historical = case
+        let historical_bytes = case
             .historical
             .as_ref()
-            .map(|entry| read_pinned(&root, entry).map(|bytes| sha256(&bytes)))
+            .map(|entry| read_pinned(&root, entry))
             .transpose()?;
+        let historical = historical_bytes.as_deref().map(sha256);
         if record.value.get("source_sha256").and_then(Value::as_str)
             != Some(artifact.source_sha256.as_str())
             || record
@@ -851,6 +853,14 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
             || golden.measured_leaf.is_some() != measured
         {
             return Err(changed("canonical observation profile"));
+        }
+        if edition == PublishedEdition::WrappingWorldCorners {
+            verify_wrapping_world_predecessor(
+                &golden,
+                historical_bytes
+                    .as_deref()
+                    .ok_or_else(|| changed("missing wrapping predecessor"))?,
+            )?;
         }
         let selection = CaseSelection {
             name: case.case.name.clone(),

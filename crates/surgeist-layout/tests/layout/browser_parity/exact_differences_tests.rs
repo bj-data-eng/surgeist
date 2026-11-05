@@ -93,6 +93,8 @@ fn wrapping_world_corner_height_is_checked_separately_from_root_local_height() {
         "captured/canonical-box-differences/xml/flex/fri07_collapsed_strut_wrapping__border_box_ltr.xml"
     ))
     .unwrap();
+    let historical = include_bytes!("xml/flex/fri07_collapsed_strut_wrapping__border_box_ltr.xml");
+    verify_wrapping_world_predecessor(&golden, historical).unwrap();
     let resolved = specification.resolve_against(authority(), &golden).unwrap();
     let complete = complete_captured_comparison(&golden, &resolved).unwrap();
     assert_eq!(
@@ -107,6 +109,7 @@ fn wrapping_world_corner_height_is_checked_separately_from_root_local_height() {
         .unwrap();
     root_world.height -= 1.0;
     assert_eq!(golden.expectations.height, Some(157.0));
+    assert!(verify_wrapping_world_predecessor(&golden, historical).is_err());
     let resolved = specification.resolve_against(authority(), &golden).unwrap();
     let complete = complete_captured_comparison(&golden, &resolved).unwrap();
     assert!(matches!(

@@ -1236,6 +1236,29 @@ fn browser_world_corner_height(golden: &Golden) -> Result<Number> {
     Ok(number)
 }
 
+pub(crate) fn verify_wrapping_world_predecessor(golden: &Golden, historical: &[u8]) -> Result<()> {
+    let text = std::str::from_utf8(historical).map_err(|error| malformed(error.to_string()))?;
+    let xml = roxmltree::Document::parse(text).map_err(|error| malformed(error.to_string()))?;
+    let test = xml.root_element();
+    let root_height = test
+        .children()
+        .find(|node| node.has_tag_name("expectations"))
+        .and_then(|node| node.children().find(|child| child.has_tag_name("node")))
+        .and_then(|node| node.attribute("height"))
+        .and_then(|height| height.parse::<f64>().ok());
+    if !test.has_tag_name("test")
+        || test.attribute("name") != Some(golden.name.as_str())
+        || test.attribute("measurement-version") != Some("2")
+        || test.attribute("use-rounding") != Some("true")
+        || root_height != Some(f64::from(browser_world_corner_height(golden)?.0))
+    {
+        return Err(QualificationError::IdentityChanged {
+            component: "historical wrapping world-corner root height".to_owned(),
+        });
+    }
+    Ok(())
+}
+
 // A nullable input is still a required authored field. Serde must not turn a
 // missing key into an invented absence; the owning type establishes the schema.
 pub(crate) fn explicit_nullable<'de, D, T>(
