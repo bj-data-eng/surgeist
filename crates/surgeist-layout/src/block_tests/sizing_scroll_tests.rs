@@ -4738,3 +4738,71 @@ fn fri08_c07_t03_optional_math_block_results_preserve_both_scalar_lanes() {
     assert_fri08_c07_t03_optional_math_block_results::<f32>();
     assert_fri08_c07_t03_optional_math_block_results::<f64>();
 }
+
+#[test]
+fn block_ratio_transfer_uses_the_selected_sizing_box() {
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let axes = Size::splat(AxisSizingRequestOf::new(
+        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
+        SizingOperation::Normal,
+    ));
+    let request = LayoutRootRequest::standalone(
+        SizingRequest::new(
+            axes,
+            OrthogonalFallback::new(
+                Size::splat(Some(NonNegativeFiniteOf::new(100.0).unwrap())),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
+        flow,
+        Size::splat(Some(NonNegativeFiniteOf::new(100.0).unwrap())),
+    );
+    let mut differences = Vec::new();
+    for (box_sizing, explicit, expected) in [
+        (BoxSizing::ContentBox, false, Size::new(100.0, 46.0)),
+        (BoxSizing::BorderBox, false, Size::new(100.0, 50.0)),
+        (BoxSizing::ContentBox, true, Size::new(100.0, 26.0)),
+        (BoxSizing::BorderBox, true, Size::new(80.0, 20.0)),
+    ] {
+        let tree = PublicBlockTree::default()
+            .with_children(0, [1])
+            .with_children(1, [])
+            .with_style(
+                0,
+                NodeInput {
+                    display: Display::Block,
+                    size: Size::new(PreferredSize::px(100.0), PreferredSize::px(100.0)),
+                    ..NodeInput::default()
+                },
+            )
+            .with_style(
+                1,
+                NodeInput {
+                    display: Display::Block,
+                    box_sizing,
+                    aspect_ratio: AspectRatio::new(2.0),
+                    padding: Edges::new(
+                        Length::px(3.0),
+                        Length::px(10.0),
+                        Length::px(3.0),
+                        Length::px(10.0),
+                    ),
+                    size: if explicit {
+                        Size::new(PreferredSize::px(80.0), PreferredSize::px(20.0))
+                    } else {
+                        Size::new(PreferredSize::AUTO, PreferredSize::AUTO)
+                    },
+                    ..NodeInput::default()
+                },
+            );
+        let batch = compute_layout(&tree, 0, request).unwrap();
+        let actual = public_final_output(&batch, 1).size;
+        if actual != expected {
+            differences.push(format!(
+                "{box_sizing:?}, explicit {explicit}: expected {expected:?}, got {actual:?}"
+            ));
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
