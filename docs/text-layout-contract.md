@@ -635,6 +635,13 @@ second allocation for a contribution already owned by a selected control.
 
 Native preparation explicitly captures its paragraph strut policy. A default-font strut resolves and retains the actual base-style face during preparation and contributes on every selected line, even when body spans use other fonts; a missing requested face is an error. Each body font contributes its own line-height strut, including its own half-leading, before Text combines baseline-, top- and bottom-aligned allocations. The allocation-only policy omits the base strut; it may prepare without a font when no other input requires one. Finalization requires actual contributions for every otherwise metric-less line, including a terminal empty line after a forced break. An explicit zero allocation is distinct from a missing allocation. Control presence and catalogue availability cannot silently choose this policy. These native strut roles follow the pinned [CSS Inline layout-bounds rules](../references/css-inline-3--WD-css-inline-3-20241218--a73a73a45bf5.md#inline-height). Raw standalone layout retains its characterized source-adjacent metric policy; empty standalone text retains its admitted-font strut.
 
+For a horizontal, unshifted forced-break fragment, `Layout::placed_break_font_metrics`
+queries the retained paragraph-default font instance and pre-leading ascent and
+descent on the exact placed line. The query requires the fragment's finalized-line
+identity. It returns no metrics when the break has separate geometry or the
+placement lacks default-font authority. The consumer owns any projection of these
+metrics into a browser observation.
+
 Metric completeness does not establish that composed CSS Layout contains a
 formatted line. Layout applies the [phantom-line disposition](../references/text-wrap-edges--native-determination.md#paragraph-completion-and-retained-pins)
 to each actual selection, independently of earlier source-node presence. A
