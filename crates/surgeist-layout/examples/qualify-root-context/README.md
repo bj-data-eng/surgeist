@@ -198,4 +198,6 @@ cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-ge
 The first command captures from the cached browser. The second replays the
 [fixed edition](../../tests/layout/browser_parity/captured/prepared-atomic-percentage-qualification/).
 The publisher `--publish-prepared-atomic-percentage-qualification` requires an
-absent edition directory and the verified original source import.
+absent edition directory and the verified original source import. The
+[Ahem resource provenance](../../tests/layout/browser_parity/fonts/PROVENANCE.md)
+links the current license and upstream record.
