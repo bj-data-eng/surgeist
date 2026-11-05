@@ -29,6 +29,9 @@ pub(super) fn generate_xml(name: &str, measurement: &ValidatedMeasurement) -> St
         }
         lines.push("  </element-scroll-sizes>".into());
     }
+    if let Some(attrs) = measurement.measured_leaf() {
+        lines.push(format!("  <measured-leaf{}/>", attr_text(attrs)));
+    }
     lines.push("  <diagnostics>".into());
     write_world_diagnostics(&mut lines, measurement.root(), "0");
     lines.push("  </diagnostics>".into());

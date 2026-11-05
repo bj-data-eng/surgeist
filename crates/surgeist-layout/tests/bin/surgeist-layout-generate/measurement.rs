@@ -12,13 +12,20 @@ use root_context::WireViewport;
 #[path = "measurement/element_scroll_sizes.rs"]
 mod element_scroll_sizes;
 
+#[path = "measurement/measured_leaf.rs"]
+mod measured_leaf;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum BoxObservationRequest {
     Geometry,
     ElementScrollSizes,
+    MeasuredLeaf,
 }
 
 pub(super) const OBSERVATION_REQUEST_INPUT: &str = "observation-request.json";
+pub(super) const MEASURED_LEAF_SCRIPT_INPUT: &str = "scripts/gentest/measured_leaf.js";
+pub(super) const MEASURED_LEAF_SCRIPT: &str = include_str!("measurement/measured_leaf.js");
+pub(super) use measured_leaf::FONT_RESOURCE as MEASURED_LEAF_FONT_RESOURCE;
 
 impl BoxObservationRequest {
     pub fn from_input_bytes(input: Option<&[u8]>) -> Result<Self, &'static str> {
@@ -27,9 +34,10 @@ impl BoxObservationRequest {
             Some(bytes) if Some(bytes) == Self::ElementScrollSizes.input_bytes() => {
                 Ok(Self::ElementScrollSizes)
             }
-            Some(_) => {
-                Err("observation request must be the exact canonical element scroll-size input")
+            Some(bytes) if Some(bytes) == Self::MeasuredLeaf.input_bytes() => {
+                Ok(Self::MeasuredLeaf)
             }
+            Some(_) => Err("observation request must match a registered exact input"),
         }
     }
 
@@ -38,6 +46,9 @@ impl BoxObservationRequest {
             Self::Geometry => None,
             Self::ElementScrollSizes => Some(
                 b"{\"schema_version\":1,\"element_scroll_sizes\":\"horizontal-zero-edge-divs\"}\n",
+            ),
+            Self::MeasuredLeaf => Some(
+                b"{\"schema_version\":1,\"element_scroll_sizes\":\"horizontal-zero-edge-divs\",\"measured_leaf\":\"ahem-10px-zwsp\"}\n",
             ),
         }
     }
@@ -200,6 +211,8 @@ struct WireNode {
     #[serde(default, deserialize_with = "present")]
     tag_name: Option<String>,
     layout_input: LayoutInput,
+    #[serde(default, deserialize_with = "present")]
+    measured_leaf: Option<measured_leaf::WireMeasuredLeaf>,
     #[serde(default, deserialize_with = "present")]
     unsupported_reason: Option<String>,
     #[serde(default, deserialize_with = "present")]
@@ -427,6 +440,7 @@ pub(super) struct ValidatedMeasurement {
     root_local_positioned: bool,
     root: Box<Node>,
     element_scroll_sizes: Option<Vec<ElementScrollSize>>,
+    measured_leaf: Option<Attributes>,
 }
 #[derive(Debug)]
 pub(super) struct Node {
@@ -510,6 +524,11 @@ pub(super) fn decode(
         node_path: "root".into(),
     };
     wire.validate_wire(&context)?;
+    context.compatible(
+        request == BoxObservationRequest::MeasuredLeaf || wire.measured_leaf.is_none(),
+        "measuredLeaf",
+        "measured leaf evidence requires its registered request",
+    )?;
     if let Some(reason) = wire.unsupported_reason() {
         return Ok(DecodedMeasurement::Unsupported {
             reason: reason.into(),
@@ -537,7 +556,7 @@ pub(super) fn decode(
     wire.validate_grid_alignment_profile(&context)?;
     let element_scroll_sizes = match request {
         BoxObservationRequest::Geometry => None,
-        BoxObservationRequest::ElementScrollSizes => {
+        BoxObservationRequest::ElementScrollSizes | BoxObservationRequest::MeasuredLeaf => {
             if !root_local_positioned {
                 return Ok(DecodedMeasurement::Unsupported {
                     reason: "root: element scroll sizes require an authenticated absolute-root-local capture".into(),
@@ -552,6 +571,16 @@ pub(super) fn decode(
                 &context,
             )?)
         }
+    };
+    let measured_leaf = if request == BoxObservationRequest::MeasuredLeaf {
+        let witness = context.required(wire.measured_leaf.as_ref(), "measuredLeaf")?;
+        Some(witness.validate(
+            &wire,
+            element_scroll_sizes.as_deref().unwrap_or_default(),
+            &context,
+        )?)
+    } else {
+        None
     };
     let root = wire.validate(&context, "horizontal-tb", use_rounding, true)?;
     if root_local_positioned {
@@ -579,6 +608,7 @@ pub(super) fn decode(
         root_local_positioned,
         root: Box::new(root),
         element_scroll_sizes,
+        measured_leaf,
     }))
 }
 
@@ -688,6 +718,11 @@ impl WireNode {
         })
     }
     fn validate_wire(&self, context: &Context<'_>) -> Result<(), MeasurementError> {
+        context.compatible(
+            context.node_path == "root" || self.measured_leaf.is_none(),
+            "measuredLeaf",
+            "measured leaf evidence belongs to the capture root",
+        )?;
         if let Some(capture) = &self.grid_alignment_reference {
             capture.validate().map_err(|detail| {
                 context.error(
@@ -1929,6 +1964,9 @@ impl WireRange {
 }
 
 impl ValidatedMeasurement {
+    pub fn measured_leaf(&self) -> Option<&Attributes> {
+        self.measured_leaf.as_ref()
+    }
     pub fn element_scroll_sizes(&self) -> Option<&[ElementScrollSize]> {
         self.element_scroll_sizes.as_deref()
     }

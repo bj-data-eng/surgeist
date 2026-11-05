@@ -18,7 +18,10 @@ use surgeist_generator::{GeneratorErrorKind, RelativePath, Sha256Digest};
 use crate::adapter::{AdapterError, LayoutAdapter, fixture_cases};
 use crate::browser_profile::BrowserManifest;
 use crate::fixture_variants;
-use crate::measurement::{BoxObservationRequest, OBSERVATION_REQUEST_INPUT};
+use crate::measurement::{
+    BoxObservationRequest, MEASURED_LEAF_SCRIPT, MEASURED_LEAF_SCRIPT_INPUT,
+    OBSERVATION_REQUEST_INPUT,
+};
 
 #[path = "../../tests/layout/browser_parity/qualification_catalogue.rs"]
 mod qualification_catalogue;
@@ -39,6 +42,7 @@ pub(super) enum QualificationMode {
     FontCustody,
     NumericDiagnostics,
     ElementScrollSizeDiagnostics,
+    MeasuredLeafDiagnostics,
     Publish,
     CheckPublished,
     PublishCanonicalBoxes,
@@ -50,13 +54,16 @@ impl QualificationMode {
     fn collects_numeric_differences(self) -> bool {
         matches!(
             self,
-            Self::NumericDiagnostics | Self::ElementScrollSizeDiagnostics
+            Self::NumericDiagnostics
+                | Self::ElementScrollSizeDiagnostics
+                | Self::MeasuredLeafDiagnostics
         )
     }
 
     fn box_observations(self) -> BoxObservationRequest {
         match self {
             Self::ElementScrollSizeDiagnostics => BoxObservationRequest::ElementScrollSizes,
+            Self::MeasuredLeafDiagnostics => BoxObservationRequest::MeasuredLeaf,
             _ => BoxObservationRequest::Geometry,
         }
     }
@@ -67,7 +74,11 @@ fn select_records(
     fixture: Option<&str>,
     mode: QualificationMode,
 ) -> Result<()> {
-    if mode == QualificationMode::ElementScrollSizeDiagnostics {
+    if matches!(
+        mode,
+        QualificationMode::ElementScrollSizeDiagnostics
+            | QualificationMode::MeasuredLeafDiagnostics
+    ) {
         return select_scroll_size_records(declaration, fixture);
     }
     match (mode, fixture) {
@@ -108,7 +119,8 @@ fn select_records(
                 QualificationMode::NumericDiagnostics => {
                     return Err("numeric diagnostics require a Generated fixture".into());
                 }
-                QualificationMode::ElementScrollSizeDiagnostics => unreachable!("selected above"),
+                QualificationMode::ElementScrollSizeDiagnostics
+                | QualificationMode::MeasuredLeafDiagnostics => unreachable!("selected above"),
                 QualificationMode::Regular => {}
                 QualificationMode::Publish
                 | QualificationMode::CheckPublished
@@ -627,7 +639,7 @@ fn validate_corpus(
         qualify_xml(&xml, case)?;
         let golden = crate::parity_support::Golden::parse(&xml)?;
         if golden.has_element_scroll_sizes()
-            != (mode.box_observations() == BoxObservationRequest::ElementScrollSizes)
+            != (mode.box_observations() != BoxObservationRequest::Geometry)
         {
             return Err(format!(
                 "{}: element scroll-size coverage differs from the registered request",
@@ -741,6 +753,7 @@ fn validate_corpus(
         QualificationMode::Regular
         | QualificationMode::NumericDiagnostics
         | QualificationMode::ElementScrollSizeDiagnostics
+        | QualificationMode::MeasuredLeafDiagnostics
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
         | QualificationMode::PublishCanonicalBoxes
@@ -941,6 +954,7 @@ fn inventory(
         QualificationMode::Regular
         | QualificationMode::NumericDiagnostics
         | QualificationMode::ElementScrollSizeDiagnostics
+        | QualificationMode::MeasuredLeafDiagnostics
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
         | QualificationMode::PublishCanonicalBoxes
@@ -971,6 +985,17 @@ fn inventory(
     if let Some(bytes) = mode.box_observations().input_bytes() {
         let path = RelativePath::new(OBSERVATION_REQUEST_INPUT)?;
         inventory_input(root, &path, bytes, &mut inventory.expected_inputs, access)?;
+        inventory.global_inputs.push(path);
+    }
+    if mode.box_observations() == BoxObservationRequest::MeasuredLeaf {
+        let path = RelativePath::new(MEASURED_LEAF_SCRIPT_INPUT)?;
+        inventory_input(
+            root,
+            &path,
+            MEASURED_LEAF_SCRIPT.as_bytes(),
+            &mut inventory.expected_inputs,
+            access,
+        )?;
         inventory.global_inputs.push(path);
     }
     let original = owner.join("tests/layout/browser_parity");
@@ -1823,14 +1848,13 @@ fn qualify_semantic_case(
                 .map(|s| s.reference.path.as_str().to_owned())
         })
         .collect();
-    let observation = if golden.has_element_scroll_sizes() {
-        BoxObservationRequest::ElementScrollSizes
+    let (observation, request_name) = if golden.has_element_scroll_sizes() {
+        (
+            BoxObservationRequest::ElementScrollSizes,
+            "element-scroll-sizes",
+        )
     } else {
-        BoxObservationRequest::Geometry
-    };
-    let request_name = match observation {
-        BoxObservationRequest::Geometry => "geometry",
-        BoxObservationRequest::ElementScrollSizes => "element-scroll-sizes",
+        (BoxObservationRequest::Geometry, "geometry")
     };
     let observation_sha = observation.input_bytes().map(Sha256Digest::from_bytes);
     let settings =
