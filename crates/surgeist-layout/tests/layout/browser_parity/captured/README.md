@@ -9,6 +9,9 @@ The [Grid static-position edition](../../../../examples/qualify-root-context/REA
 and [relative inset edition](../../../../examples/qualify-root-context/README.md#relative-inset-edition)
 use the same host and retain exact browser observations alongside the Layout
 packet and difference specifications.
+The [wrapping world-corner edition](../../../../examples/qualify-root-context/README.md#wrapping-world-corner-edition)
+is the current wrapping representative. The canonical box capture retains
+the preceding root-local evidence.
 Inputs inside an edition are immutable capture witnesses of their handwritten
 owners; generated XML/report/ledger bytes belong to Generator. Never copy XML
 alone, hand-edit observations, relabel historical captures or reuse an existing
