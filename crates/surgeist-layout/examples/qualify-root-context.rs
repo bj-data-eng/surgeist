@@ -200,6 +200,21 @@ mod tests {
     }
 
     #[test]
+    fn prepared_range_publication_selects_the_fixed_owner() {
+        for command in [
+            "--publish-prepared-range-qualification",
+            "--check-published-prepared-range-qualification",
+        ] {
+            assert_eq!(parse_arguments(&arguments(&[command])).unwrap().0, None);
+            assert!(parse_arguments(&arguments(&[command, "other-root"])).is_err());
+            assert!(
+                parse_arguments(&arguments(&[command, "--fixture", "html/other.html"]))
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
     fn element_scroll_size_cli_requires_one_explicit_source() {
         assert_eq!(
             parse_arguments(&arguments(&[
