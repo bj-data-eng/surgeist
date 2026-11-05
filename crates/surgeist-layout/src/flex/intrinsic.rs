@@ -269,6 +269,7 @@ where
             .axes
             .cross_size(constants.percentage_parent_size)
             .is_some();
+    let measure_unallocated_content = item.flex_basis_is_definite && !needs_stretched_cross_measure;
 
     let contribution = match (style_preferred, max_main <= min_main) {
         _ if flex_automatic_minimum_is_zero(item.overflow) => item.flex_base.outer().max(min_main),
@@ -283,7 +284,7 @@ where
         {
             min_main
         }
-        _ if !needs_stretched_cross_measure => {
+        _ if !needs_stretched_cross_measure && !measure_unallocated_content => {
             if constants.axes.main_logical_axis() == LogicalAxis::Inline {
                 item.max_content_main_size
                     .clamp_max_before_min_optional(style_min, style_max)
@@ -294,19 +295,44 @@ where
             }
         }
         _ => {
-            let child_known = intrinsic_item_known_size(constants, item);
-            let child_available = constants
+            let mut child_known = intrinsic_item_known_size(constants, item);
+            let mut child_available = constants
                 .axes
                 .with_cross_size(input.sizing_request().axes(), cross_available);
+            let mut percentage_parent = constants.percentage_parent_size;
+            let sizing_mode = if measure_unallocated_content {
+                // The initial layout uses the flex basis as a known size.
+                // Its content extent cannot supply this intrinsic contribution.
+                child_available = constants.axes.with_main_size(
+                    child_available,
+                    constants
+                        .axes
+                        .main_size(child_available)
+                        .with_operation(crate::SizingOperation::MaxContent),
+                );
+                percentage_parent = constants.axes.with_main_size(percentage_parent, None);
+                // ContentSize bypasses authored bounds in the child. Carry
+                // the bounded cross extent into the intrinsic request.
+                let cross = constants.axes.cross_size(child_known).map(|cross| {
+                    cross.clamp_max_before_min_optional(
+                        constants.axes.cross_size(item.min_size),
+                        constants.axes.cross_size(item.max_size),
+                    )
+                });
+                child_known = constants.axes.with_cross_size(child_known, cross);
+                SizingMode::ContentSize
+            } else {
+                SizingMode::InherentSize
+            };
             let measured = constants.axes.main_size(
                 tree.compute_child(
                     item.node,
                     ComputeInputOf::for_child(
                         RunMode::ComputeSize,
-                        SizingMode::InherentSize,
+                        sizing_mode,
                         constants.axes.main_requested_axis(),
                         child_known,
-                        constants.percentage_parent_size,
+                        percentage_parent,
                         ContainingLayoutContext::new(
                             constants.flow_axes,
                             ParentFormattingContext::Flex,
@@ -317,6 +343,14 @@ where
                 )?
                 .size,
             );
+            let measured = if measure_unallocated_content {
+                measured
+                    .max(style_preferred.unwrap_or(Tree::Scalar::ZERO))
+                    .clamp_max_before_min_optional(flex_basis_min, flex_basis_max)
+                    .max(item.automatic_min_main_size.unwrap_or(Tree::Scalar::ZERO))
+            } else {
+                measured
+            };
 
             if constants.axes.main_logical_axis() == LogicalAxis::Inline {
                 measured.clamp_max_before_min_optional(style_min, style_max)

@@ -2887,10 +2887,17 @@ fn flex_row_flex_basis_padding_floor_preserves_leaf_content_intrinsic_size() {
             ..NodeInput::default()
         },
     );
-    tree.insert_measure(
-        2,
-        ComputeOutput::from_sizes(Size::new(0.0, 10.0), Size::new(120.0, 10.0)),
-    );
+    tree = tree
+        .measure_when(
+            2,
+            OracleMeasurementOf::new(ComputeOutput::from_outer_size(Size::new(120.0, 10.0)))
+                .run_mode(RunMode::ComputeSize)
+                .operations(Size::new(Some(SizingOperation::MaxContent), None)),
+        )
+        .measure(
+            2,
+            ComputeOutput::from_sizes(Size::new(0.0, 10.0), Size::new(120.0, 10.0)),
+        );
 
     let output = compute_flex(
         &mut tree.borrow_compute(),
