@@ -2273,7 +2273,7 @@ fn combined_inventory_filter_selects_current_edition_without_a_historical_match(
     let selected = select_parity_inventory(
         support::fixture_files("xml").expect("original fixtures"),
         Some(&edition),
-        Some("captured/canonical-box-differences"),
+        Some("captured/wrapping-world-corner-differences"),
     )
     .expect("current-edition match must satisfy combined filter");
     assert!(selected.originals.is_empty());
@@ -2285,7 +2285,7 @@ fn combined_inventory_filter_selects_current_edition_without_a_historical_match(
     assert!(
         run.cases
             .iter()
-            .all(|case| case.raw.as_ref().is_ok_and(|fields| fields.len() == 12))
+            .all(|case| case.raw.as_ref().is_ok_and(|fields| fields.len() == 13))
     );
 }
 
@@ -2347,14 +2347,15 @@ fn combined_inventory_filter_executes_equal_named_original_and_current_cases_sep
     assert!(
         run.cases
             .iter()
-            .all(|case| case.raw.as_ref().is_ok_and(|fields| fields.len() == 12))
+            .all(|case| case.raw.as_ref().is_ok_and(|fields| fields.len() == 13))
     );
 }
 
 #[test]
 fn current_edition_path_filter_executes_all_registered_cases() {
     let edition = registered_current_edition().expect("required edition must authenticate");
-    let selected = selected_current_outputs(&edition, Some("captured/canonical-box-differences"));
+    let selected =
+        selected_current_outputs(&edition, Some("captured/wrapping-world-corner-differences"));
     let run = edition
         .execute_selected(&selected)
         .expect("registered selection must execute");
@@ -2366,8 +2367,11 @@ fn current_edition_path_filter_executes_all_registered_cases() {
     for case in &run.cases {
         assert_eq!(
             case.raw.as_ref().expect("complete raw comparison").len(),
-            12
+            13
         );
+        assert!(case.raw.as_ref().unwrap().iter().any(|row| {
+            row == "ComparedField(WorldCorner { path: \"/\", field: Height, browser: Number(157.0), native: Number(68.0) })"
+        }));
         assert!(
             case.qualified.is_ok(),
             "{} must qualify: {:?}",
