@@ -1042,14 +1042,12 @@ impl ExactDifferenceSpec {
 }
 
 fn layout_scroll_ranges_requested(required: &CurrentRequirements, path: &str) -> bool {
-    required.domain == CurrentDomain::LayoutAndElementSizes
-        && required
-            .selectors
-            .binary_search_by(|selector| {
-                (selector.path.as_str(), selector.field)
-                    .cmp(&(path, CanonicalField::LayoutScrollWidth))
-            })
-            .is_ok()
+    required
+        .selectors
+        .binary_search_by(|selector| {
+            (selector.path.as_str(), selector.field).cmp(&(path, CanonicalField::LayoutScrollWidth))
+        })
+        .is_ok()
 }
 
 fn canonical_selectors(required: &CurrentRequirements, nodes: &[String]) -> Vec<Selector> {
