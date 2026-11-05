@@ -21,8 +21,10 @@ use crate::browser_profile::BrowserManifest;
 use crate::measurement::{
     BoxObservationRequest, FLEX_COMPOSITION_SOURCE, OBSERVATION_REQUEST_INPUT,
 };
+use crate::original_subgrid_body_profile::SOURCE as ORIGINAL_SUBGRID_BODY_SOURCE;
 use crate::parity_support::capture_authority::{self, SpecializedProfile};
 use crate::parity_support::exact_differences::flex_composition_qualification;
+use crate::parity_support::original_subgrid_body;
 
 #[path = "../../tests/layout/browser_parity/qualification_catalogue.rs"]
 mod qualification_catalogue;
@@ -47,6 +49,7 @@ pub(super) enum QualificationMode {
     FlexContentTextDiagnostics,
     PreparedRangeCapture,
     FlexCompositionCapture,
+    OriginalSubgridBodyCapture,
     Publish,
     CheckPublished,
     PublishExact(PublishedEdition),
@@ -88,6 +91,11 @@ impl QualificationMode {
             | Self::CheckPublishedSpecialized(SpecializedProfile::FlexComposition) => {
                 BoxObservationRequest::FlexComposition
             }
+            Self::OriginalSubgridBodyCapture
+            | Self::PublishSpecialized(SpecializedProfile::OriginalSubgridBody)
+            | Self::CheckPublishedSpecialized(SpecializedProfile::OriginalSubgridBody) => {
+                BoxObservationRequest::OriginalSubgridBody
+            }
             Self::ElementScrollSizeDiagnostics => BoxObservationRequest::ElementScrollSizes,
             Self::FlexContentTextDiagnostics
             | Self::PublishExact(PublishedEdition::FlexText)
@@ -125,6 +133,15 @@ fn select_records(
         declaration
             .records
             .retain(|record| record.source.as_str() != FLEX_COMPOSITION_SOURCE);
+    }
+    if mode == QualificationMode::OriginalSubgridBodyCapture {
+        if fixture != Some(ORIGINAL_SUBGRID_BODY_SOURCE) {
+            return Err("original subgrid body capture requires its declared fixture".into());
+        }
+    } else {
+        declaration
+            .records
+            .retain(|record| record.source.as_str() != ORIGINAL_SUBGRID_BODY_SOURCE);
     }
     if matches!(
         mode,
@@ -173,7 +190,8 @@ fn select_records(
                     return Err("numeric diagnostics require a Generated fixture".into());
                 }
                 QualificationMode::PreparedRangeCapture
-                | QualificationMode::FlexCompositionCapture => {
+                | QualificationMode::FlexCompositionCapture
+                | QualificationMode::OriginalSubgridBodyCapture => {
                     return Err("specialized qualification requires a Generated fixture".into());
                 }
                 QualificationMode::ElementScrollSizeDiagnostics
@@ -434,10 +452,14 @@ impl BrowserCorpusAdapter for QualificationAdapter {
 }
 
 pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> {
-    let mode = if mode == QualificationMode::Regular && fixture == Some(FLEX_COMPOSITION_SOURCE) {
-        QualificationMode::FlexCompositionCapture
-    } else {
-        mode
+    let mode = match (mode, fixture) {
+        (QualificationMode::Regular, Some(FLEX_COMPOSITION_SOURCE)) => {
+            QualificationMode::FlexCompositionCapture
+        }
+        (QualificationMode::Regular, Some(ORIGINAL_SUBGRID_BODY_SOURCE)) => {
+            QualificationMode::OriginalSubgridBodyCapture
+        }
+        _ => mode,
     };
     let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
     if matches!(
@@ -760,7 +782,17 @@ fn validate_corpus(
         assert_eq!(Sha256Digest::from_bytes(&bytes), *artifact.output_sha256());
         if let Some(historical) = &case.historical {
             let historical = fs::read_to_string(root.join(historical.as_str()))?;
-            qualify_historical_geometry(std::str::from_utf8(&bytes)?, &historical, case.case.id())?;
+            let current = std::str::from_utf8(&bytes)?;
+            if mode.box_observations() == BoxObservationRequest::OriginalSubgridBody {
+                use crate::parity_support::Golden;
+                original_subgrid_body::verify_historical(
+                    &Golden::parse(current)?,
+                    case.case.variant(),
+                    &Golden::parse(&historical)?,
+                )?;
+            } else {
+                qualify_historical_geometry(current, &historical, case.case.id())?;
+            }
         }
     }
     eprintln!(
@@ -876,6 +908,14 @@ fn validate_corpus(
                 ),
                 Err(error) => native_errors.push(format!("{}: {error}", case.case.id())),
             }
+        } else if observation == BoxObservationRequest::OriginalSubgridBody {
+            let (raw, verdict) = original_subgrid_body::compare(&golden, case.case.variant())?;
+            for difference in raw {
+                eprintln!("qualify-root-context: {}: {difference}", case.case.id());
+            }
+            if let Err(error) = verdict {
+                native_errors.push(format!("{}: {error}", case.case.id()));
+            }
         } else if mode.collects_numeric_differences() {
             match collect_numeric_case(&golden, case, &mut std::io::stdout().lock()) {
                 Ok(mismatches) => numeric.record_case(mismatches)?,
@@ -989,6 +1029,7 @@ fn validate_corpus(
         | QualificationMode::FlexContentTextDiagnostics
         | QualificationMode::PreparedRangeCapture
         | QualificationMode::FlexCompositionCapture
+        | QualificationMode::OriginalSubgridBodyCapture
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
         | QualificationMode::PublishExact(_)
@@ -1206,6 +1247,7 @@ fn inventory_with_retained_helper(
         | QualificationMode::FlexContentTextDiagnostics
         | QualificationMode::PreparedRangeCapture
         | QualificationMode::FlexCompositionCapture
+        | QualificationMode::OriginalSubgridBodyCapture
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
         | QualificationMode::PublishExact(_)
@@ -1290,7 +1332,7 @@ fn inventory_with_retained_helper(
                 register_semantic_input(root, owner, &path, &digest, &mut inventory, access)?;
             }
         }
-        None => {}
+        Some(SpecializedProfile::OriginalSubgridBody) | None => {}
     }
     let original = owner.join("tests/layout/browser_parity");
     let authored = owner.join("examples/qualify-root-context");

@@ -161,3 +161,22 @@ the superseded reference map and selects this edition for all four variants.
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --publish-wrapping-world-corner-differences
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-wrapping-world-corner-differences
 ~~~
+
+## Original subgrid body qualification
+
+This edition authenticates the original subgrid gap fixture and its inline
+stylesheet. The actual zero-edge body supplies the Native block-flow root.
+The bordered Grid is its in-flow child. The comparison checks the Grid's
+body-relative placement and all 16 Grid subtree boxes. Separate capture rules
+select direction and box sizing for each variant.
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --fixture html/subgrid/subgrid_gap_percentage_border_bottom.html
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-original-subgrid-body-qualification
+~~~
+
+The first command runs a focused live capture. The second replays the
+[fixed edition](../../tests/layout/browser_parity/captured/original-subgrid-body-qualification/)
+with its retained inputs. The publisher
+`--publish-original-subgrid-body-qualification` requires an absent edition
+directory and the verified source import and cached browser.

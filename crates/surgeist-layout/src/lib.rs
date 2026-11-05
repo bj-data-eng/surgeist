@@ -246,6 +246,9 @@ mod layout_math;
 mod measurement;
 mod node_input;
 mod node_projection;
+#[cfg(test)]
+#[path = "../tests/bin/surgeist-layout-generate/measurement/original_subgrid_body_profile.rs"]
+mod original_subgrid_body_profile;
 mod output;
 #[cfg(test)]
 #[path = "../tests/layout/browser_parity/pinned_font.rs"]

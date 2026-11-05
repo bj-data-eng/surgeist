@@ -211,6 +211,9 @@ fn finish(
     edition: Edition,
     mode: QualificationMode,
 ) -> Result<()> {
+    if edition == Edition::Specialized(SpecializedProfile::OriginalSubgridBody) {
+        require_original_subgrid_inputs(owner)?;
+    }
     let published = edition.published();
     let has_terminal = edition != Edition::RootContextV4;
     let derive_terminal = matches!(mode, QualificationMode::Derive(_));
@@ -289,6 +292,9 @@ fn finish(
     // Catch source/input changes during the invocation, as well as stale binaries
     // whose include_bytes resources differ from the current handwritten owner.
     require_current_inputs(owner)?;
+    if edition == Edition::Specialized(SpecializedProfile::OriginalSubgridBody) {
+        require_original_subgrid_inputs(owner)?;
+    }
     let current = Origin::read(owner, &declaration.records)?;
     current.inputs(
         root,
@@ -386,6 +392,28 @@ fn require_current_inputs(owner: &Path) -> Result<()> {
     )?;
     if fs::read(owner.join("examples/qualify-root-context/corpus.toml"))? != DECLARATION {
         return Err("current qualification declaration differs from this executable".into());
+    }
+    Ok(())
+}
+
+fn require_original_subgrid_inputs(owner: &Path) -> Result<()> {
+    for (name, bytes) in [
+        (
+            "original_subgrid_body.js",
+            original_subgrid_body::PROOF_SCRIPT,
+        ),
+        (
+            "original_subgrid_body_request.json",
+            original_subgrid_body::REQUEST,
+        ),
+    ] {
+        let path = RelativePath::new(format!(
+            "tests/bin/surgeist-layout-generate/measurement/{name}"
+        ))?;
+        require_regular_input(owner, &path)?;
+        if fs::read(owner.join(path.as_str()))? != bytes {
+            return Err(format!("current original subgrid input differs: {name}").into());
+        }
     }
     Ok(())
 }
@@ -895,6 +923,7 @@ fn specialized_cases(
                     flex_composition_qualification::evidence(&artifact.variant)
                         .ok_or("invalid Flex composition variant")?
                 }
+                SpecializedProfile::OriginalSubgridBody => original_subgrid_body::evidence(),
             };
             let verified = authority::identity_from_verified_inputs(authority::IdentityInputs {
                 metadata: &metadata,

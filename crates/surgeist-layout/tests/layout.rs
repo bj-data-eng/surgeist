@@ -6,5 +6,7 @@ mod fixture_variants;
 mod grid_alignment_reference;
 #[path = "layout/mod.rs"]
 mod layout;
+#[path = "bin/surgeist-layout-generate/measurement/original_subgrid_body_profile.rs"]
+mod original_subgrid_body_profile;
 #[path = "layout/browser_parity/pinned_font.rs"]
 mod pinned_font;

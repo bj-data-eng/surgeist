@@ -15,6 +15,8 @@ mod fixture_variants;
 mod grid_alignment_reference;
 #[path = "../tests/bin/surgeist-layout-generate/measurement.rs"]
 mod measurement;
+#[path = "../tests/bin/surgeist-layout-generate/measurement/original_subgrid_body_profile.rs"]
+mod original_subgrid_body_profile;
 #[path = "../tests/layout/browser_parity/support.rs"]
 pub mod parity_support;
 #[path = "../tests/layout/browser_parity/pinned_font.rs"]
@@ -134,6 +136,14 @@ fn parse_arguments(
             None,
             QualificationMode::CheckPublishedSpecialized(SpecializedProfile::FlexComposition),
         )),
+        [mode] if mode == "--publish-original-subgrid-body-qualification" => Ok((
+            None,
+            QualificationMode::PublishSpecialized(SpecializedProfile::OriginalSubgridBody),
+        )),
+        [mode] if mode == "--check-published-original-subgrid-body-qualification" => Ok((
+            None,
+            QualificationMode::CheckPublishedSpecialized(SpecializedProfile::OriginalSubgridBody),
+        )),
         [flag, source] if flag == "--fixture" && !source.starts_with("--") => {
             Ok((Some(source.as_str()), QualificationMode::Regular))
         }
@@ -187,7 +197,7 @@ fn parse_arguments(
             ))
         }
         _ => Err(
-            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --derive-canonical-box-qualification | --publish-measured-grid-differences | --check-published-measured-grid-differences | --publish-grid-static-position-differences | --check-published-grid-static-position-differences | --derive-grid-static-position-qualification | --publish-relative-inset-differences | --check-published-relative-inset-differences | --derive-relative-inset-qualification | --publish-wrapping-world-corner-differences | --check-published-wrapping-world-corner-differences | --derive-wrapping-world-corner-qualification | --publish-prepared-range-qualification | --check-published-prepared-range-qualification | --publish-flex-composition-qualification | --check-published-flex-composition-qualification | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source> | --prepared-range-capture --fixture <declared-source>",
+            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --derive-canonical-box-qualification | --publish-measured-grid-differences | --check-published-measured-grid-differences | --publish-grid-static-position-differences | --check-published-grid-static-position-differences | --derive-grid-static-position-qualification | --publish-relative-inset-differences | --check-published-relative-inset-differences | --derive-relative-inset-qualification | --publish-wrapping-world-corner-differences | --check-published-wrapping-world-corner-differences | --derive-wrapping-world-corner-qualification | --publish-prepared-range-qualification | --check-published-prepared-range-qualification | --publish-flex-composition-qualification | --check-published-flex-composition-qualification | --publish-original-subgrid-body-qualification | --check-published-original-subgrid-body-qualification | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source> | --prepared-range-capture --fixture <declared-source>",
         ),
     }
 }
@@ -300,6 +310,8 @@ mod tests {
             "--check-published-prepared-range-qualification",
             "--publish-flex-composition-qualification",
             "--check-published-flex-composition-qualification",
+            "--publish-original-subgrid-body-qualification",
+            "--check-published-original-subgrid-body-qualification",
         ] {
             assert_eq!(parse_arguments(&arguments(&[command])).unwrap().0, None);
             assert!(parse_arguments(&arguments(&[command, "other-root"])).is_err());
