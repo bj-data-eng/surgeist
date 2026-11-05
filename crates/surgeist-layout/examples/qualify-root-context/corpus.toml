@@ -1771,3 +1771,23 @@ sha256 = "dad71699958c4898d0ae844cc767e06b957e6dee37fdbbbe0885cd83735f5046"
 [semantic_publications.specifications.content_box_rtl]
 path = "semantic/grid-absolute-resolved-insets-content_box_rtl.json"
 sha256 = "1c5373175cf87bfb9bbd8dfca615239ac04f921036773575bacf914c3085ddaa"
+
+[[records]]
+source = "html/block/block_inset_percentage.html"
+source_sha256 = "b715a806e4574912d0d3c52d91f56269a5efdcc13862a1dd68546bb41be0daf3"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "05961b7d6900128f6a030aadccdac7861f3a18813208fb17cfc1e6b6065bf7b4"
+border_box_rtl = "97af0876a023cb69e892ec514a1fe8c2d5fe27cfbd7552ce2a13e9e7cfb586ac"
+content_box_ltr = "6928e6abf098a2654138b193275de7138a3a7c815b0c366ca5f92d5ff70258d8"
+content_box_rtl = "bd26c45f02e21b001326906bcc483b379c76829d22b22c1266f68d368df84adb"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
