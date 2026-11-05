@@ -447,6 +447,8 @@ enum FontDemand {
     AhemPreparedRanges,
     #[serde(rename = "ahem-20px-prepared")]
     AhemHorizontalBr,
+    #[serde(rename = "ahem-20px-stylesheet-woff2")]
+    AhemStylesheetWoff2,
 }
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]

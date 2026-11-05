@@ -6,8 +6,8 @@ use crate::measurement::{
 };
 use crate::original_subgrid_body_profile;
 use crate::prepared_atomic_percentage_profile;
-use crate::vertical_br_font_band_profile;
 use crate::xml::{escape_attr, generate_xml};
+use crate::{empty_line_br_font_band_profile, vertical_br_font_band_profile};
 use serde_json::Value;
 
 #[cfg(test)]
@@ -258,6 +258,17 @@ impl LayoutAdapter {
                 "vertical break font-band capture requires its exact source".into(),
             ));
         }
+        if request == BoxObservationRequest::EmptyLineBrFontBand
+            && !empty_line_br_font_band_profile::source_digest(input.fixture().source().as_str())
+                .is_some_and(|expected| {
+                    surgeist_generator::Sha256Digest::from_bytes(input.source_bytes()).as_str()
+                        == expected
+                })
+        {
+            return Err(AdapterError::Preparation(
+                "empty-line break capture requires its exact source".into(),
+            ));
+        }
         let source = std::str::from_utf8(input.source_bytes()).map_err(|error| {
             AdapterError::Preparation(format!("fixture source is not UTF-8: {error}"))
         })?;
@@ -285,9 +296,13 @@ impl LayoutAdapter {
         };
         let font_path = RelativePath::new("fonts/Ahem.ttf")
             .map_err(|error| AdapterError::Preparation(error.to_string()))?;
-        let font_bytes = input.input_bytes(&font_path).ok_or_else(|| {
-            AdapterError::Preparation("captured pinned font resource is missing".into())
-        })?;
+        let font_bytes = if request == BoxObservationRequest::EmptyLineBrFontBand {
+            &[]
+        } else {
+            input.input_bytes(&font_path).ok_or_else(|| {
+                AdapterError::Preparation("captured pinned font resource is missing".into())
+            })?
+        };
         let setup = helper_setup_expression(
             helper,
             font_bytes,
@@ -324,6 +339,23 @@ impl LayoutAdapter {
                 let style = serde_json::to_string(style)
                     .map_err(|error| AdapterError::Preparation(error.to_string()))?;
                 format!("globalThis.captureOriginalVerticalBrFontBand({source}, {style})")
+            } else if request == BoxObservationRequest::EmptyLineBrFontBand {
+                let font = crate::pinned_font::AHEM_STYLESHEET_WOFF2;
+                let digest = crate::pinned_font::AHEM_STYLESHEET_WOFF2_SHA256;
+                if surgeist_generator::Sha256Digest::from_bytes(font).as_str() != digest {
+                    return Err(AdapterError::Preparation(
+                        "pinned stylesheet Ahem changed".into(),
+                    ));
+                }
+                let arguments = serde_json::to_string(&(
+                    source,
+                    style,
+                    crate::pinned_font::AHEM_STYLESHEET_WOFF2_ID,
+                    digest,
+                    font,
+                ))
+                .map_err(|error| AdapterError::Preparation(error.to_string()))?;
+                format!("globalThis.captureOriginalEmptyLineBrFontBand(...{arguments})")
             } else {
                 let font = crate::pinned_font::AHEM_STYLESHEET_WOFF2_SHA256;
                 format!("({script})({font:?})")
@@ -535,6 +567,23 @@ fn helper_setup_expression(
     {
         return Err(AdapterError::Preparation(
             "vertical break font-band capture helper changed".into(),
+        ));
+    }
+    if request == BoxObservationRequest::EmptyLineBrFontBand {
+        if surgeist_generator::Sha256Digest::from_bytes(helper.as_bytes()).as_str()
+            != vertical_br_font_band_profile::HELPER_SHA256
+        {
+            return Err(AdapterError::Preparation(
+                "empty-line break capture helper changed".into(),
+            ));
+        }
+        let script = empty_line_br_font_band_profile::SCRIPT;
+        let helper = serde_json::to_string(&format!(
+            "{helper}\n globalThis.captureOriginalEmptyLineBrFontBand = ({script});"
+        ))
+        .map_err(|error| AdapterError::Preparation(error.to_string()))?;
+        return Ok(format!(
+            "(() => {{ (0, eval)({helper});\n{GRID_TEMPLATE_AREA_CAPTURE_SCRIPT};\n{LOGICAL_BORDER_CAPTURE_GUARD}; return true; }})()"
         ));
     }
     let specialized_helper;

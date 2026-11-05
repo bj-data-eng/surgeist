@@ -2439,6 +2439,31 @@ fn current_registry_qualifies_all_original_flex_text_variants() {
 }
 
 #[test]
+fn current_registry_executes_all_original_empty_line_br_bands() {
+    let registry = registered_current_edition().expect("current registry must authenticate");
+    let selected = select_parity_inventory(
+        support::fixture_files("xml").expect("original fixtures"),
+        Some(&registry),
+        Some("empty_lines_metrics"),
+    )
+    .expect("empty-line break fixtures must be discoverable");
+    assert_eq!(selected.originals.len(), 8);
+    assert_eq!(
+        selected.current.len(),
+        8,
+        "all original empty-line captures must be registered"
+    );
+    let run = registry.execute_selected(&selected.current).unwrap();
+    assert_eq!(run.cases.len(), 8);
+    assert!(run.selected_cases_passed(), "{:?}", run.freshness_error);
+    assert!(
+        run.cases
+            .iter()
+            .all(|case| { case.raw.as_ref().is_ok_and(Vec::is_empty) && case.qualified.is_ok() })
+    );
+}
+
+#[test]
 fn current_registry_executes_all_original_vertical_br_bands() {
     let registry = registered_current_edition().expect("current registry must authenticate");
     let profile = support::capture_authority::SpecializedProfile::VerticalBrFontBand;

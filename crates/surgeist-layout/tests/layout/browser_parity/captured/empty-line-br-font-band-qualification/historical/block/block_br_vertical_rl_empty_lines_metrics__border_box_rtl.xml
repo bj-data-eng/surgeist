@@ -1,0 +1,21 @@
+<test name="block_br_vertical_rl_empty_lines_metrics__border_box_rtl" measurement-version="2" use-rounding="true">
+  <viewport width="max-content" height="max-content"/>
+  <input>
+    <div source-tag="div" display="block" direction="ltr" writing-mode="vertical-rl" font-size="20px" line-height="30px" width="80px">
+      <div source-tag="br" display="inline" direction="ltr" writing-mode="vertical-rl" font-size="20px" line-height="30px" inline-baseline="15px" inline-line-height="30px"/>
+      <div source-tag="br" display="inline" direction="ltr" writing-mode="vertical-rl" font-size="20px" line-height="30px" inline-baseline="15px" inline-line-height="30px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="80" height="0">
+      <node>
+        <browser-control source_index="0" terminal_visual_slot="0" previous_line="absent" next_line="later"/>
+        <browser-br-font-band x="55" y="0" width="20" height="0"/>
+      </node>
+      <node>
+        <browser-control source_index="1" terminal_visual_slot="0" previous_line="earlier" next_line="absent"/>
+        <browser-br-font-band x="25" y="0" width="20" height="0"/>
+      </node>
+    </node>
+  </expectations>
+</test>

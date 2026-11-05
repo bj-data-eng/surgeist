@@ -118,7 +118,7 @@ pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
     let declaration = &input.declaration;
     // Verify the original owner's complete import before claiming any selected
     // member. This is read-only and never acquires the pinned source or browser.
-    let origin = Origin::read(owner, &declaration.records)?;
+    let origin = Origin::read(owner, &declaration.records, edition)?;
     match access {
         InputAccess::Prepare => with_new_edition(&parent, edition, |root| {
             CorpusLocation::new(owner, root)?;
@@ -226,6 +226,9 @@ fn finish(
     if edition == Edition::Specialized(SpecializedProfile::VerticalBrFontBand) {
         require_vertical_br_inputs(owner)?;
     }
+    if edition == Edition::Specialized(SpecializedProfile::EmptyLineBrFontBand) {
+        require_empty_line_br_inputs(owner)?;
+    }
     let published = edition.published();
     let has_terminal = edition != Edition::RootContextV4;
     let derive_terminal = matches!(mode, QualificationMode::Derive(_));
@@ -316,7 +319,10 @@ fn finish(
     if edition == Edition::Specialized(SpecializedProfile::VerticalBrFontBand) {
         require_vertical_br_inputs(owner)?;
     }
-    let current = Origin::read(owner, &declaration.records)?;
+    if edition == Edition::Specialized(SpecializedProfile::EmptyLineBrFontBand) {
+        require_empty_line_br_inputs(owner)?;
+    }
+    let current = Origin::read(owner, &declaration.records, edition)?;
     current.inputs(
         root,
         &mut Inventory {
@@ -490,6 +496,23 @@ fn require_vertical_br_inputs(owner: &Path) -> Result<()> {
     Ok(())
 }
 
+fn require_empty_line_br_inputs(owner: &Path) -> Result<()> {
+    use crate::empty_line_br_font_band_profile as profile;
+    for (name, bytes) in [
+        ("empty_line_br_font_band.js", profile::SCRIPT.as_bytes()),
+        ("empty_line_br_font_band_request.json", profile::REQUEST),
+    ] {
+        let path = RelativePath::new(format!(
+            "tests/bin/surgeist-layout-generate/measurement/{name}"
+        ))?;
+        require_regular_input(owner, &path)?;
+        if fs::read(owner.join(path.as_str()))? != bytes {
+            return Err(format!("current empty-line break input differs: {name}").into());
+        }
+    }
+    Ok(())
+}
+
 fn require_directory(path: &Path) -> Result<()> {
     if !fs::symlink_metadata(path)?.file_type().is_dir() {
         return Err(format!(
@@ -624,7 +647,7 @@ struct Origin {
     receipt: Vec<u8>,
     provenance: Vec<u8>,
     selected: Vec<u8>,
-    font_provenance: Vec<u8>,
+    font_provenance: Option<Vec<u8>>,
     receipt_owner: RelativePath,
 }
 
@@ -657,7 +680,7 @@ fn selected_ownership(
 }
 
 impl Origin {
-    fn read(owner: &Path, records: &[Record]) -> Result<Self> {
+    fn read(owner: &Path, records: &[Record], edition: Edition) -> Result<Self> {
         let original = owner.join(ORIGINAL);
         let manifest: crate::source_owner::Manifest = surgeist_generator::parse_manifest(
             std::str::from_utf8(owner_bytes()?)?,
@@ -714,12 +737,19 @@ impl Origin {
                 sha256: &record.source_sha256,
             });
         }
-        require_regular_input(&original, &RelativePath::new("fonts/PROVENANCE.md")?)?;
+        let font_provenance =
+            if edition != Edition::Specialized(SpecializedProfile::EmptyLineBrFontBand) {
+                let path = RelativePath::new("fonts/PROVENANCE.md")?;
+                require_regular_input(&original, &path)?;
+                Some(fs::read(original.join(path.as_str()))?)
+            } else {
+                None
+            };
         Ok(Self {
             receipt,
             provenance: serde_json::to_vec(&provenance)?,
             selected: serde_json::to_vec(&selected)?,
-            font_provenance: fs::read(original.join("fonts/PROVENANCE.md"))?,
+            font_provenance,
             receipt_owner: RelativePath::new(format!(
                 "{ORIGINAL}/{}",
                 provenance.sidecar().as_str()
@@ -732,9 +762,13 @@ impl Origin {
             ("origin/source-receipt.json", self.receipt.as_slice()),
             ("origin/source-provenance.json", self.provenance.as_slice()),
             ("origin/selected-originals.json", self.selected.as_slice()),
-            ("fonts/PROVENANCE.md", self.font_provenance.as_slice()),
         ] {
             let path = RelativePath::new(name)?;
+            inventory_input(root, &path, bytes, &mut inventory.expected_inputs, access)?;
+            inventory.global_inputs.push(path);
+        }
+        if let Some(bytes) = &self.font_provenance {
+            let path = RelativePath::new("fonts/PROVENANCE.md")?;
             inventory_input(root, &path, bytes, &mut inventory.expected_inputs, access)?;
             inventory.global_inputs.push(path);
         }
@@ -1007,6 +1041,9 @@ fn specialized_cases(
                 }
                 SpecializedProfile::VerticalBrFontBand => {
                     crate::parity_support::br_font_band::vertical_evidence()
+                }
+                SpecializedProfile::EmptyLineBrFontBand => {
+                    crate::parity_support::br_font_band::empty_line_evidence()
                 }
             };
             let verified = authority::identity_from_verified_inputs(authority::IdentityInputs {

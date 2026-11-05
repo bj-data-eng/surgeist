@@ -486,12 +486,20 @@ width 20px and zero height, at (5, 30), (55, 30) and (55, 0) respectively.
 [Chromium Central split](https://github.com/chromium/chromium/blob/daf70f9ddee4b45d4f8870f574fbde61c0db4ca7/third_party/blink/renderer/platform/fonts/font_metrics.cc#L181-L188) ·
 [Line-relative writing mode](https://github.com/chromium/chromium/blob/daf70f9ddee4b45d4f8870f574fbde61c0db4ca7/third_party/blink/renderer/platform/text/writing_mode.h#L66-L78)
 
-The reader compares all four coordinates separately from ordinary geometry
-and control relations. Structural BR font-band observations retain their
-four captured coordinates and return an unsupported observation.
+The [empty-line BR edition](captured/empty-line-br-font-band-qualification/)
+captures the base stylesheet's embedded Ahem WOFF2. Browser capture checks the
+only eligible loaded face, its descriptors and the encoded bytes. Text
+prepares both ordered forced breaks using the same encoded resource through
+the Font decoder. Each band binds to its own finalized control. The two
+horizontal bands begin at block coordinates 5px and 35px. The two vertical-rl
+bands begin at physical x coordinates 55px and 25px in the zero-inline-extent
+root. The reader compares all four coordinates separately from parent geometry
+and control relations. Unqualified structural observations retain their raw
+coordinates and return an unsupported observation.
 
-Only the byte-identical [pinned font](fonts/PROVENANCE.md) is admitted. The
-adapter hashes the **captured** `fonts/Ahem.ttf` input before injecting those
+The injected prepared profiles use the byte-identical
+[pinned TTF](fonts/PROVENANCE.md). The adapter hashes the captured
+`fonts/Ahem.ttf` input before injecting those
 same bytes as an explicit font-setup argument. Browser setup loads one explicit
 FontFace from that exact byte buffer and checks nominal cmap coverage and loaded
 status; the independent reader separately hashes

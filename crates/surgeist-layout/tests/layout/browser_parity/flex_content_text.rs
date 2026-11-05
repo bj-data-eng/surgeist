@@ -12,8 +12,6 @@ pub(super) const REQUEST: &[u8] =
     include_bytes!("../../bin/surgeist-layout-generate/measurement/flex_content_text_request.json");
 const SCRIPT: &[u8] =
     include_bytes!("../../bin/surgeist-layout-generate/measurement/flex_content_text.js");
-const FONT: &[u8] =
-    include_bytes!("../../../../surgeist-font/tests/fixtures/ahem-original/Ahem.woff2");
 pub(super) const SCRIPT_PATH: &str = "scripts/gentest/flex_content_text.js";
 pub(super) const CAPTURE_INPUTS: [(&str, &[u8]); 3] = [
     ("scripts/gentest/test_base_style.css", STYLESHEET),
@@ -56,7 +54,8 @@ pub(super) fn bind(
             .get(capture_authority::ROOT_HELPER_INPUT)
             .is_some_and(|hash| capture_authority::root_helper_profile(hash).is_ok())
         || capture_authority::sha256(STYLESHEET) != pinned_font::ROOT_CONTEXT_STYLESHEET_SHA256
-        || capture_authority::sha256(FONT) != pinned_font::AHEM_STYLESHEET_WOFF2_SHA256
+        || capture_authority::sha256(pinned_font::AHEM_STYLESHEET_WOFF2)
+            != pinned_font::AHEM_STYLESHEET_WOFF2_SHA256
         || CAPTURE_INPUTS
             .into_iter()
             .chain([(source_path, source_bytes)])
@@ -162,9 +161,11 @@ pub(super) fn lower(tree: &mut TestTree, golden: &Golden, proof: &Proof) -> Resu
     if golden.root != *proof.source || golden.viewport != proof.viewport {
         return Err(invalid("parsed source inputs changed after binding"));
     }
-    let resource =
-        surgeist_font::FontResource::decode(FONT.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
-            .map_err(invalid)?;
+    let resource = surgeist_font::FontResource::decode(
+        pinned_font::AHEM_STYLESHEET_WOFF2.to_vec(),
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .map_err(invalid)?;
     let face = resource
         .face(0)
         .ok_or_else(|| invalid("missing exact decoded face"))?;

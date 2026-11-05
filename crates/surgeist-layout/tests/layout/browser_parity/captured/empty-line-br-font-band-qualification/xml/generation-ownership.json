@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "artifacts": {
+    "xml/block/block_br_empty_lines_metrics__border_box_ltr.xml": "6f8f61d62197205c74c148c4e20331d96805aa161448a2c551b41d7aec2e27ad",
+    "xml/block/block_br_empty_lines_metrics__border_box_rtl.xml": "0fc8b60be17755a0d5226c8744d1391c0738c7028d083ed9d454172ee55a06eb",
+    "xml/block/block_br_empty_lines_metrics__content_box_ltr.xml": "179a85d9694c67a92ef15dcd494f45a09cca23a2c6b73e956637dcf18bb375e8",
+    "xml/block/block_br_empty_lines_metrics__content_box_rtl.xml": "df28ab81e2c0058df0c5ad7fb6aa77ea347df5709b9c39a2dadf77ef443b5759",
+    "xml/block/block_br_vertical_rl_empty_lines_metrics__border_box_ltr.xml": "e553d37107692c7baafd5551e70eeb92ada7fae1aa6597e4a48e03071558a1f3",
+    "xml/block/block_br_vertical_rl_empty_lines_metrics__border_box_rtl.xml": "ea18bb59618e6e15935a40fbc8ed77e9f24554afc63821e0759bb99328f036d0",
+    "xml/block/block_br_vertical_rl_empty_lines_metrics__content_box_ltr.xml": "0387e44016f585d66ad760829e16743d96968cd72371446a8cf5fad3e59152c9",
+    "xml/block/block_br_vertical_rl_empty_lines_metrics__content_box_rtl.xml": "554236aa0b090c54732e3e3c934deca225fc2e3797939e23a9bd26e8f42461a2",
+    "xml/generation-reports/all.json": "a7579d6381be00aacd328fbada4fd81ff862ca29047d4626bbbc1a7ea8b10ae3"
+  }
+}

@@ -18,6 +18,7 @@ use surgeist_generator::{GeneratorErrorKind, RelativePath, Sha256Digest};
 
 use crate::adapter::{AdapterError, LayoutAdapter, fixture_cases};
 use crate::browser_profile::BrowserManifest;
+use crate::empty_line_br_font_band_profile::SOURCES as EMPTY_LINE_BR_SOURCES;
 use crate::horizontal_br_font_band_profile::SOURCE as HORIZONTAL_BR_SOURCE;
 use crate::measurement::{
     BoxObservationRequest, FLEX_COMPOSITION_SOURCE, OBSERVATION_REQUEST_INPUT,
@@ -56,6 +57,7 @@ pub(super) enum QualificationMode {
     PreparedAtomicPercentageCapture,
     HorizontalBrFontBandCapture,
     VerticalBrFontBandCapture,
+    EmptyLineBrFontBandCapture,
     Publish,
     CheckPublished,
     PublishExact(PublishedEdition),
@@ -116,6 +118,11 @@ impl QualificationMode {
             | Self::PublishSpecialized(SpecializedProfile::VerticalBrFontBand)
             | Self::CheckPublishedSpecialized(SpecializedProfile::VerticalBrFontBand) => {
                 BoxObservationRequest::VerticalBrFontBand
+            }
+            Self::EmptyLineBrFontBandCapture
+            | Self::PublishSpecialized(SpecializedProfile::EmptyLineBrFontBand)
+            | Self::CheckPublishedSpecialized(SpecializedProfile::EmptyLineBrFontBand) => {
+                BoxObservationRequest::EmptyLineBrFontBand
             }
             Self::ElementScrollSizeDiagnostics => BoxObservationRequest::ElementScrollSizes,
             Self::FlexContentTextDiagnostics
@@ -182,6 +189,15 @@ fn select_records(
             .records
             .retain(|record| record.source.as_str() != HORIZONTAL_BR_SOURCE);
     }
+    if mode == QualificationMode::EmptyLineBrFontBandCapture {
+        if !fixture.is_some_and(|source| EMPTY_LINE_BR_SOURCES.contains(&source)) {
+            return Err("empty-line BR qualification requires its declared fixture".into());
+        }
+    } else {
+        declaration
+            .records
+            .retain(|record| !EMPTY_LINE_BR_SOURCES.contains(&record.source.as_str()));
+    }
     if mode == QualificationMode::VerticalBrFontBandCapture {
         if !fixture.is_some_and(|source| VERTICAL_BR_SOURCES.contains(&source)) {
             return Err("vertical break font-band capture requires a declared fixture".into());
@@ -242,7 +258,8 @@ fn select_records(
                 | QualificationMode::OriginalSubgridBodyCapture
                 | QualificationMode::PreparedAtomicPercentageCapture
                 | QualificationMode::HorizontalBrFontBandCapture
-                | QualificationMode::VerticalBrFontBandCapture => {
+                | QualificationMode::VerticalBrFontBandCapture
+                | QualificationMode::EmptyLineBrFontBandCapture => {
                     return Err("specialized qualification requires a Generated fixture".into());
                 }
                 QualificationMode::ElementScrollSizeDiagnostics
@@ -519,6 +536,9 @@ pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> 
         (QualificationMode::Regular, Some(source)) if VERTICAL_BR_SOURCES.contains(&source) => {
             QualificationMode::VerticalBrFontBandCapture
         }
+        (QualificationMode::Regular, Some(source)) if EMPTY_LINE_BR_SOURCES.contains(&source) => {
+            QualificationMode::EmptyLineBrFontBandCapture
+        }
         _ => mode,
     };
     let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -708,10 +728,13 @@ fn corpus_for_inventory(
     focused: bool,
     expected: BrowserReportSummary,
 ) -> Result<BrowserCorpus> {
-    let mut exact_roots = vec![
-        RelativePath::new("scripts/gentest")?,
-        RelativePath::new("fonts")?,
-    ];
+    let mut exact_roots = vec![RelativePath::new("scripts/gentest")?];
+    if inventory
+        .expected_inputs
+        .contains_key(&RelativePath::new("fonts/Ahem.ttf")?)
+    {
+        exact_roots.push(RelativePath::new("fonts")?);
+    }
     if inventory.cases.iter().any(|case| case.historical.is_some()) {
         exact_roots.push(RelativePath::new("historical")?);
     }
@@ -854,6 +877,7 @@ fn validate_corpus(
                 mode.box_observations(),
                 BoxObservationRequest::HorizontalBrFontBand
                     | BoxObservationRequest::VerticalBrFontBand
+                    | BoxObservationRequest::EmptyLineBrFontBand
             ) {
                 use crate::parity_support::{Golden, br_font_band};
                 br_font_band::verify_historical(
@@ -1010,13 +1034,16 @@ fn validate_corpus(
             }
         } else if matches!(
             observation,
-            BoxObservationRequest::HorizontalBrFontBand | BoxObservationRequest::VerticalBrFontBand
+            BoxObservationRequest::HorizontalBrFontBand
+                | BoxObservationRequest::VerticalBrFontBand
+                | BoxObservationRequest::EmptyLineBrFontBand
         ) {
             use crate::parity_support::{BrFontBandProfile, br_font_band};
-            let profile = if observation == BoxObservationRequest::VerticalBrFontBand {
-                BrFontBandProfile::Vertical
-            } else {
-                BrFontBandProfile::Horizontal
+            let profile = match observation {
+                BoxObservationRequest::HorizontalBrFontBand => BrFontBandProfile::Horizontal,
+                BoxObservationRequest::VerticalBrFontBand => BrFontBandProfile::Vertical,
+                BoxObservationRequest::EmptyLineBrFontBand => BrFontBandProfile::EmptyLine,
+                _ => unreachable!("selected BR font-band request"),
             };
             if let Err(error) = br_font_band::compare_authenticated(&golden, profile) {
                 native_errors.push(format!("{}: {error}", case.case.id()));
@@ -1138,6 +1165,7 @@ fn validate_corpus(
         | QualificationMode::PreparedAtomicPercentageCapture
         | QualificationMode::HorizontalBrFontBandCapture
         | QualificationMode::VerticalBrFontBandCapture
+        | QualificationMode::EmptyLineBrFontBandCapture
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
         | QualificationMode::PublishExact(_)
@@ -1359,6 +1387,7 @@ fn inventory_with_retained_helper(
         | QualificationMode::PreparedAtomicPercentageCapture
         | QualificationMode::HorizontalBrFontBandCapture
         | QualificationMode::VerticalBrFontBandCapture
+        | QualificationMode::EmptyLineBrFontBandCapture
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
         | QualificationMode::PublishExact(_)
@@ -1372,6 +1401,11 @@ fn inventory_with_retained_helper(
         .copied()
         .chain(std::iter::once(("corpus.toml", input.bytes)))
     {
+        if name == "fonts/Ahem.ttf"
+            && mode.box_observations() == BoxObservationRequest::EmptyLineBrFontBand
+        {
+            continue;
+        }
         let path = RelativePath::new(name)?;
         // Instrument only this invocation's real helper input. Register its exact
         // augmented bytes before the shared generator authenticates any job.
@@ -1447,7 +1481,8 @@ fn inventory_with_retained_helper(
             SpecializedProfile::OriginalSubgridBody
             | SpecializedProfile::PreparedAtomicPercentage
             | SpecializedProfile::HorizontalBrFontBand
-            | SpecializedProfile::VerticalBrFontBand,
+            | SpecializedProfile::VerticalBrFontBand
+            | SpecializedProfile::EmptyLineBrFontBand,
         )
         | None => {}
     }

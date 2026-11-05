@@ -510,7 +510,7 @@ fn compare_prepared_range(
 }
 
 pub struct AdmittedRegistry {
-    editions: [AdmittedEdition; 11],
+    editions: [AdmittedEdition; 12],
     owner: PathBuf,
     selected_records: BTreeMap<String, Value>,
 }
@@ -594,6 +594,9 @@ const REGISTERED_HORIZONTAL_BR_FONT_BAND_TERMINAL_SHA256: &str =
 const REGISTERED_VERTICAL_BR_FONT_BAND_TERMINAL_SHA256: &str =
     "aff93886a683264ce2a57382d509906370fb2678a805e40ea4fd17a2156b2c20";
 
+const REGISTERED_EMPTY_LINE_BR_FONT_BAND_TERMINAL_SHA256: &str =
+    "e6455283c62319e2eb4e97f3eade237ef9375c93382796ca080f3e10f020ea62";
+
 pub(super) fn admit_grid_static_positions(owner: &Path) -> Result<AdmittedEdition> {
     admit(
         owner,
@@ -667,6 +670,13 @@ pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
             Registration {
                 edition: Edition::Specialized(SpecializedProfile::VerticalBrFontBand),
                 terminal_sha256: REGISTERED_VERTICAL_BR_FONT_BAND_TERMINAL_SHA256,
+            },
+        )?,
+        admit(
+            owner,
+            Registration {
+                edition: Edition::Specialized(SpecializedProfile::EmptyLineBrFontBand),
+                terminal_sha256: REGISTERED_EMPTY_LINE_BR_FONT_BAND_TERMINAL_SHA256,
             },
         )?,
         admit_grid_static_positions(owner)?,
@@ -1043,7 +1053,8 @@ fn admit_specialized(
         | SpecializedProfile::OriginalSubgridBody
         | SpecializedProfile::PreparedAtomicPercentage
         | SpecializedProfile::HorizontalBrFontBand
-        | SpecializedProfile::VerticalBrFontBand => None,
+        | SpecializedProfile::VerticalBrFontBand
+        | SpecializedProfile::EmptyLineBrFontBand => None,
         SpecializedProfile::FlexComposition => Some(Rc::new(flex::Inputs::load(root)?)),
     };
     terminal
@@ -1100,7 +1111,8 @@ fn admit_specialized(
                     )
                 }
                 SpecializedProfile::HorizontalBrFontBand
-                | SpecializedProfile::VerticalBrFontBand => {
+                | SpecializedProfile::VerticalBrFontBand
+                | SpecializedProfile::EmptyLineBrFontBand => {
                     let current = support::Golden::parse(xml)
                         .map_err(|error| malformed(error.to_string()))?;
                     let historical = std::str::from_utf8(&historical)
@@ -1109,10 +1121,17 @@ fn admit_specialized(
                         .map_err(|error| malformed(error.to_string()))?;
                     support::br_font_band::verify_historical(&current, &historical)
                         .map_err(|error| malformed(error.to_string()))?;
-                    let projection = if profile == SpecializedProfile::HorizontalBrFontBand {
-                        support::BrFontBandProfile::Horizontal
-                    } else {
-                        support::BrFontBandProfile::Vertical
+                    let projection = match profile {
+                        SpecializedProfile::HorizontalBrFontBand => {
+                            support::BrFontBandProfile::Horizontal
+                        }
+                        SpecializedProfile::VerticalBrFontBand => {
+                            support::BrFontBandProfile::Vertical
+                        }
+                        SpecializedProfile::EmptyLineBrFontBand => {
+                            support::BrFontBandProfile::EmptyLine
+                        }
+                        _ => unreachable!("selected BR font-band profile"),
                     };
                     (Ok(current), AdmittedComparison::BrFontBand(projection))
                 }
