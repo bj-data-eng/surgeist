@@ -885,6 +885,11 @@ fn emergency_seam_uses_the_logical_before_box_for_fit_and_intrinsic_width() {
                         .unwrap()
                         .begin(&[])
                         .unwrap();
+                    assert_eq!(
+                        choices.opportunities().len(),
+                        expected.len(),
+                        "{before:?}/{after:?} {purpose:?} rtl={rtl} nested={nested}"
+                    );
                     let cuts = choices
                         .opportunities()
                         .iter()
@@ -914,6 +919,10 @@ fn emergency_seam_uses_the_logical_before_box_for_fit_and_intrinsic_width() {
                     );
                     let layout = finite.placed_text()[0].layout();
                     assert_eq!(layout.source().text().code_units(), [65; 4]);
+                    assert_eq!(
+                        layout.analyzed_source().identity(),
+                        prepared.analyzed_source().identity()
+                    );
                     let ranges = layout
                         .lines()
                         .iter()
