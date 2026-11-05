@@ -19,8 +19,8 @@ use support::capture_authority::{
 };
 use support::exact_differences::{
     CaptureAuthority, ExactDifferenceSpec, PublishedEdition, QualificationError,
-    QualifiedComparison, complete_captured_comparison, flex_composition_qualification as flex,
-    verify_wrapping_world_predecessor,
+    QualifiedComparison, QualifiedVerdict, RawVerdict, complete_captured_comparison,
+    flex_composition_qualification as flex, verify_wrapping_world_predecessor,
 };
 use support::{ObservedPlacement, capture_authority};
 
@@ -449,7 +449,13 @@ impl AdmittedEdition {
                 }
                 AdmittedComparison::HorizontalBrFontBand => {
                     support::assert_surgeist_matches(&case.golden)
-                        .map(|()| (Vec::new(), Ok(())))
+                        .map(|()| {
+                            let matched = QualifiedComparison {
+                                raw: RawVerdict::Matches,
+                                qualified: QualifiedVerdict::MatchingControl,
+                            };
+                            (Vec::new(), Ok(matched))
+                        })
                         .map_err(|error| QualificationError::ComparisonFailure {
                             reason: error.to_string(),
                         })
