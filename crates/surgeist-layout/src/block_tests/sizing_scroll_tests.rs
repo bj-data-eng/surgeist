@@ -4763,11 +4763,43 @@ fn block_ratio_root_request() -> LayoutRootRequest {
 fn block_ratio_transfer_uses_the_selected_sizing_box() {
     let request = block_ratio_root_request();
     let mut differences = Vec::new();
-    for (box_sizing, explicit, expected) in [
-        (BoxSizing::ContentBox, false, Size::new(100.0, 46.0)),
-        (BoxSizing::BorderBox, false, Size::new(100.0, 50.0)),
-        (BoxSizing::ContentBox, true, Size::new(100.0, 26.0)),
-        (BoxSizing::BorderBox, true, Size::new(80.0, 20.0)),
+    for (box_sizing, explicit, max_height, expected) in [
+        (
+            BoxSizing::ContentBox,
+            false,
+            MaxSize::NONE,
+            Size::new(100.0, 46.0),
+        ),
+        (
+            BoxSizing::BorderBox,
+            false,
+            MaxSize::NONE,
+            Size::new(100.0, 50.0),
+        ),
+        (
+            BoxSizing::ContentBox,
+            true,
+            MaxSize::NONE,
+            Size::new(100.0, 26.0),
+        ),
+        (
+            BoxSizing::BorderBox,
+            true,
+            MaxSize::NONE,
+            Size::new(80.0, 20.0),
+        ),
+        (
+            BoxSizing::ContentBox,
+            false,
+            MaxSize::px(20.0),
+            Size::new(60.0, 26.0),
+        ),
+        (
+            BoxSizing::BorderBox,
+            false,
+            MaxSize::px(20.0),
+            Size::new(40.0, 20.0),
+        ),
     ] {
         let tree = PublicBlockTree::default()
             .with_children(0, [1])
@@ -4786,6 +4818,7 @@ fn block_ratio_transfer_uses_the_selected_sizing_box() {
                     display: Display::Block,
                     box_sizing,
                     aspect_ratio: AspectRatio::new(2.0),
+                    max_size: Size::new(MaxSize::NONE, max_height),
                     padding: Edges::new(
                         Length::px(3.0),
                         Length::px(10.0),

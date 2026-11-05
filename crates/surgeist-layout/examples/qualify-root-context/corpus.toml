@@ -1947,7 +1947,7 @@ inline_offset = 0
 
 [[records]]
 source = "html/qualification/block-ratio-minimum-and-percentage.html"
-source_sha256 = "18b8f1c427c67166cfe15fcba8986a5135b6d47c5b1c2398d129615e364a9b09"
+source_sha256 = "5e5b4729e0f99915dcf13429a3478726a59520f8faccfe5d0e4ba5ae9369a646"
 source_kind = "authored"
 [records.expected]
 kind = "generated"
