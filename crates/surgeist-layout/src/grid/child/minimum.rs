@@ -198,6 +198,8 @@ pub(in crate::grid) struct GridMinimumContext<'a, 'input, S: LayoutScalar> {
     pub(in crate::grid) flow_axes: FlowAxes,
     pub(in crate::grid) axis: GridAxisKind,
     pub(in crate::grid) prepared: ComputeInputOf<S>,
+    /// Containing extent used only for the margins in the fixed span caps.
+    pub(in crate::grid) margin_basis: Size<Option<S>>,
     pub(in crate::grid) span: GridMinimumSpanFacts<S>,
     /// The opposite span's fixed maxima plus active gutters, if all are fixed.
     /// None means no applicable fixed cap, not an unknown prepared extent.
@@ -381,9 +383,11 @@ pub(in crate::grid) fn plan_grid_minimum<S: LayoutScalar>(
         context
             .prepared
             .containing_flow_axes()
-            .zip_physical_edges_with_inline_extent(item.margin, parent, |value, basis| {
-                resolve_auto_or_zero(value, basis)
-            }),
+            .zip_physical_edges_with_inline_extent(
+                item.margin,
+                context.margin_basis,
+                resolve_auto_or_zero,
+            ),
     )?;
     let span_cap = context.span.fixed_max_span;
     let cap = sizing_cap(

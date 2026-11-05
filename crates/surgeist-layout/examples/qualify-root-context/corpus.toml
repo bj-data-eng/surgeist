@@ -1864,3 +1864,23 @@ hypothetical_direction = "ltr"
 root_direction = "variant"
 root_writing_mode = "horizontal-tb"
 inline_offset = 0
+
+[[records]]
+source = "html/grid/grid_align_items_baseline_child_margin_percent.html"
+source_sha256 = "ce4e523e4bf31bd21a061a24641f59a33c344c3710da7af0f7d4744a53ebda54"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "8008dd6b07fc6a114332815313026ed492d298d3d9e5a4324a42c68b40a601dc"
+content_box_ltr = "c7463431834c73bb350bb67d24d1c0386322aa46096247adf4bda27f8ad8d718"
+border_box_rtl = "00049dab7266dded24a53ef652e79baef7fa645785331aaaf6c33bfae7d66352"
+content_box_rtl = "f3db97f69c89b91226051f6b27c83281651520fc32f8d44fddb60ff3f961a22b"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0

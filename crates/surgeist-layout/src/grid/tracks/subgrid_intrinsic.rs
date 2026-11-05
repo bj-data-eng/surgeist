@@ -122,6 +122,14 @@ where
                 requests(projection.grid_template_rows),
             )
         });
+    let margin_basis = match axis {
+        GridAxisKind::Column => grid
+            .column_tracks
+            .get(start..end)
+            .and_then(|tracks| grid.column_contribution_margin_basis(tracks, prepared.parent()))
+            .unwrap_or(prepared.parent()),
+        GridAxisKind::Row => prepared.parent(),
+    };
     compute_grid_minimum_contribution(
         child,
         GridMinimumContext {
@@ -129,6 +137,7 @@ where
             flow_axes: grid.sizing_flow_axes,
             axis,
             prepared,
+            margin_basis,
             span: functions
                 .span_facts(span_gutter)
                 .map_err(|error| sizing_resolution_error(child, error))?,
@@ -908,6 +917,7 @@ where
                     flow_axes: frame.flow_axes,
                     axis: frame.axis,
                     prepared: child_input,
+                    margin_basis: child_input.parent(),
                     span: frame.span,
                     opposite_fixed_max_span: frame.opposite_fixed_max_span,
                     subgrid_requests,
@@ -1036,17 +1046,18 @@ where
                     ),
                 },
             )?;
-            let margin = intrinsic_contribution_margin(
-                child_style,
-                input.constants.flow_axes,
-                input.constants.node_inner_size,
-            )
-            .map_err(|status| crate::error::value_resolution_error(child, status))?;
+            let margin_basis = input
+                .grid
+                .column_contribution_margin_basis(span_tracks, input.constants.node_inner_size)
+                .unwrap_or(input.constants.node_inner_size);
+            let margin =
+                intrinsic_contribution_margin(child_style, input.constants.flow_axes, margin_basis)
+                    .map_err(|status| crate::error::value_resolution_error(child, status))?;
             let child_flow_axes = FlowAxes::new(child_style.writing_mode, child_style.direction);
             let block_auto_margins = block_auto_margins_for_intrinsic_contribution(
                 child_style,
                 input.constants.flow_axes,
-                input.constants.node_inner_size,
+                margin_basis,
                 child_flow_axes,
             )
             .map_err(|status| crate::error::value_resolution_error(child, status))?;

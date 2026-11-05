@@ -41,6 +41,7 @@ fn plan<S: LayoutScalar>(
         flow_axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         axis: GridAxisKind::Column,
         prepared,
+        margin_basis: prepared.parent(),
         span: GridMinimumTrackFunctions::new(tracks, None).span_facts(S::ZERO)?,
         opposite_fixed_max_span: None,
         subgrid_requests: Size::new(false, false),

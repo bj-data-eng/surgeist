@@ -1489,6 +1489,7 @@ where
                     flow_axes: constants.flow_axes,
                     axis,
                     prepared,
+                    margin_basis: prepared.parent(),
                     span: minimum_span,
                     // This is the real Lane stacking axis, not a Grid span.
                     opposite_fixed_max_span: None,
@@ -1783,6 +1784,7 @@ where
                 .minimum_source
                 .frame(child, projection.axis, execution.area, prepared)?
                 .ok_or_else(|| minimum_source_error(child))?;
+            let prepared = frame.prepared();
             let value = lane_child_contribution(
                 tree,
                 child,
@@ -1791,7 +1793,8 @@ where
                     flow_axes: frame.flow_axes,
                     axis: frame.axis,
                     algorithm: frame.algorithm,
-                    prepared: frame.prepared(),
+                    prepared,
+                    margin_basis: prepared.parent(),
                     span: frame.span,
                     opposite_fixed_max_span: frame.opposite_fixed_max_span,
                     subgrid_requests: lane_child_subgrid_requests(execution.child_container),
