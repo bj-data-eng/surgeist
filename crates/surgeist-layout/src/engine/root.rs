@@ -38,23 +38,18 @@ where
 {
     tree.cache_clear(node);
     tree.set_unrounded_inline_fragment_state(node, None);
-    tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+    tree.set_unrounded(crate::LayoutOutputEntryOf::hidden_unrounded(
         node,
-        crate::output::NormalGeometryOf::metadata(crate::Point::ZERO, crate::Size::ZERO),
-        NodeOutputOf::with_source_index(source_index),
+        source_index,
     ));
 
     for index in 0..tree.child_count(node) {
         let child = tree.child(node, index);
         match tree.layout_input(child) {
             LayoutInputViewOf::Box(_) => {
-                tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+                tree.set_unrounded(crate::LayoutOutputEntryOf::hidden_unrounded(
                     child,
-                    crate::output::NormalGeometryOf::metadata(
-                        crate::Point::ZERO,
-                        crate::Size::ZERO,
-                    ),
-                    NodeOutputOf::with_source_index(crate::SourceIndex::new(index)),
+                    crate::SourceIndex::new(index),
                 ));
                 let descendant_context = crate::ContainingLayoutContext::new(
                     containing_layout_context.flow_axes(),
@@ -74,13 +69,9 @@ where
             | LayoutInputViewOf::TextControl(_) => {
                 tree.cache_clear(child);
                 tree.set_unrounded_inline_fragment_state(child, None);
-                tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+                tree.set_unrounded(crate::LayoutOutputEntryOf::hidden_unrounded(
                     child,
-                    crate::output::NormalGeometryOf::metadata(
-                        crate::Point::ZERO,
-                        crate::Size::ZERO,
-                    ),
-                    NodeOutputOf::with_source_index(crate::SourceIndex::new(index)),
+                    crate::SourceIndex::new(index),
                 ));
             }
         }
@@ -229,7 +220,13 @@ where
         crate::output::NormalGeometryOf {
             location,
             size: output.size,
-            content_box: scroll_geometry.map(|geometry| geometry.content_box()),
+            content: if style.display == crate::Display::None {
+                crate::output::NormalContentOf::Hidden
+            } else {
+                scroll_geometry.map_or(crate::output::NormalContentOf::Metadata, |geometry| {
+                    crate::output::NormalContentOf::Box(geometry.content_box())
+                })
+            },
         },
         NodeOutputOf {
             source_index: crate::SourceIndex::ZERO,

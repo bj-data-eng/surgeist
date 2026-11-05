@@ -328,7 +328,7 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         };
         let content = container
             .normal
-            .content_box
+            .content_box()
             .ok_or(crate::text_layout::fit::FitError::InvalidGeometry)?;
         let logical_content_origin =
             self.flow_axes

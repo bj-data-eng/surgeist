@@ -79,7 +79,7 @@ fn fractional_parent_premises<S: LayoutScalar>(
         measured_normal.size,
         Size::new(custody_n::<S>(50.0), custody_n::<S>(12.5))
     );
-    let measured_content = measured_normal.content_box.unwrap();
+    let measured_content = measured_normal.content_box().unwrap();
     assert_eq!(measured_content.origin(), Point::ZERO);
     assert_eq!(
         measured_content.size(),
@@ -93,7 +93,7 @@ fn fractional_parent_premises<S: LayoutScalar>(
         Size::new(custody_n::<S>(50.0), custody_n::<S>(13.0))
     );
     assert_eq!(
-        normal.content_box.unwrap().size(),
+        normal.content_box().unwrap().size(),
         Size::new(custody_n::<S>(50.0), custody_n::<S>(13.0))
     );
     let float_raw = custody_entry(batch, 5, false).output();

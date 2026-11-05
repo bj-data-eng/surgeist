@@ -586,6 +586,13 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         }
     }
 
+    pub(crate) fn discard_placement(&mut self, node: Node) {
+        self.pending.retain(|paragraph| paragraph.container != node);
+        self.scope_fragments.retain(|group| group.container != node);
+        self.absolute_baselines
+            .retain(|(subject, _)| *subject != node);
+    }
+
     pub fn record(&mut self, paragraph: PendingParagraph<Node>) {
         if let Some(old) = self.pending.iter_mut().find(|old| {
             old.binding_index == paragraph.binding_index

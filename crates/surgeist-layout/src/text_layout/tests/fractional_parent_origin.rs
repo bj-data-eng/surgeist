@@ -25,7 +25,7 @@ fn fractional_origin_premises<S: LayoutScalar>(
     else {
         panic!("actual root retains measured normal geometry");
     };
-    let measured_content = measured_normal.content_box.unwrap();
+    let measured_content = measured_normal.content_box().unwrap();
     assert_eq!(measured_normal.location, Point::ZERO);
     assert_eq!(measured_content.origin(), Point::new(S::ZERO, border));
     assert_eq!(
@@ -36,11 +36,11 @@ fn fractional_origin_premises<S: LayoutScalar>(
         panic!("actual root retains canonical normal geometry");
     };
     assert_eq!(
-        normal.content_box.unwrap().origin(),
+        normal.content_box().unwrap().origin(),
         Point::new(S::ZERO, custody_n::<S>(inset))
     );
     assert_eq!(
-        normal.content_box.unwrap().size(),
+        normal.content_box().unwrap().size(),
         Size::new(custody_n::<S>(50.0), custody_n::<S>(canonical_content))
     );
     // The same actual float12.5 controls both measured content extents; its

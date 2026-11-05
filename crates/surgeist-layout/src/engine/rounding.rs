@@ -3,7 +3,9 @@ use crate::error::{
     LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInternalInvariant, LayoutOperation,
     LayoutResultOf,
 };
-use crate::output::{AtomicReadbackPhase, GeometryStateOf, LayoutOutputEntryOf, NormalGeometryOf};
+use crate::output::{
+    AtomicReadbackPhase, GeometryStateOf, LayoutOutputEntryOf, NormalContentOf, NormalGeometryOf,
+};
 use crate::scalar::round_layout_coordinate;
 use crate::scroll::rounding::rebuild_rounded_canonical_scroll_geometry;
 use crate::{LayoutScalar, Point, Traverse};
@@ -260,22 +262,23 @@ fn round_normal_geometry<S: LayoutScalar>(
             extent(origin.x, measured.size.width),
             extent(origin.y, measured.size.height),
         ),
-        content_box: measured
-            .content_box
-            .map(|content| {
+        content: match measured.content {
+            NormalContentOf::Box(content) => {
                 let local = content.origin();
                 let size = content.size();
                 let x = origin.x + local.x;
                 let y = origin.y + local.y;
-                crate::ScrollRectOf::try_new(
+                NormalContentOf::Box(crate::ScrollRectOf::try_new(
                     Point::new(
                         round_layout_coordinate(x) - round_layout_coordinate(origin.x),
                         round_layout_coordinate(y) - round_layout_coordinate(origin.y),
                     ),
                     crate::Size::new(extent(x, size.width), extent(y, size.height)),
-                )
-            })
-            .transpose()?,
+                )?)
+            }
+            NormalContentOf::Metadata => NormalContentOf::Metadata,
+            NormalContentOf::Hidden => NormalContentOf::Hidden,
+        },
     })
 }
 

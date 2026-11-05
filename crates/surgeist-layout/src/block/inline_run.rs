@@ -924,7 +924,7 @@ where
             .canonical_for_text(container, &frames)
             .map_err(|error| text_run_error(container, error))?;
         let exclusions = canonical_exclusions.as_ref().unwrap_or(float_exclusions);
-        let actual_content = frame.and_then(|frame| frame.normal.content_box);
+        let actual_content = frame.and_then(|frame| frame.normal.content_box());
         let content_insets =
             frame
                 .zip(actual_content)
@@ -978,7 +978,7 @@ where
                         crate::text_layout::fit::FitError::InvalidGeometry,
                     )
                 })?;
-            if frame.normal.content_box.is_none() {
+            if frame.normal.content_box().is_none() {
                 return Err(text_run_error(
                     container,
                     crate::text_layout::fit::FitError::InvalidGeometry,
