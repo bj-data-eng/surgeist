@@ -6,8 +6,7 @@ Surgeist develops its facade, domain crates and shared tooling in one Git
 repository and product Cargo workspace. Cross-crate changes can share a source
 revision and dependency resolution while retaining separate semantic owners.
 
-The [architecture vision](https://chatgpt.com/space/page_6ce383176ca08191b1dd6d5d16e63979)
-uses direct subsystem dependencies. Each consumer owns its integration with
+The architecture vision uses direct subsystem dependencies. Each consumer owns its integration with
 lower-level inputs and tests those actual contracts without requiring the
 facade. CSSOM owns its CSS adapter; DOM owns its HTML adapters; Runtime owns
 scheduling and coherent publication. The facade exposes the production crates.
