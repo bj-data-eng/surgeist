@@ -22,6 +22,9 @@ pub(crate) mod capture_authority;
 mod element_scroll_sizes;
 #[path = "exact_differences.rs"]
 pub(crate) mod exact_differences;
+#[cfg(test)]
+#[path = "flex_composition_tests.rs"]
+mod flex_composition_tests;
 #[path = "flex_content_text.rs"]
 mod flex_content_text;
 #[path = "flex_text_projection.rs"]
