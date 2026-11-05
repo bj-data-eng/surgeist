@@ -735,7 +735,7 @@ fn assert_collapsed_flex_keeps_strut_without_placing_text<S: LayoutScalar>(neste
         control
             .placed_text()
             .iter()
-            .any(|text| { text.container() == second_container && text.nodes() == &[6] })
+            .any(|text| text.container() == second_container && text.nodes() == [6])
     );
 
     let collapsed = output(FlexItemCollapse::Collapsed);
