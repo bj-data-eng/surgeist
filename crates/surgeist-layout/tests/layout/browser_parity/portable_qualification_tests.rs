@@ -226,7 +226,7 @@ impl Fixture {
         admit(
             &self.owner,
             Registration {
-                edition: PublishedEdition::CanonicalBoxes,
+                edition: Edition::Exact(PublishedEdition::CanonicalBoxes),
                 terminal_sha256: &self.terminal_sha256,
             },
         )
@@ -568,7 +568,7 @@ fn external_terminal_anchor_rejects_even_semantically_identical_changed_bytes() 
         admit(
             &fixture.owner,
             Registration {
-                edition: PublishedEdition::CanonicalBoxes,
+                edition: Edition::Exact(PublishedEdition::CanonicalBoxes),
                 terminal_sha256: &"0".repeat(64)
             }
         ),
@@ -1339,4 +1339,26 @@ fn registered_prepared_range_preserves_raw_differences_and_exact_controls() {
             assert!(case.qualified.is_ok());
         }
     }
+}
+
+#[test]
+fn ordinary_prepared_range_keeps_a_late_unclassified_difference_in_raw_output() {
+    let original = include_str!(
+        "captured/prepared-range-qualification/xml/block/prepared_text_continuity_bidi__border_box_rtl.xml"
+    );
+    let changed = original.replace(
+        "start=\"56\" advance=\"16\"",
+        "start=\"56.015625\" advance=\"16\"",
+    );
+    assert_ne!(original, changed);
+    let golden = support::Golden::parse(&changed).unwrap();
+    let (raw, qualified) = compare_prepared_range(&golden, "border_box_rtl").unwrap();
+    assert_eq!(raw.len(), 2);
+    assert!(raw[0].contains("browser_start: 72.0"));
+    assert!(raw[1].contains("browser_start: 56.015625"));
+    assert!(
+        qualified
+            .unwrap_err()
+            .contains("prepared Range comparison changed")
+    );
 }

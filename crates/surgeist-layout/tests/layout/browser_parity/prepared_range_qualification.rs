@@ -1,12 +1,13 @@
 //! Exact comparison of the prepared continuity fixture under the Native source-anchor policy.
 
 use super::*;
+use exact_differences::{QualifiedComparison, QualifiedVerdict, RawVerdict};
 use serde::Serialize;
 use surgeist_text::Range;
 
 pub const SOURCE: &str = "html/block/prepared_text_continuity_bidi.html";
 pub const POLICY_SOURCE: &str = "docs/text-layout-contract.md";
-const POLICY_ANCHOR: &str = "nonempty-text-range-fragments";
+pub(crate) const POLICY_ANCHOR: &str = "nonempty-text-range-fragments";
 const POLICY_HEADING: &str = "\n### Nonempty Text range fragments\n";
 pub(crate) const RETAINED_POLICY: &str = "semantic/prepared-range-policy.md";
 pub(crate) const POLICY_SHA256: &str =
@@ -276,6 +277,92 @@ pub fn qualify(
     policy: &PolicyIdentity,
     mut raw: impl std::io::Write,
 ) -> Result<(), Error> {
+    let result = compare(golden, source, variant)?;
+    serde_json::to_writer(&mut raw, &result.observations).map_err(|e| Error::new(e.to_string()))?;
+    writeln!(raw).map_err(|e| Error::new(e.to_string()))?;
+
+    let (_, qualified) = result.into_outcomes()?;
+    if matches!(qualified?.qualified, QualifiedVerdict::Intentional { .. }) {
+        writeln!(
+            raw,
+            "{{\"case\":\"{}\",\"verdict\":\"intentional\",\"policy\":\"{POLICY_SOURCE}#{POLICY_ANCHOR}\",\"policy_sha256\":\"{}\"}}",
+            golden.name, policy.0
+        )
+    } else {
+        writeln!(
+            raw,
+            "{{\"case\":\"{}\",\"verdict\":\"matching-control\"}}",
+            golden.name
+        )
+    }
+    .map_err(|e| Error::new(e.to_string()))
+}
+
+pub(crate) struct PreparedComparison {
+    observations: Comparisons,
+    complete: bool,
+    intentional: Result<bool, Error>,
+}
+
+fn incomplete() -> Error {
+    Error::new("prepared Range capture requires complete observations")
+}
+
+impl PreparedComparison {
+    pub(crate) fn into_outcomes(
+        self,
+    ) -> Result<(Vec<String>, Result<QualifiedComparison, Error>), Error> {
+        let fields = self.raw_differences()?;
+        let qualified = self.intentional.map(|intentional| {
+            if intentional {
+                QualifiedComparison {
+                    raw: RawVerdict::Different {
+                        fields: fields.len(),
+                    },
+                    qualified: QualifiedVerdict::Intentional {
+                        policy: format!("{POLICY_SOURCE}#{POLICY_ANCHOR}"),
+                        edition: POLICY_SHA256.to_owned(),
+                    },
+                }
+            } else {
+                QualifiedComparison {
+                    raw: RawVerdict::Matches,
+                    qualified: QualifiedVerdict::MatchingControl,
+                }
+            }
+        });
+        Ok((fields, qualified))
+    }
+
+    fn raw_differences(&self) -> Result<Vec<String>, Error> {
+        if !self.complete {
+            return Err(incomplete());
+        }
+        Ok(self
+            .observations
+            .boxes
+            .iter()
+            .filter(|field| field.browser != field.native)
+            .map(|field| format!("{field:?}"))
+            .chain(
+                self.observations
+                    .ranges
+                    .iter()
+                    .filter(|row| {
+                        row.browser_start != row.native_start
+                            || row.browser_advance != row.native_advance
+                    })
+                    .map(|row| format!("{row:?}")),
+            )
+            .collect())
+    }
+}
+
+pub(crate) fn compare(
+    golden: &Golden,
+    source: &str,
+    variant: &str,
+) -> Result<PreparedComparison, Error> {
     let rtl = match variant {
         "border_box_ltr" | "content_box_ltr" => false,
         "border_box_rtl" | "content_box_rtl" => true,
@@ -303,30 +390,21 @@ pub fn qualify(
     let NumericComparisonSink::PreparedRanges(comparisons) = sink else {
         unreachable!("prepared Range collector remains selected");
     };
-    serde_json::to_writer(&mut raw, &comparisons).map_err(|e| Error::new(e.to_string()))?;
-    writeln!(raw).map_err(|e| Error::new(e.to_string()))?;
-
-    if !comparison.endpoint_unobservable_fields().is_empty() {
-        return Err(Error::new(
-            "prepared Range capture requires complete observations",
-        ));
-    }
-    custody.ok_or_else(|| Error::new("missing completed Native batch"))??;
-    verify_comparisons(&comparisons, rtl)?;
-    if rtl {
-        writeln!(
-            raw,
-            "{{\"case\":\"{}\",\"verdict\":\"intentional\",\"policy\":\"{POLICY_SOURCE}#{POLICY_ANCHOR}\",\"policy_sha256\":\"{}\"}}",
-            golden.name, policy.0
-        )
+    let complete = comparison.endpoint_unobservable_fields().is_empty();
+    let intentional = if complete {
+        custody
+            .ok_or_else(|| Error::new("missing completed Native batch"))
+            .and_then(|native| native)
+            .and_then(|()| verify_comparisons(&comparisons, rtl))
+            .map(|()| rtl)
     } else {
-        writeln!(
-            raw,
-            "{{\"case\":\"{}\",\"verdict\":\"matching-control\"}}",
-            golden.name
-        )
-    }
-    .map_err(|e| Error::new(e.to_string()))
+        Err(incomplete())
+    };
+    Ok(PreparedComparison {
+        observations: comparisons,
+        complete,
+        intentional,
+    })
 }
 
 fn verify_comparisons(comparisons: &Comparisons, rtl: bool) -> Result<(), Error> {

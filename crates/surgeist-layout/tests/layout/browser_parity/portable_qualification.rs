@@ -7,7 +7,7 @@ use std::path::{Component, Path, PathBuf};
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::support;
+use super::support::{self, prepared_range_qualification as prepared_range};
 use support::capture_authority;
 use support::capture_authority::{
     self as authority, CaptureMetadata, CapturedArtifact, CaseSelection, IdentityInputs,
@@ -27,8 +27,32 @@ const OWNER_DECLARATION: &str = "examples/qualify-root-context/corpus.toml";
 
 type Result<T> = std::result::Result<T, QualificationError>;
 
+#[derive(Clone, Copy)]
+pub(super) enum Edition {
+    Exact(PublishedEdition),
+    PreparedRange,
+}
+
+impl Edition {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Exact(edition) => edition.name(),
+            Self::PreparedRange => authority::PREPARED_RANGE_EDITION,
+        }
+    }
+
+    fn artifact_root(self) -> &'static str {
+        match self {
+            Self::Exact(edition) => edition.artifact_root(),
+            Self::PreparedRange => {
+                "tests/layout/browser_parity/captured/prepared-range-qualification"
+            }
+        }
+    }
+}
+
 pub(super) struct Registration<'a> {
-    pub(super) edition: PublishedEdition,
+    pub(super) edition: Edition,
     pub(super) terminal_sha256: &'a str,
 }
 
@@ -179,10 +203,33 @@ impl Freshness {
             &self.owner,
             &format!("{}/{}", self.artifact_root, authority::TERMINAL),
         )?;
-        for (root, pins) in [(&self.root, &self.pins), (&self.owner, &self.owner_pins)] {
-            for (path, digest) in pins {
+        for (path, digest) in &self.pins {
+            read_pinned(
+                &self.root,
+                &PathDigest {
+                    path: path.clone(),
+                    sha256: digest.clone(),
+                },
+            )?;
+        }
+        for (path, digest) in &self.owner_pins {
+            if path == prepared_range::POLICY_SOURCE {
+                let repository = self
+                    .owner
+                    .parent()
+                    .and_then(Path::parent)
+                    .ok_or_else(|| changed("missing repository policy owner"))?;
+                let file = regular_file(repository, path)?;
+                let contract =
+                    fs::read_to_string(file).map_err(|error| changed(error.to_string()))?;
+                let section = prepared_range::PolicyIdentity::verified_section(&contract)
+                    .map_err(|error| changed(error.to_string()))?;
+                if sha256(section.as_bytes()) != *digest {
+                    return Err(changed("current prepared Range policy section"));
+                }
+            } else {
                 read_pinned(
-                    root,
+                    &self.owner,
                     &PathDigest {
                         path: path.clone(),
                         sha256: digest.clone(),
@@ -245,13 +292,22 @@ fn selected_records(root: &Path, terminal: &Qualification) -> Result<BTreeMap<St
 
 struct AdmittedCase {
     output: String,
-    spec: ExactDifferenceSpec,
-    identity: VerifiedIdentity,
+    comparison: AdmittedComparison,
     golden: support::Golden,
 }
 
+enum AdmittedComparison {
+    Exact {
+        edition: PublishedEdition,
+        spec: Box<ExactDifferenceSpec>,
+        identity: Box<VerifiedIdentity>,
+    },
+    PreparedRange {
+        variant: String,
+    },
+}
+
 pub(super) struct AdmittedEdition {
-    edition: PublishedEdition,
     freshness: Freshness,
     cases: Vec<AdmittedCase>,
 }
@@ -339,25 +395,34 @@ impl AdmittedEdition {
             .iter()
             .filter(|case| selected.contains(&case.output))
         {
-            let authority = CaptureAuthority::Published {
-                edition: self.edition,
-                identity: case.identity.identity(),
-            };
-            let completed =
-                case.spec
-                    .resolve_against(authority, &case.golden)
-                    .and_then(|resolved| {
-                        complete_captured_comparison(&case.golden, &resolved).map(|completed| {
-                            let raw = completed
-                                .raw_differences()
-                                .map(|field| format!("{field:?}"))
-                                .collect();
-                            let qualified = resolved
-                                .qualify(&completed)
-                                .map_err(|error| error.to_string());
-                            (raw, qualified)
+            let completed = match &case.comparison {
+                AdmittedComparison::Exact {
+                    edition,
+                    spec,
+                    identity,
+                } => {
+                    let authority = CaptureAuthority::Published {
+                        edition: *edition,
+                        identity: identity.identity(),
+                    };
+                    spec.resolve_against(authority, &case.golden)
+                        .and_then(|resolved| {
+                            complete_captured_comparison(&case.golden, &resolved).map(|completed| {
+                                let raw = completed
+                                    .raw_differences()
+                                    .map(|field| format!("{field:?}"))
+                                    .collect();
+                                let qualified = resolved
+                                    .qualify(&completed)
+                                    .map_err(|error| error.to_string());
+                                (raw, qualified)
+                            })
                         })
-                    });
+                }
+                AdmittedComparison::PreparedRange { variant } => {
+                    compare_prepared_range(&case.golden, variant)
+                }
+            };
             let (raw, qualified) = match completed {
                 Ok((raw, qualified)) => (Ok(raw), qualified),
                 Err(error) => {
@@ -375,8 +440,24 @@ impl AdmittedEdition {
     }
 }
 
+fn compare_prepared_range(
+    golden: &support::Golden,
+    variant: &str,
+) -> Result<(
+    Vec<String>,
+    std::result::Result<QualifiedComparison, String>,
+)> {
+    let comparison_error = |error: support::Error| QualificationError::ComparisonFailure {
+        reason: error.to_string(),
+    };
+    let (fields, qualified) = prepared_range::compare(golden, prepared_range::SOURCE, variant)
+        .and_then(prepared_range::PreparedComparison::into_outcomes)
+        .map_err(comparison_error)?;
+    Ok((fields, qualified.map_err(|error| error.to_string())))
+}
+
 pub(super) struct AdmittedRegistry {
-    editions: [AdmittedEdition; 3],
+    editions: [AdmittedEdition; 4],
     owner: PathBuf,
     selected_records: BTreeMap<String, Value>,
 }
@@ -429,27 +510,37 @@ const REGISTERED_MEASURED_GRID_TERMINAL_SHA256: &str =
 const REGISTERED_FLEX_TEXT_TERMINAL_SHA256: &str =
     "f55b946cf9626a88989ee2598de26cbaa079498d17aebfa3fda441c99a44a1a5";
 
+const REGISTERED_PREPARED_RANGE_TERMINAL_SHA256: &str =
+    "3a07b79e5c6d5b2fe11a9b00b96f69838fbeb03a12f46960c4b45ce355233671";
+
 pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
     let editions = [
         admit(
             owner,
             Registration {
-                edition: PublishedEdition::CanonicalBoxes,
+                edition: Edition::Exact(PublishedEdition::CanonicalBoxes),
                 terminal_sha256: REGISTERED_BOX_TERMINAL_SHA256,
             },
         )?,
         admit(
             owner,
             Registration {
-                edition: PublishedEdition::MeasuredGrid,
+                edition: Edition::Exact(PublishedEdition::MeasuredGrid),
                 terminal_sha256: REGISTERED_MEASURED_GRID_TERMINAL_SHA256,
             },
         )?,
         admit(
             owner,
             Registration {
-                edition: PublishedEdition::FlexText,
+                edition: Edition::Exact(PublishedEdition::FlexText),
                 terminal_sha256: REGISTERED_FLEX_TEXT_TERMINAL_SHA256,
+            },
+        )?,
+        admit(
+            owner,
+            Registration {
+                edition: Edition::PreparedRange,
+                terminal_sha256: REGISTERED_PREPARED_RANGE_TERMINAL_SHA256,
             },
         )?,
     ];
@@ -493,20 +584,10 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
     if terminal.to_bytes()? != terminal_bytes {
         return Err(malformed("noncanonical terminal serialization"));
     }
-    let exact_cases = terminal
-        .cases
-        .iter()
-        .map(|case| match case {
-            authority::QualifiedCase::Exact(case) => Ok(case),
-            authority::QualifiedCase::Specialized(_) => {
-                Err(changed("expected an exact difference edition"))
-            }
-        })
-        .collect::<Result<Vec<_>>>()?;
     let mut pins = terminal.retained_inputs.clone();
     for entry in [&terminal.report, &terminal.ownership, &terminal_pin]
         .into_iter()
-        .chain(exact_cases.iter().map(|case| &case.case.output))
+        .chain(terminal.cases.iter().map(|case| &case.descriptor().output))
     {
         if pins
             .insert(entry.path.clone(), entry.sha256.clone())
@@ -545,9 +626,16 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
         .get("sidecar")
         .and_then(Value::as_str)
         .ok_or_else(|| malformed("missing source receipt owner"))?;
-    let semantic_paths = exact_cases
+    let semantic_paths = terminal
+        .cases
         .iter()
-        .flat_map(|case| [case.spec.path.as_str(), case.policy.path.as_str()])
+        .filter_map(|case| match case {
+            authority::QualifiedCase::Exact(case) => {
+                Some([case.spec.path.as_str(), case.policy.path.as_str()])
+            }
+            authority::QualifiedCase::Specialized(_) => None,
+        })
+        .flatten()
         .collect();
     if authority::current_owner_bindings(&terminal.retained_inputs, &semantic_paths, sidecar)?
         != terminal.current_owner_inputs
@@ -596,6 +684,21 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
             return Err(changed("sealed semantic record projection"));
         }
     }
+    let Edition::Exact(edition) = edition else {
+        let cases = admit_prepared_ranges(&root, &terminal, &report, &artifacts)?;
+        freshness.verify()?;
+        return Ok(AdmittedEdition { freshness, cases });
+    };
+    let exact_cases = terminal
+        .cases
+        .iter()
+        .map(|case| match case {
+            authority::QualifiedCase::Exact(case) => Ok(case),
+            authority::QualifiedCase::Specialized(_) => {
+                Err(changed("expected an exact difference edition"))
+            }
+        })
+        .collect::<Result<Vec<_>>>()?;
     let excluded_specs = exact_cases
         .iter()
         .map(|case| case.spec.path.clone())
@@ -736,8 +839,11 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
         )?;
         cases.push(AdmittedCase {
             output: case.case.output.path.clone(),
-            spec,
-            identity: verified,
+            comparison: AdmittedComparison::Exact {
+                edition,
+                spec: Box::new(spec),
+                identity: Box::new(verified),
+            },
             golden,
         });
     }
@@ -760,11 +866,67 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
         return Err(changed("complete selected canonical reference census"));
     }
     freshness.verify()?;
-    Ok(AdmittedEdition {
-        edition,
-        freshness,
-        cases,
-    })
+    Ok(AdmittedEdition { freshness, cases })
+}
+
+fn admit_prepared_ranges(
+    root: &Path,
+    terminal: &Qualification,
+    report: &Report,
+    artifacts: &BTreeMap<&str, &CapturedArtifact>,
+) -> Result<Vec<AdmittedCase>> {
+    terminal
+        .cases
+        .iter()
+        .map(|entry| {
+            let authority::QualifiedCase::Specialized(case) = entry else {
+                return Err(changed("expected specialized prepared Range case"));
+            };
+            let authority::SpecializedEvidence::PreparedRange { policy } = &case.evidence else {
+                return Err(changed("expected prepared Range policy evidence"));
+            };
+            let artifact = artifacts
+                .get(case.case.name.as_str())
+                .ok_or_else(|| changed("missing prepared Range output"))?;
+            let historical = read_pinned(root, &case.historical)?;
+            let xml = read_pinned(root, &case.case.output)?;
+            let verified = identity_from_verified_inputs(IdentityInputs {
+                metadata: &report.metadata,
+                artifact,
+                case: &case.case,
+                full_inputs: &terminal.retained_inputs,
+                excluded_specs: &BTreeSet::new(),
+                actual_xml_sha256: &sha256(&xml),
+                historical_sha256: Some(&sha256(&historical)),
+                policy_sha256: &policy.sha256,
+                browser_settings: &terminal.browser_settings,
+                observation_request: "prepared-ranges",
+                observation_input_sha256: terminal
+                    .retained_inputs
+                    .get("observation-request.json")
+                    .map(String::as_str),
+            })?;
+            if verified.projection() != &case.identity {
+                return Err(changed(
+                    "stored prepared Range identity differs from authenticated inputs",
+                ));
+            }
+            let golden = support::Golden::parse(
+                std::str::from_utf8(&xml).map_err(|error| malformed(error.to_string()))?,
+            )
+            .map_err(|error| malformed(error.to_string()))?;
+            if golden.name != case.case.name || !golden.has_prepared_range_frame() {
+                return Err(changed("prepared Range observation frame"));
+            }
+            Ok(AdmittedCase {
+                output: case.case.output.path.clone(),
+                comparison: AdmittedComparison::PreparedRange {
+                    variant: case.case.variant.clone(),
+                },
+                golden,
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]

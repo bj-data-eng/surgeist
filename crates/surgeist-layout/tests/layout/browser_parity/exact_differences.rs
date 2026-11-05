@@ -545,10 +545,12 @@ impl CompletedComparison {
 }
 #[derive(Debug, PartialEq)]
 pub(crate) enum RawVerdict {
+    Matches,
     Different { fields: usize },
 }
 #[derive(Debug, PartialEq)]
 pub(crate) enum QualifiedVerdict {
+    MatchingControl,
     Intentional { policy: String, edition: String },
 }
 #[derive(Debug, PartialEq)]
