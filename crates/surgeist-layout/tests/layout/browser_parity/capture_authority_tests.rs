@@ -10,6 +10,7 @@ struct Fixture {
     excluded: BTreeSet<String>,
     settings: BrowserSettingsWitness,
     xml: String,
+    policy: String,
 }
 impl Fixture {
     fn new(record: &str) -> Self {
@@ -18,7 +19,7 @@ impl Fixture {
         let xml = sha256(b"independent XML bytes");
         let inputs = BTreeMap::from([
             ("html/fixed.html".to_owned(), hash.clone()),
-            ("policy.md".to_owned(), policy),
+            ("policy.md".to_owned(), policy.clone()),
             ("base.css".to_owned(), hash.clone()),
             ("corpus.toml".to_owned(), "c".repeat(64)),
             ("semantic/one.json".to_owned(), "d".repeat(64)),
@@ -47,6 +48,7 @@ impl Fixture {
             excluded: BTreeSet::from(["semantic/one.json".into(), "semantic/two.json".into()]),
             settings: BrowserSettingsWitness::from_official_json(SETTINGS.as_bytes()).unwrap(),
             xml,
+            policy,
         }
     }
     fn verified(&self) -> Result<VerifiedIdentity> {
@@ -65,7 +67,7 @@ impl Fixture {
             excluded_specs: &self.excluded,
             actual_xml_sha256: &self.xml,
             historical_sha256: None,
-            policy_sha256: &self.inputs["policy.md"],
+            policy_sha256: &self.policy,
             browser_settings: &self.settings,
             observation_request: request,
             observation_input_sha256: request_sha,
@@ -221,6 +223,78 @@ fn flex_text_identity_binds_the_request_script_and_font_stylesheet() {
         );
         fixture.inputs.insert(path.to_owned(), hash.to_owned());
         fixture.metadata.inputs = fixture.inputs.clone();
+    }
+}
+
+#[test]
+fn specialized_identity_binds_exact_observation_authority() {
+    for (request, font, report, xml) in [
+        (
+            "prepared-ranges",
+            "ahem-16px-prepared-ranges",
+            include_str!("captured/prepared-range-differences/xml/generation-reports/all.json"),
+            include_bytes!("captured/prepared-range-differences/xml/block/prepared_text_continuity_bidi__border_box_ltr.xml").as_slice(),
+        ),
+        (
+            "flex-composition",
+            "none",
+            include_str!("captured/flex-composition-differences/xml/generation-reports/all.json"),
+            include_bytes!("captured/flex-composition-differences/xml/flex/fri07_flex_composition__border_box_ltr.xml").as_slice(),
+        ),
+    ] {
+        let report = unique_json(report).unwrap();
+        let mut fixture = Fixture::new(&"a".repeat(64));
+        fixture.metadata = serde_json::from_value(report["metadata"].clone()).unwrap();
+        fixture.artifact = serde_json::from_value(report["generated"][0].clone()).unwrap();
+        fixture.case.name.clone_from(&fixture.artifact.name);
+        fixture.case.source.clone_from(&fixture.artifact.source);
+        fixture.case.variant.clone_from(&fixture.artifact.variant);
+        fixture.case.output.path.clone_from(&fixture.artifact.output);
+        fixture.case.output.sha256.clone_from(&fixture.artifact.output_sha256);
+        fixture.xml = sha256(xml);
+        fixture.inputs = fixture.metadata.inputs.clone();
+        let request_sha = fixture.inputs[OBSERVATION_REQUEST].clone();
+        let verified = fixture
+            .with_observation(request, Some(&request_sha))
+            .unwrap_or_else(|error| panic!("{request}: exact captured identity refused: {error}"));
+        assert_eq!(verified.projection().font_demand, font);
+        assert_eq!(verified.projection().inputs[OBSERVATION_REQUEST], request_sha);
+        assert!(fixture.with_observation(request, None).is_err());
+        assert!(
+            fixture
+                .with_observation(request, Some(&sha256(b"other request")))
+                .is_err()
+        );
+        assert!(fixture.with_observation("geometry", None).is_err());
+        assert!(
+            fixture
+                .with_observation("element-scroll-sizes", Some(&request_sha))
+                .is_err()
+        );
+
+        for key in [
+            OBSERVATION_REQUEST,
+            ROOT_HELPER_INPUT,
+            "scripts/gentest/test_base_style.css",
+            "fonts/Ahem.ttf",
+        ] {
+            fixture.excluded.insert(key.to_owned());
+            assert!(
+                fixture.with_observation(request, Some(&request_sha)).is_err(),
+                "excluded {request} identity input {key}"
+            );
+            fixture.excluded.remove(key);
+            let original = fixture.inputs.insert(key.to_owned(), sha256(b"changed")).unwrap();
+            fixture.metadata.inputs = fixture.inputs.clone();
+            assert!(
+                fixture.with_observation(request, Some(&request_sha)).is_err(),
+                "changed {request} identity input {key}"
+            );
+            fixture.inputs.insert(key.to_owned(), original);
+            fixture.metadata.inputs = fixture.inputs.clone();
+        }
+        fixture.artifact.linked_resources.insert("fonts/Ahem.ttf".into(), sha256(b"changed"));
+        assert!(fixture.with_observation(request, Some(&request_sha)).is_err());
     }
 }
 
