@@ -132,6 +132,18 @@ fn style(value: &Value) -> Result<text::Style, Error> {
 
 impl Capture {
     pub fn parse(raw: &str, children: usize) -> Result<Self, Error> {
+        Self::parse_with_atomic_measure(raw, children, |_, _, _| {
+            Err(fail(
+                "authored atomic size requires its actual containing frame",
+            ))
+        })
+    }
+
+    pub(super) fn parse_with_atomic_measure(
+        raw: &str,
+        children: usize,
+        mut measure: impl FnMut(usize, &str, &str) -> Result<text::Size, Error>,
+    ) -> Result<Self, Error> {
         // serde_json's Value parser alone permits duplicate keys, so use its
         // streaming visitor before admitting the independently owned schema.
         let raw = unique_json(raw)?;
@@ -285,8 +297,18 @@ impl Capture {
         let mut control_children = Vec::new();
         let mut controls = Vec::new();
         for (occurrence, row) in array(&value["atomics"])?.iter().enumerate() {
-            let row = object(
-                row,
+            let authored = row.get("authoredSize").is_some();
+            let fields = if authored {
+                &[
+                    "child",
+                    "at",
+                    "kind",
+                    "authoredSize",
+                    "precedingWrap",
+                    "followingWrap",
+                    "ancestorWrap",
+                ][..]
+            } else {
                 &[
                     "child",
                     "at",
@@ -296,8 +318,9 @@ impl Capture {
                     "precedingWrap",
                     "followingWrap",
                     "ancestorWrap",
-                ],
-            )?;
+                ][..]
+            };
+            let row = object(row, fields)?;
             let child = index(&row["child"])?;
             if child >= children || !roles.insert(child) {
                 return Err(fail("atomic child is missing or repeated"));
@@ -316,13 +339,22 @@ impl Capture {
             if at > source.text().len() {
                 return Err(fail("atomic anchor exceeds original source"));
             }
+            let size = if authored {
+                if vertical || kind != text::InlineBoxKind::InFlow {
+                    return Err(fail("authored size requires an in-flow horizontal atomic"));
+                }
+                let sizing = object(&row["authoredSize"], &["width", "height"])?;
+                measure(child, string(&sizing["width"])?, string(&sizing["height"])?)?
+            } else {
+                text::Size::new(extent(&row["width"])?, extent(&row["height"])?)
+            };
             source.inline_box(text::InlineBox::new(
                 text::Id::from_u64(
                     u64::try_from(child).map_err(|_| fail("child identity out of range"))?,
                 ),
                 kind,
                 at,
-                text::Size::new(extent(&row["width"])?, extent(&row["height"])?),
+                size,
             ));
             if kind == text::InlineBoxKind::InFlow {
                 for definition in [
