@@ -1375,6 +1375,20 @@ mod tests {
                 .finalized_fragment()
                 .finalized_line();
             assert_eq!(line.prepared_text(), binding.prepared);
+            if vertical {
+                let metrics = placed
+                    .placed_break_font_metrics(
+                        control_fragment.fragment().line_index(),
+                        control_fragment.fragment().finalized_fragment(),
+                    )
+                    .unwrap()
+                    .expect("the placed vertical break retains its Central font metric basis");
+                assert_eq!(metrics.instance().face().bytes(), pinned_font::BYTES);
+                assert_eq!(metrics.instance().font_size(), 20.0);
+                // The pinned Ahem has no upright metric tables. Text's native
+                // upright em is centered independently of the 30/40px struts.
+                assert_eq!((metrics.ascent(), metrics.descent()), (10.0, 10.0));
+            }
             assert_eq!(line.feedback().advance, 10.0);
             // No glyph run, caller strut, or BR metrics can donate this extent.
             assert_eq!(line.feedback().line_height, line_height);
