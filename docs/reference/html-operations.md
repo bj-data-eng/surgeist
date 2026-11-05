@@ -2635,7 +2635,7 @@ descriptions below retain their existing link anchors.
 ### Parse cost per source unit
 
 A caller sizes `HtmlParseLimits` from the cost of the input it admits. These figures were
-measured with generous limits at commit `19289e181` by parsing the same repeated input at ten
+measured with generous limits at commit `46787d6d8` by parsing the same repeated input at ten
 sizes, the powers of two from 4,096 to 131,072 source units and 10,000, 20,000, 40,000 and
 80,000, and dividing each resource's total by the units of the document. A figure is a range
 over those sizes, and the high end is the figure to size a limit by: a capacity or a layout
