@@ -116,6 +116,61 @@ fn composer_marks_count_units_and_can_establish_real_pair_adjacency() {
 }
 
 #[test]
+fn unshared_source_appends_reuse_supplied_spare_capacity() {
+    let mut units = Vec::with_capacity(257);
+    units.push(0xd800);
+    let mut source = Source::new(Text::from_code_units(units));
+    let start = source.text().code_units().as_ptr();
+    let unit = Text::from_code_units(vec![0xdc00]);
+
+    for offset in 1..=256 {
+        assert_eq!(source.push(unit.clone()), Range::new(offset, offset + 1));
+        assert_eq!(
+            source.text().code_units().as_ptr(),
+            start,
+            "append {offset} should use the supplied spare capacity"
+        );
+    }
+    assert_eq!(source.text().code_units()[0], 0xd800);
+    assert_eq!(source.text().code_units()[1..], [0xdc00; 256]);
+}
+
+#[test]
+fn composer_appends_preserve_retained_source_and_immediate_anchors() {
+    let mut composer = compose();
+    let id = Id::from_u64(81);
+    let box_id = Id::from_u64(82);
+    composer.identity(id, 7);
+    let high = composer.push(Text::from_code_units(vec![0xd83d]));
+    let snapshot = composer.source().clone();
+    let branch = composer.clone();
+
+    let tail = composer.with(Style::default(), |composer| {
+        assert_eq!(composer.mark().range(), Range::new(1, 1));
+        let low = composer.push(Text::from_code_units(vec![0xde00]));
+        assert_eq!(low.range(), Range::new(1, 2));
+        assert_eq!(composer.source().text().code_units(), [0xd83d, 0xde00]);
+        composer.box_(box_id, InlineBoxKind::InFlow, Size::new(2.0, 3.0));
+        composer.push(Text::from_code_units(vec![0xdc00]));
+    });
+    assert_eq!(composer.push("").range(), Range::new(3, 3));
+    assert_eq!(high.range(), Range::new(0, 1));
+    assert_eq!(tail.range(), Range::new(1, 3));
+
+    let current = composer.finish();
+    assert_eq!(current.id(), Some(id));
+    assert_eq!(current.revision(), 7);
+    assert_eq!(current.text().code_units(), [0xd83d, 0xde00, 0xdc00]);
+    assert_eq!(current.spans()[0].range, Range::new(1, 3));
+    assert_eq!(current.boxes()[0].id, box_id);
+    assert_eq!(current.boxes()[0].index, 2);
+    assert_eq!(branch.finish(), snapshot);
+    assert_eq!(snapshot.text().code_units(), [0xd83d]);
+    assert!(snapshot.spans().is_empty());
+    assert!(snapshot.boxes().is_empty());
+}
+
+#[test]
 fn empty_source_retains_real_cursor_metrics_without_publishing_a_metrics_character() {
     let mut system = system();
     let layout = layout(&mut system, "");
