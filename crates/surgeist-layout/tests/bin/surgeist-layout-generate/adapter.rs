@@ -1001,6 +1001,31 @@ mod tests {
     }
 
     #[test]
+    fn original_subgrid_refuses_changed_helper_before_setup() {
+        let source = include_str!(
+            "../../layout/browser_parity/html/subgrid/subgrid_gap_percentage_border_bottom.html"
+        );
+        let source_path = RelativePath::new(ORIGINAL_SUBGRID_BODY_SOURCE).unwrap();
+        let setup = |helper: &str| {
+            helper_setup_expression(
+                helper,
+                include_bytes!("../../layout/browser_parity/fonts/Ahem.ttf"),
+                source,
+                TEST_BASE_STYLE_SOURCE,
+                &source_path,
+                BoxObservationRequest::OriginalSubgridBody,
+            )
+        };
+        assert!(setup(TEST_HELPER_SOURCE).is_ok());
+        let changed = format!("{TEST_HELPER_SOURCE}\ndescribeElement = () => null;\n");
+        assert!(matches!(
+            setup(&changed),
+            Err(AdapterError::Preparation(reason))
+                if reason == "original subgrid body capture helper changed"
+        ));
+    }
+
+    #[test]
     fn preloaded_unversioned_helper_is_preserved_and_rejected_at_ingress() {
         let Value::String(versioned) = envelope(std::array::from_fn(|_| unsupported("old helper")))
         else {
