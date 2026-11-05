@@ -3,6 +3,8 @@
 pub const ID: &str = "ahem-ttf-f0a92cd0";
 pub const SHA256: &str = "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc";
 pub const BYTES: &[u8] = include_bytes!("fonts/Ahem.ttf");
+pub const ROOT_CONTEXT_STYLESHEET_SHA256: &str =
+    "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6";
 pub const AHEM_STYLESHEET_WOFF2_SHA256: &str =
     "e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c";
 

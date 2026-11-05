@@ -399,7 +399,7 @@ fn helper_setup_expression(
     // This capture version qualifies one exact zero-edge base document profile.
     // A changed stylesheet needs an explicit new source-profile qualification.
     if surgeist_generator::Sha256Digest::from_bytes(base_style.as_bytes()).to_string()
-        != "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6"
+        != crate::pinned_font::ROOT_CONTEXT_STYLESHEET_SHA256
     {
         return Err(AdapterError::Preparation(
             "root-context source profile does not qualify the captured base stylesheet".into(),

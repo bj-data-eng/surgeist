@@ -46,9 +46,7 @@ impl BoxObservationRequest {
             Self::ElementScrollSizes => Some(
                 b"{\"schema_version\":1,\"element_scroll_sizes\":\"horizontal-zero-edge-divs\"}\n",
             ),
-            Self::MeasuredLeaf => Some(
-                b"{\"schema_version\":1,\"element_scroll_sizes\":\"horizontal-zero-edge-divs\",\"measured_leaf\":\"ahem-10px-zwsp\"}\n",
-            ),
+            Self::MeasuredLeaf => Some(include_bytes!("measurement/measured_leaf_request.json")),
         }
     }
 }

@@ -109,6 +109,29 @@ fn measured_identity_requires_the_exact_request_capture_script_and_stylesheet() 
             panic!("measured request and its exact resources must bind: {error}")
         });
     assert_eq!(verified.projection().font_demand, "ahem-10px-zwsp");
+    let profile = format!(
+        r#"["canonical-measured-grid",{SETTINGS},"{}","content_box_ltr","measured-leaf","{request}"]"#,
+        "a".repeat(64)
+    );
+    assert_eq!(
+        verified.projection().profile_sha256,
+        sha256(profile.as_bytes())
+    );
+    assert!(
+        valid
+            .with_observation("measured-leaf", Some(stylesheet))
+            .is_err()
+    );
+    assert!(valid.with_observation("geometry", None).is_err());
+    let mut excluded = fixture(None);
+    excluded
+        .excluded
+        .insert("scripts/gentest/measured_leaf.js".into());
+    assert!(
+        excluded
+            .with_observation("measured-leaf", Some(&request))
+            .is_err()
+    );
     for (path, digest) in expected {
         assert_eq!(verified.projection().inputs[path], digest);
         for replacement in [
@@ -238,6 +261,14 @@ fn terminal_wire_preserves_publisher_bytes_and_rejects_broken_associations() {
 #[test]
 fn live_owner_bindings_cover_all_roles_and_refuse_unknown_or_overlapping_paths() {
     let roles = [
+        (
+            "observation-request.json",
+            "tests/bin/surgeist-layout-generate/measurement/measured_leaf_request.json",
+        ),
+        (
+            "scripts/gentest/measured_leaf.js",
+            "tests/bin/surgeist-layout-generate/measurement/measured_leaf.js",
+        ),
         (
             "browser-owner.toml",
             "tests/layout/browser_parity/corpus.toml",

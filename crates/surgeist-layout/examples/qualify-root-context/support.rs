@@ -1857,7 +1857,9 @@ fn qualify_semantic_case(
                 .map(|s| s.reference.path.as_str().to_owned())
         })
         .collect();
-    let (observation, request_name) = if golden.has_element_scroll_sizes() {
+    let (observation, request_name) = if golden.measured_leaf.is_some() {
+        (BoxObservationRequest::MeasuredLeaf, "measured-leaf")
+    } else if golden.has_element_scroll_sizes() {
         (
             BoxObservationRequest::ElementScrollSizes,
             "element-scroll-sizes",
