@@ -1851,9 +1851,7 @@ mod tests {
         .unwrap()
     }
 
-    #[test]
-    fn source_bound_br_band_retains_geometry_but_refuses_only_the_unavailable_query() {
-        let golden = opaque_break_observation_golden();
+    fn opaque_break_observation_request() -> layout::LayoutRootRequest {
         // Explicit Native query for this authored Source/font/control fixture:
         // 120px physical availability and percentage parents, not historical
         // XML root authority or a replacement for a captured browser request.
@@ -1862,7 +1860,7 @@ mod tests {
             layout::AvailableSpace::Definite(extent),
             layout::SizingOperation::Normal,
         );
-        let request = layout::LayoutRootRequest::standalone(
+        layout::LayoutRootRequest::standalone(
             layout::SizingRequest::new(
                 layout::Size::splat(normal),
                 layout::OrthogonalFallbackOf::new(
@@ -1873,7 +1871,31 @@ mod tests {
             ),
             layout::FlowAxes::new(layout::WritingMode::HorizontalTb, layout::Direction::Ltr),
             layout::Size::splat(Some(extent)),
-        );
+        )
+    }
+
+    #[test]
+    fn source_bound_horizontal_br_matches_the_untrimmed_font_band() {
+        let golden = opaque_break_observation_golden();
+        let request = opaque_break_observation_request();
+        super::super::assert_native_input_matches(&golden, request).unwrap();
+
+        let mut wrong_band = golden;
+        wrong_band.expectations.children[1]
+            .browser_br_font_band
+            .as_mut()
+            .unwrap()
+            .height = 30.0;
+        let error = super::super::assert_native_input_matches(&wrong_band, request)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("BR font-band height mismatch"), "{error}");
+    }
+
+    #[test]
+    fn source_bound_br_band_retains_geometry_but_refuses_only_the_unavailable_query() {
+        let golden = opaque_break_observation_golden();
+        let request = opaque_break_observation_request();
         let error = super::super::assert_native_input_matches(&golden, request)
             .unwrap_err()
             .to_string();
