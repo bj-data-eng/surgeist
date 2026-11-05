@@ -8,6 +8,10 @@ const SOURCE_BYTES: &[u8] = include_bytes!("html/flex/fri07_flex_composition.htm
 const RETAINED_REPORT: &str =
     include_str!("captured/flex-composition-differences/xml/generation-reports/all.json");
 
+// This report is the browser environment witness pinned by the gutter control.
+const RETAINED_REPORT_SHA256: &str =
+    "65bb238d03aae80b366fa1f481be42137799466f74c1a35fafdb40d2460478a2";
+
 pub(super) struct Capture<'a> {
     pub report: &'a str,
     pub published: bool,
@@ -136,6 +140,9 @@ fn require_control_environment(
     control_report: &str,
     published: bool,
 ) -> Result<(), Error> {
+    if sha256(control_report.as_bytes()) != RETAINED_REPORT_SHA256 {
+        return Err(invalid("gutter control report identity changed"));
+    }
     let retained = capture_authority::unique_json(control_report).map_err(invalid)?;
     let sealed = &retained["metadata"];
     // The publication checks its own contract before admitting the report.
