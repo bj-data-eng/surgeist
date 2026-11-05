@@ -2122,7 +2122,7 @@ where
         placements: &placements,
         query: IntrinsicGridQuery::complete(GridContributionPurpose::Minimum),
     };
-    let rows = lane_intrinsic_contribution_rows(
+    let rows = lane_intrinsic_contributions(
         &mut compute,
         0,
         LaneIntrinsicTrackSizeInput {
@@ -2147,9 +2147,11 @@ where
             placements: &placements,
             subgrid_report: &subgrid_report,
         },
+        None,
     )
     .expect("intrinsic collection succeeds")
-    .expect("intrinsic placement is valid");
+    .expect("intrinsic placement is valid")
+    .rows;
     assert_eq!(rows.len(), 2);
     for (span, value) in [
         (GridTrackSpan::new(1, 2), S::from_f64(80.0)),

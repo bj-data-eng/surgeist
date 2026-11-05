@@ -4761,7 +4761,6 @@ fn shared_grid_contexts_accept_non_default_scalar() {
             },
         }],
         base_floors: Vec::new(),
-        min_content_base_floors: Vec::new(),
     };
     let row_inputs = intrinsic_stage::GridAxisTrackInputs {
         rows: vec![GridIntrinsicContributionRow {
@@ -4773,7 +4772,6 @@ fn shared_grid_contexts_accept_non_default_scalar() {
             },
         }],
         base_floors: Vec::new(),
-        min_content_base_floors: Vec::new(),
     };
     let column_reduction =
         intrinsic_stage::reduce_axis_track_inputs::<usize, f64, core::convert::Infallible>(
@@ -4799,14 +4797,12 @@ fn shared_grid_contexts_accept_non_default_scalar() {
     // completed execution frame is produced only by the bounded stage owner.
     let _column_preparation = intrinsic_stage::GridAxisPreparationOwner::Owned(
         intrinsic_stage::GridAxisTrackPreparation {
-            contributions: column_inputs,
             available: column_reduction.available,
             finishing_available: column_reduction.finishing_available,
         },
     );
     let _row_preparation = intrinsic_stage::GridAxisPreparationOwner::Owned(
         intrinsic_stage::GridAxisTrackPreparation {
-            contributions: row_inputs,
             available: row_reduction.available,
             finishing_available: row_reduction.finishing_available,
         },
