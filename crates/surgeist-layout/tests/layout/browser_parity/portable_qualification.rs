@@ -18,6 +18,7 @@ use support::capture_authority::{
 use support::exact_differences::{
     CaptureAuthority, ExactDifferenceSpec, PublishedEdition, QualificationError,
     QualifiedComparison, complete_captured_comparison, flex_composition_qualification as flex,
+    verify_wrapping_world_predecessor,
 };
 
 #[path = "qualification_catalogue.rs"]
@@ -511,8 +512,8 @@ impl AdmittedRegistry {
 
 // This seal admits only the publisher's complete terminal artifact. Retained
 // projections and directory existence do not establish capture authority.
-const REGISTERED_BOX_TERMINAL_SHA256: &str =
-    "5143c6bf95677eb7bc019ba25057aa16b2bb7392eb36d417028715e4c55d541f";
+const REGISTERED_WRAPPING_WORLD_TERMINAL_SHA256: &str =
+    "10d7d03d6534fe06e4d66f98d2ad74fd6e56675c798a3aacc6ebc790154e6a00";
 const REGISTERED_MEASURED_GRID_TERMINAL_SHA256: &str =
     "7739607e8f25170b128e636d957a16f5a1f8e05b2431aeec3bd0f4c6c278d24e";
 
@@ -546,8 +547,8 @@ pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
         admit(
             owner,
             Registration {
-                edition: Edition::Exact(PublishedEdition::CanonicalBoxes),
-                terminal_sha256: REGISTERED_BOX_TERMINAL_SHA256,
+                edition: Edition::Exact(PublishedEdition::WrappingWorldCorners),
+                terminal_sha256: REGISTERED_WRAPPING_WORLD_TERMINAL_SHA256,
             },
         )?,
         admit(
@@ -761,7 +762,8 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
     let (observation_request, observation_input_sha256) = match edition {
         PublishedEdition::CanonicalBoxes
         | PublishedEdition::GridStaticPosition
-        | PublishedEdition::RelativeInsets => ("geometry", None),
+        | PublishedEdition::RelativeInsets
+        | PublishedEdition::WrappingWorldCorners => ("geometry", None),
         PublishedEdition::MeasuredGrid | PublishedEdition::FlexText => {
             let request = terminal
                 .retained_inputs
@@ -808,11 +810,12 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
             return Err(changed("canonical policy binding"));
         }
         read_pinned(&root, &case.policy)?;
-        let historical = case
+        let historical_bytes = case
             .historical
             .as_ref()
-            .map(|entry| read_pinned(&root, entry).map(|bytes| sha256(&bytes)))
+            .map(|entry| read_pinned(&root, entry))
             .transpose()?;
+        let historical = historical_bytes.as_deref().map(sha256);
         if record.value.get("source_sha256").and_then(Value::as_str)
             != Some(artifact.source_sha256.as_str())
             || record
@@ -850,6 +853,14 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
             || golden.measured_leaf.is_some() != measured
         {
             return Err(changed("canonical observation profile"));
+        }
+        if edition == PublishedEdition::WrappingWorldCorners {
+            verify_wrapping_world_predecessor(
+                &golden,
+                historical_bytes
+                    .as_deref()
+                    .ok_or_else(|| changed("missing wrapping predecessor"))?,
+            )?;
         }
         let selection = CaseSelection {
             name: case.case.name.clone(),

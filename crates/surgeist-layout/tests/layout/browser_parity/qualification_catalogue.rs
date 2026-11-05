@@ -28,6 +28,7 @@ struct Catalogue {
 #[serde(deny_unknown_fields)]
 struct SemanticPublication {
     source: RelativePath,
+    replaces_sha256: Option<Sha256Digest>,
     specifications: BTreeMap<String, SemanticReference>,
 }
 
@@ -111,34 +112,6 @@ impl Declaration {
             return Err("qualification declaration schema_version must be 3".into());
         }
         let variants = fixture_cases().map(|(variant, _)| variant);
-        for SemanticPublication {
-            source,
-            specifications,
-        } in catalogue.semantic_publications
-        {
-            let record = catalogue
-                .records
-                .iter_mut()
-                .find(|record| record.source == source)
-                .ok_or_else(|| {
-                    format!(
-                        "semantic publication requires a declared source: {}",
-                        source.as_str()
-                    )
-                })?;
-            if !matches!(record.source_kind, SourceKind::Original)
-                || record.relation.is_some()
-                || record.semantic_specifications.is_some()
-                || specifications.len() != variants.len()
-            {
-                return Err(format!(
-                    "semantic publication requires an unpaired original and all variants: {}",
-                    source.as_str()
-                )
-                .into());
-            }
-            record.semantic_specifications = Some(specifications);
-        }
         let mut sources = BTreeSet::new();
         let mut stems = BTreeMap::new();
         let mut semantic_paths = BTreeSet::new();
@@ -186,20 +159,7 @@ impl Declaration {
                         "semantic specifications require a nonempty Generated variant map".into(),
                     );
                 }
-                for (variant, reference) in specifications {
-                    if !variants.contains(&variant.as_str())
-                        || !reference.path.as_str().starts_with("semantic/")
-                    {
-                        return Err("semantic specification requires a registered variant and semantic/ input path".into());
-                    }
-                    if !semantic_paths.insert(reference.path.as_str()) {
-                        return Err(format!(
-                            "duplicate semantic specification path: {}",
-                            reference.path.as_str()
-                        )
-                        .into());
-                    }
-                }
+                validate_semantic_references(specifications, &variants, &mut semantic_paths)?;
             }
         }
         for record in &catalogue.records {
@@ -215,6 +175,50 @@ impl Declaration {
         }
         if catalogue.records.is_empty() {
             return Err("root-context qualification requires source records".into());
+        }
+        let mut annotated = BTreeSet::new();
+        for SemanticPublication {
+            source,
+            replaces_sha256,
+            specifications,
+        } in catalogue.semantic_publications
+        {
+            let record = catalogue
+                .records
+                .iter_mut()
+                .find(|record| record.source == source)
+                .ok_or_else(|| {
+                    format!(
+                        "semantic publication requires a declared source: {}",
+                        source.as_str()
+                    )
+                })?;
+            if !annotated.insert(source)
+                || !matches!(record.source_kind, SourceKind::Original)
+                || record.relation.is_some()
+                || specifications.len() != variants.len()
+            {
+                return Err(format!(
+                    "semantic publication requires a unique unpaired original and all variants: {}",
+                    record.source.as_str()
+                )
+                .into());
+            }
+            match (&record.semantic_specifications, replaces_sha256) {
+                (None, None) => {}
+                (Some(previous), Some(pin))
+                    if previous.len() == variants.len()
+                        && Sha256Digest::from_bytes(serde_json::to_vec(previous)?) == pin => {}
+                _ => {
+                    return Err(format!(
+                        "semantic publication predecessor differs: {}",
+                        record.source.as_str()
+                    )
+                    .into());
+                }
+            }
+            validate_semantic_references(&specifications, &variants, &mut semantic_paths)?;
+            record.semantic_specifications = Some(specifications);
         }
         let mut profiles = BTreeSet::new();
         for SpecializedPublication { source, profile } in catalogue.specialized_publications {
@@ -277,6 +281,31 @@ impl Declaration {
     }
 }
 
+fn validate_semantic_references(
+    specifications: &BTreeMap<String, SemanticReference>,
+    variants: &[&str],
+    paths: &mut BTreeSet<RelativePath>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    for (variant, reference) in specifications {
+        if !variants.contains(&variant.as_str())
+            || !reference.path.as_str().starts_with("semantic/")
+        {
+            return Err(
+                "semantic specification requires a registered variant and semantic/ input path"
+                    .into(),
+            );
+        }
+        if !paths.insert(reference.path.clone()) {
+            return Err(format!(
+                "duplicate semantic specification path: {}",
+                reference.path.as_str()
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
+
 impl Record {
     pub(crate) fn source_names(&self) -> Result<(&str, &str), Box<dyn Error + Send + Sync>> {
         let family = self
@@ -315,6 +344,54 @@ profile = "prepared-range"
 source = "html/flex/fri07_flex_composition.html"
 profile = "flex-composition"
 "#;
+
+    #[test]
+    fn semantic_publication_supersedes_only_its_exact_predecessor() {
+        const SOURCE: &str = "html/flex/fri07_collapsed_strut_wrapping.html";
+        let prefix = unannotated_catalogue();
+        let prior = Declaration::parse(prefix).unwrap();
+        let old = prior
+            .records
+            .iter()
+            .find(|record| record.source.as_str() == SOURCE)
+            .unwrap();
+        let old_specs = old.semantic_specifications.as_ref().unwrap();
+        let digest = Sha256Digest::from_bytes(serde_json::to_vec(old_specs).unwrap());
+        let mut appendix = format!(
+            "\n[[semantic_publications]]\nsource = {SOURCE:?}\nreplaces_sha256 = {:?}\n",
+            digest.as_str(),
+        );
+        for (variant, _) in fixture_cases() {
+            appendix.push_str(&format!(
+                "[semantic_publications.specifications.{variant}]\npath = \"semantic/successor-{variant}.json\"\nsha256 = {:?}\n",
+                old_specs[variant].sha256.as_str()
+            ));
+        }
+        let parse = |suffix: &str| Declaration::parse(&[prefix, suffix.as_bytes()].concat());
+        let active = parse(&appendix).unwrap();
+        let successor = active
+            .records
+            .iter()
+            .find(|record| record.source.as_str() == SOURCE)
+            .unwrap();
+        assert_eq!(successor.historical_sha256, old.historical_sha256);
+        assert_eq!(successor.source_sha256, old.source_sha256);
+        let successor = successor.semantic_specifications.as_ref().unwrap();
+        assert_eq!(successor.len(), 4);
+        assert_eq!(
+            successor["border_box_ltr"].path.as_str(),
+            "semantic/successor-border_box_ltr.json"
+        );
+        assert!(parse(&appendix.replace(digest.as_str(), &"0".repeat(64))).is_err());
+        assert!(parse(&appendix.repeat(2)).is_err());
+        assert!(
+            parse(&appendix.replace(
+                "semantic/successor-border_box_ltr.json",
+                old_specs["border_box_ltr"].path.as_str()
+            ))
+            .is_err()
+        );
+    }
 
     #[test]
     fn appended_publications_require_all_specialized_variants() {

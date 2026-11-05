@@ -282,6 +282,12 @@ enum Field {
         browser: u32,
         native: u32,
     },
+    WorldCorner {
+        path: String,
+        field: WorldCornerField,
+        browser: Number,
+        native: Number,
+    },
 }
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "kebab-case")]
@@ -302,11 +308,18 @@ enum ElementField {
     ScrollHeight,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+enum WorldCornerField {
+    Height,
+}
+
 impl ComparedField {
     fn key(&self) -> String {
         match &self.0 {
             Field::Layout { path, field, .. } => format!("layout:{path}:{field:?}"),
             Field::ElementSize { path, field, .. } => format!("element-size:{path}:{field:?}"),
+            Field::WorldCorner { path, field, .. } => format!("world-corner:{path}:{field:?}"),
         }
     }
     fn canonical_selector(&self) -> Selector {
@@ -325,6 +338,10 @@ impl ComparedField {
                 ElementField::ScrollWidth => CanonicalField::ScrollWidth,
                 ElementField::ScrollHeight => CanonicalField::ScrollHeight,
             },
+            Field::WorldCorner {
+                field: WorldCornerField::Height,
+                ..
+            } => CanonicalField::WorldCornerHeight,
         };
         Selector {
             path: self.path().to_owned(),
@@ -334,7 +351,9 @@ impl ComparedField {
 
     fn path(&self) -> &str {
         match &self.0 {
-            Field::Layout { path, .. } | Field::ElementSize { path, .. } => path,
+            Field::Layout { path, .. }
+            | Field::ElementSize { path, .. }
+            | Field::WorldCorner { path, .. } => path,
         }
     }
     fn differs(&self) -> bool {
@@ -343,6 +362,9 @@ impl ComparedField {
                 browser, native, ..
             } => native.is_none_or(|native| !numeric_values_match(browser.0, native.0)),
             Field::ElementSize {
+                browser, native, ..
+            } => browser != native,
+            Field::WorldCorner {
                 browser, native, ..
             } => browser != native,
         }
@@ -460,6 +482,8 @@ pub(crate) enum PublishedEdition {
     GridStaticPosition,
     #[serde(rename = "relative-inset-differences")]
     RelativeInsets,
+    #[serde(rename = "wrapping-world-corner-differences")]
+    WrappingWorldCorners,
 }
 
 impl PublishedEdition {
@@ -481,21 +505,26 @@ impl PublishedEdition {
             Self::RelativeInsets => {
                 "tests/layout/browser_parity/captured/relative-inset-differences"
             }
+            Self::WrappingWorldCorners => {
+                "tests/layout/browser_parity/captured/wrapping-world-corner-differences"
+            }
         }
     }
     fn domain(self) -> CurrentDomain {
         match self {
-            Self::CanonicalBoxes | Self::GridStaticPosition | Self::RelativeInsets => {
-                CurrentDomain::Layout
-            }
+            Self::CanonicalBoxes
+            | Self::GridStaticPosition
+            | Self::RelativeInsets
+            | Self::WrappingWorldCorners => CurrentDomain::Layout,
             Self::MeasuredGrid | Self::FlexText => CurrentDomain::LayoutAndElementSizes,
         }
     }
     fn profile(self) -> Profile {
         match self {
-            Self::CanonicalBoxes | Self::GridStaticPosition | Self::RelativeInsets => {
-                Profile::NoTextBoxes
-            }
+            Self::CanonicalBoxes
+            | Self::GridStaticPosition
+            | Self::RelativeInsets
+            | Self::WrappingWorldCorners => Profile::NoTextBoxes,
             Self::MeasuredGrid => Profile::MeasuredGrid,
             Self::FlexText => Profile::FlexContentText,
         }
@@ -824,6 +853,22 @@ impl ExactDifferenceSpec {
         }
         for difference in &spec.differences {
             source_path(difference.path())?;
+            if let Field::WorldCorner {
+                path,
+                browser,
+                native,
+                ..
+            } = &difference.0
+                && (spec.representation.published_edition
+                    != Some(PublishedEdition::WrappingWorldCorners)
+                    || path != "/"
+                    || !whole_extent(*browser)
+                    || !whole_extent(*native))
+            {
+                return Err(malformed(
+                    "world-corner pairs require the wrapping edition and whole root heights",
+                ));
+            }
             if matches!(
                 difference.0,
                 Field::Layout {
@@ -904,6 +949,14 @@ impl ExactDifferenceSpec {
                 component: "current representative source/variant/history/record".to_owned(),
             });
         }
+        if edition == PublishedEdition::WrappingWorldCorners
+            && (selected.source != "html/flex/fri07_collapsed_strut_wrapping.html"
+                || selected.historical_sha256.is_none())
+        {
+            return Err(QualificationError::IncompleteRepresentation {
+                key: "wrapping world-corner source and predecessor".to_owned(),
+            });
+        }
         let required = self.0.representation.current.as_ref().ok_or_else(|| {
             QualificationError::IncompleteRepresentation {
                 key: "representation.current".to_owned(),
@@ -940,7 +993,7 @@ impl ExactDifferenceSpec {
                 key: "Published canonical boxes require both present packet channels".to_owned(),
             });
         }
-        let selectors = canonical_selectors(required, &nodes);
+        let selectors = canonical_selectors(required, &nodes, edition);
         if required.domain != edition.domain()
             || required.nodes != nodes
             || required
@@ -1065,7 +1118,11 @@ fn layout_scroll_ranges_requested(required: &CurrentRequirements, path: &str) ->
         .is_ok()
 }
 
-fn canonical_selectors(required: &CurrentRequirements, nodes: &[String]) -> Vec<Selector> {
+fn canonical_selectors(
+    required: &CurrentRequirements,
+    nodes: &[String],
+    edition: PublishedEdition,
+) -> Vec<Selector> {
     const LAYOUT_SCROLL: [CanonicalField; 2] = [
         CanonicalField::LayoutScrollWidth,
         CanonicalField::LayoutScrollHeight,
@@ -1088,6 +1145,12 @@ fn canonical_selectors(required: &CurrentRequirements, nodes: &[String]) -> Vec<
                     field,
                 }),
         );
+        if path == "/" && edition == PublishedEdition::WrappingWorldCorners {
+            selectors.push(Selector {
+                path: path.clone(),
+                field: CanonicalField::WorldCornerHeight,
+            });
+        }
     }
     selectors
 }
@@ -1133,6 +1196,9 @@ fn verify_current_requirements(
         Ok(())
     }
     verify_geometry(&golden.expectations, "/", required)?;
+    if edition == PublishedEdition::WrappingWorldCorners {
+        browser_world_corner_height(golden)?;
+    }
     let mut nodes = source
         .iter()
         .filter(|node| node.role == SourceRole::OrdinaryBox)
@@ -1142,6 +1208,52 @@ fn verify_current_requirements(
     if nodes != required.nodes {
         return Err(QualificationError::IncompleteRepresentation {
             key: "actual current requested source census".to_owned(),
+        });
+    }
+    Ok(())
+}
+
+fn whole_extent(value: Number) -> bool {
+    value.0 >= 0.0 && value.0.fract() == 0.0
+}
+
+fn browser_world_corner_height(golden: &Golden) -> Result<Number> {
+    let height = golden
+        .world_rounding_diagnostics
+        .iter()
+        .find(|row| row.node_path == "0")
+        .ok_or_else(|| QualificationError::IncompleteRepresentation {
+            key: "browser root world-corner height".to_owned(),
+        })?
+        .height;
+    let number = Number::new(height as Scalar)?;
+    if f64::from(number.0) != height || !whole_extent(number) {
+        return Err(unsupported(
+            "/",
+            "exact integral browser world-corner height",
+        ));
+    }
+    Ok(number)
+}
+
+pub(crate) fn verify_wrapping_world_predecessor(golden: &Golden, historical: &[u8]) -> Result<()> {
+    let text = std::str::from_utf8(historical).map_err(|error| malformed(error.to_string()))?;
+    let xml = roxmltree::Document::parse(text).map_err(|error| malformed(error.to_string()))?;
+    let test = xml.root_element();
+    let root_height = test
+        .children()
+        .find(|node| node.has_tag_name("expectations"))
+        .and_then(|node| node.children().find(|child| child.has_tag_name("node")))
+        .and_then(|node| node.attribute("height"))
+        .and_then(|height| height.parse::<f64>().ok());
+    if !test.has_tag_name("test")
+        || test.attribute("name") != Some(golden.name.as_str())
+        || test.attribute("measurement-version") != Some("2")
+        || test.attribute("use-rounding") != Some("true")
+        || root_height != Some(f64::from(browser_world_corner_height(golden)?.0))
+    {
+        return Err(QualificationError::IdentityChanged {
+            component: "historical wrapping world-corner root height".to_owned(),
         });
     }
     Ok(())
@@ -1307,8 +1419,15 @@ pub(crate) fn complete_captured_comparison(
     golden: &Golden,
     spec: &ResolvedSpec<'_>,
 ) -> Result<CompletedComparison> {
-    let completed = collect_captured_comparison(golden, &spec.source)?;
+    let mut completed = collect_captured_comparison(golden, &spec.source)?;
     if let Some(required) = spec.current {
+        if spec.spec.representation.published_edition
+            == Some(PublishedEdition::WrappingWorldCorners)
+        {
+            completed
+                .observations
+                .push(wrapping_world_corner_pair(golden, &completed.nodes)?);
+        }
         let mut actual = completed
             .observations
             .iter()
@@ -1322,6 +1441,36 @@ pub(crate) fn complete_captured_comparison(
         }
     }
     Ok(completed)
+}
+
+fn wrapping_world_corner_pair(golden: &Golden, nodes: &[NativeNode]) -> Result<ComparedField> {
+    let Some(NativeNode {
+        unrounded: Packet::Present { facts: unrounded },
+        final_output: Packet::Present {
+            facts: final_output,
+        },
+        ..
+    }) = nodes.iter().find(|node| node.path == "/")
+    else {
+        return Err(QualificationError::IncompleteNativeOracle {
+            key: "root packets for world-corner height".to_owned(),
+        });
+    };
+    let native = unrounded.size.height;
+    // For an integral extent h, rounding two corners at any pixel phase
+    // yields Q(t + h) - Q(t) = h. No world origin is supplied by the batch.
+    if !whole_extent(native) || final_output.size.height != native {
+        return Err(unsupported(
+            "/",
+            "phase-independent Native world-corner height",
+        ));
+    }
+    Ok(ComparedField(Field::WorldCorner {
+        path: "/".to_owned(),
+        field: WorldCornerField::Height,
+        browser: browser_world_corner_height(golden)?,
+        native,
+    }))
 }
 
 fn collect_captured_comparison(

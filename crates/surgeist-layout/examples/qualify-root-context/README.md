@@ -148,3 +148,16 @@ the three exact block-axis differences per variant.
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --publish-relative-inset-differences
 cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-relative-inset-differences
 ~~~
+
+## Wrapping world-corner edition
+
+The [wrapping policy](../../semantic/wrapping-world-corner-policy.md) binds the
+original root world-corner height to its current browser measurement. The
+edition checks that pair separately from the 24 root-local geometry fields
+and retains both Native packet channels for every box. The catalogue pins
+the superseded reference map and selects this edition for all four variants.
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --publish-wrapping-world-corner-differences
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-wrapping-world-corner-differences
+~~~

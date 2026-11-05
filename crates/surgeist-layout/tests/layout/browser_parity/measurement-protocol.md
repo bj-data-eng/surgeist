@@ -176,9 +176,11 @@ Numbers are unitless CSS pixels; optional pairs use `scroll-width`/`scroll-heigh
 and `client-width`/`client-height`.
 Root path is `0`; later dot-separated indices select the actual measured child
 array. Structural XML metadata is not a child occurrence. The reader checks the
-per-box census against the input tree. Diagnostics never become Native inputs,
-selected expectations or a replacement oracle. Existing naive offset/offset-parent
-diagnostics likewise do not define local rounding.
+per-box census against the input tree. Diagnostics are separate from ordinary
+expectations and Native inputs. The fixed wrapping edition explicitly selects
+the root world-corner height for one additional exact comparison under the
+[wrapping policy](../../../semantic/wrapping-world-corner-policy.md). The
+edition retains the ordinary root-local height as a separate comparison.
 
 Historical XML 1/2/3 remains exact raw, unqualified capture. Its viewport cannot
 issue a current Native root operation: `MissingRootContextAuthority` remains
@@ -721,8 +723,9 @@ as zero; child geometry stays relative to its parent. Scroll extents use the
 existing nonnegative difference from naive client measurements.
 
 World-rounded diagnostics retain f64 precision independently of selected ordinary
-geometry formatting. They serialize only under the separate `diagnostics` tree,
-with checked node paths; they never enter Native sizing or comparison operands.
+geometry formatting. They serialize under the separate `diagnostics` tree
+with checked node paths. The wrapping qualification reads its designated
+browser operand from that tree after capture authentication.
 
 Source segment IDs retain their helper-provided values. Atomic placeholder
 indices count lowered input children, including inline boundaries. Expectation
