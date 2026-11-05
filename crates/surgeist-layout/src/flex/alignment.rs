@@ -12,25 +12,24 @@ use crate::output::PhysicalBaseline;
 #[derive(Clone, Copy, Debug)]
 pub(super) struct FlexItemBaseline<S: LayoutScalar> {
     flow_axes: FlowAxes,
-    measured: Option<PhysicalBaseline<S>>,
+    measured: BaselinesOf<S>,
 }
 
 impl<S: LayoutScalar> FlexItemBaseline<S> {
     pub(super) fn from_output(output: ComputeOutputOf<S>, flow_axes: FlowAxes) -> Self {
         Self {
             flow_axes,
-            measured: output.baselines().first_block_baseline(flow_axes),
+            measured: output.baselines(),
         }
     }
 
     pub(super) fn refresh(&mut self, output: ComputeOutputOf<S>) {
-        self.measured = output.baselines().first_block_baseline(self.flow_axes);
+        self.measured = output.baselines();
     }
 
     fn physical(self, size: Size<S>) -> PhysicalBaseline<S> {
-        self.measured.unwrap_or_else(|| {
-            BaselinesOf::NONE.first_or_synthesize_block_baseline(self.flow_axes, size)
-        })
+        self.measured
+            .first_or_synthesize_block_baseline(self.flow_axes, size)
     }
 
     fn axis(self, size: Size<S>) -> PhysicalAxis {
@@ -49,6 +48,23 @@ impl<S: LayoutScalar> FlexItemBaseline<S> {
 
     fn translated(self, size: Size<S>, location: Point<S>) -> Point<Option<S>> {
         self.physical(size).translated(location)
+    }
+
+    fn translated_end_item(
+        self,
+        size: Size<S>,
+        location: Point<S>,
+        axes: FlexAxes,
+        alignment: AlignItems,
+    ) -> Point<Option<S>> {
+        if axes.main_logical_axis() == LogicalAxis::Inline
+            && alignment != AlignItems::Baseline
+            && self.flow_axes.inline_axis() == axes.main_physical_axis()
+            && let Some(last) = self.measured.last_block_baseline(self.flow_axes)
+        {
+            return last.translated(location);
+        }
+        self.translated(size, location)
     }
 }
 
@@ -347,10 +363,11 @@ pub(super) fn last_vertical_baseline<Node, S: LayoutScalar>(
             S::ZERO,
         ),
     );
-    Some(item_physical_baseline(
-        location,
+    Some(item.baseline.translated_end_item(
         item.target_size,
-        item.baseline,
+        location,
+        constants.axes,
+        item.align_self,
     ))
 }
 
@@ -390,10 +407,11 @@ pub(super) fn last_final_vertical_baseline<Node, S: LayoutScalar>(
                 || item.align_self == AlignItems::Baseline
         })
         .or_else(|| line_items.last())?;
-    Some(item_physical_baseline(
-        item.normal_location,
+    Some(item.baseline.translated_end_item(
         item.output.size,
-        item.baseline,
+        item.normal_location,
+        constants.axes,
+        item.align_self,
     ))
 }
 
