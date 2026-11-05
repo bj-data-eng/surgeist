@@ -9,6 +9,48 @@ use crate::{
     PreferredSizeOf, Size, SizingAlgorithm,
 };
 
+type BlockSizeLimits<S> = (Size<Option<S>>, Size<Option<S>>);
+
+pub(super) fn transfer_block_ratio_inline_limits<S: LayoutScalar>(
+    flow: crate::FlowAxes,
+    ratio: crate::AspectRatioOf<S>,
+    min: Size<Option<S>>,
+    max: Size<Option<S>>,
+) -> Result<BlockSizeLimits<S>, LengthResolutionStatus<S>> {
+    let mut min = flow.logical_size(min);
+    let mut max = flow.logical_size(max);
+    let transfer = |block: S| {
+        let inline = match flow.inline_axis() {
+            PhysicalAxis::Horizontal => block * ratio.get(),
+            PhysicalAxis::Vertical => block / ratio.get(),
+        };
+        if inline.is_finite() {
+            Ok(inline)
+        } else {
+            Err(LengthResolutionStatus::InvalidNumeric { value: inline })
+        }
+    };
+    let transferred_min = min.block.map(transfer).transpose()?;
+    let transferred_max = max.block.map(transfer).transpose()?;
+
+    // Transfer bounds in the sizing box. The destination's authored bound
+    // takes precedence, and its minimum still floors a transferred maximum.
+    let transferred_min =
+        transferred_min.map(|value| max.inline.map_or(value, |authored| value.min(authored)));
+    min.inline = [min.inline, transferred_min]
+        .into_iter()
+        .flatten()
+        .reduce(|left, right| left.max(right));
+    let transferred_max =
+        transferred_max.map(|value| min.inline.map_or(value, |minimum| value.max(minimum)));
+    max.inline = [max.inline, transferred_max]
+        .into_iter()
+        .flatten()
+        .reduce(|left, right| left.min(right));
+
+    Ok((flow.physical_size(min), flow.physical_size(max)))
+}
+
 pub(super) fn preferred_size<S: LayoutScalar>(
     size: &Size<PreferredSizeOf<S>>,
     basis: Size<Option<S>>,

@@ -6,6 +6,45 @@ use crate::{
     Traverse, VerticalAlignOf,
 };
 
+pub(super) fn normal_block_auto_inline<S: LayoutScalar>(
+    common: &CommonBoxProjection<'_, S>,
+    display: Display,
+    float: Float,
+) -> bool {
+    let inline_preferred = match common.flow_axes.inline_axis() {
+        crate::PhysicalAxis::Horizontal => &common.size.width,
+        crate::PhysicalAxis::Vertical => &common.size.height,
+    };
+    !display.is_inline_level()
+        && !common.item_is_replaced
+        && !common.item_is_table
+        && float.is_none()
+        && common.position != crate::Position::Absolute
+        && inline_preferred.is_auto()
+}
+
+pub(super) fn automatic_block_depends_on_ratio<S: LayoutScalar>(
+    common: &CommonBoxProjection<'_, S>,
+) -> bool {
+    let block_preferred = match common.flow_axes.block_axis() {
+        crate::PhysicalAxis::Horizontal => &common.size.width,
+        crate::PhysicalAxis::Vertical => &common.size.height,
+    };
+    common.aspect_ratio.is_some() && block_preferred.is_auto()
+}
+
+pub(super) fn normal_block_inline_ratio<S: LayoutScalar>(
+    common: &CommonBoxProjection<'_, S>,
+    display: Display,
+    float: Float,
+) -> Option<crate::AspectRatioOf<S>> {
+    common.aspect_ratio.filter(|_| {
+        display == Display::Block
+            && normal_block_auto_inline(common, display, float)
+            && automatic_block_depends_on_ratio(common)
+    })
+}
+
 /// Block-container facts settled at the block algorithm entry.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct BlockContainerProjection<'a, S: LayoutScalar> {

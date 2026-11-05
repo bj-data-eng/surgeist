@@ -2910,6 +2910,63 @@ fn block_layout_collapses_margins_through_empty_in_flow_child() {
 }
 
 #[test]
+fn block_ratio_dependent_height_cannot_collapse_through_with_known_size() {
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let ratio = AspectRatio::new(2.0);
+    let mut differences = Vec::new();
+    for (ratio, preferred_height, known, expected) in [
+        (None, PreferredSize::AUTO, Size::new(50.0, 0.0), true),
+        (ratio, PreferredSize::px(0.0), Size::new(0.0, 0.0), true),
+        (ratio, PreferredSize::AUTO, Size::new(0.0, 0.0), false),
+        (ratio, PreferredSize::AUTO, Size::new(50.0, 25.0), false),
+    ] {
+        let automatic = preferred_height.is_auto();
+        let mut tree = OracleTree::new().children(1, []).style(
+            1,
+            NodeInput {
+                display: Display::Block,
+                size: Size::new(PreferredSize::AUTO, preferred_height),
+                aspect_ratio: ratio,
+                ..NodeInput::default()
+            },
+        );
+        let output = crate::compute_block(
+            &mut tree.borrow_compute(),
+            1,
+            ComputeInput::for_child(
+                RunMode::PerformLayout,
+                SizingMode::InherentSize,
+                RequestedAxis::Both,
+                known.map(Some),
+                Size::new(Some(50.0), None),
+                ContainingLayoutContext::new(flow, ParentFormattingContext::BlockFlow),
+                SizingRequestOf::new(
+                    Size::splat(AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::Normal,
+                    )),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
+            ),
+        )
+        .unwrap();
+        assert_eq!(output.size, known);
+        let actual = output.block_margin_collapse.can_collapse_through(flow);
+        if actual != expected {
+            differences.push(format!(
+                "ratio {ratio:?}, automatic height {automatic}, known {known:?}: \
+                 expected {expected}, got {actual}"
+            ));
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
 fn block_empty_auto_height_can_collapse_through() {
     #[derive(Default)]
     struct BlockTree {

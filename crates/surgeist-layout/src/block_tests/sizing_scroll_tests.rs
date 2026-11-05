@@ -4738,3 +4738,205 @@ fn fri08_c07_t03_optional_math_block_results_preserve_both_scalar_lanes() {
     assert_fri08_c07_t03_optional_math_block_results::<f32>();
     assert_fri08_c07_t03_optional_math_block_results::<f64>();
 }
+
+fn block_ratio_root_request() -> LayoutRootRequest {
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let axes = Size::splat(AxisSizingRequestOf::new(
+        AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
+        SizingOperation::Normal,
+    ));
+    LayoutRootRequest::standalone(
+        SizingRequest::new(
+            axes,
+            OrthogonalFallback::new(
+                Size::splat(Some(NonNegativeFiniteOf::new(100.0).unwrap())),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
+        flow,
+        Size::splat(Some(NonNegativeFiniteOf::new(100.0).unwrap())),
+    )
+}
+
+#[test]
+fn block_ratio_transfer_uses_the_selected_sizing_box() {
+    let request = block_ratio_root_request();
+    let mut differences = Vec::new();
+    for (box_sizing, explicit, max_height, expected) in [
+        (
+            BoxSizing::ContentBox,
+            false,
+            MaxSize::NONE,
+            Size::new(100.0, 46.0),
+        ),
+        (
+            BoxSizing::BorderBox,
+            false,
+            MaxSize::NONE,
+            Size::new(100.0, 50.0),
+        ),
+        (
+            BoxSizing::ContentBox,
+            true,
+            MaxSize::NONE,
+            Size::new(100.0, 26.0),
+        ),
+        (
+            BoxSizing::BorderBox,
+            true,
+            MaxSize::NONE,
+            Size::new(80.0, 20.0),
+        ),
+        (
+            BoxSizing::ContentBox,
+            false,
+            MaxSize::px(20.0),
+            Size::new(60.0, 26.0),
+        ),
+        (
+            BoxSizing::BorderBox,
+            false,
+            MaxSize::px(20.0),
+            Size::new(40.0, 20.0),
+        ),
+    ] {
+        let tree = PublicBlockTree::default()
+            .with_children(0, [1])
+            .with_children(1, [])
+            .with_style(
+                0,
+                NodeInput {
+                    display: Display::Block,
+                    size: Size::new(PreferredSize::px(100.0), PreferredSize::px(100.0)),
+                    ..NodeInput::default()
+                },
+            )
+            .with_style(
+                1,
+                NodeInput {
+                    display: Display::Block,
+                    box_sizing,
+                    aspect_ratio: AspectRatio::new(2.0),
+                    max_size: Size::new(MaxSize::NONE, max_height),
+                    padding: Edges::new(
+                        Length::px(3.0),
+                        Length::px(10.0),
+                        Length::px(3.0),
+                        Length::px(10.0),
+                    ),
+                    size: if explicit {
+                        Size::new(PreferredSize::px(80.0), PreferredSize::px(20.0))
+                    } else {
+                        Size::new(PreferredSize::AUTO, PreferredSize::AUTO)
+                    },
+                    ..NodeInput::default()
+                },
+            );
+        let batch = compute_layout(&tree, 0, request).unwrap();
+        let actual = public_final_output(&batch, 1).size;
+        if actual != expected {
+            differences.push(format!(
+                "{box_sizing:?}, explicit {explicit}: expected {expected:?}, got {actual:?}"
+            ));
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn block_ratio_with_a_height_cap_preserves_measured_leaf_size() {
+    let tree = PublicBlockTree::default()
+        .with_children(0, [1])
+        .with_children(1, [])
+        .with_style(
+            0,
+            NodeInput {
+                display: Display::Block,
+                size: Size::new(PreferredSize::px(100.0), PreferredSize::px(100.0)),
+                ..NodeInput::default()
+            },
+        )
+        .with_style(
+            1,
+            NodeInput {
+                display: Display::Block,
+                box_sizing: BoxSizing::BorderBox,
+                overflow: computed_overflow(Overflow::Hidden, Overflow::Hidden),
+                aspect_ratio: AspectRatio::new(2.0),
+                max_size: Size::new(MaxSize::NONE, MaxSize::px(80.0)),
+                ..NodeInput::default()
+            },
+        )
+        .with_measurement(1, Size::new(100.0, 70.0));
+    let batch = compute_layout(&tree, 0, block_ratio_root_request()).unwrap();
+    assert_eq!(public_final_output(&batch, 1).size, Size::new(100.0, 50.0));
+}
+
+#[test]
+fn block_ratio_minimum_probe_does_not_repeat_descendant_layout() {
+    const LEAF: u32 = 9;
+    let mut tree = OracleTree::new();
+    for node in 0..LEAF {
+        tree = tree.children(node, [node + 1]).style(
+            node,
+            NodeInput {
+                display: Display::Block,
+                size: if node == 0 {
+                    Size::new(PreferredSize::px(100.0), PreferredSize::px(100.0))
+                } else {
+                    Size::new(PreferredSize::AUTO, PreferredSize::AUTO)
+                },
+                aspect_ratio: if node == 0 {
+                    None
+                } else {
+                    AspectRatio::new(2.0)
+                },
+                ..NodeInput::default()
+            },
+        );
+    }
+    tree = tree.children(LEAF, []).style(
+        LEAF,
+        NodeInput {
+            display: Display::Block,
+            size: Size::new(PreferredSize::px(100.0), PreferredSize::px(20.0)),
+            ..NodeInput::default()
+        },
+    );
+    crate::compute_block(
+        &mut tree.borrow_compute(),
+        0,
+        ComputeInput::for_child(
+            RunMode::PerformLayout,
+            SizingMode::InherentSize,
+            RequestedAxis::Both,
+            Size::NONE,
+            Size::new(Some(100.0), Some(100.0)),
+            ContainingLayoutContext::new(
+                FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                ParentFormattingContext::NoParent,
+            ),
+            SizingRequest::new(
+                Size::splat(AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(100.0).unwrap()),
+                    SizingOperation::Normal,
+                )),
+                OrthogonalFallback::new(
+                    Size::NONE,
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+        ),
+    )
+    .unwrap();
+
+    assert_eq!(tree.layout(1).unwrap().size, Size::new(100.0, 50.0));
+    let performed = tree
+        .inputs(LEAF)
+        .iter()
+        .filter(|input| input.run_mode().is_perform_layout())
+        .count();
+    assert_eq!(performed, 1);
+}

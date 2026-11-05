@@ -671,6 +671,19 @@ fn real_node_free_computed_paragraph_schedules_forced_line_and_phantom_completio
 }
 
 #[test]
+fn block_ratio_automatic_minimum_counts_node_free_forced_line() {
+    let mut fixture = Fixture::<f32>::new(l::Direction::Ltr, true);
+    fixture.tree.input.size.width = l::PreferredSizeOf::AUTO;
+    fixture.tree.input.aspect_ratio = l::AspectRatioOf::new(3.0);
+    let available = crate::layout::native_request::sizing(
+        l::Size::new(Some(30.0), None),
+        l::Size::new(l::SizingOperation::Normal, l::SizingOperation::Normal),
+    );
+    let batch = fixture.try_compute(fixture.inventory(), available).unwrap();
+    assert_semantic_output(&fixture, &batch);
+}
+
+#[test]
 fn neutral_node_free_metadata_does_not_publish_text_from_scope_struts() {
     for direction in [l::Direction::Ltr, l::Direction::Rtl] {
         neutral_metadata::<f32>(direction);

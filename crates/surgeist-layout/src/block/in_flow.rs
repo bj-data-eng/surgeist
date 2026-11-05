@@ -1162,17 +1162,32 @@ where
         Size::ZERO
     };
     let min_size = minimum_size(style.common.min_size, parent, SizingAlgorithm::Block, true)
-        .transpose_with_node(tree, child)?
-        .apply_aspect_ratio(*style.common.aspect_ratio)
-        .add_optional(box_sizing_adjustment);
-    let mut max_size = maximum_size(style.common.max_size, parent, SizingAlgorithm::Block, true)
-        .transpose_with_node(tree, child)?
-        .add_optional(box_sizing_adjustment);
-    let aspect_height_limit = style
-        .common
-        .aspect_ratio
-        .zip(max_size.height)
-        .and_then(|(ratio, height)| max_size.width.is_none().then_some(height * ratio.get()));
+        .transpose_with_node(tree, child)?;
+    let max_size = maximum_size(style.common.max_size, parent, SizingAlgorithm::Block, true)
+        .transpose_with_node(tree, child)?;
+    let ratio_transferred_in_block =
+        normal_block_inline_ratio(&style.common, style.display, style.float)
+            .filter(|_| available_inline.is_some() && !tree.has_leaf_measurement(child));
+    let (min_size, max_size) = if let Some(ratio) = ratio_transferred_in_block {
+        transfer_block_ratio_inline_limits(child_flow_axes, ratio, min_size, max_size)
+            .map_err(|status| crate::error::sizing_resolution_error(child, status.into()))?
+    } else {
+        (
+            min_size.apply_aspect_ratio(*style.common.aspect_ratio),
+            max_size,
+        )
+    };
+    let min_size = min_size.add_optional(box_sizing_adjustment);
+    let mut max_size = max_size.add_optional(box_sizing_adjustment);
+    let aspect_height_limit = if ratio_transferred_in_block.is_some() {
+        None
+    } else {
+        style
+            .common
+            .aspect_ratio
+            .zip(max_size.height)
+            .and_then(|(ratio, height)| max_size.width.is_none().then_some(height * ratio.get()))
+    };
     if let Some(width) = aspect_height_limit {
         max_size.width = Some(width);
     }
