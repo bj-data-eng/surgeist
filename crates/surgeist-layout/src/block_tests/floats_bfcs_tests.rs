@@ -2714,3 +2714,46 @@ fn block_bfc_zero_width_child_with_clear_right_sits_below_all_right_floats() {
         Point::new(0.0, 200.0)
     );
 }
+
+#[test]
+fn block_ratio_with_a_height_cap_preserves_float_exclusion() {
+    let tree = PublicBlockTree::<f32>::default()
+        .with_children(0, [1, 2])
+        .with_children(1, [])
+        .with_children(2, [])
+        .with_style(
+            0,
+            NodeInput {
+                display: Display::Block,
+                size: Size::new(PreferredSize::px(100.0), PreferredSize::px(80.0)),
+                ..NodeInput::default()
+            },
+        )
+        .with_style(
+            1,
+            NodeInput {
+                display: Display::Block,
+                float: Float::Left,
+                box_sizing: BoxSizing::BorderBox,
+                aspect_ratio: AspectRatio::new(2.0),
+                max_size: Size::new(MaxSize::NONE, MaxSize::px(20.0)),
+                ..NodeInput::default()
+            },
+        )
+        .with_style(
+            2,
+            NodeInput {
+                display: Display::Block,
+                clear: Clear::Both,
+                size: Size::new(PreferredSize::px(30.0), PreferredSize::px(10.0)),
+                ..NodeInput::default()
+            },
+        );
+    let batch = compute_layout(&tree, 0, fri06_c05_provider_request()).unwrap();
+    let floated = public_final_output(&batch, 1);
+    let cleared = public_final_output(&batch, 2);
+    assert_eq!(
+        (floated.size, cleared.location.y),
+        (Size::new(40.0, 20.0), 20.0)
+    );
+}
