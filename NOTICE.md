@@ -517,6 +517,7 @@ transitive binary-release inventory.
 | surgeist-cssom | [MIT License](LICENSE); authored in this repository |
 | surgeist-dialog | [LICENSE](crates/surgeist-dialog/LICENSE); no separate notice |
 | surgeist-dom | [MIT License](LICENSE); authored in this repository |
+| surgeist-font | [NOTICE.md](crates/surgeist-font/NOTICE.md) |
 | surgeist-fuzz | [NOTICE.md](crates/surgeist-fuzz/NOTICE.md) |
 | surgeist-generator | [NOTICE.md](crates/surgeist-generator/NOTICE.md) |
 | surgeist-html | [NOTICE.md](crates/surgeist-html/NOTICE.md) |

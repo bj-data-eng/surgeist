@@ -1,0 +1,16 @@
+[package]
+name = "surgeist-font"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+license = "MIT"
+repository = "https://github.com/bj-data-eng/surgeist"
+readme = "README.md"
+description = "Bounded font resources and immutable face identity for Surgeist."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+brotli-decompressor = { version = "=5.0.0", default-features = false }
+miniz_oxide = { version = "=0.8.9", default-features = false }

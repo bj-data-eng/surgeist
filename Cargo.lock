@@ -153,6 +153,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "alloc-no-stdlib"
+version = "2.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc7bb162ec39d46ab1ca8c77bf72e890535becd1751bb45f64c597edb4c8c6b3"
+
+[[package]]
 name = "allocator-api2"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -549,6 +555,15 @@ dependencies = [
  "futures-io",
  "futures-lite",
  "piper",
+]
+
+[[package]]
+name = "brotli-decompressor"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "874bb8112abecc98cbd6d81ea4fa7e94fb9449648c93cc89aa40c81c24d7de03"
+dependencies = [
+ "alloc-no-stdlib",
 ]
 
 [[package]]
@@ -3748,6 +3763,14 @@ dependencies = [
  "surgeist-html-parser",
  "surgeist-html-semantics",
  "surgeist-test",
+]
+
+[[package]]
+name = "surgeist-font"
+version = "0.1.0"
+dependencies = [
+ "brotli-decompressor",
+ "miniz_oxide",
 ]
 
 [[package]]
