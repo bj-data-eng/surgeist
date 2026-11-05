@@ -272,3 +272,93 @@ fn definite_inline_atomic_refuses_missing_frame_and_invalid_incidence() {
     lane::<f32>();
     lane::<f64>();
 }
+
+#[test]
+fn definite_inline_atomic_refuses_a_cycle_through_a_sibling() {
+    let sibling = 3;
+    let tree = PublicLayoutTreeOf::<f64>::new()
+        .style(CONTAINER, container(PreferredSizeOf::px(80.0)))
+        .style(ATOMIC, atomic())
+        .style(sibling, NodeInputOf::default())
+        .children(CONTAINER, [ATOMIC, sibling])
+        .children(sibling, [CONTAINER]);
+
+    let error =
+        measure_definite_inline_atomic_size(&tree, CONTAINER, ATOMIC, request(Direction::Ltr))
+            .unwrap_err();
+    assert!(matches!(
+        error.kind(),
+        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::TreeTopologyCycle)
+    ));
+}
+
+#[test]
+fn definite_inline_atomic_refuses_a_second_occurrence_under_a_sibling() {
+    let sibling = 3;
+    let tree = PublicLayoutTreeOf::<f64>::new()
+        .style(CONTAINER, container(PreferredSizeOf::px(80.0)))
+        .style(ATOMIC, atomic())
+        .style(sibling, NodeInputOf::default())
+        .children(CONTAINER, [ATOMIC, sibling])
+        .children(sibling, [ATOMIC]);
+
+    let error =
+        measure_definite_inline_atomic_size(&tree, CONTAINER, ATOMIC, request(Direction::Ltr))
+            .unwrap_err();
+    assert_eq!(
+        error.site(),
+        LayoutErrorSiteOf::ContainerSubject {
+            container: CONTAINER,
+            subject: ATOMIC
+        }
+    );
+    assert!(matches!(error.kind(), LayoutErrorKindOf::InvalidInput(_)));
+}
+
+fn assert_fractional_border_extent_agrees_with_composition<S: LayoutScalar>(half_ulp: S) {
+    let authored_height = S::ONE + (half_ulp + half_ulp);
+    let tree = PublicLayoutTreeOf::<S>::new()
+        .style(CONTAINER, container(PreferredSizeOf::px(S::from_f64(80.0))))
+        .style(
+            ATOMIC,
+            NodeInputOf {
+                box_sizing: BoxSizing::BorderBox,
+                size: Size::new(
+                    PreferredSizeOf::px(S::from_f64(20.0)),
+                    PreferredSizeOf::px(authored_height),
+                ),
+                padding: Edges::new(
+                    LengthOf::px(half_ulp),
+                    LengthOf::ZERO,
+                    LengthOf::ZERO,
+                    LengthOf::ZERO,
+                ),
+                atomic_inline_participation: Some(AtomicInlineParticipation::new(
+                    BidiLevel::try_new(0).unwrap(),
+                    InlineBreakOpportunity::Allowed,
+                )),
+                ..atomic()
+            },
+        )
+        .children(CONTAINER, [ATOMIC]);
+    let request = request(Direction::Ltr);
+    let measured = measure_definite_inline_atomic_size(&tree, CONTAINER, ATOMIC, request).unwrap();
+    let composition = compute_layout(&tree, CONTAINER, request).unwrap();
+    let child = composition
+        .unrounded_entries()
+        .iter()
+        .find(|entry| entry.node() == ATOMIC)
+        .unwrap();
+    assert_eq!(measured.height, authored_height);
+    assert_eq!(child.output().size, measured);
+}
+
+#[test]
+fn definite_inline_atomic_preserves_the_fractional_border_extent_in_f32_composition() {
+    assert_fractional_border_extent_agrees_with_composition(2.0_f32.powi(-24));
+}
+
+#[test]
+fn definite_inline_atomic_preserves_the_fractional_border_extent_in_f64_composition() {
+    assert_fractional_border_extent_agrees_with_composition(2.0_f64.powi(-53));
+}
