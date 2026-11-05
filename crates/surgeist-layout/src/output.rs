@@ -600,6 +600,7 @@ pub struct RootLocalPositionedContextOf<S: LayoutScalar = DefaultScalar> {
     containing_size: Size<NonNegativeFiniteOf<S>>,
     containing_direction: crate::Direction,
     hypothetical_inline_offset: S,
+    hypothetical_block_offset: Option<S>,
     orthogonal_fallback: crate::OrthogonalFallbackOf<S>,
 }
 
@@ -621,8 +622,22 @@ impl<S: LayoutScalar> RootLocalPositionedContextOf<S> {
             containing_size,
             containing_direction,
             hypothetical_inline_offset: crate::scalar::canonical_zero(hypothetical_inline_offset),
+            hypothetical_block_offset: None,
             orthogonal_fallback,
         })
+    }
+    /// Supplies the hypothetical block-start offset in the horizontal
+    /// containing frame. It is relative to the absolute containing block's
+    /// physical top edge and independent of the published root-local origin.
+    pub fn with_hypothetical_block_offset(
+        mut self,
+        offset: S,
+    ) -> Result<Self, crate::FiniteScalarErrorOf<S>> {
+        if !offset.is_finite() {
+            return Err(crate::FiniteScalarErrorOf::NonFinite { value: offset });
+        }
+        self.hypothetical_block_offset = Some(crate::scalar::canonical_zero(offset));
+        Ok(self)
     }
     #[must_use]
     pub const fn containing_size(self) -> Size<NonNegativeFiniteOf<S>> {
@@ -635,6 +650,11 @@ impl<S: LayoutScalar> RootLocalPositionedContextOf<S> {
     #[must_use]
     pub const fn hypothetical_inline_offset(self) -> S {
         self.hypothetical_inline_offset
+    }
+    /// The supplied physical top offset, when available.
+    #[must_use]
+    pub const fn hypothetical_block_offset(self) -> Option<S> {
+        self.hypothetical_block_offset
     }
     #[must_use]
     pub const fn orthogonal_fallback(self) -> crate::OrthogonalFallbackOf<S> {
@@ -746,21 +766,29 @@ impl<S: LayoutScalar> LayoutRootRequestOf<S> {
     pub fn positioned_root_local(
         context: RootLocalPositionedContextOf<S>,
     ) -> Result<Self, NonNegativeFiniteScalarErrorOf<S>> {
-        let available = match NonNegativeFiniteOf::new(
-            context.containing_size.width.get() - context.hypothetical_inline_offset,
+        let remaining = |extent: NonNegativeFiniteOf<S>, offset: S| match NonNegativeFiniteOf::new(
+            extent.get() - offset,
         ) {
-            Ok(value) => value,
-            Err(NonNegativeFiniteScalarErrorOf::Negative { .. }) => NonNegativeFiniteOf::ZERO,
-            Err(error @ NonNegativeFiniteScalarErrorOf::NonFinite { .. }) => return Err(error),
+            Ok(value) => Ok(AvailableSpaceOf::Definite(value)),
+            Err(NonNegativeFiniteScalarErrorOf::Negative { .. }) => {
+                Ok(AvailableSpaceOf::Definite(NonNegativeFiniteOf::ZERO))
+            }
+            Err(error @ NonNegativeFiniteScalarErrorOf::NonFinite { .. }) => Err(error),
         };
+        let width = remaining(
+            context.containing_size.width,
+            context.hypothetical_inline_offset,
+        )?;
+        let height = context
+            .hypothetical_block_offset
+            .map(|offset| remaining(context.containing_size.height, offset))
+            .transpose()?
+            .unwrap_or(AvailableSpaceOf::Indefinite);
         Ok(Self::new(
             SizingRequestOf::new(
                 Size::new(
-                    AxisSizingRequestOf::new(
-                        AvailableSpaceOf::Definite(available),
-                        SizingOperation::Normal,
-                    ),
-                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                    AxisSizingRequestOf::new(width, SizingOperation::Normal),
+                    AxisSizingRequestOf::new(height, SizingOperation::Normal),
                 ),
                 context.orthogonal_fallback,
             ),

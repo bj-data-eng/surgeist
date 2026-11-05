@@ -31,6 +31,50 @@ fn context<S: LayoutScalar>(offset: f64, direction: Direction) -> RootLocalPosit
 fn request<S: LayoutScalar>(offset: f64, direction: Direction) -> LayoutRootRequestOf<S> {
     LayoutRootRequestOf::positioned_root_local(context(offset, direction)).unwrap()
 }
+fn explicit_static_block_offset_normalizes_independent_availability<S: LayoutScalar>() {
+    let original = context::<S>(13.0, Direction::Ltr);
+    assert_eq!(original.hypothetical_block_offset(), None);
+    let without_block_offset = LayoutRootRequestOf::positioned_root_local(original).unwrap();
+    assert_eq!(
+        without_block_offset.sizing_request().axes().height.space(),
+        AvailableSpaceOf::Indefinite
+    );
+
+    for (offset, remaining) in [(27.0, 53.0), (-20.0, 100.0), (91.0, 0.0)] {
+        let exact = original.with_hypothetical_block_offset(n(offset)).unwrap();
+        assert_eq!(exact.hypothetical_block_offset(), Some(n(offset)));
+        assert_eq!(exact.containing_size(), Size::new(nn(100.0), nn(80.0)));
+        let sizing = LayoutRootRequestOf::positioned_root_local(exact)
+            .unwrap()
+            .sizing_request();
+        assert_eq!(
+            sizing.axes(),
+            Size::new(
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(nn(87.0)),
+                    SizingOperation::Normal
+                ),
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(nn(remaining)),
+                    SizingOperation::Normal
+                ),
+            )
+        );
+        assert_eq!(sizing.orthogonal_fallback(), fallback());
+    }
+    assert!(
+        original
+            .with_hypothetical_block_offset(n(f64::NAN))
+            .is_err()
+    );
+}
+
+#[test]
+fn static_block_offset_qualifies_both_scalar_lanes() {
+    explicit_static_block_offset_normalizes_independent_availability::<f32>();
+    explicit_static_block_offset_normalizes_independent_availability::<f64>();
+}
+
 fn root_style<S: LayoutScalar>(direction: Direction) -> NodeInputOf<S> {
     NodeInputOf {
         display: Display::Block,
