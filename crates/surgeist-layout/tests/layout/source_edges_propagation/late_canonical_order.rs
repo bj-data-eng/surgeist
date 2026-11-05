@@ -18,11 +18,10 @@ fn prepare_direct(processed: &Arc<t::ProcessedSource>) -> t::PreparedText {
         })
         .collect();
     let a = a.with_wrapping_policies(policies).unwrap();
-    let mut fonts = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    fonts.register_fonts(AHEM.to_vec()).unwrap();
+    let mut fonts = t::System::default();
+    fonts
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     fonts.prepare(&a, t::PreparationOptions::default()).unwrap()
 }
 

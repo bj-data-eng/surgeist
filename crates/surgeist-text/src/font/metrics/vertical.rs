@@ -8,7 +8,7 @@ use super::{
     fallback_ad, finite, numeric, table, table_error,
 };
 use crate::{
-    Error, ErrorCode, ErrorDetail, FontCatalogueIdentity, FontOutlineCapability, FontOutlineError,
+    CataloguePublication, Error, ErrorCode, ErrorDetail, FontOutlineCapability, FontOutlineError,
     Result,
 };
 use skrifa::{
@@ -148,7 +148,7 @@ impl<'a> EffectiveFontInstance<'a> {
     pub fn vertical_glyph_metrics(
         &self,
         glyph_id: u32,
-        expected: &FontCatalogueIdentity,
+        expected: &CataloguePublication,
     ) -> Result<VerticalGlyphMetrics<'a>> {
         let raw = self.unscaled_vertical_glyph_metrics(glyph_id, expected)?;
         let scale = f64::from(self.size) / f64::from(raw.units_per_em());
@@ -172,7 +172,7 @@ impl<'a> EffectiveFontInstance<'a> {
     pub(crate) fn unscaled_vertical_glyph_metrics(
         &self,
         glyph_id: u32,
-        expected: &FontCatalogueIdentity,
+        expected: &CataloguePublication,
     ) -> Result<UnscaledVerticalGlyphMetrics<'a>> {
         if self.face.catalogue_identity() != expected {
             return Err(Error::new(

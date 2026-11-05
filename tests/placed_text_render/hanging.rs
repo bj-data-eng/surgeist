@@ -5,11 +5,10 @@ use super::*;
 fn terminal_hanging_replay_reaches_paint_and_source_geometry_without_rewrapping() {
     const AHEM: &[u8] =
         include_bytes!("../../crates/surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let source = text::Source::new("A AA)");
     let style = text::Style {
         font: text::Font::new().family("Ahem"),

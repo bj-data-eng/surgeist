@@ -24,7 +24,7 @@ pub(super) fn metric_premises(system: &System, bytes: &[u8]) {
         .registered_font_faces()
         .find(|face| face.bytes() == bytes)
         .unwrap();
-    let instance = crate::EffectiveFontInstance::qualify(face, 10.0, &[]).unwrap();
+    let instance = crate::EffectiveFontInstance::qualify(face.face(), 10.0, &[]).unwrap();
     let metrics = instance.metrics(face.catalogue_identity()).unwrap();
     assert_eq!(metrics.units_per_em(), 1000);
     assert_eq!((metrics.ascent(), metrics.descent()), (8.0, -2.0));

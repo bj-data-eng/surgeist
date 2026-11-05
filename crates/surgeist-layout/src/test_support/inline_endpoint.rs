@@ -312,11 +312,10 @@ impl Fixture {
         )
         .unwrap();
         let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, Wrap::Word);
-        let mut system = text::System::new(text::SystemOptions {
-            font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        system.register_fonts(AHEM.to_vec()).unwrap();
+        let mut system = text::System::default();
+        system
+            .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+            .unwrap();
         let options = text::PreparationOptions::try_new(
             1.0,
             if tab {

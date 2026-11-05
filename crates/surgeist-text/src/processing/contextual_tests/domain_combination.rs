@@ -168,10 +168,7 @@ fn assert_custody(
 }
 
 fn empty_catalogue() -> System {
-    System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap()
+    System::default()
 }
 
 fn assert_selected_cell_cannot_fall_through_to_ordinary_shaping(output: &AnalyzedSource) {

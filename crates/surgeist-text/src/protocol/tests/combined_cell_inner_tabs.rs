@@ -773,11 +773,10 @@ fn qualify(case: Case<'_>, expected: Expected<'_>) {
         width,
     } = expected;
     let bytes = qualified_font();
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let ordinary = captured(
         text,
         size,

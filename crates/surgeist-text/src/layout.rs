@@ -1,7 +1,7 @@
 use std::{fmt, sync::Arc};
 
 use super::{
-    BaselineShift, Brush, Direction, Edit, FontCatalogueIdentity, FontData, Id, InlineBoxKind, Key,
+    BaselineShift, Brush, CataloguePublication, Direction, Edit, FontData, Id, InlineBoxKind, Key,
     LineOrientation, Options, Point, Range, Rect, Result, SelectionPaint, Size, Source, Style,
     VerticalAlign,
 };
@@ -53,7 +53,7 @@ impl Layout {
         source: &Source,
         style: &Style,
         options: Options,
-        catalogue: &FontCatalogueIdentity,
+        catalogue: &CataloguePublication,
     ) -> bool {
         self.source() == source
             && self.default_style() == style

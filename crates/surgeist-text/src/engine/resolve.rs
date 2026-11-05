@@ -2,8 +2,9 @@
 // Parley 0.9.0 src/resolve/mod.rs (Copyright 2021 the Parley Authors).
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use fontique::{Collection, FamilyId, FontStyle, FontWeight, FontWidth, GenericFamily, Language};
 use parlance::{FontFamilyName, FontFeature, FontVariation};
+use parlance::{FontStyle, FontWeight, FontWidth, Language};
+use surgeist_font::{FontCatalogue, FontFamily};
 
 use crate::{
     Brush, Decoration, Error, ErrorCode, LineHeight, Range, Result, Source, TextNumericError,
@@ -19,7 +20,7 @@ pub(crate) struct ResolvedStyleRun {
 /// Authored span order has already selected this row; shaping does not replay it.
 #[derive(Clone, Debug)]
 pub(crate) struct ResolvedStyle {
-    pub(crate) font_family: Vec<FamilyId>,
+    pub(crate) font_family: Vec<FontFamily>,
     pub(crate) font_size: f32,
     pub(crate) font_width: FontWidth,
     pub(crate) font_style: FontStyle,
@@ -38,7 +39,7 @@ pub(crate) struct ResolvedStyle {
 /// Canonical font-only fields shared by a body style and glyph-free context.
 /// This is not a paint/lexical style populated with placeholder values.
 pub(crate) struct ResolvedFontStyle {
-    pub(crate) font_family: Vec<FamilyId>,
+    pub(crate) font_family: Vec<FontFamily>,
     pub(crate) font_size: f32,
     pub(crate) font_width: FontWidth,
     pub(crate) font_style: FontStyle,
@@ -129,7 +130,7 @@ pub(crate) fn winning_span<T>(
 }
 
 pub(crate) fn resolve(
-    collection: &mut Collection,
+    collection: &mut FontCatalogue,
     styles: &[AnalyzedStyleRun],
     scale: f32,
 ) -> Result<Vec<ResolvedStyleRun>> {
@@ -146,7 +147,7 @@ pub(crate) fn resolve(
 /// Resolves the actual captured base style even when no body span wins it.
 /// The returned row joins the canonical preparation style table.
 pub(crate) fn resolve_default(
-    collection: &mut Collection,
+    collection: &mut FontCatalogue,
     style: &ValidatedStyle,
     scale: f32,
 ) -> Result<ResolvedStyleRun> {
@@ -156,7 +157,7 @@ pub(crate) fn resolve_default(
 }
 
 fn resolve_style(
-    collection: &mut Collection,
+    collection: &mut FontCatalogue,
     validated: &ValidatedStyle,
     scale: f32,
 ) -> Result<ResolvedStyle> {
@@ -164,19 +165,12 @@ fn resolve_style(
     let mut families = Vec::new();
     if let Some(request) = validated.parsed_font_family() {
         for family in request {
-            match family {
-                FontFamilyName::Named(name) => {
-                    if let Some(id) = collection.family_id(name) {
-                        families.push(id);
-                    }
-                }
-                FontFamilyName::Generic(generic) => {
-                    families.extend(collection.generic_families(*generic))
-                }
+            if let FontFamilyName::Named(name) = family
+                && let Some(handle) = collection.family_by_name(name)
+            {
+                families.push(handle);
             }
         }
-    } else {
-        families.extend(collection.generic_families(GenericFamily::SansSerif));
     }
     let mut features = parse_features(validated)?;
     let mut variations = parse_variations(validated)?;
@@ -196,7 +190,7 @@ fn resolve_style(
 fn resolved_fields(
     style: &crate::Style,
     locale: Option<Language>,
-    families: Vec<FamilyId>,
+    families: Vec<FontFamily>,
     features: Vec<FontFeature>,
     variations: Vec<FontVariation>,
     scale: f32,
@@ -229,7 +223,7 @@ fn resolved_fields(
 fn resolved_font_fields(
     style: &crate::Style,
     locale: Option<Language>,
-    families: Vec<FamilyId>,
+    families: Vec<FontFamily>,
     variations: Vec<FontVariation>,
     font_size: f32,
     line_height: LineHeight,
@@ -286,7 +280,7 @@ pub(crate) fn font_line_height(
 /// family ids/settings are materialized, under the feature transaction. The
 /// ordinary body resolver above keeps its existing parser and matching policy.
 pub(crate) fn resolve_scope(
-    collection: &mut Collection,
+    collection: &mut FontCatalogue,
     style: &crate::Style,
     scale: f32,
     budget: &mut crate::processing::contextual::alignment::ScopeAlignmentBudget,
@@ -295,29 +289,15 @@ pub(crate) fn resolve_scope(
     budget.work(style.locale.as_ref().map_or(0, String::len))?;
     let locale = crate::style::scope_style_locale(style)?;
     let mut families = Vec::new();
-    if style.font.family.is_empty() {
-        for id in collection.generic_families(GenericFamily::SansSerif) {
-            scope_push(budget, &mut families, id)?;
-        }
-    } else {
-        for source in &style.font.family {
-            budget.work(source.len())?;
-            // FontFamilyName::parse borrows its named input, including quoted
-            // names. This is the same first-entry rule as parse_font_families.
-            let family = FontFamilyName::parse(source)
-                .ok_or_else(|| Error::new(ErrorCode::InvalidStyle, "invalid scope font family"))?;
-            match family {
-                FontFamilyName::Named(name) => {
-                    if let Some(id) = collection.family_id(&name) {
-                        scope_push(budget, &mut families, id)?;
-                    }
-                }
-                FontFamilyName::Generic(generic) => {
-                    for id in collection.generic_families(generic) {
-                        scope_push(budget, &mut families, id)?;
-                    }
-                }
-            }
+    for source in &style.font.family {
+        budget.work(source.len())?;
+        // The parser borrows named inputs, including quoted names.
+        let family = FontFamilyName::parse(source)
+            .ok_or_else(|| Error::new(ErrorCode::InvalidStyle, "invalid scope font family"))?;
+        if let FontFamilyName::Named(name) = family
+            && let Some(handle) = collection.family_by_name(&name)
+        {
+            scope_push(budget, &mut families, handle)?;
         }
     }
     let variations_source = scope_settings_source(&style.font.variations, budget)?;
@@ -577,7 +557,7 @@ pub(crate) fn source_style(styles: &[AnalyzedStyleRun], at: usize) -> usize {
 /// Resolve the actual captured container's complete font settings for inner tabs.
 /// All owned parse/family/setting scratch is admitted before materialization.
 pub(crate) fn resolve_cell_tab_style(
-    collection: &mut Collection,
+    collection: &mut FontCatalogue,
     style: &crate::Style,
     scale: f32,
     budget: &mut crate::processing::contextual::alignment::ScopeAlignmentBudget,

@@ -6,7 +6,7 @@ use skrifa::{
     raw::TableProvider,
 };
 
-fn observe_actual_instance(line: &FinalizedLine, expected: &crate::FontCatalogueIdentity) {
+fn observe_actual_instance(line: &FinalizedLine, expected: &crate::CataloguePublication) {
     let run = line.run_views().next().unwrap();
     let font = skrifa::FontRef::new(run.face().bytes()).unwrap();
     assert_eq!(run.face().catalogue_identity(), expected);

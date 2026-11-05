@@ -46,11 +46,10 @@ fn capture_source(source: Source, base_style: Style, font: Vec<u8>) -> PreparedT
         crate::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(font).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(font, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     system
         .prepare(
             &crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word),
@@ -285,12 +284,12 @@ fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
                 (1, Range::new(1, 2), Range::new(1, 2)),
             ]
         );
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut system = System::default();
         system
-            .register_fonts(crate::shaping_test_fonts::casing_ahem())
+            .register_fonts(
+                crate::shaping_test_fonts::casing_ahem(),
+                crate::test_fonts::FONT_LIMITS,
+            )
             .unwrap();
         let prepared = system
             .prepare(

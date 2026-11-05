@@ -138,11 +138,10 @@ fn prepare(bytes: &[u8], source: &Source, first: f64) -> PreparedText {
         analyzed.graphemes().collect::<Vec<_>>(),
         [Range::new(0, 1), Range::new(1, 2)]
     );
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.to_vec()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap();

@@ -191,11 +191,10 @@ fn register(bytes: Vec<u8>) -> System {
     for tag in [*b"glyf", *b"loca", *b"hhea"] {
         assert_eq!(sfnt::table(&bytes, tag), sfnt::table(AHEM, tag));
     }
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     system
 }
 
@@ -832,7 +831,9 @@ fn contained_groups_from_real_fallback_fonts_move_together_without_a_cross_font_
         Some(0.0)
     );
     let mut system = register(primary.clone());
-    system.register_fonts(fallback.clone()).unwrap();
+    system
+        .register_fonts(fallback.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let mut source = Source::identified("A\u{1361}\u{301}A", Id::from_u64(1564017), 1);
     // This is an authored font-request difference on the mark. A
     // uniform EGC query with two equally partial faces does not union them.

@@ -130,12 +130,12 @@ fn seam(text: &str, at: usize, side: SourceBoxSide) -> ContextualSourceInput {
 }
 
 fn font_system() -> System {
-    let mut value = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut value = System::default();
     value
-        .register_fonts(crate::shaping_test_fonts::casing_ahem())
+        .register_fonts(
+            crate::shaping_test_fonts::casing_ahem(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     value
 }

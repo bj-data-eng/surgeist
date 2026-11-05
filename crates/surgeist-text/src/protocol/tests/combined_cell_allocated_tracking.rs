@@ -343,12 +343,12 @@ fn ordinary_bb_uses_the_same_real_parent_font_and_existing_allocated_tracking_co
         Wrap::Word,
     );
     assert_eq!(analyzed.combined_cells().len(), 0);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     system
-        .register_fonts(mixed.parent.bytes().to_vec())
+        .register_fonts(
+            mixed.parent.bytes().to_vec(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     let prepared = system
         .prepare(&analyzed, PreparationOptions::default())

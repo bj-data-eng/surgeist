@@ -94,12 +94,11 @@ fn options() -> Options {
 }
 
 fn registered(bytes: &[Vec<u8>; 2]) -> System {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     for face in bytes {
-        system.register_fonts(face.clone()).unwrap();
+        system
+            .register_fonts(face.clone(), crate::test_fonts::FONT_LIMITS)
+            .unwrap();
     }
     system
 }

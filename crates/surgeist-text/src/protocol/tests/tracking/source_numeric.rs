@@ -32,11 +32,10 @@ fn input(source: &Source, style: Style) -> ParagraphInput {
 }
 
 fn register(bytes: &[u8]) -> System {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.to_vec()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     system
 }
 

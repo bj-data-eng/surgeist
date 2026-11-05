@@ -1239,17 +1239,9 @@ dependencies = [
  "hashbrown 0.17.1",
  "linebender_resource_handle",
  "memmap2",
- "objc2 0.6.4",
- "objc2-core-foundation",
- "objc2-core-text",
- "objc2-foundation 0.3.2",
  "parlance",
  "read-fonts",
- "roxmltree",
  "smallvec",
- "windows",
- "windows-core",
- "yeslogic-fontconfig-sys",
 ]
 
 [[package]]
@@ -2378,16 +2370,6 @@ dependencies = [
  "objc2 0.5.2",
  "objc2-contacts",
  "objc2-foundation 0.2.2",
-]
-
-[[package]]
-name = "objc2-core-text"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cde0dfb48d25d2b4862161a4d5fcc0e3c24367869ad306b0c9ec0073bfed92d"
-dependencies = [
- "bitflags 2.13.0",
- "objc2-core-foundation",
 ]
 
 [[package]]
@@ -3698,6 +3680,7 @@ dependencies = [
  "surgeist-shape",
  "surgeist-task",
  "surgeist-template",
+ "surgeist-test",
  "surgeist-text",
  "surgeist-window",
 ]
@@ -3770,7 +3753,10 @@ name = "surgeist-font"
 version = "0.1.0"
 dependencies = [
  "brotli-decompressor",
+ "fontique",
+ "linebender_resource_handle",
  "miniz_oxide",
+ "parlance",
 ]
 
 [[package]]
@@ -3852,7 +3838,9 @@ dependencies = [
  "serde_json",
  "serde_path_to_error",
  "sha2",
+ "surgeist-font",
  "surgeist-generator",
+ "surgeist-test",
  "surgeist-text",
 ]
 
@@ -3870,6 +3858,7 @@ dependencies = [
  "pollster",
  "proptest",
  "skrifa",
+ "surgeist-test",
  "surgeist-text",
  "surgeist-window",
  "vello_encoding",
@@ -3926,13 +3915,15 @@ dependencies = [
 [[package]]
 name = "surgeist-test"
 version = "0.1.0"
+dependencies = [
+ "surgeist-font",
+]
 
 [[package]]
 name = "surgeist-text"
 version = "0.1.0"
 dependencies = [
  "accesskit",
- "fontique",
  "hypher",
  "icu_casemap",
  "icu_locale",
@@ -3940,10 +3931,10 @@ dependencies = [
  "icu_properties",
  "icu_provider",
  "icu_segmenter",
- "linebender_resource_handle",
  "parlance",
  "parley_data",
  "skrifa",
+ "surgeist-font",
  "surgeist-shaper",
 ]
 
@@ -5318,17 +5309,6 @@ name = "xml-rs"
 version = "0.8.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ae8337f8a065cfc972643663ea4279e04e7256de865aa66fe25cec5fb912d3f"
-
-[[package]]
-name = "yeslogic-fontconfig-sys"
-version = "6.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d8b8abf912b9a29ff112e1671c97c33636903d13a69712037190e6805af4f76"
-dependencies = [
- "dlib",
- "once_cell",
- "pkg-config",
-]
 
 [[package]]
 name = "yoke"

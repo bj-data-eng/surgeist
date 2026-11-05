@@ -135,11 +135,10 @@ fn raw_auto_case(
     let source = Source::identified(source_text, crate::Id::from_u64(6602), 9);
     let original = source_text.encode_utf16().collect::<Vec<_>>();
     let own = raw_auto_style(hyphens, locale);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     // Shape the actual nominal indication as ordinary authored source. This
     // proves its real glyph/advance without requiring working SHY behavior as
     // a precondition for any Auto test.

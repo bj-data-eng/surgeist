@@ -113,11 +113,11 @@ impl<'a> StyleRef<'a> {
     }
     /// Resolve content language only when an actual phrase context reads it.
     /// A row's language is independent of its own separator request.
-    pub(super) fn phrase_language(&self) -> Result<Option<fontique::Language>> {
+    pub(super) fn phrase_language(&self) -> Result<Option<parlance::Language>> {
         self.authored
             .locale
             .as_deref()
-            .map(fontique::Language::parse)
+            .map(parlance::Language::parse)
             .transpose()
             .map_err(|_| {
                 Error::new(ErrorCode::InvalidStyle, "invalid transform content locale").with_detail(

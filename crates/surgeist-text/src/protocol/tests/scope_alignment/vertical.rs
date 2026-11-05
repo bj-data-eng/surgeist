@@ -191,11 +191,10 @@ fn prepare(
     scale: f32,
 ) -> (System, PreparedText, CapturedScope, CapturedScope) {
     let (captured, analysis) = analyzed(input, typography);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.to_vec()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let options = PreparationOptions::try_new(scale, PreparationOptions::default().tabs())
         .unwrap()
         .with_orientation(LineOrientation::Vertical);

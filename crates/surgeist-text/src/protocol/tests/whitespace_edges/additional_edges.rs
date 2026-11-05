@@ -228,11 +228,10 @@ fn trailing_ogham_is_removed_while_leading_ogham_keeps_real_advance() {
             .to_u32(),
         3
     );
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let inspect = |line: &FinalizedLine| {
         line.run_views()
             .flat_map(|run| {
@@ -806,11 +805,10 @@ fn prepared_discard_separator(
     let hmtx = crate::test_fonts::table(&bytes, *b"hmtx");
     assert_eq!(crate::test_fonts::u16_at(hmtx, 35 * 4), 1000);
     assert_eq!(crate::test_fonts::u16_at(hmtx, 4), 2000);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let source = Source::identified("A\u{3000}", crate::Id::from_u64(7401), 7);
     let input = ParagraphInput {
         terminal_edge,
@@ -980,12 +978,12 @@ fn discard_edge_capture(
         replacements: vec![],
         boundary_policies: vec![],
     };
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     system
-        .register_fonts(crate::shaping_test_fonts::width_ahem())
+        .register_fonts(
+            crate::shaping_test_fonts::width_ahem(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     system
         .prepare(

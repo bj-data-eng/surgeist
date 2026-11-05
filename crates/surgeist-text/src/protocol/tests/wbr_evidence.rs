@@ -57,12 +57,12 @@ fn input(
     }
 }
 fn catalogue() -> System {
-    let mut s = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
+    let mut s = System::default();
+    s.register_fonts(
+        crate::shaping_test_fonts::width_ahem(),
+        crate::test_fonts::FONT_LIMITS,
+    )
     .unwrap();
-    s.register_fonts(crate::shaping_test_fonts::width_ahem())
-        .unwrap();
     s
 }
 fn analyzed(value: ParagraphInput) -> AnalyzedSource {

@@ -35,8 +35,8 @@ private implementation organization.
 | Native inline endpoints | `InlineBoundaryAllocation`, `InlineBoxEdgeComponents`, `InlineBoxSource`, `InlineBoxEdgeContext`, `InlineBoundaryContextAllocation`, `ControlAllocation::boundary`, `LineSelectionRequest::boundary_context`, `PreparedText::boundary_context_demand`, `FinalizedControlView::{flow_interval, strip_interval}` | [protocol types](../src/protocol/mod.rs), [checked box ownership](../src/protocol/inline_box.rs), [selection](../src/protocol/selection.rs), [readback](../src/protocol/readback.rs) |
 | Supplied mixed lines | `BidiLevel`, `InlineWhitespaceEdge`, `SuppliedLine`, edge decisions and borrowed visual order | [supplied_line.rs](../src/supplied_line.rs) |
 | Paragraph layout | `Options`, `Alignment`, `Indent`, `ValidatedOptions` | [options.rs](../src/options.rs) |
-| Original analysis and layout | `AnalyzedSource`, `AnalyzedDomain`, `AnalysisIdentity`, `System`, `Builder`, `SystemOptions` | [analyzed.rs](../src/analyzed.rs), [system.rs](../src/system.rs) |
-| Font catalogue | `FontCatalogueMode`, issued `FontCatalogueIdentity`, `System::register_fonts` and `refresh_fonts` | [catalogue.rs](../src/catalogue.rs) |
+| Original analysis and layout | `AnalyzedSource`, `AnalyzedDomain`, `AnalysisIdentity`, `System`, `Builder` | [analyzed.rs](../src/analyzed.rs), [system.rs](../src/system.rs) |
+| Font catalogue | `surgeist_font::CataloguePublication`, `System::register_fonts`, `register_font_resource` and `refresh_fonts` | [system.rs](../src/system.rs), [Font](../../surgeist-font/README.md) |
 | Font resources and metrics | `FontData`, `FontFace`, `EffectiveFontInstance`, `FontMetrics`, `StrikeoutMetrics`, `VerticalGlyphMetrics`, `FontBaselineMeasurement`, `UprightFontMetrics` | [font.rs](../src/font.rs), [font/metrics.rs](../src/font/metrics.rs), [vertical glyph metrics](../src/font/metrics/vertical.rs), [named baselines](../src/font/metrics/baseline.rs) |
 | Borrowed readback | `RunView`, `FinalizedRunView`, `GlyphBasis`, positioned `GlyphPlacement`, actual decorations | [views.rs](../src/views.rs) |
 | Prepared hyphenation | `PreparedWord`, `PreparedHyphenationCut`, borrowed views, `PreparedWordPortion`, `HyphenationResource`, `HyphenationProvenance` | [hyphenation.rs](../src/protocol/hyphenation.rs), [resource support](hyphenation-resources.md) |
@@ -44,7 +44,7 @@ private implementation organization.
 | Placed original-source fragments | `SourceRangeFragments`, `SourceRangeUnit`, `SourceRangeGeometry`, `SourceRangeFragmentError`, `Layout::source_range_fragments` | [range_fragments.rs](../src/range_fragments.rs), [composition guide](composed-lines.md) |
 | Output and interaction | `Layout`, glyph runs, line/box facts, `PlacedPosition`, `PlacedSelection`, `PlacedSelectionPiece`, source cursors/selections and movement | [layout.rs](../src/layout.rs) |
 | Ranges and edits | `Range`, `SourcePosition`, `SourceRange`, `Edit`, `TextEdit` | [range.rs](../src/range.rs), [edit.rs](../src/edit.rs) |
-| Cache identity | `Key`, `SourceKey`, `StyleKey`, `OptionsKey`, `FontGeneration`, `Stats` | [cache.rs](../src/cache.rs) |
+| Cache identity | `Key`, `SourceKey`, `StyleKey`, `OptionsKey`, `Stats` | [cache.rs](../src/cache.rs) |
 | Errors | `Error`, `ErrorCode`, `ErrorDetail`, `Result` | [error.rs](../src/error.rs) |
 
 ## Word breaking
@@ -1053,23 +1053,23 @@ geometry engine or exclusive box-body paint rectangles.
 
 ## Font catalogue publications
 
-`SystemOptions::default()` selects `FontCatalogueMode::System`; `RegisteredOnly`
-excludes system discovery/fallback. `register_fonts(Vec<u8>)` consumes a whole
-file and admits all its faces or leaves the current state unchanged. Refresh
-constructs a new collection and source cache and replays accepted registered
-bytes. The opaque catalogue identity retains its actual System issuer and
-checked generation; equal generations from different Systems are distinct.
-`Key::from_validated` requires this authentic identity, and `Key` is Clone rather
-than Copy. Neither a numeric generation nor a font-content hash grants catalogue
-authority. Historical layouts keep their old identities and selected resources.
+`System::default()` creates an empty application catalogue. `System::new` takes an
+existing `surgeist_font::FontCatalogue`. `register_fonts(Vec<u8>, DecodeLimits)`
+admits encoded bytes, and `register_font_resource(FontResource)` registers an
+already admitted resource. Registration admits every face before publication.
+Refresh replays the same resources in registration order. Both operations
+invalidate layout lookup after publication succeeds.
 
-Generation exhaustion is `FontGenerationExhausted`; malformed containers/faces
-and valid faces the catalogue cannot admit are distinct `FontLoadFailed` details.
-No operation publishes partial registration or clears a cache on refusal.
-Registration does not define unregister, family replacement, or a new missing-
-glyph policy. These are catalogue capabilities. The private owned engine retains the selected
-resources through actual preparation, selected-line finalization and placement;
-the public mixed-line protocol lends those actual phases without copying glyph packets.
+`surgeist_font::CataloguePublication` carries the actual issuer and checked
+generation. Equal generations from different catalogues are distinct.
+`Key::from_validated` requires that publication. Historical layouts keep their
+original publications and selected faces.
+
+Text reports structural admission failures through `ErrorDetail::FontDecode` and
+provider or publication failures through `ErrorDetail::FontCatalogue` under
+`FontLoadFailed`. A refusal preserves the previous catalogue and layout cache.
+The private engine retains selected faces through preparation, finalization, and
+placement.
 
 Font fallback credits nominal coverage only for the cluster's shaping
 contributors. A noncontributing format scalar such as TAG SPACE cannot make
@@ -1078,14 +1078,11 @@ font's metrics without adding paint or changing its original source.
 
 ## Glyph-free associated-font metrics
 
-`System::registered_font_faces()` lends accepted registrations in request order,
-then original collection-face order. It does not enumerate discovered fonts,
-resolve a style or shape a sample. `FontFace::to_owned()` retains the actual Blob,
-collection index and catalogue publication without copying font bytes. The same
-canonical resource owner is used by layout readback. `FontData` equality retains
-its existing resource identity plus collection index semantics; catalogue
-qualification is separate. Refresh can therefore produce resource-equal handles
-with different authentic publications.
+`System::registered_font_faces()` yields strong `FontData` handles in request
+order, then original collection-face order. `FontFace::to_owned()` retains the
+same canonical admitted face and catalogue publication. `FontData` equality
+uses the actual resource identity and collection index. Publication qualification
+is separate, so refresh can produce equal face handles with distinct publications.
 
 `FontData::unsynthesized_instance(size, normalized_coords)` validates the actual
 face and complete canonical coordinates. Its borrowed `metrics(expected_catalogue)`
@@ -1440,9 +1437,10 @@ quantization enabled, `TextOverflow::Clip`, `TextAlignLast::Auto`, and zero inde
 The indent defaults to first-line scope. A nonzero indent with `each_line = true`,
 `first_line = false`, and `hanging = false` is unsupported by the standalone indent policy.
 
-`Style::default()` requests a 16-unit font with normal weight, width, and slant;
-the empty family list maps to generic sans-serif. It uses metric-relative line
-height `1.0`, zero letter/word spacing, opaque black, no decorations, automatic
+`Style::default()` requests a 16-unit font with normal weight, width, and slant.
+Its family list is empty. For ordinary shaping, specify a registered family
+name. The default style uses metric-relative line height `1.0`, zero letter/word
+spacing, opaque black, no decorations, automatic
 direction, preserved whitespace, word wrapping, normal word-break and
 overflow-wrap, and no text transform.
 

@@ -3,7 +3,7 @@
 
 use super::EffectiveFontInstance;
 use crate::{
-    Error, ErrorCode, ErrorDetail, FontCatalogueIdentity, Rect, Result, TextNumericError,
+    CataloguePublication, Error, ErrorCode, ErrorDetail, Rect, Result, TextNumericError,
     TextNumericPhase,
 };
 use skrifa::{
@@ -153,7 +153,7 @@ impl<'a> EffectiveFontInstance<'a> {
     pub fn glyph_outline(
         &self,
         glyph_id: u32,
-        expected_catalogue: &FontCatalogueIdentity,
+        expected_catalogue: &CataloguePublication,
     ) -> Result<GlyphOutlineGeometry<'a>> {
         if self.face().catalogue_identity() != expected_catalogue {
             return Err(Error::new(

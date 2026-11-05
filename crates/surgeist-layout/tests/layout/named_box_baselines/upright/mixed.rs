@@ -41,11 +41,10 @@ fn mixed_font() -> Vec<u8> {
 
 fn capture(raw: &str, id: u64, boxes: &[(u64, t::InlineBoxKind, t::Size)]) -> Fixture {
     let bytes = mixed_font();
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(bytes.clone(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let face = system.registered_font_faces().next().unwrap().to_owned();
     let instance = face.unsynthesized_instance(4.0, &[]).unwrap();
     let nominal = instance

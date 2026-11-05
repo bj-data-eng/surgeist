@@ -105,12 +105,12 @@ fn prepare(input: t::ParagraphInput) -> t::PreparedText {
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = t::System::default();
     system
-        .register_fonts(include_bytes!("fixtures/fonts/ahem/Ahem.ttf").to_vec())
+        .register_fonts(
+            include_bytes!("fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+            crate::common::FONT_LIMITS,
+        )
         .unwrap();
     let prepared = system
         .prepare(&analyzed, t::PreparationOptions::default())
@@ -407,3 +407,5 @@ fn older_disconnected_zero_width_space_does_not_lend_permission_to_a_later_cut()
         }
     }
 }
+
+mod common;

@@ -20,11 +20,10 @@ fn prepare(bytes: &[u8], text: &str, heights: [LineHeight; 2]) -> PreparedText {
     prepare_source(bytes, source, height(heights[0]), &[0, 1, 2])
 }
 fn prepare_source(bytes: &[u8], source: Source, base_style: Style, cuts: &[usize]) -> PreparedText {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.to_vec()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let input = ParagraphInput {
         terminal_edge: ParagraphTerminalEdge::BlockEnd,
         tab_reference: None,
@@ -218,11 +217,10 @@ fn height_only_spans_keep_joint_ligature_and_mark_shapes_with_owned_unit_and_fra
 fn raw_profiles_keep_their_rounding_policy_with_span_owned_height_maximum() {
     for quantize in [false, true] {
         for tall_first in [false, true] {
-            let mut system = System::new(SystemOptions {
-                font_catalogue: FontCatalogueMode::RegisteredOnly,
-            })
-            .unwrap();
-            system.register_fonts(AHEM.to_vec()).unwrap();
+            let mut system = System::default();
+            system
+                .register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
+                .unwrap();
             let mut source = Source::new("XX");
             source.span(
                 if tall_first {

@@ -1,42 +1,11 @@
 use std::hash::{Hash, Hasher};
 
 use super::{
-    Brush, Decoration, DecorationBrush, DecorationOffset, DecorationThickness, Font,
-    FontCatalogueIdentity, Id, Indent, InlineBox, LineHeight, Options, Size, Slant, Source,
+    Brush, CataloguePublication, Decoration, DecorationBrush, DecorationOffset,
+    DecorationThickness, Font, Id, Indent, InlineBox, LineHeight, Options, Size, Slant, Source,
     SourceRevision, Style, ValidatedOptions, ValidatedSource, ValidatedStyle, VerticalAlign,
     Weight, Width,
 };
-
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct FontGeneration(u64);
-
-impl FontGeneration {
-    #[must_use]
-    pub const fn initial() -> Self {
-        Self(0)
-    }
-
-    #[must_use]
-    pub const fn get(self) -> u64 {
-        self.0
-    }
-
-    #[must_use]
-    pub const fn checked_next(self) -> Option<Self> {
-        match self.0.checked_add(1) {
-            Some(value) => Some(Self(value)),
-            None => None,
-        }
-    }
-}
-
-#[cfg(test)]
-impl FontGeneration {
-    #[must_use]
-    pub(crate) const fn exhausted_for_test() -> Self {
-        Self(u64::MAX)
-    }
-}
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Stats {
@@ -89,7 +58,7 @@ pub struct Key {
     source: SourceKey,
     styles: StyleKey,
     basis: RequestBasisKey,
-    font_catalogue: FontCatalogueIdentity,
+    font_catalogue: CataloguePublication,
 }
 
 impl Key {
@@ -98,7 +67,7 @@ impl Key {
         source: &ValidatedSource,
         style: &ValidatedStyle,
         options: ValidatedOptions,
-        font_catalogue: &FontCatalogueIdentity,
+        font_catalogue: &CataloguePublication,
     ) -> Self {
         Self::from_parts(source.source(), style.authored(), options, font_catalogue)
     }
@@ -106,7 +75,7 @@ impl Key {
     pub(crate) fn from_analyzed(
         analyzed: &crate::engine::AnalyzedData,
         options: ValidatedOptions,
-        font_catalogue: &FontCatalogueIdentity,
+        font_catalogue: &CataloguePublication,
     ) -> Self {
         Self::from_parts(
             analyzed.processed.source(),
@@ -120,7 +89,7 @@ impl Key {
         source: &Source,
         style: &Style,
         options: ValidatedOptions,
-        font_catalogue: &FontCatalogueIdentity,
+        font_catalogue: &CataloguePublication,
     ) -> Self {
         let authored_options = options.authored();
         Self {
@@ -175,13 +144,13 @@ impl Key {
     }
 
     #[must_use]
-    pub const fn font_generation(&self) -> FontGeneration {
+    pub const fn font_generation(&self) -> u64 {
         self.font_catalogue.generation()
     }
 
     /// Returns the authentic catalogue publication used by this request.
     #[must_use]
-    pub const fn font_catalogue(&self) -> &FontCatalogueIdentity {
+    pub const fn font_catalogue(&self) -> &CataloguePublication {
         &self.font_catalogue
     }
 }

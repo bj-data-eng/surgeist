@@ -62,11 +62,9 @@ fn source(value: &str) -> Source {
     Source::identified(value, Id::from_u64(1515002), 11)
 }
 fn system_with(bytes: Vec<u8>) -> System {
-    let mut s = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    s.register_fonts(bytes).unwrap();
+    let mut s = System::default();
+    s.register_fonts(bytes, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     s
 }
 fn analyze(value: ParagraphInput) -> AnalyzedSource {

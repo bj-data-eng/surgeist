@@ -264,11 +264,10 @@ fn registered(
     )
     .unwrap();
     let analyzed = crate::test_support::text::in_flat_wrapping_context(analyzed, ancestor_wrap);
-    let mut system = surgeist_text::System::new(surgeist_text::SystemOptions {
-        font_catalogue: surgeist_text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes).unwrap();
+    let mut system = surgeist_text::System::default();
+    system
+        .register_fonts(bytes, surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(&analyzed, surgeist_text::PreparationOptions::default())
         .unwrap();
@@ -743,11 +742,10 @@ fn raw_minimum<S: LayoutScalar>(overflow: OverflowWrap) -> (f64, Vec<LineFact>) 
         surgeist_text::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let mut system = surgeist_text::System::new(surgeist_text::SystemOptions {
-        font_catalogue: surgeist_text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = surgeist_text::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(&analyzed, surgeist_text::PreparationOptions::default())
         .unwrap();

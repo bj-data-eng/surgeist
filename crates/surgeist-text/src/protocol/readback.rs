@@ -2018,16 +2018,15 @@ impl PreparedOpportunityView<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Font, FontCatalogueMode, LineHeight, Options, Style, System, SystemOptions};
+    use crate::{Font, LineHeight, Options, Style, System};
 
     const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
     fn actual_line(text: &str) -> FinalizedLine {
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        system.register_fonts(AHEM.to_vec()).unwrap();
+        let mut system = System::default();
+        system
+            .register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
+            .unwrap();
         let layout = system
             .layout(
                 Source::new(text),
@@ -2135,11 +2134,10 @@ mod tests {
             ParagraphBaseDirection, ParagraphInput, PlacementCoverage, PlacementRequest,
             PreparationOptions, PreparedBreakKind, SpacingAllocations, SpacingPolicy, TabContext,
         };
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        system.register_fonts(AHEM.to_vec()).unwrap();
+        let mut system = System::default();
+        system
+            .register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
+            .unwrap();
         let source = Source::new("A");
         let analysis = crate::AnalyzedSource::from_paragraph(
             ParagraphInput {

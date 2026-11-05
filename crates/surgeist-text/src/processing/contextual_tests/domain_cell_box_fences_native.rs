@@ -248,11 +248,10 @@ fn qualify_native_site(affinity: Affinity, tracking: f64) {
     assert_eq!(source.combined_cells().len(), 2);
     let _ = preserved_oof(source, &processed, affinity);
     let analyzed = crate::test_wrapping::bind_missing(source, Wrap::Word);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     assert_eq!(system.registered_font_faces().count(), 1);
     let prepared = system
         .prepare(

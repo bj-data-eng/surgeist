@@ -55,11 +55,10 @@ fn auto_prepare(word: &str, hyphens: Hyphens, locale: Option<&str>) -> (Prepared
             .unwrap(),
         crate::Wrap::Word,
     );
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap();
@@ -274,11 +273,10 @@ fn native_direct_analysis_counts_differ_from_the_actual_raw_standalone_operation
         hyphenate_character: HyphenateCharacter::String(Text::from("")),
         ..style()
     };
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let analyzed = AnalyzedSource::new(
         source.clone(),
         own.clone(),

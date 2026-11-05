@@ -194,11 +194,10 @@ fn execute(prepared: &PreparedText) -> crate::Result<FinalizedLine> {
 fn material_tracking_refuses_unproven_external_joining_between_real_arabic_and_syriac_runs() {
     let bytes = fixture();
     qualify(&bytes);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     // Each isolated scalar is nominal35/isol35, proving that the combined
     // init100/fina82 below are actual context-sensitive substitutions.
     for text in ["\u{628}", "\u{712}"] {

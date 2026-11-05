@@ -247,11 +247,10 @@ fn a_greek_cell_does_not_seed_the_outside_common_spaces_ordinary_latin_script() 
     let body = script_context_font();
     qualify_script_context_font(&body);
     let (processed, analyzed) = script_context_analysis();
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(body.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(body.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     assert_eq!(system.registered_font_faces().count(), 1);
     let prepared = system
         .prepare(

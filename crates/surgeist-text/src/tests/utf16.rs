@@ -1,12 +1,12 @@
 use super::*;
 
 fn system() -> System {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .expect("finite registered catalogue");
+    let mut system = System::default();
     system
-        .register_fonts(include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
+        .register_fonts(
+            include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .expect("actual Ahem fixture");
     system
 }

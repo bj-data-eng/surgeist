@@ -109,11 +109,10 @@ fn prepare(bytes: &[u8], source: &Source, style: Style, graphemes: &[Range]) -> 
     );
     assert_eq!(analyzed.graphemes().collect::<Vec<_>>(), graphemes);
     assert_eq!(analyzed.source(), source);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.to_vec()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap();

@@ -397,11 +397,10 @@ fn actual_primary_without_space_glyph_still_selects_its_u2010() {
         &[35, 35],
         &[(0x41, 35), (0xad, 3), (0x58, 58), (0x2010, 36), (0x2d, 15)],
     );
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let p = capture(&mut system, input("AX\u{ad}XXX", style())).unwrap();
     assert_eq!(texts(&p), [vec![0x2010]]);
 }
@@ -537,12 +536,13 @@ fn source_shy_uses_own_primary_before_an_adjacent_face_with_u2010() {
         }
     }
     let secondary = crate::test_fonts::replace_tables(&secondary, vec![(*b"name", name)]);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(primary).unwrap();
-    system.register_fonts(secondary).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(primary, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
+    system
+        .register_fonts(secondary, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let mut v = input(
         "AX\u{ad}XXX",
         Style {

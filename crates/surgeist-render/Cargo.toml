@@ -37,6 +37,7 @@ render-web = ["wgpu/webgpu"]
 render-window = ["dep:surgeist-window"]
 
 [dev-dependencies]
+surgeist-test = { path = "../surgeist-test", version = "=0.1.0" }
 pollster = "=0.4.0"
 proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
 

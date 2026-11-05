@@ -21,11 +21,10 @@ fn required_displacement(orientation: LineOrientation) {
     for (romn, b) in [(100, 1.0), (-100, -1.0)] {
         let bytes = font(romn);
         qualify(&bytes, romn);
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        system.register_fonts(bytes).unwrap();
+        let mut system = System::default();
+        system
+            .register_fonts(bytes, crate::test_fonts::FONT_LIMITS)
+            .unwrap();
         let input = analyzed(
             Source::identified("A", Id::from_u64(1561042), 1),
             own_style(),

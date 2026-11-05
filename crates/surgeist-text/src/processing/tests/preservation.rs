@@ -120,10 +120,7 @@ fn new_modes_keep_raw_standalone_admission_explicit() {
                 crate::UnsupportedTextStyleReason::RequiresProcessedSourceLayout
             )
         );
-        let mut system = crate::System::new(crate::SystemOptions {
-            font_catalogue: crate::FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut system = crate::System::default();
         let error = system
             .layout(
                 Source::new("A B"),
@@ -560,10 +557,7 @@ fn exact_units_and_discard_regressions_hold_under_both_explicit_affinities() {
         );
     }
     assert_eq!(result.source().text(), &original);
-    let mut system = crate::System::new(crate::SystemOptions {
-        font_catalogue: crate::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = crate::System::default();
     let error = system
         .layout(
             Source::new("A B"),

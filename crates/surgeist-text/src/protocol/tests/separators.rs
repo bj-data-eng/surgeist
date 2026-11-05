@@ -12,12 +12,12 @@ fn separator_style(operation: WordSpaceTransform, mode: WhiteSpace) -> Style {
     }
 }
 fn catalogue() -> System {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     system
-        .register_fonts(crate::shaping_test_fonts::width_ahem())
+        .register_fonts(
+            crate::shaping_test_fonts::width_ahem(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     system
 }

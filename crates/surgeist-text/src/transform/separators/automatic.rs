@@ -24,7 +24,7 @@ pub(crate) struct Proposal {
 #[derive(Clone, Copy)]
 enum LanguageRead {
     Unread,
-    Resolved(Option<fontique::Language>),
+    Resolved(Option<parlance::Language>),
 }
 
 #[derive(Clone, Copy)]
@@ -189,7 +189,7 @@ impl PhraseReads {
         &mut self,
         styles: &[StyleRow<'_>],
         index: usize,
-    ) -> Result<Option<fontique::Language>> {
+    ) -> Result<Option<parlance::Language>> {
         if let LanguageRead::Resolved(language) = self.languages[index] {
             return Ok(language);
         }
@@ -292,7 +292,7 @@ pub(crate) struct PhraseAnalysis {
     /// Canonical pre-replacement run coordinates, never output-local row IDs.
     rows: std::ops::Range<usize>,
     model: PhraseModel,
-    language: fontique::Language,
+    language: parlance::Language,
     input: Vec<u32>,
     coverage: Vec<crate::Range>,
     cuts: Vec<usize>,

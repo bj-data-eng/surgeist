@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
-    Alignment, Decoration, ErrorDetail, Font, FontCatalogueMode, Id, Indent, Options, Slant,
-    Source, Style, System, SystemOptions, Weight,
+    Alignment, Decoration, ErrorDetail, Font, Id, Indent, Options, Slant, Source, Style, System,
+    Weight,
 };
 
 const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -12,19 +12,20 @@ fn provider_face<'a>(data: &'a crate::FontData) -> FontFace<'a> {
 }
 
 fn owned_font(
-    data: linebender_resource_handle::Blob<u8>,
+    bytes: Vec<u8>,
     index: u32,
-    catalogue: &crate::FontCatalogueIdentity,
+    catalogue: &crate::CataloguePublication,
 ) -> crate::FontData {
-    crate::FontData::from_blob(data, index, catalogue.clone())
+    let resource =
+        surgeist_font::FontResource::decode(bytes, crate::test_fonts::FONT_LIMITS).unwrap();
+    crate::FontData::from_face(resource.face(index).unwrap(), catalogue.clone())
 }
 
 fn system(bytes: Vec<u8>) -> System {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     system
 }
 
@@ -228,24 +229,15 @@ fn actual_selected_bold_and_skew_are_executable_without_advance_or_metric_change
 fn actual_allocation_identity_is_not_a_font_id_or_content_comparison() {
     let system = system(AHEM.to_vec());
     let catalogue = system.font_catalogue_identity();
-    let blob: linebender_resource_handle::Blob<u8> = AHEM.to_vec().into();
-    let (allocation, id) = blob.clone().into_raw_parts();
-    let same = owned_font(
-        linebender_resource_handle::Blob::from_raw_parts(allocation, id + 1),
-        0,
-        catalogue,
-    );
-    let original = owned_font(blob.clone(), 0, catalogue);
-    let (different_allocation, _) =
-        linebender_resource_handle::Blob::from(AHEM.to_vec()).into_raw_parts();
-    let different = owned_font(
-        linebender_resource_handle::Blob::from_raw_parts(different_allocation, id),
-        0,
-        catalogue,
-    );
+    let bytes = crate::test_fonts::two_face_collection(AHEM.to_vec());
+    let resource =
+        surgeist_font::FontResource::decode(bytes.clone(), crate::test_fonts::FONT_LIMITS).unwrap();
+    let original = crate::FontData::from_face(resource.face(0).unwrap(), catalogue.clone());
+    let same = original.clone();
+    let different = owned_font(bytes, 0, catalogue);
+    let other_index = crate::FontData::from_face(resource.face(1).unwrap(), catalogue.clone());
     assert!(provider_face(&original).is_same_face(&provider_face(&same)));
     assert!(!provider_face(&original).is_same_face(&provider_face(&different)));
-    let other_index = owned_font(blob.clone(), 1, catalogue);
     assert!(!provider_face(&original).is_same_face(&provider_face(&other_index)));
 }
 
@@ -254,7 +246,7 @@ fn present_malformed_fvar_never_becomes_static_and_coordinate_validation_is_exac
     let system = system(AHEM.to_vec());
     let catalogue = system.font_catalogue_identity();
     let bytes = variable_ahem();
-    let valid = owned_font(bytes.clone().into(), 0, catalogue);
+    let valid = owned_font(bytes.clone(), 0, catalogue);
     let face = provider_face(&valid);
     let mut two_axes = table(&bytes, *b"fvar").to_vec();
     let mut second_axis = two_axes[16..36].to_vec();
@@ -263,7 +255,7 @@ fn present_malformed_fvar_never_becomes_static_and_coordinate_validation_is_exac
     two_axes[8..10].copy_from_slice(&2u16.to_be_bytes());
     two_axes[14..16].copy_from_slice(&12u16.to_be_bytes());
     let two_axis_font = owned_font(
-        replace_tables(&bytes, vec![(*b"fvar", two_axes)]).into(),
+        replace_tables(&bytes, vec![(*b"fvar", two_axes)]),
         0,
         catalogue,
     );
@@ -302,7 +294,7 @@ fn present_malformed_fvar_never_becomes_static_and_coordinate_validation_is_exac
         },
     ] {
         let bad = owned_font(
-            replace_tables(&bytes, vec![(*b"fvar", corrupted)]).into(),
+            replace_tables(&bytes, vec![(*b"fvar", corrupted)]),
             0,
             catalogue,
         );
@@ -313,7 +305,7 @@ fn present_malformed_fvar_never_becomes_static_and_coordinate_validation_is_exac
             Some(&ErrorDetail::MalformedFontVariations)
         );
     }
-    let static_font = owned_font(AHEM.to_vec().into(), 0, catalogue);
+    let static_font = owned_font(AHEM.to_vec(), 0, catalogue);
     assert_eq!(
         EffectiveFontInstance::qualify(provider_face(&static_font), 20.0, &[0])
             .unwrap_err()

@@ -155,7 +155,7 @@ impl Operation<'_, '_> {
     pub(super) fn shape_with_instance(
         self,
         instance: &EffectiveFontInstance<'_>,
-        catalogue: &crate::FontCatalogueIdentity,
+        catalogue: &crate::CataloguePublication,
         script: icu_properties::props::Script,
         content: impl FnOnce() -> UprightContent,
         buffer: surgeist_shaper::UnicodeBuffer,

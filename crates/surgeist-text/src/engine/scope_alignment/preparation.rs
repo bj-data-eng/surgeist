@@ -25,7 +25,7 @@ pub(crate) struct ScopeMetricsData {
 /// Block/AtomicBlock/OutOfFlowBlock scope, never its lexical parent.
 pub(crate) fn prepare_cell_resources(
     data: &mut PreparedScopes,
-    catalogue: &mut crate::catalogue::Catalogue,
+    catalogue: &mut surgeist_font::FontCatalogue,
     analyzed: &AnalyzedData,
     options: crate::PreparationOptions,
     budget: &mut Option<ScopeAlignmentBudget>,
@@ -137,7 +137,7 @@ fn retained_pins(
 /// coordinates, query count and ongoing live/peak accounting.
 fn ensure_metric(
     data: &mut PreparedScopes,
-    catalogue: &mut crate::catalogue::Catalogue,
+    catalogue: &mut surgeist_font::FontCatalogue,
     analyzed: &AnalyzedData,
     options: crate::PreparationOptions,
     (scope, mut names): (usize, [bool; 2]),
@@ -177,24 +177,12 @@ fn ensure_metric(
     let style = captured
         .style()
         .ok_or_else(|| refusal(ScopeAlignmentError::MissingStyle { scope }))?;
-    let resolved = crate::engine::resolve::resolve_scope(
-        catalogue.collection_mut(),
-        style,
-        options.scale(),
-        budget,
-    )?;
-    let script = icu_properties::PropertyParser::<icu_properties::props::Script>::new()
+    let resolved =
+        crate::engine::resolve::resolve_scope(catalogue, style, options.scale(), budget)?;
+    icu_properties::PropertyParser::<icu_properties::props::Script>::new()
         .get_strict_utf8(&reference.script.iso15924())
         .ok_or_else(|| refusal(ScopeAlignmentError::UnsupportedReference { scope }))?;
-    let catalogue_identity = catalogue.identity().clone();
-    let instance = crate::engine::shape::scope_font(
-        catalogue.query(),
-        &resolved,
-        script,
-        &catalogue_identity,
-        budget,
-        pinned,
-    )?;
+    let instance = crate::engine::shape::scope_font(catalogue.query(), &resolved, budget, pinned)?;
     remember_pin(
         pinned,
         (
@@ -222,7 +210,7 @@ fn ensure_metric(
 /// before publishing preparation. Context-only scopes induce no query by themselves.
 pub(crate) fn prepare_resources(
     data: &mut PreparedScopes,
-    catalogue: &mut crate::catalogue::Catalogue,
+    catalogue: &mut surgeist_font::FontCatalogue,
     analyzed: &AnalyzedData,
     options: crate::PreparationOptions,
     shaped: &crate::engine::layout::data::ShapedData,
@@ -767,7 +755,7 @@ fn prepared_retention(
 /// Complete the fixed container references before any Cell packet trial.
 pub(crate) fn prepare_cell_tabs(
     data: &mut PreparedScopes,
-    catalogue: &mut crate::catalogue::Catalogue,
+    catalogue: &mut surgeist_font::FontCatalogue,
     analyzed: &AnalyzedData,
     options: crate::PreparationOptions,
     scratch: &mut crate::engine::shape::ShapeContext,
@@ -863,7 +851,7 @@ pub(crate) fn prepare_cell_tabs(
             .as_mut()
             .ok_or_else(|| refusal(ScopeAlignmentError::LimitsRequired))?,
     )?;
-    let catalogue_identity = catalogue.identity().clone();
+    let catalogue_identity = catalogue.publication().clone();
     for reference in 0..data.cell_tabs.len() {
         let mut needed = false;
         let mut space = false;
@@ -882,7 +870,7 @@ pub(crate) fn prepare_cell_tabs(
             .style()
             .ok_or_else(|| refusal(ScopeAlignmentError::MissingStyle { scope: scope.index }))?;
         let resolved = crate::engine::resolve::resolve_cell_tab_style(
-            catalogue.collection_mut(),
+            catalogue,
             style,
             options.scale(),
             ledger
@@ -1016,7 +1004,7 @@ pub(crate) fn prepare_cell_tabs(
 fn cell_tab_probe_input<'a>(
     analyzed: &'a AnalyzedData,
     styles: &'a [crate::engine::resolve::ResolvedStyleRun],
-    catalogue: &'a crate::FontCatalogueIdentity,
+    catalogue: &'a crate::CataloguePublication,
 ) -> crate::engine::ShapingInput<'a> {
     crate::engine::ShapingInput {
         formatting_breaks: &[],

@@ -1188,17 +1188,17 @@ mod tests {
     };
     use crate::protocol::*;
     use crate::{
-        Alignment, AnalyzedSource, DocumentSegmentBreaks, Font, FontCatalogueMode, Layout,
-        LineHeight, Source, Style, System, SystemOptions,
+        Alignment, AnalyzedSource, DocumentSegmentBreaks, Font, Layout, LineHeight, Source, Style,
+        System,
     };
 
     fn transformed(text: &str, case: crate::CaseTransform, locale: Option<&str>) -> Layout {
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut system = System::default();
         system
-            .register_fonts(crate::shaping_test_fonts::casing_ahem())
+            .register_fonts(
+                crate::shaping_test_fonts::casing_ahem(),
+                crate::test_fonts::FONT_LIMITS,
+            )
             .unwrap();
         system
             .layout(
@@ -1234,12 +1234,12 @@ mod tests {
     fn expansion_emission_selection_extracts_one_original_occurrence() {
         // Original Ahem owns the independently qualified ß134/S53 cmap;
         // the finite Greek/mark derivative deliberately does not map ASCII S.
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut system = System::default();
         system
-            .register_fonts(include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
+            .register_fonts(
+                include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+                crate::test_fonts::FONT_LIMITS,
+            )
             .unwrap();
         let layout = system
             .layout(
@@ -1325,12 +1325,12 @@ mod tests {
 
     #[test]
     fn original_utf16_and_plaintext_are_separate_selected_observations() {
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut system = System::default();
         system
-            .register_fonts(include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
+            .register_fonts(
+                include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+                crate::test_fonts::FONT_LIMITS,
+            )
             .unwrap();
         let layout = system
             .layout(
@@ -1416,11 +1416,10 @@ mod tests {
             crate::AnalysisTypography::HorizontalComposition,
         )
         .unwrap();
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        system.register_fonts(font).unwrap();
+        let mut system = System::default();
+        system
+            .register_fonts(font, crate::test_fonts::FONT_LIMITS)
+            .unwrap();
         let prepared = system
             .prepare(&analyzed, PreparationOptions::default())
             .unwrap();
@@ -1593,12 +1592,12 @@ mod tests {
 
     #[test]
     fn actual_shared_ligature_and_mark_keep_only_authentic_outer_edges() {
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut system = System::default();
         system
-            .register_fonts(crate::shaping_test_fonts::ligature_ahem())
+            .register_fonts(
+                crate::shaping_test_fonts::ligature_ahem(),
+                crate::test_fonts::FONT_LIMITS,
+            )
             .unwrap();
         let layout = system
             .layout(
@@ -1731,12 +1730,12 @@ mod tests {
 
     #[test]
     fn kana_contraction_keeps_the_supplementary_original_pair_and_actual_five_pixel_glyph() {
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut system = System::default();
         system
-            .register_fonts(crate::shaping_test_fonts::kana_ahem())
+            .register_fonts(
+                crate::shaping_test_fonts::kana_ahem(),
+                crate::test_fonts::FONT_LIMITS,
+            )
             .unwrap();
         let layout = system
             .layout(
@@ -1911,12 +1910,12 @@ mod tests {
     }
 
     fn native_break_lines(text: &str, at: usize, breaks: usize, disconnected: bool) -> Layout {
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut system = System::default();
         system
-            .register_fonts(include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
+            .register_fonts(
+                include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+                crate::test_fonts::FONT_LIMITS,
+            )
             .unwrap();
         let source = Source::new(text);
         let source_end = source.text().len();
@@ -2191,12 +2190,12 @@ mod tests {
     }
 
     fn partial_word_line() -> Layout {
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut system = System::default();
         system
-            .register_fonts(include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
+            .register_fonts(
+                include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+                crate::test_fonts::FONT_LIMITS,
+            )
             .unwrap();
         let source = Source::new("abcdef");
         let analysis = AnalyzedSource::from_paragraph(
@@ -2475,12 +2474,12 @@ mod tests {
         white_space: crate::WhiteSpace,
         base_direction: ParagraphBaseDirection,
     ) -> PreparedText {
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut system = System::default();
         system
-            .register_fonts(include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
+            .register_fonts(
+                include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+                crate::test_fonts::FONT_LIMITS,
+            )
             .unwrap();
         let source = Source::new(text);
         let end = text.encode_utf16().count();

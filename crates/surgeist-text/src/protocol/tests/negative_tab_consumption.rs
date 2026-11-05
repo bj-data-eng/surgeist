@@ -375,11 +375,10 @@ fn negative_tab_consumes_an_atomic_pen_only_when_a_later_tab_needs_it() {
 #[test]
 fn negative_period_uses_block_direction_but_progresses_in_paragraph_direction() {
     let fixture = crate::shaping_test_fonts::directional_space_ahem();
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(fixture.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(fixture.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     // Existing fixture tables: at20px LTR SPACE3=10, RTL rtla SPACE0=20;
     // isolated ZERO stays LTR20. With spacing-23 and multiplier4, T=-52/-12.
     for (block_direction, paragraph_direction, period, advance) in [

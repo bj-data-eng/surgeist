@@ -337,12 +337,11 @@ fn capture(
 #[test]
 fn phrase_separator_retains_actual_scope_font_pair_and_source_free_selection() {
     for inline in [false, true] {
-        let mut system = text::System::new(text::SystemOptions {
-            font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut system = text::System::default();
         let bytes = phrase_ahem();
-        system.register_fonts(bytes.clone()).unwrap();
+        system
+            .register_fonts(bytes.clone(), surgeist_test::fixtures::FONT_LIMITS)
+            .unwrap();
         let (batch, scope, occurrence) = capture(&mut system, inline);
         let placed = batch.placed_text()[0].layout();
         assert_eq!(
@@ -427,11 +426,10 @@ fn phrase_separator_retains_actual_scope_font_pair_and_source_free_selection() {
 #[test]
 fn phrase_geometry_does_not_create_an_accessible_space_character() {
     for inline in [false, true] {
-        let mut system = text::System::new(text::SystemOptions {
-            font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        system.register_fonts(phrase_ahem()).unwrap();
+        let mut system = text::System::default();
+        system
+            .register_fonts(phrase_ahem(), surgeist_test::fixtures::FONT_LIMITS)
+            .unwrap();
         let (batch, _, _) = capture(&mut system, inline);
         let placed = batch.placed_text()[0].layout();
         let mut state = text::Accessibility::new(60);

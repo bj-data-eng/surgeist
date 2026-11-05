@@ -1,56 +1,60 @@
-use std::{fmt, sync::Arc};
+use std::fmt;
 
-use linebender_resource_handle::Blob;
 use skrifa::{Tag, raw::TableProvider};
 
-use crate::{Error, ErrorCode, ErrorDetail, FontCatalogueIdentity, NumericRequirement, Result};
+use crate::{CataloguePublication, Error, ErrorCode, ErrorDetail, NumericRequirement, Result};
 
-/// Strong actual font resource, collection face and associated catalogue publication.
+/// Strong actual font face and associated catalogue publication.
 ///
-/// Resource equality preserves Blob identity plus collection index. Catalogue
-/// provenance is qualified separately; equal resources can have distinct publications.
+/// Face equality uses the admitted resource and original index. The same face
+/// can be associated with distinct publications.
 #[derive(Clone, Debug)]
 pub struct FontData {
-    data: Blob<u8>,
-    index: u32,
-    catalogue: FontCatalogueIdentity,
+    face: surgeist_font::FontFace,
+    catalogue: CataloguePublication,
 }
 
 impl PartialEq for FontData {
     fn eq(&self, other: &Self) -> bool {
-        self.data == other.data && self.index == other.index
+        self.face == other.face
     }
 }
 
 impl FontData {
-    /// Retains the actual admitted resource without copying its byte backing.
-    pub(crate) fn from_blob(data: Blob<u8>, index: u32, catalogue: FontCatalogueIdentity) -> Self {
-        Self {
-            data,
-            index,
-            catalogue,
-        }
+    pub(crate) const fn from_face(
+        face: surgeist_font::FontFace,
+        catalogue: CataloguePublication,
+    ) -> Self {
+        Self { face, catalogue }
     }
 
-    /// Original whole-resource bytes, without copying.
+    /// The canonical admitted face shared with other font consumers.
+    #[must_use]
+    pub const fn admitted_face(&self) -> &surgeist_font::FontFace {
+        &self.face
+    }
+    /// Whole decoded resource bytes, without copying.
     #[must_use]
     pub fn bytes(&self) -> &[u8] {
-        self.data.as_ref()
+        self.face.resource().bytes()
     }
     /// Collection face index.
     #[must_use]
-    pub const fn index(&self) -> u32 {
-        self.index
+    pub fn index(&self) -> u32 {
+        self.face.index()
     }
     /// Actual retained publication, independent of resource equality.
     #[must_use]
-    pub const fn catalogue_identity(&self) -> &FontCatalogueIdentity {
+    pub const fn catalogue_identity(&self) -> &CataloguePublication {
         &self.catalogue
     }
     /// Borrows this same resource, face and publication.
     #[must_use]
-    pub fn face(&self) -> FontFace<'_> {
-        FontFace::new(&self.data, self.index, &self.catalogue)
+    pub const fn face(&self) -> FontFace<'_> {
+        FontFace {
+            face: &self.face,
+            catalogue: &self.catalogue,
+        }
     }
     /// Selects an explicit unmodified face and complete canonical coordinates.
     /// This does not match an unresolved Style or silently discard faux synthesis.
@@ -63,12 +67,11 @@ impl FontData {
     }
 }
 
-/// A borrowed actual resource, collection face and associated publication.
+/// A borrowed actual font face and associated publication.
 #[derive(Clone, Copy)]
 pub struct FontFace<'a> {
-    data: &'a Blob<u8>,
-    index: u32,
-    catalogue: &'a FontCatalogueIdentity,
+    face: &'a surgeist_font::FontFace,
+    catalogue: &'a CataloguePublication,
 }
 
 impl fmt::Debug for FontFace<'_> {
@@ -81,52 +84,40 @@ impl fmt::Debug for FontFace<'_> {
 }
 
 impl<'a> FontFace<'a> {
-    pub(crate) const fn new(
-        data: &'a Blob<u8>,
-        index: u32,
-        catalogue: &'a FontCatalogueIdentity,
-    ) -> Self {
-        Self {
-            data,
-            index,
-            catalogue,
-        }
+    /// The canonical admitted face shared with other font consumers.
+    #[must_use]
+    pub const fn admitted_face(&self) -> &'a surgeist_font::FontFace {
+        self.face
     }
 
     /// Actual catalogue publication under which this face was associated.
     #[must_use]
-    pub const fn catalogue_identity(&self) -> &'a FontCatalogueIdentity {
+    pub const fn catalogue_identity(&self) -> &'a CataloguePublication {
         self.catalogue
     }
 
     /// Retains the actual strong resource and publication without copying bytes.
     #[must_use]
     pub fn to_owned(&self) -> FontData {
-        FontData {
-            data: self.data.clone(),
-            index: self.index,
-            catalogue: self.catalogue.clone(),
-        }
+        FontData::from_face(self.face.clone(), self.catalogue.clone())
     }
 
-    /// Whole original resource bytes, borrowed without copying.
+    /// Whole decoded resource bytes, borrowed without copying.
     #[must_use]
     pub fn bytes(&self) -> &'a [u8] {
-        self.data.as_ref()
+        self.face.resource().bytes()
     }
 
     /// Actual face index within that resource.
     #[must_use]
-    pub const fn index(&self) -> u32 {
-        self.index
+    pub fn index(&self) -> u32 {
+        self.face.index()
     }
 
-    /// Compares the actual strong allocation and collection index, not IDs or content.
+    /// Compares the actual strong resource and collection index.
     #[must_use]
     pub fn is_same_face(&self, other: &Self) -> bool {
-        let (left, _) = self.data.clone().into_raw_parts();
-        let (right, _) = other.data.clone().into_raw_parts();
-        self.index() == other.index() && Arc::ptr_eq(&left, &right)
+        self.face == other.face
     }
 }
 
@@ -450,12 +441,11 @@ mod synthesis_tests {
 
     #[test]
     fn synthesis_keeps_actual_resource_and_metric_operation_unchanged() {
-        let mut system = crate::System::new(crate::SystemOptions {
-            font_catalogue: crate::FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut system = crate::System::default();
         let bytes = include_bytes!("../tests/fixtures/fonts/ahem/Ahem.ttf");
-        system.register_fonts(bytes.to_vec()).unwrap();
+        system
+            .register_fonts(bytes.to_vec(), crate::test_fonts::FONT_LIMITS)
+            .unwrap();
         let layout = system
             .layout(
                 crate::Source::new("X"),

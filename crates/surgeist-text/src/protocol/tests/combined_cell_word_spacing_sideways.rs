@@ -277,11 +277,10 @@ fn case(orientation: LineOrientation) {
     );
     assert!(parsed.fvar().is_err());
     assert!(parsed.mvar().is_err());
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(font.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(font.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     assert_eq!(system.registered_font_faces().count(), 1);
     // All of these existing ordinary sideways/None premises execute before the
     // Cell guard. The signed Cell expectations below are not claimed as run RED.

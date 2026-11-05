@@ -250,11 +250,10 @@ fn qualify(bytes: &[u8], mappings: &[(u32, u32)]) {
 }
 
 fn system_with(bytes: &[u8]) -> System {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.to_vec()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let faces = system.registered_font_faces().collect::<Vec<_>>();
     assert_eq!(faces.len(), 1);
     assert_eq!(faces[0].bytes(), bytes);

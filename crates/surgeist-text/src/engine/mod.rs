@@ -12,7 +12,7 @@ use crate::protocol::{
     prepared::{PreparedIndicationFonts, PreparedTables, SelectedMapping},
     selection::SelectedData,
 };
-use crate::{AnalysisTypography, FontCatalogueIdentity, InlineBox, Point, Range};
+use crate::{AnalysisTypography, CataloguePublication, InlineBox, Point, Range};
 
 pub(crate) mod analysis;
 pub(crate) mod bidi;
@@ -84,7 +84,7 @@ pub(crate) struct PreparedData {
     pub(crate) scope_alignment: scope_alignment::PreparedScopes,
     pub(crate) tab_metrics: Vec<Option<crate::tabs::ResolvedTab>>,
     pub(crate) analyzed: Arc<AnalyzedData>,
-    pub(crate) font_catalogue: FontCatalogueIdentity,
+    pub(crate) font_catalogue: CataloguePublication,
     pub(crate) styles: Vec<resolve::ResolvedStyleRun>,
     /// Actual resolved base-style row retained for the native font-strut policy.
     pub(crate) default_style_index: Option<usize>,
@@ -106,7 +106,7 @@ pub(crate) struct ShapingInput<'a> {
     pub(crate) analysis: &'a analysis::Analysis,
     pub(crate) styles: &'a [resolve::ResolvedStyleRun],
     pub(crate) boxes: &'a [InlineBox],
-    pub(crate) font_catalogue: &'a FontCatalogueIdentity,
+    pub(crate) font_catalogue: &'a CataloguePublication,
     pub(crate) paragraph: &'a ParagraphContext,
     pub(crate) css_tabs: bool,
 }
@@ -366,7 +366,7 @@ pub(crate) enum PreparationProfile {
 }
 
 pub(crate) fn prepare(
-    catalogue: &mut crate::catalogue::Catalogue,
+    catalogue: &mut surgeist_font::FontCatalogue,
     analyzed: Arc<AnalyzedData>,
     options: PreparationOptions,
     profile: PreparationProfile,
@@ -438,11 +438,7 @@ pub(crate) fn prepare(
         options.orientation(),
     )?;
     let (mut scope_alignment, mut scope_budget) = scope_alignment::plan(&analyzed)?;
-    let mut styles = resolve::resolve(
-        catalogue.collection_mut(),
-        &analyzed.styles,
-        options.scale(),
-    )?;
+    let mut styles = resolve::resolve(catalogue, &analyzed.styles, options.scale())?;
     let default_style_index = if profile == PreparationProfile::Native
         && analyzed.paragraph.paragraph_strut == crate::ParagraphStrut::DefaultFont
     {
@@ -455,11 +451,7 @@ pub(crate) fn prepare(
                 .clone(),
         )?;
         let index = styles.len();
-        styles.push(resolve::resolve_default(
-            catalogue.collection_mut(),
-            &base,
-            options.scale(),
-        )?);
+        styles.push(resolve::resolve_default(catalogue, &base, options.scale())?);
         Some(index)
     } else {
         None
@@ -479,7 +471,7 @@ pub(crate) fn prepare(
         scratch,
         &mut scope_budget,
     )?;
-    let font_catalogue = catalogue.identity().clone();
+    let font_catalogue = catalogue.publication().clone();
     let characters = spacing::character::plan(
         spacing::character::Input::original(&analyzed, &styles, options.scale()),
         false,

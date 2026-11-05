@@ -86,11 +86,10 @@ fn prepare(request: t::ParagraphInput) -> t::PreparedText {
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), crate::common::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(&analyzed, t::PreparationOptions::default())
         .unwrap();
@@ -644,11 +643,10 @@ fn standalone_consumes_missing_lexical_fallback_as_ordinary_with_real_notdef_met
         Some(1000.0)
     );
     // These are authentic missing-glyph advances, not Thai/Lao glyph coverage.
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), crate::common::FONT_LIMITS)
+        .unwrap();
     for (value, locale, word) in [
         ("กก", "th", t::WordBreak::Normal),
         ("ກກ", "lo", t::WordBreak::Normal),
@@ -1270,3 +1268,5 @@ fn resolved_sa_context_preserves_required_loose_and_deliberate_anywhere_owners()
         );
     }
 }
+
+mod common;

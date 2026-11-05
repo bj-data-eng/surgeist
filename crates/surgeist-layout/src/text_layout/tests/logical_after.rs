@@ -62,11 +62,10 @@ fn analyzed(placement: text::HyphenationPlacement) -> text::AnalyzedSource {
 }
 
 fn system() -> text::System {
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     system
 }
 

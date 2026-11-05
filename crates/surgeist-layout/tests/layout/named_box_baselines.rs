@@ -1209,11 +1209,10 @@ fn actual_text_unknown<S: l::LayoutScalar>() {
             ancestor_wrap: t::Wrap::Word,
         })
         .collect();
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(
             &analyzed.with_wrapping_policies(wrapping).unwrap(),
@@ -2380,11 +2379,10 @@ fn packet_text_float_binding() -> l::TextParagraphBinding<u32> {
             ancestor_wrap: t::Wrap::Word,
         })
         .collect();
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(
             &analyzed.with_wrapping_policies(wrapping).unwrap(),

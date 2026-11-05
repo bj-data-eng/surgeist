@@ -144,12 +144,12 @@ fn capture(endpoints: bool, anywhere: bool) -> PreparedText {
     )
     .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::Word);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     system
-        .register_fonts(crate::shaping_test_fonts::mark_ahem())
+        .register_fonts(
+            crate::shaping_test_fonts::mark_ahem(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     system
         .prepare(&analyzed, PreparationOptions::default())
@@ -411,12 +411,12 @@ fn native_pair(text: crate::Text, at: usize, whitespace: WhiteSpace) -> Paragrap
 }
 
 fn prepare_native(analysis: &AnalyzedSource) -> PreparedText {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     system
-        .register_fonts(crate::shaping_test_fonts::mark_ahem())
+        .register_fonts(
+            crate::shaping_test_fonts::mark_ahem(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     system
         .prepare(

@@ -198,14 +198,15 @@ fn fixture(shape: ContainerShape, text: &str, context: ContainerContext) -> Cont
     let analyzed = crate::test_wrapping::bind_missing(domain.outputs().next().unwrap(), Wrap::Word);
     let body = composition_font();
     glyph_frame_font_premises(&body);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     // Both real resources are available, including the Root's Ahem at its own
     // size. No fallback or font-substitution excuse can supply a missing owner.
-    system.register_fonts(parent_font()).unwrap();
-    system.register_fonts(body.clone()).unwrap();
+    system
+        .register_fonts(parent_font(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
+    system
+        .register_fonts(body.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     assert_eq!(system.registered_font_faces().count(), 2);
     ContainerFixture {
         system,
@@ -620,12 +621,13 @@ fn asymmetric_alphabetic_reference_matches_once_after_central_cell_centering() {
         pieces[0].paragraph(),
         processed.captured_paragraph(0).unwrap()
     );
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(parent.clone()).unwrap();
-    system.register_fonts(body.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(parent.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
+    system
+        .register_fonts(body.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(
             &analyzed,

@@ -84,11 +84,10 @@ fn prepare(input: t::ParagraphInput) -> t::PreparedText {
         })
         .collect();
     let analyzed = analyzed.with_wrapping_policies(policies).unwrap();
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), crate::common::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(&analyzed, t::PreparationOptions::default())
         .unwrap();
@@ -816,11 +815,10 @@ fn automatic_cut_eligibility_follows_preceding_actual_owner_and_hyphens() {
 
 #[test]
 fn standalone_line_break_changes_miss_cache_and_preserve_old_immutable_layouts() {
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), crate::common::FONT_LIMITS)
+        .unwrap();
     let source = t::Source::identified("abc", t::Id::from_u64(65202), 7);
     let options = t::Options {
         width: Some(10.0),
@@ -1164,3 +1162,5 @@ fn processed_small_kana_word_break_precedence_preserves_named_punctuation_rules(
         }
     }
 }
+
+mod common;

@@ -68,11 +68,10 @@ fn input(source: Source, cuts: &[usize]) -> ParagraphInput {
     }
 }
 fn prepare(input: ParagraphInput) -> PreparedText {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(fixture()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(fixture(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(
         &AnalyzedSource::from_paragraph(input, crate::AnalysisTypography::HorizontalComposition)
             .unwrap(),
@@ -881,11 +880,10 @@ fn transparent_child_holes_keep_automatic_source_anchor_separate_from_mixed_cut_
         .unwrap(),
         crate::Wrap::Word,
     );
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(fixture()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(fixture(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let p = system
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap();
@@ -1177,12 +1175,13 @@ fn automatic_indication_uses_cut_primary_and_retains_resources_after_catalogue_r
             .unwrap(),
         crate::Wrap::Word,
     );
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(primary.clone()).unwrap();
-    system.register_fonts(secondary).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(primary.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
+    system
+        .register_fonts(secondary, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let p = system
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap();
@@ -1436,11 +1435,10 @@ fn automatic_range_units_keep_optional_ligature_shares_distinct() {
             .unwrap(),
         crate::Wrap::Word,
     );
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let p = system
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap();
@@ -1862,11 +1860,10 @@ fn before_auto_uses_the_actual_lri_occurrence_in_an_rtl_paragraph() {
     let mut cmaps: Vec<_> = (b'a'..=b'z').map(|cp| (u32::from(cp), 35)).collect();
     cmaps.extend([(65, 35), (0x5d0, 36)]);
     let bytes = crate::shaping_test_fonts::range_ligature_ahem(&[98, 99], &cmaps);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(
         &AnalyzedSource::from_paragraph(value, crate::AnalysisTypography::HorizontalComposition)
             .unwrap(),

@@ -374,11 +374,10 @@ fn normal_prepare(processed: &Arc<text::ProcessedSource>) -> text::PreparedText 
         })
         .collect();
     let a = a.with_wrapping_policies(missing).unwrap();
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     system
         .prepare(&a, text::PreparationOptions::default())
         .unwrap()

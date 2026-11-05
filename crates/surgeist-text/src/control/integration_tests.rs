@@ -1,6 +1,5 @@
 use crate::{
-    AnalyzedSource, DocumentSegmentBreaks, Font, FontCatalogueMode, Options, Range, Source, Style,
-    System, SystemOptions, WhiteSpace,
+    AnalyzedSource, DocumentSegmentBreaks, Font, Options, Range, Source, Style, System, WhiteSpace,
 };
 
 fn style() -> Style {
@@ -13,12 +12,11 @@ fn style() -> Style {
 }
 
 fn system(font: Option<Vec<u8>>) -> System {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     if let Some(font) = font {
-        system.register_fonts(font).unwrap();
+        system
+            .register_fonts(font, crate::test_fonts::FONT_LIMITS)
+            .unwrap();
     }
     system
 }

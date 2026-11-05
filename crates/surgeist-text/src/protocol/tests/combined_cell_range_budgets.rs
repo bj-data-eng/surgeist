@@ -190,11 +190,10 @@ struct Fixture {
 }
 fn build(payload: Payload, limits: ScopeAlignmentLimits, bytes: &[u8]) -> Fixture {
     let capture = captured_paragraph(payload, limits);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.to_vec()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(&capture.analyzed, options(LineOrientation::Vertical))
         .unwrap();

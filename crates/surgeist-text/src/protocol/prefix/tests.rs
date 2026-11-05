@@ -8,11 +8,10 @@ fn prepare(bytes: Vec<u8>, source: &str, style: Style) -> PreparedText {
         crate::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     system
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap()
@@ -162,12 +161,12 @@ fn native(
         crate::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     system
-        .register_fonts(crate::shaping_test_fonts::ligature_ahem())
+        .register_fonts(
+            crate::shaping_test_fonts::ligature_ahem(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, crate::Wrap::Word);
     system
@@ -270,12 +269,12 @@ fn finalized_prefix_is_logical_for_actual_joined_arabic() {
 
 #[test]
 fn finalized_prefix_provider_groups_survive_actual_resource_instance_and_plan_cache_hits() {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     system
-        .register_fonts(crate::shaping_test_fonts::ligature_ahem())
+        .register_fonts(
+            crate::shaping_test_fonts::ligature_ahem(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     let analyzed = AnalyzedSource::new(
         Source::new("AA"),
@@ -400,20 +399,17 @@ fn finalized_prefix_optional_unit_failure_does_not_poison_other_actual_queries()
     )
     .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::Word);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     let font = crate::shaping_test_fonts::mark_ahem();
     let mut hmtx = crate::test_fonts::table(&font, *b"hmtx").to_vec();
     for glyph in [35, 100] {
         hmtx[glyph * 4..glyph * 4 + 2].copy_from_slice(&0_u16.to_be_bytes());
     }
     system
-        .register_fonts(crate::test_fonts::replace_tables(
-            &font,
-            vec![(*b"hmtx", hmtx)],
-        ))
+        .register_fonts(
+            crate::test_fonts::replace_tables(&font, vec![(*b"hmtx", hmtx)]),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     let prepared = system
         .prepare(&analyzed, PreparationOptions::default())
@@ -1079,12 +1075,12 @@ fn finalized_original_prefix_empty_occurrences_inherit_only_actual_preceding_con
         crate::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     system
-        .register_fonts(crate::shaping_test_fonts::ligature_ahem())
+        .register_fonts(
+            crate::shaping_test_fonts::ligature_ahem(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     let prepared = system
         .prepare(&analyzed, PreparationOptions::default())

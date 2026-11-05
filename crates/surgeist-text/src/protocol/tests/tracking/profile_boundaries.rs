@@ -7,11 +7,10 @@ use crate::{AtomicPlacement, Cursor, InlineBox, InlineBoxKind, Point, Rect, Size
 const BOX: Id = Id::from_u64(1566090);
 
 fn system_with(bytes: &[u8]) -> System {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.to_vec()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     system
 }
 

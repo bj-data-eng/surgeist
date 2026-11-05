@@ -62,10 +62,7 @@ fn actual_fontless_signed_atomic_keeps_ten_unit_occupied_extent_without_a_parent
         crate::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     assert_eq!(system.registered_font_faces().count(), 0);
     let p = system
         .prepare(

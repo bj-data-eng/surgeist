@@ -28,12 +28,12 @@ fn prepare(input: ParagraphInput, ancestor: Wrap) -> PreparedText {
             .unwrap(),
         ancestor,
     );
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     system
-        .register_fonts(crate::shaping_test_fonts::mark_ahem())
+        .register_fonts(
+            crate::shaping_test_fonts::mark_ahem(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     system
         .prepare(&analyzed, PreparationOptions::default())

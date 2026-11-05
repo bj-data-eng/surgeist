@@ -47,11 +47,10 @@ fn style(word: t::WordBreak, locale: &str) -> t::Style {
 }
 
 fn system() -> t::System {
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), crate::common::FONT_LIMITS)
+        .unwrap();
     system
 }
 
@@ -555,3 +554,5 @@ fn declared_manual_and_overflow_values_have_real_separate_cache_entries() {
         assert_eq!(layout.metrics().full_width(), 20.0);
     }
 }
+
+mod common;

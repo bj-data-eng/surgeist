@@ -1,12 +1,11 @@
 //! Executed-provider and native-receipt qualification of immutable selection.
 use super::*;
 use crate::{
-    Affinity, Alignment, AnalysisTypography, AnalyzedSource, FinalizedLine, Font,
-    FontCatalogueMode, LineContext, LineEnd, LineOrientation, LineSelectionRequest, LineStart,
-    ParagraphBaseDirection, ParagraphInput, ParagraphOrigin, ParagraphOriginKind, ParagraphStrut,
-    PreparationOptions, PreparedBreakKind, PreparedTermination, PreparedText, SelectedLine, Source,
-    SpacingAllocation, SpacingAllocations, SpacingPolicy, Style, System, SystemOptions, TabContext,
-    WhiteSpace, Wrap,
+    Affinity, Alignment, AnalysisTypography, AnalyzedSource, FinalizedLine, Font, LineContext,
+    LineEnd, LineOrientation, LineSelectionRequest, LineStart, ParagraphBaseDirection,
+    ParagraphInput, ParagraphOrigin, ParagraphOriginKind, ParagraphStrut, PreparationOptions,
+    PreparedBreakKind, PreparedTermination, PreparedText, SelectedLine, Source, SpacingAllocation,
+    SpacingAllocations, SpacingPolicy, Style, System, TabContext, WhiteSpace, Wrap,
 };
 use skrifa::{
     GlyphId, MetadataProvider,
@@ -57,11 +56,10 @@ fn input(source: &Source, style: Style, direction: ParagraphBaseDirection) -> Pa
 }
 
 fn system(bytes: &[u8]) -> System {
-    let mut value = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    value.register_fonts(bytes.to_vec()).unwrap();
+    let mut value = System::default();
+    value
+        .register_fonts(bytes.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     value
 }
 

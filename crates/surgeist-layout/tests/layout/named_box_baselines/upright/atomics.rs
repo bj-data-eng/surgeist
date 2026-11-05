@@ -294,11 +294,10 @@ fn captured_parent(bytes: &[u8], size: t::Size, atomic_only: bool, id: t::Id) ->
     let analysis = analysis.with_wrapping_policies(wrapping).unwrap();
     assert_eq!(analysis.typography(), typography);
     assert_eq!(analysis.direction(), t::Direction::LeftToRight);
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.to_vec()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(bytes.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(
             &analysis,

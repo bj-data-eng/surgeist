@@ -144,11 +144,10 @@ fn input(value: &str, base: t::Style, ranges: &[(usize, usize)]) -> t::Contextua
 }
 fn prepare_input(value: t::ContextualSourceInput, font: &[u8]) -> Vec<t::PreparedText> {
     let processed = Arc::new(t::process_contextual_source(value).unwrap());
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(font.to_vec()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(font.to_vec(), crate::common::FONT_LIMITS)
+        .unwrap();
     processed
         .paragraphs()
         .map(|paragraph| {
@@ -1067,11 +1066,10 @@ fn context_custody_errors_are_precise_and_real_domain_holes_stay_distinct() {
         t::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), crate::common::FONT_LIMITS)
+        .unwrap();
     let flat = system
         .prepare(&flat, t::PreparationOptions::default())
         .unwrap();

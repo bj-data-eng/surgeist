@@ -1,13 +1,12 @@
 //! WOFF2 reconstruction, adapted from Wuff 0.2.9's MIT-licensed decoder.
 //! The wire formats are governed by W3C REC-WOFF2-20240808.
-mod buffer;
 mod glyph;
 mod metrics;
 
+use super::buffer::{Budget, Buffer};
 use super::{
     DecodeError, DecodeLimits, FontSource, InvalidKind, LimitKind, add, check, invalid, multiply,
 };
-use buffer::{Budget, Buffer};
 
 const TAGS: [[u8; 4]; 63] = [
     *b"cmap", *b"head", *b"hhea", *b"hmtx", *b"maxp", *b"name", *b"OS/2", *b"post", *b"cvt ",

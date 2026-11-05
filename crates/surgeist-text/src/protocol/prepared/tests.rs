@@ -4,8 +4,8 @@ mod break_all_hyphenation;
 use crate::protocol::paragraph::*;
 use crate::protocol::*;
 use crate::{
-    Affinity, AnalyzedSource, DocumentSegmentBreaks, Font, FontCatalogueMode, Id, InlineBox,
-    InlineBoxKind, Size, Source, Style, System, SystemOptions, Text, WhiteSpace,
+    Affinity, AnalyzedSource, DocumentSegmentBreaks, Font, Id, InlineBox, InlineBoxKind, Size,
+    Source, Style, System, Text, WhiteSpace,
 };
 
 fn paragraph(source: Source) -> ParagraphInput {
@@ -44,12 +44,12 @@ fn paragraph(source: Source) -> ParagraphInput {
     }
 }
 fn system() -> System {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     system
-        .register_fonts(include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
+        .register_fonts(
+            include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     system
 }

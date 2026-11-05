@@ -651,13 +651,11 @@ fn prepare_wrapping_text() -> surgeist_text::PreparedText {
         surgeist_text::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     system
         .register_fonts(
             include_bytes!("../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+            surgeist_test::fixtures::FONT_LIMITS,
         )
         .unwrap();
     system

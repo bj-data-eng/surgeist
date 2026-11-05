@@ -150,13 +150,11 @@ fn prepare() -> Vec<text::PreparedText> {
         .unwrap(),
     );
     assert_eq!(processed.paragraphs().count(), 3);
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = text::System::default();
     system
         .register_fonts(
             include_bytes!("../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+            surgeist_test::fixtures::FONT_LIMITS,
         )
         .unwrap();
     processed
@@ -488,13 +486,11 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
         text::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = text::System::default();
     system
         .register_fonts(
             include_bytes!("../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+            surgeist_test::fixtures::FONT_LIMITS,
         )
         .unwrap();
     let prepared = system

@@ -8,12 +8,12 @@ fn breaking_style() -> Style {
     }
 }
 fn arabic_system() -> System {
-    let mut value = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut value = System::default();
     value
-        .register_fonts(crate::shaping_test_fonts::arabic_nonjoining_ahem())
+        .register_fonts(
+            crate::shaping_test_fonts::arabic_nonjoining_ahem(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     value
 }
@@ -342,11 +342,10 @@ fn actual_forced_and_disconnected_boundaries_stop_joining_context() {
 #[test]
 fn optional_ligature_cut_shapes_only_actual_selected_atoms() {
     let fixture = crate::shaping_test_fonts::ligature_ahem();
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(fixture.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(fixture.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = native_prepare(&mut system, native_input(Source::new("AA")));
     let whole = selected_line(
         &prepared,

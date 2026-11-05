@@ -598,11 +598,10 @@ fn run<S: l::LayoutScalar>(case: Case) {
         .collect();
     let analyzed = analyzed.with_wrapping_policies(missing).unwrap();
     // The first font system/prepared object is created only after source borrow.
-    let mut fonts = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    fonts.register_fonts(AHEM.to_vec()).unwrap();
+    let mut fonts = t::System::default();
+    fonts
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let prepared = fonts
         .prepare(&analyzed, t::PreparationOptions::default())
         .unwrap();

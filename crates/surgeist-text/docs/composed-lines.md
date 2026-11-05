@@ -129,11 +129,10 @@ uses the same selected-line and placement machinery.
    There is no replacement style anchor or independent wrapping flag.
    Exact `hyphenate_character` text wins over convention text. Auto uses an
    applicable `NativeHyphenationConvention`, otherwise probes the first available
-   font among the owning style's families/resolved generics and actual attributes.
-   This distinct probe has no script fallback or glyph-coverage filter: raw native
-   catalogue registrations have unrestricted unicode ranges, and a space glyph is
-   not required. It chooses U+2010 when present, otherwise U+002D; normal shaping
-   then resolves the chosen text. LogicalBefore and LogicalAfter use independent
+   font among the owning style's named registered families using its actual
+   attributes. Registered faces have unrestricted Unicode ranges, so the probe
+   can select the face without requiring a space glyph. It chooses U+2010
+   when present and U+002D otherwise. Normal shaping then resolves the chosen text. LogicalBefore and LogicalAfter use independent
    indication-local bidi attached to authenticated original levels; generated
    strings never change original paragraph UBA. BothSides emits the same exact
    resolved text once Before and once After, using each side's actual attachment

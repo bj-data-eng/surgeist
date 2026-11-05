@@ -1,13 +1,11 @@
 use super::*;
-use crate::test_fonts::two_face_collection;
+use crate::test_fonts::{remove_tables, two_face_collection};
+use surgeist_font::{CatalogueError, DecodeError, FontResource, InvalidKind};
 
 const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
 
 fn registered_only() -> System {
-    System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .expect("registered-only catalogue initializes without system discovery")
+    System::default()
 }
 
 fn ahem_layout(system: &mut System, text: &str) -> Layout {
@@ -57,7 +55,7 @@ fn assert_ahem_glyphs(layout: &Layout) {
 fn registered_font_drives_literal_glyphs_advances_and_family_fallback() {
     let mut system = registered_only();
     system
-        .register_fonts(AHEM.to_vec())
+        .register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
         .expect("Ahem registers");
     assert_ahem_glyphs(&ahem_layout(&mut system, "AX"));
     let fallback = system
@@ -76,6 +74,17 @@ fn registered_font_drives_literal_glyphs_advances_and_family_fallback() {
         .expect("ordered fallback reaches the actual registered family");
     assert_ahem_glyphs(&fallback);
     assert_eq!(ahem_layout(&mut system, " ").metrics().full_width(), 20.0);
+    let error = system
+        .layout(
+            Source::new("AX"),
+            Style {
+                font: Font::new().family("serif"),
+                ..Style::default()
+            },
+            Options::default(),
+        )
+        .unwrap_err();
+    assert_eq!(error.code, ErrorCode::NoUsableFontFace);
 }
 
 #[test]
@@ -90,10 +99,15 @@ fn catalogue_identity_distinguishes_issuers_and_publications_and_invalidates_cac
     assert_ne!(&initial, second.font_catalogue_identity());
     assert_eq!(initial, initial.clone());
 
-    first.register_fonts(AHEM.to_vec()).expect("Ahem registers");
+    let resource = FontResource::decode(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .expect("fixture passes structural admission");
+    let canonical_face = resource.face(0).unwrap();
+    first
+        .register_font_resource(resource)
+        .expect("Ahem registers");
     let registered = first.font_catalogue_identity().clone();
     assert_ne!(initial, registered);
-    assert_eq!(registered.generation().get(), 1);
+    assert_eq!(registered.generation(), 1);
     let old = ahem_layout(&mut first, "AX");
     let same = ahem_layout(&mut first, "AX");
     assert_eq!(old.key(), same.key());
@@ -106,7 +120,7 @@ fn catalogue_identity_distinguishes_issuers_and_publications_and_invalidates_cac
         .expect("refresh replays the actual registered bytes");
     let refreshed = first.font_catalogue_identity().clone();
     assert_ne!(refreshed, registered);
-    assert_eq!(refreshed.generation().get(), 2);
+    assert_eq!(refreshed.generation(), 2);
     assert_eq!(first.stats().invalidations(), stats.invalidations() + 1);
     assert_eq!(first.stats().font_refreshes(), stats.font_refreshes() + 1);
     let fresh = ahem_layout(&mut first, "AX");
@@ -115,19 +129,19 @@ fn catalogue_identity_distinguishes_issuers_and_publications_and_invalidates_cac
     assert_eq!(first.stats().layout_misses(), stats.layout_misses() + 1);
     assert_ahem_glyphs(&fresh);
     assert_ahem_glyphs(&old);
+    for layout in [&fresh, &old] {
+        assert_eq!(
+            layout.glyph_runs()[0].font().admitted_face(),
+            &canonical_face
+        );
+    }
     let hit = ahem_layout(&mut first, "AX");
     assert_eq!(fresh.key(), hit.key());
     assert_eq!(first.stats().layout_hits(), stats.layout_hits() + 1);
 }
 
-fn corrupt_charmap(mut font: Vec<u8>) -> Vec<u8> {
-    let tables = usize::from(u16::from_be_bytes([font[4], font[5]]));
-    let record = (0..tables)
-        .map(|index| 12 + index * 16)
-        .find(|offset| &font[*offset..*offset + 4] == b"cmap")
-        .expect("the actual Ahem fixture has a cmap directory entry");
-    font[record..record + 4].copy_from_slice(b"zzzz");
-    font
+fn remove_charmap(font: Vec<u8>) -> Vec<u8> {
+    remove_tables(&font, &[*b"cmap"])
 }
 
 fn invalid_collection_face() -> Vec<u8> {
@@ -140,40 +154,46 @@ fn invalid_collection_face() -> Vec<u8> {
 fn invalid_or_partially_admitted_font_file_preserves_live_identity_cache_and_stats() {
     let mut system = registered_only();
     system
-        .register_fonts(AHEM.to_vec())
+        .register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
         .expect("initial Ahem registers");
     let old = ahem_layout(&mut system, "AX");
     let identity = system.font_catalogue_identity().clone();
     let stats = system.stats();
 
-    for (bytes, detail) in [
-        (Vec::new(), ErrorDetail::InvalidFontContainer),
-        (b"not a font".to_vec(), ErrorDetail::InvalidFontContainer),
-        (AHEM[..8].to_vec(), ErrorDetail::InvalidFontContainer),
-        (
-            invalid_collection_face(),
-            ErrorDetail::InvalidFontFace { index: 1 },
-        ),
-        (
-            corrupt_charmap(AHEM.to_vec()),
-            ErrorDetail::FontFacesNotAdmitted {
-                expected: 1,
-                admitted: 0,
-            },
-        ),
-        (
-            two_face_collection(corrupt_charmap(AHEM.to_vec())),
-            ErrorDetail::FontFacesNotAdmitted {
-                expected: 2,
-                admitted: 1,
-            },
-        ),
+    for (bytes, expected) in [
+        (Vec::new(), InvalidKind::Truncated),
+        (b"not a font".to_vec(), InvalidKind::Signature),
+        (AHEM[..8].to_vec(), InvalidKind::Truncated),
+        (invalid_collection_face(), InvalidKind::UnalignedOffset),
     ] {
         let error = system
-            .register_fonts(bytes)
-            .expect_err("the whole font file is refused");
+            .register_fonts(bytes, crate::test_fonts::FONT_LIMITS)
+            .expect_err("structurally invalid font is refused");
         assert_eq!(error.code, ErrorCode::FontLoadFailed);
-        assert_eq!(error.detail(), Some(&detail));
+        assert!(matches!(
+            error.detail(),
+            Some(ErrorDetail::FontDecode(DecodeError::InvalidContainer(error)))
+                if error.kind() == expected
+        ));
+        assert_eq!(system.font_catalogue_identity(), &identity);
+        assert_eq!(system.stats(), stats);
+        assert_ahem_glyphs(&old);
+    }
+
+    for (bytes, expected, admitted) in [
+        (remove_charmap(AHEM.to_vec()), 1, 0),
+        (two_face_collection(remove_charmap(AHEM.to_vec())), 2, 1),
+    ] {
+        let error = system
+            .register_fonts(bytes, crate::test_fonts::FONT_LIMITS)
+            .expect_err("incomplete provider admission refuses the whole resource");
+        assert_eq!(error.code, ErrorCode::FontLoadFailed);
+        assert_eq!(
+            error.detail(),
+            Some(&ErrorDetail::FontCatalogue(
+                CatalogueError::FacesNotAdmitted { expected, admitted }
+            ))
+        );
         assert_eq!(system.font_catalogue_identity(), &identity);
         assert_eq!(system.stats(), stats);
         assert_ahem_glyphs(&old);
@@ -189,7 +209,9 @@ fn invalid_or_partially_admitted_font_file_preserves_live_identity_cache_and_sta
 fn font_bytes_and_historical_layout_survive_registration_refresh_and_system_disposal() {
     let mut system = registered_only();
     let input = AHEM.to_vec();
-    system.register_fonts(input).expect("owned input registers");
+    system
+        .register_fonts(input, crate::test_fonts::FONT_LIMITS)
+        .expect("owned input registers");
     let layout = ahem_layout(&mut system, "AX");
     let old_key = layout.key();
     let retained = layout
@@ -198,7 +220,7 @@ fn font_bytes_and_historical_layout_survive_registration_refresh_and_system_disp
         .next()
         .expect("Ahem run is present");
     system
-        .register_fonts(AHEM.to_vec())
+        .register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
         .expect("equal bytes are another registration");
     assert_ne!(system.font_catalogue_identity(), old_key.font_catalogue());
     system
@@ -225,7 +247,7 @@ fn font_bytes_and_historical_layout_survive_registration_refresh_and_system_disp
 fn registered_font_cursor_and_selection_use_the_same_literal_geometry() {
     let mut system = registered_only();
     system
-        .register_fonts(AHEM.to_vec())
+        .register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
         .expect("Ahem registers");
     let layout = ahem_layout(&mut system, "AX");
     let cursor = layout
@@ -248,7 +270,7 @@ fn registered_font_cursor_and_selection_use_the_same_literal_geometry() {
 fn registered_font_accessibility_retains_historical_layout_positions_after_refresh() {
     let mut system = registered_only();
     system
-        .register_fonts(AHEM.to_vec())
+        .register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
         .expect("Ahem registers");
     let layout = ahem_layout(&mut system, "AX");
     let identity = layout.key();

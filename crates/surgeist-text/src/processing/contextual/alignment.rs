@@ -236,7 +236,7 @@ fn buffer_bytes<T>(capacity: usize) -> Result<usize> {
 /// resolver calls before execution, documented event/edge/operand/metric work,
 /// new rows, buffer capacities and unique pinned resources. Shared allocations
 /// are counted once by their actual owning identity; this ledger does not guess
-/// resource identity or measure opaque fontique/provider internals.
+/// resource identity or measure opaque provider internals.
 #[derive(Debug)]
 pub(crate) struct ScopeAlignmentBudget {
     limits: ScopeAlignmentLimits,

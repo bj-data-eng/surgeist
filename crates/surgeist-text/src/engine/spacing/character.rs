@@ -177,7 +177,7 @@ fn explicit_family(tag: &str) -> Option<&'static [Script]> {
         _ => return None,
     })
 }
-fn locale_family(locale: &fontique::Language) -> Option<&'static [Script]> {
+fn locale_family(locale: &parlance::Language) -> Option<&'static [Script]> {
     let fields =
         1 + usize::from(locale.script().is_some()) + usize::from(locale.region().is_some());
     if locale.as_str().split('-').count() != fields {

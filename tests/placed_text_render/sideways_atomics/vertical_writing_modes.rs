@@ -3,11 +3,10 @@
 use super::*;
 
 fn composition(mode: layout::WritingMode, kind: text::InlineBoxKind) {
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let mut source = text::Source::identified("\u{3a7}\u{3a7}", text::Id::from_u64(1558001), 13);
     source.inline_box(text::InlineBox::new(
         text::Id::from_u64(2),

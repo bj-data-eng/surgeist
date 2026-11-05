@@ -1,10 +1,10 @@
 use crate::{
-    Alignment, AnalyzedSource, ControlAllocation, DocumentSegmentBreaks, Font, FontCatalogueMode,
-    LineContext, LineEnd, LineOrientation, LineSelectionRequest, LineStart, ParagraphBaseDirection,
+    Alignment, AnalyzedSource, ControlAllocation, DocumentSegmentBreaks, Font, LineContext,
+    LineEnd, LineOrientation, LineSelectionRequest, LineStart, ParagraphBaseDirection,
     ParagraphInput, ParagraphOrigin, ParagraphOriginKind, ParagraphReplacement,
     ParagraphReplacementDefinition, ParagraphStrut, PreparationOptions, PreparedBreakKind,
     PreparedParticipant, PreparedTermination, Range, Source, SpacingAllocations, SpacingPolicy,
-    Style, System, SystemOptions, TabContext, Wrap,
+    Style, System, TabContext, Wrap,
 };
 
 fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
@@ -60,11 +60,10 @@ fn selected_computed_beh(separate_instance: bool) -> Vec<(Range, u32, f32)> {
     .unwrap();
     let analyzed = crate::test_wrapping::bind_missing(&analyzed, Wrap::Word);
     let fixture = crate::shaping_test_fonts::arabic_nonjoining_ahem();
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(fixture.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(fixture.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap();

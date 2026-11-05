@@ -343,12 +343,13 @@ fn capture_attached_mark(
         ]
     );
     let analyzed = crate::test_wrapping::bind_missing(output, Wrap::Word);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(parent_font()).unwrap();
-    system.register_fonts(body).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(parent_font(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
+    system
+        .register_fonts(body, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     (system, processed, analyzed)
 }
 

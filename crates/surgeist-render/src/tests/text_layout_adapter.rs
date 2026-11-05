@@ -25,11 +25,10 @@ const AHEM: &[u8] = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
 const ROOM: usize = 8 << 20;
 
 fn system(bytes: Vec<u8>) -> text::System {
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(bytes, surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     system
 }
 
@@ -307,7 +306,9 @@ fn actual_registered_fallback_runs_keep_each_face_and_outer_origin() {
     }
     let fallback = replace_tables(vec![(*b"name", name)]);
     let mut system = system(primary.clone());
-    system.register_fonts(fallback.clone()).unwrap();
+    system
+        .register_fonts(fallback.clone(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let input = system
         .layout(
             text::Source::new("AX"),

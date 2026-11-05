@@ -7,11 +7,10 @@ use skrifa::{MetadataProvider, raw::TableProvider};
 mod fixture;
 
 fn registered(bytes: Vec<u8>) -> (System, FontData) {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let data = system.registered_font_faces().next().unwrap().to_owned();
     assert_eq!(data.bytes(), bytes);
     assert_eq!(data.index(), 0);

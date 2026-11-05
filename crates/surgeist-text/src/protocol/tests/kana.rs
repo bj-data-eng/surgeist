@@ -42,11 +42,10 @@ fn captured(source: Source, style: Style) -> PreparedText {
     capture_input(input(source, style), crate::shaping_test_fonts::kana_ahem())
 }
 fn capture_input(mut input: ParagraphInput, bytes: Vec<u8>) -> PreparedText {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     input.boundary_policies = input
         .connections
         .iter()
@@ -374,12 +373,12 @@ fn transformed_base_and_cross_origin_mark_keep_one_real_gpos_unit_and_component_
 
 #[test]
 fn standalone_wrap_and_warm_cache_use_transformed_metrics_without_mutating_source() {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     system
-        .register_fonts(crate::shaping_test_fonts::kana_ahem())
+        .register_fonts(
+            crate::shaping_test_fonts::kana_ahem(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     let source = Source::identified("A\u{1b132}C", Id::from_u64(6304), 8);
     for (enabled, width, glyph) in [
@@ -409,12 +408,12 @@ fn standalone_wrap_and_warm_cache_use_transformed_metrics_without_mutating_sourc
                 .collect::<Vec<_>>(),
             [35, glyph, 37]
         );
-        let mut fresh = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut fresh = System::default();
         fresh
-            .register_fonts(crate::shaping_test_fonts::kana_ahem())
+            .register_fonts(
+                crate::shaping_test_fonts::kana_ahem(),
+                crate::test_fonts::FONT_LIMITS,
+            )
             .unwrap();
         assert_eq!(
             fresh.layout(source.clone(), st, options).unwrap().lines()[0].bounds(),

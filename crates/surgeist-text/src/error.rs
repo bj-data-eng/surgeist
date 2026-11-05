@@ -1,6 +1,6 @@
 use std::{error, fmt};
 
-use super::{FontCatalogueIdentity, TextStyleFeature, UnsupportedTextStyleReason, WhiteSpace};
+use super::{CataloguePublication, TextStyleFeature, UnsupportedTextStyleReason, WhiteSpace};
 
 mod upright;
 pub use upright::{
@@ -152,6 +152,20 @@ impl error::Error for Error {
     }
 }
 
+impl From<surgeist_font::DecodeError> for Error {
+    fn from(error: surgeist_font::DecodeError) -> Self {
+        Self::new(ErrorCode::FontLoadFailed, error.to_string())
+            .with_detail(ErrorDetail::FontDecode(error))
+    }
+}
+
+impl From<surgeist_font::CatalogueError> for Error {
+    fn from(error: surgeist_font::CatalogueError) -> Self {
+        Self::new(ErrorCode::FontLoadFailed, error.to_string())
+            .with_detail(ErrorDetail::FontCatalogue(error))
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ErrorCode {
     /// Invalid complete contextual source-processing capture.
@@ -162,7 +176,6 @@ pub enum ErrorCode {
     InvalidPhraseAnalysis,
     /// Font-independent text analysis could not retain its complete result.
     TextAnalysisCapacity,
-    FontSystemUnavailable,
     /// Font resolution found no usable face for required shaping or metrics.
     NoUsableFontFace,
     /// Actual shaping declined required work or representability.
@@ -172,7 +185,6 @@ pub enum ErrorCode {
     /// Invalid phase capability, captured occurrence, or complete line context.
     InvalidTextProtocol,
     FontLoadFailed,
-    FontGenerationExhausted,
     /// An edit cannot publish another revision of the source.
     SourceRevisionExhausted,
     /// Source or mapped index arithmetic exceeded its representable domain.
@@ -314,9 +326,9 @@ pub enum ErrorDetail {
     /// Associated font provenance does not match the captured operation basis.
     FontCatalogueMismatch {
         /// Expected publication.
-        expected: FontCatalogueIdentity,
+        expected: CataloguePublication,
         /// Actual resource publication.
-        actual: FontCatalogueIdentity,
+        actual: CataloguePublication,
     },
     /// Structural admission failed for a used metric table.
     FontMetricTable {
@@ -444,16 +456,12 @@ pub enum ErrorDetail {
         id: u64,
     },
     AccessibilityIdentityExhausted,
-    InvalidFontContainer,
+    /// Shared Font refused the encoded container under its admission contract.
+    FontDecode(surgeist_font::DecodeError),
+    /// Shared Font refused a registration, publication or candidate query.
+    FontCatalogue(surgeist_font::CatalogueError),
     InvalidFontFace {
         index: u32,
-    },
-    FontFacesNotAdmitted {
-        expected: usize,
-        admitted: usize,
-    },
-    FontGenerationExhausted {
-        generation: u64,
     },
     /// The source revision that has no successor.
     SourceRevisionExhausted {

@@ -142,11 +142,10 @@ fn prepare(orientation: LineOrientation) -> (PreparedText, [CapturedScope; 2]) {
     )
     .unwrap();
     let analysis = crate::test_wrapping::bind_missing(&analysis, Wrap::Word);
-    let mut fonts = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    fonts.register_fonts(AHEM.to_vec()).unwrap();
+    let mut fonts = System::default();
+    fonts
+        .register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = fonts
         .prepare(
             &analysis,
@@ -646,11 +645,10 @@ fn edge_leaves(orientation: LineOrientation) -> (PreparedText, CapturedScope) {
     )
     .unwrap();
     let analysis = crate::test_wrapping::bind_missing(&analysis, Wrap::Word);
-    let mut fonts = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    fonts.register_fonts(AHEM.to_vec()).unwrap();
+    let mut fonts = System::default();
+    fonts
+        .register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = fonts
         .prepare(
             &analysis,

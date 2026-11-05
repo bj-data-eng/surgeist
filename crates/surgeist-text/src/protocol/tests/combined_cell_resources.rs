@@ -284,12 +284,13 @@ fn mixed_variable() -> PreparedText {
     let domain = AnalyzedDomain::from_processed_paragraph(raw, AnalysisTypography::Mixed).unwrap();
     let analyzed = crate::test_wrapping::bind_missing(domain.outputs().next().unwrap(), Wrap::Word);
     assert_eq!(analyzed.combined_cells().len(), 1);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(parent).unwrap();
-    system.register_fonts(body).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(parent, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
+    system
+        .register_fonts(body, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     system
         .prepare(
             &analyzed,

@@ -95,11 +95,10 @@ struct Case {
 }
 
 fn prepare(analyzed: &text::AnalyzedSource, scale: f32) -> text::PreparedText {
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     system
         .prepare(
             analyzed,

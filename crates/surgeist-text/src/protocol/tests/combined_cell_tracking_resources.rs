@@ -209,12 +209,13 @@ pub(super) fn prepare_mixed(
         assert_eq!(piece.kind(), ParagraphOriginKind::Authored);
         assert!(piece.is_used());
     }
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(parent_bytes.clone()).unwrap();
-    system.register_fonts(body_bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(parent_bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
+    system
+        .register_fonts(body_bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let parent = system
         .registered_font_faces()
         .find(|face| face.bytes() == parent_bytes.as_slice())

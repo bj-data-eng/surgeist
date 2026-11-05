@@ -139,11 +139,10 @@ fn fixture_empty<S: l::LayoutScalar>()
     assert!(empty.enter_position() < scope.exit_position());
     assert!(scope.exit_position() < empty.exit_position());
     assert_eq!(empty.domain(), p0.domain());
-    let mut fonts = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    fonts.register_fonts(AHEM.to_vec()).unwrap();
+    let mut fonts = t::System::default();
+    fonts
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     // Root0 -> A1, block2; block2 -> X3. There is no host node for p2.
     let mut inputs = vec![
         l::LayoutInputOf::box_input(l::NodeInputOf {

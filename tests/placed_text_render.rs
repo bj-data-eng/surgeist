@@ -124,13 +124,11 @@ fn negative_css_tab_geometry_supplies_the_same_source_carets_and_render_admissio
 }
 
 fn assert_css_tab_composition(tab_size: text::TabSize, block_spacing: f64, b_x: f64) {
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = text::System::default();
     system
         .register_fonts(
             include_bytes!("../crates/surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+            surgeist_test::fixtures::FONT_LIMITS,
         )
         .unwrap();
     let source = text::Source::new("A\tB");
@@ -294,13 +292,11 @@ fn assert_css_tab_composition(tab_size: text::TabSize, block_spacing: f64, b_x: 
 }
 
 fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: bool) {
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = text::System::default();
     system
         .register_fonts(
             include_bytes!("../crates/surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+            surgeist_test::fixtures::FONT_LIMITS,
         )
         .unwrap();
     let source = text::Source::new(if contextual {
@@ -693,11 +689,10 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
 ) {
     const AHEM: &[u8] =
         include_bytes!("../crates/surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(AHEM.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let source = text::Source::identified("AB\u{ad}CDE", text::Id::from_u64(66191), 4);
     let style = text::Style {
         font: text::Font::new().family("Ahem"),
@@ -1238,11 +1233,10 @@ mod kana_transform {
         // Kana fits the25px block with the actual shorter glyph, without any
         // Render-side replacement, reshaping or second line layout.
         for enabled in [false, true] {
-            let mut system = text::System::new(text::SystemOptions {
-                font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-            })
-            .unwrap();
-            system.register_fonts(bytes.clone()).unwrap();
+            let mut system = text::System::default();
+            system
+                .register_fonts(bytes.clone(), surgeist_test::fixtures::FONT_LIMITS)
+                .unwrap();
             let (batch, origin, source) = capture(
                 &mut system,
                 enabled,
@@ -1430,11 +1424,10 @@ mod kana_transform {
         // Pinned Text4 break-all treats letter units as ID. No hyphenation or
         // glyph fitting substitutes for these actual10/5/10 provider advances.
         let bytes = kana_ahem();
-        let mut system = text::System::new(text::SystemOptions {
-            font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        system.register_fonts(bytes).unwrap();
+        let mut system = text::System::default();
+        system
+            .register_fonts(bytes, surgeist_test::fixtures::FONT_LIMITS)
+            .unwrap();
         for enabled in [false, true] {
             let (batch, _, source) = capture(
                 &mut system,

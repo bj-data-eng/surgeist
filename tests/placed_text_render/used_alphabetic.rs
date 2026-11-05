@@ -244,11 +244,10 @@ fn composition(bytes: &[u8], mode: layout::WritingMode) {
         text::LineOrientation::SidewaysClockwise
     };
     let source = text::Source::identified("A\u{3a7}", text::Id::from_u64(1561008), 5);
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(bytes.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let prepared = prepare(&mut system, &source, orientation);
     let origin = prepared.origin_views().next().unwrap().handle();
     let px = |value| layout::PreferredSizeOf::value(layout::LengthPercentageOf::px(value).unwrap());

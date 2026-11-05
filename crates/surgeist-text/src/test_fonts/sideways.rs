@@ -5,8 +5,8 @@
 use super::{AHEM, cmap, layout_table, single_substitution};
 use crate::test_fonts::{replace_tables, table, u16_at, u32_at};
 use crate::{
-    Alignment, AnalyzedSource, Direction, Font, FontCatalogueMode, Id, LineHeight, Options,
-    PreparationOptions, Range, Source, Style, System, SystemOptions,
+    Alignment, AnalyzedSource, Direction, Font, Id, LineHeight, Options, PreparationOptions, Range,
+    Source, Style, System,
 };
 use skrifa::{
     GlyphId, MetadataProvider,
@@ -250,11 +250,10 @@ fn shape(value: &str, features: &[&str], expected_id: u32, expected_level: u8) {
             Direction::LeftToRight
         }
     );
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(&analyzed, PreparationOptions::default())
         .unwrap();

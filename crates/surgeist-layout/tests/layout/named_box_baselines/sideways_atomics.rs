@@ -181,11 +181,10 @@ fn capture(
         })
         .collect();
     let analysis = analysis.with_wrapping_policies(policies).unwrap();
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.to_vec()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(bytes.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     assert_eq!(
         system.registered_font_faces().next().unwrap().bytes(),
         bytes

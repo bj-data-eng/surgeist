@@ -253,12 +253,12 @@ fn policy(definition: ParagraphBoundaryDefinition) -> ParagraphBoundaryPolicy {
     }
 }
 fn system() -> System {
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = System::default();
     system
-        .register_fonts(include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
+        .register_fonts(
+            include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     system
 }
@@ -2192,12 +2192,12 @@ fn geometric_accessibility_keeps_both_owned_pieces_of_a_cross_hole_ligature() {
             .collect::<String>(),
         "AA"
     );
-    let mut fonts = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut fonts = System::default();
     fonts
-        .register_fonts(crate::shaping_test_fonts::ligature_ahem())
+        .register_fonts(
+            crate::shaping_test_fonts::ligature_ahem(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     let prepared = fonts
         .prepare(&analyzed, PreparationOptions::default())
@@ -2791,12 +2791,12 @@ fn finalized_prefix_keeps_real_cross_hole_associations_without_claiming_child_so
     ];
     let owner = Arc::new(process_contextual_source(capture).unwrap());
     let paragraphs: Vec<_> = owner.paragraphs().collect();
-    let mut fonts = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut fonts = System::default();
     fonts
-        .register_fonts(crate::shaping_test_fonts::ligature_ahem())
+        .register_fonts(
+            crate::shaping_test_fonts::ligature_ahem(),
+            crate::test_fonts::FONT_LIMITS,
+        )
         .unwrap();
     let prepared = prepare(&mut fonts, paragraphs[0].clone());
     let actual = line(&prepared);

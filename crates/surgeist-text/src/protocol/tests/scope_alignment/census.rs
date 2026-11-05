@@ -21,11 +21,10 @@ fn fixture() -> (
     )
     .unwrap();
     let analysis = crate::test_wrapping::bind_missing(&analysis, Wrap::Word);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(AHEM.to_vec()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(AHEM.to_vec(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let prepared = system
         .prepare(&analysis, PreparationOptions::default())
         .unwrap();

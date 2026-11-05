@@ -1,5 +1,5 @@
-use fontique::{FontStyle, FontWeight, FontWidth, Language};
 use parlance::{FontFamilyName, FontFeature, FontVariation};
+use parlance::{FontStyle, FontWeight, FontWidth, Language};
 
 use super::{
     Error, ErrorCode, ErrorDetail, NumericRequirement, Result, TextStyleFeature,

@@ -4,7 +4,7 @@ use super::{
     EffectiveFontInstance, Field, FontBaselineAbsence, FontBaselineProvenance, FontBaselineScript,
     Phase, Table, TableError, baseline, finite, table, table_error, variation,
 };
-use crate::{Error, ErrorCode, ErrorDetail, FontCatalogueIdentity, Result};
+use crate::{CataloguePublication, Error, ErrorCode, ErrorDetail, Result};
 use skrifa::{FontRef, raw::FontData};
 
 /// Coordinate reference of the used upright em edges and Central value.
@@ -183,7 +183,7 @@ impl<'a> EffectiveFontInstance<'a> {
     /// fractional result is not rejected for a separate provider's half-unit grid.
     pub fn upright_metrics(
         &self,
-        expected_catalogue: &FontCatalogueIdentity,
+        expected_catalogue: &CataloguePublication,
         script: FontBaselineScript,
     ) -> Result<UprightFontMetrics<'a>> {
         let raw = self.unscaled_upright_metrics(expected_catalogue, script)?;
@@ -218,7 +218,7 @@ impl<'a> EffectiveFontInstance<'a> {
 
     pub(crate) fn unscaled_upright_metrics(
         &self,
-        expected_catalogue: &FontCatalogueIdentity,
+        expected_catalogue: &CataloguePublication,
         script: FontBaselineScript,
     ) -> Result<UnscaledUprightMetrics<'a>> {
         if self.face.catalogue_identity() != expected_catalogue {
@@ -300,7 +300,7 @@ impl<'a> EffectiveFontInstance<'a> {
 
     /// Independently demanded signed upright line spacing in design units.
     /// No glyph inventory, outline, vmtx, BASE or horizontal metric is needed.
-    pub(crate) fn upright_line_gap(&self, expected: &FontCatalogueIdentity) -> Result<f64> {
+    pub(crate) fn upright_line_gap(&self, expected: &CataloguePublication) -> Result<f64> {
         if self.face.catalogue_identity() != expected {
             return Err(Error::new(
                 ErrorCode::FontCatalogueMismatch,

@@ -182,11 +182,10 @@ fn common(mode: l::WritingMode) -> f64 {
 fn system() -> (t::System, Vec<u8>) {
     let bytes = font();
     qualify_font(&bytes);
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(bytes.clone(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     (system, bytes)
 }
 fn paragraph<S: l::LayoutScalar>(

@@ -44,11 +44,10 @@ fn ordinary_authored_optional_liga_keeps_host_egcs_but_placed_ax_preserves_share
         [Range::new(0, 1), Range::new(1, 2)]
     );
     assert_eq!(analyzed.inner.host_projection.graphemes, [0, 1, 2]);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let layout = system
         .layout_analyzed(
             &analyzed,

@@ -80,11 +80,10 @@ fn analyze(p: ContextualSourceInput) -> AnalyzedSource {
 }
 
 fn prepare_with(analyzed: &AnalyzedSource, font: Vec<u8>) -> PreparedText {
-    let mut fonts = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    fonts.register_fonts(font).unwrap();
+    let mut fonts = System::default();
+    fonts
+        .register_fonts(font, crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     fonts
         .prepare(
             &crate::test_wrapping::bind_missing(analyzed, Wrap::Word),

@@ -130,11 +130,10 @@ fn em_reference(
 #[test]
 fn a_native_tab_between_two_real_font_inputs_has_its_own_span_and_no_provider_share() {
     let bytes = qualified_font(); // exact public Shaper/SPACE/ZERO/negative-width receipts.
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let size = TabSize::spaces(2.0).unwrap();
     // Unchanged ordinary operation: its Block20 owns T40, so A0,
     // TAB10..40, B40..50. This is not an All Cell/source reinterpretation.
@@ -263,11 +262,10 @@ fn a_native_tab_between_two_real_font_inputs_has_its_own_span_and_no_provider_sh
 #[test]
 fn provider_free_positive_and_zero_tabs_expose_layout_spans_without_body_metrics_or_glyph_frames() {
     let bytes = qualified_font();
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     for (period, scale, offset) in [(20.0, 0.5, 0.0), (0.0, 1.0, 5.0)] {
         let capture = captured(
             "\t",

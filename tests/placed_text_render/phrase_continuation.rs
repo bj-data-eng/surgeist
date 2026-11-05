@@ -158,12 +158,11 @@ fn capture() -> (
         })
         .unwrap(),
     );
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = text::System::default();
     let bytes = super::phrase_transform::phrase_ahem();
-    system.register_fonts(bytes.clone()).unwrap();
+    system
+        .register_fonts(bytes.clone(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     let prepared: Vec<_> = processed
         .paragraphs()
         .map(|paragraph| {

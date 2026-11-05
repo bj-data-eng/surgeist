@@ -1154,15 +1154,15 @@ fn visual_move(layout: &PlacedLayout, value: Cursor, rightward: bool) -> Cursor 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Font, FontCatalogueMode, Options, Source, Style, System, SystemOptions};
+    use crate::{Font, Options, Source, Style, System};
 
     fn system() -> (System, Style) {
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut system = System::default();
         system
-            .register_fonts(include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
+            .register_fonts(
+                include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+                crate::test_fonts::FONT_LIMITS,
+            )
             .unwrap();
         let style = Style {
             font: Font::new().family("Ahem"),

@@ -26,11 +26,10 @@ fn style(mode: t::WhiteSpace, wrap: t::Wrap) -> t::Style {
 }
 
 fn system() -> t::System {
-    let mut system = t::System::new(t::SystemOptions {
-        font_catalogue: t::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(font::bytes().to_vec()).unwrap();
+    let mut system = t::System::default();
+    system
+        .register_fonts(font::bytes().to_vec(), crate::common::FONT_LIMITS)
+        .unwrap();
     system
 }
 
@@ -1448,3 +1447,5 @@ fn break_spaces_legal_space_and_higher_priority_zw_offers_cross_real_style_sourc
         }
     }
 }
+
+mod common;

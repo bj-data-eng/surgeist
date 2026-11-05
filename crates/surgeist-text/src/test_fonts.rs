@@ -1,5 +1,9 @@
-const AHEM: &[u8] = include_bytes!("../tests/fixtures/fonts/ahem/Ahem.ttf");
+pub(crate) const AHEM: &[u8] = include_bytes!("../tests/fixtures/fonts/ahem/Ahem.ttf");
 const X: u32 = 58;
+
+#[path = "../tests/common/mod.rs"]
+mod limits;
+pub(crate) use limits::FONT_LIMITS;
 
 // Repository-authored variable Ahem fixture construction copied from Render's
 // tests/prepared_outline.rs. The original licensed Ahem bytes are unchanged;

@@ -746,18 +746,15 @@ mod punctuation_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        Font, FontCatalogueMode, InlineBoxKind, OverflowWrap, Range, Source, Style, System,
-        SystemOptions,
-    };
+    use crate::{Font, InlineBoxKind, OverflowWrap, Range, Source, Style, System};
 
     fn system() -> (System, Style) {
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
+        let mut system = System::default();
         system
-            .register_fonts(include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec())
+            .register_fonts(
+                include_bytes!("../../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+                crate::test_fonts::FONT_LIMITS,
+            )
             .unwrap();
         let style = Style {
             font: Font::new().family("Ahem"),
@@ -773,6 +770,7 @@ mod tests {
         system
             .register_fonts(
                 include_bytes!("../../../tests/fixtures/fonts/phrase-ahem/PhraseAhem.ttf").to_vec(),
+                crate::test_fonts::FONT_LIMITS,
             )
             .unwrap();
         style.font = Font::new().family("Surgeist Phrase Ahem");
@@ -1214,11 +1212,10 @@ mod tests {
 
     #[test]
     fn selected_boundary_feedback_uses_actual_pair_adjustment_and_an_earlier_real_candidate() {
-        let mut system = System::new(SystemOptions {
-            font_catalogue: FontCatalogueMode::RegisteredOnly,
-        })
-        .unwrap();
-        system.register_fonts(pair_adjusted_ahem()).unwrap();
+        let mut system = System::default();
+        system
+            .register_fonts(pair_adjusted_ahem(), crate::test_fonts::FONT_LIMITS)
+            .unwrap();
         let style = Style {
             font: Font::new().family("Ahem"),
             size: 20.0,
@@ -1326,10 +1323,7 @@ mod tests {
     #[test]
     fn terminal_oversized_box_ends_without_fake_empty_line_or_font_requirement() {
         for count in [1_u64, 128] {
-            let mut system = System::new(SystemOptions {
-                font_catalogue: FontCatalogueMode::RegisteredOnly,
-            })
-            .unwrap();
+            let mut system = System::default();
             let mut source = Source::new("");
             for index in 0..count {
                 source.inline_box(crate::InlineBox::new(

@@ -99,11 +99,10 @@ fn prepare(value: &str, style: Style, orientation: LineOrientation) -> PreparedT
     );
     assert_eq!(analysis.typography(), typography);
     assert_eq!(analysis.direction(), Direction::LeftToRight);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(font()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(font(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     system
         .prepare(
             &analysis,

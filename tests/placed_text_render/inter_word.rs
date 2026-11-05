@@ -168,11 +168,10 @@ fn capture(
 ) -> (layout::CompletedLayoutBatch<usize>, text::PreparedOrigin) {
     let orientation = frame.orientation();
     qualify_font(bytes);
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.to_vec()).unwrap();
+    let mut system = text::System::default();
+    system
+        .register_fonts(bytes.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
+        .unwrap();
     if orientation == text::LineOrientation::Vertical {
         // Absence-qualified synthetic vertical metrics are an existing native
         // policy, not a claim that hmtx alone supplies TTB. The public owner

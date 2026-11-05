@@ -94,12 +94,12 @@ fn prepare(
         text::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = text::System::default();
     system
-        .register_fonts(include_bytes!("fixtures/fonts/ahem/Ahem.ttf").to_vec())
+        .register_fonts(
+            include_bytes!("fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+            crate::common::FONT_LIMITS,
+        )
         .unwrap();
     system
         .prepare(&analyzed, text::PreparationOptions::default())
@@ -188,12 +188,12 @@ fn one_origin_collapsed_followers_keep_distinct_style_span_gates() {
                 analyzed.processed_source().processed_text(),
                 &text::Text::from("A B")
             );
-            let mut system = text::System::new(text::SystemOptions {
-                font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-            })
-            .unwrap();
+            let mut system = text::System::default();
             system
-                .register_fonts(include_bytes!("fixtures/fonts/ahem/Ahem.ttf").to_vec())
+                .register_fonts(
+                    include_bytes!("fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+                    crate::common::FONT_LIMITS,
+                )
                 .unwrap();
             let prepared = system
                 .prepare(&analyzed, text::PreparationOptions::default())
@@ -307,12 +307,12 @@ fn contextual_style_span_gate_survives_casing_and_wbr_expansion() {
         analyzed.processed_source().processed_text(),
         &text::Text::from("a b")
     );
-    let mut system = text::System::new(text::SystemOptions {
-        font_catalogue: text::FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
+    let mut system = text::System::default();
     system
-        .register_fonts(include_bytes!("fixtures/fonts/ahem/Ahem.ttf").to_vec())
+        .register_fonts(
+            include_bytes!("fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+            crate::common::FONT_LIMITS,
+        )
         .unwrap();
     let prepared = system
         .prepare(&analyzed, text::PreparationOptions::default())
@@ -484,3 +484,5 @@ fn disappeared_follower_cut_finalizes_two_real_ten_pixel_lines_without_losing_so
     assert_eq!(selected.source_text(), &text::Text::from("A  B"));
     assert_eq!(selected.plaintext(), &text::Text::from("A B"));
 }
+
+mod common;

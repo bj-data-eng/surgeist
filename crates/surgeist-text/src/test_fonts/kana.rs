@@ -2,8 +2,8 @@
 //! These baselines shape separate original sources with TextTransform::none().
 
 use crate::{
-    Alignment, Direction, Font, FontCatalogueMode, Id, LineHeight, Options, Range, Source, Style,
-    System, SystemOptions, TextTransform, WhiteSpace,
+    Alignment, Direction, Font, Id, LineHeight, Options, Range, Source, Style, System,
+    TextTransform, WhiteSpace,
 };
 use skrifa::MetadataProvider;
 
@@ -36,11 +36,10 @@ fn baseline(text: &str, units: &[u16], expected: &[(u32, f32, f64, Range)], widt
     let bytes = crate::shaping_test_fonts::kana_ahem();
     let source = Source::identified(text, Id::from_u64(6301), 11);
     assert_eq!(source.text().code_units(), units);
-    let mut system = System::new(SystemOptions {
-        font_catalogue: FontCatalogueMode::RegisteredOnly,
-    })
-    .unwrap();
-    system.register_fonts(bytes.clone()).unwrap();
+    let mut system = System::default();
+    system
+        .register_fonts(bytes.clone(), crate::test_fonts::FONT_LIMITS)
+        .unwrap();
     let layout = system
         .layout(
             source.clone(),

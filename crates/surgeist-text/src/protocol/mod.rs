@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::engine::PreparedData;
-use crate::{Alignment, FontCatalogueIdentity, Point, Range, Rect, Result};
+use crate::{Alignment, CataloguePublication, Point, Range, Rect, Result};
 use selection::SelectedData;
 
 pub(crate) mod inline_box;
@@ -230,7 +230,7 @@ impl PreparedText {
         crate::AnalyzedSource::from_inner(Arc::clone(&self.inner.analyzed))
     }
     #[must_use]
-    pub fn font_catalogue_identity(&self) -> &FontCatalogueIdentity {
+    pub fn font_catalogue_identity(&self) -> &CataloguePublication {
         &self.inner.font_catalogue
     }
 }

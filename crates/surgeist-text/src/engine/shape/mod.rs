@@ -33,11 +33,14 @@ fn observe_provider_call() {
     PROVIDER_CALLS.set(PROVIDER_CALLS.get() + 1);
 }
 
-use std::{collections::BTreeSet, ops::Range as IndexRange};
+use std::{
+    collections::BTreeSet,
+    ops::{ControlFlow, Range as IndexRange},
+};
 
-use fontique::{Attributes, Query, QueryFamily, QueryFont, QueryStatus};
 use icu_properties::props::Script;
 use skrifa::raw::TableProvider;
+use surgeist_font::{FontAttributes, FontCandidate, FontQuery};
 
 use super::{
     ShapingInput,
@@ -65,6 +68,20 @@ pub(crate) struct ShapeContext {
     plans: LruCache<cache::PlanKey, surgeist_shaper::ShapePlan>,
     buffer: Option<surgeist_shaper::UnicodeBuffer>,
     cluster: CharCluster,
+    control_face: Option<surgeist_font::FontFace>,
+}
+
+impl ShapeContext {
+    fn control_font(&mut self, publication: &crate::CataloguePublication) -> Result<FontData> {
+        if let Some(face) = &self.control_face {
+            return Ok(FontData::from_face(face.clone(), publication.clone()));
+        }
+        let face = crate::control::font::make()?;
+        let data = FontData::from_face(face.clone(), publication.clone());
+        crate::control::font::validate(&data)?;
+        self.control_face = Some(face);
+        Ok(data)
+    }
 }
 
 #[cfg(test)]
@@ -82,6 +99,7 @@ impl Default for ShapeContext {
             plans: LruCache::new(16),
             buffer: Some(surgeist_shaper::UnicodeBuffer::new()),
             cluster: CharCluster::default(),
+            control_face: None,
         }
     }
 }
@@ -89,12 +107,12 @@ impl Default for ShapeContext {
 #[derive(Clone)]
 struct SelectedFont {
     font: SelectedResource,
-    attrs: Attributes,
+    attrs: FontAttributes,
 }
 
 #[derive(Clone)]
 enum SelectedResource {
-    Matched(QueryFont),
+    Matched(FontCandidate),
     Control(FontData),
 }
 
@@ -351,7 +369,7 @@ fn symbol_positions(
 }
 
 fn provider_script(script: Script) -> surgeist_shaper::Script {
-    convert::script_to_shaper(convert::script_to_fontique(script, &AnalysisDataSources))
+    convert::script_to_shaper(script, &AnalysisDataSources)
 }
 
 fn provider_direction(level: u8) -> surgeist_shaper::Direction {
@@ -424,11 +442,7 @@ impl PartialEq for SelectedFont {
         self.attrs == other.attrs
             && match (&self.font, &other.font) {
                 (SelectedResource::Matched(left), SelectedResource::Matched(right)) => {
-                    let (left_blob, _) = left.blob.clone().into_raw_parts();
-                    let (right_blob, _) = right.blob.clone().into_raw_parts();
-                    std::sync::Arc::ptr_eq(&left_blob, &right_blob)
-                        && left.index == right.index
-                        && left.synthesis == right.synthesis
+                    left.face() == right.face() && left.synthesis() == right.synthesis()
                 }
                 (SelectedResource::Control(left), SelectedResource::Control(right)) => {
                     left.face().is_same_face(&right.face())
@@ -440,7 +454,7 @@ impl PartialEq for SelectedFont {
 }
 
 pub(crate) fn shape(
-    catalogue: &mut crate::catalogue::Catalogue,
+    catalogue: &mut surgeist_font::FontCatalogue,
     input: ShapingInput<'_>,
     scratch: &mut ShapeContext,
     scope_budget: &mut super::scope_alignment::accounting::Ledger,
@@ -455,7 +469,7 @@ pub(crate) fn admit_cells(analyzed: &super::AnalyzedData) -> Result<()> {
 /// Execute real native source cells alongside ordinary body shaping. Each
 /// normal inner invocation uses its retained horizontal levels and settings.
 pub(crate) fn prepare(
-    catalogue: &mut crate::catalogue::Catalogue,
+    catalogue: &mut surgeist_font::FontCatalogue,
     input: ShapingInput<'_>,
     scratch: &mut ShapeContext,
     analyzed: &super::AnalyzedData,
@@ -493,7 +507,7 @@ pub(crate) fn prepare(
 
 /// Actual matching/instance capture without a redundant glyph-shaping operation.
 pub(crate) fn capture_fonts(
-    catalogue: &mut crate::catalogue::Catalogue,
+    catalogue: &mut surgeist_font::FontCatalogue,
     input: ShapingInput<'_>,
     scratch: &mut ShapeContext,
 ) -> Result<Vec<FontQueryWitness>> {
@@ -501,7 +515,7 @@ pub(crate) fn capture_fonts(
 }
 
 fn shape_impl(
-    catalogue: &mut crate::catalogue::Catalogue,
+    catalogue: &mut surgeist_font::FontCatalogue,
     input: ShapingInput<'_>,
     scratch: &mut ShapeContext,
     capture_only: bool,
@@ -514,7 +528,7 @@ fn shape_impl(
         .iter()
         .any(|a| crate::control::is_visible(a.code_point))
     {
-        Some(catalogue.control_font()?)
+        Some(scratch.control_font(input.font_catalogue)?)
     } else {
         None
     };
@@ -699,10 +713,10 @@ fn shape_impl(
                                     .expect("eligible controls admitted their font")
                                     .clone(),
                             ),
-                            attrs: Attributes::default(),
+                            attrs: FontAttributes::default(),
                         }
                     } else {
-                        select_font(&mut query, style, script, &mut scratch.cluster, &sources)
+                        select_font(&mut query, style, &mut scratch.cluster, &sources)?
                             .ok_or_else(no_font)?
                     };
                 if current.as_ref().is_some_and(|font| font != &selected) {
@@ -797,27 +811,22 @@ fn shape_impl(
 /// Queries and retains one actual zero-atom font strut under the original
 /// preparation. The chosen style is an actual canonical style-table row.
 pub(crate) fn default_metrics(
-    mut query: Query<'_>,
+    mut query: FontQuery<'_>,
     input: &ShapingInput<'_>,
     style_index: usize,
     scratch: &mut ShapeContext,
 ) -> Result<PreparedRun> {
     let style = &input.styles[style_index].style;
-    configure_query(
-        &mut query,
-        style,
-        Script::Latin,
-        false,
-        &AnalysisDataSources,
-    );
-    let mut selected = None;
-    query.matches_with(|font| {
-        selected = Some(SelectedFont {
-            font: SelectedResource::Matched(font.clone()),
-            attrs: attributes(style),
-        });
-        QueryStatus::Stop
-    });
+    let ControlFlow::Break(selected) =
+        query.visit_candidates(&style.font_family, attributes(style), |font| {
+            ControlFlow::Break(SelectedFont {
+                font: SelectedResource::Matched(font.clone()),
+                attrs: attributes(style),
+            })
+        })?
+    else {
+        return Err(no_font());
+    };
     let mut output = ShapedData::default();
     append_selected(
         input,
@@ -826,7 +835,7 @@ pub(crate) fn default_metrics(
             style: style_index,
             script: Script::Latin,
             level: input.analysis.base_level,
-            font: selected.ok_or_else(no_font)?,
+            font: selected,
             context: 0..0,
         },
         scratch,
@@ -1299,12 +1308,8 @@ pub(crate) fn finalize(
     ))
 }
 
-fn attributes(style: &ResolvedStyle) -> Attributes {
-    Attributes {
-        width: style.font_width,
-        weight: style.font_weight,
-        style: style.font_style,
-    }
+fn attributes(style: &ResolvedStyle) -> FontAttributes {
+    FontAttributes::new(style.font_width, style.font_style, style.font_weight)
 }
 
 fn same_shaping_style(a: &ResolvedStyle, b: &ResolvedStyle) -> bool {
@@ -1319,43 +1324,19 @@ fn same_shaping_style(a: &ResolvedStyle, b: &ResolvedStyle) -> bool {
         && a.word_spacing == b.word_spacing
 }
 
-fn configure_query(
-    query: &mut Query<'_>,
-    style: &ResolvedStyle,
-    script: Script,
-    emoji: bool,
-    sources: &AnalysisDataSources,
-) {
-    let families = style.font_family.iter().copied().map(QueryFamily::Id);
-    if emoji {
-        query.set_families(families.chain(std::iter::once(QueryFamily::Generic(
-            fontique::GenericFamily::Emoji,
-        ))));
-    } else {
-        query.set_families(families);
-    }
-    query.set_attributes(attributes(style));
-    query.set_fallbacks(fontique::FallbackKey::new(
-        convert::script_to_fontique(script, sources),
-        style.locale.as_ref(),
-    ));
-}
-
 fn select_font(
-    query: &mut Query<'_>,
+    query: &mut FontQuery<'_>,
     style: &ResolvedStyle,
-    script: Script,
     cluster: &mut CharCluster,
     sources: &AnalysisDataSources,
-) -> Option<SelectedFont> {
-    configure_query(query, style, script, cluster.is_emoji, sources);
+) -> Result<Option<SelectedFont>> {
     let mut selected = None;
-    query.matches_with(|font| {
+    let _ = query.visit_candidates(&style.font_family, attributes(style), |font| {
         let Some(charmap) = font.charmap() else {
-            return QueryStatus::Continue;
+            return ControlFlow::Continue(());
         };
         let status = cluster.map(
-            |ch| charmap.map(ch).is_some_and(|glyph| glyph != 0),
+            |ch| charmap.glyph_id(ch).is_some_and(|glyph| glyph != 0),
             sources,
         );
         if status != Status::Discard || selected.is_none() {
@@ -1365,12 +1346,12 @@ fn select_font(
             });
         }
         if status == Status::Complete {
-            QueryStatus::Stop
+            ControlFlow::Break(())
         } else {
-            QueryStatus::Continue
+            ControlFlow::Continue(())
         }
-    });
-    selected
+    })?;
+    Ok(selected)
 }
 
 fn fill_cluster(input: &ShapingInput<'_>, range: IndexRange<usize>, cluster: &mut CharCluster) {
@@ -1540,9 +1521,9 @@ struct RunRequest<'a, 'input> {
     script: Script,
     level: u8,
     font: &'a FontData,
-    attrs: Attributes,
+    attrs: FontAttributes,
     synthesis: FontSynthesis,
-    suggested_variations: Vec<(surgeist_shaper::Tag, f32)>,
+    suggested_variations: Vec<parlance::FontVariation>,
     retained_coords: Option<&'a [i16]>,
     context: RunContext<'a>,
 }
@@ -1587,11 +1568,7 @@ fn append_selected(
         font,
         synthesis,
         suggested_variations,
-    } = selected_resource(
-        selected.font,
-        input.styles[segment.style].style.font_size,
-        input.font_catalogue,
-    )?;
+    } = selected_resource(selected.font, input.styles[segment.style].style.font_size)?;
     append_request(
         RunRequest {
             input,
@@ -1897,10 +1874,7 @@ fn append_request(
     } else {
         provider_direction(request.level)
     };
-    let script = convert::script_to_shaper(convert::script_to_fontique(
-        request.script,
-        &AnalysisDataSources,
-    ));
+    let script = convert::script_to_shaper(request.script, &AnalysisDataSources);
     let language = style
         .locale
         .as_ref()
@@ -3368,31 +3342,30 @@ fn whitespace(code_point: u32) -> Whitespace {
 /// Native first-available family probe. Raw registrations have unrestricted
 /// unicode ranges. Glyph presence (including U+0020) does not select the face.
 pub(crate) fn automatic_hyphen(
-    mut query: Query<'_>,
+    mut query: FontQuery<'_>,
     style: &ResolvedStyle,
-    catalogue: &crate::FontCatalogueIdentity,
 ) -> Result<(crate::Text, FontData)> {
-    query.set_families(style.font_family.iter().copied().map(QueryFamily::Id));
-    query.set_attributes(attributes(style));
-    let mut indication = None;
-    query.matches_with(|font| {
-        indication = Some((
-            if font
-                .charmap()
-                .and_then(|map| map.map('\u{2010}'))
-                .is_some_and(|glyph| glyph != 0)
-            {
-                "\u{2010}"
-            } else {
-                "-"
-            },
-            FontData::from_blob(font.blob.clone(), font.index, catalogue.clone()),
-        ));
-        QueryStatus::Stop
-    });
-    indication
-        .map(|(text, font)| (crate::Text::from(text), font))
-        .ok_or_else(|| crate::hyphenation::error(crate::HyphenationError::MissingPrimaryFont))
+    let selected = query.visit_candidates(&style.font_family, attributes(style), |font| {
+        let text = if font
+            .charmap()
+            .and_then(|map| map.glyph_id('\u{2010}'))
+            .is_some_and(|glyph| glyph != 0)
+        {
+            "\u{2010}"
+        } else {
+            "-"
+        };
+        ControlFlow::Break((
+            crate::Text::from(text),
+            FontData::from_face(font.face().clone(), font.publication().clone()),
+        ))
+    })?;
+    match selected {
+        ControlFlow::Break(result) => Ok(result),
+        ControlFlow::Continue(()) => Err(crate::hyphenation::error(
+            crate::HyphenationError::MissingPrimaryFont,
+        )),
+    }
 }
 
 fn append_tab(
@@ -3442,7 +3415,7 @@ pub(crate) struct CharacterProbe<'a> {
     pub(crate) content: crate::UprightContent,
 }
 pub(crate) fn measure_character(
-    mut query: Query<'_>,
+    mut query: FontQuery<'_>,
     probe: CharacterProbe<'_>,
     scratch: &mut ShapeContext,
     ledger: &mut super::scope_alignment::accounting::Ledger,
@@ -3479,8 +3452,7 @@ pub(crate) fn measure_character(
     };
     let style = &input.styles[style_index].style;
     let run = if let Some(budget) = ledger.as_mut() {
-        let Some(canonical) =
-            font_instance::character_font(query, style, ch, input.font_catalogue, budget, pinned)?
+        let Some(canonical) = font_instance::character_font(query, style, ch, budget, pinned)?
         else {
             return Ok(None);
         };
@@ -3521,30 +3493,21 @@ pub(crate) fn measure_character(
         account::drop_vec(ledger, canonical.coords)?;
         run
     } else {
-        configure_query(
-            &mut query,
-            style,
-            Script::Latin,
-            false,
-            &AnalysisDataSources,
-        );
-        let mut selected = None;
-        query.matches_with(|font| {
+        let selected = query.visit_candidates(&style.font_family, attributes(style), |font| {
             if font
                 .charmap()
-                .and_then(|map| map.map(ch))
+                .and_then(|map| map.glyph_id(ch))
                 .is_some_and(|id| id != 0)
             {
-                selected = Some(SelectedFont {
+                ControlFlow::Break(SelectedFont {
                     font: SelectedResource::Matched(font.clone()),
                     attrs: attributes(style),
-                });
-                QueryStatus::Stop
+                })
             } else {
-                QueryStatus::Continue
+                ControlFlow::Continue(())
             }
-        });
-        let Some(font) = selected else {
+        })?;
+        let ControlFlow::Break(font) = selected else {
             return Ok(None);
         };
         let mut output = ShapedData::default();
