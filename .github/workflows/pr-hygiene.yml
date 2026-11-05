@@ -57,6 +57,71 @@ jobs:
             printf '%s\n' "$text" | grep -aioE "$single" | grep -aoE "$issue" | sort -u | sed 's/^/- /' || echo "- none"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  tool-names:
+    name: No tool names in text, commits or files
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Reject tool names in the title, body, commit messages, paths and files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          EXPECTED_COMMITS: ${{ github.event.pull_request.commits }}
+        run: |
+          set -euo pipefail
+          # The bracketed letters match the names without this file containing them.
+          pattern='[c]odex|[c]laude'
+          found=0
+          report() {
+            local text=${2//'%'/%25}
+            text=${text//$'\r'/}
+            echo "::error title=$1::$text"
+            found=1
+          }
+
+          pr_text=$(gh api "repos/$REPO/pulls/$NUMBER" --jq '.title + "\n" + (.body // "")')
+          while IFS= read -r line; do
+            report "Tool name in the pull request" "$line"
+          done < <(printf '%s\n' "$pr_text" | grep -aiE "$pattern" || true)
+
+          fetched=$(gh api --paginate "repos/$REPO/pulls/$NUMBER/commits" --jq '.[].sha' | wc -l | tr -d ' ')
+          if [ "$fetched" -lt "$EXPECTED_COMMITS" ]; then
+            echo "::warning title=Commits not checked::Only $fetched of $EXPECTED_COMMITS commits could be read; the rest were not checked for tool names."
+          fi
+          while IFS= read -r line; do
+            report "Tool name in a commit message" "$line"
+          done < <(gh api --paginate "repos/$REPO/pulls/$NUMBER/commits" \
+            --jq '.[] | .sha[0:9] as $sha | .commit.message | split("\n")[] | $sha + ": " + .' \
+            | grep -aiE "$pattern" || true)
+
+          # The local tooling folder's skill links are allowed as paths.
+          while IFS= read -r path; do
+            report "Tool name in a path" "$path"
+          done < <(git ls-files | grep -aiE "$pattern" | grep -avE '^\.[c]laude/skills/' || true)
+
+          # Files named README may name tools. So may the two .gitignore
+          # lines that ignore the local tooling folder except its skill links.
+          while IFS= read -r match; do
+            file=${match%%:*}
+            rest=${match#*:}
+            number=${rest%%:*}
+            echo "::error file=$file,line=$number,title=Tool name in a file::${rest#*:}"
+            found=1
+          done < <(git grep -I -n -i -E "$pattern" -- . ':(exclude,glob)**/README' ':(exclude,glob)**/README.*' \
+            | grep -avE '^\.gitignore:[0-9]+:(/\.[c]laude/\*|!/\.[c]laude/skills/)$' || true)
+
+          if [ "$found" -ne 0 ]; then
+            exit 1
+          fi
+          echo "No tool names found."
+
   branch-name:
     name: Branch follows branch/<topic>
     runs-on: ubuntu-latest
