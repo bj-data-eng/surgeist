@@ -99,14 +99,7 @@ pub(super) fn browser_document_write_script(html: &str) -> String {
     )
 }
 
-pub(super) fn fixture_cases() -> [(&'static str, &'static str); 4] {
-    [
-        ("border_box_ltr", "borderBoxLtrData"),
-        ("content_box_ltr", "contentBoxLtrData"),
-        ("border_box_rtl", "borderBoxRtlData"),
-        ("content_box_rtl", "contentBoxRtlData"),
-    ]
-}
+pub(super) use crate::fixture_variants::fixture_cases;
 
 use std::collections::BTreeSet;
 use std::fmt;

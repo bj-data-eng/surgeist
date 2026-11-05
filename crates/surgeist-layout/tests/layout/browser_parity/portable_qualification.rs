@@ -18,6 +18,14 @@ use support::exact_differences::{
     QualifiedComparison, complete_captured_comparison,
 };
 
+#[path = "fixture_variants.rs"]
+mod fixture_variants;
+#[path = "qualification_catalogue.rs"]
+mod qualification_catalogue;
+use qualification_catalogue::{Declaration, Record};
+
+const OWNER_DECLARATION: &str = "examples/qualify-root-context/corpus.toml";
+
 type Result<T> = std::result::Result<T, QualificationError>;
 
 pub(super) struct Registration<'a> {
@@ -161,10 +169,11 @@ struct Freshness {
     root: PathBuf,
     pins: BTreeMap<String, String>,
     owner_pins: BTreeMap<String, String>,
+    selected_records: BTreeMap<String, Value>,
 }
 
 impl Freshness {
-    fn verify(&self) -> Result<()> {
+    fn verify(&self) -> Result<Vec<String>> {
         regular_file(
             &self.owner,
             &format!("{}/{}", authority::ARTIFACT_ROOT, authority::TERMINAL),
@@ -183,8 +192,45 @@ impl Freshness {
         if static_files(&self.root)? != self.pins.keys().cloned().collect() {
             return Err(changed("complete registered artifact census"));
         }
-        Ok(())
+        let bytes = fs::read(regular_file(&self.owner, OWNER_DECLARATION)?)
+            .map_err(|error| changed(format!("live catalogue: {error}")))?;
+        let live = Declaration::parse(&bytes)
+            .map_err(|error| changed(format!("live catalogue: {error}")))?;
+        live.check_live_records(&self.selected_records)
+            .map_err(|error| changed(error.to_string()))
     }
+}
+
+fn record_value(record: &Record) -> Result<Value> {
+    serde_json::to_value(record).map_err(|error| malformed(error.to_string()))
+}
+
+fn selected_records(root: &Path, terminal: &Qualification) -> Result<BTreeMap<String, Value>> {
+    let bytes = read_pinned(root, &terminal.declaration)?;
+    let captured = Declaration::parse(&bytes)
+        .map_err(|error| malformed(format!("retained catalogue: {error}")))?;
+    let records: BTreeMap<_, _> = captured
+        .records
+        .iter()
+        .map(|record| (record.source.as_str(), record))
+        .collect();
+    terminal
+        .records
+        .iter()
+        .map(|projection| {
+            let record = records
+                .get(projection.source.as_str())
+                .ok_or_else(|| changed("selected record missing from retained catalogue"))?;
+            let value = record_value(record)?;
+            if value != projection.value {
+                return Err(changed(format!(
+                    "retained record projection: {}",
+                    projection.source
+                )));
+            }
+            Ok((projection.source.clone(), value))
+        })
+        .collect()
 }
 
 struct AdmittedCase {
@@ -209,6 +255,7 @@ pub(super) struct EditionRun {
     pub(super) cases: Vec<CaseOutcome>,
     pub(super) declared_cases: usize,
     pub(super) freshness_error: Option<String>,
+    pub(super) uncovered: Vec<String>,
 }
 
 impl EditionRun {
@@ -216,8 +263,12 @@ impl EditionRun {
         self.freshness_error.is_none() && self.cases.iter().all(|case| case.qualified.is_ok())
     }
 
-    pub(super) fn current_coverage_complete(&self) -> bool {
+    pub(super) fn registered_coverage_complete(&self) -> bool {
         self.selected_cases_passed() && self.cases.len() == self.declared_cases
+    }
+
+    pub(super) fn current_coverage_complete(&self) -> bool {
+        self.registered_coverage_complete() && self.uncovered.is_empty()
     }
 }
 
@@ -278,7 +329,10 @@ impl AdmittedEdition {
             });
         }
         before_freshness();
-        let freshness_error = self.freshness.verify().err().map(|error| error.to_string());
+        let (uncovered, freshness_error) = match self.freshness.verify() {
+            Ok(uncovered) => (uncovered, None),
+            Err(error) => (Vec::new(), Some(error.to_string())),
+        };
         if let Some(error) = &freshness_error {
             for case in &mut cases {
                 case.qualified = Err(error.clone());
@@ -288,6 +342,7 @@ impl AdmittedEdition {
             cases,
             declared_cases: self.cases.len(),
             freshness_error,
+            uncovered,
         })
     }
 }
@@ -295,7 +350,7 @@ impl AdmittedEdition {
 // This seal admits only the publisher's complete terminal artifact. Retained
 // projections and directory existence do not establish capture authority.
 const REGISTERED_TERMINAL_SHA256: &str =
-    "3ddebb08a1fa4e430d6bbd046d4cc1d02981d9d9162dd839e5b1eb11fa1fe8f8";
+    "c4280cd619a70520a51232c83b13ae0e6aa078479a32fa49947d1e0a0de8b074";
 
 pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedEdition> {
     admit(
@@ -338,10 +393,6 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
     if terminal.current_owner_inputs.is_empty()
         || terminal.retained_inputs.get(&terminal.declaration.path)
             != Some(&terminal.declaration.sha256)
-        || terminal
-            .current_owner_inputs
-            .get("examples/qualify-root-context/corpus.toml")
-            != Some(&terminal.declaration.sha256)
     {
         return Err(changed("canonical declaration freshness binding"));
     }
@@ -350,6 +401,7 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
         root: root.clone(),
         pins,
         owner_pins: terminal.current_owner_inputs.clone(),
+        selected_records: selected_records(&root, &terminal)?,
     };
     freshness.verify()?;
     let provenance = terminal

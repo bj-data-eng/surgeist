@@ -9,6 +9,8 @@ mod atomic_paragraph_metrics;
 mod browser_profile;
 #[path = "../tests/bin/surgeist-layout-generate/envelope.rs"]
 mod envelope;
+#[path = "../tests/layout/browser_parity/fixture_variants.rs"]
+mod fixture_variants;
 #[path = "../tests/layout/browser_parity/grid_alignment_reference.rs"]
 mod grid_alignment_reference;
 #[path = "../tests/bin/surgeist-layout-generate/measurement.rs"]
@@ -46,6 +48,9 @@ fn parse_arguments(
         [mode] if mode == "--publish-canonical-box-differences" => {
             Ok((None, QualificationMode::PublishCanonicalBoxes))
         }
+        [mode] if mode == "--derive-canonical-box-qualification" => {
+            Ok((None, QualificationMode::DeriveCanonicalBoxes))
+        }
         [mode] if mode == "--check-published-canonical-box-differences" => {
             Ok((None, QualificationMode::CheckPublishedCanonicalBoxes))
         }
@@ -72,7 +77,7 @@ fn parse_arguments(
             ))
         }
         _ => Err(
-            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source>",
+            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --derive-canonical-box-qualification | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source>",
         ),
     }
 }
@@ -96,6 +101,10 @@ mod tests {
             (
                 "--check-published-canonical-box-differences",
                 QualificationMode::CheckPublishedCanonicalBoxes,
+            ),
+            (
+                "--derive-canonical-box-qualification",
+                QualificationMode::DeriveCanonicalBoxes,
             ),
         ] {
             assert_eq!(parse_arguments(&arguments(&[flag])), Ok((None, mode)));

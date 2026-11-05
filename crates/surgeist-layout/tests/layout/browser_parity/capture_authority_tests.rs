@@ -178,7 +178,6 @@ fn terminal_wire_preserves_publisher_bytes_and_rejects_broken_associations() {
 #[test]
 fn live_owner_bindings_cover_all_roles_and_refuse_unknown_or_overlapping_paths() {
     let roles = [
-        ("corpus.toml", "examples/qualify-root-context/corpus.toml"),
         (
             "browser-owner.toml",
             "tests/layout/browser_parity/corpus.toml",
@@ -210,6 +209,7 @@ fn live_owner_bindings_cover_all_roles_and_refuse_unknown_or_overlapping_paths()
         expected.insert(owner.to_owned(), hash);
     }
     for name in [
+        "corpus.toml",
         "origin/source-receipt.json",
         "origin/source-provenance.json",
         "origin/selected-originals.json",

@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "edition": "canonical-box-differences",
   "declaration": {
     "path": "corpus.toml",
@@ -831,7 +831,6 @@
     "semantic/collapsed-flex-wrapping-content_box_rtl.json": "246aa172b3396347efbf28f60da391e23a2659f9acfa3dbf9fc1afbe82e1d80e"
   },
   "current_owner_inputs": {
-    "examples/qualify-root-context/corpus.toml": "563ff2c16da373d4e6039395d63240afdcdd36dbbe0df42603ae9cf32e2e8211",
     "semantic/collapsed-flex-strut-policy.md": "b06f4e8851cd86214bb7d14cfc6b5536121a174ae2b3c846e8b0e5eb551934ae",
     "semantic/collapsed-flex-wrapping-border_box_ltr.json": "ad149c594e5eda6aa2dac3895bd69eee0e44b4d384c2494af661a26eea017354",
     "semantic/collapsed-flex-wrapping-border_box_rtl.json": "d1b5f04fafecf0de2f4d304337cdbb69b13b44313a064fafe22a1aa2b1f6f22b",
