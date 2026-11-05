@@ -488,3 +488,22 @@ fn completed_prepared_text_and_both_fragment_channels_are_rejected_by_box_snapsh
         Err(QualificationError::UnsupportedObservation { .. })
     ));
 }
+
+#[test]
+fn canonical_spec_accepts_explicit_focused_and_published_capture_lineages() {
+    let mut value = declaration();
+    value.as_object_mut().unwrap().remove("identity");
+    let focused = identity();
+    let mut published = focused.clone();
+    published["generator"] = json!("source-imported-durable-edition");
+    published["source_imports_sha256"] = json!("b".repeat(64));
+    published["inputs"]["origin/source-import.json"] = json!("c".repeat(64));
+    value["identities"] = json!({"focused": focused, "published": published});
+    value["representation"] = json!({"published_edition": "canonical-box-differences"});
+    let result = ExactDifferenceSpec::parse(&value.to_string());
+    assert!(
+        result.is_ok(),
+        "one semantic oracle must admit separately authored, explicit capture lineages: {:?}",
+        result.err()
+    );
+}
