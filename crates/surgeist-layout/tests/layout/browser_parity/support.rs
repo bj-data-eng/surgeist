@@ -4327,11 +4327,18 @@ fn compare_range_rectangle_expectations(
             "Range inline root has ambiguous placed Text results",
         ));
     }
+    let source_rows = match numeric {
+        NumericComparisonSink::PreparedRanges(comparisons) => {
+            Some(comparisons.row_sources(path, expected)?)
+        }
+        _ => None,
+    };
     visit_range_rectangle_pairs(
         path,
         actual,
         placed.layout(),
         expected,
+        source_rows.as_deref(),
         |edge| range_rectangle_ancestor_translation(tree, owner, edge),
         |pair| numeric.range(path, pair),
     )
@@ -4527,7 +4534,7 @@ fn compare_range_rectangle_expectations_with_translation(
     expected: &[InlineRangeRectangleExpectation],
     translation: impl FnMut(PhysicalStartEdge) -> Result<Scalar, Error>,
 ) -> Result<(), Error> {
-    visit_range_rectangle_pairs(path, actual, placed, expected, translation, |pair| {
+    visit_range_rectangle_pairs(path, actual, placed, expected, None, translation, |pair| {
         NumericComparisonSink::Strict.range(path, pair)
     })
 }
@@ -4549,6 +4556,7 @@ fn visit_range_rectangle_pairs(
     actual: &[layout::InlineFragmentOutputEntry<usize>],
     placed: &surgeist_text::Layout,
     expected: &[InlineRangeRectangleExpectation],
+    source_rows: Option<&[surgeist_text::Range]>,
     mut translation: impl FnMut(PhysicalStartEdge) -> Result<Scalar, Error>,
     mut visit: impl FnMut(RangeRectanglePair) -> Result<(), Error>,
 ) -> Result<(), Error> {
@@ -4567,27 +4575,47 @@ fn visit_range_rectangle_pairs(
             row.source_segment_id == expected.source_segment_id
                 && row.line_index == expected.line_index
         };
-        let actual_index = actual
-            .iter()
-            .enumerate()
-            .find(|(i, row)| {
-                let (start, advance) =
-                    range_rectangle_values(row.rect, expected.physical_start_edge);
-                !matched[*i]
-                    && identity(row)
-                    && ComparisonTolerance::browser_parity()
-                        .contains(start + offset - expected.start)
-                    && ComparisonTolerance::browser_parity().contains(advance - expected.advance)
-            })
-            .or_else(|| {
-                actual
-                    .iter()
-                    .enumerate()
-                    .find(|(i, row)| !matched[*i] && identity(row))
-            })
-            .map(|(i, _)| i)
-            .or_else(|| matched.iter().position(|matched| !matched))
-            .expect("equal Range observation counts leave an unmatched source rectangle");
+        let actual_index = if let Some(sources) = source_rows {
+            let source = sources.get(index).ok_or_else(|| {
+                Error::new(format!(
+                    "{path}: missing Native source binding for Range row {index}"
+                ))
+            })?;
+            let mut matches = actual
+                .iter()
+                .enumerate()
+                .filter(|(i, row)| !matched[*i] && identity(row) && row.source == *source);
+            let (index, _) = matches
+                .next()
+                .filter(|_| matches.next().is_none())
+                .ok_or_else(|| Error::new(format!(
+                    "{path}: expected one Native Range piece for row {index} and source {source:?}"
+                )))?;
+            index
+        } else {
+            actual
+                .iter()
+                .enumerate()
+                .find(|(i, row)| {
+                    let (start, advance) =
+                        range_rectangle_values(row.rect, expected.physical_start_edge);
+                    !matched[*i]
+                        && identity(row)
+                        && ComparisonTolerance::browser_parity()
+                            .contains(start + offset - expected.start)
+                        && ComparisonTolerance::browser_parity()
+                            .contains(advance - expected.advance)
+                })
+                .or_else(|| {
+                    actual
+                        .iter()
+                        .enumerate()
+                        .find(|(i, row)| !matched[*i] && identity(row))
+                })
+                .map(|(i, _)| i)
+                .or_else(|| matched.iter().position(|matched| !matched))
+                .expect("equal Range observation counts leave an unmatched source rectangle")
+        };
         matched[actual_index] = true;
         let row = &actual[actual_index];
         compare_range_rectangle_identity(
@@ -7963,6 +7991,7 @@ mod tests {
                         &fragments,
                         placed,
                         &expected,
+                        None,
                         |_| Ok(0.0),
                         |pair| {
                             assert_eq!(pair.native_start, native_starts[row]);

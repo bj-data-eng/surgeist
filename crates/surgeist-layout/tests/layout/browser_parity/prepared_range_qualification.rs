@@ -70,7 +70,100 @@ pub(super) struct Comparisons {
     ranges: Vec<RangeComparison>,
 }
 
+struct RangeSelector {
+    path: &'static str,
+    row: usize,
+    occurrence: u64,
+    line: usize,
+    source: [usize; 2],
+    advance: Scalar,
+}
+
+// Source intervals use aggregate UTF-16 units.
+const RANGE_SELECTORS: [RangeSelector; 5] = [
+    RangeSelector {
+        path: "/0",
+        row: 0,
+        occurrence: 0,
+        line: 0,
+        source: [0, 1],
+        advance: 16.0,
+    },
+    RangeSelector {
+        path: "/1",
+        row: 0,
+        occurrence: 1,
+        line: 0,
+        source: [1, 2],
+        advance: 0.0,
+    },
+    RangeSelector {
+        path: "/1",
+        row: 1,
+        occurrence: 1,
+        line: 0,
+        source: [2, 4],
+        advance: 32.0,
+    },
+    RangeSelector {
+        path: "/1",
+        row: 2,
+        occurrence: 1,
+        line: 0,
+        source: [4, 5],
+        advance: 0.0,
+    },
+    RangeSelector {
+        path: "/2",
+        row: 0,
+        occurrence: 2,
+        line: 1,
+        source: [6, 7],
+        advance: 16.0,
+    },
+];
+
 impl Comparisons {
+    pub(super) fn row_sources(
+        &self,
+        path: &str,
+        browser: &[InlineRangeRectangleExpectation],
+    ) -> Result<Vec<Range>, Error> {
+        let owner = exact_differences::source_path_from_diagnostic(&self.case, path)?;
+        let mut sources = Vec::new();
+        for RangeSelector {
+            path: owner_path,
+            row,
+            occurrence,
+            line,
+            source: [start, end],
+            ..
+        } in RANGE_SELECTORS
+        {
+            if owner_path != owner {
+                continue;
+            }
+            let item = browser
+                .get(row)
+                .ok_or_else(|| Error::new(format!("{path}: missing prepared Range row {row}")))?;
+            if item.source_segment_id != occurrence
+                || item.line_index != line
+                || item.physical_start_edge != PhysicalStartEdge::Left
+            {
+                return Err(Error::new(format!(
+                    "{path}: prepared Range row {row} identity changed"
+                )));
+            }
+            sources.push(Range::new(start, end));
+        }
+        if sources.len() != browser.len() {
+            return Err(Error::new(format!(
+                "{path}: prepared Range row census changed"
+            )));
+        }
+        Ok(sources)
+    }
+
     pub(super) fn record_box(
         &mut self,
         path: &str,
@@ -186,14 +279,9 @@ fn verify_comparisons(comparisons: &Comparisons, rtl: bool) -> Result<(), Error>
     } else {
         [0.0, 16.0, 16.0, 48.0, 0.0]
     };
-    let selectors = [
-        ("/0", 0, 0, 0, [0, 1], 16.0),
-        ("/1", 0, 1, 0, [1, 2], 0.0),
-        ("/1", 1, 1, 0, [2, 4], 32.0),
-        ("/1", 2, 1, 0, [4, 5], 0.0),
-        ("/2", 0, 2, 1, [6, 7], 16.0),
-    ];
-    if comparisons.boxes.len() != box_fields.len() || comparisons.ranges.len() != selectors.len() {
+    if comparisons.boxes.len() != box_fields.len()
+        || comparisons.ranges.len() != RANGE_SELECTORS.len()
+    {
         return Err(Error::new("prepared Range observation census changed"));
     }
     for (actual, (field, value)) in comparisons.boxes.iter().zip(box_fields) {
@@ -209,8 +297,20 @@ fn verify_comparisons(comparisons: &Comparisons, rtl: bool) -> Result<(), Error>
             )));
         }
     }
-    for (index, (actual, (path, row, occurrence, line, source, advance))) in
-        comparisons.ranges.iter().zip(selectors).enumerate()
+    for (
+        index,
+        (
+            actual,
+            RangeSelector {
+                path,
+                row,
+                occurrence,
+                line,
+                source,
+                advance,
+            },
+        ),
+    ) in comparisons.ranges.iter().zip(RANGE_SELECTORS).enumerate()
     {
         let native_start = starts[index];
         let browser_start = if rtl && source == [4, 5] {
