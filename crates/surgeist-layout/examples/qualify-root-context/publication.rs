@@ -214,6 +214,9 @@ fn finish(
     if edition == Edition::Specialized(SpecializedProfile::OriginalSubgridBody) {
         require_original_subgrid_inputs(owner)?;
     }
+    if edition == Edition::Specialized(SpecializedProfile::PreparedAtomicPercentage) {
+        require_prepared_atomic_inputs(owner)?;
+    }
     let published = edition.published();
     let has_terminal = edition != Edition::RootContextV4;
     let derive_terminal = matches!(mode, QualificationMode::Derive(_));
@@ -294,6 +297,9 @@ fn finish(
     require_current_inputs(owner)?;
     if edition == Edition::Specialized(SpecializedProfile::OriginalSubgridBody) {
         require_original_subgrid_inputs(owner)?;
+    }
+    if edition == Edition::Specialized(SpecializedProfile::PreparedAtomicPercentage) {
+        require_prepared_atomic_inputs(owner)?;
     }
     let current = Origin::read(owner, &declaration.records)?;
     current.inputs(
@@ -413,6 +419,23 @@ fn require_original_subgrid_inputs(owner: &Path) -> Result<()> {
         require_regular_input(owner, &path)?;
         if fs::read(owner.join(path.as_str()))? != bytes {
             return Err(format!("current original subgrid input differs: {name}").into());
+        }
+    }
+    Ok(())
+}
+
+fn require_prepared_atomic_inputs(owner: &Path) -> Result<()> {
+    use crate::prepared_atomic_percentage_profile as profile;
+    for (name, bytes) in [
+        ("prepared_atomic_percentage.js", profile::SCRIPT.as_bytes()),
+        ("prepared_atomic_percentage_request.json", profile::REQUEST),
+    ] {
+        let path = RelativePath::new(format!(
+            "tests/bin/surgeist-layout-generate/measurement/{name}"
+        ))?;
+        require_regular_input(owner, &path)?;
+        if fs::read(owner.join(path.as_str()))? != bytes {
+            return Err(format!("current prepared atomic percentage input differs: {name}").into());
         }
     }
     Ok(())
@@ -924,6 +947,9 @@ fn specialized_cases(
                         .ok_or("invalid Flex composition variant")?
                 }
                 SpecializedProfile::OriginalSubgridBody => original_subgrid_body::evidence(),
+                SpecializedProfile::PreparedAtomicPercentage => {
+                    authority::prepared_atomic_percentage_evidence()
+                }
             };
             let verified = authority::identity_from_verified_inputs(authority::IdentityInputs {
                 metadata: &metadata,

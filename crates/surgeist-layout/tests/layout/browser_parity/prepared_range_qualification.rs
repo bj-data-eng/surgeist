@@ -202,6 +202,31 @@ const RANGE_SELECTORS: [RangeSelector; 5] = [
 ];
 
 impl Comparisons {
+    pub(super) fn new(case: String) -> Self {
+        Self {
+            case,
+            boxes: Vec::new(),
+            ranges: Vec::new(),
+        }
+    }
+
+    pub(super) fn differences(&self) -> Vec<String> {
+        self.boxes
+            .iter()
+            .filter(|field| field.browser != field.native)
+            .map(|field| format!("{field:?}"))
+            .chain(
+                self.ranges
+                    .iter()
+                    .filter(|row| {
+                        row.browser_start != row.native_start
+                            || row.browser_advance != row.native_advance
+                    })
+                    .map(|row| format!("{row:?}")),
+            )
+            .collect()
+    }
+
     pub(super) fn row_pieces(
         &self,
         path: &str,
@@ -357,23 +382,7 @@ impl PreparedComparison {
         if !self.complete {
             return Err(incomplete());
         }
-        Ok(self
-            .observations
-            .boxes
-            .iter()
-            .filter(|field| field.browser != field.native)
-            .map(|field| format!("{field:?}"))
-            .chain(
-                self.observations
-                    .ranges
-                    .iter()
-                    .filter(|row| {
-                        row.browser_start != row.native_start
-                            || row.browser_advance != row.native_advance
-                    })
-                    .map(|row| format!("{row:?}")),
-            )
-            .collect())
+        Ok(self.observations.differences())
     }
 }
 
@@ -397,11 +406,7 @@ pub(crate) fn compare(
         return Err(Error::new("unregistered prepared Range capture authority"));
     }
     let mut custody = None;
-    let mut sink = NumericComparisonSink::PreparedRanges(Comparisons {
-        case: golden.name.clone(),
-        boxes: Vec::new(),
-        ranges: Vec::new(),
-    });
+    let mut sink = NumericComparisonSink::PreparedRanges(Comparisons::new(golden.name.clone()));
     let comparison = compare_captured_with_batch(golden, &mut sink, |_, batch| {
         custody = Some(verify_native(golden, batch, rtl));
         Ok(())

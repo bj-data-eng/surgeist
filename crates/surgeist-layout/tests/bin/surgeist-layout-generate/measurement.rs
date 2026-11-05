@@ -17,6 +17,7 @@ mod flex_content_text;
 #[path = "measurement/measured_leaf.rs"]
 mod measured_leaf;
 use crate::original_subgrid_body_profile;
+use crate::prepared_atomic_percentage_profile;
 pub(super) use flex_content_text::FlexContentText;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -28,6 +29,7 @@ pub(super) enum BoxObservationRequest {
     PreparedRanges,
     FlexComposition,
     OriginalSubgridBody,
+    PreparedAtomicPercentage,
 }
 
 pub(super) const FLEX_COMPOSITION_SOURCE: &str = "html/flex/fri07_flex_composition.html";
@@ -59,6 +61,9 @@ impl BoxObservationRequest {
             Some(bytes) if Some(bytes) == Self::OriginalSubgridBody.input_bytes() => {
                 Ok(Self::OriginalSubgridBody)
             }
+            Some(bytes) if Some(bytes) == Self::PreparedAtomicPercentage.input_bytes() => {
+                Ok(Self::PreparedAtomicPercentage)
+            }
             Some(_) => Err("observation request must match a registered exact input"),
         }
     }
@@ -73,6 +78,10 @@ impl BoxObservationRequest {
             Self::OriginalSubgridBody => Some((
                 original_subgrid_body_profile::SCRIPT_PATH,
                 original_subgrid_body_profile::SCRIPT,
+            )),
+            Self::PreparedAtomicPercentage => Some((
+                prepared_atomic_percentage_profile::SCRIPT_PATH,
+                prepared_atomic_percentage_profile::SCRIPT,
             )),
             Self::Geometry
             | Self::ElementScrollSizes
@@ -96,6 +105,7 @@ impl BoxObservationRequest {
                 Some(include_bytes!("measurement/flex_content_text_request.json"))
             }
             Self::OriginalSubgridBody => Some(original_subgrid_body_profile::REQUEST),
+            Self::PreparedAtomicPercentage => Some(prepared_atomic_percentage_profile::REQUEST),
         }
     }
 }
@@ -592,8 +602,9 @@ pub(super) fn decode(
         node_path: "root".into(),
     };
     wire.validate_wire(&context)?;
+    let prepared_atomic_percentage = request == BoxObservationRequest::PreparedAtomicPercentage;
     context.compatible(
-        !wire.has_authored_atomic_size(),
+        prepared_atomic_percentage || !wire.has_authored_atomic_size(),
         "preparedParagraph.atomics",
         "authored atomic sizes require their registered capture request",
     )?;
@@ -607,7 +618,8 @@ pub(super) fn decode(
         "flexContentText",
         "Flex content evidence requires its registered request",
     )?;
-    let prepared_range_frame = request == BoxObservationRequest::PreparedRanges;
+    let prepared_range_frame =
+        request == BoxObservationRequest::PreparedRanges || prepared_atomic_percentage;
     context.compatible(
         prepared_range_frame || wire.prepared_range_frame.is_none(),
         "preparedRangeFrame",
@@ -662,6 +674,9 @@ pub(super) fn decode(
         )?;
         wire.validate_prepared_range_rows(&context)?;
     }
+    if prepared_atomic_percentage {
+        wire.validate_prepared_atomic_percentage(&context)?;
+    }
     let flex_composition_image = if request == BoxObservationRequest::FlexComposition {
         let image = context.required(wire.flex_composition_image, "flexCompositionImage")?;
         context.compatible(
@@ -690,7 +705,8 @@ pub(super) fn decode(
         BoxObservationRequest::Geometry
         | BoxObservationRequest::PreparedRanges
         | BoxObservationRequest::FlexComposition
-        | BoxObservationRequest::OriginalSubgridBody => None,
+        | BoxObservationRequest::OriginalSubgridBody
+        | BoxObservationRequest::PreparedAtomicPercentage => None,
         BoxObservationRequest::ElementScrollSizes
         | BoxObservationRequest::MeasuredLeaf
         | BoxObservationRequest::FlexContentText => {
@@ -880,6 +896,29 @@ impl WireNode {
             child.validate_prepared_range_rows(&context.child(index))?;
         }
         Ok(())
+    }
+
+    fn validate_prepared_atomic_percentage(
+        &self,
+        context: &Context<'_>,
+    ) -> Result<(), MeasurementError> {
+        let paragraph = context.required(self.prepared_paragraph.as_ref(), "preparedParagraph")?;
+        context.compatible(
+            self.children.as_deref().is_some_and(|children| {
+                let [before, atomic, after] = children else {
+                    return false;
+                };
+                before.prepared_occurrence == Some(0)
+                    && atomic.layout_input == LayoutInput::Box
+                    && atomic.tag_name.as_deref() == Some("span")
+                    && atomic.children.as_ref().is_some_and(Vec::is_empty)
+                    && after.prepared_occurrence == Some(1)
+                    && !children.iter().any(Self::has_authored_atomic_size)
+            }) && matches!(paragraph.atomics.as_slice(), [atomic] if
+                atomic.child == 1 && atomic.authored_size.is_some()),
+            "preparedParagraph.atomics",
+            "original percentage capture requires one authored atomic between its source occurrences",
+        )
     }
 
     fn has_authored_atomic_size(&self) -> bool {

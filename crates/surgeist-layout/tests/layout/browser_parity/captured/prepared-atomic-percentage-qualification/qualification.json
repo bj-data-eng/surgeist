@@ -1,0 +1,323 @@
+{
+  "schema_version": 3,
+  "edition": "prepared-atomic-percentage-qualification",
+  "declaration": {
+    "path": "corpus.toml",
+    "sha256": "f6c1ad69862f80b16e4a79219128f6fdb45268f378bdd152a4960c387111d722"
+  },
+  "records": [
+    {
+      "source": "html/block/fri06_atomic_inline_percentage_block_size.html",
+      "sha256": "2482068cc0005fd2c1130db3bd5ea982a6f604904dfae558b79b0d080ad022ae",
+      "value": {
+        "expected": {
+          "kind": "generated",
+          "metadata": {
+            "containing_direction": "ltr",
+            "context": "absolute-local",
+            "hypothetical_direction": "ltr",
+            "hypothetical_display": "block",
+            "inline_offset": 0.0,
+            "root_direction": "variant",
+            "root_size": null,
+            "root_writing_mode": "horizontal-tb"
+          }
+        },
+        "historical_sha256": {
+          "border_box_ltr": "72aa5f891e75aa835e696bd3361cdae102494b2be66241e50d4073dbffe649c0",
+          "border_box_rtl": "9d0b898351553f0531f4125e96271ea1f1130f0bbf375347bf798955dfdb05ee",
+          "content_box_ltr": "7fa253f2c3aed0a78dc4d98959a1193d042fca8ea096bd642cb607fc330c95db",
+          "content_box_rtl": "068ed88008131bd58e8a40b0ba0db404b04fcd009b565eea8a3e3d031469af95"
+        },
+        "relation": null,
+        "semantic_specifications": null,
+        "source": "html/block/fri06_atomic_inline_percentage_block_size.html",
+        "source_kind": "original",
+        "source_sha256": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
+        "specialized_publication": "prepared-atomic-percentage"
+      }
+    }
+  ],
+  "browser_settings": {"source":"chrome-for-testing","version":"149.0.7827.115","version_output":"Google Chrome for Testing 149.0.7827.115","cache_root":"tmp/surgeist-browser","provenance_format":"chrome-for-testing/{version} ({repository_relative_executable})","launch":{"batch_size":50,"navigation_timeout_ms":10000,"dom_poll_interval_ms":25,"arguments":["headless=new","mute-audio","disable-background-networking","disable-background-timer-throttling","disable-backgrounding-occluded-windows","disable-breakpad","disable-client-side-phishing-detection","disable-component-extensions-with-background-pages","disable-component-update","disable-default-apps","disable-dev-shm-usage","disable-domain-reliability","disable-features=TranslateUI,MediaRouter,OptimizationHints,AutofillServerCommunication","disable-hang-monitor","disable-ipc-flooding-protection","disable-popup-blocking","disable-prompt-on-repost","disable-renderer-backgrounding","disable-sync","enable-automation","enable-blink-features=IdleDetection,CSSGridLanesLayout","enable-features=NetworkService,NetworkServiceInProcess","force-color-profile=srgb","lang=en_US","metrics-recording-only","no-default-browser-check","no-first-run","use-mock-keychain"]}},
+  "report": {
+    "path": "xml/generation-reports/all.json",
+    "sha256": "ba0c3f089eb898810f837f2ab6801a1d3cb005278abd755190893cec7ef7f732"
+  },
+  "ownership": {
+    "path": "xml/generation-ownership.json",
+    "sha256": "9d5a8aee7140c6e449742edd6c561a06ca3e801521c6f43f80281cb9e2cfc117"
+  },
+  "cases": [
+    {
+      "case": {
+        "name": "fri06_atomic_inline_percentage_block_size__border_box_ltr",
+        "source": "html/block/fri06_atomic_inline_percentage_block_size.html",
+        "variant": "border_box_ltr",
+        "output": {
+          "path": "xml/block/fri06_atomic_inline_percentage_block_size__border_box_ltr.xml",
+          "sha256": "9a137a05ff0d2c53ca4b7d13a1d74036888f3bf3fe4f769fb6a58e7bed6953b4"
+        },
+        "record_sha256": "2482068cc0005fd2c1130db3bd5ea982a6f604904dfae558b79b0d080ad022ae"
+      },
+      "historical": {
+        "path": "historical/block/fri06_atomic_inline_percentage_block_size__border_box_ltr.xml",
+        "sha256": "72aa5f891e75aa835e696bd3361cdae102494b2be66241e50d4073dbffe649c0"
+      },
+      "evidence": {
+        "profile": "prepared-atomic-percentage",
+        "proof_script": {
+          "path": "scripts/gentest/prepared_atomic_percentage.js",
+          "sha256": "b830218b6780e393a2e63cb2c41320a45aafa143388b13cc5a1e6f6fad273027"
+        }
+      },
+      "identity": {
+        "source": "html/block/fri06_atomic_inline_percentage_block_size.html",
+        "source_sha256": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
+        "variant": "border_box_ltr",
+        "historical_sha256": "72aa5f891e75aa835e696bd3361cdae102494b2be66241e50d4073dbffe649c0",
+        "capture_sha256": "9a137a05ff0d2c53ca4b7d13a1d74036888f3bf3fe4f769fb6a58e7bed6953b4",
+        "record_sha256": "2482068cc0005fd2c1130db3bd5ea982a6f604904dfae558b79b0d080ad022ae",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "95e7945e0614c8ea80cf9e4bc69117676771eab7b5728d88a62c47a03ff09bc4",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/fri06_atomic_inline_percentage_block_size__border_box_ltr.xml": "72aa5f891e75aa835e696bd3361cdae102494b2be66241e50d4073dbffe649c0",
+          "historical/block/fri06_atomic_inline_percentage_block_size__border_box_rtl.xml": "9d0b898351553f0531f4125e96271ea1f1130f0bbf375347bf798955dfdb05ee",
+          "historical/block/fri06_atomic_inline_percentage_block_size__content_box_ltr.xml": "7fa253f2c3aed0a78dc4d98959a1193d042fca8ea096bd642cb607fc330c95db",
+          "historical/block/fri06_atomic_inline_percentage_block_size__content_box_rtl.xml": "068ed88008131bd58e8a40b0ba0db404b04fcd009b565eea8a3e3d031469af95",
+          "html/block/fri06_atomic_inline_percentage_block_size.html": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
+          "observation-request.json": "5d6a1e26cc102643acaf0a07df5406bdbebbb9ed1b0c737da2f365133040d76b",
+          "origin/selected-originals.json": "d7e20134cbced08fbafe9ba55baf609c5547fcabc7b430b118a56a3c3bb287cd",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/prepared_atomic_percentage.js": "b830218b6780e393a2e63cb2c41320a45aafa143388b13cc5a1e6f6fad273027",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+        },
+        "linked_resources": {},
+        "font_demand": "ahem-16px-prepared-ranges",
+        "policy_source_sha256": "b830218b6780e393a2e63cb2c41320a45aafa143388b13cc5a1e6f6fad273027"
+      }
+    },
+    {
+      "case": {
+        "name": "fri06_atomic_inline_percentage_block_size__border_box_rtl",
+        "source": "html/block/fri06_atomic_inline_percentage_block_size.html",
+        "variant": "border_box_rtl",
+        "output": {
+          "path": "xml/block/fri06_atomic_inline_percentage_block_size__border_box_rtl.xml",
+          "sha256": "5b08214b0bf09215fab6f19369a64e4213fc04b129be5900fae0a62c9ccc4540"
+        },
+        "record_sha256": "2482068cc0005fd2c1130db3bd5ea982a6f604904dfae558b79b0d080ad022ae"
+      },
+      "historical": {
+        "path": "historical/block/fri06_atomic_inline_percentage_block_size__border_box_rtl.xml",
+        "sha256": "9d0b898351553f0531f4125e96271ea1f1130f0bbf375347bf798955dfdb05ee"
+      },
+      "evidence": {
+        "profile": "prepared-atomic-percentage",
+        "proof_script": {
+          "path": "scripts/gentest/prepared_atomic_percentage.js",
+          "sha256": "b830218b6780e393a2e63cb2c41320a45aafa143388b13cc5a1e6f6fad273027"
+        }
+      },
+      "identity": {
+        "source": "html/block/fri06_atomic_inline_percentage_block_size.html",
+        "source_sha256": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
+        "variant": "border_box_rtl",
+        "historical_sha256": "9d0b898351553f0531f4125e96271ea1f1130f0bbf375347bf798955dfdb05ee",
+        "capture_sha256": "5b08214b0bf09215fab6f19369a64e4213fc04b129be5900fae0a62c9ccc4540",
+        "record_sha256": "2482068cc0005fd2c1130db3bd5ea982a6f604904dfae558b79b0d080ad022ae",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "e9134153b6daed2b6d064d941058c84cd97a6bca86af64ab7de40f4c244f6a70",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/fri06_atomic_inline_percentage_block_size__border_box_ltr.xml": "72aa5f891e75aa835e696bd3361cdae102494b2be66241e50d4073dbffe649c0",
+          "historical/block/fri06_atomic_inline_percentage_block_size__border_box_rtl.xml": "9d0b898351553f0531f4125e96271ea1f1130f0bbf375347bf798955dfdb05ee",
+          "historical/block/fri06_atomic_inline_percentage_block_size__content_box_ltr.xml": "7fa253f2c3aed0a78dc4d98959a1193d042fca8ea096bd642cb607fc330c95db",
+          "historical/block/fri06_atomic_inline_percentage_block_size__content_box_rtl.xml": "068ed88008131bd58e8a40b0ba0db404b04fcd009b565eea8a3e3d031469af95",
+          "html/block/fri06_atomic_inline_percentage_block_size.html": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
+          "observation-request.json": "5d6a1e26cc102643acaf0a07df5406bdbebbb9ed1b0c737da2f365133040d76b",
+          "origin/selected-originals.json": "d7e20134cbced08fbafe9ba55baf609c5547fcabc7b430b118a56a3c3bb287cd",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/prepared_atomic_percentage.js": "b830218b6780e393a2e63cb2c41320a45aafa143388b13cc5a1e6f6fad273027",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+        },
+        "linked_resources": {},
+        "font_demand": "ahem-16px-prepared-ranges",
+        "policy_source_sha256": "b830218b6780e393a2e63cb2c41320a45aafa143388b13cc5a1e6f6fad273027"
+      }
+    },
+    {
+      "case": {
+        "name": "fri06_atomic_inline_percentage_block_size__content_box_ltr",
+        "source": "html/block/fri06_atomic_inline_percentage_block_size.html",
+        "variant": "content_box_ltr",
+        "output": {
+          "path": "xml/block/fri06_atomic_inline_percentage_block_size__content_box_ltr.xml",
+          "sha256": "17979a168e221171d296e1646800443032da25206746034e7b74ecede4c06931"
+        },
+        "record_sha256": "2482068cc0005fd2c1130db3bd5ea982a6f604904dfae558b79b0d080ad022ae"
+      },
+      "historical": {
+        "path": "historical/block/fri06_atomic_inline_percentage_block_size__content_box_ltr.xml",
+        "sha256": "7fa253f2c3aed0a78dc4d98959a1193d042fca8ea096bd642cb607fc330c95db"
+      },
+      "evidence": {
+        "profile": "prepared-atomic-percentage",
+        "proof_script": {
+          "path": "scripts/gentest/prepared_atomic_percentage.js",
+          "sha256": "b830218b6780e393a2e63cb2c41320a45aafa143388b13cc5a1e6f6fad273027"
+        }
+      },
+      "identity": {
+        "source": "html/block/fri06_atomic_inline_percentage_block_size.html",
+        "source_sha256": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
+        "variant": "content_box_ltr",
+        "historical_sha256": "7fa253f2c3aed0a78dc4d98959a1193d042fca8ea096bd642cb607fc330c95db",
+        "capture_sha256": "17979a168e221171d296e1646800443032da25206746034e7b74ecede4c06931",
+        "record_sha256": "2482068cc0005fd2c1130db3bd5ea982a6f604904dfae558b79b0d080ad022ae",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "75cd22f4f08f94865d5e71f23e6b70a2f90da8d884701cda6d87a01a23443425",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/fri06_atomic_inline_percentage_block_size__border_box_ltr.xml": "72aa5f891e75aa835e696bd3361cdae102494b2be66241e50d4073dbffe649c0",
+          "historical/block/fri06_atomic_inline_percentage_block_size__border_box_rtl.xml": "9d0b898351553f0531f4125e96271ea1f1130f0bbf375347bf798955dfdb05ee",
+          "historical/block/fri06_atomic_inline_percentage_block_size__content_box_ltr.xml": "7fa253f2c3aed0a78dc4d98959a1193d042fca8ea096bd642cb607fc330c95db",
+          "historical/block/fri06_atomic_inline_percentage_block_size__content_box_rtl.xml": "068ed88008131bd58e8a40b0ba0db404b04fcd009b565eea8a3e3d031469af95",
+          "html/block/fri06_atomic_inline_percentage_block_size.html": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
+          "observation-request.json": "5d6a1e26cc102643acaf0a07df5406bdbebbb9ed1b0c737da2f365133040d76b",
+          "origin/selected-originals.json": "d7e20134cbced08fbafe9ba55baf609c5547fcabc7b430b118a56a3c3bb287cd",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/prepared_atomic_percentage.js": "b830218b6780e393a2e63cb2c41320a45aafa143388b13cc5a1e6f6fad273027",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+        },
+        "linked_resources": {},
+        "font_demand": "ahem-16px-prepared-ranges",
+        "policy_source_sha256": "b830218b6780e393a2e63cb2c41320a45aafa143388b13cc5a1e6f6fad273027"
+      }
+    },
+    {
+      "case": {
+        "name": "fri06_atomic_inline_percentage_block_size__content_box_rtl",
+        "source": "html/block/fri06_atomic_inline_percentage_block_size.html",
+        "variant": "content_box_rtl",
+        "output": {
+          "path": "xml/block/fri06_atomic_inline_percentage_block_size__content_box_rtl.xml",
+          "sha256": "d0c5986c042424a6ee7a402068f3cdd90ef663372208619cd2dc2b50a02584a3"
+        },
+        "record_sha256": "2482068cc0005fd2c1130db3bd5ea982a6f604904dfae558b79b0d080ad022ae"
+      },
+      "historical": {
+        "path": "historical/block/fri06_atomic_inline_percentage_block_size__content_box_rtl.xml",
+        "sha256": "068ed88008131bd58e8a40b0ba0db404b04fcd009b565eea8a3e3d031469af95"
+      },
+      "evidence": {
+        "profile": "prepared-atomic-percentage",
+        "proof_script": {
+          "path": "scripts/gentest/prepared_atomic_percentage.js",
+          "sha256": "b830218b6780e393a2e63cb2c41320a45aafa143388b13cc5a1e6f6fad273027"
+        }
+      },
+      "identity": {
+        "source": "html/block/fri06_atomic_inline_percentage_block_size.html",
+        "source_sha256": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
+        "variant": "content_box_rtl",
+        "historical_sha256": "068ed88008131bd58e8a40b0ba0db404b04fcd009b565eea8a3e3d031469af95",
+        "capture_sha256": "d0c5986c042424a6ee7a402068f3cdd90ef663372208619cd2dc2b50a02584a3",
+        "record_sha256": "2482068cc0005fd2c1130db3bd5ea982a6f604904dfae558b79b0d080ad022ae",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "cc01efe4ae9d414c25f329d3afe76b7553fc21eeab66ff00afe7b17c36f31dc7",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/fri06_atomic_inline_percentage_block_size__border_box_ltr.xml": "72aa5f891e75aa835e696bd3361cdae102494b2be66241e50d4073dbffe649c0",
+          "historical/block/fri06_atomic_inline_percentage_block_size__border_box_rtl.xml": "9d0b898351553f0531f4125e96271ea1f1130f0bbf375347bf798955dfdb05ee",
+          "historical/block/fri06_atomic_inline_percentage_block_size__content_box_ltr.xml": "7fa253f2c3aed0a78dc4d98959a1193d042fca8ea096bd642cb607fc330c95db",
+          "historical/block/fri06_atomic_inline_percentage_block_size__content_box_rtl.xml": "068ed88008131bd58e8a40b0ba0db404b04fcd009b565eea8a3e3d031469af95",
+          "html/block/fri06_atomic_inline_percentage_block_size.html": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
+          "observation-request.json": "5d6a1e26cc102643acaf0a07df5406bdbebbb9ed1b0c737da2f365133040d76b",
+          "origin/selected-originals.json": "d7e20134cbced08fbafe9ba55baf609c5547fcabc7b430b118a56a3c3bb287cd",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/prepared_atomic_percentage.js": "b830218b6780e393a2e63cb2c41320a45aafa143388b13cc5a1e6f6fad273027",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+        },
+        "linked_resources": {},
+        "font_demand": "ahem-16px-prepared-ranges",
+        "policy_source_sha256": "b830218b6780e393a2e63cb2c41320a45aafa143388b13cc5a1e6f6fad273027"
+      }
+    }
+  ],
+  "retained_inputs": {
+    "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+    "corpus.toml": "f6c1ad69862f80b16e4a79219128f6fdb45268f378bdd152a4960c387111d722",
+    "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+    "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+    "historical/block/fri06_atomic_inline_percentage_block_size__border_box_ltr.xml": "72aa5f891e75aa835e696bd3361cdae102494b2be66241e50d4073dbffe649c0",
+    "historical/block/fri06_atomic_inline_percentage_block_size__border_box_rtl.xml": "9d0b898351553f0531f4125e96271ea1f1130f0bbf375347bf798955dfdb05ee",
+    "historical/block/fri06_atomic_inline_percentage_block_size__content_box_ltr.xml": "7fa253f2c3aed0a78dc4d98959a1193d042fca8ea096bd642cb607fc330c95db",
+    "historical/block/fri06_atomic_inline_percentage_block_size__content_box_rtl.xml": "068ed88008131bd58e8a40b0ba0db404b04fcd009b565eea8a3e3d031469af95",
+    "html/block/fri06_atomic_inline_percentage_block_size.html": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
+    "observation-request.json": "5d6a1e26cc102643acaf0a07df5406bdbebbb9ed1b0c737da2f365133040d76b",
+    "origin/selected-originals.json": "d7e20134cbced08fbafe9ba55baf609c5547fcabc7b430b118a56a3c3bb287cd",
+    "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+    "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+    "scripts/gentest/prepared_atomic_percentage.js": "b830218b6780e393a2e63cb2c41320a45aafa143388b13cc5a1e6f6fad273027",
+    "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+    "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+  },
+  "current_owner_inputs": {
+    "tests/bin/surgeist-layout-generate/measurement/prepared_atomic_percentage.js": "b830218b6780e393a2e63cb2c41320a45aafa143388b13cc5a1e6f6fad273027",
+    "tests/bin/surgeist-layout-generate/measurement/prepared_atomic_percentage_request.json": "5d6a1e26cc102643acaf0a07df5406bdbebbb9ed1b0c737da2f365133040d76b",
+    "tests/layout/browser_parity/corpus.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+    "tests/layout/browser_parity/fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+    "tests/layout/browser_parity/fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+    "tests/layout/browser_parity/historical/prepared-text-v1/block/fri06_atomic_inline_percentage_block_size__border_box_ltr.xml": "72aa5f891e75aa835e696bd3361cdae102494b2be66241e50d4073dbffe649c0",
+    "tests/layout/browser_parity/historical/prepared-text-v1/block/fri06_atomic_inline_percentage_block_size__border_box_rtl.xml": "9d0b898351553f0531f4125e96271ea1f1130f0bbf375347bf798955dfdb05ee",
+    "tests/layout/browser_parity/historical/prepared-text-v1/block/fri06_atomic_inline_percentage_block_size__content_box_ltr.xml": "7fa253f2c3aed0a78dc4d98959a1193d042fca8ea096bd642cb607fc330c95db",
+    "tests/layout/browser_parity/historical/prepared-text-v1/block/fri06_atomic_inline_percentage_block_size__content_box_rtl.xml": "068ed88008131bd58e8a40b0ba0db404b04fcd009b565eea8a3e3d031469af95",
+    "tests/layout/browser_parity/html/.surgeist-source.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+    "tests/layout/browser_parity/html/block/fri06_atomic_inline_percentage_block_size.html": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
+    "tests/layout/browser_parity/scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+  },
+  "capture_validation": {
+    "producer_profile": "root-context-flex-composition-v1",
+    "producer_helper_sha256": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+    "validator_profile": "root-context-flex-composition-v1",
+    "validator_helper_sha256": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+  }
+}

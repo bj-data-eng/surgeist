@@ -21,6 +21,8 @@ mod original_subgrid_body_profile;
 pub mod parity_support;
 #[path = "../tests/layout/browser_parity/pinned_font.rs"]
 mod pinned_font;
+#[path = "../tests/bin/surgeist-layout-generate/measurement/prepared_atomic_percentage_profile.rs"]
+mod prepared_atomic_percentage_profile;
 #[path = "../tests/bin/surgeist-layout-generate/source_owner.rs"]
 mod source_owner;
 #[path = "qualify-root-context/support.rs"]
@@ -144,6 +146,16 @@ fn parse_arguments(
             None,
             QualificationMode::CheckPublishedSpecialized(SpecializedProfile::OriginalSubgridBody),
         )),
+        [mode] if mode == "--publish-prepared-atomic-percentage-qualification" => Ok((
+            None,
+            QualificationMode::PublishSpecialized(SpecializedProfile::PreparedAtomicPercentage),
+        )),
+        [mode] if mode == "--check-published-prepared-atomic-percentage-qualification" => Ok((
+            None,
+            QualificationMode::CheckPublishedSpecialized(
+                SpecializedProfile::PreparedAtomicPercentage,
+            ),
+        )),
         [flag, source] if flag == "--fixture" && !source.starts_with("--") => {
             Ok((Some(source.as_str()), QualificationMode::Regular))
         }
@@ -197,7 +209,7 @@ fn parse_arguments(
             ))
         }
         _ => Err(
-            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --derive-canonical-box-qualification | --publish-measured-grid-differences | --check-published-measured-grid-differences | --publish-grid-static-position-differences | --check-published-grid-static-position-differences | --derive-grid-static-position-qualification | --publish-relative-inset-differences | --check-published-relative-inset-differences | --derive-relative-inset-qualification | --publish-wrapping-world-corner-differences | --check-published-wrapping-world-corner-differences | --derive-wrapping-world-corner-qualification | --publish-prepared-range-qualification | --check-published-prepared-range-qualification | --publish-flex-composition-qualification | --check-published-flex-composition-qualification | --publish-original-subgrid-body-qualification | --check-published-original-subgrid-body-qualification | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source> | --prepared-range-capture --fixture <declared-source>",
+            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --derive-canonical-box-qualification | --publish-measured-grid-differences | --check-published-measured-grid-differences | --publish-grid-static-position-differences | --check-published-grid-static-position-differences | --derive-grid-static-position-qualification | --publish-relative-inset-differences | --check-published-relative-inset-differences | --derive-relative-inset-qualification | --publish-wrapping-world-corner-differences | --check-published-wrapping-world-corner-differences | --derive-wrapping-world-corner-qualification | --publish-prepared-range-qualification | --check-published-prepared-range-qualification | --publish-flex-composition-qualification | --check-published-flex-composition-qualification | --publish-original-subgrid-body-qualification | --check-published-original-subgrid-body-qualification | --publish-prepared-atomic-percentage-qualification | --check-published-prepared-atomic-percentage-qualification | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source> | --prepared-range-capture --fixture <declared-source>",
         ),
     }
 }
@@ -312,6 +324,8 @@ mod tests {
             "--check-published-flex-composition-qualification",
             "--publish-original-subgrid-body-qualification",
             "--check-published-original-subgrid-body-qualification",
+            "--publish-prepared-atomic-percentage-qualification",
+            "--check-published-prepared-atomic-percentage-qualification",
         ] {
             assert_eq!(parse_arguments(&arguments(&[command])).unwrap().0, None);
             assert!(parse_arguments(&arguments(&[command, "other-root"])).is_err());

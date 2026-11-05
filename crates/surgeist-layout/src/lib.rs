@@ -253,6 +253,9 @@ mod output;
 #[cfg(test)]
 #[path = "../tests/layout/browser_parity/pinned_font.rs"]
 mod pinned_font;
+#[cfg(test)]
+#[path = "../tests/bin/surgeist-layout-generate/measurement/prepared_atomic_percentage_profile.rs"]
+mod prepared_atomic_percentage_profile;
 pub use baseline_offset::{BaselineOffset, BaselineOffsetOf, BaselineOffsetResolutionError};
 pub use hyphenation::{HyphenateLimitLast, HyphenateLimitLines};
 mod inline_wrapping;

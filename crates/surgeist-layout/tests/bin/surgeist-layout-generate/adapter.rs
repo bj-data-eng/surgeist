@@ -4,6 +4,7 @@ use crate::measurement::{
     BoxObservationRequest, FLEX_COMPOSITION_SOURCE, FLEX_COMPOSITION_SOURCE_SHA256,
 };
 use crate::original_subgrid_body_profile;
+use crate::prepared_atomic_percentage_profile;
 use crate::xml::{escape_attr, generate_xml};
 use serde_json::Value;
 
@@ -226,6 +227,15 @@ impl LayoutAdapter {
                 "original subgrid body capture requires its exact source".into(),
             ));
         }
+        if request == BoxObservationRequest::PreparedAtomicPercentage
+            && (input.fixture().source().as_str() != prepared_atomic_percentage_profile::SOURCE
+                || surgeist_generator::Sha256Digest::from_bytes(input.source_bytes()).as_str()
+                    != prepared_atomic_percentage_profile::SOURCE_SHA256)
+        {
+            return Err(AdapterError::Preparation(
+                "prepared atomic percentage capture requires its exact source".into(),
+            ));
+        }
         let source = std::str::from_utf8(input.source_bytes()).map_err(|error| {
             AdapterError::Preparation(format!("fixture source is not UTF-8: {error}"))
         })?;
@@ -280,6 +290,10 @@ impl LayoutAdapter {
                 let source = serialize(source)?;
                 let base = serialize(input.base_url())?;
                 format!("({script})({source}, {base})")
+            } else if request == BoxObservationRequest::PreparedAtomicPercentage {
+                let bytes = serde_json::to_string(font_bytes)
+                    .map_err(|error| AdapterError::Preparation(error.to_string()))?;
+                format!("globalThis.captureOriginalPreparedAtomicPercentage({bytes})")
             } else {
                 let font = crate::pinned_font::AHEM_STYLESHEET_WOFF2_SHA256;
                 format!("({script})({font:?})")
@@ -469,6 +483,24 @@ fn helper_setup_expression(
             "original subgrid body capture helper changed".into(),
         ));
     }
+    if request == BoxObservationRequest::PreparedAtomicPercentage
+        && surgeist_generator::Sha256Digest::from_bytes(helper.as_bytes()).as_str()
+            != prepared_atomic_percentage_profile::HELPER_SHA256
+    {
+        return Err(AdapterError::Preparation(
+            "prepared atomic percentage capture helper changed".into(),
+        ));
+    }
+    let specialized_helper;
+    let helper = if request == BoxObservationRequest::PreparedAtomicPercentage {
+        specialized_helper = format!(
+            "{helper}\n globalThis.captureOriginalPreparedAtomicPercentage = ({});",
+            prepared_atomic_percentage_profile::SCRIPT,
+        );
+        specialized_helper.as_str()
+    } else {
+        helper
+    };
     let helper = serde_json::to_string(helper).map_err(|error| {
         AdapterError::Preparation(format!("failed to encode helper script: {error}"))
     })?;
@@ -509,8 +541,13 @@ fn helper_setup_expression(
     };
     let context = serde_json::to_string(&context)
         .map_err(|error| AdapterError::Preparation(error.to_string()))?;
+    let install_helper = if request == BoxObservationRequest::PreparedAtomicPercentage {
+        format!("(0, eval)({helper});")
+    } else {
+        format!("if (typeof getTestData !== 'function') {{ (0, eval)({helper}); }}")
+    };
     Ok(format!(
-        "(async () => {{ const pinnedFontBytes = {bytes}; if (typeof getTestData !== 'function') {{ (0, eval)({helper}); }}\n{GRID_TEMPLATE_AREA_CAPTURE_SCRIPT};\n{LOGICAL_BORDER_CAPTURE_GUARD};\nif (typeof configureRootContextCapture === 'function') {{ configureRootContextCapture(...{context}); await document.fonts.ready; }}{prepare_image} if (typeof prepareNamedReferenceFont === 'function') {{ await prepareNamedReferenceFont(); }} if (typeof preparePinnedTextFont === 'function') {{ await preparePinnedTextFont(pinnedFontBytes); }} return true; }})()"
+        "(async () => {{ const pinnedFontBytes = {bytes}; {install_helper}\n{GRID_TEMPLATE_AREA_CAPTURE_SCRIPT};\n{LOGICAL_BORDER_CAPTURE_GUARD};\nif (typeof configureRootContextCapture === 'function') {{ configureRootContextCapture(...{context}); await document.fonts.ready; }}{prepare_image} if (typeof prepareNamedReferenceFont === 'function') {{ await prepareNamedReferenceFont(); }} if (typeof preparePinnedTextFont === 'function') {{ await preparePinnedTextFont(pinnedFontBytes); }} return true; }})()"
     ))
 }
 

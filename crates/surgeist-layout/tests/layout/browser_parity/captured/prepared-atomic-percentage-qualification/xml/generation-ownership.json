@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "artifacts": {
+    "xml/block/fri06_atomic_inline_percentage_block_size__border_box_ltr.xml": "9a137a05ff0d2c53ca4b7d13a1d74036888f3bf3fe4f769fb6a58e7bed6953b4",
+    "xml/block/fri06_atomic_inline_percentage_block_size__border_box_rtl.xml": "5b08214b0bf09215fab6f19369a64e4213fc04b129be5900fae0a62c9ccc4540",
+    "xml/block/fri06_atomic_inline_percentage_block_size__content_box_ltr.xml": "17979a168e221171d296e1646800443032da25206746034e7b74ecede4c06931",
+    "xml/block/fri06_atomic_inline_percentage_block_size__content_box_rtl.xml": "d0c5986c042424a6ee7a402068f3cdd90ef663372208619cd2dc2b50a02584a3",
+    "xml/generation-reports/all.json": "ba0c3f089eb898810f837f2ab6801a1d3cb005278abd755190893cec7ef7f732"
+  }
+}

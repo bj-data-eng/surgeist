@@ -35,6 +35,8 @@ mod flex_text_projection;
 mod measured_leaf;
 #[path = "original_subgrid_body.rs"]
 pub(crate) mod original_subgrid_body;
+#[path = "prepared_atomic_percentage.rs"]
+pub(crate) mod prepared_atomic_percentage;
 #[path = "prepared_range_qualification.rs"]
 pub mod prepared_range_qualification;
 pub use element_scroll_sizes::ElementScrollSizeMismatch;
@@ -70,6 +72,7 @@ pub struct Golden {
     flex_content_text: Option<flex_content_text::Proof>,
     flex_composition_image: Option<flex_composition::Proof>,
     prepared_range_frame: bool,
+    prepared_atomic_basis: Option<prepared_atomic_percentage::Basis>,
 }
 
 impl Golden {
@@ -111,7 +114,7 @@ impl Golden {
     }
 
     pub fn parse(raw: &str) -> Result<Self, Error> {
-        Self::parse_with_capture(raw, None)
+        Self::parse_with_capture(raw, None, None)
     }
 
     pub fn parse_with_flex_composition(
@@ -130,6 +133,7 @@ impl Golden {
                 source_bytes,
                 output_path,
             }),
+            None,
         )
     }
 
@@ -150,12 +154,33 @@ impl Golden {
                 source_bytes,
                 output_path,
             }),
+            None,
+        )
+    }
+
+    pub fn parse_with_prepared_atomic_percentage(
+        raw: &str,
+        report: &str,
+        source_path: &str,
+        source_bytes: &[u8],
+        output_path: &str,
+    ) -> Result<Self, Error> {
+        Self::parse_with_capture(
+            raw,
+            None,
+            Some(prepared_atomic_percentage::Capture {
+                report,
+                source_path,
+                source_bytes,
+                output_path,
+            }),
         )
     }
 
     fn parse_with_capture(
         raw: &str,
         image_capture: Option<flex_composition::Capture<'_>>,
+        atomic_capture: Option<prepared_atomic_percentage::Capture<'_>>,
     ) -> Result<Self, Error> {
         let document = roxmltree::Document::parse(raw).map_err(|source| Error {
             message: source.to_string(),
@@ -214,7 +239,17 @@ impl Golden {
             }
         }
         let name = required_attr(test, "name")?.to_string();
-        let root = parse_node(one_element_child(input)?)?;
+        let xml_root = one_element_child(input)?;
+        let (root, atomic_context) = if let Some(capture) = atomic_capture {
+            prepared_atomic_percentage::admit(capture, &name, raw)?;
+            let context = parse_root_context(viewport, test.attribute("measurement-version"))?;
+            (
+                parse_node_in_frame(xml_root, Some(&context))?,
+                Some(context),
+            )
+        } else {
+            (parse_node(xml_root)?, None)
+        };
         validate_grid_alignment_profile(&root, false)?;
         if test.descendants().any(|node| {
             ["grid-alignment-profile", "grid-alignment-reference"]
@@ -230,7 +265,11 @@ impl Golden {
         let expectations = parse_expectation(one_element_child(expectations)?)?;
         let world_rounding_diagnostics =
             root_diagnostics::parse(test, &root, test.attribute("measurement-version"))?;
-        let root_context = parse_root_context(viewport, test.attribute("measurement-version"))?;
+        let has_atomic_capture = atomic_context.is_some();
+        let root_context = match atomic_context {
+            Some(context) => context,
+            None => parse_root_context(viewport, test.attribute("measurement-version"))?,
+        };
         root_context.validate_root(&root)?;
         let element_scroll_sizes = element_scroll_sizes::parse(test, &root, &root_context)?;
         let measured_leaf = measured_leaf::parse(test, &root, element_scroll_sizes.as_ref())?;
@@ -258,6 +297,13 @@ impl Golden {
             false
         };
 
+        if has_atomic_capture && !prepared_range_frame {
+            return Err(Error::new(
+                "prepared atomic percentage requires the prepared Range frame",
+            ));
+        }
+        let prepared_atomic_basis = has_atomic_capture
+            .then(|| prepared_atomic_percentage::Basis::new(&root, &root_context));
         let mut golden = Self {
             name,
             use_rounding: parse_bool(test.attribute("use-rounding").unwrap_or("true"))?,
@@ -270,6 +316,7 @@ impl Golden {
             flex_content_text: None,
             flex_composition_image: None,
             prepared_range_frame,
+            prepared_atomic_basis,
         };
         if let Some(capture) = image_capture {
             golden.flex_composition_image =
@@ -401,6 +448,9 @@ fn compare_captured_with_batch(
     numeric: &mut NumericComparisonSink,
     inspect: impl FnOnce(&TestTree, &layout::CompletedLayoutBatch<usize>) -> Result<(), Error>,
 ) -> Result<ComparisonResult, Error> {
+    if let Some(basis) = &golden.prepared_atomic_basis {
+        basis.validate(golden)?;
+    }
     if let Some(table) = &golden.element_scroll_sizes {
         table.validate_source(&golden.root, &golden.viewport.root_context)?;
     }
@@ -976,6 +1026,13 @@ impl std::fmt::Display for Error {
 impl std::error::Error for Error {}
 
 fn parse_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Error> {
+    parse_node_in_frame(xml, None)
+}
+
+fn parse_node_in_frame(
+    xml: roxmltree::Node<'_, '_>,
+    atomic_frame: Option<&RootContext>,
+) -> Result<Node, Error> {
     let source_box = xml.has_tag_name("div") || xml.has_tag_name("text");
     if (xml.attribute("grid-alignment-reference").is_some() && !xml.has_tag_name("div"))
         || (xml.attribute("grid-alignment-profile").is_some() && !source_box)
@@ -1152,10 +1209,21 @@ fn parse_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Error> {
                     "prepared paragraph capture has unexpected fields or payload",
                 ));
             }
-            let capture = prepared_source::Capture::parse(
-                required_attr(*capture, "capture")?,
-                children.len(),
-            )?;
+            let raw = required_attr(*capture, "capture")?;
+            let capture = if let Some(frame) = atomic_frame {
+                prepared_atomic_percentage::validate_source(raw)?;
+                prepared_source::Capture::parse_with_atomic_measure(
+                    raw,
+                    children.len(),
+                    |child, width, height| {
+                        prepared_atomic_percentage::measure(
+                            frame, &style, &children, child, width, height,
+                        )
+                    },
+                )?
+            } else {
+                prepared_source::Capture::parse(raw, children.len())?
+            };
             capture.validate_container(&style, &children)?;
             for (index, (child, origin)) in capture.origins.iter().enumerate() {
                 if children[*child].prepared_occurrence != Some(index)
@@ -1173,6 +1241,11 @@ fn parse_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Error> {
             Ok(capture)
         })
         .transpose()?;
+    if atomic_frame.is_some() && prepared.is_none() {
+        return Err(Error::new(
+            "prepared atomic percentage requires its source capture",
+        ));
+    }
     if prepared.is_none()
         && children
             .iter()
@@ -3734,6 +3807,7 @@ enum NumericComparisonSink {
     Strict,
     CollectNumeric(Vec<NumericMismatch>),
     PreparedRanges(PreparedRangeComparisons),
+    PreparedAtomicPercentage(PreparedRangeComparisons),
     CollectAll {
         root: String,
         fields: Vec<exact_differences::ComparedField>,
@@ -3752,7 +3826,9 @@ impl NumericComparisonSink {
         actual: Scalar,
         expected: Scalar,
     ) -> Result<(), Error> {
-        if let Self::PreparedRanges(comparisons) = self {
+        if let Self::PreparedRanges(comparisons) | Self::PreparedAtomicPercentage(comparisons) =
+            self
+        {
             return comparisons.record_box(path, field, actual, expected);
         }
         if let Self::CollectAll { root, fields } = self {
@@ -3813,7 +3889,9 @@ impl NumericComparisonSink {
     }
 
     fn range(&mut self, path: &str, pair: RangeRectanglePair) -> Result<(), Error> {
-        if let Self::PreparedRanges(comparisons) = self {
+        if let Self::PreparedRanges(comparisons) | Self::PreparedAtomicPercentage(comparisons) =
+            self
+        {
             return comparisons.record_range(path, pair);
         }
         compare_number(
@@ -3925,6 +4003,7 @@ fn compare_expectation_in_source_order(
     if matches!(
         comparison_state.numeric,
         NumericComparisonSink::PreparedRanges(_)
+            | NumericComparisonSink::PreparedAtomicPercentage(_)
     ) && other_text_observations
     {
         return Err(Error::new(format!(

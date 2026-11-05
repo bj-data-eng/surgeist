@@ -10,3 +10,5 @@ mod layout;
 mod original_subgrid_body_profile;
 #[path = "layout/browser_parity/pinned_font.rs"]
 mod pinned_font;
+#[path = "bin/surgeist-layout-generate/measurement/prepared_atomic_percentage_profile.rs"]
+mod prepared_atomic_percentage_profile;

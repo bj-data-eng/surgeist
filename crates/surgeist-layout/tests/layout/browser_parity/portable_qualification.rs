@@ -8,7 +8,10 @@ use std::rc::Rc;
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::support::{self, original_subgrid_body, prepared_range_qualification as prepared_range};
+use super::support::{
+    self, original_subgrid_body, prepared_atomic_percentage,
+    prepared_range_qualification as prepared_range,
+};
 use support::capture_authority;
 use support::capture_authority::{
     self as authority, CaptureMetadata, CapturedArtifact, CaseSelection, IdentityInputs,
@@ -308,6 +311,7 @@ enum AdmittedComparison {
     OriginalSubgridBody {
         variant: String,
     },
+    PreparedAtomicPercentage,
     FlexComposition {
         variant: String,
         inputs: Rc<flex::Inputs>,
@@ -436,6 +440,15 @@ impl AdmittedEdition {
                         },
                     )
                 }
+                AdmittedComparison::PreparedAtomicPercentage => {
+                    prepared_atomic_percentage::compare(&case.golden)
+                        .map(|(fields, qualified)| {
+                            (fields, qualified.map_err(|error| error.to_string()))
+                        })
+                        .map_err(|error| QualificationError::ComparisonFailure {
+                            reason: error.to_string(),
+                        })
+                }
                 AdmittedComparison::FlexComposition { variant, inputs } => {
                     flex::compare(&case.golden, variant, inputs).map(|comparison| {
                         let (fields, qualified) = comparison.into_outcomes();
@@ -477,7 +490,7 @@ fn compare_prepared_range(
 }
 
 pub(super) struct AdmittedRegistry {
-    editions: [AdmittedEdition; 8],
+    editions: [AdmittedEdition; 9],
     owner: PathBuf,
     selected_records: BTreeMap<String, Value>,
 }
@@ -544,6 +557,8 @@ const REGISTERED_RELATIVE_INSET_TERMINAL_SHA256: &str =
 
 const REGISTERED_ORIGINAL_SUBGRID_BODY_TERMINAL_SHA256: &str =
     "1f641fd40e947203fdb7db547d9376968199e1a2239a0fd10d055851f6140d9d";
+const REGISTERED_PREPARED_ATOMIC_PERCENTAGE_TERMINAL_SHA256: &str =
+    "061f5f4e425e0cd19c2c3abfa471b0a7d08ed52dff856e586573f08a46a70094";
 
 pub(super) fn admit_grid_static_positions(owner: &Path) -> Result<AdmittedEdition> {
     admit(
@@ -597,6 +612,13 @@ pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
             Registration {
                 edition: Edition::Specialized(SpecializedProfile::OriginalSubgridBody),
                 terminal_sha256: REGISTERED_ORIGINAL_SUBGRID_BODY_TERMINAL_SHA256,
+            },
+        )?,
+        admit(
+            owner,
+            Registration {
+                edition: Edition::Specialized(SpecializedProfile::PreparedAtomicPercentage),
+                terminal_sha256: REGISTERED_PREPARED_ATOMIC_PERCENTAGE_TERMINAL_SHA256,
             },
         )?,
         admit_grid_static_positions(owner)?,
@@ -969,7 +991,9 @@ fn admit_specialized(
     let report_text =
         std::str::from_utf8(report_bytes).map_err(|error| malformed(error.to_string()))?;
     let flex_inputs = match profile {
-        SpecializedProfile::PreparedRange | SpecializedProfile::OriginalSubgridBody => None,
+        SpecializedProfile::PreparedRange
+        | SpecializedProfile::OriginalSubgridBody
+        | SpecializedProfile::PreparedAtomicPercentage => None,
         SpecializedProfile::FlexComposition => Some(Rc::new(flex::Inputs::load(root)?)),
     };
     terminal
@@ -1025,6 +1049,30 @@ fn admit_specialized(
                         AdmittedComparison::OriginalSubgridBody { variant },
                     )
                 }
+                SpecializedProfile::PreparedAtomicPercentage => {
+                    let source = read_pinned(
+                        root,
+                        &PathDigest {
+                            path: artifact.source.clone(),
+                            sha256: artifact.source_sha256.clone(),
+                        },
+                    )?;
+                    let current = support::Golden::parse_with_prepared_atomic_percentage(
+                        xml,
+                        report_text,
+                        &artifact.source,
+                        &source,
+                        &artifact.output,
+                    )
+                    .map_err(|error| malformed(error.to_string()))?;
+                    let historical = std::str::from_utf8(&historical)
+                        .map_err(|error| malformed(error.to_string()))?;
+                    let historical = support::Golden::parse(historical)
+                        .map_err(|error| malformed(error.to_string()))?;
+                    prepared_atomic_percentage::verify_historical(&current, &historical)
+                        .map_err(|error| malformed(error.to_string()))?;
+                    (Ok(current), AdmittedComparison::PreparedAtomicPercentage)
+                }
                 SpecializedProfile::FlexComposition => {
                     let inputs = flex_inputs.as_ref().expect("Flex composition inputs");
                     let source = read_pinned(
@@ -1052,7 +1100,11 @@ fn admit_specialized(
             let golden = golden.map_err(|error| malformed(error.to_string()))?;
             if golden.name != case.case.name
                 || (golden.has_prepared_range_frame()
-                    != (profile == SpecializedProfile::PreparedRange))
+                    != matches!(
+                        profile,
+                        SpecializedProfile::PreparedRange
+                            | SpecializedProfile::PreparedAtomicPercentage
+                    ))
             {
                 return Err(changed("specialized observation frame"));
             }
