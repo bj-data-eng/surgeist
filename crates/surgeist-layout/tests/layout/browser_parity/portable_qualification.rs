@@ -448,7 +448,7 @@ impl AdmittedEdition {
                     )
                 }
                 AdmittedComparison::HorizontalBrFontBand => {
-                    support::assert_surgeist_matches(&case.golden)
+                    support::horizontal_br_font_band::compare_authenticated(&case.golden)
                         .map(|()| {
                             let matched = QualifiedComparison {
                                 raw: RawVerdict::Matches,

@@ -984,6 +984,12 @@ fn validate_corpus(
             if let Err(error) = verdict {
                 native_errors.push(format!("{}: {error}", case.case.id()));
             }
+        } else if observation == BoxObservationRequest::HorizontalBrFontBand {
+            if let Err(error) =
+                crate::parity_support::horizontal_br_font_band::compare_authenticated(&golden)
+            {
+                native_errors.push(format!("{}: {error}", case.case.id()));
+            }
         } else if mode.collects_numeric_differences() {
             match collect_numeric_case(&golden, case, &mut std::io::stdout().lock()) {
                 Ok(mismatches) => numeric.record_case(mismatches)?,

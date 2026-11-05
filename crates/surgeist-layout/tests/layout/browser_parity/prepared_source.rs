@@ -1878,7 +1878,12 @@ mod tests {
     fn source_bound_horizontal_br_matches_the_untrimmed_font_band() {
         let golden = opaque_break_observation_golden();
         let request = opaque_break_observation_request();
-        super::super::assert_native_input_matches(&golden, request).unwrap();
+        super::super::assert_native_input_matches_with_projection(
+            &golden,
+            request,
+            super::super::BrFontBandProjection::HorizontalPinned,
+        )
+        .unwrap();
 
         let mut wrong_band = golden;
         wrong_band.expectations.children[1]
@@ -1886,9 +1891,13 @@ mod tests {
             .as_mut()
             .unwrap()
             .height = 30.0;
-        let error = super::super::assert_native_input_matches(&wrong_band, request)
-            .unwrap_err()
-            .to_string();
+        let error = super::super::assert_native_input_matches_with_projection(
+            &wrong_band,
+            request,
+            super::super::BrFontBandProjection::HorizontalPinned,
+        )
+        .unwrap_err()
+        .to_string();
         assert!(error.contains("BR font-band height mismatch"), "{error}");
     }
 

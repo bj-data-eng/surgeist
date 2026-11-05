@@ -452,6 +452,15 @@ fn compare_captured_with_batch(
     numeric: &mut NumericComparisonSink,
     inspect: impl FnOnce(&TestTree, &layout::CompletedLayoutBatch<usize>) -> Result<(), Error>,
 ) -> Result<ComparisonResult, Error> {
+    compare_captured_with_projection(golden, numeric, BrFontBandProjection::Unsupported, inspect)
+}
+
+fn compare_captured_with_projection(
+    golden: &Golden,
+    numeric: &mut NumericComparisonSink,
+    br_font_band: BrFontBandProjection,
+    inspect: impl FnOnce(&TestTree, &layout::CompletedLayoutBatch<usize>) -> Result<(), Error>,
+) -> Result<ComparisonResult, Error> {
     if let Some(basis) = &golden.prepared_atomic_basis {
         basis.validate(golden)?;
     }
@@ -500,6 +509,7 @@ fn compare_captured_with_batch(
         golden.use_rounding,
         fragments,
         ComparisonPolicy {
+            br_font_band,
             element_scroll_sizes: golden.element_scroll_sizes.as_ref(),
             frame: ComparisonFrame::RootBorder,
             numeric,
@@ -539,6 +549,15 @@ pub(super) fn assert_native_input_matches(
     golden: &Golden,
     request: layout::LayoutRootRequest,
 ) -> Result<(), Error> {
+    assert_native_input_matches_with_projection(golden, request, BrFontBandProjection::Unsupported)
+}
+
+#[cfg(test)]
+fn assert_native_input_matches_with_projection(
+    golden: &Golden,
+    request: layout::LayoutRootRequest,
+    br_font_band: BrFontBandProjection,
+) -> Result<(), Error> {
     if let Some(table) = &golden.element_scroll_sizes {
         table.validate_source(&golden.root, &golden.viewport.root_context)?;
     }
@@ -556,6 +575,7 @@ pub(super) fn assert_native_input_matches(
             batch.final_inline_fragments(),
         ),
         ComparisonPolicy {
+            br_font_band,
             element_scroll_sizes: golden.element_scroll_sizes.as_ref(),
             frame: ComparisonFrame::ParentLocal,
             numeric: &mut NumericComparisonSink::Strict,
@@ -3645,6 +3665,7 @@ fn compare_expectation(
         use_rounding,
         FragmentCursors::new(unrounded_inline_fragments, final_inline_fragments),
         ComparisonPolicy {
+            br_font_band: BrFontBandProjection::Unsupported,
             element_scroll_sizes: None,
             frame: ComparisonFrame::ParentLocal,
             numeric: &mut NumericComparisonSink::Strict,
@@ -3748,7 +3769,7 @@ fn compare_expectation_with_endpoint_accounting(
     }
     for pending in &pending_controls {
         if let Some(band) = pending.band {
-            compare_browser_br_font_band(tree, pending, band, use_rounding)?;
+            compare_browser_br_font_band(tree, pending, band, use_rounding, policy.br_font_band)?;
         }
     }
     Ok(result)
@@ -3789,7 +3810,14 @@ enum ComparisonFrame {
     RootBorder,
 }
 
+#[derive(Clone, Copy)]
+enum BrFontBandProjection {
+    Unsupported,
+    HorizontalPinned,
+}
+
 struct ComparisonPolicy<'a> {
+    br_font_band: BrFontBandProjection,
     element_scroll_sizes: Option<&'a element_scroll_sizes::Table>,
     frame: ComparisonFrame,
     numeric: &'a mut NumericComparisonSink,
@@ -4915,13 +4943,19 @@ fn compare_browser_br_font_band(
     pending: &PendingBrowserControl,
     expected: BrowserBrFontBand,
     use_rounding: bool,
+    projection: BrFontBandProjection,
 ) -> Result<(), Error> {
     let path = &pending.path;
     let node = pending.node;
     let parent = validate_browser_br_band_source(tree, node, pending.context.as_ref(), path)?;
-    let actual = project_horizontal_browser_br_font_band(tree, parent, node, use_rounding)
-        .map_err(|reason| Error::new(format!("{path}: {reason}")))?
-        .ok_or_else(|| Error::new(format!(
+    let actual = match projection {
+        BrFontBandProjection::Unsupported => None,
+        BrFontBandProjection::HorizontalPinned => {
+            project_horizontal_browser_br_font_band(tree, parent, node, use_rounding)
+                .map_err(|reason| Error::new(format!("{path}: {reason}")))?
+        }
+    };
+    let actual = actual.ok_or_else(|| Error::new(format!(
             "{path}: unsupported browser BR font-band observation (x={}, y={}, width={}, height={}): no qualified horizontal pinned-font projection",
             expected.x, expected.y, expected.width, expected.height
         )))?;
@@ -7705,6 +7739,7 @@ mod tests {
                 batch.final_inline_fragments(),
             ),
             ComparisonPolicy {
+                br_font_band: BrFontBandProjection::Unsupported,
                 element_scroll_sizes: golden.element_scroll_sizes.as_ref(),
                 frame: ComparisonFrame::ParentLocal,
                 numeric: &mut NumericComparisonSink::Strict,
@@ -9702,6 +9737,7 @@ mod tests {
             true,
             FragmentCursors::new(&[], &[]),
             ComparisonPolicy {
+                br_font_band: BrFontBandProjection::Unsupported,
                 element_scroll_sizes: None,
                 frame: ComparisonFrame::ParentLocal,
                 numeric: &mut NumericComparisonSink::Strict,
@@ -9726,6 +9762,7 @@ mod tests {
             true,
             FragmentCursors::new(&[], &[]),
             ComparisonPolicy {
+                br_font_band: BrFontBandProjection::Unsupported,
                 element_scroll_sizes: None,
                 frame: ComparisonFrame::ParentLocal,
                 numeric: &mut NumericComparisonSink::Strict,
@@ -9750,6 +9787,7 @@ mod tests {
                 true,
                 FragmentCursors::new(&[], &[],),
                 ComparisonPolicy {
+                    br_font_band: BrFontBandProjection::Unsupported,
                     element_scroll_sizes: None,
                     frame: ComparisonFrame::ParentLocal,
                     numeric: &mut NumericComparisonSink::Strict
@@ -9772,6 +9810,7 @@ mod tests {
                 true,
                 FragmentCursors::new(&[], &[],),
                 ComparisonPolicy {
+                    br_font_band: BrFontBandProjection::Unsupported,
                     element_scroll_sizes: None,
                     frame: ComparisonFrame::ParentLocal,
                     numeric: &mut NumericComparisonSink::Strict
@@ -9793,6 +9832,7 @@ mod tests {
                 true,
                 FragmentCursors::new(&[], &[],),
                 ComparisonPolicy {
+                    br_font_band: BrFontBandProjection::Unsupported,
                     element_scroll_sizes: None,
                     frame: ComparisonFrame::ParentLocal,
                     numeric: &mut NumericComparisonSink::Strict
@@ -9814,6 +9854,7 @@ mod tests {
                 true,
                 FragmentCursors::new(&[], &[],),
                 ComparisonPolicy {
+                    br_font_band: BrFontBandProjection::Unsupported,
                     element_scroll_sizes: None,
                     frame: ComparisonFrame::ParentLocal,
                     numeric: &mut NumericComparisonSink::Strict
@@ -9835,6 +9876,7 @@ mod tests {
                 true,
                 FragmentCursors::new(&[], &[],),
                 ComparisonPolicy {
+                    br_font_band: BrFontBandProjection::Unsupported,
                     element_scroll_sizes: None,
                     frame: ComparisonFrame::ParentLocal,
                     numeric: &mut NumericComparisonSink::Strict
@@ -9860,6 +9902,7 @@ mod tests {
                 true,
                 FragmentCursors::new(&[], &[],),
                 ComparisonPolicy {
+                    br_font_band: BrFontBandProjection::Unsupported,
                     element_scroll_sizes: None,
                     frame: ComparisonFrame::ParentLocal,
                     numeric: &mut NumericComparisonSink::Strict
@@ -13704,6 +13747,7 @@ mod source_root_frame_tests {
                 batch.final_inline_fragments(),
             ),
             ComparisonPolicy {
+                br_font_band: BrFontBandProjection::Unsupported,
                 element_scroll_sizes: None,
                 frame: ComparisonFrame::RootBorder,
                 numeric: &mut NumericComparisonSink::Strict,
@@ -13723,6 +13767,7 @@ mod source_root_frame_tests {
                     batch.final_inline_fragments(),
                 ),
                 ComparisonPolicy {
+                    br_font_band: BrFontBandProjection::Unsupported,
                     element_scroll_sizes: None,
                     frame: ComparisonFrame::ParentLocal,
                     numeric: &mut NumericComparisonSink::Strict

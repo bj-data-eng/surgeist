@@ -16,6 +16,18 @@ pub(crate) fn evidence() -> SpecializedEvidence {
     }
 }
 
+/// Execute the projection after the publisher or registry authenticates this
+/// profile and verifies the retained observations.
+pub(crate) fn compare_authenticated(golden: &Golden) -> Result<(), Error> {
+    super::compare_captured_with_projection(
+        golden,
+        &mut super::NumericComparisonSink::Strict,
+        super::BrFontBandProjection::HorizontalPinned,
+        |_, _| Ok(()),
+    )
+    .map(|_| ())
+}
+
 pub(crate) fn verify_historical(current: &Golden, historical: &Golden) -> Result<(), Error> {
     if current.name != historical.name
         || !current.use_rounding
@@ -40,6 +52,8 @@ mod tests {
         ))
         .unwrap();
         verify_historical(&retained, &retained).unwrap();
+        let error = compare_authenticated(&retained).unwrap_err();
+        assert!(error.to_string().contains("MissingRootContextAuthority"));
 
         for field in 0..4 {
             let mut changed = retained.clone();
