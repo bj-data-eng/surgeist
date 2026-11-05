@@ -12,7 +12,6 @@ use super::support::{
     self, original_subgrid_body, prepared_atomic_percentage,
     prepared_range_qualification as prepared_range,
 };
-use support::capture_authority;
 use support::capture_authority::{
     self as authority, CaptureMetadata, CapturedArtifact, CaseSelection, IdentityInputs,
     PathDigest, Qualification, SpecializedProfile, VerifiedIdentity, identity_from_verified_inputs,
@@ -23,6 +22,7 @@ use support::exact_differences::{
     QualifiedComparison, complete_captured_comparison, flex_composition_qualification as flex,
     verify_wrapping_world_predecessor,
 };
+use support::{ObservedPlacement, capture_authority};
 
 #[path = "qualification_catalogue.rs"]
 mod qualification_catalogue;
@@ -31,8 +31,8 @@ use qualification_catalogue::{Declaration, Record};
 const OWNER_DECLARATION: &str = "examples/qualify-root-context/corpus.toml";
 
 type Result<T> = std::result::Result<T, QualificationError>;
-type PlacementObserver<'a> = dyn FnMut(&surgeist_layout::PlacedTextOutput<usize>) -> std::result::Result<(), support::Error>
-    + 'a;
+type PlacementObserver<'a> =
+    dyn FnMut(&ObservedPlacement) -> std::result::Result<(), support::Error> + 'a;
 
 #[derive(Clone, Copy)]
 pub(super) enum Edition {

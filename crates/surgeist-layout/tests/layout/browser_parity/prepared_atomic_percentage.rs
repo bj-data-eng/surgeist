@@ -355,7 +355,7 @@ fn validate_observations(golden: &Golden) -> Result<(), Error> {
 fn verify_native<'batch>(
     tree: &super::TestTree,
     batch: &'batch layout::CompletedLayoutBatch<usize>,
-) -> Result<&'batch layout::PlacedTextOutput<usize>, Error> {
+) -> Result<&'batch super::ObservedPlacement, Error> {
     let [binding] = tree.paragraphs.as_slice() else {
         return Err(invalid("expected one actual prepared paragraph"));
     };
@@ -397,7 +397,7 @@ fn verify_native<'batch>(
 
 pub(crate) fn compare(
     golden: &Golden,
-    observe_placement: impl FnOnce(&layout::PlacedTextOutput<usize>) -> Result<(), Error>,
+    observe_placement: impl FnOnce(&super::ObservedPlacement) -> Result<(), Error>,
 ) -> Result<(Vec<String>, Result<QualifiedComparison, QualificationError>), Error> {
     validate_observations(golden)?;
     let mut numeric =
