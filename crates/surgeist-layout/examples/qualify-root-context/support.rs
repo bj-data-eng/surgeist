@@ -335,6 +335,19 @@ impl<'a> DeclarationInput<'a> {
         declaration.expected()?;
         Ok(Self { bytes, declaration })
     }
+
+    fn sealed_prefix(current: &'a [u8], length: usize, sha256: &str) -> Result<Self> {
+        // Validate the complete catalogue before selecting the captured prefix.
+        // An appended record cannot duplicate or shadow a captured source.
+        Self::parse(current)?;
+        let bytes = current
+            .get(..length)
+            .ok_or("canonical declaration is shorter than the fixed edition seal")?;
+        if Sha256Digest::from_bytes(bytes).as_str() != sha256 {
+            return Err("canonical declaration prefix differs from the fixed edition seal".into());
+        }
+        Self::parse(bytes)
+    }
 }
 
 // This intentionally projects only the browser declaration. It does not claim
@@ -513,6 +526,7 @@ fn qualify(
             lineage: SemanticLineage::Focused,
             requirements: None,
             terminal_cases: None,
+            prepared_range_raw: &mut std::io::stdout(),
         },
     )
 }
@@ -573,6 +587,7 @@ struct Validation<'a> {
     requirements:
         Option<&'a BTreeMap<String, crate::parity_support::capture_authority::CurrentRequirements>>,
     terminal_cases: Option<&'a mut Vec<crate::parity_support::capture_authority::QualifiedCase>>,
+    prepared_range_raw: &'a mut dyn Write,
 }
 struct SemanticCapture<'a> {
     root: &'a Path,
@@ -719,7 +734,7 @@ fn validate_corpus(
                 &golden,
                 case.source.as_str(),
                 case.case.variant(),
-                &mut std::io::stdout().lock(),
+                &mut *validation.prepared_range_raw,
             ) {
                 native_errors.push(format!("{}: {error}", case.case.id()));
             }

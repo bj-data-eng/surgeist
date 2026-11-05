@@ -44,16 +44,11 @@ const DECLARATION_PREFIX_SHA256: &str =
     "3d8fd3be19d7e4b5411133a09816954d174725f25d2f76725fc46594ec156abb";
 
 fn edition_input(current: &[u8]) -> Result<DeclarationInput<'_>> {
-    // Inspect ALL current records before selecting the sealed edition: appended
-    // declarations cannot shadow a prior source or duplicate each other.
-    DeclarationInput::parse(current)?;
-    let bytes = current
-        .get(..DECLARATION_PREFIX_LENGTH)
-        .ok_or("canonical declaration is shorter than the fixed edition seal")?;
-    if Sha256Digest::from_bytes(bytes).as_str() != DECLARATION_PREFIX_SHA256 {
-        return Err("canonical declaration prefix differs from the fixed edition seal".into());
-    }
-    DeclarationInput::parse(bytes)
+    DeclarationInput::sealed_prefix(
+        current,
+        DECLARATION_PREFIX_LENGTH,
+        DECLARATION_PREFIX_SHA256,
+    )
 }
 
 pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
@@ -223,6 +218,7 @@ fn finish(
             lineage: edition.lineage(),
             requirements: (published.is_some()).then_some(&requirements),
             terminal_cases: (published.is_some()).then_some(&mut terminal_cases),
+            prepared_range_raw: &mut std::io::sink(),
         },
     )?;
     // Catch source/input changes during the invocation, as well as stale binaries

@@ -1,5 +1,9 @@
 use super::*;
 
+const CAPTURE_DECLARATION_LENGTH: usize = 64333;
+const CAPTURE_DECLARATION_SHA256: &str =
+    "c2102dfe54a3c9ff9a0a93f696e889e01654a9bcd0e695146f0b007e40c3d174";
+
 #[test]
 fn prepared_range_qualification_accepts_only_the_declared_rtl_pdi_differences() {
     let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -34,10 +38,14 @@ reason = "Root context: AuthoredBodyOrHtmlStyle"
 }
 
 fn qualify_retained_prepared_range(owner: &Path, root: &Path, current: &[u8]) -> Result<()> {
-    let source = "html/block/prepared_text_continuity_bidi.html";
+    let source = crate::parity_support::prepared_range_qualification::SOURCE;
     let mode = QualificationMode::PreparedRangeCapture;
     let receipt = owner.join("tests/layout/browser_parity/captured/prepared-range-differences");
-    let mut input = DeclarationInput::parse(current)?;
+    let mut input = DeclarationInput::sealed_prefix(
+        current,
+        CAPTURE_DECLARATION_LENGTH,
+        CAPTURE_DECLARATION_SHA256,
+    )?;
     select_records(&mut input.declaration, Some(source), mode)?;
     let expected = input.declaration.expected()?;
     let inventory = prepare_inventory(root, owner, &input, mode)?;
@@ -68,6 +76,7 @@ fn qualify_retained_prepared_range(owner: &Path, root: &Path, current: &[u8]) ->
         expected,
     )?;
     let report = browser::check_corpus(&corpus, &QualificationAdapter::for_mode(mode))?;
+    let mut raw = Vec::new();
     validate_corpus(
         root,
         &inventory,
@@ -80,6 +89,11 @@ fn qualify_retained_prepared_range(owner: &Path, root: &Path, current: &[u8]) ->
             lineage: SemanticLineage::Focused,
             requirements: None,
             terminal_cases: None,
+            prepared_range_raw: &mut raw,
         },
-    )
+    )?;
+    if raw != fs::read(receipt.join("raw-comparisons.jsonl"))? {
+        return Err("prepared Range replay differs from the retained raw comparisons".into());
+    }
+    Ok(())
 }
