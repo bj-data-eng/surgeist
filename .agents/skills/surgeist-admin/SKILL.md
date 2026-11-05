@@ -105,17 +105,24 @@ Until a branch lands, its history may be rewritten, including after it is
 pushed, when that makes the landed history truthful, for example to split a
 commit whose message misdescribes it. This repository rule takes precedence
 over PISCT's general rule against rewriting published history, for branches
-only. Bring a branch up to date by merging `origin/main` into it.
+only. Bring a branch up to date by rebasing it onto `origin/main` and
+force-pushing it; never merge `origin/main` into a branch. Each landing then
+forms one merge bubble on the current tip of `main`, with no crossing lines.
+After a rebase, re-run the verification the rebase invalidates.
 
-Every merge, into the branch or into `main`, is a `git merge --no-ff` whose
-authored message passes `pisct commit validate` before the merge and again on
-readback. Never squash, rebase-merge, or keep a Git- or GitHub-generated merge
-subject. To land, verify the merge result, push `main`, and read it back. If
-the push is rejected because `origin/main` moved, merge it into the branch
-again and repeat the landing. The repository setting deletes a pull request's
-head branch when GitHub records the merge, including a merge landed by pushing
-`main`; the branch stays restorable from the pull request. Remove local
-branches, worktrees, and Cargo targets only with cleanup authority.
+The default-branch ruleset requires a pull request, allows merge commits only,
+and requires the branch to be up to date with `main` with its required status
+checks passing. It rejects direct pushes to `main`. Land a pull request through
+GitHub with a merge commit (`gh pr merge --merge`), pinned to the verified head
+commit. Its subject and body are the authored message, which passes
+`pisct commit validate` before the merge and again on readback. Never squash,
+rebase-merge, or keep a Git- or GitHub-generated merge subject. After the
+merge, read back `main`: its first parent is the previous `main`, its second
+parent is the branch head, and its tree equals the branch tree. If `main`
+moved first, rebase the branch onto it and repeat the landing. The repository
+setting deletes a pull request's head branch when GitHub records the merge;
+the branch stays restorable from the pull request. Remove local branches,
+worktrees, and Cargo targets only with cleanup authority.
 
 ## Review And Working Material
 
