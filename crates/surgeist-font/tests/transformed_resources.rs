@@ -432,3 +432,111 @@ fn inferred_glyph_bounds_must_fit_signed_sfnt_fields() {
         Err(DecodeError::InvalidContainer(error)) if error.kind() == InvalidKind::WoffGlyph
     ));
 }
+
+// One transformed simple glyph and short loca, with literal untransformed
+// hhea/hmtx. Every declared face shares these tables but carries its own
+// head/maxp fields. No hmtx reconstruction is needed to validate the join.
+fn declared_outlines(faces: &[(u16, u16)]) -> Vec<u8> {
+    let mut stream = vec![0, 0, 0, 0, 0, 1, 0, 0];
+    for length in [2u32, 1, 1, 2, 0, 4, 0] {
+        stream.extend_from_slice(&length.to_be_bytes());
+    }
+    stream.extend_from_slice(&[0, 1, 1, 23, 0, 0, 0, 0, 0, 0]);
+    let mut hhea = [0; 36];
+    hhea[34..].copy_from_slice(&1u16.to_be_bytes());
+    stream.extend_from_slice(&hhea);
+    stream.extend_from_slice(&[1, 244, 0, 1]); // Advance 500, bearing 1.
+    let mut directory = vec![10, 18, 46, 11, 4, 0, 2, 36, 3, 4];
+    for &(format, glyphs) in faces {
+        let mut head = [0; 54];
+        head[..4].copy_from_slice(&0x0001_0000u32.to_be_bytes());
+        head[12..16].copy_from_slice(&0x5f0f_3cf5u32.to_be_bytes());
+        head[18..20].copy_from_slice(&1000u16.to_be_bytes());
+        head[50..52].copy_from_slice(&format.to_be_bytes());
+        stream.extend_from_slice(&head);
+        let mut maxp = [0; 32];
+        maxp[..4].copy_from_slice(&0x0001_0000u32.to_be_bytes());
+        maxp[4..6].copy_from_slice(&glyphs.to_be_bytes());
+        stream.extend_from_slice(&maxp);
+        directory.extend_from_slice(&[1, 54, 4, 32]);
+    }
+    let flavor = if faces.len() == 1 {
+        [0, 1, 0, 0]
+    } else {
+        directory.extend_from_slice(&0x0001_0000u32.to_be_bytes());
+        directory.push(faces.len() as u8);
+        for index in 0..faces.len() {
+            let head = (4 + 2 * index) as u8;
+            directory.extend_from_slice(&[6, 0, 1, 0, 0, 0, 1, 2, 3, head, head + 1]);
+        }
+        *b"ttcf"
+    };
+    wrap(&directory, 4 + 2 * faces.len(), &stream, flavor)
+}
+
+#[test]
+fn transformed_loca_must_match_the_literal_head_format() {
+    let control = FontResource::decode(declared_outlines(&[(0, 1)]), limits()).unwrap();
+    let face = control.face(0).unwrap();
+    assert_eq!(face.table(*b"loca"), Some([0, 0, 0, 9].as_slice()));
+    assert_eq!(face.table(*b"hmtx"), Some([1, 244, 0, 1].as_slice()));
+    assert!(
+        matches!(FontResource::decode(declared_outlines(&[(1, 1)]), limits()), Err(DecodeError::InvalidContainer(error)) if error.kind() == InvalidKind::WoffTransform)
+    );
+}
+
+#[test]
+fn transformed_glyph_count_must_match_literal_maxp() {
+    assert!(
+        matches!(FontResource::decode(declared_outlines(&[(0, 2)]), limits()), Err(DecodeError::InvalidContainer(error)) if error.kind() == InvalidKind::WoffTransform)
+    );
+}
+
+#[test]
+fn every_face_sharing_transformed_outlines_must_match_the_pair() {
+    let control = FontResource::decode(declared_outlines(&[(0, 1), (0, 1)]), limits()).unwrap();
+    assert_eq!(control.face_count(), 2);
+    assert_eq!(
+        control.face(0).unwrap().table(*b"loca").unwrap().as_ptr(),
+        control.face(1).unwrap().table(*b"loca").unwrap().as_ptr()
+    );
+    assert!(
+        matches!(FontResource::decode(declared_outlines(&[(0, 1), (1, 1)]), limits()), Err(DecodeError::InvalidContainer(error)) if error.kind() == InvalidKind::WoffTransform)
+    );
+}
+
+#[test]
+fn malformed_second_contour_reports_a_byte_offset() {
+    let mut outline = vec![0, 0, 0, 0, 0, 2, 0, 0];
+    for length in [4u32, 0, 0, 0, 0, 4, 0] {
+        outline.extend_from_slice(&length.to_be_bytes());
+    }
+    outline.extend_from_slice(&[0, 0, 0xff, 0xfe, 0, 0, 0, 0]); // Empty, then invalid -2 contour word.
+    let encoded = wrap(&[10, 0, 44, 11, 6, 0], 2, &outline, [0, 1, 0, 0]);
+    let error = FontResource::decode(encoded, limits()).unwrap_err();
+    assert!(
+        matches!(error, DecodeError::InvalidContainer(ref detail) if detail.kind() == InvalidKind::WoffGlyph && detail.offset() == 2),
+        "unexpected diagnostic: {error}"
+    );
+}
+
+#[test]
+fn unrepresentable_second_triplet_reports_its_byte_offset() {
+    let mut outline = vec![0, 0, 0, 0, 0, 1, 0, 0];
+    for length in [2u32, 1, 2, 9, 0, 4, 0] {
+        outline.extend_from_slice(&length.to_be_bytes());
+    }
+    outline.extend_from_slice(&[0, 1, 2, 127, 127]);
+    // First four-byte triplet is (0,0). Second has x=32768, which cannot be
+    // emitted as a signed TrueType word. The substream byte position is 4.
+    outline.extend_from_slice(&[0, 0, 0, 0, 0x80, 0, 0, 0, 0, 0, 0, 0, 0]);
+    let mut directory = vec![10, 0];
+    base128(outline.len(), &mut directory);
+    directory.extend_from_slice(&[11, 4, 0]);
+    let encoded = wrap(&directory, 2, &outline, [0, 1, 0, 0]);
+    let error = FontResource::decode(encoded, limits()).unwrap_err();
+    assert!(
+        matches!(error, DecodeError::InvalidContainer(ref detail) if detail.kind() == InvalidKind::WoffGlyph && detail.offset() == 4),
+        "unexpected diagnostic: {error}"
+    );
+}

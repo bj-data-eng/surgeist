@@ -327,3 +327,33 @@ fn compressed_source_and_working_storage_limits_reject_without_a_partial_resourc
         );
     }
 }
+
+#[test]
+fn known_decoded_header_size_is_refused_before_brotli_workspace() {
+    let ahem = include_bytes!("fixtures/ahem-original/Ahem.woff2");
+    let minimum_header = 12 + usize::from(u16_at(ahem, 12)) * 16;
+    assert_decoded_limit_precedes_brotli(ahem.to_vec(), minimum_header - 1);
+}
+
+#[test]
+fn known_untransformed_size_is_refused_before_brotli_workspace() {
+    let cff = include_bytes!("fixtures/source-code-pro/SourceCodePro-Regular.otf");
+    let count = usize::from(u16_at(cff, 4));
+    let known_cff_size = 12
+        + count * 16
+        + (0..count)
+            .map(|index| ((u32_at(cff, 12 + index * 16 + 12) as usize) + 3) & !3)
+            .sum::<usize>();
+    assert_decoded_limit_precedes_brotli(null_woff2(cff), known_cff_size - 1);
+}
+
+fn assert_decoded_limit_precedes_brotli(encoded: Vec<u8>, decoded_cap: usize) {
+    // Directory work fits 1 MiB, but the complete Brotli pool cannot.
+    // A known output impossibility must be refused before entering it.
+    let policy = DecodeLimits::new(2 << 20, decoded_cap, 2 << 20, 1000, 20, 1 << 20, 40 << 20);
+    let error = FontResource::decode(encoded, policy).unwrap_err();
+    assert!(
+        matches!(error, DecodeError::LimitExceeded { kind: LimitKind::DecodedBytes, required, limit } if required > limit && limit == decoded_cap),
+        "unexpected refusal: {error}"
+    );
+}
