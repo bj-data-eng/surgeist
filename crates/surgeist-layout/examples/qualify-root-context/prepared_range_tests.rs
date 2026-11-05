@@ -4,17 +4,40 @@ use super::*;
 fn prepared_range_qualification_accepts_only_the_declared_rtl_pdi_differences() {
     let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
     let invocation = Invocation::new(owner).unwrap();
-    let result = qualify_retained_prepared_range(owner, &invocation.root);
+    let result = qualify_retained_prepared_range(owner, &invocation.root, DECLARATION);
     invocation.check_terminal().unwrap();
     fs::remove_dir_all(&invocation.root).unwrap();
     result.expect("the two adopted RTL PDI differences qualify; the two LTR controls match");
 }
 
-fn qualify_retained_prepared_range(owner: &Path, root: &Path) -> Result<()> {
+#[test]
+fn prepared_range_receipt_replays_after_unrelated_catalogue_append() {
+    let mut current = DECLARATION.to_vec();
+    current.extend_from_slice(
+        br#"
+
+[[records]]
+source = "html/qualification/unrelated-prepared-range-replay-stimulus.html"
+source_sha256 = "e8d4898ce6c699e0f6264585e6f95f481ad35d1e34e66c458ada2117ebc615c1"
+source_kind = "authored"
+[records.expected]
+kind = "unsupported"
+reason = "Root context: AuthoredBodyOrHtmlStyle"
+"#,
+    );
+    let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let invocation = Invocation::new(owner).unwrap();
+    let result = qualify_retained_prepared_range(owner, &invocation.root, &current);
+    invocation.check_terminal().unwrap();
+    fs::remove_dir_all(&invocation.root).unwrap();
+    result.expect("unrelated records leave the prepared Range receipt valid");
+}
+
+fn qualify_retained_prepared_range(owner: &Path, root: &Path, current: &[u8]) -> Result<()> {
     let source = "html/block/prepared_text_continuity_bidi.html";
     let mode = QualificationMode::PreparedRangeCapture;
     let receipt = owner.join("tests/layout/browser_parity/captured/prepared-range-differences");
-    let mut input = DeclarationInput::parse(DECLARATION)?;
+    let mut input = DeclarationInput::parse(current)?;
     select_records(&mut input.declaration, Some(source), mode)?;
     let expected = input.declaration.expected()?;
     let inventory = prepare_inventory(root, owner, &input, mode)?;
