@@ -22,6 +22,14 @@ fn parse(xml: &str, report: &str, source: &[u8]) -> Result<Golden, Error> {
 fn complete_capture_keeps_all_exact_box_and_range_differences() {
     let (xml, report, source) = artifacts();
     let mut golden = parse(&xml, &report, &source).unwrap();
+    let historical = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(capture_authority::SpecializedProfile::PreparedAtomicPercentage.artifact_root())
+        .join(OUTPUT.replacen("xml/", "historical/", 1));
+    let mut historical = Golden::parse_file(historical).unwrap();
+    verify_historical(&golden, &historical).unwrap();
+    historical.expectations.children[1].height = Some(41.0);
+    assert!(verify_historical(&golden, &historical).is_err());
+
     let (fields, verdict) = compare(&golden).unwrap();
     assert!(fields.is_empty(), "{fields:?}");
     assert_eq!(verdict.unwrap().raw, RawVerdict::Matches);
