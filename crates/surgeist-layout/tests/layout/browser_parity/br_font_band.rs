@@ -1,5 +1,5 @@
 use super::{
-    Error, Golden,
+    BrFontBandProfile, Error, Golden,
     capture_authority::{PathDigest, SpecializedEvidence, sha256},
 };
 
@@ -7,7 +7,7 @@ pub(crate) use crate::horizontal_br_font_band_profile::{
     HELPER_SHA256, REQUEST, SCRIPT, SCRIPT_PATH, SOURCE, SOURCE_SHA256,
 };
 
-pub(crate) fn evidence() -> SpecializedEvidence {
+pub(crate) fn horizontal_evidence() -> SpecializedEvidence {
     SpecializedEvidence::HorizontalBrFontBand {
         proof_script: PathDigest {
             path: SCRIPT_PATH.to_owned(),
@@ -16,13 +16,26 @@ pub(crate) fn evidence() -> SpecializedEvidence {
     }
 }
 
+pub(crate) fn vertical_evidence() -> SpecializedEvidence {
+    use crate::vertical_br_font_band_profile as profile;
+    SpecializedEvidence::VerticalBrFontBand {
+        proof_script: PathDigest {
+            path: profile::SCRIPT_PATH.to_owned(),
+            sha256: sha256(profile::SCRIPT.as_bytes()),
+        },
+    }
+}
+
 /// Execute the projection after the publisher or registry authenticates this
 /// profile and verifies the retained observations.
-pub(crate) fn compare_authenticated(golden: &Golden) -> Result<(), Error> {
+pub(crate) fn compare_authenticated(
+    golden: &Golden,
+    profile: BrFontBandProfile,
+) -> Result<(), Error> {
     super::compare_captured_with_projection(
         golden,
         &mut super::NumericComparisonSink::Strict,
-        super::BrFontBandProjection::HorizontalPinned,
+        Some(profile),
         |_, _| Ok(()),
     )
     .map(|_| ())
@@ -35,7 +48,7 @@ pub(crate) fn verify_historical(current: &Golden, historical: &Golden) -> Result
         || current.expectations != historical.expectations
     {
         return Err(Error::new(
-            "horizontal BR capture changed the historical box, control or font-band observations",
+            "BR capture changed the historical box, control or font-band observations",
         ));
     }
     Ok(())
@@ -52,7 +65,9 @@ mod tests {
         ))
         .unwrap();
         verify_historical(&retained, &retained).unwrap();
-        let error = compare_authenticated(&retained).unwrap_err();
+        let error = compare_authenticated(&retained, BrFontBandProfile::Horizontal).unwrap_err();
+        assert!(error.to_string().contains("MissingRootContextAuthority"));
+        let error = compare_authenticated(&retained, BrFontBandProfile::Vertical).unwrap_err();
         assert!(error.to_string().contains("MissingRootContextAuthority"));
 
         for field in 0..4 {

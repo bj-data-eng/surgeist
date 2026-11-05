@@ -470,9 +470,25 @@ and x=110 in RTL. The rounded profile applies the browser's root-local
 corner rounding. The integer font metrics and unshifted horizontal frame
 bound this projection.
 
+The [vertical BR edition](captured/vertical-br-font-band-qualification/)
+qualifies twelve original variants across vertical-lr LTR, vertical-rl LTR and
+vertical-rl RTL. Each original author stylesheet supplies child direction
+inheritance. The authenticated first-block frame supplies a zero hypothetical
+block offset from the ICB's physical top, independently of the absolute sizing
+bases and the root-local origin. Layout fits the root's Auto inline size using
+that offset and the actual ICB.
+
+Text supplies the exact placed upright control and its retained Central font
+basis. The browser projection uses that same instance's ordinary pre-leading
+font height, split around Central. Ahem20 yields 10px to each side. Physical
+line-over is right in both vertical writing modes. The projected bands have
+width 20px and zero height, at (5, 30), (55, 30) and (55, 0) respectively.
+[Chromium Central split](https://github.com/chromium/chromium/blob/daf70f9ddee4b45d4f8870f574fbde61c0db4ca7/third_party/blink/renderer/platform/fonts/font_metrics.cc#L181-L188) ·
+[Line-relative writing mode](https://github.com/chromium/chromium/blob/daf70f9ddee4b45d4f8870f574fbde61c0db4ca7/third_party/blink/renderer/platform/text/writing_mode.h#L66-L78)
+
 The reader compares all four coordinates separately from ordinary geometry
-and control relations. Structural and vertical BR font-band observations
-retain their four captured coordinates and return an unsupported observation.
+and control relations. Structural BR font-band observations retain their
+four captured coordinates and return an unsupported observation.
 
 Only the byte-identical [pinned font](fonts/PROVENANCE.md) is admitted. The
 adapter hashes the **captured** `fonts/Ahem.ttf` input before injecting those

@@ -1,0 +1,992 @@
+{
+  "schema_version": 3,
+  "edition": "vertical-br-font-band-qualification",
+  "declaration": {
+    "path": "corpus.toml",
+    "sha256": "a2556f62a34d50900c639baad95bb1097d332d4651708bd97209064982f37be0"
+  },
+  "records": [
+    {
+      "source": "html/block/block_br_vertical_lr_inline_block_metrics.html",
+      "sha256": "fa3e0670c40a486117410312c931e516a57a59354bba0db020a531de451165d9",
+      "value": {
+        "expected": {
+          "kind": "generated",
+          "metadata": {
+            "block_offset": 0.0,
+            "containing_direction": "ltr",
+            "context": "absolute-local",
+            "hypothetical_direction": "ltr",
+            "hypothetical_display": "block",
+            "inline_offset": 0.0,
+            "root_direction": "ltr",
+            "root_size": null,
+            "root_writing_mode": "vertical-lr"
+          }
+        },
+        "historical_sha256": {
+          "border_box_ltr": "5c70017fc626a4c18c7721aa90b0bee74246c9bc3445112c806ba1f433c1a192",
+          "border_box_rtl": "aee6ecbc79a5d4d3550e47464c1812d2d26e395377c37ea5c72ce5c0c5489096",
+          "content_box_ltr": "0f27eebffc5febdeeafcfbf5cf1e2707b290e1d03d75355d76fdc456346eb26a",
+          "content_box_rtl": "e38731b95af640aeb9d8088a3951f17f9ead26a8e5ceee80a98b0151be377226"
+        },
+        "relation": null,
+        "semantic_specifications": null,
+        "source": "html/block/block_br_vertical_lr_inline_block_metrics.html",
+        "source_kind": "original",
+        "source_sha256": "a9fbabd1b36f1e5f77e650bf00370c1ce9aced4798a91cf19de414fddbafda63",
+        "specialized_publication": "vertical-br-font-band"
+      }
+    },
+    {
+      "source": "html/block/block_br_vertical_rl_inline_block_metrics.html",
+      "sha256": "67495ab52fe45b9cd61748cb1f9c3fbd8f6e934c35f2211f2477369cb2dddcee",
+      "value": {
+        "expected": {
+          "kind": "generated",
+          "metadata": {
+            "block_offset": 0.0,
+            "containing_direction": "ltr",
+            "context": "absolute-local",
+            "hypothetical_direction": "ltr",
+            "hypothetical_display": "block",
+            "inline_offset": 0.0,
+            "root_direction": "ltr",
+            "root_size": null,
+            "root_writing_mode": "vertical-rl"
+          }
+        },
+        "historical_sha256": {
+          "border_box_ltr": "5e5e8c0e887173e9555007ab1e44fc9c714e4f0f94fec133c06c8f31d71630ec",
+          "border_box_rtl": "f47c7128ae225e7cdc69e57675bf3491ee1785a5bd7d33ff23ffdfc1fa91b501",
+          "content_box_ltr": "738e44b7b1bc9a56003dca2c1bd77ceb32bf6d56789df5b4212a7fb6aa5d371b",
+          "content_box_rtl": "f1f43b3ab3b5b47e8f0987aabbe9733acfa7a10b2803800ca8f6bc957850b260"
+        },
+        "relation": null,
+        "semantic_specifications": null,
+        "source": "html/block/block_br_vertical_rl_inline_block_metrics.html",
+        "source_kind": "original",
+        "source_sha256": "e38e24ebc52f83041252b155f4ebb403a572ff64034c75d82ced94deb8207595",
+        "specialized_publication": "vertical-br-font-band"
+      }
+    },
+    {
+      "source": "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html",
+      "sha256": "18911b7428a68c5779926bc56760f4a671f30e34b9693d1a1267bfbf464ccf4b",
+      "value": {
+        "expected": {
+          "kind": "generated",
+          "metadata": {
+            "block_offset": 0.0,
+            "containing_direction": "ltr",
+            "context": "absolute-local",
+            "hypothetical_direction": "ltr",
+            "hypothetical_display": "block",
+            "inline_offset": 0.0,
+            "root_direction": "rtl",
+            "root_size": null,
+            "root_writing_mode": "vertical-rl"
+          }
+        },
+        "historical_sha256": {
+          "border_box_ltr": "5a5d2cb363f91e30fc2ef0e705985ba57af8c6a50082a1f6abea780dc89f4938",
+          "border_box_rtl": "d0b78722a3d755089135260c1e425c959e7d064944750d5c51edc30de7db9433",
+          "content_box_ltr": "ab1b21e9e6cb0f6169505dfb8e0b2fe0bf7c394658b0884cd91f3c23e4a97a80",
+          "content_box_rtl": "f8b72d90c4f9a61111751cf1cc7c9573c43e9b9c5c363cc034ad6643b18fbbfe"
+        },
+        "relation": null,
+        "semantic_specifications": null,
+        "source": "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html",
+        "source_kind": "original",
+        "source_sha256": "2681d0c5fbf33644e5d10a74f26986de3a1fd53833c0f19ffb73f805c465bfaf",
+        "specialized_publication": "vertical-br-font-band"
+      }
+    }
+  ],
+  "browser_settings": {"source":"chrome-for-testing","version":"149.0.7827.115","version_output":"Google Chrome for Testing 149.0.7827.115","cache_root":"tmp/surgeist-browser","provenance_format":"chrome-for-testing/{version} ({repository_relative_executable})","launch":{"batch_size":50,"navigation_timeout_ms":10000,"dom_poll_interval_ms":25,"arguments":["headless=new","mute-audio","disable-background-networking","disable-background-timer-throttling","disable-backgrounding-occluded-windows","disable-breakpad","disable-client-side-phishing-detection","disable-component-extensions-with-background-pages","disable-component-update","disable-default-apps","disable-dev-shm-usage","disable-domain-reliability","disable-features=TranslateUI,MediaRouter,OptimizationHints,AutofillServerCommunication","disable-hang-monitor","disable-ipc-flooding-protection","disable-popup-blocking","disable-prompt-on-repost","disable-renderer-backgrounding","disable-sync","enable-automation","enable-blink-features=IdleDetection,CSSGridLanesLayout","enable-features=NetworkService,NetworkServiceInProcess","force-color-profile=srgb","lang=en_US","metrics-recording-only","no-default-browser-check","no-first-run","use-mock-keychain"]}},
+  "report": {
+    "path": "xml/generation-reports/all.json",
+    "sha256": "93a1052ffc241b810662d70a467ae7f6d6c90c96fff4e963e06fbffd40b90ff0"
+  },
+  "ownership": {
+    "path": "xml/generation-ownership.json",
+    "sha256": "036d1847701a1343511adb8ad505c1918b0838a3c4c095aa30cb89c27d77ab8f"
+  },
+  "cases": [
+    {
+      "case": {
+        "name": "block_br_vertical_lr_inline_block_metrics__border_box_ltr",
+        "source": "html/block/block_br_vertical_lr_inline_block_metrics.html",
+        "variant": "border_box_ltr",
+        "output": {
+          "path": "xml/block/block_br_vertical_lr_inline_block_metrics__border_box_ltr.xml",
+          "sha256": "2c30cd8e25fd344a281aba3b3075f396fb4b7c41e3c7b75cf557ab83ce8810b4"
+        },
+        "record_sha256": "fa3e0670c40a486117410312c931e516a57a59354bba0db020a531de451165d9"
+      },
+      "historical": {
+        "path": "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_ltr.xml",
+        "sha256": "5c70017fc626a4c18c7721aa90b0bee74246c9bc3445112c806ba1f433c1a192"
+      },
+      "evidence": {
+        "profile": "vertical-br-font-band",
+        "proof_script": {
+          "path": "scripts/gentest/vertical_br_font_band.js",
+          "sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        }
+      },
+      "identity": {
+        "source": "html/block/block_br_vertical_lr_inline_block_metrics.html",
+        "source_sha256": "a9fbabd1b36f1e5f77e650bf00370c1ce9aced4798a91cf19de414fddbafda63",
+        "variant": "border_box_ltr",
+        "historical_sha256": "5c70017fc626a4c18c7721aa90b0bee74246c9bc3445112c806ba1f433c1a192",
+        "capture_sha256": "2c30cd8e25fd344a281aba3b3075f396fb4b7c41e3c7b75cf557ab83ce8810b4",
+        "record_sha256": "fa3e0670c40a486117410312c931e516a57a59354bba0db020a531de451165d9",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "9824e42d7651f2fc8be8bb7994afceebc6303ed0b01112f6b7ed4ae16d916ea4",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_ltr.xml": "5c70017fc626a4c18c7721aa90b0bee74246c9bc3445112c806ba1f433c1a192",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_rtl.xml": "aee6ecbc79a5d4d3550e47464c1812d2d26e395377c37ea5c72ce5c0c5489096",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_ltr.xml": "0f27eebffc5febdeeafcfbf5cf1e2707b290e1d03d75355d76fdc456346eb26a",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_rtl.xml": "e38731b95af640aeb9d8088a3951f17f9ead26a8e5ceee80a98b0151be377226",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_ltr.xml": "5e5e8c0e887173e9555007ab1e44fc9c714e4f0f94fec133c06c8f31d71630ec",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_rtl.xml": "f47c7128ae225e7cdc69e57675bf3491ee1785a5bd7d33ff23ffdfc1fa91b501",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_ltr.xml": "738e44b7b1bc9a56003dca2c1bd77ceb32bf6d56789df5b4212a7fb6aa5d371b",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_rtl.xml": "f1f43b3ab3b5b47e8f0987aabbe9733acfa7a10b2803800ca8f6bc957850b260",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_ltr.xml": "5a5d2cb363f91e30fc2ef0e705985ba57af8c6a50082a1f6abea780dc89f4938",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_rtl.xml": "d0b78722a3d755089135260c1e425c959e7d064944750d5c51edc30de7db9433",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_ltr.xml": "ab1b21e9e6cb0f6169505dfb8e0b2fe0bf7c394658b0884cd91f3c23e4a97a80",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_rtl.xml": "f8b72d90c4f9a61111751cf1cc7c9573c43e9b9c5c363cc034ad6643b18fbbfe",
+          "html/block/block_br_vertical_lr_inline_block_metrics.html": "a9fbabd1b36f1e5f77e650bf00370c1ce9aced4798a91cf19de414fddbafda63",
+          "html/block/block_br_vertical_rl_inline_block_metrics.html": "e38e24ebc52f83041252b155f4ebb403a572ff64034c75d82ced94deb8207595",
+          "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html": "2681d0c5fbf33644e5d10a74f26986de3a1fd53833c0f19ffb73f805c465bfaf",
+          "observation-request.json": "50503361e9a45b6193463b7e3498fe26c614a7bec42e4c8ecada4308999b3598",
+          "origin/selected-originals.json": "861e1e0d271ff9d445295dcc7ce31051acdffaf0ac987bada5ba069d5a4ef6bc",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+          "scripts/gentest/vertical_br_font_band.js": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        },
+        "linked_resources": {},
+        "font_demand": "ahem-20px-prepared",
+        "policy_source_sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+      }
+    },
+    {
+      "case": {
+        "name": "block_br_vertical_lr_inline_block_metrics__border_box_rtl",
+        "source": "html/block/block_br_vertical_lr_inline_block_metrics.html",
+        "variant": "border_box_rtl",
+        "output": {
+          "path": "xml/block/block_br_vertical_lr_inline_block_metrics__border_box_rtl.xml",
+          "sha256": "fa60a9413789489b449431abcf317ead6db33e1d5961a146c18d9c4c17333db3"
+        },
+        "record_sha256": "fa3e0670c40a486117410312c931e516a57a59354bba0db020a531de451165d9"
+      },
+      "historical": {
+        "path": "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_rtl.xml",
+        "sha256": "aee6ecbc79a5d4d3550e47464c1812d2d26e395377c37ea5c72ce5c0c5489096"
+      },
+      "evidence": {
+        "profile": "vertical-br-font-band",
+        "proof_script": {
+          "path": "scripts/gentest/vertical_br_font_band.js",
+          "sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        }
+      },
+      "identity": {
+        "source": "html/block/block_br_vertical_lr_inline_block_metrics.html",
+        "source_sha256": "a9fbabd1b36f1e5f77e650bf00370c1ce9aced4798a91cf19de414fddbafda63",
+        "variant": "border_box_rtl",
+        "historical_sha256": "aee6ecbc79a5d4d3550e47464c1812d2d26e395377c37ea5c72ce5c0c5489096",
+        "capture_sha256": "fa60a9413789489b449431abcf317ead6db33e1d5961a146c18d9c4c17333db3",
+        "record_sha256": "fa3e0670c40a486117410312c931e516a57a59354bba0db020a531de451165d9",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "0876071655be4ee0b20cfa7e7371f6d37ed9cfbf1327acadba21a5c34866ca52",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_ltr.xml": "5c70017fc626a4c18c7721aa90b0bee74246c9bc3445112c806ba1f433c1a192",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_rtl.xml": "aee6ecbc79a5d4d3550e47464c1812d2d26e395377c37ea5c72ce5c0c5489096",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_ltr.xml": "0f27eebffc5febdeeafcfbf5cf1e2707b290e1d03d75355d76fdc456346eb26a",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_rtl.xml": "e38731b95af640aeb9d8088a3951f17f9ead26a8e5ceee80a98b0151be377226",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_ltr.xml": "5e5e8c0e887173e9555007ab1e44fc9c714e4f0f94fec133c06c8f31d71630ec",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_rtl.xml": "f47c7128ae225e7cdc69e57675bf3491ee1785a5bd7d33ff23ffdfc1fa91b501",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_ltr.xml": "738e44b7b1bc9a56003dca2c1bd77ceb32bf6d56789df5b4212a7fb6aa5d371b",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_rtl.xml": "f1f43b3ab3b5b47e8f0987aabbe9733acfa7a10b2803800ca8f6bc957850b260",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_ltr.xml": "5a5d2cb363f91e30fc2ef0e705985ba57af8c6a50082a1f6abea780dc89f4938",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_rtl.xml": "d0b78722a3d755089135260c1e425c959e7d064944750d5c51edc30de7db9433",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_ltr.xml": "ab1b21e9e6cb0f6169505dfb8e0b2fe0bf7c394658b0884cd91f3c23e4a97a80",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_rtl.xml": "f8b72d90c4f9a61111751cf1cc7c9573c43e9b9c5c363cc034ad6643b18fbbfe",
+          "html/block/block_br_vertical_lr_inline_block_metrics.html": "a9fbabd1b36f1e5f77e650bf00370c1ce9aced4798a91cf19de414fddbafda63",
+          "html/block/block_br_vertical_rl_inline_block_metrics.html": "e38e24ebc52f83041252b155f4ebb403a572ff64034c75d82ced94deb8207595",
+          "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html": "2681d0c5fbf33644e5d10a74f26986de3a1fd53833c0f19ffb73f805c465bfaf",
+          "observation-request.json": "50503361e9a45b6193463b7e3498fe26c614a7bec42e4c8ecada4308999b3598",
+          "origin/selected-originals.json": "861e1e0d271ff9d445295dcc7ce31051acdffaf0ac987bada5ba069d5a4ef6bc",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+          "scripts/gentest/vertical_br_font_band.js": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        },
+        "linked_resources": {},
+        "font_demand": "ahem-20px-prepared",
+        "policy_source_sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+      }
+    },
+    {
+      "case": {
+        "name": "block_br_vertical_lr_inline_block_metrics__content_box_ltr",
+        "source": "html/block/block_br_vertical_lr_inline_block_metrics.html",
+        "variant": "content_box_ltr",
+        "output": {
+          "path": "xml/block/block_br_vertical_lr_inline_block_metrics__content_box_ltr.xml",
+          "sha256": "77f801fdba4ce203d8a12b4ac62fb76a8fd6fc4016300452e52f58aba9898a0a"
+        },
+        "record_sha256": "fa3e0670c40a486117410312c931e516a57a59354bba0db020a531de451165d9"
+      },
+      "historical": {
+        "path": "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_ltr.xml",
+        "sha256": "0f27eebffc5febdeeafcfbf5cf1e2707b290e1d03d75355d76fdc456346eb26a"
+      },
+      "evidence": {
+        "profile": "vertical-br-font-band",
+        "proof_script": {
+          "path": "scripts/gentest/vertical_br_font_band.js",
+          "sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        }
+      },
+      "identity": {
+        "source": "html/block/block_br_vertical_lr_inline_block_metrics.html",
+        "source_sha256": "a9fbabd1b36f1e5f77e650bf00370c1ce9aced4798a91cf19de414fddbafda63",
+        "variant": "content_box_ltr",
+        "historical_sha256": "0f27eebffc5febdeeafcfbf5cf1e2707b290e1d03d75355d76fdc456346eb26a",
+        "capture_sha256": "77f801fdba4ce203d8a12b4ac62fb76a8fd6fc4016300452e52f58aba9898a0a",
+        "record_sha256": "fa3e0670c40a486117410312c931e516a57a59354bba0db020a531de451165d9",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "c631619651704c2e8f8e77fe70752b9914cc98ca8725afbdde33bcbff3ed8143",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_ltr.xml": "5c70017fc626a4c18c7721aa90b0bee74246c9bc3445112c806ba1f433c1a192",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_rtl.xml": "aee6ecbc79a5d4d3550e47464c1812d2d26e395377c37ea5c72ce5c0c5489096",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_ltr.xml": "0f27eebffc5febdeeafcfbf5cf1e2707b290e1d03d75355d76fdc456346eb26a",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_rtl.xml": "e38731b95af640aeb9d8088a3951f17f9ead26a8e5ceee80a98b0151be377226",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_ltr.xml": "5e5e8c0e887173e9555007ab1e44fc9c714e4f0f94fec133c06c8f31d71630ec",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_rtl.xml": "f47c7128ae225e7cdc69e57675bf3491ee1785a5bd7d33ff23ffdfc1fa91b501",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_ltr.xml": "738e44b7b1bc9a56003dca2c1bd77ceb32bf6d56789df5b4212a7fb6aa5d371b",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_rtl.xml": "f1f43b3ab3b5b47e8f0987aabbe9733acfa7a10b2803800ca8f6bc957850b260",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_ltr.xml": "5a5d2cb363f91e30fc2ef0e705985ba57af8c6a50082a1f6abea780dc89f4938",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_rtl.xml": "d0b78722a3d755089135260c1e425c959e7d064944750d5c51edc30de7db9433",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_ltr.xml": "ab1b21e9e6cb0f6169505dfb8e0b2fe0bf7c394658b0884cd91f3c23e4a97a80",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_rtl.xml": "f8b72d90c4f9a61111751cf1cc7c9573c43e9b9c5c363cc034ad6643b18fbbfe",
+          "html/block/block_br_vertical_lr_inline_block_metrics.html": "a9fbabd1b36f1e5f77e650bf00370c1ce9aced4798a91cf19de414fddbafda63",
+          "html/block/block_br_vertical_rl_inline_block_metrics.html": "e38e24ebc52f83041252b155f4ebb403a572ff64034c75d82ced94deb8207595",
+          "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html": "2681d0c5fbf33644e5d10a74f26986de3a1fd53833c0f19ffb73f805c465bfaf",
+          "observation-request.json": "50503361e9a45b6193463b7e3498fe26c614a7bec42e4c8ecada4308999b3598",
+          "origin/selected-originals.json": "861e1e0d271ff9d445295dcc7ce31051acdffaf0ac987bada5ba069d5a4ef6bc",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+          "scripts/gentest/vertical_br_font_band.js": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        },
+        "linked_resources": {},
+        "font_demand": "ahem-20px-prepared",
+        "policy_source_sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+      }
+    },
+    {
+      "case": {
+        "name": "block_br_vertical_lr_inline_block_metrics__content_box_rtl",
+        "source": "html/block/block_br_vertical_lr_inline_block_metrics.html",
+        "variant": "content_box_rtl",
+        "output": {
+          "path": "xml/block/block_br_vertical_lr_inline_block_metrics__content_box_rtl.xml",
+          "sha256": "4f011716ae222458fc6f53a793b780953705d569c535b4f0370b29cf2767a45c"
+        },
+        "record_sha256": "fa3e0670c40a486117410312c931e516a57a59354bba0db020a531de451165d9"
+      },
+      "historical": {
+        "path": "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_rtl.xml",
+        "sha256": "e38731b95af640aeb9d8088a3951f17f9ead26a8e5ceee80a98b0151be377226"
+      },
+      "evidence": {
+        "profile": "vertical-br-font-band",
+        "proof_script": {
+          "path": "scripts/gentest/vertical_br_font_band.js",
+          "sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        }
+      },
+      "identity": {
+        "source": "html/block/block_br_vertical_lr_inline_block_metrics.html",
+        "source_sha256": "a9fbabd1b36f1e5f77e650bf00370c1ce9aced4798a91cf19de414fddbafda63",
+        "variant": "content_box_rtl",
+        "historical_sha256": "e38731b95af640aeb9d8088a3951f17f9ead26a8e5ceee80a98b0151be377226",
+        "capture_sha256": "4f011716ae222458fc6f53a793b780953705d569c535b4f0370b29cf2767a45c",
+        "record_sha256": "fa3e0670c40a486117410312c931e516a57a59354bba0db020a531de451165d9",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "c8ba8f10e02d55eb466b868e33c624707e6de54e56ac340f11d422c95116b562",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_ltr.xml": "5c70017fc626a4c18c7721aa90b0bee74246c9bc3445112c806ba1f433c1a192",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_rtl.xml": "aee6ecbc79a5d4d3550e47464c1812d2d26e395377c37ea5c72ce5c0c5489096",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_ltr.xml": "0f27eebffc5febdeeafcfbf5cf1e2707b290e1d03d75355d76fdc456346eb26a",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_rtl.xml": "e38731b95af640aeb9d8088a3951f17f9ead26a8e5ceee80a98b0151be377226",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_ltr.xml": "5e5e8c0e887173e9555007ab1e44fc9c714e4f0f94fec133c06c8f31d71630ec",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_rtl.xml": "f47c7128ae225e7cdc69e57675bf3491ee1785a5bd7d33ff23ffdfc1fa91b501",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_ltr.xml": "738e44b7b1bc9a56003dca2c1bd77ceb32bf6d56789df5b4212a7fb6aa5d371b",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_rtl.xml": "f1f43b3ab3b5b47e8f0987aabbe9733acfa7a10b2803800ca8f6bc957850b260",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_ltr.xml": "5a5d2cb363f91e30fc2ef0e705985ba57af8c6a50082a1f6abea780dc89f4938",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_rtl.xml": "d0b78722a3d755089135260c1e425c959e7d064944750d5c51edc30de7db9433",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_ltr.xml": "ab1b21e9e6cb0f6169505dfb8e0b2fe0bf7c394658b0884cd91f3c23e4a97a80",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_rtl.xml": "f8b72d90c4f9a61111751cf1cc7c9573c43e9b9c5c363cc034ad6643b18fbbfe",
+          "html/block/block_br_vertical_lr_inline_block_metrics.html": "a9fbabd1b36f1e5f77e650bf00370c1ce9aced4798a91cf19de414fddbafda63",
+          "html/block/block_br_vertical_rl_inline_block_metrics.html": "e38e24ebc52f83041252b155f4ebb403a572ff64034c75d82ced94deb8207595",
+          "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html": "2681d0c5fbf33644e5d10a74f26986de3a1fd53833c0f19ffb73f805c465bfaf",
+          "observation-request.json": "50503361e9a45b6193463b7e3498fe26c614a7bec42e4c8ecada4308999b3598",
+          "origin/selected-originals.json": "861e1e0d271ff9d445295dcc7ce31051acdffaf0ac987bada5ba069d5a4ef6bc",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+          "scripts/gentest/vertical_br_font_band.js": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        },
+        "linked_resources": {},
+        "font_demand": "ahem-20px-prepared",
+        "policy_source_sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+      }
+    },
+    {
+      "case": {
+        "name": "block_br_vertical_rl_inline_block_metrics__border_box_ltr",
+        "source": "html/block/block_br_vertical_rl_inline_block_metrics.html",
+        "variant": "border_box_ltr",
+        "output": {
+          "path": "xml/block/block_br_vertical_rl_inline_block_metrics__border_box_ltr.xml",
+          "sha256": "2f99541fa676238583fdc6549198b3c50b51218595c6fd57051eee52c53bd4f2"
+        },
+        "record_sha256": "67495ab52fe45b9cd61748cb1f9c3fbd8f6e934c35f2211f2477369cb2dddcee"
+      },
+      "historical": {
+        "path": "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_ltr.xml",
+        "sha256": "5e5e8c0e887173e9555007ab1e44fc9c714e4f0f94fec133c06c8f31d71630ec"
+      },
+      "evidence": {
+        "profile": "vertical-br-font-band",
+        "proof_script": {
+          "path": "scripts/gentest/vertical_br_font_band.js",
+          "sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        }
+      },
+      "identity": {
+        "source": "html/block/block_br_vertical_rl_inline_block_metrics.html",
+        "source_sha256": "e38e24ebc52f83041252b155f4ebb403a572ff64034c75d82ced94deb8207595",
+        "variant": "border_box_ltr",
+        "historical_sha256": "5e5e8c0e887173e9555007ab1e44fc9c714e4f0f94fec133c06c8f31d71630ec",
+        "capture_sha256": "2f99541fa676238583fdc6549198b3c50b51218595c6fd57051eee52c53bd4f2",
+        "record_sha256": "67495ab52fe45b9cd61748cb1f9c3fbd8f6e934c35f2211f2477369cb2dddcee",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "74b358aa22774fcb854177a00195f2ae016b38a344eb122149fb5c90eaff955a",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_ltr.xml": "5c70017fc626a4c18c7721aa90b0bee74246c9bc3445112c806ba1f433c1a192",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_rtl.xml": "aee6ecbc79a5d4d3550e47464c1812d2d26e395377c37ea5c72ce5c0c5489096",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_ltr.xml": "0f27eebffc5febdeeafcfbf5cf1e2707b290e1d03d75355d76fdc456346eb26a",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_rtl.xml": "e38731b95af640aeb9d8088a3951f17f9ead26a8e5ceee80a98b0151be377226",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_ltr.xml": "5e5e8c0e887173e9555007ab1e44fc9c714e4f0f94fec133c06c8f31d71630ec",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_rtl.xml": "f47c7128ae225e7cdc69e57675bf3491ee1785a5bd7d33ff23ffdfc1fa91b501",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_ltr.xml": "738e44b7b1bc9a56003dca2c1bd77ceb32bf6d56789df5b4212a7fb6aa5d371b",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_rtl.xml": "f1f43b3ab3b5b47e8f0987aabbe9733acfa7a10b2803800ca8f6bc957850b260",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_ltr.xml": "5a5d2cb363f91e30fc2ef0e705985ba57af8c6a50082a1f6abea780dc89f4938",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_rtl.xml": "d0b78722a3d755089135260c1e425c959e7d064944750d5c51edc30de7db9433",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_ltr.xml": "ab1b21e9e6cb0f6169505dfb8e0b2fe0bf7c394658b0884cd91f3c23e4a97a80",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_rtl.xml": "f8b72d90c4f9a61111751cf1cc7c9573c43e9b9c5c363cc034ad6643b18fbbfe",
+          "html/block/block_br_vertical_lr_inline_block_metrics.html": "a9fbabd1b36f1e5f77e650bf00370c1ce9aced4798a91cf19de414fddbafda63",
+          "html/block/block_br_vertical_rl_inline_block_metrics.html": "e38e24ebc52f83041252b155f4ebb403a572ff64034c75d82ced94deb8207595",
+          "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html": "2681d0c5fbf33644e5d10a74f26986de3a1fd53833c0f19ffb73f805c465bfaf",
+          "observation-request.json": "50503361e9a45b6193463b7e3498fe26c614a7bec42e4c8ecada4308999b3598",
+          "origin/selected-originals.json": "861e1e0d271ff9d445295dcc7ce31051acdffaf0ac987bada5ba069d5a4ef6bc",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+          "scripts/gentest/vertical_br_font_band.js": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        },
+        "linked_resources": {},
+        "font_demand": "ahem-20px-prepared",
+        "policy_source_sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+      }
+    },
+    {
+      "case": {
+        "name": "block_br_vertical_rl_inline_block_metrics__border_box_rtl",
+        "source": "html/block/block_br_vertical_rl_inline_block_metrics.html",
+        "variant": "border_box_rtl",
+        "output": {
+          "path": "xml/block/block_br_vertical_rl_inline_block_metrics__border_box_rtl.xml",
+          "sha256": "670ec1cdb1daef33ca5987e4550f4ad0fb77e48b116c97f579aec3e0bf419f75"
+        },
+        "record_sha256": "67495ab52fe45b9cd61748cb1f9c3fbd8f6e934c35f2211f2477369cb2dddcee"
+      },
+      "historical": {
+        "path": "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_rtl.xml",
+        "sha256": "f47c7128ae225e7cdc69e57675bf3491ee1785a5bd7d33ff23ffdfc1fa91b501"
+      },
+      "evidence": {
+        "profile": "vertical-br-font-band",
+        "proof_script": {
+          "path": "scripts/gentest/vertical_br_font_band.js",
+          "sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        }
+      },
+      "identity": {
+        "source": "html/block/block_br_vertical_rl_inline_block_metrics.html",
+        "source_sha256": "e38e24ebc52f83041252b155f4ebb403a572ff64034c75d82ced94deb8207595",
+        "variant": "border_box_rtl",
+        "historical_sha256": "f47c7128ae225e7cdc69e57675bf3491ee1785a5bd7d33ff23ffdfc1fa91b501",
+        "capture_sha256": "670ec1cdb1daef33ca5987e4550f4ad0fb77e48b116c97f579aec3e0bf419f75",
+        "record_sha256": "67495ab52fe45b9cd61748cb1f9c3fbd8f6e934c35f2211f2477369cb2dddcee",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "e66cf45cbef7e6328544bfdba9d18a4739ddab1588028ec652df43c46e8ddaed",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_ltr.xml": "5c70017fc626a4c18c7721aa90b0bee74246c9bc3445112c806ba1f433c1a192",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_rtl.xml": "aee6ecbc79a5d4d3550e47464c1812d2d26e395377c37ea5c72ce5c0c5489096",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_ltr.xml": "0f27eebffc5febdeeafcfbf5cf1e2707b290e1d03d75355d76fdc456346eb26a",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_rtl.xml": "e38731b95af640aeb9d8088a3951f17f9ead26a8e5ceee80a98b0151be377226",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_ltr.xml": "5e5e8c0e887173e9555007ab1e44fc9c714e4f0f94fec133c06c8f31d71630ec",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_rtl.xml": "f47c7128ae225e7cdc69e57675bf3491ee1785a5bd7d33ff23ffdfc1fa91b501",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_ltr.xml": "738e44b7b1bc9a56003dca2c1bd77ceb32bf6d56789df5b4212a7fb6aa5d371b",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_rtl.xml": "f1f43b3ab3b5b47e8f0987aabbe9733acfa7a10b2803800ca8f6bc957850b260",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_ltr.xml": "5a5d2cb363f91e30fc2ef0e705985ba57af8c6a50082a1f6abea780dc89f4938",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_rtl.xml": "d0b78722a3d755089135260c1e425c959e7d064944750d5c51edc30de7db9433",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_ltr.xml": "ab1b21e9e6cb0f6169505dfb8e0b2fe0bf7c394658b0884cd91f3c23e4a97a80",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_rtl.xml": "f8b72d90c4f9a61111751cf1cc7c9573c43e9b9c5c363cc034ad6643b18fbbfe",
+          "html/block/block_br_vertical_lr_inline_block_metrics.html": "a9fbabd1b36f1e5f77e650bf00370c1ce9aced4798a91cf19de414fddbafda63",
+          "html/block/block_br_vertical_rl_inline_block_metrics.html": "e38e24ebc52f83041252b155f4ebb403a572ff64034c75d82ced94deb8207595",
+          "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html": "2681d0c5fbf33644e5d10a74f26986de3a1fd53833c0f19ffb73f805c465bfaf",
+          "observation-request.json": "50503361e9a45b6193463b7e3498fe26c614a7bec42e4c8ecada4308999b3598",
+          "origin/selected-originals.json": "861e1e0d271ff9d445295dcc7ce31051acdffaf0ac987bada5ba069d5a4ef6bc",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+          "scripts/gentest/vertical_br_font_band.js": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        },
+        "linked_resources": {},
+        "font_demand": "ahem-20px-prepared",
+        "policy_source_sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+      }
+    },
+    {
+      "case": {
+        "name": "block_br_vertical_rl_inline_block_metrics__content_box_ltr",
+        "source": "html/block/block_br_vertical_rl_inline_block_metrics.html",
+        "variant": "content_box_ltr",
+        "output": {
+          "path": "xml/block/block_br_vertical_rl_inline_block_metrics__content_box_ltr.xml",
+          "sha256": "1426fcf165fced4361c2b06c8d9ce23dc5ca555a3844bccc79f3ac8f94df3c50"
+        },
+        "record_sha256": "67495ab52fe45b9cd61748cb1f9c3fbd8f6e934c35f2211f2477369cb2dddcee"
+      },
+      "historical": {
+        "path": "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_ltr.xml",
+        "sha256": "738e44b7b1bc9a56003dca2c1bd77ceb32bf6d56789df5b4212a7fb6aa5d371b"
+      },
+      "evidence": {
+        "profile": "vertical-br-font-band",
+        "proof_script": {
+          "path": "scripts/gentest/vertical_br_font_band.js",
+          "sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        }
+      },
+      "identity": {
+        "source": "html/block/block_br_vertical_rl_inline_block_metrics.html",
+        "source_sha256": "e38e24ebc52f83041252b155f4ebb403a572ff64034c75d82ced94deb8207595",
+        "variant": "content_box_ltr",
+        "historical_sha256": "738e44b7b1bc9a56003dca2c1bd77ceb32bf6d56789df5b4212a7fb6aa5d371b",
+        "capture_sha256": "1426fcf165fced4361c2b06c8d9ce23dc5ca555a3844bccc79f3ac8f94df3c50",
+        "record_sha256": "67495ab52fe45b9cd61748cb1f9c3fbd8f6e934c35f2211f2477369cb2dddcee",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "e5043171ccf41142db4daabd5175b07ce694c4029c0b41763a6a9887529bc753",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_ltr.xml": "5c70017fc626a4c18c7721aa90b0bee74246c9bc3445112c806ba1f433c1a192",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_rtl.xml": "aee6ecbc79a5d4d3550e47464c1812d2d26e395377c37ea5c72ce5c0c5489096",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_ltr.xml": "0f27eebffc5febdeeafcfbf5cf1e2707b290e1d03d75355d76fdc456346eb26a",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_rtl.xml": "e38731b95af640aeb9d8088a3951f17f9ead26a8e5ceee80a98b0151be377226",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_ltr.xml": "5e5e8c0e887173e9555007ab1e44fc9c714e4f0f94fec133c06c8f31d71630ec",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_rtl.xml": "f47c7128ae225e7cdc69e57675bf3491ee1785a5bd7d33ff23ffdfc1fa91b501",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_ltr.xml": "738e44b7b1bc9a56003dca2c1bd77ceb32bf6d56789df5b4212a7fb6aa5d371b",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_rtl.xml": "f1f43b3ab3b5b47e8f0987aabbe9733acfa7a10b2803800ca8f6bc957850b260",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_ltr.xml": "5a5d2cb363f91e30fc2ef0e705985ba57af8c6a50082a1f6abea780dc89f4938",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_rtl.xml": "d0b78722a3d755089135260c1e425c959e7d064944750d5c51edc30de7db9433",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_ltr.xml": "ab1b21e9e6cb0f6169505dfb8e0b2fe0bf7c394658b0884cd91f3c23e4a97a80",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_rtl.xml": "f8b72d90c4f9a61111751cf1cc7c9573c43e9b9c5c363cc034ad6643b18fbbfe",
+          "html/block/block_br_vertical_lr_inline_block_metrics.html": "a9fbabd1b36f1e5f77e650bf00370c1ce9aced4798a91cf19de414fddbafda63",
+          "html/block/block_br_vertical_rl_inline_block_metrics.html": "e38e24ebc52f83041252b155f4ebb403a572ff64034c75d82ced94deb8207595",
+          "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html": "2681d0c5fbf33644e5d10a74f26986de3a1fd53833c0f19ffb73f805c465bfaf",
+          "observation-request.json": "50503361e9a45b6193463b7e3498fe26c614a7bec42e4c8ecada4308999b3598",
+          "origin/selected-originals.json": "861e1e0d271ff9d445295dcc7ce31051acdffaf0ac987bada5ba069d5a4ef6bc",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+          "scripts/gentest/vertical_br_font_band.js": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        },
+        "linked_resources": {},
+        "font_demand": "ahem-20px-prepared",
+        "policy_source_sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+      }
+    },
+    {
+      "case": {
+        "name": "block_br_vertical_rl_inline_block_metrics__content_box_rtl",
+        "source": "html/block/block_br_vertical_rl_inline_block_metrics.html",
+        "variant": "content_box_rtl",
+        "output": {
+          "path": "xml/block/block_br_vertical_rl_inline_block_metrics__content_box_rtl.xml",
+          "sha256": "0969e51a9c8ddb74152ef83fe2490515622c7405496066389c355c57bdedc56c"
+        },
+        "record_sha256": "67495ab52fe45b9cd61748cb1f9c3fbd8f6e934c35f2211f2477369cb2dddcee"
+      },
+      "historical": {
+        "path": "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_rtl.xml",
+        "sha256": "f1f43b3ab3b5b47e8f0987aabbe9733acfa7a10b2803800ca8f6bc957850b260"
+      },
+      "evidence": {
+        "profile": "vertical-br-font-band",
+        "proof_script": {
+          "path": "scripts/gentest/vertical_br_font_band.js",
+          "sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        }
+      },
+      "identity": {
+        "source": "html/block/block_br_vertical_rl_inline_block_metrics.html",
+        "source_sha256": "e38e24ebc52f83041252b155f4ebb403a572ff64034c75d82ced94deb8207595",
+        "variant": "content_box_rtl",
+        "historical_sha256": "f1f43b3ab3b5b47e8f0987aabbe9733acfa7a10b2803800ca8f6bc957850b260",
+        "capture_sha256": "0969e51a9c8ddb74152ef83fe2490515622c7405496066389c355c57bdedc56c",
+        "record_sha256": "67495ab52fe45b9cd61748cb1f9c3fbd8f6e934c35f2211f2477369cb2dddcee",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "5c239a177e6d28f082886ee8aab17b82a9f6f9550a41de559d3ae365888f35bc",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_ltr.xml": "5c70017fc626a4c18c7721aa90b0bee74246c9bc3445112c806ba1f433c1a192",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_rtl.xml": "aee6ecbc79a5d4d3550e47464c1812d2d26e395377c37ea5c72ce5c0c5489096",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_ltr.xml": "0f27eebffc5febdeeafcfbf5cf1e2707b290e1d03d75355d76fdc456346eb26a",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_rtl.xml": "e38731b95af640aeb9d8088a3951f17f9ead26a8e5ceee80a98b0151be377226",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_ltr.xml": "5e5e8c0e887173e9555007ab1e44fc9c714e4f0f94fec133c06c8f31d71630ec",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_rtl.xml": "f47c7128ae225e7cdc69e57675bf3491ee1785a5bd7d33ff23ffdfc1fa91b501",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_ltr.xml": "738e44b7b1bc9a56003dca2c1bd77ceb32bf6d56789df5b4212a7fb6aa5d371b",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_rtl.xml": "f1f43b3ab3b5b47e8f0987aabbe9733acfa7a10b2803800ca8f6bc957850b260",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_ltr.xml": "5a5d2cb363f91e30fc2ef0e705985ba57af8c6a50082a1f6abea780dc89f4938",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_rtl.xml": "d0b78722a3d755089135260c1e425c959e7d064944750d5c51edc30de7db9433",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_ltr.xml": "ab1b21e9e6cb0f6169505dfb8e0b2fe0bf7c394658b0884cd91f3c23e4a97a80",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_rtl.xml": "f8b72d90c4f9a61111751cf1cc7c9573c43e9b9c5c363cc034ad6643b18fbbfe",
+          "html/block/block_br_vertical_lr_inline_block_metrics.html": "a9fbabd1b36f1e5f77e650bf00370c1ce9aced4798a91cf19de414fddbafda63",
+          "html/block/block_br_vertical_rl_inline_block_metrics.html": "e38e24ebc52f83041252b155f4ebb403a572ff64034c75d82ced94deb8207595",
+          "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html": "2681d0c5fbf33644e5d10a74f26986de3a1fd53833c0f19ffb73f805c465bfaf",
+          "observation-request.json": "50503361e9a45b6193463b7e3498fe26c614a7bec42e4c8ecada4308999b3598",
+          "origin/selected-originals.json": "861e1e0d271ff9d445295dcc7ce31051acdffaf0ac987bada5ba069d5a4ef6bc",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+          "scripts/gentest/vertical_br_font_band.js": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        },
+        "linked_resources": {},
+        "font_demand": "ahem-20px-prepared",
+        "policy_source_sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+      }
+    },
+    {
+      "case": {
+        "name": "block_br_vertical_rl_rtl_inline_block_metrics__border_box_ltr",
+        "source": "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html",
+        "variant": "border_box_ltr",
+        "output": {
+          "path": "xml/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_ltr.xml",
+          "sha256": "12e8c0efb81855b8d9b5c3f7726b8db907f20777647680c8b563f9ff0d62d0c7"
+        },
+        "record_sha256": "18911b7428a68c5779926bc56760f4a671f30e34b9693d1a1267bfbf464ccf4b"
+      },
+      "historical": {
+        "path": "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_ltr.xml",
+        "sha256": "5a5d2cb363f91e30fc2ef0e705985ba57af8c6a50082a1f6abea780dc89f4938"
+      },
+      "evidence": {
+        "profile": "vertical-br-font-band",
+        "proof_script": {
+          "path": "scripts/gentest/vertical_br_font_band.js",
+          "sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        }
+      },
+      "identity": {
+        "source": "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html",
+        "source_sha256": "2681d0c5fbf33644e5d10a74f26986de3a1fd53833c0f19ffb73f805c465bfaf",
+        "variant": "border_box_ltr",
+        "historical_sha256": "5a5d2cb363f91e30fc2ef0e705985ba57af8c6a50082a1f6abea780dc89f4938",
+        "capture_sha256": "12e8c0efb81855b8d9b5c3f7726b8db907f20777647680c8b563f9ff0d62d0c7",
+        "record_sha256": "18911b7428a68c5779926bc56760f4a671f30e34b9693d1a1267bfbf464ccf4b",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "7bcb206c8fc43b8fde65c5e22a6176e733576af65e3f1848562d6ab99f49f7d8",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_ltr.xml": "5c70017fc626a4c18c7721aa90b0bee74246c9bc3445112c806ba1f433c1a192",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_rtl.xml": "aee6ecbc79a5d4d3550e47464c1812d2d26e395377c37ea5c72ce5c0c5489096",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_ltr.xml": "0f27eebffc5febdeeafcfbf5cf1e2707b290e1d03d75355d76fdc456346eb26a",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_rtl.xml": "e38731b95af640aeb9d8088a3951f17f9ead26a8e5ceee80a98b0151be377226",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_ltr.xml": "5e5e8c0e887173e9555007ab1e44fc9c714e4f0f94fec133c06c8f31d71630ec",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_rtl.xml": "f47c7128ae225e7cdc69e57675bf3491ee1785a5bd7d33ff23ffdfc1fa91b501",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_ltr.xml": "738e44b7b1bc9a56003dca2c1bd77ceb32bf6d56789df5b4212a7fb6aa5d371b",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_rtl.xml": "f1f43b3ab3b5b47e8f0987aabbe9733acfa7a10b2803800ca8f6bc957850b260",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_ltr.xml": "5a5d2cb363f91e30fc2ef0e705985ba57af8c6a50082a1f6abea780dc89f4938",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_rtl.xml": "d0b78722a3d755089135260c1e425c959e7d064944750d5c51edc30de7db9433",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_ltr.xml": "ab1b21e9e6cb0f6169505dfb8e0b2fe0bf7c394658b0884cd91f3c23e4a97a80",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_rtl.xml": "f8b72d90c4f9a61111751cf1cc7c9573c43e9b9c5c363cc034ad6643b18fbbfe",
+          "html/block/block_br_vertical_lr_inline_block_metrics.html": "a9fbabd1b36f1e5f77e650bf00370c1ce9aced4798a91cf19de414fddbafda63",
+          "html/block/block_br_vertical_rl_inline_block_metrics.html": "e38e24ebc52f83041252b155f4ebb403a572ff64034c75d82ced94deb8207595",
+          "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html": "2681d0c5fbf33644e5d10a74f26986de3a1fd53833c0f19ffb73f805c465bfaf",
+          "observation-request.json": "50503361e9a45b6193463b7e3498fe26c614a7bec42e4c8ecada4308999b3598",
+          "origin/selected-originals.json": "861e1e0d271ff9d445295dcc7ce31051acdffaf0ac987bada5ba069d5a4ef6bc",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+          "scripts/gentest/vertical_br_font_band.js": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        },
+        "linked_resources": {},
+        "font_demand": "ahem-20px-prepared",
+        "policy_source_sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+      }
+    },
+    {
+      "case": {
+        "name": "block_br_vertical_rl_rtl_inline_block_metrics__border_box_rtl",
+        "source": "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html",
+        "variant": "border_box_rtl",
+        "output": {
+          "path": "xml/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_rtl.xml",
+          "sha256": "f8b7a293b845d2fe6415824e813f8ce059a402d374b76168795a7f0f38ae5199"
+        },
+        "record_sha256": "18911b7428a68c5779926bc56760f4a671f30e34b9693d1a1267bfbf464ccf4b"
+      },
+      "historical": {
+        "path": "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_rtl.xml",
+        "sha256": "d0b78722a3d755089135260c1e425c959e7d064944750d5c51edc30de7db9433"
+      },
+      "evidence": {
+        "profile": "vertical-br-font-band",
+        "proof_script": {
+          "path": "scripts/gentest/vertical_br_font_band.js",
+          "sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        }
+      },
+      "identity": {
+        "source": "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html",
+        "source_sha256": "2681d0c5fbf33644e5d10a74f26986de3a1fd53833c0f19ffb73f805c465bfaf",
+        "variant": "border_box_rtl",
+        "historical_sha256": "d0b78722a3d755089135260c1e425c959e7d064944750d5c51edc30de7db9433",
+        "capture_sha256": "f8b7a293b845d2fe6415824e813f8ce059a402d374b76168795a7f0f38ae5199",
+        "record_sha256": "18911b7428a68c5779926bc56760f4a671f30e34b9693d1a1267bfbf464ccf4b",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "5d08fd765b8b2252e0943ee52e58ff503c86635827c086aa8a0aff5750cb3475",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_ltr.xml": "5c70017fc626a4c18c7721aa90b0bee74246c9bc3445112c806ba1f433c1a192",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_rtl.xml": "aee6ecbc79a5d4d3550e47464c1812d2d26e395377c37ea5c72ce5c0c5489096",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_ltr.xml": "0f27eebffc5febdeeafcfbf5cf1e2707b290e1d03d75355d76fdc456346eb26a",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_rtl.xml": "e38731b95af640aeb9d8088a3951f17f9ead26a8e5ceee80a98b0151be377226",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_ltr.xml": "5e5e8c0e887173e9555007ab1e44fc9c714e4f0f94fec133c06c8f31d71630ec",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_rtl.xml": "f47c7128ae225e7cdc69e57675bf3491ee1785a5bd7d33ff23ffdfc1fa91b501",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_ltr.xml": "738e44b7b1bc9a56003dca2c1bd77ceb32bf6d56789df5b4212a7fb6aa5d371b",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_rtl.xml": "f1f43b3ab3b5b47e8f0987aabbe9733acfa7a10b2803800ca8f6bc957850b260",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_ltr.xml": "5a5d2cb363f91e30fc2ef0e705985ba57af8c6a50082a1f6abea780dc89f4938",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_rtl.xml": "d0b78722a3d755089135260c1e425c959e7d064944750d5c51edc30de7db9433",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_ltr.xml": "ab1b21e9e6cb0f6169505dfb8e0b2fe0bf7c394658b0884cd91f3c23e4a97a80",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_rtl.xml": "f8b72d90c4f9a61111751cf1cc7c9573c43e9b9c5c363cc034ad6643b18fbbfe",
+          "html/block/block_br_vertical_lr_inline_block_metrics.html": "a9fbabd1b36f1e5f77e650bf00370c1ce9aced4798a91cf19de414fddbafda63",
+          "html/block/block_br_vertical_rl_inline_block_metrics.html": "e38e24ebc52f83041252b155f4ebb403a572ff64034c75d82ced94deb8207595",
+          "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html": "2681d0c5fbf33644e5d10a74f26986de3a1fd53833c0f19ffb73f805c465bfaf",
+          "observation-request.json": "50503361e9a45b6193463b7e3498fe26c614a7bec42e4c8ecada4308999b3598",
+          "origin/selected-originals.json": "861e1e0d271ff9d445295dcc7ce31051acdffaf0ac987bada5ba069d5a4ef6bc",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+          "scripts/gentest/vertical_br_font_band.js": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        },
+        "linked_resources": {},
+        "font_demand": "ahem-20px-prepared",
+        "policy_source_sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+      }
+    },
+    {
+      "case": {
+        "name": "block_br_vertical_rl_rtl_inline_block_metrics__content_box_ltr",
+        "source": "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html",
+        "variant": "content_box_ltr",
+        "output": {
+          "path": "xml/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_ltr.xml",
+          "sha256": "d89e5e6eae565cf560f85d3c8f8cd4465182048053cb2ce822fa3bdc2ac56ad2"
+        },
+        "record_sha256": "18911b7428a68c5779926bc56760f4a671f30e34b9693d1a1267bfbf464ccf4b"
+      },
+      "historical": {
+        "path": "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_ltr.xml",
+        "sha256": "ab1b21e9e6cb0f6169505dfb8e0b2fe0bf7c394658b0884cd91f3c23e4a97a80"
+      },
+      "evidence": {
+        "profile": "vertical-br-font-band",
+        "proof_script": {
+          "path": "scripts/gentest/vertical_br_font_band.js",
+          "sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        }
+      },
+      "identity": {
+        "source": "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html",
+        "source_sha256": "2681d0c5fbf33644e5d10a74f26986de3a1fd53833c0f19ffb73f805c465bfaf",
+        "variant": "content_box_ltr",
+        "historical_sha256": "ab1b21e9e6cb0f6169505dfb8e0b2fe0bf7c394658b0884cd91f3c23e4a97a80",
+        "capture_sha256": "d89e5e6eae565cf560f85d3c8f8cd4465182048053cb2ce822fa3bdc2ac56ad2",
+        "record_sha256": "18911b7428a68c5779926bc56760f4a671f30e34b9693d1a1267bfbf464ccf4b",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "775ece1d6f55cd15cf603693dcde8668c6e819e7dd382ea292c565625049f6cc",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_ltr.xml": "5c70017fc626a4c18c7721aa90b0bee74246c9bc3445112c806ba1f433c1a192",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_rtl.xml": "aee6ecbc79a5d4d3550e47464c1812d2d26e395377c37ea5c72ce5c0c5489096",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_ltr.xml": "0f27eebffc5febdeeafcfbf5cf1e2707b290e1d03d75355d76fdc456346eb26a",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_rtl.xml": "e38731b95af640aeb9d8088a3951f17f9ead26a8e5ceee80a98b0151be377226",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_ltr.xml": "5e5e8c0e887173e9555007ab1e44fc9c714e4f0f94fec133c06c8f31d71630ec",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_rtl.xml": "f47c7128ae225e7cdc69e57675bf3491ee1785a5bd7d33ff23ffdfc1fa91b501",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_ltr.xml": "738e44b7b1bc9a56003dca2c1bd77ceb32bf6d56789df5b4212a7fb6aa5d371b",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_rtl.xml": "f1f43b3ab3b5b47e8f0987aabbe9733acfa7a10b2803800ca8f6bc957850b260",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_ltr.xml": "5a5d2cb363f91e30fc2ef0e705985ba57af8c6a50082a1f6abea780dc89f4938",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_rtl.xml": "d0b78722a3d755089135260c1e425c959e7d064944750d5c51edc30de7db9433",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_ltr.xml": "ab1b21e9e6cb0f6169505dfb8e0b2fe0bf7c394658b0884cd91f3c23e4a97a80",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_rtl.xml": "f8b72d90c4f9a61111751cf1cc7c9573c43e9b9c5c363cc034ad6643b18fbbfe",
+          "html/block/block_br_vertical_lr_inline_block_metrics.html": "a9fbabd1b36f1e5f77e650bf00370c1ce9aced4798a91cf19de414fddbafda63",
+          "html/block/block_br_vertical_rl_inline_block_metrics.html": "e38e24ebc52f83041252b155f4ebb403a572ff64034c75d82ced94deb8207595",
+          "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html": "2681d0c5fbf33644e5d10a74f26986de3a1fd53833c0f19ffb73f805c465bfaf",
+          "observation-request.json": "50503361e9a45b6193463b7e3498fe26c614a7bec42e4c8ecada4308999b3598",
+          "origin/selected-originals.json": "861e1e0d271ff9d445295dcc7ce31051acdffaf0ac987bada5ba069d5a4ef6bc",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+          "scripts/gentest/vertical_br_font_band.js": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        },
+        "linked_resources": {},
+        "font_demand": "ahem-20px-prepared",
+        "policy_source_sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+      }
+    },
+    {
+      "case": {
+        "name": "block_br_vertical_rl_rtl_inline_block_metrics__content_box_rtl",
+        "source": "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html",
+        "variant": "content_box_rtl",
+        "output": {
+          "path": "xml/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_rtl.xml",
+          "sha256": "53deb671cd8749e6dc074acf94286d9a4a6b5d79cc27adafd08a025f49a25947"
+        },
+        "record_sha256": "18911b7428a68c5779926bc56760f4a671f30e34b9693d1a1267bfbf464ccf4b"
+      },
+      "historical": {
+        "path": "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_rtl.xml",
+        "sha256": "f8b72d90c4f9a61111751cf1cc7c9573c43e9b9c5c363cc034ad6643b18fbbfe"
+      },
+      "evidence": {
+        "profile": "vertical-br-font-band",
+        "proof_script": {
+          "path": "scripts/gentest/vertical_br_font_band.js",
+          "sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        }
+      },
+      "identity": {
+        "source": "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html",
+        "source_sha256": "2681d0c5fbf33644e5d10a74f26986de3a1fd53833c0f19ffb73f805c465bfaf",
+        "variant": "content_box_rtl",
+        "historical_sha256": "f8b72d90c4f9a61111751cf1cc7c9573c43e9b9c5c363cc034ad6643b18fbbfe",
+        "capture_sha256": "53deb671cd8749e6dc074acf94286d9a4a6b5d79cc27adafd08a025f49a25947",
+        "record_sha256": "18911b7428a68c5779926bc56760f4a671f30e34b9693d1a1267bfbf464ccf4b",
+        "generator": "surgeist-layout-root-context-qualification",
+        "engine_version": "0.2.0",
+        "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+        "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+        "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+        "profile_sha256": "a77e29055f745eef361d65291ac758d88f73f57519f50f0c743573c20eea69d2",
+        "source_imports_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "inputs": {
+          "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+          "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+          "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_ltr.xml": "5c70017fc626a4c18c7721aa90b0bee74246c9bc3445112c806ba1f433c1a192",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_rtl.xml": "aee6ecbc79a5d4d3550e47464c1812d2d26e395377c37ea5c72ce5c0c5489096",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_ltr.xml": "0f27eebffc5febdeeafcfbf5cf1e2707b290e1d03d75355d76fdc456346eb26a",
+          "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_rtl.xml": "e38731b95af640aeb9d8088a3951f17f9ead26a8e5ceee80a98b0151be377226",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_ltr.xml": "5e5e8c0e887173e9555007ab1e44fc9c714e4f0f94fec133c06c8f31d71630ec",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_rtl.xml": "f47c7128ae225e7cdc69e57675bf3491ee1785a5bd7d33ff23ffdfc1fa91b501",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_ltr.xml": "738e44b7b1bc9a56003dca2c1bd77ceb32bf6d56789df5b4212a7fb6aa5d371b",
+          "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_rtl.xml": "f1f43b3ab3b5b47e8f0987aabbe9733acfa7a10b2803800ca8f6bc957850b260",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_ltr.xml": "5a5d2cb363f91e30fc2ef0e705985ba57af8c6a50082a1f6abea780dc89f4938",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_rtl.xml": "d0b78722a3d755089135260c1e425c959e7d064944750d5c51edc30de7db9433",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_ltr.xml": "ab1b21e9e6cb0f6169505dfb8e0b2fe0bf7c394658b0884cd91f3c23e4a97a80",
+          "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_rtl.xml": "f8b72d90c4f9a61111751cf1cc7c9573c43e9b9c5c363cc034ad6643b18fbbfe",
+          "html/block/block_br_vertical_lr_inline_block_metrics.html": "a9fbabd1b36f1e5f77e650bf00370c1ce9aced4798a91cf19de414fddbafda63",
+          "html/block/block_br_vertical_rl_inline_block_metrics.html": "e38e24ebc52f83041252b155f4ebb403a572ff64034c75d82ced94deb8207595",
+          "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html": "2681d0c5fbf33644e5d10a74f26986de3a1fd53833c0f19ffb73f805c465bfaf",
+          "observation-request.json": "50503361e9a45b6193463b7e3498fe26c614a7bec42e4c8ecada4308999b3598",
+          "origin/selected-originals.json": "861e1e0d271ff9d445295dcc7ce31051acdffaf0ac987bada5ba069d5a4ef6bc",
+          "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+          "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+          "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+          "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+          "scripts/gentest/vertical_br_font_band.js": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+        },
+        "linked_resources": {},
+        "font_demand": "ahem-20px-prepared",
+        "policy_source_sha256": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+      }
+    }
+  ],
+  "retained_inputs": {
+    "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+    "corpus.toml": "a2556f62a34d50900c639baad95bb1097d332d4651708bd97209064982f37be0",
+    "fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+    "fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+    "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_ltr.xml": "5c70017fc626a4c18c7721aa90b0bee74246c9bc3445112c806ba1f433c1a192",
+    "historical/block/block_br_vertical_lr_inline_block_metrics__border_box_rtl.xml": "aee6ecbc79a5d4d3550e47464c1812d2d26e395377c37ea5c72ce5c0c5489096",
+    "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_ltr.xml": "0f27eebffc5febdeeafcfbf5cf1e2707b290e1d03d75355d76fdc456346eb26a",
+    "historical/block/block_br_vertical_lr_inline_block_metrics__content_box_rtl.xml": "e38731b95af640aeb9d8088a3951f17f9ead26a8e5ceee80a98b0151be377226",
+    "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_ltr.xml": "5e5e8c0e887173e9555007ab1e44fc9c714e4f0f94fec133c06c8f31d71630ec",
+    "historical/block/block_br_vertical_rl_inline_block_metrics__border_box_rtl.xml": "f47c7128ae225e7cdc69e57675bf3491ee1785a5bd7d33ff23ffdfc1fa91b501",
+    "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_ltr.xml": "738e44b7b1bc9a56003dca2c1bd77ceb32bf6d56789df5b4212a7fb6aa5d371b",
+    "historical/block/block_br_vertical_rl_inline_block_metrics__content_box_rtl.xml": "f1f43b3ab3b5b47e8f0987aabbe9733acfa7a10b2803800ca8f6bc957850b260",
+    "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_ltr.xml": "5a5d2cb363f91e30fc2ef0e705985ba57af8c6a50082a1f6abea780dc89f4938",
+    "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_rtl.xml": "d0b78722a3d755089135260c1e425c959e7d064944750d5c51edc30de7db9433",
+    "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_ltr.xml": "ab1b21e9e6cb0f6169505dfb8e0b2fe0bf7c394658b0884cd91f3c23e4a97a80",
+    "historical/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_rtl.xml": "f8b72d90c4f9a61111751cf1cc7c9573c43e9b9c5c363cc034ad6643b18fbbfe",
+    "html/block/block_br_vertical_lr_inline_block_metrics.html": "a9fbabd1b36f1e5f77e650bf00370c1ce9aced4798a91cf19de414fddbafda63",
+    "html/block/block_br_vertical_rl_inline_block_metrics.html": "e38e24ebc52f83041252b155f4ebb403a572ff64034c75d82ced94deb8207595",
+    "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html": "2681d0c5fbf33644e5d10a74f26986de3a1fd53833c0f19ffb73f805c465bfaf",
+    "observation-request.json": "50503361e9a45b6193463b7e3498fe26c614a7bec42e4c8ecada4308999b3598",
+    "origin/selected-originals.json": "861e1e0d271ff9d445295dcc7ce31051acdffaf0ac987bada5ba069d5a4ef6bc",
+    "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+    "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+    "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+    "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+    "scripts/gentest/vertical_br_font_band.js": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6"
+  },
+  "current_owner_inputs": {
+    "tests/bin/surgeist-layout-generate/measurement/vertical_br_font_band.js": "77ab3eb0e3cb58e2ea36ad8579254825e0991684196dfc841a135c4e4295aca6",
+    "tests/bin/surgeist-layout-generate/measurement/vertical_br_font_band_request.json": "50503361e9a45b6193463b7e3498fe26c614a7bec42e4c8ecada4308999b3598",
+    "tests/layout/browser_parity/corpus.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+    "tests/layout/browser_parity/fonts/Ahem.ttf": "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc",
+    "tests/layout/browser_parity/fonts/PROVENANCE.md": "7c9499cceba67d05027ad17a570967c80a6f6b898fca4b25492865e85c7444c8",
+    "tests/layout/browser_parity/html/.surgeist-source.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+    "tests/layout/browser_parity/html/block/block_br_vertical_lr_inline_block_metrics.html": "a9fbabd1b36f1e5f77e650bf00370c1ce9aced4798a91cf19de414fddbafda63",
+    "tests/layout/browser_parity/html/block/block_br_vertical_rl_inline_block_metrics.html": "e38e24ebc52f83041252b155f4ebb403a572ff64034c75d82ced94deb8207595",
+    "tests/layout/browser_parity/html/block/block_br_vertical_rl_rtl_inline_block_metrics.html": "2681d0c5fbf33644e5d10a74f26986de3a1fd53833c0f19ffb73f805c465bfaf",
+    "tests/layout/browser_parity/scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+    "tests/layout/browser_parity/scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+    "tests/layout/browser_parity/xml/block/block_br_vertical_lr_inline_block_metrics__border_box_ltr.xml": "5c70017fc626a4c18c7721aa90b0bee74246c9bc3445112c806ba1f433c1a192",
+    "tests/layout/browser_parity/xml/block/block_br_vertical_lr_inline_block_metrics__border_box_rtl.xml": "aee6ecbc79a5d4d3550e47464c1812d2d26e395377c37ea5c72ce5c0c5489096",
+    "tests/layout/browser_parity/xml/block/block_br_vertical_lr_inline_block_metrics__content_box_ltr.xml": "0f27eebffc5febdeeafcfbf5cf1e2707b290e1d03d75355d76fdc456346eb26a",
+    "tests/layout/browser_parity/xml/block/block_br_vertical_lr_inline_block_metrics__content_box_rtl.xml": "e38731b95af640aeb9d8088a3951f17f9ead26a8e5ceee80a98b0151be377226",
+    "tests/layout/browser_parity/xml/block/block_br_vertical_rl_inline_block_metrics__border_box_ltr.xml": "5e5e8c0e887173e9555007ab1e44fc9c714e4f0f94fec133c06c8f31d71630ec",
+    "tests/layout/browser_parity/xml/block/block_br_vertical_rl_inline_block_metrics__border_box_rtl.xml": "f47c7128ae225e7cdc69e57675bf3491ee1785a5bd7d33ff23ffdfc1fa91b501",
+    "tests/layout/browser_parity/xml/block/block_br_vertical_rl_inline_block_metrics__content_box_ltr.xml": "738e44b7b1bc9a56003dca2c1bd77ceb32bf6d56789df5b4212a7fb6aa5d371b",
+    "tests/layout/browser_parity/xml/block/block_br_vertical_rl_inline_block_metrics__content_box_rtl.xml": "f1f43b3ab3b5b47e8f0987aabbe9733acfa7a10b2803800ca8f6bc957850b260",
+    "tests/layout/browser_parity/xml/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_ltr.xml": "5a5d2cb363f91e30fc2ef0e705985ba57af8c6a50082a1f6abea780dc89f4938",
+    "tests/layout/browser_parity/xml/block/block_br_vertical_rl_rtl_inline_block_metrics__border_box_rtl.xml": "d0b78722a3d755089135260c1e425c959e7d064944750d5c51edc30de7db9433",
+    "tests/layout/browser_parity/xml/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_ltr.xml": "ab1b21e9e6cb0f6169505dfb8e0b2fe0bf7c394658b0884cd91f3c23e4a97a80",
+    "tests/layout/browser_parity/xml/block/block_br_vertical_rl_rtl_inline_block_metrics__content_box_rtl.xml": "f8b72d90c4f9a61111751cf1cc7c9573c43e9b9c5c363cc034ad6643b18fbbfe"
+  },
+  "capture_validation": {
+    "producer_profile": "root-context-flex-composition-v1",
+    "producer_helper_sha256": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c",
+    "validator_profile": "root-context-flex-composition-v1",
+    "validator_helper_sha256": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+  }
+}

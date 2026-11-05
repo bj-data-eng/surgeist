@@ -25,6 +25,8 @@ enum WireRootContext {
         hypothetical_display: HypotheticalDisplay,
         hypothetical_anchor: HypotheticalAnchor,
         hypothetical_inline_offset: f64,
+        #[serde(default, deserialize_with = "super::present")]
+        hypothetical_block_offset: Option<f64>,
         fallback: Fallback,
     },
     BlockFlowAuto {
@@ -160,6 +162,16 @@ impl WireViewport {
     pub(super) fn root_local_positioned(&self) -> bool {
         matches!(self.root_context, WireRootContext::AbsoluteRootLocal { .. })
     }
+    pub(super) fn hypothetical_block_offset(&self) -> Option<f64> {
+        match &self.root_context {
+            WireRootContext::AbsoluteRootLocal {
+                hypothetical_block_offset,
+                ..
+            } => *hypothetical_block_offset,
+            WireRootContext::BlockFlowAuto { .. } => None,
+        }
+    }
+
     pub(super) fn validate_root_style(
         &self,
         style: Option<&super::style::Style>,
@@ -196,6 +208,7 @@ impl WireViewport {
                 containing_width,
                 containing_height,
                 hypothetical_inline_offset,
+                hypothetical_block_offset,
                 fallback,
                 ..
             } => {
@@ -235,6 +248,18 @@ impl WireViewport {
                     context,
                     "viewport.rootContext.hypotheticalInlineOffset",
                 )?;
+                if let Some(offset) = hypothetical_block_offset {
+                    let offset = layout_number(
+                        *offset,
+                        context,
+                        "viewport.rootContext.hypotheticalBlockOffset",
+                    )? as f32;
+                    layout_number(
+                        f64::from(*containing_height as f32 - offset),
+                        context,
+                        "viewport.rootContext.hypotheticalBlockOffset",
+                    )?;
+                }
             }
             WireRootContext::BlockFlowAuto {
                 parent_inline_extent,
@@ -272,6 +297,7 @@ impl WireViewport {
                 hypothetical_anchor: HypotheticalAnchor::InlineStart,
                 hypothetical_inline_offset,
                 fallback,
+                ..
             } => (
                 vec![
                     ("root-context", "absolute-root-local".into()),
@@ -313,6 +339,9 @@ impl WireViewport {
                 fallback,
             ),
         };
+        if let Some(offset) = self.hypothetical_block_offset() {
+            attrs.push(("hypothetical-block-offset", format!("{}px", number(offset))));
+        }
         attrs.extend(fallback.attrs());
         Ok(attrs)
     }
@@ -321,6 +350,45 @@ impl WireViewport {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn root_context_distinguishes_explicit_static_top_from_absence() {
+        let mut viewport = serde_json::json!({
+            "rootContext": {
+                "kind": "absolute-root-local",
+                "containingWidth": 800,
+                "containingHeight": 600,
+                "containingDirection": "ltr",
+                "hypotheticalDirection": "ltr",
+                "hypotheticalDisplay": "block",
+                "hypotheticalAnchor": "inline-start",
+                "hypotheticalInlineOffset": 0,
+                "fallback": {
+                    "initialContainingBlock": {"width": 800, "height": 600},
+                    "nearestScrollport": "none",
+                    "containingLimits": {"width": "unbounded", "height": "unbounded"}
+                }
+            }
+        });
+        let context = Context {
+            case_id: "root",
+            variant: "border-box-ltr",
+            node_path: "/".into(),
+        };
+        let attribute = |input| {
+            serde_json::from_value::<WireViewport>(input)
+                .unwrap()
+                .validate(&context)
+                .unwrap()
+                .into_iter()
+                .find_map(|(key, value)| (key == "hypothetical-block-offset").then_some(value))
+        };
+        assert_eq!(attribute(viewport.clone()), None);
+        viewport["rootContext"]["hypotheticalBlockOffset"] = serde_json::json!(0);
+        assert_eq!(attribute(viewport.clone()).as_deref(), Some("0px"));
+        viewport["rootContext"]["hypotheticalBlockOffset"] = serde_json::Value::Null;
+        assert!(serde_json::from_value::<WireViewport>(viewport).is_err());
+    }
 
     #[test]
     fn root_context_requires_a_complete_closed_payload() {

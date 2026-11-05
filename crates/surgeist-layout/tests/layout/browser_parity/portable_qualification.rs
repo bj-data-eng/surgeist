@@ -314,7 +314,7 @@ enum AdmittedComparison {
         variant: String,
     },
     PreparedAtomicPercentage,
-    HorizontalBrFontBand,
+    BrFontBand(support::BrFontBandProfile),
     FlexComposition {
         variant: String,
         inputs: Rc<flex::Inputs>,
@@ -447,8 +447,8 @@ impl AdmittedEdition {
                         },
                     )
                 }
-                AdmittedComparison::HorizontalBrFontBand => {
-                    support::horizontal_br_font_band::compare_authenticated(&case.golden)
+                AdmittedComparison::BrFontBand(profile) => {
+                    support::br_font_band::compare_authenticated(&case.golden, *profile)
                         .map(|()| {
                             let matched = QualifiedComparison {
                                 raw: RawVerdict::Matches,
@@ -510,7 +510,7 @@ fn compare_prepared_range(
 }
 
 pub struct AdmittedRegistry {
-    editions: [AdmittedEdition; 10],
+    editions: [AdmittedEdition; 11],
     owner: PathBuf,
     selected_records: BTreeMap<String, Value>,
 }
@@ -591,6 +591,9 @@ const REGISTERED_PREPARED_ATOMIC_PERCENTAGE_TERMINAL_SHA256: &str =
 const REGISTERED_HORIZONTAL_BR_FONT_BAND_TERMINAL_SHA256: &str =
     "c13507fa022b56d7722cd2d867c934e855add0a9e281725fa5f79b232a1c0e17";
 
+const REGISTERED_VERTICAL_BR_FONT_BAND_TERMINAL_SHA256: &str =
+    "aff93886a683264ce2a57382d509906370fb2678a805e40ea4fd17a2156b2c20";
+
 pub(super) fn admit_grid_static_positions(owner: &Path) -> Result<AdmittedEdition> {
     admit(
         owner,
@@ -657,6 +660,13 @@ pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
             Registration {
                 edition: Edition::Specialized(SpecializedProfile::HorizontalBrFontBand),
                 terminal_sha256: REGISTERED_HORIZONTAL_BR_FONT_BAND_TERMINAL_SHA256,
+            },
+        )?,
+        admit(
+            owner,
+            Registration {
+                edition: Edition::Specialized(SpecializedProfile::VerticalBrFontBand),
+                terminal_sha256: REGISTERED_VERTICAL_BR_FONT_BAND_TERMINAL_SHA256,
             },
         )?,
         admit_grid_static_positions(owner)?,
@@ -1032,7 +1042,8 @@ fn admit_specialized(
         SpecializedProfile::PreparedRange
         | SpecializedProfile::OriginalSubgridBody
         | SpecializedProfile::PreparedAtomicPercentage
-        | SpecializedProfile::HorizontalBrFontBand => None,
+        | SpecializedProfile::HorizontalBrFontBand
+        | SpecializedProfile::VerticalBrFontBand => None,
         SpecializedProfile::FlexComposition => Some(Rc::new(flex::Inputs::load(root)?)),
     };
     terminal
@@ -1088,16 +1099,22 @@ fn admit_specialized(
                         AdmittedComparison::OriginalSubgridBody { variant },
                     )
                 }
-                SpecializedProfile::HorizontalBrFontBand => {
+                SpecializedProfile::HorizontalBrFontBand
+                | SpecializedProfile::VerticalBrFontBand => {
                     let current = support::Golden::parse(xml)
                         .map_err(|error| malformed(error.to_string()))?;
                     let historical = std::str::from_utf8(&historical)
                         .map_err(|error| malformed(error.to_string()))?;
                     let historical = support::Golden::parse(historical)
                         .map_err(|error| malformed(error.to_string()))?;
-                    support::horizontal_br_font_band::verify_historical(&current, &historical)
+                    support::br_font_band::verify_historical(&current, &historical)
                         .map_err(|error| malformed(error.to_string()))?;
-                    (Ok(current), AdmittedComparison::HorizontalBrFontBand)
+                    let projection = if profile == SpecializedProfile::HorizontalBrFontBand {
+                        support::BrFontBandProfile::Horizontal
+                    } else {
+                        support::BrFontBandProfile::Vertical
+                    };
+                    (Ok(current), AdmittedComparison::BrFontBand(projection))
                 }
                 SpecializedProfile::PreparedAtomicPercentage => {
                     let source = read_pinned(

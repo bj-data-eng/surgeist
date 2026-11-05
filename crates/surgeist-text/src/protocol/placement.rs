@@ -8,7 +8,7 @@ use super::{
 };
 use crate::engine::{
     PlacedLine, PreparedData, editing,
-    layout::data::{FinalizedCell, FinalizedRunFrame, PlacedLayout, cell_geometry},
+    layout::data::{FinalizedCell, FinalizedRunFrame, PlacedLayout, RunMetricBasis, cell_geometry},
 };
 use crate::{Layout, Point, Range, Rect, Result, TextNumericError, TextNumericPhase};
 
@@ -184,14 +184,25 @@ fn qualify_allocated_shift(
     Ok(())
 }
 
-/// Retained horizontal paragraph-default font metrics at an admitted forced break.
+/// The retained font metric reference for an admitted break.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BreakFontMetricBasis {
+    Horizontal {
+        /// Font-design zero relative to the common baseline, toward line-under.
+        font_origin_offset: f64,
+    },
+    /// Text's used upright Central reference.
+    UprightCentral,
+}
+
+/// Retained paragraph-default font metrics at an admitted forced break.
 /// Distances are measured from the line's common baseline, before line-height leading.
 #[derive(Clone, Copy, Debug)]
 pub struct PlacedBreakFontMetrics<'a> {
     instance: crate::EffectiveFontInstance<'a>,
     ascent: f64,
     descent: f64,
-    font_origin_offset: f64,
+    basis: BreakFontMetricBasis,
 }
 
 impl<'a> PlacedBreakFontMetrics<'a> {
@@ -210,10 +221,9 @@ impl<'a> PlacedBreakFontMetrics<'a> {
         self.descent
     }
 
-    /// Font-design zero relative to the common baseline, toward line-under.
     #[must_use]
-    pub const fn font_origin_offset(self) -> f64 {
-        self.font_origin_offset
+    pub const fn basis(self) -> BreakFontMetricBasis {
+        self.basis
     }
 }
 
@@ -228,7 +238,7 @@ impl Layout {
         Ok(layout)
     }
     /// Returns the actual paragraph-default font metrics for an unshifted
-    /// horizontal forced-break fragment on this exact placed line.
+    /// horizontal or upright forced-break fragment on this exact placed line.
     ///
     /// An unplaced or foreign finalized line is an error. Other controls,
     /// separately allocated break geometry and absent default-font authority
@@ -250,12 +260,10 @@ impl Layout {
         else {
             return Ok(None);
         };
-        if line.orientation != LineOrientation::Horizontal
-            || !matches!(
-                control.view().kind(),
-                crate::ParagraphControlKind::ForcedBreak
-            )
-        {
+        if !matches!(
+            control.view().kind(),
+            crate::ParagraphControlKind::ForcedBreak
+        ) {
             return Ok(None);
         }
         let selected = &line.finalized.selected;
@@ -274,10 +282,24 @@ impl Layout {
             return Ok(None);
         }
         let prepared = &selected.prepared;
-        let Some(run) = prepared.shaped.empty_run.as_ref().filter(|run| {
-            prepared.default_style_index == Some(run.style) && run.metrics.horizontal().is_some()
-        }) else {
+        let Some(run) = prepared
+            .shaped
+            .empty_run
+            .as_ref()
+            .filter(|run| prepared.default_style_index == Some(run.style))
+        else {
             return Ok(None);
+        };
+        let basis = match (line.orientation, run.metrics.basis) {
+            (LineOrientation::Horizontal, RunMetricBasis::Horizontal(metrics)) => {
+                BreakFontMetricBasis::Horizontal {
+                    font_origin_offset: metrics.font_origin_offset,
+                }
+            }
+            (LineOrientation::Vertical, RunMetricBasis::Upright { .. }) => {
+                BreakFontMetricBasis::UprightCentral
+            }
+            _ => return Ok(None),
         };
         let instance = crate::EffectiveFontInstance::qualify_synthesized(
             run.font.face(),
@@ -289,7 +311,7 @@ impl Layout {
             instance,
             ascent: run.metrics.ascent,
             descent: run.metrics.descent,
-            font_origin_offset: run.metrics.font_origin_offset(),
+            basis,
         }))
     }
 

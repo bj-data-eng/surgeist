@@ -17,6 +17,7 @@ pub(crate) const EDITION: &str = "canonical-box-differences";
 pub(crate) const MEASURED_GRID_EDITION: &str = "measured-grid-differences";
 pub(crate) const ARTIFACT_ROOT: &str =
     "tests/layout/browser_parity/captured/canonical-box-differences";
+use crate::vertical_br_font_band_profile as vertical_br;
 const FLEX_TEXT_EDITION: &str = "flex-text-differences";
 const GRID_STATIC_POSITION_EDITION: &str = "grid-static-position-differences";
 const RELATIVE_INSET_EDITION: &str = "relative-inset-differences";
@@ -160,8 +161,9 @@ pub(crate) fn current_owner_bindings(
                 ),
                 (
                     "horizontal_br_font_band_request.json",
-                    super::horizontal_br_font_band::REQUEST,
+                    super::br_font_band::REQUEST,
                 ),
+                ("vertical_br_font_band_request.json", vertical_br::REQUEST),
                 (
                     "flex_composition_request.json",
                     FLEX_COMPOSITION_REQUEST_BYTES,
@@ -178,8 +180,10 @@ pub(crate) fn current_owner_bindings(
         } else if name == atomic_percentage::SCRIPT_PATH {
             "tests/bin/surgeist-layout-generate/measurement/prepared_atomic_percentage.js"
                 .to_owned()
-        } else if name == super::horizontal_br_font_band::SCRIPT_PATH {
+        } else if name == super::br_font_band::SCRIPT_PATH {
             "tests/bin/surgeist-layout-generate/measurement/horizontal_br_font_band.js".to_owned()
+        } else if name == vertical_br::SCRIPT_PATH {
+            "tests/bin/surgeist-layout-generate/measurement/vertical_br_font_band.js".to_owned()
         } else if name == MEASURED_LEAF_SCRIPT {
             "tests/bin/surgeist-layout-generate/measurement/measured_leaf.js".to_owned()
         } else if let Some(tail) = name.strip_prefix("historical/") {
@@ -486,12 +490,19 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
             "prepared atomic percentage proof requires its observation request",
         ));
     }
-    use super::horizontal_br_font_band as horizontal_br;
+    use super::br_font_band as horizontal_br;
     if observation_request != SpecializedProfile::HorizontalBrFontBand.observation_request()
         && full_inputs.contains_key(horizontal_br::SCRIPT_PATH)
     {
         return Err(changed(
             "horizontal BR proof requires its observation request",
+        ));
+    }
+    if observation_request != SpecializedProfile::VerticalBrFontBand.observation_request()
+        && full_inputs.contains_key(vertical_br::SCRIPT_PATH)
+    {
+        return Err(changed(
+            "vertical BR proof requires its observation request",
         ));
     }
     let (profile, font_demand) = match (observation_request, observation_input_sha256) {
@@ -651,6 +662,38 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
                 }
             }
             ("canonical-horizontal-br-font-band", "ahem-20px-prepared")
+        }
+        ("vertical-br-font-band", Some(request_sha256)) => {
+            let proof_sha256 = sha256(vertical_br::SCRIPT.as_bytes());
+            let source_sha256 = vertical_br::source_digest(&case.source)
+                .ok_or_else(|| changed("vertical BR source identity"))?;
+            if artifact.source_sha256 != source_sha256
+                || request_sha256 != sha256(vertical_br::REQUEST)
+                || policy_sha256 != proof_sha256
+                || !artifact.linked_resources.is_empty()
+                || full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
+                || full_inputs.contains_key(flex_content_text::SCRIPT_PATH)
+            {
+                return Err(changed("vertical BR font-band capture profile"));
+            }
+            for (path, expected) in [
+                (case.source.as_str(), source_sha256),
+                (OBSERVATION_REQUEST, request_sha256),
+                (vertical_br::SCRIPT_PATH, proof_sha256.as_str()),
+                (ROOT_HELPER_INPUT, vertical_br::HELPER_SHA256),
+                (
+                    "scripts/gentest/test_base_style.css",
+                    pinned_font::ROOT_CONTEXT_STYLESHEET_SHA256,
+                ),
+                ("fonts/Ahem.ttf", pinned_font::SHA256),
+            ] {
+                if full_inputs.get(path).map(String::as_str) != Some(expected)
+                    || excluded_specs.contains(path)
+                {
+                    return Err(changed(format!("vertical BR font-band input: {path}")));
+                }
+            }
+            ("canonical-vertical-br-font-band", "ahem-20px-prepared")
         }
         ("prepared-ranges" | "flex-composition", Some(request_sha256))
             if !full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
@@ -854,6 +897,7 @@ pub(crate) enum SpecializedProfile {
     OriginalSubgridBody,
     PreparedAtomicPercentage,
     HorizontalBrFontBand,
+    VerticalBrFontBand,
 }
 
 impl SpecializedProfile {
@@ -881,6 +925,9 @@ impl SpecializedProfile {
             Self::HorizontalBrFontBand => {
                 "tests/layout/browser_parity/captured/horizontal-br-font-band-qualification"
             }
+            Self::VerticalBrFontBand => {
+                "tests/layout/browser_parity/captured/vertical-br-font-band-qualification"
+            }
         }
     }
 
@@ -891,16 +938,18 @@ impl SpecializedProfile {
             Self::OriginalSubgridBody => "original-subgrid-body",
             Self::PreparedAtomicPercentage => "prepared-atomic-percentage",
             Self::HorizontalBrFontBand => "horizontal-br-font-band",
+            Self::VerticalBrFontBand => "vertical-br-font-band",
         }
     }
 
-    pub(crate) fn source(self) -> &'static str {
+    pub(crate) fn sources(self) -> &'static [&'static str] {
         match self {
-            Self::PreparedRange => prepared_range_qualification::SOURCE,
-            Self::FlexComposition => flex_composition::SOURCE,
-            Self::OriginalSubgridBody => original_subgrid_body::SOURCE,
-            Self::PreparedAtomicPercentage => atomic_percentage::SOURCE,
-            Self::HorizontalBrFontBand => super::horizontal_br_font_band::SOURCE,
+            Self::PreparedRange => &[prepared_range_qualification::SOURCE],
+            Self::FlexComposition => &[flex_composition::SOURCE],
+            Self::OriginalSubgridBody => &[original_subgrid_body::SOURCE],
+            Self::PreparedAtomicPercentage => &[atomic_percentage::SOURCE],
+            Self::HorizontalBrFontBand => &[super::br_font_band::SOURCE],
+            Self::VerticalBrFontBand => vertical_br::SOURCES,
         }
     }
 
@@ -911,6 +960,7 @@ impl SpecializedProfile {
             Self::OriginalSubgridBody,
             Self::PreparedAtomicPercentage,
             Self::HorizontalBrFontBand,
+            Self::VerticalBrFontBand,
         ]
         .into_iter()
         .find(|profile| profile.edition() == edition)
@@ -947,6 +997,9 @@ pub(crate) enum SpecializedEvidence {
     HorizontalBrFontBand {
         proof_script: PathDigest,
     },
+    VerticalBrFontBand {
+        proof_script: PathDigest,
+    },
 }
 
 impl SpecializedEvidence {
@@ -957,6 +1010,7 @@ impl SpecializedEvidence {
             Self::OriginalSubgridBody { .. } => SpecializedProfile::OriginalSubgridBody,
             Self::PreparedAtomicPercentage { .. } => SpecializedProfile::PreparedAtomicPercentage,
             Self::HorizontalBrFontBand { .. } => SpecializedProfile::HorizontalBrFontBand,
+            Self::VerticalBrFontBand { .. } => SpecializedProfile::VerticalBrFontBand,
         }
     }
 
@@ -965,7 +1019,8 @@ impl SpecializedEvidence {
             Self::PreparedRange { policy } => policy.sha256.clone(),
             Self::OriginalSubgridBody { proof_script }
             | Self::PreparedAtomicPercentage { proof_script }
-            | Self::HorizontalBrFontBand { proof_script } => proof_script.sha256.clone(),
+            | Self::HorizontalBrFontBand { proof_script }
+            | Self::VerticalBrFontBand { proof_script } => proof_script.sha256.clone(),
             Self::FlexComposition {
                 collapse_policy,
                 scrollbar_policy,
@@ -981,7 +1036,8 @@ impl SpecializedEvidence {
             Self::PreparedRange { policy } => vec![policy],
             Self::OriginalSubgridBody { proof_script }
             | Self::PreparedAtomicPercentage { proof_script }
-            | Self::HorizontalBrFontBand { proof_script } => vec![proof_script],
+            | Self::HorizontalBrFontBand { proof_script }
+            | Self::VerticalBrFontBand { proof_script } => vec![proof_script],
             Self::FlexComposition {
                 collapse_policy,
                 scrollbar_policy,
@@ -1078,8 +1134,9 @@ impl Qualification {
         {
             return Err(malformed("invalid terminal edition/census"));
         }
-        if specialized.is_some()
-            && (self.records.len() != 1 || self.cases.len() != fixture_cases().len())
+        if let Some(profile) = specialized
+            && (self.records.len() != profile.sources().len()
+                || self.cases.len() != profile.sources().len() * fixture_cases().len())
         {
             return Err(malformed("incomplete specialized terminal census"));
         }
@@ -1142,7 +1199,8 @@ impl Qualification {
                     }
                 }
                 (QualifiedCase::Specialized(case), Some(profile))
-                    if variants.insert(descriptor.variant.as_str()) =>
+                    if variants
+                        .insert((descriptor.source.as_str(), descriptor.variant.as_str())) =>
                 {
                     self.validate_specialized(case, profile, record)?;
                 }
@@ -1181,7 +1239,12 @@ impl Qualification {
         profile: SpecializedProfile,
         record: &RecordProjection,
     ) -> Result<()> {
-        let source = profile.source();
+        let source = case.case.source.as_str();
+        if !profile.sources().contains(&source) {
+            return Err(malformed(
+                "specialized terminal source is outside its profile",
+            ));
+        }
         let family = source
             .strip_prefix("html/")
             .and_then(|path| path.strip_suffix(".html"))
@@ -1189,7 +1252,6 @@ impl Qualification {
         let stem = family.rsplit('/').next().expect("fixed source name");
         let variant = &case.case.variant;
         if case.evidence.profile() != profile
-            || case.case.source != source
             || record.value["specialized_publication"]
                 != serde_json::to_value(profile).map_err(|error| malformed(error.to_string()))?
             || record.value["source_kind"] != "original"
@@ -1221,7 +1283,10 @@ impl Qualification {
                 prepared_atomic_percentage_evidence() == case.evidence
             }
             SpecializedEvidence::HorizontalBrFontBand { .. } => {
-                super::horizontal_br_font_band::evidence() == case.evidence
+                super::br_font_band::horizontal_evidence() == case.evidence
+            }
+            SpecializedEvidence::VerticalBrFontBand { .. } => {
+                super::br_font_band::vertical_evidence() == case.evidence
             }
         };
         if !evidence_matches || case.identity.policy_source_sha256 != case.evidence.policy_digest()

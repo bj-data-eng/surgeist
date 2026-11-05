@@ -26,6 +26,8 @@ pub mod portable_qualification;
 pub mod prepared_atomic_percentage_profile;
 #[path = "../../crates/surgeist-layout/tests/layout/browser_parity/support.rs"]
 pub mod support;
+#[path = "../../crates/surgeist-layout/tests/bin/surgeist-layout-generate/measurement/vertical_br_font_band_profile.rs"]
+pub mod vertical_br_font_band_profile;
 
 fn main() {
     let owner = Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/surgeist-layout");

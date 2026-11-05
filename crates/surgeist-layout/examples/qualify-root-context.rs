@@ -29,6 +29,8 @@ mod prepared_atomic_percentage_profile;
 mod source_owner;
 #[path = "qualify-root-context/support.rs"]
 mod support;
+#[path = "../tests/bin/surgeist-layout-generate/measurement/vertical_br_font_band_profile.rs"]
+mod vertical_br_font_band_profile;
 #[path = "../tests/bin/surgeist-layout-generate/xml.rs"]
 mod xml;
 
@@ -148,6 +150,14 @@ fn parse_arguments(
             None,
             QualificationMode::CheckPublishedSpecialized(SpecializedProfile::OriginalSubgridBody),
         )),
+        [mode] if mode == "--publish-vertical-br-font-band-qualification" => Ok((
+            None,
+            QualificationMode::PublishSpecialized(SpecializedProfile::VerticalBrFontBand),
+        )),
+        [mode] if mode == "--check-published-vertical-br-font-band-qualification" => Ok((
+            None,
+            QualificationMode::CheckPublishedSpecialized(SpecializedProfile::VerticalBrFontBand),
+        )),
         [mode] if mode == "--publish-horizontal-br-font-band-qualification" => Ok((
             None,
             QualificationMode::PublishSpecialized(SpecializedProfile::HorizontalBrFontBand),
@@ -219,7 +229,7 @@ fn parse_arguments(
             ))
         }
         _ => Err(
-            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --derive-canonical-box-qualification | --publish-measured-grid-differences | --check-published-measured-grid-differences | --publish-grid-static-position-differences | --check-published-grid-static-position-differences | --derive-grid-static-position-qualification | --publish-relative-inset-differences | --check-published-relative-inset-differences | --derive-relative-inset-qualification | --publish-wrapping-world-corner-differences | --check-published-wrapping-world-corner-differences | --derive-wrapping-world-corner-qualification | --publish-prepared-range-qualification | --check-published-prepared-range-qualification | --publish-flex-composition-qualification | --check-published-flex-composition-qualification | --publish-original-subgrid-body-qualification | --check-published-original-subgrid-body-qualification | --publish-prepared-atomic-percentage-qualification | --check-published-prepared-atomic-percentage-qualification | --publish-horizontal-br-font-band-qualification | --check-published-horizontal-br-font-band-qualification | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source> | --prepared-range-capture --fixture <declared-source>",
+            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --derive-canonical-box-qualification | --publish-measured-grid-differences | --check-published-measured-grid-differences | --publish-grid-static-position-differences | --check-published-grid-static-position-differences | --derive-grid-static-position-qualification | --publish-relative-inset-differences | --check-published-relative-inset-differences | --derive-relative-inset-qualification | --publish-wrapping-world-corner-differences | --check-published-wrapping-world-corner-differences | --derive-wrapping-world-corner-qualification | --publish-prepared-range-qualification | --check-published-prepared-range-qualification | --publish-flex-composition-qualification | --check-published-flex-composition-qualification | --publish-original-subgrid-body-qualification | --check-published-original-subgrid-body-qualification | --publish-prepared-atomic-percentage-qualification | --check-published-prepared-atomic-percentage-qualification | --publish-horizontal-br-font-band-qualification | --check-published-horizontal-br-font-band-qualification | --publish-vertical-br-font-band-qualification | --check-published-vertical-br-font-band-qualification | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source> | --prepared-range-capture --fixture <declared-source>",
         ),
     }
 }
@@ -338,6 +348,8 @@ mod tests {
             "--check-published-prepared-atomic-percentage-qualification",
             "--publish-horizontal-br-font-band-qualification",
             "--check-published-horizontal-br-font-band-qualification",
+            "--publish-vertical-br-font-band-qualification",
+            "--check-published-vertical-br-font-band-qualification",
         ] {
             assert_eq!(parse_arguments(&arguments(&[command])).unwrap().0, None);
             assert!(parse_arguments(&arguments(&[command, "other-root"])).is_err());

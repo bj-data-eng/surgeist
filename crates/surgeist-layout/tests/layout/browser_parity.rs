@@ -2439,6 +2439,40 @@ fn current_registry_qualifies_all_original_flex_text_variants() {
 }
 
 #[test]
+fn current_registry_executes_all_original_vertical_br_bands() {
+    let registry = registered_current_edition().expect("current registry must authenticate");
+    let profile = support::capture_authority::SpecializedProfile::VerticalBrFontBand;
+    let root = profile.artifact_root();
+    let selected = selected_current_outputs(
+        &registry,
+        Some("captured/vertical-br-font-band-qualification"),
+    );
+    let expected: BTreeSet<_> = profile
+        .sources()
+        .iter()
+        .flat_map(|source| {
+            let family = source
+                .strip_prefix("html/")
+                .unwrap()
+                .strip_suffix(".html")
+                .unwrap();
+            crate::fixture_variants::fixture_cases()
+                .map(move |(variant, _)| format!("{root}/xml/{family}__{variant}.xml"))
+        })
+        .collect();
+    assert_eq!(expected.len(), 12);
+    assert_eq!(selected, expected);
+    let run = registry.execute_selected(&selected).unwrap();
+    assert_eq!(run.cases.len(), 12);
+    assert!(run.selected_cases_passed(), "{:?}", run.freshness_error);
+    assert!(
+        run.cases
+            .iter()
+            .all(|case| { case.raw.as_ref().is_ok_and(Vec::is_empty) && case.qualified.is_ok() })
+    );
+}
+
+#[test]
 fn current_registry_executes_all_original_horizontal_br_bands() {
     let registry = registered_current_edition().expect("current registry must authenticate");
     let selected = select_parity_inventory(

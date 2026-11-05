@@ -81,6 +81,8 @@ pub(crate) enum ExpectedMetadata {
         root_direction: String,
         root_writing_mode: String,
         inline_offset: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        block_offset: Option<f64>,
         root_size: Option<ExpectedRootSize>,
     },
     BlockFlow {
@@ -220,7 +222,6 @@ impl Declaration {
             validate_semantic_references(&specifications, &variants, &mut semantic_paths)?;
             record.semantic_specifications = Some(specifications);
         }
-        let mut profiles = BTreeSet::new();
         for SpecializedPublication { source, profile } in catalogue.specialized_publications {
             let record = catalogue
                 .records
@@ -236,10 +237,10 @@ impl Declaration {
                 || record.semantic_specifications.is_some()
                 || record.relation.is_some()
                 || record.specialized_publication.is_some()
-                || !profiles.insert(profile)
+                || !profile.sources().contains(&record.source.as_str())
             {
                 return Err(format!(
-                    "specialized publication requires a unique original source and profile: {}",
+                    "specialized publication requires an original source within its declared profile: {}",
                     source.as_str()
                 )
                 .into());

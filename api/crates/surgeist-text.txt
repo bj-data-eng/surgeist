@@ -33,6 +33,10 @@ pub surgeist_text::BaselineShiftFact::Requested(surgeist_text::BaselineShift)
 pub enum surgeist_text::BidiLevelError
 pub surgeist_text::BidiLevelError::OutOfRange
 pub surgeist_text::BidiLevelError::OutOfRange::level: u8
+pub enum surgeist_text::BreakFontMetricBasis
+pub surgeist_text::BreakFontMetricBasis::Horizontal
+pub surgeist_text::BreakFontMetricBasis::Horizontal::font_origin_offset: f64
+pub surgeist_text::BreakFontMetricBasis::UprightCentral
 pub enum surgeist_text::CapturedComputedLineBoundaryTarget
 pub surgeist_text::CapturedComputedLineBoundaryTarget::Atomic
 pub surgeist_text::CapturedComputedLineBoundaryTarget::Atomic::position: surgeist_text::CapturedEventPosition
@@ -2697,8 +2701,8 @@ pub fn surgeist_text::ParagraphTabReference::style(&self) -> &surgeist_text::Sty
 pub struct surgeist_text::PlacedBreakFontMetrics<'a>
 impl<'a> surgeist_text::PlacedBreakFontMetrics<'a>
 pub const fn surgeist_text::PlacedBreakFontMetrics<'a>::ascent(self) -> f64
+pub const fn surgeist_text::PlacedBreakFontMetrics<'a>::basis(self) -> surgeist_text::BreakFontMetricBasis
 pub const fn surgeist_text::PlacedBreakFontMetrics<'a>::descent(self) -> f64
-pub const fn surgeist_text::PlacedBreakFontMetrics<'a>::font_origin_offset(self) -> f64
 pub const fn surgeist_text::PlacedBreakFontMetrics<'a>::instance(self) -> surgeist_text::EffectiveFontInstance<'a>
 pub struct surgeist_text::PlacedInlineBoxPiece<'a>
 impl surgeist_text::PlacedInlineBoxPiece<'_>

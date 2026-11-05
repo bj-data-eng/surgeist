@@ -2155,3 +2155,78 @@ inline_offset = 0
 [[specialized_publications]]
 source = "html/block/block_br_inline_block_metrics.html"
 profile = "horizontal-br-font-band"
+
+[[records]]
+source = "html/block/block_br_vertical_lr_inline_block_metrics.html"
+source_sha256 = "a9fbabd1b36f1e5f77e650bf00370c1ce9aced4798a91cf19de414fddbafda63"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "5c70017fc626a4c18c7721aa90b0bee74246c9bc3445112c806ba1f433c1a192"
+content_box_ltr = "0f27eebffc5febdeeafcfbf5cf1e2707b290e1d03d75355d76fdc456346eb26a"
+border_box_rtl = "aee6ecbc79a5d4d3550e47464c1812d2d26e395377c37ea5c72ce5c0c5489096"
+content_box_rtl = "e38731b95af640aeb9d8088a3951f17f9ead26a8e5ceee80a98b0151be377226"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "vertical-lr"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "ltr"
+inline_offset = 0
+block_offset = 0
+
+[[specialized_publications]]
+source = "html/block/block_br_vertical_lr_inline_block_metrics.html"
+profile = "vertical-br-font-band"
+
+[[records]]
+source = "html/block/block_br_vertical_rl_inline_block_metrics.html"
+source_sha256 = "e38e24ebc52f83041252b155f4ebb403a572ff64034c75d82ced94deb8207595"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "5e5e8c0e887173e9555007ab1e44fc9c714e4f0f94fec133c06c8f31d71630ec"
+content_box_ltr = "738e44b7b1bc9a56003dca2c1bd77ceb32bf6d56789df5b4212a7fb6aa5d371b"
+border_box_rtl = "f47c7128ae225e7cdc69e57675bf3491ee1785a5bd7d33ff23ffdfc1fa91b501"
+content_box_rtl = "f1f43b3ab3b5b47e8f0987aabbe9733acfa7a10b2803800ca8f6bc957850b260"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "vertical-rl"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "ltr"
+inline_offset = 0
+block_offset = 0
+
+[[specialized_publications]]
+source = "html/block/block_br_vertical_rl_inline_block_metrics.html"
+profile = "vertical-br-font-band"
+
+[[records]]
+source = "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html"
+source_sha256 = "2681d0c5fbf33644e5d10a74f26986de3a1fd53833c0f19ffb73f805c465bfaf"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "5a5d2cb363f91e30fc2ef0e705985ba57af8c6a50082a1f6abea780dc89f4938"
+content_box_ltr = "ab1b21e9e6cb0f6169505dfb8e0b2fe0bf7c394658b0884cd91f3c23e4a97a80"
+border_box_rtl = "d0b78722a3d755089135260c1e425c959e7d064944750d5c51edc30de7db9433"
+content_box_rtl = "f8b72d90c4f9a61111751cf1cc7c9573c43e9b9c5c363cc034ad6643b18fbbfe"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "vertical-rl"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "rtl"
+inline_offset = 0
+block_offset = 0
+
+[[specialized_publications]]
+source = "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html"
+profile = "vertical-br-font-band"
