@@ -887,6 +887,17 @@ mod tests {
     }
 
     #[test]
+    fn prepared_range_policy_rejects_shadowing_at_document_boundaries() {
+        let rejected = [
+            format!("### Nonempty Text range fragments\n\nConflicting policy.\n\n{CONTRACT}"),
+            format!("{CONTRACT}\n### Nonempty Text range fragments"),
+            format!("{CONTRACT}\n### Nonempty Text range fragments   \n\nConflicting policy.\n"),
+        ]
+        .map(|shadowed| PolicyIdentity::from_contract(&shadowed).is_err());
+        assert_eq!(rejected, [true, true, true]);
+    }
+
+    #[test]
     fn prepared_range_verdict_identifies_the_adopted_policy_revision() {
         let original = include_str!(
             "captured/prepared-range-differences/xml/block/prepared_text_continuity_bidi__border_box_rtl.xml"
