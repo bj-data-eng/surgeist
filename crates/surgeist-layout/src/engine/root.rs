@@ -89,6 +89,61 @@ where
     Tree: Compute<'input, M>,
 {
     let style = tree.node_input(root);
+    let (input, align_to_parent) = root_compute_input(tree, root, style, request)?;
+    let axes = input.containing_flow_axes();
+    let output = tree.compute_child(root, input)?;
+    let root_edges = resolve_root_edges(tree, root, style, axes, input.parent())?;
+    let scroll_geometry = root_scroll_geometry(root, style, output, &root_edges)?;
+    let location = if align_to_parent {
+        root_start_location(
+            axes,
+            output.size,
+            input
+                .sizing_request()
+                .axes()
+                .map(AxisSizingRequestOf::space),
+        )
+    } else {
+        Point::ZERO
+    };
+    tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+        root,
+        crate::output::NormalGeometryOf {
+            location,
+            size: output.size,
+            content: if style.display == crate::Display::None {
+                crate::output::NormalContentOf::Hidden
+            } else {
+                scroll_geometry.map_or(crate::output::NormalContentOf::Metadata, |geometry| {
+                    crate::output::NormalContentOf::Box(geometry.content_box())
+                })
+            },
+        },
+        NodeOutputOf {
+            source_index: crate::SourceIndex::ZERO,
+            location,
+            size: output.size,
+            named_baselines: output.named_baselines,
+            content_size: output.content_size,
+            padding: root_edges.padding,
+            border: root_edges.border,
+            margin: root_edges.margin,
+            ..NodeOutputOf::new()
+        }
+        .with_scroll_geometry(scroll_geometry),
+    ));
+    Ok(())
+}
+
+pub(super) fn root_compute_input<'input, Tree, M>(
+    tree: &mut Tree,
+    root: Tree::Node,
+    style: &'input NodeInputOf<Tree::Scalar>,
+    request: crate::LayoutRootRequestOf<Tree::Scalar>,
+) -> LayoutResultOf<Tree::Node, (ComputeInputOf<Tree::Scalar>, bool), Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
     let sizing_request = request.sizing_request();
     let (axes, role, parent, mut known, fill_inline, align_to_parent) = match request.context() {
         crate::LayoutRootContextOf::Standalone {
@@ -194,48 +249,10 @@ where
             available,
         )?);
     }
-    let output = tree.compute_child(
-        root,
+    Ok((
         ComputeInputOf::root_layout(known, parent, containing, sizing_request),
-    )?;
-    let root_edges = resolve_root_edges(tree, root, style, axes, parent)?;
-    let scroll_geometry = root_scroll_geometry(root, style, output, &root_edges)?;
-    let location = if align_to_parent {
-        root_start_location(
-            axes,
-            output.size,
-            sizing_request.axes().map(AxisSizingRequestOf::space),
-        )
-    } else {
-        Point::ZERO
-    };
-    tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
-        root,
-        crate::output::NormalGeometryOf {
-            location,
-            size: output.size,
-            content: if style.display == crate::Display::None {
-                crate::output::NormalContentOf::Hidden
-            } else {
-                scroll_geometry.map_or(crate::output::NormalContentOf::Metadata, |geometry| {
-                    crate::output::NormalContentOf::Box(geometry.content_box())
-                })
-            },
-        },
-        NodeOutputOf {
-            source_index: crate::SourceIndex::ZERO,
-            location,
-            size: output.size,
-            named_baselines: output.named_baselines,
-            content_size: output.content_size,
-            padding: root_edges.padding,
-            border: root_edges.border,
-            margin: root_edges.margin,
-            ..NodeOutputOf::new()
-        }
-        .with_scroll_geometry(scroll_geometry),
-    ));
-    Ok(())
+        align_to_parent,
+    ))
 }
 
 fn root_context_error<Node, S: LayoutScalar, M>(

@@ -68,6 +68,61 @@ use floats::{
 };
 pub(crate) use floats::{FloatExclusions, InheritedFloatExclusions};
 
+pub(crate) fn measure_definite_inline_atomic<'input, Tree, M>(
+    tree: &mut Tree,
+    container: Tree::Node,
+    atomic: Tree::Node,
+    input: ComputeInputOf<Tree::Scalar>,
+) -> LayoutResultOf<Tree::Node, Size<Tree::Scalar>, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let style = block_container_projection::<Tree, M>(tree, container);
+    let constants = Constants::from_projection::<Tree, M>(tree, container, &style, input)?;
+    let logical_size = constants.logical_node_inner_size();
+    let (Some(outer_inline), Some(inner_block)) =
+        (constants.definite_inline_outer(), logical_size.block)
+    else {
+        return Err(LayoutErrorOf::new(
+            LayoutErrorSiteOf::ContainerSubject {
+                container,
+                subject: atomic,
+            },
+            LayoutOperation::RootLayout,
+            LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::RequiredBasis),
+        ));
+    };
+    let inner_inline = constants.accepted_inline_inner(container, outer_inline)?;
+    crate::layout_math::checked_available_space(inner_block)
+        .map_err(|error| crate::error::sizing_resolution_error(container, error.into()))?;
+    let constants = constants.with_logical_node_inner_size(
+        LogicalSizeOf::new(Some(inner_inline), Some(inner_block)),
+        false,
+    );
+    let available_inline = crate::layout_math::with_available_extent(
+        constants
+            .flow_axes
+            .logical_size(constants.sizing_request.axes())
+            .inline,
+        Some(inner_inline),
+    )
+    .map_err(|error| crate::error::sizing_resolution_error(container, error.into()))?;
+    let request = inline_run::inline_atomic_child_request(
+        &constants,
+        RunMode::ComputeSize,
+        constants.sizing_request,
+        available_inline,
+    );
+    // Admission proves an empty, unmeasured InlineBlock. Its production box
+    // owner needs no parent traversal or host cache to compute this size.
+    let output = compute_block(tree, atomic, request)?;
+    for value in [output.size.width, output.size.height] {
+        crate::layout_math::checked_available_space(value)
+            .map_err(|error| crate::error::sizing_resolution_error(atomic, error.into()))?;
+    }
+    Ok(output.size)
+}
+
 pub(crate) fn compute_block<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
@@ -255,8 +310,8 @@ where
         );
     // Intrinsic components produce only demand. The accepted Normal flow
     // subsequently owns TAB execution, Shape bands, height and publication.
-    let accepted_inline_outer = if let Some(inner) = logical_inner_size.inline {
-        inner + constants.logical_content_box_inset().inline_sum()
+    let accepted_inline_outer = if let Some(outer) = constants.definite_inline_outer() {
+        outer
     } else {
         let mut component = |operation| -> LayoutResultOf<Tree::Node, S, S, M> {
             let measured = layout_in_flow_children(
@@ -302,18 +357,7 @@ where
             )
             .max(constants.logical_padding_border_size().inline)
     };
-    let remaining_inline =
-        accepted_inline_outer - constants.logical_content_box_inset().inline_sum();
-    if !remaining_inline.is_finite() {
-        return Err(crate::error::sizing_resolution_error(
-            node,
-            crate::LengthResolutionStatus::InvalidNumeric {
-                value: remaining_inline,
-            }
-            .into(),
-        ));
-    }
-    let accepted_inline_inner = remaining_inline.max(S::ZERO);
+    let accepted_inline_inner = constants.accepted_inline_inner(node, accepted_inline_outer)?;
     let ratio_block_outer = if constants.ratio_dependent_block
         && logical_inner_size.block.is_none()
         && normal_block_fill
@@ -671,6 +715,24 @@ impl<S: LayoutScalar> Constants<S> {
 
     fn logical_node_inner_size(&self) -> LogicalSizeOf<Option<S>> {
         self.flow_axes.logical_size(self.node_inner_size)
+    }
+
+    fn definite_inline_outer(&self) -> Option<S> {
+        self.logical_node_inner_size()
+            .inline
+            .map(|inner| inner + self.logical_content_box_inset().inline_sum())
+    }
+
+    fn accepted_inline_inner<Node: Copy, M>(
+        &self,
+        node: Node,
+        outer: S,
+    ) -> LayoutResultOf<Node, S, S, M> {
+        crate::layout_math::remaining_available_extent(
+            outer,
+            self.logical_content_box_inset().inline_sum(),
+        )
+        .map_err(|error| crate::error::sizing_resolution_error(node, error.into()))
     }
 
     fn logical_node_min_size(&self) -> LogicalSizeOf<Option<S>> {

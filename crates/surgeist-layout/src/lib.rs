@@ -306,7 +306,7 @@ pub(crate) use engine::round_layout;
 pub(crate) use engine::{compute_hidden, compute_root};
 pub use engine::{
     compute_layout, compute_layout_invalidated, compute_layout_with_flow,
-    compute_layout_with_flow_invalidated,
+    compute_layout_with_flow_invalidated, measure_definite_inline_atomic_size,
 };
 pub use error::{
     AtomicInlineParticipationRoleError, CalcSizeBehaviorBasis, FloatExclusionRoleError,
