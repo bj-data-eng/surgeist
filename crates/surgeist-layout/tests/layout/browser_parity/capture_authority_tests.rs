@@ -457,3 +457,40 @@ fn live_owner_bindings_cover_all_roles_and_refuse_unknown_or_overlapping_paths()
     retained.insert("unknown.bin".into(), "a".repeat(64));
     assert!(current_owner_bindings(&retained, &semantic, "html/.surgeist-source.json").is_err());
 }
+
+#[test]
+fn live_owner_bindings_require_the_exact_specialized_request() {
+    const REQUESTS: [(&str, &[u8]); 2] = [
+        (
+            "prepared_range_request.json",
+            include_bytes!(
+                "../../bin/surgeist-layout-generate/measurement/prepared_range_request.json"
+            ),
+        ),
+        (
+            "flex_composition_request.json",
+            include_bytes!("captured/flex-composition-differences/observation-request.json"),
+        ),
+    ];
+    let mut retained = BTreeMap::from([(
+        "origin/source-receipt.json".into(),
+        sha256(b"independently authored source receipt"),
+    )]);
+    for (file, bytes) in REQUESTS {
+        let digest = sha256(bytes);
+        retained.insert(OBSERVATION_REQUEST.into(), digest.clone());
+        let owners =
+            current_owner_bindings(&retained, &BTreeSet::new(), "html/.surgeist-source.json")
+                .unwrap();
+        assert_eq!(
+            owners.get(&format!(
+                "tests/bin/surgeist-layout-generate/measurement/{file}"
+            )),
+            Some(&digest)
+        );
+    }
+    retained.insert(OBSERVATION_REQUEST.into(), sha256(b"unknown request"));
+    assert!(
+        current_owner_bindings(&retained, &BTreeSet::new(), "html/.surgeist-source.json").is_err()
+    );
+}
