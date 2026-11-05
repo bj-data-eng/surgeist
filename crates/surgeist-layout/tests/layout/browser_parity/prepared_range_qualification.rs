@@ -57,6 +57,7 @@ struct RangeComparison {
     line: usize,
     edge: &'static str,
     native_source: [usize; 2],
+    native_pieces: Vec<RangePieceKey>,
     browser_start: Scalar,
     native_start: Scalar,
     browser_advance: Scalar,
@@ -70,12 +71,21 @@ pub(super) struct Comparisons {
     ranges: Vec<RangeComparison>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+pub(super) struct RangePieceKey {
+    pub(super) unit: usize,
+    pub(super) piece: usize,
+    pub(super) local: [usize; 2],
+    pub(super) aggregate: [usize; 2],
+}
+
 struct RangeSelector {
     path: &'static str,
     row: usize,
     occurrence: u64,
     line: usize,
     source: [usize; 2],
+    pieces: &'static [RangePieceKey],
     advance: Scalar,
 }
 
@@ -87,6 +97,12 @@ const RANGE_SELECTORS: [RangeSelector; 5] = [
         occurrence: 0,
         line: 0,
         source: [0, 1],
+        pieces: &[RangePieceKey {
+            unit: 0,
+            piece: 0,
+            local: [0, 1],
+            aggregate: [0, 1],
+        }],
         advance: 16.0,
     },
     RangeSelector {
@@ -95,6 +111,12 @@ const RANGE_SELECTORS: [RangeSelector; 5] = [
         occurrence: 1,
         line: 0,
         source: [1, 2],
+        pieces: &[RangePieceKey {
+            unit: 0,
+            piece: 0,
+            local: [0, 1],
+            aggregate: [1, 2],
+        }],
         advance: 0.0,
     },
     RangeSelector {
@@ -103,6 +125,20 @@ const RANGE_SELECTORS: [RangeSelector; 5] = [
         occurrence: 1,
         line: 0,
         source: [2, 4],
+        pieces: &[
+            RangePieceKey {
+                unit: 1,
+                piece: 0,
+                local: [1, 2],
+                aggregate: [2, 3],
+            },
+            RangePieceKey {
+                unit: 2,
+                piece: 0,
+                local: [2, 3],
+                aggregate: [3, 4],
+            },
+        ],
         advance: 32.0,
     },
     RangeSelector {
@@ -111,6 +147,12 @@ const RANGE_SELECTORS: [RangeSelector; 5] = [
         occurrence: 1,
         line: 0,
         source: [4, 5],
+        pieces: &[RangePieceKey {
+            unit: 3,
+            piece: 0,
+            local: [3, 4],
+            aggregate: [4, 5],
+        }],
         advance: 0.0,
     },
     RangeSelector {
@@ -119,24 +161,30 @@ const RANGE_SELECTORS: [RangeSelector; 5] = [
         occurrence: 2,
         line: 1,
         source: [6, 7],
+        pieces: &[RangePieceKey {
+            unit: 0,
+            piece: 0,
+            local: [1, 2],
+            aggregate: [6, 7],
+        }],
         advance: 16.0,
     },
 ];
 
 impl Comparisons {
-    pub(super) fn row_sources(
+    pub(super) fn row_pieces(
         &self,
         path: &str,
         browser: &[InlineRangeRectangleExpectation],
-    ) -> Result<Vec<Range>, Error> {
+    ) -> Result<Vec<&'static [RangePieceKey]>, Error> {
         let owner = exact_differences::source_path_from_diagnostic(&self.case, path)?;
-        let mut sources = Vec::new();
+        let mut row_pieces = Vec::new();
         for RangeSelector {
             path: owner_path,
             row,
             occurrence,
             line,
-            source: [start, end],
+            pieces,
             ..
         } in RANGE_SELECTORS
         {
@@ -154,14 +202,14 @@ impl Comparisons {
                     "{path}: prepared Range row {row} identity changed"
                 )));
             }
-            sources.push(Range::new(start, end));
+            row_pieces.push(pieces);
         }
-        if sources.len() != browser.len() {
+        if row_pieces.len() != browser.len() {
             return Err(Error::new(format!(
                 "{path}: prepared Range row census changed"
             )));
         }
-        Ok(sources)
+        Ok(row_pieces)
     }
 
     pub(super) fn record_box(
@@ -201,6 +249,7 @@ impl Comparisons {
             line: pair.line_index,
             edge,
             native_source: [pair.native_source.start, pair.native_source.end],
+            native_pieces: pair.native_pieces,
             browser_start: pair.browser_start,
             native_start: pair.native_start,
             browser_advance: pair.browser_advance,
@@ -307,6 +356,7 @@ fn verify_comparisons(comparisons: &Comparisons, rtl: bool) -> Result<(), Error>
                 occurrence,
                 line,
                 source,
+                pieces,
                 advance,
             },
         ),
@@ -325,6 +375,7 @@ fn verify_comparisons(comparisons: &Comparisons, rtl: bool) -> Result<(), Error>
             line,
             edge: "left",
             native_source: source,
+            native_pieces: pieces.to_vec(),
             browser_start,
             native_start,
             browser_advance: advance,
