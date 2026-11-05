@@ -48,6 +48,8 @@ pub(super) enum QualificationMode {
     PublishCanonicalBoxes,
     CheckPublishedCanonicalBoxes,
     DeriveCanonicalBoxes,
+    PublishMeasuredGrid,
+    CheckPublishedMeasuredGrid,
 }
 
 impl QualificationMode {
@@ -63,7 +65,9 @@ impl QualificationMode {
     fn box_observations(self) -> BoxObservationRequest {
         match self {
             Self::ElementScrollSizeDiagnostics => BoxObservationRequest::ElementScrollSizes,
-            Self::MeasuredLeafDiagnostics => BoxObservationRequest::MeasuredLeaf,
+            Self::MeasuredLeafDiagnostics
+            | Self::PublishMeasuredGrid
+            | Self::CheckPublishedMeasuredGrid => BoxObservationRequest::MeasuredLeaf,
             _ => BoxObservationRequest::Geometry,
         }
     }
@@ -126,7 +130,9 @@ fn select_records(
                 | QualificationMode::CheckPublished
                 | QualificationMode::PublishCanonicalBoxes
                 | QualificationMode::CheckPublishedCanonicalBoxes
-                | QualificationMode::DeriveCanonicalBoxes => {
+                | QualificationMode::DeriveCanonicalBoxes
+                | QualificationMode::PublishMeasuredGrid
+                | QualificationMode::CheckPublishedMeasuredGrid => {
                     return Err("durable modes require the complete inventory".into());
                 }
             }
@@ -368,6 +374,8 @@ pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> 
             | QualificationMode::PublishCanonicalBoxes
             | QualificationMode::CheckPublishedCanonicalBoxes
             | QualificationMode::DeriveCanonicalBoxes
+            | QualificationMode::PublishMeasuredGrid
+            | QualificationMode::CheckPublishedMeasuredGrid
     ) {
         if fixture.is_some() {
             return Err("durable modes require the complete inventory".into());
@@ -767,7 +775,9 @@ fn validate_corpus(
         | QualificationMode::CheckPublished
         | QualificationMode::PublishCanonicalBoxes
         | QualificationMode::CheckPublishedCanonicalBoxes
-        | QualificationMode::DeriveCanonicalBoxes => {}
+        | QualificationMode::DeriveCanonicalBoxes
+        | QualificationMode::PublishMeasuredGrid
+        | QualificationMode::CheckPublishedMeasuredGrid => {}
     }
     if let Some(output) = validation.terminal_cases.as_mut() {
         **output = terminal_cases;
@@ -968,7 +978,9 @@ fn inventory(
         | QualificationMode::CheckPublished
         | QualificationMode::PublishCanonicalBoxes
         | QualificationMode::CheckPublishedCanonicalBoxes
-        | QualificationMode::DeriveCanonicalBoxes => None,
+        | QualificationMode::DeriveCanonicalBoxes
+        | QualificationMode::PublishMeasuredGrid
+        | QualificationMode::CheckPublishedMeasuredGrid => None,
     };
     for (name, bytes) in INPUTS
         .iter()

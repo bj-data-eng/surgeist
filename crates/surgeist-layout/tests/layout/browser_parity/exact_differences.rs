@@ -442,6 +442,12 @@ pub(crate) enum PublishedEdition {
 }
 
 impl PublishedEdition {
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::CanonicalBoxDifferences => super::capture_authority::EDITION,
+            Self::MeasuredGridDifferences => super::capture_authority::MEASURED_GRID_EDITION,
+        }
+    }
     fn domain(self) -> CurrentDomain {
         match self {
             Self::CanonicalBoxDifferences => CurrentDomain::Layout,
@@ -722,9 +728,10 @@ impl ExactDifferenceSpec {
             if *lineage == CaptureLineage::Published
                 && spec.representation.published_edition != Some(spec.profile.published_edition())
             {
-                return Err(malformed(
-                    "published identity requires its profile's edition association",
-                ));
+                return Err(malformed(format!(
+                    "published identity requires the {} edition association",
+                    spec.profile.published_edition().name(),
+                )));
             }
             let measured = matches!(spec.profile, Profile::CanonicalMeasuredGrid);
             if measured != (identity.font_demand == FontDemand::AhemZwsp)
@@ -771,8 +778,11 @@ impl ExactDifferenceSpec {
     pub(crate) fn policy_source(&self) -> (&str, &str) {
         (&self.0.policy.source, &self.0.policy.source_sha256)
     }
+    pub(crate) fn published_edition(&self) -> Option<PublishedEdition> {
+        self.0.representation.published_edition
+    }
     pub(crate) fn require_published_context(&self, edition: PublishedEdition) -> Result<()> {
-        if self.0.representation.published_edition != Some(edition) {
+        if self.published_edition() != Some(edition) {
             return Err(QualificationError::IdentityChanged {
                 component: "published_edition".to_owned(),
             });
@@ -797,7 +807,7 @@ impl ExactDifferenceSpec {
         selected: &super::capture_authority::CaseSelection,
     ) -> Result<super::capture_authority::CurrentRequirements> {
         self.require_published_context(edition)?;
-        if self.0.representation.published_edition != Some(edition) {
+        if self.published_edition() != Some(edition) {
             return Err(QualificationError::IdentityChanged {
                 component: "published_edition".to_owned(),
             });
@@ -878,7 +888,7 @@ impl ExactDifferenceSpec {
                     component: format!("capture_lineage.{}", lineage.as_str()),
                 })?;
         if let Some(edition) = edition
-            && self.0.representation.published_edition != Some(edition)
+            && self.published_edition() != Some(edition)
         {
             return Err(QualificationError::IdentityChanged {
                 component: "published_edition".to_owned(),

@@ -54,6 +54,12 @@ fn parse_arguments(
         [mode] if mode == "--check-published-canonical-box-differences" => {
             Ok((None, QualificationMode::CheckPublishedCanonicalBoxes))
         }
+        [mode] if mode == "--publish-measured-grid-differences" => {
+            Ok((None, QualificationMode::PublishMeasuredGrid))
+        }
+        [mode] if mode == "--check-published-measured-grid-differences" => {
+            Ok((None, QualificationMode::CheckPublishedMeasuredGrid))
+        }
         [flag, source] if flag == "--fixture" && !source.starts_with("--") => {
             Ok((Some(source.as_str()), QualificationMode::Regular))
         }
@@ -87,7 +93,7 @@ fn parse_arguments(
             ))
         }
         _ => Err(
-            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --derive-canonical-box-qualification | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source>",
+            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --derive-canonical-box-qualification | --publish-measured-grid-differences | --check-published-measured-grid-differences | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source>",
         ),
     }
 }
@@ -125,11 +131,17 @@ mod tests {
 
     #[test]
     fn measured_grid_publication_commands_have_a_fixed_output() {
-        for flag in [
-            "--publish-measured-grid-differences",
-            "--check-published-measured-grid-differences",
+        for (flag, mode) in [
+            (
+                "--publish-measured-grid-differences",
+                QualificationMode::PublishMeasuredGrid,
+            ),
+            (
+                "--check-published-measured-grid-differences",
+                QualificationMode::CheckPublishedMeasuredGrid,
+            ),
         ] {
-            assert!(parse_arguments(&arguments(&[flag])).is_ok(), "{flag}");
+            assert_eq!(parse_arguments(&arguments(&[flag])), Ok((None, mode)));
             assert!(parse_arguments(&arguments(&[flag, "arbitrary-output"])).is_err());
             assert!(parse_arguments(&arguments(&[flag, "--fixture", "html/other.html"])).is_err());
         }
