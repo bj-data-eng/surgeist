@@ -644,3 +644,101 @@ fn warm_geometry_only_numeric_child_cache_cannot_supply_formatted_tail_truth() {
             .any(|(node, mode)| *node == 4 && *mode == RunMode::ComputeSize)
     );
 }
+
+fn assert_collapsed_flex_keeps_strut_without_placing_text<S: LayoutScalar>() {
+    let visible = PreparedParagraph::plain(3, text::Source::new("XX"), ahem_style(10.0, 10.0));
+    let second = PreparedParagraph::plain(6, text::Source::new("YYY"), ahem_style(10.0, 10.0));
+    let item = |width, height, collapse| NodeInputOf {
+        display: Display::Flex,
+        size: Size::new(
+            PreferredSizeOf::px(S::from_f64(width)),
+            PreferredSizeOf::px(S::from_f64(height)),
+        ),
+        align_items: Some(AlignItems::Start),
+        flex_item_collapse: collapse,
+        ..NodeInputOf::default()
+    };
+    let tree = |collapse| {
+        PublicLayoutTreeOf::<S>::new()
+            .children(0, [1, 4])
+            .children(1, [2])
+            .children(2, [3])
+            .children(3, [])
+            .children(4, [5])
+            .children(5, [6])
+            .children(6, [])
+            .style(
+                0,
+                NodeInputOf {
+                    display: Display::Flex,
+                    align_items: Some(AlignItems::Baseline),
+                    ..root(100.0)
+                },
+            )
+            .style(1, item(30.0, 20.0, FlexItemCollapse::Normal))
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Block,
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(4, item(40.0, 40.0, collapse))
+            .style(
+                5,
+                NodeInputOf {
+                    display: Display::Block,
+                    ..NodeInputOf::default()
+                },
+            )
+            .input(3, visible.text_input(3))
+            .input(6, second.text_input(6))
+    };
+    let output = |collapse| {
+        compute(
+            &tree(collapse),
+            vec![visible.binding(2), second.binding(5)],
+            100.0,
+        )
+    };
+    let size = |batch: &CompletedLayoutBatchOf<u32, S>, node| {
+        batch
+            .unrounded_entries()
+            .iter()
+            .find(|entry| entry.node() == node)
+            .expect("layout includes every node in the tested subtree")
+            .output()
+            .size
+    };
+
+    let control = output(FlexItemCollapse::Normal);
+    assert_eq!(size(&control, 0).height, S::from_f64(40.0));
+    assert_eq!(size(&control, 4), Size::splat(S::from_f64(40.0)));
+    assert_eq!(control.placed_text().len(), 2);
+
+    let collapsed = output(FlexItemCollapse::Collapsed);
+    assert_eq!(size(&collapsed, 0).height, S::from_f64(40.0));
+    for node in [4, 5, 6] {
+        assert_eq!(size(&collapsed, node), Size::ZERO);
+    }
+    let [placed] = collapsed.placed_text() else {
+        panic!("only the visible paragraph is placed");
+    };
+    assert_eq!(placed.container(), 2);
+    assert_eq!(placed.nodes(), &[3]);
+    let lines = placed.layout().lines();
+    let [line] = lines.as_slice() else {
+        panic!("the visible source fits on one line");
+    };
+    assert_eq!(line.range(), text::Range::new(0, 2));
+}
+
+#[test]
+fn collapsed_flex_keeps_strut_without_placing_text_f32() {
+    assert_collapsed_flex_keeps_strut_without_placing_text::<f32>();
+}
+
+#[test]
+fn collapsed_flex_keeps_strut_without_placing_text_f64() {
+    assert_collapsed_flex_keeps_strut_without_placing_text::<f64>();
+}
