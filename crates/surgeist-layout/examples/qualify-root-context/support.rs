@@ -552,21 +552,7 @@ fn qualify(
 ) -> Result<()> {
     let expected = input.declaration.expected()?;
     let inventory = prepare_inventory(root, owner, &input, mode)?;
-    let geometry_predecessors = if mode.box_observations() == BoxObservationRequest::Geometry
-        && !mode.collects_numeric_differences()
-        && inventory.cases.iter().any(|case| case.semantic.is_some())
-    {
-        let mut predecessors = publication::verified_grid_static_predecessors(owner)?;
-        predecessors.retain(|output, _| {
-            inventory
-                .cases
-                .iter()
-                .any(|case| case.case.output().as_str() == output)
-        });
-        predecessors
-    } else {
-        BTreeMap::new()
-    };
+    let geometry_predecessors = focused_geometry_predecessors(owner, &inventory.cases, mode)?;
     let corpus = corpus_for_inventory(root, owner, settings, &inventory, focused, expected)?;
     let request = GenerationRequest::new(corpus.clone(), browser_path, None, None)?;
     let report = browser::generate(request, QualificationAdapter::for_mode(mode))?;
@@ -586,6 +572,27 @@ fn qualify(
             policy_raw: &mut std::io::stdout(),
         },
     )
+}
+
+fn focused_geometry_predecessors(
+    owner: &Path,
+    cases: &[ExpectedCase],
+    mode: QualificationMode,
+) -> Result<BTreeMap<String, String>> {
+    if mode.box_observations() == BoxObservationRequest::Geometry
+        && !mode.collects_numeric_differences()
+        && cases.iter().any(|case| case.semantic.is_some())
+    {
+        let mut predecessors = publication::verified_grid_static_predecessors(owner)?;
+        predecessors.retain(|output, _| {
+            cases
+                .iter()
+                .any(|case| case.case.output().as_str() == output)
+        });
+        Ok(predecessors)
+    } else {
+        Ok(BTreeMap::new())
+    }
 }
 
 fn corpus_for_inventory(
