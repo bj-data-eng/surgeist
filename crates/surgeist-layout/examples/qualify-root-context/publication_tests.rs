@@ -256,7 +256,7 @@ fn complete_durable_inventory_is_admitted_without_browser_or_output() {
         InputAccess::Prepare,
     )
     .unwrap();
-    Origin::read(owner, &declaration.records)
+    Origin::read(owner, &declaration.records, Edition::RootContextV4)
         .unwrap()
         .inputs(&root.0, &mut snapshot, InputAccess::Prepare)
         .unwrap();

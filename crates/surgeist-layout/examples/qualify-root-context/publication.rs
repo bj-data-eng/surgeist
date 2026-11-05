@@ -118,8 +118,7 @@ pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
     let declaration = &input.declaration;
     // Verify the original owner's complete import before claiming any selected
     // member. This is read-only and never acquires the pinned source or browser.
-    let uses_ttf = edition != Edition::Specialized(SpecializedProfile::EmptyLineBrFontBand);
-    let origin = Origin::read(owner, &declaration.records, uses_ttf)?;
+    let origin = Origin::read(owner, &declaration.records, edition)?;
     match access {
         InputAccess::Prepare => with_new_edition(&parent, edition, |root| {
             CorpusLocation::new(owner, root)?;
@@ -323,8 +322,7 @@ fn finish(
     if edition == Edition::Specialized(SpecializedProfile::EmptyLineBrFontBand) {
         require_empty_line_br_inputs(owner)?;
     }
-    let uses_ttf = edition != Edition::Specialized(SpecializedProfile::EmptyLineBrFontBand);
-    let current = Origin::read(owner, &declaration.records, uses_ttf)?;
+    let current = Origin::read(owner, &declaration.records, edition)?;
     current.inputs(
         root,
         &mut Inventory {
@@ -682,7 +680,7 @@ fn selected_ownership(
 }
 
 impl Origin {
-    fn read(owner: &Path, records: &[Record], uses_ttf: bool) -> Result<Self> {
+    fn read(owner: &Path, records: &[Record], edition: Edition) -> Result<Self> {
         let original = owner.join(ORIGINAL);
         let manifest: crate::source_owner::Manifest = surgeist_generator::parse_manifest(
             std::str::from_utf8(owner_bytes()?)?,
@@ -739,13 +737,14 @@ impl Origin {
                 sha256: &record.source_sha256,
             });
         }
-        let font_provenance = if uses_ttf {
-            let path = RelativePath::new("fonts/PROVENANCE.md")?;
-            require_regular_input(&original, &path)?;
-            Some(fs::read(original.join(path.as_str()))?)
-        } else {
-            None
-        };
+        let font_provenance =
+            if edition != Edition::Specialized(SpecializedProfile::EmptyLineBrFontBand) {
+                let path = RelativePath::new("fonts/PROVENANCE.md")?;
+                require_regular_input(&original, &path)?;
+                Some(fs::read(original.join(path.as_str()))?)
+            } else {
+                None
+            };
         Ok(Self {
             receipt,
             provenance: serde_json::to_vec(&provenance)?,
