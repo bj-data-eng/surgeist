@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Modified for surgeist-render; see NOTICE-VELLO.md for provenance and adaptations.
 
-use peniko::{BrushRef, Fill, ImageBrushRef};
+use std::{collections::HashMap, sync::Arc};
+
+use peniko::{Blob, BrushRef, Fill, ImageBrushRef};
+use surgeist_font::{FontResource, ResourceId};
 use vello_encoding::{
     DrawBeginClip, Encoding, Glyph, GlyphRun, Patch, Transform as VelloTransform,
 };
@@ -29,6 +32,15 @@ pub(crate) enum VelloRasterScenario {
 #[derive(Default)]
 pub(crate) struct VelloScene {
     encoding: Encoding,
+    font_backings: HashMap<ResourceId, Blob<u8>>,
+}
+
+struct DecodedFontBytes(FontResource);
+
+impl AsRef<[u8]> for DecodedFontBytes {
+    fn as_ref(&self) -> &[u8] {
+        self.0.bytes()
+    }
 }
 
 impl VelloScene {
@@ -267,9 +279,17 @@ impl VelloScene {
         if glyph_start == glyph_end {
             return Ok(());
         }
+        // The glyph resolver shares its cache within this encoding. Use one
+        // blob identity per backing and keep the original face index on each run.
+        let face = validated.font_data().admitted_face();
+        let resource = face.resource();
+        let backing = self
+            .font_backings
+            .entry(resource.identity())
+            .or_insert_with(|| Blob::new(Arc::new(DecodedFontBytes(resource.clone()))));
         let index = self.encoding.resources.glyph_runs.len();
         self.encoding.resources.glyph_runs.push(GlyphRun {
-            font: validated.backend_font().clone(),
+            font: peniko::FontData::new(backing.clone(), face.index()),
             transform: VelloTransform::from_kurbo(
                 &(transform * kurbo::Affine::from(validated.transform())),
             ),

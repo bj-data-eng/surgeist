@@ -965,8 +965,7 @@ fn font_data_value(run: &TextRun<'_>) -> String {
         .font()
         .data
         .as_ref()
-        .expect("text-run fixture must carry FontData")
-        .font();
+        .expect("text-run fixture must carry FontData");
     format!(
         "len={}, index={}",
         font_data.bytes().len(),

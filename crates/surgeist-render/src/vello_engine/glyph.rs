@@ -33,7 +33,7 @@ use crate::{
 const SKRIFA_NORMALIZED_COORDS: &[skrifa::instance::NormalizedCoord] = &[];
 
 pub(crate) struct ValidatedGlyphRun<'a> {
-    backend_font: &'a peniko::FontData,
+    font_data: &'a FontData,
     glyphs: &'a [TextGlyph],
     size: f32,
     transform: Transform,
@@ -150,8 +150,8 @@ impl<'a> ValidatedGlyphRun<'a> {
         self.transform
     }
 
-    pub(crate) const fn backend_font(&self) -> &peniko::FontData {
-        self.backend_font
+    pub(crate) const fn font_data(&self) -> &FontData {
+        self.font_data
     }
 
     pub(crate) const fn glyphs(&self) -> &[TextGlyph] {
@@ -173,12 +173,11 @@ impl<'a> ValidatedGlyphRun<'a> {
 }
 
 pub(crate) fn preflight_selected_glyphs<'a>(run: &'a TextRun<'a>) -> Result<ValidatedGlyphRun<'a>> {
-    let binding = run
+    let font_data = run
         .font()
         .data
         .as_ref()
         .ok_or_else(|| Error::invalid_input_message("text run font data is required"))?;
-    let font_data = binding.font();
     let font = skrifa::FontRef::from_index(font_data.bytes(), font_data.index())
         .map_err(|_| font_data_error(font_data))?;
     let glyph_count = font
@@ -236,7 +235,7 @@ pub(crate) fn preflight_selected_glyphs<'a>(run: &'a TextRun<'a>) -> Result<Vali
     }
 
     Ok(ValidatedGlyphRun {
-        backend_font: binding.backend(),
+        font_data,
         glyphs: run.glyphs(),
         size: run.size(),
         transform: run.transform(),

@@ -2,7 +2,7 @@ use super::{
     Paint, Point, PrimitiveFamily, PrimitiveOperation, Rect, Result, ShadowList, Transform,
     UnsupportedPrimitive, validation::*,
 };
-use std::{borrow::Cow, sync::Arc};
+use std::borrow::Cow;
 
 use surgeist_font::{DecodeLimits, FontFace, FontResource};
 
@@ -448,7 +448,7 @@ pub struct FontRef<'a> {
     id: FontId,
     /// Optional caller-facing font name retained with the authored reference.
     pub name: Option<Cow<'a, str>>,
-    pub(crate) data: Option<AuthoredFontData>,
+    pub(crate) data: Option<FontData>,
 }
 
 impl<'a> FontRef<'a> {
@@ -478,12 +478,7 @@ impl<'a> FontRef<'a> {
     #[must_use]
     /// Returns this reference with validated owned font data.
     pub fn with_data(mut self, data: FontData) -> Self {
-        let backing = Arc::new(DecodedFontBytes(data.face.resource().clone()));
-        let backend = peniko::FontData::new(peniko::Blob::new(backing), data.index());
-        self.data = Some(AuthoredFontData {
-            font: data,
-            backend,
-        });
+        self.data = Some(data);
         self
     }
 
@@ -542,36 +537,6 @@ impl FontData {
 
     pub(crate) fn index(&self) -> u32 {
         self.face.index()
-    }
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct AuthoredFontData {
-    font: FontData,
-    backend: peniko::FontData,
-}
-
-impl AuthoredFontData {
-    pub(crate) const fn font(&self) -> &FontData {
-        &self.font
-    }
-
-    pub(crate) const fn backend(&self) -> &peniko::FontData {
-        &self.backend
-    }
-}
-
-impl PartialEq for AuthoredFontData {
-    fn eq(&self, other: &Self) -> bool {
-        self.font == other.font
-    }
-}
-
-struct DecodedFontBytes(FontResource);
-
-impl AsRef<[u8]> for DecodedFontBytes {
-    fn as_ref(&self) -> &[u8] {
-        self.0.bytes()
     }
 }
 
