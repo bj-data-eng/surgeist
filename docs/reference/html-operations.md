@@ -2734,6 +2734,23 @@ group created late needs scratch in proportion to the groups before it, up to `1
 bytes, however shallow its own history is, and a shorter scratch reports `InsufficientScratch` with
 the length required.
 
+<a id="spatial-link-probes"></a>
+
+The table that keeps each field's provenance traversal from visiting a link twice hashes a link
+from its cause, group, relation, extent and direction, without a final mixing step, and a table
+of keys that differ only in `group` clusters under linear probing. A key's group belongs to its
+cause, and the causes of groups made while one token is processed are that token's, so the
+clustering needs one field whose history holds many groups from one token over one extent. The
+search for such a parse counted the probes of every lookup in twenty families of 3,000 source
+units: body text, `b` reconstructed after each `p`, an element with 3,000 attributes, 3,000 merged
+`html` start tags, `textarea` text, foster-parented text, adoption agency moves, options, range,
+color and number inputs, a processing instruction, nested templates, SVG, comments between text,
+character references and NULs. No family averaged more than 1.6 probes for a lookup or needed more
+than 43 for one. The three with the longest runs, merged text, foster-parented text and style
+text, measured the same at 12,000 and 48,000 units (an average of 1.4 to 1.5 and a longest run of
+28 to 64), so the probes do not grow with the document. No parse that clusters the table was
+found, and the hash is unchanged; the finding is closed on that search, not on a proof.
+
 <a id="open-element-scope-cost"></a>
 
 Whether a `p` element is in button scope is asked for every start tag that closes a `p`, so it
