@@ -52,7 +52,7 @@ fn sync(owner: &mut CssomStore, block: &CssomBlockId) -> CssomOwnerEffect {
 }
 
 #[test]
-fn effect_only_publication_preserves_revision_and_returns_genuine_current_effect() {
+fn effect_only_publication_preserves_revision_and_returns_current_effect() {
     let mut owner = store(CssomLimits::default());
     let id = block(&mut owner);
     let mut edit = batch(&owner);

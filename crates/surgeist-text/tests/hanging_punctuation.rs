@@ -1433,7 +1433,7 @@ fn complete_spacing_remaps_punctuation_advance_without_reclassifying_natural_ove
     use t::HangingPunctuationEnd::{AllowEnd, ForceEnd};
     // BreakSpaces keeps SPACE ordinary in every measure, independently of the
     // eligible punctuation; it cannot enter a preserved-whitespace edge chain.
-    // A SPACE period has three genuine 10px contributions. Natural AllowEnd
+    // A SPACE period has three 10px contributions. Natural AllowEnd
     // overflow is decided at raw30, before the actual SPACE gets its allocation.
     // At width35 an expansion cannot create eligibility; at width25 contraction
     // cannot erase it, although the remapped exclusion becomes zero.

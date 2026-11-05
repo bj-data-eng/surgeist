@@ -1479,7 +1479,7 @@ fn qualify_root_size(
             item_width,
             item_height,
         } => {
-            // Two genuine unshrinkable native children: MC=itemWidth,
+            // Two unshrinkable native children: MC=itemWidth,
             // MAX=2*itemWidth. The source-authenticated CB and indent are
             // operands; the eventual observed root rectangle is not.
             let available = (px_attribute(viewport, "containing-width")? - inline_offset).max(0.0);
@@ -1978,7 +1978,7 @@ source_sha256 = "{}"
 source_kind = "authored"
 [records.expected]
 kind = "unsupported"
-reason = "genuinely outside the source profile"
+reason = "outside the source profile"
 [records.semantic_specifications.content_box_ltr]
 path = "semantic/fixed.json"
 sha256 = "{}"

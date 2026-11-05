@@ -16,7 +16,7 @@ fn custody(processed: &ProcessedSource, analyzed: &AnalyzedSource) {
     assert!(owner.joint_flow().is_none());
     let cells = analyzed.combined_cells().collect::<Vec<_>>();
     let [cell] = cells.as_slice() else {
-        panic!("one genuine complete Inline All Cell");
+        panic!("one complete Inline All Cell");
     };
     assert_eq!(cell.scope(), processed.captured_scope(1).unwrap());
     assert_eq!(
@@ -26,7 +26,7 @@ fn custody(processed: &ProcessedSource, analyzed: &AnalyzedSource) {
     assert_eq!(cell.mode(), TextCombineUpright::All);
     assert_eq!(cell.inner_direction(), ParagraphBaseDirection::LeftToRight);
     // Source/used EGC cardinalities include both real interior SPACE occurrences.
-    // Neither an invented scalar nor genuine earlier elimination represents the
+    // Neither an invented scalar nor earlier elimination represents the
     // second one: retained lexical SPACE is used but has no presentation emission.
     assert_eq!(cell.selection_unit_count(), 4);
     assert_eq!(cell.used_unit_count(), 4);

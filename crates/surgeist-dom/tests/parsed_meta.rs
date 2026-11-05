@@ -213,8 +213,7 @@ fn whole_influencing_style_refuses_without_an_owner_and_remains_pending() {
 }
 
 #[test]
-fn removing_first_installation_keeps_the_genuinely_shared_report_and_its_charge_until_last_consumption()
- {
+fn removing_first_installation_keeps_the_shared_report_and_its_charge_until_last_consumption() {
     let (mut dom, environment) = setup();
     let report = parse("<!doctype html><meta http-equiv=default-style content=B>");
     let weak = Arc::downgrade(&report);

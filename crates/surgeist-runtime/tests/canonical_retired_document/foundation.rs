@@ -348,7 +348,7 @@ fn shadow_attachment_uses_retained_registry_with_reciprocal_links_and_atomic_ref
     let usage = fixture.session.dom().usage();
     let mut batch = DomBatch::new();
     batch.attach_shadow(second, DomShadowRootInit::new(HtmlShadowRootMode::Open));
-    // A later invalid attribute forces rollback after genuine root staging.
+    // A later invalid attribute forces rollback after root staging.
     batch.set_attribute(second, "bad name", "late");
     assert_eq!(
         fixture.session.dom().apply(batch, &cancel()).unwrap_err(),

@@ -576,7 +576,7 @@ fn append_range(
     }
     if start < end || terminal {
         let mandatory = terminal.then(|| mandatory_at(segment, end)).flatten();
-        // After a final Forced at the same mixed cut, retain genuine ParagraphEnd.
+        // After a final Forced at the same mixed cut, retain ParagraphEnd.
         let mandatory = if terminal {
             tables
                 .opportunities
@@ -681,7 +681,7 @@ mod tests {
     }
 
     #[test]
-    fn genuine_manual_partitions_issue_predecessors_without_claiming_accepted_lines() {
+    fn manual_partitions_issue_predecessors_without_claiming_accepted_lines() {
         let prepared = prepare("ab\u{ad}cd\u{ad}ef\"");
         let portions = prepared.word_views().next().unwrap().portions().unwrap();
         assert_eq!(
@@ -784,7 +784,7 @@ mod tests {
     }
 
     #[test]
-    fn genuine_phrase_query_binds_the_full_target_and_repeatable_recipe_identity() {
+    fn phrase_query_binds_the_full_target_and_repeatable_recipe_identity() {
         // The published Japanese model's upstream reference qualifies AAAAA as
         // one phrase; Latin Ahem supplies real glyphs without script fallback.
         let mut system = crate::System::new(crate::SystemOptions {

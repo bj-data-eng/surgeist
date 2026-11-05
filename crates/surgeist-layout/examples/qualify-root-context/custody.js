@@ -33,7 +33,7 @@ function installCustodyProbe(mode, expectedParagraphs, expectedGrids) {
   function supported(raw) {
     const value = envelope(raw);
     for (const key of keys) {
-      require(value[key]?.layoutInput === 'box', key + ': genuine supported root; got ' +
+      require(value[key]?.layoutInput === 'box', key + ': supported root; got ' +
         (value[key]?.unsupportedReason ?? value[key]?.layoutInput ?? 'missing'));
       require(value[key].viewport?.rootContext, key + ': actual root context');
       require(value[key].gridAlignmentProfile?.profile === 1 &&

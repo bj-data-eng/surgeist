@@ -1,4 +1,4 @@
-//! Genuine inner-CssStops resource qualification, using the width child's
+//! Inner-CssStops resource qualification, using the width child's
 //! resources() and the core's real captured source builder. No dummy provider
 //! or Cell is constructed.
 //!
@@ -79,7 +79,7 @@ fn premises(prepared: &PreparedText, capture: &Captured, text: &str) {
     );
     let views = prepared.cell_views().collect::<Vec<_>>();
     let [view] = views.as_slice() else {
-        panic!("one genuine prepared Cell");
+        panic!("one prepared Cell");
     };
     assert_eq!(view.extent(), 10.0);
     assert_eq!(view.has_provider_input(), text == "B\t");

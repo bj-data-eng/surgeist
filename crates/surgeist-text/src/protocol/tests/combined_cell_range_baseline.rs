@@ -120,7 +120,7 @@ fn nonzero_horizontal_base_keeps_cell_metric_reference_distinct_from_paint_origi
     );
     let origin_views = prepared.origin_views().collect::<Vec<_>>();
     let [view] = origin_views.as_slice() else {
-        panic!("one genuine full-AA original")
+        panic!("one full-AA original")
     };
     assert_eq!(view.source(), processed.source());
     assert_eq!(view.local_range(), Range::new(0, 2));

@@ -1,4 +1,4 @@
-//! Owning numeric completion tests: genuine participants, providers and state.
+//! Owning numeric completion tests: participants, providers and state.
 use super::*;
 use std::cell::{Cell, RefCell};
 

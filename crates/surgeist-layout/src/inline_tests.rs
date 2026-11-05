@@ -491,7 +491,7 @@ fn fri06_mr02_inline_linear_bidi_mixed_sources_preserve_visual_order_and_baselin
 }
 
 fn mr02_intrinsic_extents<S: LayoutScalar>() -> (S, S) {
-    // These are genuine numeric boxes. Text replacement semantics are exercised
+    // These are numeric boxes. Text replacement semantics are exercised
     // separately through an actual prepared paragraph, never a replacement width.
     let min = layout_mixed_inline_run(mr02_input(
         crate::AxisSizingRequestOf::new(

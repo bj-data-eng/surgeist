@@ -86,11 +86,7 @@ fn texts(piece: &t::FinalizedInlineBoxPiece) -> Vec<t::PreparedUnit> {
                 // range describes exclusive box ink or a general shared packet.
                 assert_eq!(member.unit_source_range(), unit.view().source_range());
                 let presentation = member.presentation_range();
-                assert_eq!(
-                    presentation.len(),
-                    1,
-                    "this fixture has genuine single-ASCII units"
-                );
+                assert_eq!(presentation.len(), 1, "this fixture has single-ASCII units");
                 Some(unit.clone())
             }
             _ => None,
@@ -131,8 +127,8 @@ fn ancestry(c: &t::InlineBoxFragment, a: &t::InlineBoxFragment, domain: &t::Inli
 }
 
 fn separated(narrow: bool) {
-    // This genuine capture supplies abcABC, RLO(ABC), box(cA),
-    // source/control levels and a genuine OptionalBreak after A.
+    // This capture supplies abcABC, RLO(ABC), box(cA),
+    // source/control levels and an OptionalBreak after A.
     let p = captured_override();
     let (owner, domain) = sources(&p);
     let family = p.inline_box_family(Vec::new(), None).unwrap();
@@ -294,7 +290,7 @@ fn separated(narrow: bool) {
 }
 
 fn captured_whole_box() -> t::PreparedText {
-    // Same genuine source, RLO/PDF and optional break, with the whole mixed
+    // Same source, RLO/PDF and optional break, with the whole mixed
     // source inside the single nominated box. No foreign row can split it.
     let p = prepare_capture(
         t::Source::identified("abcABC", t::Id::from_u64(1_646_101), 1),

@@ -1,4 +1,4 @@
-//! Genuine Wbr separates original UTF-16 decoding without disconnecting context.
+//! Wbr separates original UTF-16 decoding without disconnecting context.
 use super::*;
 
 fn capture(units: Vec<u16>, mode: WhiteSpace) -> ContextualSourceInput {
@@ -73,7 +73,7 @@ fn none_wbr_splits_original_decoding_before_phase_one_wide_context() {
         [0xd840, 0xdc00, 0x20, 0x6f22]
     );
 
-    // Removing only the genuine control restores the intact scalar's Wide context.
+    // Removing only the control restores the intact scalar's Wide context.
     let intact = process_contextual_source(capture(
         vec![0xd840, 0xdc00, 0xa, 0x6f22],
         WhiteSpace::Collapse,

@@ -230,7 +230,7 @@ fn root_closer_stops_both_domains_without_diagnostics_from_later_input() {
 }
 
 #[test]
-fn genuine_unbraced_origins_outlive_input_and_keep_unicode_coordinates() {
+fn unbraced_origins_outlive_input_and_keep_unicode_coordinates() {
     let raw = "/*😀*/\r\nsize:A4; margin:1px; bogus:bad";
     let report = {
         let input = raw.to_owned();

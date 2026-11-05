@@ -342,7 +342,7 @@ fn computed_scope_cause_has_its_own_canonical_capture_and_prepared_participant()
     assert_eq!(
         segments.len(),
         1,
-        "this inline-seam fixture has one genuine source segment"
+        "this inline-seam fixture has one source segment"
     );
     let segment = segments.next().unwrap();
     drop(segments);
@@ -1538,7 +1538,7 @@ fn later_expanded_wbr_preserves_an_earlier_computed_hard_base_mark_boundary() {
         } else {
             Vec::new()
         };
-        // The original mark is inside its genuine captured inline. The later
+        // The original mark is inside its captured inline. The later
         // Wbr is outside it, between two separate original A occurrences.
         value.events = vec![
             E::EnterScope(0),

@@ -575,7 +575,7 @@ impl DomStyleRuntime {
                         |left, right| steps.same(&preparation, left, right),
                     )?;
                     if let Some(disabled) = disabled {
-                        // Always edit the genuine staged batch: a later B -> A
+                        // Always edit the staged batch: a later B -> A
                         // occurrence must undo B even when A equals base flags.
                         steps.joined(&preparation)?;
                         preparation.set_disabled(document, &sheet, disabled, cancel)?;

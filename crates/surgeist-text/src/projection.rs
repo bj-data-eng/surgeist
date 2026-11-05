@@ -27,7 +27,7 @@ pub(crate) struct SourceProjection {
     pub(crate) barrier_atoms: Vec<usize>,
     pub(crate) transform: Option<std::sync::Arc<crate::transform::relation::TransformMap>>,
     segmentation_offsets: Vec<(usize, usize)>,
-    /// Genuine zero-width original occurrences that need no incident atom.
+    /// Zero-width original occurrences that need no incident atom.
     #[cfg(any(test, feature = "text-accessibility"))]
     original_points: Vec<(usize, usize)>,
 }
@@ -161,7 +161,7 @@ impl SourceProjection {
     }
 
     /// Original host/source projection, independent of lexical deletion or
-    /// replacement. Genuine Wbr also separates decoding without resetting context.
+    /// replacement. Wbr also separates decoding without resetting context.
     pub(crate) fn host(
         source: &Source,
         paragraph: &crate::protocol::paragraph::ParagraphContext,
@@ -443,7 +443,7 @@ impl SourceProjection {
 /// Exact physical events require an actual decoded/processed atom seam.
 /// Deleted intervals retain their distinct events; a retained scalar or Phase-I
 /// replacement cannot be divided by choosing an affinity. In particular, use
-/// admitted atoms rather than raw UTF-16 so genuine disconnected halves stay
+/// admitted atoms rather than raw UTF-16 so disconnected halves stay
 /// separate original units.
 fn admit_physical_endpoint_cuts(
     atoms: &[OriginalAtom],

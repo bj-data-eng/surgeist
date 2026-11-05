@@ -1,4 +1,4 @@
-//! Genuine direction-resolved capture, Paragraph-only grouping and nowrap.
+//! Direction-resolved capture, Paragraph-only grouping and nowrap.
 use super::*;
 
 fn direction_and_hard_groups<S: l::LayoutScalar>() {

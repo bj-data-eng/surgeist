@@ -406,7 +406,7 @@ fn actual_primary_without_space_glyph_still_selects_its_u2010() {
     assert_eq!(texts(&p), [vec![0x2010]]);
 }
 #[test]
-fn repeated_genuine_owner_groups_and_empty_native_list_are_rejected() {
+fn repeated_owner_groups_and_empty_native_list_are_rejected() {
     assert_eq!(
         reason(
             &ParagraphReplacement::resolved_native_logical_before(

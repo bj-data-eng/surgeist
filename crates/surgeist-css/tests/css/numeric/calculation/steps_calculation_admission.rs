@@ -1,6 +1,6 @@
-//! Checked step counts distinguish bare integer roots from genuine math functions.
+//! Checked step counts distinguish bare integer roots from math functions.
 //! Ordinary counts are positive, and jump-none requires more than one step.
-//! Genuine math remains symbolic; these assertions never evaluate a function.
+//! Math remains symbolic; these assertions never evaluate a function.
 //! https://www.w3.org/TR/2023/CRD-css-easing-1-20230213/#step-easing-functions
 
 use surgeist_css::CssParser;
@@ -54,7 +54,7 @@ fn bare_positive_calculation_roots_keep_ordinary_position_rules() {
 }
 
 #[test]
-fn genuine_integer_math_functions_keep_range_checks_deferred() {
+fn integer_math_functions_keep_range_checks_deferred() {
     for root in ["calc(0)", "calc(-1)", "calc(1)", "calc(1 + 1)"] {
         assert!(admitted(root, None), "{root}");
         assert!(admitted(root, Some(CssStepPosition::JumpNone)), "{root}");

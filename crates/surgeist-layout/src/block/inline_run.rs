@@ -515,7 +515,7 @@ where
             && run.segment.start().view().participant_offset()
                 == run.segment.end().view().participant_offset()
     }) {
-        // A genuine metadata-only structural section retains its Text receipt
+        // A metadata-only structural section retains its Text receipt
         // without inventing an anonymous line box or consuming adjoining margins.
         margin = InlineRunMargin::Adjoins;
         cursor_block = uncollapsed_cursor_block;

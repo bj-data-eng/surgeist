@@ -880,7 +880,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
             };
             let mut entries = Vec::new();
             // The Text-issued order, not raw member numbers or current packet
-            // insertion order, owns whole-output coverage. Move genuine entries;
+            // insertion order, owns whole-output coverage. Move entries;
             // an absent segment remains absent and the Text receiver refuses it.
             for segment in binding.prepared.source_segments() {
                 for paragraph in pending.iter_mut().filter(|paragraph| {

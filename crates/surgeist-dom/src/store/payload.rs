@@ -289,7 +289,7 @@ pub(crate) struct Sealed<T> {
 }
 
 /// Construct one exact leaf under its original allocation credit. The caller
-/// identifies already formed occurrences separately from genuinely new storage.
+/// identifies already formed occurrences separately from new storage.
 /// Both original and added credit stay live until the factory's owned inputs
 /// have been destroyed, including refusal before the factory can run.
 pub(crate) fn form_group<T>(

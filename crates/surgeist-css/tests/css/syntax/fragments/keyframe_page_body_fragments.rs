@@ -513,7 +513,7 @@ fn trailing_value_token_drops_the_whole_declaration_and_keeps_its_neighbor() {
 }
 
 #[test]
-fn genuine_source_envelopes_and_child_occurrences_retain_utf8_utf16_ranges() {
+fn source_envelopes_and_child_occurrences_retain_utf8_utf16_ranges() {
     let source = " /*é*/\r\n{from{--💡:1;opacity:.5}} /*x*/";
     let outer = CssBlockFragment::<Vec<CssKeyframeBlock>>::parse(
         &CssParser::default(),
@@ -1138,7 +1138,7 @@ fn failed_keyframe_selector_block_keeps_native_resource_identity_and_later_child
 }
 
 #[test]
-fn genuine_whole_rules_keep_native_top_level_siblings_after_resource_recovery() {
+fn whole_rules_keep_native_top_level_siblings_after_resource_recovery() {
     let keyframe_value = format!("{}x{}", "f(".repeat(255), ")".repeat(255));
     let report = CssParser::default().parse_sheet(format!(
         "@keyframes x{{from{{opacity:.5;--v:{keyframe_value};color:red}}to{{opacity:1}}}}.after{{}}"

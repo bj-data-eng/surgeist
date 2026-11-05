@@ -141,7 +141,7 @@ fn absent_autofocus_removal_does_not_walk_unrelated_candidates_or_other_roles() 
                 .autofocus_append(owner, subject, dom.limits, &cancel)
                 .unwrap();
         }
-        // The subject is genuinely present in another role, not autofocus.
+        // The subject is present in another role, not autofocus.
         let subject = staged.resolve(absent.into()).unwrap();
         staged.add_top_layer(subject, &cancel).unwrap();
         publish(&mut dom, &mut staged);
@@ -509,7 +509,7 @@ fn unpublished_source_retirement_refusal_drop_discards_private_work_then_retries
     let (mut dom, docs, ids) = fixture();
     history(&mut dom, docs, ids);
     let old = dom.snapshot();
-    // Locate the first genuine initial-owner admission. With this exact Work
+    // Locate the first initial-owner admission. With this exact Work
     // policy there is no credit for advance's next read; no padding/refund or
     // synthetic parked frame is introduced.
     let mut operation = None;

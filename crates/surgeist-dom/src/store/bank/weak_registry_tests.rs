@@ -75,7 +75,7 @@ fn qualify_registry_allocation_inventory(value: &BorrowedValue, payload: Usage) 
 
 #[test]
 fn finite_weak_descriptor_allowance_adopts_aliases_and_releases_original_custody() {
-    // This is genuine external immutable input, borrowed during adoption. Its
+    // This is external immutable input, borrowed during adoption. Its
     // original identity is issued before its target allocation and never reset.
     let identity = MaterializationId::fresh().unwrap();
     let value = Arc::new(BorrowedValue {

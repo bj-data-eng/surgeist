@@ -97,7 +97,7 @@ fn partition_tree<S: l::LayoutScalar>(
             participants.push(numeric_atomic(direction, width, 10.0, permission));
         }
         if group + 1 < groups {
-            // Genuine numerical control, matching the atoms' actual bottom10
+            // Numerical control, matching the atoms' actual bottom10
             // fallback baseline; no font or fabricated Text strut participates.
             participants.push(numeric_forced(direction, 10.0, 10.0));
         }

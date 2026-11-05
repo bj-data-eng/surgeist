@@ -75,7 +75,7 @@ fn performed_actor<S: LayoutScalar>(
     );
     let source = result
         .executed_baselines
-        .expect("a genuine performed Grid result retains its execution inventory");
+        .expect("a performed Grid result retains its execution inventory");
     let consumption = Consumption {
         child,
         axes,
@@ -150,7 +150,7 @@ fn qualifies_performed_custody<S: LayoutScalar>(refusal: Refusal) {
     let consumer = match refusal {
         Refusal::Missing | Refusal::Stage => control,
         Refusal::Body => {
-            // A genuine different known border allocation executes the same
+            // A different known border allocation executes the same
             // fixed actor; its output is not manufactured from the old packet.
             let other_body = Size::new(value(60.0), body.height);
             let (other, _) = performed_actor(&tree, &batch, 10, other_body, other_body);
@@ -177,7 +177,7 @@ fn qualifies_performed_custody<S: LayoutScalar>(refusal: Refusal) {
     let consumer = if matches!(refusal, Refusal::Stage) {
         Consumption {
             // This changes the consumer's claimed complete sizing order, not
-            // the genuine inventory or the output produced in Column-first.
+            // the inventory or the output produced in Column-first.
             stage: GridSizingStage {
                 first_axis: GridAxisKind::Row,
                 through: GridSizingPhase::Complete,

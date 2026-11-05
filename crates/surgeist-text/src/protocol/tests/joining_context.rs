@@ -387,7 +387,7 @@ fn optional_ligature_cut_shapes_only_actual_selected_atoms() {
 #[test]
 fn full_captured_context_reports_real_context_limit_without_mutating_prior_results() {
     let mut system = arabic_system();
-    // Six genuine transparent Arabic Letter Marks exceed the provider's five
+    // Six transparent Arabic Letter Marks exceed the provider's five
     // pre-context cells; supplying all context must preserve its actual refusal.
     let source = Source::new(format!("\u{628}{}\u{628}", "\u{61c}".repeat(6)));
     let mut input = native_input(source.clone());

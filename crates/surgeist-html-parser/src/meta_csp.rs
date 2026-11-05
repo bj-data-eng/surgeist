@@ -166,7 +166,7 @@ impl Storage {
     }
 }
 /// Complete protocol-owned aggregate. Transferred occurrences already have a
-/// receipt; only genuinely new storage and closing work are introduced.
+/// receipt; only new storage and closing work are introduced.
 #[derive(Default)]
 pub(crate) struct Account {
     pub live: Storage,

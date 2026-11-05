@@ -1,4 +1,4 @@
-//! Shared substitution diagnostics retain genuine missing-argument boundaries.
+//! Shared substitution diagnostics retain missing-argument boundaries.
 use surgeist_css::CssParser;
 use surgeist_css::component::{
     CssComponentValue, CssComponentValueRef, CssComponentValues, CssSerializedOrigin,

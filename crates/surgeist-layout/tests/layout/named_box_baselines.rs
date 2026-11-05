@@ -281,7 +281,7 @@ fn named<S: l::LayoutScalar>(
                 assert_eq!(coordinate.axis(), axis);
                 assert_eq!(coordinate.offset(), n(offset));
             }
-            other => panic!("expected genuine named coordinate, got {other:?}"),
+            other => panic!("expected named coordinate, got {other:?}"),
         }
     }
 }
@@ -676,11 +676,11 @@ fn propagation<S: l::LayoutScalar>() {
     }
 }
 #[test]
-fn genuine_child_named_facts_translate_through_boxes_independently_of_own_context_f32() {
+fn source_child_named_facts_translate_through_boxes_independently_of_own_context_f32() {
     propagation::<f32>();
 }
 #[test]
-fn genuine_child_named_facts_translate_through_boxes_independently_of_own_context_f64() {
+fn source_child_named_facts_translate_through_boxes_independently_of_own_context_f64() {
     propagation::<f64>();
 }
 
@@ -818,7 +818,7 @@ fn authority_refusals<S: l::LayoutScalar>() {
         }
         // Only extent is used on the first Top/Bottom line. The real next
         // line consumes the carried raw8/2 as baseline contributions, so its
-        // reference must genuinely match the NamedAlpha receiving context.
+        // reference must match the NamedAlpha receiving context.
         let mut physical_tail = Host::<S>::new(root(h, d, alpha));
         physical_tail.push(
             Some(0),
@@ -862,11 +862,11 @@ fn authority_refusals<S: l::LayoutScalar>() {
     }
 }
 #[test]
-fn genuine_unknown_axis_and_control_reference_mismatches_refuse_precisely_f32() {
+fn source_unknown_axis_and_control_reference_mismatches_refuse_precisely_f32() {
     authority_refusals::<f32>();
 }
 #[test]
-fn genuine_unknown_axis_and_control_reference_mismatches_refuse_precisely_f64() {
+fn source_unknown_axis_and_control_reference_mismatches_refuse_precisely_f64() {
     authority_refusals::<f64>();
 }
 
@@ -941,7 +941,7 @@ fn cache_and_atomicity<S: l::LayoutScalar>() {
     let accepted = semantic(host.published.batch.as_ref().unwrap());
     let counts = (host.prepares.get(), host.commits);
     // Actual previously baseline-less child now owns a real Physical numeric
-    // line. Its named facts are Unknown, not genuine baseline absence.
+    // line. Its named facts are Unknown, not baseline absence.
     host.push(
         Some(1),
         l::LayoutInputOf::box_input(atomic(mode, l::Direction::Ltr, 10.0, (0.0, 0.0))),
@@ -968,11 +968,11 @@ fn cache_and_atomicity<S: l::LayoutScalar>() {
     assert_eq!(semantic(&alpha), original);
 }
 #[test]
-fn genuine_cache_name_and_margin_changes_preserve_semantics_and_prior_batches_f32() {
+fn source_cache_name_and_margin_changes_preserve_semantics_and_prior_batches_f32() {
     cache_and_atomicity::<f32>();
 }
 #[test]
-fn genuine_cache_name_and_margin_changes_preserve_semantics_and_prior_batches_f64() {
+fn source_cache_name_and_margin_changes_preserve_semantics_and_prior_batches_f64() {
     cache_and_atomicity::<f64>();
 }
 
@@ -992,7 +992,7 @@ fn overflowing_synthesis<S: l::LayoutScalar>(largest: S) {
             (0.0, 0.0),
         )),
     );
-    // Genuine finite maximum control must reach the real owner first. If an
+    // Finite maximum control must reach the real owner first. If an
     // earlier capability refuses it, that is qualification evidence, not proof
     // of this later overflow criterion or grounds to weaken the input.
     let control = host.compute(mode, &[]).unwrap();
@@ -1632,7 +1632,7 @@ fn source_unknown_selection<S: l::LayoutScalar>() {
             }
             let chooses_first = source == l::BaselineSource::First;
             if chooses_first == unknown_first {
-                // Publish the genuine available opposite set first. A refused
+                // Publish the available opposite set first. A refused
                 // source change may not replace that completed packet or caches.
                 host.change(2, |input| {
                     input.baseline_source = if unknown_first {
@@ -1709,7 +1709,7 @@ fn source_absent_and_empty_scroll<S: l::LayoutScalar>() {
             }
         }
     }
-    // Explicit source disables the exceptional Auto set. Its selected genuine
+    // Explicit source disables the exceptional Auto set. Its selected
     // Absent must synthesize from the margin box, THEN clamp that synthesized
     // result for a scroll container; merely clamping Available exports misses it.
     for source in [l::BaselineSource::First, l::BaselineSource::Last] {
@@ -1725,7 +1725,7 @@ fn source_absent_and_empty_scroll<S: l::LayoutScalar>() {
             for entries in [batch.unrounded_entries(), batch.final_entries()] {
                 absent(node(entries, 2).named_baselines);
                 // The actual parent anchor proves the used clamped coordinate
-                // without replacing the child's genuine Absent facts.
+                // without replacing the child's Absent facts.
                 let parent = if name == l::BaselineName::Alphabetic {
                     60.0
                 } else {
@@ -2052,7 +2052,7 @@ fn packet_child<S: l::LayoutScalar>(host: &mut Host<S>, parent: u32) -> (u32, u3
     (child, inner)
 }
 fn packet_producer_control<S: l::LayoutScalar>() {
-    // A genuine root writer exposes the same actual native Block producer.
+    // A root writer exposes the same actual native Block producer.
     // Its sole real10-high baseline-less atom synthesizes under-edge Alpha10.
     let mut host = Host::<S>::new(source_block(l::BaselineName::Alphabetic, None));
     let mut inner = atomic(
@@ -2082,7 +2082,7 @@ fn packet_computed_alpha<S: l::LayoutScalar>(
     child: u32,
 ) {
     // Undemanded size queries may leave facts Unknown. Any actual Available
-    // fact still names this genuine10-high Alpha line; Absent would be false.
+    // fact still names this 10-high Alpha line; Absent would be false.
     // Performed packet geometry and Alpha10 are asserted independently below.
     for row in batch
         .cache_store_entries()
@@ -2172,7 +2172,7 @@ fn packet_writer<S: l::LayoutScalar>(display: l::Display, positioned: bool, floa
     assert_eq!(warm.final_entries(), cold.final_entries());
     packet_alpha(&warm, child);
     warm.apply_to(&mut host).unwrap();
-    // Replace genuine baseline absence by a real Physical line inside the
+    // Replace baseline absence by a real Physical line inside the
     // formerly empty inner atomic. Its Unknown cannot satisfy the named child.
     let mut nested = atomic(mode, l::Direction::Ltr, 6.0, (0.0, 0.0));
     nested.size.width = px(6.0);
@@ -2677,7 +2677,7 @@ fn sizing_demand_facts<S: l::LayoutScalar>(
         }
     }
     // Knowledge is phase-local. Unknown is truthful for unobserved size-only
-    // fields; a genuine Available must retain Alpha0. Absent is never true here.
+    // fields; an Available must retain Alpha0. Absent is never true here.
     for row in batch.cache_store_entries().iter().filter(|row| {
         row.node() == 3 || matches!(content, DemandContent::Decorated) && row.node() == 4
     }) {
@@ -2765,7 +2765,7 @@ fn sizing_demand_cache<S: l::LayoutScalar>() {
                 assert_eq!(changed.final_entries(), fresh.final_entries());
                 if named_context {
                     // Actual semantic contrast diagnostics, not a forced count
-                    // or private-demand/run-mode Debug parser. Extra genuine
+                    // or private-demand/run-mode Debug parser. Extra
                     // knowledge on an undemanded query is allowed.
                     let mut available_keys = Vec::new();
                     let mut current_unknown_keys = Vec::new();
@@ -2819,7 +2819,7 @@ fn sizing_demand_cache<S: l::LayoutScalar>() {
             }
         }
     }
-    // A genuine unsupported descendant stays Unknown at the actual consumer;
+    // An unsupported descendant stays Unknown at the actual consumer;
     // warming an undemanded operation must not turn it into known absence.
     let mut unsupported = sizing_demand_host::<S>(physical, DemandContent::UnsupportedGrid);
     let accepted = unsupported.compute(mode, &[]).unwrap();

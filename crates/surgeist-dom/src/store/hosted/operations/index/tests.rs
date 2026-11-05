@@ -1,4 +1,4 @@
-//! Private index transitions use genuine issuer identities; these tests make no
+//! Private index transitions use issuer identities; these tests make no
 //! claim about Window lifecycle completion.
 use super::*;
 fn cancel() -> AtomicBool {

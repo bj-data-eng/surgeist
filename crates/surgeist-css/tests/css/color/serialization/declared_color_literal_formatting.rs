@@ -698,7 +698,7 @@ byte_case!(
     "rgb(from red 0 g b)"
 );
 byte_case!(
-    huge_exponent_genuine_zero,
+    huge_exponent_zero,
     "color(from red --P 0e1000000000)",
     "color(from red --P 0)"
 );

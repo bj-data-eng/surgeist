@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Genuine atomic content may enter after its containing paragraph has closed.
+//! Atomic content may enter after its containing paragraph has closed.
 
 use std::sync::Arc;
 use surgeist_text as text;
@@ -72,7 +72,7 @@ fn capture(
     if closed_parent {
         events.push(E::ExitParagraph(0));
     }
-    // The containing scope is still genuinely open. The nominee occurrence is
+    // The containing scope is still open. The nominee occurrence is
     // unchanged and, in the positive cases, remains at the current source cursor.
     events.extend([
         E::EnterScope(1),
@@ -139,7 +139,7 @@ fn capture(
 
 fn admits_exact_nominee(kind: text::InlineBoxKind, closed_parent: bool) {
     let processed = Arc::new(text::process_contextual_source(capture(kind, closed_parent, false))
-        .unwrap_or_else(|error| panic!("{kind:?} child with closed_parent={closed_parent} retains its genuine nominee and containing scope and must admit: {error:?}")));
+        .unwrap_or_else(|error| panic!("{kind:?} child with closed_parent={closed_parent} retains its nominee and containing scope and must admit: {error:?}")));
     assert_eq!(processed.source().text(), &text::Text::from("X"));
     assert_eq!(processed.source().boxes().len(), 1);
     assert_eq!(processed.source().boxes()[0].id(), text::Id::from_u64(6312));
@@ -216,8 +216,8 @@ fn a_content_domain_requires_its_nominee_occurrence_to_have_happened() {
 #[test]
 fn an_actual_nominee_at_a_different_source_cursor_cannot_donate_its_content_domain() {
     for kind in [text::InlineBoxKind::InFlow, text::InlineBoxKind::OutOfFlow] {
-        // Consuming the genuine parent origin P moves the cursor to1; the
-        // nominee remains anchored at0 and the child owns the genuine X at1.
+        // Consuming the parent origin P moves the cursor to1; the
+        // nominee remains anchored at0 and the child owns the X at1.
         rejects(
             capture(kind, false, true),
             text::SourceProcessingError::Domain,
@@ -232,7 +232,7 @@ fn one_actual_nominee_cannot_supply_two_distinct_content_domains() {
         let mut input = capture(kind, false, false);
         input.scopes.push(child_scope(kind));
         input.paragraphs.push(input.paragraphs[1]);
-        // The first child is genuinely empty. Both child entries stay at the
+        // The first child is empty. Both child entries stay at the
         // nominee's anchor0, so duplicate custody is the sole association flaw.
         input
             .events

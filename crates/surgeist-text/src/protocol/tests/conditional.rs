@@ -2269,7 +2269,7 @@ fn finite_consumer_policy_receipts_preserve_barriers_start_and_context_identity(
             .and_then(|search| search.begin(&[]))
             .map(|batch| batch.opportunities().to_vec())
             .is_err(),
-        "meaningful ordinary None remains a genuine barrier"
+        "meaningful ordinary None remains a barrier"
     );
 }
 

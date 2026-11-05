@@ -1056,8 +1056,7 @@ and keeps its selected native tree's IEEE outcomes.
   intermediate value must itself be supported, so conversion applies at each
   source-order step whose two operands are finite, before the next operand.
   Thus `calc(1e308 * 2 * 0)` and `calc((1e308 * 2) * 0)` both emit `calc(0)`,
-  `calc(1e308px + 1e308px - infinity * 1px)` emits the genuine
-  `calc(-infinity * 1px)` rather than NaN, and `calc(1e308px * 10)` emits all
+  `calc(1e308px + 1e308px - infinity * 1px)` emits the `calc(-infinity * 1px)` rather than NaN, and `calc(1e308px * 10)` emits all
   digits of `f64::MAX` followed by `px`, rather than `calc(infinity * 1px)`.
   A Sum prefix has the Sum's type; a Product prefix has a partial compound type,
   so only its final factor can select the Angle endpoint. Projection does not
@@ -1079,7 +1078,7 @@ and keeps its selected native tree's IEEE outcomes.
   text) keeps binary64 text; retained alpha, mix weights, relative-color
   channels and origin colors receive the exact text.
 
-Genuine infinities are unchanged: the `infinity` and `-infinity` constants,
+Infinities are unchanged: the `infinity` and `-infinity` constants,
 infinite operands, division by zero and argument combinations
 [defined to produce infinity](https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-ieee),
 namely `pow(0, B)` for negative B, `log(0)` and `tan()` at an asymptote.
@@ -1126,7 +1125,7 @@ source order before distribution and typed evaluation, following
 Thus `cos(1e308deg * 2 * 0)` first combines the Number coefficient to zero and
 emits `calc(1)`. Each merged coefficient spends a shared projection node.
 Already materialized Number and compound arithmetic retains its NaN and
-genuine infinity outcomes, and its finite overflow converts to the non-angle
+infinity outcomes, and its finite overflow converts to the non-angle
 closest value; an Angle ancestor does not reconstruct discarded magnitudes.
 A retained compound Product may instead flatten into its ancestor before the
 final Angle result is evaluated. Target-context computed and used-value range
@@ -2755,7 +2754,7 @@ numbers, and cubic-bezier coordinates use `CssNumeric<CssNumber>`. All scale
 functions and the independent scale property use `CssTransformScaleComponent`:
 Number, Percentage, or HintedNumberCalculation. The selected Transforms 2
 extension admits percentages in scale/scaleX/scaleY as well as scale3d/scaleZ.
-These factors preserve checked exact tokens or genuine symbolic calculations.
+These factors preserve checked exact tokens or symbolic calculations.
 Aggregate equality ignores numeric provenance while retaining branch, lexical
 and calculation structure. `CssScaleValues::try_new` retains one to three
 factors; `CssTransformScale::new` retains its authored optional Y. ScaleX/Y
@@ -2889,12 +2888,12 @@ assert_eq!(rotation.serialize_specified(limits)?, "hue-rotate(0)");
 Easing values distinguish keywords, `cubic-bezier()`, `steps()`, and `linear()`.
 `CssCubicBezierX` checks an ordinary exact number against inclusive [0, 1],
 including signed zero and exponent spelling. A bare calculation root reenters
-that check, while genuine function calculations remain symbolic. Y coordinates
+that check, while function calculations remain symbolic. Y coordinates
 remain unrestricted signed numbers; coordinate order is preserved.
 `steps()` stores its count as `CssNumeric<CssInteger, CssPositive>`: an exact
 literal or a symbolic `CssCalculation<CssInteger>`.
 `CssSteps::try_new` validates bare calculation tokens as ordinary literals and
-rejects literal one only with `JumpNone`. Genuine function calculations remain
+rejects literal one only with `JumpNone`. Function calculations remain
 symbolic even when their authored expression is `calc(1)`. Ordinary zero,
 negative, decimal-point and exponent counts are rejected. Position omission
 remains distinct from explicit `end` or `JumpEnd`.
@@ -2944,7 +2943,7 @@ The scalar branches hold `CssNumeric<CssNumber, CssNonNegative>` and
 `CssNumeric<CssPercentage, CssNonNegative>` directly, preserving ordinary spelling,
 numeric token kind, signed zero and origins. Tiny negative nonzero literals are
 rejected exactly; amounts above one or 100% remain authored without clamping.
-Genuine function math stays symbolic. All seven amount-function identities,
+Function math stays symbolic. All seven amount-function identities,
 omission and list order are preserved for both filter properties.
 
 Animation iteration counts use `Infinite` or
@@ -3699,7 +3698,7 @@ including nested mixes and a mix used as an origin color. This follows
 [Color 5's individual argument serialization](https://www.w3.org/TR/2026/WD-css-color-5-20260908/#serial-color-mix).
 For example, `color-mix(lab(125 calc(0) 0), blue)` emits
 `color-mix(lab(100 calc(0) 0), blue)`. Calculations retain their wrappers and
-required capture costs; genuine Origin and relative channels remain unclamped.
+required capture costs; Origin and relative channels remain unclamped.
 
 Specified Lab/LCH/Oklab/Oklch calculations retain out-of-range magnitudes:
 `lab(calc(125) 0 0)` keeps `calc(125)`, and `lch(50 calc(-20) 30)` keeps
@@ -5652,7 +5651,7 @@ ASCII-insensitive `-webkit-` retains
 authored syntax with symbolic match-nothing meaning. The payload's private name
 has a checked `try_new(decoded_name)` constructor returning
 `Result<_, CssSelectorConstructionError>` and an `as_str()` accessor. Admission
-uses the shared genuine identifier boundary and rejects NUL or a wrong prefix;
+uses the shared identifier boundary and rejects NUL or a wrong prefix;
 `CssSelectorConstructionError::is_invalid_unknown_webkit_pseudo_element_name()` reports it. The prefix alone is valid; decoded
 punctuation and non-ASCII suffix characters can be preserved through CSS escaping.
 Only ASCII letters are lowercased. The shared selector writer emits the escaped
@@ -5846,7 +5845,7 @@ permits mixed string, image and identifier symbols. Its at-risk annotation
 does not remove the selected grammar. Image admission evidence is in
 [`counter_style_image_admission.rs`](../tests/css/rules/counter_style/counter_style_image_admission.rs).
 
-Parsed rule names expose their genuine token origin through `parsed_name()`.
+Parsed rule names expose their token origin through `parsed_name()`.
 Counter descriptor occurrences expose `parsed_name()`, `parsed_value()` and
 `value_components()` from one coupled parser-owned record. These borrow the
 original authored source, retaining escapes, casing, comments, whitespace and
@@ -5910,7 +5909,7 @@ alphabetic symbols, and `extends` conflicts remain inspectable authored at-rules
 The [selected current Counter Styles witness](../../../references/css-counter-styles-3--editor-capture-20261009--ef29d0a06a13.md#extends-system)
 requires the extends conflict to define no counter style, rather than invalidate
 the rule. `CssCounterStyleDescriptorCollection` reconstructs prospective ordered
-checked values from genuine named occurrences and edited raw values.
+checked values from named occurrences and edited raw values.
 `definition_status` distinguishes `Defined`, `Undefined`, `SubstitutionDependent`
 and `RequiresResolution`; symbolic additive weight ordering stays unresolved.
 `CssCounterStyleSystem::algorithm` identifies the system independently of fixed
@@ -5979,7 +5978,7 @@ ordered descriptor/property inventory and a separate ordered sequence of
 `CssMarginRule` children. `CssBlockFragment::<CssMarginDeclarationBlock>::parse` admits applicable properties and
 custom values, excluding Page-only descriptors and nested margin children.
 `CssMarginBox` supplies all sixteen canonical names without arbitrary IDL members.
-Checked authored reconstruction preserves genuine occurrences or raw value
+Checked authored reconstruction preserves occurrences or raw value
 origins. Programmatic rule children carry no invented source position.
 
 `try_specified` exposes an ordered immutable `CssSpecifiedPageDeclarationBlock`.
@@ -6159,7 +6158,7 @@ counter or content functions as resolved string-set leaves. A named entry
 `none "text"` remains distinct from the whole keyword `none`.
 
 `CssBookmarkLevel` retains `none`, an exact positive ordinary integer without a
-machine magnitude bound, or a genuine integer function calculation with deferred
+machine magnitude bound, or an integer function calculation with deferred
 computed range and rounding. Its checked constructor routes bare calculation
 tokens through the same positive literal boundary. `CssPropertyValue<CssContentList>`
 uses `CssContentList`, the shared nonempty full Content item-list provider;
@@ -6331,7 +6330,7 @@ operational definition. The exact frozen property, consumer, mode and attribute
 witnesses are recorded in [the source reconciliation](../specs/catalog.json).
 Computed-style rounding tests establish downstream provenance, not authored
 quadrant expectations. No normative SVG11 glyph source or full module is
-imported. The finite alias remains Partial, and both genuine CSSWG8032 conflicts
+imported. The finite alias remains Partial, and both CSSWG8032 conflicts
 remain unresolved; operational SVG support does not establish normative consensus.
 
 ```rust
@@ -7247,9 +7246,9 @@ separately prevents a string format from satisfying support. That truth rule,
 font availability and loading belong to consumers.
 
 `CssSupportsLeaf::AtRule` holds a private-field `CssSupportsAtRule`.
-Its `component()` borrows the genuine argument token, `name()` borrows its
+Its `component()` borrows the argument token, `name()` borrows its
 decoded name without the `@`, and `origin()` and `position()` retain that token's
-provenance. Decoded authored case remains intact. Any genuine at-keyword,
+provenance. Decoded authored case remains intact. Any at-keyword,
 including an unknown name or `@charset`, is admitted. The
 [support definition](https://www.w3.org/TR/2025/WD-css-conditional-5-20251030/#support-definition-at-rules)
 is independent of authored admission; the crate does not consult a host or its
@@ -7347,8 +7346,7 @@ do not affect child equality.
 Both models expose `origin()` and an optional `position()`. Programmatic wrappers
 have no parsed position. A constructed declaration whose property token came
 from a parsed source retains that token's position, but its aggregate `authored()`
-is still `None`. Only declarations actually parsed from a source report a genuine
-authored slice through `Some(...)`. Mixed-source tokens and known numeric views
+is still `None`. Only declarations actually parsed from a source report an authored slice through `Some(...)`. Mixed-source tokens and known numeric views
 retain their original snapshot identities.
 
 Their serializers use the shared component canonical rules: preserve lexical
@@ -7835,7 +7833,7 @@ parent's used color. That exception does not apply outside forced colors mode.
 CSS ingestion does not execute palette forcing or parent-color selection.
 
 `CssPrintColorAdjust` retains `Economy` or `Exact` as an output-device hint.
-`color-adjust` remains a distinct, genuine deprecated CSS-standard shorthand
+`color-adjust` remains a distinct, deprecated CSS-standard shorthand
 with exactly `print-color-adjust` as its settable member and no reset-only
 members. Its initial and inheritance metadata refer to that longhand. Author
 guidance favors `print-color-adjust`; valid shorthand declarations remain
@@ -8387,7 +8385,7 @@ formatting policy; the both-components requirement is source-defined. Explicit
 operands retain their parsed origins, while a synthesized denominator has a
 programmatic origin.
 
-The upstream ellipses remain genuine source limits. This policy covers the
+The upstream ellipses remain source limits. This policy covers the
 represented authored features; it does not claim a missing normative algorithm
 or a custom format for every unknown or vendor feature. Numeric/value phase
 limitations remain with their existing owners. Focused public evidence is in
@@ -9714,9 +9712,9 @@ occurrence handles remain available.
 Style, Media, Supports and Keyframes use literal line feeds and prefix each child string
 once with two spaces. This preserves the selected dated child-prefix algorithm,
 including its unusual multiline result. Empty Media contains two line feeds;
-its wrapper retains both spaces even for a genuinely empty query list.
+its wrapper retains both spaces even for an empty query list.
 Keyframes uses the adopted valid opening brace and its existing key-text provider.
-Normal keyframe declarations project through their genuine retained occurrences
+Normal keyframe declarations project through their retained occurrences
 and the shared filtered domain. Import keeps its effective URL and layer,
 supports and media clauses. Namespace uses its escaped prefix and quoted URL
 provider. FontFace retains the selected modern fourteen-kind effective descriptor
@@ -10014,7 +10012,7 @@ inert direct-child projection and canonical specified bytes where the selected
 Conditional Rules and CSSOM editions leave this live extension undefined. This
 is a Surgeist product contract, not a browser or standards interoperability claim.
 
-`CssSupportsTestBody::parse(&parser, source)` admits complete genuine unbraced input through
+`CssSupportsTestBody::parse(&parser, source)` admits complete unbraced input through
 native Syntax partitioning. Declaration runs flatten through `body.children()`;
 qualified and at-rule tests each retain their complete immutable nested body.
 `CssSupportsTestChild` and its borrowed `CssSupportsTestChildRef` have Declaration,
@@ -10034,7 +10032,7 @@ must reject `None` rather than interpret it as successful clearing. Successful
 empty contents are `Some(empty)`.
 
 `body.recompose_children(&refs, limits)` borrows checked occurrences,
-coalesces adjacent declarations into maximal runs and retains genuine payload
+coalesces adjacent declarations into maximal runs and retains payload
 origins. Its receiver supplies the retained body-local recovery baseline; removed
 children lose their owned descendant recovery. `local_recovery_origins()` exposes
 captured local ownership, `recovery_origins()` iterates the current union, and
@@ -10058,7 +10056,7 @@ public `values` and `max_depth` fields. The values budget owns the complete inpu
 projection and UTF-8 output allowance, without per-child resets or concatenated
 separately formatted strings. Failure returns no partial CSS and permits an
 unchanged larger-budget retry. `is_depth_limit()` identifies a typed resource failure; its
-specified error exposes an optional genuine owning/component `origin()` and the
+specified error exposes an optional owning/component `origin()` and the
 graph error keeps the actual ordinary rule path. Opaque nested tests never gain
 invented live rule indices or source positions.
 

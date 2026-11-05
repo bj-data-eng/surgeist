@@ -314,7 +314,7 @@ fn capture_attached_mark(
     assert_eq!(output.combined_cells().len(), 1);
     let cell = output.combined_cells().next().unwrap();
     assert_eq!(cell.scope(), processed.captured_scope(1).unwrap());
-    assert_eq!(cell.selection_unit_count(), 1); // Both actual mark fixtures form one genuine source EGC.
+    assert_eq!(cell.selection_unit_count(), 1); // Both actual mark fixtures form one source EGC.
     assert_eq!(cell.used_unit_count(), 1);
     assert_eq!(
         cell.used_code_points().collect::<Vec<_>>(),
@@ -434,7 +434,7 @@ fn single_substitution(mappings: &[(u16, u16)]) -> Vec<u8> {
 }
 
 fn cgj_action_gsub(action: CgjAction) -> Vec<u8> {
-    // Default deletion is a genuine GSUB2 empty Sequence, not a buffer flag.
+    // Default deletion is a GSUB2 empty Sequence, not a buffer flag.
     // The other variant preserves the confirmed default promotion100->58,
     // then independently gives that surviving root a successful width action.
     let default = match action {

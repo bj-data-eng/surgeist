@@ -45,7 +45,7 @@ fn actual_visual_corners_preserve_normal_receipt<S: LayoutScalar>() {
             trailing,
         );
         fractional_atomic_source_and_font(&batch, trailing);
-        // Independent corner arithmetic: the preceding genuine Ahem X uses10px.
+        // Independent corner arithmetic: the preceding Ahem X uses10px.
         // Empty atomic normal baseline is10; measured top for height10.4 is-.4.
         // At top.72, raw top=.32 and bottom=10.72, snapped to0 and11. This
         // visual11 must coexist with normal height12/baseline10, not feed H13.

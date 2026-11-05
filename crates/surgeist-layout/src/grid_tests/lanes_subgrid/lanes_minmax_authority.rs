@@ -298,14 +298,14 @@ fn differential<S: LayoutScalar>(axis: GridAxisKind, overflow: Overflow, demand:
                     .iter()
                     .any(|input| input.sizing_request().axes() == min_available
                         && input.known() == Size::NONE),
-                "{axis:?} {overflow:?} {demand:?} {mode:?} {direction:?}: genuine MIN_CONTENT query must reach the provider"
+                "{axis:?} {overflow:?} {demand:?} {mode:?} {direction:?}: MIN_CONTENT query must reach the provider"
             );
             assert!(
                 requests
                     .iter()
                     .any(|input| input.sizing_request().axes() == max_available
                         && input.known() == Size::NONE),
-                "{axis:?} {overflow:?} {demand:?} {mode:?} {direction:?}: genuine MAX_CONTENT query must reach the provider"
+                "{axis:?} {overflow:?} {demand:?} {mode:?} {direction:?}: MAX_CONTENT query must reach the provider"
             );
             assert!(
                 requests

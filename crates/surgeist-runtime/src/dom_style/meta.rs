@@ -45,7 +45,7 @@ impl From<surgeist_dom::DomMetaAtomicError> for DomStyleMetaError {
 }
 
 /// One reached insertion-only preferred-name operation, in invocation order.
-/// All observations for a Document report its one genuine final producer commit;
+/// All observations for a Document report its one final producer commit;
 /// their preference revisions still distinguish the actual ordered transitions.
 #[derive(Debug)]
 pub struct DomStyleMetaPreference {
@@ -112,7 +112,7 @@ impl DomStyleMetaSourceOutcome {
     pub fn source(&self) -> &DomSourceProgress {
         &self.source
     }
-    /// Genuine final producer outputs in first-occurrence Document order.
+    /// Final producer outputs in first-occurrence Document order.
     pub fn roots(&self) -> &[surgeist_dom::DomMetaRootCommit] {
         &self.roots
     }
@@ -761,7 +761,7 @@ impl DomStyleRuntime {
                         |left, right| steps.same(&preparation, left, right),
                     )?;
                     if let Some(disabled) = disabled {
-                        // Always edit the genuine staged batch: a later B -> A
+                        // Always edit the staged batch: a later B -> A
                         // occurrence must undo B even when A equals base flags.
                         steps.runtime()?;
                         preparation.set_disabled(document, &sheet, disabled, cancel)?;
@@ -1069,7 +1069,7 @@ impl DomStyleRuntime {
                         |left, right| steps.same(&preparation, left, right),
                     )?;
                     if let Some(disabled) = disabled {
-                        // Always edit the genuine staged batch: a later B -> A
+                        // Always edit the staged batch: a later B -> A
                         // occurrence must undo B even when A equals base flags.
                         steps.joined(&preparation)?;
                         preparation.set_disabled(document, &sheet, disabled, cancel)?;

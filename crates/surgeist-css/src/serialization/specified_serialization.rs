@@ -152,7 +152,7 @@ impl CssSerializationError {
             origin,
         )
     }
-    /// Genuine owning/component provenance when the selected operation has an
+    /// Owning/component provenance when the selected operation has an
     /// attributable witness. A programmatic graph wrapper can have no origin.
     pub fn origin(&self) -> Option<&crate::component::CssValueOrigin> {
         self.detail.as_ref()?.origin.as_ref()

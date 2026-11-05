@@ -1,4 +1,4 @@
-//! Complete-body family admission and genuine preparation identity.
+//! Complete-body family admission and preparation identity.
 use super::*;
 
 fn admission_fixture(topology: t::SourceProcessingTopology) -> t::PreparedText {

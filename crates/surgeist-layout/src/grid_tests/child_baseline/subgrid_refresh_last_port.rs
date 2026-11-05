@@ -185,7 +185,7 @@ fn assert_case<S: LayoutScalar>(first: f64, final_leaf: FinalLeaf) {
             assert_eq!(p.baselines().last_block(h), None);
         }
         FinalLeaf::ParallelZero => {
-            // Supplied leaf Last0 at second-row origin10 is genuine P.LastY10.
+            // Supplied leaf Last0 at second-row origin10 is P.LastY10.
             assert_eq!(p.baselines().last, Point::new(None, Some(value::<S>(10.0))));
         }
     }

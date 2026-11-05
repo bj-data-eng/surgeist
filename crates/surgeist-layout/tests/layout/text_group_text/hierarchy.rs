@@ -104,7 +104,7 @@ fn independent<S: l::LayoutScalar>() {
     );
 }
 #[test]
-fn genuine_independent_block_interior_does_not_limit_or_receive_its_ancestor_text_group() {
+fn source_independent_block_interior_does_not_limit_or_receive_its_ancestor_text_group() {
     independent::<f32>();
     independent::<f64>();
 }
@@ -191,7 +191,7 @@ fn plaintext_fallback<S: l::LayoutScalar>(rtl_strong: bool) {
     host.box_change(0, |root| {
         root.line_box_direction_policy = l::LineBoxDirectionPolicy::Plaintext
     });
-    // RLM is genuine strong semantic text with zero advance; no dummy glyph or
+    // RLM is strong semantic text with zero advance; no dummy glyph or
     // borrowed numeric level supplies direction. Empty Force and12 have no
     // eligible strong unit and must retain the actual accepted prior fallback.
     let first = if rtl_strong {
@@ -295,7 +295,7 @@ fn changed_limiter<S: l::LayoutScalar>() {
     warm.apply_to(&mut host).unwrap();
 
     // Replace one actual captured text source and bind its newly issued origin.
-    // Reuse the genuine native text node rather than inventing a prepared handle.
+    // Reuse the native text node rather than inventing a prepared handle.
     let old_text_node = old_limiter.binding.origins[0].node;
     host.children[limiter as usize].clear();
     let mut new_limiter = Paragraph::new(

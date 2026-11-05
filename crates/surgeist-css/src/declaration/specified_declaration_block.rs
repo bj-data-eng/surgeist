@@ -53,7 +53,7 @@ pub(crate) enum CssDeclarationBlockErrorKind {
     },
 }
 
-/// Typed cause and genuine original source; no partial block or text is returned.
+/// Typed cause and original source; no partial block or text is returned.
 ///
 /// The cause is read through the predicates and accessors; a serialization or
 /// expansion cause is also the error's source.
@@ -697,7 +697,7 @@ impl CssSpecifiedDeclarationBlock {
         let mut writer = SpecifiedRuleWriter::new(limits);
         Self::from_sources(declarations.iter(), Domain::Ordinary, &mut writer)
     }
-    /// Builds the closed keyframe-domain snapshot from genuine parser-retained sources.
+    /// Builds the closed keyframe-domain snapshot from parser-retained sources.
     pub fn try_from_keyframe_declarations(
         declarations: &CssKeyframeDeclarationList,
         limits: CssSerializationLimits,

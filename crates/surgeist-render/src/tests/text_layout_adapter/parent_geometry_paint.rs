@@ -4,7 +4,7 @@
 use super::*;
 
 // Nest actual nominated C inside P while preserving both AA origins and their
-// genuine continuous source connection.
+// continuous source connection.
 pub(super) fn nest_pair_input(input: &mut text::ContextualSourceInput) {
     use text::SourceProcessingEvent as E;
     assert_eq!(input.source.text(), &text::Text::from("AA"));

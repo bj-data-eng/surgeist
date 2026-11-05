@@ -45,7 +45,7 @@ impl std::error::Error for DomStyleParsedSuccessorError {
 impl DomStyleRuntime {
     /// Reach the next authentic ParserPopped inline-policy request, removing
     /// an actually created predecessor sheet when present. The typed removal
-    /// view distinguishes genuine publications from known absence of a sheet.
+    /// view distinguishes publications from known absence of a sheet.
     /// This supplies no whole-history or networking dispatch permission.
     pub fn advance_parsed_style_successor(
         &self,

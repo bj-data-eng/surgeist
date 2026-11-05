@@ -69,7 +69,7 @@ cancellation and reacquisition. A final admission refusal retains the completed
 method result. `DocumentDesignMode` records actual flag changes independently
 from `RangeBoundary` changes, and historical snapshots retain their old values.
 
-A present document element currently reaches the genuine generic focusing
+A present document element currently reaches the generic focusing
 eligibility request. `DomSourceRequest::DesignMode` identifies that action or
 unavailable active-range access; it supplies no acknowledgment or fabricated
 focus result. Positive focus eligibility, movement and reentry require their

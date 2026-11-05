@@ -97,11 +97,11 @@ fn observe(
     assert!(
         line.run_views()
             .all(|run| run.glyphs().all(|glyph| glyph.range() != Range::new(1, 2))),
-        "the genuine CSS TAB original has no provider glyph"
+        "the CSS TAB original has no provider glyph"
     );
     let cells = line.cell_views().collect::<Vec<_>>();
     let [cell] = cells.as_slice() else {
-        panic!("one genuine outer Cell");
+        panic!("one outer Cell");
     };
     assert_eq!(
         cell.source_cell().scope(),
@@ -238,7 +238,7 @@ fn observe(
 
 fn fixed_reference(orientation: LineOrientation) {
     let (mut system, bytes) = resources();
-    // No Cell: the genuine nearest Root Ahem20 supplies SPACE20/T40; A0/A40
+    // No Cell: the nearest Root Ahem20 supplies SPACE20/T40; A0/A40
     // give50. The Cell below must use Inline10/T20, not that outer reference.
     ordinary_control(
         &mut system,

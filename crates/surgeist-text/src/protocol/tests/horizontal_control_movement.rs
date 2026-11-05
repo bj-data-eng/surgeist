@@ -1,4 +1,4 @@
-//! Horizontal movement through genuine control-only formatted lines.
+//! Horizontal movement through control-only formatted lines.
 //! Existing Horizontal public APIs only; no Sideways implementation dependency.
 use super::*;
 use crate::{Affinity, Cursor, Id, LineHeight, Movement, Range, Rect};

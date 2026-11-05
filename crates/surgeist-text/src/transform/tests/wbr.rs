@@ -1,4 +1,4 @@
-//! Literal semantic expectations for genuine, source-less wbr occurrences.
+//! Literal semantic expectations for , source-less wbr occurrences.
 use crate::*;
 
 fn style(operation: WordSpaceTransform, mode: WhiteSpace) -> Style {
@@ -67,7 +67,7 @@ fn plaintext(a: &AnalyzedSource) -> Vec<u16> {
 }
 
 #[test]
-fn genuine_wbr_capability_requires_the_processed_source_executor() {
+fn wbr_capability_requires_the_processed_source_executor() {
     assert!(TextStyleFeature::ALL.contains(&TextStyleFeature::NativeWbr));
     assert_eq!(
         TextStyleFeature::NativeWbr.support(TextStylePhase::ProcessedParagraph),
@@ -314,7 +314,7 @@ fn actual_forced_control_suppression_crosses_neutral_controls_but_not_an_optiona
 }
 
 #[test]
-fn contextual_event_order_retains_the_same_genuine_wbr_cut() {
+fn contextual_event_order_retains_the_same_wbr_cut() {
     let source = Source::identified("AA", Id::from_u64(6308), 12);
     let processed = std::sync::Arc::new(
         process_contextual_source(ContextualSourceInput {

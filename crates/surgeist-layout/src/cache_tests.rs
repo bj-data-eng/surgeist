@@ -1318,7 +1318,7 @@ fn assert_cache_reuses_same_known_authority<S: LayoutScalar>(
         assert_eq!(
             cache.get_with_context(&query, static_cache_context()),
             Some(output),
-            "{run_mode:?}: the same genuine own-known20 makes this axis's operation and external space ineffective"
+            "{run_mode:?}: the same own-known20 makes this axis's operation and external space ineffective"
         );
         assert_eq!(
             cache.get_with_context(&stored, static_cache_context()),

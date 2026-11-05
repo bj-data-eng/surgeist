@@ -1,4 +1,4 @@
-//! Font-independent UBA paragraph state at genuine structural frontiers.
+//! Font-independent UBA paragraph state at structural frontiers.
 //! UAX9 P1 gives each paragraph independent explicit-formatting state; X4 RLO
 //! raises an LTR paragraph to odd level 1 and overrides subsequent body text.
 //! Raw member markers alone are neither paragraph separators nor resets.
@@ -14,7 +14,7 @@ fn origin_event(origin: usize) -> SourceProcessingEvent {
 }
 
 fn request(child_block: bool) -> ContextualSourceInput {
-    // Both controls have IDENTICAL authored UTF-16 and three genuine original
+    // Both controls have IDENTICAL authored UTF-16 and three original
     // occurrences. No PDF, paragraph separator or invented boundary scalar is
     // inserted. Only the actual source/tree domain role of B differs.
     let mut input = super::input("\u{202e}ABA", WhiteSpace::Preserve);

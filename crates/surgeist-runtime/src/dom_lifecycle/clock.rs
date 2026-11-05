@@ -769,7 +769,7 @@ mod tests {
                 assert_eq!(creation.elapsed, Duration::from_nanos(999_999));
                 let (_foreign_session, foreign) = foreign_sample();
                 assert_ne!(foreign.source, creation.source);
-                // Save/restore the genuine candidate around private malformed
+                // Save/restore the candidate around private malformed
                 // raw-input injection; the Source cursor is never replaced.
                 owner
                     .borrow_mut()

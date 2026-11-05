@@ -1,4 +1,4 @@
-//! Closed native presentation for genuine nonexempt control scalars.
+//! Closed native presentation for nonexempt control scalars.
 
 use super::buffer::{hb_buffer_t, GlyphInfo, ShapingRefusal};
 

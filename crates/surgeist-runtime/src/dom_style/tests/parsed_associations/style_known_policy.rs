@@ -460,7 +460,7 @@ fn original_allow_policy_drives_both_invocations_despite_final_canonical_deny() 
 }
 
 #[test]
-fn genuine_known_blocked_decisions_need_no_cssom_owner_and_keep_each_original_policy() {
+fn known_blocked_decisions_need_no_cssom_owner_and_keep_each_original_policy() {
     let (report, processor, first_policy, pop_policy) = parsed(DENY, ALLOW);
     let (mut session, installation) = installed(report);
     let id = installation.pending_association().unwrap();

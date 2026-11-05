@@ -1,4 +1,4 @@
-//! Genuine nonformatted placement eligibility, coverage and source custody.
+//! Nonformatted placement eligibility, coverage and source custody.
 use super::*;
 use crate::{Affinity, Cursor, Hit, LineHeight, Range, SourceProcessingEvent as E};
 use std::sync::Arc;
@@ -460,7 +460,7 @@ fn removed_middle_soft_receipt_preserves_original_selection_between_real_visual_
     assert!(!spaces.has_in_flow_content());
     assert_eq!(spaces.feedback().advance, 0.0);
     assert_eq!(spaces.feedback().line_height, 20.0);
-    // A genuinely distinct selected interval establishes partial coverage;
+    // A distinct selected interval establishes partial coverage;
     // source_after on the same empty Paragraph boundary cannot do that.
     let partial = nf_place(
         &p,
@@ -618,7 +618,7 @@ fn removed_middle_soft_receipt_preserves_original_selection_between_real_visual_
 #[test]
 fn explicit_placement_key_tracks_alignment_and_replays_semantic_requests() {
     // Ahem's A is glyph 35, with 1000/1000 em advance: 10 at size 10.
-    // The genuine LTR line has 40 - 10 = 30 units of alignment free space.
+    // The LTR line has 40 - 10 = 30 units of alignment free space.
     let p = nf_prepare(nf_input("A", WhiteSpace::Preserve));
     let finalize_and_place = |alignment| {
         let mut r = request(&p);

@@ -279,7 +279,7 @@ fn parts(
 }
 
 /// Shared pinned ICU segmentation over the actual requested scalar identities.
-/// Intermediate cuts come only from genuine semantic fences selected by caller.
+/// Intermediate cuts come only from semantic fences selected by caller.
 pub(super) fn units(
     parts: &[Part],
     ids: impl IntoIterator<Item = usize>,

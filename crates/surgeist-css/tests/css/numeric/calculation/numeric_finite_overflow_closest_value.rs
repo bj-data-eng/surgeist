@@ -3,7 +3,7 @@
 //! converts to the closest supported value; an angle converts to the nearest
 //! supported multiple of 360deg.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types
-//! §10.9.1 separately defines genuine infinities: the infinity constants,
+//! §10.9.1 separately defines infinities: the infinity constants,
 //! division by zero, infinite operands and argument combinations defined to
 //! produce them, such as pow(0, -1), log(0) and tan() at an asymptote.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-ieee
@@ -202,7 +202,7 @@ fn conversion_or_arithmetic_keeps_the_binary64_projection() {
 }
 
 #[test]
-fn genuine_infinities_stay_infinite() {
+fn infinities_stay_infinite() {
     for (property, value, expected) in [
         ("width", "calc(infinity * 1px)", "calc(infinity * 1px)"),
         ("width", "calc(-infinity * 1px)", "calc(-infinity * 1px)"),
@@ -244,7 +244,7 @@ fn genuine_infinities_stay_infinite() {
 fn every_accumulation_step_converts_finite_overflow_before_the_next_operand() {
     // Each finite intermediate value is a value the implementation must
     // support, so it converts before meeting the next operand: MAX * 0 is 0,
-    // and MAX - infinity is the genuine -infinity rather than NaN (§10.9.1).
+    // and MAX - infinity is the -infinity rather than NaN (§10.9.1).
     // Grouping therefore cannot change the value class.
     for (property, value, expected) in [
         ("opacity", "calc(1e308 * 2 * 0)", "calc(0)".to_owned()),

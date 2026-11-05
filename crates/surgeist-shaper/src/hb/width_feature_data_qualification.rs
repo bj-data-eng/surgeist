@@ -164,7 +164,7 @@ fn coverage_declared_body_recovery_cannot_turn_a_failed_primary_digest_into_vali
 }
 
 #[test]
-fn multiple_genuine_empty_deletion_is_qualified_but_truncated_declared_sequence_is_not() {
+fn multiple_empty_deletion_is_qualified_but_truncated_declared_sequence_is_not() {
     let feature = WidthFeature::HalfWidth;
     for declared in [0, 0xffff] {
         let mut lookup = multiple(font::A, &[]);
@@ -295,7 +295,7 @@ fn ligature_cached_secondary_digest_cannot_hide_a_visited_bad_candidate_on_obser
 }
 
 #[test]
-fn ligature_genuine_one_component_shortcut_differs_from_truncated_component_recovery() {
+fn ligature_one_component_shortcut_differs_from_truncated_component_recovery() {
     let feature = WidthFeature::HalfWidth;
     for components in [1, 0xffff] {
         let mut lookup = ligature(font::A, font::B, font::R);
@@ -390,7 +390,7 @@ fn contextual_nullable_rule_set_and_empty_rules_are_absent_but_required_decode_f
 }
 
 #[test]
-fn contextual_recovered_class_zero_is_not_genuine_default_class_on_cached_reuse() {
+fn contextual_recovered_class_zero_is_not_default_class_on_cached_reuse() {
     let feature = WidthFeature::HalfWidth;
     for class_format in [2, 99] {
         // Context2 header10; ClassRuleSet10 -> Rule14. That real two-input

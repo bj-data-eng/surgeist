@@ -94,7 +94,7 @@ fn vertical(font: &[u8], metrics: &[(u16, i16)], long_metrics: u16) -> Vec<u8> {
     replace_tables(font, vec![(*b"vhea", vhea), (*b"vmtx", vmtx)])
 }
 
-/// Genuine absence with selected hhea metrics and an independently authored X
+/// Absence with selected hhea metrics and an independently authored X
 /// advance. This fixture deliberately clears USE_TYPO_METRICS.
 pub(crate) fn horizontal(ascent: i16, descent: i16, gap: i16, x_advance: u16) -> Vec<u8> {
     assert!(ascent > descent);
@@ -396,7 +396,7 @@ mod tests {
         fn close(&mut self) {}
     }
     #[test]
-    fn genuine_cff_one_font_parses_draws_and_registers_its_type_two_rectangle() {
+    fn cff_one_font_parses_draws_and_registers_its_type_two_rectangle() {
         let bytes = cff();
         assert_eq!(&bytes[..4], b"OTTO");
         let face = skrifa::FontRef::new(&bytes).unwrap();

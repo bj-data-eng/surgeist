@@ -1,5 +1,5 @@
 //! Functional new body-front expectations, independently derived from the adopted
-//! genuine-source contract, selected Syntax/Nesting/Cascade/Conditional sources,
+//! -source contract, selected Syntax/Nesting/Cascade/Conditional sources,
 //! and existing authored/context/partition contracts.
 use crate::css::support::rules::assert_clean_and_valid as clean;
 use surgeist_css::component::{CssComponentValueRef, CssValueOrigin, CssValueTokenRef};
@@ -26,7 +26,7 @@ fn envelope<'a, T>(
     start: usize,
     end: usize,
 ) -> &'a CssBlockFragment<T> {
-    let fragment = report.syntax().as_ref().expect("retained genuine block");
+    let fragment = report.syntax().as_ref().expect("retained block");
     assert_eq!(fragment.origin().source().as_str(), source);
     assert_eq!(
         fragment.origin().span().start().byte_offset().value(),

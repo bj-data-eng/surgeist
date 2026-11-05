@@ -1129,7 +1129,7 @@ mod tests {
         assert_eq!(dom.state.details_intentions[0], original[1]);
         assert_eq!(dom.state.details_intentions[1], original[4]);
         assert_eq!(dom.state.next_details_intention, next);
-        // A later genuine transition receives the next unused operation once,
+        // A later transition receives the next unused operation once,
         // rather than skipping identities for canceled or retried retirement.
         let mut edit = DomBatch::new();
         edit.set_attribute(survivor, "open", "");

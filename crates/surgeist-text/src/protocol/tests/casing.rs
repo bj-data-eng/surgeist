@@ -169,7 +169,7 @@ fn authored_forced_origin_seam_stops_lithuanian_dot_removal_and_unit_context() {
     use std::sync::Arc;
 
     // Unicode17 SpecialCasing removes Lithuanian dot-above after soft-dotted
-    // text in upper/title context. A genuine authored hard boundary ends that
+    // text in upper/title context. An authored hard boundary ends that
     // context; the receiving standalone mark is still original source.
     for forced in [false, true] {
         let source = Source::new("i\u{307}");
@@ -745,7 +745,7 @@ fn canonical_greek_title_sequences_use_the_same_real_glyph_without_changing_sour
             })
             .unwrap();
         // The fixture's independent None controls qualify both canonical forms
-        // at the title glyph192, with a genuine10px advance.
+        // at the title glyph192, with a 10px advance.
         assert_eq!(ids(&line), [192]);
         assert_eq!(line.feedback().advance, 10.0);
         let origin = p.origin_views().next().unwrap().handle();

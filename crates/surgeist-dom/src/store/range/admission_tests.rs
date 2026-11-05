@@ -1,4 +1,4 @@
-//! Sparse Range capture and genuine Source checkpoint rollback admission.
+//! Sparse Range capture and Source checkpoint rollback admission.
 //! No parser, semantic fact, cursor or receipt is replaced by this harness.
 use super::*;
 use std::mem::size_of;

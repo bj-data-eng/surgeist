@@ -28,7 +28,7 @@ fn input(text: &str) -> ParagraphInput {
     }
 }
 fn prepare(mut input: ParagraphInput) -> PreparedText {
-    // This fixture authors a single genuine wrapping container. Connection
+    // This fixture authors a single wrapping container. Connection
     // and in-flow atomic capture precedes analyzed missing-relation binding.
     let definitions = (0..input.connections.len())
         .map(ParagraphBoundaryDefinition::Connection)
@@ -131,7 +131,7 @@ fn connected_origins_and_effective_instances_share_one_word_but_disconnections_d
 }
 
 #[test]
-fn genuine_atomic_and_forced_barriers_cannot_supply_letters_to_a_discretionary_control() {
+fn atomic_and_forced_barriers_cannot_supply_letters_to_a_discretionary_control() {
     for kind in [InlineBoxKind::OutOfFlow, InlineBoxKind::InFlow] {
         for control_first in [false, true] {
             let mut value = input("AXXXX");

@@ -7,7 +7,7 @@
 //! Source-order accumulation retains the selected binary64 policy. The first
 //! finite-input overflow converts to the supported multiple endpoint E; E minus
 //! binary64(1e308), divided by binary64(1e308), rounds to 0.797693, flat or grouped.
-//! Genuine infinite operands and NaN retain the §10.9.1 exception semantics.
+//! Infinite operands and NaN retain the §10.9.1 exception semantics.
 
 use crate::css::support::failure_classes::SerializationFailure;
 use crate::css::support::failure_classes::serialization_failure;
@@ -63,7 +63,7 @@ fn grouped_angle_replacements_and_finite_cancellation_remain_distinct() {
 }
 
 #[test]
-fn merged_angle_sum_keeps_genuine_infinity_and_nan_exceptions() {
+fn merged_angle_sum_keeps_infinity_and_nan_exceptions() {
     for (source, expected) in [
         (
             "calc((infinity * 1deg + 1e308deg - 1e308deg) / 1e308deg)",

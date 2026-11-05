@@ -350,7 +350,7 @@ pub(super) fn ensure_next(
     }
     Ok(())
 }
-/// None is genuine sealed producer+consumer end, not mere cursor exhaustion.
+/// None is sealed producer+consumer end, not mere cursor exhaustion.
 pub(super) fn remaining(
     dom: &Dom,
     meter: &Meter,

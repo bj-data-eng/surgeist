@@ -42,7 +42,7 @@ pub struct CssParsedKeyframeRule {
 }
 
 impl CssParsedKeyframeRule {
-    /// Borrows the parser-only authored block and genuine declaration positions.
+    /// Borrows the parser-only authored block and declaration positions.
     #[must_use]
     pub const fn block(&self) -> &CssKeyframeBlock {
         &self.block
@@ -83,7 +83,7 @@ impl CssParsedKeyframeRule {
     /// outer at-rules, trailing nontrivia and structural children reject the whole
     /// input. Invalid declarations use normal keyframe recovery and retain admitted
     /// siblings with ordered original diagnostics. Empty blocks are admitted.
-    /// Genuine braces count toward the fixed nesting ceiling; input and component
+    /// Braces count toward the fixed nesting ceiling; input and component
     /// resources share the existing parser owner. Implicit EOF closure is retained
     /// with diagnostics. This supplies no live rule identity or mutation policy.
     ///

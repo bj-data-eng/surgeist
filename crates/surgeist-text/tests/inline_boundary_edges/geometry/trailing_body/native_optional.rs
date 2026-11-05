@@ -99,9 +99,7 @@ fn native_optional_cut_retains_the_same_global_fragment_on_its_closing_suffix() 
             Some(t::PreparedParticipant::Control(actual)) if actual == *optional)
             && !p.boundary_consumes_control(&cut, closing).unwrap()
     });
-    let optional_cut = offers
-        .next()
-        .expect("genuine native optional cut before End");
+    let optional_cut = offers.next().expect("native optional cut before End");
     assert!(offers.next().is_none());
     assert_eq!(optional_cut.view().kind(), t::PreparedBreakKind::Allowed);
     let tail_start = optional_cut.view().boundary();

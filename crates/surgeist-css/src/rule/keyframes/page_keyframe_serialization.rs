@@ -53,7 +53,7 @@ impl SpecifiedRuleWriter {
     }
 
     /// Literal CSSOM uses decoded-name classification and the selected wrapper space.
-    /// The declaration bridge retains the parser's genuine Normal-only sources.
+    /// The declaration bridge retains the parser's Normal-only sources.
     pub(crate) fn keyframes_cssom(
         &mut self,
         rule: &CssKeyframesRule,

@@ -412,7 +412,7 @@ impl HtmlCspProcessorAuthority {
         self.policy_serial = next;
         Ok(result)
     }
-    /// Attest genuine completed processing whose exact prior artifact is unchanged.
+    /// Attest completed processing whose exact prior artifact is unchanged.
     pub fn attest_unchanged_with<E>(
         &mut self,
         request: &HtmlMetaCspRequest,

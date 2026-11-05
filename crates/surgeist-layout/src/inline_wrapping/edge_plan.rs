@@ -666,7 +666,7 @@ pub(super) fn normalize_orders<Node: Copy + Eq, Scope: Clone + Eq>(
             && matches!(boxes[parent].box_, GeneratedBoxRef::Inline(_))
         {
             let actual = inferred_children(boxes, parent)?;
-            // Only genuine scoped identities may lack a physical span. Source
+            // Only scoped identities may lack a physical span. Source
             // claims are authenticated after Text; final captured facts are
             // checked by the same canonical-order owner before admission.
             if children.iter().any(|&(i, _)| {

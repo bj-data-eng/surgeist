@@ -38,7 +38,7 @@ fn covered_zero_font() -> Vec<u8> {
         assert_eq!(sfnt::u16_at(&gsub, sub + 6), prior);
         let coverage = sub + usize::from(sfnt::u16_at(&gsub, sub + 2));
         assert_eq!(&gsub[coverage..coverage + 6], &[0, 1, 0, 1, 0, 35]);
-        // Same genuine one-operand record/length/offsets, now for NBSP153.
+        // Same one-operand record/length/offsets, now for NBSP153.
         gsub[coverage + 4..coverage + 6].copy_from_slice(&153_u16.to_be_bytes());
         gsub[sub + 6..sub + 8].copy_from_slice(&replacement.to_be_bytes());
     }
@@ -184,7 +184,7 @@ fn output(prepared: &PreparedText, line: &FinalizedLine, processed: &ProcessedSo
     close(frame.origin().x, 100.0 + run.origin().x);
     close(frame.origin().y, 28.0);
     let [glyph] = packet.glyphs() else {
-        panic!("one genuine substituted blank glyph");
+        panic!("one substituted blank glyph");
     };
     assert_eq!(
         (glyph.range(), glyph.id(), glyph.advance()),

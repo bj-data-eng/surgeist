@@ -221,7 +221,7 @@ fn one_origin_collapsed_followers_keep_distinct_style_span_gates() {
 }
 
 #[test]
-fn contextual_style_span_gate_survives_casing_and_genuine_wbr_expansion() {
+fn contextual_style_span_gate_survives_casing_and_wbr_expansion() {
     let style = |wrap| text::Style {
         font: text::Font::new().family("Ahem"),
         size: 10.0,

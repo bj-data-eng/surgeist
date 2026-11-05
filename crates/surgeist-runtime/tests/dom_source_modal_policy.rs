@@ -1,4 +1,4 @@
-//! A genuine initial Iframe focus-policy denial ends Dialog focusing before
+//! An initial Iframe focus-policy denial ends Dialog focusing before
 //! target selection: HTML877d3029,24293–24300,60636–60641,46762–46782.
 #![cfg(any(
     target_os = "macos",

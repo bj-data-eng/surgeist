@@ -161,7 +161,7 @@ fn callback_first_binding_survives_original_completion_and_guards_a_later_source
         &handle
     );
     // Source's public root admits one edit. Event observation discarded its
-    // previous Draft; its genuine canceled tail reformed from current Dom.
+    // previous Draft; its canceled tail reformed from current Dom.
     // A later real style invocation must use the callback-created membership.
     let mut lease = dom
         .begin_source_edit(

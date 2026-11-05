@@ -240,7 +240,7 @@ fn intrinsic_and_finite_traversals_keep_separate_actual_owner_frames() {
                     .output()
                     .size
                     .width;
-                // Ahem's genuine pieces are A (10) and AA) (30). Last
+                // Ahem's pieces are A (10) and AA) (30). Last
                 // excludes the closing10: minimum20, maximum40. The
                 // subsequent finite publication is a different real traversal.
                 assert_eq!(width.to_f64(), expected);

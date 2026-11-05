@@ -1,4 +1,4 @@
-//! The genuine relation owner is exercised independently of native Show receipts.
+//! The relation owner is exercised independently of native Show receipts.
 //! Populating a canonical list here does not fabricate completed watcher/focus work.
 use super::*;
 

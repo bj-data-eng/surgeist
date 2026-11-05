@@ -887,7 +887,7 @@ pub(super) enum GroupKind {
     Scope,
     Style,
     Component,
-    // A genuine root brace with body semantics supplied by its direct front.
+    // A root brace with body semantics supplied by its direct front.
     FragmentBody,
     Other,
 }
@@ -1032,7 +1032,7 @@ pub(super) fn preflight_structural_nesting(
 
         let directly_in_group = frames.last().is_none_or(|frame| frame.group.is_some());
         // Syntax 3 (2026 CRD) §5.5.4 consumes every curly block, including a
-        // body fragment's genuine root, with consume a block's contents.
+        // body fragment's authored root, with consume a block's contents.
         let list_context = if groups.is_empty() {
             root_list_context
         } else {
@@ -1082,7 +1082,7 @@ pub(super) fn preflight_structural_nesting(
             .unwrap_or(token_start);
         // Only an actual prelude-free root brace can be a body
         // fragment. Existing rule/style callers have no override. Descendants
-        // retain classification from their genuine authored preludes.
+        // retain classification from their authored preludes.
         let is_fragment_root =
             fragment_body && groups.is_empty() && frames.is_empty() && unit_start == token_start;
         let group = if is_fragment_root {

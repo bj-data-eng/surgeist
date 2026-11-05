@@ -149,7 +149,7 @@ pub(crate) fn prepare(
     let native_count = tables.boundaries.len();
     for (index, section) in analyzed.sections.iter().enumerate() {
         let (start, end) = if analyzed.paragraph.scope_topology.is_none() {
-            // The uncaptured source has its genuine single native section.
+            // The uncaptured source has its single native section.
             // Its incident affinities are independent correspondence facts;
             // whole-source coverage does not replace them with extent values.
             if analyzed.sections.len() != 1 {
@@ -211,7 +211,7 @@ pub(crate) fn prepare(
     }
     // Native opportunities were analyzed on native cuts only. Frontier aliases
     // cannot invent another soft/forced opportunity. All handles are still
-    // private; put genuine cuts in order and remap every existing cut link.
+    // private; put cuts in order and remap every existing cut link.
     let cell_owned = !tables.cells.is_empty();
     let native = std::mem::take(&mut tables.boundaries);
     let mut boundaries = if cell_owned {
@@ -559,7 +559,7 @@ fn admit_boundary_range(
         (None, None) => {}
         (Some(_), Some(_)) => {
             // Capture admits aggregate origins in cursor order. These are the
-            // genuine section frontiers, not an envelope of external pieces or
+            // section frontiers, not an envelope of external pieces or
             // transformed emission order. Removed/expanded material can retain
             // either incident anywhere in this real inclusive source interval.
             let lower = section.entry_cursor.source_after;

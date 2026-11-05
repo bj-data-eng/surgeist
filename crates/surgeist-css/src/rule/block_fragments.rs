@@ -1,11 +1,11 @@
-//! Source-produced envelopes for genuine CSS block fragments.
+//! Source-produced envelopes for CSS block fragments.
 
 use crate::rule::font_feature_values::CssFontFeatureValueKind;
 use crate::selector::CssNamespaceContext;
 use crate::source::CssParsedOrigin;
 use crate::{CssParseReport, CssParser};
 
-/// An admitted grammar-specific body and the origin of its genuine curly block.
+/// An admitted grammar-specific body and the origin of its curly block.
 ///
 /// The origin includes the opening brace and explicit closing brace, or ends at
 /// original EOF for an implicit closure. Surrounding trivia remains in the shared
@@ -183,7 +183,7 @@ pub trait CssBlockBody: crate::sealed::BlockBody {}
 impl<T: crate::sealed::BlockBody> CssBlockBody for T {}
 
 impl<B: CssBlockBody> CssBlockFragment<B> {
-    /// Parses exactly one genuine curly block as the grammar of the body type `B`.
+    /// Parses exactly one curly block as the grammar of the body type `B`.
     ///
     /// Outer whitespace and comments are accepted and lie outside the origin of
     /// the block; a missing brace or trailing nontrivia rejects the complete
@@ -242,7 +242,7 @@ impl<B: CssBlockBody> CssBlockFragment<B> {
 }
 
 impl CssBlockFragment<crate::rule::font_feature_values::CssFontFeatureValueBlock> {
-    /// Parses exactly one genuine curly block as the definition grammar of a
+    /// Parses exactly one curly block as the definition grammar of a
     /// `@font-feature-values` feature of the supplied kind.
     ///
     /// The kind is chosen by the calling code, never by the CSS input. The block,

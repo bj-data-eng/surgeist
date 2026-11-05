@@ -1,4 +1,4 @@
-//! Identity-index admission only. Native Documents are genuine payload IDs;
+//! Identity-index admission only. Native Documents are payload IDs;
 //! these fixtures do not certify hosted Documents, agents, loops or services.
 use super::*;
 use std::sync::{

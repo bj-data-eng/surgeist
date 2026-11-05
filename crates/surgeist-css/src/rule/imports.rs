@@ -29,7 +29,7 @@ pub(crate) struct ImportSyntax {
 /// A checked borrowed import with a supplied current rule-owned media list.
 ///
 /// The original rule supplies its checked target, layer and supports clauses and
-/// genuine provenance. The supplied media replaces only the formatting input;
+/// provenance. The supplied media replaces only the formatting input;
 /// no authored rule, live identity, URL resolution or source position is created.
 #[derive(Clone, Copy, Debug)]
 pub struct CssImportRuleView<'a> {

@@ -98,7 +98,7 @@ impl Lineage {
                 account::work(ledger, 1)?;
                 let default_ignorable = default_ignorables.contains32(normal);
                 // A surviving Normal DI root needs its own width action. Keep
-                // its genuine attachment distinct from permission to inherit,
+                // its attachment distinct from permission to inherit,
                 // so a covered attached DI cannot become a false base donor.
                 let provider = !tabs.contains(atom, ledger)?;
                 account::push(

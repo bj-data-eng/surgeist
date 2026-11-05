@@ -133,7 +133,7 @@ fn offer(
         .find(|offer| offer.kind() == kind && offer.boundary().view().source_after().get() == cut)
         .unwrap_or_else(|| {
             panic!(
-                "missing genuine {kind:?} at source{cut}; offers {:?}",
+                "missing {kind:?} at source{cut}; offers {:?}",
                 prepared
                     .opportunity_views()
                     .map(|offer| (offer.kind(), offer.boundary().view().source_after().get()))
@@ -555,7 +555,7 @@ fn new_modes_distinguish_host_cr_delimiters_from_ordinary_cr_space() {
 }
 
 #[test]
-fn preserve_breaks_collapses_across_genuine_inline_origins_and_transparent_bidi_controls() {
+fn preserve_breaks_collapses_across_inline_origins_and_transparent_bidi_controls() {
     let mut request = input(
         "A \t\n B\n\nC",
         style(t::WhiteSpace::PreserveBreaks, t::Wrap::Word),
@@ -874,7 +874,7 @@ fn captured_trim_runs_before_preserve_breaks_collapse_and_full_width_copy_stays_
             .map(|glyph| (glyph.0, glyph.1))
             .collect::<Vec<_>>(),
         // Collapsible original SPACE does not qualify for full-width. The
-        // genuine transformed letters do, and retain distinct actual glyphs.
+        // transformed letters do, and retain distinct actual glyphs.
         [(277, 10.0), (3, 10.0), (274, 10.0)]
     );
     place_and_copy(p, vec![line], t::Range::new(0, 9), "a b");
@@ -914,7 +914,7 @@ fn preserve_spaces_and_discard_keep_closed_mode_semantics_and_plaintext_ordering
         p.analyzed_source().processed_source().processed_text(),
         &t::Text::from("ab")
     );
-    // Surviving full-width letters retain their genuine ordinary opportunities;
+    // Surviving full-width letters retain their ordinary opportunities;
     // Discard must not manufacture a disappearing-whitespace opportunity.
     assert!(cuts(&p, t::PreparedBreakKind::Forced).is_empty());
     let line = whole(&p, Some(100.0));
@@ -1315,7 +1315,7 @@ fn check_style_source_seam(case: &SeamCase<'_>, direction: t::ParagraphBaseDirec
     );
     assert!(
         brushes.iter().any(|brush| *brush != first_brush),
-        "a genuinely different neighboring style reaches finalized runs"
+        "a different neighboring style reaches finalized runs"
     );
     assert_eq!(
         glyphs(&full)

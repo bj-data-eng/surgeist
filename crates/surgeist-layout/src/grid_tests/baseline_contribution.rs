@@ -108,7 +108,7 @@ fn assert_box<S: LayoutScalar>(
     assert_eq!(
         (output.border, output.padding, output.margin),
         (Edges::ZERO, Edges::ZERO, Edges::ZERO),
-        "{case:?} node={id}: genuine zero edges"
+        "{case:?} node={id}: zero edges"
     );
     let geometry = output.scroll_geometry.unwrap();
     assert_eq!(geometry.border_box().origin(), Point::ZERO);

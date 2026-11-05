@@ -339,7 +339,7 @@ fn symbolic_percentages_preserve_authored_math_without_range_evaluation() {
 }
 
 #[test]
-fn selector_depth_and_genuine_rule_body_share_the_fixed_parser_ceiling() {
+fn selector_depth_and_rule_body_share_the_fixed_parser_ceiling() {
     let at_limit = format!("calc({}1%{})", "(".repeat(255), ")".repeat(255));
     assert!(CssParsedKeyframeSelectors::parse(&CssParser::default(), &at_limit).is_clean());
     let past_limit = format!("calc({}1%{})", "(".repeat(256), ")".repeat(256));

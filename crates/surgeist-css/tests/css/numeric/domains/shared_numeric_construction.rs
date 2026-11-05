@@ -1,6 +1,6 @@
 //! Shared authored numeric domains, exercised through functional public APIs.
 //! Exact retention is the adopted Surgeist contract; ordinary cubic-bezier X
-//! has the Easing 1 inclusive [0,1] range and genuine math remains deferred.
+//! has the Easing 1 inclusive [0,1] range and math remains deferred.
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types
 //! https://www.w3.org/TR/2023/CRD-css-easing-1-20230213/#cubic-bezier-easing-functions
 

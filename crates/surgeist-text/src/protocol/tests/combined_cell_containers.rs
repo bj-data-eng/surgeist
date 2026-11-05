@@ -764,7 +764,7 @@ fn asymmetric_alphabetic_reference_matches_once_after_central_cell_centering() {
         enclosing.matching_coordinate(FontBaseline::Alphabetic),
         Some(-10.0)
     );
-    // Genuine consuming protocol client: resolve the actual selected receipts.
+    // Consuming protocol client: resolve the actual selected receipts.
     // The independent table equation is(4-14)-(2-7)=-10-(-5)=-5.
     let matched = BaselineShift::try_new(
         enclosing

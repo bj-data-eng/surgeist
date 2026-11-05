@@ -210,7 +210,7 @@ fn actual_language_script_and_region_choose_only_applicable_conventions() {
 fn reordered_emissions_retain_rows_and_do_not_normalize_away_a_real_removal() {
     let mapper = Mapper::new().unwrap();
     // Precomposed alpha+psili+ypogegrammeni emits ALPHA, psili, IOTA.
-    // The separate acute remains root-uppercase; the later psili is genuinely
+    // The separate acute remains root-uppercase; the later psili is
     // removed by its own Greek-uppercase rule. Row0's IOTA follows the whole
     // original combining sequence, so its output is noncontiguous.
     let input = [0x1f80, 0x301, 0x313];

@@ -1,4 +1,4 @@
-//! A genuinely outside ordinary cut dominates the attractive inside tail repair.
+//! An outside ordinary cut dominates the attractive inside tail repair.
 use super::*;
 
 fn scope_before_quality<S: l::LayoutScalar>() {

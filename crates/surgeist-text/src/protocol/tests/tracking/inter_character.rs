@@ -1,4 +1,4 @@
-//! Functional native InterCharacter qualification over genuine selected bases.
+//! Functional native InterCharacter qualification over selected bases.
 use super::fixtures::{abc_premises, allocations, assert_cells, ligature_font, select_method};
 use super::*;
 use crate::{

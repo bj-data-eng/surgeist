@@ -634,7 +634,7 @@ fn physical_sibling_endpoints_inside_shared_mark_unit_admit_zero_and_positive_ed
     assert_eq!(
         actual,
         (expected.clone(), expected),
-        "genuine paired endpoint chronology must be accepted without weakening binding validation"
+        "paired endpoint chronology must be accepted without weakening binding validation"
     );
 }
 

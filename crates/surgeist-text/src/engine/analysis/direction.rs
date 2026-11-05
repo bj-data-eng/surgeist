@@ -24,7 +24,7 @@ struct BodyContext {
     section: usize,
 }
 
-/// Canonical body analysis, with genuine structural section ownership.
+/// Canonical body analysis, with structural section ownership.
 pub(crate) struct DirectionBody {
     owners: Vec<BidiOwner>,
     eligible: Vec<bool>,
@@ -130,7 +130,7 @@ impl DirectionBody {
                     return Err(invalid());
                 }
                 if range.start == index {
-                    // A genuine source cell owns one bidi contribution, even
+                    // A source cell owns one bidi contribution, even
                     // when all of its payload was suppressed. Its owner/body
                     // summary survives an empty logical participant interval.
                     if range.is_empty() {
@@ -384,7 +384,7 @@ mod tests {
     use crate::protocol::paragraph::{ParagraphAnchor, ParagraphAnchorItem};
 
     /// Actual child InlineAll SPACE followed by an ordinary EN. The cell's
-    /// source SPACE is removed only by its own inner edges. Optional genuine
+    /// source SPACE is removed only by its own inner edges. Optional
     /// captured isolate controls surround that cell, outside its owned parts.
     fn source_zero_cell(isolate: Option<bool>) -> crate::AnalyzedSource {
         use crate::*;

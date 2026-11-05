@@ -129,7 +129,7 @@ pub(crate) fn mixed_units(
 }
 
 /// Uses actual analysis styles and caller-owned occurrence/provenance facts.
-/// `content` is evaluated only for a genuine source-script capability failure.
+/// `content` is evaluated only for a source-script capability failure.
 pub(crate) fn units(
     projection: &SourceProjection,
     analysis: &Analysis,

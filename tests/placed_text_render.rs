@@ -914,7 +914,7 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
             })
         );
     };
-    // Both emissions have genuine source-empty occurrences at the same source
+    // Both emissions have source-empty occurrences at the same source
     // endpoint on distinct lines. Retain issued positions for those exact edges.
     let seam_positions = if placement == text::HyphenationPlacement::BothSides {
         assert_ambiguous(placed.cursor(seam).unwrap_err());

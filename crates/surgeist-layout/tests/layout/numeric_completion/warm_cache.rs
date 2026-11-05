@@ -103,7 +103,7 @@ impl<S: l::LayoutScalar> CachedNumeric<S> {
             boundary(direction, l::InlineBoundaryKind::End),
         ];
         if with_leaf {
-            // A genuine Block separator outside the phantom inline run, NOT an
+            // A Block separator outside the phantom inline run, NOT an
             // atomic participant that would itself make that line formatted.
             participants.push(l::LayoutInputOf::box_input(l::NodeInputOf {
                 display: l::Display::Block,
@@ -336,7 +336,7 @@ fn numeric_cache_policy<S: l::LayoutScalar>(direction: l::Direction, with_leaf: 
             cold.cache_store_entries()
                 .iter()
                 .any(|entry| entry.node() == 3),
-            "genuine eligible leaf producer stores seed the host cache"
+            "eligible leaf producer stores seed the host cache"
         );
     }
     cold.apply_to(&mut host).unwrap();
@@ -354,7 +354,7 @@ fn numeric_cache_policy<S: l::LayoutScalar>(direction: l::Direction, with_leaf: 
     assert_same_numeric_outputs(&nominal, &nominal_fresh, host.actual.inputs.len());
     nominal.apply_to(&mut host).unwrap();
     // The refresh itself need not hit the sibling cache: keys/contexts may
-    // differ. A repeated SAME phase after publication must genuinely hit it.
+    // differ. A repeated SAME phase after publication must hit it.
     let nominal_repeated = repeat_after_publication(&mut host, direction, false);
     assert_same_numeric_outputs(&nominal_fresh, &nominal_repeated, host.actual.inputs.len());
 

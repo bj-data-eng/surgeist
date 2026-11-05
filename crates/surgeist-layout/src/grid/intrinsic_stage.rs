@@ -501,7 +501,7 @@ pub(super) fn finish_axis_track_phases<Node: Copy, S: LayoutScalar, M>(
     .map_err(|error| grid_track_sizing_error(node, error))
 }
 
-// A genuine constraint change recomputes from retained normalized inputs. Any
+// A constraint change recomputes from retained normalized inputs. Any
 // changed basis/gutter/opposite frame instead needs fresh owning collection.
 pub(super) fn reduce_axis_track_inputs<Node: Copy, S: LayoutScalar, M>(
     node: Node,
@@ -769,7 +769,7 @@ where
     )
 }
 
-// All adapters use the same genuine per-role opposite-axis/source preparation.
+// All adapters use the same per-role opposite-axis/source preparation.
 pub(super) fn intrinsic_role_grid<'input, 'a, Node: Copy, S: LayoutScalar>(
     grid: IntrinsicGrid<'input, 'a, Node, S>,
     frame: IntrinsicStageFrame<'a, S>,

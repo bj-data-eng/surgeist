@@ -53,7 +53,7 @@ impl CssCounterStyleRule {
         }
     }
 
-    /// Borrows the genuine original name token, before predefined-name normalization.
+    /// Borrows the original name token, before predefined-name normalization.
     /// Semantic construction does not invent a parsed source origin.
     #[must_use]
     pub const fn parsed_name(&self) -> Option<&CssParsedOrigin> {

@@ -1745,7 +1745,7 @@ impl<S: LayoutScalar> NumericCandidatePreference<S> {
             None => match goal {
                 LineQualityGoal::Balance(_) => return Err(invalid),
                 // A nonformatted completion has no optional quality measure;
-                // it still retains its genuine ordinary completion semantics.
+                // it still retains its ordinary completion semantics.
                 LineQualityGoal::Tail(_) => LineQualityKey::Tail(None),
                 LineQualityGoal::Body(_) => LineQualityKey::Body(None),
             },
@@ -2012,7 +2012,7 @@ fn select_scope_inline_line<S: LayoutScalar>(
     };
     // A source-prefix overflow cannot choose a BoxEdge fallback: a later
     // selected negative edge may retract that prefix. The legal-candidate walk
-    // below retains its genuine first overflowing candidate instead.
+    // below retains its first overflowing candidate instead.
     let fallback = if canonical_completion {
         None
     } else {
@@ -2924,7 +2924,7 @@ where
                 .next_transition
                 .filter(|transition| transition.is_finite() && *transition > block_cursor)
         {
-            // An indivisible first group cannot fit this genuine float band.
+            // An indivisible first group cannot fit this float band.
             // Re-select at its next real transition; an ordinary fitting break
             // above already remains selected and does not enter this retry.
             block_cursor = next_transition;

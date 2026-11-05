@@ -539,7 +539,7 @@ fn hosted_producer_storage_scratch_and_actual_three_visits_refuse_before_observa
     }
 }
 
-// Genuine caller-owned temporary allocation used only to establish the canonical
+// Caller-owned temporary allocation used only to establish the canonical
 // baseline. The byte oracle under test is the independent producer struct size.
 // Value precedes guard so its physical backing disappears before its debit.
 struct Filler {

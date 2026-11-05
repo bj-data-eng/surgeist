@@ -357,7 +357,7 @@ impl DomStyleSheetSetObservation {
         self.revision
     }
     /// Actual producer owner/revision inspected or jointly published. Ordered
-    /// native transitions share the genuine final producer publication basis.
+    /// native transitions share the final producer publication basis.
     pub fn cssom_revision(&self) -> &surgeist_cssom::CssomRevision {
         &self.cssom_revision
     }
@@ -573,7 +573,7 @@ impl StyleState {
     }
 }
 impl DomStyleRuntime {
-    /// Read genuine current names from an actual bound Document owner, including
+    /// Read current names from an actual bound Document owner, including
     /// an empty list. Standalone preference fronts require idle Source custody.
     pub fn sheet_sets(
         &self,

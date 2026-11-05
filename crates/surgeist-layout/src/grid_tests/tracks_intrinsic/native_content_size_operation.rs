@@ -47,7 +47,7 @@ fn query_content_subject<S: LayoutScalar>(
     let mut session = crate::engine::ComputeSession::new(tree, Vec::new());
     session
         .compute_child(0, input)
-        .expect("the genuine native Grid query completes")
+        .expect("the native Grid query completes")
 }
 
 fn content_operation<S: LayoutScalar>(

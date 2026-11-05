@@ -286,7 +286,7 @@ fn fragmented_mixed_groups<S: LayoutScalar>() {
         );
     }
     // Actual atomic following cuts produce four one-box fragments. All three
-    // boxes genuinely continue across every fragment. Middle lines contain no
+    // boxes continue across every fragment. Middle lines contain no
     // local endpoints, so their used struts must come from the SAME box facts.
     // Baseline12/8 + Top30 gives [0,30] about baseline12; Bottom40 extends
     // line-over by10. Final baseline22, extent40, atomic top22-10=12.

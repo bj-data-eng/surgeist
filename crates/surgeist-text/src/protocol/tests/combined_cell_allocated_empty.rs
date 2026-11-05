@@ -79,7 +79,7 @@ fn output(prepared: &PreparedText, line: &FinalizedLine, text: &str, font: &[u8]
             1.0 / 3.0,
         ),
         " " => (vec![], 1.0),
-        _ => unreachable!("closed genuine fixture set"),
+        _ => unreachable!("closed fixture set"),
     };
     assert_eq!(raw, expected);
     let placed = placed_cell(prepared, line.clone(), font, scale);

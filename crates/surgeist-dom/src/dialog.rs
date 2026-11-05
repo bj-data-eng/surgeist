@@ -200,7 +200,7 @@ pub(crate) enum DocumentInteractiveState<K> {
     Unavailable,
 }
 impl<K> DocumentInteractiveState<K> {
-    /// Called only for a genuinely new owned Document whose exact report row
+    /// Called only for a new owned Document whose exact report row
     /// establishes its complete noninteraction prefix. This never qualifies an
     /// existing captured Document or resets its historical list contents.
     pub(crate) fn from_parsed<'a>(

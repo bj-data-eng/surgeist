@@ -317,7 +317,7 @@ impl CssKeyframeDeclarationList {
 
     /// Emits the CSSOM declaration block under the same closed keyframe grammar.
     ///
-    /// Preserves genuine parser sources while construction and output share one budget.
+    /// Preserves parser sources while construction and output share one budget.
     pub fn serialize_cssom(
         &self,
         limits: crate::serialization::CssSerializationLimits,
@@ -357,7 +357,7 @@ pub struct CssKeyframeDeclaration {
     source: NormalParsedKeyframeCssDeclaration,
 }
 
-/// Parser-only proof: a genuine parsed, normal, admitted keyframe occurrence.
+/// Parser-only proof: a parsed, normal, admitted keyframe occurrence.
 #[derive(Clone, Debug)]
 struct NormalParsedKeyframeCssDeclaration(CssDeclaration);
 

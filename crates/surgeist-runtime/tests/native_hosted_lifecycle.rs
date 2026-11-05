@@ -1418,7 +1418,7 @@ fn unsupported_child_navigable_and_svg_processing_profiles_refuse_connection_ato
             assert_eq!(dom.snapshot().stamp(), before.stamp());
             assert_eq!(dom.usage(), usage);
         }
-        // A genuine closed creator can initialize the native node. Adoption
+        // A closed creator can initialize the native node. Adoption
         // retains that state, but connection must qualify its CURRENT Doc.
         let node = {
             let mut dom = session.dom();
@@ -2156,7 +2156,7 @@ fn assert_retired_adoption_destination(
     );
     assert_eq!(document.metadata().custom_element_registry(), binding);
     let DomRegistryBinding::Registry(id) = binding else {
-        panic!("the genuine hosted destination retains its nonnull registry");
+        panic!("the hosted destination retains its nonnull registry");
     };
     let registry = snapshot.registry(id).unwrap();
     assert_eq!(

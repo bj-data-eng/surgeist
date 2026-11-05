@@ -206,7 +206,7 @@ fn metric_rect(
     )
 }
 
-// Both callers qualify the genuine retained frame before entering this mapper.
+// Both callers qualify the retained frame before entering this mapper.
 // The original whole-cluster advance stays independent of its rounded end;
 // directed Range edges instead supply their own actual coordinate difference.
 fn font_metric_rect(
@@ -265,7 +265,7 @@ fn font_metric_rect(
     );
     metric_hull(points, math)
 }
-/// Map genuine directed inner-horizontal metric edges through an actual placed
+/// Map directed inner-horizontal metric edges through an actual placed
 /// Cell. These are metric coordinates; only their complete mapped spans are
 /// required displacements. No provider cluster or new baseline is constructed.
 pub(crate) fn placed_metric_rect(

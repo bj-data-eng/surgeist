@@ -2,7 +2,7 @@
 //! from §10.9.1's defined infinities. An unrepresentable finite angle converts
 //! to the nearest supported multiple of 360deg; sin/tan of that angle is zero
 //! and cos is one. Division by zero and specified function exceptions instead
-//! produce genuine infinity, whose trigonometric result remains NaN (§10.4.1).
+//! produce infinity, whose trigonometric result remains NaN (§10.4.1).
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#numeric-types
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#calc-ieee
 //! https://www.w3.org/TR/2024/WD-css-values-4-20240312/#trig-infinities

@@ -7,7 +7,7 @@ fn source(text: &str, script: Script) -> JoiningSource {
 }
 fn input(text: &str, script: Script) -> UnicodeBuffer {
     let mut input = UnicodeBuffer::new();
-    // Genuine colliding cluster values must never merge scalar identities.
+    // Colliding cluster values must never merge scalar identities.
     for ch in text.chars() {
         input.add(ch, 0);
     }

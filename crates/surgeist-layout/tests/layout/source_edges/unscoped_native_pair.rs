@@ -4,7 +4,7 @@ use super::*;
 fn unscoped_native_pair_input(direction: layout::Direction) -> text::ContextualSourceInput {
     use text::SourceProcessingEvent as E;
     let mut raw = paired_source(direction);
-    raw.scopes.truncate(1); // The genuine Block domain remains; no InlineScope.
+    raw.scopes.truncate(1); // The Block domain remains; no InlineScope.
     raw.events
         .retain(|event| !matches!(event, E::EnterScope(1) | E::ExitScope(1)));
     raw.computed_line_boundaries.clear();

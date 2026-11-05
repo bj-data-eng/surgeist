@@ -40,7 +40,7 @@ outputs have not joined this admission retain their strict Source-idle guard.
 They preserve pending obligations for later service.
 
 Canceling beforetoggle is a normal HTML return, distinct from canceling the
-Source operation. If the callback retires the receiver, genuine event
+Source operation. If the callback retires the receiver, event
 cancellation completes without reading it again. An uncanceled post-event read
 instead reports the original receiver's retirement. QueueToggle publishes the
 real task and canonical tracker through the original bound DOM-manipulation
@@ -151,7 +151,7 @@ runs the HTML-owned delegate protocols with two separate ordinary-descendant
 passes. An admitted indexed ancestor stack preserves preorder with linear work
 and storage proportional to depth. Actual shadow-root selection follows the
 producer; ordinary traversal does not enter shadow or hosted relations implicitly.
-An empty descendant domain genuinely completes both scans and selects the subject.
+An empty descendant domain completes both scans and selects the subject.
 Unknown focusability or called-area resolution retains a `FocusDelegate` request
 with its actual root, queried node, step and original operation occurrence.
 Checkpoint refusal, cancellation and lease replacement preserve the original
@@ -162,7 +162,7 @@ focusing without changing focus when the subject has applicable own `inert`
 and actual non-root, nondelegating state. The shared HTML rule covers the
 subject's own scroll regions; it supplies no geometry or guessed focusability.
 The child then reads the selected control's actual current top Document and
-compares origins. A genuine origin difference completes it before autofocus
+compares origins. An origin difference completes it before autofocus
 writes. For the same origin, the child clears that captured top Document's
 actual candidates, sets its processed flag and completes. Missing no-change proof
 waits at `RunFocusingSteps`. Positive focus movement and restoration remain unavailable.
@@ -226,7 +226,7 @@ close method with its actual null source. An omitted result preserves returnValu
 a supplied empty string writes empty. The original HTML cursor orders authentic
 noncancelable beforetoggle, the postcallback open read, toggle publication,
 complete open-removal/watcher hooks and result/request-state updates. A surviving
-callback that removes open supplies the genuine early return. Known previous-focus
+callback that removes open supplies the early return. Known previous-focus
 absence reaches actual final Close task publication. Modal Close requests deferred
 top-layer removal and clears the modal flag; unsupported focus restoration
 retains its precise action wait. Method Complete requires the
@@ -238,7 +238,7 @@ return at their actual source guards. Otherwise the original Source continuation
 captures the real watcher, enables it for the request and writes the nullable
 request operands before invoking the watcher. The watcher fires an actual
 cancelable plain `cancel` event. A normal watcher result always precedes the
-literal final force=false write, including genuine cancellation. Cancellation
+literal final force=false write, including cancellation. Cancellation
 does not clear the request slots or undo callback edits.
 
 Source retains both HTML cursors and invokes the existing Close frame when the
@@ -250,7 +250,7 @@ fresh enabled check can consequently skip Close. Omitted and supplied-empty
 request values remain distinct throughout.
 
 For a modal Dialog, computed Auto still enables Close Request after that force
-reset, while explicit `closedby="none"` can stop the outer Close. Genuine Cancel
+reset, while explicit `closedby="none"` can stop the outer Close. Cancel
 prevention preserves modal state; an uncanceled nested Close performs the same
 deferred top-layer removal and independent notification queuing described above.
 
@@ -269,7 +269,7 @@ Neither path fabricates a normal nested Close return or event receipt.
 `DomSourceEdit::show_modal_dialog(receiver)` runs the standard null-source
 ShowModal prefix. Initial invalid-state checks precede real cancelable
 beforetoggle; after an uncanceled event it checks current open, connection and
-popover-showing state without repeating the activity guard. Genuine canceled
+popover-showing state without repeating the activity guard. Canceled
 and post-event early-return branches can complete. The positive prefix queues
 the actual toggle and adds open through its complete ordinary hooks. After the
 valid watcher assertion, one callback-free canonical phase sets the modal flag,
@@ -279,7 +279,7 @@ observation. An already-raw Dialog takes the source's literal skip-Add branch,
 including when pending removal. Supported remembered-focus and empty-popover
 branches reach `RunDialogFocusingSteps`. Proven allow-focus denial can complete
 the method without selecting or moving focus. Unknown inputs or positive
-focusing retain the genuine wait and incomplete Source marker; structural modal
+focusing retain the wait and incomplete Source marker; structural modal
 publication alone does not certify completion.
 
 `DomDocument::top_layer()` borrows immutable raw membership, pending removals

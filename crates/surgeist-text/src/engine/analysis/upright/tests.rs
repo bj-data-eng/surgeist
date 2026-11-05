@@ -437,7 +437,7 @@ fn intrinsic_mixed_set_checks_every_style_in_the_complete_arrangement_unit() {
                 ..
             })
         ),
-        "a genuine later missing context is retained instead of masking it with an earlier conflict"
+        "a later missing context is retained instead of masking it with an earlier conflict"
     );
 }
 

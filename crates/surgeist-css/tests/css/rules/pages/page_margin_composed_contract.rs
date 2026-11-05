@@ -73,7 +73,7 @@ fn page_list(body: &str, front: usize) -> CssDeclarationList {
                 &CssBlockContext::default(),
             );
             clean(&report);
-            let fragment = report.syntax().as_ref().expect("genuine Page body");
+            let fragment = report.syntax().as_ref().expect("Page body");
             for declaration in fragment.body().declarations().properties().as_slice() {
                 assert_eq!(declaration.parser_context(), context);
             }

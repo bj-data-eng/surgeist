@@ -64,10 +64,7 @@ fn tree<S: LayoutScalar>(width: Option<f64>) -> PublicLayoutTreeOf<S> {
 
 fn output<S: LayoutScalar>(entries: &[LayoutOutputEntryOf<u32, S>], node: u32) -> NodeOutputOf<S> {
     let mut matching = entries.iter().filter(|entry| entry.node() == node);
-    let output = matching
-        .next()
-        .expect("every genuine box is published")
-        .output();
+    let output = matching.next().expect("every box is published").output();
     assert!(
         matching.next().is_none(),
         "one actual geometry entry per box"

@@ -133,7 +133,7 @@ fn source<S: LayoutScalar>(overflow: Overflow) -> ThirteenContent<S> {
                 ..NodeInputOf::default()
             },
         );
-    // Genuine empty Flex boxes have zero intrinsic demand. Stretch later makes
+    // Empty Flex boxes have zero intrinsic demand. Stretch later makes
     // their actual border boxes observable markers of all13 track allocations.
     for index in 0..13 {
         tree = tree.children(index + 2, []).style(

@@ -96,7 +96,7 @@ fn check_html_token(html: &str, kind: CssTokenKind) {
         })
         .collect();
 
-    // Run the genuine root control before any nested assertion can fail.
+    // Run the root control before any nested assertion can fail.
     // At the real stylesheet root only, both HTML tokens are discarded.
     let source = format!("{} .kept{{color:blue}}", html_unit(html, 0));
     let report = CssParser::default().parse_sheet(&source);

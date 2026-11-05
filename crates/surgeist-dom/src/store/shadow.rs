@@ -101,7 +101,7 @@ impl Draft {
             return Err(DomError::NotSupported);
         }
         // The controlled complete-empty Global and Null domains both retain a
-        // genuine no-definition result; binding identity remains independent.
+        // no-definition result; binding identity remains independent.
         debug_assert_eq!(
             element.custom_element_definition(),
             crate::DomElementDefinition::Null

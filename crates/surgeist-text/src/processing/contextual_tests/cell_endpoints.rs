@@ -1,4 +1,4 @@
-//! Genuine Inline endpoints remain exterior to accepted combined Cells.
+//! Inline endpoints remain exterior to accepted combined Cells.
 #[cfg(feature = "text-accessibility")]
 #[path = "cell_accessibility.rs"]
 mod accessibility;
@@ -74,7 +74,7 @@ fn analyze(value: ContextualSourceInput) -> (Arc<ProcessedSource>, AnalyzedSourc
 }
 
 fn prepare(analyzed: &AnalyzedSource) -> (System, PreparedText, Vec<u8>) {
-    // CW genuinely consumes horizontal metrics; no vertical font/BASE fiction.
+    // CW consumes horizontal metrics; no vertical font/BASE fiction.
     // The maintained mark fixture is also used by shared_unit_endpoints tests.
     let bytes = crate::shaping_test_fonts::mark_ahem();
     let font = skrifa::FontRef::new(&bytes).unwrap();

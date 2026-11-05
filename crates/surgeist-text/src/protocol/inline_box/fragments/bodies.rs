@@ -329,7 +329,7 @@ pub(super) fn prepare(
         }
     }
     presence.truncate(retained);
-    // Reversed genuine entry order lets continuation insertions at the same
+    // Reversed entry order lets continuation insertions at the same
     // body-start cut preserve Source box order, independently of numeric IDs.
     crate::processing::contextual::alignment::operations::order_by(
         &mut presence,

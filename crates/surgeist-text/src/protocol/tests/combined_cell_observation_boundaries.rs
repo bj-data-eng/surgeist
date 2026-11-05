@@ -1,4 +1,4 @@
-//! Native Cells expose genuine inner Range geometry; placed AX remains separate.
+//! Native Cells expose inner Range geometry; placed AX remains separate.
 //! Their intrinsic horizontal payload is distinct from the executed outer square;
 //! global placement bounds still describe that actual one-em square.
 

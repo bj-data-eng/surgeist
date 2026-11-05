@@ -136,7 +136,7 @@ pub struct TextParagraphBinding<Node> {
     pub origins: Vec<TextOriginBinding<Node>>,
     pub atomics: Vec<TextAtomicBinding<Node>>,
     pub controls: Vec<TextControlBinding<Node>>,
-    /// Genuine normalized line allocation, when the caller supplies one.
+    /// Normalized line allocation, when the caller supplies one.
     /// Absence never guesses an empty/default font or a zero-size line.
     pub line_strut: Option<surgeist_text::LineStrut>,
 }

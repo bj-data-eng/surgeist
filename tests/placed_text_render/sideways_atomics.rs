@@ -509,5 +509,5 @@ fn registered_chi_ink_is_asymmetric_before_clockwise_or_horizontal_placement() {
     );
     // Scene command transforms are private to Render. Its owning sideways
     // tests execute this stripe's CW transform and noncommuting outer scale;
-    // the Root tests above qualify the genuine composed input to that adapter.
+    // the Root tests above qualify the composed input to that adapter.
 }

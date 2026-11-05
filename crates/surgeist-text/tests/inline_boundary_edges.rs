@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 //! Endpoint custody and independently authored native edge geometry.
-//! Genuine contextual scope/control capture and registered Ahem exercise the
+//! Contextual scope/control capture and registered Ahem exercise the
 //! public prepare/select/finalize path. The original custody fixtures supply
 //! affirmative zero edges; geometry fixtures supply their declared used widths.
 
@@ -136,7 +136,7 @@ fn prepare_capture(
         t::AnalysisTypography::HorizontalComposition,
     )
     .unwrap();
-    // Every relation here has the same genuinely captured enclosing block's
+    // Every relation here has the same captured enclosing block's
     // computed Word wrapping policy; no permission is inferred from width.
     let policies = analyzed
         .wrapping_relations()
@@ -194,7 +194,7 @@ fn capture(
         AHEM,
     );
     // Qualify the real registered resource through complete final shaping
-    // before testing an attachment cut. Both X and Y have genuine Ahem ink.
+    // before testing an attachment cut. Both X and Y have Ahem ink.
     let mut ink_ranges = Vec::new();
     let mut complete_controls = Vec::new();
     let mut start = prepared.boundary_views().next().unwrap().handle();
@@ -441,7 +441,7 @@ fn assert_closing(value: &str) {
         .into_iter()
         .map(|offer| observe(&prepared, offer))
         .collect::<Vec<_>>();
-    // The permitted box-edge offer owns the genuine closing event, not just
+    // The permitted box-edge offer owns the closing event, not just
     // an equal numeric source offset. No competing pre-End offer may evade it.
     assert_eq!(
         actual,
@@ -747,7 +747,7 @@ fn source_free_bidi_before_end_cannot_strand_the_captured_closing_endpoint() {
         actual
             .iter()
             .all(|cut| cut.outgoing_controls.contains(&2) && cut.outgoing_fragments.contains(&2)),
-        "closing End must be outgoing at every genuine owner2 cut; {actual:?}"
+        "closing End must be outgoing at every owner2 cut; {actual:?}"
     );
 }
 #[test]
@@ -783,7 +783,7 @@ fn source_free_bidi_after_start_cannot_select_the_captured_opening_endpoint_outg
         actual
             .iter()
             .all(|cut| !cut.outgoing_controls.contains(&0) && !cut.outgoing_fragments.contains(&0)),
-        "opening Start must be receiving at every genuine owner2 cut; {actual:?}"
+        "opening Start must be receiving at every owner2 cut; {actual:?}"
     );
 }
 

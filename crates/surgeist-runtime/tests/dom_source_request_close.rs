@@ -1097,7 +1097,7 @@ fn attempted_window_retirement_during_cancel_refuses_and_preserves_actual_live_r
     ));
 }
 #[test]
-fn adopted_dialog_uses_genuinely_retired_original_window_before_request_entry() {
+fn adopted_dialog_uses_retired_original_window_before_request_entry() {
     let (mut session, original, _, subject) = fixture();
     let mut hosted = session.hosted_execution();
     let target_host = hosted.create_host(&mut session.dom(), &cancel()).unwrap();

@@ -196,7 +196,7 @@ impl Layout {
     }
     /// Retained semantic completions with zero used line extent. These are not
     /// visible lines or caret targets; their original nominal metrics remain
-    /// available from the genuine finalized receipt.
+    /// available from the finalized receipt.
     pub fn nonformatted_lines(&self) -> impl Iterator<Item = &super::NonFormattedLinePlacement> {
         self.inner
             .nonformatted

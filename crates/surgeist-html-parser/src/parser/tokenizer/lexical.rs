@@ -339,7 +339,7 @@ impl Tokenizer<'_> {
                 evidence.lexical_part(c, occurrence, field_role, &empty, offset..offset, None)?;
                 if !opening {
                     // Actual closing quote anchors the retained field's exact
-                    // output end, including zero for a genuinely empty field.
+                    // output end, including zero for an empty field.
                     evidence.lexical_part(
                         c,
                         occurrence,

@@ -1,4 +1,4 @@
-//! Genuine atomic run endpoints, transparency, selected cuts and native frames.
+//! Atomic run endpoints, transparency, selected cuts and native frames.
 use super::*;
 use crate::{
     Affinity, AtomicPlacement, FontBaselineScript, Hit, InlineBox, InlineBoxKind, Layout,
@@ -28,14 +28,14 @@ fn source(text: &str, orientation: LineOrientation, values: [f64; 4], transparen
         );
     }
     let seam = usize::from(!text.is_empty());
-    // Store Y before X, then capture X before Y through genuine anchor order.
+    // Store Y before X, then capture X before Y through anchor order.
     for (id, at, value) in [
         (Y, seam + usize::from(transparent), values[2]),
         (X, seam, values[1]),
     ] {
         let box_ = InlineBox::new(id, InlineBoxKind::InFlow, at, physical_size(orientation));
         source.inline_box(if value == 0.0 {
-            // Exercise the constructor's genuine resolved zero default.
+            // Exercise the constructor's resolved zero default.
             assert_eq!(box_.letter_spacing(), 0.0);
             box_
         } else {
@@ -493,7 +493,7 @@ fn unequal_atomic_run_endpoints_preserve_actual_boxes_and_native_frames() {
 }
 
 #[test]
-fn source_free_atomic_run_and_genuine_selected_cuts_suppress_only_actual_outer_endpoints() {
+fn source_free_atomic_run_and_selected_cuts_suppress_only_actual_outer_endpoints() {
     font_premises(AHEM, false);
     for direction in [
         ParagraphBaseDirection::LeftToRight,
@@ -669,7 +669,7 @@ fn invisible_format_and_out_of_flow_occurrence_do_not_split_the_in_flow_atomic_r
 }
 
 #[test]
-fn genuine_hebrew_rtl_moves_each_atomic_with_its_own_exterior_values_in_clockwise_order() {
+fn hebrew_rtl_moves_each_atomic_with_its_own_exterior_values_in_clockwise_order() {
     let bytes = crate::shaping_test_fonts::range_ligature_ahem(
         &[82, 82],
         &[(0x41, 35), (0x42, 36), (0x5d0, 35), (0x5d1, 36)],

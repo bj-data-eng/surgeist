@@ -299,7 +299,7 @@ fn direct_with_deferred<S: LayoutScalar>() {
 }
 
 #[test]
-fn known_direct_opportunity_fills_while_genuine_deferred_tail_receives_complete_zero() {
+fn known_direct_opportunity_fills_while_deferred_tail_receives_complete_zero() {
     direct_with_deferred::<f32>();
     direct_with_deferred::<f64>();
 }

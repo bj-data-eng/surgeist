@@ -1,5 +1,5 @@
 //! Atomic edge declarations must not
-//! bypass a genuine captured inline parent. No fonts or preparation are needed.
+//! bypass a captured inline parent. No fonts or preparation are needed.
 use std::slice;
 use surgeist_layout as layout;
 use surgeist_text as text;
@@ -137,7 +137,7 @@ impl<S: layout::LayoutScalar> layout::WrapEdgeSource for AtomicHost<S> {
             1 => layout::WrapEdgeSourceNodeView::SourceOrigin { origin: 0 },
             2 => layout::WrapEdgeSourceNodeView::Box(&self.atomic),
             3 => layout::WrapEdgeSourceNodeView::SourceOrigin { origin: 1 },
-            _ => unreachable!("four genuine nodes"),
+            _ => unreachable!("four nodes"),
         }
     }
     fn source_wrapping_scopes(&self) -> &[layout::SourceWrappingScopeInput<u32>] {

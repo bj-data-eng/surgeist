@@ -173,7 +173,7 @@ fn queue(
         .unwrap()
     {
         DomStyleParsedNotificationProgress::Queued { task } => task,
-        other => panic!("genuine live NoImports invocation: {other:?}"),
+        other => panic!("live NoImports invocation: {other:?}"),
     }
 }
 fn owner_removed(
@@ -548,7 +548,7 @@ fn exact_next_order_foreign_decisions_cancellation_and_real_capacity_retry_prese
             .is_err()
     );
     assert!(wrong.is_some());
-    let mut genuine = observe(&session, id, &mut |request| {
+    let mut observation = observe(&session, id, &mut |request| {
         assert_eq!(request.qualification(), &c0);
         assert!(request.text().is_empty());
         Some(DomParsedHtmlStyleInlinePolicyObservation::evaluated(
@@ -561,24 +561,24 @@ fn exact_next_order_foreign_decisions_cancellation_and_real_capacity_retry_prese
             .accept_parsed_style_inline_policy(
                 &mut session.dom(),
                 id,
-                &mut genuine,
+                &mut observation,
                 envelope(),
                 &AtomicBool::new(true)
             )
             .is_err()
     );
-    assert!(genuine.is_some());
+    assert!(observation.is_some());
     session
         .style_execution()
         .accept_parsed_style_inline_policy(
             &mut session.dom(),
             id,
-            &mut genuine,
+            &mut observation,
             envelope(),
             &cancel(),
         )
         .unwrap();
-    assert!(genuine.is_none());
+    assert!(observation.is_none());
     let mut runtime = session.style_execution();
     let mut tight = limits();
     tight.completions = session.state.borrow().completions.len();

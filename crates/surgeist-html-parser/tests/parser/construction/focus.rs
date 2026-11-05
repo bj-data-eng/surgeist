@@ -32,7 +32,7 @@ fn original_document_and_reused_inert_owner_keep_null_beside_pending_style_histo
     assert_eq!(
         documents.len(),
         2,
-        "ordinary owner and one genuinely reused inert owner"
+        "ordinary owner and one reused inert owner"
     );
     assert!(documents.contains(&root));
     let mut pending = report.pending_associations();

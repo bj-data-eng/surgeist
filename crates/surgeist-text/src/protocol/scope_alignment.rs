@@ -194,7 +194,7 @@ impl SelectedLine {
     }
 }
 
-/// One genuine signed local metric contribution, before scope displacement.
+/// One signed local metric contribution, before scope displacement.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ScopeMetricContribution {
     pub before: f64,

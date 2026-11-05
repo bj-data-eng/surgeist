@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 fn capture(mode: TextCombineUpright, with_oof: bool) -> Arc<ProcessedSource> {
     // New minimal topology: only A belongs to the Inline. Both following
-    // SPACE originals and final Z genuinely belong to Root None, with OOF
+    // SPACE originals and final Z belong to Root None, with OOF
     // optionally between the SPACE occurrences.
     let mut input = super::input("A  Z", WhiteSpace::Collapse);
     let SourceProcessingScope::Block {
@@ -180,7 +180,7 @@ fn phase_one_premises(
         })
         .collect::<Vec<_>>();
     let [final_z] = final_z.as_slice() else {
-        panic!("one genuine exterior Z occurrence");
+        panic!("one exterior Z occurrence");
     };
     assert!(matches!(final_z.kind, LexicalRecordKind::Character {
         mode: WhiteSpace::Collapse, disposition: LexicalDisposition::Emitted { processed }, ..
@@ -192,7 +192,7 @@ fn phase_one_premises(
         .indexed_occurrences(&processed.lexical)
         .collect::<Vec<_>>();
     let [(index, second)] = collapsed.as_slice() else {
-        panic!("one genuine collapsed-zero second SPACE");
+        panic!("one collapsed-zero second SPACE");
     };
     assert!(matches!(second.kind, LexicalRecordKind::Character {
         source, mode: WhiteSpace::Collapse, role: LexicalCharacterRole::Space,
@@ -310,7 +310,7 @@ fn an_a_cell_does_not_revive_a_second_exterior_space_across_transparent_oof() {
                     false
                 }
             }),
-            "the second SPACE remains its genuine collapsed-zero occurrence"
+            "the second SPACE remains its collapsed-zero occurrence"
         );
         if with_oof {
             let anchors = output

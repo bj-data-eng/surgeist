@@ -1,7 +1,7 @@
 //! Source-cell suppression of real interior forces. These are font-independent
 //! functional qualifications of the completed-cell/source analysis front.
 //! The adopted source-stage model's inner-edge rule suppresses forced effects
-//! after selection while preserving the genuine occurrence/cause and source.
+//! after selection while preserving the occurrence/cause and source.
 
 use crate::engine::analysis::wrapping::Event;
 use crate::protocol::paragraph::SemanticAnchorItem;
@@ -66,7 +66,7 @@ fn capture(mode: TextCombineUpright, force: Force) -> Arc<ProcessedSource> {
         Force::ComputedScopeSide => {
             let mut style = super::style(WhiteSpace::Preserve, 10.0);
             style.text_combine_upright = mode;
-            // This is a genuinely empty inline box at the actual A/B cut.
+            // This is an empty inline box at the actual A/B cut.
             // No B character is moved inside it to force a box-crossing cell.
             input.scopes.push(SourceProcessingScope::Inline {
                 trim: WhiteSpaceTrim::default(),
@@ -107,7 +107,7 @@ fn capture(mode: TextCombineUpright, force: Force) -> Arc<ProcessedSource> {
     let connection = processed.captured_connection(0).unwrap();
     assert_eq!(connection.kind(), ParagraphConnectionKind::Continuous);
     let raw = processed.paragraphs().next().unwrap();
-    // This is a local connection: its genuine policy remains paragraph-owned.
+    // This is a local connection: its policy remains paragraph-owned.
     assert_eq!(raw.data().boundary_policies.len(), 1);
     assert_eq!(
         raw.data().boundary_policies[0].definition,
@@ -181,7 +181,7 @@ fn retained_force(output: &AnalyzedSource, processed: &ProcessedSource, force: F
 }
 
 fn qualify(force: Force) {
-    // None is an ordinary positive control for the same genuine force. Only
+    // None is an ordinary positive control for the same force. Only
     // uninterrupted text can combine; an empty Inline remains a box boundary.
     for mode in [TextCombineUpright::None, TextCombineUpright::All] {
         let processed = capture(mode, force);

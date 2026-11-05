@@ -380,7 +380,7 @@ fn pending_function_basis_reentry_preserves_occurrence_origins_and_allows_retry(
         size_then_lengths(value.calculation(), &["2", "3"]);
     }
 
-    // Reuse that same handle for a genuinely nested percentage basis. Reentry
+    // Reuse that same handle for a nested percentage basis. Reentry
     // checks the complete replacement; it does not implement var substitution.
     const NESTED: &str = "calc-size(calc-size(25% + 25%, size + 2px), size + 3px)";
     let nested = CssComponentValues::parse(&CssParser::default(), NESTED).unwrap();

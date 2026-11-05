@@ -39,7 +39,7 @@ struct BoundaryPlacement {
 }
 
 /// Completion owns this actual structural segment remainder, not a new spelling incidence.
-/// The genuine force pin and its numerical receipt remain part of the proof.
+/// The force pin and its numerical receipt remain part of the proof.
 #[derive(Clone, Debug, PartialEq)]
 struct SegmentCompletion {
     termination: surgeist_text::PreparedOpportunity,
@@ -364,7 +364,7 @@ impl BoxAssignment {
 }
 
 /// A detached measurement may replace a region whose earlier prefix was
-/// genuinely phantom. Advancing Text progress does not consume those boxes.
+/// phantom. Advancing Text progress does not consume those boxes.
 #[derive(Clone, Copy)]
 pub(crate) enum BoxEntry<'a> {
     ConsumedTo(&'a BoxFrontier),

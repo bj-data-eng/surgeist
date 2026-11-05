@@ -193,7 +193,7 @@ pub(super) fn admit(
             scope: None,
         });
     }
-    // Capture and group order are genuine event order. Merge once, placing a
+    // Capture and group order are event order. Merge once, placing a
     // computed cut before an original anchor at that event and after anchors
     // whose event has already been consumed. Numeric offsets play no role.
     for capture in captures

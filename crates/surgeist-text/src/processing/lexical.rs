@@ -85,7 +85,7 @@ struct Token {
     plaintext_reset: bool,
     atomic: Option<usize>,
     scope: Option<usize>,
-    /// Genuine capture event, distinct from the transient trim-marker index.
+    /// Capture event, distinct from the transient trim-marker index.
     event: Option<usize>,
 }
 
@@ -127,7 +127,7 @@ impl Token {
 }
 
 /// Admitted semantic requests share tokenization, trim ordering, Phase I and
-/// emission. Callers validate their genuinely different source/native/context
+/// emission. Callers validate their different source/native/context
 /// contracts before constructing this private request.
 pub(super) enum ValidatedProcessingRequest<'a> {
     SourceLocal {
@@ -892,7 +892,7 @@ fn trim_exterior(
         {
             continue;
         }
-        // Genuine trim runs before Phase I. PreserveBreaks' original
+        // Trim runs before Phase I. PreserveBreaks' original
         // delimiters remain collapsible for this explicit exterior trimming.
         if token.mode.collapses_spaces() && matches!(token.kind, Kind::Space | Kind::Break) {
             if let Some(edge) = continuity.missing() {

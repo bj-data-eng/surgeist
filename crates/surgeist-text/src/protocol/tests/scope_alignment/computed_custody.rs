@@ -57,7 +57,7 @@ fn exterior_input(side: SourceBoxSide) -> ContextualSourceInput {
         *alignment_boundary = Some(ScopeAlignmentBoundary::NonInitial);
         *font_reference = Some(reference());
     }
-    // Child2 is a genuine empty inline, with no nominated boundary pair or
+    // Child2 is an empty inline, with no nominated boundary pair or
     // origin. Its source-box cuts are before EnterScope2 and after ExitScope2;
     // both are inside parent1. Naming child2 is not custody of child2's frame.
     use SourceProcessingEvent as E;

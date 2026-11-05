@@ -821,7 +821,8 @@ fn finite_output_refusal_and_cancellation_keep_pending_until_a_raised_retry() {
             .unwrap(),
         Some(id)
     );
-    // One preferred-name output fits the Runtime bank. The remaining genuine
+    // One preferred-name output fits the Runtime bank. The remaining
+
     // root/completion outputs must still be admitted before canonical ack.
     let one_output = DomParsedHtmlAssociationLimits::new(
         large.retained_bytes(),

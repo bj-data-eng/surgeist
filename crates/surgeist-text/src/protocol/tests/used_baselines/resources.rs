@@ -391,7 +391,7 @@ fn actual_fractional_base_variation_is_retained_beyond_the_vertical_metric_grid(
 }
 
 #[test]
-fn genuine_horizontal_absence_synthesizes_zero_but_consumed_malformed_base_retains_its_error() {
+fn horizontal_absence_synthesizes_zero_but_consumed_malformed_base_retains_its_error() {
     let mut system = registered(AHEM.to_vec());
     let input = analyzed(Source::new("A"), own_style());
     for orientation in [

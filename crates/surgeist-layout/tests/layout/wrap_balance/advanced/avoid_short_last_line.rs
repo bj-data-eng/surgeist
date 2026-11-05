@@ -36,7 +36,7 @@ pub(super) fn rows<S: l::LayoutScalar>(
         assert_eq!(request.start.view().source_after().get(), start);
         assert_eq!(request.end.view().source_after().get(), end);
         let t::PreparedTermination::Ordinary(offer) = &request.termination else {
-            panic!("genuine ordinary source offer required")
+            panic!("ordinary source offer required")
         };
         assert_eq!(
             offer.view().kind(),

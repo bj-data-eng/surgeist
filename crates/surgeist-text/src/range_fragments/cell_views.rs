@@ -8,7 +8,7 @@ pub enum SourceRangeGeometry<'a> {
     Line(SourceRangePiece<'a>),
     /// Font-backed text in an unrotated horizontal Cell frame.
     CellFont(SourceRangeCellFontPiece<'a>),
-    /// A genuine native TAB span without a body font or glyph baseline.
+    /// A native TAB span without a body font or glyph baseline.
     CellTab(SourceRangeCellTabPiece<'a>),
 }
 impl SourceRangeGeometry<'_> {
@@ -198,7 +198,7 @@ pub(super) struct CellTabPiece {
     pub(super) metrics: usize,
 }
 
-/// A genuine retained CSS TAB execution; no body font or glyph baseline is lent.
+/// A retained CSS TAB execution; no body font or glyph baseline is lent.
 #[derive(Clone, Copy, Debug)]
 pub struct SourceRangeCellTabPiece<'a> {
     pub(super) unit: SourceRangeCellUnit<'a>,
@@ -224,7 +224,7 @@ impl<'a> SourceRangeCellTabPiece<'a> {
     pub fn layout_frame(&self) -> SourceRangeCellLayoutFrame {
         self.piece.frame
     }
-    /// Genuine native container reference; this is not a body-font metric lender.
+    /// Native container reference; this is not a body-font metric lender.
     pub fn container_metrics(&self) -> crate::PreparedScopeMetrics<'a> {
         crate::PreparedScopeMetrics {
             prepared: &self.unit.layout.inner.prepared,

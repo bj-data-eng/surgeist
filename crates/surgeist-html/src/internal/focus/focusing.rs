@@ -43,7 +43,7 @@ pub enum HtmlFocusingAction {
     /// assuming the area itself is an Element or the originally supplied target.
     ReadActualAnchorInert,
     /// Complete the existing current-area child on the current target's actual
-    /// top-level traversable and retain the genuine nullable result.
+    /// top-level traversable and retain the nullable result.
     RunCurrentlyFocusedArea,
     /// Compare actual current target identity against that actual nullable area;
     /// DOM-anchor equality is insufficient for distinct subwidgets/regions.
@@ -151,7 +151,7 @@ impl std::error::Error for HtmlFocusingError {}
 /// inputs (area, non-area Element or navigable) and retains actual operands,
 /// finite admission and called-algorithm custody. Copy grants no execution/replay
 /// authority. No activity predicate, focusability proof, callback or identity
-/// registry is added. Focus-chain/current-chain/update remain genuine called
+/// registry is added. Focus-chain/current-chain/update remain called
 /// dependencies rather than implemented services of this pure cursor.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlFocusingCursor {

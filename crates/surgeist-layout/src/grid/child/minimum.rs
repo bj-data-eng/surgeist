@@ -208,7 +208,7 @@ pub(in crate::grid) struct GridMinimumContext<'a, 'input, S: LayoutScalar> {
 }
 
 pub(in crate::grid) enum GridMinimumPlan<S: LayoutScalar> {
-    /// Grid's nondependent, non-Auto preferred-size branch uses the genuine
+    /// Grid's nondependent, non-Auto preferred-size branch uses the
     /// min-content contribution in this same prepared context.
     ReuseMinContent,
     /// A border-box known dimension for an actual child query, without margins.
@@ -231,7 +231,7 @@ impl<S: LayoutScalar> GridMinimumContentSuggestion<S> {
         self.query
     }
 
-    /// The input is the genuine queried border extent. All suggestion clamps
+    /// The input is the queried border extent. All suggestion clamps
     /// below operate in the item's CSS sizing-box coordinates before restoring
     /// the border-box known dimension.
     pub(in crate::grid) fn finish(self, actual_border: S) -> Result<S, SizingResolutionError<S>> {

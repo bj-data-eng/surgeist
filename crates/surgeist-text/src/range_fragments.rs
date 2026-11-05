@@ -200,7 +200,7 @@ impl<'a> SourceRangeUnit<'a> {
                 index,
             })
     }
-    /// All genuine generated controls contributing to this actual Range unit.
+    /// All generated controls contributing to this actual Range unit.
     pub fn controls(&self) -> impl ExactSizeIterator<Item = PreparedControl> + '_ {
         self.unit.controls.iter().map(|&index| PreparedControl {
             prepared: Arc::clone(&self.layout.inner.prepared),
@@ -561,7 +561,7 @@ impl Layout {
                 }
             }
         }
-        // One genuine input row can lend several expansion emissions, including
+        // One input row can lend several expansion emissions, including
         // emissions on different lines. Deduplicate only that authenticated row,
         // not arbitrary coincident original intervals from different owners.
         let map = &analyzed.transform;

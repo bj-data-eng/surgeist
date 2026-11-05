@@ -221,7 +221,7 @@ fn real_mark_attachment_carries_effective_parent_reference_once_not_child_width_
 }
 
 #[test]
-fn genuine_vertical_cursive_propagates_effective_parent_cross_origin_without_post_repair() {
+fn vertical_cursive_propagates_effective_parent_cross_origin_without_post_repair() {
     let gpos = font::layout_table(b"curs", &[font::cursive()]);
     with_different_widths(None, Some(&gpos), |font| {
         let features = feature(b"curs");

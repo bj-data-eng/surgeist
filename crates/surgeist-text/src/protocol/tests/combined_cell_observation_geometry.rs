@@ -85,7 +85,7 @@ fn placed_inner_cluster_metric_rows_follow_the_real_horizontal_cell_frame() {
 
 fn with_tall_line_band(prepared: &PreparedText, line: &FinalizedLine) -> FinalizedLine {
     let mut request = line.selected_line().request().clone();
-    // An actual caller-supplied line strut dominates the genuine Cell's5/5
+    // An actual caller-supplied line strut dominates the Cell's5/5
     // contribution. It is line allocation, not invented glyph/font geometry.
     request.line_strut = Some(LineStrut {
         baseline: 8.0,
@@ -180,7 +180,7 @@ fn provider_empty_source_cell_has_an_outer_edge_without_an_inner_cluster_or_ink_
     assert!(!prepared.cell_views().next().unwrap().has_provider_input());
     let line = with_tall_line_band(&prepared, &complete_line(&prepared));
     one_outer_edge(&prepared, &line, &[Range::new(0, 1)]);
-    // This genuine source-nonempty Cell has E10 without any inner provider row.
+    // This source-nonempty Cell has E10 without any inner provider row.
     let placed = placed_vertical_cell(&prepared, line.clone());
     assert!(placed.clusters().is_empty());
     assert_eq!(line.outline_ink().unwrap(), LineOutlineInk::Empty);
@@ -261,7 +261,7 @@ fn nonzero_outer_inline_offset_is_applied_once_to_cell_metrics_and_logical_ink()
     canonical_outline_premises(&line, &font, &[35]);
     let cells = line.cell_views().collect::<Vec<_>>();
     let [cell] = cells.as_slice() else {
-        panic!("one genuine offset Cell");
+        panic!("one offset Cell");
     };
     assert_eq!(cell.square().origin.x, 7.0);
     assert_eq!(cell.square().size, Size::new(10.0, 10.0));

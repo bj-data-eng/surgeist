@@ -132,7 +132,7 @@ fn at_source(layout: &PlacedLayout, index: usize) -> Option<ClusterPath> {
 }
 
 fn normalize(layout: &PlacedLayout, index: usize, affinity: Affinity) -> Cursor {
-    // The original empty source has one raw endpoint. Retaining a genuine
+    // The original empty source has one raw endpoint. Retaining a
     // empty-origin slot does not add authored cursor affinity states. Native
     // occurrence handles remain separate and never pass through this projection.
     if layout.coverage.source.is_empty()
@@ -346,7 +346,7 @@ fn local_geometry(layout: &PlacedLayout, value: Cursor) -> (usize, f64, Option<f
             super::position::reference(layout, position).expect("owned cell position"),
         );
     }
-    // Deleted anchors are genuine source-associated occurrences. This does not
+    // Deleted anchors are source-associated occurrences. This does not
     // change the historical raw-source visual-neighbor policy around atomics:
     // a physical atomic gap and an executed source deletion have different owners.
     if let Some(index) = super::position::deleted_position(layout, value) {
@@ -755,7 +755,7 @@ pub(crate) fn move_cursor(
                         rect.origin.x
                     }
                 };
-                // Exact and raw movement select the same genuine target rows.
+                // Exact and raw movement select the same target rows.
                 // Final source validation owns any lossy projection ambiguity.
                 super::position::nearest_on_line(layout, index, inline)
                     .map_or(value, |target| layout.interaction.positions[target].source)
@@ -811,7 +811,7 @@ pub(crate) fn move_cursor(
         Movement::PreviousCluster | Movement::NextCluster => {
             let right = movement == Movement::NextCluster;
             let mut current = visual_move(layout, value, right);
-            // Each step consumes a genuine visual cluster or the two sides of a
+            // Each step consumes a visual cluster or the two sides of a
             // soft boundary. Skip only illegal original grapheme/ligature stops.
             while !layout.interaction.is_stop(current.index()) {
                 let next = visual_move(layout, current, right);

@@ -276,7 +276,7 @@ pub(crate) fn project(selected: &mut SelectedData, ledger: &mut Ledger) -> Resul
         }
         account::push_fallible(ledger, &mut body_units, body)?;
     }
-    // A real nominated endpoint can carry a genuine empty box's incidence;
+    // A real nominated endpoint can carry an empty box's incidence;
     // the Source control itself remains the original operation and level.
     for allocation in &selected.request.controls {
         let Some(context) = allocation

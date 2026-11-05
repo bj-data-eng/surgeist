@@ -1553,6 +1553,6 @@ fn retired_select_skip_refuses_while_a_real_style_source_obligation_is_parked() 
         f.dom.pending_source_edit().unwrap().operation(),
         source_operation
     );
-    // End with that genuine service obligation still parked. This test does not
+    // End with that service obligation still parked. This test does not
     // invent a CSP receipt merely to clear it or pretend to prove reentrant idle.
 }

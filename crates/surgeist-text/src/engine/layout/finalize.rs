@@ -178,7 +178,7 @@ pub(super) fn metric_only_decoration_demand(
     shaped: &ShapedData,
     projection: &crate::projection::SourceProjection,
 ) -> bool {
-    // A zero-atom font operation is genuine glyph-free demand. For a source
+    // A zero-atom font operation is glyph-free demand. For a source
     // fallback, only complete exclusions in this actual presentation establish
     // bookkeeping; an eligible/Normal input keeps its demand at any advance.
     if run.atoms.is_empty() || projection.atoms.get(run.atoms.clone()).is_none() {
@@ -1466,7 +1466,7 @@ fn execute(
     Ok(FinalizedLine { selected, data })
 }
 
-/// A genuine selected Cell paired with its canonical exterior gap receipt.
+/// A selected Cell paired with its canonical exterior gap receipt.
 struct CellFlow<'a> {
     index: usize,
     gap: Option<&'a super::super::spacing::character::Gap>,
@@ -1540,9 +1540,7 @@ fn append_cell(
         .participant
         .and_then(|index| selected.request.participants.get(index));
     if !matches!(participant, Some(crate::PreparedParticipant::Cell(_))) {
-        return Err(invalid(
-            "cell selected unit has no genuine Cell participant",
-        ));
+        return Err(invalid("cell selected unit has no Cell participant"));
     }
     let owner = selected
         .scopes

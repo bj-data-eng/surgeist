@@ -21,7 +21,7 @@ fn maximum(prepared: &PreparedText) -> ScopeAlignmentAllowance {
 fn actual_outer_storage(line: &FinalizedLine) {
     let measurements = line.measurements();
     let EdgeRows::Outer(rows) = &measurements.edges else {
-        panic!("genuine Cell line retains outer observations");
+        panic!("Cell line retains outer observations");
     };
     let [OuterEdge::Cell { cell: 0 }] = rows.as_slice() else {
         panic!("one sealed actual finalized Cell target");

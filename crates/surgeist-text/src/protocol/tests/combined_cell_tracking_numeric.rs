@@ -1,6 +1,6 @@
 //! Public placement must qualify the actual rounded Cell flow endpoints.
 //! Reassociating a fixed square's endpoint with its authored gap changes f64
-//! meaning even when every genuine local and physical operand is admitted.
+//! meaning even when every local and physical operand is admitted.
 
 use super::*;
 
@@ -41,7 +41,7 @@ fn selected_at_indent(prepared: &PreparedText, indent: f64) -> SelectedLine {
                 spacing: SpacingPolicy::None,
             },
         })
-        .expect("the genuine Cell plus ordinary sibling has an admitted complete selection")
+        .expect("the Cell plus ordinary sibling has an admitted complete selection")
 }
 
 const C: f64 = 4_503_599_627_370_496.0;
@@ -71,7 +71,7 @@ fn finalized_endpoint_witness(
     );
     let prepared_cells = prepared.cell_views().collect::<Vec<_>>();
     let [prepared_cell] = prepared_cells.as_slice() else {
-        panic!("one genuine source Cell");
+        panic!("one source Cell");
     };
     assert_eq!(prepared_cell.extent(), f64::from(size));
     assert_eq!(

@@ -61,7 +61,7 @@ pub(crate) enum LexicalDisposition {
     Emitted {
         processed: Range,
     },
-    /// CollapsedSpace alone retains semantic U+0020. Other causes are genuine
+    /// CollapsedSpace alone retains semantic U+0020. Other causes are
     /// elimination; neither an empty output nor an original width decides this.
     Deleted {
         processed: usize,

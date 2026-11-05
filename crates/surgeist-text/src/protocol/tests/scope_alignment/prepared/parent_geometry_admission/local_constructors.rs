@@ -1,7 +1,7 @@
 use super::*;
 
 // Each row identifies an actual nested source Inline level and whether that
-// Inline genuinely nominates its existing Start/End controls. Other levels
+// Inline nominates its existing Start/End controls. Other levels
 // are explicitly declared native pairs within their actual enclosing scope.
 fn mixed_family(depth: usize, scopes: &[(usize, bool)]) -> Family {
     assert!(depth > 0);

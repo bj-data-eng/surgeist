@@ -817,7 +817,7 @@ fn uniform_sa_run_end_cannot_offer_a_break_immediately_before_word_joiner() {
     assert_eq!(
         observed,
         [(DIRECTIONS[0], vec![1]), (DIRECTIONS[1], vec![1])],
-        "retain genuine fallback1; the provider SA-run end is not permission for forbidden before-WJ cut2"
+        "retain fallback1; the provider SA-run end is not permission for forbidden before-WJ cut2"
     );
 }
 
@@ -895,7 +895,7 @@ fn normal_keep_all_and_break_all_preserve_wj_adjacency_across_strictnesses() {
 
 #[test]
 fn earlier_zero_width_space_rule_retains_its_break_before_wj_through_spaces() {
-    // LB8 precedes LB11: its genuine ZW SP* cause must survive a WJ guard.
+    // LB8 precedes LB11: its ZW SP* cause must survive a WJ guard.
     // https://www.unicode.org/reports/tr14/tr14-55.html#LB8
     for direction in DIRECTIONS {
         for spaces in [0, 1, 2] {
@@ -971,7 +971,7 @@ fn sa_run_end_cannot_offer_a_break_before_a_whole_glue_unit() {
                     (0..end)
                         .map(|at| t::Range::new(at, at + 1))
                         .collect::<Vec<_>>(),
-                    "GL is a genuine whole unit, not an interior combining-mark seam"
+                    "GL is a whole unit, not an interior combining-mark seam"
                 );
                 if cuts(&p) != [1] {
                     violations.push((glue, direction, trailing, cuts(&p)));
@@ -988,7 +988,7 @@ fn sa_run_end_cannot_offer_a_break_before_a_whole_glue_unit() {
 #[test]
 fn lb12a_space_break_after_and_hyphen_exceptions_keep_before_gl_permission() {
     // These four concrete whole-unit prefixes qualify the adopted LB12a
-    // exceptions; a generic GL veto would erase their genuine opportunities.
+    // exceptions; a generic GL veto would erase their opportunities.
     for (prefix, class) in [
         (' ', Class::Space),
         ('\u{2003}', Class::BreakAfter),
@@ -1086,7 +1086,7 @@ fn sa_run_end_preserves_hard_precedence_and_does_not_break_before_sp_or_zwsp() {
     }
     assert!(
         violations.is_empty(),
-        "LB7 forbids provider slice-end cut2 before SP/ZWSP while fallback1 and the genuine after-separator3 remain: {violations:?}"
+        "LB7 forbids provider slice-end cut2 before SP/ZWSP while fallback1 and the after-separator3 remain: {violations:?}"
     );
 }
 
@@ -1133,7 +1133,7 @@ fn ordinary_sa_context_has_fallback_without_a_fabricated_latin_run_end() {
     }
     assert!(
         violations.is_empty(),
-        "ordinary resolved AL context keeps only genuine Thai/Lao fallback1: {violations:?}"
+        "ordinary resolved AL context keeps only Thai/Lao fallback1: {violations:?}"
     );
 }
 

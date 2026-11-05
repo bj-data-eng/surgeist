@@ -1,4 +1,4 @@
-//! Genuine Source-owned inner bidi controls, consumed before native Cell shaping.
+//! Source-owned inner bidi controls, consumed before native Cell shaping.
 //! Native preparation consumes completed source semantics through public prepare.
 use super::*;
 use skrifa::{GlyphId, MetadataProvider, raw::TableProvider};
@@ -65,7 +65,7 @@ fn qualified_font() -> Vec<u8> {
     let shaper = data.shaper(&font).build();
     assert_eq!(shaper.units_per_em(), 1000);
     // Independently qualify normal glyphs and complete negative width actions
-    // on this exact final native-table font, in both genuine inner directions.
+    // on this exact final native-table font, in both inner directions.
     for direction in [
         ProviderDirection::LeftToRight,
         ProviderDirection::RightToLeft,
@@ -635,7 +635,7 @@ fn qualify(kind: InputKind) {
             }
             let pieces = unit.pieces().collect::<Vec<_>>();
             let [SourceRangeGeometry::CellFont(piece)] = pieces.as_slice() else {
-                panic!("A has genuine horizontal font geometry");
+                panic!("A has horizontal font geometry");
             };
             assert!(piece.cell_unit().same_unit(&cell_unit));
             assert_eq!(piece.inner_advance_edges(), (0.0, 10.0));

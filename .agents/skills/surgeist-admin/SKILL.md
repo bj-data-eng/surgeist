@@ -28,8 +28,8 @@ leaf does not certify the enclosing contribution or module.
 Issue decomposition and relationships describe the current working organization.
 Within existing authority, the coordinator may combine, split, move, or reorder
 work and remove obsolete blocking edges when implementation reveals a simpler
-route. Preserve underlying requirements, coverage, ownership, genuine
-prerequisites, and explicit human constraints; reconcile active assignments and
+route. Preserve underlying requirements, coverage, ownership, prerequisites,
+and explicit human constraints; reconcile active assignments and
 update affected issues and relationships. Reuse review results only for the
 requirements and source they actually cover; regrouping alone requires no new
 review, while uncovered work still needs its applicable evidence.

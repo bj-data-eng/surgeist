@@ -112,7 +112,7 @@ fn invalid(result: t::Result<t::SuppliedInlineBoxComponents>) {
 }
 
 #[test]
-fn genuine_supplied_l2_order_splits_one_child_membership_without_splitting_the_root() {
+fn supplied_l2_order_splits_one_child_membership_without_splitting_the_root() {
     let order = reorder(&[0, 0, 0, 1, 1, 1]);
     assert_eq!(order, [0, 1, 2, 5, 4, 3]);
     // The two C rows are logical2/3. The actual supplied visual permutation

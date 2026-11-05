@@ -177,7 +177,7 @@ fn query_collection_keeps_identity_current_recovery_and_historical_provenance() 
     );
     let CssValueOrigin::Parsed(current_origin) = after.media(&id).unwrap().queries()[0].origin()
     else {
-        panic!("current genuine media input")
+        panic!("current media input")
     };
     assert_eq!(current_origin.source().as_str(), "screen,,speech");
     let CssomAuthoredRule::Rule(native) = after.rule(&rule).unwrap().authored() else {
@@ -194,7 +194,7 @@ fn query_collection_keeps_identity_current_recovery_and_historical_provenance() 
     let CssomAuthoredRule::Rule(CssRule::CustomMedia(original)) =
         after.rule(&rule).unwrap().authored()
     else {
-        panic!("genuine original")
+        panic!("original")
     };
     let CssCustomMediaBody::Media(original_query) = original.body() else {
         panic!("authored original list")
@@ -545,7 +545,7 @@ fn owner_kind_missing_capture_and_output_limits_return_typed_errors_without_muta
 #[test]
 fn query_identity_allocation_obeys_store_limits_and_failed_adoption_publishes_nothing() {
     // Store root, sheet, rule list, sheet media and one boolean rule are five objects.
-    // A query-list rule additionally requires its genuine associated MediaList.
+    // A query-list rule additionally requires its associated MediaList.
     let policy = CssomLimits {
         max_objects: 5,
         ..CssomLimits::default()

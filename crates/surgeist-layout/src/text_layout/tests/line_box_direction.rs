@@ -801,7 +801,7 @@ fn numeric_overflow_cases<S: LayoutScalar>(
             );
             let mut container = block::<S>(40.0, containing, policy, 0.0);
             container.text_align = alignment;
-            // Genuine hanging indentation applies to the later numeric line,
+            // Hanging indentation applies to the later numeric line,
             // after the accepted Text run has consumed the first line state.
             container.text_indent = TextIndentOf {
                 amount: LengthPercentageOf::px(S::from_f64(indent)).unwrap(),

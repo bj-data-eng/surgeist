@@ -874,7 +874,7 @@ fn retirement_does_not_rewrite_or_release_an_externally_held_pending_effect() {
 }
 
 fn linked_source() -> (CssomLinkedInput, usize) {
-    // Equal text in separate original allocations creates two genuine source
+    // Equal text in separate original allocations creates two source
     // identities. CSS's public storage report, not this test, prices backing.
     let mut units = Vec::with_capacity(4096);
     units.extend("/* retained original */ .a { --x: token; }".encode_utf16());

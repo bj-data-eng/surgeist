@@ -1637,7 +1637,7 @@ impl<'a> HtmlParseAssociationOccurrence<'a> {
             .map(|slot| identity(self.anchor, slot))
     }
     /// Prior lifecycle invocation for this Style. Consumers preserve the HTML
-    /// synchronous prefix and genuine resource dependencies; this edge does not
+    /// synchronous prefix and resource dependencies; this edge does not
     /// impose lexical completion order on outstanding resource operations.
     pub fn prior_style(&self) -> Option<HtmlParseAssociationOccurrenceId> {
         self.value

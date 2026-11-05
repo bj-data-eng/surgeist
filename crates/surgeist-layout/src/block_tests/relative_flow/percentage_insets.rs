@@ -375,7 +375,7 @@ fn percentage_numeric_atomic<S: LayoutScalar>(definite_bases: &[bool]) {
         tree.insert_input(1, LayoutInputOf::box_input(atomic));
         let actual = compute(&tree);
         let height = if definite { 100.0 } else { 30.0 };
-        // Genuine numeric host-supplied level0 atomic, no Text/capture/font.
+        // Numeric host-supplied level0 atomic, no Text/capture/font.
         // Its line and the two following ordinary blocks retain normal height30.
         assert_box(&actual, 0, (0.0, 0.0), (50.0, height));
         percentage_position(

@@ -243,7 +243,7 @@ fn current_anchor_outside_ancestry_runs_delegate_and_keeps_delegate_result_role(
     }
 }
 #[test]
-fn genuine_existing_children_complete_before_parent_accepts_their_nullable_returns() {
+fn existing_children_complete_before_parent_accepts_their_nullable_returns() {
     use surgeist_html::focus::{
         HtmlAutofocusDelegateAction as AA, HtmlAutofocusDelegateCursor as AC,
         HtmlAutofocusDelegateOutcome as AO, HtmlAutofocusDelegateReply as AR,

@@ -29,7 +29,7 @@ struct ExecutedBaselineBody<Node, S: LayoutScalar> {
     cycle: bool,
 }
 
-/// The source facts stay in their genuine immediate-parent frame. The
+/// The source facts stay in their immediate-parent frame. The
 /// projection is explicitly normalized to this inventory's owning grid.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct ExecutedBaselineConstraint<Node, S: LayoutScalar> {

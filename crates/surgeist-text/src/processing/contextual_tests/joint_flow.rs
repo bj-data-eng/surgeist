@@ -108,7 +108,7 @@ fn with_child_hole(kind: InlineBoxKind) -> ContextualSourceInput {
     input
         .boundary_policies
         .push(super::policy(ParagraphBoundaryDefinition::Connection(1)));
-    // Preserve all genuine atomic/child-domain events and both original raw
+    // Preserve all atomic/child-domain events and both original raw
     // records. A real empty final parent member follows the first parent record.
     input
         .events
@@ -508,7 +508,7 @@ fn explicit_nondefault_paragraph_facts_do_not_borrow_domain_defaults() {
         facts.base_direction = ParagraphBaseDirection::RightToLeft;
         facts.paragraph_strut = ParagraphStrut::AllocatedContributions;
     }
-    // The genuine fixture's outer domain remains LTR and its text is ASCII.
+    // The fixture's outer domain remains LTR and its text is ASCII.
     // Neither fact substitutes for explicitly supplied raw paragraph facts.
     let processed = Arc::new(process_contextual_source(input).unwrap());
     let joint = processed.captured_joint_flow(0).unwrap();
@@ -711,7 +711,7 @@ fn cross_view_connections_require_actual_successive_endpoints_and_position() {
         },
     );
 
-    // All these endpoints share cut 1, but the genuine empty origin is the
+    // All these endpoints share cut 1, but the empty origin is the
     // next occurrence. Numeric adjacency cannot authorize skipping it.
     let mut endpoints = three_members();
     endpoints.connections[0].after_origin = 2;

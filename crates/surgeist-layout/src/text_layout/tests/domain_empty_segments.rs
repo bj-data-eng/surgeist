@@ -1,5 +1,5 @@
 //! Empty structural segments, rather than empty raw members inside one run.
-//! Every empty interval has genuine domain/child-Block frontiers, no authored
+//! Every empty interval has domain/child-Block frontiers, no authored
 //! origin and no Layout node. Completion must come from native NonFormatted
 //! receipts; new segment APIs are functional qualification, not historical RED.
 use super::*;
@@ -431,7 +431,7 @@ fn assert_empty<S: LayoutScalar>(empty: Empty) {
         assert_eq!(receipt.prepared_text(), *parent);
         assert!(!receipt.has_in_flow_content());
         assert_eq!(receipt.feedback().advance, 0.0);
-        // The source's DefaultFont strut is genuine nominal Ahem10 geometry;
+        // The source's DefaultFont strut is nominal Ahem10 geometry;
         // NonFormatted disposition contributes zero USED line height.
         assert_eq!(receipt.feedback().line_height, 10.0);
         assert!(receipt.run_views().all(|run| run.glyphs().len() == 0));
@@ -587,7 +587,7 @@ fn an_empty_resumed_section_rejects_an_earlier_frontier_with_different_original_
     assert_eq!(resumed.request().start, resumed_start);
     // These native cuts have equal participant/atom extents, but the actual
     // child B lies between their original incidents. Change ONLY the start;
-    // shared boundaries whose genuine incidents coincide remain legitimate.
+    // shared boundaries whose incidents coincide remain legitimate.
     let mut wrong = resumed_request;
     wrong.start = first_start.clone();
     let error = parent.select(wrong).unwrap_err();

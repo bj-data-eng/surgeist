@@ -823,7 +823,7 @@ fn leaf_content_axis<S: LayoutScalar>(
     };
     // A resolved authored/imposed body size is a used-size authority. A finite
     // external space (including a clamped bound) is not. ContentSize suppresses
-    // authored size in resolve_leaf_values, so only genuine imposed known sizes
+    // authored size in resolve_leaf_values, so only imposed known sizes
     // take this branch for that mode.
     let operation = if facts.known.is_some() || facts.node_size.is_some() {
         SizingOperation::Normal
@@ -932,7 +932,7 @@ mod tests {
             crate::ParentFormattingContext::NoParent,
         );
         // This case isolates missing percentage-edge authority, not an intrinsic
-        // size calculation: both direct entrypoints use Normal with genuinely
+        // size calculation: both direct entrypoints use Normal with
         // indefinite space and no supplied ICB/scrollport fallback frame.
         let request = SizingRequestOf::new(
             Size::splat(AxisSizingRequestOf::new(
@@ -1372,7 +1372,7 @@ mod leaf_flow_context_tests {
                 .operation(),
             SizingOperation::Normal
         );
-        // ContentSize suppression restores the genuine MIN request, not a
+        // ContentSize suppression restores the MIN request, not a
         // fallback-derived known height or an unconditional ICB cap.
         let input =
             ComputeInputOf::leaf_content_size(Size::NONE, Size::NONE, containing, authored_request)

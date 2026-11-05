@@ -14,7 +14,7 @@ use crate::source::{
 };
 use std::{fmt, ops::Range, sync::Arc};
 
-/// One genuine at-keyword argument admitted by an authored `at-rule()` predicate.
+/// One at-keyword argument admitted by an authored `at-rule()` predicate.
 ///
 /// The enclosing [`CssCondition<CssSupportsLeaf>`] owns grammar admission and retains the
 /// complete function. Unknown names and `@charset` remain symbolic arguments;

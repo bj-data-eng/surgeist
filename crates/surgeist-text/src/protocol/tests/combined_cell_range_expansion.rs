@@ -193,7 +193,7 @@ fn uppercase_case_expansion_keeps_two_semantic_units_per_actual_original() {
             assert_eq!(owner.presentation_range(), unit.presentation_range());
             let pieces = unit.pieces().collect::<Vec<_>>();
             let [SourceRangeGeometry::CellFont(piece)] = pieces.as_slice() else {
-                panic!("each expanded S has its genuine horizontal font metric piece");
+                panic!("each expanded S has its horizontal font metric piece");
             };
             assert!(piece.cell_unit().same_unit(&owner));
             assert_eq!(

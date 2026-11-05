@@ -442,7 +442,7 @@ fn original_finite_output_refusal_preserves_sheet_and_spent_work_until_raised_re
         large.retained_bytes(),
         large.retained_units(),
         large.work(),
-        // The explicit lower continuation adds one genuine cumulative output;
+        // The explicit lower continuation adds one cumulative output;
         // the following command must still refuse and preserve its owners.
         11,
     )

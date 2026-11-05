@@ -1,4 +1,4 @@
-//! Genuine owner locks, aborted producer identity and last-owner token custody.
+//! Owner locks, aborted producer identity and last-owner token custody.
 use super::super::rendering::tests::ready;
 use super::super::tests::{envelope, flag};
 use super::*;
@@ -77,7 +77,7 @@ fn real_busy_poisoned_and_missing_object_are_not_owner_removal() {
     assert_eq!(input.as_ref().unwrap().qualification(), &q);
     let poisoned = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let _guard = cap.lock().unwrap();
-        panic!("genuine owner failure");
+        panic!("owner failure");
     }));
     assert!(poisoned.is_err());
     let mut hold = dom

@@ -144,7 +144,7 @@ resource custody for shutdown; general unbind or rebind is not supplied.
 
 ### Document stylesheet-set preferences
 
-A genuine bound Document stylesheet owner retains its preferred UTF-16 name and
+A bound Document stylesheet owner retains its preferred UTF-16 name and
 last explicitly selected name. They begin empty and null respectively, survive
 an empty list and last-sheet removal, and remain separate for each Document.
 Native Style creation applies CSSOM's add-sheet selection in the same batch as
@@ -253,7 +253,7 @@ Global. An explicitly retired Document denies feature permission before policy
 evaluation. Its actual retained original Window can then establish no transient
 activation from its constructor-owned never-activated state. Runtime publishes
 that precise negative allow-focus result through the same affine focus bridge;
-accepted denial completes the called permission step and its genuine early-return
+accepted denial completes the called permission step and its early-return
 branch without moving focus. Missing
 Window state remains unavailable. The live execution checks for retired Globals
 are preserved.
@@ -484,7 +484,8 @@ The standard `close_dialog(receiver, result)` Source operation represents
 `close(optional returnValue)`, whose source is null. It retains omitted versus
 supplied-empty result through the original method continuation. Initial absent
 open returns; otherwise authentic noncancelable beforetoggle precedes a new
-current open read. A surviving callback that removes open supplies the genuine
+current open read. A surviving callback that removes open supplies the
+
 early return. The method publishes the toggle, runs complete open-removal hooks,
 applies only a supplied result, clears actual request-close slots and reads
 canonical previous focus. Known absence reaches real Close task publication.
@@ -527,7 +528,7 @@ An uncanceled watcher rechecks current guards and removes membership before
 Source invokes the existing Close frame with freshly captured request operands.
 The watcher invocation settles before the outer literal force=false write.
 If the receiver retired, started events and incurred cleanup still finish against
-their original records. Source retains the genuine stopped action, exposes typed
+their original records. Source retains the stopped action, exposes typed
 pending cleanup, clears its canonical incomplete marker at actual terminal
 settlement and reports the native failure. It does not turn cancellation into
 an outer early return or manufacture Applied after a failed nested Close.
@@ -610,7 +611,7 @@ Style continues to deliver its actual source events. See the
 [SVG processing contract](../../surgeist-dom/docs/scripts.md#svg-script).
 
 Positive recipient admission obeys canonical Source entry: a parked operation
-outside event observation refuses it, while genuine event-observer reentry uses
+outside event observation refuses it, while event-observer reentry uses
 that operation's original cumulative admission. Releasing an existing registration
 does not require entering or resuming Source. Recipient capabilities retain only
 operational accounting and endpoint facts; snapshots retain no callback authority.

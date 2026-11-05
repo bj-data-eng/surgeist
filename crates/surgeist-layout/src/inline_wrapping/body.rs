@@ -1,4 +1,4 @@
-//! Pretty's fixed-reference body score over genuine natural formatted lines.
+//! Pretty's fixed-reference body score over natural formatted lines.
 
 use super::quality::NaturalLine;
 use crate::LayoutScalar;

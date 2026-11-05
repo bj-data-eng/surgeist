@@ -492,7 +492,7 @@ fn detected_cut_uses_the_actual_inline_owner_without_redetecting_its_locale() {
 }
 
 #[test]
-fn genuine_wbr_and_virtual_cut_keep_independent_ordered_multiplicity() {
+fn wbr_and_virtual_cut_keep_independent_ordered_multiplicity() {
     for operation in [
         WordSpaceTransform::None,
         WordSpaceTransform::IdeographicSpace,
@@ -557,7 +557,7 @@ fn genuine_wbr_and_virtual_cut_keep_independent_ordered_multiplicity() {
 }
 
 #[test]
-fn genuine_forced_seam_suppresses_expansion_before_missing_owner_style_is_consumed() {
+fn forced_seam_suppresses_expansion_before_missing_owner_style_is_consumed() {
     let mut capture = input(ORIGINAL, WordSpaceTransform::SpaceAutoPhrase, &[3]);
     add_seam_control(&mut capture, ParagraphControlKind::ForcedBreak);
     wrap_inline(&mut capture, None);
@@ -607,7 +607,7 @@ fn a_continuous_origin_split_inside_a_supplementary_scalar_preserves_the_domain_
     let original = "今日は😀天気です。";
     let unsplit = analyze(input(original, WordSpaceTransform::SpaceAutoPhrase, &[])).unwrap();
     let split = analyze(input(original, WordSpaceTransform::SpaceAutoPhrase, &[4])).unwrap();
-    // The split is between the genuine high and low surrogate. Source-domain
+    // The split is between the high and low surrogate. Source-domain
     // equivalence is the oracle; no fresh model output is linguistic truth.
     assert_eq!(split.inner.projection.text, unsplit.inner.projection.text);
     assert_eq!(split.source().text(), &Text::from(original));
@@ -833,7 +833,7 @@ fn typographic_unit_interior_is_excluded_before_uncaptured_style_is_demanded() {
 }
 
 #[test]
-fn punctuation_attachment_filters_genuine_proposals_without_relocating_them() {
+fn punctuation_attachment_filters_proposals_without_relocating_them() {
     for (text, raw_cut, expected) in [
         ("今日は「天気です。", 3, "今日は 「天気です。"),
         ("今日は」今日は天気です。", 4, "今日は」 今日は 天気です。"),

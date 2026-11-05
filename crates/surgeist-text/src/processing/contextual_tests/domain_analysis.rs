@@ -563,7 +563,7 @@ fn a_late_invalid_authored_style_cannot_replace_prior_published_analysis_or_sour
         },
     );
     // Refresh the actual original resources after adding the authored span;
-    // all three are genuine ranges of that same final Source value.
+    // all three are ranges of that same final Source value.
     input.origins = [Range::new(0, 1), Range::new(1, 2), Range::new(2, 3)]
         .into_iter()
         .map(|range| super::origin(&input.source, range))
@@ -621,7 +621,7 @@ fn a_cross_member_grapheme_requires_joint_authority_in_actual_source_member_orde
     .unwrap_err();
     assert_eq!(error.code, ErrorCode::UnsupportedFeature);
     // The completed EGC needs both real members. Required IDs follow their
-    // genuine event order (1 then 0), not numeric order or the seed member.
+    // event order (1 then 0), not numeric order or the seed member.
     assert!(
         matches!(error.detail(), Some(ErrorDetail::SourceProcessing {
         reason: SourceProcessingError::MissingJointAnalysisAuthority {
@@ -647,7 +647,7 @@ fn a_cross_member_grapheme_requires_joint_authority_in_actual_source_member_orde
     );
     assert_eq!(processed.processed_text(), &Text::from("i\u{307}"));
     assert!(processed.captured_joint_flow(0).is_none());
-    // A genuine Disconnected relationship stops the unit. These are then two
+    // A Disconnected relationship stops the unit. These are then two
     // independently owned outputs and acquire no joint permission requirement.
     let stopped = capture(request(
         &["i", "\u{307}"],

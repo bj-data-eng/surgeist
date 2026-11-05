@@ -40,7 +40,7 @@ signed flow remain exactly what the Native caller allocated.
 
 ## CSS-composed authority
 
-A genuine selected CSS margin-box allocation or checked component BoxEdge
+A selected CSS margin-box allocation or checked component BoxEdge
 activates `CssComposed`, including explicit all-zero components. Context-only
 BoxEdges grant no selected fit authority. This is an explicit Surgeist native mixing
 policy, not a CSSWG definition for arbitrary Native allocation mixtures.
@@ -74,8 +74,7 @@ margin cannot erase retained opaque endpoints. The required size is admission
 evidence, not a containment rectangle or a new origin.
 
 Layout supplies actual used CSS atomic and non-atomic components, consumes this observation
-through its ordinary finite/intrinsic/conditional fit loop, and retains genuine
-block-height/float retry and independent BFC rules. An authorized negative
+through its ordinary finite/intrinsic/conditional fit loop, and retains block-height/float retry and independent BFC rules. An authorized negative
 margin can overlap a float without falsifying the actual border or ink.
 The numeric box/control path already consumes actual CSS signed margin-box
 flow rather than unknown Native allocations.

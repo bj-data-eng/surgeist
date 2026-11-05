@@ -241,7 +241,7 @@
       "source": "html/float/fri06_float_line_exclusion.html",
       "source_sha256_at_inventory": "4583d97bcc6db5550a0c99f3f61fbed02498bb3808c87295b902e89cb146a2ae",
       "state": "profile-blocked",
-      "reason": "Float and shape-exclusion nodes need genuine box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
+      "reason": "Float and shape-exclusion nodes need box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
       "native_executed": false,
       "successor": null
     },
@@ -251,7 +251,7 @@
       "source": "html/float/fri06_float_line_exclusion.html",
       "source_sha256_at_inventory": "4583d97bcc6db5550a0c99f3f61fbed02498bb3808c87295b902e89cb146a2ae",
       "state": "profile-blocked",
-      "reason": "Float and shape-exclusion nodes need genuine box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
+      "reason": "Float and shape-exclusion nodes need box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
       "native_executed": false,
       "successor": null
     },
@@ -261,7 +261,7 @@
       "source": "html/float/fri06_float_line_exclusion.html",
       "source_sha256_at_inventory": "4583d97bcc6db5550a0c99f3f61fbed02498bb3808c87295b902e89cb146a2ae",
       "state": "profile-blocked",
-      "reason": "Float and shape-exclusion nodes need genuine box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
+      "reason": "Float and shape-exclusion nodes need box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
       "native_executed": false,
       "successor": null
     },
@@ -271,7 +271,7 @@
       "source": "html/float/fri06_float_line_exclusion.html",
       "source_sha256_at_inventory": "4583d97bcc6db5550a0c99f3f61fbed02498bb3808c87295b902e89cb146a2ae",
       "state": "profile-blocked",
-      "reason": "Float and shape-exclusion nodes need genuine box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
+      "reason": "Float and shape-exclusion nodes need box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
       "native_executed": false,
       "successor": null
     },
@@ -281,7 +281,7 @@
       "source": "html/float/fri06_float_shape_exclusion.html",
       "source_sha256_at_inventory": "2c11e9fb8f1f7200c4823f0c39ee7b43db238d325d037629ae0fb138d7319cd2",
       "state": "profile-blocked",
-      "reason": "Float and shape-exclusion nodes need genuine box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
+      "reason": "Float and shape-exclusion nodes need box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
       "native_executed": false,
       "successor": null
     },
@@ -291,7 +291,7 @@
       "source": "html/float/fri06_float_shape_exclusion.html",
       "source_sha256_at_inventory": "2c11e9fb8f1f7200c4823f0c39ee7b43db238d325d037629ae0fb138d7319cd2",
       "state": "profile-blocked",
-      "reason": "Float and shape-exclusion nodes need genuine box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
+      "reason": "Float and shape-exclusion nodes need box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
       "native_executed": false,
       "successor": null
     },
@@ -301,7 +301,7 @@
       "source": "html/float/fri06_float_shape_exclusion.html",
       "source_sha256_at_inventory": "2c11e9fb8f1f7200c4823f0c39ee7b43db238d325d037629ae0fb138d7319cd2",
       "state": "profile-blocked",
-      "reason": "Float and shape-exclusion nodes need genuine box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
+      "reason": "Float and shape-exclusion nodes need box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
       "native_executed": false,
       "successor": null
     },
@@ -311,7 +311,7 @@
       "source": "html/float/fri06_float_shape_exclusion.html",
       "source_sha256_at_inventory": "2c11e9fb8f1f7200c4823f0c39ee7b43db238d325d037629ae0fb138d7319cd2",
       "state": "profile-blocked",
-      "reason": "Float and shape-exclusion nodes need genuine box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
+      "reason": "Float and shape-exclusion nodes need box/inline sequence capture with independent exclusion inputs. Current direct inline source profile does not flatten floats into text or reconstruct output widths.",
       "native_executed": false,
       "successor": null
     },

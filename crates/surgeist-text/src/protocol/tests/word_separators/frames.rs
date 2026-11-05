@@ -408,7 +408,7 @@ fn upright_rtl_source_uses_ltr_cells_and_keeps_the_unrotated_separator_axis() {
         [0, 0, 0]
     );
     let line = finalize(&prepared);
-    // Genuine absent vertical tables synthesize each10px TTB advance and
+    // Absent vertical tables synthesize each10px TTB advance and
     // native origin(-5,8). Upright does not inherit the RTL body's odd level.
     assert_eq!(
         raw(&natural),

@@ -559,10 +559,7 @@ fn isolated_real_style_block_preserves_native_bound_and_original_source_origin()
         ("{color:red;@media screen", 24, true),
     ] {
         let report = CssStyleBlock::parse(&CssParser::default(), source, &context);
-        let block = report
-            .syntax()
-            .as_ref()
-            .expect("retained genuine style block");
+        let block = report.syntax().as_ref().expect("retained style block");
         assert_declaration(
             block.declarations(),
             source,

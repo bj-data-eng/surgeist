@@ -519,7 +519,7 @@ fn outside_and_nested<S: LayoutScalar>() {
         assert_eq!(cuts(&auto), [4, 8]);
         assert_eq!(cuts(&avoid), [2, 6, 8]);
         assert_ascii_custody(&avoid, &f, "ABCDEFGH");
-        // The same actual canonical CDEF box also has genuine endpoint nodes.
+        // The same actual canonical CDEF box also has endpoint nodes.
         // Request its NativePair form and exercise selection/placement, rather
         // than treating successful constructor admission as behavior evidence.
         let physical = captured(
@@ -850,7 +850,7 @@ fn restrictions<S: LayoutScalar>() {
             [3]
         );
     }
-    // The genuine inline boundary lies inside one EGC. No interior cut appears.
+    // The inline boundary lies inside one EGC. No interior cut appears.
     let f = captured(
         "A\u{301}BC",
         break_all(),
@@ -1248,7 +1248,7 @@ fn native_pair_roles_do_not_override_a_different_complete_canonical_box() {
         AHEM,
     );
     let tree = text_tree::<f64>(&f.binding, false);
-    // These genuine Start/End nodes are ordered and noncrossing but belong
+    // These Start/End nodes are ordered and noncrossing but belong
     // to DIFFERENT canonical boxes. An asserted enclosing box cannot replace
     // the complete source capture's actual pairing.
     let error = LayoutFlowInput::try_new(
@@ -1512,7 +1512,7 @@ fn phrase<S: LayoutScalar>() {
 }
 
 #[test]
-fn genuine_phrase_restoration_keeps_stage_order_and_ranks_actual_restored_cuts() {
+fn source_phrase_restoration_keeps_stage_order_and_ranks_actual_restored_cuts() {
     phrase::<f32>();
     phrase::<f64>();
 }
@@ -1521,7 +1521,7 @@ fn hanging<S: LayoutScalar>() {
     let f = captured(
         "AB.CDEF",
         text::Style {
-            // Explicit Anywhere supplies the genuine cut before IS period;
+            // Explicit Anywhere supplies the cut before IS period;
             // BreakAll alone must retain the ordinary punctuation restriction.
             line_break: text::LineBreak::Anywhere,
             hanging_punctuation: text::HangingPunctuation::new(
@@ -1877,7 +1877,7 @@ fn receiving<S: LayoutScalar>() {
                 rows[1].selected_line().request().incoming,
                 rows[0].hyphenation_continuation()
             );
-            // Full manual receiving target: seven letters70 plus the genuine
+            // Full manual receiving target: seven letters70 plus the
             // indication10. It fails75, so Auto is used; it fits85, so Manual wins.
             if !automatic {
                 assert_eq!(rows[1].feedback().advance, 80.0);
@@ -2437,7 +2437,7 @@ fn warm_policy<S: LayoutScalar>() {
     assert_eq!(warm.final_entries(), cold.final_entries());
     assert!(
         warm_tree.hits.get() > 0,
-        "independent sibling genuinely reused its retained cache"
+        "independent sibling reused its retained cache"
     );
     assert_eq!(cold_tree.hits.get(), 0);
     // New scope selection does not mutate the already issued result's custody.

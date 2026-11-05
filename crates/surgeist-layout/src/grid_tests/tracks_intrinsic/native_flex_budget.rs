@@ -116,7 +116,7 @@ fn assert_native_equal_flex_budget<S: LayoutScalar>(
             definite,
         )
     })
-    .expect("the genuine finite native grid completes");
+    .expect("the finite native grid completes");
     let root = budget_box(batch.unrounded_entries(), 0);
     assert_eq!(root.location, Point::ZERO);
     assert_eq!(root.size, Size::splat(one));

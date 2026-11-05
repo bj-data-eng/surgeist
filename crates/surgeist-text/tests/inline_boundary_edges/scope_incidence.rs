@@ -1,4 +1,4 @@
-//! Public prefix custody and logical scope facts from genuine captured events.
+//! Public prefix custody and logical scope facts from captured events.
 //! Scope membership is independent of physical placement and source hulls.
 use super::*;
 

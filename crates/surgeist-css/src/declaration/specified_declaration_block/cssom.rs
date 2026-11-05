@@ -589,7 +589,7 @@ mod tests {
     }
 
     #[test]
-    fn pending_probe_requires_genuine_same_original_even_for_equal_text() {
+    fn pending_probe_requires_same_original_even_for_equal_text() {
         let report =
             crate::CssParser::default().parse_block_contents("pause:var(--P);pause:var(--P)");
         assert!(report.is_clean());

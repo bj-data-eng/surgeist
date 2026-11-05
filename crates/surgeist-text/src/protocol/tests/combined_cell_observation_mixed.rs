@@ -64,9 +64,9 @@ fn ordinary(layout: &Layout, origin: &PreparedOrigin, fixture: &Fixture) {
 
 #[test]
 fn cell_and_ordinary_range_geometry_keep_distinct_frames_in_the_same_layout() {
-    // This genuine fixture emits one leading B and one trailing B: BAB,
+    // This fixture emits one leading B and one trailing B: BAB,
     // inner1..2. It creates a separate real origin for each source scalar,
-    // with genuine Continuous connections and Inline enter/exit around A only.
+    // with Continuous connections and Inline enter/exit around A only.
     let (mut system, fixture) = fixture("A", 0.0, true, true, 10.0);
     assert_eq!(fixture.processed.source().text(), &Text::from("BAB"));
     assert_eq!(fixture.inner, Range::new(1, 2));
@@ -77,7 +77,7 @@ fn cell_and_ordinary_range_geometry_keep_distinct_frames_in_the_same_layout() {
     );
     let originals = source_cell.source_pieces().collect::<Vec<_>>();
     let [original] = originals.as_slice() else {
-        panic!("one genuine A occurrence");
+        panic!("one A occurrence");
     };
     assert_eq!(
         original.origin_position(),

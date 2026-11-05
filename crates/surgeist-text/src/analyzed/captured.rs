@@ -67,7 +67,7 @@ impl CapturedOwner {
     }
 }
 
-/// Borrowed observation of the genuine captured authority of one output.
+/// Borrowed observation of the captured authority of one output.
 /// Member and facts-owner handles retain their original immutable capture.
 #[derive(Clone, Copy)]
 pub struct CapturedAnalysisOwner<'a> {

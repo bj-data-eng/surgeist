@@ -250,7 +250,7 @@ fn inherited_csp_association_is_parked_across_original_work_refusal_and_raised_r
         )
         .unwrap(),
     );
-    // Qualify the fixture's actual initial container through the genuine HTML
+    // Qualify the fixture's actual initial container through the HTML
     // issuer, then use the normal canonical metadata publication/custody barrier.
     #[derive(Debug)]
     struct InheritedNative {
@@ -401,7 +401,7 @@ fn inherited_csp_association_is_parked_across_original_work_refusal_and_raised_r
             .inherit_child_policy(&lease.dom.csp_owner, &source, inner, &cancel)
             .unwrap();
         let crate::DomDocumentCspState::Associated(value) = inherited.csp.view() else {
-            panic!("genuine inheritance")
+            panic!("inheritance")
         };
         let issued = value.document().clone();
         assert_ne!(&issued, parent_policy.document());
@@ -435,7 +435,7 @@ fn inherited_csp_association_is_parked_across_original_work_refusal_and_raised_r
     assert!(publication.is_none());
     assert!(lease.status().spent_work() > spent);
     let DomHostedChildStep::MakeActive(request) = lease.hosted_child_step(&child).unwrap() else {
-        panic!("published genuine child")
+        panic!("published child")
     };
     let snapshot = lease.snapshot();
     let metadata = snapshot.document(request.document()).unwrap();

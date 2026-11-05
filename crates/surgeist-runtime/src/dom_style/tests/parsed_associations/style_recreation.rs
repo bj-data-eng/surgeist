@@ -303,7 +303,7 @@ fn blocked_first_without_cssom_owner_advances_to_fresh_original_parser_pop_reque
     let successor = session
         .style_execution()
         .advance_parsed_style_successor(&mut session.dom(), id, envelope(), &cancel())
-        .expect("a genuine blocked predecessor needs no CSSOM owner to advance ParserPopped");
+        .expect("a blocked predecessor needs no CSSOM owner to advance ParserPopped");
     assert!(matches!(
         successor.removal(),
         DomParsedHtmlStyleSuccessorRemoval::NoAssociatedSheet

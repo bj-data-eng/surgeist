@@ -49,7 +49,7 @@ fn range_frame_case(orientation: LineOrientation) -> (ContainerFixture, Prepared
         actual.body.as_slice()
     );
     // Same actual C-family font has H8/-2, no variation/USE_TYPO override,
-    // actual Horizontal Alphabetic zero, and a genuine Vertical BASE reference.
+    // actual Horizontal Alphabetic zero, and a Vertical BASE reference.
     font_premises(metrics.effective_instance().unwrap());
     assert_eq!(
         metrics.font_reference(),
@@ -79,7 +79,7 @@ fn scoped_range_line(prepared: &PreparedText, displacement: f64, tall: bool) -> 
     };
     let scopes = selected.scopes().collect::<Vec<_>>();
     let [scope] = scopes.as_slice() else {
-        panic!("one genuine NonInitial Inline target")
+        panic!("one NonInitial Inline target")
     };
     assert_eq!(scope.metrics().font_size(), 10.0);
     assert_eq!(scope.parent_metrics().unwrap().font_size(), 20.0);
@@ -111,14 +111,14 @@ fn issued_range_origin(prepared: &PreparedText, processed: &ProcessedSource) -> 
 
 fn expected_metric_rect(orientation: LineOrientation, d: f64) -> Rect {
     // Anchor inline20/common100. Vertical's native Cell sides5/5 give x95;
-    // CW's genuine horizontal8/2 gives x98; CCW gives x92 and y10.
+    // CW's horizontal8/2 gives x98; CCW gives x92 and y10.
     // Positive-over scope displacement moves physical X right for V/CW and
     // left for CCW. Inner font axes remain horizontal/right and down in all3.
     match orientation {
         LineOrientation::Vertical => Rect::new(95.0 + d, 20.0, 10.0, 10.0),
         CW => Rect::new(98.0 + d, 20.0, 10.0, 10.0),
         CCW => Rect::new(92.0 - d, 10.0, 10.0, 10.0),
-        LineOrientation::Horizontal => panic!("this fixture has a genuine vertical Source"),
+        LineOrientation::Horizontal => panic!("this fixture has a vertical Source"),
     }
 }
 

@@ -339,7 +339,7 @@ fn assert_grid_axis_prefix_requests<S: LayoutScalar>(tree: &StageTree<S>) {
         requests
             .iter()
             .any(|(_, input)| input.known().width.is_some()),
-        "the prefix includes the genuine selected-axis used-minimum query"
+        "the prefix includes the selected-axis used-minimum query"
     );
     assert!(
         requests
@@ -787,7 +787,7 @@ fn assert_scrollbar_maximum_track_space<S: LayoutScalar>() {
         }
     }
     // Saturation of finite provisional residuals must not weaken the checked
-    // consumer's nonfinite contract, even for a genuine zero-item track.
+    // consumer's nonfinite contract, even for a zero-item track.
     let tracks = [TrackSizingOf::<S>::AUTO];
     let rows = [GridIntrinsicContributionRow {
         span: GridTrackSpan::new(1, 2),
@@ -946,7 +946,7 @@ fn assert_normal_columns_recollect_formal_rows<S: LayoutScalar>() {
             .any(|(_, input)| formal_row_at(input, n(20.0)))
     );
     let accepted_entries = mixed.final_entries().to_vec();
-    // The host can refuse precisely this genuine new opposite-frame query;
+    // The host can refuse precisely this new opposite-frame query;
     // an unchanged old formal packet cannot silently bypass the dependency.
     assert!(
         tree.caches.is_empty(),

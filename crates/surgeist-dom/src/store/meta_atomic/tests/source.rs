@@ -607,7 +607,7 @@ fn actual_late_cancel_and_zero_output_refusal_preserve_the_original_phase_withou
 fn accepted_style_receipt_holder_is_admitted_before_busy_owner_access_and_retry_keeps_real_sheet() {
     let mut f = fixture_binding(u64::MAX, false);
     // The Style creation protocol admits the actual associated sheet order.
-    // This genuine empty owner has no unrelated constructed sheet to remove.
+    // This empty owner has no unrelated constructed sheet to remove.
     f.owners[0] = DomStyleCssomRoot::new(
         f.docs[0].node(),
         CssomStore::new(Default::default(), Default::default()).unwrap(),

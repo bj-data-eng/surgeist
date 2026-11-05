@@ -571,7 +571,7 @@ impl Draft {
         self.source_step(cancel)?;
         Ok(self.counts.live_ranges != 0)
     }
-    /// Shared by genuine Source exposure preflight and all final publication fronts.
+    /// Shared by Source exposure preflight and all final publication fronts.
     pub(super) fn range_publication_ready(&self, cancel: &AtomicBool) -> Result<(), DomError> {
         #[cfg(test)]
         if scale_metrics::ENABLED {

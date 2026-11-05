@@ -736,7 +736,7 @@ impl CssSupportsTestChild {
     }
 }
 impl CssSupportsTestBody {
-    /// Admits complete genuine unbraced named-test contents. Recovered syntax is
+    /// Admits complete unbraced named-test contents. Recovered syntax is
     /// `Some` with diagnostics; typed resource failure is `None`, never a clearing.
     ///
     /// The parser supplies the cumulative component limits.

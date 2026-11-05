@@ -9,7 +9,8 @@
 //! restores those facts when a debit is refused, transferred or released. It
 //! does not discover object identity, scan roots or infer custody from Arc counts.
 //! A bank/frontier owner pairs semantic objects with these tokens, reusing the
-//! token for an identity-equal controlled subtree and acquiring only genuinely
+//! token for an identity-equal controlled subtree and acquiring only
+
 //! new objects while adopting a borrowed historical input.
 
 use std::{

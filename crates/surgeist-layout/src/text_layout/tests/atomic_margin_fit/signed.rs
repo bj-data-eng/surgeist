@@ -82,7 +82,7 @@ fn assert_complete<S: LayoutScalar>(paragraph: &PreparedParagraph, expected: Exp
     assert_eq!(glyphs, [(text::Range::new(0, 1), 35, 0.0, 10.0)]);
     let slots = line.atomic_slots().collect::<Vec<_>>();
     let [slot] = slots.as_slice() else {
-        panic!("same actual selected line owns its genuine atomic");
+        panic!("same actual selected line owns its atomic");
     };
     assert_eq!(
         slot.occurrence,
@@ -276,7 +276,7 @@ fn later_retraction<S: LayoutScalar>() {
     // A alone overflows5. With NO margin the actual break admits two separate
     // overflow units; the negative result must not be attributed to that
     // fallback coalescing everything. The full negative candidate's flow is
-    // genuinely5, although the earlier candidate flow was10 and raw bounds20.
+    // 5, although the earlier candidate flow was10 and raw bounds20.
     assert_real_split::<S>(&paragraph, 5.0, 0.0);
     assert_complete::<S>(
         &paragraph,
@@ -294,7 +294,7 @@ fn later_retraction<S: LayoutScalar>() {
 }
 
 #[test]
-fn zero_and_positive_atomic_margins_keep_fit_and_genuine_soft_split_both_scalars() {
+fn zero_and_positive_atomic_margins_keep_fit_and_soft_split_both_scalars() {
     preservation::<f32>();
     preservation::<f64>();
 }

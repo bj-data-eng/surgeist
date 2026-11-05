@@ -197,7 +197,7 @@ fn actual_handoff_and_outer_tail_rollback_share_the_original_cumulative_work_cap
             .len(),
         1
     );
-    // Repeated genuine final-output refusal spends this one original budget.
+    // Repeated final-output refusal spends this one original budget.
     // It never queues another event or invocation and cannot renew either meter.
     let mut exhausted = false;
     for _ in 0..policy(outputs).work() {

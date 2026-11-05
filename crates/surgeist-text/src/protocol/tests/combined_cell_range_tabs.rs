@@ -1,4 +1,4 @@
-//! Genuine native TAB spans remain separate from font metric geometry.
+//! Native TAB spans remain separate from font metric geometry.
 use super::*;
 use crate::engine::layout::data::{ClusterContent, FinalizedRunFrame};
 use crate::{SourceRangeCellUnitKind, SourceRangeGeometry, SourceRangeUnit};
@@ -87,7 +87,7 @@ fn native_incidence_before_query(
     // This historical field retains native atom incidence too. It is NOT
     // evidence of a provider contribution: the authentic CssTab discriminator,
     // absent font-run and executed span above are required. Font shares below
-    // may use ONLY the genuinely font-backed rows, never this native row.
+    // may use ONLY the font-backed rows, never this native row.
     assert!(cluster.provider_atoms.contains(&atom));
     for provider in data
         .clusters
@@ -136,7 +136,7 @@ fn a_native_tab_between_two_real_font_inputs_has_its_own_span_and_no_provider_sh
     .unwrap();
     system.register_fonts(bytes.clone()).unwrap();
     let size = TabSize::spaces(2.0).unwrap();
-    // Genuine unchanged ordinary operation: its Block20 owns T40, so A0,
+    // Unchanged ordinary operation: its Block20 owns T40, so A0,
     // TAB10..40, B40..50. This is not an All Cell/source reinterpretation.
     let ordinary = captured(
         "A\tB",
@@ -199,7 +199,7 @@ fn a_native_tab_between_two_real_font_inputs_has_its_own_span_and_no_provider_sh
             })
             .collect::<Vec<_>>();
         let [row] = rows.as_slice() else {
-            panic!("one genuine finer ASCII font contribution");
+            panic!("one finer ASCII font contribution");
         };
         assert!(matches!(row.content, ClusterContent::Provider(_)));
         assert_eq!(row.provider_atoms, atom..atom + 1);
@@ -248,7 +248,7 @@ fn a_native_tab_between_two_real_font_inputs_has_its_own_span_and_no_provider_sh
         exact_source(font_unit, &origin, atom);
         let pieces = font_unit.pieces().collect::<Vec<_>>();
         let [SourceRangeGeometry::CellFont(font)] = pieces.as_slice() else {
-            panic!("genuine adjacent ASCII font");
+            panic!("adjacent ASCII font");
         };
         assert_eq!(font.inner_advance_edges(), (start, end));
         assert_eq!(font.effective_instance().face().bytes(), bytes.as_slice());
@@ -320,7 +320,7 @@ fn provider_free_positive_and_zero_tabs_expose_layout_spans_without_body_metrics
         );
         em_reference(*piece, &prepared, &capture);
         // Positive20 compresses to10. Zero width stays scale1, centered by5;
-        // it remains a genuine Semantic0 TAB, not Removed or an empty result.
+        // it remains a Semantic0 TAB, not Removed or an empty result.
         let left = 95.0 + (offset + scale * 0.0);
         let right = 95.0 + (offset + scale * period);
         assert_eq!(piece.rect(), Rect::new(left, 20.0, right - left, 10.0));

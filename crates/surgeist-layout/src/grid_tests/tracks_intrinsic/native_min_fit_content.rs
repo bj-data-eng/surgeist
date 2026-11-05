@@ -148,7 +148,7 @@ fn source<S: LayoutScalar>(
     }
 }
 fn formal_request<S: LayoutScalar>(operation: SizingOperation) -> LayoutRootRequestOf<S> {
-    // Full genuine CB percentage/fallback facts remain separate from the
+    // Full CB percentage/fallback facts remain separate from the
     // explicit intrinsic operation on otherwise unbounded physical inline space.
     LayoutRootRequestOf::standalone(
         SizingRequestOf::new(

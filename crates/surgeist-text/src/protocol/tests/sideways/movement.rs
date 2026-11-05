@@ -203,7 +203,7 @@ fn clockwise_source_next_line_refuses_lossy_control_target_after_exact_traversal
     // Ok(original0) silently omits it; Ok(1) invents a unique occurrence.
     let error = layout
         .move_cursor(original, Movement::NextLine)
-        .expect_err("raw source NextLine must validate the genuine adjacent anchor target");
+        .expect_err("raw source NextLine must validate the adjacent anchor target");
     assert_eq!(reason(&error), &ambiguity);
     assert_eq!(
         layout.position_geometry(&exact_middle).unwrap().rect(),

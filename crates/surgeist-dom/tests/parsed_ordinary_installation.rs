@@ -4711,7 +4711,7 @@ fn same_store_input_adoption_preserves_selection_then_uses_destination_platform_
         Some(selection)
     );
 
-    // A genuine value setter changes selection using the then-current target
+    // A value setter changes selection using the then-current target
     // Document's independently established none-direction policy.
     let mut batch = DomBatch::new();
     batch.set_input_value(input, "z\r\nuvw");

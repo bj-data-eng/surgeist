@@ -144,7 +144,7 @@ fn queue(
         .unwrap()
     {
         DomStyleParsedNotificationProgress::Queued { task } => task,
-        other => panic!("genuine NoImports queue: {other:?}"),
+        other => panic!("NoImports queue: {other:?}"),
     }
 }
 fn dispatcher() -> DomEventDispatcher<Context> {
@@ -530,7 +530,7 @@ fn incomplete_successor_and_later_unsupported_style_remain_actual_dependencies()
 }
 
 #[test]
-fn genuinely_blocked_first_and_pop_still_change_preferred_with_an_actual_empty_owner() {
+fn blocked_first_and_pop_still_change_preferred_with_an_actual_empty_owner() {
     let (policy, profile) = text_policy::policy(false);
     let (mut session, installed, old, _) = blocked_first(
         "<!doctype html><style>p{color:red}</style><meta http-equiv=default-style content=B>",

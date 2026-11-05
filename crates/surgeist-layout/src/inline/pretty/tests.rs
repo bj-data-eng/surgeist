@@ -299,7 +299,7 @@ fn real_fitter_trials_independently_veto_fixed_terminal_advance_fullness_and_pai
             match case {
                 0 => {
                     // Actual Auto100/100/10 first undergoes eligible Tail to
-                    // 100/50/60. Body goal1 can genuinely revisit100/100/10.
+                    // 100/50/60. Body goal1 can revisit100/100/10.
                     let mut request = input::<S>(
                         &[100.0, 50.0, 50.0, 10.0],
                         &[],
@@ -315,7 +315,7 @@ fn real_fitter_trials_independently_veto_fixed_terminal_advance_fullness_and_pai
                     run(request);
                 }
                 1 => {
-                    // Genuine rectangle height50: the alternative places its
+                    // Rectangle height50: the alternative places its
                     // same50-unit last atom below the float in an80-unit span.
                     fullness_veto_rectangle::<S>().compute().unwrap();
                 }

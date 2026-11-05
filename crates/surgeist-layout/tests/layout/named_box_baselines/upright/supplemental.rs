@@ -498,7 +498,7 @@ fn replay_host<S: l::LayoutScalar>(
     child.size = l::Size::new(l::PreferredSizeOf::AUTO, l::PreferredSizeOf::AUTO);
     let container = host.push(Some(0), l::LayoutInputOf::box_input(child));
     let binding = attach(&mut host, container, fixture);
-    // A genuine ordinary numeric sibling outside the complete paragraph's
+    // An ordinary numeric sibling outside the complete paragraph's
     // captured node window participates in the public cache operation.
     let mut leaf = root(mode, l::Direction::Ltr, l::InlineBaselineContext::Physical);
     leaf.block_flow_context = l::BlockFlowContext::Independent;
@@ -743,7 +743,7 @@ fn refusals_preserve_publication<S: l::LayoutScalar>() {
     });
     let restored = solve(&host, &[binding], available(40.0, 4.0), &[0]).unwrap();
     assert_eq!(semantic(&old), semantic(&restored));
-    // SidewaysLr remains supported for genuine box-only layout; the guard
+    // SidewaysLr remains supported for box-only layout; the guard
     // belongs to the Text-backed adapter rather than FlowAxes generally.
     let mut input = root(
         l::WritingMode::SidewaysLr,
@@ -770,7 +770,7 @@ fn interaction_and_scroll<S: l::LayoutScalar>() {
         let text = placed(&batch, 0);
         // Carets and selection consume the finalized allocation's 10-unit
         // metric band, while the qualified source fragments are only 4 wide.
-        // Source affinity distinguishes the two genuine sides of the soft cut.
+        // Source affinity distinguishes the two sides of the soft cut.
         for (cursor, c, y) in [
             (t::Cursor::new(0, t::Affinity::After), centers[0], 0.0),
             (t::Cursor::new(1, t::Affinity::Before), centers[0], 4.0),

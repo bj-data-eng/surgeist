@@ -106,7 +106,7 @@ fn registered(bytes: &[Vec<u8>; 2]) -> System {
 
 fn analysis(text: &str, id: u64) -> AnalyzedSource {
     // The tag is Format/Common/Extend, not a Cc control or an authored native
-    // ParagraphControl. Its genuine GB9 continuation is the reachability proof.
+    // ParagraphControl. Its GB9 continuation is the reachability proof.
     assert_eq!(
         CodePointMapData::<GraphemeClusterBreak>::new().get32(TAG_SPACE),
         GraphemeClusterBreak::Extend
@@ -273,7 +273,7 @@ fn contributing_a_with_tag_space_keeps_the_first_complete_face() {
 }
 
 #[test]
-fn genuinely_missing_d_with_tag_space_keeps_first_face_notdef_and_source() {
+fn missing_d_with_tag_space_keeps_first_face_notdef_and_source() {
     let bytes = fonts();
     let analyzed = analysis("D\u{e0020}", 1_447_004);
     let mut system = registered(&bytes);

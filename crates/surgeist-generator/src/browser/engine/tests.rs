@@ -326,7 +326,7 @@ fn expected_accounting_mismatch_is_rejected_before_publication() {
         assert!(!harness.root.join("xml").exists());
         harness.terminal();
 
-        // The one declared active case genuinely generated or was reported
+        // The one declared active case generated or was reported
         // unsupported by the adapter. Neither outcome admits two generated cases.
         assert_eq!(
             error.to_string(),

@@ -9,7 +9,7 @@ use std::mem::size_of;
 use super::{ScopeCapture, SourceProcessingScope};
 use crate::{FontBaseline, FontBaselineAxis, FontBaselineScript, Result};
 
-/// Effective formatting classification at a genuine captured inline boundary.
+/// Effective formatting classification at a captured inline boundary.
 ///
 /// This is supplied before shaping. It is not a displacement: an explicit zero
 /// shift is NonInitial, while absent producer evidence is represented by None.

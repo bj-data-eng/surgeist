@@ -432,7 +432,7 @@ impl<Node: Copy + Eq, S: crate::LayoutScalar> FormattedState<Node, S> {
                             .cloned()
                             .map(|endpoint| FlowEvent::Text(binding.clone(), endpoint)),
                     );
-                    // A genuine run completion occurrence is not a formatted
+                    // A run completion occurrence is not a formatted
                     // line. It authenticates external-after even for neutral runs.
                     result.push(FlowEvent::RunEnd(binding.clone()));
                 }

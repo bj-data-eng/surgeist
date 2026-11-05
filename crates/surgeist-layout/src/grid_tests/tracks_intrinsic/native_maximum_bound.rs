@@ -139,7 +139,7 @@ fn intrinsic_maximum_preserves_opposite_width<S: LayoutScalar>(
         let mut session = crate::engine::ComputeSession::new(&tree, Vec::new());
         session
             .compute_child(0, input)
-            .expect("the genuine Grid intrinsic operation completes")
+            .expect("the Grid intrinsic operation completes")
     };
     let intrinsic_receipts = tree.observed.borrow().clone();
     assert!(
@@ -188,7 +188,7 @@ fn intrinsic_maximum_preserves_opposite_width<S: LayoutScalar>(
         let mut session = crate::engine::ComputeSession::new(&tree, Vec::new());
         session
             .compute_child(0, known_input)
-            .expect("the genuine Grid own-known-width operation completes")
+            .expect("the Grid own-known-width operation completes")
     };
     let known_receipts = tree.observed.borrow().clone();
     assert_eq!(
@@ -228,8 +228,8 @@ fn intrinsic_maximum_preserves_opposite_width<S: LayoutScalar>(
             definite,
         )
     };
-    let normal = compute_layout(&tree, 0, normal_request)
-        .expect("the genuine accepted-width normal Grid completes");
+    let normal =
+        compute_layout(&tree, 0, normal_request).expect("the accepted-width normal Grid completes");
     let border_size = Size::new(S::from_f64(20.0), S::from_f64(10.0));
     let native_content_size = Size::new(S::from_f64(40.0), S::from_f64(10.0));
     for (phase, entries) in [
@@ -346,7 +346,7 @@ fn intrinsic_maximum_preserves_opposite_width<S: LayoutScalar>(
         "{operation}: intrinsic root node0 maximum-clamped border size"
     );
 
-    // Presence of these genuine interactions observes the content-derived
+    // Presence of these interactions observes the content-derived
     // opposite width without identifying every provisional query as a stage.
     assert_height_queries_with_opposite_width(&intrinsic_receipts, S::from_f64(40.0), operation);
 }

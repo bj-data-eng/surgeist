@@ -31,13 +31,13 @@ glyph output afterward.
 
 Captured handles retain their actual capture, parent and domain. The
 `capture_ordinal()` is diagnostic within that capture; the ordinal alone cannot
-authorize an association. Layout uses the genuine `ScopeAssociations` proof,
+authorize an association. Layout uses the `ScopeAssociations` proof,
 independently of wrapping preferences.
 
 ## Prepare authentic metric context
 
 Preparation intersects potential targets with real original and offered
-alternative candidate incidence. It retains the genuine parent context needed
+alternative candidate incidence. It retains the parent context needed
 by active children, including glyph-free parents, and stops at child domains.
 Dormant scopes and source-only removal without a frame-bearing occurrence do
 not create font demands.
@@ -50,10 +50,9 @@ resolve a font or shape an empty sample.
 The supplied scope reference and the actual preparation reference are distinct
 facts. `common_baseline_reference()` and `orientation()` identify the used
 composition frame. Raw horizontal font-design zero is distinct from requested
-Alphabetic; upright Central also retains its genuine metric reference and
+Alphabetic; upright Central also retains its metric reference and
 provenance. Named matching coordinates are relative to that actual native
-reference, positive toward line-over. Incompatible references require a genuine
-bridge or a typed refusal; equal names alone do not establish a zero offset.
+reference, positive toward line-over. Incompatible references require a bridge or a typed refusal; equal names alone do not establish a zero offset.
 
 ## Allocate exact selected occurrences
 
@@ -66,11 +65,11 @@ inventories belong to the active feature; an ordinary front without it retains
 its existing finalization path.
 
 `LineBoxStrut::scope` preserves the actual captured owner of a box contribution;
-`None` means genuine common-line participation. A wrapping adapter cannot discard
+`None` means common-line participation. A wrapping adapter cannot discard
 that association and recover it later by matching metric values. When a whole
 scope request owns the property, its nominated own boundary-box contribution is
 intrinsic Baseline participation, with unchanged metrics. The adapter lowers it
-once using the real scope/node/pair proof; genuine child edge operations remain
+once using the real scope/node/pair proof; child edge operations remain
 independent. Contradictory duplicate property requests refuse rather than silently
 being dropped. A nominated own boundary is not a second descendant edge root.
 The source owner can be an unclassified represented child whose frame is supplied
@@ -80,7 +79,7 @@ on an ordinary wrapping front does not activate the alignment feature.
 `CapturedControl::scope()` observes the exact original control event's enclosing
 source scope, separately from an admitted own-box endpoint nomination. A
 native-only box requires its real endpoint proof; it cannot acquire a fabricated
-captured box scope. A genuinely empty late-only contribution needs an authentic
+captured box scope. An empty late-only contribution needs an authentic
 early producer or a precise representation refusal.
 Wrapping's raw box-metric declaration is a separate producer phase: its actual
 Captured/native-pair binding issues the Text request's source owner. An embedded

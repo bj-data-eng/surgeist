@@ -1,4 +1,4 @@
-//! A genuine inline scope continues around a nested in-flow block.
+//! An inline scope continues around a nested in-flow block.
 
 use super::*;
 use std::sync::Arc;
@@ -99,7 +99,7 @@ fn continuation(
                     paragraph_strut: text::ParagraphStrut::DefaultFont,
                 })
                 .collect(),
-            // The sole genuine Start is in p0 and the sole genuine End in p2.
+            // The sole Start is in p0 and the sole End in p2.
             // The child block creates its own p1 without closing the inline.
             events: vec![
                 E::EnterScope(0),
@@ -325,7 +325,7 @@ fn complete_inline_scope_keeps_generated_output_before_and_after_real_block() {
         positions.push((at, fragment.rect().unwrap()));
     }
     positions.sort_by_key(|(at, _)| *at);
-    // Each source glyph and genuine generated SPACE advances10px. The child
+    // Each source glyph and generated SPACE advances10px. The child
     // block contributes its real10px line between the two parent10px lines.
     assert_eq!(
         positions,
@@ -775,7 +775,7 @@ fn middle_continuation_with_neither_endpoint_keeps_one_global_owner_and_local_ge
 }
 
 #[test]
-fn genuine_nonemitting_endpoint_paragraphs_supply_remote_controls_without_generated_duplicates() {
+fn source_nonemitting_endpoint_paragraphs_supply_remote_controls_without_generated_duplicates() {
     let (tree, bindings) = several_segments(2, true, false);
     assert_eq!(bindings[0].prepared.origin_views().len(), 0);
     assert_eq!(bindings[6].prepared.origin_views().len(), 0);

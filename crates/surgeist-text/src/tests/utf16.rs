@@ -200,7 +200,7 @@ fn supplementary_and_multibyte_provider_ranges_return_source_units() {
 }
 
 #[test]
-fn genuine_provider_context_refusal_retains_original_source_and_warm_publication() {
+fn provider_context_refusal_retains_original_source_and_warm_publication() {
     let mut system = system();
     let old = layout(&mut system, "AX");
     let old_lines = old.lines();

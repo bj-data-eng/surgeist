@@ -31,11 +31,11 @@ enum Phase {
 /// use surgeist_dom::{Dom, DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits};
 /// use std::sync::atomic::AtomicBool;
 /// fn inspect(dom: &mut Dom, id: DomParsedHtmlAssociationId,
-///            limits: DomParsedHtmlAssociationLimits, cancel: &AtomicBool) {
-///     let mut hold = dom.begin_parsed_html_meta(id, limits, cancel).unwrap();
-///     hold.validate_meta(cancel).unwrap();
-///     drop(hold);
-///     let _ = dom.snapshot();
+/// limits: DomParsedHtmlAssociationLimits, cancel: &AtomicBool) {
+/// let mut hold = dom.begin_parsed_html_meta(id, limits, cancel).unwrap();
+/// hold.validate_meta(cancel).unwrap();
+/// drop(hold);
+/// let _ = dom.snapshot();
 /// }
 /// ```
 /// The canonical owner cannot be accessed while its actual hold remains live:
@@ -43,10 +43,10 @@ enum Phase {
 /// use surgeist_dom::{Dom, DomParsedHtmlAssociationId, DomParsedHtmlAssociationLimits};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(dom: &mut Dom, id: DomParsedHtmlAssociationId,
-///            limits: DomParsedHtmlAssociationLimits, cancel: &AtomicBool) {
-///     let hold = dom.begin_parsed_html_meta(id, limits, cancel).unwrap();
-///     let _ = dom.snapshot();
-///     let _ = hold.step(cancel);
+/// limits: DomParsedHtmlAssociationLimits, cancel: &AtomicBool) {
+/// let hold = dom.begin_parsed_html_meta(id, limits, cancel).unwrap();
+/// let _ = dom.snapshot();
+/// let _ = hold.step(cancel);
 /// }
 /// ```
 /// A real preparation exclusively holds its original admission front:
@@ -55,12 +55,12 @@ enum Phase {
 ///                    DomStyleCssomRoot};
 /// use std::sync::atomic::AtomicBool;
 /// fn overlap(dom: &mut Dom, id: DomParsedHtmlAssociationId,
-///            limits: DomParsedHtmlAssociationLimits, caps: &[&DomStyleCssomRoot],
-///            cancel: &AtomicBool) {
-///     let mut hold = dom.begin_parsed_html_meta(id, limits, cancel).unwrap();
-///     let prepared = hold.prepare(caps, cancel).unwrap();
-///     let _ = hold.step(cancel);
-///     drop(prepared);
+/// limits: DomParsedHtmlAssociationLimits, caps: &[&DomStyleCssomRoot],
+/// cancel: &AtomicBool) {
+/// let mut hold = dom.begin_parsed_html_meta(id, limits, cancel).unwrap();
+/// let prepared = hold.prepare(caps, cancel).unwrap();
+/// let _ = hold.step(cancel);
+/// drop(prepared);
 /// }
 /// ```
 pub struct DomParsedHtmlMetaRuntimeHold<'dom> {
@@ -578,7 +578,7 @@ impl DomParsedHtmlMetaPreparation<'_, '_, '_> {
 
 impl<'caps> DomParsedHtmlMetaPreparation<'_, '_, 'caps> {
     /// Last fallible operation. Every producer, canonical bank and output slot
-    /// is prepared before the first genuine producer publication.
+    /// is prepared before the first producer publication.
     #[expect(
         clippy::result_large_err,
         reason = "retain the actual destination root and original producer diagnostic without refusal-time allocation"

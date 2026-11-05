@@ -834,7 +834,7 @@ fn contained_groups_from_real_fallback_fonts_move_together_without_a_cross_font_
     let mut system = register(primary.clone());
     system.register_fonts(fallback.clone()).unwrap();
     let mut source = Source::identified("A\u{1361}\u{301}A", Id::from_u64(1564017), 1);
-    // This is a genuine authored font-request difference on the mark. A
+    // This is an authored font-request difference on the mark. A
     // uniform EGC query with two equally partial faces does not union them.
     // The mark's own query now falls through Ahem0/1 to Phrase Ahem1/1.
     source.span(
@@ -858,7 +858,7 @@ fn contained_groups_from_real_fallback_fonts_move_together_without_a_cross_font_
         let actual_mark_run = natural
             .run_views()
             .find(|run| run.glyphs().any(|glyph| glyph.id() == 100))
-            .expect("the mark's genuine font request must select its covering fallback glyph");
+            .expect("the mark's font request must select its covering fallback glyph");
         assert_eq!(
             actual_mark_run.face().bytes(),
             fallback,

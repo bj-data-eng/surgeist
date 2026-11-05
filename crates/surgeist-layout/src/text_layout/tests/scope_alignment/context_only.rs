@@ -1,5 +1,5 @@
 //! Explicit domain font context and limits do not classify an empty inline box.
-//! Source custody remains genuine even when no scope frame is demanded.
+//! Source custody remains even when no scope frame is demanded.
 use super::*;
 
 fn context_only<S: LayoutScalar>() {

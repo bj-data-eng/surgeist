@@ -1086,7 +1086,7 @@ mod tests {
         }
         assert!(
             observed_first_only,
-            "a genuine admitted prefix marks just the first document-order script"
+            "an admitted prefix marks just the first document-order script"
         );
     }
     #[test]

@@ -1,5 +1,5 @@
 //! Grid selects a resolved reference in its own alignment-axis context.
-//! All geometry cases execute genuine font-free Native boxes/paragraphs.
+//! All geometry cases execute font-free Native boxes/paragraphs.
 use super::*;
 use crate::geometry::LogicalEdgesOf;
 use crate::output::{NamedBaselineDemand, NamedBaselineSet};
@@ -679,7 +679,7 @@ fn inherited_lane_sizing_fixture<S: LayoutScalar>(
 
     let mut lane = tree.node_input(1).clone();
     lane.display = Display::GridLanes;
-    // The genuine only-Rows subgrid producer selects Grid axis Row and
+    // The only-Rows subgrid producer selects Grid axis Row and
     // stacking axis Column. No synthetic Grid span is supplied for stacking.
     lane.grid_template_columns.clear();
     tree.insert_input(1, LayoutInputOf::box_input(lane));

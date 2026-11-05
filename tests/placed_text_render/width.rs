@@ -145,7 +145,7 @@ fn capture(
     )
     .unwrap();
     // These witnesses have no phase-I deletion/conversion: equal processed
-    // strings still differ in the genuine Preserve versus Collapse fact.
+    // strings still differ in the Preserve versus Collapse fact.
     assert_eq!(
         analyzed.processed_source().processed_text().code_units(),
         source.text().code_units()
@@ -577,7 +577,7 @@ fn normal_wrap_uses_mapped_character_opportunities_and_real_twenty_pixel_advance
 }
 
 #[test]
-fn genuine_preserved_space_maps_but_surviving_collapsed_space_stays_narrow() {
+fn preserved_space_maps_but_surviving_collapsed_space_stays_narrow() {
     let bytes = width_ahem();
     let mut system = system(&bytes);
     // Interior spaces avoid conditional trailing-space measurement effects.

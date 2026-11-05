@@ -1,4 +1,4 @@
-//! Genuine native OutOfFlow capture uses actual absolute child geometry.
+//! Native OutOfFlow capture uses actual absolute child geometry.
 use super::*;
 mod supplemental;
 
@@ -381,7 +381,7 @@ fn compute<S: l::LayoutScalar>(
 ) -> Result<l::CompletedLayoutBatchOf<u32, S>, l::LayoutErrorOf<u32, S>> {
     let flow =
         l::LayoutFlowInput::try_new(host, 0, bindings, l::WrappingInput::default(), Vec::new())
-            .expect("genuine OutOfFlow occurrence must bind to its actual absolute child");
+            .expect("OutOfFlow occurrence must bind to its actual absolute child");
     l::compute_layout_with_flow_invalidated(
         &flow,
         0,

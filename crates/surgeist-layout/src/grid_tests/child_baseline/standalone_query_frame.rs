@@ -15,7 +15,7 @@ fn normal_box<S: LayoutScalar>(
         .unrounded_entries()
         .iter()
         .find(|entry| entry.node() == node)
-        .expect("the genuine source node has an accepted normal output")
+        .expect("the source node has an accepted normal output")
         .output();
     let published = fri08_c01_placement_output(batch, node);
     assert_eq!(published.location, normal.location);

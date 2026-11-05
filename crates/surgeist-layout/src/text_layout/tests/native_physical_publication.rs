@@ -215,7 +215,7 @@ fn tree<S: LayoutScalar>(paragraph: &Paragraph, control: bool) -> PublicLayoutTr
             ),
         )
     } else {
-        // Genuine empty layout establishes absence; no measured output or
+        // Empty layout establishes absence; no measured output or
         // baseline facts are injected. Default alignment is existing Baseline.
         tree.style(
             2,

@@ -75,8 +75,7 @@ measurement/continuation and intrinsic sizing. Separator insertion has its own
 control or virtual pieces. `PreparedSourceSegment::conditional_search` captures
 the actual interval and purpose using that segment's preparation and ordinary
 opportunity inventory. Measure its issued `phrase_portions` with
-`PreparedTermination::PhraseMeasurement`, then supply genuine
-`PhraseOverflowDecision` receipts to `begin`. `PreparedConditionalBatch::advance`
+`PreparedTermination::PhraseMeasurement`, then supply `PhraseOverflowDecision` receipts to `begin`. `PreparedConditionalBatch::advance`
 requires complete ordered variant dispositions before issuing the next stage.
 Each opportunity carries its authorized alternative; `manual_portions` provides
 admitted manual-priority measurements for a restored automatic variant.
@@ -109,7 +108,7 @@ wrapping; typography and captured ancestor wrapping still govern admission.
 `PreparedText::word_views` and `hyphenation_cut_views` expose preparation-owned
 observations of complete lexical words, resource applicability, cut provenance,
 counts and exact source pieces. The current automatic resource requires en-US
-on every genuine word contribution, compared without ASCII case distinctions;
+on every word contribution, compared without ASCII case distinctions;
 generic English and other locales have no automatic resource. See
 [resource support and attribution](hyphenation-resources.md).
 
@@ -119,7 +118,7 @@ BreakAll, including empty alternatives, while retaining truthful observations.
 Independent ordinary after-source-SHY permission uses the following ordinary
 owner, actual Unicode/typographic boundary and native NCA Wrap permission;
 source-free Controls or equal source offsets supply no BA permission. An Allowed
-cut can retain both its genuine nonhyphenating `None` and an admitted manual
+cut can retain both its nonhyphenating `None` and an admitted manual
 alternative. See the [source determination](../../../references/text-break-all-hyphenation--determination-20261024.md).
 
 `Style::hyphenate_limit_chars` accepts a computed `HyphenateLimitChars` triple
@@ -256,7 +255,7 @@ Cf/DI membership, glyph count, ink and zero advance are not eligibility proofs.
 Native Normal descendants and actual mapped filler resources remain preserved;
 Normal participation alone qualifies neither a writing system nor movement.
 
-Processed/selected EGCs retain genuine atomic and disconnected component boundaries.
+Processed/selected EGCs retain atomic and disconnected component boundaries.
 An atomic inside a host-readback A+mark EGC therefore does not establish an operation
 EGC spanning that seam: the processed A and standalone mark remain distinct. Ordinary
 zero behavior stays usable; materially unqualified standalone-mark topology refuses
@@ -303,7 +302,7 @@ low-level overrides and required script features retain precedence.
 One immutable upfront requirement drives both structural observation and input
 mask ranges, with exact-boundary or conditional-envelope provenance. The
 conditional fallback preserves complete original EGC coverage inside real text
-components and genuine selected domains, plus possible visual endpoint
+components and selected domains, plus possible visual endpoint
 interactions. It may conservatively cover a component in full; it does not mask
 unrelated components because they share a font invocation or cross an atomic
 into unrelated text. Possible governing bases follow the shared three-tier base
@@ -438,8 +437,7 @@ placement inherit the preparation rather than accepting another name.
 
 For each actual retained font instance and shaping script, raw ascent `A`, signed
 descent `D`, and scaled HorizontalY Alphabetic coordinate `b` give used before
-`A-b` and after `b-D`. The existing raw named-baseline owner supplies genuine
-absence zero and typed malformed-data errors. Gap and normal extent `A-D+gap`
+`A-b` and after `b-D`. The existing raw named-baseline owner supplies absence zero and typed malformed-data errors. Gap and normal extent `A-D+gap`
 do not change. Native body/default font struts retain signed contributions and
 half-leading, including alignment references outside their metric bounds.
 Independent caller-allocated box/control struts keep their own validity rules.
@@ -617,7 +615,7 @@ their facts. `Source::boxes` remains the atomic inventory. Inline, block,
 atomic-block and out-of-flow-block roles are explicit. Lexical scopes can remain
 open while a block inside an inline ends and resumes a paragraph.
 
-Combination preserves genuine box boundaries, including empty Inline boxes.
+Combination preserves box boundaries, including empty Inline boxes.
 Inline-only lookaround can reject partial candidates on their sides; it does
 not permit crossing the box. Out-of-flow atomics also fence combination, with
 independently eligible runs on each side and the actual atomic occurrence
@@ -628,8 +626,7 @@ edges, including outer tracking; inner glyph origins do not supply those sites.
 
 Full effective paragraph styles, delimiter policy, direction, strut and
 `WhiteSpaceTrim` facts are captured before trimming and the shared Phase I pass.
-`IncompleteExterior` refuses when required surrounding context is absent. Genuine
-exterior trimming can remove original PreserveBreaks delimiters before Phase I;
+`IncompleteExterior` refuses when required surrounding context is absent. exterior trimming can remove original PreserveBreaks delimiters before Phase I;
 surviving LF then retains its separate forced-break role. These are normalized
 producer facts, without authentication of a live DOM or Style tree.
 
@@ -638,7 +635,7 @@ Retain the result in `Arc<ProcessedSource>` and obtain views from `paragraphs()`
 style and coverage; no later range or replacement style can rebind it.
 `admit_paragraph` checks the actual processing owner, not equal input values.
 
-`AnalyzedDomain::from_processed_paragraph` uses a genuine member to select its
+`AnalyzedDomain::from_processed_paragraph` uses a member to select its
 captured domain and publishes all completed outputs atomically. Independent
 outputs retain their own paragraph facts; an admitted joint owns its complete
 member inventory with one designated facts owner. Source continuity supplies
@@ -650,7 +647,7 @@ matching Mixed/upright analysis, and SidewaysClockwise/SidewaysCounterclockwise
 with HorizontalComposition analysis. The retained inner layout remains physically horizontal in each profile.
 Source-proved absence of provider projection remains distinct from a tab-only
 layout, which has logical geometry without body provider input.
-It demands the genuine text-containing Inline or same-domain inherited
+It demands the text-containing Inline or same-domain inherited
 RootInline font reference and captured limits, including for glyph-free cells.
 Vertical preparation uses that container's VerticalX metrics; sideways
 preparation uses its HorizontalY metrics before the enclosing scope shift.
@@ -658,7 +655,7 @@ The cell's intrinsic square is one em; actual inner runs retain their horizontal
 advances. A fitting normal composition retains its executed layout and optional
 provider payload. Otherwise,
 bounded `hwid`, `twid` and `qwid` trials reuse its actual font instances and
-respect authored feature settings. Genuine source-attached mark-only descendants
+respect authored feature settings. Source-attached mark-only descendants
 may inherit a covered base; surviving Normal default-ignorables require their own
 width action. CSS TABs are separate native layout operations, never font actions,
 NoAction receipts or removal evidence. A mixed candidate requires existing complete
@@ -721,13 +718,13 @@ before measurement. The chosen endpoint pairs and complete interval are centered
 and compressed once, then retained through finalization and replay. Zero sizes
 skip unused probes. Hypothetical resources retain their actual fallback instances;
 tab-only layout needs no dummy font run, glyph baseline or GlyphFrame.
-Source processing retains genuine forced-break removal and glyph-free input provenance. A cell without a raw logical participant
+Source processing retains forced-break removal and glyph-free input provenance. A cell without a raw logical participant
 retains its actual relation-event interval for direction queries. Its whole
 occurrence can supply an eligible strong bidi contribution when a raw empty point cannot;
 the complete body context still determines isolate eligibility.
 
 `source_range_fragments` observes actual inner semantic EGCs through
-`SourceRangeGeometry::CellFont` and genuine native TABs through `CellTab`.
+`SourceRangeGeometry::CellFont` and native TABs through `CellTab`.
 Cell font metrics use their common horizontal metric reference; native TABs
 retain a separate layout/em-band reference without borrowing a body font.
 Removed-only Cell units preserve source metadata with no rectangle. See the
@@ -766,7 +763,7 @@ grants no new section.
 under an existing prepared boundary and its issued source segment. Each
 `PreparedBoundaryIncidence` retains both and supplies one consistent
 `CapturedScopeIncidence` relation for
-every queried scope. Transparent connections alias shared edges; genuine empty
+every queried scope. Transparent connections alias shared edges; empty
 boxes can retain distinct before/after choices. Capture, domain, endpoint pins,
 removed contributions and indivisible units constrain those choices. The
 consumer supplies actual generated-box/order evidence and an issued termination
@@ -814,7 +811,7 @@ selected basis and query no shaping provider. The direct allocated tests in
 these rules; they do not establish full captured text-scope vertical alignment.
 
 Paragraph coordinates remain original UTF-16 positions. `source_range()` is the
-minimal envelope of original owned pieces and genuine empty/control/atomic
+minimal envelope of original owned pieces and empty/control/atomic
 occurrences, including text subsequently deleted by trimming or collapse.
 `source_pieces()` and issued occurrences retain membership; a middle child hole
 does not become parent text merely because it lies inside that envelope.
@@ -838,12 +835,11 @@ U+1680, retains leading U+1680, and hangs remaining eligible separator sequences
 unconditionally, including under nowrap. NBSP remains ordinary content.
 
 BreakSpaces offers after each eligible preserved SPACE/TAB or other separator at
-its actual character-end cut, under genuine neighboring/NCA Wrap permission and
+its actual character-end cut, under neighboring/NCA Wrap permission and
 typographic-unit/glue constraints. It creates neither a before-first-space cut
 nor an offer relocated past a combining continuation. U+2007/U+202F retain their
 own GL protection; SPACE/TAB before GL use the adopted Unicode 17/revision 55
-boundary, rather than a blanket next-GL veto. WJ/ZWJ protection and genuine
-higher-priority ZW opportunities remain. See the [glue source reconciliation](../../../references/css-text-break-spaces-glue--source-reconciliation-20261024.md).
+boundary, rather than a blanket next-GL veto. WJ/ZWJ protection and higher-priority ZW opportunities remain. See the [glue source reconciliation](../../../references/css-text-break-spaces-glue--source-reconciliation-20261024.md).
 
 BreakSpaces whitespace processing keeps preserved spaces/tabs/separators in ordinary flow: no line-edge
 removal, whitespace hanging or intrinsic omission at Soft, Forced or BlockEnd, including
@@ -899,7 +895,7 @@ writing-mode/direction fields still describe the containing Block formatter.
 The immediate parent's axes are a separate resolved fact, including when its
 direction opposes that formatter.
 
-For BoxEdge, obtain an `InlineBoxSource` from a genuine captured Inline scope or
+For BoxEdge, obtain an `InlineBoxSource` from a captured Inline scope or
 `PreparedText::native_inline_box` over actual captured Start/End controls. Exact
 scope nominations canonicalize to that scope; matching cuts do not establish a
 pair. `PreparedText::inline_box_edge_context` checks the source owner and actual
@@ -927,7 +923,7 @@ conversion separately qualify nonzero margin displacement at its recipient.
 | `LineSelectionRequest::boundary_context` | Only demanded off-selection endpoint facts; no selected flow, strut, fragment or placement. Selected endpoints belong only in `controls`. |
 
 For each complete candidate request, `PreparedText::boundary_context_demand`
-returns the next genuine off-selection `PreparedControl` needed by consumed
+returns the next off-selection `PreparedControl` needed by consumed
 shaping context, or `None`. Append its actual `InlineBoundaryContextAllocation`
 and repeat. The list must be the canonical first-demand prefix; a proved separating
 boundary stops the outward walk, while an all-zero edge can reveal a farther
@@ -1006,7 +1002,7 @@ A consumer requests global bidi-fragment provenance by constructing one
 `PreparedInlineBoxFamily` from its actual immutable `PreparedText` and complete
 extra native-box declarations, then retaining it in `LineSelectionRequest::inline_boxes`.
 Captured Inline boxes and undecorated captured ancestors come from that capture;
-extra `InlineBoxSource` declarations name genuine captured native endpoint pairs.
+extra `InlineBoxSource` declarations name captured native endpoint pairs.
 Exact captured nominations canonicalize to their captured box. Identical repeated
 pairs canonicalize; distinct boxes cannot share one actual Start or End control.
 Distinct controls at the same numerical source cut remain distinct occurrences.
@@ -1077,7 +1073,7 @@ the public mixed-line protocol lends those actual phases without copying glyph p
 
 Font fallback credits nominal coverage only for the cluster's shaping
 contributors. A noncontributing format scalar such as TAG SPACE cannot make
-a missing letter complete. Genuine glyph-free text can still retain an admitted
+a missing letter complete. Glyph-free text can still retain an admitted
 font's metrics without adding paint or changing its original source.
 
 ## Glyph-free associated-font metrics
@@ -1192,7 +1188,7 @@ The [native determination](../../../references/font-baselines--native-determinat
 owns BASE selection, one-edge/em-box derivation, missing-metric synthesis and the
 fractional CSS midpoint policy. BASE1.0/1.1 and supported same-instance variation
 are qualified through the safe parser and shared strict store owner. Format2
-uses its stored coordinate after genuine point validation, including at variable
+uses its stored coordinate after point validation, including at variable
 instances. Static Device payloads are validated with ppem corrections omitted
 under this unhinted profile; real VariationIndex effects use actual canonical
 coordinates. A Device record in variable BASE is invalid.
@@ -1219,7 +1215,7 @@ edges and Central, retaining authored/derived provenance, valid CFF coordinates
 and fractional variable BASE effects. A malformed or unsupported consumed BASE
 reference fails instead of selecting a missing-data heuristic.
 
-When that raw reference is genuinely unavailable, valid vhea1.1 em sides use
+When that raw reference is unavailable, valid vhea1.1 em sides use
 `NominalVerticalPenX`: signed distances from the declared nominal vertical pen.
 The existing strict MVAR owner resolves `vasc`/`vdsc` at the actual canonical
 instance, preserving its whole-design-unit rounding. `vlgp` does not affect this
@@ -1266,10 +1262,10 @@ Whole-upright analysis applies the [native interpretation](../../../references/t
 to original/transformed characters and participating captured formatting controls
 in the same actual stream. Directional instructions become inert L-class inputs;
 raw Unicode properties, invisibility/removal, source/occurrence identity and
-capture order remain unchanged. Surviving B separators, genuine Forced controls
+capture order remain unchanged. Surviving B separators, Forced controls
 and computed boundaries establish their real body cuts before interpretation,
 including the terminal empty context. There is no final-level overwrite or
-fabricated strong character in a genuine empty body.
+fabricated strong character in an empty body.
 
 A captured paragraph `base_direction` is an already-resolved used authority.
 Upright rejects a contradictory RTL claim with a BaseDirection context mismatch.
@@ -1333,7 +1329,7 @@ invocation. Automatic vrt2 never chooses orientation. Explicit settings can
 change glyph selection while preserving the source role. Tr without an
 alternate stays upright; optional synthetic fallback is outside this profile.
 
-Native vertical DefaultFont struts retain their genuine glyph-free metric
+Native vertical DefaultFont struts retain their glyph-free metric
 operation. CSS hypothetical SPACE/ZERO tab queries resolve their own scalar
 roles and horizontal Central metrics. Allocated contributions do not invent a
 default font demand. R retains automatic underline/strike metrics rebased to
@@ -1341,7 +1337,7 @@ its Central reference. An actual material upright effect requiring unavailable
 automatic offset or thickness refuses with its precise style/kind/component;
 disabled or fully explicit upright effects work. Unused and DI-excluded styles
 do not impose a paragraph-wide automatic-decoration refusal.
-Selected paint admission also qualifies a genuinely retained metric-only font
+Selected paint admission also qualifies a retained metric-only font
 strut, including its zero-width effects. A source-only fallback whose inputs are
 all Residual/Deleted retains font and source metadata without activating a
 decoration; allocated contributions do not turn that bookkeeping into an effect.
@@ -1484,7 +1480,7 @@ plaintext value. Replacement is suppressed next to actual post-Phase-I forced
 breaks, ignoring inline boundaries and out-of-flow boxes. A collapsed LF is
 not a forced break. Generic optional-break controls are not interpreted as wbr.
 Actual disconnected joins bound forced adjacency. Contextual capture retains
-the control's genuine connection side. If a flat paragraph leaves that side
+the control's connection side. If a flat paragraph leaves that side
 ambiguous and it could change a requested original-separator replacement,
 `MissingOriginalSeparatorBoundaryContext` identifies the original range, anchor
 and connection. None, proven source-hard-break suppression and an intervening
@@ -1625,7 +1621,7 @@ Source-only and placed updates retain the same original host-grapheme characters
 and UTF-8 values. `AA` keeps two characters; `ß` transformed to `SS` keeps one
 original `ß`. The actual Cell source closure forms one word-navigation span.
 A newline-bearing Cell may share one TextRun carrier while `character_lengths`
-preserves every original character. Genuine source holes or shared ancestry that
+preserves every original character. Source holes or shared ancestry that
 prevent a truthful mapping return `UnsupportedAccessibilityCellMapping` atomically.
 For example, Lithuanian uppercase `i\u{0307}` leaves one original grapheme but
 the Cell owns only the emitted `I` ancestor; the partial ownership refuses.
@@ -1637,7 +1633,7 @@ and movement retain their two exterior edges.
 
 Bounds use each original's actual finalized contributions through the horizontal
 Cell frame, compression, scope displacement and placement once. Removed or
-provider-empty originals add no bounds; genuine native TABs retain their own
+provider-empty originals add no bounds; native TABs retain their own
 executed band, including actual zero width. Aggregate carrier bounds union only
 real contributions. Cell TextRuns omit both optional character-position and
 character-width arrays, and publish font/direction metadata only when truthful
@@ -1646,14 +1642,14 @@ placement; failed updates preserve the prior binding and node-ID space.
 
 ### Native wbr separators
 
-Capture each genuine occurrence as `ParagraphControlKind::Wbr { style: Box<Style> }`
+Capture each occurrence as `ParagraphControlKind::Wbr { style: Box<Style> }`
 in direct or contextual paragraph controls, retaining its actual anchor order.
 The complete computed Style owns replacement, subsequent transforms and metrics.
 `WordSpaceTransform::None` and forced-break suppression leave the unexpanded
 control; positive Space/IdeographicSpace produces a text contribution with its
 actual control identity. It requires no duplicate control allocation.
 
-Every genuine wbr separates original UTF-16 decoding before Phase I, including
+Every wbr separates original UTF-16 decoding before Phase I, including
 None and suppressed requests. High/low surrogate units on opposite sides remain
 isolated original units; provider-only replacement glyphs do not supply their
 semantic properties. Later projections preserve that distinction and the exact
@@ -1717,7 +1713,7 @@ roots declare `SourceProcessingTopology::{Unknown, Complete}` independently of
 the exterior-trimming envelope. Inline scopes capture their actual complete
 `style: Option<Style>`; absence means unknown, not computed None. If a surviving
 candidate needs missing topology or owner Style, Text returns
-`MissingPhraseTopology` or `MissingPhraseScopeStyle`. Genuine no-output paths do
+`MissingPhraseTopology` or `MissingPhraseScopeStyle`. No-output paths do
 not demand unused metadata. Supplied Styles and structural facts still validate
 when the request is inactive. Flat paragraph/source capture cannot infer a tree.
 
@@ -1726,7 +1722,7 @@ entire intervening inline-boundary strip determines the outermost owner,
 including empty scopes. That scope's Space can expand a child-detected candidate
 without itself requesting automatic detection. Its None suppresses expansion
 without borrowing the child's Style. Text chooses the earliest actual seam at
-which the winning scope is active and preserves genuine mixed-event order.
+which the winning scope is active and preserves mixed-event order.
 
 CSS eligibility excludes typographic-unit interiors, adjacent GL/WJ/ZWJ and
 existing separators. The native recognized separator repertoire includes all Zs,
@@ -1735,7 +1731,7 @@ Unicode word-separator property. Conservative punctuation attachment withholds
 proposals beside unfamiliar punctuation and removes punctuation-only chunks.
 The native policy emits internal model cuts, not exterior-domain separators.
 True forced-break adjacency suppresses insertion before demanding owner facts.
-A genuine wbr remains a separate occurrence: WbrNone can coexist with an emitted
+A wbr remains a separate occurrence: WbrNone can coexist with an emitted
 virtual separator, and two independently expandable occurrences can emit two.
 Generated replacement characters do not retrospectively suppress proposals.
 
@@ -1751,7 +1747,7 @@ ownership. Its complete `members()` inventory retains authentic scope
 intersections and mixed-event positions independently of generated output.
 The designated `facts_owner()` supplies paragraph facts without replacing the
 other members' source provenance. Canonical Style and
-endpoint facts remain optional when genuinely uncaptured; unused metadata is
+endpoint facts remain optional when uncaptured; unused metadata is
 not replaced by defaults. `ScopeRole` distinguishes inline and domain ownership.
 `CapturedDomainDefinition` retains each domain's actual Block, AtomicBlock or
 OutOfFlowBlock association, including the exact nominated atomic occurrence.
@@ -1762,7 +1758,7 @@ Atomic child contents have their own projection; their capture schedule does not
 interleave with parent flow. Unknown inline topology does not erase supplied
 domain events.
 
-An inline scope's global controls remain its genuine Start/End pair immediately
+An inline scope's global controls remain its Start/End pair immediately
 inside its enter/exit events, even across block-in-inline paragraph cuts.
 `PreparedScope::view()` observes only controls local to that preparation; local
 absence does not make the global pair incomplete. No paragraph cut manufactures
@@ -1782,7 +1778,7 @@ Layout binds each contributing domain to its actual paragraph container. It
 derives one inline association registry from canonical endpoints and the real
 control-to-node bindings across all supplied paragraphs. Paragraph bindings do
 not author another scope-pair list. Remote endpoints and middle intersections
-are validated against genuine capture order and actual tree structure; paragraph
+are validated against capture order and actual tree structure; paragraph
 vector order and source-offset sorting do not supply that authority. Atomic
 content domains must use their exact nominated atomic's node.
 Scope proof covers each contributing inline owner's complete authentic extent,
@@ -1791,7 +1787,7 @@ and nominee parent bindings establish structural dependencies without activating
 unrelated content. Disjoint owner extents stay separate; no active extent may
 discard an interruption merely because its association was omitted.
 
-A genuine captured paragraph with no actual or supplied source/control/atomic
+A captured paragraph with no actual or supplied source/control/atomic
 participation, generated contributors or run nodes can associate an empty domain
 with its real Layout box. It requests no line strut and generates no Text result,
 line or fragment. Ordinary box layout remains intact. Empty rendered output alone

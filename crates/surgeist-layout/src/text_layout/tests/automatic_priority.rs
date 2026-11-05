@@ -36,7 +36,7 @@ fn expected_letters(source: &str, selected: Range) -> Vec<(Range, u32, f32)> {
     // Independent retained Ahem cmap/hmtx facts: units/em=1000, each of these
     // glyphs advances 1000 font units. The cmap maps A to 35, a to 67, c to 69,
     // e to 71, i to 75, o to 81, s to 85 and t to 86.
-    // Original UTF16 positions include the genuine SHY; inserted indications
+    // Original UTF16 positions include the SHY; inserted indications
     // never appear in this authored-source inventory.
     source
         .encode_utf16()
@@ -248,7 +248,7 @@ fn assert_choice<S: LayoutScalar>(source: &str, width: f64, cut: usize, manual: 
     let selected = lines[0].selected_line();
     assert_eq!(selected.request().context.end, LineEnd::Soft);
     let PreparedTermination::Ordinary(offer) = &selected.request().termination else {
-        panic!("a genuine hyphenation offer precedes arbitrary emergency cuts")
+        panic!("a hyphenation offer precedes arbitrary emergency cuts")
     };
     assert_eq!(offer.view().kind(), PreparedBreakKind::Discretionary);
     assert_eq!(offer.view().boundary().view().source_before().get(), cut);
@@ -310,7 +310,7 @@ fn native_auto_without_shy_uses_actual_resource_cut_f64() {
 fn native_character_minima_change_the_admitted_partition_and_real_line_choice() {
     fn check<S: LayoutScalar>() {
         let source = "as\u{ad}sociate";
-        // Nine genuine letters: initial 5/2/2 admits SHY after two letters,
+        // Nine letters: initial 5/2/2 admits SHY after two letters,
         // whose indicated prefix is 30px and residual is 70px, both fitting 80px.
         // Requiring four before removes that manual partition. The unbroken
         // word is 90px; source exception cut4 gives 50/50 with its 10px indication.

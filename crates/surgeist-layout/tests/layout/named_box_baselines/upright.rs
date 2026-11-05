@@ -1,5 +1,5 @@
 //! Real native Central cells through Layout's named and Physical adapters.
-//! Font sides2/2 are genuine. The separately supplied line strut8/2 establishes
+//! Font sides2/2 are . The separately supplied line strut8/2 establishes
 //! finalized B8/H10, distinguishing line-over from vertical block progression.
 use super::*;
 mod atomics;
@@ -406,7 +406,7 @@ fn fixture_in_direction(direction: l::Direction) -> Fixture {
         select_line_in_direction(&prepared, first, soft, Some(4.0), direction),
         select_line_in_direction(&prepared, next, terminal, Some(4.0), direction),
     ] {
-        // The actual allocation8/2 combines with genuine font2/2 as max8/max2.
+        // The actual allocation8/2 combines with font2/2 as max8/max2.
         assert_eq!(
             (
                 line.feedback().baseline,
@@ -468,7 +468,7 @@ fn compute<S: l::LayoutScalar>(
         l::WrappingInput::default(),
         Vec::new(),
     )
-    .expect("genuine processed capture and issued origin must bind to the actual host");
+    .expect("processed capture and issued origin must bind to the actual host");
     let viewport = {
         let sizing_request = crate::layout::native_request::sizing(
             surgeist_layout::Size::new(Some(n(40.0)), Some(n(4.0))),

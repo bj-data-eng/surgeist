@@ -479,7 +479,7 @@ fn lithuanian_dot_uses_connected_soft_dotted_context_but_emits_only_its_own_remo
 fn unchanged_connected_mark_cannot_be_clipped_into_an_exact_partial_final_unit() {
     let processed = dotted_capture(false, ParagraphConnectionKind::Continuous);
     let first = processed.paragraphs().next().unwrap();
-    // With no neighbor mapping, final i+0307 is still one genuine EGC. Source
+    // With no neighbor mapping, final i+0307 is still one EGC. Source
     // continuity supplies context but never permission to broaden this view.
     let error = AnalyzedSource::from_processed_paragraph(
         first.clone(),

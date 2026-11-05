@@ -51,7 +51,7 @@ impl std::error::Error for DomStyleParsedSheetError {
         }
     }
 }
-/// One genuine original sheet association and its sole add-sheet preference result.
+/// One original sheet association and its sole add-sheet preference result.
 /// This stops at ReadScriptBlocking; the whole parsed history stays Pending.
 #[must_use]
 pub struct DomStyleParsedSheetOutcome {
@@ -68,7 +68,7 @@ impl std::fmt::Debug for DomStyleParsedSheetOutcome {
     }
 }
 impl DomStyleParsedSheetOutcome {
-    /// Genuine joint DOM/CSSOM association, still short of whole readiness.
+    /// Joint DOM/CSSOM association, still short of whole readiness.
     pub fn completion(&self) -> &DomParsedHtmlStyleSheetCompletion {
         &self.completion
     }

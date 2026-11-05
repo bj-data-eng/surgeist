@@ -110,7 +110,7 @@ pub struct ParagraphOrigin {
     pub text_node: Option<CompleteTextNodeContribution>,
 }
 
-/// Whether two original occurrences are genuinely text-contiguous.
+/// Whether two original occurrences are text-contiguous.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ParagraphConnectionKind {
     Continuous,
@@ -131,14 +131,14 @@ pub enum ParagraphControlKind {
     InlineBoundaryEnd,
     /// An explicit paragraph separator; source BK/NL retain their own classes.
     ForcedBreak,
-    /// Genuine wbr occurrence with its complete computed style.
+    /// Wbr occurrence with its complete computed style.
     Wbr {
         style: Box<Style>,
     },
     OptionalBreak {
         wrap: Wrap,
     },
-    /// Genuine authored discretionary control with its own complete style.
+    /// Authored discretionary control with its own complete style.
     DiscretionaryBreak {
         style: Box<Style>,
     },
@@ -271,7 +271,7 @@ pub enum ParagraphReplacementDefinition {
     },
 }
 
-/// Genuine group identity excludes a control's optional source provenance.
+/// Group identity excludes a control's optional source provenance.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) enum ReplacementOwner {
     Source {
@@ -294,7 +294,7 @@ impl ParagraphReplacementDefinition {
     }
 }
 
-/// One genuine source/control-owned indication group.
+/// One source/control-owned indication group.
 #[derive(Clone, Debug)]
 pub struct ParagraphReplacement {
     pub(crate) definition: ParagraphReplacementDefinition,
@@ -310,7 +310,7 @@ pub(crate) enum ReplacementPresentation {
 
 impl ParagraphReplacement {
     /// Resolve one actual SHY/control from its own captured Style at preparation.
-    /// Analysis validates the genuine definition, anchor and unique owner.
+    /// Analysis validates the definition, anchor and unique owner.
     #[must_use]
     pub const fn style_driven(
         definition: ParagraphReplacementDefinition,
@@ -325,7 +325,7 @@ impl ParagraphReplacement {
     /// Capture a native producer's exact ordered logical-before alternatives.
     /// This route does not reinterpret Style's indication string or convention.
     /// Each string may be empty; the list must contain at least one choice.
-    /// Analysis validates the genuine definition, anchor and unique owner.
+    /// Analysis validates the definition, anchor and unique owner.
     ///
     /// # Errors
     /// Returns `HyphenationError::EmptyNativeAlternatives` for an empty list.
@@ -599,7 +599,7 @@ impl ParagraphContent {
             .captured_event()
     }
 
-    /// Genuine Wbr separates original decoding, regardless of its replacement.
+    /// Wbr separates original decoding, regardless of its replacement.
     /// These positions do not disconnect lexical or typographic context.
     pub(crate) fn wbr_decode_boundaries(&self) -> impl Iterator<Item = usize> + '_ {
         self.controls.iter().filter_map(|control| {

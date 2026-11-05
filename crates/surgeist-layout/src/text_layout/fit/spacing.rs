@@ -96,7 +96,7 @@ pub(super) fn allocate(
         // the incoming pen of its next included tab continuously. Earlier
         // allocations supply only a subset of those pen values. Fixed signed
         // advances and each forward next-stop/one-threshold-bump map preserve
-        // monotonicity, including genuine differing periods and thresholds.
+        // monotonicity, including differing periods and thresholds.
         let result = search(
             natural,
             &mut amounts,
@@ -115,7 +115,7 @@ pub(super) fn allocate(
     }
     // Shared geometry and neutral terminal dependencies cannot prove that no
     // expansion is available. Demand the material operation through Text, using
-    // genuine handles and a complete table; never construct its diagnostic here.
+    // handles and a complete table; never construct its diagnostic here.
     if let Some(index) = unresolved {
         return demand(natural, amounts, index, capacity, extra, facts).map(Some);
     }

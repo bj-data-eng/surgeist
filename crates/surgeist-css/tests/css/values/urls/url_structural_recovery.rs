@@ -131,7 +131,7 @@ fn escaped_final_parentheses_do_not_terminate_unquoted_url_tokens() {
 // Syntax 3 §3.3 replaces U+0000 with U+FFFD while preprocessing the input
 // stream, before §4.3.6 classifies URL code points, so a raw NUL never reaches
 // the non-printable bad-url branch; U+FFFD is an ordinary URL code point.
-// Genuine non-printable code points still make a bad-url token.
+// Non-printable code points still make a bad-url token.
 // https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/#input-preprocessing
 #[test]
 fn raw_nul_in_unquoted_urls_is_preprocessed_before_the_bad_url_check() {

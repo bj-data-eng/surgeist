@@ -107,6 +107,6 @@ fn indivisible_numeric_inline_box_waits_for_the_real_wider_band_below_an_earlier
     assert_eq!(actual(1).size, l::Size::new(25.0, 20.0));
     assert_eq!(actual(2).size, l::Size::new(28.0, 10.0));
     // The preceding float leaves15px at y0; the indivisible28px box fits
-    // the genuine40px band beginning at y20 without overlapping the float.
+    // the 40px band beginning at y20 without overlapping the float.
     assert_eq!(actual(2).location, l::Point::new(0.0, 20.0));
 }

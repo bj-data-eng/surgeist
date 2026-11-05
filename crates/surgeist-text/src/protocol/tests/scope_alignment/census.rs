@@ -135,7 +135,7 @@ fn placed(prepared: &PreparedText, line: &FinalizedLine) -> Layout {
     .unwrap()
 }
 fn geometry(prepared: &PreparedText, line: &FinalizedLine, displacement: f64) {
-    // Genuine Ahem X58 advance1000, ascent800/descent200 at10px. Outside8/2
+    // Ahem X58 advance1000, ascent800/descent200 at10px. Outside8/2
     // and inside(8+d)/(2-d) yield common(8+d)/2 for the positive d used here.
     assert_eq!(
         (

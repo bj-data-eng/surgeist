@@ -1,7 +1,7 @@
 //! Real incoming floats constrain clockwise Text in physical x bands.
 //!
 //! Independent WM4 Table11 oracles: root40x15, Ahem10 (8/2), clockwise
-//! block-start/right and inline-start/top. Floats are genuine preceding native
+//! block-start/right and inline-start/top. Floats are preceding native
 //! boxes outside the captured Text window, never omitted captured atomics.
 use super::*;
 use std::cell::RefCell;
@@ -256,7 +256,7 @@ fn margin_and_replay<S: l::LayoutScalar>() {
         );
         assert_eq!(node_output(&shifted, float).location.x, S::from_f64(40.0));
         assert!(shifted.invalidated_nodes().contains(&0));
-        // A cold solve uses the same genuine preparation/capture but no old
+        // A cold solve uses the same preparation/capture but no old
         // host cache or unrounded packet. These are inputs, not geometry oracles.
         for cache in &mut host.published.caches {
             cache.clear();
@@ -548,7 +548,7 @@ fn fractional_minimum<S: l::LayoutScalar>() {
             );
             assert!(
                 layout.lines()[0].bounds().origin.x + layout.lines()[0].bounds().size.width <= 30.0,
-                "accepted line stays beyond the genuine float's block-end"
+                "accepted line stays beyond the float's block-end"
             );
         }
     }

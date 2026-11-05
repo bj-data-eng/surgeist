@@ -150,7 +150,7 @@ fn assert_candidate_geometry<S: LayoutScalar>(
     }
 }
 fn nested_candidates_contribute<S: LayoutScalar>(overflow: Overflow) {
-    // Same genuine nodes/axes/span/provider. An explicitly placed descendant
+    // Same nodes/axes/span/provider. An explicitly placed descendant
     // is a separate legitimate20px control, not a fabricated candidate list.
     let definite = two_column_lane_subgrid::<S>(overflow, false);
     qualify_two_column_source(&definite, false);

@@ -940,7 +940,7 @@ fn highlight_function_and_checked_rule_composition_respect_the_structural_ceilin
     assert_strict_validation_rejects(rejected);
 
     // Checked rule assembly documents a separate block-bearing rule ceiling.
-    // Existing parsed descendants keep their genuine source position; new
+    // Existing parsed descendants keep their source position; new
     // wrappers have none. No forbidden logical pseudo-element graph is made.
     let original = "/*😀*/.leaf::highlight(Name){color:red}";
     let parsed = CssParser::default().parse_sheet(original);

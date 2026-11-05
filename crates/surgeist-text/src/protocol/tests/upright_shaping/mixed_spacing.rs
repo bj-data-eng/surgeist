@@ -358,7 +358,7 @@ fn mixed_real_soft_cut_suppresses_outer_tracking_and_replays_hanging_interword_s
         .unwrap();
     assert_eq!(second.feedback().advance, 10.0);
     assert_eq!(offsets(&second, &bytes), [25.0]);
-    // Exactly one4px boundary disappeared at the genuine cut:46+10 vs60.
+    // Exactly one4px boundary disappeared at the cut:46+10 vs60.
     assert_eq!(natural.feedback().advance + second.feedback().advance, 56.0);
     for first in [natural, expanded, restored] {
         let layout = crate::Layout::from_finalized_lines(PlacementRequest {

@@ -1401,7 +1401,7 @@ fn deferred_terminal_failure_keeps_real_atomic_allocation_and_prior_result_retry
 }
 
 #[test]
-fn genuine_soft_zero_preserved_edge_uses_its_break_without_terminal_authority() {
+fn soft_zero_preserved_edge_uses_its_break_without_terminal_authority() {
     let mut system = system();
     let mut captured = input("X Y", Terminal::Unknown, WhiteSpace::Preserve);
     captured.base_style.word_spacing = -10.0;

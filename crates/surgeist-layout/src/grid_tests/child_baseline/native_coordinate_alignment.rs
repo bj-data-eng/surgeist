@@ -1,5 +1,5 @@
 //! Compatible baseline participants share one physical point after composing
-//! their genuine ancestor origins. No measured output or font supplies ports.
+//! their ancestor origins. No measured output or font supplies ports.
 use super::*;
 
 #[derive(Clone, Copy, Debug)]
@@ -130,7 +130,7 @@ fn native_tree<S: LayoutScalar>(mode: WritingMode) -> PublicLayoutTreeOf<S> {
             },
         );
     }
-    // Every slot is explicitly placed in the genuine native tree. The inner
+    // Every slot is explicitly placed in the native tree. The inner
     // grid covers owner rows1/2; the outer grid also supplies owner row3.
     for (node, row, column, inline, block, port) in [
         (10, 1, 1, 40.0, 50.0, SelectedPort::First),
@@ -267,7 +267,7 @@ fn assert_native_shared_physical_baselines<S: LayoutScalar>(mode: WritingMode) {
             definite,
         )
     })
-    .expect("genuine native nested subgrids complete");
+    .expect("native nested subgrids complete");
     assert_eq!(
         normal_box(&batch, 0).size,
         physical_size(mode, 400.0, 600.0)
@@ -392,13 +392,13 @@ native_coordinate_case!(
     WritingMode::VerticalLr
 );
 
-// Additional genuine native coordinate profiles.
+// Additional native coordinate profiles.
 
 fn opposite_mode(mode: WritingMode) -> WritingMode {
     match mode {
         WritingMode::VerticalRl => WritingMode::VerticalLr,
         WritingMode::VerticalLr => WritingMode::VerticalRl,
-        _ => unreachable!("reversal cases use the same genuine physical block axis"),
+        _ => unreachable!("reversal cases use the same physical block axis"),
     }
 }
 
@@ -439,7 +439,7 @@ fn configured_tree<S: LayoutScalar>(
 ) -> PublicLayoutTreeOf<S> {
     let mut tree = native_tree::<S>(root_mode);
     let mut root_input = LayoutTree::node_input(&tree, 0).clone();
-    // A genuine intrinsic root avoids free-space thirds. This is authored input,
+    // An intrinsic root avoids free-space thirds. This is authored input,
     // never a post-compute geometry edit or a different measurement provider.
     root_input.size = auto_block_size(root_mode);
     root_input.align_content = Some(AlignContent::Start);
@@ -657,7 +657,7 @@ fn qualify_and_assert<S: LayoutScalar>(
 
 fn negative_gap<S: LayoutScalar>(mode: WritingMode) {
     // Root gap0 -> outer10 -> inner0 gives actual signed differences +10/-10,
-    // hence genuine per-side +5/-5. The inner gap is authored zero, not omitted.
+    // hence per-side +5/-5. The inner gap is authored zero, not omitted.
     let tree = configured_tree::<S>(mode, mode, mode, 0.0, 50.0);
     assert_eq!(
         LayoutTree::node_input(&tree, 1).gap,
@@ -715,7 +715,7 @@ fn changed_winner<S: LayoutScalar>() {
     );
     // The two internal touched end edges contribute half(10-0)+half(20-10)=10.
     // Thus the other source wins the opposite distance, which must not replace
-    // the genuine owner target when its current-view coordinates are converted.
+    // the owner target when its current-view coordinates are converted.
     let wide_root_opposite = value::<S>(5.0) + wide_root_port;
     let leaf_opposite = value::<S>(10.0 + 5.0) + wide_leaf_port;
     assert!(
@@ -875,7 +875,7 @@ fn saturated_columns<S: LayoutScalar>() {
         );
     }
     let batch = completed(&tree);
-    // Current genuine native Columns layout uses shifted boundaries when a
+    // Current native Columns layout uses shifted boundaries when a
     // positive gap difference saturates a track. For [10,100], parent gap0,
     // child gap40: shifted lines are0, 10+40/2=30, 110, so actual tracks30/80
     // with zero gutter. These plain Start-aligned boxes authenticate the
@@ -1027,7 +1027,7 @@ fn qualified_fixed_composites<S: LayoutScalar>(
         );
         let mut native = crate::engine::ComputeSession::new(&tree, Vec::new());
         let actual = crate::engine::contracts::Compute::compute_child(&mut native, actor, request)
-            .expect("the genuine fixed native actor performs its own layout");
+            .expect("the fixed native actor performs its own layout");
         assert_eq!(actual.size, expected_body);
         assert_eq!(actual.size, normal_box(&batch, actor).size);
         let first = actual

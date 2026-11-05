@@ -404,7 +404,7 @@ pub(crate) fn prepare_tables(
         auto_phrase_prefix: vec![0],
         soft_preliminary_items: std::collections::BTreeSet::new(),
     };
-    // Every genuine control retains an observation, including a Wbr consumed
+    // Every control retains an observation, including a Wbr consumed
     // by one text-bearing participant. Inventory order remains anchor order.
     tables.control_rows = vec![usize::MAX; paragraph.controls.len()];
     for (order, anchor) in paragraph.anchor_order.iter().enumerate() {
@@ -976,7 +976,7 @@ fn issue_opportunities(
             .checked_sub(1)
             .is_some_and(|atom| analyzed.projection.atoms[atom].code_point == 0xad)
         {
-            // Only the genuine defining SHY cut owns its indication ending.
+            // Only the defining SHY cut owns its indication ending.
             // A later transparent occurrence adds custody, never a second,
             // indication-free copy of the SHY's ICU permission. Independent
             // explicit controls and atomic permission were considered above.
@@ -1663,7 +1663,7 @@ pub(crate) fn conditional_boundaries(
 ) -> crate::Result<Vec<usize>> {
     use crate::engine::analysis::wrapping::Influence;
     if analyzed.paragraph.base_direction.is_none() {
-        // AutoPhrase moves the raw profile's genuine emergency cuts out of
+        // AutoPhrase moves the raw profile's emergency cuts out of
         // ordinary inventory and into the same authenticated final tier.
         let first = tables
             .raw_conditional
@@ -1942,7 +1942,7 @@ pub(crate) fn prepare_indication_fonts(
             base & 1,
             analyzed.typography,
         )?;
-        // Capture only the genuine selected side. Unselected original text
+        // Capture only the selected side. Unselected original text
         // cannot change an indication's query EGC or script inheritance.
         let mut capture_side = |after: bool| -> crate::Result<PreparedIndicationFonts> {
             let side = if after {
@@ -2109,7 +2109,7 @@ pub(crate) fn prepare_indication_fonts(
         let mut captured = capture_side(!row.placement.includes_before())?;
         if row.placement == crate::HyphenationPlacement::BothSides && !row.text.is_empty() {
             // One exact chosen Text supplies both emissions. Only its raw
-            // scalar/style metadata is shared; each genuine seam executes its
+            // scalar/style metadata is shared; each seam executes its
             // own full matching profiles, with both possible receiving parities.
             captured
                 .font_queries
@@ -2148,7 +2148,7 @@ fn replacement_projection(
             original,
         )
     } else {
-        // A source-defined alternative replaces its genuine retained SHY row.
+        // A source-defined alternative replaces its retained SHY row.
         // Reordered or overlapping transform emissions are not source-sorted.
         original
             .atoms

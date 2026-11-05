@@ -726,7 +726,7 @@ fn run_sample(
     check_grid(&old, &grid, unique, false, false);
     check_reuse(&old, &grid, &inputs, mode, unique);
     let mut oracle_checks = elapsed(started);
-    // These genuine checks complete before the creation receipt/snapshot goes.
+    // These checks complete before the creation receipt/snapshot goes.
     drop(creation);
     observe(&mut observer, HolderStage::CallerInputsHeld);
     let started = timing.then(Instant::now);

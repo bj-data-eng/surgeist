@@ -418,7 +418,7 @@ impl PreparedParagraph {
         }
     }
 
-    /// A genuine flat fixture tree for paragraphs composed solely of Text
+    /// A flat fixture tree for paragraphs composed solely of Text
     /// occurrences. Other participant roles require their own actual inputs.
     pub(crate) fn flat_text_tree<S: LayoutScalar>(
         &self,

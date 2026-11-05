@@ -1,5 +1,5 @@
 //! Numeric TAB zero skips unavailable SPACE/ch metrics, while the actual Cell
-//! still consumes its genuine captured container font and native metric receipt.
+//! still consumes its captured container font and native metric receipt.
 use super::*;
 
 fn no_spacing_glyph_font() -> Vec<u8> {

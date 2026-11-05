@@ -169,7 +169,7 @@ fn assert_native_three_track_flex_span<S: LayoutScalar>() {
             assert_eq!(actual.padding, Edges::ZERO);
         }
     }
-    // This is normal layout with genuinely unbounded physical space. Its
+    // This is normal layout with unbounded physical space. Its
     // initial intrinsic MAX sizing is followed by normal allocated tracks.
     let request = {
         let axes = Size::splat(AxisSizingRequestOf::new(
@@ -210,7 +210,7 @@ fn assert_native_three_track_flex_span<S: LayoutScalar>() {
     // contributing .5*33=16.5 to the intrinsic container size76.5. The
     // completed raw root exposes that accepted container size, not an
     // independent public array of the initial track sizes. The zero third
-    // item remains a genuine source incidence, despite intrinsic demand0.
+    // item remains a source incidence, despite intrinsic demand0.
     assert_eq!(n(0.2) + n(0.3), n(0.5));
     assert_eq!(n(0.5) * n(33.0), n(16.5));
     for (published, entries) in [

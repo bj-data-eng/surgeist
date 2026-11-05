@@ -1,5 +1,5 @@
 //! Shared nonnegative scalar consumers, checked through functional public APIs.
-//! Exact retention and equality are Surgeist contracts. Genuine math stays
+//! Exact retention and equality are Surgeist contracts. Math stays
 //! symbolic; ordinary nonnegative admission is not deferred range checking.
 //! https://www.w3.org/TR/2024/CRD-css-backgrounds-3-20240311/#border-images
 //! https://www.w3.org/TR/2018/WD-filter-effects-1-20181218/#supported-filter-functions

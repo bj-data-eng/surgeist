@@ -83,7 +83,7 @@ fn qualify<S: LayoutScalar>() {
     assert_eq!(
         bounded.size,
         Size::new(S::from_f64(25.0), S::from_f64(8.0)),
-        "genuine known body still obeys independently authored min/max constraints"
+        "known body still obeys independently authored min/max constraints"
     );
     for minimum in [true, false] {
         let mut needs_basis = automatic.clone();
@@ -122,7 +122,7 @@ fn qualify<S: LayoutScalar>() {
         observed = Some(packet);
         Ok::<_, Infallible>(native)
     })
-    .expect("both genuine known dimensions override the leaf's own preferred percentage");
+    .expect("both known dimensions override the leaf's own preferred percentage");
     let packet = observed.expect("performed layout retains real native content measurement");
     assert_eq!(
         packet.known_content_size(),

@@ -89,7 +89,7 @@ fn native_feature_selected_source_import_lifecycle() {
     drop(stages);
     let pid = std::process::id();
     eprintln!(
-        "native_features_selected profile=release pid={pid} sample={} source_nodes=10 target_nodes=3 managed=13 managed_means_combined_source_target_node_identities=true held_graph_identity_peak=13 controlled_owner_peak=10 style_sheet_genuine_cssom_publication=true style_outside_import=true form_history_empty_not_growable_by_public_front=true hosted_families_not_populated=true clock_enabled={} no_timing_slo=true observers_oracles_excluded_from_call_clocks=true batch_authoring_and_protocol_input_preparation_outside_clocks=true parser_interrupt_poll_inside_parse_call=true physical_backend=external_not_run_by_fixture all_zones_include_harness=true kernel_peak_since_launch=true logger_complete_process_peak_coverage=false",
+        "native_features_selected profile=release pid={pid} sample={} source_nodes=10 target_nodes=3 managed=13 managed_means_combined_source_target_node_identities=true held_graph_identity_peak=13 controlled_owner_peak=10 style_sheet_cssom_publication=true style_outside_import=true form_history_empty_not_growable_by_public_front=true hosted_families_not_populated=true clock_enabled={} no_timing_slo=true observers_oracles_excluded_from_call_clocks=true batch_authoring_and_protocol_input_preparation_outside_clocks=true parser_interrupt_poll_inside_parse_call=true physical_backend=external_not_run_by_fixture all_zones_include_harness=true kernel_peak_since_launch=true logger_complete_process_peak_coverage=false",
         selection.sample.name(),
         !scale_metrics::ENABLED,
     );

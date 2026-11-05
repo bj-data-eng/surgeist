@@ -105,7 +105,7 @@ fn boundary<S: l::LayoutScalar>(
     kind: l::InlineBoundaryKind,
 ) -> l::LayoutInputOf<S> {
     // Both endpoints are the SAME actual native box's8/10 baseline metrics.
-    // Its individual inline margin, border and padding are genuinely zero.
+    // Its individual inline margin, border and padding are zero.
     l::LayoutInputOf::inline_boundary(
         l::InlineBoundaryInputOf::contribution(
             kind,

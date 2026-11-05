@@ -357,7 +357,7 @@ impl State {
                     _ => return Err(CssomError::WrongKind),
                 },
                 // The native whole-rule wrapper is unavailable before its body.
-                // This genuine original is only a failure carrier: the current
+                // This original is only a failure carrier: the current
                 // query may have a different live MediaList payload.
                 CssomRuleData::CustomMedia { .. } => self.original_failure_input(id)?,
                 _ => self.original_failure_input(id)?,

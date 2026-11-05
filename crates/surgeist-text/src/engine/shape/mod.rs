@@ -98,7 +98,7 @@ enum SelectedResource {
     Control(FontData),
 }
 
-/// Exact pre-mapping font-query input and its genuinely realized resource.
+/// Exact pre-mapping font-query input and its realized resource.
 /// Source offsets are deliberately absent: mapping belongs to each projection.
 #[derive(Clone, Debug)]
 pub(crate) struct FontQueryWitness {
@@ -185,7 +185,7 @@ pub(crate) fn retain_original_fonts(
     Ok(result)
 }
 
-/// Replay only an exact genuinely executed matching input. The new projection,
+/// Replay only an exact executed matching input. The new projection,
 /// source mapping and provider glyph output are never borrowed from a witness.
 pub(crate) fn assign_fonts(
     prepared: &super::PreparedData,
@@ -1501,7 +1501,7 @@ fn install_mixed_order(data: &mut ShapedData, input: &ShapingInput<'_>) {
     });
 }
 
-/// Borrowed pre/post strings from one genuine projection/context domain. The
+/// Borrowed pre/post strings from one projection/context domain. The
 /// shaper sees every bounded character and reports its own context limits.
 struct RunContext<'a> {
     before: &'a str,
@@ -2057,7 +2057,7 @@ fn append_request(
     } else {
         surgeist_shaper::BufferFlags::empty()
     });
-    // Formatting cuts split emitted bodies, not genuine Unicode joining
+    // Formatting cuts split emitted bodies, not Unicode joining
     // lookaround. These strings insert no glyphs into GSUB/GPOS operands.
     buffer.set_pre_context(request.context.before);
     buffer.set_post_context(request.context.after);

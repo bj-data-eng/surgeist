@@ -2941,7 +2941,7 @@ impl<Node: Copy + Eq> super::boxes::BoxResolver for WrappingProjection<Node> {
             return Err(crate::WrappingScopeError::UnsupportedIncidence.into());
         }
         // A preceding native run's receipt retains its issuer. A new structural
-        // segment establishes its own genuine entry incidence, even at an equal
+        // segment establishes its own entry incidence, even at an equal
         // PreparedBoundary; no old prefix is relabeled to the new segment.
         let entry = choice.incoming.or(self
             .incoming

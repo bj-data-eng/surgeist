@@ -456,7 +456,7 @@ fn custody_roundtrip<S: LayoutScalar>(left_axis: bool) {
     );
     assert!(host.layout_input(4).as_inline_text().is_none());
     assert!(host.layout_input(4).as_text_control().is_none());
-    // Exact source occurrence and nominal input remain genuine through all runs.
+    // Exact source occurrence and nominal input remain through all runs.
     let issued = p.prepared.atomic_views().next().unwrap();
     assert_eq!(p.binding(0).atomics[0].occurrence, issued.handle());
     assert!(host.node_input(2).atomic_inline_participation.is_none());
@@ -494,7 +494,7 @@ fn custody_roundtrip<S: LayoutScalar>(left_axis: bool) {
     let committed_float = custody_entry(&cold, 4, false);
     assert!(
         host.returned.borrow().contains(&committed_float),
-        "warm restoration must traverse the genuine committed float child"
+        "warm restoration must traverse the committed float child"
     );
     custody_assert_simple(&warm, left_axis, initial);
     custody_same_scene(&warm, &cold);

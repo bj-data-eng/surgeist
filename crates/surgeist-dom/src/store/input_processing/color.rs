@@ -247,7 +247,7 @@ fn parse<'facts>(
             }
         })
     })();
-    // These records genuinely borrow the operation owner. Destroy them,
+    // These records borrow the operation owner. Destroy them,
     // rather than relabelling headers, before entering numerical phases.
     drop(banks);
     meter.live = base;

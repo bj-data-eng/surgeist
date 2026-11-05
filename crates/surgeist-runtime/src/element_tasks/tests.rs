@@ -1174,7 +1174,7 @@ fn session_bootstrap_distinguishes_actual_nonempty_raw_transfer_from_empty_or_re
             },
         };
         if route == 2 {
-            let transfer = transfer.expect("the genuine standalone transfer remains caller-owned");
+            let transfer = transfer.expect("the standalone transfer remains caller-owned");
             assert_eq!(transfer.len(), 1);
             assert_eq!(transfer.intentions()[0].target(), target);
             let rejected = DomSession::new(dom, limits).unwrap_err();

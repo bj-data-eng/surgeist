@@ -324,7 +324,7 @@ fn strings_comments_and_escaped_identifiers_do_not_turn_invalid_items_into_nesti
                 format!(":{name}(.Keep)")
             );
             let [diagnostic] = report.diagnostics() else {
-                panic!("one genuinely discarded invalid item");
+                panic!("one discarded invalid item");
             };
             assert_eq!(diagnostic.action(), CssRecoveryAction::DropSelectorListItem);
             assert_eq!(diagnostic.error().code(), CssErrorCode::InvalidSelector);

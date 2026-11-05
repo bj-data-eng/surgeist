@@ -225,7 +225,7 @@ fn static_ports<S: LayoutScalar>() {
             line.atomic_slots().next().unwrap().allocation,
             text::AtomicLineAllocation::OutOfFlow
         );
-        // Genuine Ahem10 upright metrics use the required Central reference:
+        // Ahem10 upright metrics use the required Central reference:
         // advance10 and equal before/after5. The positioned occurrence adds
         // neither advance nor line metrics.
         assert_eq!(

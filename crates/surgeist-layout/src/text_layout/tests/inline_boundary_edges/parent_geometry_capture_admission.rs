@@ -56,7 +56,7 @@ fn captured_pair_mismatch<S: LayoutScalar>() {
                 (WritingMode::HorizontalTb, Direction::Ltr)
             );
         }
-        // The unchanged genuine C Start22 establishes the actual RTL parent
+        // The unchanged C Start22 establishes the actual RTL parent
         // declaration; End23 is its authenticated captured peer, never an ID-
         // or equal-source-cut guess. This producer owns the detailed variant.
         assert_eq!(

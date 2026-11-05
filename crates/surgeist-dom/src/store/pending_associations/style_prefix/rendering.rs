@@ -443,7 +443,7 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
             })),
         };
         completion.value()._admission.step(cancel)?;
-        // The sole fence: genuine reserved publication, same Box-owned request
+        // The sole fence: reserved publication, same Box-owned request
         // and successor moves. No fallibility, allocation or old graph disposal.
         completion.output.as_mut().expect("preformed output").dom =
             Some(self.dom.publish_prepared(publication));

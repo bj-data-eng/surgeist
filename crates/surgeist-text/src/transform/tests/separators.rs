@@ -245,7 +245,7 @@ fn forced_character_adjacency_uses_the_executed_phase_i_value() {
 }
 
 #[test]
-fn genuine_controls_and_atomic_occurrences_determine_mixed_adjacency() {
+fn controls_and_atomic_occurrences_determine_mixed_adjacency() {
     use crate::{
         ParagraphAnchor, ParagraphAnchorItem as Item, ParagraphControl,
         ParagraphControlKind as Kind,
@@ -425,7 +425,7 @@ fn deleted_rows_empty_origins_and_oof_remain_transparent_to_the_actual_forced_ne
 }
 
 #[test]
-fn genuine_source_local_phase_i_receipts_allow_generated_width_in_all_modes() {
+fn source_local_phase_i_receipts_allow_generated_width_in_all_modes() {
     for mode in [
         WhiteSpace::Preserve,
         WhiteSpace::Collapse,

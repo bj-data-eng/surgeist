@@ -253,7 +253,7 @@ fn node_free_captured_inline_family<S: LayoutScalar>(front: Front, attachment: A
             };
             demand.gaps.push(first.clone());
             let valid = construct(demand.clone())
-                .expect("one genuine FormatterStart attachment for this child/body is valid");
+                .expect("one FormatterStart attachment for this child/body is valid");
             assert!(!valid.associations.has_prepared_execution(0));
             let valid_batch = compute_layout_with_flow(
                 &valid,

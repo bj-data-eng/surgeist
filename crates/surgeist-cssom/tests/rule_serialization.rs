@@ -237,7 +237,7 @@ fn empty_nested_declaration_identity_is_kept_while_its_text_is_filtered() {
 }
 
 #[test]
-fn current_import_media_without_child_sheet_is_serialized_with_genuine_clauses() {
+fn current_import_media_without_child_sheet_is_serialized_with_clauses() {
     let (mut store, _, roots) = fixture("@import 'child.css' screen;");
     let before = store.snapshot();
     let media = store
@@ -639,7 +639,7 @@ fn custom_media_current_query_keeps_native_unavailable_wrapper_boundary() {
     let CssomAuthoredRule::Rule(CssRule::CustomMedia(original)) =
         current.rule(&roots[0]).unwrap().authored()
     else {
-        panic!("genuine original");
+        panic!("original");
     };
     let CssCustomMediaBody::Media(original_query) = original.body() else {
         panic!("original query");
@@ -693,7 +693,7 @@ fn supports_writer_consumes_current_selectors_declarations_and_child_membership(
         "@supports (display:grid) {\n  a { color: red; }\n}"
     );
     let CssomAuthoredRule::Rule(original) = current.rule(&roots[0]).unwrap().authored() else {
-        panic!("genuine original");
+        panic!("original");
     };
     assert_eq!(
         original.serialize_cssom(Default::default()).unwrap(),

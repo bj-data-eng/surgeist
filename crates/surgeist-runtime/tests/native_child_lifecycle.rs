@@ -108,7 +108,7 @@ fn absent_src_insertion_creates_child(local: &str) {
     let (closed, container) = {
         let mut dom = session.dom();
         let mut batch = DomBatch::new();
-        // Native initialization in a genuinely closed associated Document is
+        // Native initialization in a closed associated Document is
         // supported independently of the later hosted insertion hook.
         let closed = batch.create_html_document(top.document(), None);
         let container = batch.create_element_ns(&closed, Namespace::html(), local);

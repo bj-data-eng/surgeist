@@ -1891,7 +1891,7 @@ impl DomSourceLease<'_> {
         cancel: &AtomicBool,
     ) -> Result<DomSourceProgress, AdvanceError> {
         op.prepare_meta_execution(execution, cancel)?;
-        // A genuine observer may create the first binding after this Source
+        // An observer may create the first binding after this Source
         // began. Refresh operational membership before any resumed mutation.
         op.refresh_inline_execution(self.dom, execution.resolver.is_some())?;
         if !op.event_exposed
@@ -3370,7 +3370,7 @@ impl Operation {
         let formation = formation::Formation::new(&self.draft, cancel)?;
         let ids = self.draft.allocation_ids(dom, formation.as_ref(), cancel)?;
         debug_assert!(install.bindings.capacity() >= install.rows.len());
-        // Each genuine binding is filled at most once. Source failure keeps
+        // Each binding is filled at most once. Source failure keeps
         // both partial progress and the already admitted immutable native bank.
         // No binding ID or native close work is fabricated or replayed.
         for index in install.bindings.len()..install.rows.len() {
@@ -4148,7 +4148,7 @@ pub(in crate::store) mod accounting_tests {
         }
         assert!(
             !lease.status().has_published(),
-            "immutable native {selected:?} closing budget stranded a mandatory tail after genuine CSSOM creation"
+            "immutable native {selected:?} closing budget stranded a mandatory tail after CSSOM creation"
         );
     }
     #[test]
@@ -5364,7 +5364,7 @@ pub(in crate::store) mod accounting_tests {
         ));
         assert!(dom.pending_source_edit().unwrap().has_published());
         panic!(
-            "first publication stranded the original mandatory command after a genuine CSSOM commit; raising phases cannot create closing revisions"
+            "first publication stranded the original mandatory command after a CSSOM commit; raising phases cannot create closing revisions"
         );
     }
     pub(in crate::store) fn commit_actual_empty_sheet(
@@ -5867,7 +5867,7 @@ pub(in crate::store) mod accounting_tests {
         );
         assert!(
             !lease.status().has_published(),
-            "later Details identity exhaustion stranded a mandatory tail after a genuine CSSOM creation"
+            "later Details identity exhaustion stranded a mandatory tail after a CSSOM creation"
         );
     }
     #[test]

@@ -633,7 +633,7 @@ fn a_model_only_child_with_unflagged_parent_reports_the_actual_collector_asserti
 }
 
 #[test]
-fn genuine_a_b_a_prefixes_form_an_ordered_set_and_transfer_retains_exact_historical_subjects() {
+fn a_b_a_prefixes_form_an_ordered_set_and_transfer_retains_exact_historical_subjects() {
     let cancel = AtomicBool::new(false);
     let mut session = session(8, 8);
     let top = top_level(&mut session);

@@ -163,7 +163,7 @@ fn bare_percentage_roots_cannot_masquerade_as_calculated_mix_weights() {
 }
 
 #[test]
-fn genuine_calculations_preserve_the_graph_origins_and_specified_range() {
+fn calculations_preserve_the_graph_origins_and_specified_range() {
     for coefficient in ["-5", "120", "25"] {
         let source = format!("calc({coefficient}%)");
         let parsed_graph = CssComponentValues::parse(&CssParser::default(), &source).unwrap();

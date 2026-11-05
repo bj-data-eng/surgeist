@@ -42,7 +42,7 @@ fn retired_original_global_preserves_host_scope_but_refuses_new_toggle_queue() {
         Some(original.global())
     );
 
-    // Teardown runs while Source is genuinely idle. It must not be pumped
+    // Teardown runs while Source is idle. It must not be pumped
     // behind an unfinished Show or through an event callback's entered loop.
     let mut hosted = session.hosted_execution();
     let queued = hosted

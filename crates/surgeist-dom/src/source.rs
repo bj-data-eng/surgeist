@@ -107,9 +107,9 @@ pub enum DomSourcePhase {
     EventObservation,
     /// Qualified event outcome retained before current-state rebase.
     EventReceiptAccepted,
-    /// A genuine Dialog action waiting for its qualified external service.
+    /// A Dialog action waiting for its qualified external service.
     DialogService,
-    /// A genuine common insertion action awaiting its qualified service.
+    /// A common insertion action awaiting its qualified service.
     AutofocusInsertionService,
     /// The original designMode setter awaits an actual selection/focus service.
     DesignModeService,

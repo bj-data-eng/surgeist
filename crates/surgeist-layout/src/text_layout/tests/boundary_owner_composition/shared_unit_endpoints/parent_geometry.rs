@@ -397,7 +397,7 @@ fn mark<S: LayoutScalar>(rtl: bool) {
 
 fn qualify_ccmp_tables(font: &[u8]) {
     // Maintained canonical::fonts::ligature_ahem authors ccmp, lookup4/format1:
-    // coverageA35 + second componentA35 -> genuine resultX58, hmtx1000.
+    // coverageA35 + second componentA35 -> resultX58, hmtx1000.
     assert_eq!(nominal(font, 35), 10.0);
     assert_eq!(nominal(font, 58), 10.0);
     assert_eq!(nominal(font, 36), 10.0);
@@ -423,7 +423,7 @@ fn ccmp<S: LayoutScalar>(rtl: bool) {
     let font = super::super::super::canonical::fonts::ligature_ahem();
     qualify_ccmp_tables(&font);
     // The maintained constructor issues P around actual sibling C/D. AA stays
-    // within C's ONE genuine origin, so its new nonzero exterior edges do not
+    // within C's ONE origin, so its new nonzero exterior edges do not
     // invent an interior shaping separation. No new font/capture is authored.
     let p = capture(
         ["AA", "B"],

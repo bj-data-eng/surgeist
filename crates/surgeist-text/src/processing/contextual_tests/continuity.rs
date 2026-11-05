@@ -350,7 +350,7 @@ fn before_trim(relationship: Option<ParagraphConnectionKind>) -> ContextualSourc
 
 #[test]
 fn actual_discard_before_scope_demands_its_exterior_source_relationship() {
-    // Captured WhiteSpaceTrim runs before Phase I; its genuine exterior
+    // Captured WhiteSpaceTrim runs before Phase I; its exterior
     // target cannot borrow continuity merely from a raw storage marker.
     missing(before_trim(None), 0, 1, SourceContinuityOperation::Trimming);
     for (kind, expected, trimmed) in [

@@ -381,13 +381,13 @@ fn intrinsic_member<S: LayoutScalar>(port: LastPort) {
     assert_eq!(
         first_group.target_for(first),
         Some(s::<S>(7.0)),
-        "Last absence or zero must not replace genuine First7"
+        "Last absence or zero must not replace First7"
     );
 }
 fn axis_and_cycle<S: LayoutScalar>() {
     let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     for port in [LastPort::Missing, LastPort::Zero, LastPort::Thirteen] {
-        // A genuine declared two-auto-row span, with cycle classification from
+        // A declared two-auto-row span, with cycle classification from
         // the real selected-set facts and track kinds, not a fabricated flag.
         let mut tree = metric_tree::<S>(
             port,

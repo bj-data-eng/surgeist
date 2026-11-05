@@ -125,9 +125,9 @@ fn warm_semantic_custody<S: l::LayoutScalar>(direction: l::Direction) {
             .any(
                 |row| host.cache.get_with_context(row.input(), row.context()) == Some(row.output())
             ),
-        "at least one genuine retained host answer must remain queryable"
+        "at least one retained host answer must remain queryable"
     );
-    // The host's retained answers are genuine producer output, not a fake
+    // The host's retained answers are producer output, not a fake
     // positive line or an invented zero-size semantic paragraph allocation.
     let cache_before = host.cache.clone();
     let unrounded_before = host.unrounded;

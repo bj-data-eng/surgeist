@@ -1,5 +1,5 @@
 // Intended child of grid_tests/scroll_composition_tests.rs.
-// Actual native measured leaf under genuine flattened-subgrid/Lanes owners.
+// Actual native measured leaf under flattened-subgrid/Lanes owners.
 use super::*;
 use crate::LayoutTree;
 
@@ -170,7 +170,7 @@ fn qualify_nested<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>, form: Form) {
     let row = subgrid_axis_report(root, wrapper, GridAxisKind::Row);
     assert!(
         column.requested() && column.can_inherit(),
-        "{form:?}: genuine columns subgrid must be eligible"
+        "{form:?}: columns subgrid must be eligible"
     );
     assert!(
         !row.requested() && !row.can_inherit(),

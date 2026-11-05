@@ -1,4 +1,4 @@
-//! Counter Styles 3 §§3 and 3.8 retain decoded identity separately from genuine
+//! Counter Styles 3 §§3 and 3.8 retain decoded identity separately from
 //! lexical origins. Parsing, normalization and projection never fabricate a
 //! stylesheet host or resolve counter names/images.
 use crate::css::support::descriptor_phases;

@@ -272,9 +272,9 @@ fn active_show_modal_publishes_modal_after_real_watcher_before_focusing_wait() {
                 }
             );
         }
-        other => panic!(
-            "structural modal effects must reach the genuine remaining focusing wait: {other:?}"
-        ),
+        other => {
+            panic!("structural modal effects must reach the remaining focusing wait: {other:?}")
+        }
     }
     assert_eq!(
         snapshot.incomplete_source_operation(),

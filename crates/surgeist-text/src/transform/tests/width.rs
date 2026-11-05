@@ -340,7 +340,7 @@ fn source_local_processing_lends_real_preservation_to_the_transform_owner() {
         )
         .unwrap();
         assert_eq!(executed.processed_text(), &Text::from(processed));
-        // Invoke the same analysis/transform owner on the genuine source-local
+        // Invoke the same analysis/transform owner on the source-local
         // result; no caller-authored preservation flag or replayed Style fact.
         let paragraph = crate::protocol::paragraph::ParagraphData::standalone(&source);
         let input =

@@ -299,7 +299,7 @@ fn visit_candidates(
         account::work(ledger, 1)?;
         let mut first = grapheme.start;
         loop {
-            // Sorted genuine cuts are merged without allocating a copied set.
+            // Sorted cuts are merged without allocating a copied set.
             account::work(ledger, 1)?;
             let next = match (original.peek(), extra.peek()) {
                 (Some(a), Some(b)) => Some((*a).min(*b)),
@@ -691,7 +691,7 @@ pub(crate) fn visual_authored_accounted(
     Ok(halves)
 }
 
-/// Shared attribution over a genuine cluster slice and its actual L2 ranks.
+/// Shared attribution over a cluster slice and its actual L2 ranks.
 fn visual_units_accounted(
     clusters: &mut [PreparedCluster],
     first_cluster: usize,

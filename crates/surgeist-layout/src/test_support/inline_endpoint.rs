@@ -1,4 +1,4 @@
-//! Genuine contextual scope endpoints and actual registered Ahem for Layout tests.
+//! Contextual scope endpoints and actual registered Ahem for Layout tests.
 
 use super::layout_tree::PublicLayoutTreeOf;
 use super::text::ahem_style;
@@ -64,7 +64,7 @@ impl Fixture {
         )
     }
 
-    /// Genuine complete P/C capture; existing single-Inline constructors retain
+    /// Complete P/C capture; existing single-Inline constructors retain
     /// their exact source, font, preparation and native binding behavior.
     /// A nonnominated C is declared separately by the consuming NativePair input.
     pub(crate) fn nested_parent(value: &str, rtl: bool, tab: bool, captured_child: bool) -> Self {
@@ -95,7 +95,7 @@ impl Fixture {
             *boundaries = Some(text::SourceProcessingScopeBoundaries { start: 2, end: 3 });
             input.scopes.push(child);
         }
-        // P's genuine nominations remain 0/1. A nominated C owns scope2;
+        // P's nominations remain 0/1. A nominated C owns scope2;
         // the NativePair alternative is explicitly declared INSIDE actual P,
         // without inventing an additional unrepresented captured Inline parent.
         let mut events = vec![

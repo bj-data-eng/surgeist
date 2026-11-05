@@ -119,7 +119,7 @@ pub enum HtmlInputSizeValue {
 /// A source-null bound differs from an ignored, unresolved or unapplied rule.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlControlLengthValue {
-    /// The exact recovered bound in UTF-16 code units. Zero is a genuine bound.
+    /// The exact recovered bound in UTF-16 code units. A recovered zero still limits the value.
     Bound(HtmlNonNegativeInteger),
     /// The attribute is missing or its value does not parse, so the source
     /// defines no bound.
@@ -877,7 +877,7 @@ impl HtmlNonNegativeInteger {
             self.as_document_string(),
         )
     }
-    /// Canonical nonnegative syntax, including a genuine zero maximum.
+    /// Canonical nonnegative syntax, including a zero maximum.
     pub fn into_maxlength_attribute(self) -> Attribute {
         Attribute::new(
             KnownHtmlAttribute::Maxlength.qualified_name(),

@@ -134,7 +134,7 @@ fn compose(
         )
         .unwrap();
     let text::FontBaselineOutcome::Available(central) = central.outcome() else {
-        panic!("the genuine missing-BASE HorizontalY synthesis is available")
+        panic!("the missing-BASE HorizontalY synthesis is available")
     };
     assert_eq!(central.coordinate(), 3.0);
     let cross = instance

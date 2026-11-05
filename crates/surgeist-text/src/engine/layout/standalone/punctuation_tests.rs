@@ -122,7 +122,7 @@ fn raw_first_counts_an_emitted_empty_forced_line() {
 }
 
 #[test]
-fn raw_last_keeps_the_genuine_trailing_forced_empty() {
+fn raw_last_keeps_the_trailing_forced_empty() {
     for quantize in [false, true] {
         let (mut system, mut style) = system();
         style.hanging_punctuation = HangingPunctuation::new(false, None, true);

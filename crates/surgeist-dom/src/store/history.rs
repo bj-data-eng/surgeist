@@ -414,10 +414,10 @@ impl History {
     #[cfg(test)]
     pub(super) fn oldest_changes_weak(&self) -> Weak<[DomChange]> {
         Arc::downgrade(
-            &lock(self.oldest.as_ref().expect("genuine retained history"))
+            &lock(self.oldest.as_ref().expect("retained history"))
                 .values
                 .front()
-                .expect("genuine retained entry")
+                .expect("retained entry")
                 .changes,
         )
     }

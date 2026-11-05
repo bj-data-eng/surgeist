@@ -7,7 +7,7 @@ mod explicit_start;
 fn empty_float_fixture<S: LayoutScalar>(nested: bool) -> Fixture<S> {
     let mut f = Fixture::<S>::new(Direction::Ltr, 100.0);
     // Maintained checked recipe: actual StartBP3 / EndBP5 BoxEdges, physical
-    // line-height10/baseline10, matching LTR formatter/parent, genuine Auto pair.
+    // line-height10/baseline10, matching LTR formatter/parent, Auto pair.
     gap_attachments::append_empty_box(&mut f, 20, 21);
     if nested {
         gap_attachments::append_empty_box(&mut f, 22, 23);
@@ -32,7 +32,7 @@ fn empty_float_fixture<S: LayoutScalar>(nested: bool) -> Fixture<S> {
             .iter()
             .position(|node| *node as usize == control.source_index())
             .unwrap(),
-        _ => unreachable!("only genuine endpoint controls are supplied here"),
+        _ => unreachable!("only endpoint controls are supplied here"),
     });
     f.finish();
     let mut inside = Vec::new();
@@ -166,7 +166,7 @@ fn selected_closing_suffix<S: LayoutScalar>() {
             crate::FlowAxes::new(root_input.writing_mode, root_input.direction)
         }),
     )
-    .expect("the genuine ordinary Start/float/End sequence must complete first");
+    .expect("the ordinary Start/float/End sequence must complete first");
     ordinary_empty_float_geometry(&prior, false);
     assert_eq!(prior.native_inline_box_families().count(), 0);
     assert_eq!(prior.native_inline_box_pieces().count(), 0);
@@ -200,8 +200,8 @@ fn selected_closing_suffix<S: LayoutScalar>() {
     )
     .unwrap();
     ordinary_empty_float_geometry(&retry, false);
-    let accepted = result
-        .expect("the selected closing End/body-end witness must retain the genuine empty fragment");
+    let accepted =
+        result.expect("the selected closing End/body-end witness must retain the empty fragment");
     ordinary_empty_float_geometry(&accepted, false);
     for node in [0, 20, 30, 21] {
         assert_eq!(
@@ -242,7 +242,7 @@ fn selected_closing_suffix<S: LayoutScalar>() {
     assert_eq!(
         pieces.len(),
         2,
-        "both genuine control-only runs retain P's piece association"
+        "both control-only runs retain P's piece association"
     );
     let opening = pieces[0];
     let closing = pieces[1];

@@ -117,7 +117,7 @@ fn assert_actual_batch<S: LayoutScalar>(
     let root = fri08_c01_placement_output(batch, 0);
     let child = fri08_c01_placement_output(batch, 1);
     // Qualify the actual performed child before testing the root's normal
-    // intrinsic size: both leaf channels remain genuine and independent.
+    // intrinsic size: both leaf channels remain and independent.
     assert_eq!(
         child.location,
         Point::ZERO,

@@ -220,7 +220,7 @@ fn atomic_child_domains_do_not_borrow_parent_axis_or_inner_direction() {
             input
                 .scopes
                 .push(inline(None, Some(ParagraphBaseDirection::RightToLeft)));
-            // Wrap the existing child Origin occurrence, keeping the genuine
+            // Wrap the existing child Origin occurrence, keeping the
             // atomic nomination, both original paragraphs and all connections.
             input.events.insert(7, SourceProcessingEvent::EnterScope(3));
             input.events.insert(9, SourceProcessingEvent::ExitScope(3));

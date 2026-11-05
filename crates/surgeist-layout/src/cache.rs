@@ -247,7 +247,7 @@ mod sizing_request_cache_tests {
         let mut packet = None;
         let output = crate::compute_leaf(input, &crate::NodeInputOf::<S>::default(), |observed| {
             packet = Some(observed);
-            // A genuine opaque native leaf with fixed 20x10 content; imposed
+            // An opaque native leaf with fixed 20x10 content; imposed
             // content dimensions are honored by the measurement provider.
             Ok::<_, ()>(
                 observed
@@ -321,7 +321,7 @@ mod sizing_request_cache_tests {
             SizingOperation::Normal
         );
         cache.store_with_context(&imposed_max, context, known_output);
-        // Both executions have the SAME genuine imposed width. Availability-
+        // Both executions have the SAME imposed width. Availability-
         // only changes may be relaxed, and the known axis's raw op is ineffective.
         let changed_space = input(
             Some(px(20.0)),

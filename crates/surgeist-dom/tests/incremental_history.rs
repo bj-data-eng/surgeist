@@ -34,7 +34,7 @@ struct Fixture {
 }
 fn fixture(entries: usize, bytes: usize) -> Fixture {
     // Initial construction is outside retained revision history. The four
-    // genuine live nodes and all string lengths remain fixed as history grows.
+    // live nodes and all string lengths remain fixed as history grows.
     let mut dom = Dom::new(limits(0, 0)).unwrap();
     let mut batch = DomBatch::new();
     let document = batch.create_document();

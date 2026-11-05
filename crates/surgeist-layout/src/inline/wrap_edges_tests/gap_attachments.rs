@@ -727,7 +727,7 @@ fn gap_outside_forced_selection<S: LayoutScalar>() {
     let WrappingScopeInput::NativePair { edges, .. } = &mut f.wrapping.scopes[0] else {
         unreachable!()
     };
-    // A genuine wrapping force ends the selected line after this source-empty
+    // A wrapping force ends the selected line after this source-empty
     // pair. Its anchor is body-valid, but belongs to the following line. No
     // clamping or moving the pair through the forced cut is permitted.
     edges.after = WrapEdge::Line;
@@ -774,7 +774,7 @@ fn ordinary_contributions<S: LayoutScalar>() {
             replace_boundary(&mut f, node, boundary);
         }
         // A wrapping NativePair alone grants no normal-family classification,
-        // including when both genuine Contributions have zero advance.
+        // including when both Contributions have zero advance.
         let batch = f.compute();
         assert_order(&batch, &[0, 1, 2, 3, 5, 4]);
         for (index, x) in [

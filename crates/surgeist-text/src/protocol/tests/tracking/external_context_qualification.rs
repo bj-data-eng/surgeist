@@ -422,7 +422,7 @@ fn a_real_nonjoining_endpoint_admits_disjoint_script_tracking_and_character_allo
 }
 
 #[test]
-fn a_genuine_disconnected_origin_connection_bounds_both_joining_contexts_and_admits_spacing() {
+fn a_disconnected_origin_connection_bounds_both_joining_contexts_and_admits_spacing() {
     let bytes = fixture();
     qualify(&bytes);
     let source = Source::identified("\u{628}\u{712}", Id::from_u64(1566051), 1);

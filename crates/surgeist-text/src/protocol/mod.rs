@@ -501,7 +501,7 @@ enum InlineBoundaryData {
     },
 }
 impl InlineBoundaryAllocation {
-    /// A genuine zero-flow Native contribution, without a box claim.
+    /// A zero-flow Native contribution, without a box claim.
     pub const CONTRIBUTION_ZERO: Self = Self {
         data: InlineBoundaryData::Contribution { advance: 0.0 },
     };
@@ -628,7 +628,7 @@ pub enum PreparedTermination {
 /// together by `PreparedText::select` before a selected result is issued.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LineSelectionRequest {
-    /// The genuine prepared structural interval owning this selection.
+    /// The prepared structural interval owning this selection.
     pub segment: PreparedSourceSegment,
     pub start: PreparedBoundary,
     pub end: PreparedBoundary,
@@ -1113,7 +1113,7 @@ pub enum ProtocolError {
         policy: usize,
         at: usize,
     },
-    /// A second group claims the same genuine defining occurrence.
+    /// A second group claims the same defining occurrence.
     DuplicateReplacement {
         alternative: usize,
         prior: usize,

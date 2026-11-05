@@ -10,7 +10,7 @@ use icu_properties::{
 
 use crate::projection::SourceProjection;
 
-/// Restrictions only: an unsuppressed edge still needs genuine line permission.
+/// Restrictions only: an unsuppressed edge still needs line permission.
 #[derive(Clone)]
 pub(crate) struct LineBreakUnits {
     suppressed: Vec<usize>,

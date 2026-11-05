@@ -504,7 +504,7 @@ fn float_encounter_cached_child_wider_frame_and_failure_keep_all_channels() {
 }
 
 /// Candidate-local missing case, deliberately not dispatched until the replay
-/// floor review: the genuine empty origin is a zero anchor, not a preceding
+/// floor review: the empty origin is a zero anchor, not a preceding
 /// generated line box. X cannot fit the two pixels beside the eight-pixel
 /// float. The float remains at its original encounter and X starts below it.
 #[test]
@@ -799,7 +799,7 @@ fn float_encounter_source_progress_is_independent_of_zero_or_negative_prefix() {
     }
 }
 
-/// The prefix has a real earlier-content line, unlike the genuine leading
+/// The prefix has a real earlier-content line, unlike the leading
 /// EmptyOrigin case. CSS2's preceding-line floor prevents moving A below its
 /// own encountered float. A/X remain one unbreakable word; defer the float.
 #[test]
@@ -1333,7 +1333,7 @@ fn assert_nested_float_text_packet<S: LayoutScalar>() {
     };
     let prior_positions = positions(&prior);
     // Qualify the late provider stimulus while preserving the rectangular
-    // positive case. Ok(None) for a genuine Shape means no shape exclusion.
+    // positive case. Ok(None) for a Shape means no shape exclusion.
     host.tree.insert_input(
         30,
         LayoutInputOf::box_input(NodeInputOf {
@@ -1566,7 +1566,7 @@ fn trailing_float_after_terminal_forced_break_retains_the_real_empty_paragraph_l
         text::PreparedTermination::Ordinary(offer)
             if offer.view().kind() == text::PreparedBreakKind::ParagraphEnd));
     assert_eq!(output(&batch, 30).location, Point::new(0.0, 10.0));
-    // The phantom contributes no line height. The genuine8x4 float still
+    // The phantom contributes no line height. The 8x4 float still
     // sets its owner's auto bottom to10+4, independently of Text's10px extent.
     assert_eq!(output(&batch, 30).size, Size::new(8.0, 4.0));
     assert_eq!(output(&batch, 2).size.height, 14.0);
@@ -2248,7 +2248,7 @@ fn zero_height_captured_max_geometry<S: LayoutScalar>(
         assert_eq!(strut.baseline, 0.0);
         assert_eq!(strut.line_extent, 0.0);
     }
-    // These zero-size endpoint nodes use their genuine nonformatted placement
+    // These zero-size endpoint nodes use their nonformatted placement
     // origin, not the nominal line's baseline or a fabricated visible rect.
     for node in [10, 11] {
         let control = output(&batch, node);
@@ -2296,7 +2296,7 @@ fn zero_height_captured_max_cohort<S: LayoutScalar>(right: bool) -> f64 {
 #[test]
 fn captured_review_zero_height_control_line_retains_the_actual_float_cohort_width() {
     // Two positive-height floats share a real4px cohort. Structural controls
-    // retain a genuine zero-metric receipt, without publishing a Text line.
+    // retain a zero-metric receipt, without publishing a Text line.
     let actual = [
         zero_height_captured_max_cohort::<f32>(false),
         zero_height_captured_max_cohort::<f64>(false),
@@ -2415,7 +2415,7 @@ fn automatic_portion_retains_preceding_float_at_word_start_and_actual_fractional
             layout.source().text().code_units(),
             "XX as\u{ad}sociate".encode_utf16().collect::<Vec<_>>()
         );
-        // The genuine prefix is 30px, so the 60px float cannot share its 80px
+        // The prefix is 30px, so the 60px float cannot share its 80px
         // row. A word-only probe must retain that prior source encounter.
         assert_eq!(output(&batch, 30).location.y.to_f64(), 21.0);
         assert_eq!(layout.lines()[0].range(), text::Range::new(0, 6));
@@ -2513,7 +2513,7 @@ fn automatic_initial_manual_portion_retains_float_before_word_without_replaying_
             "XX assoc\u{ad}iate".encode_utf16().collect::<Vec<_>>()
         );
         // The full candidate's prefix30 defers the float, so the otherwise
-        // empty manual portion60 fits80 and excludes Auto4. The genuine
+        // empty manual portion60 fits80 and excludes Auto4. The
         // Preserve SPACE still contributes to the encounter prefix even when
         // its Soft line alignment contribution hangs.
         assert_eq!(output(&batch, 30).location.y.to_f64(), 21.0);

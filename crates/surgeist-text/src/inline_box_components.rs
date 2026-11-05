@@ -391,7 +391,7 @@ mod tests {
     use super::*;
     #[test]
     fn one_shared_row_retains_both_sibling_memberships_and_their_ancestor() {
-        // One genuine supplied row may be an indivisible shared packet. Its
+        // One supplied row may be an indivisible shared packet. Its
         // two sibling incidences must not be reduced to an exclusive owner.
         let rows = [
             SuppliedInlineBoxComponentRow {

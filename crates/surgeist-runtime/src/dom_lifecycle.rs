@@ -184,7 +184,7 @@ pub enum DomHostedTaskWait {
     Descendants,
     /// Actual native checkpoint work remains, including pending Slot signals.
     CheckpointUnavailable,
-    /// A genuinely unfinished synchronous Source hook still owns its tail.
+    /// An unfinished synchronous Source hook still owns its tail.
     SourceTail,
 }
 

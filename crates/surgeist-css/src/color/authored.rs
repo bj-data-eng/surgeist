@@ -1215,7 +1215,7 @@ mod tests {
     }
 
     #[test]
-    fn genuine_programmatic_components_keep_exact_tokens_without_reparse() {
+    fn programmatic_components_keep_exact_tokens_without_reparse() {
         let supplied = CssComponentValue::try_number("+000000001.250e-01").unwrap();
         let arguments = CssComponentValues::try_new(
             vec![

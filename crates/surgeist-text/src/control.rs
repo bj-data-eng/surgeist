@@ -7,7 +7,7 @@ pub(crate) mod font;
 #[cfg(test)]
 mod integration_tests;
 
-/// Phase I has already consumed genuine document segment-break occurrences.
+/// Phase I has already consumed document segment-break occurrences.
 /// TAB/LF/CR keep their own whitespace operations; every other Cc is a symbol.
 pub(crate) const fn is_visible(code_point: u32) -> bool {
     matches!(code_point, 0..=8 | 11..=12 | 14..=31 | 127..=159)

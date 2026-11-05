@@ -238,7 +238,7 @@ fn queued_predecessor_reaches_end_before_delivery_and_real_cleanup_unblocks_curr
             .is_none()
     );
     // This lower-level test acts as the bound trusted external executor after
-    // this token's own genuine End. Runtime separately supplies actual receipts.
+    // this token's own End. Runtime separately supplies actual receipts.
     let executor = value.dom.bind_source_event_executor(&flag()).unwrap();
     let mut delivery = Some(
         executor

@@ -240,7 +240,7 @@ fn normalization_error(
         BaselineOffsetResolutionError::NonZeroLost => surgeist_text::TextNumericError::NonZeroLost,
     };
     // This enum reports the operation, not a failed numeric result. Retain its
-    // genuine named input instead of fabricating a zero result.
+    // named input instead of fabricating a zero result.
     surgeist_text::Error::new(
         surgeist_text::ErrorCode::InvalidTextNumeric,
         "scope baseline normalization refused",
@@ -1489,7 +1489,7 @@ impl ScopeBases {
     ) -> surgeist_text::Result<Self> {
         let limits = resources.key_limits()?;
         if let Some(limits) = limits {
-            // This scan establishes actual absence or identifies the genuine
+            // This scan establishes actual absence or identifies the
             // selected product used for simultaneous Text/Layout custody.
             resources.visit(limits, lines.len())?;
         }

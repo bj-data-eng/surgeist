@@ -269,7 +269,7 @@ fn rejection_preserves(f: &Family, bad: LineSelectionRequest, reason: InlineBoxE
     assert_eq!(old.selected_line().request(), &contribution);
     plain20(f, &old);
     // This is an INDEPENDENT explicitly requested Contribution over the same
-    // genuine selected controls, not a retry/downgrade of the failed BoxEdge.
+    // selected controls, not a retry/downgrade of the failed BoxEdge.
     let legitimate = finish(f, contribution.clone());
     plain20(f, &legitimate);
     let boxes = proper_boxes(f);
@@ -376,7 +376,7 @@ fn declared_native_pairs_require_actual_roles_and_cannot_half_match_scope_nomina
             f.capture.captured_control(2).unwrap(),
         ),
         InlineBoxEdgeError::InvalidPair,
-    ); // genuine Pstart cannot steal Cend.
+    ); // Pstart cannot steal Cend.
     assert_eq!(
         f.prepared
             .native_inline_box(
@@ -732,7 +732,7 @@ fn plain_native_preparation_cannot_acquire_full_box_authority_from_another_real_
 }
 
 // Uncaptured scalar contributions retain their separate owning tests. These
-// families distinguish wrong/skipped/self parents, a genuine child domain from
+// families distinguish wrong/skipped/self parents, a child domain from
 // a foreign capture, and a Phase-I-discarded-only owner's authenticated gap.
 // Parent ownership is supplied through real source handles; malformed source,
 // arbitrary cuts and unsupported Cell profiles do not stand in for missing

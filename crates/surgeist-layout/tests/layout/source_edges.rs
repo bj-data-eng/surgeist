@@ -157,7 +157,7 @@ impl<S: layout::LayoutScalar> Host<S> {
                 .iter()
                 .map(|d| {
                     let layout::InlineBoxRef::Scope(scope) = d.box_ else {
-                        unreachable!("this fixture authors a genuine source scope")
+                        unreachable!("this fixture authors a source scope")
                     };
                     layout::WrappingScopeInput::Captured {
                         scope: processed.captured_scope(scope).unwrap(),
@@ -1045,7 +1045,7 @@ fn caller_causes_and_duplicate_ordinals<S: layout::LayoutScalar>() {
         let host = Host::<S>::new(true, layout::WrapEdge::Line, direction);
         let mut raw = source(true, direction);
         // A caller's After cause is distinct. Two literal caller Before
-        // requests and the adapter's same genuine Before edge share one cause.
+        // requests and the adapter's same Before edge share one cause.
         raw.computed_line_boundaries = vec![
             text::ComputedLineBoundaryInput::Scope {
                 scope: 1,
@@ -1107,7 +1107,7 @@ fn caller_distinct_cause_survives_and_duplicate_request_ordinals_resolve_idempot
     caller_causes_and_duplicate_ordinals::<f64>();
 }
 
-// A separate early borrow with genuine physical source controls. It never
+// A separate early borrow with physical source controls. It never
 // implements LayoutTree or pretends that preparation has already occurred.
 struct PairedEarly<S: layout::LayoutScalar> {
     base: Host<S>,
@@ -1198,7 +1198,7 @@ impl<S: layout::LayoutScalar> layout::WrapEdgeSource for PairedEarly<S> {
             2 => layout::WrapEdgeSourceNodeView::SourceOrigin { origin: 1 },
             3 => layout::WrapEdgeSourceNodeView::Boundary(self.start),
             4 => layout::WrapEdgeSourceNodeView::Boundary(self.end),
-            _ => unreachable!("the fixture has exactly five genuine nodes"),
+            _ => unreachable!("the fixture has exactly five nodes"),
         }
     }
     fn source_wrapping_scopes(&self) -> &[layout::SourceWrappingScopeInput<u32>] {
@@ -1266,7 +1266,7 @@ fn paired_source(direction: layout::Direction) -> text::ContextualSourceInput {
     ];
     raw
 }
-fn genuine_source_native_alias<S: layout::LayoutScalar>() {
+fn source_native_alias<S: layout::LayoutScalar>() {
     for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
         for reverse in [false, true] {
             let host = PairedEarly::<S>::new(direction, reverse);
@@ -1346,10 +1346,9 @@ fn genuine_source_native_alias<S: layout::LayoutScalar>() {
     }
 }
 #[test]
-fn genuine_source_native_box_alias_has_one_effective_force_and_keeps_distinct_caller_endpoint_cause()
- {
-    genuine_source_native_alias::<f32>();
-    genuine_source_native_alias::<f64>();
+fn source_native_box_alias_has_one_effective_force_and_keeps_distinct_caller_endpoint_cause() {
+    source_native_alias::<f32>();
+    source_native_alias::<f64>();
 }
 
 mod unscoped_native_pair;

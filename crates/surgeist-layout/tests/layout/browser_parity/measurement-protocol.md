@@ -30,7 +30,7 @@ the hypothetical body's progression over the same physical containing width
 as inline availability; the offset itself is never converted to `W - s` for RTL.
 The request keeps full actual CB width/height as percentage bases, Normal
 operations and independently indefinite block availability. Native shrink-to-fit
-acceptance uses genuine min/max contributions. Root-local output starts at zero.
+acceptance uses min/max contributions. Root-local output starts at zero.
 
 The ordinary zero-offset profile has an empty, unindented, start-aligned
 hypothetical first line, with only collapsible ASCII whitespace/comments and no
@@ -64,7 +64,7 @@ Only a source-qualified static/all-Auto root lowers to Native in-flow Relative
 with zero displacement; original static positioning remains in XML/provenance.
 Other static/offset profiles refuse.
 
-The public Native `PositionedRootContext` remains separate for genuine
+The public Native `PositionedRootContext` remains separate for
 containing-frame placement; see the [Native root contexts](../../../src/output.rs).
 V4 has no `positioned-auto-insets` wire alias. Native root-local padding/border
 admission requires a definite preferred width under its sizing resolver. Browser
@@ -104,7 +104,7 @@ not depend on a common translation. Fixed/sticky/transformed frames, external
 sizing and anchors, remaining-block-space dependence, noninitial scrolling and unqualified
 typed-inline/observation channels refuse. Boxless `display:none`/`contents`
 observations refuse with `RootLocalBoxlessObservation`; their world-zero rectangle
-is not normalized into a fabricated local zero. A genuine zero-size box remains
+is not normalized into a fabricated local zero. A zero-size box remains
 a box. Hidden clipping within the admitted moving subtree remains local. The base
 `.viewport` class refuses because its sizes are absent from this inline-declaration-only sizing channel.
 
@@ -122,7 +122,7 @@ projection. Each group refuses simultaneous physical and corresponding logical
 size on one physical axis with `ConflictingSizingDeclarations`; declaration
 order or priority is not guessed. Single logical sizes/bounds and mixed
 declarations on distinct axes retain their role. Minimum/maximum getters keep
-their existing genuine computed projection before the shared mapping. Gap shorthand
+their existing computed projection before the shared mapping. Gap shorthand
 repeats a value only when one component was authored. An unsupported second
 component remains absent for validation and cannot be replaced by the first.
 Padding and inset inline-start/inline-end declarations share one mapping through
@@ -182,7 +182,7 @@ diagnostics likewise do not define local rounding.
 
 Historical XML 1/2/3 remains exact raw, unqualified capture. Its viewport cannot
 issue a current Native root operation: `MissingRootContextAuthority` remains
-visible. Genuine Native tests may use retained Source/font IR with independently
+visible. Native tests may use retained Source/font IR with independently
 authored requests. Old captures are not relabeled or supplied missing facts;
 fresh V4 capture is required for current browser parity. Prepared font/source
 capabilities are unchanged.
@@ -192,7 +192,7 @@ and parallel unbounded requests retain distinct operations. It does not claim
 the complete orthogonal infinite-containing-block algorithm: capture and reader
 refuse opaque analytic text through an orthogonal ancestor, including inherited
 infinity. Actual core-owned leaf/containing axes are checked before accepting
-Normal/Indefinite inline requests; no universal fallback cap is applied. Genuine
+Normal/Indefinite inline requests; no universal fallback cap is applied.
 Prepared paragraphs retain their independent source/font/context path; the
 absolute-local closure does not admit unqualified typed-inline channels.
 
@@ -300,7 +300,7 @@ After independent validation, the reader assigns only the existing local
 `NodeInput.grid_baseline_references` selectors to Named(Central). Inherited
 subgrid axes retain their actual owner; First/Last selection, paragraph
 `inline_baseline_context`, BR metrics and source correspondence do not change.
-Genuinely unrequested authored Native input retains Physical under its explicit
+Unrequested authored Native input retains Physical under its explicit
 Native test entry. That entry is distinct from the strict captured comparison,
 which requires the enclosing profile even if every record was deleted. There
 is no old-qualified-capture fallback or reinterpretation of historical XML.
@@ -408,7 +408,7 @@ the helper validates the actual normal-bidi context before capture.
 The vertical profile also requires computed `dominant-baseline: auto`. Its
 authenticated Mixed/Vertical preparation resolves Text's central baseline, so
 the reader requests `InlineBaselineContext::Named(Central)` on that paragraph
-container. Layout owns matching child baselines and synthesis from genuine
+container. Layout owns matching child baselines and synthesis from
 absence. Raw physical alignment and other typographic contexts retain their
 separate operations; writing mode alone does not grant named-baseline authority.
 
@@ -464,7 +464,7 @@ family alias names this one resource; Text uses its real internal Ahem family.
 
 Native control topology is checked against the exact immutable prepared control
 roles and original occurrence mapping. Balanced metricless start/end controls
-may enclose zero, one or multiple genuine source occurrences, including nested
+may enclose zero, one or multiple source occurrences, including nested
 transparent containers. An empty container has no fabricated authored origin.
 Mismatched, unbalanced or unbound controls refuse. Historical numeric-boundary
 schema tests retain their separate original triplet/atomic constraints.
@@ -580,7 +580,7 @@ returns a **JSON string**, whose object has exactly these five required fields:
 | `contentBoxRtlData` | Node object | `content-box rtl` / `content_box_rtl` |
 
 Measurements occur in the table's order by changing `document.body.className`
-and describing the same `#test-root` each time. For the genuine Prepared profile,
+and describing the same `#test-root` each time. For the Prepared profile,
 the adapter explicitly loads its pinned face before measurement. It adds no
 second document and derives no source inputs from measurements. A missing root
 returns all four variants as `layoutInput: "unsupported"` nodes with

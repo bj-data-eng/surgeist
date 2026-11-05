@@ -432,7 +432,7 @@ pub enum ErrorDetail {
         range: super::Range,
         bytes: usize,
     },
-    /// Genuine Cell source membership cannot be represented by original AX units.
+    /// Cell source membership cannot be represented by original AX units.
     UnsupportedAccessibilityCellMapping {
         /// Actual Cell binding ordinal in the analyzed output, in either phase.
         cell: usize,
@@ -506,7 +506,7 @@ pub enum TextTransformError {
         at: usize,
         connection: usize,
     },
-    /// A genuine original separator's forced adjacency depends on an uncaptured
+    /// An original separator's forced adjacency depends on an uncaptured
     /// connection side. The range identifies original text, never a control.
     MissingOriginalSeparatorBoundaryContext {
         source: crate::Range,
@@ -735,7 +735,7 @@ pub enum FontMetricTableError {
         point: u16,
         reason: super::FontOutlineError,
     },
-    /// The point is outside the genuine glyph's stored point inventory.
+    /// The point is outside the glyph's stored point inventory.
     BaselinePointRange {
         glyph: u16,
         point: u16,

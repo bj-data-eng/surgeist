@@ -1,4 +1,4 @@
-//! Genuine domain/ordinary-child-Block source frontiers. Raw storage members,
+//! Domain/ordinary-child-Block source frontiers. Raw storage members,
 //! forced controls, atomics and disconnections confer no section boundary.
 use crate::protocol::paragraph::{ParagraphContext, SemanticAnchorItem};
 use crate::transform::relation::{ComponentOwner, RelationEvent, TransformMap};
@@ -14,7 +14,7 @@ pub(crate) struct Section {
     pub(crate) participants: IndexRange<usize>,
     pub(crate) entry_cursor: Cursor,
     pub(crate) exit_cursor: Cursor,
-    /// Genuine containing domain/child-Block bounds, independent of the
+    /// Containing domain/child-Block bounds, independent of the
     /// output's owned horizon. Raw markers do not clip localized box edges.
     pub(crate) span: Option<StructuralSpan>,
 }
@@ -246,7 +246,7 @@ pub(crate) fn sections(
         if !coherent || owner.is_none_or(|index| index < previous) {
             return Err(crate::Error::new(
                 crate::ErrorCode::UnsupportedFeature,
-                "source event crosses a genuine structural frontier",
+                "source event crosses a structural frontier",
             )
             .with_detail(crate::ErrorDetail::TextTransform {
                 reason: crate::TextTransformError::IndivisibleCoverage {
@@ -378,13 +378,13 @@ pub(crate) fn owner_section(
                     return Ok(index);
                 }
             }
-            unreachable!("completed cell belongs to one genuine structural section")
+            unreachable!("completed cell belongs to one structural section")
         }
     }
 }
 
 /// Finds the actual containing capture span, without materializing an index.
-/// Callers share this visit accounting for owner and genuine empty-row custody.
+/// Callers share this visit accounting for owner and empty-row custody.
 pub(crate) fn section_at_order(
     order: usize,
     sections: &[Section],

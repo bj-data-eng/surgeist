@@ -5,7 +5,7 @@ use crate::transform::relation::{ComponentOwner, RelationEvent};
 
 #[test]
 fn an_actual_removed_forced_original_selects_itself_and_closes_the_retained_marked_egc() {
-    // Reuse the maintained genuine three-origin Preserve/All capture, not a
+    // Reuse the maintained three-origin Preserve/All capture, not a
     // synthetic removal, source-less ForcedBreak control, or flattened adjacency.
     let captured = capture("A\n\u{301}");
     assert_eq!(
@@ -59,7 +59,7 @@ fn an_actual_removed_forced_original_selects_itself_and_closes_the_retained_mark
     assert!(captured.processed.captured_origin(3).is_none());
 
     // Existing maintained mark fixture; exact same cmap/mark tables, raw font
-    // metrics and outlines as the already qualified genuine A+acute Source case.
+    // metrics and outlines as the already qualified A+acute Source case.
     let original_font = crate::shaping_test_fonts::mark_ahem();
     let bytes = native_metric_font(&original_font);
     for tag in [
@@ -147,7 +147,7 @@ fn an_actual_removed_forced_original_selects_itself_and_closes_the_retained_mark
     assert_eq!(raw, [(35, 10.0), (100, 0.0)]);
 
     // All premise checks above precede the operation under qualification.
-    // The query selects ONLY the genuinely removed original; it must not return
+    // The query selects ONLY the removed original; it must not return
     // a Removed-only pseudo-unit or borrow a nearest neighboring EGC by cut.
     let removed = layout
         .source_range_fragments(&origins[1], Range::new(1, 2))

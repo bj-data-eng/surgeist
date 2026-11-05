@@ -462,7 +462,7 @@ fn fixture_with_capacity(managed: usize, context: Context, extra: usize) -> Fixt
     let large_children = match context {
         Context::LargeChildren => LARGE_CHILDREN,
         // The boundary companion also admits the 10k selection. Its two
-        // endpoint Comments occupy the tail of this genuine public sequence.
+        // endpoint Comments occupy the tail of this public sequence.
         Context::RangeBoundary => LARGE_CHILDREN.min(managed.checked_sub(5).unwrap()),
         _ => 0,
     };
@@ -505,7 +505,7 @@ fn fixture_with_capacity(managed: usize, context: Context, extra: usize) -> Fixt
                 left -= 1;
             } else if details_remaining > 0 {
                 let details = batch.create_element_ns(other_document, Namespace::html(), "details");
-                // Two genuine source transitions leave equal authored state
+                // Two source transitions leave equal authored state
                 // and retain both ordered native task intentions.
                 batch.set_attribute(&details, "open", "");
                 batch.remove_attribute(&details, "open");
@@ -567,7 +567,7 @@ fn fixture_with_capacity(managed: usize, context: Context, extra: usize) -> Fixt
     assert_eq!(select_ids.len(), select_tasks);
     assert_eq!(dom.state.counts.select_tasks, select_tasks);
     // Independently enumerate actual retained queue targets during setup, so a
-    // cached count cannot stand in for a genuinely populated task bank.
+    // cached count cannot stand in for a populated task bank.
     let queued: Vec<_> = dom
         .state
         .native_tasks
@@ -1149,7 +1149,7 @@ enum RangeBoundaryEdit {
 #[ignore = "explicit release Source Range-boundary qualification beside an unchanged sibling prefix"]
 fn source_range_boundaries_beside_unchanged_siblings_scale() {
     require_release();
-    // The genuine public regression in tests/range_position_locality.rs uses
+    // The public regression in tests/range_position_locality.rs uses
     // this same finite work policy. Here even one old tail-prefix enumeration
     // exceeds it: the smallest default fixture has 9,994 preceding siblings.
     // This is a work/admission assertion, never a latency threshold. The fixed
@@ -2614,7 +2614,7 @@ fn postsetup_native_source_park_resume_reentry_scale() {
                     .unwrap();
                 // Require actual observer values; missing hooks/zero fallback
                 // values cannot qualify the real parked/savepoint/custody path.
-                // This genuine beforetoggle path reserves its fixed tail and
+                // This beforetoggle path reserves its fixed tail and
                 // the callback makes resume a no-op. It does not reach the
                 // execution-and-restore preflight; the Style companion does.
 
@@ -2952,7 +2952,7 @@ fn historical_input_capture_frontier_and_reuse_scale() {
 }
 
 /// A real million-node external owner supplies the complete input snapshot.
-/// That complete snapshot is admitted into the genuine small destination;
+/// That complete snapshot is admitted into the small destination;
 /// shallow import size cannot replace it.
 /// This fixed-size companion runs once per profile, independently of SIZES.
 #[test]
@@ -2970,7 +2970,7 @@ fn large_disjoint_input_capture_and_reuse_scale() {
     let cancel = AtomicBool::new(false);
     // Public admitted construction creates every external canonical record.
     // Ending the owner leaves an ordinary immutable snapshot with no live
-    // accounting lease; its missing frontier must genuinely be qualified.
+    // accounting lease; its missing frontier must be qualified.
     let disjoint = fixture(input_managed, Context::Detached);
     let external = disjoint.dom.snapshot();
     drop(disjoint);
@@ -3131,7 +3131,7 @@ fn measure_outer<T>(
 }
 
 /// Actual DOM consuming boundary for a historical HOST-only input. The old
-/// semantic/capsule pair is controlled before measurement; a genuine producer
+/// semantic/capsule pair is controlled before measurement; a producer
 /// has formed the one changed frontier outside this DOM-admission interval.
 /// None is the real historical-input protocol, never a fabricated fresh receipt.
 fn measure_dom_aux<T, C>(
@@ -3213,7 +3213,7 @@ fn measure_dom_aux<T, C>(
         );
         assert!(
             controlled.bytes() > baseline.bytes(),
-            "a genuinely missing changed frontier joins the retained old control"
+            "a missing changed frontier joins the retained old control"
         );
         if let Some(measurement) = measurement {
             let counters = measurement
@@ -3309,7 +3309,7 @@ fn hosted_outer_bank_local_mutation_scale() {
     let cancel = AtomicBool::new(false);
     require_release();
     eprintln!(
-        "scale outer_environment profile=release rows={:?} default_rows={OUTER_ROWS:?} counters_enabled={} warmups={WARMUPS} samples={SAMPLES} canonical_million_fixture=false issuer=genuine_native_payload_fixture os={} arch={} revision={} toolchain={} machine={}",
+        "scale outer_environment profile=release rows={:?} default_rows={OUTER_ROWS:?} counters_enabled={} warmups={WARMUPS} samples={SAMPLES} canonical_million_fixture=false issuer=native_payload_fixture os={} arch={} revision={} toolchain={} machine={}",
         selected_outer_rows(),
         scale_metrics::ENABLED,
         std::env::consts::OS,
@@ -3319,7 +3319,7 @@ fn hosted_outer_bank_local_mutation_scale() {
         std::env::var("SURGEIST_SCALE_MACHINE").unwrap_or_else(|_| "unknown".into())
     );
     for rows in selected_outer_rows() {
-        // History stores insertion ordinals densely. Genuine unused issued IDs
+        // History stores insertion ordinals densely. Unused issued IDs
         // leave holes in the qualified identity index, not fabricated ordinals.
         let started = Instant::now();
         let mut fixture = super::hosted::history::tests::Fixture::new_for_outer_rows(rows * 2 + 32);
@@ -3812,7 +3812,7 @@ fn style_sequence_bounds() -> (usize, usize) {
     (bound, relation)
 }
 
-/// Execute a genuine reached headroom pass after public population, and finish
+/// Execute a reached headroom pass after public population, and finish
 /// with actual CSP and CSSOM producer observations. This complements the Show
 /// callback/no-op continuation; it does not invent a wait for that method.
 #[test]
@@ -3927,7 +3927,7 @@ fn postsetup_source_style_headroom_completion_scale() {
             );
             assert!(
                 revisions >= 2,
-                "ordinary construction and genuine Source publication both finish"
+                "ordinary construction and Source publication both finish"
             );
             if sample >= WARMUPS {
                 samples.push(elapsed);

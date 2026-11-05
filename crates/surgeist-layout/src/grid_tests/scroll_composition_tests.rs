@@ -954,7 +954,7 @@ fn assert_grid_intrinsic_gutter_opposite_axis_inheritance<S: LayoutScalar>(displ
         }
     }
     // Overflow's intrinsic reservation rule also applies to a standalone
-    // inline axis when the opposite row axis is genuinely inherited.
+    // inline axis when the opposite row axis is inherited.
     assert_eq!(
         observed, expected,
         "{display:?} opposite-axis gutter sizing"
@@ -3467,7 +3467,7 @@ fn fri08_c02_auto_fit_public_decreasing_subgrid_preserves_baseline_location_and_
         .x();
 
     // SidewaysLr retains an increasing physical block axis but its line-under
-    // side is Right. These genuine empty native bodies therefore select
+    // side is Right. These empty native bodies therefore select
     // First ports17 and10; sharing that point requires x_peer-x_target=7.
     let child_flow = FlowAxes::new(WritingMode::SidewaysLr, Direction::Ltr);
     for (node, actual, expected_width) in [(3, baseline_target, 17.0), (4, baseline_peer, 10.0)] {
@@ -3494,7 +3494,7 @@ fn fri08_c02_auto_fit_public_decreasing_subgrid_preserves_baseline_location_and_
                         .baselines()
                         .first_or_synthesize_block(child_flow, actual.size),
                     expected_width,
-                    "node{node} has its genuine selected First at its right border",
+                    "node{node} has its selected First at its right border",
                 );
                 found_performed_body = true;
             }

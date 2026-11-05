@@ -378,7 +378,7 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
     assert_eq!(placed.lines().len(), 1);
     let actual = placed.lines()[0].bounds();
     // The public computation resolves the auto root to 20px before the final
-    // pass. That known containing size is a genuine definite line allocation.
+    // pass. That known containing size is a definite line allocation.
     assert_eq!(actual, surgeist_text::Rect::new(0.0, 0.0, 20.0, 10.0));
     let finalized = batch.final_inline_fragments()[0]
         .fragment()
@@ -463,7 +463,7 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
         },
     )
     .unwrap_or_else(|_| panic!("actual intrinsic paragraph finalizes"));
-    // The same owning operation with a genuinely intrinsic request has no
+    // The same owning operation with an intrinsic request has no
     // definite allocation. Both Ahem code units advance 10px; its actual line
     // box includes the conditionally hangable space for this explicit maximum
     // contribution. Its actual Text metric frame retains the same 20px width.
@@ -945,7 +945,7 @@ fn assert_two_logical_allocations_survive_line_anchor_translation<S: LayoutScala
     let tolerance = S::EPSILON.to_f64() * 27.0 * 8.0;
     assert!(
         (natural.size.height.to_f64() - 27.0).abs() <= tolerance,
-        "two genuine logical allocations consume 27px before box rounding, got {:?}",
+        "two logical allocations consume 27px before box rounding, got {:?}",
         natural.size.height,
     );
     for (line, top, baseline) in [(&lines[0], 0.1, 10.0), (&lines[1], 13.1, 23.0)] {
@@ -1067,7 +1067,7 @@ fn assert_three_logical_allocations_survive_line_anchor_translation<S: LayoutSca
         let line = fragment.finalized_line();
         let feedback = line.feedback();
         // The actual bottom-baseline atomic supplies before 16; Ahem 16/LH 20
-        // supplies after 3.2+2=5.2. Each genuine allocation is therefore 21.2.
+        // supplies after 3.2+2=5.2. Each allocation is therefore 21.2.
         assert_eq!(feedback.baseline, 16.0);
         assert!((feedback.descent - 5.2).abs() < 0.000_001);
         assert!((feedback.line_height - 21.2).abs() < 0.000_001);
@@ -1083,7 +1083,7 @@ fn assert_three_logical_allocations_survive_line_anchor_translation<S: LayoutSca
     let tolerance = S::EPSILON.to_f64() * 63.6 * 8.0;
     assert!(
         (natural.size.height.to_f64() - 63.6).abs() <= tolerance,
-        "three genuine logical allocations consume 63.6px before box rounding, got {:?}",
+        "three logical allocations consume 63.6px before box rounding, got {:?}",
         natural.size.height,
     );
     let root = batch
@@ -1813,7 +1813,7 @@ fn distinct_runs_reusing_one_preparation_keep_exact_membership_and_placement_own
     assert_reused_preparation_runs::<f64>();
 }
 
-fn assert_genuine_out_of_flow<S: LayoutScalar>() {
+fn assert_out_of_flow<S: LayoutScalar>() {
     let style = ahem_style(10.0, 10.0);
     let paragraph = PreparedParagraph::new(
         vec![
@@ -1906,9 +1906,9 @@ fn assert_genuine_out_of_flow<S: LayoutScalar>() {
 }
 
 #[test]
-fn genuine_out_of_flow_occurrence_joins_actual_absolute_geometry_only_at_placement() {
-    assert_genuine_out_of_flow::<f32>();
-    assert_genuine_out_of_flow::<f64>();
+fn source_out_of_flow_occurrence_joins_actual_absolute_geometry_only_at_placement() {
+    assert_out_of_flow::<f32>();
+    assert_out_of_flow::<f64>();
 }
 
 #[test]

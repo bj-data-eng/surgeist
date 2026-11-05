@@ -132,7 +132,7 @@ where
     B: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
     C: FnMut(S, PostLineClearIntent) -> S,
 {
-    // Genuine ordinary completion records each actual group entry once. No
+    // Ordinary completion records each actual group entry once. No
     // target portfolio ever restarts these unrelated earlier groups.
     let mut final_entry = None;
     loop {

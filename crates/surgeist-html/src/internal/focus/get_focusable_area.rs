@@ -106,7 +106,7 @@ pub enum HtmlGetFocusableAreaReply {
     /// Whether the target is a shadow host whose shadow root delegates focus.
     DelegatingShadowHost(bool),
     /// Exact result role of the completed current-area child. CandidateDocument
-    /// is not null and does not acquire a DOM anchor; a genuine viewport area
+    /// is not null and does not acquire a DOM anchor; a viewport area
     /// remains CandidateFocusedArea even when its actual anchor is a Document.
     CurrentlyFocusedArea(HtmlCurrentlyFocusedAreaOutcome),
     /// Whether the target is a shadow-including inclusive ancestor of the retained
@@ -241,7 +241,7 @@ impl HtmlGetFocusableAreaCursor {
                 A::RunCurrentlyFocusedArea
             }
             (A::ReadDelegatingShadowHost, R::DelegatingShadowHost(false)) => A::Complete(O::Null),
-            // Only a genuine area result has the anchor required by this fast
+            // Only a focusable area result has the anchor required by this fast
             // path. Null and a non-area Document both proceed to real delegation.
             (
                 A::RunCurrentlyFocusedArea,

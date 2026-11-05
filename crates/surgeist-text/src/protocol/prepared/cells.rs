@@ -1,4 +1,4 @@
-//! Genuine source cells lowered into the outer prepared occurrence stream.
+//! Source cells lowered into the outer prepared occurrence stream.
 
 use super::{BoundaryData, ParticipantData, PreparedTables};
 use crate::engine::layout::data::{ShapedData, ShapedItem};
@@ -247,7 +247,7 @@ pub(crate) fn lower(
                 }
             }
             let mut row = row.ok_or_else(invalid)?;
-            // Cell edges are genuine source-unit edges, including a unit with
+            // Cell edges are source-unit edges, including a unit with
             // no logical/provider scalar. Preserve the native incident extrema
             // and right-atom processed coordinate; no source bounds are invented.
             row.participant = outer;

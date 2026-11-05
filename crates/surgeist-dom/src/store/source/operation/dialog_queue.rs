@@ -26,7 +26,7 @@ impl DomDialogToggleTaskInfo {
     pub const fn new_state(self) -> HtmlDialogState {
         self.new
     }
-    /// Original relevant Global and its associated Document, if genuinely hosted.
+    /// Original relevant Global and its associated Document, if hosted.
     pub const fn queue_association(self) -> Option<DomElementTaskAssociation> {
         self.association
     }
@@ -670,7 +670,7 @@ impl DomElementTaskSource {
         )?;
         lease.task_authorization = Some(self.binding.clone());
         // Original engine formation (including closing headroom and executor)
-        // can still refuse. Until its genuine observation exists, keep the
+        // can still refuse. Until its observation exists, keep the
         // queued task's affine permission with the original caller. Ordinary
         // unpublished-root rollback then cannot strand that task on retry.
         if !matches!(lease.advance(cancel)?, DomSourceProgress::Request(DomSourceRequest::Event(ref request)) if matches!(request.kind(), crate::DomSourceEventKind::Toggle | crate::DomSourceEventKind::Close))

@@ -771,7 +771,7 @@ impl DraftNode {
                     })?;
                 let e = &element.value.value;
                 let associations = if e.is_img() {
-                    // Fresh standalone Image owns one genuine empty URL target.
+                    // Fresh standalone Image owns one empty URL target.
                     let debit = registry.ledger().retain(
                         custody::Usage::new(
                             size_of::<crate::image::ImageState<Key>>() + size_of::<Vec<u16>>(),

@@ -1,4 +1,4 @@
-//! Genuine ordinary native preferred-name publication through Runtime.
+//! Ordinary native preferred-name publication through Runtime.
 use super::*;
 use std::cell::Cell;
 use surgeist_cssom::{CssomError, CssomLimits, CssomPublication};

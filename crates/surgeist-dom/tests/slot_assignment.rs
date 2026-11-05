@@ -1043,7 +1043,7 @@ fn owned_subtree_retirement_cancels_multiple_slots_without_reordering_surviving_
         assert!(old.node(id).is_ok());
     }
     assert_eq!(old.pending_slot_signals(), &[f.s2, z, f.s1, a]);
-    // Cancellation is not delivery: the next genuine checkpoint transfers only
+    // Cancellation is not delivery: the next checkpoint transfers only
     // the surviving intentions, in their original relative order.
     let next = slot_checkpoint(&mut f.dom, queries(), &cancel()).unwrap();
     assert_eq!(next.targets(), &[f.s2, f.s1]);

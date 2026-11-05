@@ -43,7 +43,7 @@ fn graph(
 }
 
 #[test]
-fn raw_projection_keeps_order_duplicates_importance_and_genuine_dropped_source() {
+fn raw_projection_keeps_order_duplicates_importance_and_dropped_source() {
     let source = String::from(
         "/*🦊*/; Future:red; Future: blue !IMPORTANT; & { ; } @namespace n url(x); @future x;",
     );

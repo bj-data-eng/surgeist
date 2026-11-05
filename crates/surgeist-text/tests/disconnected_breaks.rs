@@ -2,7 +2,7 @@
 
 //! A disconnected origin starts Unicode context, not an ordinary opportunity.
 //!
-//! ParagraphConnectionKind captures genuine text contiguity. Its discontinuity
+//! ParagraphConnectionKind captures text contiguity. Its discontinuity
 //! supplies no source character or control, and wrapping permission alone does
 //! not create an opportunity (docs/text-layout-contract.md). ICU's component
 //! start marker is not a meaningful line-break opportunity. Explicit controls,

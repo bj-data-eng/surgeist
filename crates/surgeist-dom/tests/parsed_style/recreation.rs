@@ -1,4 +1,4 @@
-//! Two genuine original invocations; known-null removal is not publication.
+//! Two original invocations; known-null removal is not publication.
 use super::*;
 use surgeist_html::{
     elements::style::HtmlStyleExecutionProfile,

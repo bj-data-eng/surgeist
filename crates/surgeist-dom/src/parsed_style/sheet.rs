@@ -1,4 +1,4 @@
-//! Exact original inputs and genuine results of the first sheet publication.
+//! Exact original inputs and results of the first sheet publication.
 use super::*;
 use crate::NodeId;
 use surgeist_css::CssParseReport;

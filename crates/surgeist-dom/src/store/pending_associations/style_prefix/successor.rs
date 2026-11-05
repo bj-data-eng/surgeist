@@ -6,7 +6,7 @@ use surgeist_cssom::{
     CssomBatch, CssomCommit, CssomCommitRetirement, CssomEditGuard, CssomSnapshot, CssomStore,
 };
 
-/// Genuine publications for one successor. The next invocation remains Pending
+/// Publications for one successor. The next invocation remains Pending
 /// at CheckInlineCsp; this is neither recreation nor a synchronous frontier.
 pub struct DomParsedHtmlStyleSuccessorCompletion {
     qualification: DomParsedHtmlStyleQualification,
@@ -368,7 +368,7 @@ fn dependency(
     }
 }
 // Admission to the existing creation editor is based on the current sealed
-// occurrence and genuine predecessor outcome, never empty membership alone.
+// occurrence and predecessor outcome, never empty membership alone.
 pub(super) fn qualify_creation(
     meter: &Meter,
     current: &DomParsedHtmlStyleInlinePolicyRequest,

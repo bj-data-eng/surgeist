@@ -698,7 +698,7 @@ missing or invalid type follows the existing Text-state default. Those dimension
 attributes remain `Uninspected`. For img or Image input, actual `BeingRendered`
 participation selects the branch. Unavailable rendering remains an outer Missing
 result even when both attributes could recover. Rendered elements use supplied
-content-box axes, including a genuine zero box; absent or unsupported measurements
+content-box axes, including a zero box; absent or unsupported measurements
 remain explicit rather than falling back to attributes or natural dimensions.
 
 Unrendered elements recover exact no-namespace width and height independently
@@ -1177,7 +1177,7 @@ exact nonempty name, ordinary tree and actual form owner; absent or empty own
 name yields a singleton. A disabled required radio still contributes.
 
 A checked witness can establish false despite unrelated unavailable facts.
-Otherwise the bounded summary preserves possible group membership and genuinely
+Otherwise the bounded summary preserves possible group membership and
 influencing missing evidence; unavailable checkedness is never inferred from
 authored checked attributes. Consulted type, name and form values retain their
 existing admission caps, traversal releases scratch on every result, and terminal

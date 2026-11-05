@@ -1,4 +1,4 @@
-//! Signed edge demand preserves raw text and allows genuine later flow retraction.
+//! Signed edge demand preserves raw text and allows later flow retraction.
 //! Actual captured Layout input retains intrinsic sizing, legal cuts and float-band placement.
 use super::*;
 
@@ -228,7 +228,7 @@ fn retraction<S: LayoutScalar>() {
     let old_lines = finalized_lines(&old);
     assert_eq!(old_lines.len(), 2);
     assert!(old_lines.iter().all(|line| line.feedback().advance == 10.0));
-    // Genuine earlier A10 opportunity FITS this10px band. A wrong raw20/prefix
+    // Earlier A10 opportunity FITS this10px band. A wrong raw20/prefix
     // maximum check would choose it; the later included end margin retracts the
     // WHOLE actual AB candidate to5, without borrowing an offselected edge.
     let batch = signed_compute::<S>(

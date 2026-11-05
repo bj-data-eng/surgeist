@@ -1,4 +1,4 @@
-//! P is a genuine declared native pair of root-scoped captured controls, not
+//! P is a declared native pair of root-scoped captured controls, not
 //! an invented captured Inline. Captured Cell owner C remains a real Inline
 //! whose captured parent is root. Native P encloses C's actual source interval
 //! and shares that root container. Explicit P parent basis puts C.SourceStart

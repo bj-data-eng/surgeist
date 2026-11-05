@@ -497,7 +497,7 @@ impl<T> CssDescriptorOccurrence<T> {
         }
     }
 
-    /// Reports identity of the genuine parsed occurrence, including across projection clones.
+    /// Reports identity of the parsed occurrence, including across projection clones.
     #[must_use]
     pub fn same_occurrence(&self, other: &Self) -> bool {
         match (&self.parsed, &other.parsed) {
@@ -919,7 +919,7 @@ impl StyleContents {
     }
 }
 
-/// One parser-produced style block with its genuine authored brace region.
+/// One parser-produced style block with its authored brace region.
 ///
 /// Leading declarations precede the first retained child rule. Later declaration
 /// runs appear as [`CssRule::NestedDeclarations`] among [`Self::rules`]. Child

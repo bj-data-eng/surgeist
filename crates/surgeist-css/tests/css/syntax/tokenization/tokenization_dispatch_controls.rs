@@ -15,7 +15,7 @@ use surgeist_css::component::{
 
 fn assert_origin(origin: &CssValueOrigin, source: &str, expected: Range<usize>) {
     let CssValueOrigin::Parsed(parsed) = origin else {
-        panic!("complete authored component has a genuine parsed origin");
+        panic!("complete authored component has a parsed origin");
     };
     assert_eq!(parsed.source().as_str(), source);
     assert_eq!(parsed.span().start().byte_offset().value(), expected.start);

@@ -18,7 +18,7 @@ use crate::{
     SizingMode, Traverse,
 };
 
-/// Genuine intrinsic basis provenance; final normal allocation is a separate phase.
+/// Intrinsic basis provenance; final normal allocation is a separate phase.
 #[derive(Clone, Copy, Debug)]
 pub(super) enum IntrinsicFlexBasis {
     MinContent,

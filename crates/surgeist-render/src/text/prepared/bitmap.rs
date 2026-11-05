@@ -37,7 +37,7 @@ pub(super) fn prepare(
         return Err(invalid());
     }
     // Prove glyph data before using optional metrics. Missing bounds for a
-    // genuinely empty glyf is zero; an invalid outline is not an empty bearing.
+    // Empty glyf is zero; an invalid outline is not an empty bearing.
     let summary = glyf::qualify(
         font,
         GlyphId::new(glyph.id()),

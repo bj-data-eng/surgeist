@@ -250,7 +250,7 @@ fn changed_float_band<S: LayoutScalar>() {
             ),
         queries: Default::default(),
     };
-    // Qualify the genuinely height-sensitive provider before observing a run.
+    // Qualify the height-sensitive provider before observing a run.
     let margin =
         ScrollRectOf::try_new(Point::ZERO, Size::new(S::from_f64(40.0), S::from_f64(30.0)))
             .unwrap();
@@ -361,7 +361,7 @@ fn changed_float_band<S: LayoutScalar>() {
     assert_eq!(rects, [text::Rect::new(40.0, 2.0, 10.0, 10.0)]);
     let queries = host.queries.borrow();
     // No call-count proxy: actual differently intersecting bands were queried.
-    // The provisional candidate starts at zero height; other genuine candidate
+    // The provisional candidate starts at zero height; other candidate
     // trials may also inspect the Ahem-only ten-pixel band.
     assert!(queries.iter().any(|(q, hit)| !hit
         && q.band_minimum() == S::ZERO

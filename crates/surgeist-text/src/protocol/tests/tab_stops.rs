@@ -1897,7 +1897,7 @@ fn absent_tabs_do_not_consume_a_temporary_signed_pen() {
             .unwrap(),
         crate::Wrap::Word,
     );
-    // Genuine ordinary control: huge indent cancels the same available width in
+    // Ordinary control: huge indent cancels the same available width in
     // the existing later RTL alignment operation. Physical glyph pen is-20..0.
     let ordinary = system
         .prepare(&analyzed, PreparationOptions::default())

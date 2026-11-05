@@ -162,7 +162,7 @@ fn queued(
         .unwrap()
     {
         DomStyleParsedNotificationProgress::Queued { task } => task,
-        other => panic!("genuine NoImports notification: {other:?}"),
+        other => panic!("NoImports notification: {other:?}"),
     }
 }
 fn removed(session: &mut DomSession, q: &DomParsedHtmlStyleQualification, sheet: &DomStyleSheet) {
@@ -666,8 +666,7 @@ fn empty_decision(
 }
 
 #[test]
-fn created_empty_then_genuinely_blocked_pop_establishes_final_null_after_owner_removed_settlement()
-{
+fn created_empty_then_blocked_pop_establishes_final_null_after_owner_removed_settlement() {
     let (policy, profile) = empty_only();
     let (mut session, installation) =
         installed(report("<!doctype html><style>p{color:red}</style>"));

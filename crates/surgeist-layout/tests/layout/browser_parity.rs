@@ -2790,7 +2790,7 @@ fn fri06_c08_recovery_characterization_float_browser_rows() -> Vec<String> {
 
 // Version-1 measured widths remain historical schema evidence. Their missing
 // original source/font/context is an explicit production refusal, never a
-// replacement shaping input. Genuine version-2 comparisons are separate below.
+// replacement shaping input. Version-2 comparisons are separate below.
 fn assert_historical_measured_source_refused(golden: &support::Golden) {
     assert_eq!(
         support::assert_native_input_matches(golden, authored_max_content_request())
@@ -2945,7 +2945,7 @@ fn historical_typed_boundaries_preserve_topology_and_refuse_measured_text() {
     assert_eq!(golden.expectations.height, Some(12.0));
     assert_historical_measured_source_refused(&golden);
     // Real native control transparency/custody is qualified by the source-backed
-    // support tests, including genuinely empty start/end control topology.
+    // support tests, including empty start/end control topology.
 }
 
 fn fri06_c12_t07_wrapper_range_xml(name: &str) -> String {

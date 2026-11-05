@@ -559,7 +559,7 @@ fn semantic_receiver_fixture<S: layout::LayoutScalar>(
                     layout::InlineBoundaryKind::Start
                 }
                 text::ParagraphControlKind::InlineBoundaryEnd => layout::InlineBoundaryKind::End,
-                _ => panic!("this actual fixture supplies only its genuine inline endpoints"),
+                _ => panic!("this actual fixture supplies only its inline endpoints"),
             };
             inputs.push(layout::LayoutInputOf::inline_boundary(
                 layout::InlineBoundaryInputOf::contribution(
@@ -1072,7 +1072,7 @@ fn successive_forced_receivers<S: layout::LayoutScalar>(direction: layout::Direc
     assert_eq!(selected.request().controls.len(), 2);
     assert!(
         line.nonformatted().is_err(),
-        "a genuine Forced ending cannot be a phantom receipt"
+        "a Forced ending cannot be a phantom receipt"
     );
     let tail = placed.nonformatted_lines().collect::<Vec<_>>();
     assert_eq!(tail.len(), 1);
@@ -1101,7 +1101,7 @@ fn successive_forced_receivers<S: layout::LayoutScalar>(direction: layout::Direc
     }
 }
 #[test]
-fn consecutive_genuine_forces_at_one_source_offset_each_keep_a_real_line() {
+fn consecutive_forces_at_one_source_offset_each_keep_a_real_line() {
     for direction in [layout::Direction::Ltr, layout::Direction::Rtl] {
         successive_forced_receivers::<f32>(direction);
         successive_forced_receivers::<f64>(direction);

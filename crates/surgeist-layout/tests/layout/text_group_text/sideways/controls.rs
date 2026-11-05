@@ -24,7 +24,7 @@ fn forced_completion<S: l::LayoutScalar>() {
         assert_eq!(layout.lines().len(), count);
         assert_eq!(layout.nonformatted_lines().count(), 1);
         // The second real Forced line has no origin, so recover its issued
-        // receipt from the genuine control fragment rather than inventing text.
+        // receipt from the control fragment rather than inventing text.
         let mut selected = vec![None; count];
         for row in batch.final_inline_fragments() {
             let fragment = row.fragment();

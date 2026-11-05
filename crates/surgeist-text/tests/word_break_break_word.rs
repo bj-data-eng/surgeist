@@ -975,7 +975,7 @@ fn standalone_declared_tuple_matrix_has_real_widths_and_separate_cache_entries()
 }
 
 #[test]
-fn standalone_prefers_genuine_ordinary_space_and_retains_raw_following_owner_parity() {
+fn standalone_prefers_ordinary_space_and_retains_raw_following_owner_parity() {
     let mut system = system();
     for overflow in OVERFLOWS {
         let direction = t::Direction::Auto;

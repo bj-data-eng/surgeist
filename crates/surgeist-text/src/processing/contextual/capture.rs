@@ -72,7 +72,7 @@ pub enum CapturedDomainDefinition {
     OutOfFlowBlock { atomic: CapturedEventPosition },
 }
 
-/// One genuine observation in a domain's complete captured flow.
+/// One observation in a domain's complete captured flow.
 ///
 /// Atomic content has its own flow, independent of its capture scheduling.
 /// Plain child Block entry and exit remain in their parent's flow at their
@@ -102,7 +102,7 @@ impl CapturedEventPosition {
     }
 }
 impl PartialOrd for CapturedEventPosition {
-    /// Orders genuine mixed events only within one capture. Foreign captures
+    /// Orders mixed events only within one capture. Foreign captures
     /// have no shared traversal order, even when their numeric offsets coincide.
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.same_capture(other)
@@ -112,7 +112,7 @@ impl PartialOrd for CapturedEventPosition {
 
 impl CapturedScope {
     /// Capture-local diagnostic ordinal. It cannot authorize an association:
-    /// genuine scope identity is this immutable capture plus the ordinal.
+    /// scope identity is this immutable capture plus the ordinal.
     #[must_use]
     pub const fn capture_ordinal(&self) -> usize {
         self.index
@@ -303,19 +303,19 @@ impl CapturedScope {
         self.capture.scopes[self.index].horizontal_inner_direction
     }
 
-    /// Genuine scope entry in the sole global mixed-event stream.
+    /// Scope entry in the sole global mixed-event stream.
     #[must_use]
     pub fn enter_position(&self) -> CapturedEventPosition {
         self.position(self.capture.scopes[self.index].enter)
     }
 
-    /// Genuine scope exit in the sole global mixed-event stream.
+    /// Scope exit in the sole global mixed-event stream.
     #[must_use]
     pub fn exit_position(&self) -> CapturedEventPosition {
         self.position(self.capture.scopes[self.index].exit)
     }
 
-    /// Genuine global Start control, including in a different paragraph.
+    /// Global Start control, including in a different paragraph.
     /// Both endpoint observations are present together or absent together.
     #[must_use]
     pub fn entry_control(&self) -> Option<CapturedControl> {
@@ -327,7 +327,7 @@ impl CapturedScope {
             })
     }
 
-    /// Genuine global End control, including in a different paragraph.
+    /// Global End control, including in a different paragraph.
     #[must_use]
     pub fn exit_control(&self) -> Option<CapturedControl> {
         self.capture.scopes[self.index]
@@ -377,7 +377,7 @@ impl CapturedParagraph {
         }
     }
 
-    /// Genuine paragraph entry, independent of source offsets or output.
+    /// Paragraph entry, independent of source offsets or output.
     #[must_use]
     pub fn enter_position(&self) -> CapturedEventPosition {
         CapturedEventPosition {
@@ -386,7 +386,7 @@ impl CapturedParagraph {
         }
     }
 
-    /// Genuine paragraph exit, retaining nested-domain holes.
+    /// Paragraph exit, retaining nested-domain holes.
     #[must_use]
     pub fn exit_position(&self) -> CapturedEventPosition {
         CapturedEventPosition {
@@ -429,7 +429,7 @@ impl CapturedParagraph {
 }
 
 impl CapturedJointFlow {
-    /// The genuine domain-root scope that owns this declared interval.
+    /// The domain-root scope that owns this declared interval.
     #[must_use]
     pub fn scope(&self) -> CapturedScope {
         CapturedScope {
@@ -476,7 +476,7 @@ impl CapturedJointFlow {
         self.facts_owner().paragraph_strut()
     }
 
-    /// Actual local and cross-view connections, in genuine event order.
+    /// Actual local and cross-view connections, in event order.
     pub fn connections(&self) -> impl Iterator<Item = CapturedConnection> + '_ {
         self.capture.events.iter().filter_map(|event| {
             let SourceProcessingEvent::Connection(index) = event.event else {
@@ -559,7 +559,7 @@ impl CapturedScopeIntersection {
         }
     }
 
-    /// Later of the genuine paragraph and scope entry events.
+    /// Later of the paragraph and scope entry events.
     #[must_use]
     pub fn enter_position(&self) -> CapturedEventPosition {
         CapturedEventPosition {
@@ -570,7 +570,7 @@ impl CapturedScopeIntersection {
         }
     }
 
-    /// Earlier of the genuine paragraph and scope exit events.
+    /// Earlier of the paragraph and scope exit events.
     #[must_use]
     pub fn exit_position(&self) -> CapturedEventPosition {
         CapturedEventPosition {
@@ -619,7 +619,7 @@ impl CapturedControl {
         SourcePosition::from_unchecked(self.capture.controls[self.index].fact.at)
     }
 
-    /// Genuine control occurrence in the mixed-event stream.
+    /// Control occurrence in the mixed-event stream.
     #[must_use]
     pub fn event_position(&self) -> CapturedEventPosition {
         CapturedEventPosition {

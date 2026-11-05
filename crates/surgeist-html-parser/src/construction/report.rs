@@ -1766,7 +1766,7 @@ impl<'a> HtmlParseMetadata<'a> {
     }
 
     /// Wrong row is None. Unfrozen and unavailable current state are distinct;
-    /// a genuine prior frozen value remains historical inside Unavailable.
+    /// a prior frozen value remains historical inside Unavailable.
     pub fn base_state(&self) -> Option<HtmlParseBaseState<'a>> {
         match self.refs {
             Refs::Base(state) => Some(state),

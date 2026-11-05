@@ -159,7 +159,7 @@ fn mixed_odd_level_upright_brackets_keep_mirroring_and_visual_source_order_once(
         VerticalOrientation::TransformedUpright
     );
     // The provider's TTB operation preserves logical clusters and does not do
-    // RTL mirroring merely because its script is Hebrew. Genuine horizontal
+    // RTL mirroring merely because its script is Hebrew. Horizontal
     // RTL controls establish the reciprocal mirrored input glyphs independently.
     assert_eq!(native_rtl(&bytes, "\u{2329}"), [(36, 0)]);
     assert_eq!(native_rtl(&bytes, "\u{232a}"), [(35, 0)]);

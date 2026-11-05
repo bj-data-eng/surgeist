@@ -1,5 +1,5 @@
 //! Source ranges retain authored ownership after physical edge placement.
-//! Uses that module's genuine capture/prepare/Layout constructors.
+//! Uses that module's capture/prepare/Layout constructors.
 //! Independently derived Ahem10 packet positions: LTR4..14, RTL6..16.
 
 use super::*;

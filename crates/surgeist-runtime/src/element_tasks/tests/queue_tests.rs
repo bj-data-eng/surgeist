@@ -97,7 +97,7 @@ fn queue_request(prior: bool) -> (DomSession, NodeId, DomSourceDialogRequest) {
     (session, subject, request)
 }
 fn candidate_peak(prior: bool) -> usize {
-    // A genuinely installed Details bank, when present, coexists with both
+    // An installed Details bank, when present, coexists with both
     // candidate banks, complete Intake header and final output backing.
     let old = usize::from(prior);
     let new = old + 1;

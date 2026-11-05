@@ -218,7 +218,7 @@ fn signed_word_spacing_and_capacity_dependent_hanging_keep_real_cw_pens() {
     );
     assert_eq!(layout.source().text().code_units(), [65, 32]);
 
-    // Same genuine source/font/request in the preserved Horizontal basis:
+    // Same source/font/request in the preserved Horizontal basis:
     // the line metric frame and raw geometry hull were already distinct.
     let hp = capture(&mut s, "A ", own_style(), false, H);
     let mut hr = selected_request(&hp, start(&hp), terminal(&hp));
@@ -545,7 +545,7 @@ fn non_square_sideways_ax_width_is_actual_inline_height_not_cross_width() {
         CW,
     );
     let line = whole(&p);
-    // Genuine font8/2 plus half-leading5 gives before13/after7.
+    // Font8/2 plus half-leading5 gives before13/after7.
     assert_eq!(line.feedback().advance, 10.0);
     assert_eq!(line.feedback().line_height, 20.0);
     assert_eq!(

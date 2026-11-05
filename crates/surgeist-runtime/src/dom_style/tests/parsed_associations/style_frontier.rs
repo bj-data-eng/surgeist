@@ -49,7 +49,7 @@ fn accepted_original_execution_survives_command_drop_and_blocks_other_document_t
         ready("<!doctype html><style>p{color:red}</style>", envelope());
     let parsed = installation.pending_association().unwrap();
     bind(&mut session, installation.document(), Default::default());
-    // ready has accepted the genuine InitialEmpty allow decision and returned;
+    // ready has accepted the InitialEmpty allow decision and returned;
     // no original command loan remains to keep transient Control.active set.
     assert_eq!(
         session.parsed_html_style_prefix(parsed).unwrap().phase(),
@@ -185,7 +185,7 @@ fn listener_activation_retains_dispatch_before_the_next_listener_and_never_repea
     assert_eq!(
         context.activated,
         Some(DomParsedHtmlStylePhase::CreateSheetPending),
-        "listener A must genuinely accept the original decision"
+        "listener A must accept the original decision"
     );
     assert!(context.decision.is_none());
     assert_eq!(context.calls.iter().filter(|&&name| name == "A").count(), 1);
@@ -368,7 +368,7 @@ fn delivered_cleanup_retains_receipt_across_work_refusal_activation_and_real_end
                 context.calls.push("delivered");
                 // Measure the real unchanged policy-admission walk, then set an
                 // exact cumulative cap. The event's independent delivery budget
-                // can finish; subsequent Runtime cleanup must genuinely refuse.
+                // can finish; subsequent Runtime cleanup must refuse.
                 let owner = context.styles.original().unwrap();
                 let before = owner.borrow().work.get();
                 context.styles.set_limits(dom, limits(), &cancel()).unwrap();

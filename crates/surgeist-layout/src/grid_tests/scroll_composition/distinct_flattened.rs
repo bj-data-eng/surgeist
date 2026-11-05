@@ -129,7 +129,7 @@ fn flattened<S: LayoutScalar>(space: f64, cap: GrowthCap, overflow: Overflow, tr
     let n = S::from_f64;
     let host = flattened_source::<S>(space, cap, overflow);
     // Reuse the SAME faithful native size provider and independently run the
-    // actual leaf owner. It returns genuine MinContent40/MaxContent80; only
+    // actual leaf owner. It returns MinContent40/MaxContent80; only
     // leaf1 is measured. Neither Grid nor subgrid output is supplied.
     qualify_actual_native_queries(&host);
     assert_eq!(Traverse::children(&host, 0).collect::<Vec<_>>(), [2]);

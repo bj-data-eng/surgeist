@@ -152,7 +152,7 @@ fn digits_source() -> (Arc<ProcessedSource>, AnalyzedSource) {
         panic!("only the actual bounded ASCII digit sequence is a Cell");
     };
     assert_eq!(cell.scope(), processed.captured_scope(0).unwrap());
-    assert_eq!(cell.parent_scope(), None); // Genuine derived RootInline, not a fabricated child.
+    assert_eq!(cell.parent_scope(), None); // derived RootInline, not a fabricated child.
     assert_eq!(
         cell.mode(),
         TextCombineUpright::Digits(TextCombineUprightDigits::Two)
@@ -295,7 +295,7 @@ fn one_real_root_original_distinguishes_ordinary_partial_and_crossing_cell_queri
         unit.expanded_intersections().collect::<Vec<_>>(),
     ] {
         let [piece] = intersections.as_slice() else {
-            panic!("one genuine digit original contribution");
+            panic!("one digit original contribution");
         };
         assert_eq!(piece.origin(), origin);
         assert_eq!(piece.local_range(), Range::new(1, 2));

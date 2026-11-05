@@ -67,7 +67,7 @@ fn qualify_intrinsics<S: LayoutScalar>(paragraph: &PreparedParagraph) {
             assert_eq!(
                 actual.size.width,
                 n(expected),
-                "{phase}: genuine {operation:?} Text/native width"
+                "{phase}: {operation:?} Text/native width"
             );
         }
         assert_eq!(
@@ -239,7 +239,7 @@ fn assert_lines<S: LayoutScalar>(
                 .into_iter()
                 .map(|at| text::Range::new(at, at + 1))
                 .collect::<Vec<_>>(),
-            "line{index}: genuine AAA/BBB source-to-glyph correspondence"
+            "line{index}: AAA/BBB source-to-glyph correspondence"
         );
         for mapping in line.mapping_views() {
             let range = mapping.source_range();

@@ -174,7 +174,7 @@ fn scoped_relative_names_reuse_the_supplied_namespace_environment() {
 }
 
 #[test]
-fn namespace_aware_relative_payload_survives_input_drop_with_one_genuine_occurrence() {
+fn namespace_aware_relative_payload_survives_input_drop_with_one_occurrence() {
     const RAW: &str = "/*😀*/\r\n> svg|leaf:lang(en), |leaf, *|leaf";
     let namespaces = CssNamespaceContext::from_bindings([
         (None, CssNamespaceName::new("urn:default")),

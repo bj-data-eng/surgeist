@@ -5,7 +5,7 @@ use crate::{Error, ErrorCode, ErrorDetail, Result, Text};
 /// Whether authored and resource-qualified automatic hyphenation points may be used.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Hyphens {
-    /// Suppress genuine hyphenation points, retaining independent breaks.
+    /// Suppress hyphenation points, retaining independent breaks.
     None,
     /// Use actual authored SHY/discretionary controls.
     Manual,
@@ -38,7 +38,7 @@ impl HyphenationMinimum {
 /// The supplying style adapter owns CSS specified-value expansion and checked
 /// integer conversion. Every triple is valid independently; Text does not add or
 /// clamp these values. Native `Auto` components resolve independently to 5/2/2.
-/// Raw standalone layout retains its genuinely unconstrained count operation.
+/// Raw standalone layout retains its unconstrained count operation.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct HyphenateLimitChars {
     pub total: HyphenationMinimum,

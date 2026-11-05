@@ -405,7 +405,7 @@ fn foreign_history_cursor_lender_disposal_keeps_cleanup_owned() {
     assert!(cursor.is_some());
     {
         let mut rows = session.native_associations(&mut c).unwrap();
-        // Retry the exact refused cursor through its genuine owning lender.
+        // Retry the exact refused cursor through its owning lender.
         rows.release_group_origin_cursor(&mut cursor).unwrap();
         assert!(cursor.is_none());
         assert_eq!(

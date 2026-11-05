@@ -91,7 +91,7 @@ fn control_only_prepared_flow_rejects_native_family_demand<S: LayoutScalar>() {
         wrapping.clone(),
         Vec::new(),
     )
-    .expect("the genuine Prepared flow admits these exact complete generated-child proofs without native family demand");
+    .expect("the Prepared flow admits these exact complete generated-child proofs without native family demand");
     let prior = compute_layout_with_flow(
         &flow,
         0,

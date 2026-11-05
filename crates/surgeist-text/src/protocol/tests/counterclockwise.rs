@@ -700,7 +700,7 @@ fn real_odd_level_ligature_keeps_source_carets_in_reverse_logical_order() {
 }
 
 #[test]
-fn genuine_odd_rtl_range_pieces_use_actual_visual_provider_intervals_in_h_and_ccw() {
+fn odd_rtl_range_pieces_use_actual_visual_provider_intervals_in_h_and_ccw() {
     let bytes = crate::shaping_test_fonts::sideways_ahem();
     let face = skrifa::FontRef::new(&bytes).unwrap();
     assert_eq!(face.charmap().map('\u{5d0}'), Some(GlyphId::new(58)));

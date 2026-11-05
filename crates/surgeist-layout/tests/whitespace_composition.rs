@@ -12,7 +12,7 @@ use surgeist_text as text;
 const AHEM: &[u8] = include_bytes!("../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 
 // Consumer-owned cmap/metrics over the unchanged licensed Ahem outlines. Hebrew
-// letters and Ogham use genuine existing glyphs; full-width X and U3000 have
+// letters and Ogham use existing glyphs; full-width X and U3000 have
 // distinct real 2000-unit advances. No glyph output or measurement is mocked.
 fn font() -> Vec<u8> {
     fn u16_at(bytes: &[u8], at: usize) -> u16 {

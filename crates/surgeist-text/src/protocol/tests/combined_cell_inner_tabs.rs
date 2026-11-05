@@ -1,4 +1,4 @@
-//! Preserved CSS TABs execute inside the genuine horizontal Cell packet.
+//! Preserved CSS TABs execute inside the horizontal Cell packet.
 //! Ordinary captured CSS stops and real Shaper receipts qualify inputs first.
 use super::*;
 use skrifa::{GlyphId, MetadataProvider, raw::TableProvider};
@@ -657,7 +657,7 @@ fn observe(
         close(tab.rect().size.width, period * scale);
         assert_eq!(tab.rect().size.height, 10.0);
     } else {
-        // The requested source0..1 is A even for the genuine RTL inner case.
+        // The requested source0..1 is A even for the RTL inner case.
         // Literal raw packet positions above give its physical normalized pen;
         // its10px font band is compressed, never rotated with the outer pen.
         let [SourceRangeGeometry::CellFont(piece)] = pieces.as_slice() else {
@@ -824,7 +824,7 @@ fn qualify(case: Case<'_>, expected: Expected<'_>) {
         "Ahem",
     );
     source_premises(&capture, text, inner, levels);
-    // Distinct, unchanged FontAdvance remains a genuine provider operation.
+    // Distinct, unchanged FontAdvance remains a provider operation.
     let font_advance = system
         .prepare(
             &capture.analyzed,
@@ -987,7 +987,7 @@ fn inner_tabs_use_strict_next_stop_one_half_ch_bump_and_one_shared_repeated_grid
 #[test]
 fn preserved_tab_only_cells_have_used_source_and_real_square_without_provider_runs() {
     // No public readback exposes tab-only intrinsic span/scale. These assertions
-    // qualify genuine used-source/provider absence, outer geometry and replay;
+    // qualify used-source/provider absence, outer geometry and replay;
     // exact retained tab spans need the owning private layout qualification.
     for orientation in [
         LineOrientation::Vertical,

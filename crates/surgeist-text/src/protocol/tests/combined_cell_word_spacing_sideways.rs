@@ -336,8 +336,9 @@ fn case(orientation: LineOrientation) {
             options.requested_baseline_reference(),
             Some(FontBaseline::Alphabetic)
         );
-        let prepared = system.prepare(&analyzed, options)
-            .expect("genuine vertical-writing/horizontal-typographic Cell must admit this sideways orientation");
+        let prepared = system.prepare(&analyzed, options).expect(
+            "vertical-writing/horizontal-typographic Cell must admit this sideways orientation",
+        );
         assert_eq!(prepared.orientation(), orientation);
         let cell = prepared.cell_views().next().unwrap();
         assert_eq!(

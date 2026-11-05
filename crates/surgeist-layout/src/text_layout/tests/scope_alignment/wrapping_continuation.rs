@@ -232,7 +232,7 @@ fn continuation<S: LayoutScalar>() {
         native_inline_boxes: Vec::new(),
         gaps: Vec::new(),
         scopes: vec![
-            // Parent20/21 are genuine zero-metric boundaries, not absence. Its
+            // Parent20/21 are zero-metric boundaries, not absence. Its
             // continuation also needs that truthful0/0 witness when neither is selected.
             WrappingScopeInput::Captured {
                 scope: parent.clone(),

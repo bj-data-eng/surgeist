@@ -23,7 +23,7 @@ pub(super) fn propose(
     units: impl IntoIterator<Item = Range<usize>>,
     proposals: &mut [bool],
 ) {
-    // The caller partitions already-built TCUs once across genuine components.
+    // The caller partitions already-built TCUs once across components.
     // Sliding pairs retain one qualified unit, without rescanning earlier TCUs.
     let mut previous = None;
     for unit in units {
@@ -171,7 +171,7 @@ mod tests {
     fn appendix_e_uses_the_letter_base_but_does_not_promote_space_or_pure_marks() {
         let scripts = ScriptWithExtensions::new();
         // This inherited Me is not the Common-script exception. Do not apply a
-        // blanket enclosing-mark veto to a genuine Thai base's TCU.
+        // blanket enclosing-mark veto to a Thai base's TCU.
         assert_eq!(
             CodePointMapData::<GeneralCategory>::new().get32(0x20dd),
             GeneralCategory::EnclosingMark

@@ -550,7 +550,7 @@ fn late_float_refusal<S: LayoutScalar>() {
         &cold,
         &[(0, 3, 20.0, true), (3, 7, 40.0, false), (7, 8, 10.0, false)],
     );
-    // Unlike a trailing float, this float genuinely constrains following X.
+    // Unlike a trailing float, this float constrains following X.
     // The after-bearing receiver reserves30px before that third line begins.
     assert_eq!(
         output(&cold, 30).location,

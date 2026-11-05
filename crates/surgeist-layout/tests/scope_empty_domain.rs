@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Genuine empty captured paragraphs associate domains without adding text layout.
+//! Empty captured paragraphs associate domains without adding text layout.
 
 #[path = "support/native_request.rs"]
 mod native_request;
@@ -126,7 +126,7 @@ fn prepare() -> Vec<text::PreparedText> {
                     paragraph_strut: text::ParagraphStrut::DefaultFont,
                 })
                 .collect(),
-            // The inner plain Block has its required genuine paragraph, with no
+            // The inner plain Block has its required paragraph, with no
             // original, control or atomic occurrences inside that paragraph.
             events: vec![
                 E::EnterScope(0),
@@ -339,7 +339,7 @@ fn empty_captured_child_paragraph_preserves_ordinary_box_and_parent_text_layout(
         2
     );
 
-    // This genuine empty captured paragraph supplies domain association only:
+    // This empty captured paragraph supplies domain association only:
     // it must add no strut, line, placed Text result or generated geometry.
     let mut complete = parents;
     complete.insert(1, empty);
@@ -356,9 +356,7 @@ fn empty_captured_child_paragraph_preserves_ordinary_box_and_parent_text_layout(
         Vec::new(),
     )
     .unwrap_or_else(|error| {
-        panic!(
-            "a genuine empty captured child paragraph must associate without a Text run: {error:?}"
-        )
+        panic!("an empty captured child paragraph must associate without a Text run: {error:?}")
     });
     let associated = layout::compute_layout_with_flow(&capture, 0, request()).unwrap();
     assert_eq!(associated.final_entries(), baseline.final_entries());
@@ -395,7 +393,7 @@ fn source_bearing_paragraph_with_empty_nodes_is_not_association_only() {
     assert_eq!(parents[0].prepared.origin_views().count(), 1);
     assert_eq!(parents[0].origins.len(), 1);
     assert!(parents[0].prepared.participants().next().is_some());
-    // Clear supplied facts while preserving the genuine prepared inventories.
+    // Clear supplied facts while preserving the prepared inventories.
     // Caller omissions cannot disguise a source-bearing preparation as empty.
     parents[0].nodes.clear();
     parents[0].origins.clear();
@@ -502,7 +500,7 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
     let prepared = system
         .prepare(&analyzed, text::PreparationOptions::default())
         .unwrap();
-    // Output emptiness does not erase the genuine original occurrence.
+    // Output emptiness does not erase the original occurrence.
     assert_eq!(prepared.origin_views().count(), 1);
     let binding = layout::TextParagraphBinding {
         inline_box_fragments: surgeist_layout::InlineBoxFragmentationDemand::NotRequested,
@@ -533,7 +531,7 @@ fn discarded_source_space_keeps_its_origin_and_is_not_association_only() {
         },
         Vec::new(),
     ) else {
-        panic!("discarding a genuine source space cannot make its paragraph association-only")
+        panic!("discarding a source space cannot make its paragraph association-only")
     };
     assert!(
         matches!(

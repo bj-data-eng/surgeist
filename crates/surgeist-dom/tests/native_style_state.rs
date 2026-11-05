@@ -1743,7 +1743,7 @@ fn issued_select_final_output_refusal_retries_same_head_once_and_preserves_next_
     let original_style = commit.created(&original_style).unwrap().unwrap();
     let content = commit.created(&content).unwrap().unwrap();
     let mut batch = DomBatch::new();
-    // Two genuine selected-Option removals queue distinct FIFO occurrences.
+    // Two selected-Option removals queue distinct FIFO occurrences.
     // The remaining Option supplies the actual current selectedcontent source.
     batch.detach(option);
     batch.insert_before(option, select, None);
@@ -1849,7 +1849,7 @@ fn issued_select_final_output_refusal_retries_same_head_once_and_preserves_next_
     let done = match lease.advance(&cancel).unwrap() {
         DomSourceProgress::Complete(done) => done,
         DomSourceProgress::Request(DomSourceRequest::Style(retry)) => {
-            // The restored pending interpreter may expose its genuine CSP
+            // The restored pending interpreter may expose its CSP
             // observation again; do not assume either replay or suppression.
             assert_eq!(
                 retry.action(),
@@ -2657,7 +2657,7 @@ fn resume_after_meta_work_refusal(low: u64) {
 }
 
 #[test]
-fn admitted_inert_parser_style_continues_after_creation_to_genuine_render_context() {
+fn admitted_inert_parser_style_continues_after_creation_to_render_context() {
     use std::sync::Arc;
     use surgeist_css::query::media::CssMediaQueryList;
     use surgeist_css::source::CssUtf16InputLimits;
@@ -2844,7 +2844,7 @@ fn admitted_inert_parser_style_continues_after_creation_to_genuine_render_contex
     let DomSourceProgress::Request(DomSourceRequest::Style(render)) =
         lease.advance(&cancel).unwrap()
     else {
-        panic!("unresolved screen media retains the genuine render-context request");
+        panic!("unresolved screen media retains the render-context request");
     };
     assert_eq!(
         render.action(),

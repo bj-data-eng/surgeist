@@ -702,7 +702,7 @@ fn selected_real_morx_kern_and_tracking_plans_refuse_before_supplier() {
     let kern = font::kern();
     let trak = font::trak();
     let stat = font::stat();
-    // A genuine DFLT feature record makes the explicit vertical kerning request
+    // A DFLT feature record makes the explicit vertical kerning request
     // available to the map. No GSUB substitution is needed, and absent GPOS
     // leaves the actual legacy Kern positioning owner selected.
     let kern_feature = font::layout_table(b"vkrn", &[]);

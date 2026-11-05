@@ -182,7 +182,7 @@ fn qualify<S: LayoutScalar>(work: usize) {
     let prior_feedback = line.feedback();
     let prior_frames = line.scope_allocations().to_vec();
     let prior_request = line.selected_line().request().clone();
-    // This production ctor retains the genuine fully validated snapshot, while
+    // This production ctor retains the fully validated snapshot, while
     // creating its own operation-local resource state whose work starts at0.
     let facts = ScopeAlignmentResources::new(
         Arc::clone(&flow.scope_alignments),
@@ -271,7 +271,7 @@ fn small_capture_refuses_during_compute<S: LayoutScalar>() {
     .unwrap();
     assert_eq!(flow.scope_alignments.rows(), std::slice::from_ref(&row));
     // Actual execution established that capture, preparation and flow admission
-    // succeed at4096, while complete computation needs more. Keep this genuine
+    // succeed at4096, while complete computation needs more. Keep this
     // refusal without pinning the internal operation or its exact visit count.
     let error = match compute_layout_with_flow(
         &flow,
@@ -360,14 +360,14 @@ fn small_capture_refuses_during_compute<S: LayoutScalar>() {
 }
 
 #[test]
-fn genuine_small_work_cap_retains_capture_and_source_but_refuses_complete_layout() {
+fn source_small_work_cap_retains_capture_and_source_but_refuses_complete_layout() {
     font_premises();
     small_capture_refuses_during_compute::<f32>();
     small_capture_refuses_during_compute::<f64>();
 }
 
 #[test]
-fn genuine_frame_comparison_admission_honors_immutable_work_caps_and_prior_publication() {
+fn source_frame_comparison_admission_honors_immutable_work_caps_and_prior_publication() {
     font_premises();
     qualify::<f32>(WORK);
     qualify::<f32>(WORK + COMPARISON_WORK);

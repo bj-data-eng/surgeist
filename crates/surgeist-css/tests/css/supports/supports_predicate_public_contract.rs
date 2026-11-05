@@ -172,7 +172,7 @@ fn arbitrary_at_keywords_keep_original_tokens_decoded_names_and_function_delimit
         let function = format!(r"aT-\72 ule( /**/ {argument} /**/ )");
         both(&function, |condition| {
             let CssConditionKind::Leaf(CssSupportsLeaf::AtRule(value)) = condition.kind() else {
-                panic!("genuine AtKeyword predicate")
+                panic!("AtKeyword predicate")
             };
             assert_eq!(value.name(), decoded);
             assert!(

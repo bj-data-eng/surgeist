@@ -1,4 +1,4 @@
-//! Closing endpoint custody in a genuine trailing control-only body.
+//! Closing endpoint custody in a trailing control-only body.
 //! A real source ForcedBreak starts a new body before the authentic closing edge.
 use super::*;
 
@@ -16,7 +16,7 @@ fn trailing_request(
         } else {
             assert_eq!(
                 control, closing,
-                "only the genuine paired endpoints have box geometry"
+                "only the paired endpoints have box geometry"
             );
             5.0
         };
@@ -158,7 +158,7 @@ fn closing_endpoint_after_forced_break_retains_its_own_trailing_body_piece() {
                 unit.view().source_range().is_empty() && unit.view().processed_range().is_empty(),
             _ => false,
         }),
-        "the genuine trailing body has only its actual closing endpoint/zero markers"
+        "the trailing body has only its actual closing endpoint/zero markers"
     );
 
     // Establish local admission and actual EndBP5 before requesting the family.
@@ -207,7 +207,7 @@ fn closing_endpoint_after_forced_break_retains_its_own_trailing_body_piece() {
     assert_eq!(
         second_pieces.len(),
         1,
-        "a prior body's glyph cannot erase the trailing body's genuine box"
+        "a prior body's glyph cannot erase the trailing body's box"
     );
     assert_eq!(first_pieces[0].start_control(), Some(opening.clone()));
     assert_eq!(first_pieces[0].end_control(), None);

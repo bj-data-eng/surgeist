@@ -1084,9 +1084,9 @@ pub(crate) fn selection_plan(
             previous = Some(inside);
         }
     }
-    // A genuine original formatting boundary at the selected body's endpoint
+    // An original formatting boundary at the selected body's endpoint
     // remains a real body cut. Merely starting a new line inside a scope
-    // does not create one; Unicode joining lookaround remains genuine.
+    // does not create one; Unicode joining lookaround remains .
     for (local, original) in [
         (0, presentation.originals.first().copied().flatten()),
         (
@@ -1567,7 +1567,7 @@ pub(crate) fn select(
             }
         }
     } else {
-        // The genuine outer item stream contains one Cell in place of its
+        // The outer item stream contains one Cell in place of its
         // inner clusters. Thus even zero-input cells contribute their square,
         // and inner font struts cannot become a second outer contribution.
         use super::layout::data::ShapedItem;

@@ -669,7 +669,7 @@ fn an_actual_atomic_at_the_egc_endpoint_uses_its_own_exterior_value_and_remains_
     assert_eq!(raw(&control, &bytes), expected);
     assert_eq!(control.feedback().advance, 30.0);
     // Here the atomic is at the full A+mark endpoint: mark tracking is
-    // genuinely nongoverning, unlike the standalone mark at atomic1 above.
+    // nongoverning, unlike the standalone mark at atomic1 above.
     let mut nongoverning = control_source.clone();
     nongoverning.span(Range::new(1, 2), own(99.0));
     let attached = prepared(&mut system, &nongoverning, own(0.0)).unwrap();

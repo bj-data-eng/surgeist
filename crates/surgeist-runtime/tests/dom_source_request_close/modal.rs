@@ -1,4 +1,4 @@
-//! HTML877d46708–23,46625–36,46684–705 through genuine completed modal setup.
+//! HTML877d46708–23,46625–36,46684–705 through completed modal setup.
 use super::*;
 use surgeist_html::values::DocumentString;
 
@@ -420,7 +420,8 @@ fn reentrant_modal_request_literal_force_reset_closes_auto_but_preserves_none_wi
         assert_eq!(context.calls, ["first"]);
         assert_eq!(context.nested.len(), 1);
         assert_ne!(context.nested[0].operation(), request.operation());
-        // The same original watcher is already running Cancel, so the genuine
+        // The same original watcher is already running Cancel, so the
+
         // inner request returns without another Cancel but leaves its latest
         // request fields and literal force=false. Modal Auto computes to
         // CloseRequest; explicit None remains disabled on the fresh outer read.

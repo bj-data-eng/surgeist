@@ -393,7 +393,7 @@ fn qualify_rtl_font(bytes: &[u8]) {
 }
 
 #[test]
-fn clockwise_genuine_odd_level_inflow_and_positioned_affinities_keep_source_custody() {
+fn clockwise_odd_level_inflow_and_positioned_affinities_keep_source_custody() {
     let bytes = crate::shaping_test_fonts::sideways_ahem();
     qualify_rtl_font(&bytes);
     let mut system = system_with(bytes.clone());
@@ -611,7 +611,7 @@ fn clockwise_source_free_inflow_formats_but_positioned_only_keeps_nonformatted_c
             let selected = line.selected_line();
             assert_eq!(selected.request().context.end, LineEnd::Paragraph);
             let PreparedTermination::Ordinary(offer) = &selected.request().termination else {
-                panic!("genuine terminal offer required")
+                panic!("terminal offer required")
             };
             assert_eq!(offer.view().kind(), PreparedBreakKind::ParagraphEnd);
             let actual = out_of_flow(atomic);

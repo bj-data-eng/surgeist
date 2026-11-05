@@ -274,7 +274,7 @@ fn default_backward_rtlm_fallback_is_selected_before_supplied_used_glyph_metrics
     });
 }
 
-// Additional functional controls were authored after the genuine RED checkpoint.
+// Additional functional controls were authored after the RED checkpoint.
 // They are not additional historical RED evidence.
 fn observed(direction: Direction, entries: &[(char, u32)]) -> UnicodeBuffer {
     let mut source = UnicodeBuffer::new();

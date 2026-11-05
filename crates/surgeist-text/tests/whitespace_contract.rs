@@ -174,7 +174,7 @@ fn both_ancestors(first: text::Wrap, second: text::Wrap) -> Vec<(text::Wrap, Vec
 
 #[test]
 fn collapsed_following_space_keeps_its_own_word_wrap_permission() {
-    // Disappearing-character ownership is local to the second genuine inline:
+    // Disappearing-character ownership is local to the second inline:
     // its cut3 is permitted even when the surviving first SPACE cannot wrap.
     assert_eq!(
         both_ancestors(text::Wrap::None, text::Wrap::Word),

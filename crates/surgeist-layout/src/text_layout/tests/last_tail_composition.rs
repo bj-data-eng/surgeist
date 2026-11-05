@@ -341,7 +341,7 @@ fn check_forced_and_signed_matrix(wrap_style: TextWrapStyle) {
             ],
         ),
     ] {
-        // Only the genuine Paragraph-ending ordinary row can enter Tail.
+        // Only the Paragraph-ending ordinary row can enter Tail.
         // Auto's100/50 has a valid earlier Before cut: XXXX40+SPACE10+as20
         // +indication A10 =80, followed by sociate70. Both fullness and
         // natural last advance improve, unlike the Forced-ending rows below.
@@ -537,7 +537,7 @@ fn check_choice_order<S: LayoutScalar>() {
                     .view()
                     .definition()
                 else {
-                    panic!("first ending retains a genuine automatic cut");
+                    panic!("first ending retains an automatic cut");
                 };
                 assert_eq!(
                     cut.view().counts().unwrap().before,

@@ -225,7 +225,7 @@ ordinals, and final residual glyph-array positions. Context, UTF16, caller
 clusters and joining-domain ordinals do not identify these inputs. The owner
 snapshots original DI candidates before shaping and follows their sparse sets
 through real normalization, UVS, GSUB, AAT insertion/ligatures/deletion and native
-postprocessing. A genuine nondeleted replacement, consumed sequence or qualified
+postprocessing. A nondeleted replacement, consumed sequence or qualified
 nonzero four-filler resource establishes Normal output. Nominal DI coverage,
 cluster merging, GDEF class, private substituted bits, synthetic repair, ink and
 advance alone do not. Sets remain until finalization, so later deletion of an
@@ -324,7 +324,7 @@ checks cover the new domain's nominal encoding, GPOS, attachment and fallback
 arithmetic; they do not saturate or publish a plausible successful partial result.
 
 Errors distinguish actual plan/input context, original supplier error and queried
-glyph, coordinate range with its owning stage, and the first genuine existing
+glyph, coordinate range with its owning stage, and the first existing
 shaping refusal. A prior resource/custody refusal prevents supplier invocation.
 Supplier/range failure stops further algorithmic continuation before receipt
 completion; no provider fallback replaces a failed supplied fact. Existing

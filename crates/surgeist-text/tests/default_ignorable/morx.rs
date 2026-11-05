@@ -59,7 +59,7 @@ fn insertion(marked: bool) -> (u32, Vec<u8>) {
     data.extend(words(&[0, 0, 0, 0, 1, 0, 0, 0, 0, 1]));
     data.extend(words(&[0, 0, 0xffff, 0xffff]));
     if marked {
-        // Initial mark is genuine input0: the lone DI is the selected anchor.
+        // Initial mark is input0: the lone DI is the selected anchor.
         data.extend(words(&[0, 0x0401, 0xffff, 0]));
     } else {
         data.extend(words(&[0, 0x0820, 0, 0xffff]));

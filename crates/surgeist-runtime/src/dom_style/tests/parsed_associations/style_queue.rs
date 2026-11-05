@@ -282,7 +282,7 @@ fn queue_original_output_refusal_and_raised_retry_preserve_all_three_owners() {
         large.retained_bytes(),
         large.retained_units(),
         large.work(),
-        // The explicit lower continuation adds one genuine cumulative output;
+        // The explicit lower continuation adds one cumulative output;
         // the following command must still refuse and preserve its owners.
         11,
     )

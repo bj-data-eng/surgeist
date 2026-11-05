@@ -484,7 +484,7 @@ fn checksum(bytes: &[u8]) -> u32 {
 }
 
 #[test]
-fn genuine_zero_intrinsic_separator_suppresses_author_and_uses_center_fallback() {
+fn source_zero_intrinsic_separator_suppresses_author_and_uses_center_fallback() {
     qualify_ahem();
     // Change this one actual provider metric, retaining the licensed face and
     // its cmap. Directory and whole-font checksums remain valid.

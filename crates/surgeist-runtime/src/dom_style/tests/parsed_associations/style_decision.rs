@@ -47,7 +47,7 @@ pub(super) fn empty_policy() -> HtmlCspAssociation {
 
 /// A fixed external backend fixture, not a CSP parser. Its actual immutable
 /// artifact supplies the decision; Meta receipts are used only to construct a
-/// genuine artifact association, never as an inline decision receipt.
+/// artifact association, never as an inline decision receipt.
 #[derive(Debug)]
 struct NativePolicy {
     allowed: bool,

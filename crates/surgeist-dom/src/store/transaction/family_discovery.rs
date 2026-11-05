@@ -851,7 +851,7 @@ impl Families {
         keys.values
             .change(&mut keys.custody, key, Some(key), &mut edit)?;
         if descendant_rule_changed {
-            // A genuine ancestor-kind replacement may change HTML pruning for
+            // An ancestor-kind replacement may change HTML pruning for
             // actual descendants; ordinary scalar changes never take this path.
             let mut pending = source::scratch::ScratchVec::new(draft, false);
             let node = order.after.node(key)?;

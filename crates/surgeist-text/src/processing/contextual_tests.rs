@@ -1110,7 +1110,7 @@ fn empty_internal_domain_keeps_its_captured_font_and_direction() {
 }
 
 #[test]
-fn genuinely_connected_original_pair_crosses_origin_boundary_but_not_an_internal_hole() {
+fn connected_original_pair_crosses_origin_boundary_but_not_an_internal_hole() {
     let mut capture = input(
         Text::from_code_units(vec![0xd800, 0xdc00]),
         WhiteSpace::Preserve,
@@ -1700,7 +1700,7 @@ fn selected_soft_wrap_does_not_reset_plaintext_context_or_copy_line_edge_deletio
 }
 
 #[test]
-fn block_exterior_trim_crosses_its_own_boundary_and_stops_at_a_genuine_forced_control() {
+fn block_exterior_trim_crosses_its_own_boundary_and_stops_at_a_forced_control() {
     for forced in [false, true] {
         let mut capture = input("A  X  B", WhiteSpace::Collapse);
         capture.origins = vec![
@@ -2300,7 +2300,7 @@ fn selection(range: Range) -> Selection {
 
 #[cfg(feature = "text-accessibility")]
 #[test]
-fn genuine_empty_and_control_endpoints_after_a_child_remain_parent_occurrences() {
+fn empty_and_control_endpoints_after_a_child_remain_parent_occurrences() {
     for terminal in 0..3 {
         let mut capture = short_hole(InlineBoxKind::OutOfFlow);
         capture.source = Source::new("AI");

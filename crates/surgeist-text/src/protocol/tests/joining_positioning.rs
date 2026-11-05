@@ -288,7 +288,7 @@ fn latin_replacement(source_shy: bool, origin: Option<usize>) {
         );
         assert_eq!(glyphs(&second, &fixture), suffix);
         // The original A and computed B remain joint: A10+B20, with the
-        // genuine preceding X20 outside that independently qualified pair.
+        // preceding X20 outside that independently qualified pair.
         prefix.last_mut().unwrap().2 = 10.0;
         prefix.push((Range::new(anchor, anchor), 36, 20.0));
         assert_eq!(glyphs(&first, &fixture), prefix);

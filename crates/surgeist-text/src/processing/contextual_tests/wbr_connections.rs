@@ -1,4 +1,4 @@
-//! Genuine connection event ranks distinguish generated text at one numeric seam.
+//! Connection event ranks distinguish generated text at one numeric seam.
 use super::*;
 
 fn wbr(at: usize, operation: WordSpaceTransform) -> ParagraphControl {

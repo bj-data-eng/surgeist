@@ -207,7 +207,7 @@ impl DomFocusPreparation {
     }
     /// Seal only the observation belonging to this qualified role. KnownNone
     /// requires complete-Host lifetime absence; Denied requires the exact
-    /// retained Window's genuine never-activated state and ordered allow-focus
+    /// retained Window's never-activated state and ordered allow-focus
     /// decision. Neither observation attests positive focusing effects.
     pub fn publish(
         self,

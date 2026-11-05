@@ -78,7 +78,7 @@ fn actual_line(opposed_parent: bool) -> (text::FinalizedLine, text::TextSeam) {
         )
         .unwrap();
 
-    // Keep the genuine checked request/family. Only the four component receipts
+    // Keep the checked request/family. Only the four component receipts
     // and, for the same-direction control, C's requested physical side change.
     // P stays an actual checked zero-component BoxEdge, not a guessed parent.
     let mut recipe = seed.selected_line().request().clone();
@@ -120,7 +120,7 @@ fn actual_line(opposed_parent: bool) -> (text::FinalizedLine, text::TextSeam) {
                 .scope_allocations()
                 .iter()
                 .find(|frame| frame.scope == captured)
-                .expect("same genuine source/metrics retain the admitted frame demand");
+                .expect("same source/metrics retain the admitted frame demand");
             text::ScopeAllocation {
                 scope,
                 displacement: actual.displacement,

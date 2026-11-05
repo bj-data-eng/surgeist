@@ -1,7 +1,7 @@
 //! CSS Syntax 3 CRD (2026-10-01), §§3.3, 4.3.1, 4.3.3 and 4.3.9:
 //! a hyphen followed by backslash-newline does not start an identifier. The
 //! at-keyword and dimension dispatch branches must leave that hyphen for the
-//! next token. Split components retain their genuine authored byte ranges and
+//! next token. Split components retain their authored byte ranges and
 //! count separately toward admission limits. Literal NUL is preprocessed to
 //! U+FFFD before identifier lookahead.
 //! <https://www.w3.org/TR/2026/CRD-css-syntax-3-20261001/>

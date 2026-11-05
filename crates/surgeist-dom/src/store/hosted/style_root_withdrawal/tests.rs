@@ -244,7 +244,7 @@ fn style_resource(
             DomSourceProgress::Complete(_)
         ));
     }
-    // This direct host has no dispatched Rust callbacks. Its genuine native
+    // This direct host has no dispatched Rust callbacks. Its native
     // notification permission drives the real canonical post-event cleanup;
     // it does not forge a Runtime Delivered receipt or delete a task bank.
     assert!(matches!(
@@ -284,7 +284,7 @@ impl Fixture {
     ) -> Self {
         let (mut dom, mut source, document) = constructor();
         let mut batch = DomBatch::new();
-        // A genuine detached participant belongs to the selected Document group.
+        // A detached participant belongs to the selected Document group.
         batch.create_element_ns(document, surgeist_html::values::Namespace::html(), "style");
         for _ in 0..unrelated {
             let other = batch.create_document();
@@ -522,7 +522,7 @@ fn actual_busy_poisoned_foreign_and_equal_revision_other_owner_keep_registration
         f.root.root(),
         CssomStore::new(Default::default(), Default::default()).unwrap(),
     );
-    // Independent genuine create/remove publications reach the same numeric
+    // Independent create/remove publications reach the same numeric
     // revision; that does not grant the canonical producer's owner identity.
     let parser = CssParserContext::default();
     let body = CssParser::new(parser, Default::default())
@@ -879,7 +879,7 @@ fn actual_parked_source_keeps_its_mandatory_tail_and_original_cleanup_custody() 
         source.advance(&cancel()).unwrap(),
         DomSourceProgress::Request(DomSourceRequest::Style(_))
     ));
-    // The genuine exposed request parks on Drop. No source row, task, or
+    // The exposed request parks on Drop. No source row, task, or
     // processing flag is manufactured to simulate its mandatory continuation.
     drop(source);
     let pending = f.dom.pending_source_edit().unwrap();

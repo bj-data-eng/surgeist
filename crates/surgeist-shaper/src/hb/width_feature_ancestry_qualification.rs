@@ -178,7 +178,7 @@ fn non_width_malformed_sibling_removal_cannot_upgrade_partial_width_history_to_c
             } else {
                 ancestry_limit(&result, 1);
                 // The local outcome may remain Covered for diagnosis, but the
-                // earlier genuine B action and its request history must remain.
+                // earlier B action and its request history must remain.
                 let receipt = result.width_feature_receipt().unwrap().unwrap();
                 let evidence = receipt.input(0).unwrap();
                 let provenance = evidence.provenance();
@@ -199,7 +199,7 @@ fn non_width_child_removal_requires_qualified_enabling_class_route_but_child_mis
     for class_format in [2, 99] {
         // Context2 header10; RuleSet10 points to Rule14: two inputs, second
         // class0, child1 launched on the second input. Coverage24 admits A.
-        // ClassDef30 is either genuine Format2/count0 (all glyphs class0), or
+        // ClassDef30 is either Format2/count0 (all glyphs class0), or
         // invalid Format99, which native cached metadata recovers to class0.
         // Only parent0 is registered under ccmp; valid child1 deletes B.
         let parent = (
@@ -246,7 +246,7 @@ fn non_width_child_removal_requires_qualified_enabling_class_route_but_child_mis
                 ancestry_limit(&result, 2);
             }
             // With AR the same recovered class0 route can launch child1, but
-            // child Coverage(B) genuinely misses R. No descendant is removed:
+            // child Coverage(B) misses R. No descendant is removed:
             // an unrelated malformed class read alone is not width demand.
             let missed_child = ancestry_shape(font, "AR", &[]);
             assert_eq!(
@@ -286,9 +286,9 @@ fn malformed_class_enabled_rewrite_remains_a_dependency_of_later_clean_removal()
     let feature = WidthFeature::HalfWidth;
     let zzzz = Feature::new(Tag::new(b"zzzz"), 1, ..);
     for class_format in [2, 99] {
-        // Same genuine Context2 class0 rule as the direct-deletion case, but
+        // Same Context2 class0 rule as the direct-deletion case, but
         // child1 now makes the valid B->R rewrite. Only parent0 is selected by
-        // default ccmp. Later requested zzzz2 has a genuine empty R Sequence.
+        // default ccmp. Later requested zzzz2 has an empty R Sequence.
         // Latin's shared stage sorts indices0/2; child1 runs only on recursion.
         let parent = (
             5,
@@ -673,17 +673,17 @@ fn contextual_observer_removal_lane(lane: u8) {
             assert_eq!(components.components(0), Some(&[0][..]));
             assert!(components.deleted_input_positions().is_empty());
 
-            // An authored R makes lookup0 genuinely miss its primary
+            // An authored R makes lookup0 miss its primary
             // Coverage. The clean contextual deletion is independent of
             // that unconsumed malformed view, with the same final packet.
-            let genuine = ancestry_shape(font, if observer == 0 { "RB" } else { "AR" }, &[]);
-            assert_eq!(ids(&genuine), vec![u32::from(font::R)]);
-            assert_eq!(old_positions(&genuine), vec![(1_201, 0, 0, 0)]);
-            assert_eq!(genuine.glyph_infos()[0].cluster, 0);
+            let shaped = ancestry_shape(font, if observer == 0 { "RB" } else { "AR" }, &[]);
+            assert_eq!(ids(&shaped), vec![u32::from(font::R)]);
+            assert_eq!(old_positions(&shaped), vec![(1_201, 0, 0, 0)]);
+            assert_eq!(shaped.glyph_infos()[0].cluster, 0);
             let mut outcomes = vec![Outcome::NoAction; 2];
             outcomes[deleted] = Outcome::NoSurvivingOperand;
-            expect(&genuine, feature, &outcomes);
-            let components = genuine.component_receipt().unwrap().unwrap();
+            expect(&shaped, feature, &outcomes);
+            let components = shaped.component_receipt().unwrap().unwrap();
             assert_eq!(
                 components.components(0),
                 Some(&[u32::try_from(observer).unwrap()][..])
@@ -784,18 +784,18 @@ fn reverse_chain_observer_dependency_survives_clean_target_rewrite_until_later_r
             for root in 0..2 {
                 assert!(receipt.input(root).unwrap().provenance().is_empty());
             }
-            // Authored R makes malformed lookup0 genuinely miss. Reverse1 can
+            // Authored R makes malformed lookup0 miss. Reverse1 can
             // still enable the same clean deletion, now without bad ancestry.
-            let genuine = ancestry_shape(font, "AR", &[zzzz]);
-            assert_eq!(ids(&genuine), vec![u32::from(font::R)]);
-            assert_eq!(old_positions(&genuine), vec![(1_201, 0, 0, 0)]);
-            assert_eq!(genuine.glyph_infos()[0].cluster, 0);
+            let shaped = ancestry_shape(font, "AR", &[zzzz]);
+            assert_eq!(ids(&shaped), vec![u32::from(font::R)]);
+            assert_eq!(old_positions(&shaped), vec![(1_201, 0, 0, 0)]);
+            assert_eq!(shaped.glyph_infos()[0].cluster, 0);
             expect(
-                &genuine,
+                &shaped,
                 feature,
                 &[Outcome::NoSurvivingOperand, Outcome::NoAction],
             );
-            let components = genuine.component_receipt().unwrap().unwrap();
+            let components = shaped.component_receipt().unwrap().unwrap();
             assert_eq!(components.components(0), Some(&[1][..]));
             assert_eq!(components.deleted_input_positions(), &[0]);
         });

@@ -41,7 +41,7 @@ fn prepare(orientation: LineOrientation, tracking: f64, spaces: bool) -> (Fixtur
     if spaces {
         public_packet(fixture.parent.bytes(), " ", None, 3, 1000);
     }
-    // The same genuine normal10/hwid5/twid4/qwid3 native operands and complete
+    // The same normal10/hwid5/twid4/qwid3 native operands and complete
     // successful-action receipts were qualified by the shared factory above.
     let prepared = system
         .prepare(
@@ -106,7 +106,7 @@ fn flow(
     let orientation = prepared.orientation();
     let cells = line.cell_views().collect::<Vec<_>>();
     let [cell] = cells.as_slice() else {
-        panic!("one genuine retained AA Cell");
+        panic!("one retained AA Cell");
     };
     assert_eq!(cell.square().origin.x, start);
     assert_eq!(cell.square().size, Size::new(10.0, 10.0));

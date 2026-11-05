@@ -131,7 +131,7 @@ fn classify(
             }
             // Seek the first EGC whose end is after this word start. Keep
             // a unit beginning before the word: its base/context still owns
-            // the initial-unit decision when the ranges genuinely overlap.
+            // the initial-unit decision when the ranges overlap.
             let word_start = point(word.start);
             let word_end = point(word.end);
             let grapheme = input

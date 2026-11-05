@@ -582,7 +582,7 @@ impl<S: LayoutScalar> PositionedRootContextOf<S> {
 /// supply it.
 ///
 /// All root insets are Auto and margins are zero. Padding and border require
-/// the root's own inline preferred size to resolve genuinely definite against
+/// the root's own inline preferred size to resolve definite against
 /// the full containing width; authored box-sizing and min/max constraints then
 /// retain their normal meaning. Auto or intrinsic inline preferred sizes require
 /// zero padding and border: this profile does not supply a general edge-aware
@@ -1347,7 +1347,7 @@ mod baseline_tests {
             );
 
             // Align3 synthesis uses line-under for either baseline set.
-            // A genuinely supplied zero remains authority, not missing data.
+            // A supplied zero remains authority, not missing data.
             let zero_last = match block_axis {
                 PhysicalAxis::Horizontal => Point::new(Some(S::ZERO), None),
                 PhysicalAxis::Vertical => Point::new(None, Some(S::ZERO)),
@@ -1900,7 +1900,7 @@ impl<Node: Copy, S: LayoutScalar> LayoutOutputEntryOf<Node, S> {
     }
 
     /// Extract measured custody only from a current unrounded stage. The outer
-    /// Option distinguishes wrong phase from genuine non-box metadata.
+    /// Option distinguishes wrong phase from non-box metadata.
     pub(crate) fn measured_inset_basis(&self) -> Option<Option<MeasuredInsetBasisOf<S>>> {
         let measured = match self.geometry {
             GeometryStateOf::OrdinaryUnrounded { measured_normal }
@@ -2099,7 +2099,7 @@ where
         self
     }
 
-    /// Families with an actual successful formatter execution, including genuine
+    /// Families with an actual successful formatter execution, including
     /// empty completion with no pieces. Order is completion order, not source or
     /// painting order. Mere admission does not certify formatter execution.
     pub fn native_inline_box_families(

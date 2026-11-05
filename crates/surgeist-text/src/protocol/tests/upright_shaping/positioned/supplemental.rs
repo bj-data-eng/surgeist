@@ -1,4 +1,4 @@
-//! Genuine positioned custody, phantom completion and provider transparency.
+//! Positioned custody, phantom completion and provider transparency.
 use super::*;
 use crate::{Error, ErrorCode, ErrorDetail, TextNumericError, TextNumericPhase};
 
@@ -77,7 +77,7 @@ fn positioned_placement_rejects_missing_duplicate_foreign_and_nonfinite_actual_g
         ProtocolError::DuplicateAtomic { occurrence: 0 },
     );
 
-    // This is a genuinely separately issued preparation of equal authored
+    // This is a separately issued preparation of equal authored
     // characters, not a fabricated occurrence index or catalogue token.
     let mut foreign_input = input(true);
     let mut foreign_source = Source::identified("XX", Id::from_u64(1_554_102), 1);
@@ -152,7 +152,7 @@ fn positioned_placement_rejects_missing_duplicate_foreign_and_nonfinite_actual_g
 }
 
 #[test]
-fn source_free_positioned_occurrence_retains_genuine_nonformatted_terminal_completion() {
+fn source_free_positioned_occurrence_retains_nonformatted_terminal_completion() {
     let mut source = Source::identified("", Id::from_u64(1_554_101), 1);
     source.inline_box(InlineBox::new(
         BOX,
@@ -199,7 +199,7 @@ fn source_free_positioned_occurrence_retains_genuine_nonformatted_terminal_compl
     let actual = physical(prepared.atomic_views().next().unwrap().handle());
     let completion = line
         .nonformatted()
-        .expect("an OOF-only terminal is genuinely nonformatted despite its nominal strut");
+        .expect("an OOF-only terminal is nonformatted despite its nominal strut");
     let request = |atomics| PlacementRequest {
         prepared: prepared.clone(),
         coverage: PlacementCoverage::WholeParagraph,

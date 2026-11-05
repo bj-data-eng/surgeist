@@ -178,7 +178,7 @@ fn actual_in_flow_and_positioned_atomics_retain_supplied_occurrence_order() {
         ]
     );
     let vertical = prepare(&bytes, input)
-        .expect("native upright admission must retain genuine mixed-flow atomic occurrences");
+        .expect("native upright admission must retain mixed-flow atomic occurrences");
     assert_eq!(
         vertical
             .participants()
@@ -257,7 +257,7 @@ fn control_input(own: Style) -> ParagraphInput {
 fn actual_discretionary_indication_decoration_keeps_its_control_style_occurrence() {
     let bytes = vert_font();
     qualify(&bytes, &[(0x58, 58)]);
-    // A genuine control with a real selectable X indication qualifies this
+    // A control with a real selectable X indication qualifies this
     // style as consumed input; the preceding Wbr makes its occurrence nonzero.
     let positive = prepare(&bytes, control_input(style())).unwrap();
     assert_eq!(

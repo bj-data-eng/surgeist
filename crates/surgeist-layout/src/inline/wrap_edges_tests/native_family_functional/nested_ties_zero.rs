@@ -1,4 +1,4 @@
-//! Genuine nested empty incidence, physical tie order and zero-size operands.
+//! Nested empty incidence, physical tie order and zero-size operands.
 use super::*;
 use crate::{InlineGapAffinity, InlineGapAnchor, InlineGapGroupInput};
 
@@ -8,7 +8,7 @@ fn real_source_order<S: LayoutScalar>(f: &mut Fixture<S>, nodes: &[u32]) {
         let source = match row {
             MixedInlineParticipantOf::Atomic { item, .. } => item.source_index,
             MixedInlineParticipantOf::Boundary(control) => control.source_index(),
-            _ => unreachable!("no visible delimiter in this genuine fixture"),
+            _ => unreachable!("no visible delimiter in this fixture"),
         };
         nodes
             .iter()
@@ -38,7 +38,7 @@ fn empty_identity<S: LayoutScalar>(
     assert_eq!(
         members.len(),
         1,
-        "one genuine leaf row, no redundant ancestor placeholder"
+        "one leaf row, no redundant ancestor placeholder"
     );
     assert_eq!(members[0].empty_box(), Some(leaf));
     assert_eq!(members[0].node(), None);
@@ -244,7 +244,7 @@ fn unrelated_ties<S: LayoutScalar>() {
         }),
     )
     .unwrap();
-    // Three genuine empty siblings at one physical gap. Explicit order B,A,C
+    // Three empty siblings at one physical gap. Explicit order B,A,C
     // differs from source A,B,C; each executes its literal3+5 components once.
     for (node, x, width) in [
         (22, 0.0, 3.0),
@@ -303,7 +303,7 @@ fn tied_empty_siblings_use_explicit_order_and_refuse_missing_or_duplicate_author
 
 fn zero_atomics<S: LayoutScalar>() {
     let mut f = prepared_fixture::<S>([0, 0, 0, 1, 1, 1], false);
-    // The two FOREIGN odd operands remain genuine zero-size InlineBlocks with
+    // The two FOREIGN odd operands remain zero-size InlineBlocks with
     // their actual supplied levels and source identities. No hidden/OOF role.
     for node in [14, 15] {
         let mut input = crate::LayoutTree::node_input(&f.tree, node).clone();
@@ -332,7 +332,7 @@ fn zero_atomics<S: LayoutScalar>() {
             .unwrap();
         item.size = Size::ZERO;
         item.content_size = Size::ZERO;
-        item.first_baseline = None; // Genuine empty-block bottom fallback0, no font baseline.
+        item.first_baseline = None; // empty-block bottom fallback0, no font baseline.
     }
     f.wrapping
         .native_inline_boxes
@@ -396,7 +396,7 @@ fn zero_atomics<S: LayoutScalar>() {
 }
 
 #[test]
-fn genuine_zero_size_atomics_remain_foreign_participating_component_separators() {
+fn source_zero_size_atomics_remain_foreign_participating_component_separators() {
     zero_atomics::<f32>();
     zero_atomics::<f64>();
 }

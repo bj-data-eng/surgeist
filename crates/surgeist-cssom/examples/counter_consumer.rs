@@ -1,4 +1,4 @@
-//! Partial counter descriptors, genuine parsed origins and immutable captures.
+//! Partial counter descriptors, parsed origins and immutable captures.
 use surgeist_css::rule::counter_style::CssCounterStyleDescriptorKind;
 use surgeist_cssom::*;
 

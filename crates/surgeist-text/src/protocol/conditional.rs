@@ -21,7 +21,7 @@ pub enum ConditionalPurpose {
 
 /// Complete variant dispositions in the actual earlier ordinary inventory.
 /// Automatic dispositions discharge variant coverage, never certify consumer
-/// fitting and never advance the genuine phantom frontier.
+/// fitting and never advance the phantom frontier.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ConditionalDisposition {
     Phantom(FinalizedLine),
@@ -79,7 +79,7 @@ impl ConditionalDisposition {
     }
 }
 
-/// A genuine eligible cut in one queried ordinary interval. Equality retains
+/// An eligible cut in one queried ordinary interval. Equality retains
 /// query semantics rather than the allocation of a returned vector or proof.
 #[derive(Clone, Debug)]
 pub struct PreparedConditionalOpportunity {

@@ -179,7 +179,7 @@ fn decompose_current_character(ctx: &mut hb_ot_shape_normalize_context_t, shorte
     let u = ctx.buffer.cur(0).as_codepoint();
     let glyph = ctx.face.get_nominal_glyph(u);
 
-    // The selected symbol is this genuine scalar, never a script-specific
+    // The selected symbol is this scalar, never a script-specific
     // decomposition or a fallback representative. Its category/ccc travel in
     // the row even when neighboring ordinary Unicode scalars normalize.
     if ctx.buffer.cur(0).is_ordinary_symbol() {

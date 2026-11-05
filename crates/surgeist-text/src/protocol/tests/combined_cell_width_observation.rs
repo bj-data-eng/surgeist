@@ -128,7 +128,7 @@ fn qualified_rejected_hwid_font() -> Vec<u8> {
         }
         assert!(receipt.input(count).is_none());
     }
-    // These remain genuine fitting alternatives for AA. Refusing hwid in the
+    // These remain fitting alternatives for AA. Refusing hwid in the
     // Text case therefore cannot be replaced by silent twid/qwid fallback.
     for (tag, feature, glyph, advance) in [
         (*b"twid", WidthFeature::ThirdWidth, 58, 400),

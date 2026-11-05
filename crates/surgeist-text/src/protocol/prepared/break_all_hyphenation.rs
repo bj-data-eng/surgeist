@@ -71,11 +71,7 @@ fn selection(
         inline_boxes: None,
         segment: {
             let mut segments = p.source_segments();
-            assert_eq!(
-                segments.len(),
-                1,
-                "this fixture has one genuine source segment"
-            );
+            assert_eq!(segments.len(), 1, "this fixture has one source segment");
             segments.next().unwrap()
         },
         start: p.boundary_views().next().unwrap().handle(),
@@ -151,7 +147,7 @@ fn shy_local_wrap_cannot_lend_an_ordinary_cut_its_missing_ancestor_permission() 
 #[test]
 fn ordinary_shy_cuts_keep_real_ba_punctuation_joiner_and_typographic_context() {
     // LB21 forbids before a second BA; LB13 forbids before EX. LB11/LB8a
-    // preserve WJ/ZWJ, while the following base+mark remains one genuine unit.
+    // preserve WJ/ZWJ, while the following base+mark remains one unit.
     for (value, expected) in [
         ("A\u{ad}\u{ad}B", vec![3]),
         ("A\u{ad}!", vec![]),

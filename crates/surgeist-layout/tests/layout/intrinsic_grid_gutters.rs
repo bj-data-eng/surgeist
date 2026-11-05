@@ -134,7 +134,7 @@ fn qualify<S: LayoutScalar>(intrinsic: bool) {
                     .output();
                 let geometry = root
                     .scroll_geometry
-                    .expect("hidden root is a genuine scroll container");
+                    .expect("hidden root is a scroll container");
                 let expected_width = if intrinsic {
                     40.0 + reservation
                 } else {

@@ -35,7 +35,7 @@ fn visual_region_error(
             piece(Range::new(2, 3)),
         ]
     );
-    // Genuine provider clusters may cover adjacent zero-format atoms. Their
+    // Provider clusters may cover adjacent zero-format atoms. Their
     // exact ordered atom custody is invariant under that cluster grouping.
     assert_eq!(
         provider_atoms
@@ -166,7 +166,7 @@ fn component_local_a_mark_unit_can_straddle_an_inflow_atomic_after_real_bidi_reo
     assert_eq!(atomic.original_box().index(), 3);
     assert_eq!(atomic.level().get(), 1);
 
-    // Execute every ordinary boundary before asserting that this is a genuine
+    // Execute every ordinary boundary before asserting that this is a
     // interleave witness. A provider/composition rejection must remain visible.
     let natural = ordinary(&prepared);
     let layout = placed(&prepared, &natural);

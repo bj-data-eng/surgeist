@@ -1584,7 +1584,7 @@ fn queued_plain_close_retirement_before_or_during_dispatch_settles_original_cust
         );
         assert_eq!(method_context.before.len(), 1);
         assert_before(&method_context.before[0], subject);
-        // Drain the independent Toggle source first. Only the genuine plain
+        // Drain the independent Toggle source first. Only the plain
         // Close notification remains when Session custody is observed below.
         run(
             &mut session,

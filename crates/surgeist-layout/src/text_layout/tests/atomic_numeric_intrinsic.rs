@@ -1,4 +1,4 @@
-//! Genuine CSS numeric boxes separate intrinsic demand from raw overflow.
+//! CSS numeric boxes separate intrinsic demand from raw overflow.
 
 use super::*;
 
@@ -161,7 +161,7 @@ fn assert_actual_boxes<S: LayoutScalar>(
 }
 
 fn numeric_intrinsic_minimum<S: LayoutScalar>() {
-    // Two actual used margin boxes each advance10-4=6. The genuine Allowed
+    // Two actual used margin boxes each advance10-4=6. The Allowed
     // middle admits two independent pieces: paragraph min=max(6,6)=6.
     // Border geometry remains10 in each line at x0, with row tops0 and10.
     let batch = numeric_batch::<S>(
@@ -190,11 +190,11 @@ fn numeric_intrinsic_maximum<S: LayoutScalar>() {
 }
 
 fn numeric_signed_retraction<S: LayoutScalar>() {
-    // Genuine finite band5 and first-line indent10. Each CSS margin advance is
+    // Finite band5 and first-line indent10. Each CSS margin advance is
     //10-20=-10, so traversal pens10 ->0 ->-10. There is no NativeOccupied
     // participant: final CSS demand max(0,-10)=0 fits5. Neither the leading
     // prefix10 nor borders10..20 /0..10 establish an admission requirement.
-    // The middle is genuinely Allowed, but must not force a spurious second
+    // The middle is Allowed, but must not force a spurious second
     // line merely because the first prefix/border extends beyond the band.
     let batch = numeric_batch::<S>(
         crate::AxisSizingRequestOf::new(

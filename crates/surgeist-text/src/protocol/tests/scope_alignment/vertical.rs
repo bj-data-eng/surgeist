@@ -532,7 +532,7 @@ fn unsupported_cross_axis_and_vertical_alphabetic_demands_refuse_without_changin
 }
 
 #[test]
-fn genuine_absent_base_keeps_nominal_pen_upright_receipts_and_central_matching_zero() {
+fn absent_base_keeps_nominal_pen_upright_receipts_and_central_matching_zero() {
     let bytes = vertical::native();
     let font = skrifa::FontRef::new(&bytes).unwrap();
     assert!(font.table_data(skrifa::Tag::new(b"BASE")).is_none());

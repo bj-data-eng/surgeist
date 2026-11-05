@@ -247,7 +247,7 @@ fn check_units(
             for output in outputs {
                 let witness = &mut witnesses[output];
                 if witness.first.is_none() {
-                    // A genuine joint-owned generated seam may have no raw
+                    // A joint-owned generated seam may have no raw
                     // occurrence. These are the admitted output's ownership
                     // bounds, not fabricated original occurrence provenance.
                     let owner = &builders[output]
@@ -354,7 +354,7 @@ pub(in crate::transform) fn batch(
             // they cannot manufacture a final-unit joint requirement.
             return Err(super::refused(row.source));
         }
-        let output = output.expect("original row retains genuine source pieces");
+        let output = output.expect("original row retains source pieces");
         let builder = &mut builders[output];
         let mut own = row.clone();
         let first = builder.map.pieces.len();
@@ -605,7 +605,7 @@ pub(in crate::transform) fn batch(
         }
     }
 
-    // Source barriers also belong to genuine zero-source members and anchors.
+    // Source barriers also belong to zero-source members and anchors.
     // Index those incidences once; numeric envelopes do not grant membership.
     let capture = &context
         .scope_topology

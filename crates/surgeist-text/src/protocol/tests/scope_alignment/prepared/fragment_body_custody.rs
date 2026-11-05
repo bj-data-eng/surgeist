@@ -49,7 +49,7 @@ fn connected_body() -> (Arc<ProcessedSource>, AnalyzedSource) {
         following_wrap: Wrap::Word,
         ancestor_wrap: Wrap::Word,
     }];
-    // This is genuine joint authority, separate from the Continuous seam. The
+    // This is joint authority, separate from the Continuous seam. The
     // exact constructor below still owns ONLY its requested first raw member.
     value.joint_flows = vec![SourceProcessingJointFlow {
         scope: 0,
