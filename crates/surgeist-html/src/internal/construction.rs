@@ -1670,6 +1670,38 @@ impl HtmlFragmentBuilder {
 mod tests {
     use super::*;
 
+    /// What an operation that cannot hand the storage back leaves: no native command can cause it,
+    /// because only a publication shares its arena, so the test produces the state directly.
+    fn lose_storage(builder: &mut Builder) {
+        let vacated = builder.storage.vacated();
+        drop(std::mem::replace(&mut builder.storage, vacated));
+    }
+
+    #[test]
+    fn a_builder_without_storage_reports_the_loss_and_the_usage_it_last_held() {
+        let mut builder = HtmlFragment::builder(HtmlConstructionLimits::new(4, 4, 0, 8, 3)).unwrap();
+        let root = builder.root();
+        let comment = builder.append_comment(&root, "c").unwrap();
+        let usage = builder.usage();
+        assert_eq!(usage.utf16_units(), 1);
+        lose_storage(&mut builder.builder);
+        assert_eq!(
+            builder.usage(),
+            usage,
+            "usage reports what the storage held, not an empty stand-in"
+        );
+        for outcome in [
+            builder.append_comment(&root, "d").map(|_| ()),
+            builder.append_comment(&comment, "e").map(|_| ()),
+            builder.template_contents(&root).map(|_| ()),
+        ] {
+            let error = outcome.expect_err("a builder without storage refuses every operation");
+            assert!(error.is_shared_allocation_aliased(), "{error}");
+        }
+        let error = builder.finish().expect_err("a builder without storage cannot finish");
+        assert!(error.is_shared_allocation_aliased(), "{error}");
+    }
+
     /// An operation refused at its ready transition returns the storage it was prepared on, with
     /// the cause, instead of dropping it with the operation. The undriven operation is the refused
     /// state: it has pending actions, so it is not ready.
