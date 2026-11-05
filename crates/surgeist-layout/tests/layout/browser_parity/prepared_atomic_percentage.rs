@@ -17,7 +17,13 @@ fn invalid(detail: impl std::fmt::Display) -> Error {
     Error::new(format!("Prepared atomic percentage: {detail}"))
 }
 
-pub(super) fn admit(capture: Capture<'_>, name: &str, xml: &str) -> Result<(), Error> {
+#[derive(Clone, Copy)]
+pub(super) struct Variant {
+    box_sizing: layout::BoxSizing,
+    direction: layout::Direction,
+}
+
+pub(super) fn admit(capture: Capture<'_>, name: &str, xml: &str) -> Result<Variant, Error> {
     if capture.source_path != profile::SOURCE
         || sha256(capture.source_bytes) != profile::SOURCE_SHA256
     {
@@ -70,15 +76,49 @@ pub(super) fn admit(capture: Capture<'_>, name: &str, xml: &str) -> Result<(), E
                 "fri06_atomic_inline_percentage_block_size__{}",
                 artifact.variant
             )
-        || !matches!(
-            artifact.variant.as_str(),
-            "border_box_ltr" | "content_box_ltr" | "border_box_rtl" | "content_box_rtl"
-        )
         || artifact.source_sha256 != profile::SOURCE_SHA256
         || artifact.output_sha256 != sha256(xml.as_bytes())
         || !artifact.linked_resources.is_empty()
     {
         return Err(invalid("capture source or output binding changed"));
+    }
+    use layout::{
+        BoxSizing::{BorderBox, ContentBox},
+        Direction::{Ltr, Rtl},
+    };
+    let (box_sizing, direction) = match artifact.variant.as_str() {
+        "border_box_ltr" => (BorderBox, Ltr),
+        "border_box_rtl" => (BorderBox, Rtl),
+        "content_box_ltr" => (ContentBox, Ltr),
+        "content_box_rtl" => (ContentBox, Rtl),
+        _ => return Err(invalid("unregistered capture variant")),
+    };
+    Ok(Variant {
+        box_sizing,
+        direction,
+    })
+}
+
+pub(super) fn validate_frame(context: &RootContext) -> Result<(), Error> {
+    use super::root_context::QualifiedRootContext;
+    let RootContext::Qualified(QualifiedRootContext::AbsoluteRootLocal {
+        containing_size,
+        containing_direction: layout::Direction::Ltr,
+        hypothetical_direction: layout::Direction::Ltr,
+        hypothetical_display,
+        hypothetical_inline_offset: 0.0,
+        ..
+    }) = context
+    else {
+        return Err(invalid("containing frame differs from the fixed capture"));
+    };
+    // The V4 reader checks the ICB against the containing extent. The fixed
+    // browser edition supplies the independent extent and reference sides.
+    if containing_size.width.get() != 800.0
+        || containing_size.height.get() != 600.0
+        || hypothetical_display != "block"
+    {
+        return Err(invalid("containing frame differs from the fixed capture"));
     }
     Ok(())
 }
@@ -163,6 +203,7 @@ impl layout::LayoutTree for BoxProjection {
 
 pub(super) fn measure(
     context: &RootContext,
+    variant: Variant,
     root: &StyleAttrs,
     children: &[Node],
     child: usize,
@@ -193,6 +234,15 @@ pub(super) fn measure(
             container.direction,
         )),
     )?;
+    if container.box_sizing != variant.box_sizing
+        || atomic.box_sizing != variant.box_sizing
+        || container.direction != variant.direction
+        || atomic.direction != variant.direction
+    {
+        return Err(invalid(
+            "effective root or atomic styles differ from the capture variant",
+        ));
+    }
     if container.size
         != layout::Size::new(
             super::parse_preferred_size("180px")?,
@@ -351,7 +401,11 @@ pub(crate) fn compare(
     validate_observations(golden)?;
     let mut numeric =
         NumericComparisonSink::PreparedAtomicPercentage(Comparisons::new(golden.name.clone()));
-    let result = super::compare_captured_with_batch(golden, &mut numeric, verify_native)?;
+    let mut custody = None;
+    let result = super::compare_captured_with_batch(golden, &mut numeric, |tree, batch| {
+        custody = Some(verify_native(tree, batch));
+        Ok(())
+    })?;
     if !result.endpoint_unobservable_fields().is_empty() {
         return Err(invalid("incomplete Native observations"));
     }
@@ -359,18 +413,25 @@ pub(crate) fn compare(
         unreachable!("prepared atomic percentage collector remains selected");
     };
     let fields = comparisons.differences();
-    let qualified = if fields.is_empty() {
-        Ok(QualifiedComparison {
-            raw: RawVerdict::Matches,
-            qualified: QualifiedVerdict::MatchingControl,
+    let qualified = custody
+        .unwrap_or_else(|| Err(invalid("missing completed Native batch")))
+        .map_err(|error| QualificationError::ComparisonFailure {
+            reason: error.to_string(),
         })
-    } else {
-        Err(QualificationError::DifferenceSetChanged {
-            missing: Vec::new(),
-            extra: fields.clone(),
-            changed: Vec::new(),
-        })
-    };
+        .and_then(|()| {
+            if fields.is_empty() {
+                Ok(QualifiedComparison {
+                    raw: RawVerdict::Matches,
+                    qualified: QualifiedVerdict::MatchingControl,
+                })
+            } else {
+                Err(QualificationError::DifferenceSetChanged {
+                    missing: Vec::new(),
+                    extra: fields.clone(),
+                    changed: Vec::new(),
+                })
+            }
+        });
     Ok((fields, qualified))
 }
 

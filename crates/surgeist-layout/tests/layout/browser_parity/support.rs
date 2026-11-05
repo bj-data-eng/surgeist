@@ -241,10 +241,11 @@ impl Golden {
         let name = required_attr(test, "name")?.to_string();
         let xml_root = one_element_child(input)?;
         let (root, atomic_context) = if let Some(capture) = atomic_capture {
-            prepared_atomic_percentage::admit(capture, &name, raw)?;
+            let variant = prepared_atomic_percentage::admit(capture, &name, raw)?;
             let context = parse_root_context(viewport, test.attribute("measurement-version"))?;
+            prepared_atomic_percentage::validate_frame(&context)?;
             (
-                parse_node_in_frame(xml_root, Some(&context))?,
+                parse_node_in_frame(xml_root, Some((&context, variant)))?,
                 Some(context),
             )
         } else {
@@ -1031,7 +1032,7 @@ fn parse_node(xml: roxmltree::Node<'_, '_>) -> Result<Node, Error> {
 
 fn parse_node_in_frame(
     xml: roxmltree::Node<'_, '_>,
-    atomic_frame: Option<&RootContext>,
+    atomic_frame: Option<(&RootContext, prepared_atomic_percentage::Variant)>,
 ) -> Result<Node, Error> {
     let source_box = xml.has_tag_name("div") || xml.has_tag_name("text");
     if (xml.attribute("grid-alignment-reference").is_some() && !xml.has_tag_name("div"))
@@ -1210,14 +1211,14 @@ fn parse_node_in_frame(
                 ));
             }
             let raw = required_attr(*capture, "capture")?;
-            let capture = if let Some(frame) = atomic_frame {
+            let capture = if let Some((frame, variant)) = atomic_frame {
                 prepared_atomic_percentage::validate_source(raw)?;
                 prepared_source::Capture::parse_with_atomic_measure(
                     raw,
                     children.len(),
                     |child, width, height| {
                         prepared_atomic_percentage::measure(
-                            frame, &style, &children, child, width, height,
+                            frame, variant, &style, &children, child, width, height,
                         )
                     },
                 )?
