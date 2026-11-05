@@ -21,7 +21,7 @@ pub(crate) mod capture_authority;
 #[path = "element_scroll_sizes.rs"]
 mod element_scroll_sizes;
 #[path = "exact_differences.rs"]
-pub(crate) mod exact_differences;
+pub mod exact_differences;
 #[path = "flex_composition.rs"]
 mod flex_composition;
 #[cfg(test)]
@@ -43,6 +43,7 @@ pub use element_scroll_sizes::ElementScrollSizeMismatch;
 use prepared_range_qualification::{Comparisons as PreparedRangeComparisons, RangePieceKey};
 
 type Scalar = layout::Scalar;
+pub(super) type ObservedPlacement = layout::PlacedTextOutput<usize>;
 
 #[derive(Clone, Copy, Debug)]
 struct ComparisonTolerance {

@@ -943,7 +943,7 @@ fn validate_corpus(
                 &golden,
                 &crate::parity_support::Golden::parse_file(root.join(historical.as_str()))?,
             )?;
-            let (raw, verdict) = prepared_atomic_percentage::compare(&golden)?;
+            let (raw, verdict) = prepared_atomic_percentage::compare(&golden, |_| Ok(()))?;
             for difference in raw {
                 eprintln!("qualify-root-context: {}: {difference}", case.case.id());
             }

@@ -30,7 +30,7 @@ fn complete_capture_keeps_all_exact_box_and_range_differences() {
     historical.expectations.children[1].height = Some(41.0);
     assert!(verify_historical(&golden, &historical).is_err());
 
-    let (fields, verdict) = compare(&golden).unwrap();
+    let (fields, verdict) = compare(&golden, |_| Ok(())).unwrap();
     assert!(fields.is_empty(), "{fields:?}");
     assert_eq!(verdict.unwrap().raw, RawVerdict::Matches);
 
@@ -40,7 +40,7 @@ fn complete_capture_keeps_all_exact_box_and_range_differences() {
         .as_mut()
         .unwrap()[0]
         .advance = 127.0;
-    let (fields, verdict) = compare(&golden).unwrap();
+    let (fields, verdict) = compare(&golden, |_| Ok(())).unwrap();
     assert_eq!(fields.len(), 2, "{fields:?}");
     assert!(fields[0].contains("browser: 97.0") && fields[0].contains("native: 96.0"));
     assert!(
@@ -69,7 +69,7 @@ fn capture_refuses_missing_authority_stale_basis_and_numeric_substitution() {
         .attrs
         .insert("height".into(), "60px".into());
     assert!(
-        compare(&golden)
+        compare(&golden, |_| Ok(()))
             .unwrap_err()
             .to_string()
             .contains("sizing frame changed")
@@ -142,7 +142,7 @@ fn changed_native_atomic_custody_preserves_raw_box_and_range_differences() {
         .as_mut()
         .unwrap()[0]
         .advance = 127.0;
-    let (raw, qualified) = compare(&golden).unwrap();
+    let (raw, qualified) = compare(&golden, |_| Ok(())).unwrap();
     assert!(
         raw.iter()
             .any(|field| field.contains("browser: 40.0") && field.contains("native: 30.0")),

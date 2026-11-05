@@ -74,7 +74,7 @@ pub(crate) fn evidence(variant: &str) -> Option<SpecializedEvidence> {
     })
 }
 
-pub(crate) struct Inputs {
+pub struct Inputs {
     ltr: NativeOracle,
     rtl: NativeOracle,
 }
@@ -126,7 +126,7 @@ struct Assignment<'a> {
     fields: &'a [ComparedField],
 }
 
-pub(crate) fn qualify(
+pub fn qualify(
     golden: &Golden,
     variant: &str,
     inputs: &Inputs,

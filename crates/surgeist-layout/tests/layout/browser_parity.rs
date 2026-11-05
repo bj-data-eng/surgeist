@@ -2439,6 +2439,30 @@ fn current_registry_qualifies_all_original_flex_text_variants() {
 }
 
 #[test]
+fn registered_atomic_percentage_exposes_its_completed_placement() {
+    use support::capture_authority::SpecializedProfile;
+
+    let admitted = registered_current_edition().unwrap();
+    let root = SpecializedProfile::PreparedAtomicPercentage.artifact_root();
+    let output =
+        format!("{root}/xml/block/fri06_atomic_inline_percentage_block_size__border_box_ltr.xml");
+    let mut observed = 0;
+    let run = admitted
+        .execute_selected_with_placement(&BTreeSet::from([output]), &mut |placed| {
+            observed += 1;
+            assert_eq!(placed.container(), 0);
+            assert_eq!(placed.nodes(), [1, 2, 3]);
+            assert_eq!(placed.layout().lines().len(), 2);
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(observed, 1);
+    assert_eq!(run.cases.len(), 1);
+    assert!(run.selected_cases_passed());
+    assert!(run.cases[0].raw.as_ref().unwrap().is_empty());
+}
+
+#[test]
 fn runs_registered_current_browser_parity_qualification() {
     let admitted =
         registered_current_edition().expect("required current edition must authenticate");
