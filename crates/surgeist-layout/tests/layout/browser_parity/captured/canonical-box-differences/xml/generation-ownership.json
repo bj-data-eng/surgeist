@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "artifacts": {
+    "xml/flex/fri07_collapsed_strut_wrapping__border_box_ltr.xml": "5275652f473eccd2b321777f3a0b60192afe433ae00530b8076d692ac558ee09",
+    "xml/flex/fri07_collapsed_strut_wrapping__border_box_rtl.xml": "b126090bfa685c18bee613b7e9f0335a8d5fca59838a6d67569d2b6e078efa7b",
+    "xml/flex/fri07_collapsed_strut_wrapping__content_box_ltr.xml": "cd76a781e79ffedd3a24840a1703b0756d8d3dcadcfa4ca1ba129d0b92956002",
+    "xml/flex/fri07_collapsed_strut_wrapping__content_box_rtl.xml": "82d522598a37af2e084f66aa2263f96222b81172edfd484a44824db0c013a98b",
+    "xml/generation-reports/all.json": "003bdf0977ea7726ceff5009d4cced526ec1e1636140187fb60cd415b287781f"
+  }
+}

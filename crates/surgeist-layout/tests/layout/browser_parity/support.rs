@@ -16,6 +16,8 @@ use root_context::parse_root_context;
 #[path = "root_diagnostics.rs"]
 mod root_diagnostics;
 pub use root_diagnostics::WorldRoundedLayout;
+#[path = "capture_authority.rs"]
+pub(crate) mod capture_authority;
 #[path = "element_scroll_sizes.rs"]
 mod element_scroll_sizes;
 #[path = "exact_differences.rs"]

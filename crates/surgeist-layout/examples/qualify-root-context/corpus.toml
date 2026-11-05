@@ -1549,16 +1549,16 @@ inline_offset = 0
 
 [records.semantic_specifications.border_box_ltr]
 path = "semantic/collapsed-flex-wrapping-border_box_ltr.json"
-sha256 = "a9c6800b8dac1dd90e72f721f039824ad54b9c33b63d1002e10e5faff490ca6b"
+sha256 = "ad149c594e5eda6aa2dac3895bd69eee0e44b4d384c2494af661a26eea017354"
 
 [records.semantic_specifications.border_box_rtl]
 path = "semantic/collapsed-flex-wrapping-border_box_rtl.json"
-sha256 = "993a1695985cea1dce5e6ca914b10c21d53e2f37b3ed30463ebf2e68cfc918f3"
+sha256 = "d1b5f04fafecf0de2f4d304337cdbb69b13b44313a064fafe22a1aa2b1f6f22b"
 
 [records.semantic_specifications.content_box_ltr]
 path = "semantic/collapsed-flex-wrapping-content_box_ltr.json"
-sha256 = "9fa1d81b27349d598cbd4cdd47717bacfea24b4608fa1d27bd60577b0a8fabbe"
+sha256 = "32bb5ebf4cb31156b67d630e8145f782b05c4e7c540cc0afee27b929845604b4"
 
 [records.semantic_specifications.content_box_rtl]
 path = "semantic/collapsed-flex-wrapping-content_box_rtl.json"
-sha256 = "a8c7ae983c032157175f501c8776423c6fd6d7fa9c0594b5eb2b4dff15c18b85"
+sha256 = "246aa172b3396347efbf28f60da391e23a2659f9acfa3dbf9fc1afbe82e1d80e"

@@ -43,6 +43,12 @@ fn parse_arguments(
         [mode] if mode == "--check-published-root-context-v4" => {
             Ok((None, QualificationMode::CheckPublished))
         }
+        [mode] if mode == "--publish-canonical-box-differences" => {
+            Ok((None, QualificationMode::PublishCanonicalBoxes))
+        }
+        [mode] if mode == "--check-published-canonical-box-differences" => {
+            Ok((None, QualificationMode::CheckPublishedCanonicalBoxes))
+        }
         [flag, source] if flag == "--fixture" && !source.starts_with("--") => {
             Ok((Some(source.as_str()), QualificationMode::Regular))
         }
@@ -66,7 +72,7 @@ fn parse_arguments(
             ))
         }
         _ => Err(
-            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source>",
+            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source>",
         ),
     }
 }
@@ -78,6 +84,24 @@ mod tests {
 
     fn arguments(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).to_owned()).collect()
+    }
+
+    #[test]
+    fn canonical_publication_commands_select_the_fixed_owner_without_extra_arguments() {
+        for (flag, mode) in [
+            (
+                "--publish-canonical-box-differences",
+                QualificationMode::PublishCanonicalBoxes,
+            ),
+            (
+                "--check-published-canonical-box-differences",
+                QualificationMode::CheckPublishedCanonicalBoxes,
+            ),
+        ] {
+            assert_eq!(parse_arguments(&arguments(&[flag])), Ok((None, mode)));
+            assert!(parse_arguments(&arguments(&[flag, "--fixture", "html/other.html"])).is_err());
+            assert!(parse_arguments(&arguments(&[flag, "arbitrary-output"])).is_err());
+        }
     }
 
     #[test]

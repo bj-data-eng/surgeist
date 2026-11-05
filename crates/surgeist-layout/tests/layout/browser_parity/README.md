@@ -68,6 +68,52 @@ Run checked-in fixtures:
 cargo test --offline --locked -j 1 -p surgeist-layout --test layout runs_all_checked_in_browser_parity_xml
 ```
 
+This is the raw-exact result: every original XML runs on its own captured
+evidence, and registered current outputs run separately even when their names
+match an original. Any mismatch or incomplete observation fails. Historical
+missing-root-context errors remain raw failures; a current capture never turns
+them into historical passes.
+
+The registered [canonical box edition](captured/canonical-box-differences/qualification.json)
+also runs through the ordinary default-feature test target:
+
+```sh
+cargo test --offline --locked -j 1 -p surgeist-layout --test layout runs_registered_current_browser_parity_qualification
+```
+
+This separate current-qualified result covers the declared four wrapping
+variants. Before execution, it authenticates the registered terminal seal,
+complete retained inputs and outputs, live source owners, browser profile,
+policy and per-variant identity. The canonical declaration and semantic
+specifications bind every requested box selector and both complete Native
+packet channels before capture. Qualification requires the independently
+authored full Native oracle and the exact expected difference set; changed or
+additional differences, unexpected passes, missing coverage and late freshness
+failures fail qualification. Raw differences remain available independently.
+This result certifies only those explicit current requirements, including the
+root-border-local frame. It does not cover the historical world-corner
+auto-height function or other source cohorts, and does not claim browser
+conformance. Missing required artifacts fail closed.
+
+`SURGEIST_PARITY_FILTER` can select a fixture substring for diagnosis. Filtered
+execution makes no complete-edition coverage claim. Run without it for the
+full declared cohort. These checked-in comparisons need no browser or fixture
+regeneration.
+
+The existing publication owner creates and validates this immutable edition:
+
+```sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --publish-canonical-box-differences
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-canonical-box-differences
+```
+
+Publication uses the already-acquired pinned browser and refuses an existing
+edition directory. The check is read-only and browser-free. A successful
+publication emits terminal authority only after all source, capture, raw,
+Native, qualification and freshness checks pass; registration is a separately
+reviewed seal change. The earlier `root-context-v4` publication remains a
+distinct immutable edition.
+
 Browser generation and source import require the shared generator's supported
 mutation host, Apple-Silicon macOS. Default layout builds remain independent of
 this tooling requirement.

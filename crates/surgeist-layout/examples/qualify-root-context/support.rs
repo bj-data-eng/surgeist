@@ -33,6 +33,8 @@ pub(super) enum QualificationMode {
     ElementScrollSizeDiagnostics,
     Publish,
     CheckPublished,
+    PublishCanonicalBoxes,
+    CheckPublishedCanonicalBoxes,
 }
 
 impl QualificationMode {
@@ -99,7 +101,10 @@ fn select_records(
                 }
                 QualificationMode::ElementScrollSizeDiagnostics => unreachable!("selected above"),
                 QualificationMode::Regular => {}
-                QualificationMode::Publish | QualificationMode::CheckPublished => {
+                QualificationMode::Publish
+                | QualificationMode::CheckPublished
+                | QualificationMode::PublishCanonicalBoxes
+                | QualificationMode::CheckPublishedCanonicalBoxes => {
                     return Err("durable modes require the complete inventory".into());
                 }
             }
@@ -437,7 +442,10 @@ pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> 
     let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
     if matches!(
         mode,
-        QualificationMode::Publish | QualificationMode::CheckPublished
+        QualificationMode::Publish
+            | QualificationMode::CheckPublished
+            | QualificationMode::PublishCanonicalBoxes
+            | QualificationMode::CheckPublishedCanonicalBoxes
     ) {
         if fixture.is_some() {
             return Err("durable modes require the complete inventory".into());
@@ -554,6 +562,9 @@ fn qualify(
         Validation {
             mode,
             filesystem_tampering: true,
+            lineage: SemanticLineage::Focused,
+            requirements: None,
+            terminal_cases: None,
         },
     )
 }
@@ -602,9 +613,31 @@ fn corpus_for_inventory(
     .with_expected_counts(expected))
 }
 
-struct Validation {
+#[derive(Clone, Copy)]
+enum SemanticLineage {
+    Focused,
+    Published(crate::parity_support::exact_differences::PublishedEdition),
+}
+struct Validation<'a> {
     mode: QualificationMode,
     filesystem_tampering: bool,
+    lineage: SemanticLineage,
+    requirements:
+        Option<&'a BTreeMap<String, crate::parity_support::capture_authority::CurrentRequirements>>,
+    terminal_cases: Option<&'a mut Vec<crate::parity_support::capture_authority::QualifiedCase>>,
+}
+struct SemanticCapture<'a> {
+    root: &'a Path,
+    inventory: &'a Inventory,
+    corpus: &'a BrowserCorpus,
+    report: &'a browser::BrowserGenerationReport,
+    lineage: SemanticLineage,
+    requirements:
+        Option<&'a BTreeMap<String, crate::parity_support::capture_authority::CurrentRequirements>>,
+}
+struct SemanticResult {
+    verdict: crate::parity_support::exact_differences::QualifiedComparison,
+    terminal: Option<crate::parity_support::capture_authority::QualifiedCase>,
 }
 
 fn validate_corpus(
@@ -613,7 +646,7 @@ fn validate_corpus(
     corpus: &BrowserCorpus,
     expected: BrowserReportSummary,
     report: &browser::BrowserGenerationReport,
-    validation: Validation,
+    mut validation: Validation<'_>,
 ) -> Result<()> {
     let mode = validation.mode;
     assert_eq!(*report.summary(), expected);
@@ -662,6 +695,15 @@ fn validate_corpus(
             .filter(|case| case.historical.is_some())
             .count()
     );
+    let mut terminal_cases = Vec::new();
+    let capture = SemanticCapture {
+        root,
+        inventory,
+        corpus,
+        report,
+        lineage: validation.lineage,
+        requirements: validation.requirements,
+    };
     let mut native_errors = Vec::new();
     let mut numeric = NumericDiagnostics::default();
     for artifact in report.generated() {
@@ -706,13 +748,18 @@ fn validate_corpus(
                 }
             }
         } else if case.semantic.is_some() {
-            match qualify_semantic_case(root, inventory, corpus, report, artifact, case, &golden) {
-                Ok(verdict) => eprintln!(
-                    "qualify-root-context: {} raw={:?}; qualified={:?}",
-                    case.case.id(),
-                    verdict.raw,
-                    verdict.qualified
-                ),
+            match qualify_semantic_case(&capture, artifact, case, &golden) {
+                Ok(result) => {
+                    eprintln!(
+                        "qualify-root-context: {} raw={:?}; qualified={:?}",
+                        case.case.id(),
+                        result.verdict.raw,
+                        result.verdict.qualified
+                    );
+                    if let Some(case) = result.terminal {
+                        terminal_cases.push(case);
+                    }
+                }
                 Err(error) => {
                     let diagnostic = format!("{}: {error}", case.case.id());
                     eprintln!(
@@ -785,7 +832,12 @@ fn validate_corpus(
         | QualificationMode::NumericDiagnostics
         | QualificationMode::ElementScrollSizeDiagnostics
         | QualificationMode::Publish
-        | QualificationMode::CheckPublished => {}
+        | QualificationMode::CheckPublished
+        | QualificationMode::PublishCanonicalBoxes
+        | QualificationMode::CheckPublishedCanonicalBoxes => {}
+    }
+    if let Some(output) = validation.terminal_cases.as_mut() {
+        **output = terminal_cases;
     }
     Ok(())
 }
@@ -979,7 +1031,9 @@ fn inventory(
         | QualificationMode::NumericDiagnostics
         | QualificationMode::ElementScrollSizeDiagnostics
         | QualificationMode::Publish
-        | QualificationMode::CheckPublished => None,
+        | QualificationMode::CheckPublished
+        | QualificationMode::PublishCanonicalBoxes
+        | QualificationMode::CheckPublishedCanonicalBoxes => None,
     };
     for (name, bytes) in INPUTS
         .iter()
@@ -1748,13 +1802,10 @@ fn semantic_identity_changed(component: impl Into<String>) -> Box<dyn Error + Se
 }
 
 fn semantic_record_digest(record: &Record) -> Result<Sha256Digest> {
-    let mut value = serde_json::to_value(record)?;
-    value
-        .as_object_mut()
-        .ok_or("record projection must be an object")?
-        .remove("semantic_specifications");
-    // The selected record's semantic basis is independent of its own spec hash.
-    Ok(Sha256Digest::from_bytes(&serde_json::to_vec(&value)?))
+    let digest = crate::parity_support::capture_authority::semantic_record_digest(
+        &serde_json::to_value(record)?,
+    )?;
+    Ok(serde_json::from_value(serde_json::Value::String(digest))?)
 }
 
 fn register_semantic_input(
@@ -1786,52 +1837,28 @@ fn register_semantic_input(
     Ok(bytes)
 }
 
-// Generator owns the report. This closed Layout projection consumes its actual
-// verified bytes without adding Generator getters or another capture protocol.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct SemanticCaptureMetadata {
-    schema_version: u8,
-    generator: String,
-    engine_version: String,
-    #[serde(rename = "host_executable_sha256")]
-    _host_executable_sha256: Sha256Digest,
-    browser_executable: RelativePath,
-    browser_executable_sha256: Sha256Digest,
-    browser_provenance: String,
-    #[serde(rename = "contract_sha256")]
-    _contract_sha256: Sha256Digest,
-    inputs: BTreeMap<RelativePath, Sha256Digest>,
-    source_imports: Vec<serde_json::Value>,
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct SemanticArtifact {
-    name: String,
-    source: RelativePath,
-    output: RelativePath,
-    variant: String,
-    source_sha256: Sha256Digest,
-    linked_resources: BTreeMap<RelativePath, Sha256Digest>,
-    // This internal job hash includes the registered semantic input itself and
-    // therefore cannot be pinned by that input without a hash cycle.
-    #[serde(rename = "job_sha256")]
-    _job_sha256: Sha256Digest,
-    output_sha256: Sha256Digest,
-}
+use crate::parity_support::capture_authority::{
+    BrowserSettingsWitness, CaptureMetadata, CapturedArtifact, CaseDescriptor, IdentityInputs,
+    PathDigest, QualifiedCase, identity_from_verified_inputs,
+};
 
 fn qualify_semantic_case(
-    root: &Path,
-    inventory: &Inventory,
-    corpus: &BrowserCorpus,
-    report: &browser::BrowserGenerationReport,
+    capture: &SemanticCapture<'_>,
     artifact: &browser::BrowserGeneratedArtifact,
     case: &ExpectedCase,
     golden: &crate::parity_support::Golden,
-) -> Result<crate::parity_support::exact_differences::QualifiedComparison> {
+) -> Result<SemanticResult> {
     use crate::parity_support::exact_differences::{
-        CaseIdentity, ExactDifferenceSpec, complete_captured_comparison,
+        CaptureAuthority, ExactDifferenceSpec, complete_captured_comparison,
     };
+    let SemanticCapture {
+        root,
+        inventory,
+        corpus,
+        report,
+        lineage,
+        requirements,
+    } = capture;
     let semantic = case
         .semantic
         .as_ref()
@@ -1855,27 +1882,32 @@ fn qualify_semantic_case(
         return Err(semantic_identity_changed("Native policy source"));
     }
     let report_value: serde_json::Value = serde_json::from_slice(&report.to_bytes()?)?;
-    let metadata: SemanticCaptureMetadata = serde_json::from_value(
+    let metadata: CaptureMetadata = serde_json::from_value(
         report_value
             .get("metadata")
             .ok_or("missing report metadata")?
             .clone(),
     )?;
-    if metadata.schema_version != 4 || metadata.inputs != inventory.expected_inputs {
+    if metadata.schema_version != 4 || metadata.inputs != string_inputs(&inventory.expected_inputs)
+    {
         return Err(semantic_identity_changed("capture metadata input census"));
     }
-    let captured: SemanticArtifact = serde_json::from_value(serde_json::to_value(artifact)?)?;
+    let captured: CapturedArtifact = serde_json::from_value(serde_json::to_value(artifact)?)?;
     if captured.name != case.case.id()
-        || captured.source != case.source
-        || captured.output != *case.case.output()
+        || captured.source != case.source.as_str()
+        || captured.output != case.case.output().as_str()
         || captured.variant != case.case.variant()
-        || inventory.expected_inputs.get(&case.source) != Some(&captured.source_sha256)
+        || inventory
+            .expected_inputs
+            .get(&case.source)
+            .map(Sha256Digest::as_str)
+            != Some(captured.source_sha256.as_str())
     {
         return Err(semantic_identity_changed("source/variant/capture record"));
     }
     publication::require_regular_input(root, artifact.output())?;
     let xml = fs::read(root.join(artifact.output().as_str()))?;
-    if Sha256Digest::from_bytes(&xml) != captured.output_sha256
+    if Sha256Digest::from_bytes(&xml).as_str() != captured.output_sha256
         || crate::parity_support::Golden::parse(std::str::from_utf8(&xml)?)? != *golden
     {
         return Err(semantic_identity_changed("actual capture XML"));
@@ -1892,21 +1924,14 @@ fn qualify_semantic_case(
             Ok(digest)
         })
         .transpose()?;
-    // Excluding only the declaration and registered semantic specs avoids a
-    // self hash cycle. The full selected semantic record is pinned separately;
-    // all source/helper/font/resource/profile/policy inputs remain exact.
-    let inputs: BTreeMap<_, _> = metadata
-        .inputs
+    let excluded_specs = inventory
+        .cases
         .iter()
-        .filter(|(path, _)| {
-            path.as_str() != "corpus.toml"
-                && !inventory.cases.iter().any(|case| {
-                    case.semantic
-                        .as_ref()
-                        .is_some_and(|semantic| &semantic.reference.path == *path)
-                })
+        .filter_map(|case| {
+            case.semantic
+                .as_ref()
+                .map(|s| s.reference.path.as_str().to_owned())
         })
-        .map(|(path, digest)| (path.as_str(), digest.as_str()))
         .collect();
     let observation = if golden.has_element_scroll_sizes() {
         BoxObservationRequest::ElementScrollSizes
@@ -1917,26 +1942,96 @@ fn qualify_semantic_case(
         BoxObservationRequest::Geometry => "geometry",
         BoxObservationRequest::ElementScrollSizes => "element-scroll-sizes",
     };
-    let profile = Sha256Digest::from_bytes(&serde_json::to_vec(&(
-        "canonical-no-text-boxes",
-        corpus.browser(),
-        semantic.record_sha256.as_str(),
-        case.case.variant(),
-        request_name,
-        observation.input_bytes().map(Sha256Digest::from_bytes),
-    ))?);
-    let identity = CaseIdentity::from_verified_projection(serde_json::json!({
-        "source":case.source.as_str(),"source_sha256":captured.source_sha256.as_str(),"variant":case.case.variant(),
-        "historical_sha256":historical.as_ref().map(Sha256Digest::as_str),"capture_sha256":captured.output_sha256.as_str(),
-        "record_sha256":semantic.record_sha256.as_str(),"generator":metadata.generator,"engine_version":metadata.engine_version,
-        "browser_executable":metadata.browser_executable.as_str(),
-        "browser_executable_sha256":metadata.browser_executable_sha256.as_str(),"browser_provenance":metadata.browser_provenance,
-        "profile_sha256":profile.as_str(),"source_imports_sha256":Sha256Digest::from_bytes(&serde_json::to_vec(&metadata.source_imports)?).as_str(),
-        "inputs":inputs,"linked_resources":captured.linked_resources,"font_demand":"none","policy_source_sha256":policy.as_str()
-    }))?;
-    let resolved = spec.resolve_against(&identity, golden)?;
+    let observation_sha = observation.input_bytes().map(Sha256Digest::from_bytes);
+    let settings =
+        BrowserSettingsWitness::from_official_json(&serde_json::to_vec(corpus.browser())?)?;
+    let descriptor = CaseDescriptor {
+        name: case.case.id().to_owned(),
+        source: case.source.as_str().to_owned(),
+        variant: case.case.variant().to_owned(),
+        output: PathDigest {
+            path: case.case.output().as_str().to_owned(),
+            sha256: captured.output_sha256.clone(),
+        },
+        record_sha256: semantic.record_sha256.as_str().to_owned(),
+    };
+    let full_inputs = string_inputs(&inventory.expected_inputs);
+    let xml_sha = Sha256Digest::from_bytes(&xml);
+    let verified = identity_from_verified_inputs(IdentityInputs {
+        metadata: &metadata,
+        artifact: &captured,
+        case: &descriptor,
+        full_inputs: &full_inputs,
+        excluded_specs: &excluded_specs,
+        actual_xml_sha256: xml_sha.as_str(),
+        historical_sha256: historical.as_ref().map(Sha256Digest::as_str),
+        policy_sha256: policy.as_str(),
+        browser_settings: &settings,
+        observation_request: request_name,
+        observation_input_sha256: observation_sha.as_ref().map(Sha256Digest::as_str),
+    })?;
+    let authority = match lineage {
+        SemanticLineage::Focused => CaptureAuthority::Focused(verified.identity()),
+        SemanticLineage::Published(edition) => CaptureAuthority::Published {
+            edition: *edition,
+            identity: verified.identity(),
+        },
+    };
+    let current = match lineage {
+        SemanticLineage::Focused => None,
+        SemanticLineage::Published(edition) => {
+            let selected = crate::parity_support::capture_authority::CaseSelection {
+                name: descriptor.name.clone(),
+                source: descriptor.source.clone(),
+                source_sha256: captured.source_sha256.clone(),
+                variant: descriptor.variant.clone(),
+                output: descriptor.output.path.clone(),
+                record_sha256: descriptor.record_sha256.clone(),
+                historical_sha256: historical.as_ref().map(|s| s.as_str().to_owned()),
+            };
+            let expected = spec.prebind_current(*edition, &selected)?;
+            if requirements.and_then(|map| map.get(case.case.id())) != Some(&expected) {
+                return Err("prebound current representative changed during execution".into());
+            }
+            Some(expected)
+        }
+    };
+    let resolved = spec.resolve_against(authority, golden)?;
     let completed = complete_captured_comparison(golden, &resolved)?;
-    resolved.qualify(&completed).map_err(Into::into)
+    for field in completed.raw_differences() {
+        eprintln!(
+            "qualify-root-context: {} raw difference: {field:?}",
+            case.case.id()
+        );
+    }
+    let verdict = resolved.qualify(&completed)?;
+    let terminal = current.map(|requirements| QualifiedCase {
+        case: descriptor,
+        spec: PathDigest {
+            path: reference.path.as_str().to_owned(),
+            sha256: reference.sha256.as_str().to_owned(),
+        },
+        policy: PathDigest {
+            path: policy_path.as_str().to_owned(),
+            sha256: policy.as_str().to_owned(),
+        },
+        historical: case
+            .historical
+            .as_ref()
+            .zip(historical.as_ref())
+            .map(|(path, sha)| PathDigest {
+                path: path.as_str().to_owned(),
+                sha256: sha.as_str().to_owned(),
+            }),
+        requirements,
+        identity: verified.projection().clone(),
+    });
+    Ok(SemanticResult { verdict, terminal })
+}
+fn string_inputs(map: &BTreeMap<RelativePath, Sha256Digest>) -> BTreeMap<String, String> {
+    map.iter()
+        .map(|(path, sha)| (path.as_str().to_owned(), sha.as_str().to_owned()))
+        .collect()
 }
 
 #[cfg(test)]

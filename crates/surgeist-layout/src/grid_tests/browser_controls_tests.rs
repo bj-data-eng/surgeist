@@ -13,6 +13,31 @@ mod fri06_c12_t08_browser_front_door {
     ));
 }
 
+use fri06_c12_t08_browser_front_door as support;
+#[path = "../../tests/layout/browser_parity/portable_qualification.rs"]
+mod portable_qualification;
+
+#[test]
+fn registered_current_box_edition_qualifies_without_generator() {
+    let edition =
+        portable_qualification::admit_registered(std::path::Path::new(env!("CARGO_MANIFEST_DIR")))
+            .expect("required current edition must authenticate");
+    let selected = edition.outputs().map(str::to_owned).collect();
+    let run = edition
+        .execute_selected(&selected)
+        .expect("complete registered selection");
+    for case in &run.cases {
+        eprintln!(
+            "current/{} raw={:?}; qualified={:?}",
+            case.output, case.raw, case.qualified
+        );
+    }
+    assert!(
+        run.current_coverage_complete(),
+        "registered current box requirements must qualify"
+    );
+}
+
 #[test]
 fn captured_root_context_edition_matches_native_geometry_without_generator() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

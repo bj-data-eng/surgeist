@@ -2,6 +2,8 @@ use std::any::Any;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
 
+#[path = "browser_parity/portable_qualification.rs"]
+mod portable_qualification;
 #[path = "browser_parity/support.rs"]
 mod support;
 
@@ -2149,6 +2151,28 @@ fn parity_filter_must_match_at_least_one_fixture() {
     assert!(error.contains("matched no browser parity XML fixtures"));
 }
 
+fn parity_path_matches(path: &Path, filter: &str) -> bool {
+    path.to_string_lossy()
+        .replace('\\', "/")
+        .contains(&filter.replace('\\', "/"))
+}
+
+#[test]
+fn parity_filter_matches_native_and_portable_path_separators() {
+    for path in [
+        "captured/canonical-box-differences/xml/flex/case.xml",
+        r"captured\canonical-box-differences\xml\flex\case.xml",
+    ] {
+        for filter in [
+            "captured/canonical-box-differences",
+            r"captured\canonical-box-differences",
+        ] {
+            assert!(parity_path_matches(Path::new(path), filter));
+        }
+        assert!(!parity_path_matches(Path::new(path), "xml/grid/"));
+    }
+}
+
 fn filtered_parity_fixtures(
     fixtures: Vec<PathBuf>,
     filter: Option<&str>,
@@ -2157,7 +2181,7 @@ fn filtered_parity_fixtures(
         .into_iter()
         .filter(|fixture| {
             filter
-                .map(|filter| fixture.to_string_lossy().contains(filter))
+                .map(|filter| parity_path_matches(fixture, filter))
                 .unwrap_or(true)
         })
         .collect::<Vec<_>>();
@@ -2206,6 +2230,205 @@ fn original_br_metric_fixtures_complete_ordinary_checks_before_font_band_refusal
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
+fn registered_current_edition() -> Result<portable_qualification::AdmittedEdition, String> {
+    portable_qualification::admit_registered(Path::new(env!("CARGO_MANIFEST_DIR")))
+        .map_err(|error| error.to_string())
+}
+
+fn selected_current_outputs(
+    edition: &portable_qualification::AdmittedEdition,
+    filter: Option<&str>,
+) -> BTreeSet<String> {
+    edition
+        .outputs()
+        .filter(|output| {
+            let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join(support::capture_authority::ARTIFACT_ROOT)
+                .join(output);
+            filter.is_none_or(|filter| parity_path_matches(&path, filter))
+        })
+        .map(str::to_owned)
+        .collect()
+}
+
+struct ParitySelection {
+    originals: Vec<PathBuf>,
+    current: BTreeSet<String>,
+}
+
+fn select_parity_inventory(
+    originals: Vec<PathBuf>,
+    edition: Option<&portable_qualification::AdmittedEdition>,
+    filter: Option<&str>,
+) -> Result<ParitySelection, String> {
+    let current = edition
+        .map(|edition| selected_current_outputs(edition, filter))
+        .unwrap_or_default();
+    let originals = match filtered_parity_fixtures(originals, filter) {
+        Ok(originals) => originals,
+        Err(_) if !current.is_empty() => Vec::new(),
+        Err(error) => return Err(error),
+    };
+    Ok(ParitySelection { originals, current })
+}
+
+#[test]
+fn combined_inventory_filter_selects_current_edition_without_a_historical_match() {
+    let edition = registered_current_edition().expect("required edition must authenticate");
+    let selected = select_parity_inventory(
+        support::fixture_files("xml").expect("original fixtures"),
+        Some(&edition),
+        Some("captured/canonical-box-differences"),
+    )
+    .expect("current-edition match must satisfy combined filter");
+    assert!(selected.originals.is_empty());
+    let run = edition
+        .execute_selected(&selected.current)
+        .expect("current cases execute");
+    assert!(run.current_coverage_complete());
+    assert!(
+        run.cases
+            .iter()
+            .all(|case| case.raw.as_ref().is_ok_and(|fields| fields.len() == 12))
+    );
+}
+
+#[test]
+fn combined_inventory_filter_preserves_original_only_execution_without_current_coverage() {
+    let edition = registered_current_edition().expect("required edition must authenticate");
+    let selected = select_parity_inventory(
+        support::fixture_files("xml").expect("original fixtures"),
+        Some(&edition),
+        Some("xml/block/block_basic__border_box_ltr.xml"),
+    )
+    .expect("original-only match must satisfy combined filter");
+    assert!(selected.current.is_empty());
+    assert_eq!(selected.originals.len(), 1);
+    let golden = support::Golden::parse_file(&selected.originals[0]).expect("original XML");
+    let error = support::assert_surgeist_matches(&golden)
+        .expect_err("historical authority remains missing");
+    assert!(error.to_string().contains("MissingRootContextAuthority"));
+    let run = edition
+        .execute_selected(&selected.current)
+        .expect("empty current selection");
+    assert!(!run.current_coverage_complete());
+}
+
+#[test]
+fn combined_inventory_filter_rejects_a_match_in_neither_edition() {
+    let edition = registered_current_edition().expect("required edition must authenticate");
+    let result = select_parity_inventory(
+        support::fixture_files("xml").expect("original fixtures"),
+        Some(&edition),
+        Some("no-such-captured-or-historical-fixture"),
+    );
+    let Err(error) = result else {
+        panic!("unmatched combined filter must fail")
+    };
+    assert!(error.contains("matched no browser parity XML fixtures"));
+}
+
+#[test]
+fn combined_inventory_filter_executes_equal_named_original_and_current_cases_separately() {
+    let edition = registered_current_edition().expect("required edition must authenticate");
+    let selected = select_parity_inventory(
+        support::fixture_files("xml").expect("original fixtures"),
+        Some(&edition),
+        Some("fri07_collapsed_strut_wrapping"),
+    )
+    .expect("same source exists in both editions");
+    assert_eq!(selected.originals.len(), 4);
+    for path in &selected.originals {
+        let golden = support::Golden::parse_file(path).expect("original XML");
+        let error = support::assert_surgeist_matches(&golden).expect_err("historical raw refusal");
+        assert!(error.to_string().contains("MissingRootContextAuthority"));
+    }
+    let run = edition
+        .execute_selected(&selected.current)
+        .expect("current cases execute");
+    assert!(run.current_coverage_complete());
+    assert!(
+        run.cases
+            .iter()
+            .all(|case| case.raw.as_ref().is_ok_and(|fields| fields.len() == 12))
+    );
+}
+
+#[test]
+fn current_edition_path_filter_executes_all_registered_cases() {
+    let edition = registered_current_edition().expect("required edition must authenticate");
+    let selected = selected_current_outputs(&edition, Some("captured/canonical-box-differences"));
+    let run = edition
+        .execute_selected(&selected)
+        .expect("registered selection must execute");
+    assert!(
+        run.current_coverage_complete(),
+        "edition-path filter skipped required current execution: {} of {} cases",
+        run.cases.len(),
+        run.declared_cases
+    );
+    for case in &run.cases {
+        assert_eq!(
+            case.raw.as_ref().expect("complete raw comparison").len(),
+            12
+        );
+        assert!(
+            case.qualified.is_ok(),
+            "{} must qualify: {:?}",
+            case.output,
+            case.qualified
+        );
+    }
+}
+
+#[test]
+fn runs_registered_current_browser_parity_qualification() {
+    let admitted =
+        registered_current_edition().expect("required current edition must authenticate");
+    let filter = std::env::var("SURGEIST_PARITY_FILTER").ok();
+    let selection = select_parity_inventory(
+        support::fixture_files("xml").expect("original fixtures must remain discoverable"),
+        Some(&admitted),
+        filter.as_deref(),
+    )
+    .unwrap_or_else(|error| panic!("{error}"));
+    let selected = selection.current;
+    if selected.is_empty() {
+        // An original-only filter does not claim coverage of the current edition.
+        assert!(
+            filter.is_some(),
+            "registered current edition must not be empty"
+        );
+        eprintln!("filter selects historical raw fixtures only; no current coverage claim");
+        return;
+    }
+    let run = admitted
+        .execute_selected(&selected)
+        .expect("selection must belong to edition");
+    let mut failures = Vec::new();
+    for case in &run.cases {
+        eprintln!(
+            "current/{} raw={:?}; qualified={:?}",
+            case.output, case.raw, case.qualified
+        );
+        if let Err(error) = &case.qualified {
+            failures.push(format!("current/{}: {error}", case.output));
+        }
+    }
+    if let Some(error) = &run.freshness_error {
+        failures.push(error.clone());
+    }
+    assert!(run.selected_cases_passed(), "{}", failures.join("\n"));
+    if filter.is_none() {
+        assert!(
+            run.current_coverage_complete(),
+            "current declared observable coverage is incomplete"
+        );
+    } else {
+        eprintln!("filtered current qualification; no whole-edition coverage claim");
+    }
+}
+
 #[test]
 fn runs_all_checked_in_browser_parity_xml() {
     let fixtures = support::fixture_files("xml").expect("fixtures should load");
@@ -2218,9 +2441,10 @@ fn runs_all_checked_in_browser_parity_xml() {
     let mut by_suite = BTreeMap::<String, usize>::new();
     let mut by_kind = BTreeMap::<String, usize>::new();
     let filter = std::env::var("SURGEIST_PARITY_FILTER").ok();
-    let fixtures = filtered_parity_fixtures(fixtures, filter.as_deref())
+    let edition = registered_current_edition();
+    let selection = select_parity_inventory(fixtures, edition.as_ref().ok(), filter.as_deref())
         .unwrap_or_else(|error| panic!("{error}"));
-    for fixture in fixtures {
+    for fixture in selection.originals {
         let golden = support::Golden::parse_file(&fixture).expect("fixture should parse");
         if let Err(error) = support::assert_surgeist_matches(&golden) {
             let error = error.to_string();
@@ -2230,6 +2454,31 @@ fn runs_all_checked_in_browser_parity_xml() {
                 .or_default() += 1;
             failures.push(format!("{} failed: {error}", fixture.display()));
         }
+    }
+
+    match edition {
+        Err(error) => failures.push(format!("current edition admission failed: {error}")),
+        Ok(admitted) => match admitted.execute_selected(&selection.current) {
+            Err(error) => failures.push(format!("current edition execution failed: {error}")),
+            Ok(run) => {
+                for case in run.cases {
+                    match case.raw {
+                        Ok(differences) if differences.is_empty() => {}
+                        Ok(differences) => failures.push(format!(
+                            "current/{} raw differences:\n{}",
+                            case.output,
+                            differences.join("\n")
+                        )),
+                        Err(error) => {
+                            failures.push(format!("current/{} raw failure: {error}", case.output))
+                        }
+                    }
+                }
+                if let Some(error) = run.freshness_error {
+                    failures.push(error);
+                }
+            }
+        },
     }
 
     if !failures.is_empty() {

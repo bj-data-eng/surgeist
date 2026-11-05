@@ -11,6 +11,9 @@ pub(crate) enum QualificationError {
     MalformedDeclaration {
         reason: String,
     },
+    IncompleteRepresentation {
+        key: String,
+    },
     IncompleteNativeOracle {
         key: String,
     },
@@ -253,7 +256,7 @@ struct NativeOracle {
 // The two domains deliberately have distinct field tags and number types.
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(transparent)]
-pub(super) struct ComparedField(Field);
+pub(crate) struct ComparedField(Field);
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(tag = "domain", rename_all = "kebab-case", deny_unknown_fields)]
 enum Field {
@@ -389,11 +392,52 @@ struct Policy {
     source: String,
     source_sha256: String,
 }
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd)]
+#[serde(rename_all = "kebab-case")]
+enum CaptureLineage {
+    Focused,
+    Published,
+}
+impl CaptureLineage {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Focused => "focused",
+            Self::Published => "published",
+        }
+    }
+}
+
+/// The fixed Layout-owned edition association; no caller-supplied edition text.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum PublishedEdition {
+    CanonicalBoxDifferences,
+}
+
+/// Select one capture lineage before comparing any observation or Native output.
+/// Published authority always carries the explicit fixed edition association.
+pub(crate) enum CaptureAuthority<'a> {
+    Focused(&'a CaseIdentity),
+    Published {
+        edition: PublishedEdition,
+        identity: &'a CaseIdentity,
+    },
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Representation {
+    #[serde(deserialize_with = "explicit_nullable")]
+    published_edition: Option<PublishedEdition>,
+    current: Option<super::capture_authority::CurrentRequirements>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawSpec {
     profile: Profile,
-    identity: CaseIdentity,
+    identities: BTreeMap<CaptureLineage, CaseIdentity>,
+    representation: Representation,
     policy: Policy,
     reason: String,
     native: NativeOracle,
@@ -412,6 +456,11 @@ pub(crate) struct ResolvedSpec<'a> {
 pub(crate) struct CompletedComparison {
     nodes: Vec<NativeNode>,
     observations: Vec<ComparedField>,
+}
+impl CompletedComparison {
+    pub(crate) fn raw_differences(&self) -> impl Iterator<Item = &ComparedField> {
+        self.observations.iter().filter(|field| field.differs())
+    }
 }
 #[derive(Debug, PartialEq)]
 pub(crate) enum RawVerdict {
@@ -511,6 +560,51 @@ impl CaseIdentity {
         );
         None
     }
+    fn shared_basis_changed_component(&self, other: &Self) -> Option<String> {
+        macro_rules! fields { ($($field:ident),+ $(,)?) => { $(if self.$field != other.$field { return Some(stringify!($field).to_owned()); })+ }; }
+        fields!(
+            source,
+            source_sha256,
+            variant,
+            record_sha256,
+            historical_sha256,
+            font_demand,
+            policy_source_sha256
+        );
+        for (path, digest) in self.inputs.iter().chain(&self.linked_resources) {
+            for map in [&other.inputs, &other.linked_resources] {
+                if map.get(path).is_some_and(|other| other != digest) {
+                    return Some(format!("resource:{path}"));
+                }
+            }
+        }
+        None
+    }
+    fn validate_policy_inputs(&self, policy: &Policy) -> Result<()> {
+        // The verified caller supplies the complete capture census. Parsing
+        // rejects inconsistent authored entries without inventing absent ones;
+        // exact runtime map equality remains mandatory at resolution.
+        for (path, expected) in [
+            (&self.source, &self.source_sha256),
+            (&policy.source, &policy.source_sha256),
+        ] {
+            for map in [&self.inputs, &self.linked_resources] {
+                if map.get(path).is_some_and(|actual| actual != expected) {
+                    return Err(malformed(format!(
+                        "dedicated identity input disagrees: {path}"
+                    )));
+                }
+            }
+        }
+        for (path, digest) in &self.linked_resources {
+            if self.inputs.get(path).is_some_and(|input| input != digest) {
+                return Err(malformed(format!(
+                    "resource identity disagrees between maps: {path}"
+                )));
+            }
+        }
+        Ok(())
+    }
     fn validate(&self) -> Result<()> {
         for value in [
             &self.source,
@@ -555,7 +649,6 @@ impl ExactDifferenceSpec {
         let value = prepared_source::unique_json(raw).map_err(|e| malformed(e.to_string()))?;
         let spec: RawSpec = serde_json::from_value(value).map_err(|e| malformed(e.to_string()))?;
         let Profile::CanonicalNoTextBoxes = &spec.profile;
-        spec.identity.validate()?;
         for value in [
             &spec.policy.id,
             &spec.policy.edition,
@@ -567,8 +660,28 @@ impl ExactDifferenceSpec {
         }
         relative_path(&spec.policy.source)?;
         digest(&spec.policy.source_sha256)?;
-        if spec.policy.source_sha256 != spec.identity.policy_source_sha256 {
-            return Err(malformed("policy source identity disagrees"));
+        let Some((_, basis)) = spec.identities.first_key_value() else {
+            return Err(malformed("capture identities must be nonempty"));
+        };
+        for (lineage, identity) in &spec.identities {
+            identity.validate()?;
+            identity.validate_policy_inputs(&spec.policy)?;
+            if spec.policy.source_sha256 != identity.policy_source_sha256 {
+                return Err(malformed("policy source identity disagrees"));
+            }
+            if let Some(component) = basis.shared_basis_changed_component(identity) {
+                return Err(malformed(format!(
+                    "capture lineages disagree on shared semantic basis: {component}"
+                )));
+            }
+            if *lineage == CaptureLineage::Published
+                && spec.representation.published_edition
+                    != Some(PublishedEdition::CanonicalBoxDifferences)
+            {
+                return Err(malformed(
+                    "published identity requires canonical-box-differences edition association",
+                ));
+            }
         }
         if spec.native.nodes.is_empty() || spec.differences.is_empty() {
             return Err(malformed(
@@ -606,15 +719,155 @@ impl ExactDifferenceSpec {
     pub(crate) fn policy_source(&self) -> (&str, &str) {
         (&self.0.policy.source, &self.0.policy.source_sha256)
     }
+    pub(crate) fn require_published_context(&self, edition: PublishedEdition) -> Result<()> {
+        if self.0.representation.published_edition != Some(edition) {
+            return Err(QualificationError::IdentityChanged {
+                component: "published_edition".to_owned(),
+            });
+        }
+        if !self.0.identities.contains_key(&CaptureLineage::Published) {
+            return Err(QualificationError::IdentityChanged {
+                component: "capture_lineage.published".to_owned(),
+            });
+        }
+        if self.0.representation.current.is_none() {
+            return Err(QualificationError::IncompleteRepresentation {
+                key: "representation.current".to_owned(),
+            });
+        }
+        Ok(())
+    }
+    /// Freeze the complete current canonical requirement before execution. Parse
+    /// may retain an unresolved declaration; it never manufactures this binding.
+    pub(crate) fn prebind_current(
+        &self,
+        edition: PublishedEdition,
+        selected: &super::capture_authority::CaseSelection,
+    ) -> Result<super::capture_authority::CurrentRequirements> {
+        use super::capture_authority::{CanonicalField, Selector};
+        self.require_published_context(edition)?;
+        if self.0.representation.published_edition != Some(edition) {
+            return Err(QualificationError::IdentityChanged {
+                component: "published_edition".to_owned(),
+            });
+        }
+        let identity = self
+            .0
+            .identities
+            .get(&CaptureLineage::Published)
+            .ok_or_else(|| QualificationError::IdentityChanged {
+                component: "capture_lineage.published".to_owned(),
+            })?;
+        if identity.source != selected.source
+            || identity.source_sha256 != selected.source_sha256
+            || identity.variant != selected.variant
+            || identity.record_sha256 != selected.record_sha256
+            || identity.historical_sha256 != selected.historical_sha256
+        {
+            return Err(QualificationError::IdentityChanged {
+                component: "current representative source/variant/history/record".to_owned(),
+            });
+        }
+        let required = self.0.representation.current.as_ref().ok_or_else(|| {
+            QualificationError::IncompleteRepresentation {
+                key: "representation.current".to_owned(),
+            }
+        })?;
+        relative_path(&required.output)?;
+        if required.case_id != selected.name || required.output != selected.output {
+            return Err(QualificationError::IncompleteRepresentation {
+                key: "current representative case/output".to_owned(),
+            });
+        }
+        let mut nodes = self
+            .0
+            .native
+            .nodes
+            .iter()
+            .map(|n| n.path.clone())
+            .collect::<Vec<_>>();
+        nodes.sort();
+        if self.0.native.nodes.iter().any(|n| {
+            !matches!(n.unrounded, Packet::Present { .. })
+                || !matches!(n.final_output, Packet::Present { .. })
+        }) {
+            return Err(QualificationError::IncompleteNativeOracle {
+                key: "Published canonical boxes require both present packet channels".to_owned(),
+            });
+        }
+        let selectors = nodes
+            .iter()
+            .flat_map(|path| {
+                [
+                    CanonicalField::X,
+                    CanonicalField::Y,
+                    CanonicalField::Width,
+                    CanonicalField::Height,
+                ]
+                .map(|field| Selector {
+                    path: path.clone(),
+                    field,
+                })
+            })
+            .collect::<Vec<_>>();
+        if required.nodes != nodes
+            || required.unrounded_packets != nodes
+            || required.final_packets != nodes
+            || required.selectors != selectors
+        {
+            return Err(QualificationError::IncompleteRepresentation {
+                key: "complete canonical source/selector/both-packet census".to_owned(),
+            });
+        }
+        Ok(required.clone())
+    }
     pub(crate) fn resolve_against<'a>(
         &'a self,
-        identity: &CaseIdentity,
+        authority: CaptureAuthority<'_>,
         golden: &Golden,
     ) -> Result<ResolvedSpec<'a>> {
-        if let Some(component) = self.0.identity.changed_component(identity) {
+        let (lineage, identity, edition) = match authority {
+            CaptureAuthority::Focused(identity) => (CaptureLineage::Focused, identity, None),
+            CaptureAuthority::Published { edition, identity } => {
+                (CaptureLineage::Published, identity, Some(edition))
+            }
+        };
+        let expected =
+            self.0
+                .identities
+                .get(&lineage)
+                .ok_or_else(|| QualificationError::IdentityChanged {
+                    component: format!("capture_lineage.{}", lineage.as_str()),
+                })?;
+        if let Some(edition) = edition
+            && self.0.representation.published_edition != Some(edition)
+        {
+            return Err(QualificationError::IdentityChanged {
+                component: "published_edition".to_owned(),
+            });
+        }
+        if let Some(component) = expected.changed_component(identity) {
             return Err(QualificationError::IdentityChanged { component });
         }
         let source = source_census(&golden.root, &golden.expectations)?;
+        if let Some(edition) = edition {
+            let current = self.0.representation.current.as_ref().ok_or_else(|| {
+                QualificationError::IncompleteRepresentation {
+                    key: "representation.current".to_owned(),
+                }
+            })?;
+            let selected = super::capture_authority::CaseSelection {
+                name: current.case_id.clone(),
+                output: current.output.clone(),
+                source: identity.source.clone(),
+                source_sha256: identity.source_sha256.clone(),
+                variant: identity.variant.clone(),
+                record_sha256: identity.record_sha256.clone(),
+                historical_sha256: identity.historical_sha256.clone(),
+            };
+            let required = self.prebind_current(edition, &selected)?;
+            verify_current_requirements(&required, golden, &source)?;
+        }
         let expected = unique(&self.0.native.nodes, |n| n.path.clone())?;
         if expected.len() != source.len() {
             return Err(QualificationError::IncompleteNativeOracle {
@@ -638,9 +891,75 @@ impl ExactDifferenceSpec {
     }
 }
 
+fn verify_current_requirements(
+    required: &super::capture_authority::CurrentRequirements,
+    golden: &Golden,
+    source: &[(String, Vec<String>)],
+) -> Result<()> {
+    use super::capture_authority::{CanonicalField, Selector};
+    if !matches!(
+        &golden.viewport.root_context,
+        RootContext::Qualified(root_context::QualifiedRootContext::AbsoluteRootLocal { .. })
+    ) || golden.has_element_scroll_sizes()
+    {
+        return Err(QualificationError::IncompleteRepresentation {
+            key: "current RootBorderLocal Geometry frame/domain".to_owned(),
+        });
+    }
+    fn walk(expected: &Expectation, path: String, fields: &mut Vec<Selector>) -> Result<()> {
+        if expected.scroll_size.is_some()
+            || expected.x.is_none()
+            || expected.y.is_none()
+            || expected.width.is_none()
+            || expected.height.is_none()
+        {
+            return Err(QualificationError::IncompleteRepresentation {
+                key: format!("{path}:complete current canonical box observations"),
+            });
+        }
+        fields.extend(
+            [
+                CanonicalField::X,
+                CanonicalField::Y,
+                CanonicalField::Width,
+                CanonicalField::Height,
+            ]
+            .map(|field| Selector {
+                path: path.clone(),
+                field,
+            }),
+        );
+        for (index, child) in expected.children.iter().enumerate() {
+            walk(
+                child,
+                if path == "/" {
+                    format!("/{index}")
+                } else {
+                    format!("{path}/{index}")
+                },
+                fields,
+            )?;
+        }
+        Ok(())
+    }
+    let mut fields = Vec::new();
+    walk(&golden.expectations, "/".to_owned(), &mut fields)?;
+    fields.sort();
+    let mut nodes = source.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>();
+    nodes.sort();
+    if fields != required.selectors || nodes != required.nodes {
+        return Err(QualificationError::IncompleteRepresentation {
+            key: "actual current requested source/selector census".to_owned(),
+        });
+    }
+    Ok(())
+}
+
 // A nullable input is still a required authored field. Serde must not turn a
 // missing key into an invented absence; the owning type establishes the schema.
-fn explicit_nullable<'de, D, T>(deserializer: D) -> std::result::Result<Option<T>, D::Error>
+pub(crate) fn explicit_nullable<'de, D, T>(
+    deserializer: D,
+) -> std::result::Result<Option<T>, D::Error>
 where
     D: serde::Deserializer<'de>,
     T: Deserialize<'de>,

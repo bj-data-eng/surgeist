@@ -1,0 +1,555 @@
+//! Admission and execution of an immutable, registered current corpus edition.
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
+use std::path::{Component, Path, PathBuf};
+
+use serde::Deserialize;
+use serde_json::Value;
+
+use super::support;
+use support::capture_authority::{
+    self as authority, CaptureMetadata, CapturedArtifact, CaseSelection, IdentityInputs,
+    PathDigest, Qualification, VerifiedIdentity, identity_from_verified_inputs,
+    semantic_record_digest, sha256,
+};
+use support::exact_differences::{
+    CaptureAuthority, ExactDifferenceSpec, PublishedEdition, QualificationError,
+    QualifiedComparison, complete_captured_comparison,
+};
+
+type Result<T> = std::result::Result<T, QualificationError>;
+
+pub(super) struct Registration<'a> {
+    pub(super) terminal_sha256: &'a str,
+}
+
+fn changed(component: impl Into<String>) -> QualificationError {
+    QualificationError::IdentityChanged {
+        component: component.into(),
+    }
+}
+
+fn malformed(reason: impl Into<String>) -> QualificationError {
+    QualificationError::MalformedDeclaration {
+        reason: reason.into(),
+    }
+}
+
+fn regular_file(root: &Path, relative: &str) -> Result<PathBuf> {
+    if relative.is_empty() || relative.contains(['\\', '\0']) {
+        return Err(malformed("invalid artifact-relative path"));
+    }
+    let components: Vec<_> = Path::new(relative).components().collect();
+    if components.is_empty()
+        || components
+            .iter()
+            .any(|component| !matches!(component, Component::Normal(_)))
+        || relative
+            .split('/')
+            .any(|part| part.is_empty() || matches!(part, "." | ".."))
+    {
+        return Err(malformed(format!(
+            "invalid artifact-relative path: {relative}"
+        )));
+    }
+    let mut path = root.to_path_buf();
+    for (index, component) in components.iter().enumerate() {
+        path.push(component.as_os_str());
+        let kind = fs::symlink_metadata(&path)
+            .map_err(|error| changed(format!("{relative}: {error}")))?
+            .file_type();
+        let expected_kind = if index + 1 == components.len() {
+            kind.is_file()
+        } else {
+            kind.is_dir()
+        };
+        if kind.is_symlink() || !expected_kind {
+            return Err(changed(format!("non-regular artifact path: {relative}")));
+        }
+    }
+    Ok(path)
+}
+
+fn read_pinned(root: &Path, entry: &PathDigest) -> Result<Vec<u8>> {
+    let bytes = fs::read(regular_file(root, &entry.path)?)
+        .map_err(|error| changed(format!("{}: {error}", entry.path)))?;
+    if sha256(&bytes) != entry.sha256 {
+        return Err(changed(format!("artifact bytes: {}", entry.path)));
+    }
+    Ok(bytes)
+}
+
+fn parse_json<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T> {
+    let raw = std::str::from_utf8(bytes).map_err(|error| malformed(error.to_string()))?;
+    let value = authority::unique_json(raw)?;
+    serde_json::from_value(value).map_err(|error| malformed(error.to_string()))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReportSummary {
+    generated: usize,
+    unsupported: usize,
+    expected_fail: usize,
+    quarantined: usize,
+    failed_to_generate: usize,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Report {
+    metadata: CaptureMetadata,
+    #[serde(deserialize_with = "support::exact_differences::explicit_nullable")]
+    filter: Option<String>,
+    summary: ReportSummary,
+    generated: Vec<CapturedArtifact>,
+    unsupported: Vec<Value>,
+    expected_fail: Vec<Value>,
+    quarantined: Vec<Value>,
+    failed_to_generate: Vec<Value>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Ownership {
+    schema_version: u8,
+    artifacts: BTreeMap<String, String>,
+}
+
+fn static_files(root: &Path) -> Result<BTreeSet<String>> {
+    fn walk(root: &Path, directory: &Path, files: &mut BTreeSet<String>) -> Result<()> {
+        let entries = fs::read_dir(directory).map_err(|error| changed(error.to_string()))?;
+        for entry in entries {
+            let entry = entry.map_err(|error| changed(error.to_string()))?;
+            let kind = entry
+                .file_type()
+                .map_err(|error| changed(error.to_string()))?;
+            let path = entry.path();
+            if kind.is_symlink() {
+                return Err(changed(format!("linked artifact: {}", path.display())));
+            }
+            if directory == root && entry.file_name() == ".surgeist-generator" {
+                if !kind.is_dir() {
+                    return Err(changed("invalid runtime control namespace"));
+                }
+                continue;
+            }
+            if kind.is_dir() {
+                walk(root, &path, files)?;
+            } else if kind.is_file() {
+                let relative = path
+                    .strip_prefix(root)
+                    .map_err(|error| malformed(error.to_string()))?;
+                let relative = relative
+                    .to_str()
+                    .ok_or_else(|| malformed("non-UTF8 artifact path"))?;
+                files.insert(relative.replace(std::path::MAIN_SEPARATOR, "/"));
+            } else {
+                return Err(changed("non-regular artifact entry"));
+            }
+        }
+        Ok(())
+    }
+    let mut files = BTreeSet::new();
+    walk(root, root, &mut files)?;
+    Ok(files)
+}
+
+struct Freshness {
+    owner: PathBuf,
+    root: PathBuf,
+    pins: BTreeMap<String, String>,
+    owner_pins: BTreeMap<String, String>,
+}
+
+impl Freshness {
+    fn verify(&self) -> Result<()> {
+        regular_file(
+            &self.owner,
+            &format!("{}/{}", authority::ARTIFACT_ROOT, authority::TERMINAL),
+        )?;
+        for (root, pins) in [(&self.root, &self.pins), (&self.owner, &self.owner_pins)] {
+            for (path, digest) in pins {
+                read_pinned(
+                    root,
+                    &PathDigest {
+                        path: path.clone(),
+                        sha256: digest.clone(),
+                    },
+                )?;
+            }
+        }
+        if static_files(&self.root)? != self.pins.keys().cloned().collect() {
+            return Err(changed("complete registered artifact census"));
+        }
+        Ok(())
+    }
+}
+
+struct AdmittedCase {
+    output: String,
+    spec: ExactDifferenceSpec,
+    identity: VerifiedIdentity,
+    golden: support::Golden,
+}
+
+pub(super) struct AdmittedEdition {
+    freshness: Freshness,
+    cases: Vec<AdmittedCase>,
+}
+
+pub(super) struct CaseOutcome {
+    pub(super) output: String,
+    pub(super) raw: std::result::Result<Vec<String>, String>,
+    pub(super) qualified: std::result::Result<QualifiedComparison, String>,
+}
+
+pub(super) struct EditionRun {
+    pub(super) cases: Vec<CaseOutcome>,
+    pub(super) declared_cases: usize,
+    pub(super) freshness_error: Option<String>,
+}
+
+impl EditionRun {
+    pub(super) fn selected_cases_passed(&self) -> bool {
+        self.freshness_error.is_none() && self.cases.iter().all(|case| case.qualified.is_ok())
+    }
+
+    pub(super) fn current_coverage_complete(&self) -> bool {
+        self.selected_cases_passed() && self.cases.len() == self.declared_cases
+    }
+}
+
+impl AdmittedEdition {
+    pub(super) fn outputs(&self) -> impl Iterator<Item = &str> {
+        self.cases.iter().map(|case| case.output.as_str())
+    }
+
+    pub(super) fn execute_selected(&self, selected: &BTreeSet<String>) -> Result<EditionRun> {
+        self.execute_selected_before_freshness(selected, || {})
+    }
+
+    fn execute_selected_before_freshness(
+        &self,
+        selected: &BTreeSet<String>,
+        before_freshness: impl FnOnce(),
+    ) -> Result<EditionRun> {
+        let known: BTreeSet<_> = self.outputs().map(str::to_owned).collect();
+        if !selected.is_subset(&known) {
+            return Err(changed("selected output is outside the registered edition"));
+        }
+        let mut cases = Vec::new();
+        for case in self
+            .cases
+            .iter()
+            .filter(|case| selected.contains(&case.output))
+        {
+            let authority = CaptureAuthority::Published {
+                edition: PublishedEdition::CanonicalBoxDifferences,
+                identity: case.identity.identity(),
+            };
+            let completed =
+                case.spec
+                    .resolve_against(authority, &case.golden)
+                    .and_then(|resolved| {
+                        complete_captured_comparison(&case.golden, &resolved).map(|completed| {
+                            let raw = completed
+                                .raw_differences()
+                                .map(|field| format!("{field:?}"))
+                                .collect();
+                            let qualified = resolved
+                                .qualify(&completed)
+                                .map_err(|error| error.to_string());
+                            (raw, qualified)
+                        })
+                    });
+            let (raw, qualified) = match completed {
+                Ok((raw, qualified)) => (Ok(raw), qualified),
+                Err(error) => {
+                    let reason = error.to_string();
+                    (Err(reason.clone()), Err(reason))
+                }
+            };
+            cases.push(CaseOutcome {
+                output: case.output.clone(),
+                raw,
+                qualified,
+            });
+        }
+        before_freshness();
+        let freshness_error = self.freshness.verify().err().map(|error| error.to_string());
+        if let Some(error) = &freshness_error {
+            for case in &mut cases {
+                case.qualified = Err(error.clone());
+            }
+        }
+        Ok(EditionRun {
+            cases,
+            declared_cases: self.cases.len(),
+            freshness_error,
+        })
+    }
+}
+
+// This seal admits only the publisher's complete terminal artifact. Retained
+// projections and directory existence do not establish capture authority.
+const REGISTERED_TERMINAL_SHA256: &str =
+    "3ddebb08a1fa4e430d6bbd046d4cc1d02981d9d9162dd839e5b1eb11fa1fe8f8";
+
+pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedEdition> {
+    admit(
+        owner,
+        Registration {
+            terminal_sha256: REGISTERED_TERMINAL_SHA256,
+        },
+    )
+}
+
+pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<AdmittedEdition> {
+    let root = owner.join(authority::ARTIFACT_ROOT);
+    regular_file(
+        owner,
+        &format!("{}/{}", authority::ARTIFACT_ROOT, authority::TERMINAL),
+    )?;
+    let terminal_pin = PathDigest {
+        path: authority::TERMINAL.into(),
+        sha256: registration.terminal_sha256.into(),
+    };
+    let terminal_bytes = read_pinned(&root, &terminal_pin)?;
+    let terminal = Qualification::parse(
+        std::str::from_utf8(&terminal_bytes).map_err(|error| malformed(error.to_string()))?,
+    )?;
+    if terminal.to_bytes()? != terminal_bytes {
+        return Err(malformed("noncanonical terminal serialization"));
+    }
+    let mut pins = terminal.retained_inputs.clone();
+    for entry in [&terminal.report, &terminal.ownership, &terminal_pin]
+        .into_iter()
+        .chain(terminal.cases.iter().map(|case| &case.case.output))
+    {
+        if pins
+            .insert(entry.path.clone(), entry.sha256.clone())
+            .is_some()
+        {
+            return Err(malformed("input/output artifact paths overlap"));
+        }
+    }
+    if terminal.current_owner_inputs.is_empty()
+        || terminal.retained_inputs.get(&terminal.declaration.path)
+            != Some(&terminal.declaration.sha256)
+        || terminal
+            .current_owner_inputs
+            .get("examples/qualify-root-context/corpus.toml")
+            != Some(&terminal.declaration.sha256)
+    {
+        return Err(changed("canonical declaration freshness binding"));
+    }
+    let freshness = Freshness {
+        owner: owner.into(),
+        root: root.clone(),
+        pins,
+        owner_pins: terminal.current_owner_inputs.clone(),
+    };
+    freshness.verify()?;
+    let provenance = terminal
+        .retained_inputs
+        .get("origin/source-provenance.json")
+        .ok_or_else(|| changed("missing source-owner provenance"))?;
+    let provenance: Value = parse_json(&read_pinned(
+        &root,
+        &PathDigest {
+            path: "origin/source-provenance.json".into(),
+            sha256: provenance.clone(),
+        },
+    )?)?;
+    let sidecar = provenance
+        .get("sidecar")
+        .and_then(Value::as_str)
+        .ok_or_else(|| malformed("missing source receipt owner"))?;
+    let semantic_paths = terminal
+        .cases
+        .iter()
+        .flat_map(|case| [case.spec.path.as_str(), case.policy.path.as_str()])
+        .collect();
+    if authority::current_owner_bindings(&terminal.retained_inputs, &semantic_paths, sidecar)?
+        != terminal.current_owner_inputs
+    {
+        return Err(changed("complete current-owner input census"));
+    }
+    let report: Report = parse_json(&read_pinned(&root, &terminal.report)?)?;
+    if report.filter.is_some()
+        || report.summary.generated != terminal.cases.len()
+        || report.generated.len() != terminal.cases.len()
+        || report.summary.unsupported != 0
+        || !report.unsupported.is_empty()
+        || report.summary.expected_fail != 0
+        || !report.expected_fail.is_empty()
+        || report.summary.quarantined != 0
+        || !report.quarantined.is_empty()
+        || report.summary.failed_to_generate != 0
+        || !report.failed_to_generate.is_empty()
+        || report.metadata.inputs != terminal.retained_inputs
+    {
+        return Err(changed("complete current generated report census"));
+    }
+    let ownership: Ownership = parse_json(&read_pinned(&root, &terminal.ownership)?)?;
+    let mut expected_outputs =
+        BTreeMap::from([(terminal.report.path.clone(), terminal.report.sha256.clone())]);
+    let mut artifacts = BTreeMap::new();
+    for artifact in &report.generated {
+        if artifacts.insert(artifact.name.as_str(), artifact).is_some()
+            || expected_outputs
+                .insert(artifact.output.clone(), artifact.output_sha256.clone())
+                .is_some()
+        {
+            return Err(malformed("duplicate generated case or output"));
+        }
+    }
+    if ownership.schema_version != 1 || ownership.artifacts != expected_outputs {
+        return Err(changed("complete generated ownership census"));
+    }
+    let mut records = BTreeMap::new();
+    for record in &terminal.records {
+        if semantic_record_digest(&record.value)? != record.sha256
+            || record.value.get("source").and_then(Value::as_str) != Some(record.source.as_str())
+            || records.insert(record.source.as_str(), record).is_some()
+        {
+            return Err(changed("sealed semantic record projection"));
+        }
+    }
+    let excluded_specs = terminal
+        .cases
+        .iter()
+        .map(|case| case.spec.path.clone())
+        .collect();
+    let mut consumed = BTreeSet::new();
+    let mut cases = Vec::new();
+    for case in &terminal.cases {
+        let artifact = artifacts
+            .get(case.case.name.as_str())
+            .ok_or_else(|| changed("missing declared current output"))?;
+        let record = records
+            .get(case.case.source.as_str())
+            .ok_or_else(|| changed("missing source record projection"))?;
+        let reference = record
+            .value
+            .get("semantic_specifications")
+            .and_then(|map| map.get(case.case.variant.as_str()))
+            .ok_or_else(|| changed("missing canonical per-variant semantic reference"))?;
+        let reference: PathDigest = serde_json::from_value(reference.clone())
+            .map_err(|error| malformed(error.to_string()))?;
+        if reference != case.spec
+            || record.sha256 != case.case.record_sha256
+            || !consumed.insert((record.source.as_str(), case.case.variant.as_str()))
+        {
+            return Err(changed(
+                "current case differs from its canonical semantic reference",
+            ));
+        }
+        let spec_bytes = read_pinned(&root, &case.spec)?;
+        let spec = ExactDifferenceSpec::parse(
+            std::str::from_utf8(&spec_bytes).map_err(|error| malformed(error.to_string()))?,
+        )?;
+        let (policy_path, policy_sha) = spec.policy_source();
+        if policy_path != case.policy.path || policy_sha != case.policy.sha256 {
+            return Err(changed("canonical policy binding"));
+        }
+        read_pinned(&root, &case.policy)?;
+        let historical = case
+            .historical
+            .as_ref()
+            .map(|entry| read_pinned(&root, entry).map(|bytes| sha256(&bytes)))
+            .transpose()?;
+        if record.value.get("source_sha256").and_then(Value::as_str)
+            != Some(artifact.source_sha256.as_str())
+            || record
+                .value
+                .get("historical_sha256")
+                .and_then(|map| map.get(case.case.variant.as_str()))
+                .and_then(Value::as_str)
+                != historical.as_deref()
+        {
+            return Err(changed("canonical source/history mapping"));
+        }
+        let xml = read_pinned(&root, &case.case.output)?;
+        let golden = support::Golden::parse(
+            std::str::from_utf8(&xml).map_err(|error| malformed(error.to_string()))?,
+        )
+        .map_err(|error| malformed(error.to_string()))?;
+        if golden.name != case.case.name || golden.has_element_scroll_sizes() {
+            return Err(changed("canonical geometry observation profile"));
+        }
+        let selection = CaseSelection {
+            name: case.case.name.clone(),
+            source: case.case.source.clone(),
+            source_sha256: artifact.source_sha256.clone(),
+            variant: case.case.variant.clone(),
+            output: case.case.output.path.clone(),
+            record_sha256: record.sha256.clone(),
+            historical_sha256: historical.clone(),
+        };
+        if spec.prebind_current(PublishedEdition::CanonicalBoxDifferences, &selection)?
+            != case.requirements
+        {
+            return Err(changed("prebound current observable coverage"));
+        }
+        let xml_sha = sha256(&xml);
+        let verified = identity_from_verified_inputs(IdentityInputs {
+            metadata: &report.metadata,
+            artifact,
+            case: &case.case,
+            full_inputs: &terminal.retained_inputs,
+            excluded_specs: &excluded_specs,
+            actual_xml_sha256: &xml_sha,
+            historical_sha256: historical.as_deref(),
+            policy_sha256: &case.policy.sha256,
+            browser_settings: &terminal.browser_settings,
+            observation_request: "geometry",
+            observation_input_sha256: None,
+        })?;
+        if verified.projection() != &case.identity {
+            return Err(changed(
+                "stored identity differs from authenticated actual inputs",
+            ));
+        }
+        // Resolve every selected authority before any Native operation begins.
+        spec.resolve_against(
+            CaptureAuthority::Published {
+                edition: PublishedEdition::CanonicalBoxDifferences,
+                identity: verified.identity(),
+            },
+            &golden,
+        )?;
+        cases.push(AdmittedCase {
+            output: case.case.output.path.clone(),
+            spec,
+            identity: verified,
+            golden,
+        });
+    }
+    let expected_references: BTreeSet<_> = terminal
+        .records
+        .iter()
+        .flat_map(|record| {
+            record
+                .value
+                .get("semantic_specifications")
+                .and_then(Value::as_object)
+                .into_iter()
+                .flat_map(move |map| {
+                    map.keys()
+                        .map(move |variant| (record.source.as_str(), variant.as_str()))
+                })
+        })
+        .collect();
+    if consumed != expected_references || consumed.is_empty() {
+        return Err(changed("complete selected canonical reference census"));
+    }
+    freshness.verify()?;
+    Ok(AdmittedEdition { freshness, cases })
+}
+
+#[cfg(test)]
+#[path = "portable_qualification_tests.rs"]
+mod tests;
