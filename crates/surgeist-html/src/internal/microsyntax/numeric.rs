@@ -2406,6 +2406,17 @@ pub(crate) struct HtmlScientificDecimalKey {
 }
 
 impl HtmlScientificDecimalKey {
+    /// The canonical key of the mathematical value one.
+    pub(crate) fn one() -> Self {
+        Self {
+            negative: false,
+            significand: HtmlNonNegativeInteger {
+                digits: String::from("1"),
+            },
+            exponent: HtmlInteger::from(0),
+        }
+    }
+
     pub(crate) fn is_zero(&self) -> bool {
         self.significand.is_zero()
     }
@@ -2501,6 +2512,50 @@ pub(crate) fn strict_scientific_decimal_key_units(
 ) -> Result<HtmlScientificDecimalKey, ScientificDecimalKeyError> {
     let prefix = floating_point_prefix(input, HtmlFloatingPointParseMode::Author)
         .map_err(ScientificDecimalKeyError::Syntax)?;
+    scientific_decimal_key(&prefix)
+}
+
+/// The source's finite binary64 rounding of a checked decimal.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum HtmlBinary64Rounding {
+    /// The decimal rounds to this finite value; underflow rounds to zero.
+    Finite(HtmlFloatingPointNumber),
+    /// The decimal is too large for a finite binary64 value.
+    Overflow,
+}
+
+/// A decimal that passed the complete author grammar, with its exact key and its binary64
+/// rounding. Both come from one scan of the same checked token.
+#[derive(Clone, Debug)]
+pub(crate) struct HtmlStrictDecimal {
+    pub(crate) key: HtmlScientificDecimalKey,
+    pub(crate) rounding: HtmlBinary64Rounding,
+}
+
+/// Checks the complete author grammar once, then derives the exact key and the binary64
+/// rounding from the same checked token.
+pub(crate) fn strict_decimal_units(
+    input: &[u16],
+) -> Result<HtmlStrictDecimal, ScientificDecimalKeyError> {
+    let prefix = floating_point_prefix(input, HtmlFloatingPointParseMode::Author)
+        .map_err(ScientificDecimalKeyError::Syntax)?;
+    let key = scientific_decimal_key(&prefix)?;
+    let token: String = prefix
+        .token
+        .iter()
+        .map(|&unit| char::from(unit as u8))
+        .collect();
+    let rounding = match convert_floating_point_token(&token) {
+        Ok(value) => HtmlBinary64Rounding::Finite(value),
+        Err(HtmlNumericParseError::FloatingPointOverflow) => HtmlBinary64Rounding::Overflow,
+        Err(error) => return Err(ScientificDecimalKeyError::Syntax(error)),
+    };
+    Ok(HtmlStrictDecimal { key, rounding })
+}
+
+fn scientific_decimal_key(
+    prefix: &FloatingPointPrefix<'_>,
+) -> Result<HtmlScientificDecimalKey, ScientificDecimalKeyError> {
     let digit_count = prefix
         .integer_digits
         .len()
@@ -2542,7 +2597,7 @@ pub(crate) fn strict_scientific_decimal_key_units(
     {
         digits.push(char::from(unit as u8));
     }
-    let exponent = prefix.exponent.map_or_else(
+    let exponent = prefix.exponent.as_ref().map_or_else(
         || HtmlInteger::from(0),
         |exponent| {
             HtmlInteger::from_magnitude(
@@ -3415,6 +3470,62 @@ mod tests {
         );
     }
 
+    /// A strictly checked decimal rounds exactly as the author-mode number conversion does and
+    /// carries the key of the strict key producer: both read one checked token.
+    #[test]
+    fn a_strict_decimal_carries_its_key_and_its_binary64_rounding() {
+        for input in [
+            "0",
+            "1",
+            "1.5",
+            "0.25",
+            "-3",
+            "1e3",
+            "1E-3",
+            ".5",
+            "000.0100",
+            "123456789.987654321",
+            "1e308",
+            "1.7976931348623157e308",
+            "4.9e-324",
+            "1e-400",
+        ] {
+            let units = text(input);
+            let decimal = strict_decimal_units(units.code_units()).unwrap();
+            assert_eq!(
+                decimal.key,
+                strict_scientific_decimal_key(&units).unwrap(),
+                "{input}: key"
+            );
+            match validate_floating_point_number(&units) {
+                Ok(value) => assert_eq!(
+                    decimal.rounding,
+                    HtmlBinary64Rounding::Finite(value),
+                    "{input}: rounding"
+                ),
+                Err(error) => panic!("{input} is finite: {error:?}"),
+            }
+        }
+        // Too large for a finite value, yet a grammatical decimal with an exact key.
+        let large = text("1e999");
+        assert_eq!(
+            validate_floating_point_number(&large),
+            Err(HtmlNumericParseError::FloatingPointOverflow)
+        );
+        let decimal = strict_decimal_units(large.code_units()).unwrap();
+        assert_eq!(decimal.rounding, HtmlBinary64Rounding::Overflow);
+        assert_eq!(decimal.key, strict_scientific_decimal_key(&large).unwrap());
+        for invalid in ["", "+1", " 1", "1 ", "1e", "e1", ".", "2.", "--1", "1x"] {
+            assert!(
+                matches!(
+                    strict_decimal_units(text(invalid).code_units()),
+                    Err(ScientificDecimalKeyError::Syntax(_))
+                ),
+                "{invalid:?}"
+            );
+        }
+    }
+
     #[test]
     fn unmetered_digit_buffers_move_into_their_strings() {
         let bytes = b"4096".to_vec();
@@ -4049,6 +4160,7 @@ mod tests {
     #[test]
     fn scientific_equality_is_mathematical_instead_of_binary64_equality() {
         let one = strict_scientific_decimal_key(&text("1")).unwrap();
+        assert_eq!(HtmlScientificDecimalKey::one(), one);
         for input in ["1.0", "10e-1", "0001000E-0003", ".01e2"] {
             assert_eq!(strict_scientific_decimal_key(&text(input)).unwrap(), one);
         }
