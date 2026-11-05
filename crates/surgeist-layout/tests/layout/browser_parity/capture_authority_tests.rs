@@ -409,6 +409,104 @@ fn terminal_wire_preserves_publisher_bytes_and_rejects_broken_associations() {
 }
 
 #[test]
+fn specialized_terminal_requires_complete_current_and_historical_bindings() {
+    const SOURCE: &str = "html/block/prepared_text_continuity_bidi.html";
+    const POLICY: &str = "semantic/prepared-range-policy.md";
+    const POLICY_SHA: &str = "ef6219d28d15d9131a45d0c48edef12436333a1e1f2868f54d9ec8847d09ada0";
+    let report: Value = serde_json::from_str(include_str!(
+        "captured/prepared-range-differences/xml/generation-reports/all.json"
+    ))
+    .unwrap();
+    let mut retained: BTreeMap<String, String> =
+        serde_json::from_value(report["metadata"]["inputs"].clone()).unwrap();
+    retained.insert(POLICY.into(), POLICY_SHA.into());
+    let generated = report["generated"].as_array().unwrap();
+    let historical = generated
+        .iter()
+        .map(|artifact| {
+            let output = artifact["output"].as_str().unwrap();
+            let predecessor = output.replacen("xml/", "historical/", 1);
+            (
+                artifact["variant"].as_str().unwrap().to_owned(),
+                retained[&predecessor].clone(),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let projection = json!({
+        "source": SOURCE,
+        "source_kind": "original",
+        "source_sha256": retained[SOURCE],
+        "historical_sha256": historical,
+        "specialized_publication": "prepared-range"
+    });
+    let record_sha = semantic_record_digest(&projection).unwrap();
+    let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(ARTIFACT_ROOT)
+        .join(TERMINAL);
+    let mut terminal: Value = serde_json::from_slice(&std::fs::read(file).unwrap()).unwrap();
+    let mut template = terminal["cases"][0]["identity"].clone();
+    template["source"] = json!(SOURCE);
+    template["source_sha256"] = json!(retained[SOURCE]);
+    template["record_sha256"] = json!(record_sha);
+    template["policy_source_sha256"] = json!(POLICY_SHA);
+    template["font_demand"] = json!("ahem-16px-prepared-ranges");
+    terminal["edition"] = json!("prepared-range-qualification");
+    terminal["records"] = json!([{"source": SOURCE, "sha256": record_sha, "value": projection}]);
+    terminal["declaration"]["sha256"] = json!(retained["corpus.toml"]);
+    terminal["capture_validation"] = json!(CaptureValidation::from_retained(&retained).unwrap());
+    terminal["cases"] = json!(generated.iter().map(|artifact| {
+        let mut identity = template.clone();
+        let variant = artifact["variant"].as_str().unwrap();
+        let predecessor = artifact["output"].as_str().unwrap().replacen("xml/", "historical/", 1);
+        identity["variant"] = json!(variant);
+        identity["capture_sha256"] = artifact["output_sha256"].clone();
+        identity["historical_sha256"] = json!(retained[&predecessor]);
+        json!({
+            "case": {
+                "name": artifact["name"], "source": SOURCE, "variant": variant,
+                "output": {"path": artifact["output"], "sha256": artifact["output_sha256"]},
+                "record_sha256": record_sha
+            },
+            "historical": {"path": predecessor, "sha256": retained[&predecessor]},
+            "evidence": {"profile": "prepared-range", "policy": {"path": POLICY, "sha256": POLICY_SHA}},
+            "identity": identity
+        })
+    }).collect::<Vec<_>>());
+    terminal["retained_inputs"] = json!(retained);
+    let valid = Qualification::parse(&terminal.to_string())
+        .expect("all four specialized variants bind to their captured predecessors");
+    let serialized = valid.to_bytes().unwrap();
+    assert_eq!(
+        serde_json::from_slice::<Value>(&serialized).unwrap(),
+        terminal
+    );
+
+    for (pointer, replacement) in [
+        ("/edition", json!("flex-composition-qualification")),
+        ("/cases/0/historical", Value::Null),
+        (
+            "/cases/0/historical/path",
+            terminal["cases"][1]["historical"]["path"].clone(),
+        ),
+        ("/cases/0/historical/sha256", json!("0".repeat(64))),
+        ("/cases/0/identity/historical_sha256", Value::Null),
+        ("/cases/0/evidence/policy/sha256", json!("0".repeat(64))),
+    ] {
+        let mut changed = terminal.clone();
+        *changed.pointer_mut(pointer).unwrap() = replacement;
+        assert!(
+            Qualification::parse(&changed.to_string()).is_err(),
+            "{pointer}"
+        );
+    }
+    let mut incomplete = terminal.clone();
+    incomplete["cases"].as_array_mut().unwrap().pop();
+    assert!(Qualification::parse(&incomplete.to_string()).is_err());
+    terminal["cases"][0]["spec"] = json!({"path": POLICY, "sha256": POLICY_SHA});
+    assert!(Qualification::parse(&terminal.to_string()).is_err());
+}
+
+#[test]
 fn current_terminal_requires_distinct_producer_and_validator_authority() {
     const VALIDATOR: &str = "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c";
     const HELPER: &str = "af0f458c290f0261106810fa3e42442afe7a5599872774130ac3244548cb74ee";
