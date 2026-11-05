@@ -456,6 +456,8 @@ pub(crate) enum PublishedEdition {
     MeasuredGrid,
     #[serde(rename = "flex-text-differences")]
     FlexText,
+    #[serde(rename = "grid-static-position-differences")]
+    GridStaticPosition,
 }
 
 impl PublishedEdition {
@@ -471,12 +473,22 @@ impl PublishedEdition {
             Self::CanonicalBoxes => super::capture_authority::ARTIFACT_ROOT,
             Self::MeasuredGrid => "tests/layout/browser_parity/captured/measured-grid-differences",
             Self::FlexText => "tests/layout/browser_parity/captured/flex-text-differences",
+            Self::GridStaticPosition => {
+                "tests/layout/browser_parity/captured/grid-static-position-differences"
+            }
         }
     }
     fn domain(self) -> CurrentDomain {
         match self {
-            Self::CanonicalBoxes => CurrentDomain::Layout,
+            Self::CanonicalBoxes | Self::GridStaticPosition => CurrentDomain::Layout,
             Self::MeasuredGrid | Self::FlexText => CurrentDomain::LayoutAndElementSizes,
+        }
+    }
+    fn profile(self) -> Profile {
+        match self {
+            Self::CanonicalBoxes | Self::GridStaticPosition => Profile::NoTextBoxes,
+            Self::MeasuredGrid => Profile::MeasuredGrid,
+            Self::FlexText => Profile::FlexContentText,
         }
     }
 }
@@ -510,7 +522,7 @@ struct RawSpec {
     native: NativeOracle,
     differences: Vec<ComparedField>,
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 enum Profile {
     #[serde(rename = "canonical-no-text-boxes")]
     NoTextBoxes,
@@ -518,15 +530,6 @@ enum Profile {
     MeasuredGrid,
     #[serde(rename = "canonical-flex-content-text")]
     FlexContentText,
-}
-impl Profile {
-    fn published_edition(&self) -> PublishedEdition {
-        match self {
-            Self::NoTextBoxes => PublishedEdition::CanonicalBoxes,
-            Self::MeasuredGrid => PublishedEdition::MeasuredGrid,
-            Self::FlexContentText => PublishedEdition::FlexText,
-        }
-    }
 }
 pub(crate) struct ExactDifferenceSpec(RawSpec);
 pub(crate) struct ResolvedSpec<'a> {
@@ -763,13 +766,16 @@ impl ExactDifferenceSpec {
                     "capture lineages disagree on shared semantic basis: {component}"
                 )));
             }
-            if *lineage == CaptureLineage::Published
-                && spec.representation.published_edition != Some(spec.profile.published_edition())
-            {
-                return Err(malformed(format!(
-                    "published identity requires the {} edition association",
-                    spec.profile.published_edition().name(),
-                )));
+            if *lineage == CaptureLineage::Published {
+                let edition = spec.representation.published_edition.ok_or_else(|| {
+                    malformed("published identity requires an edition association")
+                })?;
+                if edition.profile() != spec.profile {
+                    return Err(malformed(format!(
+                        "published edition {} disagrees with the source profile",
+                        edition.name(),
+                    )));
+                }
             }
             let expected_font = match spec.profile {
                 Profile::NoTextBoxes => FontDemand::None,
@@ -1042,14 +1048,12 @@ impl ExactDifferenceSpec {
 }
 
 fn layout_scroll_ranges_requested(required: &CurrentRequirements, path: &str) -> bool {
-    required.domain == CurrentDomain::LayoutAndElementSizes
-        && required
-            .selectors
-            .binary_search_by(|selector| {
-                (selector.path.as_str(), selector.field)
-                    .cmp(&(path, CanonicalField::LayoutScrollWidth))
-            })
-            .is_ok()
+    required
+        .selectors
+        .binary_search_by(|selector| {
+            (selector.path.as_str(), selector.field).cmp(&(path, CanonicalField::LayoutScrollWidth))
+        })
+        .is_ok()
 }
 
 fn canonical_selectors(required: &CurrentRequirements, nodes: &[String]) -> Vec<Selector> {

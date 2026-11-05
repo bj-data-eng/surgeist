@@ -14,9 +14,7 @@ use crate::parity_support::prepared_range_qualification as prepared_range;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Edition {
     RootContextV4,
-    CanonicalBoxDifferences,
-    MeasuredGridDifferences,
-    FlexTextDifferences,
+    Exact(PublishedEdition),
     Specialized(SpecializedProfile),
 }
 impl Edition {
@@ -30,9 +28,7 @@ impl Edition {
     fn published(self) -> Option<PublishedEdition> {
         match self {
             Self::RootContextV4 | Self::Specialized(_) => None,
-            Self::CanonicalBoxDifferences => Some(PublishedEdition::CanonicalBoxes),
-            Self::MeasuredGridDifferences => Some(PublishedEdition::MeasuredGrid),
-            Self::FlexTextDifferences => Some(PublishedEdition::FlexText),
+            Self::Exact(edition) => Some(edition),
         }
     }
     fn lineage(self) -> SemanticLineage {
@@ -62,24 +58,9 @@ pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
     let (edition, access) = match mode {
         QualificationMode::Publish => (Edition::RootContextV4, InputAccess::Prepare),
         QualificationMode::CheckPublished => (Edition::RootContextV4, InputAccess::ReadOnly),
-        QualificationMode::PublishCanonicalBoxes => {
-            (Edition::CanonicalBoxDifferences, InputAccess::Prepare)
-        }
-        QualificationMode::CheckPublishedCanonicalBoxes
-        | QualificationMode::Derive(PublishedEdition::CanonicalBoxes) => {
-            (Edition::CanonicalBoxDifferences, InputAccess::ReadOnly)
-        }
-        QualificationMode::PublishMeasuredGrid => {
-            (Edition::MeasuredGridDifferences, InputAccess::Prepare)
-        }
-        QualificationMode::CheckPublishedMeasuredGrid
-        | QualificationMode::Derive(PublishedEdition::MeasuredGrid) => {
-            (Edition::MeasuredGridDifferences, InputAccess::ReadOnly)
-        }
-        QualificationMode::PublishFlexText => (Edition::FlexTextDifferences, InputAccess::Prepare),
-        QualificationMode::CheckPublishedFlexText
-        | QualificationMode::Derive(PublishedEdition::FlexText) => {
-            (Edition::FlexTextDifferences, InputAccess::ReadOnly)
+        QualificationMode::PublishExact(edition) => (Edition::Exact(edition), InputAccess::Prepare),
+        QualificationMode::CheckPublishedExact(edition) | QualificationMode::Derive(edition) => {
+            (Edition::Exact(edition), InputAccess::ReadOnly)
         }
         QualificationMode::PublishSpecialized(profile) => {
             (Edition::Specialized(profile), InputAccess::Prepare)
@@ -198,6 +179,27 @@ fn with_new_edition(
     result
 }
 
+pub(super) fn verified_grid_static_predecessors(owner: &Path) -> Result<BTreeMap<String, String>> {
+    let edition = PublishedEdition::GridStaticPosition;
+    let root = owner.join(edition.artifact_root());
+    let path = RelativePath::new(authority::TERMINAL)?;
+    require_regular_input(&root, &path)?;
+    let terminal = fs::read(root.join(path.as_str()))?;
+    run(owner, QualificationMode::CheckPublishedExact(edition))?;
+    if fs::read(root.join(path.as_str()))? != terminal {
+        return Err("Grid static-position terminal changed during replay".into());
+    }
+    let terminal = authority::Qualification::parse(std::str::from_utf8(&terminal)?)?;
+    Ok(terminal
+        .cases
+        .into_iter()
+        .map(|case| {
+            let output = &case.descriptor().output;
+            (output.path.clone(), output.sha256.clone())
+        })
+        .collect())
+}
+
 fn finish(
     owner: &Path,
     root: &Path,
@@ -210,6 +212,11 @@ fn finish(
     let published = edition.published();
     let has_terminal = edition != Edition::RootContextV4;
     let derive_terminal = matches!(mode, QualificationMode::Derive(_));
+    let geometry_predecessors = if edition == Edition::RootContextV4 {
+        verified_grid_static_predecessors(owner)?
+    } else {
+        BTreeMap::new()
+    };
     if let Some(published) = published
         && root != owner.join(published.artifact_root())
     {
@@ -273,6 +280,7 @@ fn finish(
             lineage: edition.lineage(),
             requirements: (published.is_some()).then_some(&requirements),
             terminal_cases: (published.is_some()).then_some(&mut terminal_cases),
+            geometry_predecessors,
             policy_raw: &mut std::io::sink(),
         },
     )?;

@@ -138,6 +138,12 @@ impl<'a, S: LayoutScalar> AbsoluteGridContext<'a, S> {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::grid) enum GridStaticPosition {
+    ContentBox,
+    LanePlacement,
+}
+
 #[derive(Clone, Copy)]
 pub(in crate::grid) struct AbsoluteGridAreaInput<'a, S: LayoutScalar> {
     pub(in crate::grid) column: super::GridPlacement,
@@ -149,6 +155,8 @@ pub(in crate::grid) struct AbsoluteGridAreaInput<'a, S: LayoutScalar> {
     pub(in crate::grid) row_geometry: Option<&'a UsedGridAxisGeometryOf<S>>,
     pub(in crate::grid) column_offsets: &'a [S],
     pub(in crate::grid) row_offsets: &'a [S],
+    pub(in crate::grid) static_position: GridStaticPosition,
+    pub(in crate::grid) containing_size: Size<S>,
     pub(in crate::grid) constants: &'a Constants<S>,
     pub(in crate::grid) lines: GridLines,
 }
@@ -179,6 +187,14 @@ where
     let container_style = context.container_style;
     let constants = context.constants;
     let containing_size = context.containing_size;
+    let static_position = if container_style
+        .display
+        .establishes_grid_lanes_formatting_context()
+    {
+        GridStaticPosition::LanePlacement
+    } else {
+        GridStaticPosition::ContentBox
+    };
     let area = absolute_grid_area(AbsoluteGridAreaInput {
         column: context.column,
         row: context.row,
@@ -189,6 +205,8 @@ where
         row_geometry: context.row_geometry,
         column_offsets: context.column_offsets,
         row_offsets: context.row_offsets,
+        static_position,
+        containing_size,
         constants,
         lines: context.lines,
     });
@@ -398,6 +416,7 @@ where
             static_area_location: area.static_location.inline,
             area_size: area.size.inline,
             static_area_size: area.static_size.inline,
+            static_position,
             size: logical_size.inline,
             margin_start: logical_margin.inline_start,
             margin_end: logical_margin.inline_end,
@@ -411,6 +430,7 @@ where
             static_area_location: area.static_location.block,
             area_size: area.size.block,
             static_area_size: area.static_size.block,
+            static_position,
             size: logical_size.block,
             margin_start: logical_margin.block_start,
             margin_end: logical_margin.block_end,
@@ -477,8 +497,8 @@ where
 #[derive(Clone, Copy)]
 pub(in crate::grid) struct LogicalAbsoluteGridArea<S: LayoutScalar = Scalar> {
     pub(in crate::grid) location: LogicalPointOf<S>,
-    pub(in crate::grid) static_location: LogicalPointOf<S>,
     pub(in crate::grid) size: LogicalSizeOf<S>,
+    pub(in crate::grid) static_location: LogicalPointOf<S>,
     pub(in crate::grid) static_size: LogicalSizeOf<S>,
 }
 
@@ -493,6 +513,7 @@ pub(in crate::grid) struct AbsoluteGridAxis<S: LayoutScalar = Scalar> {
     pub(in crate::grid) area_location: S,
     pub(in crate::grid) static_area_location: S,
     pub(in crate::grid) area_size: S,
+    pub(in crate::grid) static_position: GridStaticPosition,
     pub(in crate::grid) static_area_size: S,
     pub(in crate::grid) size: S,
     pub(in crate::grid) margin_start: Option<S>,
@@ -518,6 +539,7 @@ pub(in crate::grid) fn absolute_grid_axis<S: LayoutScalar>(
         static_area_location,
         area_size,
         static_area_size,
+        static_position,
         size,
         margin_start,
         margin_end,
@@ -526,26 +548,32 @@ pub(in crate::grid) fn absolute_grid_axis<S: LayoutScalar>(
         alignment,
         progression,
     } = axis;
+    let uses_static_area = inset_start.is_none() && inset_end.is_none();
     let non_auto_start = margin_start.unwrap_or(S::ZERO);
     let non_auto_end = margin_end.unwrap_or(S::ZERO);
-    let raw_free_space = area_size - size - non_auto_start - non_auto_end;
-    let free_space = raw_free_space.max(S::ZERO);
     let auto_margin_count = usize::from(margin_start.is_none()) + usize::from(margin_end.is_none());
-    let auto_margin = if auto_margin_count > 0 {
-        free_space / S::from_usize(auto_margin_count)
+    let containing_free_space = area_size - size - non_auto_start - non_auto_end;
+    let uses_content_alignment =
+        uses_static_area && static_position == GridStaticPosition::ContentBox;
+    let auto_margin = if !uses_content_alignment && auto_margin_count > 0 {
+        containing_free_space.max(S::ZERO) / S::from_usize(auto_margin_count)
     } else {
         S::ZERO
     };
     let resolved_start = margin_start.unwrap_or(auto_margin);
     let resolved_end = margin_end.unwrap_or(auto_margin);
-    let uses_static_area = inset_start.is_none() && inset_end.is_none();
+    let alignment_free_space = if uses_content_alignment {
+        static_area_size - size - resolved_start - resolved_end
+    } else {
+        containing_free_space
+    };
     let offset = match (inset_start, inset_end) {
         (Some(_), Some(end)) if progression.is_decreasing() => {
             area_size - end - size - non_auto_end
         }
         (Some(start), _) => start + non_auto_start,
         (None, Some(end)) => area_size - end - size - non_auto_end,
-        (None, None) => match alignment.safe_fallback(raw_free_space) {
+        (None, None) => match alignment.safe_fallback(alignment_free_space) {
             AlignItems::Start
             | AlignItems::FlexStart
             | AlignItems::Baseline

@@ -109,8 +109,10 @@ This selected snapshot does not pretend to be another complete Taffy import.
 The checker is read-only, browser-free and acquisition-free. It reconstructs the
 same contract, checks current-owner freshness and exact input/output/report census,
 then requires the historical trees, V4/font/control certificates, declared pairs,
-strict Native geometry and Generator check to agree. It does not prepare/copy
-inputs, run filesystem tamper probes, regenerate, repair or remove files.
+Native geometry and Generator check to agree. Grid static-position XML must
+match its exact qualified capture byte for byte. The remaining XML comparisons
+require strict geometry. The checker does not prepare/copy inputs, run filesystem
+tamper probes, regenerate, repair or remove files.
 Maintenance currently requires Apple-Silicon macOS, including browser-free Generator
 checks. Portable geometry consumers require neither Generator nor a browser.
 
@@ -120,3 +122,17 @@ register fixtures. Historical XML remains unchanged. The later library migration
 covers 15 source families/60 artifacts and 43 distinct comparisons in ten XML
 callers under grid::tests::browser_controls; that prefix also selects additional
 Native/support tests. No automatic lookup alias is installed by these commands.
+
+## Grid static-position edition
+
+The [Grid static-position policy](../../semantic/grid-static-position-policy.md)
+specifies the exact Layout differences for both original sources in both box
+modes and directions. The catalogue attaches per-variant specifications after
+the sealed root-context declaration. Qualification checks all requested
+observations and both Native packet channels. Browser XML matches the sealed
+root-context capture byte for byte.
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --publish-grid-static-position-differences
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-grid-static-position-differences
+~~~

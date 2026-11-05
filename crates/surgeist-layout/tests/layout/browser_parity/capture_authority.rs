@@ -14,6 +14,7 @@ pub(crate) const MEASURED_GRID_EDITION: &str = "measured-grid-differences";
 pub(crate) const ARTIFACT_ROOT: &str =
     "tests/layout/browser_parity/captured/canonical-box-differences";
 const FLEX_TEXT_EDITION: &str = "flex-text-differences";
+const GRID_STATIC_POSITION_EDITION: &str = "grid-static-position-differences";
 pub(crate) const FIXED_GENERATOR: &str = "surgeist-layout-root-context-qualification";
 pub(crate) const TERMINAL: &str = "qualification.json";
 pub(crate) const TERMINAL_SCHEMA: u8 = 3;
@@ -862,7 +863,10 @@ impl Qualification {
             || (specialized.is_none()
                 && !matches!(
                     self.edition.as_str(),
-                    EDITION | MEASURED_GRID_EDITION | FLEX_TEXT_EDITION
+                    EDITION
+                        | MEASURED_GRID_EDITION
+                        | FLEX_TEXT_EDITION
+                        | GRID_STATIC_POSITION_EDITION
                 ))
             || self.declaration.path != "corpus.toml"
             || self.report.path != "xml/generation-reports/all.json"

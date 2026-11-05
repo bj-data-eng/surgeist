@@ -405,6 +405,86 @@ fn case_identities(snapshot: &Inventory) -> Vec<(String, String, String, String)
 }
 
 #[test]
+fn focused_geometry_only_requires_selected_grid_static_predecessors() {
+    let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let empty_editions = Directory::new();
+    let mode = QualificationMode::Regular;
+    for (source, requires_grid_static) in [
+        ("html/flex/fri07_collapsed_strut_wrapping.html", false),
+        ("html/grid/grid_absolute_resolved_insets.html", true),
+    ] {
+        let root = Directory::new();
+        let mut declaration = DeclarationInput::parse(DECLARATION).unwrap();
+        select_records(&mut declaration.declaration, Some(source), mode).unwrap();
+        let inventory =
+            inventory(&root.0, owner, &declaration, mode, InputAccess::Prepare).unwrap();
+        assert!(inventory.cases.iter().all(|case| case.semantic.is_some()));
+        let selected = focused_geometry_predecessors(&empty_editions.0, &inventory.cases, mode);
+        if requires_grid_static {
+            assert!(selected.is_err());
+            assert_eq!(
+                focused_geometry_predecessors(owner, &inventory.cases, mode)
+                    .unwrap()
+                    .len(),
+                4
+            );
+        } else {
+            assert!(selected.unwrap().is_empty());
+        }
+    }
+}
+
+#[test]
+fn appended_semantic_publication_preserves_sealed_source_and_rejects_shadows() {
+    let source = "html/grid/grid_absolute_resolved_insets.html";
+    let digest = "a".repeat(64);
+    let prefix = edition_input(DECLARATION).unwrap().bytes;
+    let mut annotation = format!("\n[[semantic_publications]]\nsource = {source:?}\n");
+    for (variant, _) in fixture_cases() {
+        annotation.push_str(&format!(
+            "[semantic_publications.specifications.{variant}]\npath = \"semantic/absolute-insets-{variant}.json\"\nsha256 = {digest:?}\n"
+        ));
+    }
+    let grown = [prefix, annotation.as_bytes()].concat();
+    let live = DeclarationInput::parse(&grown).unwrap();
+    let sealed = edition_input(&grown).unwrap();
+    let record = |input: &DeclarationInput<'_>| {
+        input
+            .declaration
+            .records
+            .iter()
+            .position(|record| record.source.as_str() == source)
+            .unwrap()
+    };
+    let live = &live.declaration.records[record(&live)];
+    let original = &sealed.declaration.records[record(&sealed)];
+    assert!(original.semantic_specifications.is_none());
+    assert_eq!(
+        semantic_record_digest(live).unwrap(),
+        semantic_record_digest(original).unwrap()
+    );
+    let references = live.semantic_specifications.as_ref().unwrap();
+    assert_eq!(references.len(), 4);
+    for (variant, _) in fixture_cases() {
+        assert_eq!(
+            references[variant].path.as_str(),
+            format!("semantic/absolute-insets-{variant}.json")
+        );
+    }
+
+    assert!(DeclarationInput::parse(&[grown.as_slice(), annotation.as_bytes()].concat()).is_err());
+    let wrong_source = annotation.replace(source, "html/grid/undeclared.html");
+    assert!(DeclarationInput::parse(&[prefix, wrong_source.as_bytes()].concat()).is_err());
+    let incomplete = annotation.lines().take(5).collect::<Vec<_>>().join("\n");
+    assert!(DeclarationInput::parse(&[prefix, incomplete.as_bytes()].concat()).is_err());
+    let duplicate_path = annotation.replace(
+        "absolute-insets-border_box_rtl.json",
+        "absolute-insets-border_box_ltr.json",
+    );
+    assert!(DeclarationInput::parse(&[prefix, duplicate_path.as_bytes()].concat()).is_err());
+}
+
+#[test]
 fn sealed_edition_reconstructs_same_inputs_and_cases_after_unique_append() {
     let current = edition_input(DECLARATION).unwrap();
     assert_eq!(
@@ -621,13 +701,15 @@ fn whole_current_declaration_and_shared_input_freshness_still_refuse_stale_binar
 fn fixed_editions_create_distinct_exclusive_targets() {
     let parent = Directory::new();
     let old = create_edition(&parent.0, Edition::RootContextV4).unwrap();
-    let current = create_edition(&parent.0, Edition::CanonicalBoxDifferences).unwrap();
-    let measured = create_edition(&parent.0, Edition::MeasuredGridDifferences).unwrap();
+    let current =
+        create_edition(&parent.0, Edition::Exact(PublishedEdition::CanonicalBoxes)).unwrap();
+    let measured =
+        create_edition(&parent.0, Edition::Exact(PublishedEdition::MeasuredGrid)).unwrap();
     assert_eq!(measured, parent.0.join(authority::MEASURED_GRID_EDITION));
-    assert!(create_edition(&parent.0, Edition::MeasuredGridDifferences).is_err());
+    assert!(create_edition(&parent.0, Edition::Exact(PublishedEdition::MeasuredGrid)).is_err());
     assert_eq!(old, parent.0.join("root-context-v4"));
     assert_eq!(current, parent.0.join(authority::EDITION));
-    assert!(create_edition(&parent.0, Edition::CanonicalBoxDifferences).is_err());
+    assert!(create_edition(&parent.0, Edition::Exact(PublishedEdition::CanonicalBoxes)).is_err());
 }
 #[test]
 fn retained_publication_selects_only_its_own_specifications() {

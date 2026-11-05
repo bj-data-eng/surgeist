@@ -1011,3 +1011,133 @@ fn empty_axis_sole_line_stays_at_start_despite_content_alignment_f32() {
 fn empty_axis_sole_line_stays_at_start_despite_content_alignment_f64() {
     sole_line_uses_axis_start::<f64>();
 }
+
+fn grid_static_position_uses_content_edges<S: LayoutScalar>() {
+    for (box_sizing, size) in [
+        (BoxSizing::BorderBox, Size::new(100.0, 80.0)),
+        (BoxSizing::ContentBox, Size::new(60.0, 40.0)),
+    ] {
+        for direction in [Direction::Ltr, Direction::Rtl] {
+            for has_tracks in [false, true] {
+                let mut parent = grid::<S>(direction, box_sizing, size, Tracks::Neither);
+                parent.border = Edges::all(LengthOf::px(S::from_f64(10.0)));
+                parent.padding = Edges::all(LengthOf::px(S::from_f64(10.0)));
+                parent.justify_content = Some(AlignContent::Start);
+                parent.align_content = Some(AlignContent::Start);
+                let mut start = fixed_absolute::<S>(direction, Size::new(20.0, 10.0));
+                if has_tracks {
+                    parent.grid_template_columns = [24.0, 32.0]
+                        .map(|extent| TrackComponentOf::px(S::from_f64(extent)))
+                        .to_vec();
+                    parent.grid_template_rows = [12.0, 20.0]
+                        .map(|extent| TrackComponentOf::px(S::from_f64(extent)))
+                        .to_vec();
+                    start.grid_column = GridPlacement::try_lines(2, 3).unwrap();
+                    start.grid_row = GridPlacement::try_lines(2, 3).unwrap();
+                }
+                let mut end = start.clone();
+                end.justify_self = Some(AlignItems::End);
+                end.align_self = Some(AlignItems::End);
+                let mut explicit = start.clone();
+                explicit.inset.left = LengthAutoOf::px(S::from_f64(3.0));
+                explicit.inset.top = LengthAutoOf::px(S::from_f64(5.0));
+                let mut mixed = end.clone();
+                mixed.inset.left = explicit.inset.left;
+                let tree = PublicLayoutTreeOf::new()
+                    .children(1, [2, 3, 4, 5])
+                    .style(1, parent)
+                    .children(2, [])
+                    .style(2, start)
+                    .children(3, [])
+                    .style(3, end)
+                    .children(4, [])
+                    .style(4, explicit)
+                    .children(5, [])
+                    .style(5, mixed);
+                let batch = compute(&tree);
+
+                let ltr = direction == Direction::Ltr;
+                let (inset_x, inset_y) = match (has_tracks, ltr) {
+                    (false, _) => (13.0, 15.0),
+                    (true, true) => (47.0, 37.0),
+                    (true, false) => (27.0, 37.0),
+                };
+                assert_nodes(&batch, &[1, 2, 3, 4, 5]);
+                assert_integer_rect(&batch, 1, [0.0, 0.0, 100.0, 80.0]);
+                assert_integer_rect(&batch, 4, [inset_x, inset_y, 20.0, 10.0]);
+                // The 60×40 content rectangle starts at (20, 20) in both box modes.
+                let (start_x, end_x) = if ltr { (20.0, 60.0) } else { (60.0, 20.0) };
+                assert_integer_rect(&batch, 2, [start_x, 20.0, 20.0, 10.0]);
+                assert_integer_rect(&batch, 3, [end_x, 50.0, 20.0, 10.0]);
+                assert_integer_rect(&batch, 5, [inset_x, 50.0, 20.0, 10.0]);
+            }
+        }
+    }
+}
+
+#[test]
+fn grid_static_position_uses_content_edges_f32() {
+    grid_static_position_uses_content_edges::<f32>();
+}
+
+#[test]
+fn grid_static_position_uses_content_edges_f64() {
+    grid_static_position_uses_content_edges::<f64>();
+}
+
+#[test]
+fn grid_static_position_checks_safe_alignment_against_content_extent() {
+    let mut parent = grid::<f32>(
+        Direction::Ltr,
+        BoxSizing::BorderBox,
+        Size::new(100.0, 80.0),
+        Tracks::Both,
+    );
+    parent.border = Edges::all(LengthOf::px(10.0));
+    parent.padding = Edges::all(LengthOf::px(10.0));
+    let mut child = fixed_absolute::<f32>(Direction::Ltr, Size::new(40.0, 30.0));
+    child.grid_column = GridPlacement::try_lines(1, 2).unwrap();
+    child.grid_row = GridPlacement::try_lines(1, 2).unwrap();
+    child.justify_self = Some(AlignItems::SafeEnd);
+    child.align_self = Some(AlignItems::SafeEnd);
+    let tree = PublicLayoutTreeOf::new()
+        .children(1, [2])
+        .style(1, parent)
+        .children(2, [])
+        .style(2, child);
+    // The child fits the 60×40 content box even though its 32×24 inset area is smaller.
+    assert_integer_rect(&compute(&tree), 2, [40.0, 30.0, 40.0, 30.0]);
+}
+
+#[test]
+fn grid_static_position_uses_the_used_content_box_with_classic_gutters() {
+    for (direction, content_x, child_x) in
+        [(Direction::Ltr, 35.0, 130.0), (Direction::Rtl, 50.0, 50.0)]
+    {
+        let mut parent = grid::<f32>(
+            direction,
+            BoxSizing::BorderBox,
+            Size::splat(200.0),
+            Tracks::Neither,
+        );
+        parent.border = Edges::all(LengthOf::px(20.0));
+        parent.padding = Edges::all(LengthOf::px(15.0));
+        parent.overflow = ComputedOverflow::try_new(Overflow::Scroll, Overflow::Scroll).unwrap();
+        parent.scrollbar_width = ScrollbarWidthOf::try_new(15.0).unwrap();
+        let mut child = fixed_absolute::<f32>(direction, Size::new(20.0, 10.0));
+        child.justify_self = Some(AlignItems::End);
+        child.align_self = Some(AlignItems::End);
+        child.margin = Edges::all(LengthAutoOf::AUTO);
+        let tree = PublicLayoutTreeOf::new()
+            .children(1, [2])
+            .style(1, parent)
+            .children(2, [])
+            .style(2, child);
+        let batch = compute(&tree);
+
+        let scroll = output(batch.final_entries(), 1).scroll_geometry.unwrap();
+        assert_empty_grid_scroll_rect(scroll.content_box(), [content_x, 35.0, 115.0, 115.0]);
+        assert_integer_rect(&batch, 2, [child_x, 140.0, 20.0, 10.0]);
+        assert_eq!(output(batch.final_entries(), 2).margin, Edges::all(0.0));
+    }
+}

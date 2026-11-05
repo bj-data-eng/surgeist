@@ -1,6 +1,7 @@
 //! Invocation-owned corpus and assertions; no historical corpus is rewritten.
 
-use std::collections::BTreeMap;
+use crate::parity_support::exact_differences::PublishedEdition;
+use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::fs;
 use std::io::Write;
@@ -48,13 +49,9 @@ pub(super) enum QualificationMode {
     FlexCompositionCapture,
     Publish,
     CheckPublished,
-    PublishCanonicalBoxes,
-    CheckPublishedCanonicalBoxes,
-    Derive(crate::parity_support::exact_differences::PublishedEdition),
-    PublishMeasuredGrid,
-    CheckPublishedMeasuredGrid,
-    PublishFlexText,
-    CheckPublishedFlexText,
+    PublishExact(PublishedEdition),
+    CheckPublishedExact(PublishedEdition),
+    Derive(PublishedEdition),
     PublishSpecialized(SpecializedProfile),
     CheckPublishedSpecialized(SpecializedProfile),
 }
@@ -93,17 +90,13 @@ impl QualificationMode {
             }
             Self::ElementScrollSizeDiagnostics => BoxObservationRequest::ElementScrollSizes,
             Self::FlexContentTextDiagnostics
-            | Self::PublishFlexText
-            | Self::CheckPublishedFlexText
-            | Self::Derive(crate::parity_support::exact_differences::PublishedEdition::FlexText) => {
-                BoxObservationRequest::FlexContentText
-            }
+            | Self::PublishExact(PublishedEdition::FlexText)
+            | Self::CheckPublishedExact(PublishedEdition::FlexText)
+            | Self::Derive(PublishedEdition::FlexText) => BoxObservationRequest::FlexContentText,
             Self::MeasuredLeafDiagnostics
-            | Self::PublishMeasuredGrid
-            | Self::CheckPublishedMeasuredGrid
-            | Self::Derive(
-                crate::parity_support::exact_differences::PublishedEdition::MeasuredGrid,
-            ) => BoxObservationRequest::MeasuredLeaf,
+            | Self::PublishExact(PublishedEdition::MeasuredGrid)
+            | Self::CheckPublishedExact(PublishedEdition::MeasuredGrid)
+            | Self::Derive(PublishedEdition::MeasuredGrid) => BoxObservationRequest::MeasuredLeaf,
             _ => BoxObservationRequest::Geometry,
         }
     }
@@ -189,13 +182,9 @@ fn select_records(
                 QualificationMode::Regular => {}
                 QualificationMode::Publish
                 | QualificationMode::CheckPublished
-                | QualificationMode::PublishCanonicalBoxes
-                | QualificationMode::CheckPublishedCanonicalBoxes
+                | QualificationMode::PublishExact(_)
+                | QualificationMode::CheckPublishedExact(_)
                 | QualificationMode::Derive(_)
-                | QualificationMode::PublishMeasuredGrid
-                | QualificationMode::CheckPublishedMeasuredGrid
-                | QualificationMode::PublishFlexText
-                | QualificationMode::CheckPublishedFlexText
                 | QualificationMode::PublishSpecialized(_)
                 | QualificationMode::CheckPublishedSpecialized(_) => {
                     return Err("durable modes require the complete inventory".into());
@@ -334,6 +323,7 @@ const INPUTS: &[(&str, &[u8])] = &[
 struct SemanticCase {
     reference: SemanticReference,
     record_sha256: Sha256Digest,
+    published_edition: Option<PublishedEdition>,
 }
 struct ExpectedCase {
     source: RelativePath,
@@ -454,13 +444,9 @@ pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> 
         mode,
         QualificationMode::Publish
             | QualificationMode::CheckPublished
-            | QualificationMode::PublishCanonicalBoxes
-            | QualificationMode::CheckPublishedCanonicalBoxes
+            | QualificationMode::PublishExact(_)
+            | QualificationMode::CheckPublishedExact(_)
             | QualificationMode::Derive(_)
-            | QualificationMode::PublishMeasuredGrid
-            | QualificationMode::CheckPublishedMeasuredGrid
-            | QualificationMode::PublishFlexText
-            | QualificationMode::CheckPublishedFlexText
             | QualificationMode::PublishSpecialized(_)
             | QualificationMode::CheckPublishedSpecialized(_)
     ) {
@@ -567,6 +553,7 @@ fn qualify(
 ) -> Result<()> {
     let expected = input.declaration.expected()?;
     let inventory = prepare_inventory(root, owner, &input, mode)?;
+    let geometry_predecessors = focused_geometry_predecessors(owner, &inventory.cases, mode)?;
     let corpus = corpus_for_inventory(root, owner, settings, &inventory, focused, expected)?;
     let request = GenerationRequest::new(corpus.clone(), browser_path, None, None)?;
     let report = browser::generate(request, QualificationAdapter::for_mode(mode))?;
@@ -582,9 +569,41 @@ fn qualify(
             lineage: SemanticLineage::Focused,
             requirements: None,
             terminal_cases: None,
+            geometry_predecessors,
             policy_raw: &mut std::io::stdout(),
         },
     )
+}
+
+fn focused_geometry_predecessors(
+    owner: &Path,
+    cases: &[ExpectedCase],
+    mode: QualificationMode,
+) -> Result<BTreeMap<String, String>> {
+    if mode.box_observations() != BoxObservationRequest::Geometry
+        || mode.collects_numeric_differences()
+    {
+        return Ok(BTreeMap::new());
+    }
+    let selected: BTreeSet<_> = cases
+        .iter()
+        .filter(|case| {
+            case.semantic
+                .as_ref()
+                .and_then(|semantic| semantic.published_edition)
+                == Some(PublishedEdition::GridStaticPosition)
+        })
+        .map(|case| case.case.output().as_str())
+        .collect();
+    if selected.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+    let mut predecessors = publication::verified_grid_static_predecessors(owner)?;
+    predecessors.retain(|output, _| selected.contains(output.as_str()));
+    if predecessors.len() != selected.len() {
+        return Err("missing selected Grid static-position qualification".into());
+    }
+    Ok(predecessors)
 }
 
 fn corpus_for_inventory(
@@ -643,6 +662,7 @@ struct Validation<'a> {
     requirements:
         Option<&'a BTreeMap<String, crate::parity_support::capture_authority::CurrentRequirements>>,
     terminal_cases: Option<&'a mut Vec<crate::parity_support::capture_authority::QualifiedCase>>,
+    geometry_predecessors: BTreeMap<String, String>,
     policy_raw: &'a mut dyn Write,
 }
 struct SemanticCapture<'a> {
@@ -855,6 +875,17 @@ fn validate_corpus(
                     native_errors.push(diagnostic);
                 }
             }
+        } else if let Some(digest) = validation
+            .geometry_predecessors
+            .remove(artifact.output().as_str())
+        {
+            if capture_authority::sha256(xml.as_bytes()) != digest {
+                return Err(format!(
+                    "{}: predecessor geometry differs from qualified capture",
+                    case.case.id()
+                )
+                .into());
+            }
         } else if case.semantic.is_some() {
             match qualify_semantic_case(&capture, artifact, case, &golden) {
                 Ok(result) => {
@@ -881,6 +912,9 @@ fn validate_corpus(
             eprintln!("qualify-root-context: Native comparison failed: {diagnostic}");
             native_errors.push(diagnostic);
         }
+    }
+    if !validation.geometry_predecessors.is_empty() {
+        return Err("missing qualified geometry predecessors".into());
     }
     qualify_pairs(root, &inventory.cases)?;
     let tamper_count = if let Some(first) = inventory.cases.iter().find(|case| {
@@ -945,13 +979,9 @@ fn validate_corpus(
         | QualificationMode::FlexCompositionCapture
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
-        | QualificationMode::PublishCanonicalBoxes
-        | QualificationMode::CheckPublishedCanonicalBoxes
+        | QualificationMode::PublishExact(_)
+        | QualificationMode::CheckPublishedExact(_)
         | QualificationMode::Derive(_)
-        | QualificationMode::PublishMeasuredGrid
-        | QualificationMode::CheckPublishedMeasuredGrid
-        | QualificationMode::PublishFlexText
-        | QualificationMode::CheckPublishedFlexText
         | QualificationMode::PublishSpecialized(_)
         | QualificationMode::CheckPublishedSpecialized(_) => {}
     }
@@ -1166,13 +1196,9 @@ fn inventory_with_retained_helper(
         | QualificationMode::FlexCompositionCapture
         | QualificationMode::Publish
         | QualificationMode::CheckPublished
-        | QualificationMode::PublishCanonicalBoxes
-        | QualificationMode::CheckPublishedCanonicalBoxes
+        | QualificationMode::PublishExact(_)
+        | QualificationMode::CheckPublishedExact(_)
         | QualificationMode::Derive(_)
-        | QualificationMode::PublishMeasuredGrid
-        | QualificationMode::CheckPublishedMeasuredGrid
-        | QualificationMode::PublishFlexText
-        | QualificationMode::CheckPublishedFlexText
         | QualificationMode::PublishSpecialized(_)
         | QualificationMode::CheckPublishedSpecialized(_) => None,
     };
@@ -1275,8 +1301,9 @@ fn inventory_with_retained_helper(
         )?;
         let (family, stem) = record.source_names()?;
         let record_sha256 = semantic_record_digest(record)?;
+        let mut semantic_cases = BTreeMap::new();
         if let Some(specifications) = &record.semantic_specifications {
-            for reference in specifications.values() {
+            for (variant, reference) in specifications {
                 let bytes = register_semantic_input(
                     root,
                     owner,
@@ -1293,6 +1320,14 @@ fn inventory_with_retained_helper(
                 let expected: Sha256Digest =
                     serde_json::from_value(serde_json::Value::String(digest.to_owned()))?;
                 register_semantic_input(root, owner, &source, &expected, &mut inventory, access)?;
+                semantic_cases.insert(
+                    variant.as_str(),
+                    SemanticCase {
+                        reference: reference.clone(),
+                        record_sha256: record_sha256.clone(),
+                        published_edition: spec.published_edition(),
+                    },
+                );
             }
         }
         let mut cases = Vec::new();
@@ -1330,14 +1365,7 @@ fn inventory_with_retained_helper(
                 historical,
                 expected: record.expected.clone(),
                 relation: record.relation.clone(),
-                semantic: record
-                    .semantic_specifications
-                    .as_ref()
-                    .and_then(|specs| specs.get(variant))
-                    .map(|reference| SemanticCase {
-                        reference: reference.clone(),
-                        record_sha256: record_sha256.clone(),
-                    }),
+                semantic: semantic_cases.remove(variant),
             });
             cases.push(case);
         }

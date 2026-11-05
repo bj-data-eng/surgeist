@@ -3373,22 +3373,21 @@ fn assert_logical_ordinary_grid_absolute_static<S: LayoutScalar>() {
             logical_child_size,
             physical_container_size,
         );
-        let aligned_inline = scalar(40.25) - logical_child_size.inline - explicit_margin.inline_end;
-        let aligned_block = (scalar(60.0) - logical_child_size.block + explicit_margin.block_start
+        let aligned_inline =
+            logical_container_size.inline - logical_child_size.inline - explicit_margin.inline_end;
+        let aligned_block = (logical_container_size.block - logical_child_size.block
+            + explicit_margin.block_start
             - explicit_margin.block_end)
             / scalar(2.0);
         let aligned_location = flow_axes.physical_point(
-            crate::geometry::LogicalPointOf::new(
-                scalar(30.25) + aligned_inline,
-                scalar(50.25) + aligned_block,
-            ),
+            crate::geometry::LogicalPointOf::new(aligned_inline, aligned_block),
             logical_child_size,
             physical_container_size,
         );
         let static_location = flow_axes.physical_point(
             crate::geometry::LogicalPointOf::new(
-                (logical_container_size.inline - logical_child_size.inline) / scalar(2.0),
-                scalar(50.25) + (scalar(60.0) - logical_child_size.block) / scalar(2.0),
+                logical_container_size.inline - logical_child_size.inline,
+                logical_container_size.block - logical_child_size.block,
             ),
             logical_child_size,
             physical_container_size,
