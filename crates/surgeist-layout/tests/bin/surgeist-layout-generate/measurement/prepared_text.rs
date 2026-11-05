@@ -201,6 +201,29 @@ impl Paragraph {
         )
     }
 
+    pub(super) fn uses_stylesheet_ahem(&self) -> bool {
+        self.font.id == pinned_font::AHEM_STYLESHEET_WOFF2_ID
+    }
+
+    pub(super) fn is_empty_line_source(&self) -> bool {
+        self.uses_stylesheet_ahem()
+            && self.origins.is_empty()
+            && self.connections.is_empty()
+            && self.atomics.is_empty()
+            && self.controls.len() == 2
+            && self.controls.iter().enumerate().all(|(index, control)| {
+                control.child == index
+                    && control.at == 0
+                    && matches!(control.kind, ControlKind::ForcedBreak)
+            })
+            && self.base_style.font_size == 20.0
+            && self.base_style.line_height == 30.0
+            && matches!(
+                self.writing_mode,
+                WritingMode::HorizontalTb | WritingMode::VerticalRl
+            )
+    }
+
     pub(super) fn validate(
         &self,
         context: &Context<'_>,
@@ -208,10 +231,13 @@ impl Paragraph {
     ) -> Result<String, MeasurementError> {
         let font = &self.font;
         context.ensure(
-            font.id == pinned_font::ID
+            ((font.id == pinned_font::ID
                 && font.sha256 == pinned_font::SHA256
+                && font.family == "SurgeistParityAhem")
+                || (self.is_empty_line_source()
+                    && font.sha256 == pinned_font::AHEM_STYLESHEET_WOFF2_SHA256
+                    && font.family == "ahem"))
                 && font.face_index == 0
-                && font.family == "SurgeistParityAhem"
                 && font.style == "normal"
                 && font.weight == 400
                 && font.stretch == "normal"

@@ -2230,3 +2230,52 @@ block_offset = 0
 [[specialized_publications]]
 source = "html/block/block_br_vertical_rl_rtl_inline_block_metrics.html"
 profile = "vertical-br-font-band"
+
+[[records]]
+source = "html/block/block_br_empty_lines_metrics.html"
+source_sha256 = "7d4717c7ae542e751bab7601b4c94e07a4edf1d1bc399de5351da9c09979b4e1"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "2cab481bd0e43f9d71732f6840c2595255b6d0a7b4c911a03d1090965c91c022"
+content_box_ltr = "4c87505d4d9dcfcea2ca9cbbf57a6bad8ee96474e7d01b31176ee8baff88c1ca"
+border_box_rtl = "a68ee4866683290c5fc5f08e748bb7c8cd3e62a6d858290c3bb783b3c7ef14c3"
+content_box_rtl = "bb545ffdc496457ad1082671b81e738980ce22c4d8ff603ab634dbeb077d3818"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[specialized_publications]]
+source = "html/block/block_br_empty_lines_metrics.html"
+profile = "empty-line-br-font-band"
+
+[[records]]
+source = "html/block/block_br_vertical_rl_empty_lines_metrics.html"
+source_sha256 = "170fc32902b9543fcdeca4d142dfbafa878e7a1fa69f2223f982b40071334d07"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "fa35f01092e6015c21557afcb982dade4bc9cbe74e327f1fd7492405f4eea6b0"
+content_box_ltr = "a091c75aee49e8b840534b45ad6ce1fdd06c27363998ca3df35e15fc54dbfa89"
+border_box_rtl = "00074a846427e208d7270e5f24bd25cfa2bfeee6bb7d56a0ac35c0a923ccadb2"
+content_box_rtl = "e4865698f84668e911f01d83b542ef3d82fb6feb4acf933939a0bf4843ffc188"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "vertical-rl"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "ltr"
+inline_offset = 0
+block_offset = 0
+
+[[specialized_publications]]
+source = "html/block/block_br_vertical_rl_empty_lines_metrics.html"
+profile = "empty-line-br-font-band"

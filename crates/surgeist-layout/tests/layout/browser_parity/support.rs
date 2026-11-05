@@ -3814,6 +3814,7 @@ enum ComparisonFrame {
 pub(crate) enum BrFontBandProfile {
     Horizontal,
     Vertical,
+    EmptyLine,
 }
 
 struct ComparisonPolicy<'a> {
@@ -4985,20 +4986,25 @@ fn project_prepared_browser_br_font_band(
         return Ok(None);
     };
     let writing_mode = tree.box_node_input(parent).writing_mode;
-    if tree.nodes[parent].parent.is_some()
-        || !matches!(
-            (profile, writing_mode),
-            (
-                BrFontBandProfile::Horizontal,
-                layout::WritingMode::HorizontalTb
-            ) | (
-                BrFontBandProfile::Vertical,
-                layout::WritingMode::VerticalLr | layout::WritingMode::VerticalRl
-            )
-        )
-    {
+    if tree.nodes[parent].parent.is_some() {
         return Ok(None);
     }
+    let vertical = match (profile, writing_mode) {
+        (
+            BrFontBandProfile::Horizontal | BrFontBandProfile::EmptyLine,
+            layout::WritingMode::HorizontalTb,
+        ) => false,
+        (
+            BrFontBandProfile::Vertical,
+            layout::WritingMode::VerticalLr | layout::WritingMode::VerticalRl,
+        )
+        | (BrFontBandProfile::EmptyLine, layout::WritingMode::VerticalRl) => true,
+        _ => return Ok(None),
+    };
+    let font = match profile {
+        BrFontBandProfile::Horizontal | BrFontBandProfile::Vertical => pinned_font::BYTES,
+        BrFontBandProfile::EmptyLine => pinned_font::AHEM_STYLESHEET_WOFF2,
+    };
     let [fragment] = input
         .unrounded_inline_fragments
         .as_deref()
@@ -5035,7 +5041,7 @@ fn project_prepared_browser_br_font_band(
         return Ok(None);
     };
     let instance = metrics.instance();
-    if instance.face().bytes() != pinned_font::BYTES
+    if instance.face().admitted_face().resource().source().bytes() != font
         || instance.face().index() != 0
         || instance.font_size() != 20.0
         || instance.axis_count() != 0
@@ -5045,9 +5051,9 @@ fn project_prepared_browser_br_font_band(
     }
     let point = input.unrounded.location;
     let baseline = fragment.baseline();
-    let (x, y, right, bottom) = match (profile, metrics.basis()) {
+    let (x, y, right, bottom) = match (vertical, metrics.basis()) {
         (
-            BrFontBandProfile::Horizontal,
+            false,
             surgeist_text::BreakFontMetricBasis::Horizontal {
                 font_origin_offset: 0.0,
             },
@@ -5061,7 +5067,7 @@ fn project_prepared_browser_br_font_band(
                 baseline + metrics.descent(),
             )
         }
-        (BrFontBandProfile::Vertical, surgeist_text::BreakFontMetricBasis::UprightCentral) => {
+        (true, surgeist_text::BreakFontMetricBasis::UprightCentral) => {
             let ordinary = instance
                 .metrics(instance.face().catalogue_identity())
                 .map_err(|error| {

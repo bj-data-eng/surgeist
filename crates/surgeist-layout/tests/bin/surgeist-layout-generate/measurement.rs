@@ -19,7 +19,7 @@ mod measured_leaf;
 use crate::horizontal_br_font_band_profile;
 use crate::original_subgrid_body_profile;
 use crate::prepared_atomic_percentage_profile;
-use crate::vertical_br_font_band_profile;
+use crate::{empty_line_br_font_band_profile, vertical_br_font_band_profile};
 pub(super) use flex_content_text::FlexContentText;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,6 +34,7 @@ pub(super) enum BoxObservationRequest {
     PreparedAtomicPercentage,
     HorizontalBrFontBand,
     VerticalBrFontBand,
+    EmptyLineBrFontBand,
 }
 
 pub(super) const FLEX_COMPOSITION_SOURCE: &str = "html/flex/fri07_flex_composition.html";
@@ -74,6 +75,9 @@ impl BoxObservationRequest {
             Some(bytes) if Some(bytes) == Self::VerticalBrFontBand.input_bytes() => {
                 Ok(Self::VerticalBrFontBand)
             }
+            Some(bytes) if Some(bytes) == Self::EmptyLineBrFontBand.input_bytes() => {
+                Ok(Self::EmptyLineBrFontBand)
+            }
             Some(_) => Err("observation request must match a registered exact input"),
         }
     }
@@ -101,6 +105,10 @@ impl BoxObservationRequest {
                 vertical_br_font_band_profile::SCRIPT_PATH,
                 vertical_br_font_band_profile::SCRIPT,
             )),
+            Self::EmptyLineBrFontBand => Some((
+                empty_line_br_font_band_profile::SCRIPT_PATH,
+                empty_line_br_font_band_profile::SCRIPT,
+            )),
             Self::Geometry
             | Self::ElementScrollSizes
             | Self::PreparedRanges
@@ -126,6 +134,7 @@ impl BoxObservationRequest {
             Self::PreparedAtomicPercentage => Some(prepared_atomic_percentage_profile::REQUEST),
             Self::HorizontalBrFontBand => Some(horizontal_br_font_band_profile::REQUEST),
             Self::VerticalBrFontBand => Some(vertical_br_font_band_profile::REQUEST),
+            Self::EmptyLineBrFontBand => Some(empty_line_br_font_band_profile::REQUEST),
         }
     }
 }
@@ -679,11 +688,14 @@ pub(super) fn decode(
         .viewport
         .as_ref()
         .and_then(WireViewport::hypothetical_block_offset);
-    let valid_block_offset = if request == BoxObservationRequest::VerticalBrFontBand {
-        block_offset == Some(0.0)
-    } else {
-        block_offset.is_none()
-    };
+    let requires_block_offset = request == BoxObservationRequest::VerticalBrFontBand
+        || (request == BoxObservationRequest::EmptyLineBrFontBand
+            && wire
+                .style
+                .as_ref()
+                .and_then(|style| style.writing_mode.as_deref())
+                == Some("vertical-rl"));
+    let valid_block_offset = block_offset == requires_block_offset.then_some(0.0);
     context.compatible(
         valid_block_offset,
         "viewport.rootContext.hypotheticalBlockOffset",
@@ -694,6 +706,15 @@ pub(super) fn decode(
     }
     if request == BoxObservationRequest::VerticalBrFontBand {
         wire.validate_vertical_br_font_band(&context, root_local_positioned)?;
+    }
+    if request == BoxObservationRequest::EmptyLineBrFontBand {
+        wire.validate_empty_line_br_font_band(&context, root_local_positioned)?;
+    } else {
+        context.compatible(
+            !wire.uses_stylesheet_break_font(),
+            "preparedParagraph.font",
+            "stylesheet break font requires the original empty-line observation profile",
+        )?;
     }
     if request == BoxObservationRequest::OriginalSubgridBody {
         context.compatible(
@@ -748,7 +769,8 @@ pub(super) fn decode(
         | BoxObservationRequest::OriginalSubgridBody
         | BoxObservationRequest::PreparedAtomicPercentage
         | BoxObservationRequest::HorizontalBrFontBand
-        | BoxObservationRequest::VerticalBrFontBand => None,
+        | BoxObservationRequest::VerticalBrFontBand
+        | BoxObservationRequest::EmptyLineBrFontBand => None,
         BoxObservationRequest::ElementScrollSizes
         | BoxObservationRequest::MeasuredLeaf
         | BoxObservationRequest::FlexContentText => {
@@ -962,6 +984,40 @@ impl WireNode {
                 && children.iter().filter(|child| child.browser_br_observation.is_some()).count() == 1,
             "preparedParagraph",
             "vertical break font-band evidence requires the original root, prepared source and selected break",
+        )
+    }
+
+    fn uses_stylesheet_break_font(&self) -> bool {
+        self.prepared_paragraph
+            .as_ref()
+            .is_some_and(prepared_text::Paragraph::uses_stylesheet_ahem)
+            || self
+                .children
+                .iter()
+                .flatten()
+                .any(Self::uses_stylesheet_break_font)
+    }
+
+    fn validate_empty_line_br_font_band(
+        &self,
+        context: &Context<'_>,
+        root_local_positioned: bool,
+    ) -> Result<(), MeasurementError> {
+        let prepared = context.required(self.prepared_paragraph.as_ref(), "preparedParagraph")?;
+        let children = context.required(self.children.as_deref(), "children")?;
+        context.compatible(
+            root_local_positioned
+                && self.layout_ready_inline_root == Some(true)
+                && self.style.as_ref().is_some_and(|style| {
+                    style.display.as_deref() == Some("block")
+                        && matches!(style.writing_mode.as_deref(), None | Some("horizontal-tb" | "vertical-rl"))
+                })
+                && prepared.is_empty_line_source()
+                && matches!(children, [first, second]
+                    if first.browser_br_observation.is_some() && second.browser_br_observation.is_some()
+                    && !first.uses_stylesheet_break_font() && !second.uses_stylesheet_break_font()),
+            "preparedParagraph",
+            "empty-line font bands require the original root and both prepared breaks",
         )
     }
 

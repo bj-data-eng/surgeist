@@ -6,6 +6,8 @@ mod atomic_paragraph_metrics;
 mod browser_profile;
 #[path = "surgeist-layout-generate/cli.rs"]
 mod cli;
+#[path = "surgeist-layout-generate/measurement/empty_line_br_font_band_profile.rs"]
+mod empty_line_br_font_band_profile;
 #[path = "surgeist-layout-generate/envelope.rs"]
 mod envelope;
 #[path = "../layout/browser_parity/fixture_variants.rs"]

@@ -7,6 +7,9 @@ pub const ROOT_CONTEXT_STYLESHEET_SHA256: &str =
     "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6";
 pub const AHEM_STYLESHEET_WOFF2_SHA256: &str =
     "e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c";
+pub const AHEM_STYLESHEET_WOFF2_ID: &str = "ahem-woff2-e450dd6e";
+pub const AHEM_STYLESHEET_WOFF2: &[u8] =
+    include_bytes!("../../../../surgeist-font/tests/fixtures/ahem-original/Ahem.woff2");
 
 pub fn measured_grid_advances(source: &str) -> Option<[u32; 3]> {
     match source {

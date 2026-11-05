@@ -1,0 +1,27 @@
+<test name="block_br_empty_lines_metrics__content_box_rtl" measurement-version="4" observation-frame="root-border-local" use-rounding="true">
+  <viewport root-context="absolute-root-local" containing-width="800px" containing-height="600px" containing-direction="ltr" hypothetical-direction="ltr" hypothetical-display="block" hypothetical-anchor="inline-start" hypothetical-inline-offset="0px" fallback-icb-width="800px" fallback-icb-height="600px" fallback-nearest-scrollport="none" fallback-containing-width-limit="unbounded" fallback-containing-height-limit="unbounded"/>
+  <input>
+    <div grid-alignment-profile="{&quot;profile&quot;:1,&quot;owners&quot;:[]}" source-tag="div" layout-ready-inline-root="true" display="block" box-sizing="content-box" direction="rtl" position="absolute" font-size="20px" line-height="30px" width="120px">
+      <prepared-paragraph capture="{&quot;font&quot;:{&quot;id&quot;:&quot;ahem-woff2-e450dd6e&quot;,&quot;sha256&quot;:&quot;e450dd6e1bc6fb10ebc6edecef1182dcd8cad6e12e54c363ad4ba26f6b5db46c&quot;,&quot;faceIndex&quot;:0,&quot;family&quot;:&quot;ahem&quot;,&quot;style&quot;:&quot;normal&quot;,&quot;weight&quot;:400,&quot;stretch&quot;:&quot;normal&quot;,&quot;features&quot;:&quot;normal&quot;,&quot;variations&quot;:&quot;normal&quot;,&quot;synthesis&quot;:&quot;none&quot;,&quot;loaded&quot;:true},&quot;direction&quot;:&quot;rtl&quot;,&quot;writingMode&quot;:&quot;horizontal-tb&quot;,&quot;baseStyle&quot;:{&quot;fontSize&quot;:20.0,&quot;lineHeight&quot;:30.0,&quot;whitespace&quot;:&quot;collapse&quot;,&quot;wrap&quot;:&quot;word&quot;,&quot;letterSpacing&quot;:0.0,&quot;wordSpacing&quot;:0.0,&quot;color&quot;:[0.0,0.501960813999176,0.0,1.0],&quot;locale&quot;:&quot;en&quot;},&quot;origins&quot;:[],&quot;connections&quot;:[],&quot;atomics&quot;:[],&quot;controls&quot;:[{&quot;child&quot;:0,&quot;at&quot;:0,&quot;kind&quot;:&quot;forced-break&quot;},{&quot;child&quot;:1,&quot;at&quot;:0,&quot;kind&quot;:&quot;forced-break&quot;}],&quot;order&quot;:[{&quot;kind&quot;:&quot;control&quot;,&quot;index&quot;:0,&quot;affinity&quot;:&quot;before&quot;},{&quot;kind&quot;:&quot;control&quot;,&quot;index&quot;:1,&quot;affinity&quot;:&quot;before&quot;}]}"/>
+      <div source-tag="br" line-control="forced-break" display="inline" box-sizing="content-box" direction="rtl" font-size="20px" line-height="30px"/>
+      <div source-tag="br" line-control="forced-break" display="inline" box-sizing="content-box" direction="rtl" font-size="20px" line-height="30px"/>
+    </div>
+  </input>
+  <expectations>
+    <node x="0" y="0" width="120" height="60">
+      <node>
+        <browser-control source_index="0" terminal_visual_slot="0" previous_line="absent" next_line="later"/>
+        <browser-br-font-band x="120" y="5" width="0" height="20"/>
+      </node>
+      <node>
+        <browser-control source_index="1" terminal_visual_slot="0" previous_line="earlier" next_line="absent"/>
+        <browser-br-font-band x="120" y="35" width="0" height="20"/>
+      </node>
+    </node>
+  </expectations>
+  <diagnostics>
+    <world-rounded-layout node-path="0" x="0" y="0" width="120" height="60" scroll-width="120" scroll-height="60" client-width="120" client-height="60"/>
+    <world-rounded-layout node-path="0.0" x="120" y="5" width="0" height="20" scroll-width="0" scroll-height="0" client-width="0" client-height="0"/>
+    <world-rounded-layout node-path="0.1" x="120" y="35" width="0" height="20" scroll-width="0" scroll-height="0" client-width="0" client-height="0"/>
+  </diagnostics>
+</test>

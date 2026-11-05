@@ -177,12 +177,26 @@ impl Capture {
                 "loaded",
             ],
         )?;
-        let actual = format!("{:x}", Sha256::digest(pinned_font::BYTES));
-        if actual != pinned_font::SHA256
-            || string(&font["id"])? != pinned_font::ID
+        let font_id = string(&font["id"])?;
+        let stylesheet_font = font_id == pinned_font::AHEM_STYLESHEET_WOFF2_ID;
+        let (font_bytes, digest, family) = match font_id {
+            pinned_font::ID => (
+                pinned_font::BYTES,
+                pinned_font::SHA256,
+                "SurgeistParityAhem",
+            ),
+            pinned_font::AHEM_STYLESHEET_WOFF2_ID => (
+                pinned_font::AHEM_STYLESHEET_WOFF2,
+                pinned_font::AHEM_STYLESHEET_WOFF2_SHA256,
+                "ahem",
+            ),
+            _ => return Err(fail("unknown pinned resource")),
+        };
+        let actual = format!("{:x}", Sha256::digest(font_bytes));
+        if actual != digest
             || string(&font["sha256"])? != actual
             || index(&font["faceIndex"])? != 0
-            || string(&font["family"])? != "SurgeistParityAhem"
+            || string(&font["family"])? != family
             || string(&font["style"])? != "normal"
             || index(&font["weight"])? != 400
             || string(&font["stretch"])? != "normal"
@@ -192,6 +206,31 @@ impl Capture {
             || font["loaded"] != Value::Bool(true)
         {
             return Err(fail("pinned resource/descriptors/loading proof mismatch"));
+        }
+        if stylesheet_font {
+            let empty = ["origins", "connections", "atomics"]
+                .into_iter()
+                .all(|key| value[key].as_array().is_some_and(Vec::is_empty));
+            let forced = array(&value["controls"])?;
+            if children != 2
+                || !empty
+                || forced.len() != 2
+                || !forced.iter().enumerate().all(|(child, control)| {
+                    control["kind"] == "forced-break"
+                        && control["child"].as_u64() == u64::try_from(child).ok()
+                        && control["at"].as_u64() == Some(0)
+                })
+                || value["baseStyle"]["fontSize"].as_f64() != Some(20.0)
+                || value["baseStyle"]["lineHeight"].as_f64() != Some(30.0)
+                || !matches!(
+                    string(&value["writingMode"])?,
+                    "horizontal-tb" | "vertical-rl"
+                )
+            {
+                return Err(fail(
+                    "stylesheet Ahem requires the empty-line forced-break source",
+                ));
+            }
         }
         let vertical = match string(&value["writingMode"])? {
             "horizontal-tb" => false,
@@ -523,10 +562,7 @@ impl Capture {
             .map_err(|error| fail(error.to_string()))?;
         let mut system = text::System::default();
         system
-            .register_fonts(
-                pinned_font::BYTES.to_vec(),
-                surgeist_test::fixtures::FONT_LIMITS,
-            )
+            .register_fonts(font_bytes.to_vec(), surgeist_test::fixtures::FONT_LIMITS)
             .map_err(|error| fail(error.to_string()))?;
         let prepared = system
             .prepare(
@@ -541,7 +577,7 @@ impl Capture {
         for unit in prepared.unit_views() {
             for instance in unit.font_instances() {
                 let instance = instance.map_err(|error| fail(error.to_string()))?;
-                if instance.face().bytes() != pinned_font::BYTES
+                if instance.face().admitted_face().resource().source().bytes() != font_bytes
                     || instance.face().index() != 0
                     || instance.axis_count() != 0
                     || instance.synthesis() != text::FontSynthesis::default()

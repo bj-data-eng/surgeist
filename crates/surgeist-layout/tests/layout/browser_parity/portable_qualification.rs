@@ -1043,7 +1043,8 @@ fn admit_specialized(
         | SpecializedProfile::OriginalSubgridBody
         | SpecializedProfile::PreparedAtomicPercentage
         | SpecializedProfile::HorizontalBrFontBand
-        | SpecializedProfile::VerticalBrFontBand => None,
+        | SpecializedProfile::VerticalBrFontBand
+        | SpecializedProfile::EmptyLineBrFontBand => None,
         SpecializedProfile::FlexComposition => Some(Rc::new(flex::Inputs::load(root)?)),
     };
     terminal
@@ -1100,7 +1101,8 @@ fn admit_specialized(
                     )
                 }
                 SpecializedProfile::HorizontalBrFontBand
-                | SpecializedProfile::VerticalBrFontBand => {
+                | SpecializedProfile::VerticalBrFontBand
+                | SpecializedProfile::EmptyLineBrFontBand => {
                     let current = support::Golden::parse(xml)
                         .map_err(|error| malformed(error.to_string()))?;
                     let historical = std::str::from_utf8(&historical)
@@ -1109,10 +1111,17 @@ fn admit_specialized(
                         .map_err(|error| malformed(error.to_string()))?;
                     support::br_font_band::verify_historical(&current, &historical)
                         .map_err(|error| malformed(error.to_string()))?;
-                    let projection = if profile == SpecializedProfile::HorizontalBrFontBand {
-                        support::BrFontBandProfile::Horizontal
-                    } else {
-                        support::BrFontBandProfile::Vertical
+                    let projection = match profile {
+                        SpecializedProfile::HorizontalBrFontBand => {
+                            support::BrFontBandProfile::Horizontal
+                        }
+                        SpecializedProfile::VerticalBrFontBand => {
+                            support::BrFontBandProfile::Vertical
+                        }
+                        SpecializedProfile::EmptyLineBrFontBand => {
+                            support::BrFontBandProfile::EmptyLine
+                        }
+                        _ => unreachable!("selected BR font-band profile"),
                     };
                     (Ok(current), AdmittedComparison::BrFontBand(projection))
                 }

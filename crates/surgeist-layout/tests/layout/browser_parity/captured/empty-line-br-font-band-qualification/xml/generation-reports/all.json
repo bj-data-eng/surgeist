@@ -1,0 +1,128 @@
+{
+  "metadata": {
+    "schema_version": 4,
+    "generator": "surgeist-layout-root-context-qualification",
+    "engine_version": "0.2.0",
+    "host_executable_sha256": "e5f2deccc688b6e893c89db109248fd054e478014abbba66d213e52c490b80f6",
+    "browser_executable": "tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+    "browser_executable_sha256": "0c2ded2fa4da35e0a9898f03fdf4a6469a0fd7b9002db9c49f6988aac867f1c8",
+    "browser_provenance": "chrome-for-testing/149.0.7827.115 (tmp/surgeist-browser/mac_arm-149.0.7827.115/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing)",
+    "contract_sha256": "29084fdfce52d5610d99fca946cec77c5b98e95e80ab3ccdc56b08496fe09aa4",
+    "inputs": {
+      "browser-owner.toml": "3451cb666b112c815d5c3defac6381c69a7e7af6e98163db64251326db7fc29f",
+      "corpus.toml": "e4670d1f624175a148c2dca518853996fddaf328e976630bcf7294155306e0ce",
+      "historical/block/block_br_empty_lines_metrics__border_box_ltr.xml": "2cab481bd0e43f9d71732f6840c2595255b6d0a7b4c911a03d1090965c91c022",
+      "historical/block/block_br_empty_lines_metrics__border_box_rtl.xml": "a68ee4866683290c5fc5f08e748bb7c8cd3e62a6d858290c3bb783b3c7ef14c3",
+      "historical/block/block_br_empty_lines_metrics__content_box_ltr.xml": "4c87505d4d9dcfcea2ca9cbbf57a6bad8ee96474e7d01b31176ee8baff88c1ca",
+      "historical/block/block_br_empty_lines_metrics__content_box_rtl.xml": "bb545ffdc496457ad1082671b81e738980ce22c4d8ff603ab634dbeb077d3818",
+      "historical/block/block_br_vertical_rl_empty_lines_metrics__border_box_ltr.xml": "fa35f01092e6015c21557afcb982dade4bc9cbe74e327f1fd7492405f4eea6b0",
+      "historical/block/block_br_vertical_rl_empty_lines_metrics__border_box_rtl.xml": "00074a846427e208d7270e5f24bd25cfa2bfeee6bb7d56a0ac35c0a923ccadb2",
+      "historical/block/block_br_vertical_rl_empty_lines_metrics__content_box_ltr.xml": "a091c75aee49e8b840534b45ad6ce1fdd06c27363998ca3df35e15fc54dbfa89",
+      "historical/block/block_br_vertical_rl_empty_lines_metrics__content_box_rtl.xml": "e4865698f84668e911f01d83b542ef3d82fb6feb4acf933939a0bf4843ffc188",
+      "html/block/block_br_empty_lines_metrics.html": "7d4717c7ae542e751bab7601b4c94e07a4edf1d1bc399de5351da9c09979b4e1",
+      "html/block/block_br_vertical_rl_empty_lines_metrics.html": "170fc32902b9543fcdeca4d142dfbafa878e7a1fa69f2223f982b40071334d07",
+      "observation-request.json": "22bf82be78aa44600373e033eec3df82158ce7d782a901f3e6c1ef8f0cc803f7",
+      "origin/selected-originals.json": "8e6b67a430c03031e6c6944a78f2c41b31c2bdf6f1a955851e97749c055b0dd5",
+      "origin/source-provenance.json": "0c5fad74955864eebb19017742510ff73775dbdb599de5a2c915b6f44f9d3970",
+      "origin/source-receipt.json": "c2a8f3bed7d5dd06707c24a93b52a6440b17aff1ed0a34c4e1f71331ab2df667",
+      "scripts/gentest/empty_line_br_font_band.js": "4d64b5aca5f539bbb0d19edaf189d1ec60799864ad5e17643d241298fc7ed56a",
+      "scripts/gentest/test_base_style.css": "5d00a3f3c55322b7002b065eacc6b4f3f14ecad83f757c79679b6ec6dee4fec6",
+      "scripts/gentest/test_helper.js": "afad9adf5a3915d88e94b0e3ad2d4768c242783422a0fb3bbc9a277492c10f9c"
+    },
+    "source_imports": []
+  },
+  "filter": null,
+  "summary": {
+    "generated": 8,
+    "unsupported": 0,
+    "expected_fail": 0,
+    "quarantined": 0,
+    "failed_to_generate": 0
+  },
+  "generated": [
+    {
+      "name": "block_br_empty_lines_metrics__border_box_ltr",
+      "source": "html/block/block_br_empty_lines_metrics.html",
+      "output": "xml/block/block_br_empty_lines_metrics__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "source_sha256": "7d4717c7ae542e751bab7601b4c94e07a4edf1d1bc399de5351da9c09979b4e1",
+      "linked_resources": {},
+      "job_sha256": "acf872e1a69b3fd437c54be507295e51149291649859891f9a132d478ea54716",
+      "output_sha256": "6f8f61d62197205c74c148c4e20331d96805aa161448a2c551b41d7aec2e27ad"
+    },
+    {
+      "name": "block_br_empty_lines_metrics__border_box_rtl",
+      "source": "html/block/block_br_empty_lines_metrics.html",
+      "output": "xml/block/block_br_empty_lines_metrics__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "source_sha256": "7d4717c7ae542e751bab7601b4c94e07a4edf1d1bc399de5351da9c09979b4e1",
+      "linked_resources": {},
+      "job_sha256": "acf872e1a69b3fd437c54be507295e51149291649859891f9a132d478ea54716",
+      "output_sha256": "0fc8b60be17755a0d5226c8744d1391c0738c7028d083ed9d454172ee55a06eb"
+    },
+    {
+      "name": "block_br_empty_lines_metrics__content_box_ltr",
+      "source": "html/block/block_br_empty_lines_metrics.html",
+      "output": "xml/block/block_br_empty_lines_metrics__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "source_sha256": "7d4717c7ae542e751bab7601b4c94e07a4edf1d1bc399de5351da9c09979b4e1",
+      "linked_resources": {},
+      "job_sha256": "acf872e1a69b3fd437c54be507295e51149291649859891f9a132d478ea54716",
+      "output_sha256": "179a85d9694c67a92ef15dcd494f45a09cca23a2c6b73e956637dcf18bb375e8"
+    },
+    {
+      "name": "block_br_empty_lines_metrics__content_box_rtl",
+      "source": "html/block/block_br_empty_lines_metrics.html",
+      "output": "xml/block/block_br_empty_lines_metrics__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "source_sha256": "7d4717c7ae542e751bab7601b4c94e07a4edf1d1bc399de5351da9c09979b4e1",
+      "linked_resources": {},
+      "job_sha256": "acf872e1a69b3fd437c54be507295e51149291649859891f9a132d478ea54716",
+      "output_sha256": "df28ab81e2c0058df0c5ad7fb6aa77ea347df5709b9c39a2dadf77ef443b5759"
+    },
+    {
+      "name": "block_br_vertical_rl_empty_lines_metrics__border_box_ltr",
+      "source": "html/block/block_br_vertical_rl_empty_lines_metrics.html",
+      "output": "xml/block/block_br_vertical_rl_empty_lines_metrics__border_box_ltr.xml",
+      "variant": "border_box_ltr",
+      "source_sha256": "170fc32902b9543fcdeca4d142dfbafa878e7a1fa69f2223f982b40071334d07",
+      "linked_resources": {},
+      "job_sha256": "aa4e27235a9ea739280481127587df3839dc237606edccbd57a7014e9947420c",
+      "output_sha256": "e553d37107692c7baafd5551e70eeb92ada7fae1aa6597e4a48e03071558a1f3"
+    },
+    {
+      "name": "block_br_vertical_rl_empty_lines_metrics__border_box_rtl",
+      "source": "html/block/block_br_vertical_rl_empty_lines_metrics.html",
+      "output": "xml/block/block_br_vertical_rl_empty_lines_metrics__border_box_rtl.xml",
+      "variant": "border_box_rtl",
+      "source_sha256": "170fc32902b9543fcdeca4d142dfbafa878e7a1fa69f2223f982b40071334d07",
+      "linked_resources": {},
+      "job_sha256": "aa4e27235a9ea739280481127587df3839dc237606edccbd57a7014e9947420c",
+      "output_sha256": "ea18bb59618e6e15935a40fbc8ed77e9f24554afc63821e0759bb99328f036d0"
+    },
+    {
+      "name": "block_br_vertical_rl_empty_lines_metrics__content_box_ltr",
+      "source": "html/block/block_br_vertical_rl_empty_lines_metrics.html",
+      "output": "xml/block/block_br_vertical_rl_empty_lines_metrics__content_box_ltr.xml",
+      "variant": "content_box_ltr",
+      "source_sha256": "170fc32902b9543fcdeca4d142dfbafa878e7a1fa69f2223f982b40071334d07",
+      "linked_resources": {},
+      "job_sha256": "aa4e27235a9ea739280481127587df3839dc237606edccbd57a7014e9947420c",
+      "output_sha256": "0387e44016f585d66ad760829e16743d96968cd72371446a8cf5fad3e59152c9"
+    },
+    {
+      "name": "block_br_vertical_rl_empty_lines_metrics__content_box_rtl",
+      "source": "html/block/block_br_vertical_rl_empty_lines_metrics.html",
+      "output": "xml/block/block_br_vertical_rl_empty_lines_metrics__content_box_rtl.xml",
+      "variant": "content_box_rtl",
+      "source_sha256": "170fc32902b9543fcdeca4d142dfbafa878e7a1fa69f2223f982b40071334d07",
+      "linked_resources": {},
+      "job_sha256": "aa4e27235a9ea739280481127587df3839dc237606edccbd57a7014e9947420c",
+      "output_sha256": "554236aa0b090c54732e3e3c934deca225fc2e3797939e23a9bd26e8f42461a2"
+    }
+  ],
+  "unsupported": [],
+  "expected_fail": [],
+  "quarantined": [],
+  "failed_to_generate": []
+}

@@ -17,7 +17,9 @@ pub(crate) const EDITION: &str = "canonical-box-differences";
 pub(crate) const MEASURED_GRID_EDITION: &str = "measured-grid-differences";
 pub(crate) const ARTIFACT_ROOT: &str =
     "tests/layout/browser_parity/captured/canonical-box-differences";
-use crate::vertical_br_font_band_profile as vertical_br;
+use crate::{
+    empty_line_br_font_band_profile as empty_line_br, vertical_br_font_band_profile as vertical_br,
+};
 const FLEX_TEXT_EDITION: &str = "flex-text-differences";
 const GRID_STATIC_POSITION_EDITION: &str = "grid-static-position-differences";
 const RELATIVE_INSET_EDITION: &str = "relative-inset-differences";
@@ -165,6 +167,10 @@ pub(crate) fn current_owner_bindings(
                 ),
                 ("vertical_br_font_band_request.json", vertical_br::REQUEST),
                 (
+                    "empty_line_br_font_band_request.json",
+                    empty_line_br::REQUEST,
+                ),
+                (
                     "flex_composition_request.json",
                     FLEX_COMPOSITION_REQUEST_BYTES,
                 ),
@@ -184,6 +190,8 @@ pub(crate) fn current_owner_bindings(
             "tests/bin/surgeist-layout-generate/measurement/horizontal_br_font_band.js".to_owned()
         } else if name == vertical_br::SCRIPT_PATH {
             "tests/bin/surgeist-layout-generate/measurement/vertical_br_font_band.js".to_owned()
+        } else if name == empty_line_br::SCRIPT_PATH {
+            "tests/bin/surgeist-layout-generate/measurement/empty_line_br_font_band.js".to_owned()
         } else if name == MEASURED_LEAF_SCRIPT {
             "tests/bin/surgeist-layout-generate/measurement/measured_leaf.js".to_owned()
         } else if let Some(tail) = name.strip_prefix("historical/") {
@@ -505,6 +513,13 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
             "vertical BR proof requires its observation request",
         ));
     }
+    if observation_request != SpecializedProfile::EmptyLineBrFontBand.observation_request()
+        && full_inputs.contains_key(empty_line_br::SCRIPT_PATH)
+    {
+        return Err(changed(
+            "empty-line break proof requires its observation request",
+        ));
+    }
     let (profile, font_demand) = match (observation_request, observation_input_sha256) {
         ("geometry", None)
             if !full_inputs.contains_key(OBSERVATION_REQUEST)
@@ -694,6 +709,43 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
                 }
             }
             ("canonical-vertical-br-font-band", "ahem-20px-prepared")
+        }
+        ("empty-line-br-font-band", Some(request_sha256)) => {
+            let proof_sha256 = sha256(empty_line_br::SCRIPT.as_bytes());
+            let source_sha256 = empty_line_br::source_digest(&case.source)
+                .ok_or_else(|| changed("empty-line BR source identity"))?;
+            if artifact.source_sha256 != source_sha256
+                || request_sha256 != sha256(empty_line_br::REQUEST)
+                || policy_sha256 != proof_sha256
+                || !artifact.linked_resources.is_empty()
+                || full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
+                || full_inputs.contains_key(flex_content_text::SCRIPT_PATH)
+                || full_inputs.contains_key("fonts/Ahem.ttf")
+                || sha256(pinned_font::AHEM_STYLESHEET_WOFF2)
+                    != pinned_font::AHEM_STYLESHEET_WOFF2_SHA256
+            {
+                return Err(changed("empty-line BR font-band capture profile"));
+            }
+            for (path, expected) in [
+                (case.source.as_str(), source_sha256),
+                (OBSERVATION_REQUEST, request_sha256),
+                (empty_line_br::SCRIPT_PATH, proof_sha256.as_str()),
+                (ROOT_HELPER_INPUT, vertical_br::HELPER_SHA256),
+                (
+                    "scripts/gentest/test_base_style.css",
+                    pinned_font::ROOT_CONTEXT_STYLESHEET_SHA256,
+                ),
+            ] {
+                if full_inputs.get(path).map(String::as_str) != Some(expected)
+                    || excluded_specs.contains(path)
+                {
+                    return Err(changed(format!("empty-line BR font-band input: {path}")));
+                }
+            }
+            (
+                "canonical-empty-line-br-font-band",
+                "ahem-20px-stylesheet-woff2",
+            )
         }
         ("prepared-ranges" | "flex-composition", Some(request_sha256))
             if !full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
@@ -898,6 +950,7 @@ pub(crate) enum SpecializedProfile {
     PreparedAtomicPercentage,
     HorizontalBrFontBand,
     VerticalBrFontBand,
+    EmptyLineBrFontBand,
 }
 
 impl SpecializedProfile {
@@ -928,6 +981,9 @@ impl SpecializedProfile {
             Self::VerticalBrFontBand => {
                 "tests/layout/browser_parity/captured/vertical-br-font-band-qualification"
             }
+            Self::EmptyLineBrFontBand => {
+                "tests/layout/browser_parity/captured/empty-line-br-font-band-qualification"
+            }
         }
     }
 
@@ -939,6 +995,7 @@ impl SpecializedProfile {
             Self::PreparedAtomicPercentage => "prepared-atomic-percentage",
             Self::HorizontalBrFontBand => "horizontal-br-font-band",
             Self::VerticalBrFontBand => "vertical-br-font-band",
+            Self::EmptyLineBrFontBand => "empty-line-br-font-band",
         }
     }
 
@@ -950,6 +1007,7 @@ impl SpecializedProfile {
             Self::PreparedAtomicPercentage => &[atomic_percentage::SOURCE],
             Self::HorizontalBrFontBand => &[super::br_font_band::SOURCE],
             Self::VerticalBrFontBand => vertical_br::SOURCES,
+            Self::EmptyLineBrFontBand => empty_line_br::SOURCES,
         }
     }
 
@@ -961,6 +1019,7 @@ impl SpecializedProfile {
             Self::PreparedAtomicPercentage,
             Self::HorizontalBrFontBand,
             Self::VerticalBrFontBand,
+            Self::EmptyLineBrFontBand,
         ]
         .into_iter()
         .find(|profile| profile.edition() == edition)
@@ -1000,6 +1059,9 @@ pub(crate) enum SpecializedEvidence {
     VerticalBrFontBand {
         proof_script: PathDigest,
     },
+    EmptyLineBrFontBand {
+        proof_script: PathDigest,
+    },
 }
 
 impl SpecializedEvidence {
@@ -1011,6 +1073,7 @@ impl SpecializedEvidence {
             Self::PreparedAtomicPercentage { .. } => SpecializedProfile::PreparedAtomicPercentage,
             Self::HorizontalBrFontBand { .. } => SpecializedProfile::HorizontalBrFontBand,
             Self::VerticalBrFontBand { .. } => SpecializedProfile::VerticalBrFontBand,
+            Self::EmptyLineBrFontBand { .. } => SpecializedProfile::EmptyLineBrFontBand,
         }
     }
 
@@ -1020,7 +1083,8 @@ impl SpecializedEvidence {
             Self::OriginalSubgridBody { proof_script }
             | Self::PreparedAtomicPercentage { proof_script }
             | Self::HorizontalBrFontBand { proof_script }
-            | Self::VerticalBrFontBand { proof_script } => proof_script.sha256.clone(),
+            | Self::VerticalBrFontBand { proof_script }
+            | Self::EmptyLineBrFontBand { proof_script } => proof_script.sha256.clone(),
             Self::FlexComposition {
                 collapse_policy,
                 scrollbar_policy,
@@ -1037,7 +1101,8 @@ impl SpecializedEvidence {
             Self::OriginalSubgridBody { proof_script }
             | Self::PreparedAtomicPercentage { proof_script }
             | Self::HorizontalBrFontBand { proof_script }
-            | Self::VerticalBrFontBand { proof_script } => vec![proof_script],
+            | Self::VerticalBrFontBand { proof_script }
+            | Self::EmptyLineBrFontBand { proof_script } => vec![proof_script],
             Self::FlexComposition {
                 collapse_policy,
                 scrollbar_policy,
@@ -1287,6 +1352,9 @@ impl Qualification {
             }
             SpecializedEvidence::VerticalBrFontBand { .. } => {
                 super::br_font_band::vertical_evidence() == case.evidence
+            }
+            SpecializedEvidence::EmptyLineBrFontBand { .. } => {
+                super::br_font_band::empty_line_evidence() == case.evidence
             }
         };
         if !evidence_matches || case.identity.policy_source_sha256 != case.evidence.policy_digest()
