@@ -2998,6 +2998,155 @@ mod tests {
         finish(edit);
     }
 
+    /// Runs `attempt` and reports whether it panicked. The tests below tamper with a slot's private
+    /// state, which no caller of the public API can reach, to observe what a step does when a state
+    /// that its earlier actions established has been lost. None may panic.
+    fn panics<R>(attempt: impl FnOnce() -> R) -> bool {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(attempt)).is_err()
+    }
+
+    #[test]
+    fn commit_does_not_panic_when_another_owner_holds_the_backing() {
+        let (storage, target) = make_storage(vec![attribute("x", "old")]);
+        let mut edit = make_edit(storage, target, HtmlConstructionAttributeEditMode::Slots);
+        let mut incoming = Some(attribute("y", "new"));
+        let mut pending = Some(edit.replace(0, &mut incoming).unwrap());
+        while let Some(action) = pending.as_mut().unwrap().next_action().unwrap() {
+            action.perform().unwrap().accept();
+        }
+        let ready = slots::attribute_slot(&mut pending).unwrap();
+        let alias = Arc::clone(ready.slot.edit.shared_attributes().unwrap());
+        assert!(
+            !panics(|| {
+                let _ = ready.commit();
+            }),
+            "a commit whose backing another owner holds must be refused, not panic"
+        );
+        drop(alias);
+    }
+
+    #[test]
+    fn commit_does_not_panic_when_the_replacement_is_gone() {
+        let (storage, target) = make_storage(vec![attribute("x", "old")]);
+        let mut edit = make_edit(storage, target, HtmlConstructionAttributeEditMode::Slots);
+        let mut replacement = Some(attribute("y", "new"));
+        let mut pending = Some(edit.replace(0, &mut replacement).unwrap());
+        while let Some(action) = pending.as_mut().unwrap().next_action().unwrap() {
+            action.perform().unwrap().accept();
+        }
+        let mut ready = slots::attribute_slot(&mut pending).unwrap();
+        if let SlotInput::Replace { incoming, .. } = &mut ready.slot.input {
+            incoming.take();
+        }
+        assert!(
+            !panics(|| {
+                let _ = ready.commit();
+            }),
+            "a replacement whose attribute is gone must be refused, not panic"
+        );
+    }
+
+    #[test]
+    fn commit_does_not_panic_when_the_appended_attribute_is_gone() {
+        let (storage, target) = make_storage(Vec::new());
+        let mut edit = make_edit(storage, target, HtmlConstructionAttributeEditMode::Slots);
+        slot(edit.reserve(1).unwrap());
+        let mut appended = vec![attribute("z", "new")];
+        let mut pending = Some(edit.append(&mut appended).unwrap());
+        while let Some(action) = pending.as_mut().unwrap().next_action().unwrap() {
+            action.perform().unwrap().accept();
+        }
+        let mut ready = slots::attribute_slot(&mut pending).unwrap();
+        if let SlotInput::Append(attributes) = &mut ready.slot.input {
+            attributes.clear();
+        }
+        assert!(
+            !panics(|| {
+                let _ = ready.commit();
+            }),
+            "an append whose attribute is gone must be refused, not panic"
+        );
+    }
+
+    #[test]
+    fn commit_does_not_panic_when_the_backing_lost_its_attributes() {
+        for step in 0..3 {
+            let (storage, target) =
+                make_storage(vec![attribute("x", "old"), attribute("y", "old")]);
+            let mut edit = make_edit(storage, target, HtmlConstructionAttributeEditMode::Slots);
+            let mut replacement = Some(attribute("z", "new"));
+            let mut pending = Some(match step {
+                0 => edit.pop().unwrap(),
+                1 => edit.swap_adjacent(0).unwrap(),
+                _ => edit.replace(1, &mut replacement).unwrap(),
+            });
+            while let Some(action) = pending.as_mut().unwrap().next_action().unwrap() {
+                action.perform().unwrap().accept();
+            }
+            let ready = slots::attribute_slot(&mut pending).unwrap();
+            Arc::get_mut(ready.slot.edit.backing_mut().unwrap())
+                .unwrap()
+                .clear();
+            assert!(
+                !panics(|| {
+                    let _ = ready.commit();
+                }),
+                "step {step} must refuse a backing without the attributes it checked"
+            );
+        }
+    }
+
+    #[test]
+    fn replacement_steps_do_not_panic_when_the_incoming_attribute_is_gone() {
+        for steps_before_tamper in [1, 2] {
+            let (storage, target) = make_storage(vec![attribute("x", "old")]);
+            let mut edit = make_edit(storage, target, HtmlConstructionAttributeEditMode::Slots);
+            let mut incoming = Some(attribute("y", "new"));
+            let mut slot = edit.replace(0, &mut incoming).unwrap();
+            // Input, then the same-name check; the names differ, so a comparison follows.
+            for _ in 0..steps_before_tamper {
+                slot.next_action().unwrap().unwrap().perform().unwrap().accept();
+            }
+            if let SlotInput::Replace { incoming, .. } = &mut slot.input {
+                incoming.take();
+            }
+            assert!(
+                !panics(|| {
+                    let _ = slot.next_action().unwrap().unwrap().perform().map(|_| ());
+                }),
+                "step {steps_before_tamper} must refuse a missing incoming attribute"
+            );
+        }
+    }
+
+    #[test]
+    fn a_named_append_does_not_panic_when_the_incoming_attribute_is_gone() {
+        let (storage, target) = make_storage(Vec::new());
+        let names = [DocumentString::from("a")];
+        let mut edit = make_edit(
+            storage,
+            target,
+            HtmlConstructionAttributeEditMode::NamedMerge { candidate_count: 1 },
+        );
+        plan(&mut edit, &names);
+        slot(edit.reserve(1).unwrap());
+        let mut incoming = vec![attribute("a", "v")];
+        let mut pending = edit.append(&mut incoming).unwrap();
+        // Input, then the search for the next kept name, which leaves the identity check pending.
+        for _ in 0..2 {
+            pending.next_action().unwrap().unwrap().perform().unwrap().accept();
+        }
+        if let SlotInput::Append(attributes) = &mut pending.input {
+            attributes.clear();
+        }
+        assert!(
+            !panics(|| {
+                let _ = pending.next_action().unwrap().unwrap().perform().map(|_| ());
+            }),
+            "the identity check must refuse a missing incoming attribute"
+        );
+    }
+
     #[test]
     fn ready_slot_hides_backing_and_dropped_ready_preserves_actual_source_and_target() {
         let (storage, target) = make_storage(vec![attribute("x", "old")]);
