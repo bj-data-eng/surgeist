@@ -124,6 +124,18 @@ mod tests {
     }
 
     #[test]
+    fn measured_grid_publication_commands_have_a_fixed_output() {
+        for flag in [
+            "--publish-measured-grid-differences",
+            "--check-published-measured-grid-differences",
+        ] {
+            assert!(parse_arguments(&arguments(&[flag])).is_ok(), "{flag}");
+            assert!(parse_arguments(&arguments(&[flag, "arbitrary-output"])).is_err());
+            assert!(parse_arguments(&arguments(&[flag, "--fixture", "html/other.html"])).is_err());
+        }
+    }
+
+    #[test]
     fn element_scroll_size_cli_requires_one_explicit_source() {
         assert_eq!(
             parse_arguments(&arguments(&[
