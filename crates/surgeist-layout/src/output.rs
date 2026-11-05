@@ -1748,12 +1748,18 @@ impl PlacedInlineBoxFragments<'_> {
 }
 
 /// Normal border geometry retained by its actual placement producer.
-/// Metadata has no content box; a real zero-area box retains its zero rectangle.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct NormalGeometryOf<S: LayoutScalar> {
     pub(crate) location: Point<S>,
     pub(crate) size: Size<S>,
-    pub(crate) content_box: Option<crate::ScrollRectOf<S>>,
+    pub(crate) content: NormalContentOf<S>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum NormalContentOf<S: LayoutScalar> {
+    Box(crate::ScrollRectOf<S>),
+    Metadata,
+    Hidden,
 }
 
 impl<S: LayoutScalar> NormalGeometryOf<S> {
@@ -1765,7 +1771,7 @@ impl<S: LayoutScalar> NormalGeometryOf<S> {
         Self {
             location,
             size,
-            content_box: Some(content_box),
+            content: NormalContentOf::Box(content_box),
         }
     }
 
@@ -1773,8 +1779,19 @@ impl<S: LayoutScalar> NormalGeometryOf<S> {
         Self {
             location,
             size,
-            content_box: None,
+            content: NormalContentOf::Metadata,
         }
+    }
+
+    pub(crate) const fn content_box(self) -> Option<crate::ScrollRectOf<S>> {
+        match self.content {
+            NormalContentOf::Box(content) => Some(content),
+            NormalContentOf::Metadata | NormalContentOf::Hidden => None,
+        }
+    }
+
+    pub(crate) const fn is_hidden(self) -> bool {
+        matches!(self.content, NormalContentOf::Hidden)
     }
 }
 
@@ -1866,6 +1883,18 @@ impl<Node: Copy, S: LayoutScalar> LayoutOutputEntryOf<Node, S> {
         }
     }
 
+    pub(crate) const fn hidden_unrounded(node: Node, source_index: crate::SourceIndex) -> Self {
+        Self::ordinary_unrounded(
+            node,
+            NormalGeometryOf {
+                location: Point::ZERO,
+                size: Size::ZERO,
+                content: NormalContentOf::Hidden,
+            },
+            NodeOutputOf::with_source_index(source_index),
+        )
+    }
+
     pub(crate) const fn ordinary_canonical(
         node: Node,
         normal: NormalGeometryOf<S>,
@@ -1913,7 +1942,7 @@ impl<Node: Copy, S: LayoutScalar> LayoutOutputEntryOf<Node, S> {
         };
         Some(
             measured
-                .content_box
+                .content_box()
                 .map(|rect| MeasuredInsetBasisOf::from_used_content_size(rect.size())),
         )
     }

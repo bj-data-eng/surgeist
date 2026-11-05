@@ -380,14 +380,17 @@ where
                         ),
                     )
                 })?;
-            frames.push(crate::text_layout::state::CanonicalFrame {
-                node,
-                origin,
-                normal_origin,
-                normal,
-                measured_inset_basis,
-                output,
-            });
+            // Hidden outputs retain node geometry without supplying Text feedback.
+            if !normal.is_hidden() {
+                frames.push(crate::text_layout::state::CanonicalFrame {
+                    node,
+                    origin,
+                    normal_origin,
+                    normal,
+                    measured_inset_basis,
+                    output,
+                });
+            }
             pending.extend(
                 self.tree
                     .children(node)
@@ -883,6 +886,16 @@ where
 
     fn set_unrounded(&mut self, entry: LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
         let node = entry.node();
+        if let crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal } =
+            entry.geometry_state()
+            && measured_normal.is_hidden()
+        {
+            if let Some(text) = &mut self.text {
+                text.discard_placement(node);
+            }
+            self.cache_store_entries
+                .retain(|entry| entry.node() != node);
+        }
         if let Some(index) = self
             .unrounded_entries
             .iter()
