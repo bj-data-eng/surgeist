@@ -2491,7 +2491,7 @@ fn runs_all_checked_in_browser_parity_xml() {
 }
 
 #[test]
-fn raw_corpus_reports_current_differences_after_the_historical_display_limit() {
+fn raw_corpus_reports_current_differences_with_many_historical_failures() {
     let fixtures = support::fixture_files("xml").expect("fixtures should load");
     let error = run_raw_browser_parity(fixtures, Some("xml/flex/"))
         .expect_err("historical and current Flex comparisons contain raw failures");
@@ -2592,25 +2592,13 @@ fn run_raw_browser_parity(fixtures: Vec<PathBuf>, filter: Option<&str>) -> Resul
         return Ok(());
     }
 
-    let shown = historical
-        .iter()
-        .take(80)
-        .map(String::as_str)
-        .collect::<Vec<_>>();
-    let omitted = historical.len() - shown.len();
-    let remainder = if omitted == 0 {
-        String::new()
-    } else {
-        format!("\n... {omitted} more historical failures")
-    };
     Err(format!(
-        "{} browser parity fixtures failed:\n\nHistorical failures ({}):\n\nBy suite:\n{}\n\nBy kind:\n{}\n\nFirst historical failures:\n{}{}\n\nCurrent raw failures ({}):\n{}",
+        "{} browser parity fixtures failed:\n\nHistorical failures ({}):\n\nBy suite:\n{}\n\nBy kind:\n{}\n\nHistorical failure details:\n{}\n\nCurrent raw failures ({}):\n{}",
         historical.len() + current.len(),
         historical.len(),
         count_lines(&by_suite),
         count_lines(&by_kind),
-        shown.join("\n"),
-        remainder,
+        historical.join("\n"),
         current.len(),
         current.join("\n")
     ))
