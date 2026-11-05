@@ -26,11 +26,16 @@ pub(super) enum BoxObservationRequest {
     FlexContentText,
     PreparedRanges,
     FlexComposition,
+    OriginalSubgridBody,
 }
 
 pub(super) const FLEX_COMPOSITION_SOURCE: &str = "html/flex/fri07_flex_composition.html";
 pub(super) const FLEX_COMPOSITION_SOURCE_SHA256: &str =
     "19acedc9894eed500890b91f48f9eb0e7f19a3db440f06cbaa6356e7ce73192e";
+pub(super) const ORIGINAL_SUBGRID_BODY_SOURCE: &str =
+    "html/subgrid/subgrid_gap_percentage_border_bottom.html";
+pub(super) const ORIGINAL_SUBGRID_BODY_SOURCE_SHA256: &str =
+    "db5cc28750958aa0df6c0692caafd131d284858e435e9fb0a1f6330527deb568";
 
 pub(super) const OBSERVATION_REQUEST_INPUT: &str = "observation-request.json";
 pub(super) const MEASURED_LEAF_SCRIPT_INPUT: &str = "scripts/gentest/measured_leaf.js";
@@ -55,6 +60,9 @@ impl BoxObservationRequest {
             Some(bytes) if Some(bytes) == Self::FlexComposition.input_bytes() => {
                 Ok(Self::FlexComposition)
             }
+            Some(bytes) if Some(bytes) == Self::OriginalSubgridBody.input_bytes() => {
+                Ok(Self::OriginalSubgridBody)
+            }
             Some(_) => Err("observation request must match a registered exact input"),
         }
     }
@@ -65,6 +73,10 @@ impl BoxObservationRequest {
             Self::FlexContentText => Some((
                 "scripts/gentest/flex_content_text.js",
                 include_str!("measurement/flex_content_text.js"),
+            )),
+            Self::OriginalSubgridBody => Some((
+                "scripts/gentest/original_subgrid_body.js",
+                include_str!("measurement/original_subgrid_body.js"),
             )),
             Self::Geometry
             | Self::ElementScrollSizes
@@ -87,6 +99,9 @@ impl BoxObservationRequest {
             Self::FlexContentText => {
                 Some(include_bytes!("measurement/flex_content_text_request.json"))
             }
+            Self::OriginalSubgridBody => Some(include_bytes!(
+                "measurement/original_subgrid_body_request.json"
+            )),
         }
     }
 }
@@ -629,6 +644,14 @@ pub(super) fn decode(
         })?
         .validate(&context)?;
     wire.validate_grid_alignment_profile(&context)?;
+    if request == BoxObservationRequest::OriginalSubgridBody {
+        context.compatible(
+            !root_local_positioned && use_rounding,
+            "viewport",
+            "original subgrid requires the normal in-flow body frame",
+        )?;
+        wire.validate_original_subgrid_body(&context)?;
+    }
     if prepared_range_frame {
         context.required(wire.prepared_range_frame.as_ref(), "preparedRangeFrame")?;
         context.compatible(
@@ -667,7 +690,8 @@ pub(super) fn decode(
     let element_scroll_sizes = match request {
         BoxObservationRequest::Geometry
         | BoxObservationRequest::PreparedRanges
-        | BoxObservationRequest::FlexComposition => None,
+        | BoxObservationRequest::FlexComposition
+        | BoxObservationRequest::OriginalSubgridBody => None,
         BoxObservationRequest::ElementScrollSizes
         | BoxObservationRequest::MeasuredLeaf
         | BoxObservationRequest::FlexContentText => {
@@ -1742,6 +1766,75 @@ impl WireNode {
         })
     }
 }
+impl WireNode {
+    fn validate_original_subgrid_body(
+        &self,
+        context: &Context<'_>,
+    ) -> Result<(), MeasurementError> {
+        let body = context.required(self.style.as_ref(), "style")?;
+        let children = context.required(self.children.as_deref(), "children")?;
+        context.compatible(
+            self.tag_name.as_deref() == Some("body")
+                && self.layout_input == LayoutInput::Box
+                && body.position.as_deref() == Some("static")
+                && body.display.as_deref() == Some("block")
+                && children.len() == 1,
+            "children",
+            "original subgrid requires the actual body and its sole Grid child",
+        )?;
+        let grid = &children[0];
+        context.compatible(
+            grid.style
+                .as_ref()
+                .and_then(|style| style.display.as_deref())
+                == Some("grid"),
+            "children[0].style.display",
+            "the observed child must be a Grid box",
+        )?;
+        let grid_context = context.child(0);
+        for (node, place) in [(self, context), (grid, &grid_context)] {
+            let raw = place.required(node.unrounded_layout.as_ref(), "unroundedLayout")?;
+            place.ensure(
+                raw.x == Some(0.0) && raw.y == Some(0.0),
+                "unroundedLayout",
+                "body and Grid must each start at their real parent origin",
+            )?;
+        }
+        let geometry =
+            context.required(self.world_rounded_layout.as_ref(), "worldRoundedLayout")?;
+        geometry.validate_diagnostic(context)?;
+        context.ensure(
+            grid.validate_original_subgrid_boxes(&grid_context)? == 16,
+            "children",
+            "the Grid observation must contain every source box",
+        )
+    }
+
+    fn validate_original_subgrid_boxes(
+        &self,
+        context: &Context<'_>,
+    ) -> Result<usize, MeasurementError> {
+        context.compatible(
+            self.layout_input == LayoutInput::Box
+                && self.tag_name.as_deref() == Some("div")
+                && self
+                    .style
+                    .as_ref()
+                    .is_some_and(|style| style.position.is_none()),
+            "layoutInput",
+            "the Grid observation admits only static source boxes",
+        )?;
+        let geometry =
+            context.required(self.world_rounded_layout.as_ref(), "worldRoundedLayout")?;
+        geometry.validate_diagnostic(context)?;
+        let mut count = 1;
+        for (index, child) in self.children.iter().flatten().enumerate() {
+            count += child.validate_original_subgrid_boxes(&context.child(index))?;
+        }
+        Ok(count)
+    }
+}
+
 impl WireGeometry {
     fn validate_diagnostic(&self, context: &Context<'_>) -> Result<Attributes, MeasurementError> {
         let mut attrs = Vec::new();

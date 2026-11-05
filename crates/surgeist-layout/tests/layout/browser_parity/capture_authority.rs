@@ -1,7 +1,10 @@
 //! Layout-private portable data and one identity calculation. This module uses
 //! no Generator types. Callers authenticate bytes/censuses before calculation.
 use super::exact_differences::{CaseIdentity, QualificationError, flex_composition_qualification};
-use super::{flex_composition, flex_content_text, pinned_font, prepared_range_qualification};
+use super::{
+    flex_composition, flex_content_text, original_subgrid_body, pinned_font,
+    prepared_range_qualification,
+};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, value::RawValue};
 use sha2::{Digest as _, Sha256};
@@ -147,6 +150,10 @@ pub(crate) fn current_owner_bindings(
                 ("flex_content_text_request.json", flex_content_text::REQUEST),
                 ("prepared_range_request.json", PREPARED_RANGE_REQUEST_BYTES),
                 (
+                    "original_subgrid_body_request.json",
+                    original_subgrid_body::REQUEST,
+                ),
+                (
                     "flex_composition_request.json",
                     FLEX_COMPOSITION_REQUEST_BYTES,
                 ),
@@ -157,6 +164,8 @@ pub(crate) fn current_owner_bindings(
             format!("tests/bin/surgeist-layout-generate/measurement/{file}")
         } else if name == flex_content_text::SCRIPT_PATH {
             "tests/bin/surgeist-layout-generate/measurement/flex_content_text.js".to_owned()
+        } else if name == original_subgrid_body::PROOF_SCRIPT_PATH {
+            "tests/bin/surgeist-layout-generate/measurement/original_subgrid_body.js".to_owned()
         } else if name == MEASURED_LEAF_SCRIPT {
             "tests/bin/surgeist-layout-generate/measurement/measured_leaf.js".to_owned()
         } else if let Some(tail) = name.strip_prefix("historical/") {
@@ -445,6 +454,13 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
     {
         return Err(changed("source/variant/capture mapping"));
     }
+    if observation_request != SpecializedProfile::OriginalSubgridBody.observation_request()
+        && full_inputs.contains_key(original_subgrid_body::PROOF_SCRIPT_PATH)
+    {
+        return Err(changed(
+            "original subgrid body proof requires its observation request",
+        ));
+    }
     let (profile, font_demand) = match (observation_request, observation_input_sha256) {
         ("geometry", None)
             if !full_inputs.contains_key(OBSERVATION_REQUEST)
@@ -505,6 +521,38 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
                 }
             }
             ("canonical-flex-content-text", flex_content_text::PROFILE)
+        }
+        ("original-subgrid-body", Some(request_sha256)) => {
+            let proof_sha256 = sha256(original_subgrid_body::PROOF_SCRIPT);
+            if case.source != original_subgrid_body::SOURCE
+                || artifact.source_sha256 != original_subgrid_body::SOURCE_SHA256
+                || request_sha256 != sha256(original_subgrid_body::REQUEST)
+                || policy_sha256 != proof_sha256
+                || !artifact.linked_resources.is_empty()
+                || full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
+                || full_inputs.contains_key(flex_content_text::SCRIPT_PATH)
+            {
+                return Err(changed("original subgrid body capture profile"));
+            }
+            for (path, expected) in [
+                (
+                    original_subgrid_body::SOURCE,
+                    original_subgrid_body::SOURCE_SHA256,
+                ),
+                (OBSERVATION_REQUEST, request_sha256),
+                (
+                    original_subgrid_body::PROOF_SCRIPT_PATH,
+                    proof_sha256.as_str(),
+                ),
+                (ROOT_HELPER_INPUT, FLEX_COMPOSITION_HELPER_SHA256),
+            ] {
+                if full_inputs.get(path).map(String::as_str) != Some(expected)
+                    || excluded_specs.contains(path)
+                {
+                    return Err(changed(format!("original subgrid body input: {path}")));
+                }
+            }
+            ("canonical-original-subgrid-body", "none")
         }
         ("prepared-ranges" | "flex-composition", Some(request_sha256))
             if !full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
@@ -705,6 +753,7 @@ pub(crate) struct ExactCase {
 pub(crate) enum SpecializedProfile {
     PreparedRange,
     FlexComposition,
+    OriginalSubgridBody,
 }
 
 impl SpecializedProfile {
@@ -723,6 +772,9 @@ impl SpecializedProfile {
             Self::FlexComposition => {
                 "tests/layout/browser_parity/captured/flex-composition-qualification"
             }
+            Self::OriginalSubgridBody => {
+                "tests/layout/browser_parity/captured/original-subgrid-body-qualification"
+            }
         }
     }
 
@@ -730,6 +782,7 @@ impl SpecializedProfile {
         match self {
             Self::PreparedRange => "prepared-ranges",
             Self::FlexComposition => "flex-composition",
+            Self::OriginalSubgridBody => "original-subgrid-body",
         }
     }
 
@@ -737,13 +790,18 @@ impl SpecializedProfile {
         match self {
             Self::PreparedRange => prepared_range_qualification::SOURCE,
             Self::FlexComposition => flex_composition::SOURCE,
+            Self::OriginalSubgridBody => original_subgrid_body::SOURCE,
         }
     }
 
     fn from_edition(edition: &str) -> Option<Self> {
-        [Self::PreparedRange, Self::FlexComposition]
-            .into_iter()
-            .find(|profile| profile.edition() == edition)
+        [
+            Self::PreparedRange,
+            Self::FlexComposition,
+            Self::OriginalSubgridBody,
+        ]
+        .into_iter()
+        .find(|profile| profile.edition() == edition)
     }
 }
 
@@ -759,6 +817,9 @@ pub(crate) enum SpecializedEvidence {
         native_oracle: PathDigest,
         gutter_control: PathDigest,
     },
+    OriginalSubgridBody {
+        proof_script: PathDigest,
+    },
 }
 
 impl SpecializedEvidence {
@@ -766,12 +827,14 @@ impl SpecializedEvidence {
         match self {
             Self::PreparedRange { .. } => SpecializedProfile::PreparedRange,
             Self::FlexComposition { .. } => SpecializedProfile::FlexComposition,
+            Self::OriginalSubgridBody { .. } => SpecializedProfile::OriginalSubgridBody,
         }
     }
 
     pub(crate) fn policy_digest(&self) -> String {
         match self {
             Self::PreparedRange { policy } => policy.sha256.clone(),
+            Self::OriginalSubgridBody { proof_script } => proof_script.sha256.clone(),
             Self::FlexComposition {
                 collapse_policy,
                 scrollbar_policy,
@@ -785,6 +848,7 @@ impl SpecializedEvidence {
     pub(crate) fn bindings(&self) -> Vec<&PathDigest> {
         match self {
             Self::PreparedRange { policy } => vec![policy],
+            Self::OriginalSubgridBody { proof_script } => vec![proof_script],
             Self::FlexComposition {
                 collapse_policy,
                 scrollbar_policy,
@@ -1016,6 +1080,9 @@ impl Qualification {
             }
             SpecializedEvidence::FlexComposition { .. } => {
                 flex_composition_qualification::evidence(variant).as_ref() == Some(&case.evidence)
+            }
+            SpecializedEvidence::OriginalSubgridBody { .. } => {
+                original_subgrid_body::evidence() == case.evidence
             }
         };
         if !evidence_matches || case.identity.policy_source_sha256 != case.evidence.policy_digest()

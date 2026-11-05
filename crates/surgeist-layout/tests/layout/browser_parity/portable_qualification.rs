@@ -8,7 +8,7 @@ use std::rc::Rc;
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::support::{self, prepared_range_qualification as prepared_range};
+use super::support::{self, original_subgrid_body, prepared_range_qualification as prepared_range};
 use support::capture_authority;
 use support::capture_authority::{
     self as authority, CaptureMetadata, CapturedArtifact, CaseSelection, IdentityInputs,
@@ -305,6 +305,9 @@ enum AdmittedComparison {
     PreparedRange {
         variant: String,
     },
+    OriginalSubgridBody {
+        variant: String,
+    },
     FlexComposition {
         variant: String,
         inputs: Rc<flex::Inputs>,
@@ -426,6 +429,13 @@ impl AdmittedEdition {
                 AdmittedComparison::PreparedRange { variant } => {
                     compare_prepared_range(&case.golden, variant)
                 }
+                AdmittedComparison::OriginalSubgridBody { variant } => {
+                    original_subgrid_body::compare(&case.golden, variant).map(
+                        |(fields, qualified)| {
+                            (fields, qualified.map_err(|error| error.to_string()))
+                        },
+                    )
+                }
                 AdmittedComparison::FlexComposition { variant, inputs } => {
                     flex::compare(&case.golden, variant, inputs).map(|comparison| {
                         let (fields, qualified) = comparison.into_outcomes();
@@ -467,7 +477,7 @@ fn compare_prepared_range(
 }
 
 pub(super) struct AdmittedRegistry {
-    editions: [AdmittedEdition; 7],
+    editions: [AdmittedEdition; 8],
     owner: PathBuf,
     selected_records: BTreeMap<String, Value>,
 }
@@ -532,6 +542,9 @@ const REGISTERED_GRID_STATIC_POSITION_TERMINAL_SHA256: &str =
 const REGISTERED_RELATIVE_INSET_TERMINAL_SHA256: &str =
     "c9f7b4fb0b97275842a1ba027e3006f63e6f73f81fa04b7cbc179e383d25fbac";
 
+const REGISTERED_ORIGINAL_SUBGRID_BODY_TERMINAL_SHA256: &str =
+    "ee82940689e4bfb1cc8a069cad8e7aab3e2be2dd7fc8d7a039fca84bc3661beb";
+
 pub(super) fn admit_grid_static_positions(owner: &Path) -> Result<AdmittedEdition> {
     admit(
         owner,
@@ -577,6 +590,13 @@ pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
             Registration {
                 edition: Edition::Specialized(SpecializedProfile::FlexComposition),
                 terminal_sha256: REGISTERED_FLEX_COMPOSITION_TERMINAL_SHA256,
+            },
+        )?,
+        admit(
+            owner,
+            Registration {
+                edition: Edition::Specialized(SpecializedProfile::OriginalSubgridBody),
+                terminal_sha256: REGISTERED_ORIGINAL_SUBGRID_BODY_TERMINAL_SHA256,
             },
         )?,
         admit_grid_static_positions(owner)?,
@@ -949,7 +969,7 @@ fn admit_specialized(
     let report_text =
         std::str::from_utf8(report_bytes).map_err(|error| malformed(error.to_string()))?;
     let flex_inputs = match profile {
-        SpecializedProfile::PreparedRange => None,
+        SpecializedProfile::PreparedRange | SpecializedProfile::OriginalSubgridBody => None,
         SpecializedProfile::FlexComposition => Some(Rc::new(flex::Inputs::load(root)?)),
     };
     terminal
@@ -987,12 +1007,26 @@ fn admit_specialized(
             }
             let xml = std::str::from_utf8(&xml).map_err(|error| malformed(error.to_string()))?;
             let variant = case.case.variant.clone();
-            let (golden, comparison) = match &flex_inputs {
-                None => (
+            let (golden, comparison) = match profile {
+                SpecializedProfile::PreparedRange => (
                     support::Golden::parse(xml),
                     AdmittedComparison::PreparedRange { variant },
                 ),
-                Some(inputs) => {
+                SpecializedProfile::OriginalSubgridBody => {
+                    let current = support::Golden::parse(xml)
+                        .map_err(|error| malformed(error.to_string()))?;
+                    let historical = std::str::from_utf8(&historical)
+                        .map_err(|error| malformed(error.to_string()))?;
+                    let historical = support::Golden::parse(historical)
+                        .map_err(|error| malformed(error.to_string()))?;
+                    original_subgrid_body::verify_historical(&current, &variant, &historical)?;
+                    (
+                        Ok(current),
+                        AdmittedComparison::OriginalSubgridBody { variant },
+                    )
+                }
+                SpecializedProfile::FlexComposition => {
+                    let inputs = flex_inputs.as_ref().expect("Flex composition inputs");
                     let source = read_pinned(
                         root,
                         &PathDigest {

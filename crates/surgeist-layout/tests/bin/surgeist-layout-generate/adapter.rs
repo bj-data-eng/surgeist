@@ -2,6 +2,7 @@
 
 use crate::measurement::{
     BoxObservationRequest, FLEX_COMPOSITION_SOURCE, FLEX_COMPOSITION_SOURCE_SHA256,
+    ORIGINAL_SUBGRID_BODY_SOURCE, ORIGINAL_SUBGRID_BODY_SOURCE_SHA256,
 };
 use crate::xml::{escape_attr, generate_xml};
 use serde_json::Value;
@@ -216,6 +217,15 @@ impl LayoutAdapter {
                 "Flex composition requires its registered original source".into(),
             ));
         }
+        if request == BoxObservationRequest::OriginalSubgridBody
+            && (input.fixture().source().as_str() != ORIGINAL_SUBGRID_BODY_SOURCE
+                || surgeist_generator::Sha256Digest::from_bytes(input.source_bytes()).as_str()
+                    != ORIGINAL_SUBGRID_BODY_SOURCE_SHA256)
+        {
+            return Err(AdapterError::Preparation(
+                "original subgrid body capture requires its exact source".into(),
+            ));
+        }
         let source = std::str::from_utf8(input.source_bytes()).map_err(|error| {
             AdapterError::Preparation(format!("fixture source is not UTF-8: {error}"))
         })?;
@@ -262,8 +272,18 @@ impl LayoutAdapter {
                     "observation proof script changed or is missing".into(),
                 ));
             }
-            let font = crate::pinned_font::AHEM_STYLESHEET_WOFF2_SHA256;
-            format!("({script})({font:?})")
+            if request == BoxObservationRequest::OriginalSubgridBody {
+                let serialize = |value| {
+                    serde_json::to_string(value)
+                        .map_err(|error| AdapterError::Preparation(error.to_string()))
+                };
+                let source = serialize(source)?;
+                let base = serialize(input.base_url())?;
+                format!("({script})({source}, {base})")
+            } else {
+                let font = crate::pinned_font::AHEM_STYLESHEET_WOFF2_SHA256;
+                format!("({script})({font:?})")
+            }
         } else {
             "getTestData()".into()
         };
@@ -444,6 +464,11 @@ fn helper_setup_expression(
     let helper = serde_json::to_string(helper).map_err(|error| {
         AdapterError::Preparation(format!("failed to encode helper script: {error}"))
     })?;
+    if request == BoxObservationRequest::OriginalSubgridBody {
+        return Ok(format!(
+            "(() => {{ (0, eval)({helper});\n{GRID_TEMPLATE_AREA_CAPTURE_SCRIPT}; return true; }})()"
+        ));
+    }
     let digest = surgeist_generator::Sha256Digest::from_bytes(bytes);
     if digest.to_string() != "f0a92cd0cc45735591c9b5b1fa8aecd5194e8dc518895ca22af94a46c23550dc" {
         return Err(AdapterError::Preparation(

@@ -2101,5 +2101,9 @@ context = "block-flow"
 parent_direction = "ltr"
 root_direction = "variant"
 root_writing_mode = "horizontal-tb"
-root_position = "relative"
+root_position = "static"
 grid_reference_owners = []
+
+[[specialized_publications]]
+source = "html/subgrid/subgrid_gap_percentage_border_bottom.html"
+profile = "original-subgrid-body"
