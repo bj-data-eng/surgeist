@@ -63,11 +63,20 @@ fn admit_record_write(
 
 /// One node of the attribute-name tree: a name a start tag has kept, or the
 /// first bit at which the names below it differ, with the two subtrees that bit
-/// separates.
+/// separates and one name below it. The names below a branch agree on every bit
+/// before the branch's.
 #[derive(Clone, Copy)]
 enum Node {
-    Leaf { attribute: usize },
-    Branch { bit: usize, zero: usize, one: usize },
+    Leaf {
+        attribute: usize,
+    },
+    Branch {
+        bit: usize,
+        zero: usize,
+        one: usize,
+        /// The attribute index of one name below this branch.
+        below: usize,
+    },
 }
 impl Node {
     /// The child a decided bit leads to; a branch has exactly two.
@@ -131,10 +140,19 @@ impl KeptNames for [Attribute] {
 /// Compressed binary radix tree over the bits of the attribute names a start
 /// tag has kept (the names are stored once, in the attribute list): one leaf
 /// for each name and one branch for each pair of subtrees, so two nodes for a
-/// name however long it is. A lookup reads one bit for each branch above the
-/// name's leaf, which is at most one for each bit of the name, and compares the
-/// name once with the one stored at that leaf, so the work follows the length of
-/// the name and not the number of names before it.
+/// name however long it is.
+///
+/// A lookup follows the probe's bits down from the root and stops at the first
+/// branch whose bit lies past the probe's end marker. The names below such a
+/// branch agree on every bit before it, the marker's among them, and the probe
+/// differs from them at or before that marker, so any one of them gives the
+/// first bit at which the probe differs from the kept names; the branch holds
+/// one. The branches read are therefore at distinct bit positions up to the end
+/// marker, at most `17 * units + 1` of them, and the same bound holds for the
+/// walk that places a new branch, so a lookup takes at most
+/// `2 * (17 * units + 2)` steps and compares the probe once with one kept name.
+/// The work of looking up a tag's names is linear in their total length,
+/// whatever the names before them are.
 pub(crate) struct Names {
     nodes: OwnedVec<Node>,
     root: usize,
@@ -220,12 +238,18 @@ impl Names {
             self.root = self.push(leaf, c)?;
             return Ok(false);
         }
-        // Follow the name's bits to the leaf whose name shares the most with it.
+        // Follow the name's bits to the leaf whose name shares the most with it, or to the
+        // first branch past its end marker, which holds a name that shares as much.
+        let end = units
+            .len()
+            .checked_mul(BITS_PER_UNIT)
+            .ok_or_else(|| c.stop_representation(HtmlParseResource::AuxiliaryEntries))?;
         let mut at = self.root;
         let stored = loop {
             c.charge(HtmlParseWorkCategory::StateStep, 1)?;
             match self.node(at, c)? {
                 Node::Leaf { attribute } => break attribute,
+                Node::Branch { bit, below, .. } if bit > end => break below,
                 branch @ Node::Branch { bit, .. } => {
                     c.charge(
                         HtmlParseWorkCategory::InspectByte,
@@ -264,6 +288,7 @@ impl Names {
                 bit: differ,
                 zero,
                 one,
+                below: index,
             },
             c,
         )?;

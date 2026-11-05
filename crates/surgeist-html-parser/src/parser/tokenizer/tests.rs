@@ -3268,6 +3268,8 @@ fn name_growth_admits_the_doubled_target_and_retains_a_refused_one_short_failure
                     ..
                 }
             ));
+            // The leaf took the last slot; the branch that joins it was the push refused.
+            assert_eq!(names.nodes.len(), full);
             assert_eq!(names.nodes.capacity(), full);
             assert_eq!(
                 names.insert(&next, &kept[..], kept.len(), &mut c),
