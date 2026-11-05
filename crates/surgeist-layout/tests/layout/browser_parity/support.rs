@@ -21,7 +21,7 @@ pub(crate) mod capture_authority;
 #[path = "element_scroll_sizes.rs"]
 mod element_scroll_sizes;
 #[path = "exact_differences.rs"]
-pub(crate) mod exact_differences;
+pub mod exact_differences;
 #[path = "flex_composition.rs"]
 mod flex_composition;
 #[cfg(test)]

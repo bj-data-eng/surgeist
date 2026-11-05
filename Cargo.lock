@@ -3665,6 +3665,10 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 name = "surgeist"
 version = "0.1.0"
 dependencies = [
+ "roxmltree",
+ "serde",
+ "serde_json",
+ "sha2",
  "surgeist-animation",
  "surgeist-color",
  "surgeist-css",
@@ -3672,6 +3676,7 @@ dependencies = [
  "surgeist-dialog",
  "surgeist-dom",
  "surgeist-font",
+ "surgeist-generator",
  "surgeist-html",
  "surgeist-html-parser",
  "surgeist-html-semantics",

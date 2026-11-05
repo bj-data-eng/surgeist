@@ -320,7 +320,7 @@ enum AdmittedComparison {
     },
 }
 
-pub(super) struct AdmittedEdition {
+pub struct AdmittedEdition {
     freshness: Freshness,
     cases: Vec<AdmittedCase>,
 }
@@ -331,11 +331,11 @@ pub(super) struct CaseOutcome {
     pub(super) qualified: std::result::Result<QualifiedComparison, String>,
 }
 
-pub(super) struct EditionRun {
+pub struct EditionRun {
     pub(super) cases: Vec<CaseOutcome>,
-    pub(super) declared_cases: usize,
+    pub declared_cases: usize,
     pub(super) freshness_error: Option<String>,
-    pub(super) uncovered: Vec<String>,
+    pub uncovered: Vec<String>,
 }
 
 impl EditionRun {
@@ -365,11 +365,11 @@ impl EditionRun {
         self.freshness_error.is_none() && self.cases.iter().all(|case| case.qualified.is_ok())
     }
 
-    pub(super) fn registered_coverage_complete(&self) -> bool {
+    pub fn registered_coverage_complete(&self) -> bool {
         self.selected_cases_passed() && self.cases.len() == self.declared_cases
     }
 
-    pub(super) fn current_coverage_complete(&self) -> bool {
+    pub fn current_coverage_complete(&self) -> bool {
         self.registered_coverage_complete() && self.uncovered.is_empty()
     }
 }
@@ -379,7 +379,7 @@ impl AdmittedEdition {
         self.cases.iter().map(|case| case.output.as_str())
     }
 
-    pub(super) fn execute_selected(&self, selected: &BTreeSet<String>) -> Result<EditionRun> {
+    pub fn execute_selected(&self, selected: &BTreeSet<String>) -> Result<EditionRun> {
         self.execute_selected_before_freshness(selected, || {})
     }
 
@@ -495,7 +495,7 @@ fn compare_prepared_range(
     Ok((fields, qualified.map_err(|error| error.to_string())))
 }
 
-pub(super) struct AdmittedRegistry {
+pub struct AdmittedRegistry {
     editions: [AdmittedEdition; 9],
     owner: PathBuf,
     selected_records: BTreeMap<String, Value>,
@@ -511,7 +511,7 @@ impl AdmittedRegistry {
         })
     }
 
-    pub(super) fn execute_selected(&self, selected: &BTreeSet<String>) -> Result<EditionRun> {
+    pub fn execute_selected(&self, selected: &BTreeSet<String>) -> Result<EditionRun> {
         self.execute_selected_with_placement(selected, &mut |_| Ok(()))
     }
 

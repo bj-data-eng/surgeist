@@ -5,7 +5,7 @@ use super::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, PartialEq)]
-pub(crate) enum QualificationError {
+pub enum QualificationError {
     IdentityChanged {
         component: String,
     },
@@ -415,7 +415,7 @@ impl ComparedField {
 /// validation. The identity is a closed projection, not a portable receipt.
 #[derive(Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct CaseIdentity {
+pub struct CaseIdentity {
     source: String,
     source_sha256: String,
     variant: String,
@@ -471,7 +471,7 @@ impl CaptureLineage {
 
 /// The fixed Layout-owned edition association; no caller-supplied edition text.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd)]
-pub(crate) enum PublishedEdition {
+pub enum PublishedEdition {
     #[serde(rename = "canonical-box-differences")]
     CanonicalBoxes,
     #[serde(rename = "measured-grid-differences")]
@@ -533,7 +533,7 @@ impl PublishedEdition {
 
 /// Select one capture lineage before comparing any observation or Native output.
 /// Published authority always carries the explicit fixed edition association.
-pub(crate) enum CaptureAuthority<'a> {
+pub enum CaptureAuthority<'a> {
     Focused(&'a CaseIdentity),
     Published {
         edition: PublishedEdition,
@@ -1893,7 +1893,7 @@ pub(super) fn source_path_from_diagnostic(
 }
 
 #[path = "flex_composition_qualification.rs"]
-pub(crate) mod flex_composition_qualification;
+pub mod flex_composition_qualification;
 
 #[cfg(test)]
 #[path = "exact_differences_tests.rs"]
