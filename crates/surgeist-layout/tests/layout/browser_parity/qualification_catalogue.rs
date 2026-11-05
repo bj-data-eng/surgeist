@@ -19,7 +19,16 @@ struct Catalogue {
     schema_version: u8,
     records: Vec<Record>,
     #[serde(default)]
+    semantic_publications: Vec<SemanticPublication>,
+    #[serde(default)]
     specialized_publications: Vec<SpecializedPublication>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SemanticPublication {
+    source: RelativePath,
+    specifications: BTreeMap<String, SemanticReference>,
 }
 
 #[derive(Deserialize)]
@@ -102,6 +111,34 @@ impl Declaration {
             return Err("qualification declaration schema_version must be 3".into());
         }
         let variants = fixture_cases().map(|(variant, _)| variant);
+        for SemanticPublication {
+            source,
+            specifications,
+        } in catalogue.semantic_publications
+        {
+            let record = catalogue
+                .records
+                .iter_mut()
+                .find(|record| record.source == source)
+                .ok_or_else(|| {
+                    format!(
+                        "semantic publication requires a declared source: {}",
+                        source.as_str()
+                    )
+                })?;
+            if !matches!(record.source_kind, SourceKind::Original)
+                || record.relation.is_some()
+                || record.semantic_specifications.is_some()
+                || specifications.len() != variants.len()
+            {
+                return Err(format!(
+                    "semantic publication requires an unpaired original and all variants: {}",
+                    source.as_str()
+                )
+                .into());
+            }
+            record.semantic_specifications = Some(specifications);
+        }
         let mut sources = BTreeSet::new();
         let mut stems = BTreeMap::new();
         let mut semantic_paths = BTreeSet::new();
