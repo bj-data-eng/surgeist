@@ -61,8 +61,8 @@ rewrite another authority, or widen the task to reconcile them.
 ## Product Boundary
 
 Surgeist is a reusable, host-adapter-agnostic Rust UI framework built from typed,
-composable primitives. Follow the [architecture vision](https://chatgpt.com/space/page_6ce383176ca08191b1dd6d5d16e63979)
-and [crate-boundary explanation](docs/explanation.md): dependencies remain
+composable primitives. Follow the
+[crate-boundary explanation](docs/explanation.md): dependencies remain
 acyclic, each semantic phase has one owner, and consumers depend directly on
 the contracts they use. Lower layers never depend on the facade or Runtime.
 Runtime owns orchestration and coherent publication; the facade is optional
