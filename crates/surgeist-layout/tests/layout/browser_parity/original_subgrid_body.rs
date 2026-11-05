@@ -11,8 +11,7 @@ use super::{
     compare_captured_with_batch,
 };
 
-#[path = "../../bin/surgeist-layout-generate/measurement/original_subgrid_body_profile.rs"]
-mod profile;
+use crate::original_subgrid_body_profile as profile;
 pub(crate) use profile::{
     HELPER_SHA256, REQUEST, SCRIPT_PATH as PROOF_SCRIPT_PATH, SOURCE, SOURCE_SHA256,
 };

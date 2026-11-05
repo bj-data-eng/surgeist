@@ -15,6 +15,8 @@ mod fixture_variants;
 mod grid_alignment_reference;
 #[path = "../tests/bin/surgeist-layout-generate/measurement.rs"]
 mod measurement;
+#[path = "../tests/bin/surgeist-layout-generate/measurement/original_subgrid_body_profile.rs"]
+mod original_subgrid_body_profile;
 #[path = "../tests/layout/browser_parity/support.rs"]
 pub mod parity_support;
 #[path = "../tests/layout/browser_parity/pinned_font.rs"]

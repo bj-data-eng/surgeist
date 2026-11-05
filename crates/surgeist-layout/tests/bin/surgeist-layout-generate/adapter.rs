@@ -2,8 +2,8 @@
 
 use crate::measurement::{
     BoxObservationRequest, FLEX_COMPOSITION_SOURCE, FLEX_COMPOSITION_SOURCE_SHA256,
-    original_subgrid_body_profile,
 };
+use crate::original_subgrid_body_profile;
 use crate::xml::{escape_attr, generate_xml};
 use serde_json::Value;
 

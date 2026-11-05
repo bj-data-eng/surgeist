@@ -16,8 +16,7 @@ mod element_scroll_sizes;
 mod flex_content_text;
 #[path = "measurement/measured_leaf.rs"]
 mod measured_leaf;
-#[path = "measurement/original_subgrid_body_profile.rs"]
-pub(super) mod original_subgrid_body_profile;
+use crate::original_subgrid_body_profile;
 pub(super) use flex_content_text::FlexContentText;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
