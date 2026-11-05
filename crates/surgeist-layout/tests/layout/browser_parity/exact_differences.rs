@@ -389,11 +389,51 @@ struct Policy {
     source: String,
     source_sha256: String,
 }
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd)]
+#[serde(rename_all = "kebab-case")]
+enum CaptureLineage {
+    Focused,
+    Published,
+}
+impl CaptureLineage {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Focused => "focused",
+            Self::Published => "published",
+        }
+    }
+}
+
+/// The fixed Layout-owned edition association; no caller-supplied edition text.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum PublishedEdition {
+    CanonicalBoxDifferences,
+}
+
+/// Select one capture lineage before comparing any observation or Native output.
+/// Published authority always carries the explicit fixed edition association.
+pub(crate) enum CaptureAuthority<'a> {
+    Focused(&'a CaseIdentity),
+    Published {
+        edition: PublishedEdition,
+        identity: &'a CaseIdentity,
+    },
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Representation {
+    #[serde(deserialize_with = "explicit_nullable")]
+    published_edition: Option<PublishedEdition>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawSpec {
     profile: Profile,
-    identity: CaseIdentity,
+    identities: BTreeMap<CaptureLineage, CaseIdentity>,
+    representation: Representation,
     policy: Policy,
     reason: String,
     native: NativeOracle,
@@ -511,6 +551,51 @@ impl CaseIdentity {
         );
         None
     }
+    fn shared_basis_changed_component(&self, other: &Self) -> Option<String> {
+        macro_rules! fields { ($($field:ident),+ $(,)?) => { $(if self.$field != other.$field { return Some(stringify!($field).to_owned()); })+ }; }
+        fields!(
+            source,
+            source_sha256,
+            variant,
+            record_sha256,
+            historical_sha256,
+            font_demand,
+            policy_source_sha256
+        );
+        for (path, digest) in self.inputs.iter().chain(&self.linked_resources) {
+            for map in [&other.inputs, &other.linked_resources] {
+                if map.get(path).is_some_and(|other| other != digest) {
+                    return Some(format!("resource:{path}"));
+                }
+            }
+        }
+        None
+    }
+    fn validate_policy_inputs(&self, policy: &Policy) -> Result<()> {
+        // The verified caller supplies the complete capture census. Parsing
+        // rejects inconsistent authored entries without inventing absent ones;
+        // exact runtime map equality remains mandatory at resolution.
+        for (path, expected) in [
+            (&self.source, &self.source_sha256),
+            (&policy.source, &policy.source_sha256),
+        ] {
+            for map in [&self.inputs, &self.linked_resources] {
+                if map.get(path).is_some_and(|actual| actual != expected) {
+                    return Err(malformed(format!(
+                        "dedicated identity input disagrees: {path}"
+                    )));
+                }
+            }
+        }
+        for (path, digest) in &self.linked_resources {
+            if self.inputs.get(path).is_some_and(|input| input != digest) {
+                return Err(malformed(format!(
+                    "resource identity disagrees between maps: {path}"
+                )));
+            }
+        }
+        Ok(())
+    }
     fn validate(&self) -> Result<()> {
         for value in [
             &self.source,
@@ -555,7 +640,6 @@ impl ExactDifferenceSpec {
         let value = prepared_source::unique_json(raw).map_err(|e| malformed(e.to_string()))?;
         let spec: RawSpec = serde_json::from_value(value).map_err(|e| malformed(e.to_string()))?;
         let Profile::CanonicalNoTextBoxes = &spec.profile;
-        spec.identity.validate()?;
         for value in [
             &spec.policy.id,
             &spec.policy.edition,
@@ -567,8 +651,28 @@ impl ExactDifferenceSpec {
         }
         relative_path(&spec.policy.source)?;
         digest(&spec.policy.source_sha256)?;
-        if spec.policy.source_sha256 != spec.identity.policy_source_sha256 {
-            return Err(malformed("policy source identity disagrees"));
+        let Some((_, basis)) = spec.identities.first_key_value() else {
+            return Err(malformed("capture identities must be nonempty"));
+        };
+        for (lineage, identity) in &spec.identities {
+            identity.validate()?;
+            identity.validate_policy_inputs(&spec.policy)?;
+            if spec.policy.source_sha256 != identity.policy_source_sha256 {
+                return Err(malformed("policy source identity disagrees"));
+            }
+            if let Some(component) = basis.shared_basis_changed_component(identity) {
+                return Err(malformed(format!(
+                    "capture lineages disagree on shared semantic basis: {component}"
+                )));
+            }
+            if *lineage == CaptureLineage::Published
+                && spec.representation.published_edition
+                    != Some(PublishedEdition::CanonicalBoxDifferences)
+            {
+                return Err(malformed(
+                    "published identity requires canonical-box-differences edition association",
+                ));
+            }
         }
         if spec.native.nodes.is_empty() || spec.differences.is_empty() {
             return Err(malformed(
@@ -608,10 +712,30 @@ impl ExactDifferenceSpec {
     }
     pub(crate) fn resolve_against<'a>(
         &'a self,
-        identity: &CaseIdentity,
+        authority: CaptureAuthority<'_>,
         golden: &Golden,
     ) -> Result<ResolvedSpec<'a>> {
-        if let Some(component) = self.0.identity.changed_component(identity) {
+        let (lineage, identity, edition) = match authority {
+            CaptureAuthority::Focused(identity) => (CaptureLineage::Focused, identity, None),
+            CaptureAuthority::Published { edition, identity } => {
+                (CaptureLineage::Published, identity, Some(edition))
+            }
+        };
+        let expected =
+            self.0
+                .identities
+                .get(&lineage)
+                .ok_or_else(|| QualificationError::IdentityChanged {
+                    component: format!("capture_lineage.{}", lineage.as_str()),
+                })?;
+        if let Some(edition) = edition
+            && self.0.representation.published_edition != Some(edition)
+        {
+            return Err(QualificationError::IdentityChanged {
+                component: "published_edition".to_owned(),
+            });
+        }
+        if let Some(component) = expected.changed_component(identity) {
             return Err(QualificationError::IdentityChanged { component });
         }
         let source = source_census(&golden.root, &golden.expectations)?;

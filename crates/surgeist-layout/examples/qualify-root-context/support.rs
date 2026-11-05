@@ -1830,7 +1830,7 @@ fn qualify_semantic_case(
     golden: &crate::parity_support::Golden,
 ) -> Result<crate::parity_support::exact_differences::QualifiedComparison> {
     use crate::parity_support::exact_differences::{
-        CaseIdentity, ExactDifferenceSpec, complete_captured_comparison,
+        CaptureAuthority, CaseIdentity, ExactDifferenceSpec, complete_captured_comparison,
     };
     let semantic = case
         .semantic
@@ -1934,7 +1934,7 @@ fn qualify_semantic_case(
         "profile_sha256":profile.as_str(),"source_imports_sha256":Sha256Digest::from_bytes(&serde_json::to_vec(&metadata.source_imports)?).as_str(),
         "inputs":inputs,"linked_resources":captured.linked_resources,"font_demand":"none","policy_source_sha256":policy.as_str()
     }))?;
-    let resolved = spec.resolve_against(&identity, golden)?;
+    let resolved = spec.resolve_against(CaptureAuthority::Focused(&identity), golden)?;
     let completed = complete_captured_comparison(golden, &resolved)?;
     resolved.qualify(&completed).map_err(Into::into)
 }

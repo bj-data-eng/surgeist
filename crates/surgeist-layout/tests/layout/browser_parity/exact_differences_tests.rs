@@ -40,7 +40,8 @@ fn identity() -> Value {
         "font_demand":"none","policy_source_sha256":hash})
 }
 fn declaration() -> Value {
-    json!({"profile":"canonical-no-text-boxes","identity":identity(),
+    json!({"profile":"canonical-no-text-boxes","identities":{"focused":identity()},
+        "representation":{"published_edition":null},
         "policy":{"id":"fixed-box-mechanism","edition":"1","source":"docs/policy.md","source_sha256":"a".repeat(64)},
         "reason":"Mechanism test of a source-derived fixed box",
         "native":{"source_derivation":"20px by 10px empty Flex box; initial canonical geometry and named absence", "nodes":[oracle()]},
@@ -60,7 +61,7 @@ fn spec(value: &Value) -> ExactDifferenceSpec {
 fn qualify(value: &Value, golden: &Golden) -> Result<QualifiedComparison> {
     let spec = spec(value);
     let identity = CaseIdentity::from_verified_projection(identity()).unwrap();
-    let resolved = spec.resolve_against(&identity, golden)?;
+    let resolved = spec.resolve_against(CaptureAuthority::Focused(&identity), golden)?;
     let completed = complete_captured_comparison(golden, &resolved)?;
     resolved.qualify(&completed)
 }
@@ -74,7 +75,9 @@ fn complete_source_derived_fixed_box_qualifies_while_raw_still_fails() {
         ("docs/policy.md", "a".repeat(64).as_str())
     );
     let identity = CaseIdentity::from_verified_projection(identity()).unwrap();
-    let resolved = spec.resolve_against(&identity, &golden).unwrap();
+    let resolved = spec
+        .resolve_against(CaptureAuthority::Focused(&identity), &golden)
+        .unwrap();
     let complete = complete_captured_comparison(&golden, &resolved).unwrap();
     assert_eq!(
         complete.observations.len(),
@@ -199,7 +202,7 @@ fn identity_drift_rejects_identical_geometry() {
         let identity = CaseIdentity::from_verified_projection(value).unwrap();
         assert!(
             matches!(
-                spec.resolve_against(&identity, &golden()),
+                spec.resolve_against(CaptureAuthority::Focused(&identity), &golden()),
                 Err(QualificationError::IdentityChanged { .. })
             ),
             "{field}"
@@ -218,7 +221,7 @@ fn parser_rejects_duplicates_unknown_missing_noncanonical_and_negative_extents()
         .is_err()
     );
     for pointer in [
-        "/identity/historical_sha256",
+        "/identities/focused/historical_sha256",
         "/native/nodes/0/unrounded/facts/scroll/facts/clip_x",
         "/native/nodes/0/final_output/facts/scroll/facts/clip_y",
         "/native/nodes/0/unrounded/facts/scroll/facts/gutter_top",
@@ -278,7 +281,9 @@ fn late_terminal_topology_failure_returns_no_completed_comparison() {
     let mut golden = golden();
     let spec = spec(&declaration());
     let identity = CaseIdentity::from_verified_projection(identity()).unwrap();
-    let resolved = spec.resolve_against(&identity, &golden).unwrap();
+    let resolved = spec
+        .resolve_against(CaptureAuthority::Focused(&identity), &golden)
+        .unwrap();
     golden
         .expectations
         .children
@@ -311,7 +316,9 @@ fn complete_mixed_domain_ledger_retains_equal_integers_and_rejects_extra_scroll_
     let spec = spec(&value);
     let identity = CaseIdentity::from_verified_projection(identity()).unwrap();
     let golden = element_golden(20);
-    let resolved = spec.resolve_against(&identity, &golden).unwrap();
+    let resolved = spec
+        .resolve_against(CaptureAuthority::Focused(&identity), &golden)
+        .unwrap();
     let completed = complete_captured_comparison(&golden, &resolved).unwrap();
     assert_eq!(
         completed.observations.len(),
@@ -506,4 +513,280 @@ fn canonical_spec_accepts_explicit_focused_and_published_capture_lineages() {
         "one semantic oracle must admit separately authored, explicit capture lineages: {:?}",
         result.err()
     );
+}
+
+// Independently authored lineage labels and hashes; the Native source, oracle
+// and browser pair remain the fixed-box arithmetic used above.
+fn published_identity() -> Value {
+    let mut value = identity();
+    value["generator"] = json!("source-imported-durable-edition");
+    value["capture_sha256"] = json!("b".repeat(64));
+    value["profile_sha256"] = json!("c".repeat(64));
+    value["source_imports_sha256"] = json!("d".repeat(64));
+    value["inputs"]["origin/source-import.json"] = json!("e".repeat(64));
+    value
+}
+fn two_lineage_declaration() -> Value {
+    let mut value = declaration();
+    value["identities"]["published"] = published_identity();
+    value["representation"]["published_edition"] = json!("canonical-box-differences");
+    value
+}
+
+#[test]
+fn explicit_authority_dispatches_one_lineage_before_comparing_identical_geometry() {
+    let value = two_lineage_declaration();
+    let spec = spec(&value);
+    let focused = CaseIdentity::from_verified_projection(identity()).unwrap();
+    let published = CaseIdentity::from_verified_projection(published_identity()).unwrap();
+    let golden = golden();
+    for authority in [
+        CaptureAuthority::Focused(&focused),
+        CaptureAuthority::Published {
+            edition: PublishedEdition::CanonicalBoxDifferences,
+            identity: &published,
+        },
+    ] {
+        let resolved = spec.resolve_against(authority, &golden).unwrap();
+        let completed = complete_captured_comparison(&golden, &resolved).unwrap();
+        assert_eq!(
+            resolved.qualify(&completed).unwrap().raw,
+            RawVerdict::Different { fields: 1 }
+        );
+    }
+    // Trying another identity until one matches would incorrectly accept each
+    // of these calls. The exact same source/oracle/geometry has no such power.
+    for authority in [
+        CaptureAuthority::Focused(&published),
+        CaptureAuthority::Published {
+            edition: PublishedEdition::CanonicalBoxDifferences,
+            identity: &focused,
+        },
+    ] {
+        assert!(matches!(
+            spec.resolve_against(authority, &golden),
+            Err(QualificationError::IdentityChanged { component }) if component == "capture_sha256"
+        ));
+    }
+}
+
+#[test]
+fn missing_selected_lineage_refuses_even_when_the_other_identity_matches() {
+    let focused_only = spec(&declaration());
+    let focused = CaseIdentity::from_verified_projection(identity()).unwrap();
+    assert!(matches!(
+        focused_only.resolve_against(
+            CaptureAuthority::Published {
+                edition: PublishedEdition::CanonicalBoxDifferences,
+                identity: &focused,
+            },
+            &golden(),
+        ),
+        Err(QualificationError::IdentityChanged { component }) if component == "capture_lineage.published"
+    ));
+
+    let mut value = two_lineage_declaration();
+    value["identities"]
+        .as_object_mut()
+        .unwrap()
+        .remove("focused");
+    let published_only = spec(&value);
+    let published = CaseIdentity::from_verified_projection(published_identity()).unwrap();
+    assert!(
+        published_only
+            .resolve_against(
+                CaptureAuthority::Published {
+                    edition: PublishedEdition::CanonicalBoxDifferences,
+                    identity: &published,
+                },
+                &golden(),
+            )
+            .is_ok()
+    );
+    assert!(matches!(
+        published_only.resolve_against(CaptureAuthority::Focused(&published), &golden()),
+        Err(QualificationError::IdentityChanged { component }) if component == "capture_lineage.focused"
+    ));
+}
+
+#[test]
+fn capture_lineage_map_rejects_empty_unknown_duplicate_and_legacy_fields() {
+    let mut value = declaration();
+    value["identities"] = json!({});
+    assert!(matches!(
+        ExactDifferenceSpec::parse(&value.to_string()),
+        Err(QualificationError::MalformedDeclaration { .. })
+    ));
+    let mut value = declaration();
+    value["identities"]["unregistered"] = identity();
+    assert!(matches!(
+        ExactDifferenceSpec::parse(&value.to_string()),
+        Err(QualificationError::MalformedDeclaration { .. })
+    ));
+    let raw = declaration().to_string();
+    let duplicate = raw.replacen(
+        "\"focused\":",
+        &format!("\"focused\":{},\"focused\":", identity()),
+        1,
+    );
+    assert!(matches!(
+        ExactDifferenceSpec::parse(&duplicate),
+        Err(QualificationError::MalformedDeclaration { .. })
+    ));
+    let mut value = declaration();
+    value.as_object_mut().unwrap().remove("identities");
+    value["identity"] = identity();
+    assert!(matches!(
+        ExactDifferenceSpec::parse(&value.to_string()),
+        Err(QualificationError::MalformedDeclaration { .. })
+    ));
+    let mut value = declaration();
+    value["identity"] = identity();
+    assert!(matches!(
+        ExactDifferenceSpec::parse(&value.to_string()),
+        Err(QualificationError::MalformedDeclaration { .. })
+    ));
+}
+
+#[test]
+fn published_identity_requires_explicit_fixed_edition_and_focused_null_is_required() {
+    let mut focused = declaration();
+    assert!(ExactDifferenceSpec::parse(&focused.to_string()).is_ok());
+    focused["representation"]
+        .as_object_mut()
+        .unwrap()
+        .remove("published_edition");
+    assert!(matches!(
+        ExactDifferenceSpec::parse(&focused.to_string()),
+        Err(QualificationError::MalformedDeclaration { .. })
+    ));
+    let mut focused = declaration();
+    focused.as_object_mut().unwrap().remove("representation");
+    assert!(matches!(
+        ExactDifferenceSpec::parse(&focused.to_string()),
+        Err(QualificationError::MalformedDeclaration { .. })
+    ));
+    for edition in [Value::Null, json!("other-edition")] {
+        let mut value = two_lineage_declaration();
+        value["representation"]["published_edition"] = edition;
+        assert!(matches!(
+            ExactDifferenceSpec::parse(&value.to_string()),
+            Err(QualificationError::MalformedDeclaration { .. })
+        ));
+    }
+    let mut value = two_lineage_declaration();
+    value["representation"]
+        .as_object_mut()
+        .unwrap()
+        .remove("published_edition");
+    assert!(matches!(
+        ExactDifferenceSpec::parse(&value.to_string()),
+        Err(QualificationError::MalformedDeclaration { .. })
+    ));
+    let mut value = declaration();
+    value["representation"]["unregistered"] = json!(true);
+    assert!(matches!(
+        ExactDifferenceSpec::parse(&value.to_string()),
+        Err(QualificationError::MalformedDeclaration { .. })
+    ));
+}
+
+#[test]
+fn capture_lineages_cannot_disagree_on_shared_semantic_basis() {
+    for (field, replacement) in [
+        ("source", json!("html/other.html")),
+        ("source_sha256", json!("b".repeat(64))),
+        ("variant", json!("content_box_rtl")),
+        ("record_sha256", json!("b".repeat(64))),
+        ("historical_sha256", json!("b".repeat(64))),
+        ("font_demand", json!("text")),
+        ("policy_source_sha256", json!("b".repeat(64))),
+    ] {
+        let mut value = two_lineage_declaration();
+        value["identities"]["published"][field] = replacement;
+        assert!(
+            matches!(
+                ExactDifferenceSpec::parse(&value.to_string()),
+                Err(QualificationError::MalformedDeclaration { .. })
+            ),
+            "{field}"
+        );
+    }
+}
+
+#[test]
+fn shared_resources_and_present_dedicated_input_hashes_must_agree() {
+    let mut value = two_lineage_declaration();
+    value["identities"]["published"]["inputs"]["base.css"] = json!("b".repeat(64));
+    assert!(matches!(
+        ExactDifferenceSpec::parse(&value.to_string()),
+        Err(QualificationError::MalformedDeclaration { .. })
+    ));
+    let mut value = two_lineage_declaration();
+    value["identities"]["published"]["linked_resources"]["base.css"] = json!("b".repeat(64));
+    assert!(matches!(
+        ExactDifferenceSpec::parse(&value.to_string()),
+        Err(QualificationError::MalformedDeclaration { .. })
+    ));
+    for path in ["html/empty-fixed.html", "docs/policy.md"] {
+        let mut value = declaration();
+        value["identities"]["focused"]["inputs"][path] = json!("b".repeat(64));
+        assert!(
+            matches!(
+                ExactDifferenceSpec::parse(&value.to_string()),
+                Err(QualificationError::MalformedDeclaration { .. })
+            ),
+            "{path}"
+        );
+    }
+}
+
+#[test]
+fn selected_lineage_requires_exact_input_and_linked_resource_maps() {
+    let mut value = two_lineage_declaration();
+    value["identities"]["focused"]["inputs"]["shared.css"] = json!("a".repeat(64));
+    let spec = spec(&value);
+    // The actual identity lacks an authored entry. It cannot match a subset.
+    let missing = CaseIdentity::from_verified_projection(identity()).unwrap();
+    assert!(matches!(
+        spec.resolve_against(CaptureAuthority::Focused(&missing), &golden()),
+        Err(QualificationError::IdentityChanged { component }) if component == "inputs"
+    ));
+    let mut actual = identity();
+    actual["inputs"]["shared.css"] = json!("a".repeat(64));
+    actual["inputs"]["unexpected.css"] = json!("a".repeat(64));
+    let extra = CaseIdentity::from_verified_projection(actual).unwrap();
+    assert!(matches!(
+        spec.resolve_against(CaptureAuthority::Focused(&extra), &golden()),
+        Err(QualificationError::IdentityChanged { component }) if component == "inputs"
+    ));
+    let mut actual = identity();
+    actual["inputs"]["shared.css"] = json!("a".repeat(64));
+    actual["linked_resources"]["unexpected.css"] = json!("a".repeat(64));
+    let extra = CaseIdentity::from_verified_projection(actual).unwrap();
+    assert!(matches!(
+        spec.resolve_against(CaptureAuthority::Focused(&extra), &golden()),
+        Err(QualificationError::IdentityChanged { component }) if component == "linked_resources"
+    ));
+}
+
+#[test]
+fn every_declared_lineage_validates_its_own_paths_and_hashes() {
+    for lineage in ["focused", "published"] {
+        for (field, invalid) in [
+            ("source", json!("../outside.html")),
+            ("source_sha256", json!("z".repeat(64))),
+            ("inputs", json!({})),
+        ] {
+            let mut value = two_lineage_declaration();
+            value["identities"][lineage][field] = invalid;
+            assert!(
+                matches!(
+                    ExactDifferenceSpec::parse(&value.to_string()),
+                    Err(QualificationError::MalformedDeclaration { .. })
+                ),
+                "{lineage}:{field}"
+            );
+        }
+    }
 }
