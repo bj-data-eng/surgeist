@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "artifacts": {
+    "xml/block/block_inset_percentage__border_box_ltr.xml": "28d1878b5072bebea9b5d7dfe7858976cc7071757ee91ac28103cb575e234186",
+    "xml/block/block_inset_percentage__border_box_rtl.xml": "9d07d175e6c90d8037ab74036d00e19a1393e75129bd0b3c1e03c9ab891c3778",
+    "xml/block/block_inset_percentage__content_box_ltr.xml": "ea18d15e590d8ebe3128b5268b3f73ece4ae35d10a978d9655f1eb34549a4b93",
+    "xml/block/block_inset_percentage__content_box_rtl.xml": "02b40cc18fbe72eee47d9e47579543e4ba72627db9b8b1be3f82904717786f5a",
+    "xml/generation-reports/all.json": "fbe4cae2da4aa494c93707bb06c78b4b23bee81cb1ed7d5172c23131c0264599"
+  }
+}

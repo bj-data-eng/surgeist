@@ -1791,3 +1791,20 @@ hypothetical_direction = "ltr"
 root_direction = "variant"
 root_writing_mode = "horizontal-tb"
 inline_offset = 0
+
+# Exact relative-inset observations attach to the original fixture record.
+
+[[semantic_publications]]
+source = "html/block/block_inset_percentage.html"
+[semantic_publications.specifications.border_box_ltr]
+path = "semantic/block-inset-percentage-border_box_ltr.json"
+sha256 = "b65efcbb87671d335aa1a72d89514a70cd0bfd93df58533816be88a4ac43ba46"
+[semantic_publications.specifications.border_box_rtl]
+path = "semantic/block-inset-percentage-border_box_rtl.json"
+sha256 = "78f03a4671e1a2d5ef22157869462b1af36938b1eb4839531463e129da5f5b01"
+[semantic_publications.specifications.content_box_ltr]
+path = "semantic/block-inset-percentage-content_box_ltr.json"
+sha256 = "5da21d01d1201642c686f483c083f3637be969dbe36fd58818da5a1ba11cff33"
+[semantic_publications.specifications.content_box_rtl]
+path = "semantic/block-inset-percentage-content_box_rtl.json"
+sha256 = "aca0ce077cffec87d854332931a4cc93e0a4aae193459542b9b224c2e3aca6b9"
