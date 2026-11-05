@@ -593,6 +593,11 @@ pub(super) fn decode(
     };
     wire.validate_wire(&context)?;
     context.compatible(
+        !wire.has_authored_atomic_size(),
+        "preparedParagraph.atomics",
+        "authored atomic sizes require their registered capture request",
+    )?;
+    context.compatible(
         request == BoxObservationRequest::MeasuredLeaf || wire.measured_leaf.is_none(),
         "measuredLeaf",
         "measured leaf evidence requires its registered request",
@@ -875,6 +880,19 @@ impl WireNode {
             child.validate_prepared_range_rows(&context.child(index))?;
         }
         Ok(())
+    }
+
+    fn has_authored_atomic_size(&self) -> bool {
+        self.prepared_paragraph.as_ref().is_some_and(|paragraph| {
+            paragraph
+                .atomics
+                .iter()
+                .any(|atomic| atomic.authored_size.is_some())
+        }) || self
+            .children
+            .iter()
+            .flatten()
+            .any(Self::has_authored_atomic_size)
     }
 
     fn validate_wire(&self, context: &Context<'_>) -> Result<(), MeasurementError> {
