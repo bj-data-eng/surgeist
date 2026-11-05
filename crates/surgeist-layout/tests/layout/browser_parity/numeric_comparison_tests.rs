@@ -512,9 +512,41 @@ fn captured_flex_baselines_use_original_prepared_text() {
             capture_authority::sha256(xml.as_bytes())
         );
 
-        let golden = Golden::parse(xml).expect("original V4 capture parses");
+        let unbound = Golden::parse(xml).expect("original V4 capture parses");
+        assert_eq!(
+            collect_surgeist_numeric_mismatches(&unbound)
+                .unwrap_err()
+                .to_string(),
+            "UnsupportedAnalyticBaselineTextProfile"
+        );
+        let golden = Golden::parse_with_flex_content_text(
+            xml,
+            raw_report,
+            ORIGINAL,
+            source,
+            artifact["output"].as_str().unwrap(),
+        )
+        .expect("original V4 capture and font proof bind");
         assert_eq!(artifact["name"], golden.name);
         assert!(golden.has_element_scroll_sizes());
+        let mut changed = golden.clone();
+        changed.root.children[0].text = Some("different label".into());
+        assert!(
+            collect_surgeist_numeric_mismatches(&changed)
+                .unwrap_err()
+                .to_string()
+                .contains("source inputs changed")
+        );
+        assert!(
+            Golden::parse_with_flex_content_text(
+                xml,
+                raw_report,
+                ORIGINAL,
+                b"changed source",
+                artifact["output"].as_str().unwrap(),
+            )
+            .is_err()
+        );
         let labels = golden
             .root
             .children
@@ -523,7 +555,10 @@ fn captured_flex_baselines_use_original_prepared_text() {
             .collect::<Vec<_>>();
         assert_eq!(labels, ["base", "small strut", "peer", "large strut"]);
 
-        let mut numeric = NumericComparisonSink::CollectNumeric(Vec::new());
+        let mut numeric = NumericComparisonSink::CollectAll {
+            root: golden.name.clone(),
+            fields: Vec::new(),
+        };
         let result = compare_captured_with_batch(&golden, &mut numeric, |tree, batch| {
             let children = &tree.nodes[0].children;
             assert_eq!(children.len(), 4);
@@ -536,6 +571,8 @@ fn captured_flex_baselines_use_original_prepared_text() {
                 let lines = placed.layout().lines();
                 assert_eq!(lines.len(), 1);
                 assert_eq!(lines[0].range(), surgeist_text::Range::new(0, length));
+                // The face's ascent is 800 of 1000 units at 10px with zero leading.
+                assert_eq!(lines[0].baseline(), 8.0);
             }
             for node in [children[1], children[3]] {
                 assert_eq!(tree.nodes[node].unrounded.size, layout::Size::ZERO);
@@ -544,7 +581,80 @@ fn captured_flex_baselines_use_original_prepared_text() {
         });
         if let Err(error) = result {
             failures.push(format!("{variant}: {error}"));
+            continue;
         }
+        let NumericComparisonSink::CollectAll { fields, .. } = numeric else {
+            unreachable!("comparison owns the exact collection");
+        };
+        assert_original_flex_observations(&fields, variant.ends_with("_rtl"));
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+fn assert_original_flex_observations(observed: &[exact_differences::ComparedField], rtl: bool) {
+    use ElementScrollSizeField as Element;
+    use NumericComparisonField as Geometry;
+    use exact_differences::ComparedField;
+
+    // The root is 180px wide and its first line supplies the 60px collapse
+    // strut. The second round retains only the two 30px visible items.
+    // Each four-letter label advances 40px in the original 10px Ahem face.
+    let (browser_x, native_x) = if rtl {
+        (
+            [0.0, 150.0, 110.0, 80.0, 30.0],
+            [0.0, 150.0, 0.0, 120.0, 0.0],
+        )
+    } else {
+        ([0.0, 0.0, 30.0, 70.0, 100.0], [0.0, 0.0, 0.0, 30.0, 0.0])
+    };
+    let browser_width = [180.0, 30.0, 40.0, 30.0, 50.0];
+    let browser_height = [60.0, 20.0, 40.0, 25.0, 60.0];
+    let native_width = [180.0, 30.0, 0.0, 30.0, 0.0];
+    let native_height = [60.0, 20.0, 0.0, 25.0, 0.0];
+    let browser_sizes = [
+        [180, 60, 180, 60],
+        [30, 20, 40, 20],
+        [40, 40, 50, 40],
+        [30, 25, 40, 25],
+        [50, 60, 50, 60],
+    ];
+    let native_sizes = [
+        [180, 60, 180, 60],
+        [30, 20, 40, 20],
+        [0, 0, 0, 0],
+        [30, 25, 40, 25],
+        [0, 0, 0, 0],
+    ];
+    let mut expected = Vec::new();
+    for (index, path) in ["/", "/0", "/1", "/2", "/3"].into_iter().enumerate() {
+        for (field, browser, native) in [
+            (Geometry::X, browser_x[index], native_x[index]),
+            (Geometry::Y, 0.0, 0.0),
+            (Geometry::Width, browser_width[index], native_width[index]),
+            (
+                Geometry::Height,
+                browser_height[index],
+                native_height[index],
+            ),
+        ] {
+            expected.push(ComparedField::layout(path.to_owned(), field, browser, native).unwrap());
+        }
+        for (field, (browser, native)) in [
+            Element::ClientWidth,
+            Element::ClientHeight,
+            Element::ScrollWidth,
+            Element::ScrollHeight,
+        ]
+        .into_iter()
+        .zip(browser_sizes[index].into_iter().zip(native_sizes[index]))
+        {
+            expected.push(ComparedField::element(
+                path.to_owned(),
+                field,
+                browser,
+                native,
+            ));
+        }
+    }
+    assert_eq!(observed, expected);
 }

@@ -636,6 +636,11 @@ fn validate_corpus(
         lineage: validation.lineage,
         requirements: validation.requirements,
     };
+    let flex_report = if mode.box_observations() == BoxObservationRequest::FlexContentText {
+        Some(String::from_utf8(report.to_bytes()?)?)
+    } else {
+        None
+    };
     let mut native_errors = Vec::new();
     let mut numeric = NumericDiagnostics::default();
     for artifact in report.generated() {
@@ -647,7 +652,18 @@ fn validate_corpus(
         let xml = fs::read_to_string(root.join(artifact.output().as_str()))?;
         // Source certificates and parsing remain fatal in every mode.
         qualify_xml(&xml, case)?;
-        let golden = crate::parity_support::Golden::parse(&xml)?;
+        let golden = if let Some(report) = &flex_report {
+            let source = artifact.source().as_str();
+            crate::parity_support::Golden::parse_with_flex_content_text(
+                &xml,
+                report,
+                source,
+                &fs::read(root.join(source))?,
+                artifact.output().as_str(),
+            )?
+        } else {
+            crate::parity_support::Golden::parse(&xml)?
+        };
         if golden.has_element_scroll_sizes()
             != (mode.box_observations() != BoxObservationRequest::Geometry)
         {

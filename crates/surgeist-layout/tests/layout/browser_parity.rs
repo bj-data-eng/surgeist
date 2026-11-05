@@ -498,10 +498,8 @@ fn fri06_c12_t08_representative_xml_has_strict_ordinary_geometry() {
         let root_before = format!("{:?}", golden.root);
         let mut expectations = golden.expectations.clone();
         clear_browser_control_observations(&mut expectations);
-        let ordinary_geometry = support::Golden {
-            expectations,
-            ..golden
-        };
+        let mut ordinary_geometry = golden;
+        ordinary_geometry.expectations = expectations;
         assert_eq!(format!("{:?}", ordinary_geometry.root), root_before);
 
         if let Err(error) = support::assert_surgeist_matches(&ordinary_geometry) {
