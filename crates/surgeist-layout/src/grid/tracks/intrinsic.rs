@@ -217,6 +217,7 @@ impl<'input, 'a, Node, S: LayoutScalar> IntrinsicGrid<'input, 'a, Node, S> {
     pub(in crate::grid) fn column_contribution_margin_basis(
         self,
         span_tracks: &[TrackSizingOf<S>],
+        parent_size: Size<Option<S>>,
     ) -> Option<Size<Option<S>>> {
         let contributes = span_tracks
             .iter()
@@ -227,7 +228,7 @@ impl<'input, 'a, Node, S: LayoutScalar> IntrinsicGrid<'input, 'a, Node, S> {
             if self.style.display.inner_display() == Display::Grid {
                 Size::splat(Some(S::ZERO))
             } else {
-                self.constants.node_inner_size
+                parent_size
             }
         })
     }
@@ -909,7 +910,9 @@ where
             .is_some_and(|item| item_inherits_parent_axis(*item, GridAxisKind::Row));
         let column_margin_basis =
             if grid.query.includes(GridAxisKind::Column) && !inherited_column_subgrid {
-                column_span_tracks.and_then(|tracks| grid.column_contribution_margin_basis(tracks))
+                column_span_tracks.and_then(|tracks| {
+                    grid.column_contribution_margin_basis(tracks, constants.node_inner_size)
+                })
             } else {
                 None
             };
