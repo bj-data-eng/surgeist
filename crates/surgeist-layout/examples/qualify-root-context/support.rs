@@ -17,10 +17,10 @@ use surgeist_generator::{GeneratorErrorKind, RelativePath, Sha256Digest};
 
 use crate::adapter::{AdapterError, LayoutAdapter, fixture_cases};
 use crate::browser_profile::BrowserManifest;
-use crate::fixture_variants;
 use crate::measurement::{
     BoxObservationRequest, FLEX_COMPOSITION_SOURCE, OBSERVATION_REQUEST_INPUT,
 };
+use crate::parity_support::capture_authority;
 
 #[path = "../../tests/layout/browser_parity/qualification_catalogue.rs"]
 mod qualification_catalogue;
@@ -1970,8 +1970,8 @@ fn register_semantic_input(
 }
 
 use crate::parity_support::capture_authority::{
-    BrowserSettingsWitness, CaptureMetadata, CapturedArtifact, CaseDescriptor, IdentityInputs,
-    PathDigest, QualifiedCase, identity_from_verified_inputs,
+    BrowserSettingsWitness, CaptureMetadata, CapturedArtifact, CaseDescriptor, ExactCase,
+    IdentityInputs, PathDigest, QualifiedCase, identity_from_verified_inputs,
 };
 
 fn parse_capture_golden(
@@ -2173,26 +2173,28 @@ fn qualify_semantic_case(
         );
     }
     let verdict = resolved.qualify(&completed)?;
-    let terminal = current.map(|requirements| QualifiedCase {
-        case: descriptor,
-        spec: PathDigest {
-            path: reference.path.as_str().to_owned(),
-            sha256: reference.sha256.as_str().to_owned(),
-        },
-        policy: PathDigest {
-            path: policy_path.as_str().to_owned(),
-            sha256: policy.as_str().to_owned(),
-        },
-        historical: case
-            .historical
-            .as_ref()
-            .zip(historical.as_ref())
-            .map(|(path, sha)| PathDigest {
-                path: path.as_str().to_owned(),
-                sha256: sha.as_str().to_owned(),
-            }),
-        requirements,
-        identity: verified.projection().clone(),
+    let terminal = current.map(|requirements| {
+        QualifiedCase::Exact(ExactCase {
+            case: descriptor,
+            spec: PathDigest {
+                path: reference.path.as_str().to_owned(),
+                sha256: reference.sha256.as_str().to_owned(),
+            },
+            policy: PathDigest {
+                path: policy_path.as_str().to_owned(),
+                sha256: policy.as_str().to_owned(),
+            },
+            historical: case
+                .historical
+                .as_ref()
+                .zip(historical.as_ref())
+                .map(|(path, sha)| PathDigest {
+                    path: path.as_str().to_owned(),
+                    sha256: sha.as_str().to_owned(),
+                }),
+            requirements,
+            identity: verified.projection().clone(),
+        })
     });
     Ok(SemanticResult { verdict, terminal })
 }

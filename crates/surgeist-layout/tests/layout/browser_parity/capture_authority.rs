@@ -7,6 +7,8 @@ use serde_json::{Value, value::RawValue};
 use sha2::{Digest as _, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::fixture_variants::fixture_cases;
+
 pub(crate) const EDITION: &str = "canonical-box-differences";
 pub(crate) const MEASURED_GRID_EDITION: &str = "measured-grid-differences";
 pub(crate) const ARTIFACT_ROOT: &str =
@@ -678,7 +680,7 @@ pub(crate) struct RecordProjection {
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct QualifiedCase {
+pub(crate) struct ExactCase {
     pub(crate) case: CaseDescriptor,
     pub(crate) spec: PathDigest,
     pub(crate) policy: PathDigest,
@@ -687,6 +689,102 @@ pub(crate) struct QualifiedCase {
     pub(crate) requirements: CurrentRequirements,
     pub(crate) identity: IdentityProjection,
 }
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum SpecializedProfile {
+    PreparedRange,
+    FlexComposition,
+}
+
+impl SpecializedProfile {
+    fn source(self) -> &'static str {
+        match self {
+            Self::PreparedRange => prepared_range_qualification::SOURCE,
+            Self::FlexComposition => flex_composition::SOURCE,
+        }
+    }
+
+    fn from_edition(edition: &str) -> Option<Self> {
+        match edition {
+            "prepared-range-qualification" => Some(Self::PreparedRange),
+            "flex-composition-qualification" => Some(Self::FlexComposition),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(tag = "profile", rename_all = "kebab-case", deny_unknown_fields)]
+pub(crate) enum SpecializedEvidence {
+    PreparedRange {
+        policy: PathDigest,
+    },
+    FlexComposition {
+        collapse_policy: PathDigest,
+        scrollbar_policy: PathDigest,
+        native_oracle: PathDigest,
+        gutter_control: PathDigest,
+    },
+}
+
+impl SpecializedEvidence {
+    fn profile(&self) -> SpecializedProfile {
+        match self {
+            Self::PreparedRange { .. } => SpecializedProfile::PreparedRange,
+            Self::FlexComposition { .. } => SpecializedProfile::FlexComposition,
+        }
+    }
+
+    fn bindings(&self) -> Vec<&PathDigest> {
+        match self {
+            Self::PreparedRange { policy } => vec![policy],
+            Self::FlexComposition {
+                collapse_policy,
+                scrollbar_policy,
+                native_oracle,
+                gutter_control,
+            } => vec![
+                collapse_policy,
+                scrollbar_policy,
+                native_oracle,
+                gutter_control,
+            ],
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SpecializedCase {
+    pub(crate) case: CaseDescriptor,
+    pub(crate) historical: PathDigest,
+    pub(crate) evidence: SpecializedEvidence,
+    pub(crate) identity: IdentityProjection,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(untagged)]
+pub(crate) enum QualifiedCase {
+    Exact(ExactCase),
+    Specialized(SpecializedCase),
+}
+
+impl QualifiedCase {
+    pub(crate) fn descriptor(&self) -> &CaseDescriptor {
+        match self {
+            Self::Exact(case) => &case.case,
+            Self::Specialized(case) => &case.case,
+        }
+    }
+
+    fn identity(&self) -> &IdentityProjection {
+        match self {
+            Self::Exact(case) => &case.identity,
+            Self::Specialized(case) => &case.identity,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Qualification {
@@ -716,11 +814,13 @@ impl Qualification {
         Ok(value)
     }
     fn validate(&self) -> Result<()> {
+        let specialized = SpecializedProfile::from_edition(&self.edition);
         if self.schema_version != TERMINAL_SCHEMA
-            || !matches!(
-                self.edition.as_str(),
-                EDITION | MEASURED_GRID_EDITION | FLEX_TEXT_EDITION
-            )
+            || (specialized.is_none()
+                && !matches!(
+                    self.edition.as_str(),
+                    EDITION | MEASURED_GRID_EDITION | FLEX_TEXT_EDITION
+                ))
             || self.declaration.path != "corpus.toml"
             || self.report.path != "xml/generation-reports/all.json"
             || self.ownership.path != "xml/generation-ownership.json"
@@ -729,35 +829,20 @@ impl Qualification {
         {
             return Err(malformed("invalid terminal edition/census"));
         }
+        if specialized.is_some()
+            && (self.records.len() != 1 || self.cases.len() != fixture_cases().len())
+        {
+            return Err(malformed("incomplete specialized terminal census"));
+        }
         if self.capture_validation != CaptureValidation::from_retained(&self.retained_inputs)?
             || self.current_owner_inputs.get(ROOT_HELPER_OWNER)
                 != Some(&self.capture_validation.validator_helper_sha256)
         {
             return Err(changed("terminal producer or current validation authority"));
         }
-        for entry in [&self.declaration, &self.report, &self.ownership]
-            .into_iter()
-            .chain(self.cases.iter().flat_map(|c| {
-                [&c.case.output, &c.spec, &c.policy]
-                    .into_iter()
-                    .chain(c.historical.iter())
-            }))
-        {
+        for entry in [&self.declaration, &self.report, &self.ownership] {
             path(&entry.path)?;
             digest(&entry.sha256)?;
-        }
-        let mut cases = BTreeSet::new();
-        let mut outputs = BTreeSet::new();
-        for case in &self.cases {
-            if !cases.insert(&case.case.name) || !outputs.insert(&case.case.output.path) {
-                return Err(malformed("duplicate terminal case/output"));
-            }
-            if case.requirements.case_id != case.case.name
-                || case.requirements.output != case.case.output.path
-            {
-                return Err(malformed("terminal requirement mapping changed"));
-            }
-            digest(&case.case.record_sha256)?;
         }
         let mut records = BTreeMap::new();
         for record in &self.records {
@@ -766,9 +851,7 @@ impl Qualification {
             if semantic_record_digest(&record.value)? != record.sha256
                 || record.value.get("source").and_then(Value::as_str)
                     != Some(record.source.as_str())
-                || records
-                    .insert(record.source.as_str(), record.sha256.as_str())
-                    .is_some()
+                || records.insert(record.source.as_str(), record).is_some()
             {
                 return Err(malformed("terminal semantic record projection changed"));
             }
@@ -776,18 +859,51 @@ impl Qualification {
         if self.retained_inputs.get("corpus.toml") != Some(&self.declaration.sha256) {
             return Err(malformed("terminal declaration input seal changed"));
         }
+
+        let mut names = BTreeSet::new();
+        let mut outputs = BTreeSet::new();
+        let mut variants = BTreeSet::new();
         for case in &self.cases {
-            if records.get(case.case.source.as_str()).copied()
-                != Some(case.case.record_sha256.as_str())
-                || self.retained_inputs.get(&case.spec.path) != Some(&case.spec.sha256)
-                || self.retained_inputs.get(&case.policy.path) != Some(&case.policy.sha256)
-            {
-                return Err(malformed("terminal record/spec/policy association changed"));
+            let descriptor = case.descriptor();
+            path(&descriptor.output.path)?;
+            digest(&descriptor.output.sha256)?;
+            digest(&descriptor.record_sha256)?;
+            if !names.insert(&descriptor.name) || !outputs.insert(&descriptor.output.path) {
+                return Err(malformed("duplicate terminal case/output"));
             }
-            if case.identity.source != case.case.source
-                || case.identity.variant != case.case.variant
-                || case.identity.capture_sha256 != case.case.output.sha256
-                || case.identity.record_sha256 != case.case.record_sha256
+            let Some(record) = records.get(descriptor.source.as_str()) else {
+                return Err(malformed("terminal case source is missing"));
+            };
+            if record.sha256 != descriptor.record_sha256 {
+                return Err(malformed("terminal case record association changed"));
+            }
+            match (case, specialized) {
+                (QualifiedCase::Exact(case), None) => {
+                    if case.requirements.case_id != descriptor.name
+                        || case.requirements.output != descriptor.output.path
+                    {
+                        return Err(malformed("terminal requirement mapping changed"));
+                    }
+                    for entry in [&case.spec, &case.policy] {
+                        self.require_retained(entry)?;
+                    }
+                    if let Some(historical) = &case.historical {
+                        path(&historical.path)?;
+                        digest(&historical.sha256)?;
+                    }
+                }
+                (QualifiedCase::Specialized(case), Some(profile))
+                    if variants.insert(descriptor.variant.as_str()) =>
+                {
+                    self.validate_specialized(case, profile, record)?;
+                }
+                _ => return Err(malformed("terminal edition or variant association changed")),
+            }
+            let identity = case.identity();
+            if identity.source != descriptor.source
+                || identity.variant != descriptor.variant
+                || identity.capture_sha256 != descriptor.output.sha256
+                || identity.record_sha256 != descriptor.record_sha256
             {
                 return Err(malformed("stored projection/case association changed"));
             }
@@ -797,6 +913,62 @@ impl Qualification {
                 path(name)?;
                 digest(hash)?;
             }
+        }
+        Ok(())
+    }
+
+    fn require_retained(&self, entry: &PathDigest) -> Result<()> {
+        path(&entry.path)?;
+        digest(&entry.sha256)?;
+        if self.retained_inputs.get(&entry.path) != Some(&entry.sha256) {
+            return Err(malformed("terminal evidence differs from retained input"));
+        }
+        Ok(())
+    }
+
+    fn validate_specialized(
+        &self,
+        case: &SpecializedCase,
+        profile: SpecializedProfile,
+        record: &RecordProjection,
+    ) -> Result<()> {
+        let source = profile.source();
+        let family = source
+            .strip_prefix("html/")
+            .and_then(|path| path.strip_suffix(".html"))
+            .expect("fixed original source path");
+        let stem = family.rsplit('/').next().expect("fixed source name");
+        let variant = &case.case.variant;
+        if case.evidence.profile() != profile
+            || case.case.source != source
+            || record.value["specialized_publication"]
+                != serde_json::to_value(profile).map_err(|error| malformed(error.to_string()))?
+            || record.value["source_kind"] != "original"
+            || record.value["source_sha256"] != case.identity.source_sha256
+            || self.retained_inputs.get(source) != Some(&case.identity.source_sha256)
+            || !fixture_cases().iter().any(|(key, _)| *key == variant)
+            || case.case.name != format!("{stem}__{variant}")
+            || case.case.output.path != format!("xml/{family}__{variant}.xml")
+            || case.historical.path != format!("historical/{family}__{variant}.xml")
+            || record.value["historical_sha256"][variant] != case.historical.sha256
+            || case.identity.historical_sha256.as_ref() != Some(&case.historical.sha256)
+        {
+            return Err(malformed(
+                "specialized terminal source or predecessor changed",
+            ));
+        }
+        if let SpecializedEvidence::PreparedRange { policy } = &case.evidence
+            && case.identity.policy_source_sha256 != policy.sha256
+        {
+            return Err(malformed("specialized terminal policy identity changed"));
+        }
+        let mut evidence_paths = BTreeSet::from([case.historical.path.as_str()]);
+        self.require_retained(&case.historical)?;
+        for entry in case.evidence.bindings() {
+            if !evidence_paths.insert(entry.path.as_str()) {
+                return Err(malformed("duplicate specialized evidence path"));
+            }
+            self.require_retained(entry)?;
         }
         Ok(())
     }

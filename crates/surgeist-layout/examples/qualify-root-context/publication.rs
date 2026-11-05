@@ -790,7 +790,10 @@ fn terminal_authority(
     }
     let actual = cases
         .iter()
-        .map(|c| (c.case.name.as_str(), c.case.output.path.as_str()))
+        .map(|case| {
+            let case = case.descriptor();
+            (case.name.as_str(), case.output.path.as_str())
+        })
         .collect::<BTreeSet<_>>();
     let expected = inventory
         .cases
@@ -857,7 +860,17 @@ fn current_owner_inputs(
 ) -> Result<BTreeMap<String, String>> {
     let semantic = cases
         .iter()
-        .flat_map(|c| [c.spec.path.as_str(), c.policy.path.as_str()])
+        .map(|case| match case {
+            authority::QualifiedCase::Exact(case) => {
+                Ok([case.spec.path.as_str(), case.policy.path.as_str()])
+            }
+            authority::QualifiedCase::Specialized(_) => {
+                Err("expected an exact difference edition".into())
+            }
+        })
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .flatten()
         .collect::<BTreeSet<_>>();
     let receipt_sidecar = origin
         .receipt_owner

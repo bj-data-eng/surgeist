@@ -6,7 +6,8 @@ use std::error::Error;
 use serde::{Deserialize, Serialize};
 use surgeist_generator::{RelativePath, Sha256Digest};
 
-use super::fixture_variants::fixture_cases;
+pub(crate) use super::capture_authority::SpecializedProfile;
+use crate::fixture_variants::fixture_cases;
 
 pub(crate) struct Declaration {
     pub(crate) records: Vec<Record>,
@@ -26,13 +27,6 @@ struct Catalogue {
 struct SpecializedPublication {
     source: RelativePath,
     profile: SpecializedProfile,
-}
-
-#[derive(Clone, Copy, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub(crate) enum SpecializedProfile {
-    PreparedRange,
-    FlexComposition,
 }
 
 #[derive(Deserialize, Serialize)]

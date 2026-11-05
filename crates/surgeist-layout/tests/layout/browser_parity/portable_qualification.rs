@@ -8,6 +8,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::support;
+use support::capture_authority;
 use support::capture_authority::{
     self as authority, CaptureMetadata, CapturedArtifact, CaseSelection, IdentityInputs,
     PathDigest, Qualification, VerifiedIdentity, identity_from_verified_inputs,
@@ -18,8 +19,6 @@ use support::exact_differences::{
     QualifiedComparison, complete_captured_comparison,
 };
 
-#[path = "fixture_variants.rs"]
-mod fixture_variants;
 #[path = "qualification_catalogue.rs"]
 mod qualification_catalogue;
 use qualification_catalogue::{Declaration, Record};
@@ -494,10 +493,20 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
     if terminal.to_bytes()? != terminal_bytes {
         return Err(malformed("noncanonical terminal serialization"));
     }
+    let exact_cases = terminal
+        .cases
+        .iter()
+        .map(|case| match case {
+            authority::QualifiedCase::Exact(case) => Ok(case),
+            authority::QualifiedCase::Specialized(_) => {
+                Err(changed("expected an exact difference edition"))
+            }
+        })
+        .collect::<Result<Vec<_>>>()?;
     let mut pins = terminal.retained_inputs.clone();
     for entry in [&terminal.report, &terminal.ownership, &terminal_pin]
         .into_iter()
-        .chain(terminal.cases.iter().map(|case| &case.case.output))
+        .chain(exact_cases.iter().map(|case| &case.case.output))
     {
         if pins
             .insert(entry.path.clone(), entry.sha256.clone())
@@ -536,8 +545,7 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
         .get("sidecar")
         .and_then(Value::as_str)
         .ok_or_else(|| malformed("missing source receipt owner"))?;
-    let semantic_paths = terminal
-        .cases
+    let semantic_paths = exact_cases
         .iter()
         .flat_map(|case| [case.spec.path.as_str(), case.policy.path.as_str()])
         .collect();
@@ -588,8 +596,7 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
             return Err(changed("sealed semantic record projection"));
         }
     }
-    let excluded_specs = terminal
-        .cases
+    let excluded_specs = exact_cases
         .iter()
         .map(|case| case.spec.path.clone())
         .collect();
@@ -614,7 +621,7 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
             )
         }
     };
-    for case in &terminal.cases {
+    for case in exact_cases {
         let artifact = artifacts
             .get(case.case.name.as_str())
             .ok_or_else(|| changed("missing declared current output"))?;
