@@ -440,8 +440,7 @@ impl HtmlConstructionAttributeEdit {
     /// The element's attribute vector for a ready slot's commit. The slot's `Unique` action
     /// checked, under this edit's exclusive ownership of the storage, that the target is an
     /// element whose backing has no other strong or weak owner. The commit checks it again, and a
-    /// backing held by another owner is refused before anything changes, the storage's attribute
-    /// revision included.
+    /// backing held by another owner is refused before the storage's attribute revision advances.
     fn exclusive_backing(&mut self) -> Result<&mut Vec<Attribute>, HtmlConstructionError> {
         let backing = self.shared_attributes()?;
         if Arc::strong_count(backing) != 1 || Arc::weak_count(backing) != 0 {
@@ -2310,9 +2309,10 @@ impl HtmlConstructionReadyAttributeSlot<'_> {
     /// Applies the prepaid step. Returns the attribute that `replace` or `pop` removed, and `None`
     /// for every other step.
     ///
-    /// Every check precedes the first change. A backing that another owner holds, an incoming
-    /// attribute that is gone, or a position outside the backing refuses the commit with the
-    /// ready slot handed back unchanged. Dropping the refused slot poisons the edit.
+    /// No attribute changes until every check has passed. A backing that another owner holds, an
+    /// incoming attribute that is gone, or a position outside the backing refuses the commit with
+    /// the ready slot handed back, and its attributes, counts and incoming attribute as they were.
+    /// Dropping the refused slot poisons the edit.
     #[expect(
         clippy::result_large_err,
         reason = "a refusal hands the complete owner back without boxing it"
