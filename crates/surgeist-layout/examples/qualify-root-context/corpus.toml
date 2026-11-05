@@ -1825,3 +1825,18 @@ sha256 = "18487b6aa2a0bb27444d248bffbeb28c5f2ae449d98ce1e1f982b34c312e2d8f"
 [semantic_publications.specifications.content_box_rtl]
 path = "semantic/wrapping-world-corner-content_box_rtl.json"
 sha256 = "d9d2488a5f9e99a6ae67ac149908664ea2fedc857746f384076d883a20d8bb18"
+
+[[records]]
+source = "html/qualification/logical-border-descendant.html"
+source_sha256 = "4f9b5502941925da346af67e8927890a60392f4908defae0899d5753930a5c5d"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+hypothetical_display = "grid"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+root_writing_mode = "horizontal-tb"
+inline_offset = 0
