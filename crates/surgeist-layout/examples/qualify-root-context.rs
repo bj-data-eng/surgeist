@@ -38,6 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 fn parse_arguments(
     arguments: &[String],
 ) -> Result<(Option<&str>, support::QualificationMode), &'static str> {
+    use parity_support::capture_authority::SpecializedProfile;
     use parity_support::exact_differences::PublishedEdition;
     use support::QualificationMode;
     match arguments {
@@ -75,12 +76,22 @@ fn parse_arguments(
         [mode] if mode == "--check-published-flex-text-differences" => {
             Ok((None, QualificationMode::CheckPublishedFlexText))
         }
-        [mode] if mode == "--publish-prepared-range-qualification" => {
-            Ok((None, QualificationMode::PublishPreparedRange))
-        }
-        [mode] if mode == "--check-published-prepared-range-qualification" => {
-            Ok((None, QualificationMode::CheckPublishedPreparedRange))
-        }
+        [mode] if mode == "--publish-prepared-range-qualification" => Ok((
+            None,
+            QualificationMode::PublishSpecialized(SpecializedProfile::PreparedRange),
+        )),
+        [mode] if mode == "--check-published-prepared-range-qualification" => Ok((
+            None,
+            QualificationMode::CheckPublishedSpecialized(SpecializedProfile::PreparedRange),
+        )),
+        [mode] if mode == "--publish-flex-composition-qualification" => Ok((
+            None,
+            QualificationMode::PublishSpecialized(SpecializedProfile::FlexComposition),
+        )),
+        [mode] if mode == "--check-published-flex-composition-qualification" => Ok((
+            None,
+            QualificationMode::CheckPublishedSpecialized(SpecializedProfile::FlexComposition),
+        )),
         [flag, source] if flag == "--fixture" && !source.starts_with("--") => {
             Ok((Some(source.as_str()), QualificationMode::Regular))
         }
@@ -134,7 +145,7 @@ fn parse_arguments(
             ))
         }
         _ => Err(
-            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --derive-canonical-box-qualification | --publish-measured-grid-differences | --check-published-measured-grid-differences | --publish-prepared-range-qualification | --check-published-prepared-range-qualification | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source> | --prepared-range-capture --fixture <declared-source>",
+            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --derive-canonical-box-qualification | --publish-measured-grid-differences | --check-published-measured-grid-differences | --publish-prepared-range-qualification | --check-published-prepared-range-qualification | --publish-flex-composition-qualification | --check-published-flex-composition-qualification | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source> | --prepared-range-capture --fixture <declared-source>",
         ),
     }
 }

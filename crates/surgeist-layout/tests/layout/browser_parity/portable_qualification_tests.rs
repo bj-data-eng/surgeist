@@ -1384,8 +1384,18 @@ fn registered_sideways_flex_preserves_both_policies_and_complete_raw_fields() {
                 .count(),
             usize::from(rtl)
         );
-        let verdict = format!("{:?}", case.qualified.as_ref().unwrap().qualified);
-        assert!(verdict.contains("flexbox-collapse-two-round-struts"));
-        assert_eq!(verdict.contains("classic-scrollbar-logical-end"), rtl);
+        let QualifiedVerdict::IntentionalFields(assignments) =
+            &case.qualified.as_ref().unwrap().qualified
+        else {
+            panic!("sideways Flex requires policy-specific assignments");
+        };
+        assert_eq!(assignments.len(), if rtl { 2 } else { 1 });
+        assert_eq!(assignments[0].policy, "flexbox-collapse-two-round-struts");
+        assert_eq!(assignments[0].fields.len(), 9);
+        if rtl {
+            assert_eq!(assignments[1].policy, "classic-scrollbar-logical-end");
+            assert_eq!(assignments[1].fields.len(), 1);
+            assert!(assignments[1].fields[0].contains("path: \"/3/0\""));
+        }
     }
 }

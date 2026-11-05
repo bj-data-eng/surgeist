@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
+use std::rc::Rc;
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -11,12 +12,12 @@ use super::support::{self, prepared_range_qualification as prepared_range};
 use support::capture_authority;
 use support::capture_authority::{
     self as authority, CaptureMetadata, CapturedArtifact, CaseSelection, IdentityInputs,
-    PathDigest, Qualification, VerifiedIdentity, identity_from_verified_inputs,
+    PathDigest, Qualification, SpecializedProfile, VerifiedIdentity, identity_from_verified_inputs,
     semantic_record_digest, sha256,
 };
 use support::exact_differences::{
     CaptureAuthority, ExactDifferenceSpec, PublishedEdition, QualificationError,
-    QualifiedComparison, complete_captured_comparison,
+    QualifiedComparison, complete_captured_comparison, flex_composition_qualification as flex,
 };
 
 #[path = "qualification_catalogue.rs"]
@@ -30,23 +31,21 @@ type Result<T> = std::result::Result<T, QualificationError>;
 #[derive(Clone, Copy)]
 pub(super) enum Edition {
     Exact(PublishedEdition),
-    PreparedRange,
+    Specialized(SpecializedProfile),
 }
 
 impl Edition {
     fn name(self) -> &'static str {
         match self {
             Self::Exact(edition) => edition.name(),
-            Self::PreparedRange => authority::PREPARED_RANGE_EDITION,
+            Self::Specialized(profile) => profile.edition(),
         }
     }
 
     fn artifact_root(self) -> &'static str {
         match self {
             Self::Exact(edition) => edition.artifact_root(),
-            Self::PreparedRange => {
-                "tests/layout/browser_parity/captured/prepared-range-qualification"
-            }
+            Self::Specialized(profile) => profile.artifact_root(),
         }
     }
 }
@@ -305,6 +304,10 @@ enum AdmittedComparison {
     PreparedRange {
         variant: String,
     },
+    FlexComposition {
+        variant: String,
+        inputs: Rc<flex::Inputs>,
+    },
 }
 
 pub(super) struct AdmittedEdition {
@@ -422,6 +425,12 @@ impl AdmittedEdition {
                 AdmittedComparison::PreparedRange { variant } => {
                     compare_prepared_range(&case.golden, variant)
                 }
+                AdmittedComparison::FlexComposition { variant, inputs } => {
+                    flex::compare(&case.golden, variant, inputs).map(|comparison| {
+                        let (fields, qualified) = comparison.into_outcomes();
+                        (fields, qualified.map_err(|error| error.to_string()))
+                    })
+                }
             };
             let (raw, qualified) = match completed {
                 Ok((raw, qualified)) => (Ok(raw), qualified),
@@ -457,7 +466,7 @@ fn compare_prepared_range(
 }
 
 pub(super) struct AdmittedRegistry {
-    editions: [AdmittedEdition; 4],
+    editions: [AdmittedEdition; 5],
     owner: PathBuf,
     selected_records: BTreeMap<String, Value>,
 }
@@ -513,6 +522,9 @@ const REGISTERED_FLEX_TEXT_TERMINAL_SHA256: &str =
 const REGISTERED_PREPARED_RANGE_TERMINAL_SHA256: &str =
     "3a07b79e5c6d5b2fe11a9b00b96f69838fbeb03a12f46960c4b45ce355233671";
 
+const REGISTERED_FLEX_COMPOSITION_TERMINAL_SHA256: &str =
+    "da941b887ea95f37c61dbe19e88985396aec9f02d0066e113f3d6c4848c08790";
+
 pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
     let editions = [
         admit(
@@ -539,8 +551,15 @@ pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
         admit(
             owner,
             Registration {
-                edition: Edition::PreparedRange,
+                edition: Edition::Specialized(SpecializedProfile::PreparedRange),
                 terminal_sha256: REGISTERED_PREPARED_RANGE_TERMINAL_SHA256,
+            },
+        )?,
+        admit(
+            owner,
+            Registration {
+                edition: Edition::Specialized(SpecializedProfile::FlexComposition),
+                terminal_sha256: REGISTERED_FLEX_COMPOSITION_TERMINAL_SHA256,
             },
         )?,
     ];
@@ -629,13 +648,11 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
     let semantic_paths = terminal
         .cases
         .iter()
-        .filter_map(|case| match case {
-            authority::QualifiedCase::Exact(case) => {
-                Some([case.spec.path.as_str(), case.policy.path.as_str()])
-            }
-            authority::QualifiedCase::Specialized(_) => None,
+        .flat_map(|case| match case {
+            authority::QualifiedCase::Exact(case) => vec![&case.spec, &case.policy],
+            authority::QualifiedCase::Specialized(case) => case.evidence.bindings(),
         })
-        .flatten()
+        .map(|binding| binding.path.as_str())
         .collect();
     if authority::current_owner_bindings(&terminal.retained_inputs, &semantic_paths, sidecar)?
         != terminal.current_owner_inputs
@@ -684,10 +701,20 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
             return Err(changed("sealed semantic record projection"));
         }
     }
-    let Edition::Exact(edition) = edition else {
-        let cases = admit_prepared_ranges(&root, &terminal, &report, &artifacts)?;
-        freshness.verify()?;
-        return Ok(AdmittedEdition { freshness, cases });
+    let edition = match edition {
+        Edition::Exact(edition) => edition,
+        Edition::Specialized(profile) => {
+            let cases = admit_specialized(
+                &root,
+                &terminal,
+                &report,
+                &report_bytes,
+                &artifacts,
+                profile,
+            )?;
+            freshness.verify()?;
+            return Ok(AdmittedEdition { freshness, cases });
+        }
     };
     let exact_cases = terminal
         .cases
@@ -869,25 +896,35 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
     Ok(AdmittedEdition { freshness, cases })
 }
 
-fn admit_prepared_ranges(
+fn admit_specialized(
     root: &Path,
     terminal: &Qualification,
     report: &Report,
+    report_bytes: &[u8],
     artifacts: &BTreeMap<&str, &CapturedArtifact>,
+    profile: SpecializedProfile,
 ) -> Result<Vec<AdmittedCase>> {
+    if report.metadata.generator != authority::FIXED_GENERATOR
+        || !report.metadata.source_imports.is_empty()
+    {
+        return Err(changed("specialized publication report lineage"));
+    }
+    let report_text =
+        std::str::from_utf8(report_bytes).map_err(|error| malformed(error.to_string()))?;
+    let flex_inputs = match profile {
+        SpecializedProfile::PreparedRange => None,
+        SpecializedProfile::FlexComposition => Some(Rc::new(flex::Inputs::load(root)?)),
+    };
     terminal
         .cases
         .iter()
         .map(|entry| {
             let authority::QualifiedCase::Specialized(case) = entry else {
-                return Err(changed("expected specialized prepared Range case"));
-            };
-            let authority::SpecializedEvidence::PreparedRange { policy } = &case.evidence else {
-                return Err(changed("expected prepared Range policy evidence"));
+                return Err(changed("expected specialized case"));
             };
             let artifact = artifacts
                 .get(case.case.name.as_str())
-                .ok_or_else(|| changed("missing prepared Range output"))?;
+                .ok_or_else(|| changed("missing specialized output"))?;
             let historical = read_pinned(root, &case.historical)?;
             let xml = read_pinned(root, &case.case.output)?;
             let verified = identity_from_verified_inputs(IdentityInputs {
@@ -898,9 +935,9 @@ fn admit_prepared_ranges(
                 excluded_specs: &BTreeSet::new(),
                 actual_xml_sha256: &sha256(&xml),
                 historical_sha256: Some(&sha256(&historical)),
-                policy_sha256: &policy.sha256,
+                policy_sha256: &case.evidence.policy_digest(),
                 browser_settings: &terminal.browser_settings,
-                observation_request: "prepared-ranges",
+                observation_request: profile.observation_request(),
                 observation_input_sha256: terminal
                     .retained_inputs
                     .get("observation-request.json")
@@ -908,21 +945,49 @@ fn admit_prepared_ranges(
             })?;
             if verified.projection() != &case.identity {
                 return Err(changed(
-                    "stored prepared Range identity differs from authenticated inputs",
+                    "stored specialized identity differs from authenticated inputs",
                 ));
             }
-            let golden = support::Golden::parse(
-                std::str::from_utf8(&xml).map_err(|error| malformed(error.to_string()))?,
-            )
-            .map_err(|error| malformed(error.to_string()))?;
-            if golden.name != case.case.name || !golden.has_prepared_range_frame() {
-                return Err(changed("prepared Range observation frame"));
+            let xml = std::str::from_utf8(&xml).map_err(|error| malformed(error.to_string()))?;
+            let variant = case.case.variant.clone();
+            let (golden, comparison) = match &flex_inputs {
+                None => (
+                    support::Golden::parse(xml),
+                    AdmittedComparison::PreparedRange { variant },
+                ),
+                Some(inputs) => {
+                    let source = read_pinned(
+                        root,
+                        &PathDigest {
+                            path: artifact.source.clone(),
+                            sha256: artifact.source_sha256.clone(),
+                        },
+                    )?;
+                    (
+                        support::Golden::parse_with_published_flex_composition(
+                            xml,
+                            report_text,
+                            &artifact.source,
+                            &source,
+                            &artifact.output,
+                        ),
+                        AdmittedComparison::FlexComposition {
+                            variant,
+                            inputs: Rc::clone(inputs),
+                        },
+                    )
+                }
+            };
+            let golden = golden.map_err(|error| malformed(error.to_string()))?;
+            if golden.name != case.case.name
+                || (golden.has_prepared_range_frame()
+                    != (profile == SpecializedProfile::PreparedRange))
+            {
+                return Err(changed("specialized observation frame"));
             }
             Ok(AdmittedCase {
                 output: case.case.output.path.clone(),
-                comparison: AdmittedComparison::PreparedRange {
-                    variant: case.case.variant.clone(),
-                },
+                comparison,
                 golden,
             })
         })

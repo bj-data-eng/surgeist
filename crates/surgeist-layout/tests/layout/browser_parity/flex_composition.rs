@@ -10,6 +10,7 @@ const RETAINED_REPORT: &str =
 
 pub(super) struct Capture<'a> {
     pub report: &'a str,
+    pub published: bool,
     pub source_path: &'a str,
     pub source_bytes: &'a [u8],
     pub output_path: &'a str,
@@ -41,21 +42,34 @@ pub(super) fn bind(
     let metadata: CaptureMetadata = serde_json::from_value(current.clone()).map_err(invalid)?;
     let retained = capture_authority::unique_json(RETAINED_REPORT).map_err(invalid)?;
     let sealed = &retained["metadata"];
-    // The qualifier executable may be rebuilt. The browser and capture
-    // contract must still match the environment of the gutter control.
-    if [
-        "generator",
+    // The publication checks its own contract before admitting the report.
+    // The pinned gutter control independently fixes its measurement environment.
+    let same_environment = [
         "engine_version",
         "browser_executable",
         "browser_executable_sha256",
         "browser_provenance",
-        "contract_sha256",
-        "source_imports",
     ]
     .into_iter()
-    .any(|key| current[key] != sealed[key])
-        || current["inputs"]["browser-owner.toml"] != sealed["inputs"]["browser-owner.toml"]
-    {
+    .all(|key| current[key] == sealed[key])
+        && [
+            "browser-owner.toml",
+            "fonts/Ahem.ttf",
+            "observation-request.json",
+            "scripts/gentest/test_base_style.css",
+            capture_authority::ROOT_HELPER_INPUT,
+        ]
+        .into_iter()
+        .all(|key| current["inputs"][key] == sealed["inputs"][key]);
+    let lineage_matches = if capture.published {
+        metadata.generator == capture_authority::FIXED_GENERATOR
+            && metadata.source_imports.is_empty()
+    } else {
+        ["generator", "contract_sha256", "source_imports"]
+            .into_iter()
+            .all(|key| current[key] == sealed[key])
+    };
+    if !same_environment || !lineage_matches {
         return Err(invalid("capture environment changed"));
     }
     if metadata.schema_version != 4

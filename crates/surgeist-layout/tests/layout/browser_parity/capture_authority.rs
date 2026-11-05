@@ -1,6 +1,6 @@
 //! Layout-private portable data and one identity calculation. This module uses
 //! no Generator types. Callers authenticate bytes/censuses before calculation.
-use super::exact_differences::{CaseIdentity, QualificationError};
+use super::exact_differences::{CaseIdentity, QualificationError, flex_composition_qualification};
 use super::{flex_composition, flex_content_text, pinned_font, prepared_range_qualification};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, value::RawValue};
@@ -14,7 +14,7 @@ pub(crate) const MEASURED_GRID_EDITION: &str = "measured-grid-differences";
 pub(crate) const ARTIFACT_ROOT: &str =
     "tests/layout/browser_parity/captured/canonical-box-differences";
 const FLEX_TEXT_EDITION: &str = "flex-text-differences";
-pub(crate) const PREPARED_RANGE_EDITION: &str = "prepared-range-qualification";
+pub(crate) const FIXED_GENERATOR: &str = "surgeist-layout-root-context-qualification";
 pub(crate) const TERMINAL: &str = "qualification.json";
 pub(crate) const TERMINAL_SCHEMA: u8 = 3;
 pub(crate) const ROOT_HELPER_INPUT: &str = "scripts/gentest/test_helper.js";
@@ -507,7 +507,8 @@ pub(crate) fn identity_from_verified_inputs(input: IdentityInputs<'_>) -> Result
             if !full_inputs.contains_key(MEASURED_LEAF_SCRIPT)
                 && !full_inputs.contains_key(flex_content_text::SCRIPT_PATH) =>
         {
-            let ranges = observation_request == "prepared-ranges";
+            let ranges =
+                observation_request == SpecializedProfile::PreparedRange.observation_request();
             let (source, request, profile, font) = if ranges {
                 (
                     prepared_range_qualification::SOURCE,
@@ -703,7 +704,32 @@ pub(crate) enum SpecializedProfile {
 }
 
 impl SpecializedProfile {
-    fn source(self) -> &'static str {
+    pub(crate) fn edition(self) -> &'static str {
+        self.artifact_root()
+            .rsplit('/')
+            .next()
+            .expect("fixed edition path")
+    }
+
+    pub(crate) fn artifact_root(self) -> &'static str {
+        match self {
+            Self::PreparedRange => {
+                "tests/layout/browser_parity/captured/prepared-range-qualification"
+            }
+            Self::FlexComposition => {
+                "tests/layout/browser_parity/captured/flex-composition-qualification"
+            }
+        }
+    }
+
+    pub(crate) fn observation_request(self) -> &'static str {
+        match self {
+            Self::PreparedRange => "prepared-ranges",
+            Self::FlexComposition => "flex-composition",
+        }
+    }
+
+    pub(crate) fn source(self) -> &'static str {
         match self {
             Self::PreparedRange => prepared_range_qualification::SOURCE,
             Self::FlexComposition => flex_composition::SOURCE,
@@ -711,11 +737,9 @@ impl SpecializedProfile {
     }
 
     fn from_edition(edition: &str) -> Option<Self> {
-        match edition {
-            PREPARED_RANGE_EDITION => Some(Self::PreparedRange),
-            "flex-composition-qualification" => Some(Self::FlexComposition),
-            _ => None,
-        }
+        [Self::PreparedRange, Self::FlexComposition]
+            .into_iter()
+            .find(|profile| profile.edition() == edition)
     }
 }
 
@@ -741,7 +765,20 @@ impl SpecializedEvidence {
         }
     }
 
-    fn bindings(&self) -> Vec<&PathDigest> {
+    pub(crate) fn policy_digest(&self) -> String {
+        match self {
+            Self::PreparedRange { policy } => policy.sha256.clone(),
+            Self::FlexComposition {
+                collapse_policy,
+                scrollbar_policy,
+                ..
+            } => {
+                sha256(format!("{}{}", collapse_policy.sha256, scrollbar_policy.sha256).as_bytes())
+            }
+        }
+    }
+
+    pub(crate) fn bindings(&self) -> Vec<&PathDigest> {
         match self {
             Self::PreparedRange { policy } => vec![policy],
             Self::FlexComposition {
@@ -963,10 +1000,16 @@ impl Qualification {
                 "specialized terminal source or predecessor changed",
             ));
         }
-        if let SpecializedEvidence::PreparedRange { policy } = &case.evidence
-            && (case.identity.policy_source_sha256 != policy.sha256
-                || policy.path != prepared_range_qualification::RETAINED_POLICY
-                || policy.sha256 != prepared_range_qualification::POLICY_SHA256)
+        let evidence_matches = match &case.evidence {
+            SpecializedEvidence::PreparedRange { policy } => {
+                policy.path == prepared_range_qualification::RETAINED_POLICY
+                    && policy.sha256 == prepared_range_qualification::POLICY_SHA256
+            }
+            SpecializedEvidence::FlexComposition { .. } => {
+                flex_composition_qualification::evidence(variant).as_ref() == Some(&case.evidence)
+            }
+        };
+        if !evidence_matches || case.identity.policy_source_sha256 != case.evidence.policy_digest()
         {
             return Err(malformed("specialized terminal policy identity changed"));
         }

@@ -20,7 +20,8 @@ use crate::browser_profile::BrowserManifest;
 use crate::measurement::{
     BoxObservationRequest, FLEX_COMPOSITION_SOURCE, OBSERVATION_REQUEST_INPUT,
 };
-use crate::parity_support::capture_authority;
+use crate::parity_support::capture_authority::{self, SpecializedProfile};
+use crate::parity_support::exact_differences::flex_composition_qualification;
 
 #[path = "../../tests/layout/browser_parity/qualification_catalogue.rs"]
 mod qualification_catalogue;
@@ -54,8 +55,8 @@ pub(super) enum QualificationMode {
     CheckPublishedMeasuredGrid,
     PublishFlexText,
     CheckPublishedFlexText,
-    PublishPreparedRange,
-    CheckPublishedPreparedRange,
+    PublishSpecialized(SpecializedProfile),
+    CheckPublishedSpecialized(SpecializedProfile),
 }
 
 impl QualificationMode {
@@ -69,12 +70,27 @@ impl QualificationMode {
         )
     }
 
+    fn specialized_profile(self) -> Option<SpecializedProfile> {
+        match self {
+            Self::PublishSpecialized(profile) | Self::CheckPublishedSpecialized(profile) => {
+                Some(profile)
+            }
+            _ => None,
+        }
+    }
+
     fn box_observations(self) -> BoxObservationRequest {
         match self {
             Self::PreparedRangeCapture
-            | Self::PublishPreparedRange
-            | Self::CheckPublishedPreparedRange => BoxObservationRequest::PreparedRanges,
-            Self::FlexCompositionCapture => BoxObservationRequest::FlexComposition,
+            | Self::PublishSpecialized(SpecializedProfile::PreparedRange)
+            | Self::CheckPublishedSpecialized(SpecializedProfile::PreparedRange) => {
+                BoxObservationRequest::PreparedRanges
+            }
+            Self::FlexCompositionCapture
+            | Self::PublishSpecialized(SpecializedProfile::FlexComposition)
+            | Self::CheckPublishedSpecialized(SpecializedProfile::FlexComposition) => {
+                BoxObservationRequest::FlexComposition
+            }
             Self::ElementScrollSizeDiagnostics => BoxObservationRequest::ElementScrollSizes,
             Self::FlexContentTextDiagnostics
             | Self::PublishFlexText
@@ -180,8 +196,8 @@ fn select_records(
                 | QualificationMode::CheckPublishedMeasuredGrid
                 | QualificationMode::PublishFlexText
                 | QualificationMode::CheckPublishedFlexText
-                | QualificationMode::PublishPreparedRange
-                | QualificationMode::CheckPublishedPreparedRange => {
+                | QualificationMode::PublishSpecialized(_)
+                | QualificationMode::CheckPublishedSpecialized(_) => {
                     return Err("durable modes require the complete inventory".into());
                 }
             }
@@ -445,8 +461,8 @@ pub(super) fn run(fixture: Option<&str>, mode: QualificationMode) -> Result<()> 
             | QualificationMode::CheckPublishedMeasuredGrid
             | QualificationMode::PublishFlexText
             | QualificationMode::CheckPublishedFlexText
-            | QualificationMode::PublishPreparedRange
-            | QualificationMode::CheckPublishedPreparedRange
+            | QualificationMode::PublishSpecialized(_)
+            | QualificationMode::CheckPublishedSpecialized(_)
     ) {
         if fixture.is_some() {
             return Err("durable modes require the complete inventory".into());
@@ -598,7 +614,7 @@ fn corpus_for_inventory(
         if focused {
             "surgeist-layout-root-context-focused".into()
         } else {
-            "surgeist-layout-root-context-qualification".into()
+            capture_authority::FIXED_GENERATOR.into()
         },
         RelativePath::new("xml")?,
         vec![ReportScope::new(
@@ -653,10 +669,7 @@ fn validate_corpus(
     report: &browser::BrowserGenerationReport,
     mut validation: Validation<'_>,
 ) -> Result<()> {
-    use crate::parity_support::{
-        exact_differences::flex_composition_qualification,
-        prepared_range_qualification as prepared_range,
-    };
+    use crate::parity_support::prepared_range_qualification as prepared_range;
 
     let mode = validation.mode;
     let prepared_range_policy = if mode.box_observations() == BoxObservationRequest::PreparedRanges
@@ -670,10 +683,13 @@ fn validate_corpus(
     } else {
         None
     };
-    let flex_composition = if mode == QualificationMode::FlexCompositionCapture {
-        Some(flex_composition_qualification::Inputs::load(Path::new(
-            env!("CARGO_MANIFEST_DIR"),
-        ))?)
+    let flex_composition = if mode.box_observations() == BoxObservationRequest::FlexComposition {
+        let input_root = if mode.specialized_profile().is_some() {
+            root
+        } else {
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+        };
+        Some(flex_composition_qualification::Inputs::load(input_root)?)
     } else {
         None
     };
@@ -760,6 +776,7 @@ fn validate_corpus(
             &xml,
             capture.observation,
             capture.bound_report,
+            mode.specialized_profile().is_some(),
         )?;
         if golden.has_prepared_range_frame()
             != (mode.box_observations() == BoxObservationRequest::PreparedRanges)
@@ -935,8 +952,8 @@ fn validate_corpus(
         | QualificationMode::CheckPublishedMeasuredGrid
         | QualificationMode::PublishFlexText
         | QualificationMode::CheckPublishedFlexText
-        | QualificationMode::PublishPreparedRange
-        | QualificationMode::CheckPublishedPreparedRange => {}
+        | QualificationMode::PublishSpecialized(_)
+        | QualificationMode::CheckPublishedSpecialized(_) => {}
     }
     if let Some(output) = validation.terminal_cases.as_mut() {
         **output = terminal_cases;
@@ -1156,8 +1173,8 @@ fn inventory_with_retained_helper(
         | QualificationMode::CheckPublishedMeasuredGrid
         | QualificationMode::PublishFlexText
         | QualificationMode::CheckPublishedFlexText
-        | QualificationMode::PublishPreparedRange
-        | QualificationMode::CheckPublishedPreparedRange => None,
+        | QualificationMode::PublishSpecialized(_)
+        | QualificationMode::CheckPublishedSpecialized(_) => None,
     };
     for (name, bytes) in INPUTS
         .iter()
@@ -1219,16 +1236,23 @@ fn inventory_with_retained_helper(
         )?;
         inventory.global_inputs.push(path);
     }
-    if matches!(
-        mode,
-        QualificationMode::PublishPreparedRange | QualificationMode::CheckPublishedPreparedRange
-    ) {
-        let path = RelativePath::new(
-            crate::parity_support::prepared_range_qualification::RETAINED_POLICY,
-        )?;
-        let bytes = publication::prepared_range_policy(owner)?;
-        inventory_input(root, &path, &bytes, &mut inventory.expected_inputs, access)?;
-        inventory.global_inputs.push(path);
+    match mode.specialized_profile() {
+        Some(SpecializedProfile::PreparedRange) => {
+            let path = RelativePath::new(
+                crate::parity_support::prepared_range_qualification::RETAINED_POLICY,
+            )?;
+            let bytes = publication::prepared_range_policy(owner)?;
+            inventory_input(root, &path, &bytes, &mut inventory.expected_inputs, access)?;
+            inventory.global_inputs.push(path);
+        }
+        Some(SpecializedProfile::FlexComposition) => {
+            for (path, digest) in flex_composition_qualification::input_pins() {
+                let path = RelativePath::new(path)?;
+                let digest: Sha256Digest = serde_json::from_value(digest.into())?;
+                register_semantic_input(root, owner, &path, &digest, &mut inventory, access)?;
+            }
+        }
+        None => {}
     }
     let original = owner.join("tests/layout/browser_parity");
     let authored = owner.join("examples/qualify-root-context");
@@ -2004,10 +2028,14 @@ fn parse_capture_golden(
     xml: &str,
     observation: BoxObservationRequest,
     bound_report: Option<&str>,
+    published: bool,
 ) -> Result<crate::parity_support::Golden> {
     use crate::parity_support::Golden;
     let parse = match observation {
         BoxObservationRequest::FlexContentText => Golden::parse_with_flex_content_text,
+        BoxObservationRequest::FlexComposition if published => {
+            Golden::parse_with_published_flex_composition
+        }
         BoxObservationRequest::FlexComposition => Golden::parse_with_flex_composition,
         _ => return Ok(Golden::parse(xml)?),
     };
@@ -2097,6 +2125,7 @@ fn qualify_semantic_case(
             std::str::from_utf8(&xml)?,
             *observation,
             *bound_report,
+            false,
         )? != *golden
     {
         return Err(semantic_identity_changed("actual capture XML"));

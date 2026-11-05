@@ -17,19 +17,19 @@ enum Edition {
     CanonicalBoxDifferences,
     MeasuredGridDifferences,
     FlexTextDifferences,
-    PreparedRange,
+    Specialized(SpecializedProfile),
 }
 impl Edition {
     fn name(self) -> &'static str {
-        if self == Self::PreparedRange {
-            authority::PREPARED_RANGE_EDITION
+        if let Self::Specialized(profile) = self {
+            profile.edition()
         } else {
             self.published().map_or(EDITION, PublishedEdition::name)
         }
     }
     fn published(self) -> Option<PublishedEdition> {
         match self {
-            Self::RootContextV4 | Self::PreparedRange => None,
+            Self::RootContextV4 | Self::Specialized(_) => None,
             Self::CanonicalBoxDifferences => Some(PublishedEdition::CanonicalBoxes),
             Self::MeasuredGridDifferences => Some(PublishedEdition::MeasuredGrid),
             Self::FlexTextDifferences => Some(PublishedEdition::FlexText),
@@ -81,9 +81,11 @@ pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
         | QualificationMode::Derive(PublishedEdition::FlexText) => {
             (Edition::FlexTextDifferences, InputAccess::ReadOnly)
         }
-        QualificationMode::PublishPreparedRange => (Edition::PreparedRange, InputAccess::Prepare),
-        QualificationMode::CheckPublishedPreparedRange => {
-            (Edition::PreparedRange, InputAccess::ReadOnly)
+        QualificationMode::PublishSpecialized(profile) => {
+            (Edition::Specialized(profile), InputAccess::Prepare)
+        }
+        QualificationMode::CheckPublishedSpecialized(profile) => {
+            (Edition::Specialized(profile), InputAccess::ReadOnly)
         }
         _ => return Err("expected a durable publication mode".into()),
     };
@@ -97,15 +99,25 @@ pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
     } else {
         None
     };
-    let input = match edition.published() {
-        None if edition == Edition::PreparedRange => {
+    let input = match edition {
+        Edition::Specialized(profile) => {
             let bytes = retained.as_ref().map_or(DECLARATION, |(_, bytes)| bytes);
-            prepared_range_input(bytes)?
+            specialized_input(bytes, profile)?
         }
-        None => edition_input(DECLARATION)?,
-        Some(published) => match &retained {
-            Some((root, declaration)) => canonical_input(root, declaration, published, access)?,
-            None => canonical_input(owner, DECLARATION, published, access)?,
+        Edition::RootContextV4 => edition_input(DECLARATION)?,
+        _ => match &retained {
+            Some((root, declaration)) => canonical_input(
+                root,
+                declaration,
+                edition.published().expect("exact edition"),
+                access,
+            )?,
+            None => canonical_input(
+                owner,
+                DECLARATION,
+                edition.published().expect("exact edition"),
+                access,
+            )?,
         },
     };
     if retained.is_some() {
@@ -140,16 +152,17 @@ pub(super) fn run(owner: &Path, mode: QualificationMode) -> Result<()> {
     }
 }
 
-fn prepared_range_input(bytes: &[u8]) -> Result<DeclarationInput<'_>> {
+fn specialized_input(bytes: &[u8], profile: SpecializedProfile) -> Result<DeclarationInput<'_>> {
     let mut input = DeclarationInput::parse(bytes)?;
-    input.declaration.records.retain(|record| {
-        record.specialized_publication == Some(authority::SpecializedProfile::PreparedRange)
-    });
+    input
+        .declaration
+        .records
+        .retain(|record| record.specialized_publication == Some(profile));
     if !matches!(
         input.declaration.records.as_slice(),
-        [record] if record.source.as_str() == prepared_range::SOURCE
+        [record] if record.source.as_str() == profile.source()
     ) {
-        return Err("prepared Range publication requires its canonical declaration".into());
+        return Err("specialized publication requires its canonical declaration".into());
     }
     Ok(input)
 }
@@ -280,8 +293,8 @@ fn finish(
     inventory(root, owner, input, mode, InputAccess::ReadOnly)?;
     check_input_census(root, &snapshot.expected_inputs, stored_terminal.as_deref())?;
     if has_terminal {
-        if edition == Edition::PreparedRange {
-            terminal_cases = prepared_range_cases(root, input, &snapshot, &corpus, &report)?;
+        if let Edition::Specialized(profile) = edition {
+            terminal_cases = specialized_cases(root, input, &snapshot, &corpus, &report, profile)?;
         }
         Invocation {
             root: root.to_path_buf(),
@@ -806,25 +819,22 @@ fn prebind_current_cases(
     Ok(requirements)
 }
 
-fn prepared_range_cases(
+fn specialized_cases(
     root: &Path,
     input: &DeclarationInput<'_>,
     inventory: &Inventory,
     corpus: &BrowserCorpus,
     report: &browser::BrowserGenerationReport,
+    profile: SpecializedProfile,
 ) -> Result<Vec<authority::QualifiedCase>> {
     let [record] = input.declaration.records.as_slice() else {
-        return Err("expected one prepared Range declaration".into());
+        return Err("expected one specialized declaration".into());
     };
     let record_sha256 = semantic_record_digest(record)?.as_str().to_owned();
     let settings = authority::BrowserSettingsWitness::from_official_json(&serde_json::to_vec(
         corpus.browser(),
     )?)?;
     let retained = string_inputs(&inventory.expected_inputs);
-    let policy = authority::PathDigest {
-        path: prepared_range::RETAINED_POLICY.to_owned(),
-        sha256: retained[prepared_range::RETAINED_POLICY].clone(),
-    };
     let report_json: serde_json::Value = serde_json::from_slice(&report.to_bytes()?)?;
     let metadata: authority::CaptureMetadata =
         serde_json::from_value(report_json["metadata"].clone())?;
@@ -859,6 +869,23 @@ fn prepared_range_cases(
                 },
                 record_sha256: record_sha256.clone(),
             };
+            let evidence = match profile {
+                SpecializedProfile::PreparedRange => {
+                    authority::SpecializedEvidence::PreparedRange {
+                        policy: authority::PathDigest {
+                            path: prepared_range::RETAINED_POLICY.to_owned(),
+                            sha256: retained
+                                .get(prepared_range::RETAINED_POLICY)
+                                .ok_or("missing Range policy input")?
+                                .clone(),
+                        },
+                    }
+                }
+                SpecializedProfile::FlexComposition => {
+                    flex_composition_qualification::evidence(&artifact.variant)
+                        .ok_or("invalid Flex composition variant")?
+                }
+            };
             let verified = authority::identity_from_verified_inputs(authority::IdentityInputs {
                 metadata: &metadata,
                 artifact: &artifact,
@@ -867,9 +894,9 @@ fn prepared_range_cases(
                 excluded_specs: &BTreeSet::new(),
                 actual_xml_sha256: &output_sha256,
                 historical_sha256: Some(&historical.sha256),
-                policy_sha256: &policy.sha256,
+                policy_sha256: &evidence.policy_digest(),
                 browser_settings: &settings,
-                observation_request: "prepared-ranges",
+                observation_request: profile.observation_request(),
                 observation_input_sha256: retained
                     .get(OBSERVATION_REQUEST_INPUT)
                     .map(String::as_str),
@@ -878,9 +905,7 @@ fn prepared_range_cases(
                 authority::SpecializedCase {
                     case,
                     historical,
-                    evidence: authority::SpecializedEvidence::PreparedRange {
-                        policy: policy.clone(),
-                    },
+                    evidence,
                     identity: verified.projection().clone(),
                 },
             ))
@@ -987,13 +1012,11 @@ fn current_owner_inputs(
 ) -> Result<BTreeMap<String, String>> {
     let semantic = cases
         .iter()
-        .filter_map(|case| match case {
-            authority::QualifiedCase::Exact(case) => {
-                Some([case.spec.path.as_str(), case.policy.path.as_str()])
-            }
-            authority::QualifiedCase::Specialized(_) => None,
+        .flat_map(|case| match case {
+            authority::QualifiedCase::Exact(case) => vec![&case.spec, &case.policy],
+            authority::QualifiedCase::Specialized(case) => case.evidence.bindings(),
         })
-        .flatten()
+        .map(|binding| binding.path.as_str())
         .collect::<BTreeSet<_>>();
     let receipt_sidecar = origin
         .receipt_owner

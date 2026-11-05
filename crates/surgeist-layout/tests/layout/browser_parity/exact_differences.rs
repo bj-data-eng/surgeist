@@ -549,9 +549,16 @@ pub(crate) enum RawVerdict {
     Different { fields: usize },
 }
 #[derive(Debug, PartialEq)]
+pub(crate) struct PolicyAssignment {
+    pub(crate) policy: String,
+    pub(crate) edition: String,
+    pub(crate) fields: Vec<String>,
+}
+#[derive(Debug, PartialEq)]
 pub(crate) enum QualifiedVerdict {
     MatchingControl,
     Intentional { policy: String, edition: String },
+    IntentionalFields(Vec<PolicyAssignment>),
 }
 #[derive(Debug, PartialEq)]
 pub(crate) struct QualifiedComparison {

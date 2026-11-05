@@ -1735,3 +1735,7 @@ height = 180
 [[specialized_publications]]
 source = "html/block/prepared_text_continuity_bidi.html"
 profile = "prepared-range"
+
+[[specialized_publications]]
+source = "html/flex/fri07_flex_composition.html"
+profile = "flex-composition"
