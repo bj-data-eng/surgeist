@@ -180,3 +180,22 @@ The first command runs a focused live capture. The second replays the
 with its retained inputs. The publisher
 `--publish-original-subgrid-body-qualification` requires an absent edition
 directory and the verified source import and cached browser.
+
+## Prepared atomic percentage qualification
+
+The original paragraph supplies its authored 80px containing block and the
+actual inline block's 20px width and 50% height. Layout measures the atomic
+before Text preparation. The pinned Ahem capture records both original text
+occurrences and compares all boxes, line identities and Range rectangles
+across both directions and box modes. The historical generic-font captures
+supply a separate check of the container and atomic sizes.
+
+~~~sh
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --fixture html/block/fri06_atomic_inline_percentage_block_size.html
+cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-generate --example qualify-root-context -- --check-published-prepared-atomic-percentage-qualification
+~~~
+
+The first command captures from the cached browser. The second replays the
+[fixed edition](../../tests/layout/browser_parity/captured/prepared-atomic-percentage-qualification/).
+The publisher `--publish-prepared-atomic-percentage-qualification` requires an
+absent edition directory and the verified original source import.

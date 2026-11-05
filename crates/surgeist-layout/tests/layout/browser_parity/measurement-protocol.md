@@ -506,28 +506,24 @@ required, validated metadata field in its old numeric schema; attempting to use
 it as a native ordering assertion precisely refuses. It is never replaced with
 another fragment enumeration.
 
-Historical `inline-text` numeric tuples remain readable only for closed-schema
-and invalid-input tests. The production reader rejects them. They are not a
-compatibility Text front and do not count as native parity. The unchanged
-original version 1 XML and all 124 affected variants are listed in
-[prepared-text-accounting.json](prepared-text-accounting.json), with exact source
-and artifact hashes, per-variant limits and execution state. Its historical Git
-basis preserves the original XML and generation sources independently of current
-regenerated files. Source-at-inventory hashes retain their separate meaning for
-the deliberately migrated mixed-wrap source. Current browser artifact provenance
-belongs to `xml/generation-reports/all.json`. The current helper refuses the 120
-remaining measured-width variants because they lack original source and pinned
-font capture. Clean full generation classifies them as unsupported and omits
-their current XML outputs; their original bytes remain under the historical Git
-basis. This fixture-profile refusal does not establish native Text support or
-reproduce those inputs through the new Text protocol.
-The accounting also records four migrated successors and twelve additional native
-representatives. The pinned browser generated and the production adapter executed
-all 16:14 matched and two retain the observation difference below. The additional
-atomic/BR metric fixtures are separate from those 16 cases and do not replace any
-of the historical 124 variants; their selected font-band observation is the
-separate capability boundary described above. Schema checks alone do not
-establish browser parity.
+Historical `inline-text` tuples are schema-only data. The
+[prepared Text accounting](prepared-text-accounting.json) records the original
+source and XML hashes for all 124 variants and identifies each current
+successor. The generation report for each edition binds its browser artifacts
+to their source and input digests.
+
+Eight source-bound successors and twelve additional prepared representatives
+have Native comparisons. Eighteen match the pinned browser. Two have the RTL
+PDI difference described below. The separate atomic and BR metric fixtures
+retain the font-band capability boundary above.
+
+The [prepared atomic percentage edition](captured/prepared-atomic-percentage-qualification/)
+uses the original paragraph and its inline block's authored 20px width and
+50% height. Layout resolves the 20px by 40px border box in the paragraph's
+definite containing frame before Text prepares the source. The pinned Ahem
+observations compare both boxes, both line identities and both projected
+Range rectangles. The historical generic-font captures separately record the
+same box sizes.
 
 ## Executed Range observation difference
 

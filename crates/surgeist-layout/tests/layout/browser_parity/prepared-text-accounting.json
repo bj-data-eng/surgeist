@@ -1,5 +1,5 @@
 {
-  "scope": "All 124 historical measured-width variants retain exact historical artifact hashes and resource/profile limits. Four deliberately migrated native successors and twelve additional native representatives were executed separately. Fourteen match browser observations; two retain executed observation differences with Range projection unresolved. No exact Range acceptance or issue closure is implied.",
+  "scope": "All 124 historical measured-width variants retain their source and artifact hashes. Eight source-bound successors and twelve additional prepared Text representatives have current Native comparisons. Eighteen match the browser; two have qualified RTL PDI observation differences.",
   "historical_basis": {
     "repository_commit": "0c78c5d945395a8acf565f9232c3d48cf1fe7b4c",
     "repository_root": "crates/surgeist-layout/tests/layout/browser_parity",
@@ -7,13 +7,21 @@
     "source_at_inventory": "source_sha256_at_inventory identifies the source when inventoried; the migrated mixed-wrap source is distinct from its original XML generation source.",
     "original_source_authority": "The version1 generation report at this commit binds each original XML to its original generation source."
   },
-  "current_generated_artifact_authority": "xml/generation-reports/all.json",
-  "measurement_version": 2,
+  "current_generated_artifact_authority": [
+    {
+      "measurement_version": 2,
+      "report": "xml/generation-reports/all.json"
+    },
+    {
+      "measurement_version": 4,
+      "report": "captured/prepared-atomic-percentage-qualification/xml/generation-reports/all.json"
+    }
+  ],
   "historical_version": 1,
   "browser": {
     "version": "149.0.7827.115",
     "configured_cache": "crates/surgeist-layout/tmp/surgeist-browser",
-    "qualification": "Pinned Chrome149.0.7827.115 generated16 native version2 variants. The actual Text/Layout adapter executed all16:14 observation matches and2 RTL PDI observation differences. Strict parity reports both differences. Full browser-generation provenance is separate from native semantic comparison."
+    "qualification": "The pinned browser generated the sixteen version 2 prepared Text cases and the four version 4 atomic percentage successors. The latter use a dedicated fixed edition with exact box, line and Range comparisons."
   },
   "font": {
     "path": "fonts/Ahem.ttf",
@@ -23,12 +31,12 @@
   "counts": {
     "historical_variants": 124,
     "source_cases": 31,
-    "migrated_and_executed": 4,
+    "migrated_and_executed": 8,
     "source_migration_pending_browser": 0,
-    "explicit_resource_or_profile_blocked": 120,
+    "explicit_resource_or_profile_blocked": 116,
     "silently_superseded": 0,
     "source_generated_native_pending": 0,
-    "historical_browser_generated": 4
+    "historical_browser_generated": 8
   },
   "variants": [
     {
@@ -76,40 +84,84 @@
       "xml_sha256": "72aa5f891e75aa835e696bd3361cdae102494b2be66241e50d4073dbffe649c0",
       "source": "html/block/fri06_atomic_inline_percentage_block_size.html",
       "source_sha256_at_inventory": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
-      "state": "profile-blocked",
-      "reason": "Atomic height is authored 50%, not an explicit pixel input. Capture must retain percentage/containing-block input, never observed final height.",
+      "state": "migrated-and-executed",
+      "reason": "The fixed version 4 capture retains authored percentage sizing and source occurrences with the pinned Ahem face. The original generic-font observations remain in historical/prepared-text-v1/.",
       "native_executed": false,
-      "successor": null
+      "successor": {
+        "xml": "captured/prepared-atomic-percentage-qualification/xml/block/fri06_atomic_inline_percentage_block_size__border_box_ltr.xml",
+        "xml_sha256": "9a137a05ff0d2c53ca4b7d13a1d74036888f3bf3fe4f769fb6a58e7bed6953b4",
+        "measurement_version": 4,
+        "captured_input_sha256": "54cd9dc0274019684b2aea9d62318c3ac83309d7ca764dfd143322e85db8d76b",
+        "browser_generated": true,
+        "native_executed": true,
+        "source_sha256": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
+        "font_profile": "ahem-ttf-v1",
+        "native_comparison": "matched"
+      },
+      "native_execution": "successor-only"
     },
     {
       "xml": "xml/block/fri06_atomic_inline_percentage_block_size__border_box_rtl.xml",
       "xml_sha256": "9d0b898351553f0531f4125e96271ea1f1130f0bbf375347bf798955dfdb05ee",
       "source": "html/block/fri06_atomic_inline_percentage_block_size.html",
       "source_sha256_at_inventory": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
-      "state": "profile-blocked",
-      "reason": "Atomic height is authored 50%, not an explicit pixel input. Capture must retain percentage/containing-block input, never observed final height.",
+      "state": "migrated-and-executed",
+      "reason": "The fixed version 4 capture retains authored percentage sizing and source occurrences with the pinned Ahem face. The original generic-font observations remain in historical/prepared-text-v1/.",
       "native_executed": false,
-      "successor": null
+      "successor": {
+        "xml": "captured/prepared-atomic-percentage-qualification/xml/block/fri06_atomic_inline_percentage_block_size__border_box_rtl.xml",
+        "xml_sha256": "5b08214b0bf09215fab6f19369a64e4213fc04b129be5900fae0a62c9ccc4540",
+        "measurement_version": 4,
+        "captured_input_sha256": "fa119087a00e32bb3460541ac2f87a3274d24f1d21bad71d9af89e206afc794d",
+        "browser_generated": true,
+        "native_executed": true,
+        "source_sha256": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
+        "font_profile": "ahem-ttf-v1",
+        "native_comparison": "matched"
+      },
+      "native_execution": "successor-only"
     },
     {
       "xml": "xml/block/fri06_atomic_inline_percentage_block_size__content_box_ltr.xml",
       "xml_sha256": "7fa253f2c3aed0a78dc4d98959a1193d042fca8ea096bd642cb607fc330c95db",
       "source": "html/block/fri06_atomic_inline_percentage_block_size.html",
       "source_sha256_at_inventory": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
-      "state": "profile-blocked",
-      "reason": "Atomic height is authored 50%, not an explicit pixel input. Capture must retain percentage/containing-block input, never observed final height.",
+      "state": "migrated-and-executed",
+      "reason": "The fixed version 4 capture retains authored percentage sizing and source occurrences with the pinned Ahem face. The original generic-font observations remain in historical/prepared-text-v1/.",
       "native_executed": false,
-      "successor": null
+      "successor": {
+        "xml": "captured/prepared-atomic-percentage-qualification/xml/block/fri06_atomic_inline_percentage_block_size__content_box_ltr.xml",
+        "xml_sha256": "17979a168e221171d296e1646800443032da25206746034e7b74ecede4c06931",
+        "measurement_version": 4,
+        "captured_input_sha256": "54cd9dc0274019684b2aea9d62318c3ac83309d7ca764dfd143322e85db8d76b",
+        "browser_generated": true,
+        "native_executed": true,
+        "source_sha256": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
+        "font_profile": "ahem-ttf-v1",
+        "native_comparison": "matched"
+      },
+      "native_execution": "successor-only"
     },
     {
       "xml": "xml/block/fri06_atomic_inline_percentage_block_size__content_box_rtl.xml",
       "xml_sha256": "068ed88008131bd58e8a40b0ba0db404b04fcd009b565eea8a3e3d031469af95",
       "source": "html/block/fri06_atomic_inline_percentage_block_size.html",
       "source_sha256_at_inventory": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
-      "state": "profile-blocked",
-      "reason": "Atomic height is authored 50%, not an explicit pixel input. Capture must retain percentage/containing-block input, never observed final height.",
+      "state": "migrated-and-executed",
+      "reason": "The fixed version 4 capture retains authored percentage sizing and source occurrences with the pinned Ahem face. The original generic-font observations remain in historical/prepared-text-v1/.",
       "native_executed": false,
-      "successor": null
+      "successor": {
+        "xml": "captured/prepared-atomic-percentage-qualification/xml/block/fri06_atomic_inline_percentage_block_size__content_box_rtl.xml",
+        "xml_sha256": "d0c5986c042424a6ee7a402068f3cdd90ef663372208619cd2dc2b50a02584a3",
+        "measurement_version": 4,
+        "captured_input_sha256": "fa119087a00e32bb3460541ac2f87a3274d24f1d21bad71d9af89e206afc794d",
+        "browser_generated": true,
+        "native_executed": true,
+        "source_sha256": "73709999d0514673ee1e7eaead635c37afdce8b6a4467bd5f1ca328c9b7112f1",
+        "font_profile": "ahem-ttf-v1",
+        "native_comparison": "matched"
+      },
+      "native_execution": "successor-only"
     },
     {
       "xml": "xml/block/fri06_bidi_mixed_inline__border_box_ltr.xml",
