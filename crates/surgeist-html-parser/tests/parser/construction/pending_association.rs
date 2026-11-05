@@ -584,41 +584,32 @@ fn a_moved_subtree_records_the_first_base_with_an_href_that_it_holds_for_every_n
     // HTML 877d6146487f section 13.2.6.4.7 (adoption agency algorithm): `</b>` makes the furthest
     // block, the `p`, move as one subtree holding a base without an href, a style and then a
     // base with one. Both the removal steps and the insertion steps run for each node of the
-    // subtree once the whole subtree has been detached or attached. With the subtree detached no
-    // base has an href, so every occurrence of the removal selects no observation; with it
-    // attached again the first base with an href in tree order is the later base from the first
-    // node on, so every occurrence of the insertion selects its observation. The two steps visit
-    // the same nodes, so the occurrences of the move are those of the removal, which select
-    // nothing, and then those of the insertion, which all select it. The markup before `</b>`
-    // moves nothing and fixes the occurrences that precede the move.
+    // subtree once the whole subtree has been detached or attached, so with the subtree attached
+    // the first base element with an `href` in tree order is the later base from the first of
+    // them on, and every occurrence the insertion records selects it and its observation.
+    //
+    // The expectation is the search's: each of these occurrences, in order, as recorded when the
+    // hook of every base looked for the first base with an `href` through the whole document.
+    // The markup before `</b>` moves nothing and fixes the occurrences that precede the move.
     let base =
         "<!doctype html><b>1<p><base><style>a{}</style><base href='https://example.test/next/'>";
     let kept = recorded_bases(base);
     let moved = recorded_bases(&format!("{base}</b>"));
-    assert!(moved.len() > kept.len());
     let shape = |rows: &[(Option<HtmlNodeId>, Option<usize>)]| -> Vec<(bool, Option<usize>)> {
         rows.iter()
             .map(|(first, observation)| (first.is_some(), *observation))
             .collect()
     };
     assert_eq!(shape(&moved[..kept.len()]), shape(&kept));
-    let during = &moved[kept.len()..];
-    let without = during
-        .iter()
-        .take_while(|(first, _)| first.is_none())
-        .count();
-    // The removal comes first and selects nothing; nothing after it may select nothing.
-    assert!(
-        without > 0 && without < during.len(),
-        "during the move {during:?}"
+    let (none, first) = ((false, None), (true, Some(0)));
+    let expected = [vec![none; 3], vec![first; 6], vec![none; 2], vec![first; 3]].concat();
+    assert_eq!(
+        shape(&moved[kept.len()..]),
+        expected,
+        "during the move {:?}",
+        &moved[kept.len()..]
     );
-    assert!(
-        during[without..]
-            .iter()
-            .all(|(first, observation)| first.is_some() && observation.is_some()),
-        "during the move {during:?}"
-    );
-    let firsts: Vec<_> = during
+    let firsts: Vec<_> = moved
         .iter()
         .filter_map(|(first, _)| first.clone())
         .collect();
