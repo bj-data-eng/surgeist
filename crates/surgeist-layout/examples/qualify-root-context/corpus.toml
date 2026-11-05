@@ -1503,3 +1503,45 @@ containing_direction = "ltr"
 hypothetical_direction = "ltr"
 root_direction = "variant"
 inline_offset = 0
+
+# Original collapsed-flex capture inventory; no semantic differences are qualified here.
+
+[[records]]
+source = "html/flex/fri07_collapsed_strut_single_line.html"
+source_sha256 = "4208c20c25da2183ce9831c629bdf18e4bd35be0a5c6875e1840d972ecd1cbad"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "d2adc703ffd8386e2f1bdeb5a0c8da2a2dc982c6e6966f467c4a12814824383f"
+content_box_ltr = "6b87be5b7a3198f54988a0077c40a04b993075dd43ad0b43abbe13a49bd19975"
+border_box_rtl = "cc01070476de0dc10a3585bedb3f8ad0e1484993aa48e3f0b535fe6a37762813"
+content_box_rtl = "f4de5a54bd81e97f8c2aacc2701808b588eea9827cff941d56343d0e1df7cef1"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "flex"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/flex/fri07_collapsed_strut_wrapping.html"
+source_sha256 = "b6b600bc58f098069f88ceca277602cc1ceccb33a6fd5e3570938e600be93f44"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "59394ba03797fdc572b5fb81c1461c1b3cda1830aa6cbc816b30b36f1a563964"
+content_box_ltr = "05b639aa1e7a260a4c037c00cf55bbf89827defa364838a32342da3c2392cf81"
+border_box_rtl = "0838cce880d00d15bb0db18ba078ac671b1f93893e5b29663a53261a40cf4783"
+content_box_rtl = "e07211bc64bd5070b1653c506c7b578e8a7d39d638ab9b0969bae209b60fed3f"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "flex"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0

@@ -529,12 +529,23 @@ retain original PDI at aggregate UTF-16 `[4,5)`, the same pinned Ahem face, and
 actual issued source/line/placement associations. Native selected-line L1 resets
 the trailing PDI to the RTL paragraph level before canonical L2 ordering. Its
 zero-width source slot is at physical x=24; Chrome's captured Range rectangle is
-at x=72. Visible glyph positions and source coverage agree. The strict parity
-runner continues to report both differences. These are executed observations
-with **Range projection unresolved**, not matches, skipped cases, unsupported
-native input, or demonstrated browser conformance defects. Version 2 stores only
+at x=72. Visible glyph positions and source coverage agree. The
+[Native source-anchor policy](../../../../../docs/text-layout-contract.md#nonempty-text-range-fragments)
+selects that actual post-L1/L2 position; the Native anchor decision is settled.
+Neither coordinate is claimed uniquely required by CSS. Version 2 stores only
 the observed inline edge/start/advance; it does not retain the browser rectangle's
 height. Native source-fragment height must not be substituted for that observation.
+
+The owning Native regression checks both retained RTL variants with their original
+source/font inputs, actual issued line and placement, and an explicitly authored
+formal MaxContent request. This establishes the Native policy difference without
+claiming that the historical browser issued that sizing operation. The captured
+V2 viewport does not authenticate a current root request: the strict captured
+entry point refuses missing root-context authority before comparing Range fields.
+Faithful current capture and complete exact-difference qualification remain
+required under [#1669](https://github.com/bj-data-eng/surgeist/issues/1669). This
+capture limit does not classify the supported Native input as unsupported or
+establish the full live DOM Range projection.
 
 [CSSOM View §9](../../../../../references/cssom-view-1--WD-cssom-view-1-20250916--693b1c1fe7f7.md#dom-range-getclientrects)
 defines Text-node Range rectangles using font metrics and advances, but does not
