@@ -218,7 +218,7 @@ fn finish(
             lineage: edition.lineage(),
             requirements: (published.is_some()).then_some(&requirements),
             terminal_cases: (published.is_some()).then_some(&mut terminal_cases),
-            prepared_range_raw: &mut std::io::sink(),
+            policy_raw: &mut std::io::sink(),
         },
     )?;
     // Catch source/input changes during the invocation, as well as stale binaries

@@ -1,5 +1,6 @@
 use super::*;
 
+const RECEIPT: &str = "tests/layout/browser_parity/captured/flex-composition-differences";
 const REPORT: &str = "xml/generation-reports/all.json";
 const REPORT_SHA256: &str = "65bb238d03aae80b366fa1f481be42137799466f74c1a35fafdb40d2460478a2";
 const DECLARATION_LENGTH: usize = 65_209;
@@ -12,13 +13,16 @@ fn retained_sideways_flex_replay_qualifies_all_four_variants() {
     let result = replay(owner, &invocation.root, DECLARATION);
     invocation.check_terminal().unwrap();
     fs::remove_dir_all(&invocation.root).unwrap();
-    let raw = String::from_utf8(result.expect("the four declared variants qualify")).unwrap();
-    assert_eq!(raw.lines().count(), 4);
+    let raw = result.expect("the four declared variants qualify");
+    assert_eq!(
+        raw,
+        fs::read(owner.join(RECEIPT).join("raw-comparisons.jsonl")).unwrap()
+    );
 }
 
 fn replay(owner: &Path, root: &Path, current: &[u8]) -> Result<Vec<u8>> {
     let mode = QualificationMode::FlexCompositionCapture;
-    let receipt = owner.join("tests/layout/browser_parity/captured/flex-composition-differences");
+    let receipt = owner.join(RECEIPT);
     let mut input =
         DeclarationInput::sealed_prefix(current, DECLARATION_LENGTH, DECLARATION_SHA256)?;
     select_records(&mut input.declaration, Some(FLEX_COMPOSITION_SOURCE), mode)?;
@@ -65,7 +69,7 @@ fn replay(owner: &Path, root: &Path, current: &[u8]) -> Result<Vec<u8>> {
             lineage: SemanticLineage::Focused,
             requirements: None,
             terminal_cases: None,
-            prepared_range_raw: &mut raw,
+            policy_raw: &mut raw,
         },
     )?;
     Ok(raw)

@@ -5,6 +5,8 @@ use capture_authority::{CaptureMetadata, CapturedArtifact, RootCaptureProfile, s
 
 const SOURCE: &str = "html/flex/fri07_flex_composition.html";
 const SOURCE_BYTES: &[u8] = include_bytes!("html/flex/fri07_flex_composition.html");
+const RETAINED_REPORT: &str =
+    include_str!("captured/flex-composition-differences/xml/generation-reports/all.json");
 const REQUEST: &[u8] =
     include_bytes!("captured/flex-composition-differences/observation-request.json");
 
@@ -37,8 +39,27 @@ pub(super) fn bind(
         return Err(invalid("original source changed"));
     }
     let report = capture_authority::unique_json(capture.report).map_err(invalid)?;
-    let metadata: CaptureMetadata =
-        serde_json::from_value(report["metadata"].clone()).map_err(invalid)?;
+    let current = &report["metadata"];
+    let metadata: CaptureMetadata = serde_json::from_value(current.clone()).map_err(invalid)?;
+    let retained = capture_authority::unique_json(RETAINED_REPORT).map_err(invalid)?;
+    let sealed = &retained["metadata"];
+    // The qualifier executable may be rebuilt. The browser and capture
+    // contract must still match the environment of the gutter control.
+    if [
+        "generator",
+        "engine_version",
+        "browser_executable",
+        "browser_executable_sha256",
+        "browser_provenance",
+        "contract_sha256",
+        "source_imports",
+    ]
+    .into_iter()
+    .any(|key| current[key] != sealed[key])
+        || current["inputs"]["browser-owner.toml"] != sealed["inputs"]["browser-owner.toml"]
+    {
+        return Err(invalid("capture environment changed"));
+    }
     if metadata.schema_version != 4
         || metadata.inputs.get(SOURCE) != Some(&source_digest)
         || metadata.inputs.get("observation-request.json") != Some(&sha256(REQUEST))

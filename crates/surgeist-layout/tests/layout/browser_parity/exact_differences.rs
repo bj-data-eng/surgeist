@@ -263,10 +263,10 @@ struct NativeOracle {
 }
 
 // The two domains deliberately have distinct field tags and number types.
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(transparent)]
 pub(crate) struct ComparedField(Field);
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "domain", rename_all = "kebab-case", deny_unknown_fields)]
 enum Field {
     Layout {
@@ -283,7 +283,7 @@ enum Field {
         native: u32,
     },
 }
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 enum LayoutField {
     X,
@@ -293,7 +293,7 @@ enum LayoutField {
     ScrollWidth,
     ScrollHeight,
 }
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 enum ElementField {
     ClientWidth,
@@ -1283,6 +1283,27 @@ pub(crate) fn complete_captured_comparison(
     golden: &Golden,
     spec: &ResolvedSpec<'_>,
 ) -> Result<CompletedComparison> {
+    let completed = collect_captured_comparison(golden, &spec.source)?;
+    if let Some(required) = spec.current {
+        let mut actual = completed
+            .observations
+            .iter()
+            .map(ComparedField::canonical_selector)
+            .collect::<Vec<_>>();
+        actual.sort();
+        if actual != required.selectors {
+            return Err(QualificationError::IncompleteRepresentation {
+                key: "complete executed current comparison selectors".to_owned(),
+            });
+        }
+    }
+    Ok(completed)
+}
+
+fn collect_captured_comparison(
+    golden: &Golden,
+    source: &[SourceNode],
+) -> Result<CompletedComparison> {
     // One admitted computation and the existing terminal traversal. A late error
     // discards both collected packets and observations.
     let mut snapshot = None;
@@ -1292,7 +1313,7 @@ pub(crate) fn complete_captured_comparison(
         fields: Vec::new(),
     };
     let comparison = compare_captured_with_batch(golden, &mut sink, |tree, batch| {
-        match snapshot_batch(tree, batch, &spec.source) {
+        match snapshot_batch(tree, batch, source) {
             Ok(nodes) => snapshot = Some(nodes),
             Err(error) => {
                 let message = error.to_string();
@@ -1314,18 +1335,6 @@ pub(crate) fn complete_captured_comparison(
     let NumericComparisonSink::CollectAll { fields, .. } = sink else {
         unreachable!("owned collecting sink")
     };
-    if let Some(required) = spec.current {
-        let mut actual = fields
-            .iter()
-            .map(ComparedField::canonical_selector)
-            .collect::<Vec<_>>();
-        actual.sort();
-        if actual != required.selectors {
-            return Err(QualificationError::IncompleteRepresentation {
-                key: "complete executed current comparison selectors".to_owned(),
-            });
-        }
-    }
     unique(&fields, ComparedField::key)?;
     let nodes = snapshot.ok_or_else(|| malformed("missing completed batch"))?;
     Ok(CompletedComparison {
@@ -1333,15 +1342,15 @@ pub(crate) fn complete_captured_comparison(
         observations: fields,
     })
 }
-impl ResolvedSpec<'_> {
-    pub(crate) fn qualify(&self, completed: &CompletedComparison) -> Result<QualifiedComparison> {
-        let expected = unique(&self.spec.native.nodes, |n| n.path.clone())?;
-        if expected.len() != completed.nodes.len() {
+impl CompletedComparison {
+    fn verify_native(&self, oracle: &NativeOracle) -> Result<()> {
+        let expected = unique(&oracle.nodes, |n| n.path.clone())?;
+        if expected.len() != self.nodes.len() {
             return Err(QualificationError::IncompleteNativeOracle {
                 key: "completed source census".to_owned(),
             });
         }
-        for node in &completed.nodes {
+        for node in &self.nodes {
             let expected = expected.get(&node.path).ok_or_else(|| {
                 QualificationError::IncompleteNativeOracle {
                     key: node.path.clone(),
@@ -1349,14 +1358,18 @@ impl ResolvedSpec<'_> {
             })?;
             compare_native(expected, node)?;
         }
+        Ok(())
+    }
+
+    fn verify_differences(&self, differences: &[ComparedField]) -> Result<usize> {
         // Also resolve requested-field membership: an undeclared or removed row
         // cannot accidentally be accepted by a set with the same count.
-        let observed = unique(&completed.observations, ComparedField::key)?;
+        let observed = unique(&self.observations, ComparedField::key)?;
         let actual: BTreeMap<_, _> = observed.into_iter().filter(|(_, v)| v.differs()).collect();
         if actual.is_empty() {
             return Err(QualificationError::UnexpectedPass);
         }
-        let declared = unique(&self.spec.differences, ComparedField::key)?;
+        let declared = unique(differences, ComparedField::key)?;
         let missing = declared
             .keys()
             .filter(|k| !actual.contains_key(*k))
@@ -1378,10 +1391,16 @@ impl ResolvedSpec<'_> {
                 changed,
             });
         }
+        Ok(actual.len())
+    }
+}
+
+impl ResolvedSpec<'_> {
+    pub(crate) fn qualify(&self, completed: &CompletedComparison) -> Result<QualifiedComparison> {
+        completed.verify_native(&self.spec.native)?;
+        let fields = completed.verify_differences(&self.spec.differences)?;
         Ok(QualifiedComparison {
-            raw: RawVerdict::Different {
-                fields: actual.len(),
-            },
+            raw: RawVerdict::Different { fields },
             qualified: QualifiedVerdict::Intentional {
                 policy: self.spec.policy.id.clone(),
                 edition: self.spec.policy.edition.clone(),
@@ -1699,6 +1718,9 @@ pub(super) fn source_path_from_diagnostic(
     source_path(source).map_err(|e| Error::new(e.to_string()))?;
     Ok(source.to_owned())
 }
+
+#[path = "flex_composition_qualification.rs"]
+pub(crate) mod flex_composition_qualification;
 
 #[cfg(test)]
 #[path = "exact_differences_tests.rs"]

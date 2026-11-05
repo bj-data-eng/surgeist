@@ -558,7 +558,7 @@ fn qualify(
             lineage: SemanticLineage::Focused,
             requirements: None,
             terminal_cases: None,
-            prepared_range_raw: &mut std::io::stdout(),
+            policy_raw: &mut std::io::stdout(),
         },
     )
 }
@@ -619,7 +619,7 @@ struct Validation<'a> {
     requirements:
         Option<&'a BTreeMap<String, crate::parity_support::capture_authority::CurrentRequirements>>,
     terminal_cases: Option<&'a mut Vec<crate::parity_support::capture_authority::QualifiedCase>>,
-    prepared_range_raw: &'a mut dyn Write,
+    policy_raw: &'a mut dyn Write,
 }
 struct SemanticCapture<'a> {
     root: &'a Path,
@@ -645,7 +645,10 @@ fn validate_corpus(
     report: &browser::BrowserGenerationReport,
     mut validation: Validation<'_>,
 ) -> Result<()> {
-    use crate::parity_support::prepared_range_qualification as prepared_range;
+    use crate::parity_support::{
+        exact_differences::flex_composition_qualification,
+        prepared_range_qualification as prepared_range,
+    };
 
     let mode = validation.mode;
     let prepared_range_policy = if mode == QualificationMode::PreparedRangeCapture {
@@ -655,6 +658,13 @@ fn validate_corpus(
         Some(prepared_range::PolicyIdentity::from_contract(
             &fs::read_to_string(path)?,
         )?)
+    } else {
+        None
+    };
+    let flex_composition = if mode == QualificationMode::FlexCompositionCapture {
+        Some(flex_composition_qualification::Inputs::load(Path::new(
+            env!("CARGO_MANIFEST_DIR"),
+        ))?)
     } else {
         None
     };
@@ -791,9 +801,22 @@ fn validate_corpus(
                 case.source.as_str(),
                 case.case.variant(),
                 policy,
-                &mut *validation.prepared_range_raw,
+                &mut *validation.policy_raw,
             ) {
                 native_errors.push(format!("{}: {error}", case.case.id()));
+            }
+        } else if let Some(inputs) = &flex_composition {
+            match flex_composition_qualification::qualify(
+                &golden,
+                case.case.variant(),
+                inputs,
+                &mut *validation.policy_raw,
+            ) {
+                Ok((collapse, scrollbar)) => eprintln!(
+                    "qualify-root-context: {} qualified {collapse} collapse and {scrollbar} scrollbar differences",
+                    case.case.id()
+                ),
+                Err(error) => native_errors.push(format!("{}: {error}", case.case.id())),
             }
         } else if mode.collects_numeric_differences() {
             match collect_numeric_case(&golden, case, &mut std::io::stdout().lock()) {

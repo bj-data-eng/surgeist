@@ -152,7 +152,7 @@ fn qualify_retained_prepared_range(
             lineage: SemanticLineage::Focused,
             requirements: None,
             terminal_cases: None,
-            prepared_range_raw: &mut raw,
+            policy_raw: &mut raw,
         },
     )?;
     if raw != fs::read(receipt.join("raw-comparisons.jsonl"))? {
