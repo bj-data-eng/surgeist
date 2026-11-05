@@ -1328,3 +1328,86 @@ fn formal_percent_track_floor_keeps_finite_physical_space_separate_f32() {
 fn formal_percent_track_floor_keeps_finite_physical_space_separate_f64() {
     assert_formal_percent_track_floor_preserves_operation::<f64>();
 }
+
+#[test]
+fn cyclic_grid_percentage_margin_uses_the_final_track_only_for_placement() {
+    let mut differences = Vec::new();
+    for box_sizing in [BoxSizing::BorderBox, BoxSizing::ContentBox] {
+        for direction in [Direction::Ltr, Direction::Rtl] {
+            for (column, container_width, track_width, margin) in [
+                (TrackComponentOf::px(100.0_f64), 100.0, 100.0, 1.0),
+                (TrackComponentOf::AUTO, 50.0, 50.0, 0.5),
+            ] {
+                let tree = PublicLayoutTreeOf::new()
+                    .children(0, [1, 2])
+                    .children(1, [])
+                    .children(2, [])
+                    .style(
+                        0,
+                        NodeInputOf {
+                            display: Display::Grid,
+                            direction,
+                            box_sizing,
+                            size: Size::new(
+                                PreferredSizeOf::px(container_width),
+                                PreferredSizeOf::px(20.0),
+                            ),
+                            grid_template_columns: vec![column],
+                            grid_template_rows: vec![TrackComponentOf::px(10.0); 2],
+                            ..NodeInputOf::default()
+                        },
+                    )
+                    .style(
+                        1,
+                        NodeInputOf {
+                            display: Display::Grid,
+                            direction,
+                            box_sizing,
+                            size: Size::new(PreferredSizeOf::px(50.0), PreferredSizeOf::px(10.0)),
+                            margin: Edges::all(LengthAutoOf::percent(0.01)),
+                            ..NodeInputOf::default()
+                        },
+                    )
+                    .style(
+                        2,
+                        NodeInputOf {
+                            display: Display::Block,
+                            direction,
+                            box_sizing,
+                            ..NodeInputOf::default()
+                        },
+                    );
+                let batch = crate::compute_layout(
+                    &tree,
+                    0,
+                    mixed_root_request(SizingOperation::Normal, SizingOperation::Normal),
+                )
+                .unwrap();
+                let unrounded = |node| {
+                    batch
+                        .unrounded_entries()
+                        .iter()
+                        .find(|entry| entry.node() == node)
+                        .unwrap()
+                        .output()
+                };
+                let child = unrounded(1);
+                // The empty item stretches across the shared column in its own row.
+                let track_probe = unrounded(2);
+                let x = match direction {
+                    Direction::Ltr => margin,
+                    Direction::Rtl => track_width - 50.0 - margin,
+                };
+                let actual = (track_probe.size.width, child.margin, child.location.x);
+                let expected = (track_width, Edges::all(margin), x);
+                if actual != expected {
+                    differences.push(format!(
+                        "{box_sizing:?}, {direction:?}, container width {container_width}: \
+                         {actual:?}, expected {expected:?}"
+                    ));
+                }
+            }
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
