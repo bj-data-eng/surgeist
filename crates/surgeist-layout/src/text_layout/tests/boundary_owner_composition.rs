@@ -829,3 +829,155 @@ fn cross_origin_combining_unit_is_whole_with_anywhere_and_real_mark_attachment()
     lane::<f32>();
     lane::<f64>();
 }
+
+#[test]
+fn emergency_seam_uses_the_logical_before_box_for_fit_and_intrinsic_width() {
+    use text::{LineBreak, OverflowWrap::*, WordBreak};
+
+    fn lane<S: LayoutScalar>() {
+        // At 35px only the unbroken four-glyph Ahem word overflows.
+        // The first box owns both its interior cut and the seam at offset 2.
+        for (before, after, overflow, intrinsic, cut, minimum) in [
+            (Normal, Normal, &[][..], &[][..], None, 40.0),
+            (Anywhere, Normal, &[1, 2][..], &[1, 2][..], Some(2), 20.0),
+            (Normal, Anywhere, &[3][..], &[3][..], Some(3), 30.0),
+            (BreakWord, Normal, &[1, 2][..], &[][..], Some(2), 40.0),
+            (Normal, BreakWord, &[3][..], &[][..], Some(3), 40.0),
+        ] {
+            for (nested, rtl) in [(false, false), (false, true), (true, false), (true, true)] {
+                let mode = |overflow_wrap| text::Style {
+                    overflow_wrap,
+                    ..style(WordBreak::Normal, LineBreak::Normal, false)
+                };
+                let p = capture(
+                    ["AA", "AA"],
+                    [mode(before), mode(after)],
+                    AHEM,
+                    nested,
+                    Wrap::Word,
+                    rtl,
+                    true,
+                );
+                let prepared = &p.prepared;
+                let start = prepared.boundary_views().next().unwrap().handle();
+                let mut ordinary = prepared.opportunity_views().filter(|offer| {
+                    offer.boundary().view().participant_offset() > start.view().participant_offset()
+                });
+                let terminal = ordinary.next().unwrap();
+                assert_eq!(terminal.kind(), text::PreparedBreakKind::ParagraphEnd);
+                assert!(ordinary.next().is_none());
+                for (purpose, expected) in [
+                    (text::ConditionalPurpose::Overflow, overflow),
+                    (text::ConditionalPurpose::MinContent, intrinsic),
+                ] {
+                    let choices = prepared
+                        .source_segments()
+                        .next()
+                        .unwrap()
+                        .conditional_search(
+                            &start,
+                            None,
+                            &terminal.handle(),
+                            purpose,
+                            &[],
+                            text::ConditionalLineContext::Unframed { inline_boxes: None },
+                        )
+                        .unwrap()
+                        .begin(&[])
+                        .unwrap();
+                    let cuts = choices
+                        .opportunities()
+                        .iter()
+                        .map(|choice| {
+                            let end = choice.boundary();
+                            let boundary = end.view();
+                            assert_eq!(boundary.source_before(), boundary.source_after());
+                            boundary.source_after().get()
+                        })
+                        .collect::<std::collections::BTreeSet<_>>();
+                    assert_eq!(
+                        cuts.into_iter().collect::<Vec<_>>(),
+                        expected,
+                        "{before:?}/{after:?} {purpose:?} rtl={rtl} nested={nested}"
+                    );
+                }
+                for (width, expected_cut) in [(35.0, cut), (40.0, None)] {
+                    let finite = compute::<S>(
+                        &p,
+                        rtl,
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Definite(
+                                crate::NonNegativeFiniteOf::new(S::from_f64(width)).unwrap(),
+                            ),
+                            crate::SizingOperation::Normal,
+                        ),
+                    );
+                    let layout = finite.placed_text()[0].layout();
+                    assert_eq!(layout.source().text().code_units(), [65; 4]);
+                    let ranges = layout
+                        .lines()
+                        .iter()
+                        .map(|line| line.range())
+                        .collect::<Vec<_>>();
+                    let expected = if let Some(cut) = expected_cut {
+                        vec![text::Range::new(0, cut), text::Range::new(cut, 4)]
+                    } else {
+                        vec![text::Range::new(0, 4)]
+                    };
+                    assert_eq!(
+                        ranges, expected,
+                        "{before:?}/{after:?} width={width} rtl={rtl} nested={nested}"
+                    );
+                    assert!(!finite.final_inline_fragments().is_empty());
+                    for row in finite.final_inline_fragments() {
+                        let fragment = row.fragment();
+                        let line = fragment.finalized_fragment().finalized_line();
+                        assert_eq!(line.prepared_text(), *prepared);
+                        let selected = line.selected_line();
+                        let request = selected.request();
+                        if fragment.line_index() == 0
+                            && let Some(cut) = expected_cut
+                        {
+                            let text::PreparedTermination::Conditional(offer) =
+                                &request.termination
+                            else {
+                                panic!("the overflowing word requires an issued conditional cut");
+                            };
+                            assert_eq!(offer.boundary().view().source_after().get(), cut);
+                            assert_eq!(offer.purpose(), text::ConditionalPurpose::Overflow);
+                        } else {
+                            assert_eq!(request.context.end, text::LineEnd::Paragraph);
+                        }
+                    }
+                }
+                for (operation, expected) in [
+                    (crate::SizingOperation::MinContent, minimum),
+                    (crate::SizingOperation::MaxContent, 40.0),
+                ] {
+                    let intrinsic = compute::<S>(
+                        &p,
+                        rtl,
+                        crate::AxisSizingRequestOf::new(
+                            crate::AvailableSpaceOf::Indefinite,
+                            operation,
+                        ),
+                    );
+                    let root = intrinsic
+                        .unrounded_entries()
+                        .iter()
+                        .find(|entry| entry.node() == 0)
+                        .unwrap()
+                        .output();
+                    assert_eq!(
+                        root.size.width,
+                        S::from_f64(expected),
+                        "{before:?}/{after:?} {operation:?} rtl={rtl} nested={nested}"
+                    );
+                }
+            }
+        }
+    }
+
+    lane::<f32>();
+    lane::<f64>();
+}
