@@ -761,7 +761,8 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
     let (observation_request, observation_input_sha256) = match edition {
         PublishedEdition::CanonicalBoxes
         | PublishedEdition::GridStaticPosition
-        | PublishedEdition::RelativeInsets => ("geometry", None),
+        | PublishedEdition::RelativeInsets
+        | PublishedEdition::WrappingWorldCorners => ("geometry", None),
         PublishedEdition::MeasuredGrid | PublishedEdition::FlexText => {
             let request = terminal
                 .retained_inputs

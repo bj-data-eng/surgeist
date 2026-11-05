@@ -16,6 +16,7 @@ pub(crate) const ARTIFACT_ROOT: &str =
 const FLEX_TEXT_EDITION: &str = "flex-text-differences";
 const GRID_STATIC_POSITION_EDITION: &str = "grid-static-position-differences";
 const RELATIVE_INSET_EDITION: &str = "relative-inset-differences";
+const WRAPPING_WORLD_CORNER_EDITION: &str = "wrapping-world-corner-differences";
 pub(crate) const FIXED_GENERATOR: &str = "surgeist-layout-root-context-qualification";
 pub(crate) const TERMINAL: &str = "qualification.json";
 pub(crate) const TERMINAL_SCHEMA: u8 = 3;
@@ -630,6 +631,7 @@ pub(crate) enum CanonicalField {
     ScrollHeight,
     LayoutScrollWidth,
     LayoutScrollHeight,
+    WorldCornerHeight,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, Ord, PartialEq, PartialOrd)]
 #[serde(deny_unknown_fields)]
@@ -869,6 +871,7 @@ impl Qualification {
                         | FLEX_TEXT_EDITION
                         | GRID_STATIC_POSITION_EDITION
                         | RELATIVE_INSET_EDITION
+                        | WRAPPING_WORLD_CORNER_EDITION
                 ))
             || self.declaration.path != "corpus.toml"
             || self.report.path != "xml/generation-reports/all.json"
