@@ -537,6 +537,9 @@ where
             .flow_axes
             .logical_size(input.known())
             .block
+            // Keep the resolved border extent when deriving the content
+            // extent and adding back its inset would round it differently.
+            .or(constants.logical_node_outer_size().block)
             .or(final_constants.logical_node_outer_size().block)
             .or(ratio_block_outer.map(|_| provisional_logical_output_size.block))
             .unwrap_or_else(|| final_pass.auto_block(&final_constants, float_role))

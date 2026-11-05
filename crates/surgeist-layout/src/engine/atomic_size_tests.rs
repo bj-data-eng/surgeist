@@ -312,7 +312,10 @@ fn definite_inline_atomic_refuses_a_second_occurrence_under_a_sibling() {
             subject: ATOMIC
         }
     );
-    assert!(matches!(error.kind(), LayoutErrorKindOf::InvalidInput(_)));
+    assert!(matches!(
+        error.kind(),
+        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InlineAtomicAmbiguousOccurrence)
+    ));
 }
 
 fn assert_fractional_border_extent_agrees_with_composition<S: LayoutScalar>(half_ulp: S) {

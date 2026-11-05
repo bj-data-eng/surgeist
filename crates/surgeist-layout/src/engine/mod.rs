@@ -42,9 +42,11 @@ type ComputeLayoutResult<Tree> = LayoutResultOf<
 /// The actual paragraph container must be the principal Block root of the
 /// supplied root-local positioned request. Both its authored preferred
 /// dimensions must resolve independently of its contents. The actual atomic
-/// must occur exactly once among its direct children. The caller supplies the
-/// same immutable box inputs, topology and authenticated root request that
-/// composition will use. Recompute after any of those sizing inputs change.
+/// must be a direct child reachable by exactly one path in the container's
+/// acyclic topology. Only the container and atomic need box inputs for this
+/// query. The caller supplies the same immutable box inputs, topology and
+/// authenticated root request that composition will use. Recompute after any
+/// of those sizing inputs change.
 ///
 /// The result carries no baseline, placement, or cache authority. Composition
 /// computes those facts with the prepared Text and the full layout tree.
@@ -75,20 +77,19 @@ where
     let LayoutRootContextOf::RootLocalPositioned(frame) = request.context() else {
         return Err(unsupported());
     };
-    if tree.children(container).any(|node| node == container) {
-        return Err(error(LayoutErrorKindOf::InvalidInput(
-            LayoutInvalidInputOf::TreeTopologyCycle,
-        )));
-    }
-    if tree
-        .children(container)
-        .filter(|&node| node == atomic)
-        .take(2)
-        .count()
-        != 1
-    {
+    let graph = validation::discover_graph(tree, container)?;
+    let mut direct_atomic = graph.children[0]
+        .iter()
+        .copied()
+        .filter(|&index| graph.nodes[index] == atomic);
+    let (Some(atomic_index), None) = (direct_atomic.next(), direct_atomic.next()) else {
         return Err(error(LayoutErrorKindOf::InvalidInput(
             LayoutInvalidInputOf::InlineAtomicNotDirectChild,
+        )));
+    };
+    if graph.path_counts()[atomic_index] != 1 {
+        return Err(error(LayoutErrorKindOf::InvalidInput(
+            LayoutInvalidInputOf::InlineAtomicAmbiguousOccurrence,
         )));
     }
     let Some(container_style) = tree.layout_input(container).as_box() else {
@@ -112,7 +113,7 @@ where
         || !atomic_style.float.is_none()
         || atomic_style.item_is_replaced
         || atomic_style.item_is_table
-        || tree.child_count(atomic) != 0
+        || !graph.children[atomic_index].is_empty()
         || tree.has_leaf_measurement(atomic)
     {
         return Err(unsupported());

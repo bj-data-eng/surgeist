@@ -163,6 +163,8 @@ pub enum LayoutInvalidInputOf<S: LayoutScalar = DefaultScalar> {
     InvalidationNodeNotReachable,
     /// The subject does not occur exactly once as a direct child of the container.
     InlineAtomicNotDirectChild,
+    /// The direct child is also reachable along another path from its container.
+    InlineAtomicAmbiguousOccurrence,
     TreeTopologyCycle,
     TextBinding(crate::text_layout::TextBindingError),
     WrappingScope(crate::inline_wrapping::WrappingScopeError),
