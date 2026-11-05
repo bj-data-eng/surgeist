@@ -1412,3 +1412,63 @@ fn cyclic_grid_percentage_margin_uses_the_final_track_only_for_placement() {
     }
     assert!(differences.is_empty(), "{}", differences.join("\n"));
 }
+
+#[test]
+fn cyclic_grid_margin_does_not_shrink_a_fixed_maximum_track_cap() {
+    let actual = [20.0_f64, 40.0].map(|container_width| {
+        let tree = PublicLayoutTreeOf::new()
+            .children(0, [1, 2])
+            .children(1, [])
+            .children(2, [])
+            .style(
+                0,
+                NodeInputOf {
+                    display: Display::Grid,
+                    size: Size::new(
+                        PreferredSizeOf::px(container_width),
+                        PreferredSizeOf::px(20.0),
+                    ),
+                    grid_template_columns: vec![TrackComponentOf::minmax(
+                        MinTrackSizingOf::AUTO,
+                        MaxTrackSizingOf::px(100.0),
+                    )],
+                    grid_template_rows: vec![TrackComponentOf::px(10.0); 2],
+                    justify_content: Some(AlignContent::Start),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                1,
+                NodeInputOf {
+                    margin: Edges {
+                        left: LengthAutoOf::percent(0.5),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..NodeInputOf::default()
+                },
+            )
+            .measure(1, Size::new(200.0, 10.0))
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Block,
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch = crate::compute_layout(
+            &tree,
+            0,
+            mixed_root_request(SizingOperation::Normal, SizingOperation::Normal),
+        )
+        .unwrap();
+        let track_probe = batch
+            .unrounded_entries()
+            .iter()
+            .find(|entry| entry.node() == 2)
+            .unwrap();
+        track_probe.output().size.width
+    });
+    // The item's 200px content minimum is capped by its area's 100px
+    // maximum. The cyclic margin is zero in this intrinsic calculation.
+    assert_eq!(actual, [100.0, 100.0]);
+}
