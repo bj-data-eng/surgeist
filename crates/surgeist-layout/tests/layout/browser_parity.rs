@@ -2230,24 +2230,21 @@ fn original_br_metric_fixtures_complete_ordinary_checks_before_font_band_refusal
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
-fn registered_current_edition() -> Result<portable_qualification::AdmittedEdition, String> {
+fn registered_current_edition() -> Result<portable_qualification::AdmittedRegistry, String> {
     portable_qualification::admit_registered(Path::new(env!("CARGO_MANIFEST_DIR")))
         .map_err(|error| error.to_string())
 }
 
 fn selected_current_outputs(
-    edition: &portable_qualification::AdmittedEdition,
+    edition: &portable_qualification::AdmittedRegistry,
     filter: Option<&str>,
 ) -> BTreeSet<String> {
     edition
         .outputs()
         .filter(|output| {
-            let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join(support::capture_authority::ARTIFACT_ROOT)
-                .join(output);
+            let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(output);
             filter.is_none_or(|filter| parity_path_matches(&path, filter))
         })
-        .map(str::to_owned)
         .collect()
 }
 
@@ -2258,7 +2255,7 @@ struct ParitySelection {
 
 fn select_parity_inventory(
     originals: Vec<PathBuf>,
-    edition: Option<&portable_qualification::AdmittedEdition>,
+    edition: Option<&portable_qualification::AdmittedRegistry>,
     filter: Option<&str>,
 ) -> Result<ParitySelection, String> {
     let current = edition
@@ -2285,7 +2282,8 @@ fn combined_inventory_filter_selects_current_edition_without_a_historical_match(
     let run = edition
         .execute_selected(&selected.current)
         .expect("current cases execute");
-    assert!(run.registered_coverage_complete());
+    assert_eq!(run.cases.len(), 4);
+    assert!(run.selected_cases_passed());
     assert!(
         run.cases
             .iter()
@@ -2346,7 +2344,8 @@ fn combined_inventory_filter_executes_equal_named_original_and_current_cases_sep
     let run = edition
         .execute_selected(&selected.current)
         .expect("current cases execute");
-    assert!(run.registered_coverage_complete());
+    assert_eq!(run.cases.len(), 4);
+    assert!(run.selected_cases_passed());
     assert!(
         run.cases
             .iter()
@@ -2362,10 +2361,9 @@ fn current_edition_path_filter_executes_all_registered_cases() {
         .execute_selected(&selected)
         .expect("registered selection must execute");
     assert!(
-        run.registered_coverage_complete(),
-        "edition-path filter skipped required current execution: {} of {} cases",
-        run.cases.len(),
-        run.declared_cases
+        run.cases.len() == 4 && run.selected_cases_passed(),
+        "edition-path filter skipped required box execution: {} of 4 cases",
+        run.cases.len()
     );
     for case in &run.cases {
         assert_eq!(

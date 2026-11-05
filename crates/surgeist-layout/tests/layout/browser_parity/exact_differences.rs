@@ -443,9 +443,18 @@ pub(crate) enum PublishedEdition {
 
 impl PublishedEdition {
     pub(crate) fn name(self) -> &'static str {
+        self.artifact_root()
+            .rsplit('/')
+            .next()
+            .expect("fixed edition path")
+    }
+
+    pub(crate) fn artifact_root(self) -> &'static str {
         match self {
-            Self::CanonicalBoxDifferences => super::capture_authority::EDITION,
-            Self::MeasuredGridDifferences => super::capture_authority::MEASURED_GRID_EDITION,
+            Self::CanonicalBoxDifferences => super::capture_authority::ARTIFACT_ROOT,
+            Self::MeasuredGridDifferences => {
+                "tests/layout/browser_parity/captured/measured-grid-differences"
+            }
         }
     }
     fn domain(self) -> CurrentDomain {

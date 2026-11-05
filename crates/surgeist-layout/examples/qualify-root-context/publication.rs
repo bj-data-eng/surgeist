@@ -27,15 +27,6 @@ impl Edition {
             Self::MeasuredGridDifferences => Some(PublishedEdition::MeasuredGridDifferences),
         }
     }
-    fn artifact_root(self) -> Option<&'static str> {
-        match self {
-            Self::RootContextV4 => None,
-            Self::CanonicalBoxDifferences => Some(authority::ARTIFACT_ROOT),
-            Self::MeasuredGridDifferences => {
-                Some("tests/layout/browser_parity/captured/measured-grid-differences")
-            }
-        }
-    }
     fn lineage(self) -> SemanticLineage {
         self.published()
             .map_or(SemanticLineage::Focused, SemanticLineage::Published)
@@ -161,8 +152,8 @@ fn finish(
 ) -> Result<()> {
     let published = edition.published();
     let derive_terminal = mode == QualificationMode::DeriveCanonicalBoxes;
-    if let Some(artifact_root) = edition.artifact_root()
-        && root != owner.join(artifact_root)
+    if let Some(published) = published
+        && root != owner.join(published.artifact_root())
     {
         return Err("canonical edition root differs from fixed artifact identity".into());
     }

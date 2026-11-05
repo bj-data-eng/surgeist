@@ -29,6 +29,7 @@ const OWNER_DECLARATION: &str = "examples/qualify-root-context/corpus.toml";
 type Result<T> = std::result::Result<T, QualificationError>;
 
 pub(super) struct Registration<'a> {
+    pub(super) edition: PublishedEdition,
     pub(super) terminal_sha256: &'a str,
 }
 
@@ -167,16 +168,17 @@ fn static_files(root: &Path) -> Result<BTreeSet<String>> {
 struct Freshness {
     owner: PathBuf,
     root: PathBuf,
+    artifact_root: &'static str,
     pins: BTreeMap<String, String>,
     owner_pins: BTreeMap<String, String>,
     selected_records: BTreeMap<String, Value>,
 }
 
 impl Freshness {
-    fn verify(&self) -> Result<Vec<String>> {
+    fn verify_files(&self) -> Result<()> {
         regular_file(
             &self.owner,
-            &format!("{}/{}", authority::ARTIFACT_ROOT, authority::TERMINAL),
+            &format!("{}/{}", self.artifact_root, authority::TERMINAL),
         )?;
         for (root, pins) in [(&self.root, &self.pins), (&self.owner, &self.owner_pins)] {
             for (path, digest) in pins {
@@ -192,13 +194,22 @@ impl Freshness {
         if static_files(&self.root)? != self.pins.keys().cloned().collect() {
             return Err(changed("complete registered artifact census"));
         }
-        let bytes = fs::read(regular_file(&self.owner, OWNER_DECLARATION)?)
-            .map_err(|error| changed(format!("live catalogue: {error}")))?;
-        let live = Declaration::parse(&bytes)
-            .map_err(|error| changed(format!("live catalogue: {error}")))?;
-        live.check_live_records(&self.selected_records)
-            .map_err(|error| changed(error.to_string()))
+        Ok(())
     }
+
+    fn verify(&self) -> Result<Vec<String>> {
+        self.verify_files()?;
+        verify_live(&self.owner, &self.selected_records)
+    }
+}
+
+fn verify_live(owner: &Path, selected_records: &BTreeMap<String, Value>) -> Result<Vec<String>> {
+    let bytes = fs::read(regular_file(owner, OWNER_DECLARATION)?)
+        .map_err(|error| changed(format!("live catalogue: {error}")))?;
+    let live =
+        Declaration::parse(&bytes).map_err(|error| changed(format!("live catalogue: {error}")))?;
+    live.check_live_records(selected_records)
+        .map_err(|error| changed(error.to_string()))
 }
 
 fn record_value(record: &Record) -> Result<Value> {
@@ -241,6 +252,7 @@ struct AdmittedCase {
 }
 
 pub(super) struct AdmittedEdition {
+    edition: PublishedEdition,
     freshness: Freshness,
     cases: Vec<AdmittedCase>,
 }
@@ -259,6 +271,28 @@ pub(super) struct EditionRun {
 }
 
 impl EditionRun {
+    fn finish(
+        mut cases: Vec<CaseOutcome>,
+        declared_cases: usize,
+        freshness: Result<Vec<String>>,
+    ) -> Self {
+        let (uncovered, freshness_error) = match freshness {
+            Ok(uncovered) => (uncovered, None),
+            Err(error) => (Vec::new(), Some(error.to_string())),
+        };
+        if let Some(error) = &freshness_error {
+            for case in &mut cases {
+                case.qualified = Err(error.clone());
+            }
+        }
+        Self {
+            cases,
+            declared_cases,
+            freshness_error,
+            uncovered,
+        }
+    }
+
     pub(super) fn selected_cases_passed(&self) -> bool {
         self.freshness_error.is_none() && self.cases.iter().all(|case| case.qualified.is_ok())
     }
@@ -286,6 +320,16 @@ impl AdmittedEdition {
         selected: &BTreeSet<String>,
         before_freshness: impl FnOnce(),
     ) -> Result<EditionRun> {
+        let cases = self.execute_cases(selected)?;
+        before_freshness();
+        Ok(EditionRun::finish(
+            cases,
+            self.cases.len(),
+            self.freshness.verify(),
+        ))
+    }
+
+    fn execute_cases(&self, selected: &BTreeSet<String>) -> Result<Vec<CaseOutcome>> {
         let known: BTreeSet<_> = self.outputs().map(str::to_owned).collect();
         if !selected.is_subset(&known) {
             return Err(changed("selected output is outside the registered edition"));
@@ -297,7 +341,7 @@ impl AdmittedEdition {
             .filter(|case| selected.contains(&case.output))
         {
             let authority = CaptureAuthority::Published {
-                edition: PublishedEdition::CanonicalBoxDifferences,
+                edition: self.edition,
                 identity: case.identity.identity(),
             };
             let completed =
@@ -328,45 +372,104 @@ impl AdmittedEdition {
                 qualified,
             });
         }
-        before_freshness();
-        let (uncovered, freshness_error) = match self.freshness.verify() {
-            Ok(uncovered) => (uncovered, None),
-            Err(error) => (Vec::new(), Some(error.to_string())),
-        };
-        if let Some(error) = &freshness_error {
-            for case in &mut cases {
-                case.qualified = Err(error.clone());
-            }
-        }
-        Ok(EditionRun {
-            cases,
-            declared_cases: self.cases.len(),
-            freshness_error,
-            uncovered,
+        Ok(cases)
+    }
+}
+
+pub(super) struct AdmittedRegistry {
+    editions: [AdmittedEdition; 2],
+    owner: PathBuf,
+    selected_records: BTreeMap<String, Value>,
+}
+
+impl AdmittedRegistry {
+    pub(super) fn outputs(&self) -> impl Iterator<Item = String> {
+        self.editions.iter().flat_map(|edition| {
+            let root = edition.freshness.artifact_root;
+            edition
+                .outputs()
+                .map(move |output| format!("{root}/{output}"))
         })
+    }
+
+    pub(super) fn execute_selected(&self, selected: &BTreeSet<String>) -> Result<EditionRun> {
+        let known = self.outputs().collect::<BTreeSet<_>>();
+        if !selected.is_subset(&known) {
+            return Err(changed("selected output is outside the current registry"));
+        }
+        let mut cases = Vec::new();
+        let mut declared_cases = 0;
+        for edition in &self.editions {
+            let prefix = format!("{}/", edition.freshness.artifact_root);
+            let edition_selection = selected
+                .iter()
+                .filter_map(|output| output.strip_prefix(&prefix).map(str::to_owned))
+                .collect();
+            for mut outcome in edition.execute_cases(&edition_selection)? {
+                outcome.output = format!("{prefix}{}", outcome.output);
+                cases.push(outcome);
+            }
+            declared_cases += edition.cases.len();
+        }
+        let freshness = self
+            .editions
+            .iter()
+            .try_for_each(|edition| edition.freshness.verify_files())
+            .and_then(|()| verify_live(&self.owner, &self.selected_records));
+        Ok(EditionRun::finish(cases, declared_cases, freshness))
     }
 }
 
 // This seal admits only the publisher's complete terminal artifact. Retained
 // projections and directory existence do not establish capture authority.
-const REGISTERED_TERMINAL_SHA256: &str =
+const REGISTERED_BOX_TERMINAL_SHA256: &str =
     "c4280cd619a70520a51232c83b13ae0e6aa078479a32fa49947d1e0a0de8b074";
+const REGISTERED_MEASURED_GRID_TERMINAL_SHA256: &str =
+    "d78be5cb154f7743572439813293624bfbb39b3ff9eeb3ae620ef479a3ff3c7c";
 
-pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedEdition> {
-    admit(
-        owner,
-        Registration {
-            terminal_sha256: REGISTERED_TERMINAL_SHA256,
-        },
-    )
+pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
+    let editions = [
+        admit(
+            owner,
+            Registration {
+                edition: PublishedEdition::CanonicalBoxDifferences,
+                terminal_sha256: REGISTERED_BOX_TERMINAL_SHA256,
+            },
+        )?,
+        admit(
+            owner,
+            Registration {
+                edition: PublishedEdition::MeasuredGridDifferences,
+                terminal_sha256: REGISTERED_MEASURED_GRID_TERMINAL_SHA256,
+            },
+        )?,
+    ];
+    let mut selected_records = BTreeMap::new();
+    for edition in &editions {
+        for (source, record) in &edition.freshness.selected_records {
+            if selected_records
+                .insert(source.clone(), record.clone())
+                .is_some()
+            {
+                return Err(changed(format!(
+                    "source is registered in more than one edition: {source}"
+                )));
+            }
+        }
+    }
+    verify_live(owner, &selected_records)?;
+    Ok(AdmittedRegistry {
+        editions,
+        owner: owner.to_owned(),
+        selected_records,
+    })
 }
 
 pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<AdmittedEdition> {
-    let root = owner.join(authority::ARTIFACT_ROOT);
-    regular_file(
-        owner,
-        &format!("{}/{}", authority::ARTIFACT_ROOT, authority::TERMINAL),
-    )?;
+    let edition = registration.edition;
+    let artifact_root = edition.artifact_root();
+    let root = owner.join(artifact_root);
+    regular_file(owner, &format!("{artifact_root}/{}", authority::TERMINAL))?;
     let terminal_pin = PathDigest {
         path: authority::TERMINAL.into(),
         sha256: registration.terminal_sha256.into(),
@@ -375,6 +478,9 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
     let terminal = Qualification::parse(
         std::str::from_utf8(&terminal_bytes).map_err(|error| malformed(error.to_string()))?,
     )?;
+    if terminal.edition != edition.name() {
+        return Err(changed("registered terminal edition association"));
+    }
     if terminal.to_bytes()? != terminal_bytes {
         return Err(malformed("noncanonical terminal serialization"));
     }
@@ -399,6 +505,7 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
     let freshness = Freshness {
         owner: owner.into(),
         root: root.clone(),
+        artifact_root,
         pins,
         owner_pins: terminal.current_owner_inputs.clone(),
         selected_records: selected_records(&root, &terminal)?,
@@ -477,6 +584,16 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
         .collect();
     let mut consumed = BTreeSet::new();
     let mut cases = Vec::new();
+    let measured = edition == PublishedEdition::MeasuredGridDifferences;
+    let (observation_request, observation_input_sha256) = if measured {
+        let request = terminal
+            .retained_inputs
+            .get("observation-request.json")
+            .ok_or_else(|| changed("missing retained measured request"))?;
+        ("measured-leaf", Some(request.as_str()))
+    } else {
+        ("geometry", None)
+    };
     for case in &terminal.cases {
         let artifact = artifacts
             .get(case.case.name.as_str())
@@ -529,8 +646,11 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
             std::str::from_utf8(&xml).map_err(|error| malformed(error.to_string()))?,
         )
         .map_err(|error| malformed(error.to_string()))?;
-        if golden.name != case.case.name || golden.has_element_scroll_sizes() {
-            return Err(changed("canonical geometry observation profile"));
+        if golden.name != case.case.name
+            || golden.has_element_scroll_sizes() != measured
+            || golden.measured_leaf.is_some() != measured
+        {
+            return Err(changed("canonical observation profile"));
         }
         let selection = CaseSelection {
             name: case.case.name.clone(),
@@ -541,9 +661,7 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
             record_sha256: record.sha256.clone(),
             historical_sha256: historical.clone(),
         };
-        if spec.prebind_current(PublishedEdition::CanonicalBoxDifferences, &selection)?
-            != case.requirements
-        {
+        if spec.prebind_current(edition, &selection)? != case.requirements {
             return Err(changed("prebound current observable coverage"));
         }
         let xml_sha = sha256(&xml);
@@ -557,8 +675,8 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
             historical_sha256: historical.as_deref(),
             policy_sha256: &case.policy.sha256,
             browser_settings: &terminal.browser_settings,
-            observation_request: "geometry",
-            observation_input_sha256: None,
+            observation_request,
+            observation_input_sha256,
         })?;
         if verified.projection() != &case.identity {
             return Err(changed(
@@ -568,7 +686,7 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
         // Resolve every selected authority before any Native operation begins.
         spec.resolve_against(
             CaptureAuthority::Published {
-                edition: PublishedEdition::CanonicalBoxDifferences,
+                edition,
                 identity: verified.identity(),
             },
             &golden,
@@ -599,7 +717,11 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
         return Err(changed("complete selected canonical reference census"));
     }
     freshness.verify()?;
-    Ok(AdmittedEdition { freshness, cases })
+    Ok(AdmittedEdition {
+        edition,
+        freshness,
+        cases,
+    })
 }
 
 #[cfg(test)]
