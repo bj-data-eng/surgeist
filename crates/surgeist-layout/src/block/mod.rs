@@ -45,7 +45,10 @@ mod sizing;
 pub(crate) use absolute::StaticPositionOf;
 use absolute::layout_absolute_children;
 pub(crate) use input::BlockChildProjection;
-use input::{BlockContainerProjection, block_container_projection, with_block_scroll_projections};
+use input::{
+    BlockContainerProjection, automatic_block_depends_on_ratio, block_container_projection,
+    normal_block_auto_inline, with_block_scroll_projections,
+};
 use scroll::{finish_scroll_geometry, prepare_scroll_contributions};
 use sizing::{
     BlockOptionalSizeSubExt, maximum_size, minimum_size, preferred_size, resolve_auto_optional,
@@ -244,17 +247,8 @@ where
         .flow_axes
         .logical_size(constants.sizing_request.axes())
         .inline;
-    let inline_preferred = match constants.flow_axes.inline_axis() {
-        PhysicalAxis::Horizontal => &style.common.size.width,
-        PhysicalAxis::Vertical => &style.common.size.height,
-    };
     let normal_block_fill = input.sizing_mode() == SizingMode::InherentSize
-        && !style.display.is_inline_level()
-        && !style.common.item_is_replaced
-        && !style.common.item_is_table
-        && tree.node_input(node).float.is_none()
-        && style.common.position != Position::Absolute
-        && inline_preferred.is_auto()
+        && normal_block_auto_inline(&style.common, style.display, tree.node_input(node).float)
         && matches!(
             input.parent_formatting_context(),
             ParentFormattingContext::BlockFlow | ParentFormattingContext::NoParent
@@ -368,7 +362,7 @@ where
             .common
             .overflow
             .establishes_independent_formatting_context()
-        && !children.is_empty();
+        && (!children.is_empty() || semantic_work);
     // Collect the automatic minimum before using the settled ratio height
     // as a containing basis for child percentages.
     let definite_ratio_inner = ratio_block_outer
@@ -383,7 +377,7 @@ where
     );
     let needs_final_pass = (input.run_mode().is_perform_layout() || sizes_float_context)
         && (logical_inner_size.inline.is_none()
-            || ratio_needs_content_minimum
+            || input.run_mode().is_perform_layout() && ratio_needs_content_minimum
             || constants
                 .flow_axes
                 .logical_axis_progression(crate::LogicalAxis::Block)
@@ -402,16 +396,21 @@ where
     // at the accepted width. RunMode does not turn a size query intrinsic.
     let measured_inset_demand = input.run_mode().is_perform_layout()
         && relative::has_pending_children::<Tree, M>(tree, &children);
+    let normal_pass_input = if ratio_needs_content_minimum {
+        input.with_run_mode(RunMode::ComputeSize)
+    } else {
+        input
+    };
     let normal_pass = layout_in_flow_children(
         tree,
         node,
         &children,
         &normal_constants,
-        input,
+        normal_pass_input,
         InFlowPassContext {
             inline_operation: crate::SizingOperation::Normal,
             inner_inline: Some(accepted_inline_inner),
-            set_layout: input.run_mode().is_perform_layout()
+            set_layout: normal_pass_input.run_mode().is_perform_layout()
                 && (!needs_final_pass || measured_inset_demand),
             inherited,
         },
@@ -855,13 +854,8 @@ impl<S: LayoutScalar> Constants<S> {
                 .overflow
                 .establishes_independent_formatting_context();
         let is_margin_collapsing_block = style.display == super::Display::Block;
-        let block_preferred = match flow_axes.block_axis() {
-            PhysicalAxis::Horizontal => &style.common.size.width,
-            PhysicalAxis::Vertical => &style.common.size.height,
-        };
         let ratio_dependent_block = input.sizing_mode() == SizingMode::InherentSize
-            && style.common.aspect_ratio.is_some()
-            && block_preferred.is_auto();
+            && automatic_block_depends_on_ratio(&style.common);
         let can_collapse_through = is_margin_collapsing_block
             && !ratio_dependent_block
             && boundary_margins_can_collapse

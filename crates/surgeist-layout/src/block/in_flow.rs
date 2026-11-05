@@ -1197,7 +1197,12 @@ where
     {
         known.inline = available_inline
             .map(|inline| inline.clamp_max_before_min_optional(min_size.inline, max_size.inline));
-        if aspect_height_limit.is_some() && style.display != crate::Display::Block {
+        if aspect_height_limit.is_some()
+            && !(style.display == crate::Display::Block
+                && normal_block_auto_inline(&style.common, style.display, style.float)
+                && automatic_block_depends_on_ratio(&style.common)
+                && !tree.has_leaf_measurement(child))
+        {
             let physical_known = child_flow_axes.physical_size(known);
             known = child_flow_axes.logical_size(
                 physical_known
