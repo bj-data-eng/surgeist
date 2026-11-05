@@ -108,6 +108,7 @@ fn output<S: LayoutScalar>(
 enum NativeContent {
     Words,
     OrthogonalStrip,
+    VerticalWords,
 }
 struct NativeProbe<S: LayoutScalar> {
     tree: PublicLayoutTreeOf<S>,
@@ -180,6 +181,19 @@ impl<S: LayoutScalar> LayoutTree for NativeProbe<S> {
                     }
                 };
                 Size::new(width, if width < n(70.0) { n(20.0) } else { n(10.0) })
+            }
+            NativeContent::VerticalWords => {
+                assert_eq!(input.flow_axes().inline_axis(), PhysicalAxis::Vertical);
+                assert_eq!(
+                    input.containing_layout_context().flow_axes().inline_axis(),
+                    PhysicalAxis::Horizontal
+                );
+                let height = match packet.axes().height.operation() {
+                    SizingOperation::MinContent => n(40.0),
+                    SizingOperation::MaxContent => n(80.0),
+                    SizingOperation::Normal => input.known_content_size().height.unwrap(),
+                };
+                Size::new(n(20.0), height)
             }
             NativeContent::OrthogonalStrip => {
                 assert_eq!(input.flow_axes().inline_axis(), PhysicalAxis::Vertical);
@@ -476,6 +490,75 @@ fn orthogonal_root_clamps_definite_calculation<S: LayoutScalar>() {
     }
 }
 
+fn auto_orthogonal_root_uses_the_static_block_offset<S: LayoutScalar>() {
+    let containing = RootLocalPositionedContextOf::<S>::horizontal_auto_insets(
+        Size::new(nn(120.0), nn(100.0)),
+        Direction::Ltr,
+        n(52.0),
+        fallback(),
+    )
+    .unwrap();
+    for mode in [WritingMode::VerticalLr, WritingMode::VerticalRl] {
+        for direction in [Direction::Ltr, Direction::Rtl] {
+            for (offset, min_height, max_height, expected) in [
+                (70.0, MinSizeOf::AUTO, MaxSizeOf::NONE, 40.0),
+                (50.0, MinSizeOf::AUTO, MaxSizeOf::NONE, 50.0),
+                (10.0, MinSizeOf::AUTO, MaxSizeOf::NONE, 80.0),
+                (
+                    50.0,
+                    MinSizeOf::value(LengthPercentageOf::from_percent_fraction(n(0.60)).unwrap()),
+                    MaxSizeOf::NONE,
+                    60.0,
+                ),
+                (50.0, MinSizeOf::AUTO, MaxSizeOf::percent(n(0.45)), 45.0),
+            ] {
+                let mut style = root_style(direction);
+                style.writing_mode = mode;
+                style.size.width = PreferredSizeOf::percent(n(0.75));
+                style.max_size.width = MaxSizeOf::percent(n(0.60));
+                style.min_size.height = min_height;
+                style.max_size.height = max_height;
+                let mut host = NativeProbe::words(style);
+                host.content = NativeContent::VerticalWords;
+                let request = LayoutRootRequestOf::positioned_root_local(
+                    containing
+                        .with_hypothetical_block_offset(n(offset))
+                        .unwrap(),
+                )
+                .unwrap();
+                let batch = compute_layout(&host, 0, request).unwrap();
+                for final_output in [false, true] {
+                    let root = output(&batch, 0, final_output);
+                    assert_eq!(root.location, Point::ZERO);
+                    assert_eq!(root.size, Size::new(n(72.0), n(expected)));
+                }
+                let calls = host.calls.borrow();
+                for operation in [
+                    SizingOperation::MinContent,
+                    SizingOperation::MaxContent,
+                    SizingOperation::Normal,
+                ] {
+                    assert!(
+                        calls.iter().any(|input| {
+                            let packet = input.content_sizing_request();
+                            packet.axes().width.operation() == SizingOperation::Normal
+                                && packet.axes().height.operation() == operation
+                                && packet.axes().height.space()
+                                    == AvailableSpaceOf::Definite(nn(100.0 - offset))
+                                && packet.orthogonal_fallback()
+                                    == Size::new(Ok(nn(600.0)), Ok(nn(40.0)))
+                                && input.known_content_size().width == Some(n(72.0))
+                                && (operation != SizingOperation::Normal
+                                    || input.known_content_size().height == Some(n(expected)))
+                        }),
+                        "missing {operation:?} packet at {mode:?}/{direction:?}, offset {offset}"
+                    );
+                }
+            }
+        }
+    }
+}
+
 fn fixed_orthogonal_root_exclusions<S: LayoutScalar>() {
     let mut fixed = root_style::<S>(Direction::Rtl);
     fixed.display = Display::Flex;
@@ -765,6 +848,11 @@ macro_rules! lanes {
         }
     };
 }
+lanes!(
+    root_local_auto_orthogonal_fit_f32,
+    root_local_auto_orthogonal_fit_f64,
+    auto_orthogonal_root_uses_the_static_block_offset
+);
 lanes!(
     root_local_construction_f32,
     root_local_construction_f64,
