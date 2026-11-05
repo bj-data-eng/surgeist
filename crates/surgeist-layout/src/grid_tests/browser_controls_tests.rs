@@ -39,6 +39,62 @@ fn registered_current_editions_qualify_without_generator() {
 }
 
 #[test]
+fn grid_static_position_edition_qualifies_all_original_variants() {
+    use support::exact_differences::{PublishedEdition, QualifiedVerdict, RawVerdict};
+
+    let owner = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let registry = portable_qualification::admit_registered(owner).unwrap();
+    let edition = PublishedEdition::GridStaticPosition.artifact_root();
+    let variants = [
+        "border_box_ltr",
+        "border_box_rtl",
+        "content_box_ltr",
+        "content_box_rtl",
+    ];
+    let mut expected = std::collections::BTreeMap::new();
+    for (family, fields) in [
+        ("grid_absolute_layout_within_border_static", 8),
+        ("grid_absolute_resolved_insets", 4),
+    ] {
+        for variant in variants {
+            let relative = format!("xml/grid/{family}__{variant}.xml");
+            expected.insert(format!("{edition}/{relative}"), (relative, fields));
+        }
+    }
+    let prefix = format!("{edition}/");
+    let selected = registry
+        .outputs()
+        .filter(|output| output.starts_with(&prefix))
+        .collect();
+    assert_eq!(selected, expected.keys().cloned().collect());
+    let run = registry.execute_selected(&selected).unwrap();
+    assert!(run.selected_cases_passed());
+    assert_eq!(run.cases.len(), 8);
+    for case in run.cases {
+        let (relative, fields) = &expected[&case.output];
+        assert_eq!(
+            std::fs::read(owner.join(&case.output)).unwrap(),
+            std::fs::read(
+                owner
+                    .join("tests/layout/browser_parity/captured/root-context-v4")
+                    .join(relative)
+            )
+            .unwrap(),
+        );
+        assert_eq!(case.raw.unwrap().len(), *fields);
+        let comparison = case.qualified.unwrap();
+        assert_eq!(comparison.raw, RawVerdict::Different { fields: *fields });
+        assert_eq!(
+            comparison.qualified,
+            QualifiedVerdict::Intentional {
+                policy: "grid-absolute-child-content-edges".to_owned(),
+                edition: "css-grid-1-20250326-native-1".to_owned(),
+            }
+        );
+    }
+}
+
+#[test]
 fn captured_root_context_edition_matches_native_geometry_without_generator() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/layout/browser_parity/captured/root-context-v4/xml");
