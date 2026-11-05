@@ -9,6 +9,7 @@ pub surgeist_font::CatalogueError::FacesNotAdmitted::expected: u32
 pub surgeist_font::CatalogueError::ForeignFamily
 pub surgeist_font::CatalogueError::GenerationExhausted
 pub surgeist_font::CatalogueError::GenerationExhausted::generation: u64
+pub surgeist_font::CatalogueError::ProviderFamilyMissing
 pub surgeist_font::CatalogueError::ProviderResourceConflict
 pub surgeist_font::CatalogueError::StaleFamily
 impl core::error::Error for surgeist_font::CatalogueError
@@ -89,6 +90,8 @@ pub const fn surgeist_font::DecodeLimits::workspace_bytes(self) -> usize
 pub struct surgeist_font::FontAttributes
 impl surgeist_font::FontAttributes
 pub const fn surgeist_font::FontAttributes::new(width: parlance::font::FontWidth, style: parlance::font::FontStyle, weight: parlance::font::FontWeight) -> Self
+pub const fn surgeist_font::FontAttributes::style(self) -> parlance::font::FontStyle
+pub const fn surgeist_font::FontAttributes::weight(self) -> parlance::font::FontWeight
 pub struct surgeist_font::FontCandidate
 impl surgeist_font::FontCandidate
 pub fn surgeist_font::FontCandidate::charmap(&self) -> core::option::Option<surgeist_font::NominalCharmap<'_>>
@@ -99,6 +102,7 @@ pub const fn surgeist_font::FontCandidate::synthesis(&self) -> &surgeist_font::F
 pub struct surgeist_font::FontCatalogue
 impl surgeist_font::FontCatalogue
 pub fn surgeist_font::FontCatalogue::family_by_name(&mut self, name: &str) -> core::option::Option<surgeist_font::FontFamily>
+pub fn surgeist_font::FontCatalogue::family_name(&mut self, family: &surgeist_font::FontFamily) -> core::result::Result<&str, surgeist_font::CatalogueError>
 pub fn surgeist_font::FontCatalogue::family_names(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = &str> + '_
 pub const fn surgeist_font::FontCatalogue::publication(&self) -> &surgeist_font::CataloguePublication
 pub fn surgeist_font::FontCatalogue::query(&mut self) -> surgeist_font::FontQuery<'_>

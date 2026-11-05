@@ -18,6 +18,19 @@ impl FontFamily {
         Self { id, publication }
     }
 
+    pub(super) fn validate(
+        &self,
+        publication: &CataloguePublication,
+    ) -> Result<FamilyId, CatalogueError> {
+        if !Arc::ptr_eq(&self.publication.owner, &publication.owner) {
+            return Err(CatalogueError::ForeignFamily);
+        }
+        if self.publication.generation != publication.generation {
+            return Err(CatalogueError::StaleFamily);
+        }
+        Ok(self.id)
+    }
+
     /// Publication that resolved this family.
     #[must_use]
     pub const fn publication(&self) -> &CataloguePublication {
@@ -42,6 +55,18 @@ impl FontAttributes {
             style,
             weight,
         }
+    }
+
+    /// Style requested by the caller.
+    #[must_use]
+    pub const fn style(self) -> FontStyle {
+        self.style
+    }
+
+    /// Weight requested by the caller.
+    #[must_use]
+    pub const fn weight(self) -> FontWeight {
+        self.weight
     }
 }
 
@@ -157,12 +182,7 @@ impl<'a> FontQuery<'a> {
         mut visit: impl FnMut(&FontCandidate) -> ControlFlow<B>,
     ) -> Result<ControlFlow<B>, CatalogueError> {
         for family in families {
-            if !Arc::ptr_eq(&family.publication.owner, &self.publication.owner) {
-                return Err(CatalogueError::ForeignFamily);
-            }
-            if family.publication.generation != self.publication.generation {
-                return Err(CatalogueError::StaleFamily);
-            }
+            family.validate(self.publication)?;
         }
         self.inner
             .set_families(families.iter().map(|family| family.id));

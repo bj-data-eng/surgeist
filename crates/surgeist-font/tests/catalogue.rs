@@ -96,7 +96,9 @@ fn refusal_of_one_collection_face_publishes_nothing() {
     let previous = decode(AHEM);
     let mut catalogue = FontCatalogue::registered_only();
     let publication = catalogue.register(previous.clone()).unwrap();
-    let incomplete = collection(previous.bytes(), &unnamed_face());
+    let ahem = catalogue.family_by_name("Ahem").unwrap();
+    assert!(catalogue.family_by_name("Source Code Pro").is_none());
+    let incomplete = collection(CFF, &unnamed_face());
     assert_eq!(incomplete.face_count(), 2);
     assert!(matches!(
         catalogue.register(incomplete),
@@ -109,6 +111,13 @@ fn refusal_of_one_collection_face_publishes_nothing() {
     assert_eq!(
         catalogue.registered_faces().collect::<Vec<_>>(),
         vec![previous.face(0).unwrap()]
+    );
+    assert!(catalogue.family_by_name("Source Code Pro").is_none());
+    let selected = first_face(&mut catalogue, ahem);
+    assert_eq!(selected, previous.face(0).unwrap());
+    assert_eq!(
+        selected.resource().bytes().as_ptr(),
+        previous.bytes().as_ptr()
     );
 }
 
@@ -258,4 +267,45 @@ fn candidate_order_preserves_best_then_default_for_each_requested_family() {
             cff.face(0).unwrap()
         ]
     );
+}
+
+#[test]
+fn candidates_keep_the_collection_index_across_refresh() {
+    let ahem = decode(AHEM);
+    let resource = collection(CFF, ahem.bytes());
+    let expected = resource.face(1).unwrap();
+    let mut catalogue = FontCatalogue::registered_only();
+    catalogue.register(resource.clone()).unwrap();
+    for _ in 0..2 {
+        let family = catalogue.family_by_name("ahem").unwrap();
+        assert_eq!(catalogue.family_name(&family).unwrap(), "Ahem");
+        let selected = first_face(&mut catalogue, family);
+        assert_eq!(selected, expected);
+        assert_eq!(selected.index(), 1);
+        assert_eq!(
+            selected.resource().bytes().as_ptr(),
+            resource.bytes().as_ptr()
+        );
+        catalogue.refresh().unwrap();
+    }
+}
+
+fn first_face(
+    catalogue: &mut FontCatalogue,
+    family: surgeist_font::FontFamily,
+) -> surgeist_font::FontFace {
+    use std::ops::ControlFlow;
+
+    use surgeist_font::FontAttributes;
+
+    let result = catalogue
+        .query()
+        .visit_candidates(&[family], FontAttributes::default(), |font| {
+            ControlFlow::Break(font.face().clone())
+        })
+        .unwrap();
+    let ControlFlow::Break(face) = result else {
+        panic!("registered family must have a candidate");
+    };
+    face
 }

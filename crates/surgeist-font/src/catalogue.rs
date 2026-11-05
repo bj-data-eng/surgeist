@@ -89,6 +89,8 @@ pub enum CatalogueError {
     ForeignFamily,
     /// A family handle was issued before the current publication.
     StaleFamily,
+    /// The provider lost the family associated with a current handle.
+    ProviderFamilyMissing,
     /// A provider result could not be associated with its exact registered face.
     ProviderResourceConflict,
 }
@@ -105,6 +107,7 @@ impl fmt::Display for CatalogueError {
             ),
             Self::ForeignFamily => f.write_str("font family belongs to a different catalogue"),
             Self::StaleFamily => f.write_str("font family belongs to a preceding publication"),
+            Self::ProviderFamilyMissing => f.write_str("font provider family is missing"),
             Self::ProviderResourceConflict => {
                 f.write_str("font provider resource association conflicts")
             }
@@ -175,6 +178,15 @@ impl FontCatalogue {
     pub fn family_by_name(&mut self, name: &str) -> Option<FontFamily> {
         let id = self.provider.collection.family_id(name)?;
         Some(FontFamily::new(id, self.publication.clone()))
+    }
+
+    /// Returns the provider's canonical registered name for this family.
+    pub fn family_name(&mut self, family: &FontFamily) -> Result<&str, CatalogueError> {
+        let id = family.validate(&self.publication)?;
+        self.provider
+            .collection
+            .family_name(id)
+            .ok_or(CatalogueError::ProviderFamilyMissing)
     }
 
     /// Borrows this publication for one or more registered candidate queries.
@@ -270,11 +282,14 @@ mod tests {
     #[test]
     fn exhausted_generation_refuses_registration_and_refresh() {
         let mut catalogue = FontCatalogue::registered_only();
+        let limits = DecodeLimits::new(1 << 20, 1 << 20, 1 << 20, 100, 10, 24 << 20, 32 << 20);
+        let bytes = include_bytes!("../tests/fixtures/ahem-original/Ahem.woff2");
+        let resource = FontResource::decode(bytes.to_vec(), limits).unwrap();
+        let expected = resource.face(0).unwrap();
+        catalogue.register(resource.clone()).unwrap();
         catalogue.publication.generation = u64::MAX;
         let before = catalogue.publication().clone();
-        let limits = DecodeLimits::new(1024, 1024, 1024, 16, 4, 1024, 4096);
-        let resource = FontResource::decode(b"\0\x01\0\0\0\0\0\0\0\0\0\0".to_vec(), limits)
-            .expect("an empty table directory passes structural admission");
+        let family = catalogue.family_by_name("Ahem").unwrap();
 
         let error = CatalogueError::GenerationExhausted {
             generation: u64::MAX,
@@ -282,7 +297,17 @@ mod tests {
         assert_eq!(catalogue.register(resource), Err(error.clone()));
         assert_eq!(catalogue.refresh(), Err(error));
         assert_eq!(catalogue.publication(), &before);
-        assert!(catalogue.registered_faces().next().is_none());
+        assert_eq!(
+            catalogue.registered_faces().collect::<Vec<_>>(),
+            std::slice::from_ref(&expected)
+        );
+        let selected = catalogue
+            .query()
+            .visit_candidates(&[family], FontAttributes::default(), |font| {
+                std::ops::ControlFlow::Break(font.face().clone())
+            })
+            .unwrap();
+        assert_eq!(selected, std::ops::ControlFlow::Break(expected));
     }
 
     #[test]
