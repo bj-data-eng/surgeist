@@ -405,13 +405,14 @@ fn case_identities(snapshot: &Inventory) -> Vec<(String, String, String, String)
 }
 
 #[test]
-fn focused_geometry_only_requires_selected_grid_static_predecessors() {
+fn focused_geometry_requires_only_its_selected_predecessors() {
     let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
     let empty_editions = Directory::new();
     let mode = QualificationMode::Regular;
-    for (source, requires_grid_static) in [
-        ("html/flex/fri07_collapsed_strut_wrapping.html", false),
+    for (source, requires_predecessors) in [
+        ("html/flex/fri07_collapsed_strut_single_line.html", false),
         ("html/grid/grid_absolute_resolved_insets.html", true),
+        ("html/flex/fri07_collapsed_strut_wrapping.html", true),
     ] {
         let root = Directory::new();
         let mut declaration = DeclarationInput::parse(DECLARATION).unwrap();
@@ -420,7 +421,7 @@ fn focused_geometry_only_requires_selected_grid_static_predecessors() {
             inventory(&root.0, owner, &declaration, mode, InputAccess::Prepare).unwrap();
         assert!(inventory.cases.iter().all(|case| case.semantic.is_some()));
         let selected = focused_geometry_predecessors(&empty_editions.0, &inventory.cases, mode);
-        if requires_grid_static {
+        if requires_predecessors {
             assert!(selected.is_err());
             assert_eq!(
                 focused_geometry_predecessors(owner, &inventory.cases, mode)
