@@ -2654,6 +2654,8 @@ impl<S: LayoutScalar> Constants<S> {
                 .height
                 .or(resolved_min_size.height),
         );
+        // CSS Sizing 3 §3.1 gives the minimum precedence over a conflicting
+        // maximum. Use the effective bound for track sizing and gutter insets.
         let max_size = Size::new(
             resolve_maximum_optional(
                 &style.max_size.width,
@@ -2673,7 +2675,8 @@ impl<S: LayoutScalar> Constants<S> {
             .map_err(|error| sizing_resolution_error(node, error))?,
         )
         .apply_aspect_ratio(*style.aspect_ratio)
-        .add_optional(box_sizing_adjustment);
+        .add_optional(box_sizing_adjustment)
+        .max_optional(min_size);
         let fallback_source = MeasuredLeafContentBoxInsetSourceOf {
             flow_axes,
             computed_overflow: style.overflow,
