@@ -84,8 +84,11 @@ cargo test --offline --locked -j 1 -p surgeist-layout --test layout runs_registe
 This separate current-qualified result covers the declared four wrapping
 variants. Before execution, it authenticates the registered terminal seal,
 complete retained inputs and outputs, live source owners, browser profile,
-policy and per-variant identity. The canonical declaration and semantic
-specifications bind every requested box selector and both complete Native
+policy and per-variant identity. The retained catalogue supplies the captured
+records. Freshness compares their complete selected records with the live
+catalogue and checks exact bytes for the remaining live inputs. The unfiltered
+run requires capture authority for all registered variants. The canonical
+declaration and semantic specifications bind every requested box selector and both complete Native
 packet channels before capture. Qualification requires the independently
 authored full Native oracle and the exact expected difference set; changed or
 additional differences, unexpected passes, missing coverage and late freshness
@@ -108,8 +111,12 @@ cargo run --offline --locked -j 1 -p surgeist-layout --features layout-golden-ge
 ```
 
 Publication uses the already-acquired pinned browser and refuses an existing
-edition directory. The check is read-only and browser-free. A successful
-publication emits terminal authority only after all source, capture, raw,
+edition directory. The check is read-only and browser-free.
+`--derive-canonical-box-qualification` runs the same capture and source checks
+and writes derived terminal bytes to standard output. It leaves the edition
+directory untouched.
+
+A successful publication emits terminal authority only after all source, capture, raw,
 Native, qualification and freshness checks pass; registration is a separately
 reviewed seal change. The earlier `root-context-v4` publication remains a
 distinct immutable edition.
