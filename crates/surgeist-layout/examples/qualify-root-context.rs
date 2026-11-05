@@ -326,6 +326,8 @@ mod tests {
             "--check-published-original-subgrid-body-qualification",
             "--publish-prepared-atomic-percentage-qualification",
             "--check-published-prepared-atomic-percentage-qualification",
+            "--publish-horizontal-br-font-band-qualification",
+            "--check-published-horizontal-br-font-band-qualification",
         ] {
             assert_eq!(parse_arguments(&arguments(&[command])).unwrap().0, None);
             assert!(parse_arguments(&arguments(&[command, "other-root"])).is_err());
