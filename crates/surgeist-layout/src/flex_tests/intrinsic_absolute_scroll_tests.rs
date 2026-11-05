@@ -1030,6 +1030,7 @@ fn fri07_c01_intrinsic_provider_failure_and_non_finite_output_remain_exact_in_bo
 enum Fri07C01CompositionMeasureMode {
     Values,
     Failure,
+    CrossExtent,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1186,6 +1187,16 @@ impl<S: LayoutScalar> LayoutTree for Fri07C01CompositionTree<S> {
         self.measurement_requests.borrow_mut().push((node, input));
         if self.measure_mode.get() == Fri07C01CompositionMeasureMode::Failure && node == 4 {
             return Some(Err(Fri07C01CompositionMeasureError::ProviderFailure));
+        }
+        if self.measure_mode.get() == Fri07C01CompositionMeasureMode::CrossExtent {
+            let extent = input
+                .content_sizing_request()
+                .axes()
+                .height
+                .space()
+                .definite_size()
+                .map_or(S::ZERO, |height| height.get());
+            return Some(Ok(Size::splat(extent)));
         }
 
         let request = input.content_sizing_request().axes().width;
@@ -6768,7 +6779,7 @@ fn assert_flex_basis_does_not_replace_intrinsic_content<S: LayoutScalar>() {
             .expect("cache publication succeeds");
     }
 
-    for (shrink, expected) in [(1.0, 0.0), (0.0, 50.0)] {
+    for (grow, shrink, expected) in [(0.0, 1.0, 0.0), (0.0, 0.0, 50.0), (1.0, 0.0, 50.0)] {
         let empty = PublicLayoutTreeOf::new()
             .children(1, [3])
             .children(3, [])
@@ -6776,6 +6787,7 @@ fn assert_flex_basis_does_not_replace_intrinsic_content<S: LayoutScalar>() {
             .style(
                 3,
                 NodeInputOf {
+                    flex_grow: FlexGrowOf::try_new(scalar(grow)).unwrap(),
                     flex_shrink: FlexShrinkOf::try_new(scalar(shrink)).unwrap(),
                     ..item.clone()
                 },
@@ -6786,7 +6798,7 @@ fn assert_flex_basis_does_not_replace_intrinsic_content<S: LayoutScalar>() {
             assert_eq!(
                 output.size.width,
                 scalar(expected),
-                "empty, shrink {shrink}"
+                "empty, grow {grow}, shrink {shrink}"
             );
         }
     }
@@ -6860,4 +6872,61 @@ fn flex_basis_does_not_replace_intrinsic_content_f32() {
 #[test]
 fn flex_basis_does_not_replace_intrinsic_content_f64() {
     assert_flex_basis_does_not_replace_intrinsic_content::<f64>();
+}
+
+fn intrinsic_flex_basis_width_with_bounded_cross<S: LayoutScalar>() -> f64 {
+    let scalar = S::from_f64;
+    let mut tree = Fri07C01CompositionTree::new();
+    tree.tree = PublicLayoutTreeOf::new()
+        .children(1, [2])
+        .children(2, [])
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::Flex,
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                flex_basis: FlexBasisOf::px(scalar(50.0)),
+                flex_grow: FlexGrowOf::try_new(S::ONE).unwrap(),
+                size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(scalar(100.0))),
+                max_size: Size::new(MaxSizeOf::NONE, MaxSizeOf::px(scalar(30.0))),
+                min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::AUTO),
+                ..NodeInputOf::default()
+            },
+        );
+    tree.measure_mode
+        .set(Fri07C01CompositionMeasureMode::CrossExtent);
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::NONE,
+        OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(Size::splat(AxisSizingRequestOf::new(
+        AvailableSpaceOf::Indefinite,
+        SizingOperation::Normal,
+    )));
+    let batch = compute_layout(&tree, 1, request).expect("cross-dependent flex layout succeeds");
+    fri07_c01_composition_output(batch.unrounded_entries(), 1)
+        .size
+        .width
+        .to_f64()
+}
+
+#[test]
+fn flex_basis_intrinsic_preserves_cross_size_bounds() {
+    assert_eq!(
+        [
+            intrinsic_flex_basis_width_with_bounded_cross::<f32>(),
+            intrinsic_flex_basis_width_with_bounded_cross::<f64>(),
+        ],
+        [30.0, 30.0]
+    );
 }
