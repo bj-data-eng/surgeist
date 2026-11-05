@@ -169,6 +169,34 @@ fn prepared_vello_pass_contains_no_wgpu_resource_or_submission_authority() {
 }
 
 #[test]
+fn authored_runs_reuse_backend_font_identity_for_the_same_admitted_resource() {
+    let make_font = || {
+        FontData::try_from_bytes(
+            AHEM_FONT_BYTES.to_vec(),
+            0,
+            surgeist_test::fixtures::FONT_LIMITS,
+        )
+        .unwrap()
+    };
+    let font = make_font();
+    let same_face = FontData::from_face(font.admitted_face().clone());
+    let other_resource = make_font();
+    let glyphs = [TextGlyph::try_new(AHEM_GLYPH_X, 0.0, 0.0, 16.0).unwrap()];
+    let mut scene = VelloScene::default();
+    for font in [font.clone(), font, same_face, other_resource] {
+        let run = text_run_for(font, 16.0, Transform::identity(), &glyphs);
+        scene.encode_text_run(&run).unwrap();
+    }
+    let ids = scene
+        .observation_for_test()
+        .glyph_font_ids_for_test()
+        .collect::<Vec<_>>();
+    assert_eq!(ids.len(), 4);
+    assert_eq!(ids[..3], [ids[0]; 3]);
+    assert_ne!(ids[0], ids[3]);
+}
+
+#[test]
 fn logical_glyph_native_narrowing_is_atomic_for_the_entire_run() {
     let font = FontData::try_from_bytes(
         AHEM_FONT_BYTES.to_vec(),

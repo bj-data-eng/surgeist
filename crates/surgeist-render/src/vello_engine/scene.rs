@@ -389,6 +389,10 @@ pub(crate) struct VelloSceneObservation<'a> {
 
 #[cfg(test)]
 impl VelloSceneObservation<'_> {
+    pub(crate) fn glyph_font_ids_for_test(&self) -> impl Iterator<Item = u64> + '_ {
+        self.glyph_runs.iter().map(|run| run.font.data.id())
+    }
+
     pub(crate) const fn glyph_run_count_for_test(&self) -> usize {
         self.glyph_runs.len()
     }
