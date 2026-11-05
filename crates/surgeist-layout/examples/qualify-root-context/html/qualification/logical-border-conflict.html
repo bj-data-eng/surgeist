@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>logical-border-conflict</title>
+  <link rel="stylesheet" href="../../scripts/gentest/test_base_style.css">
+  <script src="../../scripts/gentest/test_helper.js"></script>
+</head>
+<body>
+<div id="test-root" style="display:grid;position:absolute;width:60px;height:40px;grid-template-columns:40px;grid-template-rows:30px">
+  <div style="display:flex;align-items:flex-start;width:25px;height:20px;border-left-width:11px;border-inline-start-width:5px">
+    <div style="width:7px;height:7px"></div>
+  </div>
+</div>
+</body>
+</html>
