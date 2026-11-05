@@ -47,12 +47,12 @@ use absolute::layout_absolute_children;
 pub(crate) use input::BlockChildProjection;
 use input::{
     BlockContainerProjection, automatic_block_depends_on_ratio, block_container_projection,
-    normal_block_auto_inline, with_block_scroll_projections,
+    normal_block_auto_inline, normal_block_inline_ratio, with_block_scroll_projections,
 };
 use scroll::{finish_scroll_geometry, prepare_scroll_contributions};
 use sizing::{
     BlockOptionalSizeSubExt, maximum_size, minimum_size, preferred_size, resolve_auto_optional,
-    resolve_length_or_zero,
+    resolve_length_or_zero, transfer_block_ratio_inline_limits,
 };
 
 #[cfg(test)]
@@ -824,19 +824,44 @@ impl<S: LayoutScalar> Constants<S> {
                     SizingAlgorithm::Block,
                     true,
                 )
-                .transpose_with_node(tree, node)?
-                .apply_aspect_ratio(*style.common.aspect_ratio)
-                .add_optional(box_sizing_adjustment);
+                .transpose_with_node(tree, node)?;
                 let max_size = maximum_size(
                     style.common.max_size,
                     input.parent(),
                     SizingAlgorithm::Block,
                     true,
                 )
-                .transpose_with_node(tree, node)?
-                .apply_aspect_ratio(*style.common.aspect_ratio)
-                .add_optional(box_sizing_adjustment);
-                (style_size, min_size, max_size)
+                .transpose_with_node(tree, node)?;
+                let inline_request = flow_axes.logical_size(input.sizing_request().axes()).inline;
+                let normal_inline_ratio = normal_block_inline_ratio(
+                    &style.common,
+                    style.display,
+                    tree.node_input(node).float,
+                )
+                .filter(|_| {
+                    matches!(
+                        input.parent_formatting_context(),
+                        ParentFormattingContext::BlockFlow | ParentFormattingContext::NoParent
+                    ) && inline_request.operation() == crate::SizingOperation::Normal
+                        && (flow_axes.logical_size(input.known()).inline.is_some()
+                            || inline_request.space().definite_size().is_some())
+                });
+                let (min_size, max_size) = if let Some(ratio) = normal_inline_ratio {
+                    transfer_block_ratio_inline_limits(flow_axes, ratio, min_size, max_size)
+                        .map_err(|status| {
+                            crate::error::sizing_resolution_error(node, status.into())
+                        })?
+                } else {
+                    (
+                        min_size.apply_aspect_ratio(*style.common.aspect_ratio),
+                        max_size.apply_aspect_ratio(*style.common.aspect_ratio),
+                    )
+                };
+                (
+                    style_size,
+                    min_size.add_optional(box_sizing_adjustment),
+                    max_size.add_optional(box_sizing_adjustment),
+                )
             }
         };
         let min_max_definite_size = min_size.zip_map(max_size, |min, max| match (min, max) {

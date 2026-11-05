@@ -33,6 +33,18 @@ pub(super) fn automatic_block_depends_on_ratio<S: LayoutScalar>(
     common.aspect_ratio.is_some() && block_preferred.is_auto()
 }
 
+pub(super) fn normal_block_inline_ratio<S: LayoutScalar>(
+    common: &CommonBoxProjection<'_, S>,
+    display: Display,
+    float: Float,
+) -> Option<crate::AspectRatioOf<S>> {
+    common.aspect_ratio.filter(|_| {
+        display == Display::Block
+            && normal_block_auto_inline(common, display, float)
+            && automatic_block_depends_on_ratio(common)
+    })
+}
+
 /// Block-container facts settled at the block algorithm entry.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct BlockContainerProjection<'a, S: LayoutScalar> {
