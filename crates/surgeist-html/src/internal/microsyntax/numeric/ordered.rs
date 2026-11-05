@@ -112,12 +112,13 @@ impl Magnitude for HtmlNonNegativeDecimal {
 
 /// The string of a fraction buffer, with the buffer's capacity.
 fn fraction_string(digits: Vec<u8>) -> String {
-    ascii_digits(&digits, digits.capacity())
+    ascii_digits(digits)
 }
 
 /// The string of a difference's integer digits, with exactly their length as capacity.
-fn difference_string(digits: Vec<u8>) -> String {
-    ascii_digits(&digits, digits.len())
+fn difference_string(mut digits: Vec<u8>) -> String {
+    digits.shrink_to_fit();
+    ascii_digits(digits)
 }
 
 /// The canonical digits of `larger - smaller - borrow`, most significant first.
@@ -211,6 +212,23 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    /// A difference keeps exactly its digits' length as capacity, however much longer the working
+    /// buffer was, so `retained_buffer_bytes` reports what the value occupies.
+    #[test]
+    fn integer_gaps_retain_exactly_their_digits() {
+        for (left, right) in [(1000_u128, 1), (1000, 999), (10, 9), (12345, 12340)] {
+            let (left, right) = (integer(left), integer(right));
+            let Order::FirstLarger(gap) = Order::of(&left, &right) else {
+                panic!("the first is larger");
+            };
+            let difference = gap.difference();
+            assert_eq!(
+                difference.retained_buffer_bytes(),
+                difference.decimal_digits().len()
+            );
         }
     }
 

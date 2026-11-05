@@ -193,16 +193,21 @@ fn ascii_digit_string(bytes: Vec<u8>) -> Result<String, HtmlDecimalDigitsError> 
     })
 }
 
-/// Builds the string of an unmetered writer's digit buffer. These writers already grow ordinary
-/// buffers without a limit, so the copy is as unmetered as the buffer it reads. It keeps the
-/// buffer's capacity, which `retained_buffer_bytes` reports, and has no validation outcome: each
-/// byte is one character.
-fn ascii_digits(bytes: &[u8], capacity: usize) -> String {
+/// Takes an unmetered writer's digit buffer as a string. The buffer moves into the string, so the
+/// digits are never held twice, and it keeps its capacity, which `retained_buffer_bytes` reports.
+/// Writers push only ASCII digits, so one scan proves the buffer is UTF-8 and nothing is copied.
+/// The conversion has no validation outcome: were a byte not an ASCII digit, it would still be one
+/// character, as every byte of a digit buffer always has been.
+fn ascii_digits(bytes: Vec<u8>) -> String {
     #[cfg(test)]
     count_digit_steps(bytes.len());
-    let mut digits = String::with_capacity(capacity.max(bytes.len()));
-    digits.extend(bytes.iter().map(|&byte| char::from(byte)));
-    digits
+    String::from_utf8(bytes).unwrap_or_else(|rejected| {
+        rejected
+            .as_bytes()
+            .iter()
+            .map(|&byte| char::from(byte))
+            .collect()
+    })
 }
 
 /// Observed cumulative capacity of every variable allocation made by one
@@ -1157,44 +1162,29 @@ pub struct HtmlNonNegativeInteger {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct HtmlPositiveInteger {
     magnitude: HtmlNonNegativeInteger,
+    /// The position of the magnitude's last nonzero digit, which only a positive magnitude has.
+    pivot: usize,
 }
 impl HtmlPositiveInteger {
     /// The positive integer, or the zero it was given back.
     pub(crate) fn new(magnitude: HtmlNonNegativeInteger) -> Result<Self, HtmlNonNegativeInteger> {
-        if magnitude.is_zero() {
-            Err(magnitude)
-        } else {
-            Ok(Self { magnitude })
+        match NonZeroDigits::new(&magnitude.digits) {
+            Some(NonZeroDigits { pivot, .. }) => Ok(Self { magnitude, pivot }),
+            None => Err(magnitude),
         }
     }
     pub(crate) fn magnitude(&self) -> &HtmlNonNegativeInteger {
         &self.magnitude
     }
-    /// The exact integer below this one.
+    /// The exact integer below this one, written straight into its string.
     pub(crate) fn predecessor(&self) -> HtmlNonNegativeInteger {
-        // Borrow one from the least significant digit. A zero digit becomes nine and passes the
-        // borrow on; the first other digit absorbs it. A positive magnitude has such a digit, so
-        // no borrow leaves the most significant one.
-        let mut borrow = true;
-        let mut reversed = Vec::with_capacity(self.magnitude.digits.len());
-        for digit in self.magnitude.digits.bytes().rev() {
-            reversed.push(match (borrow, digit) {
-                (true, b'0') => b'9',
-                (true, digit) => {
-                    borrow = false;
-                    digit - 1
-                }
-                (false, digit) => digit,
-            });
-        }
-        // Only the leading digit can have become zero, when it was a one.
-        if reversed.len() > 1 && reversed.last() == Some(&b'0') {
-            reversed.pop();
-        }
-        reversed.reverse();
-        HtmlNonNegativeInteger {
-            digits: ascii_digits(&reversed, reversed.len()),
-        }
+        let nonzero = NonZeroDigits {
+            digits: &self.magnitude.digits,
+            pivot: self.pivot,
+        };
+        let mut digits = String::with_capacity(nonzero.predecessor_length());
+        write_unit_step(UnitStep::Predecessor(nonzero), &mut digits);
+        HtmlNonNegativeInteger { digits }
     }
 }
 
@@ -1268,7 +1258,7 @@ impl HtmlNonNegativeInteger {
         let mut output = Vec::with_capacity(capacity_hint(self.digits.len(), 10));
         write_product(self.digits.as_bytes(), multiplier, 0, &mut output);
         Self {
-            digits: ascii_digits(&output, output.capacity()),
+            digits: ascii_digits(output),
         }
     }
 
@@ -1282,7 +1272,7 @@ impl HtmlNonNegativeInteger {
             &mut output,
         );
         Self {
-            digits: ascii_digits(&output, output.capacity()),
+            digits: ascii_digits(output),
         }
     }
 
@@ -1301,7 +1291,7 @@ impl HtmlNonNegativeInteger {
         let remainder = write_quotient(self.digits.as_bytes(), divisor, &mut output);
         (
             Self {
-                digits: ascii_digits(&output, output.capacity()),
+                digits: ascii_digits(output),
             },
             remainder,
         )
@@ -1631,7 +1621,7 @@ impl HtmlNonNegativeDecimal {
         );
         Self::from_unmetered_fraction(
             HtmlNonNegativeInteger {
-                digits: ascii_digits(&integer, integer.capacity()),
+                digits: ascii_digits(integer),
             },
             fraction,
         )
@@ -1653,7 +1643,7 @@ impl HtmlNonNegativeDecimal {
         );
         Self::from_unmetered_fraction(
             HtmlNonNegativeInteger {
-                digits: ascii_digits(&integer, integer.capacity()),
+                digits: ascii_digits(integer),
             },
             fraction,
         )
@@ -1677,7 +1667,7 @@ impl HtmlNonNegativeDecimal {
         trim_trailing_zeroes(&mut fraction);
         Self {
             integer,
-            fraction: ascii_digits(&fraction, fraction.capacity()),
+            fraction: ascii_digits(fraction),
         }
     }
 
@@ -3423,6 +3413,62 @@ mod tests {
             columns.finish().as_document_string().to_utf8().unwrap(),
             "14"
         );
+    }
+
+    #[test]
+    fn unmetered_digit_buffers_move_into_their_strings() {
+        let bytes = b"4096".to_vec();
+        let (at, capacity) = (bytes.as_ptr(), bytes.capacity());
+        let digits = ascii_digits(bytes);
+        assert_eq!(digits, "4096");
+        assert_eq!(digits.as_ptr(), at, "the digits are moved, not copied");
+        assert_eq!(digits.capacity(), capacity);
+        // A byte that is not an ASCII digit is still one character, as it always was.
+        assert_eq!(ascii_digits(vec![b'1', 0xE9, b'2']), "1\u{e9}2");
+    }
+
+    /// The predecessor of a positive integer against machine subtraction, and against the digits
+    /// of a power of ten beyond any machine integer, whose predecessor is all nines.
+    #[test]
+    fn positive_predecessors_match_machine_subtraction() {
+        let samples = [
+            1_u128,
+            2,
+            9,
+            10,
+            11,
+            99,
+            100,
+            101,
+            999,
+            1000,
+            1001,
+            10_u128.pow(30),
+            10_u128.pow(30) + 1,
+            u128::MAX,
+        ];
+        for value in samples {
+            let positive = HtmlPositiveInteger::new(HtmlNonNegativeInteger::from(value)).unwrap();
+            let predecessor = positive.predecessor();
+            assert_eq!(
+                predecessor.decimal_digits(),
+                (value - 1).to_string(),
+                "{value} - 1"
+            );
+            assert_eq!(
+                predecessor.retained_buffer_bytes(),
+                predecessor.digits.len()
+            );
+        }
+        let big = HtmlNonNegativeInteger::from_decimal_digits(&DocumentString::from(format!(
+            "1{}",
+            "0".repeat(60)
+        )))
+        .unwrap();
+        let predecessor = HtmlPositiveInteger::new(big).unwrap().predecessor();
+        assert_eq!(predecessor.decimal_digits(), "9".repeat(60));
+        let zero = HtmlNonNegativeInteger::from(0_u128);
+        assert_eq!(HtmlPositiveInteger::new(zero.clone()), Err(zero));
     }
 
     /// 2^-1074 = 5^1074 / 10^1074 (binary64 subnormal minimum): 5^1074 has 751
