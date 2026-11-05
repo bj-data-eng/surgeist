@@ -134,6 +134,11 @@ percentage projection checks. The absolute-root-local source closure refuses
 logical block padding/inset declarations with
 `Root context: UnrepresentedLogicalBlockEdges`; this does not add block-edge,
 border or margin normalization or a cascade interpreter.
+After root-context source checks, parsed inline `border-block*` and
+`border-inline*` declarations on the root or its descendants refuse with
+`Root context: UnrepresentedLogicalBorder`. This includes shorthands and
+mixed physical and logical declarations. Physical border widths use the
+existing physical fields.
 Broader source profiles or a changed base asset need independent qualification.
 
 Extents come from the standards-mode unscaled CSSOM viewport after scrollbar

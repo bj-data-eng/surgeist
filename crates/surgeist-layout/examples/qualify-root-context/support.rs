@@ -2373,7 +2373,12 @@ sha256 = "{}"
     #[test]
     fn semantic_record_identity_excludes_only_registration_digests() {
         let mut input = DeclarationInput::parse(DECLARATION).unwrap();
-        let record = input.declaration.records.last_mut().unwrap();
+        let record = input
+            .declaration
+            .records
+            .iter_mut()
+            .find(|record| !record.historical_sha256.is_empty())
+            .unwrap();
         let original = semantic_record_digest(record).unwrap();
         record.semantic_specifications =
             Some(BTreeMap::from([("content_box_ltr".into(), reference())]));
