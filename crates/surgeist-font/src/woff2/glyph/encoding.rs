@@ -1,5 +1,5 @@
 //! Find the smallest TrueType flag and coordinate representation of an outline.
-use super::{Budget, Buffer, DecodeError, InvalidKind, Point, add, invalid, multiply};
+use super::{Budget, Buffer, DecodeError, Point, add, multiply};
 
 pub(super) const MAX_POINTS: usize = u16::MAX as usize + 1;
 const MAX_RUN: usize = 256;
@@ -62,10 +62,8 @@ impl Axis {
     fn write(self, delta: i16, output: &mut Buffer<'_, u8>) -> Result<(), DecodeError> {
         match self {
             Self::Same => Ok(()),
-            Self::PositiveByte | Self::NegativeByte => output.push(
-                u8::try_from(delta.unsigned_abs())
-                    .map_err(|_| invalid(InvalidKind::WoffGlyph, 0))?,
-            ),
+            Self::PositiveByte | Self::NegativeByte => output
+                .push(u8::try_from(delta.unsigned_abs()).map_err(|_| DecodeError::SizeOverflow)?),
             Self::Word => output.extend(&delta.to_be_bytes()),
         }
     }
@@ -135,7 +133,7 @@ impl<'a> Encoder<'a> {
         // start fits u16, and a five-byte singleton per point bounds all
         // optimal prefix costs well below u32::MAX.
         if points.len() > MAX_POINTS {
-            return Err(invalid(InvalidKind::WoffGlyph, 0));
+            return Err(DecodeError::SizeOverflow);
         }
         let slots = points.len().saturating_sub(1).min(MAX_RUN - 1);
         self.trace.resize(add(points.len(), 1)?, Step::default())?;
@@ -143,13 +141,15 @@ impl<'a> Encoder<'a> {
             .resize(multiply(PATTERNS, slots)?, Candidate::default())?;
         self.trace[0] = Step::default();
         let mut windows = [Window::default(); PATTERNS];
-        let (mut x, mut y) = (0, 0);
         for (index, point) in points.iter().enumerate() {
-            let dx = word_delta(point.x, x, index)?;
-            let dy = word_delta(point.y, y, index)?;
-            (x, y) = (point.x, point.y);
             let end = index + 1;
-            let mut best = None::<Step>;
+            // A word for each of the two checked deltas is always a valid
+            // singleton. Other patterns can reduce its cost.
+            let mut best = Step {
+                bytes: self.trace[index].bytes + 5,
+                start: index as u16,
+                flag: u8::from(point.on_curve),
+            };
 
             // Every encoding ends with a singleton or a repeated run with
             // one of the 2 * 4 * 4 flag patterns. For a repeated run [j, end)
@@ -161,7 +161,7 @@ impl<'a> Encoder<'a> {
                 let x = Axis::ALL[pattern & 3];
                 let y = Axis::ALL[(pattern >> 2) & 3];
                 let on_curve = pattern & 16 != 0;
-                if on_curve != point.on_curve || !x.fits(dx) || !y.fits(dy) {
+                if on_curve != point.on_curve || !x.fits(point.dx) || !y.fits(point.dy) {
                     *window = Window::default();
                     continue;
                 }
@@ -192,11 +192,11 @@ impl<'a> Encoder<'a> {
                     }
                 }
                 window.previous_fits = true;
-                if best.is_none_or(|step| choice.bytes < step.bytes) {
-                    best = Some(choice);
+                if choice.bytes < best.bytes {
+                    best = choice;
                 }
             }
-            self.trace[end] = best.ok_or_else(|| invalid(InvalidKind::WoffGlyph, index))?;
+            self.trace[end] = best;
         }
 
         self.runs.clear();
@@ -245,21 +245,11 @@ impl<'a> Encoder<'a> {
                 .runs
                 .iter()
                 .flat_map(|run| std::iter::repeat_n(run.flag, usize::from(run.repeats) + 1));
-            let mut previous = 0;
-            for (index, (point, flag)) in points.iter().zip(flags).enumerate() {
-                let value = if vertical { point.y } else { point.x };
-                let delta = word_delta(value, previous, index)?;
+            for (point, flag) in points.iter().zip(flags) {
+                let delta = if vertical { point.dy } else { point.dx };
                 Axis::from_flag(flag >> u8::from(vertical)).write(delta, output)?;
-                previous = value;
             }
         }
         Ok(())
     }
-}
-
-fn word_delta(value: i32, previous: i32, index: usize) -> Result<i16, DecodeError> {
-    value
-        .checked_sub(previous)
-        .and_then(|delta| i16::try_from(delta).ok())
-        .ok_or_else(|| invalid(InvalidKind::WoffGlyph, index))
 }

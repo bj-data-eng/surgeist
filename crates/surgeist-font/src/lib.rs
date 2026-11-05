@@ -127,7 +127,7 @@ impl InvalidContainer {
     pub const fn kind(self) -> InvalidKind {
         self.kind
     }
-    /// Byte offset within the affected container, table or compressed region.
+    /// Byte offset within the affected container, table or substream.
     pub const fn offset(self) -> usize {
         self.offset
     }
@@ -160,7 +160,11 @@ impl fmt::Display for DecodeError {
                 limit,
             } => write!(f, "{kind:?} requires {required}, limit is {limit}"),
             Self::InvalidContainer(error) => {
-                write!(f, "{:?} at container offset {}", error.kind, error.offset)
+                write!(
+                    f,
+                    "{:?} at byte offset {} in the affected data",
+                    error.kind, error.offset
+                )
             }
             Self::AllocationFailed => f.write_str("font allocation failed"),
             Self::SizeOverflow => f.write_str("font size arithmetic overflowed"),

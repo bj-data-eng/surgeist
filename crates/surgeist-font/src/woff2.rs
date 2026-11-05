@@ -318,6 +318,14 @@ pub(super) fn decode(source: &FontSource, limits: DecodeLimits) -> Result<Vec<u8
         length: compressed_length,
     };
     validate_blocks(data, compressed, metadata, metadata_original, private)?;
+    let header_size = layout_headers(version, &mut faces)?;
+    // Literal tables are emitted once per unique directory entry. Their
+    // padded lengths and the headers are mandatory even before any transform.
+    let minimum = tables
+        .iter()
+        .filter(|table| !table.transformed)
+        .try_fold(header_size, |size, table| add(size, padded(table.length)?))?;
+    check(LimitKind::DecodedBytes, minimum, limits.decoded_bytes())?;
     let (live, workspace) = budget.usage();
     let stream = super::brotli::decompress(
         compressed.bytes(data)?,
@@ -414,6 +422,41 @@ fn validate_pairs(
     Ok(())
 }
 
+fn validate_outline_declarations(
+    faces: &[Face],
+    indices: &[usize],
+    tables: &[Table],
+    stream: &[u8],
+) -> Result<(), DecodeError> {
+    for face in faces.iter().copied() {
+        let Some(index) = find(face, indices, tables, b"glyf") else {
+            continue;
+        };
+        if !tables[index].transformed {
+            continue;
+        }
+        let mut reader = Reader::new(tables[index].bytes(stream)?, InvalidKind::WoffGlyph);
+        let outline = glyph::Header::read(&mut reader)?;
+        // Check each face's supplied declarations, even when outlines are
+        // shared or hmtx is literal. Missing tables remain a consumer concern
+        // unless a transform such as hmtx needs them as inputs.
+        for (tag, offset, expected) in [
+            (b"head", 50, outline.index_format),
+            (b"maxp", 4, outline.glyphs),
+        ] {
+            if let Some(index) = find(face, indices, tables, tag) {
+                let mut table =
+                    Reader::new(tables[index].bytes(stream)?, InvalidKind::WoffTransform);
+                table.take(offset)?;
+                if table.u16()? != expected {
+                    return Err(invalid(InvalidKind::WoffTransform, offset));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn append_table(
     output: &mut Buffer<'_, u8>,
     bytes: &[u8],
@@ -433,14 +476,7 @@ fn append_table(
     })
 }
 
-fn reconstruct(
-    budget: &Budget,
-    stream: &[u8],
-    version: u32,
-    faces: &mut [Face],
-    indices: &[usize],
-    tables: &mut [Table],
-) -> Result<Vec<u8>, DecodeError> {
+fn layout_headers(version: u32, faces: &mut [Face]) -> Result<usize, DecodeError> {
     let mut header_size = if version == 0 {
         0
     } else {
@@ -456,6 +492,19 @@ fn reconstruct(
         face.header = header_size;
         header_size = add(header_size, add(12, multiply(face.count, 16)?)?)?;
     }
+    Ok(header_size)
+}
+
+fn reconstruct(
+    budget: &Budget,
+    stream: &[u8],
+    version: u32,
+    faces: &mut [Face],
+    indices: &[usize],
+    tables: &mut [Table],
+) -> Result<Vec<u8>, DecodeError> {
+    validate_outline_declarations(faces, indices, tables, stream)?;
+    let header_size = layout_headers(version, faces)?;
     check(
         LimitKind::DecodedBytes,
         header_size,

@@ -11,9 +11,34 @@ pub(super) struct Tables<'a> {
 }
 #[derive(Clone, Copy)]
 struct Point {
-    x: i32,
-    y: i32,
+    dx: i16,
+    dy: i16,
     on_curve: bool,
+}
+
+pub(super) struct Header {
+    options: u16,
+    pub glyphs: u16,
+    pub index_format: u16,
+}
+
+impl Header {
+    pub fn read(reader: &mut Reader<'_>) -> Result<Self, DecodeError> {
+        if reader.u16()? != 0 {
+            return Err(invalid(InvalidKind::WoffGlyph, 0));
+        }
+        let options = reader.u16()?;
+        let glyphs = reader.u16()?;
+        let index_format = reader.u16()?;
+        if index_format > 1 {
+            return Err(invalid(InvalidKind::WoffGlyph, 6));
+        }
+        Ok(Self {
+            options,
+            glyphs,
+            index_format,
+        })
+    }
 }
 
 struct Decoder<'a> {
@@ -32,15 +57,8 @@ struct Decoder<'a> {
 impl<'a> Decoder<'a> {
     fn new(data: &'a [u8]) -> Result<Self, DecodeError> {
         let mut reader = Reader::new(data, InvalidKind::WoffGlyph);
-        if reader.u16()? != 0 {
-            return Err(invalid(InvalidKind::WoffGlyph, 0));
-        }
-        let options = reader.u16()?;
-        let glyphs = usize::from(reader.u16()?);
-        let index_format = reader.u16()?;
-        if index_format > 1 {
-            return Err(invalid(InvalidKind::WoffGlyph, 6));
-        }
+        let header = Header::read(&mut reader)?;
+        let glyphs = usize::from(header.glyphs);
         let mut sizes = [0usize; 7];
         for size in &mut sizes {
             *size = reader.u32()? as usize;
@@ -52,7 +70,7 @@ impl<'a> Decoder<'a> {
         let bitmap_length = multiply(glyphs.div_ceil(32), 4)?;
         let mut boxes = Reader::new(streams[5], InvalidKind::WoffGlyph);
         let bbox_bitmap = boxes.take(bitmap_length)?;
-        let overlap_bitmap = if options & 1 != 0 {
+        let overlap_bitmap = if header.options & 1 != 0 {
             Some(reader.take(glyphs.div_ceil(8))?)
         } else {
             None
@@ -69,7 +87,7 @@ impl<'a> Decoder<'a> {
             bbox_bitmap,
             overlap_bitmap,
             glyphs,
-            index_format,
+            index_format: header.index_format,
         })
     }
     fn visit(
@@ -85,44 +103,63 @@ impl<'a> Decoder<'a> {
             glyph.clear();
             points.clear();
             ends.clear();
+            let contour_position = self.contours.position;
             let contours = self.contours.i16()?;
-            let explicit = self.bbox_bitmap[index / 8] & (0x80 >> (index % 8)) != 0;
+            let bbox_position = index / 8;
+            let explicit = self.bbox_bitmap[bbox_position] & (0x80 >> (index % 8)) != 0;
             match contours {
                 0 => {
                     if explicit {
-                        return Err(invalid(InvalidKind::WoffGlyph, index));
+                        return Err(invalid(InvalidKind::WoffGlyph, bbox_position));
                     }
                 }
-                -1 => self.composite(&mut glyph, explicit, budget)?,
+                -1 => {
+                    if !explicit {
+                        return Err(invalid(InvalidKind::WoffGlyph, bbox_position));
+                    }
+                    self.composite(&mut glyph, budget)?;
+                }
                 1..=i16::MAX => {
                     let count = contours as usize;
                     ends.reserve(count)?;
                     let mut total = 0usize;
                     for _ in 0..count {
+                        let position = self.points.position;
                         let count = usize::from(self.points.uint255()?);
                         if count == 0 {
-                            return Err(invalid(InvalidKind::WoffGlyph, index));
+                            return Err(invalid(InvalidKind::WoffGlyph, position));
                         }
                         total = add(total, count)?;
                         if total > encoding::MAX_POINTS {
-                            return Err(invalid(InvalidKind::WoffGlyph, index));
+                            return Err(invalid(InvalidKind::WoffGlyph, position));
                         }
                         ends.push((total - 1) as u16)?;
                     }
                     let flags = self.flags.take(total)?;
                     points.reserve(total)?;
-                    let (mut x, mut y) = (0i32, 0i32);
+                    let (mut x, mut y) = (0i16, 0i16);
+                    let mut inferred = None::<[i16; 4]>;
                     for flag in flags {
+                        let position = self.coordinates.position;
                         let (dx, dy) = triplet(*flag & 127, &mut self.coordinates)?;
-                        x = x
-                            .checked_add(dx)
-                            .ok_or_else(|| invalid(InvalidKind::WoffGlyph, index))?;
-                        y = y
-                            .checked_add(dy)
-                            .ok_or_else(|| invalid(InvalidKind::WoffGlyph, index))?;
+                        if !explicit {
+                            // Every point must fit the inferred signed bounds.
+                            // Report the triplet that first makes that impossible.
+                            x = x
+                                .checked_add(dx)
+                                .ok_or_else(|| invalid(InvalidKind::WoffGlyph, position))?;
+                            y = y
+                                .checked_add(dy)
+                                .ok_or_else(|| invalid(InvalidKind::WoffGlyph, position))?;
+                            let bounds = inferred.get_or_insert([x, y, x, y]);
+                            bounds[0] = bounds[0].min(x);
+                            bounds[1] = bounds[1].min(y);
+                            bounds[2] = bounds[2].max(x);
+                            bounds[3] = bounds[3].max(y);
+                        }
                         points.push(Point {
-                            x,
-                            y,
+                            dx,
+                            dy,
                             on_curve: flag & 128 == 0,
                         })?;
                     }
@@ -138,10 +175,12 @@ impl<'a> Decoder<'a> {
                     table_limit(length, budget)?;
                     glyph.reserve(length)?;
                     glyph.extend(&contours.to_be_bytes())?;
-                    if explicit {
-                        glyph.extend(self.boxes.take(8)?)?;
+                    if let Some(bounds) = inferred {
+                        for value in bounds {
+                            glyph.extend(&value.to_be_bytes())?;
+                        }
                     } else {
-                        write_box(&points, &mut glyph)?;
+                        glyph.extend(self.boxes.take(8)?)?;
                     }
                     for end in &*ends {
                         glyph.extend(&end.to_be_bytes())?;
@@ -150,7 +189,7 @@ impl<'a> Decoder<'a> {
                     glyph.extend(self.instructions.take(instructions)?)?;
                     encoder.write(&points, overlap, &mut glyph)?;
                 }
-                _ => return Err(invalid(InvalidKind::WoffGlyph, index)),
+                _ => return Err(invalid(InvalidKind::WoffGlyph, contour_position)),
             }
             emit(&glyph)?;
         }
@@ -166,12 +205,8 @@ impl<'a> Decoder<'a> {
     fn composite(
         &mut self,
         glyph: &mut Buffer<'_, u8>,
-        explicit: bool,
         budget: &Budget,
     ) -> Result<(), DecodeError> {
-        if !explicit {
-            return Err(invalid(InvalidKind::WoffGlyph, self.composites.position));
-        }
         let start = self.composites.position;
         let mut have_instructions = false;
         loop {
@@ -278,7 +313,8 @@ fn append_offset(loca: &mut Buffer<'_, u8>, offset: usize, format: u16) -> Resul
 fn signed(flag: u8, value: i32) -> i32 {
     if flag & 1 != 0 { value } else { -value }
 }
-fn triplet(flag: u8, reader: &mut Reader<'_>) -> Result<(i32, i32), DecodeError> {
+fn triplet(flag: u8, reader: &mut Reader<'_>) -> Result<(i16, i16), DecodeError> {
+    let position = reader.position;
     let count = if flag < 84 {
         1
     } else if flag < 120 {
@@ -291,7 +327,7 @@ fn triplet(flag: u8, reader: &mut Reader<'_>) -> Result<(i32, i32), DecodeError>
     let bytes = reader.take(count)?;
     let f = i32::from(flag);
     let b = |index: usize| i32::from(bytes[index]);
-    Ok(if flag < 10 {
+    let (dx, dy) = if flag < 10 {
         (0, signed(flag, ((f & 14) << 7) + b(0)))
     } else if flag < 20 {
         (signed(flag, (((f - 10) & 14) << 7) + b(0)), 0)
@@ -315,22 +351,7 @@ fn triplet(flag: u8, reader: &mut Reader<'_>) -> Result<(i32, i32), DecodeError>
             signed(flag, (b(0) << 8) + b(1)),
             signed(flag >> 1, (b(2) << 8) + b(3)),
         )
-    })
-}
-fn write_box(points: &[Point], output: &mut Buffer<'_, u8>) -> Result<(), DecodeError> {
-    let mut bbox = [0i32; 4];
-    if let Some(first) = points.first() {
-        bbox = [first.x, first.y, first.x, first.y];
-    }
-    for point in points {
-        bbox[0] = bbox[0].min(point.x);
-        bbox[1] = bbox[1].min(point.y);
-        bbox[2] = bbox[2].max(point.x);
-        bbox[3] = bbox[3].max(point.y);
-    }
-    for value in bbox {
-        let value = i16::try_from(value).map_err(|_| invalid(InvalidKind::WoffGlyph, 0))?;
-        output.extend(&value.to_be_bytes())?;
-    }
-    Ok(())
+    };
+    let word = |delta| i16::try_from(delta).map_err(|_| invalid(InvalidKind::WoffGlyph, position));
+    Ok((word(dx)?, word(dy)?))
 }
