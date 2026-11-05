@@ -1739,3 +1739,35 @@ profile = "prepared-range"
 [[specialized_publications]]
 source = "html/flex/fri07_flex_composition.html"
 profile = "flex-composition"
+
+# Exact Grid static-position observations attach to the sealed original records.
+
+[[semantic_publications]]
+source = "html/grid/grid_absolute_layout_within_border_static.html"
+[semantic_publications.specifications.border_box_ltr]
+path = "semantic/grid-absolute-layout-within-border-static-border_box_ltr.json"
+sha256 = "c914214f54682d609dd87ed96f425aa0ad3a8aec2914749d97e51f6ae607c4ea"
+[semantic_publications.specifications.border_box_rtl]
+path = "semantic/grid-absolute-layout-within-border-static-border_box_rtl.json"
+sha256 = "866cace81ddb1529d97df35bb4165644b1b043cab874a3604e25b32e703f47c7"
+[semantic_publications.specifications.content_box_ltr]
+path = "semantic/grid-absolute-layout-within-border-static-content_box_ltr.json"
+sha256 = "3071c812ff84a53ab8ba0d1dcddc1f356fac13dcf994af022d53f9b0ea94868f"
+[semantic_publications.specifications.content_box_rtl]
+path = "semantic/grid-absolute-layout-within-border-static-content_box_rtl.json"
+sha256 = "47fac6f8fc1842e06837758ef6fb26803bae9bf828b6a9cd1220ef8f712821a0"
+
+[[semantic_publications]]
+source = "html/grid/grid_absolute_resolved_insets.html"
+[semantic_publications.specifications.border_box_ltr]
+path = "semantic/grid-absolute-resolved-insets-border_box_ltr.json"
+sha256 = "a62ecedcc30fb5d0cbc8a5941e65ba1327f49e1fe78702b394bdc58c0dd7b6f2"
+[semantic_publications.specifications.border_box_rtl]
+path = "semantic/grid-absolute-resolved-insets-border_box_rtl.json"
+sha256 = "f89fdc6bd212393f1d18d7bb6072224a3a8c3311fbcf0e4fc07cfe736d7ecfb9"
+[semantic_publications.specifications.content_box_ltr]
+path = "semantic/grid-absolute-resolved-insets-content_box_ltr.json"
+sha256 = "dad71699958c4898d0ae844cc767e06b957e6dee37fdbbbe0885cd83735f5046"
+[semantic_publications.specifications.content_box_rtl]
+path = "semantic/grid-absolute-resolved-insets-content_box_rtl.json"
+sha256 = "1c5373175cf87bfb9bbd8dfca615239ac04f921036773575bacf914c3085ddaa"

@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "artifacts": {
+    "xml/generation-reports/all.json": "71fc92e83528db788f32a3cb08c7b61e9666c63df67b64db214cdbca8499e29a",
+    "xml/grid/grid_absolute_layout_within_border_static__border_box_ltr.xml": "4d60d8c9cd398f52387fa10c86c5659e0efea413408fe0c972422ac59cd89b3a",
+    "xml/grid/grid_absolute_layout_within_border_static__border_box_rtl.xml": "d2fff4841e5e50df77aa88d63aae98c20d1b45a8dbfc4e9b5fe9f5bb7152aeb3",
+    "xml/grid/grid_absolute_layout_within_border_static__content_box_ltr.xml": "a9348d7e098b32bb4934b7b2870050926af9e04551ba4ac9ec28ea8b663df953",
+    "xml/grid/grid_absolute_layout_within_border_static__content_box_rtl.xml": "0c1433aa0166385ed5188b916dbbb5e7285ebc67553a0de1bd3caf82bc30fc88",
+    "xml/grid/grid_absolute_resolved_insets__border_box_ltr.xml": "bf445edd97c701b52cdf95fac0cf2d8ec11ee1af1ffc4324c59e7ab16ffd8a4e",
+    "xml/grid/grid_absolute_resolved_insets__border_box_rtl.xml": "7cef49294ce45a331a9dd781552c600de057e4f5984094d339ca3847acbbd0d3",
+    "xml/grid/grid_absolute_resolved_insets__content_box_ltr.xml": "1f72b0bc6808bf2f6c50a50277db2fb7d722ebd380fb2be8f9f3ef83edd61b54",
+    "xml/grid/grid_absolute_resolved_insets__content_box_rtl.xml": "a101c0238f9281ed5e00be9422780ea18920d5c695c340494fde42e539287408"
+  }
+}
