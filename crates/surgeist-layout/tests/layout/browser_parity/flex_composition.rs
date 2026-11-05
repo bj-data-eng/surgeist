@@ -207,3 +207,30 @@ pub(super) fn measure(natural: layout::Size, input: layout::LeafMeasureInput) ->
             .unwrap_or(natural.height),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fixed_capture_refuses_a_replaced_control_report_with_matching_metadata() {
+        let report =
+            include_str!("captured/flex-composition-qualification/xml/generation-reports/all.json");
+        let mut current = capture_authority::unique_json(report).unwrap()["metadata"].clone();
+        let metadata = serde_json::from_value(current.clone()).unwrap();
+        require_control_environment(&current, &metadata, RETAINED_REPORT, true).unwrap();
+
+        let mut control = capture_authority::unique_json(RETAINED_REPORT).unwrap();
+        let substituted = serde_json::json!("0".repeat(64));
+        current["browser_executable_sha256"] = substituted.clone();
+        control["metadata"]["browser_executable_sha256"] = substituted;
+        let metadata = serde_json::from_value(current.clone()).unwrap();
+        let error = require_control_environment(&current, &metadata, &control.to_string(), true)
+            .expect_err("a replacement report cannot redefine the control environment");
+        assert!(
+            error
+                .to_string()
+                .contains("gutter control report identity changed")
+        );
+    }
+}
