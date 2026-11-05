@@ -585,23 +585,33 @@ fn focused_geometry_predecessors(
     {
         return Ok(BTreeMap::new());
     }
-    let selected: BTreeSet<_> = cases
-        .iter()
-        .filter(|case| {
-            case.semantic
-                .as_ref()
-                .and_then(|semantic| semantic.published_edition)
-                == Some(PublishedEdition::GridStaticPosition)
-        })
-        .map(|case| case.case.output().as_str())
-        .collect();
-    if selected.is_empty() {
-        return Ok(BTreeMap::new());
+    let mut selected = BTreeMap::<_, BTreeSet<_>>::new();
+    for case in cases {
+        if let Some(
+            edition @ (PublishedEdition::GridStaticPosition | PublishedEdition::RelativeInsets),
+        ) = case
+            .semantic
+            .as_ref()
+            .and_then(|semantic| semantic.published_edition)
+        {
+            selected
+                .entry(edition)
+                .or_default()
+                .insert(case.case.output().as_str());
+        }
     }
-    let mut predecessors = publication::verified_grid_static_predecessors(owner)?;
-    predecessors.retain(|output, _| selected.contains(output.as_str()));
-    if predecessors.len() != selected.len() {
-        return Err("missing selected Grid static-position qualification".into());
+    let mut predecessors = BTreeMap::new();
+    for (edition, outputs) in selected {
+        let mut verified = publication::verified_exact_predecessors(owner, edition)?;
+        for output in outputs {
+            let digest = verified.remove(output).ok_or_else(|| {
+                format!(
+                    "{} is missing selected qualification for {output}",
+                    edition.name()
+                )
+            })?;
+            predecessors.insert(output.to_owned(), digest);
+        }
     }
     Ok(predecessors)
 }

@@ -1313,6 +1313,49 @@ fn reissued_omission_of_source_spec_policy_global_or_receipt_owner_pins_is_refus
 }
 
 #[test]
+fn registered_relative_insets_preserve_all_four_exact_variants() {
+    let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let registry = admit_registered(owner).unwrap();
+    let prefix = "tests/layout/browser_parity/captured/relative-inset-differences/";
+    let selected: BTreeSet<_> = registry
+        .outputs()
+        .filter(|path| path.starts_with(prefix))
+        .collect();
+    let expected = VARIANTS
+        .map(|variant| format!("{prefix}xml/block/block_inset_percentage__{variant}.xml"))
+        .into_iter()
+        .collect();
+    assert_eq!(selected, expected);
+    let run = registry.execute_selected(&selected).unwrap();
+    assert!(run.selected_cases_passed());
+    assert_eq!(run.cases.len(), 4);
+    for case in run.cases {
+        let raw = case.raw.unwrap();
+        assert_eq!(raw.len(), 3);
+        for (index, (browser, native)) in [(0.0, 1.0), (10.0, 8.0), (20.0, 21.0)]
+            .into_iter()
+            .enumerate()
+        {
+            assert_eq!(
+                raw[index],
+                format!(
+                    "ComparedField(Layout {{ path: \"/{index}\", field: Y, browser: Number({browser:?}), native: Some(Number({native:?})) }})"
+                )
+            );
+        }
+        let verdict = case.qualified.unwrap();
+        assert_eq!(verdict.raw, RawVerdict::Different { fields: 3 });
+        assert_eq!(
+            verdict.qualified,
+            QualifiedVerdict::Intentional {
+                policy: "relative-insets-final-measured-basis".into(),
+                edition: "css-position-3-20251007-native-1".into(),
+            }
+        );
+    }
+}
+
+#[test]
 fn registered_prepared_range_preserves_raw_differences_and_exact_controls() {
     let owner = Path::new(env!("CARGO_MANIFEST_DIR"));
     let registry = admit_registered(owner).unwrap();

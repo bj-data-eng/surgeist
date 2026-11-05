@@ -179,15 +179,17 @@ fn with_new_edition(
     result
 }
 
-pub(super) fn verified_grid_static_predecessors(owner: &Path) -> Result<BTreeMap<String, String>> {
-    let edition = PublishedEdition::GridStaticPosition;
+pub(super) fn verified_exact_predecessors(
+    owner: &Path,
+    edition: PublishedEdition,
+) -> Result<BTreeMap<String, String>> {
     let root = owner.join(edition.artifact_root());
     let path = RelativePath::new(authority::TERMINAL)?;
     require_regular_input(&root, &path)?;
     let terminal = fs::read(root.join(path.as_str()))?;
     run(owner, QualificationMode::CheckPublishedExact(edition))?;
     if fs::read(root.join(path.as_str()))? != terminal {
-        return Err("Grid static-position terminal changed during replay".into());
+        return Err(format!("{} terminal changed during replay", edition.name()).into());
     }
     let terminal = authority::Qualification::parse(std::str::from_utf8(&terminal)?)?;
     Ok(terminal
@@ -213,7 +215,7 @@ fn finish(
     let has_terminal = edition != Edition::RootContextV4;
     let derive_terminal = matches!(mode, QualificationMode::Derive(_));
     let geometry_predecessors = if edition == Edition::RootContextV4 {
-        verified_grid_static_predecessors(owner)?
+        verified_exact_predecessors(owner, PublishedEdition::GridStaticPosition)?
     } else {
         BTreeMap::new()
     };

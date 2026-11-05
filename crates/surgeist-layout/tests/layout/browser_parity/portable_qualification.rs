@@ -466,7 +466,7 @@ fn compare_prepared_range(
 }
 
 pub(super) struct AdmittedRegistry {
-    editions: [AdmittedEdition; 6],
+    editions: [AdmittedEdition; 7],
     owner: PathBuf,
     selected_records: BTreeMap<String, Value>,
 }
@@ -528,6 +528,9 @@ const REGISTERED_FLEX_COMPOSITION_TERMINAL_SHA256: &str =
 const REGISTERED_GRID_STATIC_POSITION_TERMINAL_SHA256: &str =
     "8324b35a2520d5f863d75b514418491c1c362dedc86b3f23b89c022bbed291c2";
 
+const REGISTERED_RELATIVE_INSET_TERMINAL_SHA256: &str =
+    "c9f7b4fb0b97275842a1ba027e3006f63e6f73f81fa04b7cbc179e383d25fbac";
+
 pub(super) fn admit_grid_static_positions(owner: &Path) -> Result<AdmittedEdition> {
     admit(
         owner,
@@ -576,6 +579,13 @@ pub(super) fn admit_registered(owner: &Path) -> Result<AdmittedRegistry> {
             },
         )?,
         admit_grid_static_positions(owner)?,
+        admit(
+            owner,
+            Registration {
+                edition: Edition::Exact(PublishedEdition::RelativeInsets),
+                terminal_sha256: REGISTERED_RELATIVE_INSET_TERMINAL_SHA256,
+            },
+        )?,
     ];
     let mut selected_records = BTreeMap::new();
     for edition in &editions {
@@ -749,9 +759,9 @@ pub(super) fn admit(owner: &Path, registration: Registration<'_>) -> Result<Admi
     let measured = edition == PublishedEdition::MeasuredGrid;
     let flex_text = edition == PublishedEdition::FlexText;
     let (observation_request, observation_input_sha256) = match edition {
-        PublishedEdition::CanonicalBoxes | PublishedEdition::GridStaticPosition => {
-            ("geometry", None)
-        }
+        PublishedEdition::CanonicalBoxes
+        | PublishedEdition::GridStaticPosition
+        | PublishedEdition::RelativeInsets => ("geometry", None),
         PublishedEdition::MeasuredGrid | PublishedEdition::FlexText => {
             let request = terminal
                 .retained_inputs

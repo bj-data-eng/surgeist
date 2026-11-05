@@ -448,7 +448,7 @@ impl CaptureLineage {
 }
 
 /// The fixed Layout-owned edition association; no caller-supplied edition text.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) enum PublishedEdition {
     #[serde(rename = "canonical-box-differences")]
     CanonicalBoxes,
@@ -458,6 +458,8 @@ pub(crate) enum PublishedEdition {
     FlexText,
     #[serde(rename = "grid-static-position-differences")]
     GridStaticPosition,
+    #[serde(rename = "relative-inset-differences")]
+    RelativeInsets,
 }
 
 impl PublishedEdition {
@@ -476,17 +478,24 @@ impl PublishedEdition {
             Self::GridStaticPosition => {
                 "tests/layout/browser_parity/captured/grid-static-position-differences"
             }
+            Self::RelativeInsets => {
+                "tests/layout/browser_parity/captured/relative-inset-differences"
+            }
         }
     }
     fn domain(self) -> CurrentDomain {
         match self {
-            Self::CanonicalBoxes | Self::GridStaticPosition => CurrentDomain::Layout,
+            Self::CanonicalBoxes | Self::GridStaticPosition | Self::RelativeInsets => {
+                CurrentDomain::Layout
+            }
             Self::MeasuredGrid | Self::FlexText => CurrentDomain::LayoutAndElementSizes,
         }
     }
     fn profile(self) -> Profile {
         match self {
-            Self::CanonicalBoxes | Self::GridStaticPosition => Profile::NoTextBoxes,
+            Self::CanonicalBoxes | Self::GridStaticPosition | Self::RelativeInsets => {
+                Profile::NoTextBoxes
+            }
             Self::MeasuredGrid => Profile::MeasuredGrid,
             Self::FlexText => Profile::FlexContentText,
         }

@@ -94,6 +94,18 @@ fn parse_arguments(
             None,
             QualificationMode::Derive(PublishedEdition::GridStaticPosition),
         )),
+        [mode] if mode == "--publish-relative-inset-differences" => Ok((
+            None,
+            QualificationMode::PublishExact(PublishedEdition::RelativeInsets),
+        )),
+        [mode] if mode == "--check-published-relative-inset-differences" => Ok((
+            None,
+            QualificationMode::CheckPublishedExact(PublishedEdition::RelativeInsets),
+        )),
+        [mode] if mode == "--derive-relative-inset-qualification" => Ok((
+            None,
+            QualificationMode::Derive(PublishedEdition::RelativeInsets),
+        )),
         [mode] if mode == "--publish-prepared-range-qualification" => Ok((
             None,
             QualificationMode::PublishSpecialized(SpecializedProfile::PreparedRange),
@@ -163,7 +175,7 @@ fn parse_arguments(
             ))
         }
         _ => Err(
-            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --derive-canonical-box-qualification | --publish-measured-grid-differences | --check-published-measured-grid-differences | --publish-grid-static-position-differences | --check-published-grid-static-position-differences | --derive-grid-static-position-qualification | --publish-prepared-range-qualification | --check-published-prepared-range-qualification | --publish-flex-composition-qualification | --check-published-flex-composition-qualification | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source> | --prepared-range-capture --fixture <declared-source>",
+            "usage: qualify-root-context --publish-root-context-v4 | --check-published-root-context-v4 | --publish-canonical-box-differences | --check-published-canonical-box-differences | --derive-canonical-box-qualification | --publish-measured-grid-differences | --check-published-measured-grid-differences | --publish-grid-static-position-differences | --check-published-grid-static-position-differences | --derive-grid-static-position-qualification | --publish-relative-inset-differences | --check-published-relative-inset-differences | --derive-relative-inset-qualification | --publish-prepared-range-qualification | --check-published-prepared-range-qualification | --publish-flex-composition-qualification | --check-published-flex-composition-qualification | [--fixture <declared-source>] | --stylesheet-custody --fixture <declared-source> | --font-custody --fixture <declared-source> | --numeric-diagnostics --fixture <declared-source> | --element-scroll-size-diagnostics --fixture <declared-source> | --measured-leaf-diagnostics --fixture <declared-source> | --flex-content-text-diagnostics --fixture <declared-source> | --prepared-range-capture --fixture <declared-source>",
         ),
     }
 }
@@ -235,23 +247,33 @@ mod tests {
     }
 
     #[test]
-    fn grid_static_position_publication_selects_a_fixed_edition() {
-        let modes = [
-            "--publish-grid-static-position-differences",
-            "--check-published-grid-static-position-differences",
-            "--derive-grid-static-position-qualification",
-        ]
-        .map(|flag| {
-            let arguments_for_flag = arguments(&[flag]);
-            let (selection, mode) = parse_arguments(&arguments_for_flag).unwrap();
-            assert_eq!(selection, None);
-            assert!(parse_arguments(&arguments(&[flag, "arbitrary-output"])).is_err());
-            assert!(parse_arguments(&arguments(&[flag, "--fixture", "html/other.html"])).is_err());
-            mode
-        });
-        assert_ne!(modes[0], modes[1]);
-        assert_ne!(modes[0], modes[2]);
-        assert_ne!(modes[1], modes[2]);
+    fn native_policy_publication_selects_a_fixed_edition() {
+        for flags in [
+            [
+                "--publish-grid-static-position-differences",
+                "--check-published-grid-static-position-differences",
+                "--derive-grid-static-position-qualification",
+            ],
+            [
+                "--publish-relative-inset-differences",
+                "--check-published-relative-inset-differences",
+                "--derive-relative-inset-qualification",
+            ],
+        ] {
+            let modes = flags.map(|flag| {
+                let arguments_for_flag = arguments(&[flag]);
+                let (selection, mode) = parse_arguments(&arguments_for_flag).unwrap();
+                assert_eq!(selection, None);
+                assert!(parse_arguments(&arguments(&[flag, "arbitrary-output"])).is_err());
+                assert!(
+                    parse_arguments(&arguments(&[flag, "--fixture", "html/other.html"])).is_err()
+                );
+                mode
+            });
+            assert_ne!(modes[0], modes[1]);
+            assert_ne!(modes[0], modes[2]);
+            assert_ne!(modes[1], modes[2]);
+        }
     }
 
     #[test]
