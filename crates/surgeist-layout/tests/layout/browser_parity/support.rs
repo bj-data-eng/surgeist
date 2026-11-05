@@ -5030,7 +5030,10 @@ fn project_horizontal_browser_br_font_band(
         || instance.font_size() != 20.0
         || instance.axis_count() != 0
         || instance.synthesis() != surgeist_text::FontSynthesis::default()
-        || metrics.font_origin_offset() != 0.0
+        || metrics.basis()
+            != (surgeist_text::BreakFontMetricBasis::Horizontal {
+                font_origin_offset: 0.0,
+            })
     {
         return Ok(None);
     }

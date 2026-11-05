@@ -101,7 +101,7 @@ pub use protocol::paragraph::{
     ParagraphConnectionKind, ParagraphControl, ParagraphControlKind, ParagraphOrigin,
     ParagraphOriginKind, ParagraphReplacement, ParagraphReplacementDefinition, ParagraphStrut,
 };
-pub use protocol::placement::PlacedBreakFontMetrics;
+pub use protocol::placement::{BreakFontMetricBasis, PlacedBreakFontMetrics};
 pub use protocol::prefix::{FinalizedPrefixView, FinalizedSharedUnitView, TextSeam};
 pub use protocol::readback::{
     FinalizedCellView, FinalizedControlView, FinalizedFragmentOwner, FinalizedFragmentView,

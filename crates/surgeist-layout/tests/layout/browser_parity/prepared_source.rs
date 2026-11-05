@@ -1388,6 +1388,7 @@ mod tests {
                 // The pinned Ahem has no upright metric tables. Text's native
                 // upright em is centered independently of the 30/40px struts.
                 assert_eq!((metrics.ascent(), metrics.descent()), (10.0, 10.0));
+                assert_eq!(metrics.basis(), text::BreakFontMetricBasis::UprightCentral);
             }
             assert_eq!(line.feedback().advance, 10.0);
             // No glyph run, caller strut, or BR metrics can donate this extent.
