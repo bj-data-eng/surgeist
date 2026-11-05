@@ -259,6 +259,11 @@ mod tests {
                 "--check-published-relative-inset-differences",
                 "--derive-relative-inset-qualification",
             ],
+            [
+                "--publish-wrapping-world-corner-differences",
+                "--check-published-wrapping-world-corner-differences",
+                "--derive-wrapping-world-corner-qualification",
+            ],
         ] {
             let modes = flags.map(|flag| {
                 let arguments_for_flag = arguments(&[flag]);
