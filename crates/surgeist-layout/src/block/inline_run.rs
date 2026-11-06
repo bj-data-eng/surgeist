@@ -1,4 +1,4 @@
-use super::absolute::absolute_static_position;
+use super::absolute::{StaticPositionGeometry, absolute_static_position};
 use super::relative::{self, InsetReference};
 use super::scroll::{
     BlockScrollContributions, child_scrollbar_size, retained_child_scroll_geometry,
@@ -1478,7 +1478,12 @@ where
     for child in absolute_children {
         static_positions.push((
             child,
-            absolute_static_position(cursor_block, constants, containing_size),
+            absolute_static_position(
+                cursor_block,
+                constants,
+                containing_size,
+                StaticPositionGeometry::Point,
+            ),
         ));
     }
     if text_output.is_none() {

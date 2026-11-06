@@ -1,4 +1,4 @@
-use super::absolute::absolute_static_position;
+use super::absolute::{StaticPositionGeometry, absolute_static_position};
 use super::inline_run::{
     InlineRunContext, InlineRunTransitionState, VisibleInlineRunTransition, inline_run_end,
     visible_inline_boundary_in_flow, visible_line_break_in_flow,
@@ -307,12 +307,18 @@ where
                             continue;
                         }
                         if style.common.position == Position::Absolute {
+                            let geometry = if style.display.is_inline_level() {
+                                StaticPositionGeometry::Point
+                            } else {
+                                StaticPositionGeometry::BlockStart
+                            };
                             static_positions.push((
                                 child,
                                 absolute_static_position(
                                     cursor_block + active_margin.resolve(),
                                     constants,
                                     constants.containing_size(logical_node_inner_size),
+                                    geometry,
                                 ),
                             ));
                             index += 1;

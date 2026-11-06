@@ -2045,22 +2045,22 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
                 }
                 static_positions.push((
                     actual.node,
-                    crate::block::StaticPositionOf {
-                        normal: normal_frame.static_position(
+                    crate::block::StaticPositionOf::from_points(
+                        normal_frame.static_position(
                             normal_used,
                             0.0,
                             0.0,
                             slot.origin.x,
                             slot.scope_displacement.get(),
                         )?,
-                        visual: frame.static_position(
+                        frame.static_position(
                             used,
                             0.0,
                             0.0,
                             slot.origin.x,
                             slot.scope_displacement.get(),
                         )?,
-                    },
+                    ),
                 ));
                 outflows.push((entry_index, slot.occurrence, actual.node));
             }
@@ -2283,22 +2283,22 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
             let AtomicLineAllocation::InFlow { box_geometry, .. } = &slot.allocation else {
                 static_positions.push((
                     binding.node,
-                    crate::block::StaticPositionOf {
-                        normal: normal_frame.static_position(
+                    crate::block::StaticPositionOf::from_points(
+                        normal_frame.static_position(
                             normal_anchor,
                             feedback.baseline,
                             feedback.line_height,
                             slot.origin.x,
                             slot.scope_displacement.get(),
                         )?,
-                        visual: frame.static_position(
+                        frame.static_position(
                             anchor,
                             feedback.baseline,
                             feedback.line_height,
                             slot.origin.x,
                             slot.scope_displacement.get(),
                         )?,
-                    },
+                    ),
                 ));
                 outflows.push((entry_index, slot.occurrence, binding.node));
                 continue;
