@@ -283,20 +283,6 @@ pub struct GcRef<'a, T: ?Sized + 'static> {
 }
 
 impl<'a, T: ?Sized> GcRef<'a, T> {
-    /// Casts to a `GcRef` of another type.
-    ///
-    /// # Safety
-    /// * The caller must ensure that `T` can be safely cast to `U`.
-    #[must_use]
-    pub unsafe fn cast<U>(orig: Self) -> GcRef<'a, U> {
-        let value = orig.value.cast::<U>();
-
-        GcRef {
-            borrow: orig.borrow,
-            value,
-        }
-    }
-
     /// Copies a `GcCellRef`.
     ///
     /// The `GcCell` is already immutably borrowed, so this cannot fail.
@@ -428,21 +414,6 @@ pub struct GcRefMut<'a, T: ?Sized> {
 }
 
 impl<'a, T: ?Sized> GcRefMut<'a, T> {
-    /// Casts to a `GcRefMut` of another type.
-    ///
-    /// # Safety
-    /// * The caller must ensure that `U` can be safely cast to `V`.
-    #[must_use]
-    pub unsafe fn cast<V>(orig: Self) -> GcRefMut<'a, V> {
-        let value = orig.value.cast::<V>();
-
-        GcRefMut {
-            borrow: orig.borrow,
-            value,
-            marker: PhantomData,
-        }
-    }
-
     /// Tries to make a new `GcCellRefMut` for a component of the borrowed data, returning `None`
     /// if the mapping function returns `None`.
     ///

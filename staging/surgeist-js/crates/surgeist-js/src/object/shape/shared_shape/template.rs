@@ -1,11 +1,9 @@
 use surgeist_js_gc::{Finalize, Trace};
-use thin_vec::ThinVec;
 
 use crate::{
     JsValue,
     object::{
-        IndexedProperties, JsObject, NativeObject, Object, ObjectData, PropertyMap,
-        shape::slot::SlotAttributes,
+        IndexedProperties, JsObject, NativeObject, Object, PropertyMap, shape::slot::SlotAttributes,
     },
     property::{Attribute, PropertyKey},
 };
@@ -110,14 +108,12 @@ impl ObjectTemplate {
     pub(crate) fn create<T: NativeObject>(&self, data: T, storage: Vec<JsValue>) -> JsObject {
         let internal_methods = data.internal_methods();
 
-        let mut object = Object {
-            data: ObjectData::new(data),
-            extensible: true,
-            properties: PropertyMap::new(self.shape.clone().into(), IndexedProperties::default()),
-            private_elements: ThinVec::new(),
-        };
+        let mut object = Object::new(
+            PropertyMap::new(self.shape.clone().into(), IndexedProperties::default()),
+            data,
+        );
 
-        object.properties.storage = storage;
+        object.state.properties.storage = storage;
 
         JsObject::from_object_and_vtable(object, internal_methods)
     }
@@ -133,14 +129,12 @@ impl ObjectTemplate {
         indexed_properties: IndexedProperties,
     ) -> JsObject {
         let internal_methods = data.internal_methods();
-        let mut object = Object {
-            data: ObjectData::new(data),
-            extensible: true,
-            properties: PropertyMap::new(self.shape.clone().into(), indexed_properties),
-            private_elements: ThinVec::new(),
-        };
+        let mut object = Object::new(
+            PropertyMap::new(self.shape.clone().into(), indexed_properties),
+            data,
+        );
 
-        object.properties.storage = storage;
+        object.state.properties.storage = storage;
 
         JsObject::from_object_and_vtable(object, internal_methods)
     }

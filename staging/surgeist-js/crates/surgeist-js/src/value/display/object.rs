@@ -85,7 +85,7 @@ pub(super) fn log_object_to_internal(
 ) -> fmt::Result {
     if let Some(v) = data.as_object() {
         // The in-memory address of the current object
-        let addr = std::ptr::from_ref(v.as_ref()).addr();
+        let addr = v.identity();
 
         // We need not continue if this object has already been
         // printed up the current chain
@@ -164,7 +164,7 @@ pub(super) fn log_plain_object_compact(
     print_internals: bool,
     encounters: &mut HashSet<usize>,
 ) -> fmt::Result {
-    let addr = std::ptr::from_ref(obj.as_ref()).addr();
+    let addr = obj.identity();
     if encounters.contains(&addr) {
         return f.write_str("[Circular *]");
     }

@@ -3,12 +3,12 @@
 //! The `JsObject` is a garbage collected Object.
 
 use super::{
-    JsPrototype, NativeObject, Object, ObjectData, PrivateName, PropertyMap,
+    JsPrototype, NativeObject, Object, ObjectState, PrivateName, PropertyMap,
     internal_methods::{InternalObjectMethods, ORDINARY_INTERNAL_METHODS},
     shape::RootShape,
 };
 use crate::{
-    Context, JsData, JsResult, JsString, JsSymbol, JsValue,
+    Context, JsResult, JsString, JsSymbol, JsValue,
     builtins::{
         array::ARRAY_EXOTIC_INTERNAL_METHODS,
         array_buffer::{ArrayBuffer, BufferObject, SharedArrayBuffer},
@@ -20,18 +20,20 @@ use crate::{
     property::{PropertyDescriptor, PropertyKey},
     value::PreferredType,
 };
-use surgeist_js_gc::{self, Finalize, Gc, GcRef, GcRefCell, GcRefMut, Trace};
 use core::ptr::fn_addr_eq;
 use std::collections::HashSet;
 use std::{
+    any::{Any, TypeId},
     cell::RefCell,
     collections::HashMap,
     error::Error,
     fmt::{self, Debug, Display},
     hash::Hash,
+    marker::PhantomData,
+    ops::{Deref, DerefMut},
     result::Result as StdResult,
 };
-use thin_vec::ThinVec;
+use surgeist_js_gc::{self, Finalize, Gc, GcRef, GcRefCell, GcRefMut, Trace};
 
 /// A wrapper type for an immutably borrowed type T.
 pub type Ref<'a, T> = GcRef<'a, T>;
@@ -39,42 +41,122 @@ pub type Ref<'a, T> = GcRef<'a, T>;
 /// A wrapper type for a mutably borrowed type T.
 pub type RefMut<'a, T> = GcRefMut<'a, T>;
 
-pub(crate) type ErasedVTableObject = VTableObject<ErasedObjectData>;
-
-/// An `Object` with inner data set to `ErasedObjectData`.
-pub type ErasedObject = Object<ErasedObjectData>;
-
-/// A erased object data type that must never be used directly.
-#[derive(Debug, Trace, Finalize)]
-pub struct ErasedObjectData {}
-
-impl JsData for ErasedObjectData {}
-
-/// Garbage collected `Object`.
-#[derive(Trace, Finalize)]
-#[surgeist_js_gc(unsafe_no_drop)]
-pub struct JsObject<T: NativeObject = ErasedObjectData> {
-    inner: Gc<VTableObject<T>>,
+/// An immutable borrow of an object's common state and typed native payload.
+#[derive(Debug)]
+pub struct ObjectRef<'a, T: NativeObject + ?Sized> {
+    inner: Ref<'a, Object>,
+    brand: PhantomData<fn(&T) -> &T>,
 }
 
-impl<T: NativeObject> Clone for JsObject<T> {
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-        }
+impl<T: NativeObject + ?Sized> Deref for ObjectRef<'_, T> {
+    type Target = ObjectState;
+
+    fn deref(&self) -> &ObjectState {
+        &self.inner.state
     }
 }
 
-/// An `Object` that has an additional `vtable` with its internal methods.
-// We have to skip implementing `Debug` for this because not using the
-// implementation of `Debug` for `JsObject` could easily cause stack overflows,
-// so we have to force our users to debug the `JsObject` instead.
+impl<T: NativeObject> ObjectRef<'_, T> {
+    /// Borrows the object's native payload.
+    #[must_use]
+    pub fn data(&self) -> &T {
+        self.inner
+            .data
+            .as_ref()
+            .downcast_ref()
+            .expect("checked object brand")
+    }
+}
+
+/// A mutable borrow of an object's common state and typed native payload.
+#[derive(Debug)]
+pub struct ObjectRefMut<'a, T: NativeObject + ?Sized> {
+    inner: RefMut<'a, Object>,
+    brand: PhantomData<fn(&T) -> &T>,
+}
+
+impl<T: NativeObject + ?Sized> Deref for ObjectRefMut<'_, T> {
+    type Target = ObjectState;
+
+    fn deref(&self) -> &ObjectState {
+        &self.inner.state
+    }
+}
+
+impl<T: NativeObject + ?Sized> DerefMut for ObjectRefMut<'_, T> {
+    fn deref_mut(&mut self) -> &mut ObjectState {
+        &mut self.inner.state
+    }
+}
+
+impl<T: NativeObject> ObjectRefMut<'_, T> {
+    /// Borrows the object's native payload.
+    #[must_use]
+    pub fn data(&self) -> &T {
+        self.inner
+            .data
+            .as_ref()
+            .downcast_ref()
+            .expect("checked object brand")
+    }
+
+    /// Mutably borrows the object's native payload.
+    #[must_use]
+    pub fn data_mut(&mut self) -> &mut T {
+        self.inner
+            .data
+            .as_mut()
+            .downcast_mut()
+            .expect("checked object brand")
+    }
+}
+
+/// Garbage-collected handle to a JavaScript object.
+///
+/// The native brand can change only through a checked downcast or erasure.
+///
+/// ```compile_fail
+/// use std::marker::PhantomData;
+/// use surgeist_js::JsObject;
+///
+/// type Static = PhantomData<fn(&'static ())>;
+/// type AnyLifetime = PhantomData<for<'a> fn(&'a ())>;
+/// fn widen(object: JsObject<Static>) -> JsObject<AnyLifetime> {
+///     object
+/// }
+/// ```
+#[derive(Trace, Finalize)]
+#[surgeist_js_gc(unsafe_no_drop)]
+pub struct JsObject<T: NativeObject + ?Sized = dyn NativeObject> {
+    inner: Gc<ObjectRecord>,
+    brand: PhantomData<fn(&T) -> &T>,
+}
+
+impl<T: NativeObject + ?Sized> Clone for JsObject<T> {
+    fn clone(&self) -> Self {
+        Self::with_record(self.inner.clone())
+    }
+}
+
+/// Shared allocation for typed and erased handles to the same object.
 #[allow(missing_debug_implementations)]
 #[derive(Trace, Finalize)]
-pub(crate) struct VTableObject<T: NativeObject + ?Sized> {
+pub(crate) struct ObjectRecord {
     #[unsafe_ignore_trace]
     vtable: &'static InternalObjectMethods,
-    object: GcRefCell<Object<T>>,
+    native_type: TypeId,
+    object: GcRefCell<Object>,
+}
+
+impl ObjectRecord {
+    fn new(object: Object, vtable: &'static InternalObjectMethods) -> Self {
+        let native_type = (object.data.as_ref() as &dyn Any).type_id();
+        Self {
+            vtable,
+            native_type,
+            object: GcRefCell::new(object),
+        }
+    }
 }
 
 impl JsObject {
@@ -98,16 +180,15 @@ impl JsObject {
     }
 
     /// Creates a new `JsObject` from its inner object and its vtable.
-    pub(crate) fn from_object_and_vtable<T: NativeObject>(
-        object: Object<T>,
+    pub(crate) fn from_object_and_vtable(
+        object: Object,
         vtable: &'static InternalObjectMethods,
     ) -> Self {
-        let inner = Gc::new(VTableObject {
-            object: GcRefCell::new(object),
-            vtable,
-        });
+        Self::with_record(Gc::new(ObjectRecord::new(object, vtable)))
+    }
 
-        JsObject { inner }.upcast()
+    pub(crate) fn from_inner(inner: Gc<ObjectRecord>) -> Self {
+        Self::with_record(inner)
     }
 
     /// Creates a new ordinary object with its prototype set to the `Object` prototype.
@@ -187,18 +268,7 @@ impl JsObject {
         prototype: O,
         data: T,
     ) -> Self {
-        let internal_methods = data.internal_methods();
-        let inner = Gc::new(VTableObject {
-            object: GcRefCell::new(Object {
-                data: ObjectData::new(data),
-                properties: PropertyMap::from_prototype_unique_shape(prototype.into()),
-                extensible: true,
-                private_elements: ThinVec::new(),
-            }),
-            vtable: internal_methods,
-        });
-
-        JsObject { inner }.upcast()
+        JsObject::new_unique(prototype, data).upcast()
     }
 
     /// Creates a new object with the provided prototype and object data.
@@ -213,28 +283,10 @@ impl JsObject {
         prototype: O,
         data: T,
     ) -> JsObject<T> {
-        let internal_methods = data.internal_methods();
-        let inner = Gc::new(VTableObject {
-            object: GcRefCell::new(Object {
-                data: ObjectData::new(data),
-                properties: PropertyMap::from_prototype_with_shared_shape(
-                    root_shape,
-                    prototype.into(),
-                ),
-                extensible: true,
-                private_elements: ThinVec::new(),
-            }),
-            vtable: internal_methods,
-        });
-
-        JsObject { inner }
+        JsObject::new(root_shape, prototype, data)
     }
 
     /// Downcasts the object's inner data if the object is of type `T`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the object is currently mutably borrowed.
     ///
     /// # Examples
     ///
@@ -257,29 +309,10 @@ impl JsObject {
     /// ```
     pub fn downcast<T: NativeObject>(self) -> Result<JsObject<T>, Self> {
         if self.is::<T>() {
-            // SAFETY: We have verified that the object is of type `T`, so we can safely cast it.
-            let object = unsafe { self.downcast_unchecked::<T>() };
-
-            Ok(object)
+            Ok(JsObject::with_record(self.inner))
         } else {
             Err(self)
         }
-    }
-
-    /// Downcasts the object's inner data to `T` without verifying the inner type of `T`.
-    ///
-    /// # Safety
-    ///
-    /// For this cast to be sound, `self` must contain an instance of `T` inside its inner data.
-    #[must_use]
-    pub unsafe fn downcast_unchecked<T: NativeObject>(self) -> JsObject<T> {
-        // SAFETY: The caller guarantees `T` is the original inner data type of the underlying
-        // object.
-        // The pointer is guaranteed to be valid because we just created it.
-        // `VTableObject<ErasedObjectData>` and `VTableObject<T>` have the same size and alignment.
-        let inner = unsafe { Gc::cast_unchecked::<VTableObject<T>>(self.inner) };
-
-        JsObject { inner }
     }
 
     /// Downcasts a reference to the object,
@@ -308,15 +341,12 @@ impl JsObject {
     #[must_use]
     #[track_caller]
     pub fn downcast_ref<T: NativeObject>(&self) -> Option<Ref<'_, T>> {
-        if self.is::<T>() {
-            let obj = self.borrow();
-
-            // SAFETY: We have verified that the object is of type `T`, so we can safely cast it.
-            let obj = unsafe { GcRef::cast::<Object<T>>(obj) };
-
-            return Some(Ref::map(obj, |r| r.data()));
+        if !self.is::<T>() {
+            return None;
         }
-        None
+        Ref::try_map(self.borrow().inner, |object| {
+            object.data.as_ref().downcast_ref()
+        })
     }
 
     /// Downcasts a mutable reference to the object,
@@ -345,22 +375,15 @@ impl JsObject {
     #[must_use]
     #[track_caller]
     pub fn downcast_mut<T: NativeObject>(&self) -> Option<RefMut<'_, T>> {
-        if self.is::<T>() {
-            let obj = self.borrow_mut();
-
-            // SAFETY: We have verified that the object is of type `T`, so we can safely cast it.
-            let obj = unsafe { GcRefMut::cast::<Object<T>>(obj) };
-
-            return Some(RefMut::map(obj, |c| c.data_mut()));
+        if !self.is::<T>() {
+            return None;
         }
-        None
+        RefMut::try_map(self.borrow_mut().inner, |object| {
+            object.data.as_mut().downcast_mut()
+        })
     }
 
     /// Checks if this object is an instance of a certain `NativeObject`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the object is currently mutably borrowed.
     ///
     /// # Examples
     ///
@@ -379,7 +402,7 @@ impl JsObject {
     #[must_use]
     #[track_caller]
     pub fn is<T: NativeObject>(&self) -> bool {
-        Gc::is::<VTableObject<T>>(&self.inner)
+        self.inner.native_type == TypeId::of::<T>()
     }
 
     /// Checks if it's an ordinary object.
@@ -603,7 +626,7 @@ impl JsObject {
         // a recursive structure
         // We can follow v8 & SpiderMonkey's lead and return a default value for the hint in this situation
         // (see https://repl.it/repls/IvoryCircularCertification#index.js)
-        let recursion_limiter = RecursionLimiter::new(self.as_ref());
+        let recursion_limiter = RecursionLimiter::new(&self.inner.object);
         if recursion_limiter.live {
             // we're in a recursive object, bail
             return Ok(match hint {
@@ -767,7 +790,34 @@ Cannot both specify accessors and a value or writable attribute",
     }
 }
 
-impl<T: NativeObject> JsObject<T> {
+impl<T: NativeObject + ?Sized> JsObject<T> {
+    /// Upcasts this object's inner data from a specific type `T` to an erased type
+    /// `dyn NativeObject`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use surgeist_js::JsObject;
+    /// # use surgeist_js::builtins::object::OrdinaryObject;
+    /// // Create a typed JsObject<OrdinaryObject>.
+    /// let typed_obj = JsObject::new_unique(None, OrdinaryObject);
+    ///
+    /// // Upcast erases the type, producing an untyped JsObject.
+    /// let obj: JsObject = typed_obj.upcast();
+    /// assert!(obj.is_ordinary());
+    /// ```
+    #[must_use]
+    pub fn upcast(self) -> JsObject {
+        JsObject::with_record(self.inner)
+    }
+
+    fn with_record(inner: Gc<ObjectRecord>) -> Self {
+        Self {
+            inner,
+            brand: PhantomData,
+        }
+    }
+
     /// Immutably borrows the `Object`.
     ///
     /// The borrow lasts until the returned `Ref` exits scope.
@@ -791,7 +841,7 @@ impl<T: NativeObject> JsObject<T> {
     #[inline]
     #[must_use]
     #[track_caller]
-    pub fn borrow(&self) -> Ref<'_, Object<T>> {
+    pub fn borrow(&self) -> ObjectRef<'_, T> {
         self.try_borrow().expect("Object already mutably borrowed")
     }
 
@@ -821,7 +871,7 @@ impl<T: NativeObject> JsObject<T> {
     #[inline]
     #[must_use]
     #[track_caller]
-    pub fn borrow_mut(&self) -> RefMut<'_, Object<T>> {
+    pub fn borrow_mut(&self) -> ObjectRefMut<'_, T> {
         self.try_borrow_mut().expect("Object already borrowed")
     }
 
@@ -844,8 +894,15 @@ impl<T: NativeObject> JsObject<T> {
     /// assert!(result.is_ok());
     /// ```
     #[inline]
-    pub fn try_borrow(&self) -> StdResult<Ref<'_, Object<T>>, BorrowError> {
-        self.inner.object.try_borrow().map_err(|_| BorrowError)
+    pub fn try_borrow(&self) -> StdResult<ObjectRef<'_, T>, BorrowError> {
+        self.inner
+            .object
+            .try_borrow()
+            .map(|inner| ObjectRef {
+                inner,
+                brand: PhantomData,
+            })
+            .map_err(|_| BorrowError)
     }
 
     /// Mutably borrows the object, returning an error if the value is currently borrowed.
@@ -867,10 +924,14 @@ impl<T: NativeObject> JsObject<T> {
     /// assert!(result.is_ok());
     /// ```
     #[inline]
-    pub fn try_borrow_mut(&self) -> StdResult<RefMut<'_, Object<T>>, BorrowMutError> {
+    pub fn try_borrow_mut(&self) -> StdResult<ObjectRefMut<'_, T>, BorrowMutError> {
         self.inner
             .object
             .try_borrow_mut()
+            .map(|inner| ObjectRefMut {
+                inner,
+                brand: PhantomData,
+            })
             .map_err(|_| BorrowMutError)
     }
 
@@ -1013,18 +1074,17 @@ impl<T: NativeObject> JsObject<T> {
         self.inner.vtable
     }
 
-    pub(crate) fn inner(&self) -> &Gc<VTableObject<T>> {
+    pub(crate) fn inner(&self) -> &Gc<ObjectRecord> {
         &self.inner
     }
 
-    pub(crate) fn from_inner(inner: Gc<VTableObject<T>>) -> Self {
-        Self { inner }
+    pub(crate) fn identity(&self) -> usize {
+        std::ptr::from_ref(&self.inner.object).addr()
     }
 
     /// Create a new private name with this object as the unique identifier.
     pub(crate) fn private_name(&self, description: JsString) -> PrivateName {
-        let ptr: *const _ = self.as_ref();
-        PrivateName::new(description, ptr.cast::<()>() as usize)
+        PrivateName::new(description, self.identity())
     }
 }
 
@@ -1032,7 +1092,7 @@ impl<T: NativeObject> JsObject<T> {
     /// Creates a new `JsObject` from its root shape, prototype, and data.
     ///
     /// Note that the returned object will not be erased to be convertible to a
-    /// `JsValue`. To erase the pointer, call [`JsObject::upcast`].
+    /// `JsValue`. To erase the native brand, call [`JsObject::upcast`].
     ///
     /// # Examples
     ///
@@ -1053,26 +1113,21 @@ impl<T: NativeObject> JsObject<T> {
     /// ```
     pub fn new<O: Into<Option<JsObject>>>(root_shape: &RootShape, prototype: O, data: T) -> Self {
         let internal_methods = data.internal_methods();
-        let inner = Gc::new(VTableObject {
-            object: GcRefCell::new(Object {
-                data: ObjectData::new(data),
-                properties: PropertyMap::from_prototype_with_shared_shape(
-                    root_shape,
-                    prototype.into(),
-                ),
-                extensible: true,
-                private_elements: ThinVec::new(),
-            }),
-            vtable: internal_methods,
-        });
+        let inner = Gc::new(ObjectRecord::new(
+            Object::new(
+                PropertyMap::from_prototype_with_shared_shape(root_shape, prototype.into()),
+                data,
+            ),
+            internal_methods,
+        ));
 
-        Self { inner }
+        Self::with_record(inner)
     }
 
     /// Creates a new `JsObject` from prototype, and data.
     ///
     /// Note that the returned object will not be erased to be convertible to a
-    /// `JsValue`. To erase the pointer, call [`JsObject::upcast`].
+    /// `JsValue`. To erase the native brand, call [`JsObject::upcast`].
     ///
     /// # Examples
     ///
@@ -1088,69 +1143,56 @@ impl<T: NativeObject> JsObject<T> {
     /// ```
     pub fn new_unique<O: Into<Option<JsObject>>>(prototype: O, data: T) -> Self {
         let internal_methods = data.internal_methods();
-        let inner = Gc::new(VTableObject {
-            object: GcRefCell::new(Object {
-                data: ObjectData::new(data),
-                properties: PropertyMap::from_prototype_unique_shape(prototype.into()),
-                extensible: true,
-                private_elements: ThinVec::new(),
-            }),
-            vtable: internal_methods,
-        });
+        let inner = Gc::new(ObjectRecord::new(
+            Object::new(
+                PropertyMap::from_prototype_unique_shape(prototype.into()),
+                data,
+            ),
+            internal_methods,
+        ));
 
-        Self { inner }
+        Self::with_record(inner)
     }
 
-    /// Upcasts this object's inner data from a specific type `T` to an erased type
-    /// `dyn NativeObject`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use surgeist_js::JsObject;
-    /// # use surgeist_js::builtins::object::OrdinaryObject;
-    /// // Create a typed JsObject<OrdinaryObject>.
-    /// let typed_obj = JsObject::new_unique(None, OrdinaryObject);
-    ///
-    /// // Upcast erases the type, producing an untyped JsObject.
-    /// let obj: JsObject = typed_obj.upcast();
-    /// assert!(obj.is_ordinary());
-    /// ```
-    #[must_use]
-    pub fn upcast(self) -> JsObject {
-        // SAFETY: The pointer is guaranteed to be valid.
-        // `VTableObject<ErasedObjectData>` and `VTableObject<T>` have the same size and alignment.
-        let inner = unsafe { Gc::cast_unchecked::<ErasedVTableObject>(self.inner) };
+    pub(crate) fn borrow_data(&self) -> Ref<'_, T> {
+        Ref::map(self.borrow().inner, |object| {
+            object
+                .data
+                .as_ref()
+                .downcast_ref()
+                .expect("checked object brand")
+        })
+    }
 
-        JsObject { inner }
+    pub(crate) fn borrow_data_mut(&self) -> RefMut<'_, T> {
+        RefMut::map(self.borrow_mut().inner, |object| {
+            object
+                .data
+                .as_mut()
+                .downcast_mut()
+                .expect("checked object brand")
+        })
     }
 }
 
-impl<T: NativeObject> AsRef<GcRefCell<Object<T>>> for JsObject<T> {
+impl From<Gc<ObjectRecord>> for JsObject {
     #[inline]
-    fn as_ref(&self) -> &GcRefCell<Object<T>> {
-        &self.inner.object
+    fn from(inner: Gc<ObjectRecord>) -> Self {
+        Self::from_inner(inner)
     }
 }
 
-impl<T: NativeObject> From<Gc<VTableObject<T>>> for JsObject<T> {
-    #[inline]
-    fn from(inner: Gc<VTableObject<T>>) -> Self {
-        Self { inner }
-    }
-}
-
-impl<T: NativeObject> PartialEq for JsObject<T> {
+impl<T: NativeObject + ?Sized> PartialEq for JsObject<T> {
     fn eq(&self, other: &Self) -> bool {
         Self::equals(self, other)
     }
 }
 
-impl<T: NativeObject> Eq for JsObject<T> {}
+impl<T: NativeObject + ?Sized> Eq for JsObject<T> {}
 
-impl<T: NativeObject> Hash for JsObject<T> {
+impl<T: NativeObject + ?Sized> Hash for JsObject<T> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        std::ptr::hash(self.as_ref(), state);
+        self.identity().hash(state);
     }
 }
 
@@ -1262,9 +1304,9 @@ impl RecursionLimiter {
     }
 }
 
-impl<T: NativeObject> Debug for JsObject<T> {
+impl<T: NativeObject + ?Sized> Debug for JsObject<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let limiter = RecursionLimiter::new(self.as_ref());
+        let limiter = RecursionLimiter::new(&self.inner.object);
 
         // Typically, using `!limiter.live` would be good enough here.
         // However, the JS object hierarchy involves quite a bit of repetition, and the sheer amount of data makes
@@ -1273,10 +1315,9 @@ impl<T: NativeObject> Debug for JsObject<T> {
         // Instead, we check if the object has appeared before in the entire graph. This means that objects will appear
         // at most once, hopefully making things a bit clearer.
         if !limiter.visited && !limiter.live {
-            let ptr: *const _ = self.as_ref();
-            let ptr = ptr.cast::<()>();
+            let identity = self.identity();
             let obj = self.borrow();
-            let kind = obj.data().type_name_of_value();
+            let kind = obj.inner.data.as_ref().type_name_of_value();
             if self.is_callable() {
                 let name_prop = obj
                     .properties()
@@ -1289,10 +1330,10 @@ impl<T: NativeObject> Debug for JsObject<T> {
                         .unwrap_or_default(),
                 };
 
-                return f.write_fmt(format_args!("({:?}) {:?} 0x{:X}", kind, name, ptr as usize));
+                return f.write_fmt(format_args!("({:?}) {:?} 0x{:X}", kind, name, identity));
             }
 
-            f.write_fmt(format_args!("({:?}) 0x{:X}", kind, ptr as usize))
+            f.write_fmt(format_args!("({:?}) 0x{:X}", kind, identity))
         } else {
             f.write_str("{ ... }")
         }

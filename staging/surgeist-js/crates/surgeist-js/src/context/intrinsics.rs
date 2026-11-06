@@ -4,7 +4,7 @@ use surgeist_js_gc::{Finalize, Trace};
 
 use crate::{
     JsSymbol,
-    builtins::{Array, OrdinaryObject, iterable::IteratorPrototypes, uri::UriFunctions},
+    builtins::{Array, iterable::IteratorPrototypes, uri::UriFunctions},
     js_string,
     object::{
         CONSTRUCTOR, JsFunction, JsObject, Object, PROTOTYPE,
@@ -210,7 +210,7 @@ impl Default for StandardConstructors {
     fn default() -> Self {
         Self {
             object: StandardConstructor::with_prototype(JsObject::from_object_and_vtable(
-                Object::<OrdinaryObject>::default(),
+                Object::default(),
                 &IMMUTABLE_PROTOTYPE_EXOTIC_INTERNAL_METHODS,
             )),
             async_generator_function: StandardConstructor::default(),

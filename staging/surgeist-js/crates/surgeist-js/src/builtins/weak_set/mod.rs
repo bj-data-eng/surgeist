@@ -12,7 +12,7 @@ use crate::{
     builtins::{BuiltInBuilder, BuiltInConstructor, BuiltInObject, IntrinsicObject},
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     js_error, js_string,
-    object::{ErasedVTableObject, JsObject, internal_methods::get_prototype_from_constructor},
+    object::{JsObject, ObjectRecord, internal_methods::get_prototype_from_constructor},
     property::Attribute,
     realm::Realm,
     string::StaticJsStrings,
@@ -22,7 +22,7 @@ use surgeist_js_gc::{Finalize, Trace};
 
 use super::iterable::IteratorHint;
 
-pub(crate) type NativeWeakSet = surgeist_js_gc::WeakMap<ErasedVTableObject, ()>;
+pub(crate) type NativeWeakSet = surgeist_js_gc::WeakMap<ObjectRecord, ()>;
 
 #[derive(Debug, Trace, Finalize)]
 pub(crate) struct WeakSet;

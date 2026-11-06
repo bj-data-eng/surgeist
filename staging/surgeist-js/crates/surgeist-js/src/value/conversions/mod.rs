@@ -92,7 +92,7 @@ impl From<bool> for JsValue {
     }
 }
 
-impl<T: NativeObject> From<JsObject<T>> for JsValue {
+impl<T: NativeObject + ?Sized> From<JsObject<T>> for JsValue {
     #[inline]
     fn from(object: JsObject<T>) -> Self {
         Self::from_inner(InnerValue::object(object.upcast()))

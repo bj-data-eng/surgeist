@@ -7,8 +7,8 @@ use crate::{
     object::{JsObject, internal_methods::get_prototype_from_constructor},
     value::TryFromJs,
 };
-use surgeist_js_gc::{Finalize, GcRef, GcRefMut, Trace};
 use std::ops::Deref;
+use surgeist_js_gc::{Finalize, GcRef, GcRefMut, Trace};
 
 #[doc(inline)]
 pub use crate::builtins::array_buffer::AlignedVec;
@@ -254,7 +254,7 @@ impl JsArrayBuffer {
     #[inline]
     #[must_use]
     pub fn data(&self) -> Option<GcRef<'_, [u8]>> {
-        GcRef::try_map(self.inner.borrow(), |o| o.data().bytes())
+        GcRef::try_map(self.inner.borrow_data(), ArrayBuffer::bytes)
     }
 
     /// Copies the contents of this [`JsArrayBuffer`] into a new [`Vec<u8>`].
@@ -316,7 +316,7 @@ impl JsArrayBuffer {
     #[inline]
     #[must_use]
     pub fn data_mut(&self) -> Option<GcRefMut<'_, [u8]>> {
-        GcRefMut::try_map(self.inner.borrow_mut(), |o| o.data_mut().bytes_mut())
+        GcRefMut::try_map(self.inner.borrow_data_mut(), ArrayBuffer::bytes_mut)
     }
 }
 

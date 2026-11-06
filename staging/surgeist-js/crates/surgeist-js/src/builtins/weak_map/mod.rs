@@ -15,7 +15,7 @@ use crate::{
     },
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     js_error, js_string,
-    object::{ErasedVTableObject, JsObject, internal_methods::get_prototype_from_constructor},
+    object::{JsObject, ObjectRecord, internal_methods::get_prototype_from_constructor},
     property::Attribute,
     realm::Realm,
     string::StaticJsStrings,
@@ -23,7 +23,7 @@ use crate::{
 };
 use surgeist_js_gc::{Finalize, Trace};
 
-pub(crate) type NativeWeakMap = surgeist_js_gc::WeakMap<ErasedVTableObject, JsValue>;
+pub(crate) type NativeWeakMap = surgeist_js_gc::WeakMap<ObjectRecord, JsValue>;
 
 #[derive(Debug, Trace, Finalize)]
 pub(crate) struct WeakMap;

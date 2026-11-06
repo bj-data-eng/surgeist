@@ -38,6 +38,24 @@ fn typed_object_views_preserve_brand_and_identity() {
 }
 
 #[test]
+fn object_accepts_a_naturally_aligned_native_payload() {
+    #[repr(align(32))]
+    #[derive(crate::JsData, surgeist_js_gc::Trace, surgeist_js_gc::Finalize)]
+    struct Aligned(u32);
+
+    let typed = crate::JsObject::new_unique(None, Aligned(5));
+    let erased = typed.clone().upcast();
+    let mut payload = erased.downcast_mut::<Aligned>().expect("aligned payload");
+    assert_eq!(
+        std::ptr::from_ref(&*payload).addr() % align_of::<Aligned>(),
+        0
+    );
+    payload.0 = 8;
+    drop(payload);
+    assert_eq!(typed.borrow().data().0, 8);
+}
+
+#[test]
 fn ordinary_has_instance_nonobject_prototype() {
     run_test_actions([TestAction::assert_native_error(
         indoc! {r#"

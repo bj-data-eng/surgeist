@@ -2,7 +2,6 @@
 //!
 //! For the builtin object wrappers, please see [`object::builtins`][builtins] for implementors.
 
-use datatypes::ObjectData;
 pub use jsobject::{RecursionLimiter, Ref, RefMut};
 pub use operations::IntegrityLevel;
 pub use property_map::*;
@@ -91,32 +90,54 @@ impl dyn NativeObject {
     }
 }
 
-/// The internal representation of a JavaScript object.
+/// A JavaScript object's properties and internal state apart from its native payload.
 #[derive(Debug, Finalize, Trace)]
-// SAFETY: This does not implement drop, so this is safe.
 #[surgeist_js_gc(unsafe_no_drop)]
-// SAFETY: This type must use `#[repr(C)]` to prevent the compiler from reordering fields,
-//         as it is used for casting between types.
-#[repr(C)]
-pub struct Object<T: ?Sized> {
-    /// The collection of properties contained in the object
+pub struct ObjectState {
     pub(crate) properties: PropertyMap,
-    /// Whether it can have new properties added to it.
     pub(crate) extensible: bool,
-    /// The `[[PrivateElements]]` internal slot.
     private_elements: ThinVec<(PrivateName, PrivateElement)>,
-    /// The inner object data
-    data: ObjectData<T>,
 }
 
-impl<T: Default> Default for Object<T> {
-    fn default() -> Self {
+impl ObjectState {
+    fn new(properties: PropertyMap) -> Self {
         Self {
-            properties: PropertyMap::default(),
+            properties,
             extensible: true,
             private_elements: ThinVec::new(),
-            data: ObjectData::default(),
         }
+    }
+}
+
+/// A JavaScript object awaiting publication.
+#[derive(Finalize, Trace)]
+#[surgeist_js_gc(unsafe_no_drop)]
+pub(crate) struct Object {
+    state: ObjectState,
+    data: Box<dyn NativeObject>,
+}
+
+impl Object {
+    fn new(properties: PropertyMap, data: impl NativeObject) -> Self {
+        Self {
+            state: ObjectState::new(properties),
+            data: Box::new(data),
+        }
+    }
+}
+
+impl Default for Object {
+    fn default() -> Self {
+        Self::new(PropertyMap::default(), OrdinaryObject)
+    }
+}
+
+impl Debug for Object {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Object")
+            .field("state", &self.state)
+            .field("data_type", &self.data.as_ref().type_name_of_value())
+            .finish()
     }
 }
 
@@ -156,25 +177,11 @@ pub enum PrivateElement {
     },
 }
 
-impl<T: ?Sized> Object<T> {
+impl ObjectState {
     /// Returns the shape of the object.
     #[must_use]
     pub const fn shape(&self) -> &Shape {
         &self.properties.shape
-    }
-
-    /// Returns the data of the object.
-    #[inline]
-    #[must_use]
-    pub fn data(&self) -> &T {
-        self.data.as_ref()
-    }
-
-    /// Returns the data of the object.
-    #[inline]
-    #[must_use]
-    pub fn data_mut(&mut self) -> &mut T {
-        self.data.as_mut()
     }
 
     /// Gets the prototype instance of this object.
@@ -538,9 +545,9 @@ impl<'ctx> ObjectInitializer<'ctx> {
 pub struct ConstructorBuilder<'ctx> {
     context: &'ctx mut Context,
     function: NativeFunction,
-    constructor_object: Object<OrdinaryObject>,
+    constructor_object: ObjectState,
     has_prototype_property: bool,
-    prototype: Object<OrdinaryObject>,
+    prototype: Object,
     name: JsString,
     length: usize,
     callable: bool,
@@ -556,18 +563,8 @@ impl<'ctx> ConstructorBuilder<'ctx> {
         Self {
             context,
             function,
-            constructor_object: Object {
-                data: ObjectData::new(OrdinaryObject),
-                properties: PropertyMap::default(),
-                extensible: true,
-                private_elements: ThinVec::new(),
-            },
-            prototype: Object {
-                data: ObjectData::new(OrdinaryObject),
-                properties: PropertyMap::default(),
-                extensible: true,
-                private_elements: ThinVec::new(),
-            },
+            constructor_object: ObjectState::new(PropertyMap::default()),
+            prototype: Object::default(),
             length: 0,
             name: js_string!(),
             callable: true,
@@ -590,7 +587,7 @@ impl<'ctx> ConstructorBuilder<'ctx> {
             .constructor(false)
             .build();
 
-        self.prototype.insert(
+        self.prototype.state.insert(
             binding.binding,
             PropertyDescriptor::builder()
                 .value(function)
@@ -640,7 +637,7 @@ impl<'ctx> ConstructorBuilder<'ctx> {
             .writable(attribute.writable())
             .enumerable(attribute.enumerable())
             .configurable(attribute.configurable());
-        self.prototype.insert(key, property);
+        self.prototype.state.insert(key, property);
         self
     }
 
@@ -675,7 +672,7 @@ impl<'ctx> ConstructorBuilder<'ctx> {
             .maybe_set(set)
             .enumerable(attribute.enumerable())
             .configurable(attribute.configurable());
-        self.prototype.insert(key, property);
+        self.prototype.state.insert(key, property);
         self
     }
 
@@ -706,7 +703,7 @@ impl<'ctx> ConstructorBuilder<'ctx> {
         P: Into<PropertyDescriptor>,
     {
         let property = property.into();
-        self.prototype.insert(key, property);
+        self.prototype.state.insert(key, property);
         self
     }
 
@@ -807,9 +804,9 @@ impl<'ctx> ConstructorBuilder<'ctx> {
 
         let prototype = {
             if let Some(proto) = self.inherit.take() {
-                self.prototype.set_prototype(proto);
+                self.prototype.state.set_prototype(proto);
             } else {
-                self.prototype.set_prototype(
+                self.prototype.state.set_prototype(
                     self.context
                         .intrinsics()
                         .constructors()
@@ -830,19 +827,17 @@ impl<'ctx> ConstructorBuilder<'ctx> {
             };
             let internal_methods = data.internal_methods();
             let mut constructor = Object {
-                properties: self.constructor_object.properties,
-                extensible: self.constructor_object.extensible,
-                private_elements: self.constructor_object.private_elements,
-                data: ObjectData::new(data),
+                state: self.constructor_object,
+                data: Box::new(data),
             };
 
-            constructor.insert(StaticJsStrings::LENGTH, length);
-            constructor.insert(js_string!("name"), name);
+            constructor.state.insert(StaticJsStrings::LENGTH, length);
+            constructor.state.insert(js_string!("name"), name);
 
             if let Some(proto) = self.custom_prototype.take() {
-                constructor.set_prototype(proto);
+                constructor.state.set_prototype(proto);
             } else {
-                constructor.set_prototype(
+                constructor.state.set_prototype(
                     self.context
                         .intrinsics()
                         .constructors()
@@ -852,7 +847,7 @@ impl<'ctx> ConstructorBuilder<'ctx> {
             }
 
             if self.has_prototype_property {
-                constructor.insert(
+                constructor.state.insert(
                     PROTOTYPE,
                     PropertyDescriptor::builder()
                         .value(prototype.clone())

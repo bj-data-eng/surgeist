@@ -1,6 +1,7 @@
 //! All methods for serializing a [`JsValue`] into a [`JsValueStore`].
 
 use crate::store::{JsValueStore, StringStore, ValueStoreInner, unsupported_type};
+use rustc_hash::{FxHashMap, FxHashSet};
 use surgeist_js::builtins::array_buffer::{AlignedVec, ArrayBuffer};
 use surgeist_js::builtins::error::Error;
 use surgeist_js::object::builtins::{
@@ -9,22 +10,18 @@ use surgeist_js::object::builtins::{
 };
 use surgeist_js::property::PropertyKey;
 use surgeist_js::{Context, JsError, JsObject, JsResult, JsString, JsValue, JsVariant, js_error};
-use rustc_hash::{FxHashMap, FxHashSet};
 
-/// A Map of seen objects when walking through the value. We use the address
-/// of the inner object as it is unique per JavaScript value.
+/// Objects already visited during structured cloning, keyed by identity.
 #[derive(Default)]
-pub(super) struct SeenMap(FxHashMap<usize, JsValueStore>);
+pub(super) struct SeenMap(FxHashMap<JsObject, JsValueStore>);
 
 impl SeenMap {
     fn get(&self, object: &JsObject) -> Option<JsValueStore> {
-        let addr = std::ptr::from_ref(object.as_ref()).addr();
-        self.0.get(&addr).cloned()
+        self.0.get(object).cloned()
     }
 
     fn insert(&mut self, original: &JsObject, object: JsValueStore) {
-        let addr = std::ptr::from_ref(original.as_ref()).addr();
-        self.0.insert(addr, object);
+        self.0.insert(original.clone(), object);
     }
 }
 

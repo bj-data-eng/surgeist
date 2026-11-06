@@ -12,10 +12,7 @@ use crate::{
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     job::{Job, JobCallback, NativeAsyncJob},
     js_error, js_string,
-    object::{
-        ErasedVTableObject, JsFunction, VTableObject,
-        internal_methods::get_prototype_from_constructor,
-    },
+    object::{JsFunction, ObjectRecord, internal_methods::get_prototype_from_constructor},
     property::Attribute,
     realm::Realm,
     string::StaticJsStrings,
@@ -49,9 +46,9 @@ impl Finalize for CleanupSignaler {
 ///  A cell tracked by a [`FinalizationRegistry`].
 #[derive(Trace, Finalize)]
 pub(crate) struct RegistryCell {
-    target: Ephemeron<ErasedVTableObject, CleanupSignaler>,
+    target: Ephemeron<ObjectRecord, CleanupSignaler>,
     held_value: JsValue,
-    unregister_token: Option<WeakGc<ErasedVTableObject>>,
+    unregister_token: Option<WeakGc<ObjectRecord>>,
 }
 
 /// Boa's implementation of ECMAScript's [`FinalizationRegistry`] builtin object.
@@ -162,7 +159,7 @@ impl BuiltInConstructor for FinalizationRegistry {
 
         {
             async fn inner_cleanup(
-                weak_registry: WeakGc<VTableObject<FinalizationRegistry>>,
+                weak_registry: WeakGc<ObjectRecord>,
                 receiver: async_channel::Receiver<()>,
                 context: &RefCell<&mut Context>,
             ) -> JsResult<JsValue> {
@@ -174,6 +171,7 @@ impl BuiltInConstructor for FinalizationRegistry {
                     return Ok(JsValue::undefined());
                 };
 
+                let registry = registry.downcast().expect("finalization registry");
                 let result = FinalizationRegistry::cleanup(&registry, &mut context.borrow_mut());
 
                 context
