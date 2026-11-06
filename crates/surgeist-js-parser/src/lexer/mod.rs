@@ -229,7 +229,7 @@ impl<R> Lexer<R> {
         if self.get_goal() == InputElement::HashbangOrRegExp {
             self.set_goal(InputElement::RegExp);
             if next_ch == 0x23 && self.cursor.peek_char()? == Some(0x21) {
-                let _token = HashbangComment.lex(&mut self.cursor, start, interner);
+                HashbangComment.lex(&mut self.cursor, start, interner)?;
                 return self.next(interner);
             }
         }
