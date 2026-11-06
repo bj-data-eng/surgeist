@@ -319,7 +319,8 @@ impl Script {
         context
             .global_declaration_instantiation(&codeblock)
             .inspect_err(|_| {
-                context.vm.pop_frame();
+                let frame = context.vm.pop_frame().expect("script frame was pushed");
+                context.vm.stack.truncate_to_frame(&frame);
             })?;
 
         Ok(())
