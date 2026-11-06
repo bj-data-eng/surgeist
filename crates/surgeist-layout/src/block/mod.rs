@@ -16,6 +16,7 @@ use super::{
     RunMode, Size, SizingAlgorithm, SizingMode, TextAlign, TextAlignLast, TextJustification,
     Traverse, VerticalAlignOf,
 };
+use crate::engine::containment::{compute_empty_box, empty_sizing_input, sizes_as_empty};
 use crate::error::{
     AtomicInlineParticipationRoleError, layout_child_geometry_error, layout_own_geometry_error,
 };
@@ -78,7 +79,7 @@ where
     Tree: Compute<'input, M>,
 {
     let style = block_container_projection::<Tree, M>(tree, container);
-    let constants = Constants::from_projection::<Tree, M>(tree, container, &style, input)?;
+    let constants = Constants::from_projection::<Tree, M>(tree, container, &style, input, None)?;
     let logical_size = constants.logical_node_inner_size();
     let (Some(outer_inline), Some(inner_block)) =
         (constants.definite_inline_outer(), logical_size.block)
@@ -160,8 +161,33 @@ where
     Tree: Compute<'input, M>,
 {
     let inherited = incoming.as_ref().map(|incoming| incoming.frame.as_ref());
-    let anonymous = tree.node_input(node).block_generation == crate::BlockGeneration::Anonymous;
     let group_style = tree.node_input(node);
+    let contained_size = if sizes_as_empty(group_style) {
+        let empty = compute_empty_box(node, group_style, |probe| {
+            compute_block_inner(probe, node, empty_sizing_input(input), None, None)
+        })?;
+        let shared_normal_flow = float_context::Role::for_input(group_style, input)
+            == float_context::Role::Shared
+            && crate::FlowAxes::new(group_style.writing_mode, group_style.direction)
+                .logical_size(input.sizing_request().axes())
+                .inline
+                .operation()
+                == crate::SizingOperation::Normal;
+        if !input.run_mode().is_perform_layout()
+            && inherited.is_none()
+            && !shared_normal_flow
+            && !input.requires_content_baseline()
+            && !tree
+                .text_computation()
+                .is_some_and(|text| text.formatted_active())
+        {
+            return Ok(empty.output);
+        }
+        Some(empty.output.size)
+    } else {
+        None
+    };
+    let anonymous = group_style.block_generation == crate::BlockGeneration::Anonymous;
     if let Some(groups) = tree.group_computation() {
         groups.begin(node, input, group_style);
     }
@@ -174,8 +200,13 @@ where
             .get();
         let mut pass_input = input;
         loop {
-            let output =
-                compute_block_inner::<Tree, Tree::Scalar, M>(tree, node, pass_input, inherited)?;
+            let output = compute_block_inner::<Tree, Tree::Scalar, M>(
+                tree,
+                node,
+                pass_input,
+                inherited,
+                contained_size,
+            )?;
             if !input.run_mode().is_perform_layout() {
                 return Ok(output);
             }
@@ -234,6 +265,7 @@ fn compute_block_inner<'input, Tree, S, M>(
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<S>,
     inherited: Option<&InheritedFloatExclusions<S, <Tree as Traverse>::Node>>,
+    contained_size: Option<Size<S>>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, BlockResult<<Tree as Traverse>::Node, S>, S, M>
 where
     Tree: Compute<'input, M, Scalar = S>,
@@ -241,7 +273,8 @@ where
 {
     let float_role = float_context::Role::for_input(tree.node_input(node), input);
     let style = block_container_projection::<Tree, M>(tree, node);
-    let constants = Constants::from_projection::<Tree, M>(tree, node, &style, input)?;
+    let constants =
+        Constants::from_projection::<Tree, M>(tree, node, &style, input, contained_size)?;
     let children = tree.children(node).collect::<Vec<_>>();
     let observe_formatted = tree
         .text_computation()
@@ -250,7 +283,8 @@ where
     let semantic_work = tree
         .text_computation()
         .is_some_and(|text| text.has_semantic(node));
-    if children.is_empty()
+    if contained_size.is_none()
+        && children.is_empty()
         && inherited.is_none()
         && !semantic_work
         && !observe_formatted
@@ -273,7 +307,8 @@ where
             floats: None,
         });
     }
-    if input.run_mode() == RunMode::ComputeSize
+    if contained_size.is_none()
+        && input.run_mode() == RunMode::ComputeSize
         && inherited.is_none()
         && !semantic_work
         && !observe_formatted
@@ -358,8 +393,11 @@ where
             .max(constants.logical_padding_border_size().inline)
     };
     let accepted_inline_inner = constants.accepted_inline_inner(node, accepted_inline_outer)?;
+    let definite_child_inner = constants
+        .flow_axes
+        .logical_size(constants.definite_child_containing_block_size());
     let ratio_block_outer = if constants.ratio_dependent_block
-        && logical_inner_size.block.is_none()
+        && definite_child_inner.block.is_none()
         && normal_block_fill
         && inherited_inline_request.operation() == crate::SizingOperation::Normal
         && (logical_inner_size.inline.is_some()
@@ -400,7 +438,8 @@ where
         PhysicalAxis::Horizontal => &style.common.min_size.width,
         PhysicalAxis::Vertical => &style.common.min_size.height,
     };
-    let ratio_needs_content_minimum = ratio_block_outer.is_some()
+    let ratio_needs_content_minimum = contained_size.is_none()
+        && ratio_block_outer.is_some()
         && block_minimum.is_auto()
         && !style
             .common
@@ -411,7 +450,11 @@ where
     // as a containing basis for child percentages.
     let definite_ratio_inner = ratio_block_outer
         .filter(|_| !ratio_needs_content_minimum)
-        .map(|outer| (outer - constants.logical_content_box_inset().block_sum()).max(S::ZERO));
+        .map(|outer| {
+            logical_inner_size.block.unwrap_or_else(|| {
+                (outer - constants.logical_content_box_inset().block_sum()).max(S::ZERO)
+            })
+        });
     let sizes_float_context = float_context::sizes_float_context(
         float_role,
         input,
@@ -837,6 +880,7 @@ impl<S: LayoutScalar> Constants<S> {
         node: <Tree as Traverse>::Node,
         style: &BlockContainerProjection<'_, S>,
         input: ComputeInputOf<S>,
+        contained_size: Option<Size<S>>,
     ) -> LayoutResultOf<<Tree as Traverse>::Node, Self, S, M>
     where
         Tree: Compute<'input, M, Scalar = S>,
@@ -958,11 +1002,12 @@ impl<S: LayoutScalar> Constants<S> {
             && flow_axes.logical_edges(border).block_end == S::ZERO
             && !matches!(flow_axes.logical_size(style_size).block, Some(block) if block > S::ZERO)
             && !matches!(flow_axes.logical_size(min_size).block, Some(block) if block > S::ZERO);
-        let node_outer_size = input
+        let definite_outer_size = input
             .known()
             .or(min_max_definite_size)
             .or(style_size.clamp_max_before_min_optional(min_size, max_size))
             .max_optional(padding_border_size.map(Some));
+        let node_outer_size = contained_size.map_or(definite_outer_size, |size| size.map(Some));
         let unconstrained_scroll_box_size = padding_border_size
             + Size::splat(style.scrollbar_width.get() + style.scrollbar_width.get());
         let scroll_box_size = node_outer_size
@@ -1011,7 +1056,7 @@ impl<S: LayoutScalar> Constants<S> {
             border,
         };
         let fixed_outer = if input.sizing_mode() == SizingMode::InherentSize {
-            node_outer_size
+            definite_outer_size
         } else {
             input.known()
         };
@@ -1090,8 +1135,18 @@ impl<S: LayoutScalar> Constants<S> {
             flow_axes,
             node_outer_size,
             node_inner_size,
-            child_containing_block_extent: node_inner_size
-                .map(|value| value.map(ChildContainingBlockExtent::Definite)),
+            child_containing_block_extent: node_inner_size.zip_map(
+                definite_outer_size,
+                |inner, definite| {
+                    inner.map(|value| {
+                        if definite.is_some() {
+                            ChildContainingBlockExtent::Definite(value)
+                        } else {
+                            ChildContainingBlockExtent::FinalAutoDerived(value)
+                        }
+                    })
+                },
+            ),
             node_min_size: min_size,
             node_max_size: max_size,
             direction: flow_axes.direction(),
@@ -1152,6 +1207,7 @@ impl<S: LayoutScalar> Constants<S> {
             node,
             &BlockContainerProjection::from_node(style),
             input,
+            None,
         )
     }
 }

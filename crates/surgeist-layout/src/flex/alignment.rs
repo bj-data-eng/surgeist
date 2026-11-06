@@ -729,6 +729,7 @@ mod final_baseline_selection_tests {
             axes: super::super::FlexAxes::new(flow_axes, flex_direction, FlexWrap::NoWrap),
             node_outer_size: Size::NONE,
             percentage_parent_size: Size::NONE,
+            physical_baseline_demand: false,
             node_inner_size: Size::NONE,
             min_outer_size: Size::NONE,
             max_outer_size: Size::NONE,

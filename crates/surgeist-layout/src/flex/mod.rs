@@ -4,6 +4,7 @@ use super::{
     FlexWrap, LayoutResultOf, LayoutScalar, LengthAutoOf, LengthOf, LengthResolutionStatus,
     ParentFormattingContext, Point, RequestedAxis, RunMode, Size, SizingMode, Traverse,
 };
+use crate::engine::containment::{compute_empty_box, empty_sizing_input, sizes_as_empty};
 use crate::error::{SizingAlgorithm, layout_own_geometry_error};
 use crate::geometry::{FlowAxes, LogicalAxis, PhysicalAxis, PhysicalProgression, PhysicalSide};
 use crate::layout_math::{
@@ -59,9 +60,22 @@ pub(crate) fn compute_flex<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
+    let style = tree.node_input(node);
+    let contained_size = if sizes_as_empty(style) {
+        let empty = compute_empty_box(node, style, |probe| {
+            compute_flex_inner(probe, node, empty_sizing_input(input), None)
+        })?;
+        if !input.run_mode().is_perform_layout() && !input.requires_content_baseline() {
+            return Ok(empty);
+        }
+        Some(empty.size)
+    } else {
+        None
+    };
     let mut pass_input = input;
     loop {
-        let output = compute_flex_inner::<Tree, Tree::Scalar, M>(tree, node, pass_input)?;
+        let output =
+            compute_flex_inner::<Tree, Tree::Scalar, M>(tree, node, pass_input, contained_size)?;
         if !input.run_mode().is_perform_layout() {
             return Ok(output);
         }
@@ -85,6 +99,7 @@ fn compute_flex_inner<'input, Tree, S, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<S>,
+    contained_size: Option<Size<S>>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, ComputeOutputOf<S>, S, M>
 where
     Tree: Compute<'input, M, Scalar = S>,
@@ -93,10 +108,11 @@ where
     let constants =
         self::input::with_flex_container_projection::<Tree, M, _>(tree, node, |style| {
             self::input::with_flex_scroll_projections::<Tree, M, _>(tree, node, |scroll_box, _| {
-                Constants::new::<Tree, M>(tree, node, &style, scroll_box, input)
+                Constants::new::<Tree, M>(tree, node, &style, scroll_box, input, contained_size)
             })
         })?;
     if input.run_mode() == RunMode::ComputeSize
+        && (contained_size.is_none() || !input.physical_baseline_demand())
         && let Size {
             width: Some(width),
             height: Some(height),
@@ -310,6 +326,7 @@ struct Constants<S: LayoutScalar> {
     node_outer_size: Size<Option<S>>,
     node_inner_size: Size<Option<S>>,
     percentage_parent_size: Size<Option<S>>,
+    physical_baseline_demand: bool,
     min_outer_size: Size<Option<S>>,
     max_outer_size: Size<Option<S>>,
     max_inner_size: Size<Option<S>>,
@@ -343,6 +360,7 @@ impl<S: LayoutScalar> Constants<S> {
         style: &FlexContainerProjection<'_, S>,
         scroll_box_projection: crate::scroll::ScrollBoxProjection<'_, S>,
         input: ComputeInputOf<S>,
+        contained_size: Option<Size<S>>,
     ) -> LayoutResultOf<<Tree as Traverse>::Node, Self, S, M>
     where
         Tree: Compute<'input, M, Scalar = S>,
@@ -431,11 +449,12 @@ impl<S: LayoutScalar> Constants<S> {
             (Some(min), Some(max)) if max <= min => Some(min),
             _ => None,
         });
-        let node_outer_size = input
+        let definite_outer_size = input
             .known()
             .or(min_max_definite_size
                 .or(style_size.clamp_max_before_min_optional(min_size, max_size)))
             .max_optional(padding_border.map(Some));
+        let node_outer_size = contained_size.map_or(definite_outer_size, |size| size.map(Some));
         let mut scroll_box_source = CanonicalScrollBoxSourceOf::from_projection(
             scroll_box_projection,
             Size::ZERO,
@@ -467,12 +486,14 @@ impl<S: LayoutScalar> Constants<S> {
         let node_inner_size = node_outer_size
             .sub_optional_unchecked(content_box_inset_size)
             .max_optional(Size::<S>::ZERO.map(Some));
+        let percentage_parent_size =
+            node_inner_size.zip_map(definite_outer_size, |inner, definite| definite.and(inner));
         let max_inner_size = max_size
             .sub_optional_unchecked(content_box_inset_size)
             .max_optional(Size::<S>::ZERO.map(Some));
         let gap = style
             .gap
-            .zip_map(node_inner_size, |length, basis| {
+            .zip_map(percentage_parent_size, |length, basis| {
                 resolve_length_or_zero(length, Some(basis.unwrap_or(S::ZERO)))
             })
             .transpose_with_node(tree, node)?;
@@ -488,7 +509,7 @@ impl<S: LayoutScalar> Constants<S> {
             border,
         };
         let fixed_outer = if input.sizing_mode() == SizingMode::InherentSize {
-            node_outer_size
+            definite_outer_size
         } else {
             input.known()
         };
@@ -530,7 +551,8 @@ impl<S: LayoutScalar> Constants<S> {
             axes,
             node_outer_size,
             node_inner_size,
-            percentage_parent_size: node_inner_size,
+            percentage_parent_size,
+            physical_baseline_demand: input.physical_baseline_demand(),
             min_outer_size: min_size,
             max_outer_size: max_size,
             max_inner_size,
@@ -543,7 +565,7 @@ impl<S: LayoutScalar> Constants<S> {
             settled_auto_scrollbars: input.settled_auto_scrollbars(),
             gap,
             gap_input: *style.gap,
-            gap_percentage_basis: node_inner_size,
+            gap_percentage_basis: percentage_parent_size,
             align_items: style.align_items.unwrap_or(AlignItems::Stretch),
             authored_align_content: style.align_content,
             align_content: style.align_content.unwrap_or(AlignContent::Stretch),
@@ -1300,6 +1322,10 @@ where
                         ),
                     ),
                 )
+                .with_physical_baseline_demand(
+                    constants.physical_baseline_demand
+                        || item.participates_in_baseline(constants.axes),
+                )
                 .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
             )?;
             item.baseline.refresh(measured);
@@ -1582,6 +1608,7 @@ mod fri06_c13_t06_characterization_tests {
                             &projection,
                             scroll_box,
                             input(flow, parent),
+                            None,
                         )
                     },
                 )
@@ -1635,6 +1662,7 @@ mod fri06_c13_t06_characterization_tests {
                                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                                 Size::splat(Some(largest)),
                             ),
+                            None,
                         )
                     },
                 )

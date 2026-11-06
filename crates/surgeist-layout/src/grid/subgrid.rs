@@ -1977,6 +1977,9 @@ pub(super) fn visit_grid_minimum_wrapper_children<'input, Tree, M, T>(
 where
     Tree: Compute<'input, M>,
 {
+    if crate::engine::containment::sizes_as_empty(tree.node_input(node)) {
+        return Ok(Vec::new());
+    }
     let GridMinimumWrapperInput {
         axis: queried_axis,
         container: nested_container,

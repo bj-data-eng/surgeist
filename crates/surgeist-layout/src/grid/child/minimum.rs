@@ -289,7 +289,7 @@ pub(in crate::grid) fn compute_grid_minimum_contribution<Node: Copy, S: LayoutSc
             .sizing_request()
             .with_axes(prepared.sizing_request().axes()),
     )
-    .with_named_baseline_demand(prepared.named_baseline_demand())
+    .with_baseline_demand_from(prepared)
     .with_settled_auto_scrollbars(prepared.settled_auto_scrollbars())
     .with_containing_auto_scrollbar_pass(prepared.containing_auto_scrollbar_pass());
     if let Some(indent) = prepared.block_indent_context() {

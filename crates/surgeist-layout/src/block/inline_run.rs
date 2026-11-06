@@ -708,13 +708,18 @@ where
             )
             .transpose_with_node(tree, child)?;
         let named_demand = named_atomic_demand(&child_style, constants.inline_baseline_context);
+        let physical_demand = provider_enabled
+            && child_style.float.is_none()
+            && constants.inline_baseline_context == crate::InlineBaselineContext::Physical
+            && uses_inner_physical_atomic_baseline(&child_style, constants.flow_axes);
         let mut child_request = inline_atomic_child_request(
             constants,
             child_run_mode,
             pass_sizing_request,
             available_inline_extent,
         )
-        .with_named_baseline_demand(named_demand);
+        .with_named_baseline_demand(named_demand)
+        .with_physical_baseline_demand(physical_demand);
         let packet = if !child_style.float.is_none() && text_binding.is_some() {
             // Use the ordinary block owner's complete float child request. The
             // paragraph capture changes encounter scheduling, not child sizing.
@@ -2189,6 +2194,19 @@ fn named_atomic_demand<S: LayoutScalar>(
     }
 }
 
+fn uses_inner_physical_atomic_baseline<S: LayoutScalar>(
+    child: &BlockChildProjection<'_, S>,
+    containing: FlowAxes,
+) -> bool {
+    let used_overflow =
+        UsedOverflow::from_computed(child.common.overflow, child.common.item_is_replaced);
+    let block_overflow = match containing.block_axis() {
+        PhysicalAxis::Horizontal => used_overflow.x(),
+        PhysicalAxis::Vertical => used_overflow.y(),
+    };
+    child.vertical_align.is_baseline_relative() && block_overflow.value() == Overflow::Visible
+}
+
 fn atomic_inline_box_participant<S: LayoutScalar, M>(
     source_index: usize,
     child_style: BlockChildProjection<'_, S>,
@@ -2203,33 +2221,25 @@ fn atomic_inline_box_participant<S: LayoutScalar, M>(
         baseline: context,
     } = containing;
     let logical_size = containing_flow_axes.logical_size(output.size);
-    let used_overflow = UsedOverflow::from_computed(
-        child_style.common.overflow,
-        child_style.common.item_is_replaced,
-    );
-    let block_overflow = match containing_flow_axes.block_axis() {
-        PhysicalAxis::Horizontal => used_overflow.x(),
-        PhysicalAxis::Vertical => used_overflow.y(),
-    };
-    let mut selected_inner_baseline = (child_style.vertical_align.is_baseline_relative()
-        && block_overflow.value() == Overflow::Visible)
-        .then(|| {
-            let baselines = output.baselines();
-            containing_flow_axes
-                .block_axis_coordinate(baselines.first)
-                .or_else(|| containing_flow_axes.block_axis_coordinate(baselines.last))
-                .map(|physical| {
-                    if containing_flow_axes
-                        .logical_axis_progression(crate::LogicalAxis::Block)
-                        .is_decreasing()
-                    {
-                        logical_size.block - physical
-                    } else {
-                        physical
-                    }
-                })
-        })
-        .flatten();
+    let mut selected_inner_baseline =
+        uses_inner_physical_atomic_baseline(&child_style, containing_flow_axes)
+            .then(|| {
+                let baselines = output.baselines();
+                containing_flow_axes
+                    .block_axis_coordinate(baselines.first)
+                    .or_else(|| containing_flow_axes.block_axis_coordinate(baselines.last))
+                    .map(|physical| {
+                        if containing_flow_axes
+                            .logical_axis_progression(crate::LogicalAxis::Block)
+                            .is_decreasing()
+                        {
+                            logical_size.block - physical
+                        } else {
+                            physical
+                        }
+                    })
+            })
+            .flatten();
     if let crate::InlineBaselineContext::Named(name) = context
         && child_style.vertical_align.is_baseline_relative()
     {
