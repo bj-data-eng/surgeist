@@ -1,5 +1,7 @@
 #![allow(unused_crate_dependencies)]
 
+use std::rc::Rc;
+
 use surgeist_js::{
     Context, JsError, JsNativeError, JsNativeErrorKind, JsObject, JsString, JsValue, Source,
     builtins::{
@@ -8,10 +10,12 @@ use surgeist_js::{
     },
     context::HostHooks,
     error::{EngineError, PanicError},
+    job::SimpleJobExecutor,
     js_string,
     object::builtins::{JsArray, JsArrayBuffer, JsSharedArrayBuffer, JsTypedArray, JsUint8Array},
     property::Attribute,
     realm::Realm,
+    script::Script,
 };
 
 fn peer_context(context: &Context) -> Context {
@@ -25,6 +29,119 @@ fn assert_foreign_runtime(error: JsError) {
     let native = error.as_native().expect("a native runtime admission error");
     assert_eq!(native.kind(), &JsNativeErrorKind::Type);
     assert_eq!(native.message(), "object belongs to a different runtime");
+}
+
+#[test]
+fn a_cold_script_retains_its_literal_in_a_fresh_peer_context() {
+    let mut owner = Context::default();
+    let mut peer = peer_context(&owner);
+    let script = Script::parse(
+        Source::from_bytes("'surgeist-owner-literal'"),
+        None,
+        &mut owner,
+    )
+    .unwrap();
+
+    assert_eq!(
+        script.evaluate(&mut peer).unwrap(),
+        JsValue::from(js_string!("surgeist-owner-literal"))
+    );
+}
+
+#[test]
+fn a_peer_cannot_substitute_another_literal_in_a_cold_script() {
+    let mut owner = Context::default();
+    let mut peer = peer_context(&owner);
+    peer.eval(Source::from_bytes("'surgeist-peer-literal'"))
+        .unwrap();
+    let script = Script::parse(
+        Source::from_bytes("'surgeist-owner-literal'"),
+        None,
+        &mut owner,
+    )
+    .unwrap();
+
+    for context in [&mut peer, &mut owner] {
+        assert_eq!(
+            script.evaluate(context).unwrap(),
+            JsValue::from(js_string!("surgeist-owner-literal"))
+        );
+    }
+}
+
+#[test]
+fn separate_contexts_parsing_in_one_realm_get_distinct_template_objects() {
+    let mut owner = Context::default();
+    let mut peer = peer_context(&owner);
+    peer.enter_realm(owner.realm().clone()).unwrap();
+    let alpha = Script::parse(
+        Source::from_bytes("(parts => parts)`surgeist-alpha`"),
+        None,
+        &mut owner,
+    )
+    .unwrap();
+    let beta = Script::parse(
+        Source::from_bytes("(parts => parts)`surgeist-beta`"),
+        None,
+        &mut peer,
+    )
+    .unwrap();
+    let first = alpha.evaluate(&mut owner).unwrap();
+    let second = beta.evaluate(&mut peer).unwrap();
+    assert_ne!(first, second);
+    assert_eq!(alpha.evaluate(&mut owner).unwrap(), first);
+    assert_eq!(beta.evaluate(&mut peer).unwrap(), second);
+    assert_eq!(
+        second.as_object().unwrap().get(0, &mut peer).unwrap(),
+        JsValue::from(js_string!("surgeist-beta"))
+    );
+}
+
+#[test]
+fn script_parsing_uses_the_explicit_realm_scope() {
+    let mut context = Context::default();
+    let initial = context.realm().clone();
+    let target = context.create_realm().unwrap();
+    let name = js_string!("surgeistExplicitRealmBinding");
+    let script = Script::parse(
+        Source::from_bytes("let surgeistExplicitRealmBinding = 11; surgeistExplicitRealmBinding"),
+        Some(target.clone()),
+        &mut context,
+    )
+    .unwrap();
+
+    assert!(!initial.scope().has_binding(&name));
+    assert!(target.scope().has_binding(&name));
+    assert_eq!(script.evaluate(&mut context).unwrap(), 11.into());
+}
+
+#[test]
+fn a_shared_executor_resolves_atomic_waits_only_on_their_runtime() {
+    let executor = Rc::new(SimpleJobExecutor::new());
+    let mut waiting = Context::builder()
+        .job_executor(executor.clone())
+        .build()
+        .unwrap();
+    let mut other = Context::builder().job_executor(executor).build().unwrap();
+    waiting
+        .eval(Source::from_bytes(
+            "var status = 'pending';
+             var words = new Int32Array(new SharedArrayBuffer(4));
+             Atomics.waitAsync(words, 0, 0).value.then(result => { status = result; });
+             Atomics.notify(words, 0);",
+        ))
+        .unwrap();
+
+    other.run_jobs().unwrap();
+    assert_eq!(
+        waiting.eval(Source::from_bytes("status")).unwrap(),
+        JsValue::from(js_string!("pending"))
+    );
+    waiting.run_jobs().unwrap();
+    assert_eq!(
+        waiting.eval(Source::from_bytes("status")).unwrap(),
+        JsValue::from(js_string!("ok"))
+    );
 }
 
 #[test]
