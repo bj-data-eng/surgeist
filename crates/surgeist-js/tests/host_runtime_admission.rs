@@ -3,7 +3,8 @@
 use std::{cell::Cell, rc::Rc};
 
 use surgeist_js::{
-    Context, JsError, JsNativeError, JsNativeErrorKind, JsObject, JsString, JsValue, Source,
+    Context, JsError, JsNativeError, JsNativeErrorKind, JsObject, JsString, JsValue,
+    NativeFunction, Source,
     builtins::{
         error::{Error, ErrorKind},
         iterable::create_iter_result_object,
@@ -23,6 +24,39 @@ fn peer_context(context: &Context) -> Context {
         .runtime(context.runtime().clone())
         .build()
         .unwrap()
+}
+
+#[test]
+fn native_call_and_construct_keep_arguments_ordered_and_rooted_during_reentry() {
+    let mut context = Context::default();
+    context
+        .register_global_callable(
+            js_string!("captureArguments"),
+            0,
+            NativeFunction::from_fn_ptr(|_, args, context| {
+                let nested = context.eval(Source::from_bytes("Math.max(2, 7, 3)"))?;
+                assert_eq!(nested, 7.into());
+                context.runtime().collect().unwrap();
+                Ok(JsArray::from_iter(args.iter().cloned(), context)?.into())
+            }),
+        )
+        .unwrap();
+
+    for call in ["captureArguments", "new captureArguments"] {
+        for (arguments, expected) in [
+            ("fresh(1), fresh(2), fresh(3), fresh(4)", "1,2,3,4"),
+            (
+                "fresh(1), fresh(2), fresh(3), fresh(4), fresh(5)",
+                "1,2,3,4,5",
+            ),
+        ] {
+            let script = format!(
+                "{{ const fresh = n => ({{n}}); ({call}({arguments})).map(value => value.n).join(',') }}"
+            );
+            let result = context.eval(Source::from_bytes(&script)).unwrap();
+            assert_eq!(result, JsValue::from(JsString::from(expected)));
+        }
+    }
 }
 
 fn assert_foreign_runtime(error: JsError) {
