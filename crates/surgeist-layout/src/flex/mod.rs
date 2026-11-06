@@ -1352,7 +1352,7 @@ where
     };
     if let Some(authored_cross) = item.authored_cross_size {
         item.target_size = axes.with_cross_size(item.target_size, clamp_cross(authored_cross));
-        if item.participates_in_baseline(axes) && item.target_size != item.initial_output.size {
+        if item.uses_native_cross_baseline(axes) && item.target_size != item.initial_output.size {
             let output =
                 with_flex_item_projection::<Tree, M, _>(tree, item.node, |tree, style| {
                     compute_sized_item(tree, item, &style, constants, RunMode::ComputeSize)
@@ -1406,7 +1406,8 @@ where
             .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?,
         crate::SizingOperation::Normal,
     );
-    let demand_baseline = constants.physical_baseline_demand || item.participates_in_baseline(axes);
+    let demand_baseline =
+        constants.physical_baseline_demand || item.uses_native_cross_baseline(axes);
     let measure_cross = |tree: &mut Tree, mode, known_cross, cross_request, demand| {
         tree.compute_child(
             item.node,
@@ -1454,7 +1455,7 @@ where
             transferred
         };
         let cross = clamp_cross(cross);
-        if item.participates_in_baseline(axes) {
+        if item.uses_native_cross_baseline(axes) {
             item.baseline.refresh(measure_cross(
                 tree,
                 SizingMode::InherentSize,
