@@ -1034,8 +1034,16 @@ pub(super) fn absolute_grid_axis_area<S: LayoutScalar>(
                 explicit_count,
             )
         };
-        let start = placement.start().and_then(offset);
-        let end = placement.end().and_then(offset);
+        let mut start = placement.start();
+        let mut end = placement.end();
+        if let (Some(start_line), Some(end_line)) = (start, end)
+            && explicit_grid_line_index(start_line.get(), explicit_count)
+                > explicit_grid_line_index(end_line.get(), explicit_count)
+        {
+            std::mem::swap(&mut start, &mut end);
+        }
+        let start = start.and_then(offset);
+        let end = end.and_then(offset);
         let (low, high) = if is_reverse {
             (end, start)
         } else {
@@ -1187,14 +1195,18 @@ pub(super) fn grid_line_to_index(
     if line == 0 {
         return None;
     }
+    let index = explicit_start as i128 + explicit_grid_line_index(line, explicit_count);
+    usize::try_from(index)
+        .ok()
+        .filter(|index| *index <= track_count)
+}
+
+fn explicit_grid_line_index(line: isize, explicit_count: usize) -> i128 {
     if line > 0 {
-        return usize::try_from(line - 1)
-            .ok()
-            .map(|index| explicit_start + index)
-            .filter(|index| *index <= track_count);
+        line as i128 - 1
+    } else {
+        explicit_count as i128 + line as i128 + 1
     }
-    let index = explicit_start as isize + explicit_count as isize + line + 1;
-    (index >= 0 && index <= track_count as isize).then_some(index as usize)
 }
 
 pub(super) fn track_span_sum<S: LayoutScalar>(sizes: &[S], start: usize, end: usize, gap: S) -> S {

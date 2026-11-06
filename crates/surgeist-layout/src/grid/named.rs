@@ -241,9 +241,14 @@ struct ResolvedLine {
 }
 
 impl ResolvedLine {
-    fn from_absolute(line: i128) -> Self {
+    fn from_absolute(line: i128, explicit_end: i128) -> Self {
+        let css_line = if line > 0 {
+            line
+        } else {
+            line - explicit_end - 1
+        };
         Self {
-            css_line: line,
+            css_line,
             absolute_line: line,
         }
     }
@@ -295,6 +300,7 @@ pub(super) fn resolve_grid_placement(
     auto_cursor_line: Option<isize>,
 ) -> Result<GridPlacement, GridPlacementResolutionError> {
     let (start, end) = normalized_raw_grid_lines(placement);
+    let explicit_end = lines.explicit_track_count as i128 + 1;
 
     match (&start, &end) {
         (RawGridLine::Auto, RawGridLine::Auto) => Ok(GridPlacement::AUTO),
@@ -329,7 +335,11 @@ pub(super) fn resolve_grid_placement(
                         SpanSearchDirection::Forward,
                         NamedSpanScope::Standalone,
                     )?;
-                    normalize_resolved_lines(lines, start, ResolvedLine::from_absolute(end))
+                    normalize_resolved_lines(
+                        lines,
+                        start,
+                        ResolvedLine::from_absolute(end, explicit_end),
+                    )
                 }
                 _ => {
                     let span = resolve_span_count(span)?;
@@ -357,7 +367,11 @@ pub(super) fn resolve_grid_placement(
                         SpanSearchDirection::Backward,
                         NamedSpanScope::Standalone,
                     )?;
-                    normalize_resolved_lines(lines, ResolvedLine::from_absolute(start), end)
+                    normalize_resolved_lines(
+                        lines,
+                        ResolvedLine::from_absolute(start, explicit_end),
+                        end,
+                    )
                 }
                 _ => {
                     let span = resolve_span_count(span)?;
@@ -413,8 +427,14 @@ pub(super) fn resolve_positioned_grid_placement_with_report(
     lines: &NamedGridLines,
     placement: &RawGridPlacement,
 ) -> (GridPlacement, NamedGridReport) {
-    match resolve_positioned_grid_placement(lines, placement) {
-        Ok(placement) => (placement, NamedGridReport::default()),
+    let resolved = if is_span(&placement.start) || is_span(&placement.end) {
+        resolve_grid_placement(lines, placement, None)
+            .map(|placement| (placement, NamedGridReport::default()))
+    } else {
+        resolve_positioned_grid_lines(lines, placement).map_err(Into::into)
+    };
+    match resolved {
+        Ok(result) => result,
         Err(GridPlacementResolutionError::Named(error)) => {
             (GridPlacement::AUTO, NamedGridReport::from_error(error))
         }
@@ -424,48 +444,50 @@ pub(super) fn resolve_positioned_grid_placement_with_report(
     }
 }
 
-fn resolve_positioned_grid_placement(
+fn resolve_positioned_grid_lines(
     lines: &NamedGridLines,
     placement: &RawGridPlacement,
-) -> Result<GridPlacement, GridPlacementResolutionError> {
-    if is_span(&placement.start) || is_span(&placement.end) {
-        return resolve_grid_placement(lines, placement, None);
-    }
-
+) -> Result<(GridPlacement, NamedGridReport), NamedGridError> {
     let resolve_edge = |line: &RawGridLine, side| match line {
         RawGridLine::Auto => Ok(None),
         _ => resolve_line(lines, line, side).map(Some),
     };
     let mut start = resolve_edge(&placement.start, PlacementSide::Start)?;
     let mut end = resolve_edge(&placement.end, PlacementSide::End)?;
-    match (start, end) {
-        (Some(start_line), Some(end_line)) => {
-            validate_resolved_range(lines, start_line.absolute_line, end_line.absolute_line)?;
-            if start_line.absolute_line == end_line.absolute_line {
-                return normalize_resolved_lines(lines, start_line, end_line);
-            }
-            if start_line.absolute_line > end_line.absolute_line {
-                std::mem::swap(&mut start, &mut end);
-            }
-        }
-        (Some(start), None) => {
-            validate_resolved_range(lines, start.absolute_line, start.absolute_line + 1)?;
-        }
-        (None, Some(end)) => {
-            validate_resolved_range(lines, end.absolute_line - 1, end.absolute_line)?;
-        }
-        (None, None) => {}
+    let (start_line, end_line) = match (start, end) {
+        (Some(start), Some(end)) => (start.absolute_line, end.absolute_line),
+        (Some(start), None) => (start.absolute_line, start.absolute_line + 1),
+        (None, Some(end)) => (end.absolute_line - 1, end.absolute_line),
+        (None, None) => return Ok((GridPlacement::AUTO, NamedGridReport::default())),
+    };
+
+    // A line before the explicit grid can still exist in its leading used
+    // tracks. Preserve the authored diagnostic without replacing its edges.
+    let report = if let Err(GridPlacementResolutionError::Named(error)) =
+        validate_resolved_range(lines, start_line, end_line)
+    {
+        NamedGridReport::from_error(error)
+    } else {
+        NamedGridReport::default()
+    };
+
+    if start_line > end_line {
+        std::mem::swap(&mut start, &mut end);
     }
 
     // A line beyond the placement representation cannot exist in the used grid.
     let start = start.and_then(ResolvedLine::grid_line);
     let end = end.and_then(ResolvedLine::grid_line);
-    Ok(match (start, end) {
+    let placement = match (start, end) {
+        (Some(start), Some(_)) if start_line == end_line => {
+            GridPlacement::try_line_span(start.get(), 1).expect("equal grid lines use a unit span")
+        }
         (Some(start), Some(end)) => GridPlacement::lines(start, end),
         (Some(start), None) => GridPlacement::line(start),
         (None, Some(end)) => GridPlacement::end_line(end),
         (None, None) => GridPlacement::AUTO,
-    })
+    };
+    Ok((placement, report))
 }
 
 pub(super) fn resolve_subgrid_placement(
@@ -698,7 +720,7 @@ fn resolve_named_occurrence(
             explicit_end + missing
         }
     };
-    Ok(ResolvedLine::from_absolute(line))
+    Ok(ResolvedLine::from_absolute(line, explicit_end))
 }
 
 fn named_span_candidates(
