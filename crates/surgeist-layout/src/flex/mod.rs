@@ -4,7 +4,9 @@ use super::{
     FlexWrap, LayoutResultOf, LayoutScalar, LengthAutoOf, LengthOf, LengthResolutionStatus,
     ParentFormattingContext, Point, RequestedAxis, RunMode, Size, SizingMode, Traverse,
 };
-use crate::engine::containment::{compute_empty_box, empty_sizing_input, sizes_as_empty};
+use crate::engine::containment::{
+    compute_empty_box, contained_outer_size, empty_sizing_input, size_containment,
+};
 use crate::error::{SizingAlgorithm, layout_own_geometry_error};
 use crate::geometry::{FlowAxes, LogicalAxis, PhysicalAxis, PhysicalProgression, PhysicalSide};
 use crate::layout_math::{
@@ -61,14 +63,22 @@ where
     Tree: Compute<'input, M>,
 {
     let style = tree.node_input(node);
-    let contained_size = if sizes_as_empty(style) {
+    let containment = size_containment(style);
+    let contained_size = if containment != crate::SizeContainment::None {
         let empty = compute_empty_box(node, style, |probe| {
             compute_flex_inner(probe, node, empty_sizing_input(input), Size::NONE)
         })?;
-        if !input.run_mode().is_perform_layout() && !input.requires_content_baseline() {
+        if containment == crate::SizeContainment::BothAxes
+            && !input.run_mode().is_perform_layout()
+            && !input.requires_content_baseline()
+        {
             return Ok(empty);
         }
-        empty.size.map(Some)
+        contained_outer_size(
+            containment,
+            crate::FlowAxes::new(style.writing_mode, style.direction),
+            empty.size,
+        )
     } else {
         Size::NONE
     };

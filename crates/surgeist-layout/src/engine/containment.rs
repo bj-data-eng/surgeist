@@ -1,4 +1,5 @@
 use super::contracts::{Compute, UnroundedEntryResult};
+use crate::geometry::{FlowAxes, LogicalSizeOf, Size};
 use crate::grid::{GridOverflowObservation, GridOverflowProbe};
 use crate::output::{ComputeInputOf, NamedBaselineDemand, RunMode};
 use crate::{
@@ -9,11 +10,30 @@ use crate::{
 #[cfg(test)]
 mod tests;
 
-pub(crate) fn sizes_as_empty<S: LayoutScalar>(style: &NodeInputOf<S>) -> bool {
-    style.size_containment == SizeContainment::BothAxes
-        && style.block_generation == BlockGeneration::Principal
+pub(crate) fn size_containment<S: LayoutScalar>(style: &NodeInputOf<S>) -> SizeContainment {
+    if style.block_generation == BlockGeneration::Principal
         && style.display != Display::None
         && !style.item_is_table
+    {
+        style.size_containment
+    } else {
+        SizeContainment::None
+    }
+}
+
+pub(crate) fn contained_outer_size<S: LayoutScalar>(
+    containment: SizeContainment,
+    flow_axes: FlowAxes,
+    empty: Size<S>,
+) -> Size<Option<S>> {
+    match containment {
+        SizeContainment::None => Size::NONE,
+        SizeContainment::InlineAxis => flow_axes.physical_size(LogicalSizeOf::new(
+            Some(flow_axes.logical_size(empty).inline),
+            None,
+        )),
+        SizeContainment::BothAxes => empty.map(Some),
+    }
 }
 
 pub(crate) const fn empty_sizing_input<S: LayoutScalar>(

@@ -2164,6 +2164,7 @@ fn assert_lanes_intrinsic_auto_repeat_uses_authored_operation<S: LayoutScalar>()
             &constants,
             &GridParentContext::none(),
             input,
+            None,
         )
         .unwrap();
         assert_eq!(

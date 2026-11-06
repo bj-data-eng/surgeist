@@ -50,11 +50,17 @@ pub(crate) fn ordinary_unrounded_box<S: LayoutScalar>(
 pub type OracleTree = OracleTreeOf<DefaultScalar>;
 pub type OracleMeasurement = OracleMeasurementOf<DefaultScalar>;
 
+#[derive(Clone, Copy, Debug)]
+enum PublicMeasurementOf<S: LayoutScalar> {
+    Fixed(Size<S>),
+    FromInput(fn(LeafMeasureInputOf<S>) -> Size<S>),
+}
+
 #[derive(Clone, Debug)]
 pub struct PublicLayoutTreeOf<S: LayoutScalar = DefaultScalar> {
     children: HashMap<u32, Vec<u32>>,
     layout_inputs: HashMap<u32, LayoutInputOf<S>>,
-    measurements: HashMap<u32, Size<S>>,
+    measurements: HashMap<u32, PublicMeasurementOf<S>>,
     non_box_input: NodeInputOf<S>,
 }
 
@@ -99,7 +105,18 @@ impl<S: LayoutScalar> PublicLayoutTreeOf<S> {
     }
 
     pub fn measure(mut self, node: u32, size: Size<S>) -> Self {
-        self.measurements.insert(node, size);
+        self.measurements
+            .insert(node, PublicMeasurementOf::Fixed(size));
+        self
+    }
+
+    pub fn measure_with(
+        mut self,
+        node: u32,
+        measure: fn(LeafMeasureInputOf<S>) -> Size<S>,
+    ) -> Self {
+        self.measurements
+            .insert(node, PublicMeasurementOf::FromInput(measure));
         self
     }
 }
@@ -155,9 +172,14 @@ impl<S: LayoutScalar> LayoutTree for PublicLayoutTreeOf<S> {
     fn measure_leaf(
         &self,
         node: Self::Node,
-        _input: LeafMeasureInputOf<S>,
+        input: LeafMeasureInputOf<S>,
     ) -> Option<Result<Size<S>, Self::MeasureError>> {
-        self.measurements.get(&node).copied().map(Ok)
+        self.measurements.get(&node).map(|measurement| {
+            Ok(match measurement {
+                PublicMeasurementOf::Fixed(size) => *size,
+                PublicMeasurementOf::FromInput(measure) => measure(input),
+            })
+        })
     }
 }
 

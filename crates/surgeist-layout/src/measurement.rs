@@ -389,7 +389,8 @@ where
     Node: Copy,
     S: LayoutScalar,
 {
-    if crate::engine::containment::sizes_as_empty(style) {
+    let containment = crate::engine::containment::size_containment(style);
+    if containment != crate::SizeContainment::None {
         let sizing_input = crate::engine::containment::empty_sizing_input(input);
         let empty = compute_leaf_passes(site, sizing_input, style, resolved, |_| Ok(Size::ZERO))?;
         let needs_block_margin_preview = input.parent_formatting_context()
@@ -403,12 +404,20 @@ where
                 .inline
                 .operation()
                 == SizingOperation::Normal;
-        if !input.run_mode().is_perform_layout() && !needs_block_margin_preview {
+        if containment == crate::SizeContainment::BothAxes
+            && !input.run_mode().is_perform_layout()
+            && !needs_block_margin_preview
+        {
             return Ok(empty);
         }
         // Lower the accepted allocation into the provider's actual content
         // space after resolving the original request and authored bounds.
-        resolved.node_size = empty.size.map(Some);
+        resolved.node_size = crate::engine::containment::contained_outer_size(
+            containment,
+            crate::FlowAxes::new(style.writing_mode, style.direction),
+            empty.size,
+        )
+        .or(resolved.node_size);
     }
     compute_leaf_passes(site, input, style, resolved, measure)
 }

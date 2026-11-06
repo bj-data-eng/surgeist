@@ -16,7 +16,9 @@ use super::{
     RunMode, Size, SizingAlgorithm, SizingMode, TextAlign, TextAlignLast, TextJustification,
     Traverse, VerticalAlignOf,
 };
-use crate::engine::containment::{compute_empty_box, empty_sizing_input, sizes_as_empty};
+use crate::engine::containment::{
+    compute_empty_box, contained_outer_size, empty_sizing_input, size_containment,
+};
 use crate::error::{
     AtomicInlineParticipationRoleError, layout_child_geometry_error, layout_own_geometry_error,
 };
@@ -163,18 +165,21 @@ where
 {
     let inherited = incoming.as_ref().map(|incoming| incoming.frame.as_ref());
     let group_style = tree.node_input(node);
-    let contained_size = if sizes_as_empty(group_style) {
+    let containment = size_containment(group_style);
+    let contained_size = if containment != crate::SizeContainment::None {
+        let flow_axes = crate::FlowAxes::new(group_style.writing_mode, group_style.direction);
         let empty = compute_empty_box(node, group_style, |probe| {
             compute_block_inner(probe, node, empty_sizing_input(input), None, Size::NONE)
         })?;
         let shared_normal_flow = float_context::Role::for_input(group_style, input)
             == float_context::Role::Shared
-            && crate::FlowAxes::new(group_style.writing_mode, group_style.direction)
+            && flow_axes
                 .logical_size(input.sizing_request().axes())
                 .inline
                 .operation()
                 == crate::SizingOperation::Normal;
-        if !input.run_mode().is_perform_layout()
+        if containment == crate::SizeContainment::BothAxes
+            && !input.run_mode().is_perform_layout()
             && inherited.is_none()
             && !shared_normal_flow
             && !input.requires_content_baseline()
@@ -184,7 +189,7 @@ where
         {
             return Ok(empty.output);
         }
-        empty.output.size.map(Some)
+        contained_outer_size(containment, flow_axes, empty.output.size)
     } else {
         Size::NONE
     };
@@ -439,7 +444,11 @@ where
         PhysicalAxis::Horizontal => &style.common.min_size.width,
         PhysicalAxis::Vertical => &style.common.min_size.height,
     };
-    let ratio_needs_content_minimum = contained_size == Size::NONE
+    let ratio_needs_content_minimum = constants
+        .flow_axes
+        .logical_size(contained_size)
+        .block
+        .is_none()
         && ratio_block_outer.is_some()
         && block_minimum.is_auto()
         && !style

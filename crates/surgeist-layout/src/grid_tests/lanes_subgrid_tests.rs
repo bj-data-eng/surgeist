@@ -8388,6 +8388,7 @@ fn collect_percentage_edge_parent_traversal<'input>(
         &constants,
         &parent_context,
         parent_input,
+        None,
     )
     .expect("the real parent admits its actual child and original track functions");
     let children = compute.children(1).collect::<Vec<_>>();
