@@ -1,12 +1,12 @@
 mod options;
 
-use surgeist_js_gc::{Finalize, Trace};
 use fixed_decimal::{CompactDecimal, Decimal, SignedRoundingMode, UnsignedRoundingMode};
 use icu_locale::Locale;
 use icu_plurals::{
     PluralCategory, PluralRuleType, PluralRules as NativePluralRules, PluralRulesOptions,
     PluralRulesPreferences, PluralRulesWithRanges, provider::PluralsCardinalV1,
 };
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 use crate::{
     Context, JsArgs, JsData, JsNativeError, JsObject, JsResult, JsString, JsSymbol, JsValue,
@@ -29,14 +29,17 @@ use super::{
     options::{IntlOptions, coerce_options_to_object},
 };
 
-#[derive(Debug, Trace, Finalize, JsData)]
-// SAFETY: `PluralRules` doesn't contain any traceable data.
-#[surgeist_js_gc(unsafe_empty_trace)]
+#[derive(Debug, JsData, HeapTrace)]
 pub(crate) struct PluralRules {
+    #[heap_trace(skip)]
     locale: Locale,
+    #[heap_trace(skip)]
     native: PluralRulesWithRanges<NativePluralRules>,
+    #[heap_trace(skip)]
     rule_type: PluralRuleType,
+    #[heap_trace(skip)]
     notation: NotationKind,
+    #[heap_trace(skip)]
     format_options: DigitFormatOptions,
 }
 
@@ -444,7 +447,7 @@ impl PluralRules {
             );
 
         // 6. Return options.
-        Ok(options.build().into())
+        Ok(options.build()?.into())
     }
 }
 

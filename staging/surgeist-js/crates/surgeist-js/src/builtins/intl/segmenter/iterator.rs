@@ -1,14 +1,15 @@
-use surgeist_js_gc::{Finalize, Trace};
 use icu_segmenter::{
     iterators::{GraphemeClusterBreakIterator, SentenceBreakIterator, WordBreakIterator},
     scaffold::{Latin1, Utf16},
 };
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 use crate::{
     Context, JsData, JsExpect, JsNativeError, JsObject, JsResult, JsString, JsSymbol, JsValue,
-    builtins::{BuiltInBuilder, IntrinsicObject, iterable::create_iter_result_object},
+    builtins::{BuiltInBuilder, IntrinsicObject, iterable::create_iter_result_object_trusted},
     context::intrinsics::Intrinsics,
     js_string,
+    object::ObjectEdge,
     property::Attribute,
     realm::Realm,
 };
@@ -51,9 +52,9 @@ impl NativeSegmentIterator<'_, '_> {
     }
 }
 
-#[derive(Debug, Trace, Finalize, JsData)]
+#[derive(Debug, JsData, HeapTrace)]
 pub(crate) struct SegmentIterator {
-    segmenter: JsObject,
+    segmenter: ObjectEdge,
     string: JsString,
     next_segment_index: usize,
 }
@@ -94,7 +95,7 @@ impl SegmentIterator {
                 .iterator_prototypes()
                 .segment(),
             Self {
-                segmenter,
+                segmenter: segmenter.edge(),
                 string,
                 next_segment_index: 0,
             },
@@ -123,8 +124,8 @@ impl SegmentIterator {
         // 6. Let endIndex be ! FindBoundary(segmenter, string, startIndex, after).
         let Some((end, is_word_like)) = iter.string.get(start..).and_then(|string| {
             // 3. Let segmenter be iterator.[[IteratingSegmenter]].
-            let segmenter = iter
-                .segmenter
+            let segmenter = JsObject::from_inner(iter.segmenter.clone());
+            let segmenter = segmenter
                 .downcast_ref::<Segmenter>()
                 .js_expect("segment iterator object should contain a segmenter")
                 .ok()?;
@@ -135,9 +136,10 @@ impl SegmentIterator {
                 .next()
                 .map(|end| (start + end, segments.is_word_like()))
         }) else {
+            drop(iter);
             // 7. If endIndex is not finite, then
             //     a. Return CreateIterResultObject(undefined, true).
-            return Ok(create_iter_result_object(
+            return Ok(create_iter_result_object_trusted(
                 JsValue::undefined(),
                 true,
                 context,
@@ -145,13 +147,14 @@ impl SegmentIterator {
         };
         // 8. Set iterator.[[IteratedStringNextSegmentCodeUnitIndex]] to endIndex.
         iter.next_segment_index = end;
+        let string = iter.string.clone();
+        drop(iter);
 
         // 9. Let segmentData be ! CreateSegmentDataObject(segmenter, string, startIndex, endIndex).
-        let segment_data =
-            create_segment_data_object(iter.string.clone(), start..end, is_word_like, context);
+        let segment_data = create_segment_data_object(string, start..end, is_word_like, context)?;
 
         // 10. Return CreateIterResultObject(segmentData, false).
-        Ok(create_iter_result_object(
+        Ok(create_iter_result_object_trusted(
             segment_data.into(),
             false,
             context,

@@ -26,7 +26,7 @@ use crate::{
     string::StaticJsStrings,
     symbol::JsSymbol,
 };
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 use super::{iterator_helper::IteratorHelper, wrap_for_valid_iterator::WrapForValidIterator};
 
@@ -36,7 +36,7 @@ use super::{iterator_helper::IteratorHelper, wrap_for_valid_iterator::WrapForVal
 ///  - [ECMAScript reference][spec]
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-iterator-constructor
-#[derive(Debug, Clone, Trace, Finalize, JsData)]
+#[derive(Debug, Clone, HeapTrace, JsData)]
 pub(crate) struct IteratorConstructor;
 
 impl IntrinsicObject for IteratorConstructor {
@@ -148,7 +148,7 @@ impl IteratorConstructor {
                 .iterator_prototypes()
                 .wrap_for_valid_iterator(),
             WrapForValidIterator {
-                iterated: iterator_record,
+                iterated: iterator_record.stored(),
             },
         );
 
@@ -190,7 +190,8 @@ impl IteratorConstructor {
         //    (implemented via IteratorHelperOp::Concat in execute_next)
         // 4-5. Let result be CreateIteratorFromClosure(closure, "Iterator Helper", ...)
         //      with [[UnderlyingIterators]] set to a new empty List.
-        let helper = IteratorHelper::create(iterator_helper::Concat::new(iterables), context);
+        let helper =
+            IteratorHelper::create(iterator_helper::Concat::new(iterables, context), context);
 
         // 6. Return result.
         Ok(helper.into())

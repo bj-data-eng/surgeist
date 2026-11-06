@@ -81,7 +81,7 @@ fn fn_item(
                 &surgeist_js::js_string!( #name ),
                 surgeist_js::JsValue::from(
                     surgeist_js::NativeFunction::from_fn_ptr( #fn_body )
-                        .to_js_function(context.realm())
+                        .to_js_function(context.realm())?
                 ),
             )?;
         },
@@ -92,7 +92,7 @@ fn fn_item(
                     surgeist_js::js_string!( #name ),
                     surgeist_js::JsValue::from(
                         surgeist_js::NativeFunction::from_fn_ptr( function )
-                            .to_js_function(context.realm())
+                            .to_js_function(context.realm())?
                     ),
                     surgeist_js::property::Attribute::all(),
                     context,
@@ -102,7 +102,7 @@ fn fn_item(
                     surgeist_js::js_string!( #name ),
                     surgeist_js::JsValue::from(
                         surgeist_js::NativeFunction::from_fn_ptr( function )
-                            .to_js_function(context.realm())
+                            .to_js_function(context.realm())?
                     ),
                     surgeist_js::property::Attribute::all(),
                 )?;
@@ -129,8 +129,8 @@ fn type_item(
             if let Some(ref realm) = realm {
                 let mut class_builder = surgeist_js::class::ClassBuilder::new::<#path>(context);
                 <#path as surgeist_js::class::Class>::init(&mut class_builder)?;
-                let class = class_builder.build();
-                realm.register_class::<#path>(class);
+                let class = class_builder.build()?;
+                realm.register_class::<#path>(class)?;
             } else {
                 context.register_global_class::<#path>()?;
             }
@@ -268,7 +268,7 @@ fn module_impl_impl(_args: ModuleArguments, mut mod_: ItemMod) -> SpannedResult<
             pub(super) fn boa_module #generics (
                 realm: Option<surgeist_js::realm::Realm>,
                 context: &mut surgeist_js::Context,
-            ) -> surgeist_js::Module {
+            ) -> surgeist_js::JsResult<surgeist_js::Module> {
                 surgeist_js::Module::synthetic(
                     &[ #module_exports ],
                     surgeist_js::module::SyntheticModuleInitializer::from_fn_with_captures(

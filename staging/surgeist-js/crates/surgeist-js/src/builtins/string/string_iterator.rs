@@ -7,7 +7,7 @@
 
 use crate::{
     Context, JsData, JsResult, JsString, JsValue,
-    builtins::{BuiltInBuilder, IntrinsicObject, iterable::create_iter_result_object},
+    builtins::{BuiltInBuilder, IntrinsicObject, iterable::create_iter_result_object_trusted},
     context::intrinsics::Intrinsics,
     error::JsNativeError,
     js_string,
@@ -16,7 +16,7 @@ use crate::{
     realm::Realm,
     symbol::JsSymbol,
 };
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 /// The `StringIterator` object represents an iteration over a string. It implements the iterator protocol.
 ///
@@ -24,7 +24,7 @@ use surgeist_js_gc::{Finalize, Trace};
 ///  - [ECMAScript reference][spec]
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-string-iterator-objects
-#[derive(Debug, Clone, Finalize, Trace, JsData)]
+#[derive(Debug, Clone, JsData, HeapTrace)]
 pub(crate) struct StringIterator {
     string: JsString,
     next_index: usize,
@@ -75,7 +75,7 @@ impl StringIterator {
             .ok_or_else(|| JsNativeError::typ().with_message("`this` is not an ArrayIterator"))?;
 
         if string_iterator.string.is_empty() {
-            return Ok(create_iter_result_object(
+            return Ok(create_iter_result_object_trusted(
                 JsValue::undefined(),
                 true,
                 context,
@@ -86,7 +86,7 @@ impl StringIterator {
         let position = string_iterator.next_index;
         if position >= len {
             string_iterator.string = js_string!();
-            return Ok(create_iter_result_object(
+            return Ok(create_iter_result_object_trusted(
                 JsValue::undefined(),
                 true,
                 context,
@@ -99,6 +99,10 @@ impl StringIterator {
             &[position.into(), string_iterator.next_index.into()],
             context,
         )?;
-        Ok(create_iter_result_object(result_string, false, context))
+        Ok(create_iter_result_object_trusted(
+            result_string,
+            false,
+            context,
+        ))
     }
 }

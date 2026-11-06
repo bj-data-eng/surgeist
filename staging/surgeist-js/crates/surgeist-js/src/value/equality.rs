@@ -9,7 +9,7 @@ impl JsValue {
     pub(crate) fn deep_strict_equals_inner(
         &self,
         other: &Self,
-        encounters: &mut HashSet<usize>,
+        encounters: &mut HashSet<surgeist_js_gc::heap::ObjectId>,
         context: &mut Context,
     ) -> JsResult<bool> {
         match (self.as_object(), other.as_object()) {

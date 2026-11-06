@@ -45,6 +45,7 @@
 //!
 //! [ecma-402]: https://tc39.es/ecma402
 //! [examples]: https://github.com/boa-dev/boa/tree/main/examples
+#![forbid(unsafe_code)]
 #![cfg_attr(test, allow(clippy::needless_raw_string_hashes))] // Makes strings a bit more copy-pastable
 #![cfg_attr(not(test), forbid(clippy::unwrap_used))]
 #![allow(
@@ -93,6 +94,8 @@ pub mod object;
 pub mod optimizer;
 pub mod property;
 pub mod realm;
+mod runtime;
+pub use runtime::Runtime;
 pub mod script;
 pub mod string;
 pub mod symbol;
@@ -125,7 +128,7 @@ pub mod prelude {
         symbol::JsSymbol,
         value::{JsValue, JsVariant, js_object, js_value},
     };
-    pub use surgeist_js_gc::{Finalize, Trace};
+    pub use surgeist_js_gc::heap::Trace;
     pub use surgeist_js_macros::{JsData, js_str};
     pub use surgeist_js_parser::Source;
 }

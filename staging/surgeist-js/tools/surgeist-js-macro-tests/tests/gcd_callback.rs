@@ -1,15 +1,19 @@
 #![allow(unused_crate_dependencies)]
 //! A test that mimics the `surgeist_js`'s GCD test with a typed callback.
 
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{path::PathBuf, rc::Rc};
 use surgeist_js::interop::ContextData;
 use surgeist_js::object::builtins::JsFunction;
-use surgeist_js::{Context, IntoJsFunction, Module, Source, js_string};
-use surgeist_js_gc::Gc;
+use surgeist_js::{
+    Context, IntoJsFunction, JsData, Module, Source, gc::heap::Trace as HeapTrace, js_string,
+};
 
-fn callback_from_js(ContextData(r): ContextData<Gc<AtomicUsize>>, result: usize) {
-    r.store(result, Ordering::Relaxed);
+#[derive(Clone, JsData, HeapTrace)]
+struct CallbackResult(#[heap_trace(skip)] Rc<AtomicUsize>);
+
+fn callback_from_js(ContextData(r): ContextData<CallbackResult>, result: usize) {
+    r.0.store(result, Ordering::Relaxed);
 }
 
 #[test]
@@ -19,8 +23,8 @@ fn gcd_callback() {
 
     // Create the engine.
     let context = &mut Context::default();
-    let result = Gc::new(AtomicUsize::new(0));
-    context.insert_data(result.clone());
+    let result = Rc::new(AtomicUsize::new(0));
+    context.insert_data(CallbackResult(result.clone()));
 
     // Load the JavaScript code.
     let gcd_path = assets_dir.join("gcd_callback.js");
@@ -35,9 +39,10 @@ fn gcd_callback() {
         .get_typed_fn::<(i32, i32, JsFunction), ()>(js_string!("gcd_callback"), context)
         .unwrap();
 
-    let function = (callback_from_js as fn(ContextData<Gc<AtomicUsize>>, usize))
+    let function = (callback_from_js as fn(ContextData<CallbackResult>, usize))
         .into_js_function()
-        .to_js_function(context.realm());
+        .to_js_function(context.realm())
+        .unwrap();
 
     result.store(0, Ordering::Relaxed);
     assert_eq!(js_gcd.call(context, (6, 9, function.clone())), Ok(()));

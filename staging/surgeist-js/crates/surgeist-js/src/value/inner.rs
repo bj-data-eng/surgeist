@@ -4,7 +4,7 @@ use super::JsVariant;
 #[cfg(feature = "annex-b")]
 use crate::builtins::is_html_dda::IsHTMLDDA;
 use crate::{JsBigInt, JsObject, JsSymbol, object::ObjectEdge, value::Type};
-use surgeist_js_gc::{Finalize, Trace, custom_trace, heap};
+use surgeist_js_gc::heap;
 use surgeist_js_string::JsString;
 
 #[cfg(test)]
@@ -41,18 +41,6 @@ impl<O> InnerValue<O> {
             Self::String(value) => InnerValue::String(value),
         }
     }
-}
-
-impl<O> Finalize for InnerValue<O> {}
-
-// SAFETY: Object is the only variant with a legacy collector edge.
-#[allow(unsafe_op_in_unsafe_fn)]
-unsafe impl<O: Trace> Trace for InnerValue<O> {
-    custom_trace! {this, mark, {
-        if let Self::Object(object) = this {
-            mark(object);
-        }
-    }}
 }
 
 impl InnerValue {

@@ -1,18 +1,19 @@
 //! Test for the class proc-macro.
 #![allow(unused_crate_dependencies)]
 
+use surgeist_js::gc::heap::Trace as HeapTrace;
 use surgeist_js::{
-    Context, Finalize, JsData, JsObject, JsString, JsValue, Source, Trace, boa_class, js_string,
+    Context, JsData, JsObject, JsResult, JsString, JsValue, Source, boa_class, js_string,
 };
 
-#[derive(Clone, Trace, Finalize, JsData)]
+#[derive(Clone, JsData, HeapTrace)]
 enum AnimalType {
     Cat,
     Dog,
     Other,
 }
 
-#[derive(Clone, Trace, Finalize, JsData)]
+#[derive(Clone, JsData, HeapTrace)]
 struct Animal {
     ty: AnimalType,
     age: i32,
@@ -46,7 +47,7 @@ impl Animal {
     #[boa(method)]
     #[boa(length = 11)]
     fn method(context: &mut Context) -> JsObject {
-        let obj = JsObject::with_null_proto();
+        let obj = JsObject::with_null_proto(context.runtime());
         obj.set(js_string!("key"), 43, false, context).unwrap();
         obj
     }
@@ -72,7 +73,7 @@ impl Animal {
     }
 }
 
-#[derive(Clone, Default, Trace, Finalize, JsData)]
+#[derive(Clone, Default, JsData, HeapTrace)]
 struct Pair {
     value: i32,
 }
@@ -90,20 +91,17 @@ impl Pair {
     }
 
     #[boa(symbol = "iterator")]
-    fn iterator(&self, context: &mut Context) -> JsValue {
+    fn iterator(&self, context: &mut Context) -> JsResult<JsValue> {
         use surgeist_js::object::builtins::JsArray;
         let arr = JsArray::from_iter(
             [JsValue::from(self.value), JsValue::from(self.value * 10)],
             context,
-        );
-        let iter_fn = arr
-            .get(surgeist_js::JsSymbol::iterator(), context)
-            .expect("array should have @@iterator");
+        )?;
+        let iter_fn = arr.get(surgeist_js::JsSymbol::iterator(), context)?;
         iter_fn
             .as_callable()
             .expect("@@iterator should be callable")
             .call(&arr.into(), &[], context)
-            .expect("@@iterator call should succeed")
     }
 }
 
@@ -149,6 +147,16 @@ fn boa_class() {
      "#,
         ))
         .expect("Could not evaluate script");
+
+    let pet = context
+        .eval(Source::from_bytes("pet"))
+        .unwrap()
+        .as_object()
+        .unwrap();
+    let borrow = pet.borrow();
+    let age = context.eval(Source::from_bytes("pet.age")).unwrap();
+    drop(borrow);
+    assert_eq!(age, JsValue::from(5));
 }
 
 #[test]

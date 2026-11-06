@@ -15,7 +15,7 @@ default = ["float16", "xsum", "temporal"]
 embedded_lz4 = ["surgeist-js-macros/embedded_lz4", "lz4_flex"]
 
 deser = ["surgeist-js-interner/serde", "surgeist-js-ast/serde"]
-either = ["dep:either", "surgeist-js-gc/either"]
+either = ["dep:either"]
 
 # Enables the `Intl` builtin object and bundles a default ICU4X data provider.
 # Prefer this over `intl` if you just want to enable `Intl` without dealing with the
@@ -83,7 +83,7 @@ native-backtrace = []
 
 [dependencies]
 surgeist-js-interner.workspace = true
-surgeist-js-gc = { workspace = true, features = ["thin-vec", "surgeist-js-string", "arrayvec"] }
+surgeist-js-gc = { workspace = true, features = ["thin-vec", "surgeist-js-string"] }
 surgeist-js-macros.workspace = true
 surgeist-js-ast.workspace = true
 surgeist-js-parser.workspace = true

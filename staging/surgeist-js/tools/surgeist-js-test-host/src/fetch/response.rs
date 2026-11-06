@@ -6,15 +6,15 @@
 //! [mdn]: https://developer.mozilla.org/en-US/docs/Web/API/Response
 
 use crate::fetch::headers::JsHeaders;
+use http::{HeaderName, HeaderValue, StatusCode};
+use std::rc::Rc;
+use surgeist_js::gc::heap::Trace as HeapTrace;
 use surgeist_js::object::builtins::{JsPromise, JsUint8Array};
 use surgeist_js::value::{Convert, TryFromJs, TryIntoJs};
 use surgeist_js::{
     Context, JsData, JsNativeError, JsResult, JsString, JsValue, boa_class, js_error, js_str,
     js_string,
 };
-use surgeist_js_gc::{Finalize, Trace};
-use http::{HeaderName, HeaderValue, StatusCode};
-use std::rc::Rc;
 
 /// The type read-only property of the Response interface contains the type of the
 /// response. The type determines whether scripts are able to access the response body
@@ -120,16 +120,17 @@ fn is_valid_reason_phrase(s: &str) -> bool {
 // You can create a new Response object using the `Response` constructor, but you
 // are more likely to encounter a `Response` object being returned as the result of
 // another API operation.
-#[derive(Clone, Debug, Trace, Finalize, JsData)]
+#[derive(Clone, Debug, JsData, HeapTrace)]
 pub struct JsResponse {
     url: JsString,
 
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     r#type: ResponseType,
 
     /// The HTTP status code. 0 is used for error/opaque/opaqueredirect responses.
     ///
     /// See <https://fetch.spec.whatwg.org/#concept-response-status>
+    #[heap_trace(skip)]
     status: u16,
 
     /// The HTTP status message (reason phrase).
@@ -139,7 +140,7 @@ pub struct JsResponse {
 
     headers: JsHeaders,
 
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     body: Rc<Vec<u8>>,
 }
 
@@ -190,9 +191,10 @@ impl JsResponse {
 /// Options used in the construction of a `Response` object.
 ///
 /// See <https://fetch.spec.whatwg.org/#dictdef-responseinit>
-#[derive(Debug, Default, Clone, TryFromJs, TryIntoJs, Trace, Finalize, JsData)]
+#[derive(Debug, Default, Clone, TryFromJs, TryIntoJs, JsData, HeapTrace)]
 #[boa(rename_all = "camelCase")]
 pub struct JsResponseOptions {
+    #[heap_trace(skip)]
     status: Option<u16>,
     status_text: Option<JsString>,
     headers: Option<JsHeaders>,

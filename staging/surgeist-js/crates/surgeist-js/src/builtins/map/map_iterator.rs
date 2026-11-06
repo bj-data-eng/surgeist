@@ -9,31 +9,33 @@ use super::ordered_map::OrderedMap;
 use crate::{
     Context, JsData, JsResult,
     builtins::{
-        Array, BuiltInBuilder, IntrinsicObject, JsValue, iterable::create_iter_result_object,
+        Array, BuiltInBuilder, IntrinsicObject, JsValue,
+        iterable::create_iter_result_object_trusted,
     },
     context::intrinsics::Intrinsics,
     error::JsNativeError,
-    js_string,
-    object::JsObject,
+    js_error, js_string,
+    object::{JsObject, ObjectEdge},
     property::{Attribute, PropertyNameKind},
     realm::Realm,
     symbol::JsSymbol,
 };
-use surgeist_js_gc::{Finalize, Trace};
+use std::rc::Rc;
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
-#[derive(Debug, Trace)]
-struct MapIteratorLock(JsObject<OrderedMap<JsValue>>);
-
-impl MapIteratorLock {
-    fn new(js_object: JsObject<OrderedMap<JsValue>>) -> Self {
-        js_object.borrow_mut().data_mut().lock();
-        Self(js_object)
-    }
+#[derive(Debug, HeapTrace)]
+struct MapIteration {
+    collection: ObjectEdge,
+    #[heap_trace(skip)]
+    _position_lock: Rc<()>,
 }
 
-impl Finalize for MapIteratorLock {
-    fn finalize(&self) {
-        self.0.borrow_mut().data_mut().unlock();
+impl MapIteration {
+    fn new(collection: &JsObject<OrderedMap>) -> Self {
+        Self {
+            collection: collection.edge(),
+            _position_lock: collection.borrow_mut().data_mut().lock(),
+        }
     }
 }
 
@@ -43,11 +45,11 @@ impl Finalize for MapIteratorLock {
 ///  - [ECMAScript reference][spec]
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-map-iterator-objects
-#[derive(Debug, Finalize, Trace, JsData)]
+#[derive(Debug, HeapTrace, JsData)]
 pub(crate) struct MapIterator {
-    iterated_map: Option<MapIteratorLock>,
+    iterated_map: Option<MapIteration>,
     next_index: usize,
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     iteration_kind: PropertyNameKind,
 }
 
@@ -79,12 +81,15 @@ impl MapIterator {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-createmapiterator
     pub(crate) fn create_map_iterator(
-        map: JsObject<OrderedMap<JsValue>>,
+        map: JsObject<OrderedMap>,
         kind: PropertyNameKind,
         context: &mut Context,
-    ) -> JsValue {
+    ) -> JsResult<JsValue> {
+        if !context.runtime().same_heap(&map.runtime()) {
+            return Err(js_error!(TypeError: "collection iterator crosses JavaScript runtimes"));
+        }
         let iter = Self {
-            iterated_map: Some(MapIteratorLock::new(map)),
+            iterated_map: Some(MapIteration::new(&map)),
             next_index: 0,
             iteration_kind: kind,
         };
@@ -93,7 +98,7 @@ impl MapIterator {
             context.intrinsics().objects().iterator_prototypes().map(),
             iter,
         );
-        map_iterator.into()
+        Ok(map_iterator.into())
     }
 
     /// %MapIteratorPrototype%.next( )
@@ -105,47 +110,58 @@ impl MapIterator {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-%mapiteratorprototype%.next
     pub(crate) fn next(this: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
-        let object = this.as_object();
-        let mut map_iterator = object
-            .as_ref()
-            .and_then(JsObject::downcast_mut::<Self>)
-            .ok_or_else(|| JsNativeError::typ().with_message("`this` is not a MapIterator"))?;
+        let invalid_receiver = || JsNativeError::typ().with_message("`this` is not a MapIterator");
+        let object = this.as_object().ok_or_else(invalid_receiver)?;
+        let (element, kind) = {
+            let mut iterator = object.downcast_mut::<Self>().ok_or_else(invalid_receiver)?;
+            if !context.runtime().same_heap(&object.runtime()) {
+                return Err(
+                    js_error!(TypeError: "collection iterator crosses JavaScript runtimes"),
+                );
+            }
 
-        let item_kind = map_iterator.iteration_kind;
+            let collection = iterator.iterated_map.as_ref().map(|iteration| {
+                iteration
+                    .collection
+                    .upgrade()
+                    .expect("iterator's heap is available")
+                    .expect("active iterator retains its collection")
+                    .downcast::<OrderedMap>()
+                    .expect("iterator retains a Map")
+            });
+            let element = collection.and_then(|collection| {
+                let collection = collection.borrow();
+                let entries = collection.data();
 
-        if let Some(obj) = map_iterator.iterated_map.take() {
-            let e = {
-                let mut entries = obj.0.borrow_mut();
-                let entries = entries.data_mut();
-                let len = entries.full_len();
-                loop {
-                    let element = entries
-                        .get_index(map_iterator.next_index)
-                        .map(|(v, k)| (v.clone(), k.clone()));
-                    map_iterator.next_index += 1;
-                    if element.is_some() || map_iterator.next_index >= len {
-                        break element;
+                while iterator.next_index < entries.full_len() {
+                    let index = iterator.next_index;
+                    iterator.next_index += 1;
+                    if let Some(element) = entries.get_index(index) {
+                        return Some(element);
                     }
                 }
-            };
-            if let Some((key, value)) = e {
-                let item = match item_kind {
-                    PropertyNameKind::Key => Ok(create_iter_result_object(key, false, context)),
-                    PropertyNameKind::Value => Ok(create_iter_result_object(value, false, context)),
-                    PropertyNameKind::KeyAndValue => {
-                        let result = Array::create_array_from_list([key, value], context);
-                        Ok(create_iter_result_object(result.into(), false, context))
-                    }
-                };
-                map_iterator.iterated_map = Some(obj);
-                return item;
+                None
+            });
+            if element.is_none() {
+                iterator.iterated_map = None;
             }
-        }
+            (element, iterator.iteration_kind)
+        };
 
-        Ok(create_iter_result_object(
-            JsValue::undefined(),
-            true,
-            context,
-        ))
+        let Some((key, value)) = element else {
+            return Ok(create_iter_result_object_trusted(
+                JsValue::undefined(),
+                true,
+                context,
+            ));
+        };
+        let item = match kind {
+            PropertyNameKind::Key => key,
+            PropertyNameKind::Value => value,
+            PropertyNameKind::KeyAndValue => {
+                Array::create_array_from_list([key, value], context).into()
+            }
+        };
+        Ok(create_iter_result_object_trusted(item, false, context))
     }
 }

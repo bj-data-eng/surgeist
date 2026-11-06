@@ -89,7 +89,7 @@ impl AsyncGeneratorYield {
         //     b. Let toYield be the first element of queue.
         if let Some(next) = r#gen.data().queue.front() {
             // c. Let resumptionValue be Completion(toYield.[[Completion]]).
-            let resume_kind = match next.completion.clone() {
+            let resume_kind = match next.completion.to_completion() {
                 CompletionRecord::Normal(val) => {
                     context.vm.stack.push(val);
                     GeneratorResumeKind::Normal

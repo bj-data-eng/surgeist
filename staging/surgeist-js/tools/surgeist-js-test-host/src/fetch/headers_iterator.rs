@@ -5,12 +5,13 @@
 //!
 //! [spec]: https://fetch.spec.whatwg.org/#headers-class
 
+use surgeist_js::gc::heap::Trace as HeapTrace;
+use surgeist_js::native_function::{CapturedObject, NativeCapture};
 use surgeist_js::{
     Context, JsData, JsResult, JsString, JsValue, boa_class,
     builtins::iterable::create_iter_result_object, error::JsNativeError, interop::JsClass,
     object::JsObject, object::builtins::JsArray,
 };
-use surgeist_js_gc::{Finalize, Trace};
 
 use super::headers::JsHeaders;
 
@@ -32,11 +33,11 @@ pub(crate) enum IterationKind {
 ///  - [Fetch specification][spec]
 ///
 /// [spec]: https://fetch.spec.whatwg.org/#headers-class
-#[derive(Debug, Finalize, Trace, JsData)]
+#[derive(Debug, JsData, HeapTrace)]
 pub(crate) struct HeadersIterator {
-    iterated_headers: JsObject<JsHeaders>,
+    iterated_headers: CapturedObject,
     next_index: usize,
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     iteration_kind: IterationKind,
 }
 
@@ -55,11 +56,11 @@ impl HeadersIterator {
     ///
     /// Advances the iterator and returns the next `{ value, done }` result.
     #[boa(method)]
-    fn next(&mut self, context: &mut Context) -> JsValue {
+    fn next(&mut self, context: &mut Context) -> JsResult<JsValue> {
         let item_kind = self.iteration_kind;
 
-        let element = self
-            .iterated_headers
+        let headers = JsObject::<JsHeaders>::restore(&self.iterated_headers);
+        let element = headers
             .borrow()
             .data()
             .headers
@@ -74,16 +75,13 @@ impl HeadersIterator {
             });
 
         if let Some((key, value)) = element {
-            self.next_index += 1;
-
-            return match item_kind {
-                IterationKind::Key => create_iter_result_object(key, false, context),
-                IterationKind::Value => create_iter_result_object(value, false, context),
-                IterationKind::KeyAndValue => {
-                    let result = JsArray::from_iter([key, value], context);
-                    create_iter_result_object(result.into(), false, context)
-                }
+            let value = match item_kind {
+                IterationKind::Key => key,
+                IterationKind::Value => value,
+                IterationKind::KeyAndValue => JsArray::from_iter([key, value], context)?.into(),
             };
+            self.next_index += 1;
+            return create_iter_result_object(value, false, context);
         }
 
         create_iter_result_object(JsValue::undefined(), true, context)
@@ -105,7 +103,7 @@ impl HeadersIterator {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         let iter = Self {
-            iterated_headers: headers,
+            iterated_headers: headers.store(),
             next_index: 0,
             iteration_kind: kind,
         };
@@ -116,7 +114,7 @@ impl HeadersIterator {
             .ok_or_else(|| surgeist_js::js_error!(Error: "Headers Iterator not registered"))?
             .prototype();
 
-        let headers_iterator = JsObject::from_proto_and_data(proto, iter);
+        let headers_iterator = JsObject::from_proto_and_data(context.runtime(), proto, iter)?;
         Ok(headers_iterator.into())
     }
 }

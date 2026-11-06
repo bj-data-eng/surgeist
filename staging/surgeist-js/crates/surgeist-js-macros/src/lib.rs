@@ -1,4 +1,5 @@
-//! Macros for the Boa JavaScript engine.
+//! Macros for the JavaScript engine.
+#![forbid(unsafe_code)]
 #![cfg_attr(not(test), forbid(clippy::unwrap_used))]
 
 use crate::utils::RenameScheme;
@@ -21,13 +22,19 @@ mod module;
 mod utils;
 mod value;
 
-/// The `js_value!` macro creates a `JsValue` instance based on a JSON-like DSL.
+/// Create a JavaScript value from a JSON-like literal.
+///
+/// Array and object literals take a context and return `JsResult<JsValue>`.
+/// They reject object values from another runtime. Other inputs return `JsValue`.
 #[proc_macro]
 pub fn js_value(input: TokenStream) -> TokenStream {
     value::js_value_impl(proc_macro2::TokenStream::from(input)).into()
 }
 
-/// Create a `JsObject` object from a simpler DSL that resembles JSON.
+/// Create a JavaScript object from a JSON-like literal.
+///
+/// The macro takes a context and returns `JsResult<JsObject>`. It rejects
+/// object values from another runtime.
 #[proc_macro]
 pub fn js_object(input: TokenStream) -> TokenStream {
     value::js_object_impl(proc_macro2::TokenStream::from(input)).into()
@@ -374,159 +381,6 @@ fn mentions_const_parameter(tokens: proc_macro2::TokenStream, parameters: &[&Ide
         TokenTree::Group(group) => mentions_const_parameter(group.stream(), parameters),
         _ => false,
     })
-}
-
-decl_derive! {
-    [Trace, attributes(surgeist_js_gc, unsafe_ignore_trace)] =>
-    /// Derive the `Trace` trait.
-    derive_trace
-}
-
-/// Derives the `Trace` trait.
-#[allow(clippy::too_many_lines)]
-fn derive_trace(mut s: Structure<'_>) -> proc_macro2::TokenStream {
-    struct EmptyTrace {
-        copy: bool,
-        drop: bool,
-    }
-
-    impl Parse for EmptyTrace {
-        fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
-            let i: Ident = input.parse()?;
-
-            if i != "empty_trace" && i != "unsafe_empty_trace" && i != "unsafe_no_drop" {
-                let msg = format!(
-                    "expected token \"empty_trace\", \"unsafe_empty_trace\" or \"unsafe_no_drop\", found {i:?}"
-                );
-                return Err(syn::Error::new_spanned(i.clone(), msg));
-            }
-
-            Ok(Self {
-                copy: i == "empty_trace",
-                drop: i == "empty_trace" || i != "unsafe_no_drop",
-            })
-        }
-    }
-
-    let mut drop = true;
-
-    for attr in &s.ast().attrs {
-        if attr.path().is_ident("surgeist_js_gc") {
-            let trace = match attr.parse_args::<EmptyTrace>() {
-                Ok(t) => t,
-                Err(e) => return e.into_compile_error(),
-            };
-
-            if trace.copy {
-                s.add_where_predicate(syn::parse_quote!(Self: Copy));
-            }
-
-            if !trace.drop {
-                drop = false;
-                continue;
-            }
-
-            return s.unsafe_bound_impl(
-                quote!(::surgeist_js_gc::Trace),
-                quote! {
-                    #[inline(always)]
-                    unsafe fn trace(&self, _tracer: &mut ::surgeist_js_gc::Tracer) {}
-                    #[inline(always)]
-                    unsafe fn trace_non_roots(&self) {}
-                    #[inline]
-                    fn run_finalizer(&self) {
-                        ::surgeist_js_gc::Finalize::finalize(self)
-                    }
-                },
-            );
-        }
-    }
-
-    s.filter(|bi| {
-        !bi.ast()
-            .attrs
-            .iter()
-            .any(|attr| attr.path().is_ident("unsafe_ignore_trace"))
-    });
-    let trace_body = s.each(|bi| quote!(::surgeist_js_gc::Trace::trace(#bi, tracer)));
-    let trace_other_body = s.each(|bi| quote!(mark(#bi)));
-
-    s.add_bounds(AddBounds::Fields);
-    let trace_impl = s.unsafe_bound_impl(
-        quote!(::surgeist_js_gc::Trace),
-        quote! {
-            #[inline]
-            unsafe fn trace(&self, tracer: &mut ::surgeist_js_gc::Tracer) {
-                #[allow(dead_code)]
-                let mut mark = |it: &dyn ::surgeist_js_gc::Trace| {
-                    // SAFETY: The implementor must ensure that `trace` is correctly implemented.
-                    unsafe {
-                        ::surgeist_js_gc::Trace::trace(it, tracer);
-                    }
-                };
-                match *self { #trace_body }
-            }
-            #[inline]
-            unsafe fn trace_non_roots(&self) {
-                #[allow(dead_code)]
-                fn mark<T: ::surgeist_js_gc::Trace + ?Sized>(it: &T) {
-                    // SAFETY: The implementor must ensure that `trace_non_roots` is correctly implemented.
-                    unsafe {
-                        ::surgeist_js_gc::Trace::trace_non_roots(it);
-                    }
-                }
-                match *self { #trace_other_body }
-            }
-            #[inline]
-            fn run_finalizer(&self) {
-                ::surgeist_js_gc::Finalize::finalize(self);
-                #[allow(dead_code)]
-                fn mark<T: ::surgeist_js_gc::Trace + ?Sized>(it: &T) {
-                    unsafe {
-                        ::surgeist_js_gc::Trace::run_finalizer(it);
-                    }
-                }
-                match *self { #trace_other_body }
-            }
-        },
-    );
-
-    // We also implement drop to prevent unsafe drop implementations on this
-    // type and encourage people to use Finalize. This implementation will
-    // call `Finalize::finalize` if it is safe to do so.
-    let drop_impl = if drop {
-        s.unbound_impl(
-            quote!(::core::ops::Drop),
-            quote! {
-                #[allow(clippy::inline_always)]
-                #[inline(always)]
-                fn drop(&mut self) {
-                    if ::surgeist_js_gc::finalizer_safe() {
-                        ::surgeist_js_gc::Finalize::finalize(self);
-                    }
-                }
-            },
-        )
-    } else {
-        quote!()
-    };
-
-    quote! {
-        #trace_impl
-        #drop_impl
-    }
-}
-
-decl_derive! {
-    [Finalize] =>
-    /// Derive the `Finalize` trait.
-    derive_finalize
-}
-
-/// Derives the `Finalize` trait.
-#[allow(clippy::needless_pass_by_value)]
-fn derive_finalize(s: Structure<'_>) -> proc_macro2::TokenStream {
-    s.unbound_impl(quote!(::surgeist_js_gc::Finalize), quote!())
 }
 
 decl_derive! {

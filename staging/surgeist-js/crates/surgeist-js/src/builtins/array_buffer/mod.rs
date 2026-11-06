@@ -31,13 +31,14 @@ use crate::{
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     error::JsNativeError,
     js_string,
-    object::{JsObject, internal_methods::get_prototype_from_constructor},
+    object::{JsObject, ObjectEdge, internal_methods::get_prototype_from_constructor},
     property::Attribute,
     realm::Realm,
     string::StaticJsStrings,
     symbol::JsSymbol,
+    value::StoredValue,
 };
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 use self::utils::{SliceRef, SliceRefMut};
 
@@ -122,11 +123,22 @@ where
 }
 
 /// A `JsObject` containing a bytes buffer as its inner data.
-#[derive(Debug, Clone, Trace, Finalize)]
-#[surgeist_js_gc(unsafe_no_drop)]
+#[derive(Debug, Clone)]
 pub(crate) enum BufferObject {
     Buffer(JsObject<ArrayBuffer>),
     SharedBuffer(JsObject<SharedArrayBuffer>),
+}
+
+/// A buffer reference stored by a view in the object graph.
+#[derive(Debug, Clone, HeapTrace)]
+pub(crate) struct BufferEdge(ObjectEdge);
+
+impl BufferEdge {
+    pub(crate) fn to_buffer(&self) -> BufferObject {
+        JsObject::from_inner(self.0.clone())
+            .into_buffer_object()
+            .expect("buffer edge retains its ArrayBuffer or SharedArrayBuffer brand")
+    }
 }
 
 impl From<BufferObject> for JsObject {
@@ -145,6 +157,13 @@ impl From<BufferObject> for JsValue {
 }
 
 impl BufferObject {
+    pub(crate) fn edge(&self) -> BufferEdge {
+        BufferEdge(match self {
+            Self::Buffer(buffer) => buffer.edge(),
+            Self::SharedBuffer(buffer) => buffer.edge(),
+        })
+    }
+
     /// Gets the buffer data of the object.
     #[inline]
     #[must_use]
@@ -189,25 +208,25 @@ impl BufferObject {
 }
 
 /// The internal representation of an `ArrayBuffer` object.
-#[derive(Debug, Clone, Trace, Finalize, JsData)]
+#[derive(Debug, Clone, HeapTrace, JsData)]
 pub struct ArrayBuffer {
     /// The `[[ArrayBufferData]]` internal slot.
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     data: Option<Vec<u8>>,
 
     /// The `[[ArrayBufferMaxByteLength]]` internal slot.
     max_byte_len: Option<u64>,
 
     /// The `[[ArrayBufferDetachKey]]` internal slot.
-    detach_key: JsValue,
+    detach_key: StoredValue,
 }
 
 impl ArrayBuffer {
-    pub(crate) fn from_data(data: Vec<u8>, detach_key: JsValue) -> Self {
+    pub(crate) fn from_data(data: Vec<u8>, detach_key: &JsValue) -> Self {
         Self {
             data: Some(data),
             max_byte_len: None,
-            detach_key,
+            detach_key: detach_key.clone().into_stored(),
         }
     }
 
@@ -294,7 +313,7 @@ impl ArrayBuffer {
     ///
     /// Throws an error if the provided detach key is invalid.
     pub fn detach(&mut self, key: &JsValue) -> JsResult<Option<Vec<u8>>> {
-        if !JsValue::same_value(&self.detach_key, key) {
+        if !JsValue::same_value(&self.detach_key.to_value(), key) {
             return Err(JsNativeError::typ()
                 .with_message("Cannot detach array buffer with different key")
                 .into());
@@ -842,7 +861,7 @@ impl ArrayBuffer {
             ArrayBuffer {
                 data: Some(bytes),
                 max_byte_len: new_max_len,
-                detach_key: JsValue::undefined(),
+                detach_key: StoredValue::Undefined,
             },
         )
         .into())
@@ -862,7 +881,7 @@ impl ArrayBuffer {
         };
 
         let new_max_len = self.max_byte_len.filter(|_| !to_fixed_length);
-        if !self.detach_key.is_undefined() {
+        if !matches!(self.detach_key, StoredValue::Undefined) {
             return Err(JsNativeError::typ()
                 .with_message("cannot transfer a buffer with a detach key")
                 .into());
@@ -924,9 +943,9 @@ impl ArrayBuffer {
                 // 8. If allocatingResizableBuffer is true, then
                 //    c. Set obj.[[ArrayBufferMaxByteLength]] to maxByteLength.
                 max_byte_len,
-                detach_key: JsValue::undefined(),
+                detach_key: StoredValue::Undefined,
             },
-        );
+        )?;
 
         // 9. Return obj.
         Ok(obj)

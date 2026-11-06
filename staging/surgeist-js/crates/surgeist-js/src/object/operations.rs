@@ -78,6 +78,7 @@ impl JsObject {
         // 1. Assert: Type(O) is Object.
         // 2. Assert: IsPropertyKey(P) is true.
         // 3. Return ? O.[[Get]](P, O).
+        self.check_runtime(context.runtime())?;
         self.__get__(
             &key.into(),
             self.clone().into(),
@@ -437,6 +438,13 @@ impl JsObject {
         // NOTE(HalidOdat): For object's that are not callable we implement a special __call__ internal method
         //                  that throws on call.
 
+        let runtime = context.runtime();
+        self.check_runtime(runtime)?;
+        runtime.check_value(this)?;
+        for arg in args {
+            runtime.check_value(arg)?;
+        }
+
         context.vm.stack.push(this.clone()); // this
         context.vm.stack.push(self.clone()); // func
         let argument_count = args.len();
@@ -485,6 +493,12 @@ impl JsObject {
     ) -> JsResult<Self> {
         // 1. If newTarget is not present, set newTarget to F.
         let new_target = new_target.unwrap_or(self);
+        let runtime = context.runtime();
+        self.check_runtime(runtime)?;
+        new_target.check_runtime(runtime)?;
+        for arg in args {
+            runtime.check_value(arg)?;
+        }
 
         context.vm.stack.push(JsValue::undefined());
         context.vm.stack.push(self.clone()); // func
@@ -868,7 +882,7 @@ impl JsObject {
         }
 
         if let Some(bound) = self.downcast_ref::<BoundFunction>() {
-            let fun = bound.target_function().clone();
+            let fun = bound.target_function();
             return fun.get_function_realm(context);
         }
 
@@ -974,7 +988,8 @@ impl JsObject {
         //    a. Perform ? HostEnsureCanAddPrivateElement(O).
         context
             .host_hooks()
-            .ensure_can_add_private_element(self, context)?;
+            .ensure_can_add_private_element(self, context)
+            .map_err(|error| context.runtime().admit_error(error))?;
 
         // 2. If ? IsExtensible(O) is false, throw a TypeError exception.
         // NOTE: From <https://tc39.es/proposal-nonextensible-applies-to-private/#sec-privatefieldadd>
@@ -995,7 +1010,7 @@ impl JsObject {
         }
 
         // 5. Append PrivateElement { [[Key]]: P, [[Kind]]: field, [[Value]]: value } to O.[[PrivateElements]].
-        self.borrow_mut().private_elements.push((
+        self.borrow_mut().state_mut().private_elements.push((
             name.clone(),
             StoredPrivateElement::Field(value.into_stored()),
         ));
@@ -1034,7 +1049,8 @@ impl JsObject {
         // a. Perform ? HostEnsureCanAddPrivateElement(O).
         context
             .host_hooks()
-            .ensure_can_add_private_element(self, context)?;
+            .ensure_can_add_private_element(self, context)
+            .map_err(|error| context.runtime().admit_error(error))?;
 
         // 3. If ? IsExtensible(O) is false, throw a TypeError exception.
         // NOTE: From <https://tc39.es/proposal-nonextensible-applies-to-private/#sec-privatemethodoraccessoradd>
@@ -1070,6 +1086,7 @@ impl JsObject {
 
         // 5. Append method to O.[[PrivateElements]].
         self.borrow_mut()
+            .state_mut()
             .append_stored_private_element(name.clone(), method.clone());
 
         // 6. Return unused.
@@ -1140,6 +1157,7 @@ impl JsObject {
         // Note: This function is inlined here for mutable access.
         let mut object_mut = self.borrow_mut();
         let entry = object_mut
+            .state_mut()
             .private_elements
             .iter_mut()
             .find_map(|(key, value)| if key == name { Some(value) } else { None });
@@ -1491,7 +1509,7 @@ impl JsValue {
         if let Some(bound_function) = function.downcast_ref::<BoundFunction>() {
             // a. Let BC be C.[[BoundTargetFunction]].
             // b. Return ? InstanceofOperator(O, BC).
-            return object.instance_of(&bound_function.target_function().clone().into(), context);
+            return object.instance_of(&bound_function.target_function().into(), context);
         }
 
         let Some(mut object) = object.as_object() else {

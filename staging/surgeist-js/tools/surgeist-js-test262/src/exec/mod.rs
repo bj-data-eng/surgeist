@@ -1,28 +1,28 @@
 //! Execution module for the test runner.
 
-use surgeist_js_gc::{Finalize, Gc, GcRefCell, Trace};
 use surgeist_js_test_host::test262 as js262;
 
 use crate::{
     Harness, Outcome, Phase, SpecEdition, Statistics, SuiteResult, Test, TestFlags,
     TestOutcomeResult, TestResult, TestSuite, VersionedStats, read::ErrorType,
 };
+use colored::Colorize;
+use rayon::prelude::*;
+use rustc_hash::FxHashSet;
+use std::{cell::RefCell, eprintln, path::Path, rc::Rc};
 use surgeist_js::{
     Context, JsArgs, JsError, JsNativeErrorKind, JsResult, JsValue, Source,
     builtins::promise::PromiseState,
+    gc::heap::Trace,
     js_str,
     module::{Module, SimpleModuleLoader},
-    native_function::NativeFunction,
+    native_function::{NativeCapture, NativeFunction},
     object::FunctionObjectBuilder,
     optimizer::OptimizerOptions,
     parser::source::ReadChar,
     property::Attribute,
     script::Script,
 };
-use colored::Colorize;
-use rayon::prelude::*;
-use rustc_hash::FxHashSet;
-use std::{eprintln, path::Path, rc::Rc};
 
 use js262::WorkerHandles;
 
@@ -541,15 +541,21 @@ impl Test {
         context.set_optimizer_options(optimizer_options);
 
         // Register the print() function.
-        register_print_fn(&mut context, async_result.clone());
+        register_print_fn(&mut context, async_result.clone()).map_err(|e| e.to_string())?;
 
         // add the $262 object.
-        let _js262 = js262::register_js262(handles.clone(), console, &mut context);
+        let _js262 = js262::register_js262(handles.clone(), console, &mut context)
+            .map_err(|e| e.to_string())?;
 
         if console {
-            let console = surgeist_js_test_host::Console::init(&mut context);
+            let console =
+                surgeist_js_test_host::Console::init(&mut context).map_err(|e| e.to_string())?;
             context
-                .register_global_property(surgeist_js_test_host::Console::NAME, console, Attribute::all())
+                .register_global_property(
+                    surgeist_js_test_host::Console::NAME,
+                    console,
+                    Attribute::all(),
+                )
                 .expect("the console builtin shouldn't exist");
         }
 
@@ -622,7 +628,7 @@ fn is_error_type(error: &JsError, target_type: ErrorType, context: &mut Context)
 }
 
 /// Registers the print function in the context.
-fn register_print_fn(context: &mut Context, async_result: AsyncResult) {
+fn register_print_fn(context: &mut Context, async_result: AsyncResult) -> JsResult<()> {
     let js_function = FunctionObjectBuilder::new(
         context.realm(),
         NativeFunction::from_fn_with_captures(
@@ -651,15 +657,13 @@ fn register_print_fn(context: &mut Context, async_result: AsyncResult) {
     )
     .name("print")
     .length(1)
-    .build();
+    .build()?;
 
-    context
-        .register_global_property(
-            js_str!("print"),
-            js_function,
-            Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-        )
-        .expect("shouldn't fail with the default global");
+    context.register_global_property(
+        js_str!("print"),
+        js_function,
+        Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
+    )
 }
 
 /// Parses a module and registers it into the `ModuleLoader` of the context.
@@ -692,8 +696,8 @@ fn parse_module_and_register(
 /// The Test262 [interpreting guide][guide] contains more information about how to run async tests.
 ///
 /// [guide]: https://github.com/tc39/test262/blob/main/INTERPRETING.md#flags
-#[derive(Debug, Clone, Default, Trace, Finalize)]
-enum UninitResult<T: Trace, E: Trace> {
+#[derive(Debug, Clone, Default)]
+enum UninitResult<T, E> {
     #[default]
     Uninit,
     Ok(T),
@@ -701,16 +705,20 @@ enum UninitResult<T: Trace, E: Trace> {
 }
 
 /// Object which includes the result of the async operation.
-#[derive(Debug, Clone, Trace, Finalize)]
+#[derive(Debug, Clone, Default, Trace)]
 struct AsyncResult {
-    inner: Gc<GcRefCell<UninitResult<(), String>>>,
+    #[heap_trace(skip)]
+    inner: Rc<RefCell<UninitResult<(), String>>>,
 }
 
-impl Default for AsyncResult {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            inner: Gc::new(GcRefCell::new(UninitResult::default())),
-        }
+impl NativeCapture for AsyncResult {
+    type Stored = Self;
+
+    fn store(&self) -> Self {
+        self.clone()
+    }
+
+    fn restore(stored: &Self) -> Self {
+        stored.clone()
     }
 }

@@ -1,6 +1,5 @@
 use std::any::{Any, TypeId};
 
-use surgeist_js_gc::{Finalize, Trace, custom_trace};
 use hashbrown::hash_map::HashMap;
 
 use crate::object::NativeObject;
@@ -24,17 +23,14 @@ impl<T: ?Sized> Default for HostDefined<T> {
     }
 }
 
-// SAFETY: All traceable values are marked here, making this implementation
-// safe.
-unsafe impl<T: ?Sized + Trace> Trace for HostDefined<T> {
-    custom_trace!(this, mark, {
-        for value in this.types.values() {
-            mark(value);
-        }
-    });
+impl<T: ?Sized + surgeist_js_gc::heap::Trace> surgeist_js_gc::heap::Trace for HostDefined<T> {
+    fn trace(
+        &self,
+        edges: &mut surgeist_js_gc::heap::EdgeVisitor<'_>,
+    ) -> Result<(), surgeist_js_gc::heap::AccessError> {
+        self.types.values().try_for_each(|value| value.trace(edges))
+    }
 }
-
-impl<T: ?Sized + Finalize> Finalize for HostDefined<T> {}
 
 impl HostDefined<dyn Any> {
     /// Insert a type into the [`HostDefined`].

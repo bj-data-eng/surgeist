@@ -7,7 +7,6 @@
 //! if necessary).
 
 use surgeist_js::JsNativeError;
-use surgeist_js_gc::{Finalize, Trace};
 
 use crate::value::TryFromJs;
 use crate::{Context, JsData, JsResult, JsString, JsValue};
@@ -44,7 +43,7 @@ use crate::{Context, JsData, JsResult, JsString, JsValue};
 /// assert_eq!(conv5, true);
 /// assert_eq!(conv_nan, false);
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Trace, Finalize, JsData)]
+#[derive(Debug, Clone, PartialEq, Eq, JsData)]
 pub struct Convert<T: TryFromJs>(pub T);
 
 impl<T: TryFromJs> From<T> for Convert<T> {

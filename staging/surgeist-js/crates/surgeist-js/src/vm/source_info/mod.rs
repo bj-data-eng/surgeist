@@ -8,9 +8,8 @@ use surgeist_js_ast::Position;
 
 mod builder;
 
-use surgeist_js_gc::{Finalize, Trace};
-use surgeist_js_string::JsString;
 pub(crate) use builder::SourceMapBuilder;
+use surgeist_js_string::JsString;
 
 use crate::SpannedSourceText;
 
@@ -18,9 +17,7 @@ use crate::SpannedSourceText;
 mod tests;
 
 /// Source information.
-#[derive(Debug, Default, Clone, Finalize, Trace)]
-// SAFETY: Nothing in Inner needs tracing, so this is safe.
-#[surgeist_js_gc(unsafe_empty_trace)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct SourceInfo {
     inner: Rc<Inner>,
 }

@@ -33,7 +33,7 @@ use surgeist_js::js_string;
 use surgeist_js::property::PropertyKey;
 use surgeist_js::value::TryFromJs;
 use surgeist_js_ast::declaration::ImportAttribute as AstImportAttribute;
-use surgeist_js_gc::{Finalize, Gc, GcRefCell, Trace};
+use surgeist_js_gc::heap::{RecordRef, Rooted, Trace as HeapTrace};
 use surgeist_js_interner::Interner;
 use surgeist_js_parser::source::ReadChar;
 use surgeist_js_parser::{Parser, Source};
@@ -50,9 +50,9 @@ use crate::{
     Context, HostDefined, JsError, JsNativeError, JsResult, JsString, JsValue, NativeFunction,
     builtins,
     builtins::promise::{PromiseCapability, PromiseState},
-    environments::DeclarativeEnvironment,
-    object::{JsObject, JsPromise},
-    realm::Realm,
+    environments::DeclarativeEnvironmentRef,
+    object::{JsObject, JsPromise, ObjectEdge},
+    realm::{Realm, RealmEdge},
 };
 
 mod loader;
@@ -63,7 +63,7 @@ mod synthetic;
 /// Import attribute.
 ///
 /// [spec]: https://tc39.es/ecma262/#table-importattribute-fields
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Trace, Finalize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, HeapTrace)]
 pub struct ImportAttribute {
     key: JsString,
     value: JsString,
@@ -96,9 +96,10 @@ impl ImportAttribute {
 /// should be (referrer, specifier, attributes).
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-modulerequest-record
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Trace, Finalize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, HeapTrace)]
 pub struct ModuleRequest {
     specifier: JsString,
+    #[heap_trace(skip)]
     attributes: Box<[ImportAttribute]>,
 }
 
@@ -168,32 +169,53 @@ impl ModuleRequest {
 /// ECMAScript's [**Abstract module record**][spec].
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-abstract-module-records
-#[derive(Clone, Trace, Finalize)]
+#[derive(Clone)]
 pub struct Module {
-    inner: Gc<ModuleRepr>,
+    inner: Rooted<ModuleRepr>,
 }
 
 impl std::fmt::Debug for Module {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Module")
-            .field("realm", &self.inner.realm.addr())
+            .field("realm", &self.inner.realm)
             .field("namespace", &self.inner.namespace)
             .field("kind", &self.inner.kind)
             .finish()
     }
 }
 
-#[derive(Trace, Finalize)]
+/// Strong edge to a module owned by the safe runtime graph.
+#[derive(Clone, Debug, Eq, PartialEq, HeapTrace)]
+pub(crate) struct ModuleEdge(RecordRef<ModuleRepr>);
+
+/// Native callback capture of a module allocation.
+#[derive(Debug, HeapTrace)]
+pub struct CapturedModule(ModuleEdge);
+
+impl crate::native_function::NativeCapture for Module {
+    type Stored = CapturedModule;
+
+    fn store(&self) -> Self::Stored {
+        CapturedModule(self.edge())
+    }
+
+    fn restore(stored: &Self::Stored) -> Self {
+        Self::from_edge(stored.0.clone())
+    }
+}
+
+#[derive(HeapTrace)]
 struct ModuleRepr {
-    realm: Realm,
-    namespace: GcRefCell<Option<JsObject>>,
+    realm: RealmEdge,
+    namespace: RefCell<Option<ObjectEdge>>,
     kind: ModuleKind,
     host_defined: HostDefined,
+    #[heap_trace(skip)]
     path: Option<PathBuf>,
 }
 
 /// The kind of a [`Module`].
-#[derive(Debug, Trace, Finalize)]
+#[derive(Debug, HeapTrace)]
 pub(crate) enum ModuleKind {
     /// A [**Source Text Module Record**](https://tc39.es/ecma262/#sec-source-text-module-records)
     SourceText(Box<SourceTextModule>),
@@ -224,7 +246,7 @@ pub(crate) struct ResolvedBinding {
 ///
 /// Note that a resolved binding can resolve to a single binding inside a module (`export var a = 1"`)
 /// or to a whole module namespace (`export * as ns from "mod.js"`).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, HeapTrace)]
 pub(crate) enum BindingName {
     /// A local binding.
     Name(JsString),
@@ -232,7 +254,29 @@ pub(crate) enum BindingName {
     Namespace,
 }
 
+#[derive(Debug, HeapTrace)]
+struct StoredResolvedBinding {
+    module: ModuleEdge,
+    binding_name: BindingName,
+}
+
+impl StoredResolvedBinding {
+    fn to_binding(&self) -> ResolvedBinding {
+        ResolvedBinding {
+            module: Module::from_edge(self.module.clone()),
+            binding_name: self.binding_name.clone(),
+        }
+    }
+}
+
 impl ResolvedBinding {
+    fn stored(&self) -> StoredResolvedBinding {
+        StoredResolvedBinding {
+            module: self.module.edge(),
+            binding_name: self.binding_name.clone(),
+        }
+    }
+
     /// Gets the module from which the export resolved.
     pub(crate) const fn module(&self) -> &Module {
         &self.module
@@ -264,9 +308,61 @@ pub(crate) enum ResolveExportError {
 }
 
 impl Module {
+    pub(crate) fn from_edge(edge: ModuleEdge) -> Self {
+        Self {
+            inner: edge
+                .0
+                .upgrade()
+                .expect("module heap is available")
+                .expect("live owner retains its module"),
+        }
+    }
+
+    pub(crate) fn edge(&self) -> ModuleEdge {
+        ModuleEdge(self.inner.record_ref())
+    }
+
+    fn resolve_realm(realm: Option<Realm>, context: &Context) -> JsResult<Realm> {
+        let realm = realm.unwrap_or_else(|| context.realm().clone());
+        if !context.runtime().same_heap(&realm.runtime()) {
+            return Err(JsNativeError::typ()
+                .with_message("module realm belongs to a different runtime")
+                .into());
+        }
+        Ok(realm)
+    }
+
+    fn allocate(
+        realm: &Realm,
+        kind: ModuleKind,
+        path: Option<PathBuf>,
+        context: &Context,
+    ) -> JsResult<Self> {
+        let inner = context
+            .runtime()
+            .heap
+            .allocate(ModuleRepr {
+                realm: realm.edge(),
+                namespace: RefCell::default(),
+                kind,
+                host_defined: HostDefined::default(),
+                path,
+            })
+            .map_err(|rejected| JsNativeError::typ().with_message(rejected.reason.to_string()))?;
+        Ok(Self { inner })
+    }
+
     /// Abstract operation [`ParseModule ( sourceText, realm, hostDefined )`][spec].
     ///
-    /// Parses the provided `src` as an ECMAScript module, returning an error if parsing fails.
+    /// Parses the provided `src` as an ECMAScript module.
+    ///
+    /// Use the parsing context to link this module and to initialize its namespace. Source
+    /// text retains symbols from that context's interner even when a peer realm is selected.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if parsing fails or the heap rejects the module. An explicit realm
+    /// from another runtime returns a `TypeError` before parsing begins.
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-parsemodule
     pub fn parse<R: ReadChar>(
@@ -274,8 +370,8 @@ impl Module {
         realm: Option<Realm>,
         context: &mut Context,
     ) -> JsResult<Self> {
+        let realm = Self::resolve_realm(realm, context)?;
         let path = src.path().map(Path::to_path_buf);
-        let realm = realm.unwrap_or_else(|| context.realm().clone());
 
         let mut parser = Parser::new(src);
         parser.set_identifier(context.next_parser_identifier());
@@ -285,21 +381,18 @@ impl Module {
         let source_text = SourceText::new(source);
         let src = SourceTextModule::new(module, context.interner(), source_text, path.clone());
 
-        Ok(Self {
-            inner: Gc::new(ModuleRepr {
-                realm,
-                namespace: GcRefCell::default(),
-                kind: ModuleKind::SourceText(Box::new(src)),
-                host_defined: HostDefined::default(),
-                path,
-            }),
-        })
+        Self::allocate(&realm, ModuleKind::SourceText(Box::new(src)), path, context)
     }
 
     /// Abstract operation [`CreateSyntheticModule ( exportNames, evaluationSteps, realm )`][spec].
     ///
     /// Creates a new Synthetic Module from its list of exported names, its evaluation steps and
     /// optionally a root realm.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `TypeError` if the realm or initializer captures belong to another runtime,
+    /// or the heap rejects the module.
     ///
     /// [spec]: https://tc39.es/proposal-json-modules/#sec-createsyntheticmodule
     #[inline]
@@ -309,25 +402,24 @@ impl Module {
         path: Option<PathBuf>,
         realm: Option<Realm>,
         context: &mut Context,
-    ) -> Self {
+    ) -> JsResult<Self> {
+        let realm = Self::resolve_realm(realm, context)?;
         let names = export_names.iter().cloned().collect();
-        let realm = realm.unwrap_or_else(|| context.realm().clone());
-        let synth = SyntheticModule::new(names, evaluation_steps);
-
-        Self {
-            inner: Gc::new(ModuleRepr {
-                realm,
-                namespace: GcRefCell::default(),
-                kind: ModuleKind::Synthetic(Box::new(synth)),
-                host_defined: HostDefined::default(),
-                path,
-            }),
-        }
+        let synth = SyntheticModule::new(names, &evaluation_steps);
+        Self::allocate(
+            &realm,
+            ModuleKind::Synthetic(Box::new(synth)),
+            path,
+            context,
+        )
     }
 
     /// Create a [`Module`] from a `JsValue`, exporting that value as the default export.
-    /// This will clone the module everytime it is initialized.
-    pub fn from_value_as_default(value: JsValue, context: &mut Context) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns a `TypeError` if the value belongs to another runtime or the heap rejects the module.
+    pub fn from_value_as_default(value: JsValue, context: &mut Context) -> JsResult<Self> {
         Module::synthetic(
             &[js_string!("default")],
             SyntheticModuleInitializer::from_fn_with_captures(
@@ -357,14 +449,14 @@ impl Module {
     /// This will return an error if the JSON string is invalid or cannot be converted.
     pub fn parse_json(json: JsString, context: &mut Context) -> JsResult<Self> {
         let value = builtins::Json::parse(&JsValue::undefined(), &[json.into()], context)?;
-        Ok(Self::from_value_as_default(value, context))
+        Self::from_value_as_default(value, context)
     }
 
     /// Gets the realm of this `Module`.
     #[inline]
     #[must_use]
-    pub fn realm(&self) -> &Realm {
-        &self.inner.realm
+    pub fn realm(&self) -> Realm {
+        Realm::from_edge(self.inner.realm.clone())
     }
 
     /// Returns the [`ECMAScript specification`][spec] defined [`\[\[HostDefined\]\]`][`HostDefined`] field of the [`Module`].
@@ -382,7 +474,7 @@ impl Module {
     }
 
     /// Gets the declarative environment of this `Module`.
-    pub(crate) fn environment(&self) -> Option<Gc<DeclarativeEnvironment>> {
+    pub(crate) fn environment(&self) -> Option<DeclarativeEnvironmentRef> {
         match self.kind() {
             ModuleKind::SourceText(src) => src.environment(),
             ModuleKind::Synthetic(syn) => syn.environment(),
@@ -398,6 +490,10 @@ impl Module {
     #[allow(clippy::missing_panics_doc)]
     #[inline]
     pub fn load(&self, context: &mut Context) -> JsPromise {
+        if let Err(error) = self.check_runtime(context) {
+            return JsPromise::reject(error, context)
+                .expect("the runtime's native rejection function is callable");
+        }
         match self.kind() {
             ModuleKind::SourceText(_) => {
                 // Concrete method [`LoadRequestedModules ( [ hostDefined ] )`][spec].
@@ -535,6 +631,7 @@ impl Module {
     #[allow(clippy::missing_panics_doc)]
     #[inline]
     pub fn link(&self, context: &mut Context) -> JsResult<()> {
+        self.check_runtime(context)?;
         match self.kind() {
             ModuleKind::SourceText(src) => src.link(self, context),
             ModuleKind::Synthetic(synth) => {
@@ -579,10 +676,29 @@ impl Module {
     /// [spec]: https://tc39.es/ecma262/#table-abstract-methods-of-module-records
     #[inline]
     pub fn evaluate(&self, context: &mut Context) -> JsResult<JsPromise> {
+        self.check_runtime(context)?;
         match self.kind() {
             ModuleKind::SourceText(src) => src.evaluate(self, context),
             ModuleKind::Synthetic(synth) => synth.evaluate(self, context),
         }
+    }
+
+    fn check_runtime(&self, context: &Context) -> JsResult<()> {
+        if !self.inner.runtime().same_heap(&context.runtime().heap) {
+            return Err(JsNativeError::typ()
+                .with_message("module belongs to a different runtime")
+                .into());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn admit_loader_result(result: JsResult<Self>, context: &Context) -> JsResult<Self> {
+        let module = result.map_err(|error| context.runtime().admit_error(error))?;
+        module.check_runtime(context).map_err(|_| {
+            JsNativeError::typ()
+                .with_message("module loader returned a module from a different runtime")
+        })?;
+        Ok(module)
     }
 
     /// Abstract operation [`InnerModuleLinking ( module, stack, index )`][spec].
@@ -648,72 +764,66 @@ impl Module {
     #[allow(dropping_copy_types)]
     #[inline]
     pub fn load_link_evaluate(&self, context: &mut Context) -> JsPromise {
-        self.load(context)
-            .then(
-                Some(
-                    NativeFunction::from_fn_with_captures(
-                        |_, _, module, context| {
-                            module.link(context)?;
-                            Ok(JsValue::undefined())
-                        },
-                        self.clone(),
-                    )
-                    .to_js_function(context.realm()),
-                ),
-                None,
-                context,
+        let result = (|| {
+            self.check_runtime(context)?;
+            let link = NativeFunction::from_fn_with_captures(
+                |_, _, module, context| {
+                    module.link(context)?;
+                    Ok(JsValue::undefined())
+                },
+                self.clone(),
             )
-            .expect("`then` cannot fail for a native `JsPromise`")
-            .then(
-                Some(
-                    NativeFunction::from_fn_with_captures(
-                        |_, _, module, context| Ok(module.evaluate(context)?.into()),
-                        self.clone(),
-                    )
-                    .to_js_function(context.realm()),
-                ),
-                None,
-                context,
+            .to_js_function(context.realm())?;
+            let evaluate = NativeFunction::from_fn_with_captures(
+                |_, _, module, context| Ok(module.evaluate(context)?.into()),
+                self.clone(),
             )
-            .expect("`then` cannot fail for a native `JsPromise`")
+            .to_js_function(context.realm())?;
+            self.load(context)
+                .then(Some(link), None, context)?
+                .then(Some(evaluate), None, context)
+        })();
+        result.unwrap_or_else(|error| {
+            JsPromise::reject(error, context)
+                .expect("the runtime's native rejection function is callable")
+        })
     }
 
     /// Abstract operation [`GetModuleNamespace ( module )`][spec].
     ///
     /// Gets the [**Module Namespace Object**][ns] that represents this module's exports.
     ///
+    /// Use the parsing context when initializing the namespace of a source text module.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `TypeError` if the module belongs to another runtime.
+    ///
     /// [spec]: https://tc39.es/ecma262/#sec-getmodulenamespace
     /// [ns]: https://tc39.es/ecma262/#sec-module-namespace-exotic-objects
-    pub fn namespace(&self, context: &mut Context) -> JsObject {
+    pub fn namespace(&self, context: &mut Context) -> JsResult<JsObject> {
+        self.check_runtime(context)?;
         // 1. Assert: If module is a Cyclic Module Record, then module.[[Status]] is not new or unlinked.
         // 2. Let namespace be module.[[Namespace]].
         // 3. If namespace is empty, then
         // 4. Return namespace.
-        self.inner
-            .namespace
-            .borrow_mut()
-            .get_or_insert_with(|| {
-                // a. Let exportedNames be module.GetExportedNames().
-                let exported_names =
-                    self.get_exported_names(&mut Vec::default(), context.interner());
+        if let Some(namespace) = self.inner.namespace.borrow().clone() {
+            return Ok(JsObject::from_inner(namespace));
+        }
 
-                // b. Let unambiguousNames be a new empty List.
-                let unambiguous_names = exported_names
-                    .into_iter()
-                    // c. For each element name of exportedNames, do
-                    .filter_map(|name| {
-                        // i. Let resolution be module.ResolveExport(name).
-                        // ii. If resolution is a ResolvedBinding Record, append name to unambiguousNames.
-                        self.resolve_export(&name, &mut HashSet::default(), context.interner())
-                            .ok()
-                            .map(|_| name)
-                    })
-                    .collect();
-
-                //     d. Set namespace to ModuleNamespaceCreate(module, unambiguousNames).
-                ModuleNamespace::create(self.clone(), unambiguous_names, context)
+        // Resolve all unambiguous exports before allocating the namespace.
+        let exported_names = self.get_exported_names(&mut Vec::default(), context.interner());
+        let unambiguous_names = exported_names
+            .into_iter()
+            .filter(|name| {
+                self.resolve_export(name, &mut HashSet::default(), context.interner())
+                    .is_ok()
             })
-            .clone()
+            .collect();
+
+        let namespace = ModuleNamespace::create(self.clone(), unambiguous_names, context);
+        self.inner.namespace.replace(Some(namespace.edge()));
+        Ok(namespace)
     }
 
     /// Get an exported value from the module.
@@ -722,7 +832,7 @@ impl Module {
     where
         K: Into<PropertyKey>,
     {
-        let namespace = self.namespace(context);
+        let namespace = self.namespace(context)?;
         namespace.get(name, context)
     }
 
@@ -755,7 +865,7 @@ impl Module {
 impl PartialEq for Module {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        Gc::ptr_eq(&self.inner, &other.inner)
+        self.inner.handle() == other.inner.handle()
     }
 }
 
@@ -764,18 +874,22 @@ impl Eq for Module {}
 impl Hash for Module {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        std::ptr::hash(self.inner.as_ref(), state);
+        self.inner.handle().erase().hash(state);
     }
 }
 
 /// A trait to convert a type into a JS module.
 pub trait IntoJsModule {
     /// Converts the type into a JS module.
-    fn into_js_module(self, context: &mut Context) -> Module;
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the module cannot be created in the context's runtime.
+    fn into_js_module(self, context: &mut Context) -> JsResult<Module>;
 }
 
 impl<T: IntoIterator<Item = (JsString, NativeFunction)> + Clone> IntoJsModule for T {
-    fn into_js_module(self, context: &mut Context) -> Module {
+    fn into_js_module(self, context: &mut Context) -> JsResult<Module> {
         let (names, fns): (Vec<_>, Vec<_>) = self.into_iter().unzip();
         let exports = names.clone();
 
@@ -785,7 +899,7 @@ impl<T: IntoIterator<Item = (JsString, NativeFunction)> + Clone> IntoJsModule fo
                 |module, (names, fns), context| {
                     for (name, f) in names.iter().zip(fns.iter()) {
                         module
-                            .set_export(name, f.clone().to_js_function(context.realm()).into())?;
+                            .set_export(name, f.clone().to_js_function(context.realm())?.into())?;
                     }
                     Ok(())
                 },
@@ -800,43 +914,416 @@ impl<T: IntoIterator<Item = (JsString, NativeFunction)> + Clone> IntoJsModule fo
 
 #[test]
 fn native_exports_do_not_root_unreachable_module_cycles() {
-    use surgeist_js_gc::{WeakGc, force_collect};
-
     let mut context = Context::default();
-    let captured_module = Gc::new(GcRefCell::new(None));
-    let weak_capture = WeakGc::new(&captured_module);
-    let export = NativeFunction::from_fn_with_captures(
-        |_, _, _, _| Ok(JsValue::undefined()),
-        captured_module.clone(),
-    );
-    let module = [(js_string!("exported"), export)].into_js_module(&mut context);
-    *captured_module.borrow_mut() = Some(module);
-    drop(captured_module);
+    let exported = JsObject::with_null_proto(context.runtime());
+    let module = Module::from_value_as_default(exported.clone().into(), &mut context).unwrap();
+    let module_edge = module.edge();
+    let exported_edge = exported.edge();
 
-    let canary = Gc::new(17u32);
-    let weak_canary = WeakGc::new(&canary);
-    drop(canary);
+    // The module initializer retains the exported object, whose function
+    // retains the same module through a native capture.
+    let function = NativeFunction::from_fn_with_captures(
+        |_, _, module, context| Ok(module.namespace(context)?.into()),
+        module.clone(),
+    )
+    .to_js_function(context.realm())
+    .unwrap();
+    exported
+        .create_data_property_or_throw(js_string!("callback"), function, &mut context)
+        .unwrap();
 
-    force_collect();
-    assert!(weak_canary.upgrade().is_none(), "collection did not run");
+    context.runtime().heap.collect().unwrap();
+    assert!(module_edge.0.is_live().unwrap());
+    assert!(exported_edge.upgrade().unwrap().is_some());
+
+    drop(exported);
+    drop(module);
+    context.runtime().heap.collect().unwrap();
+    assert!(!module_edge.0.is_live().unwrap());
+    assert!(exported_edge.upgrade().unwrap().is_none());
+}
+
+#[test]
+fn module_execution_rejects_a_foreign_context() {
+    let mut owner = Context::default();
+    let mut foreign = Context::default();
+    let module = Module::parse(
+        Source::from_bytes("export const value = 1;"),
+        None,
+        &mut owner,
+    )
+    .unwrap();
+
+    for promise in [
+        module.load(&mut foreign),
+        module.load_link_evaluate(&mut foreign),
+    ] {
+        let PromiseState::Rejected(reason) = promise.state() else {
+            panic!("module execution accepted a foreign context");
+        };
+        let error = JsError::from_opaque(reason)
+            .try_native(&mut foreign)
+            .unwrap();
+        assert!(error.is_type());
+    }
     assert!(
-        weak_capture.upgrade().is_none(),
-        "an unreachable native export retained the module cycle"
+        module
+            .link(&mut foreign)
+            .unwrap_err()
+            .as_native()
+            .unwrap()
+            .is_type()
     );
+    assert!(
+        module
+            .evaluate(&mut foreign)
+            .unwrap_err()
+            .as_native()
+            .unwrap()
+            .is_type()
+    );
+
+    let promise = module.load_link_evaluate(&mut owner);
+    owner.run_jobs().unwrap();
+    assert_eq!(
+        promise.state(),
+        PromiseState::Fulfilled(JsValue::undefined())
+    );
+}
+
+#[test]
+fn module_construction_rejects_a_foreign_realm_before_parsing() {
+    struct UnreadableSource;
+
+    impl std::io::Read for UnreadableSource {
+        fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+            panic!("module parsing read source for a foreign realm");
+        }
+    }
+
+    let mut owner = Context::default();
+    let foreign = Context::default();
+    let realm = foreign.realm().clone();
+    let error = Module::parse(
+        Source::from_reader(UnreadableSource, None),
+        Some(realm.clone()),
+        &mut owner,
+    )
+    .unwrap_err();
+    assert!(error.as_native().unwrap().is_type());
+
+    let error = Module::synthetic(
+        &[],
+        SyntheticModuleInitializer::from_fn_with_captures(|_, (), _| Ok(()), ()),
+        None,
+        Some(realm),
+        &mut owner,
+    )
+    .unwrap_err();
+    assert!(error.as_native().unwrap().is_type());
+
+    let peer = Context::builder()
+        .runtime(owner.runtime().clone())
+        .build()
+        .unwrap();
+    let module = Module::parse(
+        Source::from_bytes("export const value = 42;"),
+        Some(peer.realm().clone()),
+        &mut owner,
+    )
+    .unwrap();
+    assert_eq!(module.realm(), *peer.realm());
+    let promise = module.load_link_evaluate(&mut owner);
+    owner.run_jobs().unwrap();
+    assert_eq!(
+        promise.state(),
+        PromiseState::Fulfilled(JsValue::undefined())
+    );
+    assert_eq!(
+        module.get_value(js_string!("value"), &mut owner).unwrap(),
+        JsValue::from(42)
+    );
+}
+
+#[test]
+fn synthetic_module_construction_rejects_foreign_captures() {
+    let mut owner = Context::default();
+    let foreign = Context::default();
+    let object = JsObject::with_null_proto(foreign.runtime());
+    let initializer =
+        SyntheticModuleInitializer::from_fn_with_captures(|_, _, _| Ok(()), object.clone());
+    let error = Module::synthetic(&[], initializer, None, None, &mut owner).unwrap_err();
+    assert!(error.as_native().unwrap().is_type());
+
+    let error = Module::from_value_as_default(object.into(), &mut owner).unwrap_err();
+    assert!(error.as_native().unwrap().is_type());
+    owner.runtime().collect().unwrap();
+}
+
+#[test]
+fn module_namespace_rejects_foreign_contexts_before_and_after_caching() {
+    let mut owner = Context::default();
+    let mut peer = Context::builder()
+        .runtime(owner.runtime().clone())
+        .build()
+        .unwrap();
+    let mut foreign = Context::default();
+    let module = Module::from_value_as_default(42.into(), &mut owner).unwrap();
+    let promise = module.load_link_evaluate(&mut owner);
+    owner.run_jobs().unwrap();
+    assert_eq!(
+        promise.state(),
+        PromiseState::Fulfilled(JsValue::undefined())
+    );
+
+    let error = module.namespace(&mut foreign).unwrap_err();
+    assert!(error.as_native().unwrap().is_type());
+    let error = module
+        .get_value(js_string!("default"), &mut foreign)
+        .unwrap_err();
+    assert!(error.as_native().unwrap().is_type());
+
+    let namespace = module.namespace(&mut peer).unwrap();
+    assert_eq!(namespace, module.namespace(&mut owner).unwrap());
+    assert_eq!(
+        module.get_value(js_string!("default"), &mut peer).unwrap(),
+        JsValue::from(42)
+    );
+
+    let error = module.namespace(&mut foreign).unwrap_err();
+    assert!(error.as_native().unwrap().is_type());
+    let error = module
+        .get_value(js_string!("default"), &mut foreign)
+        .unwrap_err();
+    assert!(error.as_native().unwrap().is_type());
+}
+
+#[test]
+fn synthetic_module_rejects_foreign_exports_without_overwriting_the_binding() {
+    let mut owner = Context::default();
+    let foreign = Context::default();
+    let object = JsObject::with_null_proto(foreign.runtime());
+    let module = Module::from_value_as_default(42.into(), &mut owner).unwrap();
+    let promise = module.load_link_evaluate(&mut owner);
+    owner.run_jobs().unwrap();
+    assert_eq!(
+        promise.state(),
+        PromiseState::Fulfilled(JsValue::undefined())
+    );
+
+    let ModuleKind::Synthetic(synthetic) = module.kind() else {
+        panic!("the default export module must be synthetic");
+    };
+    let name = js_string!("default");
+    let error = synthetic.set_export(&name, object.into()).unwrap_err();
+    assert!(error.as_native().unwrap().is_type());
+    owner.runtime().collect().unwrap();
+    foreign.runtime().collect().unwrap();
+    assert_eq!(
+        module.get_value(name, &mut owner).unwrap(),
+        JsValue::from(42)
+    );
+}
+
+#[test]
+fn static_module_loading_rejects_foreign_dependencies_and_allows_retry() {
+    let loader = Rc::new(MapModuleLoader::new());
+    let mut owner = Context::builder()
+        .module_loader(loader.clone())
+        .build()
+        .unwrap();
+    let mut foreign = Context::default();
+    let dependency = Module::from_value_as_default(1.into(), &mut foreign).unwrap();
+    loader.insert("dependency", dependency);
+    let module = Module::parse(
+        Source::from_bytes("export { default as value } from 'dependency';"),
+        None,
+        &mut owner,
+    )
+    .unwrap();
+
+    let promise = module.load(&mut owner);
+    owner.run_jobs().unwrap();
+    let PromiseState::Rejected(reason) = promise.state() else {
+        panic!("module loading accepted a foreign dependency");
+    };
+    assert!(
+        JsError::from_opaque(reason)
+            .try_native(&mut owner)
+            .unwrap()
+            .is_type()
+    );
+    owner.runtime().collect().unwrap();
+
+    let dependency = Module::from_value_as_default(42.into(), &mut owner).unwrap();
+    loader.insert("dependency", dependency);
+    let promise = module.load_link_evaluate(&mut owner);
+    owner.run_jobs().unwrap();
+    assert_eq!(
+        promise.state(),
+        PromiseState::Fulfilled(JsValue::undefined())
+    );
+    assert_eq!(
+        module.get_value(js_string!("value"), &mut owner).unwrap(),
+        JsValue::from(42)
+    );
+}
+
+#[test]
+fn module_loading_rejects_a_foreign_loader_error_in_static_and_dynamic_imports() {
+    struct ForeignErrorLoader(JsError);
+
+    impl ModuleLoader for ForeignErrorLoader {
+        fn load_imported_module(
+            self: Rc<Self>,
+            _referrer: Referrer,
+            _request: ModuleRequest,
+            _context: &RefCell<&mut Context>,
+        ) -> impl std::future::Future<Output = JsResult<Module>> {
+            std::future::ready(Err(self.0.clone()))
+        }
+    }
+
+    let foreign = Context::default();
+    let object = JsObject::with_null_proto(foreign.runtime());
+    let loader = Rc::new(ForeignErrorLoader(JsError::from_opaque(object.into())));
+    let mut owner = Context::builder().module_loader(loader).build().unwrap();
+
+    let module =
+        Module::parse(Source::from_bytes("import 'dependency';"), None, &mut owner).unwrap();
+    let static_import = module.load(&mut owner);
+    let dynamic_import = owner
+        .eval(Source::from_bytes("import('dependency')"))
+        .unwrap();
+    let dynamic_import = JsPromise::from_object(dynamic_import.as_object().unwrap()).unwrap();
+    owner.run_jobs().unwrap();
+
+    for promise in [static_import, dynamic_import] {
+        let PromiseState::Rejected(reason) = promise.state() else {
+            panic!("module loading failed to reject a foreign loader error");
+        };
+        let error = JsError::from_opaque(reason).try_native(&mut owner).unwrap();
+        assert!(error.is_type());
+    }
+    owner.runtime().collect().unwrap();
+}
+
+#[test]
+fn module_promises_reject_foreign_host_job_callback_data() {
+    use crate::{context::HostHooks, job::JobCallback, object::JsFunction};
+
+    struct ForeignCallbackData(JsObject);
+
+    impl HostHooks for ForeignCallbackData {
+        fn make_job_callback(&self, callback: JsFunction, _: &mut Context) -> JobCallback {
+            JobCallback::new(callback, self.0.clone())
+        }
+    }
+
+    let foreign = Context::default();
+    let object = JsObject::with_null_proto(foreign.runtime());
+    let loader = Rc::new(MapModuleLoader::new());
+    let mut owner = Context::builder()
+        .host_hooks(Rc::new(ForeignCallbackData(object)))
+        .module_loader(loader.clone())
+        .build()
+        .unwrap();
+    let module = Module::from_value_as_default(42.into(), &mut owner).unwrap();
+    loader.insert("dependency", module.clone());
+    let load_link_evaluate = module.load_link_evaluate(&mut owner);
+    let dynamic_import = owner
+        .eval(Source::from_bytes("import('dependency')"))
+        .unwrap();
+    let dynamic_import = JsPromise::from_object(dynamic_import.as_object().unwrap()).unwrap();
+    let async_module = Module::parse(Source::from_bytes("await 0;"), None, &mut owner).unwrap();
+    let load = async_module.load(&mut owner);
+    owner.run_jobs().unwrap();
+    assert_eq!(load.state(), PromiseState::Fulfilled(JsValue::undefined()));
+    async_module.link(&mut owner).unwrap();
+    let async_evaluation = async_module.evaluate(&mut owner).unwrap();
+    owner.run_jobs().unwrap();
+
+    for promise in [load_link_evaluate, dynamic_import, async_evaluation] {
+        let PromiseState::Rejected(reason) = promise.state() else {
+            panic!("module promise accepted foreign host job callback data");
+        };
+        let error = JsError::from_opaque(reason).try_native(&mut owner).unwrap();
+        assert!(error.is_type());
+    }
+    owner.runtime().collect().unwrap();
+}
+
+#[test]
+fn synthetic_module_foreign_failures_reject_dynamic_import() {
+    use std::rc::Rc;
+
+    for nested in [false, true] {
+        let loader = Rc::new(MapModuleLoader::new());
+        let mut context = Context::builder()
+            .module_loader(loader.clone())
+            .build()
+            .unwrap();
+        let initializer = SyntheticModuleInitializer::from_fn_with_captures(
+            |_, nested, _| {
+                let runtime = crate::Runtime::default();
+                let foreign = JsObject::with_null_proto(&runtime);
+                let error = JsError::from_opaque(foreign.into());
+                Err(if *nested {
+                    JsNativeError::error().with_cause(error).into()
+                } else {
+                    error
+                })
+            },
+            nested,
+        );
+        let module = Module::synthetic(&[], initializer, None, None, &mut context).unwrap();
+        loader.insert("foreign-failure", module);
+
+        let import = context
+            .eval(Source::from_bytes("import('foreign-failure')"))
+            .unwrap();
+        let import = JsPromise::from_object(import.as_object().unwrap()).unwrap();
+        context.run_jobs().unwrap();
+
+        let PromiseState::Rejected(reason) = import.state() else {
+            panic!("foreign initializer failure did not reject dynamic import");
+        };
+        let error = JsError::from_opaque(reason)
+            .try_native(&mut context)
+            .unwrap();
+        assert!(error.is_type());
+        context.runtime().collect().unwrap();
+    }
 }
 
 #[test]
 #[allow(clippy::missing_panics_doc)]
 fn into_js_module() {
+    use crate::native_function::NativeCapture;
+    use std::cell::Cell;
     use std::rc::Rc;
     use surgeist_js::interop::{ContextData, JsRest};
     use surgeist_js::{
-        Context, IntoJsFunction, IntoJsFunctionWithCaptures, JsValue, Module, Source, js_string,
+        Context, IntoJsFunction, IntoJsFunctionWithCaptures, Module, Source, js_string,
     };
-    use surgeist_js_gc::{Gc, GcRefCell};
 
-    type ResultType = Gc<GcRefCell<JsValue>>;
-    type Counter = Gc<GcRefCell<i32>>;
+    #[derive(Clone, HeapTrace, crate::JsData)]
+    struct ResultType(#[heap_trace(skip)] Rc<Cell<u32>>);
+
+    #[derive(Clone, HeapTrace)]
+    struct Counter(#[heap_trace(skip)] Rc<Cell<i32>>);
+
+    impl NativeCapture for Counter {
+        type Stored = Self;
+
+        fn store(&self) -> Self::Stored {
+            self.clone()
+        }
+
+        fn restore(stored: &Self::Stored) -> Self {
+            stored.clone()
+        }
+    }
 
     let loader = Rc::new(MapModuleLoader::default());
     let mut context = Context::builder()
@@ -844,46 +1331,48 @@ fn into_js_module() {
         .build()
         .unwrap();
 
-    let foo_count = Gc::new(GcRefCell::new(0));
-    let bar_count = Gc::new(GcRefCell::new(0));
-    let dad_count = Gc::new(GcRefCell::new(0));
+    let foo_count = Counter(Rc::new(Cell::new(0)));
+    let bar_count = Counter(Rc::new(Cell::new(0)));
+    let dad_count = Counter(Rc::new(Cell::new(0)));
 
-    context.insert_data(Gc::new(GcRefCell::new(JsValue::undefined())));
+    context.insert_data(ResultType(Rc::new(Cell::new(0))));
 
     let module = vec![
         (
             js_string!("foo"),
             ((|counter: &Counter| {
-                let mut count = counter.borrow_mut();
-                *count += 1;
-                *count
+                let count = counter.0.get() + 1;
+                counter.0.set(count);
+                count
             }) as fn(&Counter) -> i32)
                 .into_js_function_with_captures(foo_count.clone()),
         ),
         (
             js_string!("bar"),
-            ((|counter: &Counter, i: i32| *counter.borrow_mut() += i) as fn(&Counter, i32))
+            ((|counter: &Counter, i: i32| counter.0.set(counter.0.get() + i)) as fn(&Counter, i32))
                 .into_js_function_with_captures(bar_count.clone()),
         ),
         (
             js_string!("dad"),
             ((|counter: &Counter, args: JsRest<'_>, context: &mut Context| {
-                *counter.borrow_mut() += args
+                let sum = args
                     .into_iter()
                     .map(|i| i.try_js_into::<i32>(context).unwrap())
                     .sum::<i32>();
+                counter.0.set(counter.0.get() + sum);
             }) as fn(&Counter, JsRest<'_>, &mut Context))
                 .into_js_function_with_captures(dad_count.clone()),
         ),
         (
             js_string!("send"),
-            ((|value: JsValue, ContextData(result): ContextData<ResultType>| {
-                *result.borrow_mut() = value;
-            }) as fn(JsValue, ContextData<ResultType>))
+            ((|value: u32, ContextData(result): ContextData<ResultType>| {
+                result.0.set(value);
+            }) as fn(u32, ContextData<ResultType>))
                 .into_js_function(),
         ),
     ]
-    .into_js_module(&mut context);
+    .into_js_module(&mut context)
+    .unwrap();
 
     loader.insert("test", module);
 
@@ -914,12 +1403,12 @@ fn into_js_module() {
         promise_result.state()
     );
 
-    let result = context.get_data::<ResultType>().unwrap().borrow().clone();
+    let result = context.get_data::<ResultType>().unwrap().0.get();
 
-    assert_eq!(*foo_count.borrow(), 2);
-    assert_eq!(*bar_count.borrow(), 15);
-    assert_eq!(*dad_count.borrow(), 24);
-    assert_eq!(result.try_js_into(&mut context), Ok(1u32));
+    assert_eq!(foo_count.0.get(), 2);
+    assert_eq!(bar_count.0.get(), 15);
+    assert_eq!(dad_count.0.get(), 24);
+    assert_eq!(result, 1);
 }
 
 #[test]
@@ -940,7 +1429,8 @@ fn can_throw_exception() {
         ((|message| Err(JsError::from_opaque(message))) as fn(JsValue) -> JsResult<()>)
             .into_js_function(),
     )]
-    .into_js_module(&mut context);
+    .into_js_module(&mut context)
+    .unwrap();
 
     loader.insert("test", module);
 

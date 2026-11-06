@@ -1,8 +1,6 @@
 //! A Rust API wrapper for the `WeakMap` Builtin ECMAScript Object
 use std::ops::Deref;
 
-use surgeist_js_gc::{Finalize, Trace};
-
 use crate::{
     Context, JsResult, JsValue,
     builtins::weak_map::{NativeWeakMap, WeakMap},
@@ -12,7 +10,7 @@ use crate::{
 };
 
 /// `JsWeakMap` provides a wrapper for Boa's implementation of the ECMAScript `WeakMap` object.
-#[derive(Debug, Clone, Trace, Finalize)]
+#[derive(Debug, Clone)]
 pub struct JsWeakMap {
     inner: JsObject,
 }

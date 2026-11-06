@@ -1,13 +1,13 @@
 use arrayvec::ArrayVec;
 use itertools::Itertools;
-use std::{cell::Cell, fmt};
-
-use surgeist_js_gc::GcRefCell;
-use surgeist_js_macros::{Finalize, Trace};
+use std::{
+    cell::{Cell, RefCell},
+    fmt,
+};
 
 use crate::{
     JsString,
-    object::shape::{Shape, WeakShape, slot::Slot},
+    object::shape::{Shape, ShapeRef, slot::Slot},
 };
 
 #[cfg(test)]
@@ -16,25 +16,23 @@ mod tests;
 pub(crate) const PIC_CAPACITY: usize = 4;
 
 /// A cached shape-to-slot mapping for a polymorphic inline cache.
-#[derive(Clone, Debug, Trace, Finalize)]
+#[derive(Clone, Debug)]
 pub(crate) struct CacheEntry {
     /// A weak reference is kept to the shape to avoid the shape preventing deallocation.
-    pub(crate) shape: WeakShape,
-    #[unsafe_ignore_trace]
+    pub(crate) shape: ShapeRef,
     pub(crate) slot: Slot,
 }
 
 /// An inline cache entry for a property access.
-#[derive(Clone, Debug, Trace, Finalize)]
+#[derive(Clone, Debug)]
 pub(crate) struct InlineCache {
     /// The property that is accessed.
     pub(crate) name: JsString,
 
     /// Multiple cached shape-to-slot entries.
-    pub(crate) entries: GcRefCell<ArrayVec<CacheEntry, PIC_CAPACITY>>,
+    pub(crate) entries: RefCell<ArrayVec<CacheEntry, PIC_CAPACITY>>,
 
     /// Whether this access site has seen too many shapes and should no longer be cached.
-    #[unsafe_ignore_trace]
     pub(crate) megamorphic: Cell<bool>,
 }
 
@@ -47,9 +45,12 @@ impl fmt::Display for InlineCache {
         }
 
         let entries = self.entries.borrow();
-        let entries = entries.iter().map(|e| e.shape.to_addr_usize()).format(", ");
+        let entries = entries
+            .iter()
+            .map(|e| e.shape.upgrade().map(|shape| shape.identity()))
+            .format(", ");
 
-        write!(f, "({entries:#x}))")
+        write!(f, "({entries:?}))")
     }
 }
 
@@ -57,7 +58,7 @@ impl InlineCache {
     pub(crate) fn new(name: JsString) -> Self {
         Self {
             name,
-            entries: GcRefCell::new(ArrayVec::new()),
+            entries: RefCell::new(ArrayVec::new()),
             megamorphic: Cell::new(false),
         }
     }
@@ -94,11 +95,11 @@ impl InlineCache {
         let mut entries = self.entries.borrow_mut();
         let mut i = 0;
         let mut result = None;
-        let shape_addr = shape.to_addr_usize();
+        let identity = shape.identity();
 
         while i < entries.len() {
             if let Some(upgraded) = entries[i].shape.upgrade() {
-                if upgraded.to_addr_usize() == shape_addr {
+                if upgraded.identity() == identity {
                     result = Some((upgraded, entries[i].slot));
                     break;
                 }

@@ -10,14 +10,18 @@
 #[cfg(test)]
 pub(crate) mod tests;
 
+use std::rc::Rc;
 use surgeist_js::{
-    Context, JsData, JsObject, JsResult, JsString, JsSymbol, JsValue, js_error, js_string,
-    native_function::NativeFunction, object::ObjectInitializer, property::Attribute,
+    Context, JsData, JsObject, JsResult, JsString, JsSymbol, JsValue,
+    gc::heap::Trace as HeapTrace,
+    js_error, js_string,
+    native_function::{NativeCapture, NativeFunction},
+    object::ObjectInitializer,
+    property::Attribute,
 };
-use surgeist_js_gc::{Finalize, Trace};
 
 /// A trait that can be used to forward process provider to an implementation.  
-pub trait ProcessProvider: Trace {
+pub trait ProcessProvider: HeapTrace {
     /// Get current working directory (`process.cwd()`)  
     ///  
     /// # Errors  
@@ -32,7 +36,7 @@ pub trait ProcessProvider: Trace {
 ///  
 /// Implements the [`ProcessProvider`] trait. Outputs the process properties'
 /// values on the basis of std.  
-#[derive(Debug, Trace, Finalize)]
+#[derive(Debug, HeapTrace)]
 pub struct StdProcessProvider;
 
 impl ProcessProvider for StdProcessProvider {
@@ -48,8 +52,23 @@ impl ProcessProvider for StdProcessProvider {
     }
 }
 
+#[derive(HeapTrace)]
+struct ProviderCapture<P: ProcessProvider>(Rc<P>);
+
+impl<P: ProcessProvider> NativeCapture for ProviderCapture<P> {
+    type Stored = Self;
+
+    fn store(&self) -> Self {
+        Self(self.0.clone())
+    }
+
+    fn restore(stored: &Self) -> Self {
+        stored.store()
+    }
+}
+
 /// Boa's implementation of Node.js' `process` object.  
-#[derive(Debug, Trace, Finalize, JsData)]
+#[derive(Debug, JsData, HeapTrace)]
 pub struct Process;
 
 impl Process {
@@ -72,7 +91,7 @@ impl Process {
             env.set(key, JsValue::from(value), false, context)?;
         }
 
-        Ok(ObjectInitializer::new(context)
+        ObjectInitializer::new(context)
             .property(
                 JsSymbol::to_string_tag(),
                 Self::NAME,
@@ -85,13 +104,13 @@ impl Process {
             )
             .function(
                 NativeFunction::from_fn_with_captures(
-                    |_, _, provider, _| provider.cwd().map(JsValue::from),
-                    provider,
+                    |_, _, provider, _| provider.0.cwd().map(JsValue::from),
+                    ProviderCapture(Rc::new(provider)),
                 ),
                 js_string!("cwd"),
                 0,
             )
-            .build())
+            .build()
     }
 
     /// Register the `process` object globally by a custom provider.  

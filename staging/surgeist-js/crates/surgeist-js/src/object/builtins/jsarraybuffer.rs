@@ -11,11 +11,9 @@ use std::{
     cell::{Ref, RefMut},
     ops::Deref,
 };
-use surgeist_js_gc::{Finalize, Trace};
 
 /// `JsArrayBuffer` provides a wrapper for Boa's implementation of the ECMAScript `ArrayBuffer` object
-#[derive(Debug, Clone, Trace, Finalize)]
-#[surgeist_js_gc(unsafe_no_drop)]
+#[derive(Debug, Clone)]
 pub struct JsArrayBuffer {
     inner: JsObject<ArrayBuffer>,
 }
@@ -126,8 +124,8 @@ impl JsArrayBuffer {
         let obj = JsObject::new(
             context.root_shape(),
             prototype,
-            ArrayBuffer::from_data(block, JsValue::undefined()),
-        );
+            ArrayBuffer::from_data(block, &JsValue::undefined()),
+        )?;
 
         Ok(Self { inner: obj })
     }
@@ -217,15 +215,21 @@ impl JsArrayBuffer {
     /// ```
     #[inline]
     pub fn detach(&self, detach_key: &JsValue) -> JsResult<Vec<u8>> {
-        self.inner
-            .borrow_mut()
-            .data_mut()
-            .detach(detach_key)?
-            .ok_or_else(|| {
-                JsNativeError::typ()
-                    .with_message("ArrayBuffer was already detached")
-                    .into()
-            })
+        self.detach_if_attached(detach_key)?.ok_or_else(|| {
+            JsNativeError::typ()
+                .with_message("ArrayBuffer was already detached")
+                .into()
+        })
+    }
+
+    /// Detaches the buffer and returns its bytes if it was attached.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `TypeError` if the detach key does not match.
+    #[inline]
+    pub fn detach_if_attached(&self, detach_key: &JsValue) -> JsResult<Option<Vec<u8>>> {
+        self.inner.borrow_mut().data_mut().detach(detach_key)
     }
 
     /// Get an immutable reference to the [`JsArrayBuffer`]'s data.

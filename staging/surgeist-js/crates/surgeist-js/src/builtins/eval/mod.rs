@@ -9,6 +9,8 @@
 //! [spec]: https://tc39.es/ecma262/#sec-eval-x
 //! [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/eval
 
+use std::rc::Rc;
+
 use crate::{
     Context, JsArgs, JsExpect, JsResult, JsString, JsValue, SpannedSourceText,
     builtins::{BuiltInObject, function::OrdinaryFunction},
@@ -27,7 +29,6 @@ use surgeist_js_ast::{
     operations::{ContainsSymbol, contains, contains_arguments},
     scope::Scope,
 };
-use surgeist_js_gc::Gc;
 use surgeist_js_parser::{Parser, Source};
 
 use super::{BuiltInBuilder, IntrinsicObject};
@@ -114,7 +115,8 @@ impl Eval {
         // 5. Perform ? HostEnsureCanCompileStrings(evalRealm, « », x, direct).
         context
             .host_hooks()
-            .ensure_can_compile_strings(eval_realm, &[], &x, direct, context)?;
+            .ensure_can_compile_strings(eval_realm, &[], &x, direct, context)
+            .map_err(|error| context.runtime().admit_error(error))?;
 
         // 11. Perform the following substeps in an implementation-defined order, possibly interleaving parsing and error detection:
         //     a. Let script be ParseText(StringToCodePoints(x), Script).
@@ -142,6 +144,7 @@ impl Eval {
                 .environments
                 .get_this_environment(frame.realm.environment())
         }
+        .kind()
         .as_function()
         {
             // 10. If direct is true, then
@@ -213,7 +216,7 @@ impl Eval {
                 {
                     let frame = context.vm.frame_mut();
                     let global = frame.realm.environment();
-                    frame.environments.poison_until_last_function(global);
+                    frame.environments.poison_until_last_function(&global);
                 }
             }
 
@@ -245,7 +248,7 @@ impl Eval {
                 (e.0, e.1)
             } else {
                 (
-                    context.realm().environment().clone(),
+                    context.realm().environment(),
                     context.realm().scope().clone(),
                 )
             };
@@ -319,7 +322,7 @@ impl Eval {
 
         compiler.compile_statement_list(body.statements(), true, false);
 
-        let code_block = Gc::new(compiler.finish());
+        let code_block = Rc::new(compiler.finish());
 
         // Strict calls don't need extensions, since all strict eval calls push a new
         // function environment before evaluating.
@@ -348,7 +351,7 @@ impl Eval {
             let global = frame.realm.environment();
             frame
                 .environments
-                .push_lexical(lexical_scope.num_bindings_non_local(), global);
+                .push_lexical(lexical_scope.num_bindings_non_local(), &global);
         }
 
         context

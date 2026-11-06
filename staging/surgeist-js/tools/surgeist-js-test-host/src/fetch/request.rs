@@ -5,19 +5,19 @@
 //! [mdn]: https://developer.mozilla.org/en-US/docs/Web/API/Request
 use super::HttpRequest;
 use super::headers::JsHeaders;
-use surgeist_js::value::{Convert, TryFromJs};
-use surgeist_js::{
-    Finalize, JsData, JsObject, JsResult, JsString, JsValue, Trace, boa_class, js_error,
-};
 use either::Either;
 use std::mem;
+use surgeist_js::gc::heap::Trace as HeapTrace;
+use surgeist_js::native_function::{CapturedObject, NativeCapture};
+use surgeist_js::value::{Convert, TryFromJs};
+use surgeist_js::{JsData, JsObject, JsResult, JsString, JsValue, boa_class, js_error};
 
 /// A [RequestInit][mdn] object. This is a JavaScript object (not a
 /// class) that can be used as options for creating a [`JsRequest`].
 ///
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/API/RequestInit
 // TODO: This class does not contain all fields that are defined in the spec.
-#[derive(Debug, Clone, TryFromJs, Trace, Finalize)]
+#[derive(Debug, Clone, TryFromJs)]
 pub struct RequestInit {
     body: Option<JsValue>,
     headers: Option<JsHeaders>,
@@ -110,11 +110,11 @@ impl RequestInit {
 /// The `Request` interface of the [Fetch API][mdn] represents a resource request.
 ///
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API
-#[derive(Clone, Debug, JsData, Trace, Finalize)]
+#[derive(Clone, Debug, JsData, HeapTrace)]
 pub struct JsRequest {
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     inner: HttpRequest<Vec<u8>>,
-    signal: Option<JsObject>,
+    signal: Option<CapturedObject>,
 }
 
 impl JsRequest {
@@ -126,7 +126,7 @@ impl JsRequest {
     /// Split this request into its HTTP request and abort signal.
     fn into_parts(mut self) -> (HttpRequest<Vec<u8>>, Option<JsObject>) {
         let request = mem::replace(&mut self.inner, HttpRequest::new(Vec::new()));
-        let signal = self.signal.take();
+        let signal = self.signal();
         (request, signal)
     }
 
@@ -137,7 +137,7 @@ impl JsRequest {
 
     /// Get the abort signal associated with this request, if any.
     pub(crate) fn signal(&self) -> Option<JsObject> {
-        self.signal.clone()
+        self.signal.as_ref().map(JsObject::restore)
     }
 
     /// Get the URI of the request.
@@ -151,7 +151,7 @@ impl JsRequest {
     /// # Errors
     /// If the URI is invalid, an error is returned.
     pub fn create_from_js(
-        input: Either<JsString, JsRequest>,
+        input: Either<JsString, JsObject<JsRequest>>,
         options: Option<RequestInit>,
     ) -> JsResult<Self> {
         let (request, signal) = match input {
@@ -167,17 +167,20 @@ impl JsRequest {
                     .map_err(|_| js_error!(Error: "Cannot construct request"))?;
                 (request, None)
             }
-            Either::Right(r) => r.into_parts(),
+            Either::Right(r) => r.borrow().data().clone().into_parts(),
         };
 
         if let Some(mut options) = options {
             let signal = options.take_signal().or(signal);
             let inner = options.into_request_builder(Some(request))?;
-            Ok(Self { inner, signal })
+            Ok(Self {
+                inner,
+                signal: signal.as_ref().map(JsObject::store),
+            })
         } else {
             Ok(Self {
                 inner: request,
-                signal,
+                signal: signal.as_ref().map(JsObject::store),
             })
         }
     }
@@ -207,8 +210,8 @@ impl JsRequest {
         // `Either::map_right_ok`.
         let input = match input {
             Either::Right(r) => {
-                if let Ok(request) = r.clone().downcast::<JsRequest>() {
-                    Either::Right(request.borrow().data().clone())
+                if let Ok(request) = r.downcast::<JsRequest>() {
+                    Either::Right(request)
                 } else {
                     return Err(js_error!(TypeError: "invalid input argument"));
                 }

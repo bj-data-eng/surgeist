@@ -25,10 +25,10 @@ use crate::{
     symbol::JsSymbol,
 };
 
-use surgeist_js_gc::{Finalize, Trace};
 use icu_locale::{LanguageIdentifier, extensions::unicode};
 use icu_provider::{DataMarker, DataMarkerAttributes};
 use static_assertions::const_assert;
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 pub(crate) use self::{
     collator::Collator, date_time_format::DateTimeFormat, list_format::ListFormat, locale::Locale,
@@ -99,8 +99,7 @@ const_assert! {!<Segmenter as Service>::LangMarker::INFO.is_singleton}
 const_assert! {!<DateTimeFormat as Service>::LangMarker::INFO.is_singleton}
 
 /// JavaScript `Intl` object.
-#[derive(Debug, Clone, Trace, Finalize, JsData)]
-#[surgeist_js_gc(unsafe_empty_trace)]
+#[derive(Debug, Clone, JsData, HeapTrace)]
 pub struct Intl {
     fallback_symbol: JsSymbol,
 }

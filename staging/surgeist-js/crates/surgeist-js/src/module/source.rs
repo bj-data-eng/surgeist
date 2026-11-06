@@ -7,6 +7,9 @@ use std::{
     rc::Rc,
 };
 
+use dynify::Dynify;
+use indexmap::IndexSet;
+use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
 use surgeist_js_ast::{
     declaration::{
         ExportEntry, ImportEntry, ImportName, IndirectExportEntry, LocalExportEntry,
@@ -18,24 +21,28 @@ use surgeist_js_ast::{
     },
     scope::BindingLocator,
 };
-use surgeist_js_gc::{Finalize, Gc, GcRefCell, Trace};
+use surgeist_js_gc::heap::Trace;
 use surgeist_js_interner::Interner;
 use surgeist_js_macros::js_str;
-use dynify::Dynify;
-use indexmap::IndexSet;
-use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
 
 use crate::{
     Context, JsArgs, JsError, JsExpect, JsNativeError, JsObject, JsResult, JsString, JsValue,
     NativeFunction, SpannedSourceText,
-    builtins::{Promise, promise::PromiseCapability},
+    builtins::{
+        Promise,
+        promise::{PromiseCapability, StoredPromiseCapability},
+    },
     bytecompiler::{BindingAccessOpcode, ByteCompiler, FunctionSpec, ToJsString},
-    environments::{DeclarativeEnvironment, EnvironmentStack},
+    environments::{
+        DeclarativeEnvironmentEdge, DeclarativeEnvironmentRef, EnvironmentStack,
+        StoredEnvironmentStack,
+    },
+    error::StoredJsError,
     job::NativeAsyncJob,
     js_string,
     module::ModuleKind,
-    object::{FunctionObjectBuilder, JsPromise},
-    realm::Realm,
+    object::{FunctionObjectBuilder, JsPromise, ObjectEdge},
+    realm::{Realm, RealmEdge},
     vm::{
         ActiveRunnable, CallFrame, CallFrameFlags, CodeBlock, CompletionRecord,
         create_function_object_fast,
@@ -43,8 +50,8 @@ use crate::{
 };
 
 use super::{
-    BindingName, GraphLoadingState, Module, Referrer, ResolveExportError, ResolvedBinding,
-    SourceText,
+    BindingName, GraphLoadingState, Module, ModuleEdge, ModuleRequest, Referrer,
+    ResolveExportError, ResolvedBinding, SourceText,
 };
 
 /// Current status of a [`SourceTextModule`].
@@ -53,51 +60,52 @@ use super::{
 /// but with a state machine-like design for better correctness.
 ///
 /// [cyclic]: https://tc39.es/ecma262/#table-cyclic-module-fields
-#[derive(Debug, Trace, Finalize)]
-#[surgeist_js_gc(unsafe_no_drop)]
+#[derive(Debug, Trace)]
 enum ModuleStatus {
     Unlinked {
-        #[unsafe_ignore_trace]
+        #[heap_trace(skip)]
         source: surgeist_js_ast::Module,
+        #[heap_trace(skip)]
         source_text: SourceText,
     },
     Linking {
-        #[unsafe_ignore_trace]
+        #[heap_trace(skip)]
         source: surgeist_js_ast::Module,
+        #[heap_trace(skip)]
         source_text: SourceText,
         ancestor_index: usize,
     },
     PreLinked {
-        environment: Gc<DeclarativeEnvironment>,
+        environment: DeclarativeEnvironmentEdge,
         context: SourceTextContext,
         ancestor_index: usize,
     },
     Linked {
-        environment: Gc<DeclarativeEnvironment>,
+        environment: DeclarativeEnvironmentEdge,
         context: SourceTextContext,
         ancestor_index: usize,
     },
     Evaluating {
-        environment: Gc<DeclarativeEnvironment>,
+        environment: DeclarativeEnvironmentEdge,
         context: SourceTextContext,
-        top_level_capability: Option<PromiseCapability>,
-        cycle_root: Module,
+        top_level_capability: Option<StoredPromiseCapability>,
+        cycle_root: ModuleEdge,
         ancestor_index: usize,
         async_evaluation_order: Option<usize>,
     },
     EvaluatingAsync {
-        environment: Gc<DeclarativeEnvironment>,
+        environment: DeclarativeEnvironmentEdge,
         context: SourceTextContext,
-        top_level_capability: Option<PromiseCapability>,
-        cycle_root: Module,
+        top_level_capability: Option<StoredPromiseCapability>,
+        cycle_root: ModuleEdge,
         async_evaluation_order: usize,
         pending_async_dependencies: usize,
     },
     Evaluated {
-        environment: Gc<DeclarativeEnvironment>,
-        top_level_capability: Option<PromiseCapability>,
-        cycle_root: Module,
-        error: Option<JsError>,
+        environment: DeclarativeEnvironmentEdge,
+        top_level_capability: Option<StoredPromiseCapability>,
+        cycle_root: ModuleEdge,
+        error: Option<StoredJsError>,
     },
 }
 
@@ -156,7 +164,7 @@ impl ModuleStatus {
 
     /// If this module is the top module being evaluated and is in the evaluating state, gets its top
     /// level capability.
-    const fn top_level_capability(&self) -> Option<&PromiseCapability> {
+    fn top_level_capability(&self) -> Option<PromiseCapability> {
         match &self {
             Self::Unlinked { .. }
             | Self::Linking { .. }
@@ -173,12 +181,14 @@ impl ModuleStatus {
             | Self::Evaluated {
                 top_level_capability,
                 ..
-            } => top_level_capability.as_ref(),
+            } => top_level_capability
+                .as_ref()
+                .map(StoredPromiseCapability::to_capability),
         }
     }
 
     /// If this module is in the evaluated state, gets its `error` field.
-    const fn evaluation_error(&self) -> Option<&JsError> {
+    const fn evaluation_error(&self) -> Option<&StoredJsError> {
         match &self {
             Self::Evaluated { error, .. } => error.as_ref(),
             _ => None,
@@ -186,24 +196,29 @@ impl ModuleStatus {
     }
 
     /// If this module is in the evaluating state, gets its cycle root.
-    const fn cycle_root(&self) -> Option<&Module> {
+    fn cycle_root(&self) -> Option<Module> {
         match &self {
             Self::Evaluating { cycle_root, .. }
             | Self::EvaluatingAsync { cycle_root, .. }
-            | Self::Evaluated { cycle_root, .. } => Some(cycle_root),
+            | Self::Evaluated { cycle_root, .. } => Some(Module::from_edge(cycle_root.clone())),
             _ => None,
         }
     }
 
     /// Gets the declarative environment from the module status.
-    fn environment(&self) -> Option<Gc<DeclarativeEnvironment>> {
+    fn environment(&self) -> Option<DeclarativeEnvironmentRef> {
         match self {
             ModuleStatus::Unlinked { .. } | ModuleStatus::Linking { .. } => None,
             ModuleStatus::PreLinked { environment, .. }
             | ModuleStatus::Linked { environment, .. }
             | ModuleStatus::Evaluating { environment, .. }
             | ModuleStatus::EvaluatingAsync { environment, .. }
-            | ModuleStatus::Evaluated { environment, .. } => Some(environment.clone()),
+            | ModuleStatus::Evaluated { environment, .. } => Some(
+                environment
+                    .upgrade()
+                    .expect("module environment heap is available")
+                    .expect("linked module retains its environment"),
+            ),
         }
     }
 
@@ -228,12 +243,12 @@ impl ModuleStatus {
 ///
 /// Stores the required context data that needs to be in place before executing the
 /// inner code of the module.
-#[derive(Clone, Trace, Finalize)]
-#[surgeist_js_gc(unsafe_no_drop)]
+#[derive(Clone, Trace)]
 struct SourceTextContext {
-    codeblock: Gc<CodeBlock>,
-    environments: EnvironmentStack,
-    realm: Realm,
+    #[heap_trace(skip)]
+    codeblock: Rc<CodeBlock>,
+    environments: StoredEnvironmentStack,
+    realm: RealmEdge,
 }
 
 impl std::fmt::Debug for SourceTextContext {
@@ -241,7 +256,7 @@ impl std::fmt::Debug for SourceTextContext {
         f.debug_struct("SourceTextContext")
             .field("codeblock", &self.codeblock)
             .field("environments", &self.environments)
-            .field("realm", &self.realm.addr())
+            .field("realm", &self.realm)
             .finish()
     }
 }
@@ -249,13 +264,13 @@ impl std::fmt::Debug for SourceTextContext {
 /// ECMAScript's [**Source Text Module Records**][spec].
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-source-text-module-records
-#[derive(Trace, Finalize)]
+#[derive(Trace)]
 pub(crate) struct SourceTextModule {
-    status: GcRefCell<ModuleStatus>,
-    loaded_modules: GcRefCell<FxHashMap<super::ModuleRequest, Module>>,
-    async_parent_modules: GcRefCell<Vec<Module>>,
-    import_meta: GcRefCell<Option<JsObject>>,
-    #[unsafe_ignore_trace]
+    status: RefCell<ModuleStatus>,
+    loaded_modules: RefCell<FxHashMap<ModuleRequest, ModuleEdge>>,
+    async_parent_modules: RefCell<Vec<ModuleEdge>>,
+    import_meta: RefCell<Option<ObjectEdge>>,
+    #[heap_trace(skip)]
     code: ModuleCode,
 }
 
@@ -468,13 +483,13 @@ impl SourceTextModule {
         // }.
         // Most of this can be ignored, since `Status` takes care of the remaining state.
         Self {
-            status: GcRefCell::new(ModuleStatus::Unlinked {
+            status: RefCell::new(ModuleStatus::Unlinked {
                 source,
                 source_text,
             }),
-            loaded_modules: GcRefCell::default(),
-            async_parent_modules: GcRefCell::default(),
-            import_meta: GcRefCell::default(),
+            loaded_modules: RefCell::default(),
+            async_parent_modules: RefCell::default(),
+            import_meta: RefCell::default(),
             code: ModuleCode {
                 has_tla,
                 requested_modules,
@@ -520,7 +535,8 @@ impl SourceTextModule {
             );
             let mut stack = [MaybeUninit::<u8>::uninit(); 16];
             let mut heap = Vec::<MaybeUninit<u8>>::new();
-            let completion = fut.init2(&mut stack, &mut heap).await;
+            let result = fut.init2(&mut stack, &mut heap).await;
+            let completion = Module::admit_loader_result(result, &context.borrow());
 
             // FinishLoadingImportedModule ( referrer, specifier, payload, result )
             // https://tc39.es/ecma262/#sec-FinishLoadingImportedModule
@@ -533,13 +549,7 @@ impl SourceTextModule {
                 // a. If referrer.[[LoadedModules]] contains a Record whose [[Specifier]] is specifier, then
                 // b. Else,
                 //    i. Append the Record { [[Specifier]]: specifier, [[Module]]: result.[[Value]] } to referrer.[[LoadedModules]].
-                let mut loaded_modules = src.loaded_modules.borrow_mut();
-                let entry = loaded_modules
-                    .entry(request)
-                    .or_insert_with(|| loaded.clone());
-
-                //    i. Assert: That Record's [[Module]] is result.[[Value]].
-                assert_eq!(entry, loaded);
+                src.insert_loaded_module(request, loaded);
             }
 
             // 2. If payload is a GraphLoadingState Record, then
@@ -595,7 +605,7 @@ impl SourceTextModule {
             // d. For each String required of module.[[RequestedModules]], do
             for required in requested {
                 // i. If module.[[LoadedModules]] contains a Record whose [[Specifier]] is required, then
-                let loaded = self.loaded_modules.borrow().get(required).cloned();
+                let loaded = self.loaded_module(required);
                 if let Some(loaded) = loaded {
                     // 1. Let record be that Record.
                     // 2. Perform InnerModuleLoading(state, record.[[Module]]).
@@ -669,7 +679,9 @@ impl SourceTextModule {
         // 8. For each ExportEntry Record e of module.[[StarExportEntries]], do
         for e in &self.code.star_export_entries {
             // a. Let requestedModule be GetImportedModule(module, e.[[ModuleRequest]]).
-            let requested_module = self.loaded_modules.borrow()[e].clone();
+            let requested_module = self
+                .loaded_module(e)
+                .expect("module loading populated the requested module");
 
             // b. Let starNames be requestedModule.GetExportedNames(exportStarSet).
             // c. For each element n of starNames, do
@@ -735,7 +747,9 @@ impl SourceTextModule {
                     e.attributes(),
                     interner,
                 );
-                let imported_module = self.loaded_modules.borrow()[&module_request].clone();
+                let imported_module = self
+                    .loaded_module(&module_request)
+                    .expect("module loading populated the requested module");
                 return match e.import_name() {
                     // ii. If e.[[ImportName]] is all, then
                     //    1. Assert: module does not provide the direct binding for this export.
@@ -769,7 +783,9 @@ impl SourceTextModule {
         // 9. For each ExportEntry Record e of module.[[StarExportEntries]], do
         for e in &self.code.star_export_entries {
             // a. Let importedModule be GetImportedModule(module, e.[[ModuleRequest]]).
-            let imported_module = self.loaded_modules.borrow()[e].clone();
+            let imported_module = self
+                .loaded_module(e)
+                .expect("module loading populated the requested module");
             // b. Let resolution be importedModule.ResolveExport(exportName, resolveSet).
             let resolution =
                 match imported_module.resolve_export(export_name, resolve_set, interner) {
@@ -925,7 +941,9 @@ impl SourceTextModule {
         // 9. For each ModuleRequest Record request of module.[[RequestedModules]], do
         for required in &self.code.requested_modules {
             // a. Let requiredModule be GetImportedModule(module, required).
-            let required_module = self.loaded_modules.borrow()[required].clone();
+            let required_module = self
+                .loaded_module(required)
+                .expect("module loading populated the requested module");
 
             // b. Set index to ? InnerModuleLinking(requiredModule, stack, index).
             index = required_module.inner_link(stack, index, context)?;
@@ -1058,11 +1076,11 @@ impl SourceTextModule {
                     top_level_capability,
                     ..
                 } => (
-                    cycle_root.clone(),
+                    Module::from_edge(cycle_root.clone()),
                     top_level_capability
                         .as_ref()
                         .map(|cap| {
-                            JsPromise::from_object(cap.promise().clone()).js_expect(
+                            JsPromise::from_object(cap.to_capability().promise().clone()).js_expect(
                                 "promise created from the %Promise% intrinsic is always native",
                             )
                         })
@@ -1144,7 +1162,7 @@ impl SourceTextModule {
                                 environment,
                                 top_level_capability,
                                 cycle_root,
-                                error: Some(err.clone()),
+                                error: Some(err.clone().into_stored()),
                             }
                         },
                         _ => panic!(
@@ -1216,7 +1234,11 @@ impl SourceTextModule {
             }
             //     a. If module.[[EvaluationError]] is empty, return index.
             //     b. Otherwise, return ? module.[[EvaluationError]].
-            ModuleStatus::Evaluated { error, .. } => return error.clone().map_or(Ok(index), Err),
+            ModuleStatus::Evaluated { error, .. } => {
+                return error
+                    .as_ref()
+                    .map_or(Ok(index), |error| Err(error.to_error()));
+            }
             ModuleStatus::Linked { .. } => {
                 // 4. Assert: module.[[Status]] is linked.
                 // evaluate a linked module
@@ -1238,8 +1260,8 @@ impl SourceTextModule {
             } => ModuleStatus::Evaluating {
                 environment,
                 context,
-                top_level_capability: capability,
-                cycle_root: module_self.clone(),
+                top_level_capability: capability.as_ref().map(PromiseCapability::stored),
+                cycle_root: module_self.edge(),
                 ancestor_index: index,
                 async_evaluation_order: None,
             },
@@ -1258,7 +1280,9 @@ impl SourceTextModule {
         // 11. 11. For each ModuleRequest Record request of module.[[RequestedModules]], do
         for required in &self.code.requested_modules {
             // a. Let requiredModule be GetImportedModule(module, required).
-            let required_module = self.loaded_modules.borrow()[required].clone();
+            let required_module = self
+                .loaded_module(required)
+                .expect("module loading populated the requested module");
             // b. Set index to ? InnerModuleEvaluation(requiredModule, stack, index).
             index = required_module.inner_evaluate(stack, index, context)?;
 
@@ -1293,6 +1317,7 @@ impl SourceTextModule {
                     ModuleStatus::EvaluatingAsync { cycle_root, .. }
                     | ModuleStatus::Evaluated { cycle_root, .. } => {
                         // 1. Set requiredModule to requiredModule.[[CycleRoot]].
+                        let cycle_root = Module::from_edge(cycle_root.clone());
                         let ModuleKind::SourceText(cycle_root_src) = cycle_root.kind() else {
                             unreachable!("cycle_root must be a source text module");
                         };
@@ -1305,7 +1330,7 @@ impl SourceTextModule {
                             // 3. If requiredModule.[[EvaluationError]] is not empty, return ? requiredModule.[[EvaluationError]].
                             ModuleStatus::Evaluated {
                                 error: Some(error), ..
-                            } => return Err(error.clone()),
+                            } => return Err(error.to_error()),
                             ModuleStatus::Evaluated { .. } => (cycle_root.clone(), false, None),
                             _ => unreachable!(
                                 "2. Assert: requiredModule.[[Status]] is either evaluating-async or evaluated."
@@ -1339,7 +1364,7 @@ impl SourceTextModule {
                     required_module
                         .async_parent_modules
                         .borrow_mut()
-                        .push(module_self.clone());
+                        .push(module_self.edge());
                 }
             }
         }
@@ -1364,7 +1389,7 @@ impl SourceTextModule {
 
             //     d. If module.[[PendingAsyncDependencies]] = 0, perform ExecuteAsyncModule(module).
             if pending_async_dependencies == 0 {
-                self.execute_async(module_self, context);
+                self.execute_async(module_self, context)?;
             }
         } else {
             // 13. Else,
@@ -1413,7 +1438,7 @@ impl SourceTextModule {
                                 cycle_root: if is_self {
                                     cycle_root
                                 } else {
-                                    module_self.clone()
+                                    module_self.edge()
                                 },
                                 async_evaluation_order,
                                 pending_async_dependencies,
@@ -1427,7 +1452,7 @@ impl SourceTextModule {
                                 cycle_root: if is_self {
                                     cycle_root
                                 } else {
-                                    module_self.clone()
+                                    module_self.edge()
                                 },
                                 error: None,
                             }
@@ -1452,7 +1477,7 @@ impl SourceTextModule {
     /// Abstract operation [`ExecuteAsyncModule ( module )`][spec].
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-execute-async-module
-    fn execute_async(&self, module_self: &Module, context: &mut Context) {
+    fn execute_async(&self, module_self: &Module, context: &mut Context) -> JsResult<()> {
         // 1. Assert: module.[[Status]] is either evaluating or evaluating-async.
         debug_assert!(matches!(
             &*self.status.borrow(),
@@ -1487,7 +1512,8 @@ impl SourceTextModule {
                 module_self.clone(),
             ),
         )
-        .build();
+        .build()
+        .expect("async module reaction retains its current runtime");
 
         // 6. Let rejectedClosure be a new Abstract Closure with parameters (error) that captures module and performs the following steps when called:
         // 7. Let onRejected be CreateBuiltinFunction(rejectedClosure, 0, "", « »).
@@ -1504,7 +1530,8 @@ impl SourceTextModule {
                 module_self.clone(),
             ),
         )
-        .build();
+        .build()
+        .expect("async module reaction retains its current runtime");
 
         // 8. Perform PerformPromiseThen(capability.[[Promise]], onFulfilled, onRejected).
         Promise::perform_promise_then(
@@ -1513,12 +1540,13 @@ impl SourceTextModule {
             Some(on_rejected),
             None,
             context,
-        );
+        )?;
 
         // 9. Perform ! module.ExecuteModule(capability).
         // 10. Return unused.
         self.execute(module_self, Some(capability), context)
             .expect("async modules cannot directly throw");
+        Ok(())
     }
 
     /// Abstract operation [`GatherAvailableAncestors ( module, execList )`][spec].
@@ -1527,7 +1555,7 @@ impl SourceTextModule {
     #[allow(clippy::mutable_key_type)]
     fn gather_available_ancestors(&self, exec_list: &mut FxHashSet<Module>) {
         // 1. For each Cyclic Module Record m of module.[[AsyncParentModules]], do
-        let parents = std::mem::take(&mut *self.async_parent_modules.borrow_mut());
+        let parents = self.take_async_parent_modules();
         for m in parents {
             let ModuleKind::SourceText(m_src) = m.kind() else {
                 continue;
@@ -1539,14 +1567,14 @@ impl SourceTextModule {
 
             {
                 let m_status = m_src.status.borrow();
-                let Some(cycle_root) = m_status
-                    .cycle_root()
-                    .and_then(|root| root.kind().as_source_text())
-                else {
+                let Some(cycle_root) = m_status.cycle_root() else {
+                    continue;
+                };
+                let Some(cycle_root_src) = cycle_root.kind().as_source_text() else {
                     continue;
                 };
 
-                if cycle_root.status.borrow().evaluation_error().is_some() {
+                if cycle_root_src.status.borrow().evaluation_error().is_some() {
                     continue;
                 }
             }
@@ -1633,7 +1661,7 @@ impl SourceTextModule {
         // 2. Assert: All named exports from module are resolvable.
         // 3. Let realm be module.[[Realm]].
         // 4. Assert: realm is not undefined.
-        let realm = module_self.realm().clone();
+        let realm = module_self.realm();
 
         let status = self.status.borrow();
         let (source, source_text) = status
@@ -1672,7 +1700,9 @@ impl SourceTextModule {
                     entry.attributes(),
                     compiler.interner(),
                 );
-                let imported_module = self.loaded_modules.borrow()[&module_request].clone();
+                let imported_module = self
+                    .loaded_module(&module_request)
+                    .expect("module loading populated the requested module");
 
                 if let ImportName::Name(name) = entry.import_name() {
                     let name = name.to_js_string(compiler.interner());
@@ -1823,13 +1853,14 @@ impl SourceTextModule {
 
             compiler.compile_module_item_list(source.items());
 
-            (Gc::new(compiler.finish()), functions)
+            (Rc::new(compiler.finish()), functions)
         };
 
         // 8. Let moduleContext be a new ECMAScript code execution context.
         let mut envs = EnvironmentStack::new();
-        envs.push_module(source.scope().clone());
+        let scope = source.scope().clone();
         drop(status);
+        envs.push_module(scope, &context.runtime().heap);
 
         // 9. Set the Function of moduleContext to null.
         // 10. Assert: module.[[Realm]] is not undefined.
@@ -1855,7 +1886,7 @@ impl SourceTextModule {
             match import {
                 ImportBinding::Namespace { locator, module } => {
                     // i. Let namespace be GetModuleNamespace(importedModule).
-                    let namespace = module.namespace(context);
+                    let namespace = module.namespace(context)?;
                     {
                         let frame = context.vm.frame_mut();
                         let global = frame.realm.environment();
@@ -1863,7 +1894,7 @@ impl SourceTextModule {
                             locator.scope(),
                             locator.binding_index(),
                             namespace.into(),
-                            global,
+                            &global,
                         );
                     }
                 }
@@ -1887,14 +1918,14 @@ impl SourceTextModule {
                             );
                     }
                     BindingName::Namespace => {
-                        let namespace = export_locator.module.namespace(context);
+                        let namespace = export_locator.module.namespace(context)?;
                         let frame = context.vm.frame_mut();
                         let global = frame.realm.environment();
                         frame.environments.put_lexical_value(
                             locator.scope(),
                             locator.binding_index(),
                             namespace.into(),
-                            global,
+                            &global,
                         );
                     }
                 },
@@ -1914,7 +1945,7 @@ impl SourceTextModule {
                     locator.scope(),
                     locator.binding_index(),
                     function.into(),
-                    global,
+                    &global,
                 );
             }
         }
@@ -1928,18 +1959,17 @@ impl SourceTextModule {
         let env = frame
             .environments
             .current_declarative_ref(frame.realm.environment())
-            .cloned()
             .js_expect("frame must have a declarative environment")?;
 
         // 16. Set module.[[Context]] to moduleContext.
         self.status.borrow_mut().transition(|state| match state {
             ModuleStatus::Linking { ancestor_index, .. } => ModuleStatus::PreLinked {
-                environment: env,
+                environment: env.record_ref(),
                 ancestor_index,
                 context: SourceTextContext {
                     codeblock,
-                    environments: frame.environments.clone(),
-                    realm,
+                    environments: frame.environments.stored(),
+                    realm: realm.edge(),
                 },
             },
             _ => unreachable!(
@@ -1977,12 +2007,13 @@ impl SourceTextModule {
         // 5. Assert: module has been linked and declarations in its module environment have been instantiated.
         // 6. Set the VariableEnvironment of moduleContext to module.[[Environment]].
         // 7. Set the LexicalEnvironment of moduleContext to module.[[Environment]].
+        let environments = environments.to_stack();
         let env_fp = environments.len() as u32;
         let callframe = CallFrame::new(
             codeblock,
             Some(ActiveRunnable::Module(module_self.clone())),
             environments,
-            realm,
+            Realm::from_edge(realm),
         )
         .with_env_fp(env_fp)
         .with_flags(CallFrameFlags::EXIT_EARLY);
@@ -2019,19 +2050,44 @@ impl SourceTextModule {
         }
     }
 
-    /// Gets the loaded modules of this module.
-    pub(crate) fn loaded_modules(&self) -> &GcRefCell<FxHashMap<super::ModuleRequest, Module>> {
-        &self.loaded_modules
+    /// Gets a module already loaded for the given request.
+    pub(crate) fn loaded_module(&self, request: &ModuleRequest) -> Option<Module> {
+        self.loaded_modules
+            .borrow()
+            .get(request)
+            .cloned()
+            .map(Module::from_edge)
     }
 
-    /// Gets the import meta object of this module, or initializes
-    /// it using the provided callback.
-    pub(crate) fn import_meta(&self) -> &GcRefCell<Option<JsObject>> {
-        &self.import_meta
+    /// Records the result of loading a request, preserving its identity on repeat loads.
+    pub(crate) fn insert_loaded_module(&self, request: ModuleRequest, module: &Module) {
+        let mut loaded_modules = self.loaded_modules.borrow_mut();
+        let edge = module.edge();
+        let entry = loaded_modules
+            .entry(request)
+            .or_insert_with(|| edge.clone());
+        assert_eq!(entry, &edge);
+    }
+
+    fn take_async_parent_modules(&self) -> Vec<Module> {
+        std::mem::take(&mut *self.async_parent_modules.borrow_mut())
+            .into_iter()
+            .map(Module::from_edge)
+            .collect()
+    }
+
+    /// Gets the cached import meta object.
+    pub(crate) fn import_meta(&self) -> Option<JsObject> {
+        self.import_meta.borrow().clone().map(JsObject::from_inner)
+    }
+
+    /// Stores the initialized import meta object.
+    pub(crate) fn set_import_meta(&self, object: &JsObject) {
+        self.import_meta.replace(Some(object.edge()));
     }
 
     /// Gets the declarative environment of this module.
-    pub(crate) fn environment(&self) -> Option<Gc<DeclarativeEnvironment>> {
+    pub(crate) fn environment(&self) -> Option<DeclarativeEnvironmentRef> {
         self.status.borrow().environment()
     }
 }
@@ -2079,7 +2135,10 @@ fn async_module_execution_fulfilled(module: &Module, context: &mut Context) -> J
     // 7. If module.[[TopLevelCapability]] is not empty, then
     if let Some(cap) = module_src.status.borrow().top_level_capability() {
         // a. Assert: module.[[CycleRoot]] and module are the same Module Record.
-        debug_assert_eq!(module_src.status.borrow().cycle_root(), Some(module));
+        debug_assert_eq!(
+            module_src.status.borrow().cycle_root(),
+            Some(module.clone())
+        );
 
         // b. Perform ! Call(module.[[TopLevelCapability]].[[Resolve]], undefined, « undefined »).
         cap.resolve()
@@ -2135,7 +2194,9 @@ fn async_module_execution_fulfilled(module: &Module, context: &mut Context) -> J
         let has_tla = m_src.code.has_tla;
         if has_tla {
             // i. Perform ExecuteAsyncModule(m).
-            m_src.execute_async(&m, context);
+            if let Err(error) = m_src.execute_async(&m, context) {
+                async_module_execution_rejected(&m, &error, context)?;
+            }
             continue;
         }
         // c. Else,
@@ -2176,7 +2237,7 @@ fn async_module_execution_fulfilled(module: &Module, context: &mut Context) -> J
         // 3. If m.[[TopLevelCapability]] is not empty, then
         if let Some(cap) = status.top_level_capability() {
             // a. Assert: m.[[CycleRoot]] and m are the same Module Record..
-            debug_assert_eq!(status.cycle_root(), Some(&m));
+            debug_assert_eq!(status.cycle_root(), Some(m.clone()));
 
             // b. Perform ! Call(m.[[TopLevelCapability]].[[Resolve]], undefined, « undefined »).
             cap.resolve()
@@ -2226,7 +2287,7 @@ fn async_module_execution_rejected(
                 environment,
                 top_level_capability,
                 cycle_root,
-                error: Some(error.clone()),
+                error: Some(error.clone().into_stored()),
             },
             _ => unreachable!(),
         });
@@ -2242,7 +2303,7 @@ fn async_module_execution_rejected(
         // 9. If module.[[TopLevelCapability]] is not empty, then
         if let Some(cap) = status.top_level_capability() {
             // a. Assert: module.[[CycleRoot]] is module.
-            debug_assert_eq!(status.cycle_root(), Some(module));
+            debug_assert_eq!(status.cycle_root(), Some(module.clone()));
 
             // b. Perform ! Call(module.[[TopLevelCapability]].[[Reject]], undefined, « error »).
             cap.reject()
@@ -2256,7 +2317,7 @@ fn async_module_execution_rejected(
     }
 
     // 10. For each Cyclic Module Record m of module.[[AsyncParentModules]], do
-    for m in std::mem::take(&mut *module_src.async_parent_modules.borrow_mut()) {
+    for m in module_src.take_async_parent_modules() {
         // a. Perform AsyncModuleExecutionRejected(m, error).
         async_module_execution_rejected(&m, error, context)?;
     }

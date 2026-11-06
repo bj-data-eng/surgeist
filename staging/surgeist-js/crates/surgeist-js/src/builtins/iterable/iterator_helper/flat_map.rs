@@ -1,9 +1,5 @@
-use std::cell::Cell;
-
-use surgeist_js_gc::{Finalize, Trace};
-
 use crate::{
-    JsValue,
+    Context, JsValue,
     builtins::iterable::{IteratorRecord, get_iterator_flattenable},
     native_function::{CoroutineBranch, CoroutineState, NativeCoroutine},
     object::JsFunction,
@@ -16,155 +12,80 @@ use crate::{
 /// inner iterable values into a single stream of values.
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-iterator.prototype.flatmap
-#[derive(Trace, Finalize, Default)]
-#[surgeist_js_gc(unsafe_no_drop)]
-pub(crate) enum FlatMap {
-    #[default]
-    Completed,
-    Mapping {
-        iterated: IteratorRecord,
-        mapper: JsFunction,
-        counter: u64,
-    },
-    Yielding {
-        iterated: IteratorRecord,
-        inner_iterator: IteratorRecord,
-        mapper: JsFunction,
-        counter: u64,
-    },
-}
+pub(crate) struct FlatMap;
 
 impl FlatMap {
     #[allow(
         clippy::new_ret_no_self,
         reason = "slightly cleaner to have this be a `new` method"
     )]
-    pub(crate) fn new(iterated: IteratorRecord, mapper: JsFunction) -> NativeCoroutine {
+    pub(crate) fn new(
+        iterated: IteratorRecord,
+        mapper: JsFunction,
+        context: &Context,
+    ) -> NativeCoroutine {
         // 6. Let closure be a new Abstract Closure with no parameters that captures
         //    iterated and mapper and performs the following steps when called:
-        NativeCoroutine::from_fn_with_captures(
+        NativeCoroutine::from_fn_with_state(
             // a. Let counter be 0.
             // b. Repeat,
-            |completion, state, context| {
-                let st = state.take();
+            |completion, (), state, context| {
+                let Some((mut iterated, mapper, mut counter, mut inner)) = state.take() else {
+                    return CoroutineState::Break(Ok(()));
+                };
 
-                // Handle abrupt resumption first to avoid cloning the initial
-                // completion too much.
-                'guard: {
-                    match &st {
-                        Self::Mapping { iterated, .. } => {
-                            iterated.if_abrupt_close_iterator(completion, context)?;
-                        }
-                        // b. If completion is an abrupt completion, then
-                        Self::Yielding {
+                if let Some(inner_iterator) = &inner {
+                    // Close the inner iterator before the outer iterator on abrupt resumption.
+                    let abrupt = match completion {
+                        CompletionRecord::Normal(_) => None,
+                        CompletionRecord::Return(value) => Some(Ok(value)),
+                        CompletionRecord::Throw(error) => Some(Err(error)),
+                    };
+                    if let Some(abrupt) = abrupt {
+                        if_abrupt_close_iterator!(
+                            inner_iterator.close(abrupt.clone(), context),
                             iterated,
-                            inner_iterator,
-                            ..
-                        } => {
-                            let completion = match completion {
-                                CompletionRecord::Normal(_) => break 'guard,
-                                CompletionRecord::Return(val) => Ok(val),
-                                CompletionRecord::Throw(err) => Err(err),
-                            };
-
-                            // i. Let backupCompletion be Completion(IteratorClose(innerIterator, completion)).
-                            // ii. IfAbruptCloseIterator(backupCompletion, iterated).
-                            if_abrupt_close_iterator!(
-                                inner_iterator.close(completion.clone(), context),
-                                iterated,
-                                context
-                            );
-
-                            // iii. Return ? IteratorClose(iterated, completion).
-                            return CoroutineState::Break(
-                                iterated.close(completion, context).map(|_| ()),
-                            );
-                        }
-                        Self::Completed => {}
+                            context
+                        );
+                        return CoroutineState::Break(iterated.close(abrupt, context).map(|_| ()));
                     }
+                } else {
+                    iterated.if_abrupt_close_iterator(completion, context)?;
                 }
-
-                state.set(st);
 
                 loop {
-                    let st = state.take();
-                    match st {
-                        Self::Completed => return CoroutineState::Break(Ok(())),
-                        Self::Mapping {
-                            mut iterated,
-                            mapper,
-                            counter,
-                        } => {
-                            let Some(value) = iterated.step_value(context).branch()? else {
-                                return CoroutineState::Break(Ok(()));
-                            };
-
-                            let mapped_value = if_abrupt_close_iterator!(
-                                mapper.call(
-                                    &JsValue::undefined(),
-                                    &[value, counter.into()],
-                                    context
-                                ),
-                                iterated,
-                                context
-                            );
-
-                            let inner_iterator = if_abrupt_close_iterator!(
-                                get_iterator_flattenable(&mapped_value, false, context),
-                                iterated,
-                                context
-                            );
-
-                            state.set(Self::Yielding {
-                                iterated,
-                                inner_iterator,
-                                mapper,
-                                counter,
-                            });
-                        }
-                        // viii. Repeat, while innerAlive is true,
-                        Self::Yielding {
+                    if let Some(mut inner_iterator) = inner.take() {
+                        let inner_value = if_abrupt_close_iterator!(
+                            inner_iterator.step_value(context),
                             iterated,
-                            mut inner_iterator,
-                            mapper,
-                            counter,
-                        } => {
-                            // 1. Let innerValue be Completion(IteratorStepValue(innerIterator)).
-                            // 2. IfAbruptCloseIterator(innerValue, iterated).
-                            match if_abrupt_close_iterator!(
-                                inner_iterator.step_value(context),
-                                iterated,
-                                context
-                            ) {
-                                Some(inner_value) => {
-                                    state.set(Self::Yielding {
-                                        iterated,
-                                        inner_iterator,
-                                        mapper,
-                                        counter,
-                                    });
-                                    return CoroutineState::Continue(inner_value);
-                                }
-                                // 3. If innerValue is done, then
-                                None => {
-                                    // a. Set innerAlive to false.
-                                    state.set(Self::Mapping {
-                                        iterated,
-                                        mapper,
-                                        // ix. Set counter to counter + 1.
-                                        counter: counter + 1,
-                                    });
-                                }
-                            }
+                            context
+                        );
+                        if let Some(value) = inner_value {
+                            state.set((iterated, mapper, counter, Some(inner_iterator)));
+                            return CoroutineState::Continue(value);
                         }
+                        // The inner iterator is done. Advance the outer iterator.
+                        counter += 1;
                     }
+
+                    let Some(value) = iterated.step_value(context).branch()? else {
+                        return CoroutineState::Break(Ok(()));
+                    };
+                    let mapped_value = if_abrupt_close_iterator!(
+                        mapper.call(&JsValue::undefined(), &[value, counter.into()], context),
+                        iterated,
+                        context
+                    );
+                    inner = Some(if_abrupt_close_iterator!(
+                        get_iterator_flattenable(&mapped_value, false, context),
+                        iterated,
+                        context
+                    ));
                 }
             },
-            Cell::new(Self::Mapping {
-                iterated,
-                mapper,
-                counter: 0,
-            }),
+            (),
+            (iterated, mapper, 0_u64, None::<IteratorRecord>),
+            context,
         )
     }
 }

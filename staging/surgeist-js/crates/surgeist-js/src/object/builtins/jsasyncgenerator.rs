@@ -7,12 +7,10 @@ use crate::{
     object::JsObject,
     value::TryFromJs,
 };
-use surgeist_js_gc::{Finalize, Trace};
 use std::ops::Deref;
 
 /// `JsAsyncGenerator` provides a wrapper for Boa's implementation of the ECMAScript `AsyncGenerator` builtin object.
-#[derive(Debug, Clone, Trace, Finalize)]
-#[surgeist_js_gc(unsafe_no_drop)]
+#[derive(Debug, Clone)]
 pub struct JsAsyncGenerator {
     inner: JsObject<AsyncGenerator>,
 }

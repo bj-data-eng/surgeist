@@ -7,11 +7,11 @@ pub use operations::IntegrityLevel;
 pub use property_map::*;
 use thin_vec::ThinVec;
 
-use self::{internal_methods::ORDINARY_INTERNAL_METHODS, shape::Shape};
+use self::shape::Shape;
 use crate::{
-    Context, JsString, JsSymbol, JsValue,
-    builtins::{OrdinaryObject, function::ConstructorKind},
-    context::intrinsics::StandardConstructor,
+    Context, JsResult, JsString, JsSymbol, JsValue,
+    builtins::function::ConstructorKind,
+    class::ClassConstructor,
     js_string,
     native_function::{NativeFunction, NativeFunctionObject},
     property::{Attribute, PropertyDescriptor, PropertyKey},
@@ -19,9 +19,9 @@ use crate::{
     string::StaticJsStrings,
     value::StoredValue,
 };
+use surgeist_js_gc::heap::{ObjectId, Trace as HeapTrace};
 
 use std::{any::Any, fmt::Debug};
-use surgeist_js_gc::{Finalize, Trace};
 
 #[cfg(test)]
 mod tests;
@@ -54,13 +54,13 @@ pub type JsPrototype = Option<JsObject>;
 
 /// This trait allows Rust types to be passed around as objects.
 ///
-/// This is automatically implemented when a type implements `Any`, `Trace`, and `JsData`.
-pub trait NativeObject: Any + Trace + JsData {
+/// This is automatically implemented when a type implements `Any`, [`Trace`](crate::Trace), and `JsData`.
+pub trait NativeObject: Any + HeapTrace + JsData {
     /// Gets the type name of the value.
     fn type_name_of_value(&self) -> &'static str;
 }
 
-impl<T: Any + Trace + JsData> NativeObject for T {
+impl<T: Any + HeapTrace + JsData> NativeObject for T {
     fn type_name_of_value(&self) -> &'static str {
         std::any::type_name::<T>()
     }
@@ -87,8 +87,7 @@ impl dyn NativeObject {
 }
 
 /// A JavaScript object's properties and internal state apart from its native payload.
-#[derive(Debug, Finalize, Trace)]
-#[surgeist_js_gc(unsafe_no_drop)]
+#[derive(Debug, HeapTrace)]
 pub struct ObjectState {
     pub(crate) properties: PropertyMap,
     pub(crate) extensible: bool,
@@ -106,8 +105,7 @@ impl ObjectState {
 }
 
 /// A JavaScript object awaiting publication.
-#[derive(Finalize, Trace)]
-#[surgeist_js_gc(unsafe_no_drop)]
+#[derive(HeapTrace)]
 pub(crate) struct Object {
     state: ObjectState,
     data: Box<dyn NativeObject>,
@@ -122,12 +120,6 @@ impl Object {
     }
 }
 
-impl Default for Object {
-    fn default() -> Self {
-        Self::new(PropertyMap::default(), OrdinaryObject)
-    }
-}
-
 impl Debug for Object {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Object")
@@ -138,24 +130,26 @@ impl Debug for Object {
 }
 
 /// A Private Name.
-#[derive(Clone, Debug, PartialEq, Eq, Trace, Finalize)]
+#[derive(Clone, Debug, PartialEq, Eq, HeapTrace)]
 pub struct PrivateName {
     /// The `[[Description]]` internal slot of the private name.
+    #[heap_trace(skip)]
     description: JsString,
 
     /// The unique identifier of the private name.
-    id: usize,
+    #[heap_trace(skip)]
+    id: ObjectId,
 }
 
 impl PrivateName {
     /// Create a new private name.
-    pub(crate) const fn new(description: JsString, id: usize) -> Self {
+    pub(crate) const fn new(description: JsString, id: ObjectId) -> Self {
         Self { description, id }
     }
 }
 
 /// The representation of private object elements.
-#[derive(Clone, Debug, Trace, Finalize)]
+#[derive(Clone, Debug)]
 pub enum PrivateElement {
     /// A private field.
     Field(JsValue),
@@ -174,7 +168,7 @@ pub enum PrivateElement {
 }
 
 /// A private element held by an object or class constructor.
-#[derive(Clone, Debug, Trace, Finalize)]
+#[derive(Clone, Debug, HeapTrace)]
 pub(crate) enum StoredPrivateElement {
     Field(StoredValue),
     Method(ObjectEdge),
@@ -188,10 +182,10 @@ impl From<&PrivateElement> for StoredPrivateElement {
     fn from(element: &PrivateElement) -> Self {
         match element {
             PrivateElement::Field(value) => Self::Field(value.clone().into_stored()),
-            PrivateElement::Method(method) => Self::Method(method.inner().clone()),
+            PrivateElement::Method(method) => Self::Method(method.edge()),
             PrivateElement::Accessor { getter, setter } => Self::Accessor {
-                getter: getter.as_ref().map(|getter| getter.inner().clone()),
-                setter: setter.as_ref().map(|setter| setter.inner().clone()),
+                getter: getter.as_ref().map(JsObject::edge),
+                setter: setter.as_ref().map(JsObject::edge),
             },
         }
     }
@@ -200,15 +194,15 @@ impl From<&PrivateElement> for StoredPrivateElement {
 impl ObjectState {
     /// Returns the shape of the object.
     #[must_use]
-    pub const fn shape(&self) -> &Shape {
-        &self.properties.shape
+    pub fn shape(&self) -> Shape {
+        self.properties.shape()
     }
 
     /// Gets the prototype instance of this object.
     #[inline]
     #[must_use]
     pub fn prototype(&self) -> JsPrototype {
-        self.properties.shape.prototype()
+        self.properties.shape().prototype()
     }
 
     /// Sets the prototype instance of the object.
@@ -219,8 +213,17 @@ impl ObjectState {
     #[track_caller]
     pub fn set_prototype<O: Into<JsPrototype>>(&mut self, prototype: O) -> bool {
         let prototype = prototype.into();
+        if prototype.as_ref().is_some_and(|prototype| {
+            !self
+                .properties
+                .shape()
+                .identity()
+                .same_heap(prototype.identity())
+        }) {
+            return false;
+        }
         if self.extensible {
-            self.properties.shape = self.properties.shape.change_prototype_transition(prototype);
+            self.properties.set_prototype(prototype);
             true
         } else {
             // If target is non-extensible, [[SetPrototypeOf]] must return false
@@ -425,20 +428,19 @@ impl<'realm> FunctionObjectBuilder<'realm> {
         self
     }
 
-    /// Build the function object.
-    #[must_use]
-    pub fn build(self) -> JsFunction {
-        let object = self.realm.intrinsics().templates().function().create(
+    /// Builds the function object, rejecting captures the realm cannot own.
+    pub fn build(self) -> JsResult<JsFunction> {
+        let object = self.realm.intrinsics().templates().function().try_create(
             NativeFunctionObject {
-                f: self.function,
+                f: self.function.stored(),
                 name: self.name.clone(),
                 constructor: self.constructor,
                 realm: Some(self.realm.edge()),
             },
             vec![self.length.into(), self.name.into()],
-        );
+        )?;
 
-        JsFunction::from_object_unchecked(object)
+        Ok(JsFunction::from_object_unchecked(object))
     }
 }
 
@@ -464,7 +466,8 @@ impl<'realm> FunctionObjectBuilder<'realm> {
 ///         js_string!("func"),
 ///         0,
 ///     )
-///     .build();
+///     .build()?;
+/// # Ok::<_, surgeist_js::JsError>(())
 /// ```
 ///
 /// The equivalent in JavaScript would be:
@@ -478,7 +481,7 @@ impl<'realm> FunctionObjectBuilder<'realm> {
 #[derive(Debug)]
 pub struct ObjectInitializer<'ctx> {
     context: &'ctx mut Context,
-    object: JsObject,
+    object: JsResult<JsObject>,
 }
 
 impl<'ctx> ObjectInitializer<'ctx> {
@@ -486,17 +489,20 @@ impl<'ctx> ObjectInitializer<'ctx> {
     #[inline]
     pub fn new(context: &'ctx mut Context) -> Self {
         let object = JsObject::with_object_proto(context.intrinsics());
-        Self { context, object }
+        Self {
+            context,
+            object: Ok(object),
+        }
     }
 
     /// Create a new `ObjectBuilder` with custom [`NativeObject`] data.
     pub fn with_native_data<T: NativeObject>(data: T, context: &'ctx mut Context) -> Self {
-        let object = JsObject::from_proto_and_data_with_shared_shape(
+        let object = JsObject::new(
             context.root_shape(),
             context.intrinsics().constructors().object().prototype(),
             data,
         )
-        .upcast();
+        .map(JsObject::upcast);
         Self { context, object }
     }
 
@@ -506,9 +512,7 @@ impl<'ctx> ObjectInitializer<'ctx> {
         proto: JsObject,
         context: &'ctx mut Context,
     ) -> Self {
-        let object =
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), proto, data)
-                .upcast();
+        let object = JsObject::new(context.root_shape(), proto, data).map(JsObject::upcast);
         Self { context, object }
     }
 
@@ -518,20 +522,20 @@ impl<'ctx> ObjectInitializer<'ctx> {
         B: Into<FunctionBinding>,
     {
         let binding = binding.into();
-        let function = FunctionObjectBuilder::new(self.context.realm(), function)
+        let property = FunctionObjectBuilder::new(self.context.realm(), function)
             .name(binding.name)
             .length(length)
             .constructor(false)
-            .build();
-
-        self.object.borrow_mut().insert(
-            binding.binding,
-            PropertyDescriptor::builder()
-                .value(function)
-                .writable(true)
-                .enumerable(false)
-                .configurable(true),
-        );
+            .build()
+            .map(|function| {
+                PropertyDescriptor::builder()
+                    .value(function)
+                    .writable(true)
+                    .enumerable(false)
+                    .configurable(true)
+                    .build()
+            });
+        stage_property(&mut self.object, binding.binding, property);
         self
     }
 
@@ -546,7 +550,7 @@ impl<'ctx> ObjectInitializer<'ctx> {
             .writable(attribute.writable())
             .enumerable(attribute.enumerable())
             .configurable(attribute.configurable());
-        self.object.borrow_mut().insert(key, property);
+        stage_property(&mut self.object, key, Ok(property.build()));
         self
     }
 
@@ -573,14 +577,18 @@ impl<'ctx> ObjectInitializer<'ctx> {
             .maybe_set(set)
             .enumerable(attribute.enumerable())
             .configurable(attribute.configurable());
-        self.object.borrow_mut().insert(key, property);
+        stage_property(&mut self.object, key, Ok(property.build()));
         self
     }
 
-    /// Build the object.
+    /// Returns the object or the first error encountered while initializing it.
+    ///
+    /// The context must still belong to the runtime that owns the object.
     #[inline]
-    pub fn build(&mut self) -> JsObject {
-        self.object.clone()
+    pub fn build(&mut self) -> JsResult<JsObject> {
+        let object = self.object.clone()?;
+        object.check_runtime(self.context.runtime())?;
+        Ok(object)
     }
 
     /// Gets the context used to create the object.
@@ -590,14 +598,26 @@ impl<'ctx> ObjectInitializer<'ctx> {
     }
 }
 
+fn stage_property(
+    target: &mut JsResult<JsObject>,
+    key: impl Into<PropertyKey>,
+    property: JsResult<PropertyDescriptor>,
+) {
+    if let Ok(object) = target
+        && let Err(error) = property.and_then(|property| object.insert_property(key, property))
+    {
+        *target = Err(error);
+    }
+}
+
 /// Builder for creating constructors objects, like `Array`.
 #[derive(Debug)]
 pub struct ConstructorBuilder<'ctx> {
     context: &'ctx mut Context,
     function: NativeFunction,
-    constructor_object: ObjectState,
+    static_properties: Vec<(PropertyKey, PropertyDescriptor)>,
     has_prototype_property: bool,
-    prototype: Object,
+    prototype: JsResult<JsObject>,
     name: JsString,
     length: usize,
     callable: bool,
@@ -610,11 +630,12 @@ impl<'ctx> ConstructorBuilder<'ctx> {
     /// Create a new `ConstructorBuilder`.
     #[inline]
     pub fn new(context: &'ctx mut Context, function: NativeFunction) -> ConstructorBuilder<'ctx> {
+        let prototype = JsObject::with_null_proto(context.runtime());
         Self {
             context,
             function,
-            constructor_object: ObjectState::new(PropertyMap::default()),
-            prototype: Object::default(),
+            static_properties: Vec::new(),
+            prototype: Ok(prototype),
             length: 0,
             name: js_string!(),
             callable: true,
@@ -631,20 +652,20 @@ impl<'ctx> ConstructorBuilder<'ctx> {
         B: Into<FunctionBinding>,
     {
         let binding = binding.into();
-        let function = FunctionObjectBuilder::new(self.context.realm(), function)
+        let property = FunctionObjectBuilder::new(self.context.realm(), function)
             .name(binding.name)
             .length(length)
             .constructor(false)
-            .build();
-
-        self.prototype.state.insert(
-            binding.binding,
-            PropertyDescriptor::builder()
-                .value(function)
-                .writable(true)
-                .enumerable(false)
-                .configurable(true),
-        );
+            .build()
+            .map(|function| {
+                PropertyDescriptor::builder()
+                    .value(function)
+                    .writable(true)
+                    .enumerable(false)
+                    .configurable(true)
+                    .build()
+            });
+        stage_property(&mut self.prototype, binding.binding, property);
         self
     }
 
@@ -659,20 +680,27 @@ impl<'ctx> ConstructorBuilder<'ctx> {
         B: Into<FunctionBinding>,
     {
         let binding = binding.into();
-        let function = FunctionObjectBuilder::new(self.context.realm(), function)
+        let result = FunctionObjectBuilder::new(self.context.realm(), function)
             .name(binding.name)
             .length(length)
             .constructor(false)
             .build();
 
-        self.constructor_object.insert(
-            binding.binding,
-            PropertyDescriptor::builder()
-                .value(function)
-                .writable(true)
-                .enumerable(false)
-                .configurable(true),
-        );
+        match result {
+            Ok(function) => {
+                self.static_properties.push((
+                    binding.binding,
+                    PropertyDescriptor::builder()
+                        .value(function)
+                        .writable(true)
+                        .enumerable(false)
+                        .configurable(true)
+                        .build(),
+                ));
+            }
+            Err(error) if self.prototype.is_ok() => self.prototype = Err(error),
+            Err(_) => {}
+        }
         self
     }
 
@@ -687,7 +715,7 @@ impl<'ctx> ConstructorBuilder<'ctx> {
             .writable(attribute.writable())
             .enumerable(attribute.enumerable())
             .configurable(attribute.configurable());
-        self.prototype.state.insert(key, property);
+        stage_property(&mut self.prototype, key, Ok(property.build()));
         self
     }
 
@@ -702,7 +730,7 @@ impl<'ctx> ConstructorBuilder<'ctx> {
             .writable(attribute.writable())
             .enumerable(attribute.enumerable())
             .configurable(attribute.configurable());
-        self.constructor_object.insert(key, property);
+        self.static_properties.push((key.into(), property.into()));
         self
     }
 
@@ -722,7 +750,7 @@ impl<'ctx> ConstructorBuilder<'ctx> {
             .maybe_set(set)
             .enumerable(attribute.enumerable())
             .configurable(attribute.configurable());
-        self.prototype.state.insert(key, property);
+        stage_property(&mut self.prototype, key, Ok(property.build()));
         self
     }
 
@@ -742,7 +770,7 @@ impl<'ctx> ConstructorBuilder<'ctx> {
             .maybe_set(set)
             .enumerable(attribute.enumerable())
             .configurable(attribute.configurable());
-        self.constructor_object.insert(key, property);
+        self.static_properties.push((key.into(), property.into()));
         self
     }
 
@@ -753,7 +781,7 @@ impl<'ctx> ConstructorBuilder<'ctx> {
         P: Into<PropertyDescriptor>,
     {
         let property = property.into();
-        self.prototype.state.insert(key, property);
+        stage_property(&mut self.prototype, key, Ok(property));
         self
     }
 
@@ -763,8 +791,8 @@ impl<'ctx> ConstructorBuilder<'ctx> {
         K: Into<PropertyKey>,
         P: Into<PropertyDescriptor>,
     {
-        let property = property.into();
-        self.constructor_object.insert(key, property);
+        let property = property.into().complete_property_descriptor();
+        self.static_properties.push((key.into(), property));
         self
     }
 
@@ -838,9 +866,18 @@ impl<'ctx> ConstructorBuilder<'ctx> {
         self.context
     }
 
-    /// Build the constructor function object.
-    #[must_use]
-    pub fn build(mut self) -> StandardConstructor {
+    /// Builds the constructor and rejects properties or prototypes from another runtime.
+    pub fn build(mut self) -> JsResult<ClassConstructor> {
+        let prototype = self.prototype?;
+        let runtime = self.context.runtime();
+        prototype.check_runtime(runtime)?;
+        for (_, property) in &self.static_properties {
+            runtime.check_descriptor(property)?;
+        }
+        if let Some(Some(parent)) = &self.inherit {
+            parent.check_runtime(runtime)?;
+        }
+
         let length = PropertyDescriptor::builder()
             .value(self.length)
             .writable(false)
@@ -852,62 +889,54 @@ impl<'ctx> ConstructorBuilder<'ctx> {
             .enumerable(false)
             .configurable(true);
 
-        let prototype = {
-            if let Some(proto) = self.inherit.take() {
-                self.prototype.state.set_prototype(proto);
-            } else {
-                self.prototype.state.set_prototype(
-                    self.context
-                        .intrinsics()
-                        .constructors()
-                        .object()
-                        .prototype(),
-                );
-            }
-
-            JsObject::from_object_and_vtable(self.prototype, &ORDINARY_INTERNAL_METHODS)
-        };
+        {
+            let mut state = prototype.borrow_mut();
+            let parent = self.inherit.take().unwrap_or_else(|| {
+                self.context
+                    .intrinsics()
+                    .constructors()
+                    .object()
+                    .prototype()
+                    .into()
+            });
+            state.set_prototype(parent);
+        }
 
         let constructor = {
             let data = NativeFunctionObject {
-                f: self.function,
+                f: self.function.stored(),
                 name: self.name.clone(),
                 constructor: self.kind,
                 realm: Some(self.context.realm().edge()),
             };
-            let internal_methods = data.internal_methods();
-            let mut constructor = Object {
-                state: self.constructor_object,
-                data: Box::new(data),
-            };
-
-            constructor.state.insert(StaticJsStrings::LENGTH, length);
-            constructor.state.insert(js_string!("name"), name);
-
-            if let Some(proto) = self.custom_prototype.take() {
-                constructor.state.set_prototype(proto);
-            } else {
-                constructor.state.set_prototype(
-                    self.context
-                        .intrinsics()
-                        .constructors()
-                        .function()
-                        .prototype(),
-                );
+            let parent = self.custom_prototype.take().unwrap_or_else(|| {
+                self.context
+                    .intrinsics()
+                    .constructors()
+                    .function()
+                    .prototype()
+                    .into()
+            });
+            let constructor = JsObject::new_unique(runtime, parent, data)?.upcast();
+            {
+                let mut state = constructor.borrow_mut();
+                for (key, property) in self.static_properties {
+                    state.insert(key, property);
+                }
+                state.insert(StaticJsStrings::LENGTH, length);
+                state.insert(js_string!("name"), name);
+                if self.has_prototype_property {
+                    state.insert(
+                        PROTOTYPE,
+                        PropertyDescriptor::builder()
+                            .value(prototype.clone())
+                            .writable(false)
+                            .enumerable(false)
+                            .configurable(false),
+                    );
+                }
             }
-
-            if self.has_prototype_property {
-                constructor.state.insert(
-                    PROTOTYPE,
-                    PropertyDescriptor::builder()
-                        .value(prototype.clone())
-                        .writable(false)
-                        .enumerable(false)
-                        .configurable(false),
-                );
-            }
-
-            JsObject::from_object_and_vtable(constructor, internal_methods)
+            constructor
         };
 
         {
@@ -922,6 +951,6 @@ impl<'ctx> ConstructorBuilder<'ctx> {
             );
         }
 
-        StandardConstructor::new(JsFunction::from_object_unchecked(constructor), prototype)
+        Ok(ClassConstructor::new(constructor, prototype))
     }
 }

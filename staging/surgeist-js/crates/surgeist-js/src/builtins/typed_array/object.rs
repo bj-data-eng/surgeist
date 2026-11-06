@@ -4,7 +4,7 @@ use std::sync::atomic::Ordering;
 
 use crate::{
     Context, JsExpect, JsNativeError, JsResult, JsString, JsValue,
-    builtins::array_buffer::{BufferObject, BufferRef},
+    builtins::array_buffer::{BufferEdge, BufferObject, BufferRef},
     object::{
         JsData, JsObject,
         internal_methods::{
@@ -15,7 +15,7 @@ use crate::{
     },
     property::{PropertyDescriptor, PropertyKey},
 };
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 use surgeist_js_macros::js_str;
 
 use super::{TypedArrayKind, is_valid_integer_index};
@@ -27,9 +27,10 @@ use super::{TypedArrayKind, is_valid_integer_index};
 ///  - [ECMAScript reference][spec]
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-typedarray-exotic-objects
-#[derive(Debug, Clone, Trace, Finalize)]
+#[derive(Debug, Clone, HeapTrace)]
 pub struct TypedArray {
-    viewed_array_buffer: BufferObject,
+    viewed_array_buffer: BufferEdge,
+    #[heap_trace(skip)]
     kind: TypedArrayKind,
     byte_offset: u64,
     byte_length: Option<u64>,
@@ -56,15 +57,15 @@ impl JsData for TypedArray {
 }
 
 impl TypedArray {
-    pub(crate) const fn new(
-        viewed_array_buffer: BufferObject,
+    pub(crate) fn new(
+        viewed_array_buffer: &BufferObject,
         kind: TypedArrayKind,
         byte_offset: u64,
         byte_length: Option<u64>,
         array_length: Option<u64>,
     ) -> Self {
         Self {
-            viewed_array_buffer,
+            viewed_array_buffer: viewed_array_buffer.edge(),
             kind,
             byte_offset,
             byte_length,
@@ -122,10 +123,10 @@ impl TypedArray {
         self.kind
     }
 
-    /// Get a reference to the `TypedArray` object's viewed array buffer.
+    /// Get a rooted handle to the `TypedArray` object's viewed array buffer.
     #[must_use]
-    pub(crate) const fn viewed_array_buffer(&self) -> &BufferObject {
-        &self.viewed_array_buffer
+    pub(crate) fn viewed_array_buffer(&self) -> BufferObject {
+        self.viewed_array_buffer.to_buffer()
     }
 
     /// [`TypedArrayByteLength ( taRecord )`][spec].
@@ -206,7 +207,8 @@ impl TypedArray {
 
         let len = {
             let array = obj.borrow();
-            let buffer = array.data().viewed_array_buffer().as_buffer();
+            let buffer = array.data().viewed_array_buffer();
+            let buffer = buffer.as_buffer();
             // 2. Assert: O has a [[ViewedArrayBuffer]] internal slot.
             // 3. Let taRecord be MakeTypedArrayWithBufferWitnessRecord(O, order).
             // 4. If IsTypedArrayOutOfBounds(taRecord) is true, throw a TypeError exception.
@@ -647,11 +649,8 @@ pub(crate) fn typed_array_exotic_own_property_keys(
     // 1. Let taRecord be MakeTypedArrayWithBufferWitnessRecord(O, seq-cst).
     // 2. Let keys be a new empty List.
     // 3. If IsTypedArrayOutOfBounds(taRecord) is false, then
-    let mut keys = match inner
-        .viewed_array_buffer
-        .as_buffer()
-        .bytes(Ordering::SeqCst)
-    {
+    let buffer = inner.viewed_array_buffer();
+    let mut keys = match buffer.as_buffer().bytes(Ordering::SeqCst) {
         Some(buf) if !inner.is_out_of_bounds(buf.len()) => {
             // a. Let length be TypedArrayLength(taRecord).
             let length = inner.array_length(buf.len());
@@ -668,7 +667,7 @@ pub(crate) fn typed_array_exotic_own_property_keys(
     //     a. Append P to keys.
     // 5. For each own property key P of O such that P is a Symbol, in ascending chronological order of property creation, do
     //     a. Append P to keys.
-    keys.extend(obj.borrow().properties.shape.keys());
+    keys.extend(obj.borrow().properties.shape().keys());
 
     // 6. Return keys.
     Ok(keys)
@@ -743,7 +742,8 @@ pub(crate) fn typed_array_set_element(
 
     // 3. If IsValidIntegerIndex(O, index) is true, then
     let array = obj.borrow();
-    let mut buffer = array.data().viewed_array_buffer().as_buffer_mut();
+    let buffer = array.data().viewed_array_buffer();
+    let mut buffer = buffer.as_buffer_mut();
     let Some(mut buffer) = buffer.bytes(Ordering::Relaxed) else {
         return Ok(());
     };

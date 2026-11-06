@@ -100,13 +100,13 @@ impl IntrinsicObject for ThrowTypeError {
                         functions or the arguments objects for calls to them",
                     )
                     .into())
-            });
+            }).stored();
             obj.name = js_string!();
             obj.constructor = None;
             obj.realm = Some(realm.edge());
         }
 
-        obj.borrow_mut().extensible = false;
+        obj.borrow_mut().state_mut().extensible = false;
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {

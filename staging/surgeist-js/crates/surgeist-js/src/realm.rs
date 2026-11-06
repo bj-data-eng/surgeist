@@ -8,39 +8,42 @@
 
 use std::{
     any::TypeId,
-    cell::{Ref, RefMut},
+    cell::{Ref, RefCell},
 };
 
 use crate::{
     Context, HostDefined, JsNativeError, JsObject, JsResult, JsString,
-    class::Class,
+    class::{Class, ClassConstructor},
     context::{
         HostHooks,
         intrinsics::{Intrinsics, StandardConstructor},
     },
-    environments::DeclarativeEnvironment,
-    module::Module,
-    object::{ObjectEdge, shape::RootShape},
+    environments::{DeclarativeEnvironment, DeclarativeEnvironmentEdge, DeclarativeEnvironmentRef},
+    module::{Module, ModuleEdge},
+    object::{
+        NativeObject, ObjectEdge,
+        shape::{RootShape, SharedShape},
+    },
 };
 use rustc_hash::FxHashMap;
 use surgeist_js::JsValue;
 use surgeist_js::property::{Attribute, PropertyDescriptor, PropertyKey};
 use surgeist_js_ast::scope::Scope;
-use surgeist_js_gc::{Finalize, Gc, GcRefCell, Trace};
+use surgeist_js_gc::heap::{RecordRef, Rooted, Trace as HeapTrace};
 
 /// Representation of a Realm.
 ///
 /// In the specification these are called Realm Records.
-#[derive(Clone, Trace, Finalize)]
+#[derive(Clone)]
 pub struct Realm {
-    inner: RealmEdge,
+    inner: Rooted<RealmRecord>,
 }
 
 impl Eq for Realm {}
 
 impl PartialEq for Realm {
     fn eq(&self, other: &Self) -> bool {
-        Gc::ptr_eq(&self.inner, &other.inner)
+        self.inner.handle() == other.inner.handle()
     }
 }
 
@@ -55,28 +58,29 @@ impl std::fmt::Debug for Realm {
     }
 }
 
-pub(crate) type RealmEdge = Gc<RealmRecord>;
+#[derive(Clone, Debug, HeapTrace)]
+pub(crate) struct RealmEdge(RecordRef<RealmRecord>);
 
-#[derive(Trace, Finalize)]
+#[derive(HeapTrace)]
 pub(crate) struct RealmRecord {
     intrinsics: Intrinsics,
 
     /// The global declarative environment of this realm.
-    environment: Gc<DeclarativeEnvironment>,
+    environment: DeclarativeEnvironmentEdge,
 
     /// The global scope of this realm.
     /// This is directly related to the global declarative environment.
     // Safety: Nothing in `Scope` needs tracing.
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     scope: Scope,
 
     global_object: ObjectEdge,
     global_this: ObjectEdge,
-    template_map: GcRefCell<FxHashMap<u64, ObjectEdge>>,
-    loaded_modules: GcRefCell<FxHashMap<JsString, Module>>,
-    host_classes: GcRefCell<FxHashMap<TypeId, StandardConstructor>>,
+    template_map: RefCell<FxHashMap<u64, ObjectEdge>>,
+    loaded_modules: RefCell<FxHashMap<JsString, ModuleEdge>>,
+    host_classes: RefCell<FxHashMap<TypeId, StandardConstructor>>,
 
-    host_defined: GcRefCell<HostDefined>,
+    host_defined: RefCell<HostDefined>,
 }
 
 impl std::fmt::Debug for RealmRecord {
@@ -85,19 +89,51 @@ impl std::fmt::Debug for RealmRecord {
     }
 }
 
+/// Keeps intrinsic shells alive until the realm owns their stored edges.
+#[derive(Default)]
+pub(crate) struct BootstrapRoots {
+    objects: Vec<JsObject>,
+    shapes: Vec<SharedShape>,
+}
+
+impl BootstrapRoots {
+    pub(crate) fn retain(&mut self, object: JsObject) -> ObjectEdge {
+        let edge = object.edge();
+        self.objects.push(object);
+        edge
+    }
+
+    pub(crate) fn retain_shape(&mut self, shape: SharedShape) {
+        self.shapes.push(shape);
+    }
+}
+
 impl Realm {
+    pub(crate) fn runtime(&self) -> crate::Runtime {
+        crate::Runtime {
+            heap: self.inner.runtime().clone(),
+        }
+    }
+
     pub(crate) fn from_edge(inner: RealmEdge) -> Self {
-        Self { inner }
+        Self {
+            inner: inner
+                .0
+                .upgrade()
+                .expect("realm heap is available")
+                .expect("live owner retains its realm"),
+        }
     }
 
     pub(crate) fn edge(&self) -> RealmEdge {
-        self.inner.clone()
+        RealmEdge(self.inner.record_ref())
     }
 
     /// Create a new [`Realm`].
     #[inline]
     pub fn create(hooks: &dyn HostHooks, root_shape: &RootShape) -> JsResult<Self> {
-        let intrinsics = Intrinsics::uninit(root_shape).ok_or_else(|| {
+        let mut roots = BootstrapRoots::default();
+        let intrinsics = Intrinsics::uninit(root_shape, &mut roots).ok_or_else(|| {
             JsNativeError::typ().with_message("failed to create the realm intrinsics")
         })?;
 
@@ -105,23 +141,40 @@ impl Realm {
         let global_this = hooks
             .create_global_this(&intrinsics)
             .unwrap_or_else(|| global_object.clone());
-        let environment = Gc::new(DeclarativeEnvironment::global());
+        if ![&global_object, &global_this]
+            .into_iter()
+            .all(|object| root_shape.runtime().same_heap(&object.runtime()))
+        {
+            return Err(JsNativeError::typ()
+                .with_message("host global objects must belong to the realm runtime")
+                .into());
+        }
+        let environment = root_shape
+            .runtime()
+            .heap
+            .allocate(DeclarativeEnvironment::global())
+            .expect("global environment has valid heap edges");
         let scope = Scope::new_global();
 
         let realm = Self {
-            inner: Gc::new(RealmRecord {
-                intrinsics,
-                environment,
-                scope,
-                global_object: global_object.into_record(),
-                global_this: global_this.into_record(),
-                template_map: GcRefCell::default(),
-                loaded_modules: GcRefCell::default(),
-                host_classes: GcRefCell::default(),
-                host_defined: GcRefCell::default(),
-            }),
+            inner: root_shape
+                .runtime()
+                .heap
+                .allocate(RealmRecord {
+                    intrinsics,
+                    environment: environment.record_ref(),
+                    scope,
+                    global_object: roots.retain(global_object),
+                    global_this: roots.retain(global_this),
+                    template_map: RefCell::default(),
+                    loaded_modules: RefCell::default(),
+                    host_classes: RefCell::default(),
+                    host_defined: RefCell::default(),
+                })
+                .expect("realm has valid heap edges"),
         };
 
+        drop(roots);
         realm.initialize();
 
         Ok(realm)
@@ -148,18 +201,29 @@ impl Realm {
         self.inner.host_defined.borrow()
     }
 
-    /// Returns a mutable reference to [`ECMAScript specification`][spec] defined
-    /// [`\[\[\HostDefined]\]`][`HostDefined`] field of the [`Realm`].
+    /// Installs a host value for this realm, replacing the previous value of its type.
     ///
-    /// [spec]: https://tc39.es/ecma262/#table-realm-record-fields
+    /// Any subsequent interior mutation of the value must preserve the trace
+    /// contract and keep its stored edges live in this realm's runtime.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if [`HostDefined`] field is borrowed.
-    #[inline]
-    #[must_use]
-    pub fn host_defined_mut(&self) -> RefMut<'_, HostDefined> {
-        self.inner.host_defined.borrow_mut()
+    /// Returns a `TypeError` if the host data is borrowed or the heap rejects
+    /// an edge reported by the value.
+    pub fn insert_host_defined<T: NativeObject>(&self, value: T) -> JsResult<()> {
+        self.runtime()
+            .heap
+            .with_pending_edges(value, |value| {
+                let previous = self
+                    .inner
+                    .host_defined
+                    .try_borrow_mut()
+                    .map_err(|_| JsNativeError::typ().with_message("realm host data is borrowed"))?
+                    .insert(value);
+                drop(previous);
+                Ok(())
+            })
+            .map_err(|error| JsNativeError::typ().with_message(error.to_string()))?
     }
 
     /// Checks if this `Realm` has the class `C` registered into its class map.
@@ -173,16 +237,20 @@ impl Realm {
 
     /// Gets the constructor and prototype of the class `C` if it is registered in the class map.
     #[must_use]
-    pub fn get_class<C: Class>(&self) -> Option<StandardConstructor> {
+    pub fn get_class<C: Class>(&self) -> Option<ClassConstructor> {
         self.inner
             .host_classes
             .borrow()
             .get(&TypeId::of::<C>())
-            .cloned()
+            .map(ClassConstructor::from_stored)
     }
 
-    pub(crate) fn environment(&self) -> &Gc<DeclarativeEnvironment> {
-        &self.inner.environment
+    pub(crate) fn environment(&self) -> DeclarativeEnvironmentRef {
+        self.inner
+            .environment
+            .upgrade()
+            .expect("environment heap is available")
+            .expect("live realm retains its environment")
     }
 
     /// Returns the scope of this realm.
@@ -199,15 +267,19 @@ impl Realm {
         JsObject::from_inner(self.inner.global_this.clone())
     }
 
-    pub(crate) fn loaded_modules(&self) -> &GcRefCell<FxHashMap<JsString, Module>> {
-        &self.inner.loaded_modules
+    pub(crate) fn insert_loaded_module(&self, specifier: JsString, module: &Module) {
+        let mut loaded_modules = self.inner.loaded_modules.borrow_mut();
+        let edge = loaded_modules
+            .entry(specifier)
+            .or_insert_with(|| module.edge());
+        debug_assert_eq!(edge, &module.edge());
     }
 
     /// Resizes the number of bindings on the global environment.
     pub(crate) fn resize_global_env(&self) {
         let binding_number = self.scope().num_bindings();
-        let env = self
-            .environment()
+        let environment = self.environment();
+        let env = environment
             .kind()
             .as_global()
             .expect("Realm should only store global environments");
@@ -257,24 +329,63 @@ impl Realm {
     }
 
     /// Register a class `C` in this realm.
-    pub fn register_class<C: Class>(&self, spec: StandardConstructor) {
+    pub fn register_class<C: Class>(&self, spec: ClassConstructor) -> JsResult<()> {
+        let runtime = self.runtime();
+        spec.constructor().check_runtime(&runtime)?;
+        spec.prototype().check_runtime(&runtime)?;
         self.inner
             .host_classes
             .borrow_mut()
-            .insert(TypeId::of::<C>(), spec);
+            .insert(TypeId::of::<C>(), spec.stored());
+        Ok(())
     }
 
     /// Unregister a class `C` in this realm.
     #[must_use]
-    pub fn unregister_class<C: Class>(&self) -> Option<StandardConstructor> {
+    pub fn unregister_class<C: Class>(&self) -> Option<ClassConstructor> {
         self.inner
             .host_classes
             .borrow_mut()
             .remove(&TypeId::of::<C>())
+            .as_ref()
+            .map(ClassConstructor::from_stored)
     }
 
-    pub(crate) fn addr(&self) -> *const () {
-        let ptr: *const _ = &raw const *self.inner;
-        ptr.cast()
+    pub(crate) const fn identity(&self) -> surgeist_js_gc::heap::ObjectId {
+        self.inner.handle().erase()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        Context, JsNativeError,
+        builtins::dataview::DataView,
+        object::builtins::{JsArrayBuffer, JsDataView},
+    };
+
+    #[test]
+    fn realm_host_data_retains_local_edges_and_rejects_foreign_edges() {
+        let mut owner = Context::default();
+        let other = Context::default();
+        let buffer = JsArrayBuffer::new(8, &mut owner).unwrap();
+        let buffer_edge = buffer.edge();
+        let view = JsDataView::from_js_array_buffer(buffer, None, None, &mut owner).unwrap();
+        let view_edge = view.edge();
+        let payload = view.borrow().data().clone();
+
+        let error = other
+            .realm()
+            .insert_host_defined(payload.clone())
+            .unwrap_err();
+        assert!(error.as_native().is_some_and(JsNativeError::is_type));
+        assert!(other.realm().host_defined().get::<DataView>().is_none());
+        other.runtime().collect().unwrap();
+
+        owner.realm().insert_host_defined(payload).unwrap();
+        drop(view);
+        owner.runtime().collect().unwrap();
+        assert!(!view_edge.is_live().unwrap());
+        assert!(buffer_edge.is_live().unwrap());
     }
 }

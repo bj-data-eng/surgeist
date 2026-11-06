@@ -1,21 +1,22 @@
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 use crate::{
     Context, JsExpect, JsObject, JsResult, JsValue,
     object::{
-        JsData,
+        JsData, ObjectEdge,
         internal_methods::{
             CallValue, InternalMethodCallContext, InternalObjectMethods, ORDINARY_INTERNAL_METHODS,
         },
     },
+    value::StoredValue,
 };
 
 /// Binds a `Function Object` when `bind` is called.
-#[derive(Debug, Trace, Finalize)]
+#[derive(Debug, HeapTrace)]
 pub struct BoundFunction {
-    target_function: JsObject,
-    this: JsValue,
-    args: Vec<JsValue>,
+    target_function: ObjectEdge,
+    this: StoredValue,
+    args: Vec<StoredValue>,
 }
 
 impl JsData for BoundFunction {
@@ -31,7 +32,7 @@ impl JsData for BoundFunction {
             ..ORDINARY_INTERNAL_METHODS
         };
 
-        if self.target_function.is_constructor() {
+        if self.target_function().is_constructor() {
             &CONSTRUCTOR_METHODS
         } else {
             &FUNCTION_METHODS
@@ -69,30 +70,30 @@ impl BoundFunction {
             context.root_shape(),
             proto,
             Self {
-                target_function,
-                this,
-                args,
+                target_function: target_function.edge(),
+                this: this.clone().into_stored(),
+                args: args.iter().cloned().map(JsValue::into_stored).collect(),
             },
         )
         .upcast())
     }
 
-    /// Get a reference to the bound function's this.
+    /// Returns the bound function's receiver.
     #[must_use]
-    pub const fn this(&self) -> &JsValue {
-        &self.this
+    pub fn this(&self) -> JsValue {
+        self.this.to_value()
     }
 
-    /// Get a reference to the bound function's target function.
+    /// Returns the rooted target function.
     #[must_use]
-    pub const fn target_function(&self) -> &JsObject {
-        &self.target_function
+    pub fn target_function(&self) -> JsObject {
+        JsObject::from_inner(self.target_function.clone())
     }
 
-    /// Get a reference to the bound function's args.
+    /// Returns the bound arguments as rooted values.
     #[must_use]
-    pub fn args(&self) -> &[JsValue] {
-        self.args.as_slice()
+    pub fn args(&self) -> Vec<JsValue> {
+        self.args.iter().map(StoredValue::to_value).collect()
     }
 }
 
@@ -124,7 +125,7 @@ fn bound_function_exotic_call(
     context
         .vm
         .stack
-        .calling_convention_set_this(argument_count, bound_this.clone());
+        .calling_convention_set_this(argument_count, bound_this);
 
     // 3. Let boundArgs be F.[[BoundArguments]].
     let bound_args = bound_function.args();
@@ -133,7 +134,7 @@ fn bound_function_exotic_call(
     context
         .vm
         .stack
-        .calling_convention_insert_arguments(argument_count, bound_args);
+        .calling_convention_insert_arguments(argument_count, &bound_args);
 
     // 5. Return ? Call(target, boundThis, args).
     Ok(target.__call__(bound_args.len() + argument_count))
@@ -171,7 +172,7 @@ fn bound_function_exotic_construct(
     context
         .vm
         .stack
-        .calling_convention_insert_arguments(argument_count, bound_args);
+        .calling_convention_insert_arguments(argument_count, &bound_args);
 
     // 5. If SameValue(F, newTarget) is true, set newTarget to target.
     let function_object: JsValue = function_object.clone().into();

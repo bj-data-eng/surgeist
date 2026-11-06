@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use crate::{
     JsString, SpannedSourceText,
     builtins::function::ThisMode,
@@ -9,7 +11,6 @@ use surgeist_js_ast::{
     function::{FormalParameterList, FunctionBody},
     scope::{FunctionScopes, Scope},
 };
-use surgeist_js_gc::Gc;
 use surgeist_js_interner::Interner;
 
 /// `FunctionCompiler` is used to compile AST functions to bytecode.
@@ -122,7 +123,7 @@ impl FunctionCompiler {
         scopes: &FunctionScopes,
         contains_direct_eval: bool,
         interner: &mut Interner,
-    ) -> Gc<CodeBlock> {
+    ) -> Rc<CodeBlock> {
         self.strict = self.strict || body.strict();
 
         let length = parameters.length();
@@ -227,6 +228,6 @@ impl FunctionCompiler {
 
         let code = compiler.finish();
 
-        Gc::new(code)
+        Rc::new(code)
     }
 }

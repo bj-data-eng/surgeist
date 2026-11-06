@@ -14,8 +14,6 @@ use std::{
     sync::atomic,
 };
 
-use surgeist_js_gc::{Ephemeron, Gc, GcRefCell, Trace, WeakGc, WeakMap};
-
 use super::internal_methods::{InternalObjectMethods, ORDINARY_INTERNAL_METHODS};
 
 /// Represents a type that can be stored inside a `JsObject`.
@@ -25,16 +23,19 @@ use super::internal_methods::{InternalObjectMethods, ORDINARY_INTERNAL_METHODS};
 /// # Example
 ///
 /// ```
-/// use surgeist_js::{Finalize, JsData, JsObject, Trace};
+/// use surgeist_js::{JsData, JsObject};
 ///
-/// #[derive(Trace, Finalize, JsData)]
+/// #[derive(JsData, surgeist_js::gc::heap::Trace)]
 /// struct CustomStruct {
-///     #[unsafe_ignore_trace]
 ///     counter: usize,
 /// }
 ///
-/// let object =
-///     JsObject::from_proto_and_data(None, CustomStruct { counter: 5 });
+/// let object = JsObject::from_proto_and_data(
+///     &surgeist_js::Runtime::default(),
+///     None,
+///     CustomStruct { counter: 5 },
+/// )
+/// .unwrap();
 ///
 /// assert_eq!(object.downcast_ref::<CustomStruct>().unwrap().counter, 5);
 /// ```
@@ -119,16 +120,11 @@ macro_rules! fn_impls {
     () => {
         fn_one!(extern "Rust" fn () -> Ret);
         fn_one!(extern "C" fn () -> Ret);
-        fn_one!(unsafe extern "Rust" fn () -> Ret);
-        fn_one!(unsafe extern "C" fn () -> Ret);
     };
     ($($args:ident),*) => {
         fn_one!(extern "Rust" fn ($($args),*) -> Ret, $($args),*);
         fn_one!(extern "C" fn ($($args),*) -> Ret, $($args),*);
         fn_one!(extern "C" fn ($($args),*, ...) -> Ret, $($args),*);
-        fn_one!(unsafe extern "Rust" fn ($($args),*) -> Ret, $($args),*);
-        fn_one!(unsafe extern "C" fn ($($args),*) -> Ret, $($args),*);
-        fn_one!(unsafe extern "C" fn ($($args),*, ...) -> Ret, $($args),*);
     }
 }
 
@@ -200,13 +196,3 @@ impl<T> JsData for Cell<Option<T>> {}
 
 #[cfg(feature = "intl")]
 default_impls!(icu_locale::Locale);
-
-impl<T: Trace + ?Sized> JsData for Gc<T> {}
-
-impl<T: Trace + ?Sized> JsData for WeakGc<T> {}
-
-impl<T: Trace + ?Sized, V: Trace> JsData for Ephemeron<T, V> {}
-
-impl<T: Trace + ?Sized> JsData for GcRefCell<T> {}
-
-impl<K: Trace + ?Sized, V: Trace> JsData for WeakMap<K, V> {}

@@ -2,18 +2,19 @@
 //!
 //! This module will provides everything needed to implement the `CallFrame`
 
-use super::ActiveRunnable;
+use std::rc::Rc;
+
+use super::{ActiveRunnable, StoredActiveRunnable};
 use crate::{
     JsValue,
-    builtins::iterable::IteratorRecord,
+    builtins::iterable::{IteratorRecord, StoredIteratorRecord},
     bytecompiler::Register,
-    environments::EnvironmentStack,
-    realm::Realm,
+    environments::{EnvironmentStack, StoredEnvironmentStack},
+    realm::{Realm, RealmEdge},
     vm::{CodeBlock, SourcePath},
 };
 use surgeist_js_ast::Position;
 use surgeist_js_ast::scope::BindingLocator;
-use surgeist_js_gc::{Finalize, Gc, Trace};
 use surgeist_js_string::JsString;
 use thin_vec::ThinVec;
 
@@ -44,9 +45,9 @@ pub struct CallFrameLocation {
 }
 
 /// A `CallFrame` holds the state of a function call.
-#[derive(Clone, Debug, Finalize, Trace)]
+#[derive(Clone, Debug)]
 pub struct CallFrame {
-    pub(crate) code_block: Gc<CodeBlock>,
+    pub(crate) code_block: Rc<CodeBlock>,
     pub(crate) pc: u32,
     /// The frame pointer, points to the start of this frame's data in the stack
     /// (i.e., the `this` value position).
@@ -61,8 +62,6 @@ pub struct CallFrame {
     pub(crate) iterators: ThinVec<IteratorRecord>,
 
     // The stack of bindings being updated.
-    // SAFETY: Nothing in `BindingLocator` requires tracing, so this is safe.
-    #[unsafe_ignore_trace]
     pub(crate) binding_stack: ThinVec<BindingLocator>,
 
     /// How many iterations a loop has done.
@@ -77,9 +76,75 @@ pub struct CallFrame {
     /// \[\[Realm\]\]
     pub(crate) realm: Realm,
 
-    // SAFETY: Nothing in `CallFrameFlags` requires tracing, so this is safe.
-    #[unsafe_ignore_trace]
     pub(crate) flags: CallFrameFlags,
+}
+
+/// The suspended state of a frame. Its owner traces these edges.
+#[derive(Debug, Clone, surgeist_js_gc::heap::Trace)]
+pub(crate) struct StoredCallFrame {
+    #[heap_trace(skip)]
+    code_block: Rc<CodeBlock>,
+    pc: u32,
+    fp: u32,
+    argument_count: u32,
+    env_fp: u32,
+    rp: u32,
+    iterators: ThinVec<StoredIteratorRecord>,
+    #[heap_trace(skip)]
+    binding_stack: ThinVec<BindingLocator>,
+    loop_iteration_count: u64,
+    active_runnable: Option<StoredActiveRunnable>,
+    environments: StoredEnvironmentStack,
+    realm: RealmEdge,
+    #[heap_trace(skip)]
+    flags: CallFrameFlags,
+}
+
+impl StoredCallFrame {
+    pub(crate) fn to_frame(&self) -> CallFrame {
+        CallFrame {
+            code_block: self.code_block.clone(),
+            pc: self.pc,
+            fp: self.fp,
+            argument_count: self.argument_count,
+            env_fp: self.env_fp,
+            rp: self.rp,
+            iterators: self
+                .iterators
+                .iter()
+                .map(StoredIteratorRecord::to_iterator)
+                .collect(),
+            binding_stack: self.binding_stack.clone(),
+            loop_iteration_count: self.loop_iteration_count,
+            active_runnable: self
+                .active_runnable
+                .as_ref()
+                .map(StoredActiveRunnable::to_runnable),
+            environments: self.environments.to_stack(),
+            realm: Realm::from_edge(self.realm.clone()),
+            flags: self.flags,
+        }
+    }
+}
+
+impl CallFrame {
+    pub(crate) fn stored(&self) -> StoredCallFrame {
+        StoredCallFrame {
+            code_block: self.code_block.clone(),
+            pc: self.pc,
+            fp: self.fp,
+            argument_count: self.argument_count,
+            env_fp: self.env_fp,
+            rp: self.rp,
+            iterators: self.iterators.iter().map(IteratorRecord::stored).collect(),
+            binding_stack: self.binding_stack.clone(),
+            loop_iteration_count: self.loop_iteration_count,
+            active_runnable: self.active_runnable.as_ref().map(ActiveRunnable::stored),
+            environments: self.environments.stored(),
+            realm: self.realm.edge(),
+            flags: self.flags,
+        }
+    }
 }
 
 /// ---- `CallFrame` public API ----
@@ -87,7 +152,7 @@ impl CallFrame {
     /// Retrieves the [`CodeBlock`] of this call frame.
     #[inline]
     #[must_use]
-    pub const fn code_block(&self) -> &Gc<CodeBlock> {
+    pub const fn code_block(&self) -> &Rc<CodeBlock> {
         &self.code_block
     }
 
@@ -136,7 +201,7 @@ impl CallFrame {
 
     /// Creates a new `CallFrame` with the provided `CodeBlock`.
     pub(crate) fn new(
-        code_block: Gc<CodeBlock>,
+        code_block: Rc<CodeBlock>,
         active_runnable: Option<ActiveRunnable>,
         environments: EnvironmentStack,
         realm: Realm,

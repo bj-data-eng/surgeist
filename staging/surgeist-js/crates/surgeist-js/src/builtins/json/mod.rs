@@ -13,14 +13,14 @@
 //! [json]: https://www.json.org/json-en.html
 //! [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON
 
-use std::{borrow::Cow, iter::once};
+use std::{borrow::Cow, iter::once, rc::Rc};
 
 use rustc_hash::FxHashSet;
 
-use surgeist_js_ast::scope::Scope;
-use surgeist_js_gc::{Finalize, Gc, Trace};
-use surgeist_js_macros::utf16;
 use itertools::Itertools;
+use surgeist_js_ast::scope::Scope;
+use surgeist_js_gc::heap::Trace as HeapTrace;
+use surgeist_js_macros::utf16;
 
 use crate::JsExpect;
 use crate::{
@@ -54,7 +54,7 @@ const fn to_hex_digit(val: u16) -> u16 {
 mod tests;
 
 /// Marker struct for the `[[IsRawJSON]]` internal slot.
-#[derive(Debug, Trace, Finalize, JsData)]
+#[derive(Debug, JsData, HeapTrace)]
 pub(crate) struct RawJson;
 
 /// A tree node representing the structure of parsed JSON, preserving source
@@ -83,7 +83,10 @@ struct JsonSourceVisitor<'a> {
 
 impl<'a> JsonSourceVisitor<'a> {
     /// Creates a new `JsonSourceVisitor`.
-    fn new(source_text: &'a surgeist_js_ast::SourceText, interner: &'a surgeist_js_interner::Interner) -> Self {
+    fn new(
+        source_text: &'a surgeist_js_ast::SourceText,
+        interner: &'a surgeist_js_interner::Interner,
+    ) -> Self {
         Self {
             source_text,
             interner,
@@ -307,7 +310,7 @@ impl Json {
                 SourcePath::Json,
             );
             compiler.compile_statement_list(script.statements(), true, false);
-            Gc::new(compiler.finish())
+            Rc::new(compiler.finish())
         };
 
         let realm = context.realm().clone();
@@ -568,7 +571,7 @@ impl Json {
 
         // 3. Let internalSlotsList be « [[IsRawJSON]] ».
         // 4. Let obj be OrdinaryObjectCreate(null, internalSlotsList).
-        let obj = JsObject::from_proto_and_data(None::<JsObject>, RawJson);
+        let obj = JsObject::from_proto_and_data(context.runtime(), None::<JsObject>, RawJson)?;
 
         // 5. Perform ! CreateDataPropertyOrThrow(obj, "rawJSON", jsonString).
         obj.create_data_property_or_throw(js_string!("rawJSON"), json_string, context)

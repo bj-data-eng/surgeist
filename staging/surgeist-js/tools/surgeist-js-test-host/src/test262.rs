@@ -6,18 +6,21 @@ use std::{
     time::Duration,
 };
 
+use bus::BusReader;
 #[cfg(feature = "annex-b")]
 use surgeist_js::builtins::is_html_dda::IsHTMLDDA;
 use surgeist_js::{
     Context, JsArgs, JsNativeError, JsResult, JsValue, Source,
-    builtins::array_buffer::{ArrayBuffer, SharedArrayBuffer},
+    builtins::array_buffer::SharedArrayBuffer,
+    gc::heap::Trace,
     js_string,
-    native_function::NativeFunction,
-    object::{JsObject, ObjectInitializer, builtins::JsSharedArrayBuffer},
+    native_function::{NativeCapture, NativeFunction},
+    object::{
+        JsObject, ObjectInitializer,
+        builtins::{JsArrayBuffer, JsSharedArrayBuffer},
+    },
     property::Attribute,
 };
-use bus::BusReader;
-use surgeist_js_gc::{Finalize, Trace};
 
 /// Result of a worker thread execution.
 #[derive(Debug)]
@@ -90,10 +93,14 @@ impl Drop for WorkerHandles {
 /// # Panics
 ///
 /// Panics if any of the expected global properties cannot be defined.
-pub fn register_js262(handles: WorkerHandles, console: bool, context: &mut Context) -> JsObject {
+pub fn register_js262(
+    handles: WorkerHandles,
+    console: bool,
+    context: &mut Context,
+) -> JsResult<JsObject> {
     let global_obj = context.global_object();
 
-    let agent = agent_obj(handles, console, context);
+    let agent = agent_obj(handles, console, context)?;
 
     let js262 = ObjectInitializer::new(context)
         .function(
@@ -122,41 +129,36 @@ pub fn register_js262(handles: WorkerHandles, console: bool, context: &mut Conte
             agent,
             Attribute::WRITABLE | Attribute::CONFIGURABLE,
         )
-        .build();
+        .build()?;
 
     #[cfg(feature = "annex-b")]
-    js262
-        .create_data_property_or_throw(
-            js_string!("IsHTMLDDA"),
-            JsObject::from_proto_and_data(None, IsHTMLDDA),
-            context,
-        )
-        .expect("the IsHTMLDDA property must be definable");
+    js262.create_data_property_or_throw(
+        js_string!("IsHTMLDDA"),
+        JsObject::from_proto_and_data(context.runtime(), None, IsHTMLDDA)?,
+        context,
+    )?;
 
-    context
-        .register_global_property(
-            js_string!("$262"),
-            js262.clone(),
-            Attribute::WRITABLE | Attribute::CONFIGURABLE,
-        )
-        .expect("shouldn't fail with the default global");
+    context.register_global_property(
+        js_string!("$262"),
+        js262.clone(),
+        Attribute::WRITABLE | Attribute::CONFIGURABLE,
+    )?;
 
-    js262
+    Ok(js262)
 }
 
 /// The `$262.createRealm()` function.
 ///
 /// Creates a new ECMAScript Realm, defines this API on the new realm's global object, and
 /// returns the `$262` property of the new realm's global object.
-#[allow(clippy::unnecessary_wraps)]
 fn create_realm(_: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
     let mut realm = context.create_realm()?;
 
-    realm = context.enter_realm(realm);
+    realm = context.enter_realm(realm)?;
     let js262 = register_js262(WorkerHandles::new(), false, context);
-    context.enter_realm(realm);
+    context.enter_realm(realm)?;
 
-    Ok(JsValue::new(js262))
+    js262.map(JsValue::from)
 }
 
 /// The `$262.detachArrayBuffer()` function.
@@ -168,11 +170,11 @@ fn detach_array_buffer(_: &JsValue, args: &[JsValue], _: &mut Context) -> JsResu
     }
 
     // 1. Assert: IsSharedArrayBuffer(arrayBuffer) is false.
-    let object = args.first().and_then(JsValue::as_object);
-    let mut array_buffer = object
-        .as_ref()
-        .and_then(|o| o.downcast_mut::<ArrayBuffer>())
+    let object = args
+        .first()
+        .and_then(JsValue::as_object)
         .ok_or_else(type_err)?;
+    let array_buffer = JsArrayBuffer::from_object(object).map_err(|_| type_err())?;
 
     // 2. If key is not present, set key to undefined.
     let key = args.get_or_undefined(1);
@@ -180,7 +182,7 @@ fn detach_array_buffer(_: &JsValue, args: &[JsValue], _: &mut Context) -> JsResu
     // 3. If SameValue(arrayBuffer.[[ArrayBufferDetachKey]], key) is false, throw a TypeError exception.
     // 4. Set arrayBuffer.[[ArrayBufferData]] to null.
     // 5. Set arrayBuffer.[[ArrayBufferByteLength]] to 0.
-    array_buffer.detach(key)?;
+    array_buffer.detach_if_attached(key)?;
 
     // 6. Return NormalCompletion(null).
     Ok(JsValue::null())
@@ -201,9 +203,11 @@ fn eval_script(_this: &JsValue, args: &[JsValue], context: &mut Context) -> JsRe
 /// Wraps the host's garbage collection invocation mechanism, if such a capability exists.
 /// Must throw an exception if no capability exists. This is necessary for testing the
 /// semantics of any feature that relies on garbage collection, e.g. the `WeakRef` API.
-#[allow(clippy::unnecessary_wraps)]
-fn gc(_this: &JsValue, _: &[JsValue], _context: &mut Context) -> JsResult<JsValue> {
-    surgeist_js_gc::force_collect();
+fn gc(_this: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    context
+        .runtime()
+        .collect()
+        .map_err(|error| JsNativeError::error().with_message(error.to_string()))?;
     Ok(JsValue::undefined())
 }
 
@@ -225,36 +229,64 @@ fn monotonic_now(_: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<
 
 // Agent transports only carry shared byte buffers, UTF-16 reports, and
 // native worker handles. They never hold objects from a JavaScript heap.
-#[derive(Clone, Trace, Finalize)]
-struct AgentBus(#[unsafe_ignore_trace] Rc<RefCell<bus::Bus<SharedArrayBuffer>>>);
+#[derive(Clone, Trace)]
+struct AgentBus(#[heap_trace(skip)] Rc<RefCell<bus::Bus<SharedArrayBuffer>>>);
 
-#[derive(Trace, Finalize)]
+#[derive(Trace)]
 struct AgentStart {
     bus: AgentBus,
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     reports: Sender<Vec<u16>>,
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     handles: WorkerHandles,
     console: bool,
 }
 
-#[derive(Trace, Finalize)]
-struct AgentReports(#[unsafe_ignore_trace] Receiver<Vec<u16>>);
+#[derive(Trace)]
+struct AgentReports(#[heap_trace(skip)] Receiver<Vec<u16>>);
 
-#[derive(Trace, Finalize)]
-struct WorkerBroadcasts(#[unsafe_ignore_trace] RefCell<BusReader<SharedArrayBuffer>>);
+#[derive(Trace)]
+struct WorkerBroadcasts(#[heap_trace(skip)] RefCell<BusReader<SharedArrayBuffer>>);
 
-#[derive(Trace, Finalize)]
-struct WorkerReports(#[unsafe_ignore_trace] Sender<Vec<u16>>);
+#[derive(Trace)]
+struct WorkerReports(#[heap_trace(skip)] Sender<Vec<u16>>);
+
+#[derive(Trace)]
+struct AgentCapture<T: Trace> {
+    state: Rc<T>,
+}
+
+impl<T: Trace> AgentCapture<T> {
+    fn new(state: T) -> Self {
+        Self {
+            state: Rc::new(state),
+        }
+    }
+}
+
+impl<T: Trace> NativeCapture for AgentCapture<T> {
+    type Stored = Self;
+
+    fn store(&self) -> Self {
+        Self {
+            state: self.state.clone(),
+        }
+    }
+
+    fn restore(stored: &Self) -> Self {
+        stored.store()
+    }
+}
 
 /// Initializes the `$262.agent` object in the main agent.
-fn agent_obj(handles: WorkerHandles, console: bool, context: &mut Context) -> JsObject {
+fn agent_obj(handles: WorkerHandles, console: bool, context: &mut Context) -> JsResult<JsObject> {
     let bus = AgentBus(Rc::new(RefCell::new(bus::Bus::new(1))));
 
     let (reports_tx, reports_rx) = mpsc::channel();
 
     let start = NativeFunction::from_fn_with_captures(
         |_, args, state, context| {
+            let state = &state.state;
             let script = args
                 .get_or_undefined(0)
                 .to_string(context)?
@@ -265,37 +297,45 @@ fn agent_obj(handles: WorkerHandles, console: bool, context: &mut Context) -> Js
             let tx = state.reports.clone();
             let console = state.console;
 
-            state.handles.0.borrow_mut().push(std::thread::spawn(move || {
-                let context = &mut Context::builder()
-                    .can_block(true)
-                    .build()
-                    .map_err(|e| e.to_string())?;
-                register_js262_worker(rx, tx, context);
+            state
+                .handles
+                .0
+                .borrow_mut()
+                .push(std::thread::spawn(move || {
+                    let context = &mut Context::builder()
+                        .can_block(true)
+                        .build()
+                        .map_err(|e| e.to_string())?;
+                    register_js262_worker(rx, tx, context).map_err(|e| e.to_string())?;
 
-                if console {
-                    let console = crate::Console::init(context);
+                    if console {
+                        let console = crate::Console::init(context).map_err(|e| e.to_string())?;
 
-                    context
-                        .register_global_property(crate::Console::NAME, console, Attribute::all())
-                        .expect("the console builtin shouldn't exist");
-                }
+                        context
+                            .register_global_property(
+                                crate::Console::NAME,
+                                console,
+                                Attribute::all(),
+                            )
+                            .expect("the console builtin shouldn't exist");
+                    }
 
-                let src = Source::from_bytes(&script);
+                    let src = Source::from_bytes(&script);
 
-                context.eval(src).map_err(|e| e.to_string())?;
-                context.run_jobs().map_err(|e| e.to_string())?;
+                    context.eval(src).map_err(|e| e.to_string())?;
+                    context.run_jobs().map_err(|e| e.to_string())?;
 
-                Ok(())
-            }));
+                    Ok(())
+                }));
 
             Ok(JsValue::undefined())
         },
-        AgentStart {
+        AgentCapture::new(AgentStart {
             bus: bus.clone(),
             reports: reports_tx,
             handles,
             console,
-        },
+        }),
     );
 
     // Test262 does not use the second numeric argument.
@@ -311,22 +351,22 @@ fn agent_obj(handles: WorkerHandles, console: bool, context: &mut Context) -> Js
                 })?
                 .clone();
 
-            bus.0.borrow_mut().broadcast(buffer);
+            bus.state.0.borrow_mut().broadcast(buffer);
 
             Ok(JsValue::undefined())
         },
-        bus,
+        AgentCapture::new(bus),
     );
 
     let get_report = NativeFunction::from_fn_with_captures(
         |_, _, reports, _| {
-            let Ok(msg) = reports.0.try_recv() else {
+            let Ok(msg) = reports.state.0.try_recv() else {
                 return Ok(JsValue::null());
             };
 
             Ok(js_string!(&msg[..]).into())
         },
-        AgentReports(reports_rx),
+        AgentCapture::new(AgentReports(reports_rx)),
     );
 
     ObjectInitializer::new(context)
@@ -347,11 +387,11 @@ fn register_js262_worker(
     rx: BusReader<SharedArrayBuffer>,
     tx: Sender<Vec<u16>>,
     context: &mut Context,
-) {
+) -> JsResult<()> {
     // Test262 does not use the second numeric argument.
     let receive_broadcast = NativeFunction::from_fn_with_captures(
         |_, args, broadcasts, context| {
-            let array = broadcasts.0.borrow_mut().recv().map_err(|err| {
+            let array = broadcasts.state.0.borrow_mut().recv().map_err(|err| {
                 JsNativeError::typ().with_message(format!("failed to receive buffer: {err}"))
             })?;
 
@@ -363,17 +403,20 @@ fn register_js262_worker(
             let buffer = JsSharedArrayBuffer::from_buffer(array, context);
             callable.call(&JsValue::undefined(), &[buffer.into()], context)
         },
-        WorkerBroadcasts(RefCell::new(rx)),
+        AgentCapture::new(WorkerBroadcasts(RefCell::new(rx))),
     );
 
     let report = NativeFunction::from_fn_with_captures(
         |_, args, reports, context| {
             let string = args.get_or_undefined(0).to_string(context)?.to_vec();
-            reports.0.send(string)
+            reports
+                .state
+                .0
+                .send(string)
                 .map_err(|e| JsNativeError::typ().with_message(e.to_string()))?;
             Ok(JsValue::undefined())
         },
-        WorkerReports(tx),
+        AgentCapture::new(WorkerReports(tx)),
     );
 
     let agent = ObjectInitializer::new(context)
@@ -392,7 +435,7 @@ fn register_js262_worker(
             js_string!("monotonicNow"),
             0,
         )
-        .build();
+        .build()?;
 
     let js262 = ObjectInitializer::new(context)
         .property(
@@ -400,13 +443,11 @@ fn register_js262_worker(
             agent,
             Attribute::WRITABLE | Attribute::CONFIGURABLE,
         )
-        .build();
+        .build()?;
 
-    context
-        .register_global_property(
-            js_string!("$262"),
-            js262,
-            Attribute::WRITABLE | Attribute::CONFIGURABLE,
-        )
-        .expect("shouldn't fail with the default global");
+    context.register_global_property(
+        js_string!("$262"),
+        js262,
+        Attribute::WRITABLE | Attribute::CONFIGURABLE,
+    )
 }

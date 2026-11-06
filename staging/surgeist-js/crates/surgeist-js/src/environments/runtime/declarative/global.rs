@@ -1,16 +1,18 @@
-use crate::{JsValue, value::StoredValue};
-use surgeist_js_gc::{Finalize, GcRefCell, Trace};
+use std::cell::RefCell;
 
-#[derive(Debug, Trace, Finalize)]
+use crate::{JsValue, value::StoredValue};
+use surgeist_js_gc::heap::Trace;
+
+#[derive(Debug, Trace)]
 pub(crate) struct GlobalEnvironment {
-    bindings: GcRefCell<Vec<Option<StoredValue>>>,
+    bindings: RefCell<Vec<Option<StoredValue>>>,
 }
 
 impl GlobalEnvironment {
     /// Creates a new `GlobalEnvironment`.
     pub(crate) fn new() -> Self {
         Self {
-            bindings: GcRefCell::new(Vec::new()),
+            bindings: RefCell::new(Vec::new()),
         }
     }
 

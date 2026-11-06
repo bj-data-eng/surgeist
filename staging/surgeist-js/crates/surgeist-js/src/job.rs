@@ -18,26 +18,20 @@
 //! - [`SimpleJobExecutor`], which is a simple FIFO queue that runs all jobs to completion, bailing
 //!   on the first error encountered. This simple executor will block on any async job queued.
 //!
-//! ## [`Trace`]?
-//!
-//! Most of the types defined in this module don't implement `Trace`. This is because most jobs can only
-//! be run once, and putting a `JobExecutor` on a garbage collected object is not allowed.
-//!
-//! In addition to that, not implementing `Trace` makes it so that the garbage collector can consider
-//! any captured variables inside jobs as roots, since you cannot store jobs within a [`Gc`].
+//! Queued jobs own the roots of their captured values. Callback records stored on the runtime heap
+//! instead report their edges through the stored form.
 //!
 //! [Job]: https://tc39.es/ecma262/#sec-jobs
 //! [JobCallback]: https://tc39.es/ecma262/#sec-jobcallback-records
-//! [`Gc`]: surgeist_js_gc::Gc
 
 use crate::context::time::{JsDuration, JsInstant};
 use crate::sys::time;
 use crate::{
-    Context, JsResult, JsValue,
-    object::{JsFunction, NativeObject},
+    Context, JsNativeError, JsResult, JsValue,
+    native_function::NativeCapture,
+    object::{JsFunction, JsObject, ObjectEdge},
     realm::Realm,
 };
-use surgeist_js_gc::{Finalize, Trace};
 use futures_concurrency::future::FutureGroup;
 use futures_lite::{StreamExt, future};
 use portable_atomic::AtomicBool;
@@ -48,7 +42,11 @@ use std::mem;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::task::Poll;
 use std::{cell::RefCell, collections::VecDeque, fmt::Debug, future::Future, pin::Pin};
+use surgeist_js_gc::heap::{AccessError, EdgeVisitor, Trace as HeapTrace};
+
+pub use crate::builtins::finalization_registry::FinalizationRegistryCleanupJob;
 
 /// An ECMAScript [Job Abstract Closure].
 ///
@@ -110,7 +108,7 @@ impl NativeJob {
         // implementation-defined steps such that execution is prepared to evaluate ECMAScript
         // code at the time of job's invocation.
         if let Some(realm) = self.realm {
-            let old_realm = context.enter_realm(realm);
+            let old_realm = context.enter_realm(realm)?;
 
             // Let scriptOrModule be GetActiveScriptOrModule() at the time HostEnqueuePromiseJob is
             // invoked. If realm is not null, each time job is invoked the implementation must
@@ -118,7 +116,7 @@ impl NativeJob {
             // module at the time of job's invocation.
             let result = (self.f)(context);
 
-            context.enter_realm(old_realm);
+            context.enter_realm(old_realm)?;
 
             result
         } else {
@@ -187,7 +185,7 @@ impl NativeJobFn {
         // implementation-defined steps such that execution is prepared to evaluate ECMAScript
         // code at the time of job's invocation.
         if let Some(realm) = self.realm.clone() {
-            let old_realm = context.enter_realm(realm);
+            let old_realm = context.enter_realm(realm)?;
 
             // Let scriptOrModule be GetActiveScriptOrModule() at the time HostEnqueuePromiseJob is
             // invoked. If realm is not null, each time job is invoked the implementation must
@@ -195,7 +193,7 @@ impl NativeJobFn {
             // module at the time of job's invocation.
             let result = (self.f)(context);
 
-            context.enter_realm(old_realm);
+            context.enter_realm(old_realm)?;
 
             result
         } else {
@@ -541,30 +539,31 @@ impl NativeAsyncJob {
         let realm = self.realm;
 
         let mut future = if let Some(realm) = &realm {
-            let old_realm = context.borrow_mut().enter_realm(realm.clone());
+            let entered = context.borrow_mut().enter_realm(realm.clone());
+            entered.and_then(|old_realm| {
+                // Let scriptOrModule be GetActiveScriptOrModule() at the time HostEnqueuePromiseJob is
+                // invoked. If realm is not null, each time job is invoked the implementation must
+                // perform implementation-defined steps such that scriptOrModule is the active script or
+                // module at the time of job's invocation.
+                let result = (self.f)(context);
 
-            // Let scriptOrModule be GetActiveScriptOrModule() at the time HostEnqueuePromiseJob is
-            // invoked. If realm is not null, each time job is invoked the implementation must
-            // perform implementation-defined steps such that scriptOrModule is the active script or
-            // module at the time of job's invocation.
-            let result = (self.f)(context);
-
-            context.borrow_mut().enter_realm(old_realm);
-            result
+                context.borrow_mut().enter_realm(old_realm)?;
+                Ok(result)
+            })
         } else {
-            (self.f)(context)
+            Ok((self.f)(context))
         };
 
         std::future::poll_fn(move |cx| {
-            // We need to do the same dance again since the inner code could assume we're still
-            // on the same realm.
+            let future = match &mut future {
+                Ok(future) => future,
+                Err(error) => return Poll::Ready(Err(error.clone())),
+            };
             if let Some(realm) = &realm {
-                let old_realm = context.borrow_mut().enter_realm(realm.clone());
-
-                let poll_result = future.as_mut().poll(cx);
-
-                context.borrow_mut().enter_realm(old_realm);
-                poll_result
+                let old_realm = context.borrow_mut().enter_realm(realm.clone())?;
+                let result = future.as_mut().poll(cx);
+                context.borrow_mut().enter_realm(old_realm)?;
+                result
             } else {
                 future.as_mut().poll(cx)
             }
@@ -638,28 +637,105 @@ impl PromiseJob {
 /// [`JobCallback`][spec] records.
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-jobcallback-records
-#[derive(Trace, Finalize)]
 pub struct JobCallback {
     callback: JsFunction,
-    host_defined: Box<dyn NativeObject>,
+    host_defined: Box<dyn JobCallbackHost>,
+}
+
+#[derive(Clone, HeapTrace)]
+pub(crate) struct StoredJobCallback {
+    callback: ObjectEdge,
+    host_defined: Rc<dyn StoredJobCallbackHost>,
+}
+
+impl StoredJobCallback {
+    pub(crate) fn to_callback(&self) -> JobCallback {
+        JobCallback {
+            callback: JsFunction::from_record(self.callback.clone()),
+            host_defined: self.host_defined.restore(),
+        }
+    }
+}
+
+trait JobCallbackHost: Any {
+    fn store(&self) -> Rc<dyn StoredJobCallbackHost>;
+}
+
+impl<T: NativeCapture> JobCallbackHost for T {
+    fn store(&self) -> Rc<dyn StoredJobCallbackHost> {
+        Rc::new(CapturedJobCallbackHost::<T>(NativeCapture::store(self)))
+    }
+}
+
+trait StoredJobCallbackHost: HeapTrace {
+    fn restore(&self) -> Box<dyn JobCallbackHost>;
+}
+
+struct CapturedJobCallbackHost<T: NativeCapture>(T::Stored);
+
+impl<T: NativeCapture> HeapTrace for CapturedJobCallbackHost<T> {
+    fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+        self.0.trace(edges)
+    }
+}
+
+impl<T: NativeCapture> StoredJobCallbackHost for CapturedJobCallbackHost<T> {
+    fn restore(&self) -> Box<dyn JobCallbackHost> {
+        Box::new(T::restore(&self.0))
+    }
 }
 
 impl Debug for JobCallback {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("JobCallback")
             .field("callback", &self.callback)
-            .field("host_defined", &"dyn NativeObject")
+            .field("host_defined", &"dyn Any")
             .finish()
     }
 }
 
 impl JobCallback {
     /// Creates a new `JobCallback`.
+    ///
+    /// The host data must describe how to store and restore its captured values
+    /// if the callback is retained by a JavaScript object.
     #[inline]
-    pub fn new<T: NativeObject>(callback: JsFunction, host_defined: T) -> Self {
+    pub fn new<T: NativeCapture>(callback: JsFunction, host_defined: T) -> Self {
         Self {
             callback,
             host_defined: Box::new(host_defined),
+        }
+    }
+
+    pub(crate) fn from_host(callback: JsFunction, context: &mut Context) -> JsResult<Self> {
+        callback.check_runtime(context.runtime())?;
+        let job = context
+            .host_hooks()
+            .make_job_callback(callback.clone(), context);
+        if !JsObject::equals(&callback, job.callback()) {
+            return Err(JsNativeError::typ()
+                .with_message("host job callback must retain the requested function")
+                .into());
+        }
+        Ok(job)
+    }
+
+    pub(crate) fn call(
+        &self,
+        this: &JsValue,
+        args: &[JsValue],
+        context: &mut Context,
+    ) -> JsResult<JsValue> {
+        let result = context
+            .host_hooks()
+            .call_job_callback(self, this, args, context);
+        context.runtime().admit_callback_result(result)
+    }
+
+    pub(crate) fn to_stored(&self) -> StoredJobCallback {
+        StoredJobCallback {
+            callback: self.callback.clone().into_record(),
+            host_defined: self.host_defined.store(),
         }
     }
 
@@ -670,16 +746,16 @@ impl JobCallback {
         &self.callback
     }
 
-    /// Gets a reference to the host defined additional field as an [`NativeObject`] trait object.
+    /// Gets a reference to the host defined additional field as a Rust [`Any`] value.
     #[inline]
     #[must_use]
-    pub fn host_defined(&self) -> &dyn NativeObject {
+    pub fn host_defined(&self) -> &dyn Any {
         &*self.host_defined
     }
 
-    /// Gets a mutable reference to the host defined additional field as an [`NativeObject`] trait object.
+    /// Gets a mutable reference to the host defined additional field as a Rust [`Any`] value.
     #[inline]
-    pub fn host_defined_mut(&mut self) -> &mut dyn NativeObject {
+    pub fn host_defined_mut(&mut self) -> &mut dyn Any {
         &mut *self.host_defined
     }
 }
@@ -727,13 +803,11 @@ pub enum Job {
     ///
     /// See [`GenericJob`] for more information.
     GenericJob(GenericJob),
-    /// A job that will eventually cleanup a `FinalizationRegistry`.
+    /// A subscription that yields cleanup jobs for a `FinalizationRegistry`.
     ///
-    /// This job differs slightly from the [spec]; originally it's defined
-    /// as being enqueued exactly when a `FinalizationRegistry` needs to call
-    /// `FinalizationRegistry::cleanup`, but here it's defined as an async
-    /// job that suspends execution until it receives a signal from the engine
-    /// that the `FinalizationRegistry` needs to be cleaned up.
+    /// The engine enqueues the subscription once when it creates the registry. The executor
+    /// can retain it across calls to [`JobExecutor::run_jobs`] and take a cleanup job each
+    /// time the engine signals that the registry needs cleanup.
     ///
     /// # Execution
     ///
@@ -745,16 +819,14 @@ pub enum Job {
     /// > callbacks for any reason, e.g., if the `FinalizationRegistry` itself becomes
     /// > dead, or if the application is shutting down.
     ///
-    /// For this reason, it is recommended to exclude `FinalizationRegistry` cleanup
-    /// jobs from any condition that exits from [`JobExecutor::run_jobs`].
+    /// Waiting subscriptions should allow [`JobExecutor::run_jobs`] to return when idle.
     ///
     /// By the same token, it is recommended to execute `FinalizationRegistry` cleanup
     /// jobs separately from all other enqueued [`NativeAsyncJob`]s, prioritizing the
     /// execution of all other jobs if possible.
     ///
-    /// [spec]: https://tc39.es/ecma262/#sec-weakref-host-hooks
     /// [execution]: https://tc39.es/ecma262/#sec-weakref-execution
-    FinalizationRegistryCleanupJob(NativeAsyncJob),
+    FinalizationRegistryCleanupJob(FinalizationRegistryCleanupJob),
 }
 
 impl From<NativeAsyncJob> for Job {
@@ -870,7 +942,7 @@ impl ClockJob {
 pub struct SimpleJobExecutor {
     promise_jobs: RefCell<VecDeque<PromiseJob>>,
     async_jobs: RefCell<VecDeque<NativeAsyncJob>>,
-    finalization_registry_jobs: RefCell<VecDeque<NativeAsyncJob>>,
+    finalization_registry_subscriptions: RefCell<VecDeque<FinalizationRegistryCleanupJob>>,
     clock_jobs: RefCell<BTreeMap<JsInstant, Vec<ClockJob>>>,
     generic_jobs: RefCell<VecDeque<GenericJob>>,
     stop: Arc<AtomicBool>,
@@ -900,8 +972,8 @@ impl SimpleJobExecutor {
 
     /// Gets the cancellation token for this executor.
     ///
-    /// Setting the signal to `true` will exit the inner event loop and
-    /// stop executing any pending jobs.
+    /// Setting the signal to `true` exits the inner event loop and discards ordinary queued
+    /// jobs. Finalization registry subscriptions remain available for later runs.
     pub fn get_cancellation_token(&self) -> Arc<AtomicBool> {
         Arc::clone(&self.stop)
     }
@@ -911,6 +983,24 @@ impl SimpleJobExecutor {
             && self.async_jobs.borrow().is_empty()
             && self.generic_jobs.borrow().is_empty()
             && self.clock_jobs.borrow().is_empty()
+    }
+
+    fn take_ready_cleanup(&self) -> Option<NativeJob> {
+        let mut subscriptions = self.finalization_registry_subscriptions.borrow_mut();
+        for _ in 0..subscriptions.len() {
+            let subscription = subscriptions
+                .pop_front()
+                .expect("one subscription per iteration");
+            match subscription.try_take() {
+                Poll::Pending => subscriptions.push_back(subscription),
+                Poll::Ready(Some(job)) => {
+                    subscriptions.push_back(subscription);
+                    return Some(job);
+                }
+                Poll::Ready(None) => {}
+            }
+        }
+        None
     }
 }
 
@@ -936,8 +1026,10 @@ impl JobExecutor for SimpleJobExecutor {
                     .push(ClockJob::Interval(i));
             }
             Job::GenericJob(g) => self.generic_jobs.borrow_mut().push_back(g),
-            Job::FinalizationRegistryCleanupJob(fr) => {
-                self.finalization_registry_jobs.borrow_mut().push_back(fr);
+            Job::FinalizationRegistryCleanupJob(subscription) => {
+                self.finalization_registry_subscriptions
+                    .borrow_mut()
+                    .push_back(subscription);
             }
         }
     }
@@ -951,7 +1043,6 @@ impl JobExecutor for SimpleJobExecutor {
         Self: Sized,
     {
         let mut group = FutureGroup::new();
-        let mut fr_group = FutureGroup::new();
         loop {
             if self.stop.load(Ordering::Relaxed) {
                 self.stop.store(false, Ordering::Relaxed);
@@ -961,10 +1052,6 @@ impl JobExecutor for SimpleJobExecutor {
 
             for job in mem::take(&mut *self.async_jobs.borrow_mut()) {
                 group.insert(job.call(context));
-            }
-
-            for job in mem::take(&mut *self.finalization_registry_jobs.borrow_mut()) {
-                fr_group.insert(job.call(context));
             }
 
             // Dispatch all past-due timeout jobs before the termination check.
@@ -1010,13 +1097,12 @@ impl JobExecutor for SimpleJobExecutor {
             }
 
             if self.is_empty() && group.is_empty() {
-                match future::poll_once(fr_group.next()).await.flatten() {
-                    Some(Err(err)) => {
-                        self.clear();
-                        return Err(err);
-                    }
-                    _ if !self.is_empty() => {}
-                    _ => break,
+                let Some(job) = self.take_ready_cleanup() else {
+                    break;
+                };
+                if let Err(err) = job.call(&mut context.borrow_mut()) {
+                    self.clear();
+                    return Err(err);
                 }
             }
 

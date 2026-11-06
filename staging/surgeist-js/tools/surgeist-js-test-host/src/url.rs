@@ -14,18 +14,16 @@
 #[cfg(test)]
 mod tests;
 
+use std::fmt::Display;
 use surgeist_js::class::Class;
+use surgeist_js::gc::heap::Trace as HeapTrace;
 use surgeist_js::realm::Realm;
 use surgeist_js::value::Convert;
-use surgeist_js::{
-    Context, Finalize, JsData, JsResult, JsString, JsValue, Trace, boa_class, boa_module, js_error,
-};
-use std::fmt::Display;
+use surgeist_js::{Context, JsData, JsResult, JsString, JsValue, boa_class, boa_module, js_error};
 
 /// The `URL` class represents a (properly parsed) Uniform Resource Locator.
-#[derive(Debug, Clone, JsData, Trace, Finalize)]
-#[surgeist_js_gc(unsafe_no_drop)]
-pub struct Url(#[unsafe_ignore_trace] url::Url);
+#[derive(Debug, Clone, JsData, HeapTrace)]
+pub struct Url(#[heap_trace(skip)] url::Url);
 
 impl Url {
     /// Register the `URL` class into the realm. Pass `None` for the realm to

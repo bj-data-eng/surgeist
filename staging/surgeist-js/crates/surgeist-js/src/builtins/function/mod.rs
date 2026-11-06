@@ -18,7 +18,7 @@ use crate::{
     },
     bytecompiler::FunctionCompiler,
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
-    environments::{EnvironmentStack, FunctionSlots, PrivateEnvironment, ThisBindingStatus},
+    environments::{FunctionSlots, PrivateEnvironment, StoredEnvironmentStack, ThisBindingStatus},
     error::JsNativeError,
     js_error, js_string,
     native_function::NativeFunctionObject,
@@ -35,8 +35,9 @@ use crate::{
     string::StaticJsStrings,
     symbol::JsSymbol,
     value::IntegerOrInfinity,
-    vm::{ActiveRunnable, CallFrame, CallFrameFlags, CodeBlock},
+    vm::{ActiveRunnable, CallFrame, CallFrameFlags, CodeBlock, StoredActiveRunnable},
 };
+use std::rc::Rc;
 use surgeist_js_ast::{
     Position, Span, Spanned, StatementList,
     function::{FormalParameterList, FunctionBody},
@@ -46,7 +47,8 @@ use surgeist_js_ast::{
     },
     scope::BindingLocatorScope,
 };
-use surgeist_js_gc::{self, Finalize, Gc, Trace, custom_trace};
+
+use surgeist_js_gc::heap::Trace as HeapTrace;
 use surgeist_js_interner::Sym;
 use surgeist_js_macros::js_str;
 use surgeist_js_parser::{Parser, Source};
@@ -68,7 +70,7 @@ mod tests;
 ///  - [ECMAScript specification][spec]
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-ecmascript-function-objects
-#[derive(Debug, Trace, Finalize, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ThisMode {
     /// The `this` value refers to the `this` value of a lexically enclosing function.
     Lexical,
@@ -136,26 +138,17 @@ impl ConstructorKind {
 ///  - [ECMAScript specification][spec]
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-classfielddefinition-record-specification-type
-#[derive(Clone, Debug, Finalize)]
+#[derive(Clone, Debug, HeapTrace)]
 pub(crate) enum ClassFieldDefinition {
     /// A class field definition with a `string` or `symbol` as a name.
-    Public(PropertyKey, ObjectEdge, Option<PropertyKey>),
+    Public(
+        #[heap_trace(skip)] PropertyKey,
+        ObjectEdge,
+        #[heap_trace(skip)] Option<PropertyKey>,
+    ),
 
     /// A class field definition with a private name.
     Private(PrivateName, ObjectEdge),
-}
-
-unsafe impl Trace for ClassFieldDefinition {
-    custom_trace! {this, mark, {
-        match this {
-            Self::Public(_key, func, _) => {
-                mark(func);
-            }
-            Self::Private(_, func) => {
-                mark(func);
-            }
-        }
-    }}
 }
 
 /// Boa representation of a JavaScript Function Object.
@@ -164,19 +157,20 @@ unsafe impl Trace for ClassFieldDefinition {
 /// (AST Node).
 ///
 /// <https://tc39.es/ecma262/#sec-ecmascript-function-objects>
-#[derive(Debug, Trace, Finalize)]
+#[derive(Debug, HeapTrace)]
 pub struct OrdinaryFunction {
     /// The code block containing the compiled function.
-    pub(crate) code: Gc<CodeBlock>,
+    #[heap_trace(skip)]
+    pub(crate) code: Rc<CodeBlock>,
 
     /// The `[[Environment]]` internal slot.
-    pub(crate) environments: EnvironmentStack,
+    pub(crate) environments: StoredEnvironmentStack,
 
     /// The `[[HomeObject]]` internal slot.
     home_object: Option<ObjectEdge>,
 
     /// The `[[ScriptOrModule]]` internal slot.
-    pub(crate) script_or_module: Option<ActiveRunnable>,
+    pub(crate) script_or_module: Option<StoredActiveRunnable>,
 
     /// The [`Realm`] the function is defined in.
     realm: RealmEdge,
@@ -211,8 +205,8 @@ impl JsData for OrdinaryFunction {
 
 impl OrdinaryFunction {
     pub(crate) fn new(
-        code: Gc<CodeBlock>,
-        environments: EnvironmentStack,
+        code: Rc<CodeBlock>,
+        environments: StoredEnvironmentStack,
         script_or_module: Option<ActiveRunnable>,
         realm: Realm,
     ) -> Self {
@@ -220,7 +214,7 @@ impl OrdinaryFunction {
             code,
             environments,
             home_object: None,
-            script_or_module,
+            script_or_module: script_or_module.as_ref().map(ActiveRunnable::stored),
             realm: realm.edge(),
             fields: ThinVec::default(),
             private_methods: ThinVec::default(),
@@ -234,7 +228,7 @@ impl OrdinaryFunction {
     }
 
     /// Push a private environment to the function.
-    pub(crate) fn push_private_environment(&mut self, environment: Gc<PrivateEnvironment>) {
+    pub(crate) fn push_private_environment(&mut self, environment: Rc<PrivateEnvironment>) {
         self.environments.push_private(environment);
     }
 
@@ -471,13 +465,10 @@ impl BuiltInFunctionObject {
         };
         let current_realm = context.realm().clone();
 
-        context.host_hooks().ensure_can_compile_strings(
-            current_realm,
-            &param_list,
-            &body,
-            false,
-            context,
-        )?;
+        context
+            .host_hooks()
+            .ensure_can_compile_strings(current_realm, &param_list, &body, false, context)
+            .map_err(|error| context.runtime().admit_error(error))?;
 
         let parameters = if param_list.is_empty() {
             FormalParameterList::default()
@@ -1012,8 +1003,11 @@ pub(crate) fn function_call(
     }
 
     let code = function.code.clone();
-    let environments = function.environments.clone();
-    let script_or_module = function.script_or_module.clone();
+    let environments = function.environments.to_stack();
+    let script_or_module = function
+        .script_or_module
+        .as_ref()
+        .map(StoredActiveRunnable::to_runnable);
 
     drop(function);
 
@@ -1075,12 +1069,12 @@ pub(crate) fn function_call(
     if has_binding_identifier {
         let frame = context.vm.frame_mut();
         let global = frame.realm.environment();
-        let index = frame.environments.push_lexical(1, global);
+        let index = frame.environments.push_lexical(1, &global);
         frame.environments.put_lexical_value(
             BindingLocatorScope::Stack(index),
             0,
             function_object.clone().into(),
-            global,
+            &global,
         );
         last_env += 1;
     }
@@ -1092,7 +1086,7 @@ pub(crate) fn function_call(
         frame.environments.push_function(
             scope,
             FunctionSlots::new(this, function_object.clone(), None),
-            global,
+            &global,
         );
     }
 
@@ -1123,8 +1117,11 @@ fn function_construct(
     );
 
     let code = function.code.clone();
-    let environments = function.environments.clone();
-    let script_or_module = function.script_or_module.clone();
+    let environments = function.environments.to_stack();
+    let script_or_module = function
+        .script_or_module
+        .as_ref()
+        .map(StoredActiveRunnable::to_runnable);
     drop(function);
 
     let env_fp = environments.len() as u32;
@@ -1183,12 +1180,12 @@ fn function_construct(
     if has_binding_identifier {
         let frame = context.vm.frame_mut();
         let global = frame.realm.environment();
-        let index = frame.environments.push_lexical(1, global);
+        let index = frame.environments.push_lexical(1, &global);
         frame.environments.put_lexical_value(
             BindingLocatorScope::Stack(index),
             0,
             this_function_object.clone().into(),
-            global,
+            &global,
         );
         last_env += 1;
     }
@@ -1211,7 +1208,7 @@ fn function_construct(
                         .clone(),
                 ),
             ),
-            global,
+            &global,
         );
     }
 

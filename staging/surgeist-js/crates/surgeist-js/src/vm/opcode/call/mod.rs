@@ -1,7 +1,7 @@
 use std::{cell::RefCell, mem::MaybeUninit};
 
-use surgeist_js_string::JsString;
 use dynify::Dynify;
+use surgeist_js_string::JsString;
 
 use super::{IndexOperand, RegisterOperand};
 use crate::{
@@ -9,7 +9,7 @@ use crate::{
     builtins::{Promise, promise::PromiseCapability},
     error::JsNativeError,
     job::NativeAsyncJob,
-    module::{ImportAttribute, ModuleKind, ModuleRequest, Referrer},
+    module::{ImportAttribute, Module, ModuleKind, ModuleRequest, Referrer},
     object::FunctionObjectBuilder,
     vm::opcode::Operation,
 };
@@ -352,7 +352,8 @@ async fn load_dyn_import(
     let fut = loader.load_imported_module(referrer.clone(), request.clone(), context);
     let mut stack = [MaybeUninit::<u8>::uninit(); 16];
     let mut heap = Vec::<MaybeUninit<u8>>::new();
-    let completion = fut.init2(&mut stack, &mut heap).await;
+    let result = fut.init2(&mut stack, &mut heap).await;
+    let completion = Module::admit_loader_result(result, &context.borrow());
 
     // `ContinueDynamicImport ( promiseCapability, moduleCompletion )`
     // https://tc39.es/ecma262/#sec-ContinueDynamicImport
@@ -382,33 +383,13 @@ async fn load_dyn_import(
                 panic!("referrer cannot be a synthetic module");
             };
 
-            let mut loaded_modules = src.loaded_modules().borrow_mut();
-
-            //     a. If referrer.[[LoadedModules]] contains a Record whose [[Specifier]] is specifier, then
-            //     b. Else,
-            //         i. Append the Record { [[Specifier]]: specifier, [[Module]]: result.[[Value]] } to referrer.[[LoadedModules]].
-            let entry = loaded_modules
-                .entry(request)
-                .or_insert_with(|| module.clone());
-
-            //         i. Assert: That Record's [[Module]] is result.[[Value]].
-            debug_assert_eq!(&module, entry);
-
-            // Same steps apply to referrers below
+            src.insert_loaded_module(request, &module);
         }
         Referrer::Realm(realm) => {
-            let mut loaded_modules = realm.loaded_modules().borrow_mut();
-            let entry = loaded_modules
-                .entry(request.specifier().clone())
-                .or_insert_with(|| module.clone());
-            debug_assert_eq!(&module, entry);
+            realm.insert_loaded_module(request.specifier().clone(), &module);
         }
         Referrer::Script(script) => {
-            let mut loaded_modules = script.loaded_modules().borrow_mut();
-            let entry = loaded_modules
-                .entry(request.specifier().clone())
-                .or_insert_with(|| module.clone());
-            debug_assert_eq!(&module, entry);
+            script.insert_loaded_module(request.specifier().clone(), &module);
         }
     }
 
@@ -463,7 +444,7 @@ async fn load_dyn_import(
             cap.clone(),
         ),
     )
-    .build();
+    .build()?;
 
     // 6. Let linkAndEvaluateClosure be a new Abstract Closure with no parameters that captures module, promiseCapability, and onRejected and performs the following steps when called:
     // 7. Let linkAndEvaluate be CreateBuiltinFunction(linkAndEvaluateClosure, 0, "", « »).
@@ -493,7 +474,7 @@ async fn load_dyn_import(
                     NativeFunction::from_fn_with_captures(
                         |_, _, (module, cap), context| {
                             // i. Let namespace be GetModuleNamespace(module).
-                            let namespace = module.namespace(context);
+                            let namespace = module.namespace(context)?;
 
                             // ii. Perform ! Call(promiseCapability.[[Resolve]], undefined, « namespace »).
                             cap.resolve()
@@ -506,16 +487,20 @@ async fn load_dyn_import(
                         (module.clone(), cap.clone()),
                     ),
                 )
-                .build();
+                .build()?;
 
                 // f. Perform PerformPromiseThen(evaluatePromise, onFulfilled, onRejected).
-                Promise::perform_promise_then(
+                if let Err(error) = Promise::perform_promise_then(
                     &evaluate,
                     Some(fulfill),
                     Some(on_rejected.clone()),
                     None,
                     context,
-                );
+                ) {
+                    let reason = error.into_opaque(context)?;
+                    cap.reject()
+                        .call(&JsValue::undefined(), &[reason], context)?;
+                }
 
                 // g. Return unused.
                 Ok(JsValue::undefined())
@@ -523,16 +508,21 @@ async fn load_dyn_import(
             (module.clone(), cap.clone(), on_rejected.clone()),
         ),
     )
-    .build();
+    .build()?;
 
     // 8. Perform PerformPromiseThen(loadPromise, linkAndEvaluate, onRejected).
-    Promise::perform_promise_then(
+    let mut context = context.borrow_mut();
+    if let Err(error) = Promise::perform_promise_then(
         &load,
         Some(link_evaluate),
         Some(on_rejected),
         None,
-        &mut context.borrow_mut(),
-    );
+        &mut context,
+    ) {
+        let reason = error.into_opaque(&mut context)?;
+        cap.reject()
+            .call(&JsValue::undefined(), &[reason], &mut context)?;
+    }
 
     // 9. Return unused.
     Ok(())

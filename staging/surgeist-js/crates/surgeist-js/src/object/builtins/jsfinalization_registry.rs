@@ -1,17 +1,16 @@
 use std::ops::Deref;
 
-use surgeist_js_gc::{Finalize, Trace};
-
 use crate::{
+    Context, JsNativeError, JsObject, JsResult, JsValue,
     builtins::finalization_registry::FinalizationRegistry, object::JsObjectType, realm::Realm,
-    value::TryFromJs, Context, JsNativeError, JsObject, JsResult, JsValue,
+    value::TryFromJs,
 };
 
 /// `JsFinalizationRegistry` provides a wrapper for Boa's implementation of the ECMAScript
 /// [`FinalizationRegistry`] object.
 ///
 /// [`FinalizationRegistry`]: https://tc39.es/ecma262/#sec-finalization-registry-objects
-#[derive(Debug, Clone, Trace, Finalize)]
+#[derive(Debug, Clone)]
 pub struct JsFinalizationRegistry {
     inner: JsObject,
 }

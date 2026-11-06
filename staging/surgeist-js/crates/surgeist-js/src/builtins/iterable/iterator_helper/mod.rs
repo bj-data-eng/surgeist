@@ -14,18 +14,18 @@ use std::ops::ControlFlow;
 
 use crate::{
     Context, JsData, JsResult, JsValue,
-    builtins::{BuiltInBuilder, IntrinsicObject, iterable::create_iter_result_object},
+    builtins::{BuiltInBuilder, IntrinsicObject, iterable::create_iter_result_object_trusted},
     context::intrinsics::Intrinsics,
     error::PanicError,
     js_error, js_string,
-    native_function::NativeCoroutine,
+    native_function::{NativeCapture, NativeCoroutine, StoredNativeCoroutine},
     object::JsObject,
     property::Attribute,
     realm::Realm,
     symbol::JsSymbol,
     vm::CompletionRecord,
 };
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 /// `IfAbruptCloseIterator ( value, iteratorRecord )`, but specialized
 /// for usage in coroutines.
@@ -69,9 +69,16 @@ pub(crate) use take::Take;
 ///  - [ECMAScript reference][spec]
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-iterator-helper-objects
-#[derive(Debug, Finalize, Trace, JsData)]
+#[derive(Debug, HeapTrace, JsData)]
 pub(crate) struct IteratorHelper {
-    pub(crate) coroutine: Option<NativeCoroutine>,
+    state: HelperState,
+}
+
+#[derive(Debug, HeapTrace)]
+enum HelperState {
+    Suspended(StoredNativeCoroutine),
+    Executing,
+    Completed,
 }
 
 impl IntrinsicObject for IteratorHelper {
@@ -94,6 +101,20 @@ impl IntrinsicObject for IteratorHelper {
 }
 
 impl IteratorHelper {
+    fn resume(&mut self) -> JsResult<Option<NativeCoroutine>> {
+        match &self.state {
+            HelperState::Suspended(coroutine) => {
+                let coroutine = NativeCoroutine::restore(coroutine);
+                self.state = HelperState::Executing;
+                Ok(Some(coroutine))
+            }
+            HelperState::Executing => {
+                Err(js_error!(TypeError: "Iterator Helper is already executing"))
+            }
+            HelperState::Completed => Ok(None),
+        }
+    }
+
     /// `%IteratorHelperPrototype%.next ( )`
     ///
     /// More information:
@@ -123,16 +144,14 @@ impl IteratorHelper {
         // 5. Let state be generator.[[GeneratorState]].
         // 6. If state is executing, throw a TypeError exception.
         // 7. Return state.
-        let coroutine = helper
-            .borrow_mut()
-            .data_mut()
-            .coroutine
-            .take()
-            .ok_or_else(|| {
-                js_error!(
-                    TypeError: "Iterator Helper is already executing"
-                )
-            })?;
+        let coroutine = helper.borrow_mut().data_mut().resume()?;
+        let Some(coroutine) = coroutine else {
+            return Ok(create_iter_result_object_trusted(
+                JsValue::undefined(),
+                true,
+                context,
+            ));
+        };
 
         // 3. Assert: state is either suspended-start or suspended-yield.
         // 4. Let genContext be generator.[[GeneratorContext]].
@@ -151,21 +170,25 @@ impl IteratorHelper {
         // All these steps don't map directly to the spec, but we can consider
         // the code below as "suspending" the underlying generator or returning
         // if the result is available.
-        let result = match coroutine.call(CompletionRecord::Normal(JsValue::undefined()), context) {
-            ControlFlow::Continue(value) => Ok(create_iter_result_object(value, false, context)),
+        let result = coroutine.call(CompletionRecord::Normal(JsValue::undefined()), context);
+        helper.borrow_mut().data_mut().state = if matches!(&result, ControlFlow::Continue(_)) {
+            HelperState::Suspended(coroutine.store())
+        } else {
+            HelperState::Completed
+        };
+
+        match result {
+            ControlFlow::Continue(value) => {
+                Ok(create_iter_result_object_trusted(value, false, context))
+            }
             // 2. If state is completed, return CreateIteratorResultObject(undefined, true).
-            ControlFlow::Break(Ok(())) => Ok(create_iter_result_object(
+            ControlFlow::Break(Ok(())) => Ok(create_iter_result_object_trusted(
                 JsValue::undefined(),
                 true,
                 context,
             )),
             ControlFlow::Break(Err(err)) => Err(err),
-        };
-
-        helper.borrow_mut().data_mut().coroutine = Some(coroutine);
-
-        // 11. Return ? result.
-        result
+        }
     }
 
     /// `%IteratorHelperPrototype%.return ( )`
@@ -206,16 +229,14 @@ impl IteratorHelper {
         // 5. Let state be generator.[[GeneratorState]].
         // 6. If state is executing, throw a TypeError exception.
         // 7. Return state.
-        let coroutine = helper
-            .borrow_mut()
-            .data_mut()
-            .coroutine
-            .take()
-            .ok_or_else(|| {
-                js_error!(
-                    TypeError: "Iterator Helper is already executing"
-                )
-            })?;
+        let coroutine = helper.borrow_mut().data_mut().resume()?;
+        let Some(coroutine) = coroutine else {
+            return Ok(create_iter_result_object_trusted(
+                JsValue::undefined(),
+                true,
+                context,
+            ));
+        };
 
         // 2. If state is suspended-start, then
         //    a. Set generator.[[GeneratorState]] to completed.
@@ -252,7 +273,7 @@ impl IteratorHelper {
             )
             .into()),
             // Step 3.a
-            ControlFlow::Break(Ok(())) => Ok(create_iter_result_object(
+            ControlFlow::Break(Ok(())) => Ok(create_iter_result_object_trusted(
                 JsValue::undefined(),
                 true,
                 context,
@@ -261,7 +282,7 @@ impl IteratorHelper {
             ControlFlow::Break(Err(err)) => Err(err),
         };
 
-        helper.borrow_mut().data_mut().coroutine = Some(coroutine);
+        helper.borrow_mut().data_mut().state = HelperState::Completed;
 
         // 12. Return ? result.
         result
@@ -303,7 +324,7 @@ impl IteratorHelper {
                 .iterator_prototypes()
                 .iterator_helper(),
             Self {
-                coroutine: Some(op),
+                state: HelperState::Suspended(op.store()),
             },
         )
         .upcast()

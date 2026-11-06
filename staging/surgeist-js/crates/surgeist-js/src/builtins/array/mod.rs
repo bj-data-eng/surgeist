@@ -9,7 +9,7 @@
 //! [spec]: https://tc39.es/ecma262/#sec-array-objects
 //! [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array
 
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 use thin_vec::ThinVec;
 
 use crate::{
@@ -54,8 +54,7 @@ pub(crate) enum Direction {
 }
 
 /// JavaScript `Array` built-in implementation.
-#[derive(Debug, Clone, Copy, Trace, Finalize)]
-#[surgeist_js_gc(empty_trace)]
+#[derive(Debug, Clone, Copy, HeapTrace)]
 pub(crate) struct Array;
 
 /// Definitions of the internal object methods for array exotic objects.
@@ -104,7 +103,7 @@ impl IntrinsicObject for Array {
         .name(js_string!("toString"))
         .build();
 
-        let unscopables_object = Self::unscopables_object();
+        let unscopables_object = Self::unscopables_object(&realm.intrinsics().runtime());
 
         let builder = BuiltInBuilder::from_standard_constructor::<Self>(realm)
             // Static Methods
@@ -295,13 +294,8 @@ impl Array {
     fn set_length(o: &JsObject, len: u64, context: &mut Context) -> JsResult<()> {
         if o.is_array() && len < (2u64.pow(32) - 1) {
             let mut borrowed_object = o.borrow_mut();
-            if borrowed_object.properties().shape.to_addr_usize()
-                == context
-                    .intrinsics()
-                    .templates()
-                    .array()
-                    .shape()
-                    .to_addr_usize()
+            if borrowed_object.properties().shape().identity()
+                == context.intrinsics().templates().array().shape().identity()
             {
                 // NOTE: The "length" property is the first element.
                 borrowed_object
@@ -402,7 +396,13 @@ impl Array {
         //     b. Set n to n + 1.
         // 5. Return array.
         // NOTE: This deviates from the spec, but it should have the same behaviour.
-        let elements: ThinVec<_> = elements.into_iter().collect();
+        Self::create_array_with_dense_elements(elements.into_iter().collect(), context)
+    }
+
+    pub(crate) fn create_array_with_dense_elements(
+        elements: ThinVec<JsValue>,
+        context: &Context,
+    ) -> JsObject {
         let length = elements.len();
 
         context
@@ -3106,11 +3106,7 @@ impl Array {
         let o = this.to_object(context)?;
 
         // 2. Return CreateArrayIterator(O, value).
-        Ok(ArrayIterator::create_array_iterator(
-            o,
-            PropertyNameKind::Value,
-            context,
-        ))
+        ArrayIterator::create_array_iterator(o, PropertyNameKind::Value, context)
     }
 
     /// `Array.prototype.keys( )`
@@ -3128,11 +3124,7 @@ impl Array {
         let o = this.to_object(context)?;
 
         // 2. Return CreateArrayIterator(O, key).
-        Ok(ArrayIterator::create_array_iterator(
-            o,
-            PropertyNameKind::Key,
-            context,
-        ))
+        ArrayIterator::create_array_iterator(o, PropertyNameKind::Key, context)
     }
 
     /// `Array.prototype.entries( )`
@@ -3154,11 +3146,7 @@ impl Array {
         let o = this.to_object(context)?;
 
         // 2. Return CreateArrayIterator(O, key+value).
-        Ok(ArrayIterator::create_array_iterator(
-            o,
-            PropertyNameKind::KeyAndValue,
-            context,
-        ))
+        ArrayIterator::create_array_iterator(o, PropertyNameKind::KeyAndValue, context)
     }
 
     /// [`Array.prototype.with ( index, value )`][spec]
@@ -3285,9 +3273,9 @@ impl Array {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-array.prototype-@@unscopables
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/@@unscopables
-    pub(crate) fn unscopables_object() -> JsObject {
+    pub(crate) fn unscopables_object(runtime: &crate::Runtime) -> JsObject {
         // 1. Let unscopableList be OrdinaryObjectCreate(null).
-        let unscopable_list = JsObject::with_null_proto();
+        let unscopable_list = JsObject::with_null_proto(runtime);
         let true_prop = PropertyDescriptor::builder()
             .value(true)
             .writable(true)
@@ -3467,13 +3455,8 @@ fn array_exotic_define_own_property(
             // we know the position of the "length" property.
             if u64::from(new_len) < (2u64.pow(32) - 1) {
                 let borrowed_object = obj.borrow();
-                if borrowed_object.properties().shape.to_addr_usize()
-                    == context
-                        .intrinsics()
-                        .templates()
-                        .array()
-                        .shape()
-                        .to_addr_usize()
+                if borrowed_object.properties().shape().identity()
+                    == context.intrinsics().templates().array().shape().identity()
                 {
                     let old_len = borrowed_object.properties().named_slot(0);
                     drop(borrowed_object);

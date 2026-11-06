@@ -1,8 +1,6 @@
 //! A Rust API wrapper for the `WeakSet` Builtin ECMAScript Object
 use std::ops::Deref;
 
-use surgeist_js_gc::{Finalize, Trace};
-
 use crate::{
     Context, JsResult, JsValue,
     builtins::weak_set::{NativeWeakSet, WeakSet},
@@ -12,7 +10,7 @@ use crate::{
 };
 
 /// `JsWeakSet` provides a wrapper for Boa's implementation of the ECMAScript `WeakSet` object.
-#[derive(Debug, Clone, Trace, Finalize)]
+#[derive(Debug, Clone)]
 pub struct JsWeakSet {
     inner: JsObject,
 }

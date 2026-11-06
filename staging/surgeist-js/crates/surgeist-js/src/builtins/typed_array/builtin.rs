@@ -8,6 +8,7 @@ use num_traits::Zero;
 use super::{
     ContentType, TypedArray, TypedArrayKind, TypedArrayMarker, object::typed_array_set_element,
 };
+use crate::value::JsVariant;
 use crate::{
     Context, JsArgs, JsExpect, JsNativeError, JsObject, JsResult, JsString, JsSymbol, JsValue,
     builtins::{
@@ -23,7 +24,6 @@ use crate::{
     string::StaticJsStrings,
     value::IntegerOrInfinity,
 };
-use crate::value::JsVariant;
 
 /// The JavaScript `%TypedArray%` object.
 ///
@@ -416,7 +416,7 @@ impl BuiltinTypedArray {
 
         // 4. Let buffer be O.[[ViewedArrayBuffer]].
         // 5. Return buffer.
-        Ok(ta.viewed_array_buffer().clone().into())
+        Ok(ta.viewed_array_buffer().into())
     }
 
     /// `get %TypedArray%.prototype.byteLength`
@@ -599,7 +599,10 @@ impl BuiltinTypedArray {
             //     ii. Else,
             //         1. Set countBytes to 0.
 
-            buf.copy_within(from_byte_index..from_byte_index + count_bytes, to_byte_index);
+            buf.copy_within(
+                from_byte_index..from_byte_index + count_bytes,
+                to_byte_index,
+            );
         }
 
         // 18. Return O.
@@ -622,11 +625,7 @@ impl BuiltinTypedArray {
         let (ta, _) = TypedArray::validate(this, Ordering::SeqCst)?;
 
         // 3. Return CreateArrayIterator(O, key+value).
-        Ok(ArrayIterator::create_array_iterator(
-            ta.upcast(),
-            PropertyNameKind::KeyAndValue,
-            context,
-        ))
+        ArrayIterator::create_array_iterator(ta.upcast(), PropertyNameKind::KeyAndValue, context)
     }
 
     /// `%TypedArray%.prototype.every ( callbackfn [ , thisArg ] )`
@@ -1234,11 +1233,7 @@ impl BuiltinTypedArray {
         let (ta, _) = TypedArray::validate(this, Ordering::SeqCst)?;
 
         // 3. Return CreateArrayIterator(O, key).
-        Ok(ArrayIterator::create_array_iterator(
-            ta.upcast(),
-            PropertyNameKind::Key,
-            context,
-        ))
+        ArrayIterator::create_array_iterator(ta.upcast(), PropertyNameKind::Key, context)
     }
 
     /// `%TypedArray%.prototype.lastIndexOf ( searchElement [ , fromIndex ] )`
@@ -1324,7 +1319,8 @@ impl BuiltinTypedArray {
 
         // 4. Let taRecord be MakeTypedArrayWithBufferWitnessRecord(O, seq-cst).
         // 5. If IsTypedArrayOutOfBounds(taRecord) is true, return +0𝔽.
-        let buf = ta.viewed_array_buffer().as_buffer();
+        let buffer = ta.viewed_array_buffer();
+        let buf = buffer.as_buffer();
         let Some(buf) = buf
             .bytes(Ordering::SeqCst)
             .filter(|s| !ta.is_out_of_bounds(s.len()))
@@ -1713,7 +1709,7 @@ impl BuiltinTypedArray {
         // 2. Let targetRecord be MakeTypedArrayWithBufferWitnessRecord(target, seq-cst).
         // 3. If IsTypedArrayOutOfBounds(targetRecord) is true, throw a TypeError exception.
         let target_array = target.borrow();
-        let target_buf_obj = target_array.data().viewed_array_buffer().clone();
+        let target_buf_obj = target_array.data().viewed_array_buffer();
         let Some(target_buf_len) = target_buf_obj
             .as_buffer()
             .bytes(Ordering::SeqCst)
@@ -1732,7 +1728,7 @@ impl BuiltinTypedArray {
         // 6. Let srcRecord be MakeTypedArrayWithBufferWitnessRecord(source, seq-cst).
         // 7. If IsTypedArrayOutOfBounds(srcRecord) is true, throw a TypeError exception.
         let src_array = source.borrow();
-        let mut src_buf_obj = src_array.data().viewed_array_buffer().clone();
+        let mut src_buf_obj = src_array.data().viewed_array_buffer();
         let Some(mut src_buf_len) = src_buf_obj
             .as_buffer()
             .bytes(Ordering::SeqCst)
@@ -2030,7 +2026,8 @@ impl BuiltinTypedArray {
 
         // a. Set taRecord to MakeTypedArrayWithBufferWitnessRecord(O, seq-cst).
         // b. If IsTypedArrayOutOfBounds(taRecord) is true, throw a TypeError exception.
-        let src_buf_borrow = src_borrow.data().viewed_array_buffer().as_buffer();
+        let src_buf_obj = src_borrow.data().viewed_array_buffer();
+        let src_buf_borrow = src_buf_obj.as_buffer();
         let Some(src_buf) = src_buf_borrow
             .bytes(Ordering::SeqCst)
             .filter(|s| !src_borrow.data().is_out_of_bounds(s.len()))
@@ -2114,14 +2111,12 @@ impl BuiltinTypedArray {
             //     2. Perform SetValueInBuffer(targetBuffer, targetByteIndex, uint8, value, true, unordered).
             //     3. Set srcByteIndex to srcByteIndex + 1.
             //     4. Set targetByteIndex to targetByteIndex + 1.
-            if BufferObject::equals(
-                src_borrow.data().viewed_array_buffer(),
-                target_borrow.data().viewed_array_buffer(),
-            ) {
+            let target_buf_obj = target_borrow.data().viewed_array_buffer();
+            if BufferObject::equals(&src_buf_obj, &target_buf_obj) {
                 // cannot borrow the target mutably (overlapping bytes), but we can move the data instead.
                 drop(src_buf_borrow);
 
-                let mut src_buf_borrow = src_borrow.data().viewed_array_buffer().as_buffer_mut();
+                let mut src_buf_borrow = src_buf_obj.as_buffer_mut();
                 let mut src_buf = src_buf_borrow
                     .bytes_with_len(src_buf_len)
                     .js_expect("already checked that the buffer is not detached")?;
@@ -2131,7 +2126,7 @@ impl BuiltinTypedArray {
                     target_byte_index,
                 );
             } else {
-                let mut target_buf = target_borrow.data().viewed_array_buffer().as_buffer_mut();
+                let mut target_buf = target_buf_obj.as_buffer_mut();
                 let mut target_buf = target_buf
                     .bytes(Ordering::SeqCst)
                     .js_expect("newly created array cannot be detached")?;
@@ -2339,7 +2334,7 @@ impl BuiltinTypedArray {
         let src_borrow = src.borrow();
 
         // 4. Let buffer be O.[[ViewedArrayBuffer]].
-        let buffer = src_borrow.data().viewed_array_buffer().clone();
+        let buffer = src_borrow.data().viewed_array_buffer();
 
         // 5. Let srcRecord be MakeTypedArrayWithBufferWitnessRecord(O, seq-cst).
         // 6. If IsTypedArrayOutOfBounds(srcRecord) is true, then
@@ -2438,7 +2433,8 @@ impl BuiltinTypedArray {
             let o = array.downcast_ref::<TypedArray>().ok_or_else(|| {
                 JsNativeError::typ().with_message("Value is not a typed array object")
             })?;
-            let buf = o.viewed_array_buffer().as_buffer();
+            let buffer = o.viewed_array_buffer();
+            let buf = buffer.as_buffer();
             let Some((buf_len, is_fixed_len)) = buf
                 .bytes(Ordering::SeqCst)
                 .filter(|s| !o.is_out_of_bounds(s.len()))
@@ -2528,11 +2524,7 @@ impl BuiltinTypedArray {
         let (ta, _) = TypedArray::validate(this, Ordering::SeqCst)?;
 
         // 3. Return CreateArrayIterator(O, value).
-        Ok(ArrayIterator::create_array_iterator(
-            ta.upcast(),
-            PropertyNameKind::Value,
-            context,
-        ))
+        ArrayIterator::create_array_iterator(ta.upcast(), PropertyNameKind::Value, context)
     }
 
     /// [`%TypedArray%.prototype.with ( index, value )`][spec]
@@ -2577,7 +2569,8 @@ impl BuiltinTypedArray {
                 .or_else(|| len.checked_add_signed(relative_index))?;
 
             let inner = ta.borrow();
-            let buf = inner.data().viewed_array_buffer().as_buffer();
+            let buffer = inner.data().viewed_array_buffer();
+            let buf = buffer.as_buffer();
             let s = buf.bytes(Ordering::Relaxed)?;
             inner.data().validate_index_u64(rel, s.len())
         })()
@@ -2712,13 +2705,16 @@ impl BuiltinTypedArray {
         Ok(new_ta)
     }
 
-    /// [`AllocateTypedArrayBuffer ( O, length )`][spec]
+    /// Creates a typed array and its new backing buffer.
+    ///
+    /// This includes [`AllocateTypedArrayBuffer ( O, length )`][spec].
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-allocatetypedarraybuffer
-    fn allocate_buffer<T: TypedArrayMarker>(
+    fn allocate_with_buffer<T: TypedArrayMarker>(
+        proto: JsObject,
         length: u64,
         context: &mut Context,
-    ) -> JsResult<TypedArray> {
+    ) -> JsResult<JsObject> {
         // 1. Assert: O.[[ViewedArrayBuffer]] is undefined.
 
         // 2. Let constructorName be the String value of O.[[TypedArrayName]].
@@ -2741,18 +2737,12 @@ impl BuiltinTypedArray {
             context,
         )?;
 
-        // 10. Return O.
-        Ok(TypedArray::new(
-            // 6. Set O.[[ViewedArrayBuffer]] to data.
-            BufferObject::Buffer(data),
-            T::ERASED,
-            // 8. Set O.[[ByteOffset]] to 0.
-            0,
-            // 7. Set O.[[ByteLength]] to byteLength.
-            Some(byte_length),
-            // 9. Set O.[[ArrayLength]] to length.
-            Some(length),
-        ))
+        let buffer = BufferObject::Buffer(data);
+        let array = TypedArray::new(&buffer, T::ERASED, 0, Some(byte_length), Some(length));
+        // Keep the buffer rooted while publishing the view and its edge.
+        let array =
+            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), proto, array);
+        Ok(array.upcast())
     }
 
     /// <https://tc39.es/ecma262/#sec-initializetypedarrayfromlist>
@@ -2764,9 +2754,7 @@ impl BuiltinTypedArray {
         // 1. Let len be the number of elements in values.
         let len = values.len() as u64;
         // 2. Perform ? AllocateTypedArrayBuffer(O, len).
-        let buf = Self::allocate_buffer::<T>(len, context)?;
-        let obj = JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), proto, buf)
-            .upcast();
+        let obj = Self::allocate_with_buffer::<T>(proto, len, context)?;
 
         // 3. Let k be 0.
         // 4. Repeat, while k < len,
@@ -2812,15 +2800,9 @@ impl BuiltinTypedArray {
 
         // 8. Else,
         // a. Perform ? AllocateTypedArrayBuffer(obj, length).
-        let indexed = Self::allocate_buffer::<T>(length, context)?;
-
         // 2. Let obj be ! IntegerIndexedObjectCreate(proto).
-        let obj =
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), proto, indexed)
-                .upcast();
-
         // 9. Return obj.
-        Ok(obj)
+        Self::allocate_with_buffer::<T>(proto, length, context)
     }
 
     /// `InitializeTypedArrayFromTypedArray ( O, srcArray )`
@@ -2953,7 +2935,7 @@ impl BuiltinTypedArray {
             context.root_shape(),
             proto,
             TypedArray::new(
-                BufferObject::Buffer(new_buffer),
+                &BufferObject::Buffer(new_buffer),
                 element_type,
                 0,
                 Some(byte_length),
@@ -2976,6 +2958,11 @@ impl BuiltinTypedArray {
         length: &JsValue,
         context: &mut Context,
     ) -> JsResult<JsObject> {
+        match &buffer {
+            BufferObject::Buffer(buffer) => buffer.check_runtime(context.runtime())?,
+            BufferObject::SharedBuffer(buffer) => buffer.check_runtime(context.runtime())?,
+        }
+
         // 1. Let elementSize be TypedArrayElementSize(O).
         let element_size = T::ERASED.element_size();
 
@@ -3069,11 +3056,11 @@ impl BuiltinTypedArray {
         // 10. Set O.[[ViewedArrayBuffer]] to buffer.
         // 11. Set O.[[ByteOffset]] to offset.
         // 12. Return unused.
-        Ok(JsObject::from_proto_and_data_with_shared_shape(
+        Ok(JsObject::new(
             context.root_shape(),
             proto,
-            TypedArray::new(buffer, T::ERASED, offset, byte_length, array_length),
-        )
+            TypedArray::new(&buffer, T::ERASED, offset, byte_length, array_length),
+        )?
         .upcast())
     }
 
@@ -3092,9 +3079,7 @@ impl BuiltinTypedArray {
         let len = array_like.length_of_array_like(context)?;
 
         // 2. Perform ? AllocateTypedArrayBuffer(O, len).
-        let buf = Self::allocate_buffer::<T>(len, context)?;
-        let obj = JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), proto, buf)
-            .upcast();
+        let obj = Self::allocate_with_buffer::<T>(proto, len, context)?;
 
         // 3. Let k be 0.
         // 4. Repeat, while k < len,

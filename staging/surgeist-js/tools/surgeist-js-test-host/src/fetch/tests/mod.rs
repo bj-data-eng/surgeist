@@ -2,11 +2,12 @@
 
 use crate::fetch::request::JsRequest;
 use crate::fetch::response::JsResponse;
-use surgeist_js::{Context, Finalize, JsData, JsResult, JsString, Trace, js_error};
 use http::{Request, Response, Uri};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use surgeist_js::gc::heap::Trace as HeapTrace;
+use surgeist_js::{Context, JsData, JsResult, JsString, js_error};
 
 #[cfg(test)]
 mod e2e;
@@ -22,11 +23,11 @@ mod response;
 ///
 /// The actual safety of this implementation is not guaranteed, as it
 /// is only intended for testing purposes.
-#[derive(Default, Debug, Trace, Finalize, JsData)]
+#[derive(Default, Debug, JsData, HeapTrace)]
 pub struct TestFetcher {
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     requests_received: RefCell<Vec<Request<Vec<u8>>>>,
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     request_mapper: HashMap<Uri, Response<Vec<u8>>>,
 }
 

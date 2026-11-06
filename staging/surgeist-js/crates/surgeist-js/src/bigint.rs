@@ -1,7 +1,6 @@
 //! Boa's implementation of ECMAScript's bigint primitive type.
 
 use crate::{JsData, JsResult, JsString, builtins::Number, error::JsNativeError};
-use surgeist_js_gc::{Finalize, Trace};
 use num_bigint::Sign;
 use num_integer::Integer;
 use num_traits::{FromPrimitive, One, ToPrimitive, Zero, pow::Pow};
@@ -10,6 +9,7 @@ use std::{
     ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Neg, Rem, Shl, Shr, Sub},
     rc::Rc,
 };
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 /// The raw bigint type.
 pub type RawBigInt = num_bigint::BigInt;
@@ -23,10 +23,9 @@ use serde::{Deserialize, Serialize};
     reason = "unsafe methods do not add invariants that need to be held"
 )]
 #[cfg_attr(feature = "deser", derive(Serialize, Deserialize))]
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Trace, Finalize, JsData)]
-// Safety: `JsBigInt` doesn't contain any traceable types.
-#[surgeist_js_gc(unsafe_empty_trace)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, JsData, HeapTrace)]
 pub struct JsBigInt {
+    #[heap_trace(skip)]
     inner: Rc<RawBigInt>,
 }
 

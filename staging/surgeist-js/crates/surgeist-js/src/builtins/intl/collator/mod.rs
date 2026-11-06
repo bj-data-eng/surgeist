@@ -1,4 +1,3 @@
-use surgeist_js_gc::{Finalize, Trace, custom_trace};
 use icu_collator::{
     CollatorPreferences,
     options::{AlternateHandling, MaxVariable},
@@ -7,6 +6,7 @@ use icu_collator::{
 };
 
 use icu_locale::{Locale, extensions::unicode};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 use crate::{
     Context, JsArgs, JsData, JsExpect, JsNativeError, JsResult, JsString, JsValue,
@@ -18,7 +18,7 @@ use crate::{
     js_string,
     native_function::NativeFunction,
     object::{
-        FunctionObjectBuilder, JsFunction, JsObject,
+        FunctionObjectBuilder, JsFunction, JsObject, ObjectEdge,
         internal_methods::get_prototype_from_constructor,
     },
     property::Attribute,
@@ -36,23 +36,23 @@ use super::{
 mod options;
 pub(crate) use options::*;
 
-#[derive(Debug, Finalize, JsData)]
+#[derive(Debug, JsData, HeapTrace)]
 #[allow(clippy::struct_field_names)]
 pub(crate) struct Collator {
     locale: Locale,
+    #[heap_trace(skip)]
     collation: Option<CollationType>,
     numeric: bool,
+    #[heap_trace(skip)]
     case_first: Option<CollationCaseFirst>,
+    #[heap_trace(skip)]
     usage: Usage,
+    #[heap_trace(skip)]
     sensitivity: Sensitivity,
     ignore_punctuation: bool,
+    #[heap_trace(skip)]
     collator: icu_collator::Collator,
-    bound_compare: Option<JsFunction>,
-}
-
-// SAFETY: only `bound_compare` is a traceable object.
-unsafe impl Trace for Collator {
-    custom_trace!(this, mark, mark(&this.bound_compare));
+    bound_compare: Option<ObjectEdge>,
 }
 
 impl Collator {
@@ -335,22 +335,21 @@ impl Collator {
     fn compare(this: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         // 1. Let collator be the this value.
         // 2. Perform ? RequireInternalSlot(collator, [[InitializedCollator]]).
-        let this = this.as_object().ok_or_else(|| {
-            JsNativeError::typ()
-                .with_message("`resolvedOptions` can only be called on a `Collator` object")
-        })?;
-        let collator_obj = this.clone();
-        let mut collator = this.downcast_mut::<Self>().ok_or_else(|| {
-            JsNativeError::typ()
-                .with_message("`resolvedOptions` can only be called on a `Collator` object")
-        })?;
+        let collator = this
+            .as_object()
+            .and_then(|object| object.downcast::<Self>().ok())
+            .ok_or_else(|| {
+                JsNativeError::typ()
+                    .with_message("`resolvedOptions` can only be called on a `Collator` object")
+            })?;
 
         // 3. If collator.[[BoundCompare]] is undefined, then
         //     a. Let F be a new built-in function object as defined in 10.3.3.1.
         //     b. Set F.[[Collator]] to collator.
         //     c. Set collator.[[BoundCompare]] to F.
-        let bound_compare = if let Some(f) = collator.bound_compare.clone() {
-            f
+        let cached = collator.borrow().data().bound_compare.clone();
+        let bound_compare = if let Some(f) = cached {
+            JsFunction::from_record(f)
         } else {
             let bound_compare = FunctionObjectBuilder::new(
                 context.realm(),
@@ -386,13 +385,14 @@ impl Collator {
 
                         Ok(result.into())
                     },
-                    collator_obj,
+                    collator.clone().upcast(),
                 ),
             )
             .length(2)
-            .build();
+            .build()?;
 
-            collator.bound_compare = Some(bound_compare.clone());
+            collator.borrow_mut().data_mut().bound_compare =
+                Some(bound_compare.clone().into_record());
             bound_compare
         };
 

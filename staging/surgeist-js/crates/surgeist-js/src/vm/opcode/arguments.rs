@@ -28,7 +28,6 @@ impl CreateMappedArgumentsObject {
                 .environments
                 .current_declarative_ref(frame.realm.environment())
                 .expect("must be declarative")
-                .clone()
         };
         let arguments = MappedArguments::new(
             &function_object,

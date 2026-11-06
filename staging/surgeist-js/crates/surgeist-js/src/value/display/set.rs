@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 use std::fmt;
 
+use surgeist_js_gc::heap::ObjectId;
+
 use crate::{JsObject, builtins::set::ordered_set::OrderedSet};
 
 pub(super) fn log_set_to(
@@ -29,7 +31,7 @@ pub(super) fn log_set_to(
             f.write_str(", ")?;
         }
         first = false;
-        super::value::log_value_to(f, value, print_internals, false)?;
+        super::value::log_value_to(f, &value, print_internals, false)?;
     }
     f.write_str(" }")
 }
@@ -39,7 +41,7 @@ pub(super) fn log_set_compact(
     v: &JsObject,
     depth: u32,
     print_internals: bool,
-    encounters: &mut HashSet<usize>,
+    encounters: &mut HashSet<ObjectId>,
 ) -> fmt::Result {
     let set = v
         .downcast_ref::<OrderedSet>()
@@ -61,7 +63,7 @@ pub(super) fn log_set_compact(
             f.write_str(", ")?;
         }
         first = false;
-        super::value::log_value_compact(f, value, depth + 1, print_internals, encounters)?;
+        super::value::log_value_compact(f, &value, depth + 1, print_internals, encounters)?;
     }
     f.write_str(" }")
 }

@@ -9,31 +9,33 @@ use super::ordered_set::OrderedSet;
 use crate::{
     Context, JsData, JsResult,
     builtins::{
-        Array, BuiltInBuilder, IntrinsicObject, JsValue, iterable::create_iter_result_object,
+        Array, BuiltInBuilder, IntrinsicObject, JsValue,
+        iterable::create_iter_result_object_trusted,
     },
     context::intrinsics::Intrinsics,
     error::JsNativeError,
-    js_string,
-    object::JsObject,
+    js_error, js_string,
+    object::{JsObject, ObjectEdge},
     property::{Attribute, PropertyNameKind},
     realm::Realm,
     symbol::JsSymbol,
 };
-use surgeist_js_gc::{Finalize, Trace};
+use std::rc::Rc;
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
-#[derive(Debug, Trace)]
-struct SetIteratorLock(JsObject<OrderedSet>);
-
-impl SetIteratorLock {
-    fn new(js_object: JsObject<OrderedSet>) -> Self {
-        js_object.borrow_mut().data_mut().lock();
-        Self(js_object)
-    }
+#[derive(Debug, HeapTrace)]
+struct SetIteration {
+    collection: ObjectEdge,
+    #[heap_trace(skip)]
+    _position_lock: Rc<()>,
 }
 
-impl Finalize for SetIteratorLock {
-    fn finalize(&self) {
-        self.0.borrow_mut().data_mut().unlock();
+impl SetIteration {
+    fn new(collection: &JsObject<OrderedSet>) -> Self {
+        Self {
+            collection: collection.edge(),
+            _position_lock: collection.borrow_mut().data_mut().lock(),
+        }
     }
 }
 
@@ -43,11 +45,11 @@ impl Finalize for SetIteratorLock {
 ///  - [ECMAScript reference][spec]
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-set-iterator-objects
-#[derive(Debug, Finalize, Trace, JsData)]
+#[derive(Debug, HeapTrace, JsData)]
 pub(crate) struct SetIterator {
-    iterated_set: Option<SetIteratorLock>,
+    iterated_set: Option<SetIteration>,
     next_index: usize,
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     iteration_kind: PropertyNameKind,
 }
 
@@ -82,17 +84,20 @@ impl SetIterator {
         set: JsObject<OrderedSet>,
         kind: PropertyNameKind,
         context: &Context,
-    ) -> JsValue {
+    ) -> JsResult<JsValue> {
+        if !context.runtime().same_heap(&set.runtime()) {
+            return Err(js_error!(TypeError: "collection iterator crosses JavaScript runtimes"));
+        }
         let set_iterator = JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
             context.intrinsics().objects().iterator_prototypes().set(),
             Self {
-                iterated_set: Some(SetIteratorLock::new(set)),
+                iterated_set: Some(SetIteration::new(&set)),
                 next_index: 0,
                 iteration_kind: kind,
             },
         );
-        set_iterator.into()
+        Ok(set_iterator.into())
     }
 
     /// %SetIteratorPrototype%.next( )
@@ -104,45 +109,57 @@ impl SetIterator {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-%setiteratorprototype%.next
     pub(crate) fn next(this: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
-        let object = this.as_object();
-        let mut set_iterator = object
-            .as_ref()
-            .and_then(JsObject::downcast_mut::<Self>)
-            .ok_or_else(|| JsNativeError::typ().with_message("`this` is not an SetIterator"))?;
+        let invalid_receiver = || JsNativeError::typ().with_message("`this` is not a SetIterator");
+        let object = this.as_object().ok_or_else(invalid_receiver)?;
+        let (element, kind) = {
+            let mut iterator = object.downcast_mut::<Self>().ok_or_else(invalid_receiver)?;
+            if !context.runtime().same_heap(&object.runtime()) {
+                return Err(
+                    js_error!(TypeError: "collection iterator crosses JavaScript runtimes"),
+                );
+            }
 
-        let item_kind = set_iterator.iteration_kind;
+            let collection = iterator.iterated_set.as_ref().map(|iteration| {
+                iteration
+                    .collection
+                    .upgrade()
+                    .expect("iterator's heap is available")
+                    .expect("active iterator retains its collection")
+                    .downcast::<OrderedSet>()
+                    .expect("iterator retains a Set")
+            });
+            let element = collection.and_then(|collection| {
+                let collection = collection.borrow();
+                let entries = collection.data();
 
-        if let Some(obj) = set_iterator.iterated_set.take() {
-            let e = {
-                let mut entries = obj.0.borrow_mut();
-                let entries = entries.data_mut();
-                let len = entries.full_len();
-                loop {
-                    let element = entries.get_index(set_iterator.next_index);
-                    set_iterator.next_index += 1;
-                    if element.is_some() || set_iterator.next_index >= len {
-                        break element.cloned();
+                while iterator.next_index < entries.full_len() {
+                    let index = iterator.next_index;
+                    iterator.next_index += 1;
+                    if let Some(element) = entries.get_index(index) {
+                        return Some(element);
                     }
                 }
-            };
-            if let Some(element) = e {
-                let item = match item_kind {
-                    PropertyNameKind::KeyAndValue => {
-                        let result =
-                            Array::create_array_from_list([element.clone(), element], context);
-                        Ok(create_iter_result_object(result.into(), false, context))
-                    }
-                    _ => Ok(create_iter_result_object(element, false, context)),
-                };
-                set_iterator.iterated_set = Some(obj);
-                return item;
+                None
+            });
+            if element.is_none() {
+                iterator.iterated_set = None;
             }
-        }
+            (element, iterator.iteration_kind)
+        };
 
-        Ok(create_iter_result_object(
-            JsValue::undefined(),
-            true,
-            context,
-        ))
+        let Some(element) = element else {
+            return Ok(create_iter_result_object_trusted(
+                JsValue::undefined(),
+                true,
+                context,
+            ));
+        };
+        let item = match kind {
+            PropertyNameKind::KeyAndValue => {
+                Array::create_array_from_list([element.clone(), element], context).into()
+            }
+            _ => element,
+        };
+        Ok(create_iter_result_object_trusted(item, false, context))
     }
 }

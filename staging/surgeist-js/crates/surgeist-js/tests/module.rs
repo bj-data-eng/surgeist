@@ -56,6 +56,7 @@ fn test_json_module_from_str() {
 
     let json = module
         .namespace(&mut context)
+        .unwrap()
         .get(js_string!("json"), &mut context)
         .unwrap();
 
@@ -114,6 +115,7 @@ fn test_json_module_dynamic_import() {
     // Get the exported promise 'p'
     let p = module
         .namespace(&mut context)
+        .unwrap()
         .get(js_string!("p"), &mut context)
         .unwrap();
 
@@ -197,6 +199,7 @@ fn test_json_module_static_import_with_attributes() {
 
     let value = module
         .namespace(&mut context)
+        .unwrap()
         .get(js_string!("value"), &mut context)
         .unwrap();
 
@@ -253,6 +256,7 @@ fn test_json_module_reexport_with_attributes() {
 
     let json = module
         .namespace(&mut context)
+        .unwrap()
         .get(js_string!("json"), &mut context)
         .unwrap();
 
@@ -299,6 +303,7 @@ fn test_dynamic_import_invalid_options() {
     // Get the exported promise 'p'
     let p = module
         .namespace(&mut context)
+        .unwrap()
         .get(js_string!("p"), &mut context)
         .unwrap();
 
@@ -351,6 +356,7 @@ fn test_dynamic_import_non_string_attribute_value() {
 
     let p = module
         .namespace(&mut context)
+        .unwrap()
         .get(js_string!("p"), &mut context)
         .unwrap();
 
@@ -418,6 +424,7 @@ fn test_dynamic_import_symbol_key() {
 
     let p = module
         .namespace(&mut context)
+        .unwrap()
         .get(js_string!("p"), &mut context)
         .unwrap();
 

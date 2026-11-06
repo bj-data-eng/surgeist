@@ -4,18 +4,17 @@
 #![allow(clippy::needless_pass_by_value)]
 
 use super::headers_iterator::{HeadersIterator, IterationKind};
-use surgeist_js::interop::JsClass;
-use surgeist_js::object::builtins::TypedJsFunction;
-use surgeist_js::value::{Convert, TryFromJs};
-use surgeist_js::{
-    Context, Finalize, JsData, JsObject, JsResult, JsString, JsValue, Trace, boa_class, js_error,
-};
 use http::header::HeaderMap as HttpHeaderMap;
 use http::{HeaderName, HeaderValue};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::str::FromStr;
+use surgeist_js::gc::heap::Trace as HeapTrace;
+use surgeist_js::interop::JsClass;
+use surgeist_js::object::builtins::TypedJsFunction;
+use surgeist_js::value::{Convert, TryFromJs};
+use surgeist_js::{Context, JsData, JsObject, JsResult, JsString, JsValue, boa_class, js_error};
 
 /// A callback function for the `forEach` method.
 pub type ForEachCallback = TypedJsFunction<(JsString, JsString, JsObject), ()>;
@@ -47,9 +46,9 @@ fn to_header_value(value: impl AsRef<str>) -> JsResult<HeaderValue> {
 }
 
 /// A JavaScript wrapper for the `Headers` object.
-#[derive(Debug, Default, Clone, JsData, Trace, Finalize)]
+#[derive(Debug, Default, Clone, JsData, HeapTrace)]
 pub struct JsHeaders {
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     pub(crate) headers: Rc<RefCell<HttpHeaderMap>>,
 }
 

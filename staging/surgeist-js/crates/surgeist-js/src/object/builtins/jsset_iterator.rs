@@ -1,15 +1,13 @@
 //! A Rust API wrapper for Boa's `SetIterator` Builtin ECMAScript Object
 use std::ops::Deref;
 
-use surgeist_js_gc::{Finalize, Trace};
-
 use crate::{
     Context, JsResult, JsValue, builtins::set::SetIterator, error::JsNativeError, object::JsObject,
     value::TryFromJs,
 };
 
 /// `JsSetIterator` provides a wrapper for Boa's implementation of the ECMAScript `SetIterator` object
-#[derive(Debug, Clone, Finalize, Trace)]
+#[derive(Debug, Clone)]
 pub struct JsSetIterator {
     inner: JsObject,
 }

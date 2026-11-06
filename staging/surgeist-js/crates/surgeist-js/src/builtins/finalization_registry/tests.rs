@@ -16,10 +16,56 @@ mod miri {
             registry.register(["foo"]);
         "#}),
             TestAction::assert_eq("counter", 0),
-            TestAction::inspect_context(|_| surgeist_js_gc::force_collect()),
+            TestAction::inspect_context(|ctx| {
+                ctx.runtime().collect().unwrap();
+            }),
             TestAction::inspect_context(|ctx| ctx.run_jobs().unwrap()),
             // Callback should run at least once
             TestAction::assert_eq("counter", 1),
+        ]);
+    }
+
+    #[test]
+    fn finalization_registry_cleans_up_after_an_idle_job_run() {
+        run_test_actions([
+            TestAction::run(indoc! {r#"
+                let counter = 0;
+                let target = {};
+                const registry = new FinalizationRegistry(() => { counter++; });
+                registry.register(target);
+            "#}),
+            TestAction::inspect_context(|ctx| ctx.run_jobs().unwrap()),
+            TestAction::assert_eq("counter", 0),
+            TestAction::run("target = null"),
+            TestAction::inspect_context(|ctx| {
+                ctx.runtime().collect().unwrap();
+                ctx.run_jobs().unwrap();
+            }),
+            TestAction::assert_eq("counter", 1),
+        ]);
+    }
+
+    #[test]
+    fn finalization_registry_cleans_up_on_a_second_collection() {
+        run_test_actions([
+            TestAction::run(indoc! {r#"
+                let counter = 0;
+                let secondTarget = {};
+                const registry = new FinalizationRegistry(value => { counter += value; });
+                registry.register({}, 1);
+                registry.register(secondTarget, 10);
+            "#}),
+            TestAction::inspect_context(|ctx| {
+                ctx.runtime().collect().unwrap();
+                ctx.run_jobs().unwrap();
+            }),
+            TestAction::assert_eq("counter", 1),
+            TestAction::run("secondTarget = null"),
+            TestAction::inspect_context(|ctx| {
+                ctx.runtime().collect().unwrap();
+                ctx.run_jobs().unwrap();
+            }),
+            TestAction::assert_eq("counter", 11),
         ]);
     }
 
@@ -40,7 +86,9 @@ mod miri {
 
         "#}),
             TestAction::assert_eq("counter", 0),
-            TestAction::inspect_context(|_| surgeist_js_gc::force_collect()),
+            TestAction::inspect_context(|ctx| {
+                ctx.runtime().collect().unwrap();
+            }),
             TestAction::inspect_context(|ctx| ctx.run_jobs().unwrap()),
             // Callback shouldn't run
             TestAction::assert_eq("counter", 0),
@@ -59,7 +107,9 @@ mod miri {
             registry.register(["foo"], { increment: 5 });
         "#}),
             TestAction::assert_eq("counter", 0),
-            TestAction::inspect_context(|_| surgeist_js_gc::force_collect()),
+            TestAction::inspect_context(|ctx| {
+                ctx.runtime().collect().unwrap();
+            }),
             TestAction::inspect_context(|ctx| ctx.run_jobs().unwrap()),
             // Registry should handover the held value as argument
             TestAction::assert_eq("counter", 5),
@@ -80,10 +130,75 @@ mod miri {
             registry.unregister({});
         "#}),
             TestAction::assert_eq("counter", 0),
-            TestAction::inspect_context(|_| surgeist_js_gc::force_collect()),
+            TestAction::inspect_context(|ctx| {
+                ctx.runtime().collect().unwrap();
+            }),
             TestAction::inspect_context(|ctx| ctx.run_jobs().unwrap()),
             // Object should not have been unregistered if the token is not the correct one
             TestAction::assert_eq("counter", 1),
         ]);
     }
+}
+
+#[test]
+fn cleanup_retains_job_callback_host_data() {
+    use std::rc::Rc;
+
+    use crate::{
+        Context, JsObject, JsResult, JsValue, Source,
+        context::HostHooks,
+        job::JobCallback,
+        native_function::{CapturedObject, NativeCapture},
+        object::JsFunction,
+    };
+
+    struct HostData(JsObject);
+
+    impl NativeCapture for HostData {
+        type Stored = CapturedObject;
+
+        fn store(&self) -> Self::Stored {
+            self.0.store()
+        }
+
+        fn restore(stored: &Self::Stored) -> Self {
+            Self(JsObject::restore(stored))
+        }
+    }
+
+    struct Hooks;
+
+    impl HostHooks for Hooks {
+        fn make_job_callback(&self, callback: JsFunction, context: &mut Context) -> JobCallback {
+            JobCallback::new(callback, HostData(JsObject::default(context.intrinsics())))
+        }
+
+        fn call_job_callback(
+            &self,
+            job: &JobCallback,
+            this: &JsValue,
+            args: &[JsValue],
+            context: &mut Context,
+        ) -> JsResult<JsValue> {
+            let host = job.host_defined().downcast_ref::<HostData>().unwrap();
+            assert!(host.0.is_ordinary());
+            job.callback().call(this, args, context)
+        }
+    }
+
+    let mut context = Context::builder()
+        .host_hooks(Rc::new(Hooks))
+        .build()
+        .unwrap();
+    context
+        .eval(Source::from_bytes(
+            "let count = 0; const registry = new FinalizationRegistry(() => ++count); registry.register({});",
+        ))
+        .unwrap();
+    context.runtime().collect().unwrap();
+    context.run_jobs().unwrap();
+    assert_eq!(
+        context.eval(Source::from_bytes("count")).unwrap(),
+        JsValue::from(1)
+    );
 }

@@ -29,7 +29,7 @@ use crate::{
     symbol::JsSymbol,
     value::{JsValue, PreferredType},
 };
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 use surgeist_js_macros::js_str;
 
 #[cfg(feature = "intl")]
@@ -43,8 +43,7 @@ pub(crate) mod utils;
 mod tests;
 
 /// The internal representation of a `Date` object.
-#[derive(Debug, Copy, Clone, Trace, Finalize, JsData)]
-#[surgeist_js_gc(empty_trace)]
+#[derive(Debug, Copy, Clone, JsData, HeapTrace)]
 pub struct Date(f64);
 
 impl Date {

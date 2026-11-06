@@ -37,6 +37,7 @@ use std::{
     borrow::{Borrow, BorrowMut},
     cell::Cell,
     ops::{Deref, DerefMut},
+    rc::Rc,
 };
 
 use crate::{
@@ -50,6 +51,7 @@ use crate::{
         source_info::{SourceInfo, SourceMap, SourceMapBuilder, SourcePath},
     },
 };
+use rustc_hash::FxHashMap;
 use surgeist_js_ast::{
     Declaration, Expression, LinearSpan, Position, Spanned, Statement, StatementList,
     StatementListItem,
@@ -76,11 +78,9 @@ use surgeist_js_ast::{
     property::MethodDefinitionKind,
     scope::{BindingLocator, BindingLocatorError, FunctionScopes, IdentifierReference, Scope},
 };
-use surgeist_js_gc::Gc;
 use surgeist_js_interner::{Interner, Sym};
 use surgeist_js_macros::js_str;
 use surgeist_js_string::StaticJsStrings;
-use rustc_hash::FxHashMap;
 use thin_vec::ThinVec;
 
 pub(crate) use declarations::{
@@ -812,7 +812,7 @@ impl<'ctx> ByteCompiler<'ctx> {
 
     #[inline]
     #[must_use]
-    pub(crate) fn push_function_to_constants(&mut self, function: Gc<CodeBlock>) -> u32 {
+    pub(crate) fn push_function_to_constants(&mut self, function: Rc<CodeBlock>) -> u32 {
         let index = self.constants.len() as u32;
         self.constants.push(Constant::Function(function));
         index

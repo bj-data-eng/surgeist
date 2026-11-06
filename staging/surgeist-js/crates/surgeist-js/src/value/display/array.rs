@@ -82,7 +82,7 @@ pub(super) fn log_array_compact(
     x: &JsObject,
     depth: u32,
     print_internals: bool,
-    encounters: &mut HashSet<usize>,
+    encounters: &mut HashSet<surgeist_js_gc::heap::ObjectId>,
 ) -> fmt::Result {
     let len = x
         .borrow()

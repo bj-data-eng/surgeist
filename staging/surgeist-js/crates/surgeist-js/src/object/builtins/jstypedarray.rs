@@ -9,13 +9,12 @@ use crate::{
     object::{JsArrayBuffer, JsFunction, JsObject, JsSharedArrayBuffer},
     value::{IntoOrUndefined, TryFromJs},
 };
-use surgeist_js_gc::{Finalize, Trace};
 use std::ops::Deref;
 use std::sync::atomic::Ordering;
 
 /// `JsTypedArray` provides a wrapper for Boa's implementation of the ECMAScript `TypedArray`
 /// builtin object.
-#[derive(Debug, Clone, Trace, Finalize)]
+#[derive(Debug, Clone)]
 pub struct JsTypedArray {
     inner: JsObject,
 }
@@ -432,7 +431,7 @@ impl JsTypedArray {
     /// let array_buffer8 = JsArrayBuffer::new(8, context)?;
     /// let initialized8_array = JsUint8Array::from_array_buffer(array_buffer8, context)?;
     /// initialized8_array.set_values(
-    ///   JsArray::from_iter(vec![JsValue::new(1), JsValue::new(2)], context).into(),
+    ///   JsArray::from_iter(vec![JsValue::new(1), JsValue::new(2)], context)?.into(),
     ///   Some(3),
     ///   context,
     /// )?;
@@ -526,7 +525,7 @@ impl JsTypedArray {
     ///         Ok(JsValue::from(element > 10.0))
     ///     }),
     /// )
-    /// .build();
+    /// .build().unwrap();
     /// assert_eq!(
     ///     array.find_index(greater_than_10_predicate, None, context),
     ///     Ok(Some(11))
@@ -584,7 +583,7 @@ impl JsTypedArray {
     ///         Ok(JsValue::from(element < 200.0))
     ///     }),
     /// )
-    /// .build();
+    /// .build().unwrap();
     /// assert_eq!(
     ///     array.find_last(lower_than_200_predicate.clone(), None, context),
     ///     Ok(JsValue::new(199))
@@ -634,7 +633,7 @@ impl JsTypedArray {
     ///         Ok(JsValue::from(element < 200.0))
     ///     }),
     /// )
-    /// .build();
+    /// .build().unwrap();
     /// assert_eq!(
     ///     array.find_last(lower_than_200_predicate.clone(), None, context),
     ///     Ok(JsValue::new(199))
@@ -672,12 +671,20 @@ impl JsTypedArray {
     /// # Examples
     ///
     /// ```
-    /// # use surgeist_js_gc::{Gc, GcRefCell};
+    /// # use std::{cell::Cell, rc::Rc};
+    /// # use surgeist_js::{gc::heap::Trace, native_function::NativeCapture};
+    /// # #[derive(Clone, Trace)]
+    /// # struct Counter(#[heap_trace(skip)] Rc<Cell<u8>>);
+    /// # impl NativeCapture for Counter {
+    /// #     type Stored = Self;
+    /// #     fn store(&self) -> Self { self.clone() }
+    /// #     fn restore(stored: &Self) -> Self { stored.clone() }
+    /// # }
     /// # use surgeist_js::{JsResult, object::{builtins::JsUint8Array, FunctionObjectBuilder}, NativeFunction, JsValue, Context};
     /// # fn main() -> JsResult<()> {
     /// let context = &mut Context::default();
     /// let array = JsUint8Array::from_iter(vec![1, 2, 3, 4, 5], context)?;
-    /// let num_to_modify = Gc::new(GcRefCell::new(0u8));
+    /// let num_to_modify = Counter(Rc::new(Cell::new(0)));
     ///
     /// let js_function = FunctionObjectBuilder::new(
     ///     context.realm(),
@@ -689,17 +696,16 @@ impl JsTypedArray {
     ///                 .unwrap_or_default()
     ///                 .to_uint8(inner_context)
     ///                 .expect("error at number conversion");
-    ///             *captures.borrow_mut() += element;
+    ///             captures.0.set(captures.0.get() + element);
     ///             Ok(JsValue::undefined())
     ///         },
-    ///         Gc::clone(&num_to_modify),
+    ///         num_to_modify.clone(),
     ///     ),
     /// )
-    /// .build();
+    /// .build().unwrap();
     ///
-    /// array.for_each(js_function, None, context);
-    /// let borrow = *num_to_modify.borrow();
-    /// assert_eq!(borrow, 15u8);
+    /// array.for_each(js_function, None, context)?;
+    /// assert_eq!(num_to_modify.0.get(), 15u8);
     ///
     /// # Ok(())
     /// # }
@@ -877,27 +883,46 @@ impl JsTypedArray {
     }
 
     /// Calls `TypedArray.prototype.entries()`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `TypeError` if the array belongs to a different runtime or is out of bounds.
     #[inline]
     pub fn entries(&self, context: &mut Context) -> JsResult<JsValue> {
+        self.inner.check_runtime(context.runtime())?;
         BuiltinTypedArray::entries(&self.inner.clone().into(), &[], context)
     }
 
     /// Calls `TypedArray.prototype.keys()`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `TypeError` if the array belongs to a different runtime or is out of bounds.
     #[inline]
     pub fn keys(&self, context: &mut Context) -> JsResult<JsValue> {
+        self.inner.check_runtime(context.runtime())?;
         BuiltinTypedArray::keys(&self.inner.clone().into(), &[], context)
     }
 
     /// Calls `TypedArray.prototype.values()`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `TypeError` if the array belongs to a different runtime or is out of bounds.
     #[inline]
     pub fn values(&self, context: &mut Context) -> JsResult<JsValue> {
+        self.inner.check_runtime(context.runtime())?;
         BuiltinTypedArray::values(&self.inner.clone().into(), &[], context)
     }
 
     /// Calls `TypedArray.prototype[@@iterator]()`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `TypeError` if the array belongs to a different runtime or is out of bounds.
     #[inline]
     pub fn iterator(&self, context: &mut Context) -> JsResult<JsValue> {
-        BuiltinTypedArray::values(&self.inner.clone().into(), &[], context)
+        self.values(context)
     }
 
     /// Calls `TypedArray.prototype.toString()`.
@@ -986,7 +1011,7 @@ macro_rules! JsTypedArrayType {
             "` provides a wrapper for Boa's implementation of the ECMAScript `",
             stringify!($constructor_function) ,"` builtin object."
         )]
-        #[derive(Debug, Clone, Trace, Finalize)]
+        #[derive(Debug, Clone)]
         pub struct $name {
             inner: JsTypedArray,
         }
@@ -1016,6 +1041,10 @@ macro_rules! JsTypedArrayType {
             }
 
             /// Create the typed array from a [`JsArrayBuffer`].
+            ///
+            /// # Errors
+            ///
+            /// Returns a `TypeError` if the buffer belongs to a different runtime.
             pub fn from_array_buffer(
                 array_buffer: JsArrayBuffer,
                 context: &mut Context,
@@ -1043,6 +1072,10 @@ macro_rules! JsTypedArrayType {
             }
 
             /// Create the typed array from a [`JsSharedArrayBuffer`].
+            ///
+            /// # Errors
+            ///
+            /// Returns a `TypeError` if the buffer belongs to a different runtime.
             pub fn from_shared_array_buffer(
                 buffer: JsSharedArrayBuffer,
                 context: &mut Context,
@@ -1197,7 +1230,8 @@ impl JsUint8Array {
         let vec = {
             let array = obj.borrow();
             let ta = array.data();
-            let buffer = ta.viewed_array_buffer().as_buffer();
+            let buffer = ta.viewed_array_buffer();
+            let buffer = buffer.as_buffer();
             let Some(slice) = buffer.bytes(Ordering::SeqCst) else {
                 return Err(JsNativeError::typ()
                     .with_message("typed array buffer is detached or out of bounds")

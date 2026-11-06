@@ -27,7 +27,7 @@ impl DefVar {
                 binding_locator.scope(),
                 binding_locator.binding_index(),
                 JsValue::undefined(),
-                global,
+                &global,
             );
         }
     }
@@ -58,7 +58,7 @@ impl DefEvalVar {
                 binding_locator.scope(),
                 binding_locator.binding_index(),
                 JsValue::undefined(),
-                global,
+                &global,
             );
         }
     }
@@ -127,7 +127,7 @@ impl PutLexicalValue {
                 binding_locator.scope(),
                 binding_locator.binding_index(),
                 value,
-                global,
+                &global,
             );
         }
     }

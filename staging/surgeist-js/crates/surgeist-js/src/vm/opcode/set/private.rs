@@ -118,7 +118,7 @@ impl SetPrivateMethod {
             .__define_own_property__(&js_string!("name").into(), desc, &mut context.into())
             .expect("failed to set name property on private method");
 
-        object.borrow_mut().append_private_element(
+        object.borrow_mut().state_mut().append_private_element(
             object.private_name(name),
             &PrivateElement::Method(value.clone()),
         );
@@ -157,7 +157,7 @@ impl SetPrivateSetter {
             .as_object()
             .expect("class prototype must be an object");
 
-        object.borrow_mut().append_private_element(
+        object.borrow_mut().state_mut().append_private_element(
             object.private_name(name),
             &PrivateElement::Accessor {
                 getter: None,
@@ -199,7 +199,7 @@ impl SetPrivateGetter {
             .as_object()
             .expect("class prototype must be an object");
 
-        object.borrow_mut().append_private_element(
+        object.borrow_mut().state_mut().append_private_element(
             object.private_name(name),
             &PrivateElement::Accessor {
                 getter: Some(value.clone()),

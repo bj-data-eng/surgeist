@@ -4,11 +4,10 @@ use crate::{
     value::TryFromJs,
 };
 
-use surgeist_js_gc::{Finalize, Trace};
 use std::ops::Deref;
 
 /// `JsMapIterator` provides a wrapper for Boa's implementation of the ECMAScript `MapIterator` object.
-#[derive(Debug, Clone, Finalize, Trace)]
+#[derive(Debug, Clone)]
 pub struct JsMapIterator {
     inner: JsObject,
 }

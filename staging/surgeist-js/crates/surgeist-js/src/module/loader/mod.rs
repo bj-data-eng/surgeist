@@ -6,7 +6,6 @@ use std::rc::Rc;
 use dynify::dynify;
 use rustc_hash::FxHashMap;
 
-use surgeist_js_gc::GcRefCell;
 use surgeist_js_parser::Source;
 
 use crate::script::Script;
@@ -165,6 +164,8 @@ pub trait ModuleLoader: Any {
     ///   time.
     /// - The operation must treat payload as an opaque value to be passed through to
     ///   `FinishLoadingImportedModule`. (can be ignored)
+    /// - Returned modules and errors must belong to the supplied context's runtime. Parse
+    ///   source text with that context so its interner can resolve the module's symbols.
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-HostLoadImportedModule
     /// [finish]: https://tc39.es/ecma262/#sec-FinishLoadingImportedModule
@@ -314,7 +315,7 @@ impl ModuleCacheKey {
 #[derive(Debug)]
 pub struct SimpleModuleLoader {
     root: PathBuf,
-    module_map: GcRefCell<FxHashMap<ModuleCacheKey, Module>>,
+    module_map: RefCell<FxHashMap<ModuleCacheKey, Module>>,
 }
 
 impl SimpleModuleLoader {
@@ -333,7 +334,7 @@ impl SimpleModuleLoader {
         })?;
         Ok(Self {
             root: absolute,
-            module_map: GcRefCell::default(),
+            module_map: RefCell::default(),
         })
     }
 

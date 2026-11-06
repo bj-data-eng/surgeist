@@ -29,7 +29,7 @@ use crate::{
     error::JsNativeError,
     js_error, js_string,
     object::{
-        FunctionObjectBuilder, JsFunction, JsObject, ObjectInitializer,
+        FunctionObjectBuilder, JsFunction, JsObject, ObjectEdge, ObjectInitializer,
         internal_methods::get_prototype_from_constructor,
     },
     property::{Attribute, PropertyDescriptor},
@@ -37,7 +37,6 @@ use crate::{
     string::StaticJsStrings,
 };
 
-use surgeist_js_gc::{Finalize, Trace};
 use icu_calendar::{Iso, preferences::CalendarAlgorithm};
 use icu_datetime::{
     DateTimeFormatter, DateTimeFormatterPreferences,
@@ -56,6 +55,7 @@ use icu_time::{
     TimeZoneInfo, ZonedDateTime,
     zone::{IanaParser, models::Base},
 };
+use surgeist_js_gc::heap::Trace as HeapTrace;
 use timezone_provider::provider::TimeZoneId;
 
 mod options;
@@ -79,22 +79,30 @@ impl FormatTimeZone {
 }
 
 /// JavaScript `Intl.DateTimeFormat` object.
-#[derive(Debug, Clone, Trace, Finalize, JsData)]
-#[surgeist_js_gc(unsafe_empty_trace)] // Safety: No traceable types
+#[derive(Debug, Clone, JsData, HeapTrace)]
 #[allow(dead_code)]
 pub(crate) struct DateTimeFormat {
     locale: Locale,
+    #[heap_trace(skip)]
     calendar_algorithm: Option<CalendarAlgorithm>, // TODO: Potentially remove ?
+    #[heap_trace(skip)]
     numbering_system: Option<NumberingSystem>,
+    #[heap_trace(skip)]
     hour_cycle: Option<IcuHourCycle>,
+    #[heap_trace(skip)]
     date_style: Option<DateStyle>,
+    #[heap_trace(skip)]
     time_style: Option<TimeStyle>,
+    #[heap_trace(skip)]
     fractional_second_digits: Option<SubsecondDigits>,
+    #[heap_trace(skip)]
     time_zone: FormatTimeZone,
+    #[heap_trace(skip)]
     fieldset: CompositeFieldSet,
+    #[heap_trace(skip)]
     formatter: DateTimeFormatter<CompositeFieldSet>,
-    bound_format: Option<JsFunction>,
-    resolved_options: Option<JsObject>,
+    bound_format: Option<ObjectEdge>,
+    resolved_options: Option<ObjectEdge>,
 }
 
 impl Service for DateTimeFormat {
@@ -192,7 +200,7 @@ impl BuiltInConstructor for DateTimeFormat {
             FormatDefaults::Date,
             context,
         )?;
-        let date_time_format = JsObject::from_proto_and_data(prototype, dtf);
+        let date_time_format = JsObject::from_proto_and_data(context.runtime(), prototype, dtf)?;
 
         // 3. If the implementation supports the normative optional constructor mode of 4.3 Note 1, then
         //     a. Let this be the this value.
@@ -251,13 +259,12 @@ impl DateTimeFormat {
         //     a. Set dtf to ? UnwrapDateTimeFormat(dtf).
         // 3. Perform ? RequireInternalSlot(dtf, [[InitializedDateTimeFormat]]).
         let dtf_object = unwrap_date_time_format(this, context)?;
-        let dtf_clone = dtf_object.clone();
-        let mut dtf = dtf_object.borrow_mut();
+        let cached = dtf_object.borrow().data().bound_format.clone();
 
         // 4. If dtf.[[BoundFormat]] is undefined, then
         // 5. Return dtf.[[BoundFormat]].
-        if let Some(bound_format) = &dtf.data_mut().bound_format.clone() {
-            Ok(bound_format.clone().into())
+        if let Some(bound_format) = cached {
+            Ok(JsFunction::from_record(bound_format).into())
         } else {
             // a. Let F be a new built-in function object as defined in DateTime Format Functions (11.5.4).
             let bound_format = FunctionObjectBuilder::new(
@@ -281,17 +288,21 @@ impl DateTimeFormat {
                         };
 
                         // 5. Return ? FormatDateTime(dtf, x).
-                        format_timestamp_with_dtf(dtf.borrow().data(), x, context)
+                        let dtf = dtf
+                            .downcast_ref::<Self>()
+                            .js_expect("bound format should contain a date time format object")?;
+                        format_timestamp_with_dtf(&dtf, x, context)
                     },
-                    dtf_clone,
+                    dtf_object.clone().upcast(),
                 ),
             )
             .length(1)
-            .build();
+            .build()?;
 
             // b. Set F.[[DateTimeFormat]] to dtf.
             // c. Set dtf.[[BoundFormat]] to F.
-            dtf.data_mut().bound_format = Some(bound_format.clone());
+            dtf_object.borrow_mut().data_mut().bound_format =
+                Some(bound_format.clone().into_record());
             Ok(bound_format.into())
         }
     }
@@ -336,7 +347,7 @@ impl DateTimeFormat {
         // 3. Perform ? RequireInternalSlot(dtf, [[InitializedDateTimeFormat]]).
         let dtf_object = unwrap_date_time_format(this, context)?;
         if let Some(cached) = dtf_object.borrow().data().resolved_options.clone() {
-            return Ok(cached.into());
+            return Ok(JsObject::from_inner(cached).into());
         }
 
         // 4. Let options be OrdinaryObjectCreate(%Object.prototype%).
@@ -452,11 +463,11 @@ impl DateTimeFormat {
                 );
             }
 
-            options.build()
+            options.build()?
         };
 
         // 6. Return options.
-        dtf_object.borrow_mut().data_mut().resolved_options = Some(result.clone());
+        dtf_object.borrow_mut().data_mut().resolved_options = Some(result.edge());
         Ok(result.into())
     }
 }

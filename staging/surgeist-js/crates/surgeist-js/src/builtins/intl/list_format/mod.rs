@@ -1,12 +1,12 @@
 use std::fmt::Write;
 
-use surgeist_js_gc::{Finalize, Trace};
 use icu_list::{
     ListFormatter, ListFormatterPreferences,
     options::{ListFormatterOptions, ListLength},
     provider::{ListAndV1, ListFormatterPatterns},
 };
 use icu_locale::Locale;
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 use crate::{
     Context, JsArgs, JsData, JsExpect, JsNativeError, JsResult, JsString, JsValue,
@@ -34,13 +34,15 @@ use super::{
 mod options;
 pub(crate) use options::*;
 
-#[derive(Debug, Trace, Finalize, JsData)]
-// Safety: `ListFormat` only contains non-traceable types.
-#[surgeist_js_gc(unsafe_empty_trace)]
+#[derive(Debug, JsData, HeapTrace)]
 pub(crate) struct ListFormat {
+    #[heap_trace(skip)]
     locale: Locale,
+    #[heap_trace(skip)]
     typ: ListFormatType,
+    #[heap_trace(skip)]
     style: ListLength,
+    #[heap_trace(skip)]
     native: ListFormatter,
 }
 
@@ -116,7 +118,7 @@ impl BuiltInConstructor for ListFormat {
         let requested_locales = canonicalize_locale_list(locales, context)?;
 
         // 4. Set options to ? GetOptionsObject(options).
-        let options = get_options_object(options)?;
+        let options = get_options_object(options, context)?;
 
         // 5. Let opt be a new Record.
         // 6. Let matcher be ? GetOption(options, "localeMatcher", string, « "lookup", "best fit" », "best fit").

@@ -14,14 +14,14 @@ use crate::{
     realm::Realm,
     string::StaticJsStrings,
 };
-use surgeist_js_gc::{Finalize, Trace};
-use surgeist_js_string::JsStrVariant;
 use icu_collator::provider::CollationDiacriticsV1;
 use icu_locale::Locale;
 use icu_segmenter::{
     GraphemeClusterSegmenter, SentenceSegmenter, WordSegmenter,
     options::{SentenceBreakOptions, WordBreakOptions},
 };
+use surgeist_js_gc::heap::Trace as HeapTrace;
+use surgeist_js_string::JsStrVariant;
 
 mod iterator;
 mod options;
@@ -36,11 +36,11 @@ use super::{
     options::IntlOptions,
 };
 
-#[derive(Debug, Trace, Finalize, JsData)]
-// SAFETY: `Segmenter` doesn't contain any traceable data.
-#[surgeist_js_gc(unsafe_empty_trace)]
+#[derive(Debug, JsData, HeapTrace)]
 pub(crate) struct Segmenter {
+    #[heap_trace(skip)]
     locale: Locale,
+    #[heap_trace(skip)]
     native: NativeSegmenter,
 }
 
@@ -155,7 +155,7 @@ impl BuiltInConstructor for Segmenter {
         let requested_locales = canonicalize_locale_list(locales, context)?;
 
         // 5. Set options to ? GetOptionsObject(options).
-        let options = get_options_object(options)?;
+        let options = get_options_object(options, context)?;
 
         // 6. Let opt be a new Record.
         // 7. Let matcher be ? GetOption(options, "localeMatcher", string, « "lookup", "best fit" », "best fit").
@@ -289,7 +289,7 @@ impl Segmenter {
                 js_string!(segmenter.native.granularity().to_string()),
                 Attribute::all(),
             )
-            .build();
+            .build()?;
 
         // 5. Return options.
         Ok(options.into())
@@ -324,7 +324,7 @@ fn create_segment_data_object(
     range: Range<usize>,
     is_word_like: Option<bool>,
     context: &mut Context,
-) -> JsObject {
+) -> JsResult<JsObject> {
     // 1. Let len be the length of string.
     // 2. Assert: startIndex ≥ 0.
     // ensured by `usize`.

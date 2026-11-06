@@ -9,9 +9,9 @@ use crate::{
     Context, JsArgs, JsData, JsError, JsExpect, JsResult, JsString,
     builtins::{
         Promise,
-        generator::GeneratorContext,
-        iterable::create_iter_result_object,
-        promise::{PromiseCapability, if_abrupt_reject_promise},
+        generator::StoredGeneratorContext,
+        iterable::create_iter_result_object_trusted,
+        promise::{PromiseCapability, StoredPromiseCapability, if_abrupt_reject_promise},
     },
     context::intrinsics::Intrinsics,
     error::JsNativeError,
@@ -23,9 +23,8 @@ use crate::{
     string::StaticJsStrings,
     symbol::JsSymbol,
     value::JsValue,
-    vm::{CompletionRecord, GeneratorResumeKind},
+    vm::{CompletionRecord, GeneratorResumeKind, completion_record::StoredCompletionRecord},
 };
-use surgeist_js_gc::{Finalize, Trace};
 use std::{collections::VecDeque, slice};
 
 use super::{BuiltInBuilder, IntrinsicObject};
@@ -46,24 +45,24 @@ pub(crate) enum AsyncGeneratorState {
 ///  - [ECMAScript reference][spec]
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-asyncgeneratorrequest-records
-#[derive(Debug, Clone, Finalize, Trace)]
+#[derive(Debug, Clone, surgeist_js_gc::heap::Trace)]
 pub(crate) struct AsyncGeneratorRequest {
     /// The `[[Completion]]` slot.
-    pub(crate) completion: CompletionRecord,
+    pub(crate) completion: StoredCompletionRecord,
 
     /// The `[[Capability]]` slot.
-    capability: PromiseCapability,
+    capability: StoredPromiseCapability,
 }
 
 /// The internal representation of an `AsyncGenerator` object.
-#[derive(Debug, Finalize, Trace, JsData)]
+#[derive(Debug, JsData, surgeist_js_gc::heap::Trace)]
 pub struct AsyncGenerator {
     /// The `[[AsyncGeneratorState]]` internal slot.
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     pub(crate) state: AsyncGeneratorState,
 
     /// The `[[AsyncGeneratorContext]]` internal slot.
-    pub(crate) context: Option<GeneratorContext>,
+    pub(crate) context: Option<StoredGeneratorContext>,
 
     /// The `[[AsyncGeneratorQueue]]` internal slot.
     pub(crate) queue: VecDeque<AsyncGeneratorRequest>,
@@ -164,7 +163,8 @@ impl AsyncGenerator {
         // 6. If state is completed, then
         if state == AsyncGeneratorState::Completed {
             // a. Let iteratorResult be CreateIterResultObject(undefined, true).
-            let iterator_result = create_iter_result_object(JsValue::undefined(), true, context);
+            let iterator_result =
+                create_iter_result_object_trusted(JsValue::undefined(), true, context);
 
             // b. Perform ! Call(promiseCapability.[[Resolve]], undefined, « iteratorResult »).
             cap.resolve()
@@ -385,8 +385,8 @@ impl AsyncGenerator {
         let mut r#gen = generator.borrow_mut();
         // 1. Let request be AsyncGeneratorRequest { [[Completion]]: completion, [[Capability]]: promiseCapability }.
         let request = AsyncGeneratorRequest {
-            completion,
-            capability: promise_capability,
+            completion: completion.into_stored(),
+            capability: promise_capability.stored(),
         };
 
         // 2. Append request to the end of generator.[[AsyncGeneratorQueue]].
@@ -421,7 +421,7 @@ impl AsyncGenerator {
             .js_expect("1. Assert: generator.[[AsyncGeneratorQueue]] is not empty.")?;
 
         // 4. Let promiseCapability be next.[[Capability]].
-        let promise_capability = &next.capability;
+        let promise_capability = next.capability.to_capability();
 
         // 5. Let value be completion.[[Value]].
         match completion {
@@ -442,19 +442,19 @@ impl AsyncGenerator {
                 let iterator_result = if let Some(realm) = realm {
                     // i. Let oldRealm be the running execution context's Realm.
                     // ii. Set the running execution context's Realm to realm.
-                    let old_realm = context.enter_realm(realm);
+                    let old_realm = context.enter_realm(realm)?;
 
                     // iii. Let iteratorResult be CreateIteratorResultObject(value, done).
-                    let iterator_result = create_iter_result_object(value, done, context);
+                    let iterator_result = create_iter_result_object_trusted(value, done, context);
 
                     // iv. Set the running execution context's Realm to oldRealm.
-                    context.enter_realm(old_realm);
+                    context.enter_realm(old_realm)?;
 
                     iterator_result
                 } else {
                     // c. Else,
                     //     i. Let iteratorResult be CreateIteratorResultObject(value, done).
-                    create_iter_result_object(value, done, context)
+                    create_iter_result_object_trusted(value, done, context)
                 };
 
                 // d. Perform ! Call(promiseCapability.[[Resolve]], undefined, « iteratorResult »).
@@ -496,7 +496,8 @@ impl AsyncGenerator {
             .data_mut()
             .context
             .take()
-            .js_expect("generator context cannot be empty here")?;
+            .js_expect("generator context cannot be empty here")?
+            .to_context();
 
         // 5. Set generator.[[AsyncGeneratorState]] to executing.
         generator.borrow_mut().data_mut().state = AsyncGeneratorState::Executing;
@@ -513,7 +514,7 @@ impl AsyncGenerator {
         let result = generator_context.resume(Some(value), resume_kind, context);
 
         // 7. Resume the suspended evaluation of genContext using completion as the result of the operation that suspended it. Let result be the Completion Record returned by the resumed computation.
-        generator.borrow_mut().data_mut().context = Some(generator_context);
+        generator.borrow_mut().data_mut().context = Some(generator_context.stored());
 
         // 8. Assert: result is never an abrupt completion.
         assert!(!result.is_throw_completion());
@@ -605,7 +606,7 @@ impl AsyncGenerator {
         )
         .name(js_string!())
         .length(1)
-        .build();
+        .build()?;
 
         // 13. Let rejectedClosure be a new Abstract Closure with parameters (reason) that captures generator and performs the following steps when called:
         // 14. Let onRejected be CreateBuiltinFunction(rejectedClosure, 1, "", « »).
@@ -636,16 +637,19 @@ impl AsyncGenerator {
         )
         .name(js_string!())
         .length(1)
-        .build();
+        .build()?;
 
         // 15. Perform PerformPromiseThen(promise, onFulfilled, onRejected).
-        Promise::perform_promise_then(
+        if let Err(error) = Promise::perform_promise_then(
             &promise,
             Some(on_fulfilled),
             Some(on_rejected),
             None,
             context,
-        );
+        ) {
+            Self::complete_step(generator, Err(error), true, None, context)?;
+            Self::drain_queue(generator, context)?;
+        }
 
         // 16. Return unused.
         Ok(())
@@ -692,7 +696,7 @@ impl AsyncGenerator {
                 .front()
                 .js_expect("must have entry")?
                 .completion
-                .clone();
+                .to_completion();
 
             // b. Let completion be Completion(next.[[Completion]]).
             match next {

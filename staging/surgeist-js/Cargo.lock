@@ -2684,9 +2684,6 @@ dependencies = [
 name = "surgeist-js-gc"
 version = "0.1.0"
 dependencies = [
- "arrayvec",
- "either",
- "hashbrown 0.17.1",
  "icu_locale_core",
  "surgeist-js-macros",
  "surgeist-js-string",

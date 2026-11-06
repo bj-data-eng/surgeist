@@ -22,8 +22,8 @@ use crate::{
     JsString, JsSymbol, JsValue, js_string, object::shape::slot::SlotAttributes, string::JsStr,
     value::StoredValue,
 };
-use surgeist_js_gc::{Finalize, Trace};
 use std::{fmt, iter::FusedIterator};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 pub use {attribute::Attribute, nonmaxu32::NonMaxU32};
 
@@ -49,7 +49,7 @@ pub use {attribute::Attribute, nonmaxu32::NonMaxU32};
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-property-descriptor-specification-type
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/defineProperty
-#[derive(Default, Debug, Clone, Trace, Finalize)]
+#[derive(Default, Debug, Clone)]
 pub struct PropertyDescriptor {
     enumerable: Option<bool>,
     configurable: Option<bool>,
@@ -57,7 +57,7 @@ pub struct PropertyDescriptor {
 }
 
 /// `DescriptorKind` represents the different kinds of property descriptors.
-#[derive(Debug, Default, Clone, Trace, Finalize)]
+#[derive(Debug, Default, Clone)]
 pub enum DescriptorKind {
     /// A data property descriptor.
     Data {
@@ -83,14 +83,14 @@ pub enum DescriptorKind {
 }
 
 /// Descriptor stored by a sparse indexed property map.
-#[derive(Debug, Trace, Finalize)]
+#[derive(Debug, HeapTrace)]
 pub(crate) struct StoredPropertyDescriptor {
     enumerable: Option<bool>,
     configurable: Option<bool>,
     kind: StoredDescriptorKind,
 }
 
-#[derive(Debug, Trace, Finalize)]
+#[derive(Debug, HeapTrace)]
 enum StoredDescriptorKind {
     Data {
         value: Option<StoredValue>,
@@ -685,7 +685,7 @@ impl From<PropertyDescriptorBuilder> for PropertyDescriptor {
 /// - [ECMAScript reference][spec]
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-ispropertykey
-#[derive(Finalize, PartialEq, Debug, Clone, Eq, Hash)]
+#[derive(PartialEq, Debug, Clone, Eq, Hash)]
 pub enum PropertyKey {
     /// A string property key.
     String(JsString),

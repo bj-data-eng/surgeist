@@ -27,7 +27,7 @@ use crate::{
         shadow_stack::{ErrorStack, ShadowEntry},
     },
 };
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 use surgeist_js_macros::js_str;
 
 pub(crate) mod aggregate;
@@ -54,8 +54,7 @@ use super::{BuiltInBuilder, BuiltInConstructor, IntrinsicObject};
 /// A tag of built-in `Error` object, [ECMAScript spec][spec].
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-error-objects
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Trace, Finalize, JsData)]
-#[surgeist_js_gc(empty_trace)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, JsData, HeapTrace)]
 #[non_exhaustive]
 pub enum ErrorKind {
     /// The `AggregateError` object type.
@@ -135,12 +134,13 @@ pub enum ErrorKind {
 /// [`JsNativeErrorKind`][crate::error::JsNativeErrorKind].
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-error-objects
-#[derive(Debug, Clone, PartialEq, Eq, Trace, Finalize, JsData)]
+#[derive(Debug, Clone, PartialEq, Eq, JsData, HeapTrace)]
 pub struct Error {
     pub(crate) tag: ErrorKind,
 
-    // The position of where the Error was created does not affect equality check.
-    #[unsafe_ignore_trace]
+    // Stack entries contain source locations, source text, and names.
+    // The creation position does not affect equality.
+    #[heap_trace(skip)]
     pub(crate) stack: IgnoreEq<ErrorStack>,
 }
 

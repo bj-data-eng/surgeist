@@ -2,22 +2,21 @@
 
 use crate::message::MessageSender;
 use crate::store::JsValueStore;
+use futures::StreamExt;
+use futures::channel::mpsc::UnboundedSender;
+use surgeist_js::gc::heap::Trace as HeapTrace;
 use surgeist_js::job::NativeAsyncJob;
 use surgeist_js::object::builtins::JsFunction;
 use surgeist_js::value::TryIntoJs;
-use surgeist_js::{
-    Context, Finalize, JsData, JsError, JsResult, JsString, JsValue, Trace, js_string,
-};
-use futures::StreamExt;
-use futures::channel::mpsc::UnboundedSender;
+use surgeist_js::{Context, JsData, JsError, JsResult, JsString, JsValue, js_string};
 
 /// A [`MessageSender`] that reads the `onMessageQueue` property of the global
 /// object and calls it if it is a function. Note that this does not support
 /// event listeners, only checks the (made-up) `onMessageQueue` property. It
 /// also does not check the `targetOrigin` and accepts all messages.
-#[derive(Debug, Clone, Trace, Finalize, JsData)]
+#[derive(Debug, Clone, JsData, HeapTrace)]
 pub struct OnMessageQueueSender {
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     sender: UnboundedSender<JsValueStore>,
 }
 

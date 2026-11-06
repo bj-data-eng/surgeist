@@ -1,5 +1,5 @@
-use surgeist_js_gc::{Finalize, Trace};
 use itertools::Itertools;
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 use crate::{
     Context, JsArgs, JsData, JsExpect, JsNativeError, JsObject, JsResult, JsString, JsSymbol,
@@ -7,14 +7,15 @@ use crate::{
     builtins::{BuiltInBuilder, IntrinsicObject},
     context::intrinsics::Intrinsics,
     js_string,
+    object::ObjectEdge,
     realm::Realm,
 };
 
 use super::{SegmentIterator, Segmenter, create_segment_data_object};
 
-#[derive(Debug, Trace, Finalize, JsData)]
+#[derive(Debug, JsData, HeapTrace)]
 pub(crate) struct Segments {
-    segmenter: JsObject,
+    segmenter: ObjectEdge,
     string: JsString,
 }
 
@@ -44,7 +45,10 @@ impl Segments {
         JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
             context.intrinsics().objects().segments_prototype(),
-            Self { segmenter, string },
+            Self {
+                segmenter: segmenter.edge(),
+                string,
+            },
         )
         .upcast()
     }
@@ -65,8 +69,8 @@ impl Segments {
             })?;
 
         // 3. Let segmenter be segments.[[SegmentsSegmenter]].
-        let segmenter = segments
-            .segmenter
+        let segmenter = JsObject::from_inner(segments.segmenter.clone());
+        let segmenter = segmenter
             .downcast_ref::<Segmenter>()
             .js_expect("segments object should contain a segmenter")?;
 
@@ -99,7 +103,7 @@ impl Segments {
 
         // 10. Return ! CreateSegmentDataObject(segmenter, string, startIndex, endIndex).
         Ok(
-            create_segment_data_object(segments.string.clone(), range, is_word_like, context)
+            create_segment_data_object(segments.string.clone(), range, is_word_like, context)?
                 .into(),
         )
     }
@@ -122,9 +126,7 @@ impl Segments {
         // 3. Let segmenter be segments.[[SegmentsSegmenter]].
         // 4. Let string be segments.[[SegmentsString]].
         // 5. Return ! CreateSegmentIterator(segmenter, string).
-        Ok(
-            SegmentIterator::create(segments.segmenter.clone(), segments.string.clone(), context)
-                .into(),
-        )
+        let segmenter = JsObject::from_inner(segments.segmenter.clone());
+        Ok(SegmentIterator::create(segmenter, segments.string.clone(), context).into())
     }
 }

@@ -23,17 +23,20 @@ pub use table::TableData;
 
 use comfy_table::{Cell, Table};
 use rustc_hash::FxHashMap;
-use std::{collections::hash_map::Entry, fmt::Write as _, io::Write, time::SystemTime};
+use std::{
+    cell::RefCell, collections::hash_map::Entry, fmt::Write as _, io::Write, rc::Rc,
+    time::SystemTime,
+};
 use surgeist_js::JsVariant;
 use surgeist_js::property::Attribute;
 use surgeist_js::{
-    Context, JsArgs, JsData, JsError, JsNativeError, JsResult, JsString, JsSymbol, js_str,
-    js_string,
-    native_function::NativeFunction,
+    Context, JsArgs, JsData, JsError, JsNativeError, JsResult, JsString, JsSymbol,
+    gc::heap::Trace as HeapTrace,
+    js_str, js_string,
+    native_function::{NativeCapture, NativeFunction},
     object::{JsObject, ObjectInitializer},
     value::{JsValue, Numeric},
 };
-use surgeist_js_gc::{Finalize, Gc, GcRefCell, Trace};
 
 /// Registers the `console` object into the given context, using the [`DefaultLogger`].
 ///
@@ -51,7 +54,7 @@ pub fn register(_realm: Option<surgeist_js::realm::Realm>, context: &mut Context
 }
 
 /// A trait that can be used to forward console logs to an implementation.
-pub trait Logger: Trace {
+pub trait Logger: HeapTrace {
     /// Log a trace message (`console.trace`). By default, passes the message and the
     /// code block names of each stack trace frame to `log`.
     ///
@@ -134,7 +137,7 @@ pub trait Logger: Trace {
 /// Implements the [`Logger`] trait and output errors to stderr and all
 /// the others to stdout. Will add indentation based on the number of
 /// groups.
-#[derive(Debug, Trace, Finalize)]
+#[derive(Debug, HeapTrace)]
 pub struct DefaultLogger;
 
 impl Logger for DefaultLogger {
@@ -162,7 +165,7 @@ impl Logger for DefaultLogger {
 }
 
 /// A logger that drops all logging. Useful for testing.
-#[derive(Debug, Trace, Finalize)]
+#[derive(Debug, HeapTrace)]
 pub struct NullLogger;
 
 impl Logger for NullLogger {
@@ -280,17 +283,19 @@ fn formatter(data: &[JsValue], context: &mut Context) -> JsResult<String> {
 /// The current state of the console, passed to the logger backend.
 /// This should not be copied or cloned. References are only valid
 /// for the current logging call.
-#[derive(Debug, Default, Trace, Finalize)]
+#[derive(Debug, Default, HeapTrace)]
 pub struct ConsoleState {
     /// The map of console counters, used in `console.count()`.
     count_map: FxHashMap<JsString, u32>,
 
     /// The map of console timers, used in `console.time`, `console.timeLog`
     /// and `console.timeEnd`.
+    #[heap_trace(skip)]
     timer_map: FxHashMap<JsString, u128>,
 
     /// The current list of groups. Groups should be indented, but some logging
     /// libraries may want to use them in a different way.
+    #[heap_trace(skip)]
     groups: Vec<String>,
 }
 
@@ -321,7 +326,7 @@ impl ConsoleState {
 }
 
 /// This is the internal console object state.
-#[derive(Debug, Default, Trace, Finalize, JsData)]
+#[derive(Debug, Default, JsData, HeapTrace)]
 pub struct Console {
     state: ConsoleState,
 }
@@ -338,7 +343,7 @@ impl Console {
     where
         L: Logger + 'static,
     {
-        let console = Self::init_with_logger(logger, context);
+        let console = Self::init_with_logger(logger, context)?;
         context.register_global_property(
             Self::NAME,
             console,
@@ -350,7 +355,7 @@ impl Console {
 
     /// Initializes the `console` with a special logger.
     #[allow(clippy::too_many_lines)]
-    pub fn init_with_logger<L>(logger: L, context: &mut Context) -> JsObject
+    pub fn init_with_logger<L>(logger: L, context: &mut Context) -> JsResult<JsObject>
     where
         L: Logger + 'static,
     {
@@ -360,19 +365,37 @@ impl Console {
         type ConsoleMethodMut<L> =
             fn(&JsValue, &[JsValue], &mut Console, &L, &mut Context) -> JsResult<JsValue>;
 
-        fn console_method<L: Logger + 'static>(
-            f: ConsoleMethod<L>,
-            state: Gc<GcRefCell<Console>>,
-            logger: Gc<L>,
-        ) -> NativeFunction {
-            #[derive(Trace, Finalize)]
-            struct Captures<L: Logger + 'static> {
-                #[unsafe_ignore_trace]
-                callback: ConsoleMethod<L>,
-                state: Gc<GcRefCell<Console>>,
-                logger: Gc<L>,
+        #[derive(HeapTrace)]
+        struct Captures<F: 'static, L: Logger> {
+            #[heap_trace(skip)]
+            callback: F,
+            // Console state contains only strings, counters, and timestamps.
+            #[heap_trace(skip)]
+            state: Rc<RefCell<Console>>,
+            logger: Rc<L>,
+        }
+
+        impl<F: Copy + 'static, L: Logger> NativeCapture for Captures<F, L> {
+            type Stored = Self;
+
+            fn store(&self) -> Self {
+                Self {
+                    callback: self.callback,
+                    state: self.state.clone(),
+                    logger: self.logger.clone(),
+                }
             }
 
+            fn restore(stored: &Self) -> Self {
+                stored.store()
+            }
+        }
+
+        fn console_method<L: Logger + 'static>(
+            f: ConsoleMethod<L>,
+            state: Rc<RefCell<Console>>,
+            logger: Rc<L>,
+        ) -> NativeFunction {
             NativeFunction::from_fn_with_captures(
                 |this, args, captures, context| {
                     (captures.callback)(
@@ -392,17 +415,9 @@ impl Console {
         }
         fn console_method_mut<L: Logger + 'static>(
             f: ConsoleMethodMut<L>,
-            state: Gc<GcRefCell<Console>>,
-            logger: Gc<L>,
+            state: Rc<RefCell<Console>>,
+            logger: Rc<L>,
         ) -> NativeFunction {
-            #[derive(Trace, Finalize)]
-            struct Captures<L: Logger + 'static> {
-                #[unsafe_ignore_trace]
-                callback: ConsoleMethodMut<L>,
-                state: Gc<GcRefCell<Console>>,
-                logger: Gc<L>,
-            }
-
             NativeFunction::from_fn_with_captures(
                 |this, args, captures, context| {
                     (captures.callback)(
@@ -421,8 +436,8 @@ impl Console {
             )
         }
 
-        let state = Gc::new(GcRefCell::new(Self::default()));
-        let logger = Gc::new(logger);
+        let state = Rc::new(RefCell::new(Self::default()));
+        let logger = Rc::new(logger);
 
         ObjectInitializer::with_native_data_and_proto(
             Self::default(),
@@ -538,7 +553,7 @@ impl Console {
     }
 
     /// Initializes the `console` built-in object.
-    pub fn init(context: &mut Context) -> JsObject {
+    pub fn init(context: &mut Context) -> JsResult<JsObject> {
         Self::init_with_logger(DefaultLogger, context)
     }
 

@@ -16,7 +16,7 @@ use crate::{
     realm::Realm,
     string::StaticJsStrings,
 };
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 use temporal_rs::{
     Calendar, MonthCode, PlainMonthDay as InnerMonthDay,
@@ -39,9 +39,9 @@ use super::{DateTimeValues, create_temporal_date, is_partial_temporal_object};
 /// [spec]: https://tc39.es/proposal-temporal/#sec-temporal-plainmonthday-objects
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Temporal/PlainMonthDay
 /// [temporal_rs-docs]: https://docs.rs/temporal_rs/latest/temporal_rs/struct.PlainMonthDay.html
-#[derive(Debug, Clone, Trace, Finalize, JsData)]
-#[surgeist_js_gc(unsafe_empty_trace)] // Safety: PlainMonthDay contains no traceable inner fields.
+#[derive(Debug, Clone, JsData, HeapTrace)]
 pub struct PlainMonthDay {
+    #[heap_trace(skip)]
     pub(crate) inner: InnerMonthDay,
 }
 
@@ -147,7 +147,7 @@ impl BuiltInConstructor for PlainMonthDay {
                 s.as_string()
                     .as_ref()
                     .map(JsString::to_std_string_lossy)
-                    .ok_or_else(|| JsNativeError::typ().with_message("calendar must be a string."))
+                    .ok_or_else(|| crate::js_error!(TypeError: "calendar must be a string."))
             })
             .transpose()?
             .map(|s| Calendar::try_from_utf8(s.as_bytes()))
@@ -297,7 +297,7 @@ impl PlainMonthDay {
         let fields = to_calendar_fields(&object, month_day.inner.calendar(), context)?;
         // 7. Set fields to CalendarMergeFields(calendar, fields, partialMonthDay).
         // 8. Let resolvedOptions be ? GetOptionsObject(options).
-        let resolved_options = get_options_object(args.get_or_undefined(1))?;
+        let resolved_options = get_options_object(args.get_or_undefined(1), context)?;
         // 9. Let overflow be ? GetTemporalOverflowOption(resolvedOptions).
         let overflow = get_option::<Overflow>(&resolved_options, js_string!("overflow"), context)?;
         // 10. Let isoDate be ? CalendarMonthDayFromFields(calendar, fields, overflow).
@@ -354,7 +354,7 @@ impl PlainMonthDay {
             })?;
 
         // 3. Set options to ? NormalizeOptionsObject(options).
-        let options = get_options_object(args.get_or_undefined(0))?;
+        let options = get_options_object(args.get_or_undefined(0), context)?;
         // 4. Let showCalendar be ? ToShowCalendarOption(options).
         // Get calendarName from the options object
         let show_calendar =
@@ -513,7 +513,7 @@ pub(crate) fn create_temporal_month_day(
     // 6. Set object.[[ISODay]] to isoDay.
     // 7. Set object.[[Calendar]] to calendar.
     // 8. Set object.[[ISOYear]] to referenceISOYear.
-    let obj = JsObject::from_proto_and_data(proto, PlainMonthDay::new(inner));
+    let obj = JsObject::from_proto_and_data(context.runtime(), proto, PlainMonthDay::new(inner))?;
 
     // 9. Return object.
     Ok(obj.into())
@@ -531,7 +531,7 @@ fn to_temporal_month_day(
         // a. If item has an [[InitializedTemporalMonthDay]] internal slot, then
         if let Some(md) = obj.downcast_ref::<PlainMonthDay>() {
             // i. Let resolvedOptions be ? GetOptionsObject(options).
-            let options = get_options_object(options)?;
+            let options = get_options_object(options, context)?;
             // ii. Perform ? GetTemporalOverflowOption(resolvedOptions).
             let _ = get_option::<Overflow>(&options, js_string!("overflow"), context)?;
             // iii. Return ! CreateTemporalMonthDay(item.[[ISODate]], item.[[Calendar]]).
@@ -591,7 +591,7 @@ fn to_temporal_month_day(
             .with_calendar(calendar);
 
         // d. Let resolvedOptions be ? GetOptionsObject(options).
-        let options = get_options_object(options)?;
+        let options = get_options_object(options, context)?;
         // e. Let overflow be ? GetTemporalOverflowOption(resolvedOptions).
         let overflow = get_option::<Overflow>(&options, js_string!("overflow"), context)?;
         // f. Let isoDate be ? CalendarMonthDayFromFields(calendar, fields, overflow).
@@ -612,7 +612,7 @@ fn to_temporal_month_day(
     let parse_record =
         ParsedDate::month_day_from_utf8(md_string.to_std_string_escaped().as_bytes())?;
     // 8. Let resolvedOptions be ? GetOptionsObject(options).
-    let options = get_options_object(options)?;
+    let options = get_options_object(options, context)?;
     // 9. Perform ? GetTemporalOverflowOption(resolvedOptions).
     let _ = get_option::<Overflow>(&options, js_string!("overflow"), context)?;
     // 10. If calendar is "iso8601", then

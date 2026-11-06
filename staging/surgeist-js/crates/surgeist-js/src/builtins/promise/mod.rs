@@ -16,29 +16,30 @@ use crate::{
     builtins::{Array, BuiltInObject},
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     error::JsNativeError,
-    job::{JobCallback, PromiseJob},
+    job::{JobCallback, PromiseJob, StoredJobCallback},
     js_string,
-    native_function::NativeFunction,
+    native_function::{CapturedObject, NativeCapture, NativeFunction},
     object::{
-        CONSTRUCTOR, FunctionObjectBuilder, JsFunction, JsObject,
+        CONSTRUCTOR, FunctionObjectBuilder, JsFunction, JsObject, ObjectEdge,
         internal_methods::get_prototype_from_constructor,
     },
     property::Attribute,
     realm::Realm,
     string::StaticJsStrings,
     symbol::JsSymbol,
-    value::JsValue,
+    value::{JsValue, StoredValue},
 };
-use surgeist_js_gc::{Finalize, Gc, GcRefCell, Trace, custom_trace};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
+use surgeist_js_gc::heap::{RecordRef, Rooted, Trace as HeapTrace};
 use surgeist_js_macros::JsData;
-#[cfg(feature = "experimental")]
-use std::cell::RefCell;
-use std::{cell::Cell, rc::Rc};
 
 // ==================== Public API ====================
 
 /// The current state of a [`Promise`].
-#[derive(Debug, Clone, Finalize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PromiseState {
     /// The promise hasn't been resolved.
     Pending,
@@ -46,15 +47,6 @@ pub enum PromiseState {
     Fulfilled(JsValue),
     /// The promise was rejected with a failure reason.
     Rejected(JsValue),
-}
-
-unsafe impl Trace for PromiseState {
-    custom_trace!(this, mark, {
-        match this {
-            Self::Fulfilled(v) | Self::Rejected(v) => mark(v),
-            Self::Pending => {}
-        }
-    });
 }
 
 impl PromiseState {
@@ -80,12 +72,20 @@ impl PromiseState {
 }
 
 /// The internal representation of a `Promise` object.
-#[derive(Debug, Trace, Finalize, JsData)]
+#[derive(Debug, HeapTrace, JsData)]
 pub struct Promise {
-    state: PromiseState,
-    fulfill_reactions: Vec<ReactionRecord>,
-    reject_reactions: Vec<ReactionRecord>,
+    state: StoredPromiseState,
     handled: bool,
+}
+
+#[derive(Debug, HeapTrace)]
+enum StoredPromiseState {
+    Pending {
+        fulfill_reactions: Vec<StoredReactionRecord>,
+        reject_reactions: Vec<StoredReactionRecord>,
+    },
+    Fulfilled(StoredValue),
+    Rejected(StoredValue),
 }
 
 /// The operation type of the [`HostPromiseRejectionTracker`][fn] abstract operation.
@@ -118,20 +118,12 @@ pub enum OperationType {
 /// the resolution value.
 ///
 /// [`Promise()`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/Promise
-#[derive(Debug, Clone, Finalize)]
+#[derive(Debug, Clone)]
 pub struct ResolvingFunctions {
     /// The `resolveFunc` parameter of the executor passed to `Promise()`.
     pub resolve: JsFunction,
     /// The `rejectFunc` parameter of the executor passed to `Promise()`.
     pub reject: JsFunction,
-}
-
-// Manually implementing `Trace` to allow destructuring.
-unsafe impl Trace for ResolvingFunctions {
-    custom_trace!(this, mark, {
-        mark(&this.resolve);
-        mark(&this.reject);
-    });
 }
 
 // ==================== Private API ====================
@@ -172,7 +164,7 @@ pub(crate) use if_abrupt_reject_promise;
 ///  - [ECMAScript reference][spec]
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-promisecapability-records
-#[derive(Debug, Clone, Finalize)]
+#[derive(Debug, Clone)]
 pub(crate) struct PromiseCapability {
     /// The `[[Promise]]` field.
     pub(crate) promise: JsObject,
@@ -181,12 +173,36 @@ pub(crate) struct PromiseCapability {
     pub(crate) functions: ResolvingFunctions,
 }
 
-// SAFETY: manually implementing `Trace` to allow destructuring.
-unsafe impl Trace for PromiseCapability {
-    custom_trace!(this, mark, {
-        mark(&this.promise);
-        mark(&this.functions);
-    });
+/// A capability retained inside a JavaScript record.
+#[derive(Debug, Clone, surgeist_js_gc::heap::Trace)]
+pub(crate) struct StoredPromiseCapability {
+    promise: crate::object::ObjectEdge,
+    resolve: crate::object::ObjectEdge,
+    reject: crate::object::ObjectEdge,
+}
+
+impl StoredPromiseCapability {
+    pub(crate) fn to_capability(&self) -> PromiseCapability {
+        PromiseCapability {
+            promise: JsObject::from_inner(self.promise.clone()),
+            functions: ResolvingFunctions {
+                resolve: JsFunction::from_record(self.resolve.clone()),
+                reject: JsFunction::from_record(self.reject.clone()),
+            },
+        }
+    }
+}
+
+impl NativeCapture for PromiseCapability {
+    type Stored = StoredPromiseCapability;
+
+    fn store(&self) -> Self::Stored {
+        self.stored()
+    }
+
+    fn restore(stored: &Self::Stored) -> Self {
+        stored.to_capability()
+    }
 }
 
 /// The internal `PromiseReaction` data type.
@@ -195,17 +211,58 @@ unsafe impl Trace for PromiseCapability {
 ///  - [ECMAScript reference][spec]
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-promisereaction-records
-#[derive(Debug, Trace, Finalize)]
-pub(crate) struct ReactionRecord {
+struct ReactionRecord {
     /// The `[[Capability]]` field.
     promise_capability: Option<PromiseCapability>,
 
     /// The `[[Type]]` field.
-    #[unsafe_ignore_trace]
     reaction_type: ReactionType,
 
     /// The `[[Handler]]` field.
     handler: Option<JobCallback>,
+}
+
+impl ReactionRecord {
+    fn to_stored(&self) -> StoredReactionRecord {
+        StoredReactionRecord {
+            promise_capability: self
+                .promise_capability
+                .as_ref()
+                .map(PromiseCapability::stored),
+            reaction_type: self.reaction_type,
+            handler: self.handler.as_ref().map(JobCallback::to_stored),
+        }
+    }
+}
+
+#[derive(HeapTrace)]
+struct StoredReactionRecord {
+    promise_capability: Option<StoredPromiseCapability>,
+    #[heap_trace(skip)]
+    reaction_type: ReactionType,
+    handler: Option<StoredJobCallback>,
+}
+
+impl StoredReactionRecord {
+    fn to_reaction(&self) -> ReactionRecord {
+        ReactionRecord {
+            promise_capability: self
+                .promise_capability
+                .as_ref()
+                .map(StoredPromiseCapability::to_capability),
+            reaction_type: self.reaction_type,
+            handler: self.handler.as_ref().map(StoredJobCallback::to_callback),
+        }
+    }
+}
+
+impl std::fmt::Debug for StoredReactionRecord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StoredReactionRecord")
+            .field("promise_capability", &self.promise_capability)
+            .field("reaction_type", &self.reaction_type)
+            .finish_non_exhaustive()
+    }
 }
 
 /// The `[[Type]]` field values of a `PromiseReaction` record.
@@ -220,7 +277,58 @@ enum ReactionType {
     Reject,
 }
 
+struct CombinatorElementCaptures {
+    already_called: Rc<Cell<bool>>,
+    index: usize,
+    values: Rooted<RefCell<Vec<StoredValue>>>,
+    capability: JsFunction,
+    remaining_elements: Rc<Cell<i32>>,
+}
+
+#[derive(HeapTrace)]
+struct StoredCombinatorElementCaptures {
+    #[heap_trace(skip)]
+    already_called: Rc<Cell<bool>>,
+    index: usize,
+    values: RecordRef<RefCell<Vec<StoredValue>>>,
+    capability: CapturedObject,
+    #[heap_trace(skip)]
+    remaining_elements: Rc<Cell<i32>>,
+}
+
+impl NativeCapture for CombinatorElementCaptures {
+    type Stored = StoredCombinatorElementCaptures;
+
+    fn store(&self) -> Self::Stored {
+        StoredCombinatorElementCaptures {
+            already_called: self.already_called.clone(),
+            index: self.index,
+            values: self.values.store(),
+            capability: self.capability.store(),
+            remaining_elements: self.remaining_elements.clone(),
+        }
+    }
+
+    fn restore(stored: &Self::Stored) -> Self {
+        Self {
+            already_called: stored.already_called.clone(),
+            index: stored.index,
+            values: Rooted::restore(&stored.values),
+            capability: JsFunction::restore(&stored.capability),
+            remaining_elements: stored.remaining_elements.clone(),
+        }
+    }
+}
+
 impl PromiseCapability {
+    pub(crate) fn stored(&self) -> StoredPromiseCapability {
+        StoredPromiseCapability {
+            promise: self.promise.edge(),
+            resolve: self.functions.resolve.clone().into_record(),
+            reject: self.functions.reject.clone().into_record(),
+        }
+    }
+
     /// `NewPromiseCapability ( C )`
     ///
     /// More information:
@@ -228,10 +336,10 @@ impl PromiseCapability {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-newpromisecapability
     pub(crate) fn new(c: &JsObject, context: &mut Context) -> JsResult<Self> {
-        #[derive(Debug, Clone, Trace, Finalize)]
+        #[derive(HeapTrace)]
         struct RejectResolve {
-            reject: JsValue,
-            resolve: JsValue,
+            reject: StoredValue,
+            resolve: StoredValue,
         }
 
         // 1. If IsConstructor(C) is false, throw a TypeError exception.
@@ -243,10 +351,14 @@ impl PromiseCapability {
 
         // 2. NOTE: C is assumed to be a constructor function that supports the parameter conventions of the Promise constructor (see 27.2.3.1).
         // 3. Let promiseCapability be the PromiseCapability Record { [[Promise]]: undefined, [[Resolve]]: undefined, [[Reject]]: undefined }.
-        let promise_capability = Gc::new(GcRefCell::new(RejectResolve {
-            reject: JsValue::undefined(),
-            resolve: JsValue::undefined(),
-        }));
+        let promise_capability = context
+            .runtime()
+            .heap
+            .allocate(RefCell::new(RejectResolve {
+                reject: StoredValue::Undefined,
+                resolve: StoredValue::Undefined,
+            }))
+            .expect("a new promise capability has no object edges");
 
         // 4. Let executorClosure be a new Abstract Closure with parameters (resolve, reject) that captures promiseCapability and performs the following steps when called:
         // 5. Let executor be CreateBuiltinFunction(executorClosure, 2, "", « »).
@@ -256,14 +368,14 @@ impl PromiseCapability {
                 |_this, args: &[JsValue], captures, _| {
                     let mut promise_capability = captures.borrow_mut();
                     // a. If promiseCapability.[[Resolve]] is not undefined, throw a TypeError exception.
-                    if !promise_capability.resolve.is_undefined() {
+                    if !matches!(promise_capability.resolve, StoredValue::Undefined) {
                         return Err(JsNativeError::typ()
                             .with_message("promiseCapability.[[Resolve]] is not undefined")
                             .into());
                     }
 
                     // b. If promiseCapability.[[Reject]] is not undefined, throw a TypeError exception.
-                    if !promise_capability.reject.is_undefined() {
+                    if !matches!(promise_capability.reject, StoredValue::Undefined) {
                         return Err(JsNativeError::typ()
                             .with_message("promiseCapability.[[Reject]] is not undefined")
                             .into());
@@ -273,10 +385,10 @@ impl PromiseCapability {
                     let reject = args.get_or_undefined(1);
 
                     // c. Set promiseCapability.[[Resolve]] to resolve.
-                    promise_capability.resolve = resolve.clone();
+                    promise_capability.resolve = resolve.clone().into_stored();
 
                     // d. Set promiseCapability.[[Reject]] to reject.
-                    promise_capability.reject = reject.clone();
+                    promise_capability.reject = reject.clone().into_stored();
 
                     // e. Return undefined.
                     Ok(JsValue::undefined())
@@ -286,7 +398,7 @@ impl PromiseCapability {
         )
         .name("")
         .length(2)
-        .build()
+        .build()?
         .into();
 
         // 6. Let promise be ? Construct(C, « executor »).
@@ -294,8 +406,8 @@ impl PromiseCapability {
 
         let promise_capability = promise_capability.borrow();
 
-        let resolve = promise_capability.resolve.clone();
-        let reject = promise_capability.reject.clone();
+        let resolve = promise_capability.resolve.to_value();
+        let reject = promise_capability.reject.to_value();
 
         // 7. If IsCallable(promiseCapability.[[Resolve]]) is false, throw a TypeError exception.
         let resolve = resolve
@@ -462,16 +574,21 @@ impl Promise {
     /// Creates a new, pending `Promise`.
     pub(crate) fn new() -> Self {
         Self {
-            state: PromiseState::Pending,
-            fulfill_reactions: Vec::default(),
-            reject_reactions: Vec::default(),
+            state: StoredPromiseState::Pending {
+                fulfill_reactions: Vec::new(),
+                reject_reactions: Vec::new(),
+            },
             handled: false,
         }
     }
 
     /// Gets the current state of the promise.
-    pub(crate) const fn state(&self) -> &PromiseState {
-        &self.state
+    pub(crate) fn state(&self) -> PromiseState {
+        match &self.state {
+            StoredPromiseState::Pending { .. } => PromiseState::Pending,
+            StoredPromiseState::Fulfilled(value) => PromiseState::Fulfilled(value.to_value()),
+            StoredPromiseState::Rejected(reason) => PromiseState::Rejected(reason.to_value()),
+        }
     }
 
     /// [`Promise.try ( callbackfn, ...args )`][spec]
@@ -641,22 +758,15 @@ impl Promise {
         promise_resolve: &JsObject,
         context: &mut Context,
     ) -> JsResult<JsObject> {
-        #[derive(Debug, Trace, Finalize)]
-        struct ResolveElementCaptures {
-            #[unsafe_ignore_trace]
-            already_called: Rc<Cell<bool>>,
-            index: usize,
-            values: Gc<GcRefCell<Vec<JsValue>>>,
-            capability_resolve: JsFunction,
-            #[unsafe_ignore_trace]
-            remaining_elements_count: Rc<Cell<i32>>,
-        }
-
         // 1. Let values be a new empty List.
-        let values = Gc::new(GcRefCell::new(Vec::new()));
+        let values = context
+            .runtime()
+            .heap
+            .allocate(RefCell::new(Vec::<StoredValue>::new()))
+            .expect("an empty result list has no object edges");
 
         // 2. Let remainingElementsCount be the Record { [[Value]]: 1 }.
-        let remaining_elements_count = Rc::new(Cell::new(1));
+        let remaining_elements = Rc::new(Cell::new(1));
 
         // 3. Let index be 0.
         let mut index = 0;
@@ -664,7 +774,7 @@ impl Promise {
         // 4. Repeat,
         while let Some(next) = iterator_record.step_value(context)? {
             // c. Append undefined to values.
-            values.borrow_mut().push(JsValue::undefined());
+            values.borrow_mut().push(StoredValue::Undefined);
 
             // d. Let nextPromise be ? Call(promiseResolve, constructor, « next »).
             let next_promise =
@@ -700,23 +810,23 @@ impl Promise {
 
                         // 8. Set values[index] to x.
                         captures.values.borrow_mut()[captures.index] =
-                            args.get_or_undefined(0).clone();
+                            args.get_or_undefined(0).clone().into_stored();
 
                         // 9. Set remainingElementsCount.[[Value]] to remainingElementsCount.[[Value]] - 1.
                         captures
-                            .remaining_elements_count
-                            .set(captures.remaining_elements_count.get() - 1);
+                            .remaining_elements
+                            .set(captures.remaining_elements.get() - 1);
 
                         // 10. If remainingElementsCount.[[Value]] is 0, then
-                        if captures.remaining_elements_count.get() == 0 {
+                        if captures.remaining_elements.get() == 0 {
                             // a. Let valuesArray be CreateArrayFromList(values).
                             let values_array = Array::create_array_from_list(
-                                captures.values.borrow().as_slice().iter().cloned(),
+                                captures.values.borrow().iter().map(StoredValue::to_value),
                                 context,
                             );
 
                             // b. Return ? Call(promiseCapability.[[Resolve]], undefined, « valuesArray »).
-                            return captures.capability_resolve.call(
+                            return captures.capability.call(
                                 &JsValue::undefined(),
                                 &[values_array.into()],
                                 context,
@@ -726,22 +836,22 @@ impl Promise {
                         // 11. Return undefined.
                         Ok(JsValue::undefined())
                     },
-                    ResolveElementCaptures {
+                    CombinatorElementCaptures {
                         already_called: Rc::new(Cell::new(false)),
                         index,
                         values: values.clone(),
-                        capability_resolve: result_capability.functions.resolve.clone(),
-                        remaining_elements_count: remaining_elements_count.clone(),
+                        capability: result_capability.functions.resolve.clone(),
+                        remaining_elements: remaining_elements.clone(),
                     },
                 ),
             )
             .name("")
             .length(1)
             .constructor(false)
-            .build();
+            .build()?;
 
             // m. Set remainingElementsCount.[[Value]] to remainingElementsCount.[[Value]] + 1.
-            remaining_elements_count.set(remaining_elements_count.get() + 1);
+            remaining_elements.set(remaining_elements.get() + 1);
 
             // n. Perform ? Invoke(nextPromise, "then", « onFulfilled, resultCapability.[[Reject]] »).
             next_promise.invoke(
@@ -759,13 +869,15 @@ impl Promise {
 
         // b. If next is done, then
         //     i. Set remainingElementsCount.[[Value]] to remainingElementsCount.[[Value]] - 1.
-        remaining_elements_count.set(remaining_elements_count.get() - 1);
+        remaining_elements.set(remaining_elements.get() - 1);
 
         //     ii. If remainingElementsCount.[[Value]] = 0, then
-        if remaining_elements_count.get() == 0 {
+        if remaining_elements.get() == 0 {
             // 1. Let valuesArray be CreateArrayFromList(values).
-            let values_array =
-                Array::create_array_from_list(values.borrow().iter().cloned(), context);
+            let values_array = Array::create_array_from_list(
+                values.borrow().iter().map(StoredValue::to_value),
+                context,
+            );
 
             // 2. Perform ? Call(resultCapability.[[Resolve]], undefined, « valuesArray »).
             result_capability.functions.resolve.call(
@@ -856,22 +968,15 @@ impl Promise {
         promise_resolve: &JsObject,
         context: &mut Context,
     ) -> JsResult<JsObject> {
-        #[derive(Debug, Trace, Finalize)]
-        struct ResolveRejectElementCaptures {
-            #[unsafe_ignore_trace]
-            already_called: Rc<Cell<bool>>,
-            index: usize,
-            values: Gc<GcRefCell<Vec<JsValue>>>,
-            capability: JsFunction,
-            #[unsafe_ignore_trace]
-            remaining_elements: Rc<Cell<i32>>,
-        }
-
         // 1. Let values be a new empty List.
-        let values = Gc::new(GcRefCell::new(Vec::new()));
+        let values = context
+            .runtime()
+            .heap
+            .allocate(RefCell::new(Vec::<StoredValue>::new()))
+            .expect("an empty result list has no object edges");
 
         // 2. Let remainingElementsCount be the Record { [[Value]]: 1 }.
-        let remaining_elements_count = Rc::new(Cell::new(1));
+        let remaining_elements = Rc::new(Cell::new(1));
 
         // 3. Let index be 0.
         let mut index = 0;
@@ -879,7 +984,7 @@ impl Promise {
         // 4. Repeat,
         while let Some(next) = iterator_record.step_value(context)? {
             // c. Append undefined to values.
-            values.borrow_mut().push(JsValue::undefined());
+            values.borrow_mut().push(StoredValue::Undefined);
 
             // d. Let nextPromise be ? Call(promiseResolve, constructor, « next »).
             let next_promise =
@@ -938,7 +1043,8 @@ impl Promise {
                         .js_expect("cannot fail per spec")?;
 
                         // 12. Set values[index] to obj.
-                        captures.values.borrow_mut()[captures.index] = obj.into();
+                        captures.values.borrow_mut()[captures.index] =
+                            JsValue::from(obj).into_stored();
 
                         // 13. Set remainingElementsCount.[[Value]] to remainingElementsCount.[[Value]] - 1.
                         captures
@@ -949,7 +1055,7 @@ impl Promise {
                         if captures.remaining_elements.get() == 0 {
                             // a. Let valuesArray be CreateArrayFromList(values).
                             let values_array = Array::create_array_from_list(
-                                captures.values.borrow().as_slice().iter().cloned(),
+                                captures.values.borrow().iter().map(StoredValue::to_value),
                                 context,
                             );
 
@@ -964,19 +1070,19 @@ impl Promise {
                         // 15. Return undefined.
                         Ok(JsValue::undefined())
                     },
-                    ResolveRejectElementCaptures {
+                    CombinatorElementCaptures {
                         already_called: already_called.clone(),
                         index,
                         values: values.clone(),
                         capability: result_capability.functions.resolve.clone(),
-                        remaining_elements: remaining_elements_count.clone(),
+                        remaining_elements: remaining_elements.clone(),
                     },
                 ),
             )
             .name("")
             .length(1)
             .constructor(false)
-            .build();
+            .build()?;
 
             // n. Let stepsRejected be the algorithm steps defined in Promise.allSettled Reject Element Functions.
             // o. Let lengthRejected be the number of non-optional parameters of the function definition in Promise.allSettled Reject Element Functions.
@@ -1028,7 +1134,8 @@ impl Promise {
                         .js_expect("cannot fail per spec")?;
 
                         // 12. Set values[index] to obj.
-                        captures.values.borrow_mut()[captures.index] = obj.into();
+                        captures.values.borrow_mut()[captures.index] =
+                            JsValue::from(obj).into_stored();
 
                         // 13. Set remainingElementsCount.[[Value]] to remainingElementsCount.[[Value]] - 1.
                         captures
@@ -1039,7 +1146,7 @@ impl Promise {
                         if captures.remaining_elements.get() == 0 {
                             // a. Let valuesArray be CreateArrayFromList(values).
                             let values_array = Array::create_array_from_list(
-                                captures.values.borrow().as_slice().iter().cloned(),
+                                captures.values.borrow().iter().map(StoredValue::to_value),
                                 context,
                             );
 
@@ -1054,22 +1161,22 @@ impl Promise {
                         // 15. Return undefined.
                         Ok(JsValue::undefined())
                     },
-                    ResolveRejectElementCaptures {
+                    CombinatorElementCaptures {
                         already_called,
                         index,
                         values: values.clone(),
                         capability: result_capability.functions.resolve.clone(),
-                        remaining_elements: remaining_elements_count.clone(),
+                        remaining_elements: remaining_elements.clone(),
                     },
                 ),
             )
             .name("")
             .length(1)
             .constructor(false)
-            .build();
+            .build()?;
 
             // v. Set remainingElementsCount.[[Value]] to remainingElementsCount.[[Value]] + 1.
-            remaining_elements_count.set(remaining_elements_count.get() + 1);
+            remaining_elements.set(remaining_elements.get() + 1);
 
             // w. Perform ? Invoke(nextPromise, "then", « onFulfilled, onRejected »).
             next_promise.invoke(
@@ -1084,13 +1191,15 @@ impl Promise {
 
         // b. If next is done, then
         //     i. Set remainingElementsCount.[[Value]] to remainingElementsCount.[[Value]] - 1.
-        remaining_elements_count.set(remaining_elements_count.get() - 1);
+        remaining_elements.set(remaining_elements.get() - 1);
 
         //     ii. If remainingElementsCount.[[Value]] = 0, then
-        if remaining_elements_count.get() == 0 {
+        if remaining_elements.get() == 0 {
             // 1. Let valuesArray be CreateArrayFromList(values).
-            let values_array =
-                Array::create_array_from_list(values.borrow().as_slice().iter().cloned(), context);
+            let values_array = Array::create_array_from_list(
+                values.borrow().iter().map(StoredValue::to_value),
+                context,
+            );
 
             // 2. Perform ? Call(resultCapability.[[Resolve]], undefined, « valuesArray »).
             result_capability.functions.resolve.call(
@@ -1170,7 +1279,7 @@ impl Promise {
             // a. Let error be a newly created TypeError object.
             let error = JsNativeError::typ()
                 .with_message(format!("Promise.{name}() expects an object argument"))
-                .into_opaque(context);
+                .into_opaque(context)?;
             // b. Perform ? Call(promiseCapability.[[Reject]], undefined, « error »).
             promise_capability.functions.reject.call(
                 &JsValue::undefined(),
@@ -1213,19 +1322,39 @@ impl Promise {
         promise_resolve: &JsObject,
         context: &mut Context,
     ) -> JsResult<JsValue> {
-        #[derive(Debug, Trace, Finalize)]
         struct KeyedResolveCaptures {
-            #[unsafe_ignore_trace]
-            already_called: Rc<Cell<bool>>,
-            index: usize,
-            #[unsafe_ignore_trace]
+            element: CombinatorElementCaptures,
             variant: KeyedVariant,
-            #[unsafe_ignore_trace]
             keys: Rc<RefCell<Vec<PropertyKey>>>,
-            values: Gc<GcRefCell<Vec<JsValue>>>,
-            capability: JsFunction,
-            #[unsafe_ignore_trace]
-            remaining_elements: Rc<Cell<i32>>,
+        }
+
+        #[derive(HeapTrace)]
+        struct StoredKeyedResolveCaptures {
+            element: StoredCombinatorElementCaptures,
+            #[heap_trace(skip)]
+            variant: KeyedVariant,
+            #[heap_trace(skip)]
+            keys: Rc<RefCell<Vec<PropertyKey>>>,
+        }
+
+        impl NativeCapture for KeyedResolveCaptures {
+            type Stored = StoredKeyedResolveCaptures;
+
+            fn store(&self) -> Self::Stored {
+                StoredKeyedResolveCaptures {
+                    element: self.element.store(),
+                    variant: self.variant,
+                    keys: self.keys.clone(),
+                }
+            }
+
+            fn restore(stored: &Self::Stored) -> Self {
+                Self {
+                    element: CombinatorElementCaptures::restore(&stored.element),
+                    variant: stored.variant,
+                    keys: stored.keys.clone(),
+                }
+            }
         }
 
         // 1. Let allKeys be ? promises.[[OwnPropertyKeys]]().
@@ -1235,7 +1364,11 @@ impl Promise {
         let keys = Rc::new(RefCell::new(Vec::new()));
 
         // 3. Let values be a new empty List.
-        let values = Gc::new(GcRefCell::new(Vec::new()));
+        let values = context
+            .runtime()
+            .heap
+            .allocate(RefCell::new(Vec::<StoredValue>::new()))
+            .expect("an empty result list has no object edges");
 
         // 4. Let remainingElementsCount be the Record { [[Value]]: 1 }.
         let remaining_elements_count = Rc::new(Cell::new(1));
@@ -1260,7 +1393,7 @@ impl Promise {
                 keys.borrow_mut().push(key);
 
                 // iii. Append undefined to values.
-                values.borrow_mut().push(JsValue::undefined());
+                values.borrow_mut().push(StoredValue::Undefined);
 
                 // iv. Let nextPromise be ? Call(promiseResolve, constructor, « value »).
                 let next_promise =
@@ -1274,20 +1407,21 @@ impl Promise {
                     context.realm(),
                     NativeFunction::from_fn_with_captures(
                         |_, args, captures, context| {
+                            let element = &captures.element;
                             // 1. If alreadyCalled.[[Value]] is true, return undefined.
-                            if captures.already_called.get() {
+                            if element.already_called.get() {
                                 return Ok(JsValue::undefined());
                             }
 
                             // 2. Set alreadyCalled.[[Value]] to true.
-                            captures.already_called.set(true);
+                            element.already_called.set(true);
 
                             let x = args.get_or_undefined(0).clone();
 
                             // 3. If variant is all, then
                             if captures.variant == KeyedVariant::All {
                                 // a. Set values[index] to x.
-                                captures.values.borrow_mut()[captures.index] = x;
+                                element.values.borrow_mut()[element.index] = x.into_stored();
                             } else {
                                 // 4. Else (variant is all-settled)
                                 // a. Let obj be OrdinaryObjectCreate(%Object.prototype%).
@@ -1303,24 +1437,25 @@ impl Promise {
                                 obj.create_data_property_or_throw(js_string!("value"), x, context)
                                     .js_expect("cannot fail per spec")?;
                                 // d. Set values[index] to obj.
-                                captures.values.borrow_mut()[captures.index] = obj.into();
+                                element.values.borrow_mut()[element.index] =
+                                    JsValue::from(obj).into_stored();
                             }
 
                             // 5. Set remainingElementsCount.[[Value]] to remainingElementsCount.[[Value]] - 1.
-                            captures
+                            element
                                 .remaining_elements
-                                .set(captures.remaining_elements.get() - 1);
+                                .set(element.remaining_elements.get() - 1);
 
                             // 6. If remainingElementsCount.[[Value]] = 0, then
-                            if captures.remaining_elements.get() == 0 {
+                            if element.remaining_elements.get() == 0 {
                                 // a. Let result be CreateKeyedPromiseCombinatorResultObject(keys, values).
                                 let result = create_keyed_result_object(
                                     &captures.keys.borrow(),
-                                    &captures.values.borrow(),
+                                    &element.values.borrow(),
                                     context,
                                 );
                                 // b. Return ? Call(resultCapability.[[Resolve]], undefined, « result »).
-                                return captures.capability.call(
+                                return element.capability.call(
                                     &JsValue::undefined(),
                                     &[result.into()],
                                     context,
@@ -1331,20 +1466,22 @@ impl Promise {
                             Ok(JsValue::undefined())
                         },
                         KeyedResolveCaptures {
-                            already_called: already_called.clone(),
-                            index,
+                            element: CombinatorElementCaptures {
+                                already_called: already_called.clone(),
+                                index,
+                                values: values.clone(),
+                                capability: result_capability.functions.resolve.clone(),
+                                remaining_elements: remaining_elements_count.clone(),
+                            },
                             variant,
                             keys: keys.clone(),
-                            values: values.clone(),
-                            capability: result_capability.functions.resolve.clone(),
-                            remaining_elements: remaining_elements_count.clone(),
                         },
                     ),
                 )
                 .name("")
                 .length(1)
                 .constructor(false)
-                .build();
+                .build()?;
 
                 // vii-viii. Build onRejected
                 let on_rejected = if variant == KeyedVariant::All {
@@ -1356,13 +1493,14 @@ impl Promise {
                         context.realm(),
                         NativeFunction::from_fn_with_captures(
                             |_, args, captures, context| {
+                                let element = &captures.element;
                                 // 1. If alreadyCalled.[[Value]] is true, return undefined.
-                                if captures.already_called.get() {
+                                if element.already_called.get() {
                                     return Ok(JsValue::undefined());
                                 }
 
                                 // 2. Set alreadyCalled.[[Value]] to true.
-                                captures.already_called.set(true);
+                                element.already_called.set(true);
 
                                 let x = args.get_or_undefined(0).clone();
 
@@ -1379,21 +1517,22 @@ impl Promise {
                                 obj.create_data_property_or_throw(js_string!("reason"), x, context)
                                     .js_expect("cannot fail per spec")?;
                                 // 6. Set values[index] to obj.
-                                captures.values.borrow_mut()[captures.index] = obj.into();
+                                element.values.borrow_mut()[element.index] =
+                                    JsValue::from(obj).into_stored();
 
                                 // 7. Set remainingElementsCount.[[Value]] to remainingElementsCount.[[Value]] - 1.
-                                captures
+                                element
                                     .remaining_elements
-                                    .set(captures.remaining_elements.get() - 1);
+                                    .set(element.remaining_elements.get() - 1);
 
                                 // 8. If remainingElementsCount.[[Value]] = 0, then
-                                if captures.remaining_elements.get() == 0 {
+                                if element.remaining_elements.get() == 0 {
                                     let result = create_keyed_result_object(
                                         &captures.keys.borrow(),
-                                        &captures.values.borrow(),
+                                        &element.values.borrow(),
                                         context,
                                     );
-                                    return captures.capability.call(
+                                    return element.capability.call(
                                         &JsValue::undefined(),
                                         &[result.into()],
                                         context,
@@ -1404,20 +1543,22 @@ impl Promise {
                                 Ok(JsValue::undefined())
                             },
                             KeyedResolveCaptures {
-                                already_called,
-                                index,
+                                element: CombinatorElementCaptures {
+                                    already_called,
+                                    index,
+                                    values: values.clone(),
+                                    capability: result_capability.functions.resolve.clone(),
+                                    remaining_elements: remaining_elements_count.clone(),
+                                },
                                 variant,
                                 keys: keys.clone(),
-                                values: values.clone(),
-                                capability: result_capability.functions.resolve.clone(),
-                                remaining_elements: remaining_elements_count.clone(),
                             },
                         ),
                     )
                     .name("")
                     .length(1)
                     .constructor(false)
-                    .build();
+                    .build()?;
 
                     on_rejected_fn.into()
                 };
@@ -1533,22 +1674,15 @@ impl Promise {
         promise_resolve: &JsObject,
         context: &mut Context,
     ) -> JsResult<JsObject> {
-        #[derive(Debug, Trace, Finalize)]
-        struct RejectElementCaptures {
-            #[unsafe_ignore_trace]
-            already_called: Rc<Cell<bool>>,
-            index: usize,
-            errors: Gc<GcRefCell<Vec<JsValue>>>,
-            capability_reject: JsFunction,
-            #[unsafe_ignore_trace]
-            remaining_elements_count: Rc<Cell<i32>>,
-        }
-
         // 1. Let errors be a new empty List.
-        let errors = Gc::new(GcRefCell::new(Vec::new()));
+        let errors = context
+            .runtime()
+            .heap
+            .allocate(RefCell::new(Vec::<StoredValue>::new()))
+            .expect("an empty result list has no object edges");
 
         // 2. Let remainingElementsCount be the Record { [[Value]]: 1 }.
-        let remaining_elements_count = Rc::new(Cell::new(1));
+        let remaining_elements = Rc::new(Cell::new(1));
 
         // 3. Let index be 0.
         let mut index = 0;
@@ -1557,7 +1691,7 @@ impl Promise {
         //     a. Let next be ? IteratorStepValue(iteratorRecord).
         while let Some(next) = iterator_record.step_value(context)? {
             // c. Append undefined to errors.
-            errors.borrow_mut().push(JsValue::undefined());
+            errors.borrow_mut().push(StoredValue::Undefined);
 
             // d. Let nextPromise be ? Call(promiseResolve, constructor, « next »).
             let next_promise =
@@ -1593,33 +1727,32 @@ impl Promise {
                         // 7. Let remainingElementsCount be F.[[RemainingElements]].
 
                         // 8. Set errors[index] to x.
-                        captures.errors.borrow_mut()[captures.index] =
-                            args.get_or_undefined(0).clone();
+                        captures.values.borrow_mut()[captures.index] =
+                            args.get_or_undefined(0).clone().into_stored();
 
                         // 9. Set remainingElementsCount.[[Value]] to remainingElementsCount.[[Value]] - 1.
                         captures
-                            .remaining_elements_count
-                            .set(captures.remaining_elements_count.get() - 1);
+                            .remaining_elements
+                            .set(captures.remaining_elements.get() - 1);
 
                         // 10. If remainingElementsCount.[[Value]] is 0, then
-                        if captures.remaining_elements_count.get() == 0 {
+                        if captures.remaining_elements.get() == 0 {
                             // a. Let error be a newly created AggregateError object.
                             // b. Perform ! DefinePropertyOrThrow(error, "errors", PropertyDescriptor { [[Configurable]]: true, [[Enumerable]]: false, [[Writable]]: true, [[Value]]: CreateArrayFromList(errors) }).
                             let error = JsNativeError::aggregate(
                                 captures
-                                    .errors
+                                    .values
                                     .borrow()
                                     .iter()
-                                    .cloned()
-                                    .map(JsError::from_opaque)
+                                    .map(|value| JsError::from_opaque(value.to_value()))
                                     .collect(),
                             )
                             .with_message("no promise in Promise.any was fulfilled.");
 
                             // c. Return ? Call(promiseCapability.[[Reject]], undefined, « error »).
-                            return captures.capability_reject.call(
+                            return captures.capability.call(
                                 &JsValue::undefined(),
-                                &[error.into_opaque(context).into()],
+                                &[error.into_opaque(context)?.into()],
                                 context,
                             );
                         }
@@ -1627,22 +1760,22 @@ impl Promise {
                         // 11. Return undefined.
                         Ok(JsValue::undefined())
                     },
-                    RejectElementCaptures {
+                    CombinatorElementCaptures {
                         already_called: Rc::new(Cell::new(false)),
                         index,
-                        errors: errors.clone(),
-                        capability_reject: result_capability.functions.reject.clone(),
-                        remaining_elements_count: remaining_elements_count.clone(),
+                        values: errors.clone(),
+                        capability: result_capability.functions.reject.clone(),
+                        remaining_elements: remaining_elements.clone(),
                     },
                 ),
             )
             .name("")
             .length(1)
             .constructor(false)
-            .build();
+            .build()?;
 
             // m. Set remainingElementsCount.[[Value]] to remainingElementsCount.[[Value]] + 1.
-            remaining_elements_count.set(remaining_elements_count.get() + 1);
+            remaining_elements.set(remaining_elements.get() + 1);
 
             // n. Perform ? Invoke(nextPromise, "then", « resultCapability.[[Resolve]], onRejected »).
             next_promise.invoke(
@@ -1660,16 +1793,15 @@ impl Promise {
 
         //     b. If next is done, then
         //         i. Set remainingElementsCount.[[Value]] to remainingElementsCount.[[Value]] - 1.
-        remaining_elements_count.set(remaining_elements_count.get() - 1);
+        remaining_elements.set(remaining_elements.get() - 1);
         //         ii. If remainingElementsCount.[[Value]] = 0, then
-        if remaining_elements_count.get() == 0 {
+        if remaining_elements.get() == 0 {
             // 1. Let error be a newly created AggregateError object.
             let error = JsNativeError::aggregate(
                 errors
                     .borrow()
                     .iter()
-                    .cloned()
-                    .map(JsError::from_opaque)
+                    .map(|value| JsError::from_opaque(value.to_value()))
                     .collect(),
             )
             .with_message("no promise in Promise.any was fulfilled.");
@@ -1811,17 +1943,15 @@ impl Promise {
             JsNativeError::typ().with_message("Promise.reject() called on a non-object")
         })?;
 
-        Self::promise_reject(&c, JsError::from_opaque(r), context).map(JsValue::from)
+        Self::promise_reject(&c, r, context).map(JsValue::from)
     }
 
     /// Utility function to create a rejected promise.
     pub(crate) fn promise_reject(
         c: &JsObject,
-        e: JsError,
+        reason: JsValue,
         context: &mut Context,
     ) -> JsResult<JsObject> {
-        let e = e.into_opaque(context)?;
-
         // 2. Let promiseCapability be ? NewPromiseCapability(C).
         let promise_capability = PromiseCapability::new(c, context)?;
 
@@ -1829,7 +1959,7 @@ impl Promise {
         promise_capability
             .functions
             .reject
-            .call(&JsValue::undefined(), &[e], context)?;
+            .call(&JsValue::undefined(), &[reason], context)?;
 
         // 4. Return promiseCapability.[[Promise]].
         Ok(promise_capability.promise.clone())
@@ -1984,7 +2114,7 @@ impl Promise {
         };
 
         let (then_finally, catch_finally) =
-            Self::then_catch_finally_closures(c, on_finally, context);
+            Self::then_catch_finally_closures(c, on_finally, context)?;
 
         // 7. Return ? Invoke(promise, "then", « thenFinally, catchFinally »).
         let then = promise.get(js_string!("then"), context)?;
@@ -1995,34 +2125,19 @@ impl Promise {
         c: JsObject,
         on_finally: JsFunction,
         context: &mut Context,
-    ) -> (JsFunction, JsFunction) {
-        /// Capture object for the `thenFinallyClosure` abstract closure.
-        #[derive(Debug, Trace, Finalize)]
-        struct FinallyCaptures {
-            on_finally: JsFunction,
-            c: JsObject,
-        }
-
+    ) -> JsResult<(JsFunction, JsFunction)> {
         // a. Let thenFinallyClosure be a new Abstract Closure with parameters (value) that captures onFinally and C and performs the following steps when called:
         let then_finally_closure = FunctionObjectBuilder::new(
             context.realm(),
             NativeFunction::from_fn_with_captures(
-                |_this, args, captures, context| {
-                    /// Capture object for the abstract `returnValue` closure.
-                    #[derive(Debug, Trace, Finalize)]
-                    struct ReturnValueCaptures {
-                        value: JsValue,
-                    }
-
+                |_this, args, (on_finally, c), context| {
                     let value = args.get_or_undefined(0);
 
                     // i. Let result be ? Call(onFinally, undefined).
-                    let result = captures
-                        .on_finally
-                        .call(&JsValue::undefined(), &[], context)?;
+                    let result = on_finally.call(&JsValue::undefined(), &[], context)?;
 
                     // ii. Let promise be ? PromiseResolve(C, result).
-                    let promise = Self::promise_resolve(&captures.c, result, context)?;
+                    let promise = Self::promise_resolve(c, result, context)?;
 
                     // iii. Let returnValue be a new Abstract Closure with no parameters that captures value and performs the following steps when called:
                     let return_value = FunctionObjectBuilder::new(
@@ -2030,50 +2145,37 @@ impl Promise {
                         NativeFunction::from_fn_with_captures(
                             |_this, _args, captures, _context| {
                                 // 1. Return value.
-                                Ok(captures.value.clone())
+                                Ok(captures.clone())
                             },
-                            ReturnValueCaptures {
-                                value: value.clone(),
-                            },
+                            value.clone(),
                         ),
                     );
 
                     // iv. Let valueThunk be CreateBuiltinFunction(returnValue, 0, "", « »).
-                    let value_thunk = return_value.length(0).name("").build();
+                    let value_thunk = return_value.length(0).name("").build()?;
 
                     // v. Return ? Invoke(promise, "then", « valueThunk »).
                     promise.invoke(js_string!("then"), &[value_thunk.into()], context)
                 },
-                FinallyCaptures {
-                    on_finally: on_finally.clone(),
-                    c: c.clone(),
-                },
+                (on_finally.clone(), c.clone()),
             ),
         );
 
         // b. Let thenFinally be CreateBuiltinFunction(thenFinallyClosure, 1, "", « »).
-        let then_finally = then_finally_closure.length(1).name("").build();
+        let then_finally = then_finally_closure.length(1).name("").build()?;
 
         // c. Let catchFinallyClosure be a new Abstract Closure with parameters (reason) that captures onFinally and C and performs the following steps when called:
         let catch_finally_closure = FunctionObjectBuilder::new(
             context.realm(),
             NativeFunction::from_fn_with_captures(
-                |_this, args, captures, context| {
-                    /// Capture object for the abstract `throwReason` closure.
-                    #[derive(Debug, Trace, Finalize)]
-                    struct ThrowReasonCaptures {
-                        reason: JsValue,
-                    }
-
+                |_this, args, (on_finally, c), context| {
                     let reason = args.get_or_undefined(0);
 
                     // i. Let result be ? Call(onFinally, undefined).
-                    let result = captures
-                        .on_finally
-                        .call(&JsValue::undefined(), &[], context)?;
+                    let result = on_finally.call(&JsValue::undefined(), &[], context)?;
 
                     // ii. Let promise be ? PromiseResolve(C, result).
-                    let promise = Self::promise_resolve(&captures.c, result, context)?;
+                    let promise = Self::promise_resolve(c, result, context)?;
 
                     // iii. Let throwReason be a new Abstract Closure with no parameters that captures reason and performs the following steps when called:
                     let throw_reason = FunctionObjectBuilder::new(
@@ -2081,28 +2183,26 @@ impl Promise {
                         NativeFunction::from_fn_with_captures(
                             |_this, _args, captures, _context| {
                                 // 1. Return ThrowCompletion(reason).
-                                Err(JsError::from_opaque(captures.reason.clone()))
+                                Err(JsError::from_opaque(captures.clone()))
                             },
-                            ThrowReasonCaptures {
-                                reason: reason.clone(),
-                            },
+                            reason.clone(),
                         ),
                     );
 
                     // iv. Let thrower be CreateBuiltinFunction(throwReason, 0, "", « »).
-                    let thrower = throw_reason.length(0).name("").build();
+                    let thrower = throw_reason.length(0).name("").build()?;
 
                     // v. Return ? Invoke(promise, "then", « thrower »).
                     promise.invoke(js_string!("then"), &[thrower.into()], context)
                 },
-                FinallyCaptures { on_finally, c },
+                (on_finally, c),
             ),
         );
 
         // d. Let catchFinally be CreateBuiltinFunction(catchFinallyClosure, 1, "", « »).
-        let catch_finally = catch_finally_closure.length(1).name("").build();
+        let catch_finally = catch_finally_closure.length(1).name("").build()?;
 
-        (then_finally, catch_finally)
+        Ok((then_finally, catch_finally))
     }
 
     /// `Promise.prototype.then ( onFulfilled, onRejected )`
@@ -2164,7 +2264,7 @@ impl Promise {
             on_rejected,
             Some(result_capability),
             context,
-        );
+        )?;
 
         Ok(result_promise)
     }
@@ -2181,8 +2281,9 @@ impl Promise {
         on_rejected: Option<JsFunction>,
         result_capability: Option<PromiseCapability>,
         context: &mut Context,
-    ) {
+    ) -> JsResult<()> {
         // 1. Assert: IsPromise(promise) is true.
+        promise.check_runtime(context.runtime())?;
 
         // 2. If resultCapability is not present, then
         //   a. Set resultCapability to undefined.
@@ -2193,7 +2294,8 @@ impl Promise {
         let on_fulfilled_job_callback = on_fulfilled
             // 4. Else,
             //   a. Let onFulfilledJobCallback be HostMakeJobCallback(onFulfilled).
-            .map(|f| context.host_hooks().make_job_callback(f, context));
+            .map(|f| JobCallback::from_host(f, context))
+            .transpose()?;
 
         // 5. If IsCallable(onRejected) is false, then
         //   a. Let onRejectedJobCallback be empty.
@@ -2201,7 +2303,8 @@ impl Promise {
         let on_rejected_job_callback = on_rejected
             // 6. Else,
             //   a. Let onRejectedJobCallback be HostMakeJobCallback(onRejected).
-            .map(|f| context.host_hooks().make_job_callback(f, context));
+            .map(|f| JobCallback::from_host(f, context))
+            .transpose()?;
 
         // 7. Let fulfillReaction be the PromiseReaction { [[Capability]]: resultCapability, [[Type]]: Fulfill, [[Handler]]: onFulfilledJobCallback }.
         let fulfill_reaction = ReactionRecord {
@@ -2218,67 +2321,79 @@ impl Promise {
         };
 
         let (state, handled) = {
-            let promise = promise.borrow_mut();
+            let promise = promise.borrow();
             let promise = promise.data();
-            (promise.state.clone(), promise.handled)
+            (promise.state(), promise.handled)
         };
 
-        match state {
-            // 9. If promise.[[PromiseState]] is pending, then
-            PromiseState::Pending => {
-                let mut promise = promise.borrow_mut();
-                let promise = promise.data_mut();
-                //   a. Append fulfillReaction as the last element of the List that is promise.[[PromiseFulfillReactions]].
-                promise.fulfill_reactions.push(fulfill_reaction);
+        // Validate the exact stored pair before changing the promise or invoking an executor.
+        let reactions = (fulfill_reaction.to_stored(), reject_reaction.to_stored());
+        let heap = context.runtime().heap.clone();
+        heap.with_pending_edges(reactions, |(stored_fulfill, stored_reject)| {
+            match state {
+                // 9. If promise.[[PromiseState]] is pending, then
+                PromiseState::Pending => {
+                    let mut promise = promise.borrow_mut();
+                    let StoredPromiseState::Pending {
+                        fulfill_reactions,
+                        reject_reactions,
+                    } = &mut promise.data_mut().state
+                    else {
+                        unreachable!("promise is pending");
+                    };
 
-                //   b. Append rejectReaction as the last element of the List that is promise.[[PromiseRejectReactions]].
-                promise.reject_reactions.push(reject_reaction);
-            }
+                    //   a. Append fulfillReaction as the last element of the List that is promise.[[PromiseFulfillReactions]].
+                    fulfill_reactions.push(stored_fulfill);
 
-            // 10. Else if promise.[[PromiseState]] is fulfilled, then
-            //   a. Let value be promise.[[PromiseResult]].
-            PromiseState::Fulfilled(ref value) => {
-                //   b. Let fulfillJob be NewPromiseReactionJob(fulfillReaction, value).
-                let fulfill_job =
-                    new_promise_reaction_job(fulfill_reaction, value.clone(), context);
-
-                //   c. Perform HostEnqueuePromiseJob(fulfillJob.[[Job]], fulfillJob.[[Realm]]).
-                context
-                    .job_executor()
-                    .enqueue_job(fulfill_job.into(), context);
-            }
-
-            // 11. Else,
-            //   a. Assert: The value of promise.[[PromiseState]] is rejected.
-            //   b. Let reason be promise.[[PromiseResult]].
-            PromiseState::Rejected(ref reason) => {
-                //   c. If promise.[[PromiseIsHandled]] is false, perform HostPromiseRejectionTracker(promise, "handle").
-                if !handled {
-                    context.host_hooks().promise_rejection_tracker(
-                        promise,
-                        OperationType::Handle,
-                        context,
-                    );
+                    //   b. Append rejectReaction as the last element of the List that is promise.[[PromiseRejectReactions]].
+                    reject_reactions.push(stored_reject);
                 }
 
-                //   d. Let rejectJob be NewPromiseReactionJob(rejectReaction, reason).
-                let reject_job = new_promise_reaction_job(reject_reaction, reason.clone(), context);
+                // 10. Else if promise.[[PromiseState]] is fulfilled, then
+                //   a. Let value be promise.[[PromiseResult]].
+                PromiseState::Fulfilled(value) => {
+                    //   b. Let fulfillJob be NewPromiseReactionJob(fulfillReaction, value).
+                    let fulfill_job = new_promise_reaction_job(fulfill_reaction, value, context);
 
-                //   e. Perform HostEnqueuePromiseJob(rejectJob.[[Job]], rejectJob.[[Realm]]).
-                context
-                    .job_executor()
-                    .enqueue_job(reject_job.into(), context);
+                    //   c. Perform HostEnqueuePromiseJob(fulfillJob.[[Job]], fulfillJob.[[Realm]]).
+                    context
+                        .job_executor()
+                        .enqueue_job(fulfill_job.into(), context);
+                }
+
+                // 11. Else,
+                //   a. Assert: The value of promise.[[PromiseState]] is rejected.
+                //   b. Let reason be promise.[[PromiseResult]].
+                PromiseState::Rejected(reason) => {
+                    //   c. If promise.[[PromiseIsHandled]] is false, perform HostPromiseRejectionTracker(promise, "handle").
+                    if !handled {
+                        context.host_hooks().promise_rejection_tracker(
+                            promise,
+                            OperationType::Handle,
+                            context,
+                        );
+                    }
+
+                    //   d. Let rejectJob be NewPromiseReactionJob(rejectReaction, reason).
+                    let reject_job = new_promise_reaction_job(reject_reaction, reason, context);
+
+                    //   e. Perform HostEnqueuePromiseJob(rejectJob.[[Job]], rejectJob.[[Realm]]).
+                    context
+                        .job_executor()
+                        .enqueue_job(reject_job.into(), context);
+                }
             }
-        }
 
-        // 12. Set promise.[[PromiseIsHandled]] to true.
-        promise.borrow_mut().data_mut().handled = true;
+            // 12. Set promise.[[PromiseIsHandled]] to true.
+            promise.borrow_mut().data_mut().handled = true;
 
-        // 13. If resultCapability is undefined, then
-        //   a. Return undefined.
-        // 14. Else,
-        //   a. Return resultCapability.[[Promise]].
-        // skipped because we can already access the promise from `result_capability`
+            // 13. If resultCapability is undefined, then
+            //   a. Return undefined.
+            // 14. Else,
+            //   a. Return resultCapability.[[Promise]].
+            // skipped because we can already access the promise from `result_capability`
+        })
+        .map_err(|error| JsNativeError::typ().with_message(error.to_string()).into())
     }
 
     /// `GetPromiseResolve ( promiseConstructor )`
@@ -2316,6 +2431,15 @@ impl Promise {
         promise: &JsObject<Promise>,
         context: &mut Context,
     ) -> ResolvingFunctions {
+        fn take_target(slot: &RefCell<Option<ObjectEdge>>) -> Option<JsObject<Promise>> {
+            let mut slot = slot.borrow_mut();
+            let promise = JsObject::from_inner(slot.as_ref()?.clone())
+                .downcast::<Promise>()
+                .expect("the resolving functions retain a Promise");
+            *slot = None;
+            Some(promise)
+        }
+
         /// `TriggerPromiseReactions ( reactions, argument )`
         ///
         /// The abstract operation `TriggerPromiseReactions` takes arguments `reactions` (a `List` of
@@ -2359,32 +2483,31 @@ impl Promise {
         ///
         /// Panics if `Promise` is not pending.
         fn fulfill_promise(promise: &JsObject<Promise>, value: JsValue, context: &mut Context) {
-            let mut promise = promise.borrow_mut();
-            let promise = promise.data_mut();
+            // Root all reactions before clearing the pending state. Enqueueing the first
+            // job can run host code while the remaining reactions still await enqueueing.
+            let reactions = {
+                let promise = promise.borrow();
+                let StoredPromiseState::Pending {
+                    fulfill_reactions, ..
+                } = &promise.data().state
+                else {
+                    panic!("promise was not pending");
+                };
+                fulfill_reactions
+                    .iter()
+                    .map(StoredReactionRecord::to_reaction)
+                    .collect()
+            };
 
-            // 1. Assert: The value of promise.[[PromiseState]] is pending.
-            assert!(
-                matches!(promise.state, PromiseState::Pending),
-                "promise was not pending"
+            // 3–6. Store the result, clear both reaction lists, and mark the promise fulfilled.
+            let pending = std::mem::replace(
+                &mut promise.borrow_mut().data_mut().state,
+                StoredPromiseState::Fulfilled(value.clone().into_stored()),
             );
-
-            // reordering these statements does not affect the semantics
-
-            // 2. Let reactions be promise.[[PromiseFulfillReactions]].
-            // 4. Set promise.[[PromiseFulfillReactions]] to undefined.
-            let reactions = std::mem::take(&mut promise.fulfill_reactions);
-
-            // 5. Set promise.[[PromiseRejectReactions]] to undefined.
-            promise.reject_reactions.clear();
 
             // 7. Perform TriggerPromiseReactions(reactions, value).
             trigger_promise_reactions(reactions, &value, context);
-
-            // 3. Set promise.[[PromiseResult]] to value.
-            // 6. Set promise.[[PromiseState]] to fulfilled.
-            promise.state = PromiseState::Fulfilled(value);
-
-            // 8. Return unused.
+            drop(pending);
         }
 
         /// `RejectPromise ( promise, reason )`
@@ -2401,34 +2524,29 @@ impl Promise {
         ///
         /// Panics if `Promise` is not pending.
         fn reject_promise(promise: &JsObject<Promise>, reason: JsValue, context: &mut Context) {
-            let handled = {
-                let mut promise = promise.borrow_mut();
-                let promise = promise.data_mut();
+            let (reactions, handled) = {
+                let promise = promise.borrow();
+                let promise = promise.data();
+                let StoredPromiseState::Pending {
+                    reject_reactions, ..
+                } = &promise.state
+                else {
+                    panic!("promise was not pending");
+                };
 
-                // 1. Assert: The value of promise.[[PromiseState]] is pending.
-                assert!(
-                    matches!(promise.state, PromiseState::Pending),
-                    "Expected promise.[[PromiseState]] to be pending"
-                );
-
-                // reordering these statements does not affect the semantics
-
-                // 2. Let reactions be promise.[[PromiseRejectReactions]].
-                // 5. Set promise.[[PromiseRejectReactions]] to undefined.
-                let reactions = std::mem::take(&mut promise.reject_reactions);
-
-                // 4. Set promise.[[PromiseFulfillReactions]] to undefined.
-                promise.fulfill_reactions.clear();
-
-                // 8. Perform TriggerPromiseReactions(reactions, reason).
-                trigger_promise_reactions(reactions, &reason, context);
-
-                // 3. Set promise.[[PromiseResult]] to reason.
-                // 6. Set promise.[[PromiseState]] to rejected.
-                promise.state = PromiseState::Rejected(reason);
-
-                promise.handled
+                // Root all rejection reactions before clearing the pending state.
+                let reactions = reject_reactions
+                    .iter()
+                    .map(StoredReactionRecord::to_reaction)
+                    .collect();
+                (reactions, promise.handled)
             };
+
+            // 3–6. Store the reason, clear both reaction lists, and mark the promise rejected.
+            let pending = std::mem::replace(
+                &mut promise.borrow_mut().data_mut().state,
+                StoredPromiseState::Rejected(reason.clone().into_stored()),
+            );
 
             // 7. If promise.[[PromiseIsHandled]] is false, perform HostPromiseRejectionTracker(promise, "reject").
             if !handled {
@@ -2439,13 +2557,19 @@ impl Promise {
                 );
             }
 
-            // 9. Return unused.
+            // 8. Perform TriggerPromiseReactions(reactions, reason).
+            trigger_promise_reactions(reactions, &reason, context);
+            drop(pending);
         }
 
         // 1. Let alreadyResolved be the Record { [[Value]]: false }.
         // 5. Set resolve.[[Promise]] to promise.
         // 6. Set resolve.[[AlreadyResolved]] to alreadyResolved.
-        let promise = Gc::new(Cell::new(Some(promise.clone())));
+        let promise = context
+            .runtime()
+            .heap
+            .allocate(RefCell::new(Some(promise.edge())))
+            .expect("the promise belongs to the resolving function's heap");
 
         // 2. Let stepsResolve be the algorithm steps defined in Promise Resolve Functions.
         // 3. Let lengthResolve be the number of non-optional parameters of the function definition in Promise Resolve Functions.
@@ -2462,7 +2586,7 @@ impl Promise {
                     // 4. Let alreadyResolved be F.[[AlreadyResolved]].
                     // 5. If alreadyResolved.[[Value]] is true, return undefined.
                     // 6. Set alreadyResolved.[[Value]] to true.
-                    let Some(promise) = captures.take() else {
+                    let Some(promise) = take_target(captures) else {
                         return Ok(JsValue::undefined());
                     };
 
@@ -2473,7 +2597,7 @@ impl Promise {
                         //   a. Let selfResolutionError be a newly created TypeError object.
                         let self_resolution_error = JsNativeError::typ()
                             .with_message("SameValue(resolution, promise) is true")
-                            .into_opaque(context);
+                            .into_opaque(context)?;
 
                         //   b. Perform RejectPromise(promise, selfResolutionError).
                         reject_promise(&promise, self_resolution_error.into(), context);
@@ -2517,19 +2641,28 @@ impl Promise {
                     };
 
                     // 13. Let thenJobCallback be HostMakeJobCallback(thenAction).
-                    let then_job_callback =
-                        context.host_hooks().make_job_callback(then_action, context);
+                    let result =
+                        JobCallback::from_host(then_action, context).and_then(|callback| {
+                            let heap = context.runtime().heap.clone();
+                            heap.with_pending_edges(callback.to_stored(), |_| {
+                                // 14. Let job be NewPromiseResolveThenableJob(promise, resolution, thenJobCallback).
+                                let job = new_promise_resolve_thenable_job(
+                                    promise.clone(),
+                                    resolution.clone(),
+                                    callback,
+                                    context,
+                                );
 
-                    // 14. Let job be NewPromiseResolveThenableJob(promise, resolution, thenJobCallback).
-                    let job = new_promise_resolve_thenable_job(
-                        promise.clone(),
-                        resolution.clone(),
-                        then_job_callback,
-                        context,
-                    );
-
-                    // 15. Perform HostEnqueuePromiseJob(job.[[Job]], job.[[Realm]]).
-                    context.job_executor().enqueue_job(job.into(), context);
+                                // 15. Perform HostEnqueuePromiseJob(job.[[Job]], job.[[Realm]]).
+                                context.job_executor().enqueue_job(job.into(), context);
+                            })
+                            .map_err(|error| {
+                                JsNativeError::typ().with_message(error.to_string()).into()
+                            })
+                        });
+                    if let Err(error) = result {
+                        reject_promise(&promise, error.into_opaque(context)?, context);
+                    }
 
                     // 16. Return undefined.
                     Ok(JsValue::undefined())
@@ -2540,7 +2673,8 @@ impl Promise {
         .name("")
         .length(1)
         .constructor(false)
-        .build();
+        .build()
+        .expect("resolving function retains a promise from the current runtime");
 
         // 10. Set reject.[[Promise]] to promise.
         // 11. Set reject.[[AlreadyResolved]] to alreadyResolved.
@@ -2559,7 +2693,7 @@ impl Promise {
                     // 4. Let alreadyResolved be F.[[AlreadyResolved]].
                     // 5. If alreadyResolved.[[Value]] is true, return undefined.
                     // 6. Set alreadyResolved.[[Value]] to true.
-                    let Some(promise) = captures.take() else {
+                    let Some(promise) = take_target(captures) else {
                         return Ok(JsValue::undefined());
                     };
 
@@ -2575,7 +2709,8 @@ impl Promise {
         .name("")
         .length(1)
         .constructor(false)
-        .build();
+        .build()
+        .expect("resolving function retains a promise from the current runtime");
 
         // 12. Return the Record { [[Resolve]]: resolve, [[Reject]]: reject }.
         ResolvingFunctions { resolve, reject }
@@ -2624,32 +2759,22 @@ fn new_promise_reaction_job(
                 //   1. Assert: type is Reject.
                 ReactionType::Reject => {
                     // 2. Let handlerResult be ThrowCompletion(argument).
-                    Err(argument.clone())
+                    Err(JsError::from_opaque(argument.clone()))
                 }
             },
             //   e. Else, let handlerResult be Completion(HostCallJobCallback(handler, undefined, « argument »)).
-            Some(handler) => match context.host_hooks().call_job_callback(
-                &handler,
+            Some(handler) => handler.call(
                 &JsValue::undefined(),
                 std::slice::from_ref(&argument),
                 context,
-            ) {
-                Ok(v) => Ok(v),
-                Err(e) => Err(e.into_opaque(context)?),
-            },
+            ),
         };
 
         match promise_capability {
             None => {
-                // f. If promiseCapability is undefined, then
-                //    i. Assert: handlerResult is not an abrupt completion.
-                assert!(
-                    handler_result.is_ok(),
-                    "Assertion: <handlerResult is not an abrupt completion> failed"
-                );
-
-                // ii. Return empty.
-                Ok(JsValue::undefined())
+                // f. If promiseCapability is undefined, return empty for a normal completion.
+                // Host custody errors still propagate to the job executor.
+                handler_result.map(|_| JsValue::undefined())
             }
             Some(promise_capability_record) => {
                 // g. Assert: promiseCapability is a PromiseCapability Record.
@@ -2660,8 +2785,9 @@ fn new_promise_reaction_job(
 
                 match handler_result {
                     // h. If handlerResult is an abrupt completion, then
-                    Err(value) => {
+                    Err(error) => {
                         // i. Return ? Call(promiseCapability.[[Reject]], undefined, « handlerResult.[[Value]] »).
+                        let value = error.into_opaque(context)?;
                         reject.call(&JsValue::undefined(), &[value], context)
                     }
 
@@ -2706,8 +2832,7 @@ fn new_promise_resolve_thenable_job(
         let resolving_functions = Promise::create_resolving_functions(&promise_to_resolve, context);
 
         //    b. Let thenCallResult be Completion(HostCallJobCallback(then, thenable, « resolvingFunctions.[[Resolve]], resolvingFunctions.[[Reject]] »)).
-        let then_call_result = context.host_hooks().call_job_callback(
-            &then,
+        let then_call_result = then.call(
             &thenable,
             &[
                 resolving_functions.resolve.clone().into(),
@@ -2754,19 +2879,19 @@ enum KeyedVariant {
 /// [spec]: https://tc39.es/proposal-await-dictionary/#sec-createkeyedpromisecombinatorresultobject
 fn create_keyed_result_object(
     keys: &[PropertyKey],
-    values: &[JsValue],
+    values: &[StoredValue],
     context: &mut Context,
 ) -> JsObject {
     // 1. Assert: The number of elements in keys is the same as the number of elements in values.
     debug_assert_eq!(keys.len(), values.len());
 
     // 2. Let obj be OrdinaryObjectCreate(null).
-    let obj = JsObject::with_null_proto();
+    let obj = JsObject::with_null_proto(context.runtime());
 
     // 3. For each integer i such that 0 ≤ i < the number of elements in keys, in ascending order, do
     for (key, value) in keys.iter().zip(values.iter()) {
         // a. Perform ! CreateDataPropertyOrThrow(obj, keys[i], values[i]).
-        obj.create_data_property_or_throw(key.clone(), value.clone(), context)
+        obj.create_data_property_or_throw(key.clone(), value.to_value(), context)
             .expect("cannot fail per spec");
     }
 

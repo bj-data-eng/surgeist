@@ -34,7 +34,7 @@ use crate::{
     symbol::JsSymbol,
     value::JsValue,
 };
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 use surgeist_js_macros::js_str;
 use tap::{Conv, Pipe};
 
@@ -43,8 +43,7 @@ pub(crate) mod for_in_iterator;
 mod tests;
 
 /// An ordinary Javascript `Object`.
-#[derive(Debug, Default, Clone, Copy, Trace, Finalize, JsData)]
-#[surgeist_js_gc(empty_trace)]
+#[derive(Debug, Default, Clone, Copy, JsData, HeapTrace)]
 pub struct OrdinaryObject;
 
 impl IntrinsicObject for OrdinaryObject {
@@ -1324,7 +1323,7 @@ impl OrdinaryObject {
         );
 
         // 5. Let adder be ! CreateBuiltinFunction(closure, 2, "", « »).
-        let adder = closure.length(2).name("").build();
+        let adder = closure.length(2).name("").build()?;
 
         // 6. Return ? AddEntriesFromIterable(obj, iterable, adder).
         map::add_entries_from_iterable(&obj, iterable, &adder, context)
@@ -1413,7 +1412,7 @@ impl OrdinaryObject {
         }
 
         // 2. Let obj be OrdinaryObjectCreate(null).
-        let obj = JsObject::with_null_proto();
+        let obj = JsObject::with_null_proto(context.runtime());
 
         // 3. For each Record { [[Key]], [[Elements]] } g of groups, do
         for (key, elements) in groups {

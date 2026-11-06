@@ -21,6 +21,7 @@ impl NewTarget {
             frame
                 .environments
                 .get_this_environment(frame.realm.environment())
+                .kind()
                 .as_function()
                 .and_then(|env| env.slots().new_target())
         } {
@@ -68,25 +69,15 @@ impl ImportMeta {
         // 4. If importMeta is empty, then
         // 5. Else,
         //     a. Assert: importMeta is an Object.
-        let import_meta = src
-            .import_meta()
-            .borrow_mut()
-            .get_or_insert_with(|| {
-                // a. Set importMeta to OrdinaryObjectCreate(null).
-                let import_meta = JsObject::with_null_proto();
-
-                // b. Let importMetaValues be HostGetImportMetaProperties(module).
-                // c. For each Record { [[Key]], [[Value]] } p of importMetaValues, do
-                //     i. Perform ! CreateDataPropertyOrThrow(importMeta, p.[[Key]], p.[[Value]]).
-                // d. Perform HostFinalizeImportMeta(importMeta, module).
-                context
-                    .module_loader()
-                    .init_import_meta(&import_meta, &module, context);
-
-                // e. Set module.[[ImportMeta]] to importMeta.
-                import_meta
-            })
-            .clone();
+        let import_meta = src.import_meta().unwrap_or_else(|| {
+            let import_meta = JsObject::with_null_proto(context.runtime());
+            // Publish the shell before a reentrant host hook can read it.
+            src.set_import_meta(&import_meta);
+            context
+                .module_loader()
+                .init_import_meta(&import_meta, &module, context);
+            import_meta
+        });
 
         //     b. Return importMeta.
         //     f. Return importMeta.

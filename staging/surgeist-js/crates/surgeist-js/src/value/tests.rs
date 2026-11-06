@@ -1,5 +1,5 @@
-use surgeist_js_macros::js_str;
 use indoc::indoc;
+use surgeist_js_macros::js_str;
 
 use super::*;
 use crate::object::internal_methods::InternalMethodPropertyContext;
@@ -25,7 +25,7 @@ fn undefined() {
 
 #[test]
 fn variant_conversion_preserves_object_identity_and_number_normalization() {
-    let object = JsObject::with_null_proto();
+    let object = JsObject::with_null_proto(&crate::Runtime::default());
     let value = JsValue::from(JsVariant::Object(object.clone()));
     assert_eq!(value.variant(), JsVariant::Object(object));
 
@@ -171,11 +171,11 @@ fn hash_rational() {
 
 #[test]
 fn hash_object() {
-    let object1 = JsValue::new(JsObject::with_null_proto());
+    let object1 = JsValue::new(JsObject::with_null_proto(&crate::Runtime::default()));
     assert_eq!(object1, object1);
     assert_eq!(object1, object1.clone());
 
-    let object2 = JsValue::new(JsObject::with_null_proto());
+    let object2 = JsValue::new(JsObject::with_null_proto(&crate::Runtime::default()));
     assert_ne!(object1, object2);
 
     assert_eq!(hash_value(&object1), hash_value(&object1.clone()));
@@ -1534,10 +1534,10 @@ mod abstract_relational_comparison {
 
 mod js_value_macro {
     use crate::value::TryIntoJs;
-    use crate::{JsValue, TestAction, js_string, run_test_actions};
-    use surgeist_js::{Context, JsResult, js_value};
-    use surgeist_js_string::JsString;
+    use crate::{JsNativeErrorKind, JsObject, JsValue, TestAction, js_string, run_test_actions};
     use std::ops::Neg;
+    use surgeist_js::{Context, JsResult, js_object, js_value};
+    use surgeist_js_string::JsString;
 
     #[test]
     fn primitive_values() {
@@ -1553,20 +1553,111 @@ mod js_value_macro {
     }
 
     #[test]
+    fn container_literals_reject_foreign_objects() {
+        let context = &mut Context::default();
+        let foreign = Context::default();
+        let object = JsObject::with_null_proto(foreign.runtime());
+        let errors = [
+            js_value!([1, object.clone()], context).unwrap_err(),
+            js_value!({ key: object.clone() }, context).unwrap_err(),
+            js_object!({ key: object.clone() }, context).unwrap_err(),
+            js_object!({ key: [{ nested: [object] }] }, context).unwrap_err(),
+        ];
+        for error in errors {
+            let error = error.as_native().expect("a native runtime admission error");
+            assert_eq!(error.kind(), &JsNativeErrorKind::Type);
+            assert_eq!(error.message(), "object belongs to a different runtime");
+        }
+    }
+
+    #[test]
+    fn container_literals_evaluate_values_and_computed_keys_in_order() -> JsResult<()> {
+        let context = &mut Context::default();
+        let mut order = Vec::new();
+        let mut mark = |event, value| {
+            order.push(event);
+            value
+        };
+        let obj = 42;
+        let object = js_object!({
+            [mark("key", 0)]: mark("value", obj),
+            nested: [
+                mark("first element", 1),
+                { inner: mark("second element", 2) },
+            ],
+        }, context)?;
+
+        assert_eq!(order, ["value", "key", "first element", "second element"]);
+        assert_eq!(object.get(0, context)?, JsValue::from(42));
+        Ok(())
+    }
+
+    #[test]
+    fn embedded_rust_expressions_can_break_the_callers_loop() {
+        let context = &mut Context::default();
+        let mut iterations = 0;
+        for number in 0..3 {
+            let _ = js_value!([{
+                value: if number == 1 { break } else { number },
+            }], context)
+            .unwrap();
+            iterations += 1;
+        }
+        assert_eq!(iterations, 1);
+    }
+
+    #[test]
+    fn array_literals_keep_borrowed_temporaries_alive_through_later_elements() {
+        use std::cell::RefCell;
+
+        struct Probe<'a>(&'a RefCell<Vec<&'static str>>);
+
+        impl Drop for Probe<'_> {
+            fn drop(&mut self) {
+                self.0.borrow_mut().push("drop");
+            }
+        }
+
+        let context = &mut Context::default();
+        for nested in [false, true] {
+            let order = RefCell::new(Vec::new());
+            let first = |probe: &Probe<'_>| {
+                probe.0.borrow_mut().push("first");
+                1
+            };
+            let next = || {
+                order.borrow_mut().push("next");
+                2
+            };
+
+            let array = if nested {
+                js_value!([[first(&Probe(&order))], next()], context)
+            } else {
+                js_value!([first(&Probe(&order)), next()], context)
+            };
+            let _ = array.unwrap();
+            assert_eq!(order.into_inner(), ["first", "next", "drop"]);
+        }
+    }
+
+    #[test]
     fn arrays() {
         run_test_actions([
             TestAction::assert_with_op("[1, 2, 3]", |value, context| {
-                let v = js_value!([1, 2, 3], context);
+                let v = js_value!([1, 2, 3], context).unwrap();
                 value.deep_strict_equals(&v, context).unwrap()
             }),
             TestAction::assert_with_op("[1, [2], 3]", |value, context| {
                 value
-                    .deep_strict_equals(&js_value!([1, [2], 3], context), context)
+                    .deep_strict_equals(&js_value!([1, [2], 3], context).unwrap(), context)
                     .unwrap()
             }),
             TestAction::assert_with_op("[1, [2], [], [[false]], 3]", |value, context| {
                 value
-                    .deep_strict_equals(&js_value!([1, [2], [], [[false]], 3], context), context)
+                    .deep_strict_equals(
+                        &js_value!([1, [2], [], [[false]], 3], context).unwrap(),
+                        context,
+                    )
                     .unwrap()
             }),
         ]);
@@ -1578,7 +1669,10 @@ mod js_value_macro {
             r#"({ "hello": 1, "world": null })"#,
             |value, context| {
                 value
-                    .deep_strict_equals(&js_value!({ "hello": 1, "world": () }, context), context)
+                    .deep_strict_equals(
+                        &js_value!({ "hello": 1, "world": () }, context).unwrap(),
+                        context,
+                    )
                     .unwrap()
             },
         )]);
@@ -1594,7 +1688,7 @@ mod js_value_macro {
 
                 value
                     .deep_strict_equals(
-                        &js_value!({ "hello": hello, "world": world }, context),
+                        &js_value!({ "hello": hello, "world": world }, context).unwrap(),
                         context,
                     )
                     .expect("No error should happen.")
@@ -1612,7 +1706,8 @@ mod js_value_macro {
                     "hello": [{ "foo": [1, []] }],
                     // Allow comments
                     "world": { "bar": bar },
-                }, context);
+                }, context)
+                .unwrap();
 
                 value
                     .deep_strict_equals(&other, context)
@@ -1631,7 +1726,8 @@ mod js_value_macro {
                     "hello": [{ "foo": [1, []] }],
                     // Allow comments
                     "world": { "bar": bar },
-                }, ctx);
+                }, ctx)
+                .unwrap();
 
                 value
                     .deep_strict_equals(&other, ctx)
@@ -1649,10 +1745,10 @@ mod js_value_macro {
 
         impl TryIntoJs for Test {
             fn try_into_js(&self, context: &mut Context) -> JsResult<JsValue> {
-                Ok(js_value!({
+                js_value!({
                     "fOne": self.field_1.clone(),
                     "field2": self.field_2
-                }, context))
+                }, context)
             }
         }
 

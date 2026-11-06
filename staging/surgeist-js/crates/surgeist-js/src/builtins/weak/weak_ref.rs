@@ -1,16 +1,21 @@
-use surgeist_js_gc::{Finalize, Trace, WeakGc};
+use surgeist_js_gc::heap;
 
 use crate::{
     Context, JsArgs, JsNativeError, JsResult, JsString, JsValue,
     builtins::{BuiltInBuilder, BuiltInConstructor, BuiltInObject, IntrinsicObject},
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     js_string,
-    object::{JsObject, ObjectRecord, internal_methods::get_prototype_from_constructor},
+    object::{JsObject, ObjectEdge, internal_methods::get_prototype_from_constructor},
     property::Attribute,
     realm::Realm,
     string::StaticJsStrings,
     symbol::JsSymbol,
 };
+
+use super::require_same_runtime;
+
+#[derive(Debug, heap::Trace, surgeist_js_macros::JsData)]
+struct WeakRefTarget(#[heap_trace(skip)] ObjectEdge);
 
 /// Boa's implementation of ECMAScript's `WeakRef` builtin object.
 ///
@@ -22,7 +27,7 @@ use crate::{
 ///  - [ECMAScript Reference][spec]
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-weak-ref-objects
-#[derive(Debug, Clone, Trace, Finalize)]
+#[derive(Debug, Clone)]
 pub(crate) struct WeakRef;
 
 impl IntrinsicObject for WeakRef {
@@ -79,6 +84,7 @@ impl BuiltInConstructor for WeakRef {
                 args.get_or_undefined(0).type_of()
             ))
         })?;
+        require_same_runtime(context.runtime(), &target)?;
 
         // 3. Let weakRef be ? OrdinaryCreateFromConstructor(NewTarget, "%WeakRef.prototype%", « [[WeakRefTarget]] »).
         // 5. Set weakRef.[[WeakRefTarget]] to target.
@@ -87,11 +93,11 @@ impl BuiltInConstructor for WeakRef {
         let weak_ref = JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
             prototype,
-            WeakGc::new(target.inner()),
+            WeakRefTarget(target.edge()),
         );
 
         // 4. Perform AddToKeptObjects(target).
-        context.kept_alive.push(target.clone());
+        context.kept_alive.push(target);
 
         // 6. Return weakRef.
         Ok(weak_ref.into())
@@ -111,7 +117,7 @@ impl WeakRef {
         let object = this.as_object();
         let weak_ref = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<WeakGc<ObjectRecord>>)
+            .and_then(JsObject::downcast_ref::<WeakRefTarget>)
             .ok_or_else(|| {
                 JsNativeError::typ().with_message(
                     "WeakRef.prototype.deref: expected `this` to be a `WeakRef` object",
@@ -124,9 +130,10 @@ impl WeakRef {
         // https://tc39.es/ecma262/multipage/managing-memory.html#sec-weakrefderef
         // 1. Let target be weakRef.[[WeakRefTarget]].
         // 2. If target is not empty, then
-        if let Some(object) = weak_ref.upgrade() {
-            let object = JsObject::from(object);
-
+        let target = weak_ref.0.upgrade().map_err(|error| {
+            JsNativeError::error().with_message(format!("WeakRef target access failed: {error}"))
+        })?;
+        if let Some(object) = target {
             // a. Perform AddToKeptObjects(target).
             context.kept_alive.push(object.clone());
 
@@ -161,7 +168,7 @@ mod tests {
             ),
             TestAction::inspect_context(|context| {
                 context.clear_kept_objects();
-                surgeist_js_gc::force_collect();
+                context.runtime().heap.collect().unwrap();
             }),
             TestAction::assert_eq("ptr.deref()", JsValue::undefined()),
         ]);

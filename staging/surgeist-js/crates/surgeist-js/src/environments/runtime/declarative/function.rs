@@ -1,23 +1,22 @@
 use std::cell::RefCell;
 use surgeist_js_ast::scope::Scope;
-use surgeist_js_gc::{Finalize, GcRefCell, Trace};
+use surgeist_js_gc::heap::Trace;
 
 use crate::{
     JsNativeError, JsObject, JsResult, JsValue, builtins::function::OrdinaryFunction,
     object::ObjectEdge, value::StoredValue,
 };
 
-#[derive(Debug, Trace, Finalize)]
+#[derive(Debug, Trace)]
 pub(crate) struct FunctionEnvironment {
-    bindings: GcRefCell<Vec<Option<StoredValue>>>,
-    #[unsafe_ignore_trace]
+    bindings: RefCell<Vec<Option<StoredValue>>>,
+    #[heap_trace(skip)]
     deletable_bindings: RefCell<Vec<bool>>,
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     deleted_bindings: RefCell<Vec<bool>>,
     slots: Box<FunctionSlots>,
 
-    // Safety: Nothing in `Scope` needs tracing.
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     scope: Scope,
 }
 
@@ -25,7 +24,7 @@ impl FunctionEnvironment {
     /// Creates a new `FunctionEnvironment`.
     pub(crate) fn new(bindings_count: u32, slots: FunctionSlots, scope: Scope) -> Self {
         Self {
-            bindings: GcRefCell::new(vec![None; bindings_count as usize]),
+            bindings: RefCell::new(vec![None; bindings_count as usize]),
             deletable_bindings: RefCell::new(vec![false; bindings_count as usize]),
             deleted_bindings: RefCell::new(vec![false; bindings_count as usize]),
             slots: Box::new(slots),
@@ -231,7 +230,7 @@ impl FunctionEnvironment {
 }
 
 /// Describes the status of a `this` binding in function environments.
-#[derive(Clone, Debug, Trace, Finalize)]
+#[derive(Clone, Debug, Trace)]
 pub(crate) enum ThisBindingStatus {
     /// Function doesn't have a `this` binding. (arrow functions and async arrow functions)
     Lexical,
@@ -248,10 +247,10 @@ impl ThisBindingStatus {
 }
 
 /// Holds the internal slots of a function environment.
-#[derive(Clone, Debug, Trace, Finalize)]
+#[derive(Clone, Debug, Trace)]
 pub(crate) struct FunctionSlots {
     /// The `[[ThisValue]]` and `[[ThisBindingStatus]]`  internal slots.
-    this: GcRefCell<ThisBindingStatus>,
+    this: RefCell<ThisBindingStatus>,
 
     /// The `[[FunctionObject]]` internal slot.
     function_object: ObjectEdge,
@@ -268,7 +267,7 @@ impl FunctionSlots {
         new_target: Option<JsObject>,
     ) -> Self {
         Self {
-            this: GcRefCell::new(this),
+            this: RefCell::new(this),
             function_object: function_object.into_record(),
             new_target: new_target.map(JsObject::into_record),
         }

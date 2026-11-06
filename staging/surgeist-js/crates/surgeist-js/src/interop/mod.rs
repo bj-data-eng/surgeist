@@ -10,22 +10,32 @@ pub(crate) mod private {
 /// Converts a typed Rust callback with explicitly traced captures to a native function.
 ///
 /// The callback takes a shared reference to its captures before the converted
-/// JavaScript arguments. Use a collector cell within the captures for mutable state.
+/// JavaScript arguments. Rust-owned mutable data can use shared interior mutability.
 /// The result type must be `'static`.
 ///
 /// ```
 /// use surgeist_js::{Context, IntoJsFunctionWithCaptures, JsValue};
-/// use surgeist_js_gc::{Gc, GcRefCell};
+/// use std::{cell::Cell, rc::Rc};
+/// use surgeist_js::{gc::heap::Trace, native_function::NativeCapture};
+///
+/// #[derive(Clone, Trace)]
+/// struct Counter(#[heap_trace(skip)] Rc<Cell<i32>>);
+///
+/// impl NativeCapture for Counter {
+///     type Stored = Self;
+///     fn store(&self) -> Self { self.clone() }
+///     fn restore(stored: &Self) -> Self { stored.clone() }
+/// }
 ///
 /// let mut context = Context::default();
-/// let total = Gc::new(GcRefCell::new(0));
-/// let add: fn(&Gc<GcRefCell<i32>>, i32) = |total, value| {
-///     *total.borrow_mut() += value;
+/// let total = Counter(Rc::new(Cell::new(0)));
+/// let add: fn(&Counter, i32) = |total, value| {
+///     total.0.set(total.0.get() + value);
 /// };
 /// let add = add.into_js_function_with_captures(total.clone());
 /// add.call(&JsValue::undefined(), &[JsValue::from(4)], &mut context)
 ///     .unwrap();
-/// assert_eq!(*total.borrow(), 4);
+/// assert_eq!(total.0.get(), 4);
 /// ```
 pub trait IntoJsFunctionWithCaptures<Args, Ret, Captures> {
     /// Converts the callback and its captures to a native function.

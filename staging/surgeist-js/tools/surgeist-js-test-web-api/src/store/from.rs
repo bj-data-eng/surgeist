@@ -1,9 +1,10 @@
 //! Serialize a JavaScript value into an owned graph.
 
 use super::{NodeId, StoredGraph, StoredValue, unsupported_type};
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 use surgeist_js::builtins::array_buffer::ArrayBuffer;
 use surgeist_js::builtins::error::Error;
+use surgeist_js::gc::heap::ObjectId;
 use surgeist_js::object::builtins::{
     JsArray, JsArrayBuffer, JsDataView, JsDate, JsMap, JsRegExp, JsSet, JsSharedArrayBuffer,
     JsTypedArray,
@@ -14,12 +15,12 @@ use surgeist_js::{Context, JsError, JsObject, JsResult, JsString, JsValue, JsVar
 /// Return true if an object is transferable.
 pub(super) fn is_transferable(object: &JsObject) -> bool {
     // The only transferable object supported for now is ArrayBuffer.
-    object.downcast_mut::<ArrayBuffer>().is_some()
+    object.is::<ArrayBuffer>()
 }
 
 pub(super) fn encode(
     value: &JsValue,
-    transfer: &FxHashSet<JsObject>,
+    transfer: &FxHashMap<ObjectId, JsObject>,
     context: &mut Context,
 ) -> JsResult<StoredGraph> {
     let mut encoder = Encoder {
@@ -37,8 +38,9 @@ pub(super) fn encode(
 }
 
 struct Encoder<'a> {
-    transfer: &'a FxHashSet<JsObject>,
-    seen: FxHashMap<JsObject, NodeId>,
+    transfer: &'a FxHashMap<ObjectId, JsObject>,
+    // Keep visited objects rooted while JavaScript getters can run.
+    seen: FxHashMap<ObjectId, (JsObject, NodeId)>,
     nodes: Vec<Option<StoredValue>>,
 }
 
@@ -65,22 +67,22 @@ impl Encoder<'_> {
     }
 
     fn object(&mut self, object: &JsObject, context: &mut Context) -> JsResult<NodeId> {
-        if let Some(&id) = self.seen.get(object) {
-            return Ok(id);
+        let identity = object.identity();
+        if let Some((_, id)) = self.seen.get(&identity) {
+            return Ok(*id);
         }
-        if self.transfer.contains(object) {
-            let mut buffer = object
-                .downcast_mut::<ArrayBuffer>()
-                .ok_or_else(unsupported_type)?;
+        if self.transfer.contains_key(&identity) {
+            let buffer =
+                JsArrayBuffer::from_object(object.clone()).map_err(|_| unsupported_type())?;
             let bytes = buffer
-                .detach(&JsValue::undefined())?
+                .detach_if_attached(&JsValue::undefined())?
                 .ok_or_else(unsupported_type)?;
             return Ok(self.push(Some(StoredValue::ArrayBuffer(bytes))));
         }
 
         // Publish an ID before visiting children so back edges need no owning pointers.
         let id = self.push(None);
-        self.seen.insert(object.clone(), id);
+        self.seen.insert(identity, (object.clone(), id));
         self.nodes[id.0] = Some(self.object_contents(object, context)?);
         Ok(id)
     }

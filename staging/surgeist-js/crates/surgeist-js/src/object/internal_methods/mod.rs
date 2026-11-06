@@ -160,6 +160,10 @@ impl JsObject {
         val: JsPrototype,
         context: &mut Context,
     ) -> JsResult<bool> {
+        self.check_runtime(context.runtime())?;
+        if let Some(prototype) = &val {
+            prototype.check_runtime(context.runtime())?;
+        }
         (self.vtable().__set_prototype_of__)(self, val, context)
     }
 
@@ -217,6 +221,9 @@ impl JsObject {
         desc: PropertyDescriptor,
         context: &mut InternalMethodPropertyContext<'_>,
     ) -> JsResult<bool> {
+        let runtime = context.runtime();
+        self.check_runtime(runtime)?;
+        runtime.check_descriptor(&desc)?;
         (self.vtable().__define_own_property__)(self, key, desc, context)
     }
 
@@ -287,6 +294,10 @@ impl JsObject {
         receiver: JsValue,
         context: &mut InternalMethodPropertyContext<'_>,
     ) -> JsResult<bool> {
+        let runtime = context.runtime();
+        self.check_runtime(runtime)?;
+        runtime.check_value(&value)?;
+        runtime.check_value(&receiver)?;
         (self.vtable().__set__)(self, key, value, receiver, context)
     }
 
@@ -603,7 +614,7 @@ pub(crate) fn ordinary_prevent_extensions(
     _context: &mut Context,
 ) -> JsResult<bool> {
     // 1. Set O.[[Extensible]] to false.
-    obj.borrow_mut().extensible = false;
+    obj.borrow_mut().state_mut().extensible = false;
 
     // 2. Return true.
     Ok(true)
@@ -945,7 +956,7 @@ pub(crate) fn ordinary_delete(
             // 4. If desc.[[Configurable]] is true, then
             Some(desc) if desc.expect_configurable() => {
                 // a. Remove the own property with name P from O.
-                obj.borrow_mut().remove(key);
+                obj.borrow_mut().state_mut().remove(key);
                 // b. Return true.
                 true
             }
@@ -986,7 +997,7 @@ pub(crate) fn ordinary_own_property_keys(
     //
     // 4. For each own property key P of O such that Type(P) is Symbol, in ascending chronological order of property creation, do
     //     a. Add P as the last element of keys.
-    keys.extend(obj.borrow().properties.shape.keys());
+    keys.extend(obj.borrow().properties.shape().keys());
 
     // 5. Return keys.
     Ok(keys)
@@ -1032,7 +1043,7 @@ pub(crate) fn validate_and_apply_property_descriptor(
         // b. Assert: extensible is true.
 
         if let Some((obj, key)) = obj_and_key {
-            obj.borrow_mut().properties.insert_with_slot(
+            obj.borrow_mut().properties_mut().insert_with_slot(
                 key,
                 // c. If IsGenericDescriptor(Desc) is true or IsDataDescriptor(Desc) is true, then
                 if desc.is_generic_descriptor() || desc.is_data_descriptor() {
@@ -1152,7 +1163,7 @@ pub(crate) fn validate_and_apply_property_descriptor(
         // property named P of object O to the value of the field.
         current.fill_with(desc);
         obj.borrow_mut()
-            .properties
+            .properties_mut()
             .insert_with_slot(key, current, slot);
         slot.attributes |= SlotAttributes::FOUND;
     }

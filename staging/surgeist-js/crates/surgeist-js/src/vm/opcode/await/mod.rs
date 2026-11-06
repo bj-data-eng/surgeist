@@ -2,7 +2,9 @@ use super::RegisterOperand;
 use crate::{
     Context, JsArgs, JsExpect, JsResult, JsValue,
     builtins::{
-        Promise, async_generator::AsyncGenerator, generator::GeneratorContext,
+        Promise,
+        async_generator::AsyncGenerator,
+        generator::{GeneratorContext, StoredGeneratorContext},
         promise::PromiseCapability,
     },
     error::PanicError,
@@ -11,8 +13,10 @@ use crate::{
     object::FunctionObjectBuilder,
     vm::{CompletionRecord, GeneratorResumeKind, opcode::Operation},
 };
-use surgeist_js_gc::Gc;
-use std::{cell::Cell, ops::ControlFlow};
+use std::{cell::RefCell, ops::ControlFlow};
+
+#[derive(surgeist_js_gc::heap::Trace)]
+struct AwaitState(RefCell<Option<StoredGeneratorContext>>);
 
 /// `Await` implements the Opcode Operation for `Opcode::Await`
 ///
@@ -56,8 +60,12 @@ impl Await {
 
         let r#gen = GeneratorContext::from_current(context, None);
 
-        let captures = Gc::new(Cell::new(Some(r#gen)));
-
+        let captures = context
+            .runtime()
+            .heap
+            .allocate(AwaitState(RefCell::new(Some(r#gen.stored()))))
+            .expect("suspended await has valid heap edges");
+        // Keep the detached stack rooted until its reactions are installed.
         // 3. Let fulfilledClosure be a new Abstract Closure with parameters (value) that captures asyncContext and performs the following steps when called:
         // 4. Let onFulfilled be CreateBuiltinFunction(fulfilledClosure, 1, "", « »).
         let on_fulfilled = FunctionObjectBuilder::new(
@@ -68,7 +76,12 @@ impl Await {
                     // b. Suspend prevContext.
                     // c. Push asyncContext onto the execution context stack; asyncContext is now the running execution context.
                     // d. Resume the suspended evaluation of asyncContext using NormalCompletion(value) as the result of the operation that suspended it.
-                    let mut r#gen = captures.take().js_expect("should only run once")?;
+                    let mut r#gen = captures
+                        .0
+                        .borrow_mut()
+                        .take()
+                        .js_expect("should only run once")?
+                        .to_context();
 
                     // NOTE: We need to get the object before resuming, since it could clear the stack.
                     let async_generator = r#gen.async_generator_object()?;
@@ -83,7 +96,7 @@ impl Await {
                         async_generator
                             .downcast_mut::<AsyncGenerator>()
                             .js_expect("must be async generator")?
-                            .context = Some(r#gen);
+                            .context = Some(r#gen.stored());
                     }
 
                     // e. Assert: When we reach this step, asyncContext has already been removed from the execution context stack and prevContext is the currently running execution context.
@@ -95,7 +108,8 @@ impl Await {
         )
         .name(js_string!())
         .length(1)
-        .build();
+        .build()
+        .expect("await reaction retains the current runtime");
 
         // 5. Let rejectedClosure be a new Abstract Closure with parameters (reason) that captures asyncContext and performs the following steps when called:
         // 6. Let onRejected be CreateBuiltinFunction(rejectedClosure, 1, "", « »).
@@ -109,7 +123,12 @@ impl Await {
                     // d. Resume the suspended evaluation of asyncContext using ThrowCompletion(reason) as the result of the operation that suspended it.
                     // e. Assert: When we reach this step, asyncContext has already been removed from the execution context stack and prevContext is the currently running execution context.
                     // f. Return undefined.
-                    let mut r#gen = captures.take().js_expect("should only run once")?;
+                    let mut r#gen = captures
+                        .0
+                        .borrow_mut()
+                        .take()
+                        .js_expect("should only run once")?
+                        .to_context();
 
                     // NOTE: We need to get the object before resuming, since it could clear the stack.
                     let async_generator = r#gen.async_generator_object()?;
@@ -124,7 +143,7 @@ impl Await {
                         async_generator
                             .downcast_mut::<AsyncGenerator>()
                             .js_expect("must be async generator")?
-                            .context = Some(r#gen);
+                            .context = Some(r#gen.stored());
                     }
 
                     Ok(JsValue::undefined())
@@ -134,16 +153,20 @@ impl Await {
         )
         .name(js_string!())
         .length(1)
-        .build();
+        .build()
+        .expect("await reaction retains the current runtime");
 
         // 7. Perform PerformPromiseThen(promise, onFulfilled, onRejected).
-        Promise::perform_promise_then(
+        if let Err(error) = Promise::perform_promise_then(
             &promise,
             Some(on_fulfilled),
             Some(on_rejected),
             None,
             context,
-        );
+        ) {
+            context.vm.stack.append(r#gen.stack);
+            return context.handle_error(error);
+        }
 
         context.vm.set_return_value(return_value);
         context.handle_yield()

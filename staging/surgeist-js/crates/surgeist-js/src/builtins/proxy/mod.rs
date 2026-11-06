@@ -20,9 +20,9 @@ use crate::{
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     error::JsNativeError,
     js_string,
-    native_function::NativeFunction,
+    native_function::{NativeCapture, NativeFunction},
     object::{
-        JsData, JsFunction, JsObject, JsPrototype,
+        JsData, JsFunction, JsObject, JsPrototype, ObjectEdge,
         internal_methods::{
             CallValue, InternalMethodPropertyContext, InternalObjectMethods,
             ORDINARY_INTERNAL_METHODS, is_compatible_property_descriptor,
@@ -34,13 +34,37 @@ use crate::{
     string::StaticJsStrings,
     value::Type,
 };
-use surgeist_js_gc::{Finalize, GcRefCell, Trace};
 use rustc_hash::FxHashSet;
+use std::{cell::RefCell, rc::Rc};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 /// Javascript `Proxy` object.
-#[derive(Debug, Clone, Trace, Finalize)]
+#[derive(Debug, Clone, HeapTrace)]
 pub struct Proxy {
     // (target, handler)
-    data: Option<(JsObject, JsObject)>,
+    data: Option<(ObjectEdge, ObjectEdge)>,
+}
+
+struct Revocation {
+    target: Rc<RefCell<Option<ObjectEdge>>>,
+    _root: Option<JsObject>,
+}
+
+impl NativeCapture for Revocation {
+    type Stored = Rc<RefCell<Option<ObjectEdge>>>;
+
+    fn store(&self) -> Self::Stored {
+        self.target.clone()
+    }
+
+    fn restore(stored: &Self::Stored) -> Self {
+        Self {
+            target: stored.clone(),
+            _root: stored
+                .borrow()
+                .as_ref()
+                .map(|edge| JsObject::from_inner(edge.clone())),
+        }
+    }
 }
 
 impl JsData for Proxy {
@@ -76,9 +100,10 @@ impl JsData for Proxy {
             return &BASIC;
         };
 
-        if data.0.is_constructor() {
+        let target = JsObject::from_inner(data.0.clone());
+        if target.is_constructor() {
             &CONSTRUCTOR
-        } else if data.0.is_callable() {
+        } else if target.is_callable() {
             &CALLABLE
         } else {
             &BASIC
@@ -134,9 +159,9 @@ impl BuiltInConstructor for Proxy {
 }
 
 impl Proxy {
-    pub(crate) fn new(target: JsObject, handler: JsObject) -> Self {
+    pub(crate) fn new(target: &JsObject, handler: &JsObject) -> Self {
         Self {
-            data: Some((target, handler)),
+            data: Some((target.edge(), handler.edge())),
         }
     }
 
@@ -144,11 +169,13 @@ impl Proxy {
     ///
     /// It returns the (target, handler) of the proxy.
     pub(crate) fn try_data(&self) -> JsResult<(JsObject, JsObject)> {
-        self.data.clone().ok_or_else(|| {
-            JsNativeError::typ()
-                .with_message("Proxy object has empty handler and target")
-                .into()
-        })
+        let (target, handler) = self.data.as_ref().ok_or_else(|| {
+            JsNativeError::typ().with_message("Proxy object has empty handler and target")
+        })?;
+        Ok((
+            JsObject::from_inner(target.clone()),
+            JsObject::from_inner(handler.clone()),
+        ))
     }
 
     // `10.5.14 ProxyCreate ( target, handler )`
@@ -183,7 +210,7 @@ impl Proxy {
         let p = JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
             context.intrinsics().constructors().object().prototype(),
-            Self::new(target.clone(), handler.clone()),
+            Self::new(&target, &handler),
         )
         .upcast();
 
@@ -191,7 +218,7 @@ impl Proxy {
         Ok(p)
     }
 
-    pub(crate) fn revoker(proxy: JsObject, context: &mut Context) -> JsFunction {
+    pub(crate) fn revoker(proxy: JsObject, context: &mut Context) -> JsResult<JsFunction> {
         // 3. Let revoker be ! CreateBuiltinFunction(revokerClosure, 0, "", « [[RevocableProxy]] »).
         // 4. Set revoker.[[RevocableProxy]] to p.
 
@@ -200,7 +227,12 @@ impl Proxy {
                 // a. Let F be the active function object.
                 // b. Let p be F.[[RevocableProxy]].
                 // d. Set F.[[RevocableProxy]] to null.
-                if let Some(p) = std::mem::take(&mut *revocable_proxy.borrow_mut()) {
+                if let Some(p) = revocable_proxy
+                    .target
+                    .borrow_mut()
+                    .take()
+                    .map(JsObject::from_inner)
+                {
                     // e. Assert: p is a Proxy object.
                     // f. Set p.[[ProxyTarget]] to null.
                     // g. Set p.[[ProxyHandler]] to null.
@@ -213,7 +245,10 @@ impl Proxy {
                 // h. Return undefined.
                 Ok(JsValue::undefined())
             },
-            GcRefCell::new(Some(proxy)),
+            Revocation {
+                target: Rc::new(RefCell::new(Some(proxy.edge()))),
+                _root: Some(proxy),
+            },
         )
         .to_js_function(context.realm())
     }
@@ -229,7 +264,7 @@ impl Proxy {
         let p = Self::create(args.get_or_undefined(0), args.get_or_undefined(1), context)?;
 
         // Revoker creation steps on `Proxy::revoker`
-        let revoker = Self::revoker(p.clone(), context);
+        let revoker = Self::revoker(p.clone(), context)?;
 
         // 5. Let result be ! OrdinaryObjectCreate(%Object.prototype%).
         let result = JsObject::with_object_proto(context.intrinsics());

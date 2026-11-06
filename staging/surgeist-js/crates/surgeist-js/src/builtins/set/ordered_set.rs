@@ -1,26 +1,39 @@
 //! Implements a set type that preserves insertion order.
 
-use crate::{JsData, JsValue, builtins::map::ordered_map::MapKey, object::JsObject};
-use surgeist_js_gc::{Finalize, Trace, custom_trace};
+use crate::{JsData, JsValue, builtins::map::ordered_map::MapKey};
 use indexmap::IndexSet;
-use std::fmt::Debug;
+use std::{fmt::Debug, rc::Rc};
+use surgeist_js_gc::heap::{AccessError, EdgeVisitor, Trace as HeapTrace};
 
 /// A type wrapping `indexmap::IndexSet`
-#[derive(Default, Clone, Finalize, JsData)]
-pub struct OrderedSet {
+#[derive(Default, JsData)]
+pub(crate) struct OrderedSet {
     inner: IndexSet<MapKey>,
-    lock: u32,
+    iteration_lock: Rc<()>,
     empty_count: usize,
 }
 
-unsafe impl Trace for OrderedSet {
-    custom_trace!(this, mark, {
-        for v in &this.inner {
-            if let MapKey::Key(v) = v {
-                mark(v);
+impl HeapTrace for OrderedSet {
+    fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+        for value in &self.inner {
+            if let MapKey::Key(value) = value {
+                HeapTrace::trace(value, edges)?;
             }
         }
-    });
+        Ok(())
+    }
+}
+
+impl Clone for OrderedSet {
+    fn clone(&self) -> Self {
+        let mut snapshot = Self {
+            inner: self.inner.clone(),
+            iteration_lock: Rc::new(()),
+            empty_count: self.empty_count,
+        };
+        snapshot.compact_if_unlocked();
+        snapshot
+    }
 }
 
 impl Debug for OrderedSet {
@@ -41,7 +54,7 @@ impl OrderedSet {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             inner: IndexSet::with_capacity(capacity),
-            lock: 0,
+            iteration_lock: Rc::new(()),
             empty_count: 0,
         }
     }
@@ -62,25 +75,12 @@ impl OrderedSet {
         self.inner.len() - self.empty_count
     }
 
-    /// Returns true if the set contains no elements.
-    ///
-    /// Computes in **O(1)** time.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.inner.len() == 0
-    }
-
-    /// Insert a value pair in the set.
-    ///
-    /// If an equivalent value already exists in the set, returns `false` leaving
-    /// original value in the set and without altering its insertion order.
-    ///
-    /// If no equivalent value existed in the set, returns `true` and inserts
-    /// the new value at the end of the set.
+    /// Appends the value if the set does not already contain it.
     ///
     /// Computes in **O(1)** time (amortized average).
-    pub fn add(&mut self, value: JsValue) -> bool {
-        self.inner.insert(MapKey::Key(value))
+    pub(super) fn add(&mut self, value: JsValue) {
+        self.compact_if_unlocked();
+        self.inner.insert(MapKey::Key(value.into_stored()));
     }
 
     /// Delete the `value` from the set and return true if successful
@@ -89,23 +89,31 @@ impl OrderedSet {
     ///
     /// Computes in **O(n)** time (average).
     pub fn delete(&mut self, value: &JsValue) -> bool {
-        if self.lock == 0 {
-            self.inner.shift_remove(value)
-        } else if self.inner.contains(value) {
+        let value = value.clone().into_stored();
+        if self.is_locked() {
+            if !self.inner.contains(&value) {
+                return false;
+            }
             self.inner.insert(MapKey::Empty(self.empty_count));
             self.empty_count += 1;
-            self.inner.swap_remove(value)
+            self.inner.swap_remove(&value)
         } else {
-            false
+            self.compact_if_unlocked();
+            self.inner.shift_remove(&value)
         }
     }
 
-    /// Removes all elements in the set, while preserving its capacity.
-    #[inline]
+    /// Removes all elements while preserving active iterator positions.
     pub fn clear(&mut self) {
+        let len = self.inner.len();
         self.inner.clear();
-        self.inner.shrink_to_fit();
-        self.empty_count = 0;
+        if self.is_locked() {
+            self.inner.extend((0..len).map(MapKey::Empty));
+            self.empty_count = len;
+        } else {
+            self.inner.shrink_to_fit();
+            self.empty_count = 0;
+        }
     }
 
     /// Checks if a given value is present in the set
@@ -115,60 +123,45 @@ impl OrderedSet {
     /// Computes in **O(n)** time (average).
     #[must_use]
     pub fn contains(&self, value: &JsValue) -> bool {
-        self.inner.contains(value)
+        self.inner.contains(&value.clone().into_stored())
     }
 
-    /// Get a key-value pair by index
-    /// Valid indices are 0 <= `index` < `self.len()`
+    /// Get a value by index.
+    /// Valid indices are 0 <= `index` < `self.full_len()`.
     /// Computes in O(1) time.
     #[must_use]
-    pub fn get_index(&self, index: usize) -> Option<&JsValue> {
+    pub fn get_index(&self, index: usize) -> Option<JsValue> {
         if let MapKey::Key(value) = self.inner.get_index(index)? {
-            Some(value)
+            Some(value.to_value())
         } else {
             None
         }
     }
 
     /// Return an iterator over the values of the set, in their order
-    pub fn iter(&self) -> impl Iterator<Item = &JsValue> {
+    pub fn iter(&self) -> impl Iterator<Item = JsValue> {
         self.inner.iter().filter_map(|v| {
             if let MapKey::Key(v) = v {
-                Some(v)
+                Some(v.to_value())
             } else {
                 None
             }
         })
     }
 
-    /// Increases the lock counter and returns a lock object that will decrement the counter when dropped.
-    ///
-    /// This allows objects to be removed from the set during iteration without affecting the indexes until the iteration has completed.
-    pub(crate) fn lock(&mut self) {
-        self.lock += 1;
+    pub(crate) fn lock(&mut self) -> Rc<()> {
+        self.compact_if_unlocked();
+        Rc::clone(&self.iteration_lock)
     }
 
-    /// Decreases the lock counter and, if 0, removes all empty entries.
-    pub(crate) fn unlock(&mut self) {
-        self.lock -= 1;
-        if self.lock == 0 {
-            self.inner.retain(|k| matches!(k, MapKey::Key(_)));
+    fn is_locked(&self) -> bool {
+        Rc::strong_count(&self.iteration_lock) > 1
+    }
+
+    fn compact_if_unlocked(&mut self) {
+        if self.empty_count != 0 && !self.is_locked() {
+            self.inner.retain(|key| matches!(key, MapKey::Key(_)));
             self.empty_count = 0;
         }
-    }
-}
-
-pub(crate) struct SetLock<'a>(&'a JsObject<OrderedSet>);
-
-impl<'a> SetLock<'a> {
-    pub(crate) fn new(js_object: &'a JsObject<OrderedSet>) -> Self {
-        js_object.borrow_mut().data_mut().lock();
-        Self(js_object)
-    }
-}
-
-impl Drop for SetLock<'_> {
-    fn drop(&mut self) {
-        self.0.borrow_mut().data_mut().unlock();
     }
 }

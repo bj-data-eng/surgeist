@@ -11,17 +11,48 @@ use indoc::indoc;
 use surgeist_js_macros::js_str;
 
 #[test]
+fn native_callbacks_cannot_return_or_throw_foreign_objects() {
+    use crate::{Context, JsError, Runtime};
+
+    let mut context = Context::default();
+    let function = FunctionObjectBuilder::new(
+        context.realm(),
+        NativeFunction::from_fn_ptr(|_, args, _| {
+            let object = JsObject::with_null_proto(&Runtime::default()).into();
+            match args[0].as_number() {
+                Some(1.0) => Err(JsError::from_opaque(object)),
+                Some(2.0) => {
+                    Err(JsNativeError::aggregate(vec![JsError::from_opaque(object)]).into())
+                }
+                _ => Ok(object),
+            }
+        }),
+    )
+    .build()
+    .unwrap();
+    for outcome in 0..3 {
+        let error = function
+            .call(&JsValue::undefined(), &[outcome.into()], &mut context)
+            .unwrap_err();
+        assert!(
+            error
+                .as_native()
+                .is_some_and(|error| error.kind() == &JsNativeErrorKind::Type)
+        );
+    }
+}
+
+#[test]
 fn native_async_job_owns_captures_after_the_function_drops() {
     use crate::{Context, builtins::promise::PromiseState, object::JsPromise};
-    use surgeist_js_gc::{WeakGc, force_collect};
 
-    let capture = JsObject::with_null_proto();
-    let weak_capture = WeakGc::new(capture.inner());
+    let mut context = Context::default();
+    let capture = JsObject::with_null_proto(context.runtime());
+    let weak_capture = capture.edge();
     let callback = NativeFunction::from_async_fn_with_captures(
         |_, _, capture, _| Box::pin(async move { Ok(capture.clone().into()) }),
         capture,
     );
-    let mut context = Context::default();
     let promise = callback
         .call(&JsValue::undefined(), &[], &mut context)
         .unwrap()
@@ -30,24 +61,24 @@ fn native_async_job_owns_captures_after_the_function_drops() {
     let promise = JsPromise::from_object(promise).unwrap();
     drop(callback);
 
-    force_collect();
-    assert!(weak_capture.is_upgradable());
+    context.runtime().collect().unwrap();
+    assert!(weak_capture.is_live().unwrap());
     context.run_jobs().unwrap();
     {
         let PromiseState::Fulfilled(value) = promise.state() else {
             panic!("native job did not fulfill its promise");
         };
-        let captured = JsObject::from_inner(weak_capture.upgrade().unwrap());
+        let captured = weak_capture.upgrade().unwrap().unwrap();
         assert_eq!(value.as_object(), Some(captured));
     }
     drop(promise);
-    force_collect();
-    assert!(!weak_capture.is_upgradable());
+    context.runtime().collect().unwrap();
+    assert!(!weak_capture.is_live().unwrap());
 }
 
 #[test]
 fn nested_native_invocation_restores_the_outer_activation() {
-    use crate::{Context, JsError, builtins::OrdinaryObject};
+    use crate::{Context, JsError};
 
     let inner_context = Context::default();
     let inner = FunctionObjectBuilder::new(
@@ -55,8 +86,8 @@ fn nested_native_invocation_restores_the_outer_activation() {
         NativeFunction::from_fn_with_captures(
             |_, args, inner_realm, context| {
                 assert!(context.realm() == inner_realm);
-                surgeist_js_gc::force_collect();
-                let value = JsObject::from_proto_and_data(None, OrdinaryObject).into();
+                context.runtime().collect().unwrap();
+                let value = JsObject::with_null_proto(context.runtime()).into();
                 if args[0].as_boolean() == Some(true) {
                     Err(JsError::from_opaque(value))
                 } else {
@@ -67,8 +98,12 @@ fn nested_native_invocation_restores_the_outer_activation() {
         ),
     )
     .constructor(true)
-    .build();
-    let context = &mut Context::default();
+    .build()
+    .unwrap();
+    let context = &mut Context::builder()
+        .runtime(inner_context.runtime().clone())
+        .build()
+        .unwrap();
     let outer = NativeFunction::from_fn_with_captures(
         |_, _, inner, context| {
             let active = context.active_function_object().expect("outer activation");
@@ -90,7 +125,8 @@ fn nested_native_invocation_restores_the_outer_activation() {
         },
         inner,
     )
-    .to_js_function(context.realm());
+    .to_js_function(context.realm())
+    .unwrap();
     outer
         .call(&JsValue::undefined(), &[], context)
         .expect("outer invocation");
@@ -256,7 +292,8 @@ fn closure_capture_clone() {
                 ),
             )
             .name(js_str!("closure"))
-            .build();
+            .build()
+            .unwrap();
 
             ctx.register_global_property(js_str!("closure"), func, Attribute::default())
                 .unwrap();

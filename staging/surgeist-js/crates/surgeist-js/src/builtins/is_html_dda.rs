@@ -10,7 +10,7 @@
 //!
 //! [spec]: https://tc39.es/ecma262/#sec-IsHTMLDDA-internal-slot
 
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 use crate::{
     JsResult, JsValue,
@@ -28,8 +28,7 @@ use crate::{
 /// legacy `document.all` behavior per ECMAScript Annex B §B.3.6.
 ///
 /// The object is callable — when called, it returns `undefined`.
-#[derive(Debug, Clone, Copy, Trace, Finalize)]
-#[surgeist_js_gc(empty_trace)]
+#[derive(Debug, Clone, Copy, HeapTrace)]
 pub struct IsHTMLDDA;
 
 impl JsData for IsHTMLDDA {

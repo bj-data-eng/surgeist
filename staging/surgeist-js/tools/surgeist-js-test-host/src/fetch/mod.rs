@@ -11,18 +11,19 @@ use crate::fetch::headers::JsHeaders;
 use crate::fetch::headers_iterator::{HeadersIterator, IterationKind};
 use crate::fetch::request::{JsRequest, RequestInit};
 use crate::fetch::response::JsResponse;
-use surgeist_js::class::Class;
-use surgeist_js::object::FunctionObjectBuilder;
-use surgeist_js::property::PropertyDescriptor;
-use surgeist_js::realm::Realm;
-use surgeist_js::{
-    Context, Finalize, JsData, JsError, JsObject, JsResult, JsString, JsSymbol, JsValue,
-    NativeObject, Trace, boa_module, js_error, js_string, native_function::NativeFunction,
-};
 use either::Either;
 use http::{HeaderName, HeaderValue, Request as HttpRequest, Request};
 use std::cell::RefCell;
 use std::rc::Rc;
+use surgeist_js::class::Class;
+use surgeist_js::gc::heap::Trace as HeapTrace;
+use surgeist_js::object::FunctionObjectBuilder;
+use surgeist_js::property::PropertyDescriptor;
+use surgeist_js::realm::Realm;
+use surgeist_js::{
+    Context, JsData, JsError, JsObject, JsResult, JsString, JsSymbol, JsValue, NativeObject,
+    boa_module, js_error, js_string, native_function::NativeFunction,
+};
 
 pub mod headers;
 pub mod headers_iterator;
@@ -66,8 +67,8 @@ pub trait Fetcher: NativeObject {
 /// A reference counted pointer to a `Fetcher` implementation. This is so we can
 /// add this to the context, but we need to be able to keep an `Rc<>` structure
 /// to make API calls.
-#[derive(Debug, Trace, Finalize, JsData)]
-struct FetcherRc<T: Fetcher>(#[unsafe_ignore_trace] pub Rc<T>);
+#[derive(Debug, JsData, HeapTrace)]
+struct FetcherRc<T: Fetcher>(pub Rc<T>);
 
 impl<T: Fetcher> Clone for FetcherRc<T> {
     fn clone(&self) -> Self {
@@ -182,9 +183,9 @@ async fn fetch_inner<T: Fetcher>(
 pub mod js_module {
     use crate::fetch::request::RequestInit;
     use crate::fetch::{Fetcher, fetch_inner};
+    use either::Either;
     use surgeist_js::object::builtins::JsPromise;
     use surgeist_js::{Context, JsObject, JsString};
-    use either::Either;
 
     type JsHeaders = super::JsHeaders;
     type JsRequest = super::JsRequest;
@@ -238,7 +239,7 @@ pub fn register<F: Fetcher>(
     context: &mut Context,
 ) -> JsResult<()> {
     if let Some(ref realm) = realm {
-        realm.host_defined_mut().insert(FetcherRc(Rc::new(fetcher)));
+        realm.insert_host_defined(FetcherRc(Rc::new(fetcher)))?;
     } else {
         context.insert_data(FetcherRc(Rc::new(fetcher)));
     }
@@ -260,7 +261,7 @@ pub fn register<F: Fetcher>(
     .name(js_string!("[Symbol.iterator]"))
     .length(0)
     .constructor(false)
-    .build();
+    .build()?;
 
     headers_proto.define_property_or_throw(
         JsSymbol::iterator(),

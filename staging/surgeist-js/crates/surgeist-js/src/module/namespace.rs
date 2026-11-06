@@ -3,7 +3,7 @@ use std::hash::BuildHasherDefault;
 use indexmap::IndexSet;
 use rustc_hash::{FxHashMap, FxHasher};
 
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 use crate::object::internal_methods::immutable_prototype::immutable_prototype_exotic_set_prototype_of;
 use crate::object::internal_methods::{
@@ -16,28 +16,18 @@ use crate::property::{PropertyDescriptor, PropertyKey};
 use crate::{Context, JsExpect, JsResult, JsString, JsValue, js_string, object::JsObject};
 use crate::{JsNativeError, Module};
 
-use super::{BindingName, ResolvedBinding};
+use super::{BindingName, ModuleEdge, ResolvedBinding, StoredResolvedBinding};
 
 /// Module namespace exotic object.
 ///
 /// Exposes the bindings exported by a [`Module`] to be accessed from ECMAScript code.
-#[derive(Debug, Trace, Finalize)]
+#[derive(Debug, HeapTrace)]
 pub struct ModuleNamespace {
-    module: Module,
-    #[unsafe_ignore_trace]
+    module: ModuleEdge,
+    #[heap_trace(skip)]
     exports: IndexSet<JsString, BuildHasherDefault<FxHasher>>,
-    /// Cached binding resolutions for each export name.
-    /// Populated once during namespace creation; bindings are immutable after linking.
-    ///
-    /// SAFETY: Every `Module` inside a `ResolvedBinding` is a transitive dependency
-    /// of the parent `module` field (which IS traced). Those modules are reachable
-    /// through `SourceTextModule::loaded_modules` / `SyntheticModule`, so tracing
-    /// them again here would be redundant. Skipping the trace avoids walking the
-    /// entire hashmap on every GC cycle. This is a performance optimization:
-    /// our GC already ignores pointers that were already traced, but this avoids
-    /// a lookup to check if the pointer is alive. The logic is correct either way.
-    #[unsafe_ignore_trace]
-    resolved_bindings: FxHashMap<JsString, ResolvedBinding>,
+    /// Cached binding resolutions for each export name, immutable after linking.
+    resolved_bindings: FxHashMap<JsString, StoredResolvedBinding>,
 }
 
 impl JsData for ModuleNamespace {
@@ -84,7 +74,7 @@ impl ModuleNamespace {
                 &mut rustc_hash::FxHashSet::default(),
                 context.interner(),
             ) {
-                resolved_bindings.insert(name.clone(), binding);
+                resolved_bindings.insert(name.clone(), binding.stored());
             }
         }
 
@@ -101,7 +91,7 @@ impl ModuleNamespace {
         // 10. Return M.
         context.intrinsics().templates().namespace().create(
             Self {
-                module,
+                module: module.edge(),
                 exports,
                 resolved_bindings,
             },
@@ -115,13 +105,15 @@ impl ModuleNamespace {
     }
 
     /// Gets the module associated with this namespace.
-    pub(crate) const fn module(&self) -> &Module {
-        &self.module
+    pub(crate) fn module(&self) -> Module {
+        Module::from_edge(self.module.clone())
     }
 
     /// Gets a cached resolved binding for the given export name.
-    pub(crate) fn get_resolved_binding(&self, name: &JsString) -> Option<&ResolvedBinding> {
-        self.resolved_bindings.get(name)
+    pub(crate) fn get_resolved_binding(&self, name: &JsString) -> Option<ResolvedBinding> {
+        self.resolved_bindings
+            .get(name)
+            .map(StoredResolvedBinding::to_binding)
     }
 }
 
@@ -319,18 +311,16 @@ fn module_namespace_exotic_try_get(
     // 6. Assert: binding is a ResolvedBinding Record.
     // Use the pre-resolved cache when available; fall back to a fresh
     // ResolveExport call on cache miss for robustness.
-    let fallback;
     let binding = if let Some(b) = obj.get_resolved_binding(&export_name) {
         b
     } else {
-        fallback = module
+        module
             .resolve_export(
                 &export_name,
                 &mut rustc_hash::FxHashSet::default(),
                 context.interner(),
             )
-            .expect("6. Assert: binding is a ResolvedBinding Record.");
-        &fallback
+            .expect("6. Assert: binding is a ResolvedBinding Record.")
     };
 
     // 7. Let targetModule be binding.[[Module]].
@@ -368,7 +358,7 @@ fn module_namespace_exotic_try_get(
     } else {
         // 9. If binding.[[BindingName]] is namespace, then
         //     a. Return GetModuleNamespace(targetModule).
-        Ok(Some(target_module.namespace(context).into()))
+        Ok(Some(target_module.namespace(context)?.into()))
     }
 }
 
@@ -407,18 +397,16 @@ fn module_namespace_exotic_get(
     // 6. Assert: binding is a ResolvedBinding Record.
     // Use the pre-resolved cache when available; fall back to a fresh
     // ResolveExport call on cache miss for robustness.
-    let fallback;
     let binding = if let Some(b) = obj.get_resolved_binding(&export_name) {
         b
     } else {
-        fallback = module
+        module
             .resolve_export(
                 &export_name,
                 &mut rustc_hash::FxHashSet::default(),
                 context.interner(),
             )
-            .expect("6. Assert: binding is a ResolvedBinding Record.");
-        &fallback
+            .expect("6. Assert: binding is a ResolvedBinding Record.")
     };
 
     // 7. Let targetModule be binding.[[Module]].
@@ -456,7 +444,7 @@ fn module_namespace_exotic_get(
     } else {
         // 9. If binding.[[BindingName]] is namespace, then
         //     a. Return GetModuleNamespace(targetModule).
-        Ok(target_module.namespace(context).into())
+        Ok(target_module.namespace(context)?.into())
     }
 }
 

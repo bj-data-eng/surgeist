@@ -1,15 +1,12 @@
 use std::fmt::{self, Display};
 
-use surgeist_js_gc::{Finalize, Trace};
 use surgeist_js_string::JsString;
 use thin_vec::ThinVec;
 
 use super::source_info::{NativeSourceInfo, SourceInfo};
 
-#[derive(Debug, Default, Clone, Trace, Finalize)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct Backtrace {
-    // SAFETY: Nothing in `ShadowEntry` requires trace, so this is safe.
-    #[unsafe_ignore_trace]
     stack: ThinVec<ShadowEntry>,
 }
 
@@ -19,10 +16,10 @@ impl Backtrace {
     }
 }
 
-#[derive(Debug, Clone, Trace, Finalize)]
+#[derive(Debug, Clone)]
 pub(crate) enum ErrorStack {
-    Position(#[unsafe_ignore_trace] ShadowEntry),
-    Backtrace(#[unsafe_ignore_trace] Backtrace),
+    Position(ShadowEntry),
+    Backtrace(Backtrace),
 }
 
 impl ErrorStack {

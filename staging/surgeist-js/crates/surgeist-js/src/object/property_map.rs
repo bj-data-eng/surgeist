@@ -1,8 +1,7 @@
 use super::{
     JsPrototype, PropertyDescriptor, PropertyKey,
     shape::{
-        ChangeTransitionAction, RootShape, Shape, UniqueShape,
-        property_table::PropertyTableInner,
+        ChangeTransitionAction, Shape, ShapeRef,
         shared_shape::TransitionKey,
         slot::{Slot, SlotAttributes},
     },
@@ -14,7 +13,7 @@ use crate::{
 };
 use rustc_hash::FxHashMap;
 use std::{collections::hash_map, iter::FusedIterator};
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 use thin_vec::ThinVec;
 
 /// This represents all the indexed properties.
@@ -36,7 +35,7 @@ use thin_vec::ThinVec;
 ///
 /// This method uses more space, since we also have to store the property descriptors, not just the value.
 /// It is also slower because we need to do a hash lookup.
-#[derive(Debug, Trace, Finalize)]
+#[derive(Debug, HeapTrace)]
 pub(crate) enum IndexedProperties {
     /// Dense [`i32`] storage.
     DenseI32(ThinVec<i32>),
@@ -457,12 +456,12 @@ impl<'a> IntoIterator for &'a IndexedProperties {
 /// A [`PropertyMap`] contains all the properties of an object.
 ///
 /// The property values are stored in different data structures based on keys.
-#[derive(Default, Debug, Trace, Finalize)]
+#[derive(Debug, HeapTrace)]
 pub struct PropertyMap {
     /// Properties stored with integers as keys.
     pub(crate) indexed_properties: IndexedProperties,
 
-    pub(crate) shape: Shape,
+    shape: ShapeRef,
     storage: Vec<StoredValue>,
 }
 
@@ -470,38 +469,20 @@ impl PropertyMap {
     /// Create a new [`PropertyMap`].
     #[must_use]
     #[inline]
-    pub(crate) fn new(shape: Shape, indexed_properties: IndexedProperties) -> Self {
+    pub(crate) fn new(shape: &Shape, indexed_properties: IndexedProperties) -> Self {
         Self {
             indexed_properties,
-            shape,
+            shape: ShapeRef::from(shape),
             storage: Vec::default(),
         }
     }
 
-    /// Construct a [`PropertyMap`] with the given prototype with a unique [`Shape`].
-    #[must_use]
-    #[inline]
-    pub fn from_prototype_unique_shape(prototype: JsPrototype) -> Self {
-        Self {
-            indexed_properties: IndexedProperties::default(),
-            shape: UniqueShape::new(prototype, PropertyTableInner::default()).into(),
-            storage: Vec::default(),
-        }
+    pub(crate) fn shape(&self) -> Shape {
+        self.shape.upgrade().expect("live object retains its shape")
     }
 
-    /// Construct a [`PropertyMap`] with the given prototype with a shared shape [`Shape`].
-    #[must_use]
-    #[inline]
-    pub fn from_prototype_with_shared_shape(
-        root_shape: &RootShape,
-        prototype: JsPrototype,
-    ) -> Self {
-        let shape = root_shape.shape().change_prototype_transition(prototype);
-        Self {
-            indexed_properties: IndexedProperties::default(),
-            shape: shape.into(),
-            storage: Vec::default(),
-        }
+    pub(crate) fn set_prototype(&mut self, prototype: JsPrototype) {
+        self.shape = ShapeRef::from(&self.shape().change_prototype_transition(prototype));
     }
 
     /// Reads a named slot selected by the object's shape or inline cache.
@@ -526,7 +507,7 @@ impl PropertyMap {
         if let PropertyKey::Index(index) = key {
             return self.indexed_properties.get(index.get());
         }
-        if let Some(slot) = self.shape.lookup(key) {
+        if let Some(slot) = self.shape().lookup(key) {
             return Some(self.get_storage(slot));
         }
 
@@ -543,7 +524,7 @@ impl PropertyMap {
         if let PropertyKey::Index(index) = key {
             return self.indexed_properties.get(index.get());
         }
-        if let Some(slot) = self.shape.lookup(key) {
+        if let Some(slot) = self.shape().lookup(key) {
             out_slot.index = slot.index;
 
             // Remove all descriptor attributes, but keep inline caching bits.
@@ -596,7 +577,7 @@ impl PropertyMap {
 
         let attributes = property.to_slot_attributes();
 
-        if let Some(slot) = self.shape.lookup(key) {
+        if let Some(slot) = self.shape().lookup(key) {
             let index = slot.index as usize;
 
             if slot.attributes != attributes {
@@ -604,8 +585,8 @@ impl PropertyMap {
                     property_key: key.clone(),
                     attributes,
                 };
-                let transition = self.shape.change_attributes_transition(key);
-                self.shape = transition.shape;
+                let transition = self.shape().change_attributes_transition(key);
+                self.shape = ShapeRef::from(&transition.shape);
                 match transition.action {
                     ChangeTransitionAction::Nothing => {}
                     ChangeTransitionAction::Remove => {
@@ -638,11 +619,11 @@ impl PropertyMap {
             property_key: key.clone(),
             attributes,
         };
-        self.shape = self.shape.insert_property_transition(transition_key);
+        self.shape = ShapeRef::from(&self.shape().insert_property_transition(transition_key));
 
         // Make Sure that if we are inserting, it has the correct slot index.
         debug_assert_eq!(
-            self.shape.lookup(key),
+            self.shape().lookup(key),
             Some(Slot {
                 index: self.storage.len() as u32,
                 attributes
@@ -671,14 +652,14 @@ impl PropertyMap {
         if let PropertyKey::Index(index) = key {
             return self.indexed_properties.remove(index.get());
         }
-        if let Some(slot) = self.shape.lookup(key) {
+        if let Some(slot) = self.shape().lookup(key) {
             // shift all elements when removing.
             if slot.attributes.is_accessor_descriptor() {
                 self.storage.remove(slot.index as usize + 1);
             }
             self.storage.remove(slot.index as usize);
 
-            self.shape = self.shape.remove_property_transition(key);
+            self.shape = ShapeRef::from(&self.shape().remove_property_transition(key));
             return true;
         }
 
@@ -847,7 +828,7 @@ impl PropertyMap {
         if let PropertyKey::Index(index) = key {
             return self.indexed_properties.contains_key(index.get());
         }
-        if self.shape.lookup(key).is_some() {
+        if self.shape().lookup(key).is_some() {
             return true;
         }
 

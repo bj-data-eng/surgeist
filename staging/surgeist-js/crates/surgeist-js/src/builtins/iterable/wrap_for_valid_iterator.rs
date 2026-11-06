@@ -10,16 +10,16 @@
 
 use crate::{
     Context, JsData, JsResult, JsValue,
-    builtins::{BuiltInBuilder, IntrinsicObject, iterable::create_iter_result_object},
+    builtins::{BuiltInBuilder, IntrinsicObject, iterable::create_iter_result_object_trusted},
     context::intrinsics::Intrinsics,
     error::JsNativeError,
     js_string,
     object::JsObject,
     realm::Realm,
 };
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
-use super::IteratorRecord;
+use super::StoredIteratorRecord;
 
 /// The internal representation of a `WrapForValidIterator` object.
 ///
@@ -27,10 +27,10 @@ use super::IteratorRecord;
 ///  - [ECMAScript reference][spec]
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-wrapforvaliditeratorprototype-object
-#[derive(Debug, Finalize, Trace, JsData)]
+#[derive(Debug, HeapTrace, JsData)]
 pub(crate) struct WrapForValidIterator {
     /// `[[Iterated]]` — the iterator record this wrapper delegates to.
-    pub(crate) iterated: IteratorRecord,
+    pub(crate) iterated: StoredIteratorRecord,
 }
 
 impl IntrinsicObject for WrapForValidIterator {
@@ -68,18 +68,19 @@ impl WrapForValidIterator {
             JsNativeError::typ().with_message("WrapForValidIterator method called on non-object")
         })?;
 
-        let wrapper = object.downcast_mut::<Self>().ok_or_else(|| {
+        let wrapper = object.downcast_ref::<Self>().ok_or_else(|| {
             JsNativeError::typ()
                 .with_message("WrapForValidIterator method called on incompatible object")
         })?;
 
         // 3. Let iteratorRecord be O.[[Iterated]].
         // 4. Return ? Call(iteratorRecord.[[NextMethod]], iteratorRecord.[[Iterator]]).
-        let next_method = wrapper.iterated.next_method().clone();
-        let iterator = wrapper.iterated.iterator().clone();
+        let iterated = wrapper.iterated.to_iterator();
         drop(wrapper);
 
-        next_method.call(&iterator.into(), &[], context)
+        iterated
+            .next_method()
+            .call(&iterated.iterator().clone().into(), &[], context)
     }
 
     /// `%WrapForValidIteratorPrototype%.return ( )`
@@ -99,13 +100,13 @@ impl WrapForValidIterator {
             JsNativeError::typ().with_message("WrapForValidIterator method called on non-object")
         })?;
 
-        let wrapper = object.downcast_mut::<Self>().ok_or_else(|| {
+        let wrapper = object.downcast_ref::<Self>().ok_or_else(|| {
             JsNativeError::typ()
                 .with_message("WrapForValidIterator method called on incompatible object")
         })?;
 
         // 3. Let iterator be O.[[Iterated]].[[Iterator]].
-        let iterator = wrapper.iterated.iterator().clone();
+        let iterator = wrapper.iterated.to_iterator().iterator().clone();
         drop(wrapper);
 
         // 4. Assert: iterator is an Object.
@@ -116,7 +117,7 @@ impl WrapForValidIterator {
             // 6. If returnMethod is undefined, then
             None => {
                 // a. Return CreateIterResultObject(undefined, true).
-                Ok(create_iter_result_object(
+                Ok(create_iter_result_object_trusted(
                     JsValue::undefined(),
                     true,
                     context,

@@ -100,7 +100,8 @@ macro_rules! atomic_op {
             // Revalidate the selected byte range after value coercion.
             let ta = ta.borrow();
             let ta = ta.data();
-            let mut buffer = ta.viewed_array_buffer().as_buffer_mut();
+            let buffer = ta.viewed_array_buffer();
+            let mut buffer = buffer.as_buffer_mut();
             let Some(mut data) = buffer.bytes(Ordering::Relaxed) else {
                 return Err(JsNativeError::typ()
                 .with_message("cannot execute atomic operation in detached buffer")
@@ -189,7 +190,8 @@ impl Atomics {
         // 2. Perform ? RevalidateAtomicAccess(typedArray, indexedPosition).
         let ta = ta.borrow();
         let ta = ta.data();
-        let buffer = ta.viewed_array_buffer().as_buffer();
+        let buffer = ta.viewed_array_buffer();
+        let buffer = buffer.as_buffer();
         let Some(data) = buffer.bytes(Ordering::Relaxed) else {
             return Err(JsNativeError::typ()
                 .with_message("cannot execute atomic operation in detached buffer")
@@ -235,7 +237,8 @@ impl Atomics {
         // 4. Perform ? RevalidateAtomicAccess(typedArray, indexedPosition).
         let ta = ta.borrow();
         let ta = ta.data();
-        let mut buffer = ta.viewed_array_buffer().as_buffer_mut();
+        let buffer = ta.viewed_array_buffer();
+        let mut buffer = buffer.as_buffer_mut();
         let Some(mut buffer) = buffer.bytes(Ordering::Relaxed) else {
             return Err(JsNativeError::typ()
                 .with_message("cannot execute atomic operation in detached buffer")
@@ -280,7 +283,8 @@ impl Atomics {
         // 6. Perform ? RevalidateAtomicAccess(typedArray, indexedPosition).
         let ta = ta.borrow();
         let ta = ta.data();
-        let mut buffer = ta.viewed_array_buffer().as_buffer_mut();
+        let buffer = ta.viewed_array_buffer();
+        let mut buffer = buffer.as_buffer_mut();
         let Some(mut buffer) = buffer.bytes(Ordering::Relaxed) else {
             return Err(JsNativeError::typ()
                 .with_message("cannot execute atomic operation in detached buffer")
@@ -404,7 +408,7 @@ impl Atomics {
         // 2. Let buffer be taRecord.[[Object]].[[ViewedArrayBuffer]].
         // 3. If IsSharedArrayBuffer(buffer) is false, throw a TypeError exception.
         let buffer = match ta.borrow().data().viewed_array_buffer() {
-            BufferObject::SharedBuffer(buf) => buf.clone(),
+            BufferObject::SharedBuffer(buf) => buf,
             BufferObject::Buffer(_) => {
                 return Err(JsNativeError::typ()
                     .with_message("cannot use `ArrayBuffer` for an atomic wait")

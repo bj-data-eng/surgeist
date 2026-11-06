@@ -12,13 +12,13 @@ use crate::{
     js_string,
     object::JsObject,
     property::PropertyDescriptor,
-    realm::Realm,
+    realm::{Realm, RealmEdge},
+    value::StoredValue,
     vm::{
         NativeSourceInfo,
         shadow_stack::{Backtrace, ErrorStack, ShadowEntry},
     },
 };
-use surgeist_js_gc::{Finalize, Trace, custom_trace};
 use std::{borrow::Cow, error, fmt};
 use thiserror::Error;
 
@@ -202,8 +202,7 @@ macro_rules! js_error {
 /// let kind = native.kind();
 /// assert!(matches!(kind, JsNativeErrorKind::Type));
 /// ```
-#[derive(Debug, Clone, Trace, Finalize)]
-#[surgeist_js_gc(unsafe_no_drop)]
+#[derive(Debug, Clone)]
 pub struct JsError {
     inner: Repr,
     pub(crate) backtrace: Option<Backtrace>,
@@ -230,8 +229,7 @@ impl PartialEq for JsError {
 /// This should never be used outside of this module. If that's not the case,
 /// you should add methods to either `JsError` or `JsNativeError` to
 /// represent that special use case.
-#[derive(Debug, Clone, PartialEq, Eq, Trace, Finalize)]
-#[surgeist_js_gc(unsafe_no_drop)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Repr {
     Opaque(JsValue),
     Native(Box<JsNativeError>),
@@ -302,8 +300,7 @@ pub enum TryNativeError {
 }
 
 /// Runtime limit related errors.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Error, Trace, Finalize)]
-#[surgeist_js_gc(empty_trace)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Error)]
 pub enum RuntimeLimitError {
     /// Error for reaching the iteration loops limit.
     #[error("reached the maximum number of iteration loops on this execution")]
@@ -317,8 +314,7 @@ pub enum RuntimeLimitError {
 }
 
 /// Internal panic error.
-#[derive(Debug, Clone, Error, Eq, PartialEq, Trace, Finalize)]
-#[surgeist_js_gc(unsafe_no_drop)]
+#[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[error("{message}")]
 #[must_use]
 pub struct PanicError {
@@ -357,8 +353,7 @@ impl From<PanicError> for JsError {
 }
 
 /// Engine error that cannot be caught from within ECMAScript code.
-#[derive(Debug, Clone, Error, Eq, PartialEq, Trace, Finalize)]
-#[surgeist_js_gc(unsafe_no_drop)]
+#[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[allow(variant_size_differences)]
 pub enum EngineError {
     /// Error thrown when no instructions remain. Only used in a fuzzing context.
@@ -394,7 +389,181 @@ impl EngineError {
     }
 }
 
+/// Persistent error state in a heap record.
+#[derive(Debug, Clone, surgeist_js_gc::heap::Trace)]
+pub(crate) struct StoredJsError {
+    inner: StoredErrorRepr,
+    #[heap_trace(skip)]
+    backtrace: Option<Backtrace>,
+}
+
+#[derive(Debug, Clone, surgeist_js_gc::heap::Trace)]
+enum StoredErrorRepr {
+    Opaque(StoredValue),
+    Native(Box<StoredNativeError>),
+    RuntimeLimit(#[heap_trace(skip)] RuntimeLimitError),
+    Panic {
+        #[heap_trace(skip)]
+        message: Box<str>,
+        source: Option<Box<StoredJsError>>,
+    },
+    #[cfg(feature = "fuzz")]
+    NoInstructionsRemain,
+}
+
+#[derive(Debug, Clone, surgeist_js_gc::heap::Trace)]
+struct StoredNativeError {
+    kind: StoredNativeErrorKind,
+    #[heap_trace(skip)]
+    message: Cow<'static, str>,
+    cause: Option<Box<StoredJsError>>,
+    realm: Option<RealmEdge>,
+    #[heap_trace(skip)]
+    stack: IgnoreEq<ErrorStack>,
+}
+
+#[derive(Debug, Clone, surgeist_js_gc::heap::Trace)]
+enum StoredNativeErrorKind {
+    Aggregate(Vec<StoredJsError>),
+    Error,
+    Eval,
+    Range,
+    Reference,
+    Syntax,
+    Type,
+    Uri,
+}
+
+impl StoredJsError {
+    pub(crate) fn to_error(&self) -> JsError {
+        let inner = match &self.inner {
+            StoredErrorRepr::Opaque(value) => Repr::Opaque(value.to_value()),
+            StoredErrorRepr::Native(error) => Repr::Native(Box::new(JsNativeError {
+                kind: match &error.kind {
+                    StoredNativeErrorKind::Aggregate(errors) => {
+                        JsNativeErrorKind::Aggregate(errors.iter().map(Self::to_error).collect())
+                    }
+                    StoredNativeErrorKind::Error => JsNativeErrorKind::Error,
+                    StoredNativeErrorKind::Eval => JsNativeErrorKind::Eval,
+                    StoredNativeErrorKind::Range => JsNativeErrorKind::Range,
+                    StoredNativeErrorKind::Reference => JsNativeErrorKind::Reference,
+                    StoredNativeErrorKind::Syntax => JsNativeErrorKind::Syntax,
+                    StoredNativeErrorKind::Type => JsNativeErrorKind::Type,
+                    StoredNativeErrorKind::Uri => JsNativeErrorKind::Uri,
+                },
+                message: error.message.clone(),
+                cause: error.cause.as_ref().map(|error| Box::new(error.to_error())),
+                realm: error.realm.clone().map(Realm::from_edge),
+                stack: error.stack.clone(),
+            })),
+            StoredErrorRepr::RuntimeLimit(error) => Repr::Engine(EngineError::RuntimeLimit(*error)),
+            StoredErrorRepr::Panic { message, source } => {
+                Repr::Engine(EngineError::Panic(PanicError {
+                    message: message.clone(),
+                    source: source.as_ref().map(|error| Box::new(error.to_error())),
+                }))
+            }
+            #[cfg(feature = "fuzz")]
+            StoredErrorRepr::NoInstructionsRemain => {
+                Repr::Engine(EngineError::NoInstructionsRemain)
+            }
+        };
+        JsError {
+            inner,
+            backtrace: self.backtrace.clone(),
+        }
+    }
+}
+
 impl JsError {
+    pub(crate) fn admit_runtime(mut self, runtime: &crate::Runtime) -> Self {
+        let mut pending = vec![(&mut self, false)];
+        while let Some((error, diagnostic)) = pending.pop() {
+            if let Err(refusal) = error.check_runtime_owner(runtime) {
+                if !diagnostic {
+                    return refusal;
+                }
+                // Diagnostic payloads must be local without changing the panic.
+                *error = refusal;
+                continue;
+            }
+            match &mut error.inner {
+                Repr::Native(native) => {
+                    if let JsNativeErrorKind::Aggregate(errors) = &mut native.kind {
+                        pending.extend(errors.iter_mut().rev().map(|member| (member, diagnostic)));
+                    }
+                    pending.extend(native.cause.as_deref_mut().map(|cause| (cause, diagnostic)));
+                }
+                Repr::Engine(EngineError::Panic(panic)) => {
+                    pending.extend(panic.source.as_deref_mut().map(|source| (source, true)));
+                }
+                _ => {}
+            }
+        }
+        self
+    }
+
+    fn check_runtime_owner(&self, runtime: &crate::Runtime) -> JsResult<()> {
+        match &self.inner {
+            Repr::Opaque(value) => runtime.check_value(value),
+            Repr::Native(native) => native.check_runtime_realm(runtime),
+            Repr::Engine(_) => Ok(()),
+        }
+    }
+
+    fn check_materialization(mut pending: Vec<&Self>, runtime: &crate::Runtime) -> JsResult<()> {
+        let mut refusal = None;
+        while let Some(error) = pending.pop() {
+            if !error.is_catchable() {
+                return Err(error.clone());
+            }
+            if refusal.is_none() {
+                refusal = error.check_runtime_owner(runtime).err();
+            }
+            if let Repr::Native(native) = &error.inner {
+                native.push_error_members(&mut pending);
+            }
+        }
+        refusal.map_or(Ok(()), Err)
+    }
+
+    pub(crate) fn into_stored(self) -> StoredJsError {
+        let inner = match self.inner {
+            Repr::Opaque(value) => StoredErrorRepr::Opaque(value.into_stored()),
+            Repr::Native(error) => StoredErrorRepr::Native(Box::new(StoredNativeError {
+                kind: match error.kind {
+                    JsNativeErrorKind::Aggregate(errors) => StoredNativeErrorKind::Aggregate(
+                        errors.into_iter().map(Self::into_stored).collect(),
+                    ),
+                    JsNativeErrorKind::Error => StoredNativeErrorKind::Error,
+                    JsNativeErrorKind::Eval => StoredNativeErrorKind::Eval,
+                    JsNativeErrorKind::Range => StoredNativeErrorKind::Range,
+                    JsNativeErrorKind::Reference => StoredNativeErrorKind::Reference,
+                    JsNativeErrorKind::Syntax => StoredNativeErrorKind::Syntax,
+                    JsNativeErrorKind::Type => StoredNativeErrorKind::Type,
+                    JsNativeErrorKind::Uri => StoredNativeErrorKind::Uri,
+                },
+                message: error.message,
+                cause: error.cause.map(|error| Box::new(error.into_stored())),
+                realm: error.realm.as_ref().map(Realm::edge),
+                stack: error.stack,
+            })),
+            Repr::Engine(EngineError::RuntimeLimit(error)) => StoredErrorRepr::RuntimeLimit(error),
+            Repr::Engine(EngineError::Panic(error)) => StoredErrorRepr::Panic {
+                message: error.message,
+                source: error.source.map(|error| Box::new(error.into_stored())),
+            },
+            #[cfg(feature = "fuzz")]
+            Repr::Engine(EngineError::NoInstructionsRemain) => {
+                StoredErrorRepr::NoInstructionsRemain
+            }
+        };
+        StoredJsError {
+            inner,
+            backtrace: self.backtrace,
+        }
+    }
+
     /// Creates a new `JsError` from a native error `err`.
     ///
     /// # Examples
@@ -466,7 +635,9 @@ impl JsError {
     ///
     /// # Errors
     ///
-    /// Returns the original error if `self` was an engine error.
+    /// Returns the original error if `self` is or contains an engine error.
+    /// Returns a `TypeError` if a catchable error contains an object or realm from
+    /// another runtime.
     ///
     /// # Examples
     ///
@@ -487,9 +658,17 @@ impl JsError {
     /// assert!(error.into_opaque(context).is_err());
     /// ```
     pub fn into_opaque(self, context: &mut Context) -> JsResult<JsValue> {
+        if !self.is_catchable() {
+            return Err(self);
+        }
+        Self::check_materialization(vec![&self], context.runtime())?;
+        self.into_opaque_preflighted(context)
+    }
+
+    fn into_opaque_preflighted(self, context: &mut Context) -> JsResult<JsValue> {
         match self.inner {
             Repr::Native(e) => {
-                let obj = e.into_opaque(context);
+                let obj = e.into_opaque_preflighted(context)?;
                 // Store the backtrace in the Error object so it survives the
                 // JsError → JsValue → JsError round-trip through promise
                 // rejection.
@@ -871,7 +1050,7 @@ impl fmt::Display for JsError {
 }
 
 /// Helper struct that ignores equality operator.
-#[derive(Debug, Clone, Finalize)]
+#[derive(Debug, Clone)]
 pub(crate) struct IgnoreEq<T>(pub(crate) T);
 
 impl<T> Eq for IgnoreEq<T> {}
@@ -915,7 +1094,7 @@ impl<T> From<T> for IgnoreEq<T> {
 ///
 /// assert_eq!(native_error.message(), "cannot decode uri");
 /// ```
-#[derive(Clone, Finalize, Error, PartialEq, Eq)]
+#[derive(Clone, Error, PartialEq, Eq)]
 pub struct JsNativeError {
     /// The kind of native error (e.g. `TypeError`, `SyntaxError`, etc.)
     kind: JsNativeErrorKind,
@@ -941,15 +1120,6 @@ impl fmt::Display for JsNativeError {
 
         Ok(())
     }
-}
-
-// SAFETY: just mirroring the default derive to allow destructuring.
-unsafe impl Trace for JsNativeError {
-    custom_trace!(this, mark, {
-        mark(&this.kind);
-        mark(&this.cause);
-        mark(&this.realm);
-    });
 }
 
 impl fmt::Debug for JsNativeError {
@@ -1292,17 +1462,41 @@ impl JsNativeError {
         self.cause.as_deref()
     }
 
+    fn push_error_members<'a>(&'a self, pending: &mut Vec<&'a JsError>) {
+        if let JsNativeErrorKind::Aggregate(errors) = &self.kind {
+            pending.extend(errors.iter().rev());
+        }
+        pending.extend(self.cause.as_deref());
+    }
+
+    fn check_runtime_realm(&self, runtime: &crate::Runtime) -> JsResult<()> {
+        if let Some(realm) = &self.realm
+            && !runtime.same_heap(&realm.runtime())
+        {
+            return Err(Self::typ()
+                .with_message("error realm belongs to a different runtime")
+                .into());
+        }
+
+        Ok(())
+    }
+
     /// Converts this native error to its opaque representation as a [`JsObject`].
+    ///
+    /// # Errors
+    ///
+    /// Returns a `TypeError` if the error contains an object or realm from
+    /// another runtime, or the original engine error if a member cannot be materialized.
     ///
     /// # Examples
     ///
     /// ```rust
-    /// # use surgeist_js::{Context, JsError, JsNativeError, js_string};
+    /// # use surgeist_js::{Context, JsNativeError, js_string};
     /// # use surgeist_js::builtins::error::Error;
     /// let context = &mut Context::default();
     ///
     /// let error = JsNativeError::error().with_message("error!");
-    /// let error_obj = error.into_opaque(context);
+    /// let error_obj = error.into_opaque(context).unwrap();
     ///
     /// assert!(error_obj.is::<Error>());
     /// assert_eq!(
@@ -1311,7 +1505,16 @@ impl JsNativeError {
     /// )
     /// ```
     #[inline]
-    pub fn into_opaque(self, context: &mut Context) -> JsObject {
+    pub fn into_opaque(self, context: &mut Context) -> JsResult<JsObject> {
+        let runtime = context.runtime();
+        let mut pending = Vec::new();
+        self.push_error_members(&mut pending);
+        JsError::check_materialization(pending, runtime)?;
+        self.check_runtime_realm(runtime)?;
+        self.into_opaque_preflighted(context)
+    }
+
+    fn into_opaque_preflighted(self, context: &mut Context) -> JsResult<JsObject> {
         let Self {
             kind,
             message,
@@ -1358,9 +1561,7 @@ impl JsNativeError {
         if let Some(cause) = cause {
             o.create_non_enumerable_data_property_or_throw(
                 js_string!("cause"),
-                cause
-                    .into_opaque(context)
-                    .expect("engine errors cannot be the cause of another error"),
+                cause.into_opaque_preflighted(context)?,
                 context,
             );
         }
@@ -1368,11 +1569,8 @@ impl JsNativeError {
         if let JsNativeErrorKind::Aggregate(errors) = kind {
             let errors = errors
                 .into_iter()
-                .map(|e| {
-                    e.into_opaque(context)
-                        .expect("engine errors cannot be the cause of another error")
-                })
-                .collect::<Vec<_>>();
+                .map(|error| error.into_opaque_preflighted(context))
+                .collect::<JsResult<Vec<_>>>()?;
             let errors = Array::create_array_from_list(errors, context);
             o.define_property_or_throw(
                 js_string!("errors"),
@@ -1385,7 +1583,7 @@ impl JsNativeError {
             )
             .expect("The spec guarantees this succeeds for a newly created object ");
         }
-        o
+        Ok(o)
     }
 
     /// Sets the realm of this error.
@@ -1410,7 +1608,7 @@ impl From<surgeist_js_parser::Error> for JsNativeError {
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-error-objects
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error
-#[derive(Debug, Clone, Finalize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum JsNativeErrorKind {
     /// A collection of errors wrapped in a single error.
@@ -1491,24 +1689,6 @@ pub enum JsNativeErrorKind {
     Uri,
 }
 
-// SAFETY: just mirroring the default derive to allow destructuring.
-unsafe impl Trace for JsNativeErrorKind {
-    custom_trace!(
-        this,
-        mark,
-        match &this {
-            Self::Aggregate(errors) => mark(errors),
-            Self::Error
-            | Self::Eval
-            | Self::Range
-            | Self::Reference
-            | Self::Syntax
-            | Self::Type
-            | Self::Uri => {}
-        }
-    );
-}
-
 impl PartialEq<ErrorKind> for JsNativeErrorKind {
     fn eq(&self, other: &ErrorKind) -> bool {
         matches!(
@@ -1550,7 +1730,7 @@ impl fmt::Display for JsNativeErrorKind {
 /// Generally, the conversion from `PanicError` to `ErasedPanicError` is unidirectional,
 /// since any `JsError` that is a [`JsValue`] is converted to its string representation
 /// instead. This will lose information if that value was an object, a symbol or a big int.
-#[derive(Debug, Clone, Error, Eq, PartialEq, Trace, Finalize)]
+#[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[error("{message}")]
 #[must_use]
 pub struct ErasedPanicError {
@@ -1575,7 +1755,7 @@ impl ErasedPanicError {
 /// Generally, the conversion from `EngineError` to `ErasedEngineError` is unidirectional,
 /// since any `JsError` that is a [`JsValue`] is converted to its string representation
 /// instead. This will lose information if that value was an object, a symbol or a big int.
-#[derive(Debug, Clone, Error, Eq, PartialEq, Trace, Finalize)]
+#[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[allow(variant_size_differences)]
 pub enum ErasedEngineError {
     /// Error thrown when no instructions remain. Only used in a fuzzing context.
@@ -1601,12 +1781,12 @@ pub enum ErasedEngineError {
 /// Generally, the conversion from `JsError` to `JsErasedError` is unidirectional,
 /// since any `JsError` that is a [`JsValue`] is converted to its string representation
 /// instead. This will lose information if that value was an object, a symbol or a big int.
-#[derive(Debug, Clone, Trace, Finalize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JsErasedError {
     inner: ErasedRepr,
 }
 
-#[derive(Debug, Clone, Trace, Finalize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum ErasedRepr {
     Native(JsErasedNativeError),
     Opaque(Cow<'static, str>),
@@ -1666,7 +1846,7 @@ impl JsErasedError {
 }
 
 /// Erased version of [`JsNativeError`].
-#[derive(Debug, Clone, Trace, Finalize, Error, PartialEq, Eq)]
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub struct JsErasedNativeError {
     /// The kind of native error (e.g. `TypeError`, `SyntaxError`, etc.)
     pub kind: JsErasedNativeErrorKind,
@@ -1689,7 +1869,7 @@ impl fmt::Display for JsErasedNativeError {
 }
 
 /// Erased version of [`JsNativeErrorKind`]
-#[derive(Debug, Clone, Trace, Finalize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum JsErasedNativeErrorKind {
     /// A collection of errors wrapped in a single error.

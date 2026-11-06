@@ -1,39 +1,37 @@
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 use crate::{
-    JsValue,
+    JsValue, Runtime,
     object::{
         IndexedProperties, JsObject, NativeObject, Object, PropertyMap, shape::slot::SlotAttributes,
     },
     property::{Attribute, PropertyKey},
 };
 
-use super::{SharedShape, TransitionKey};
+use super::{SharedShape, SharedShapeRef, TransitionKey};
 
-/// Represent a template of an objects properties and prototype.
+/// Prepares a template of an object's properties and prototype.
 /// This is used to construct as many objects  as needed from a predefined [`SharedShape`].
-#[derive(Debug, Clone, Trace, Finalize)]
-pub(crate) struct ObjectTemplate {
+#[derive(Clone)]
+pub(crate) struct ObjectTemplateBuilder {
     shape: SharedShape,
 }
 
-impl ObjectTemplate {
+impl ObjectTemplateBuilder {
     /// Create a new [`ObjectTemplate`]
-    pub(crate) fn new(shape: &SharedShape) -> Self {
+    pub(crate) fn new(root: &crate::object::shape::RootShape) -> Self {
         Self {
-            shape: shape.clone(),
+            shape: root.shape().clone(),
         }
     }
 
     /// Create and [`ObjectTemplate`] with a prototype.
-    pub(crate) fn with_prototype(shape: &SharedShape, prototype: JsObject) -> Self {
-        let shape = shape.change_prototype_transition(Some(prototype));
+    pub(crate) fn with_prototype(
+        root: &crate::object::shape::RootShape,
+        prototype: JsObject,
+    ) -> Self {
+        let shape = root.shape().change_prototype_transition(Some(prototype));
         Self { shape }
-    }
-
-    /// Check if the shape has a specific, prototype.
-    pub(crate) fn has_prototype(&self, prototype: &JsObject) -> bool {
-        self.shape.has_prototype(prototype)
     }
 
     /// Set the prototype of the [`ObjectTemplate`].
@@ -42,11 +40,6 @@ impl ObjectTemplate {
     pub(crate) fn set_prototype(&mut self, prototype: JsObject) -> &mut Self {
         self.shape = self.shape.change_prototype_transition(Some(prototype));
         self
-    }
-
-    /// Returns the inner shape of the [`ObjectTemplate`].
-    pub(crate) const fn shape(&self) -> &SharedShape {
-        &self.shape
     }
 
     /// Add a data property to the [`ObjectTemplate`].
@@ -102,20 +95,57 @@ impl ObjectTemplate {
         self
     }
 
-    /// Create an object from the [`ObjectTemplate`]
-    ///
-    /// The storage must match the properties provided.
+    /// Retain the prepared shape until its containing realm is published.
+    pub(crate) fn build(self, roots: &mut crate::realm::BootstrapRoots) -> ObjectTemplate {
+        let shape = SharedShapeRef::from(&self.shape);
+        roots.retain_shape(self.shape);
+        ObjectTemplate { shape }
+    }
+}
+
+/// A prepared object shape stored in its realm.
+#[derive(Debug, HeapTrace)]
+pub(crate) struct ObjectTemplate {
+    shape: SharedShapeRef,
+}
+
+impl ObjectTemplate {
+    pub(crate) fn shape(&self) -> SharedShape {
+        self.shape
+            .upgrade()
+            .expect("live realm retains its template")
+    }
+
+    pub(crate) fn has_prototype(&self, prototype: &JsObject) -> bool {
+        self.shape().has_prototype(prototype)
+    }
+
     pub(crate) fn create<T: NativeObject>(&self, data: T, storage: Vec<JsValue>) -> JsObject {
+        Self::create_on_shape(self.shape(), data, storage, IndexedProperties::default())
+    }
+
+    pub(crate) fn try_create<T: NativeObject>(
+        &self,
+        data: T,
+        storage: Vec<JsValue>,
+    ) -> crate::JsResult<JsObject> {
+        let shape = self.shape();
+        let runtime = Runtime {
+            heap: shape.heap().clone(),
+        };
         let internal_methods = data.internal_methods();
+        let object = Self::object_on_shape(shape, data, storage, IndexedProperties::default());
+        JsObject::try_from_object_and_vtable(&runtime, object, internal_methods)
+    }
 
-        let mut object = Object::new(
-            PropertyMap::new(self.shape.clone().into(), IndexedProperties::default()),
-            data,
-        );
-
-        object.state.properties.initialize_named_slots(storage);
-
-        JsObject::from_object_and_vtable(object, internal_methods)
+    pub(crate) fn create_with_prototype<T: NativeObject>(
+        &self,
+        prototype: JsObject,
+        data: T,
+        storage: Vec<JsValue>,
+    ) -> JsObject {
+        let shape = self.shape().change_prototype_transition(Some(prototype));
+        Self::create_on_shape(shape, data, storage, IndexedProperties::default())
     }
 
     /// Create an object from the [`ObjectTemplate`]
@@ -128,14 +158,33 @@ impl ObjectTemplate {
         storage: Vec<JsValue>,
         indexed_properties: IndexedProperties,
     ) -> JsObject {
+        Self::create_on_shape(self.shape(), data, storage, indexed_properties)
+    }
+
+    fn create_on_shape<T: NativeObject>(
+        shape: SharedShape,
+        data: T,
+        storage: Vec<JsValue>,
+        indexed_properties: IndexedProperties,
+    ) -> JsObject {
+        let runtime = Runtime {
+            heap: shape.heap().clone(),
+        };
         let internal_methods = data.internal_methods();
-        let mut object = Object::new(
-            PropertyMap::new(self.shape.clone().into(), indexed_properties),
-            data,
-        );
+        let object = Self::object_on_shape(shape, data, storage, indexed_properties);
+        JsObject::from_object_and_vtable(&runtime, object, internal_methods)
+    }
+
+    fn object_on_shape<T: NativeObject>(
+        shape: SharedShape,
+        data: T,
+        storage: Vec<JsValue>,
+        indexed_properties: IndexedProperties,
+    ) -> Object {
+        let shape = shape.into();
+        let mut object = Object::new(PropertyMap::new(&shape, indexed_properties), data);
 
         object.state.properties.initialize_named_slots(storage);
-
-        JsObject::from_object_and_vtable(object, internal_methods)
+        object
     }
 }

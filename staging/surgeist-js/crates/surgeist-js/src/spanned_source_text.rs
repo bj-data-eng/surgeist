@@ -1,7 +1,6 @@
 use std::rc::Rc;
 
 use surgeist_js_ast::LinearSpan;
-use surgeist_js_gc::{Finalize, Trace};
 
 struct Inner {
     source_text: surgeist_js_ast::SourceText,
@@ -12,9 +11,8 @@ impl Inner {
     }
 }
 
-#[derive(Default, Trace, Finalize, Clone)]
+#[derive(Default, Clone)]
 pub(crate) struct SourceText {
-    #[unsafe_ignore_trace]
     source_text: Option<Rc<Inner>>,
 }
 

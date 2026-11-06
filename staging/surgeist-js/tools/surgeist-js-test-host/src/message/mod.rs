@@ -7,13 +7,13 @@
 //! [mdn]: https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage
 
 use crate::store::JsValueStore;
+use std::rc::Rc;
+use surgeist_js::gc::heap::Trace as HeapTrace;
 use surgeist_js::realm::Realm;
 use surgeist_js::value::TryFromJs;
 use surgeist_js::{
-    Context, Finalize, JsData, JsResult, JsString, JsValue, NativeObject, Trace, boa_module,
-    js_error,
+    Context, JsData, JsResult, JsString, JsValue, NativeObject, boa_module, js_error,
 };
-use std::rc::Rc;
 
 #[cfg(test)]
 mod tests;
@@ -58,8 +58,8 @@ pub trait MessageSender: NativeObject {
 /// A reference counted pointer to a `MessageSender` implementation. This is so we
 /// can add this to the context, but we need to be able to an `Rc<>` structure to
 /// make API calls.
-#[derive(Debug, Trace, Finalize, JsData)]
-struct MessageSenderRc<T: MessageSender>(#[unsafe_ignore_trace] Rc<T>);
+#[derive(Debug, JsData, HeapTrace)]
+struct MessageSenderRc<T: MessageSender>(Rc<T>);
 
 impl<T: MessageSender> Clone for MessageSenderRc<T> {
     fn clone(&self) -> Self {
@@ -68,7 +68,7 @@ impl<T: MessageSender> Clone for MessageSenderRc<T> {
 }
 
 /// Options that can be passed as the second argument to `postMessage`.
-#[derive(Debug, Default, TryFromJs, Trace, Finalize)]
+#[derive(Debug, Default, TryFromJs)]
 pub struct PostMessageOptions {
     transfer: Option<Vec<JsValue>>,
     target_origin: Option<JsString>,
@@ -154,9 +154,7 @@ pub fn register<S: MessageSender>(
     context: &mut Context,
 ) -> JsResult<()> {
     if let Some(ref realm) = realm {
-        realm
-            .host_defined_mut()
-            .insert(MessageSenderRc(Rc::new(sender)));
+        realm.insert_host_defined(MessageSenderRc(Rc::new(sender)))?;
     } else {
         context.insert_data(MessageSenderRc(Rc::new(sender)));
     }

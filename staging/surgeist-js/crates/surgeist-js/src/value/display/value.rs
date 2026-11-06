@@ -47,7 +47,7 @@ pub(crate) fn log_value_to(
                 super::array::log_array_to(f, &v, print_internals, print_children)
             } else if v.is::<UnmappedArguments>() || v.is::<MappedArguments>() {
                 super::arguments::log_arguments_to(f, &v, print_internals, print_children)
-            } else if v.downcast_ref::<OrderedMap<JsValue>>().is_some() {
+            } else if v.downcast_ref::<OrderedMap>().is_some() {
                 super::map::log_map_to(f, &v, print_internals, print_children)
             } else if v.downcast_ref::<OrderedSet>().is_some() {
                 super::set::log_set_to(f, &v, print_internals, print_children)
@@ -185,7 +185,7 @@ pub(super) fn log_value_compact(
     x: &JsValue,
     depth: u32,
     print_internals: bool,
-    encounters: &mut HashSet<usize>,
+    encounters: &mut HashSet<surgeist_js_gc::heap::ObjectId>,
 ) -> fmt::Result {
     match x.variant() {
         JsVariant::Object(v) => {
@@ -203,7 +203,7 @@ pub(super) fn log_value_compact(
                 }
             } else if v.is::<UnmappedArguments>() || v.is::<MappedArguments>() {
                 f.write_str("[Arguments]")
-            } else if v.downcast_ref::<OrderedMap<JsValue>>().is_some() {
+            } else if v.downcast_ref::<OrderedMap>().is_some() {
                 super::map::log_map_compact(f, &v, depth, print_internals, encounters)
             } else if v.downcast_ref::<OrderedSet>().is_some() {
                 super::set::log_set_compact(f, &v, depth, print_internals, encounters)
@@ -223,7 +223,7 @@ pub(super) fn log_value_compact(
                 match promise.state() {
                     PromiseState::Pending => f.write_str("<pending>")?,
                     PromiseState::Fulfilled(val) => {
-                        log_value_compact(f, val, depth + 1, print_internals, encounters)?;
+                        log_value_compact(f, &val, depth + 1, print_internals, encounters)?;
                     }
                     PromiseState::Rejected(reason) => {
                         write!(f, "<rejected> {}", JsError::from_opaque(reason.clone()))?;

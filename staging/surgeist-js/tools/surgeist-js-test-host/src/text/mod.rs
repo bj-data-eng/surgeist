@@ -2,12 +2,12 @@
 //!
 //! See <https://developer.mozilla.org/en-US/docs/Web/API/Encoding_API> for more information.
 
+use surgeist_js::gc::heap::Trace as HeapTrace;
 use surgeist_js::object::builtins::{JsArrayBuffer, JsDataView, JsTypedArray, JsUint8Array};
 use surgeist_js::realm::Realm;
 use surgeist_js::value::TryFromJs;
 use surgeist_js::{
-    Context, Finalize, JsData, JsResult, JsString, JsValue, Trace, boa_class, boa_module, js_error,
-    js_string,
+    Context, JsData, JsResult, JsString, JsValue, boa_class, boa_module, js_error, js_string,
 };
 
 #[cfg(test)]
@@ -67,11 +67,10 @@ fn resolve_text_decoder_label(label: &str) -> Option<Encoding> {
 /// a specific character encoding, like `utf-8`.
 ///
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/API/TextDecoder
-#[derive(Debug, Default, Clone, JsData, Trace, Finalize)]
+#[derive(Debug, Default, Clone, JsData, HeapTrace)]
 pub struct TextDecoder {
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     encoding: Encoding,
-    #[unsafe_ignore_trace]
     ignore_bom: bool,
 }
 
@@ -211,7 +210,7 @@ impl TextDecoder {
 /// The `TextEncoder`[mdn] class represents a UTF-8 encoder.
 ///
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/API/TextEncoder
-#[derive(Debug, Default, Clone, JsData, Trace, Finalize)]
+#[derive(Debug, Default, Clone, JsData, HeapTrace)]
 pub struct TextEncoder;
 
 #[boa_class]

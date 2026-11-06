@@ -1,6 +1,8 @@
-use surgeist_js_ast::scope::Scope;
-use surgeist_js_gc::{Finalize, Gc, GcRefCell, Trace};
+use std::{cell::RefCell, rc::Rc};
+
 use rustc_hash::FxHashSet;
+use surgeist_js_ast::scope::Scope;
+use surgeist_js_gc::heap::Trace;
 
 use super::{BindingName, ResolveExportError, ResolvedBinding};
 use crate::{
@@ -8,36 +10,59 @@ use crate::{
     builtins::promise::ResolvingFunctions,
     bytecompiler::ByteCompiler,
     class::{Class, ClassBuilder},
-    environments::{DeclarativeEnvironment, EnvironmentStack},
+    environments::{
+        DeclarativeEnvironmentEdge, DeclarativeEnvironmentRef, EnvironmentStack,
+        StoredEnvironmentStack,
+    },
     js_string,
-    object::JsPromise,
+    native_function::NativeCapture,
+    object::{JsObject, JsPromise, ObjectEdge},
     vm::{ActiveRunnable, CallFrame, CodeBlock, source_info::SourcePath},
 };
 
-trait TraceableCallback: Trace {
+type InitializerFn<T> = fn(&SyntheticModule, &T, &mut Context) -> JsResult<()>;
+
+trait Initializer {
+    fn store(&self) -> Box<dyn StoredInitializer>;
+}
+
+trait StoredInitializer: Trace {
     fn call(&self, module: &SyntheticModule, context: &mut Context) -> JsResult<()>;
 }
 
-#[derive(Trace, Finalize)]
-struct Callback<T: Trace> {
-    // A function pointer holds no JavaScript state. Captures are traced separately.
-    #[unsafe_ignore_trace]
-    callback: fn(&SyntheticModule, &T, &mut Context) -> JsResult<()>,
+struct Callback<T> {
+    callback: InitializerFn<T>,
     captures: T,
 }
 
-impl<T: Trace> TraceableCallback for Callback<T> {
-    fn call(&self, module: &SyntheticModule, context: &mut Context) -> JsResult<()> {
-        (self.callback)(module, &self.captures, context)
+#[derive(Trace)]
+struct StoredCallback<T: NativeCapture> {
+    #[heap_trace(skip)]
+    callback: InitializerFn<T>,
+    captures: T::Stored,
+}
+
+impl<T: NativeCapture> Initializer for Callback<T> {
+    fn store(&self) -> Box<dyn StoredInitializer> {
+        Box::new(StoredCallback::<T> {
+            callback: self.callback,
+            captures: self.captures.store(),
+        })
     }
 }
 
-/// The initializing steps of a [`SyntheticModule`].
+impl<T: NativeCapture> StoredInitializer for StoredCallback<T> {
+    fn call(&self, module: &SyntheticModule, context: &mut Context) -> JsResult<()> {
+        (self.callback)(module, &T::restore(&self.captures), context)
+    }
+}
+
+/// The initializing steps of a synthetic module.
 ///
 /// Pass owned callback state as explicit captures so the collector can trace it.
-#[derive(Clone, Trace, Finalize)]
+#[derive(Clone)]
 pub struct SyntheticModuleInitializer {
-    inner: Gc<Box<dyn TraceableCallback>>,
+    inner: Rc<dyn Initializer>,
 }
 
 impl std::fmt::Debug for SyntheticModuleInitializer {
@@ -62,35 +87,30 @@ impl SyntheticModuleInitializer {
     ///     (),
     /// );
     /// ```
-    pub fn from_fn_with_captures<T: Trace + 'static>(
+    pub fn from_fn_with_captures<T: NativeCapture>(
         callback: fn(&SyntheticModule, &T, &mut Context) -> JsResult<()>,
         captures: T,
     ) -> Self {
         Self {
-            inner: Gc::new(Box::new(Callback { callback, captures })),
+            inner: Rc::new(Callback { callback, captures }),
         }
-    }
-
-    /// Calls this `SyntheticModuleInitializer`, forwarding the arguments to the corresponding function.
-    #[inline]
-    pub(crate) fn call(&self, module: &SyntheticModule, context: &mut Context) -> JsResult<()> {
-        self.inner.call(module, context)
     }
 }
 
 /// Current status of a [`SyntheticModule`].
-#[derive(Debug, Trace, Finalize, Default)]
-#[surgeist_js_gc(unsafe_no_drop)]
+#[derive(Debug, Trace, Default)]
 enum ModuleStatus {
     #[default]
     Unlinked,
     Linked {
-        environment: Gc<DeclarativeEnvironment>,
-        eval_context: (EnvironmentStack, Gc<CodeBlock>),
+        environment: DeclarativeEnvironmentEdge,
+        environments: StoredEnvironmentStack,
+        #[heap_trace(skip)]
+        codeblock: Rc<CodeBlock>,
     },
     Evaluated {
-        environment: Gc<DeclarativeEnvironment>,
-        promise: JsPromise,
+        environment: DeclarativeEnvironmentEdge,
+        promise: ObjectEdge,
     },
 }
 
@@ -108,19 +128,18 @@ impl ModuleStatus {
 /// ECMAScript's [**Synthetic Module Records**][spec].
 ///
 /// [spec]: https://tc39.es/proposal-json-modules/#sec-synthetic-module-records
-#[derive(Trace, Finalize)]
+#[derive(Trace)]
 pub struct SyntheticModule {
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     export_names: FxHashSet<JsString>,
-    eval_steps: SyntheticModuleInitializer,
-    state: GcRefCell<ModuleStatus>,
+    eval_steps: Box<dyn StoredInitializer>,
+    state: RefCell<ModuleStatus>,
 }
 
 impl std::fmt::Debug for SyntheticModule {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SyntheticModule")
             .field("export_names", &self.export_names)
-            .field("eval_steps", &self.eval_steps)
             .finish_non_exhaustive()
     }
 }
@@ -134,6 +153,11 @@ impl SyntheticModule {
     ///
     /// The default export corresponds to the name `"default"`, but note that it needs to
     /// be passed to the list of exported names in [`Module::synthetic`] beforehand.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the module is unlinked, the export name was not declared, or the
+    /// export value belongs to another runtime.
     ///
     /// [spec]: https://tc39.es/proposal-json-modules/#sec-createsyntheticmodule
     pub fn set_export(&self, export_name: &JsString, export_value: JsValue) -> JsResult<()> {
@@ -155,6 +179,10 @@ impl SyntheticModule {
                     export_name.to_std_string_escaped()
                 ))
             })?;
+        crate::Runtime {
+            heap: env.runtime().clone(),
+        }
+        .check_value(&export_value)?;
         env.set(locator.binding_index(), export_value);
 
         Ok(())
@@ -176,18 +204,18 @@ impl SyntheticModule {
         let mut class_builder = ClassBuilder::new::<C>(context);
         C::init(&mut class_builder)?;
 
-        let class = class_builder.build();
+        let class = class_builder.build()?;
 
         self.set_export(export_name, class.constructor().into())?;
         Ok(())
     }
 
     /// Creates a new synthetic module.
-    pub(super) fn new(names: FxHashSet<JsString>, eval_steps: SyntheticModuleInitializer) -> Self {
+    pub(super) fn new(names: FxHashSet<JsString>, eval_steps: &SyntheticModuleInitializer) -> Self {
         Self {
             export_names: names,
-            eval_steps,
-            state: GcRefCell::default(),
+            eval_steps: eval_steps.inner.store(),
+            state: RefCell::default(),
         }
     }
 
@@ -240,7 +268,7 @@ impl SyntheticModule {
         // 1. Let realm be module.[[Realm]].
         // 2. Let env be NewModuleEnvironment(realm.[[GlobalEnv]]).
         // 3. Set module.[[Environment]] to env.
-        let global_env = module_self.realm().environment().clone();
+        let global_env = module_self.realm().environment();
         let global_scope = module_self.realm().scope().clone();
         let module_scope = Scope::new(global_scope, true);
 
@@ -273,10 +301,10 @@ impl SyntheticModule {
 
         module_scope.escape_all_bindings();
 
-        let cb = Gc::new(compiler.finish());
+        let cb = Rc::new(compiler.finish());
 
         let mut envs = EnvironmentStack::new();
-        envs.push_module(module_scope);
+        envs.push_module(module_scope, global_env.runtime());
 
         for locator in exports {
             //     b. Perform ! env.InitializeBinding(exportName, undefined).
@@ -289,15 +317,15 @@ impl SyntheticModule {
         }
 
         let env = envs
-            .current_declarative_ref(&global_env)
-            .cloned()
+            .current_declarative_ref(global_env)
             .expect("should have the module environment");
 
         self.state
             .borrow_mut()
             .transition(|_| ModuleStatus::Linked {
-                environment: env,
-                eval_context: (envs, cb),
+                environment: env.record_ref(),
+                environments: envs.stored(),
+                codeblock: cb,
             });
 
         // 5. Return unused.
@@ -319,19 +347,25 @@ impl SyntheticModule {
                         &JsValue::undefined(),
                         &[JsNativeError::typ()
                             .with_message("cannot evaluate unlinked synthetic module")
-                            .into_opaque(context)
+                            .into_opaque(context)?
                             .into()],
                         context,
                     )
                     .js_expect("native resolving functions cannot throw")?;
                 return Ok(promise);
             }
-            ModuleStatus::Linked { eval_context, .. } => eval_context.clone(),
-            ModuleStatus::Evaluated { promise, .. } => return Ok(promise.clone()),
+            ModuleStatus::Linked {
+                environments,
+                codeblock,
+                ..
+            } => (environments.to_stack(), codeblock.clone()),
+            ModuleStatus::Evaluated { promise, .. } => {
+                return JsPromise::from_object(JsObject::from_inner(promise.clone()));
+            }
         };
         // 1. Let moduleContext be a new ECMAScript code execution context.
 
-        let realm = module_self.realm().clone();
+        let realm = module_self.realm();
 
         let env_fp = environments.len() as u32;
         let callframe = CallFrame::new(
@@ -372,14 +406,21 @@ impl SyntheticModule {
             // 15. Perform ! pc.[[Resolve]](result).
             Ok(()) => resolve.call(&JsValue::undefined(), &[], context),
             // 14. IfAbruptRejectPromise(result, pc).
-            Err(err) => reject.call(&JsValue::undefined(), &[err.into_opaque(context)?], context),
+            Err(error) => {
+                let error = context.runtime().admit_error(error);
+                reject.call(
+                    &JsValue::undefined(),
+                    &[error.into_opaque(context)?],
+                    context,
+                )
+            }
         }
         .js_expect("default resolving functions cannot throw")?;
 
         self.state.borrow_mut().transition(|state| match state {
             ModuleStatus::Linked { environment, .. } => ModuleStatus::Evaluated {
                 environment,
-                promise: promise.clone(),
+                promise: JsObject::from(promise.clone()).edge(),
             },
             _ => unreachable!("checks above ensure the module is linked"),
         });
@@ -388,11 +429,16 @@ impl SyntheticModule {
         Ok(promise)
     }
 
-    pub(crate) fn environment(&self) -> Option<Gc<DeclarativeEnvironment>> {
+    pub(crate) fn environment(&self) -> Option<DeclarativeEnvironmentRef> {
         match &*self.state.borrow() {
             ModuleStatus::Unlinked => None,
             ModuleStatus::Linked { environment, .. }
-            | ModuleStatus::Evaluated { environment, .. } => Some(environment.clone()),
+            | ModuleStatus::Evaluated { environment, .. } => Some(
+                environment
+                    .upgrade()
+                    .expect("module environment heap is available")
+                    .expect("linked module retains its environment"),
+            ),
         }
     }
 }

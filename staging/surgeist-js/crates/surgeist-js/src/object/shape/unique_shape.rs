@@ -1,6 +1,8 @@
 use std::{cell::RefCell, fmt::Debug};
 
-use surgeist_js_gc::{Finalize, Gc, GcRefCell, Trace, WeakGc};
+use surgeist_js_gc::heap::{
+    AccessError, ObjectId, RecordRef, Rooted, RuntimeHeap, Trace as HeapTrace,
+};
 
 use crate::{JsObject, object::ObjectEdge, property::PropertyKey};
 
@@ -10,16 +12,16 @@ use super::{
 };
 
 /// The internal representation of [`UniqueShape`].
-#[derive(Default, Debug, Trace, Finalize)]
+#[derive(Debug, HeapTrace)]
 struct Inner {
     /// The property table that maps a [`PropertyKey`] to a slot in the objects storage.
     //
     // SAFETY: This is safe because nothing in this field needs tracing.
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     property_table: RefCell<PropertyTableInner>,
 
     /// The prototype of the shape.
-    prototype: GcRefCell<Option<ObjectEdge>>,
+    prototype: RefCell<Option<ObjectEdge>>,
 }
 
 /// Represents a [`Shape`] that is not shared with any other object.
@@ -28,24 +30,41 @@ struct Inner {
 /// the builtin object.
 ///
 /// Cloning this does a shallow clone.
-#[derive(Default, Debug, Clone, Trace, Finalize)]
+#[derive(Debug, Clone)]
 pub(crate) struct UniqueShape {
-    inner: Gc<Inner>,
+    inner: Rooted<Inner>,
 }
 
 impl UniqueShape {
     /// Create a new [`UniqueShape`].
-    pub(crate) fn new(prototype: JsPrototype, property_table: PropertyTableInner) -> Self {
-        Self::from_stored(prototype.map(JsObject::into_record), property_table)
+    pub(crate) fn new(
+        heap: &RuntimeHeap,
+        prototype: JsPrototype,
+        property_table: PropertyTableInner,
+    ) -> Self {
+        Self::try_new(heap, prototype, property_table).expect("shape has valid heap edges")
     }
 
-    fn from_stored(prototype: Option<ObjectEdge>, property_table: PropertyTableInner) -> Self {
-        Self {
-            inner: Gc::new(Inner {
+    pub(crate) fn try_new(
+        heap: &RuntimeHeap,
+        prototype: JsPrototype,
+        property_table: PropertyTableInner,
+    ) -> Result<Self, AccessError> {
+        Self::from_stored(heap, prototype.map(JsObject::into_record), property_table)
+    }
+
+    fn from_stored(
+        heap: &RuntimeHeap,
+        prototype: Option<ObjectEdge>,
+        property_table: PropertyTableInner,
+    ) -> Result<Self, AccessError> {
+        let inner = heap
+            .allocate(Inner {
                 property_table: RefCell::new(property_table),
-                prototype: GcRefCell::new(prototype),
-            }),
-        }
+                prototype: RefCell::new(prototype),
+            })
+            .map_err(|rejected| rejected.reason)?;
+        Ok(Self { inner })
     }
 
     pub(crate) fn override_internal(
@@ -121,7 +140,8 @@ impl UniqueShape {
         }
 
         let prototype = self.inner.prototype.borrow_mut().take();
-        Self::from_stored(prototype, property_table)
+        Self::from_stored(self.inner.runtime(), prototype, property_table)
+            .expect("shape retains its prototype")
     }
 
     /// Does a property lookup on the [`UniqueShape`] returning the [`Slot`] where it's
@@ -216,7 +236,8 @@ impl UniqueShape {
         }
 
         let prototype = self.inner.prototype.borrow_mut().take();
-        let shape = Self::from_stored(prototype, property_table);
+        let shape = Self::from_stored(self.inner.runtime(), prototype, property_table)
+            .expect("shape retains its prototype");
 
         ChangeTransition {
             shape: shape.into(),
@@ -233,7 +254,7 @@ impl UniqueShape {
         // We need to create a new unique shape,
         // to invalidate any pointers to this shape i.e inline caches.
         let property_table = std::mem::take(&mut *property_table);
-        Self::new(prototype, property_table)
+        Self::new(self.inner.runtime(), prototype, property_table)
     }
 
     /// Gets all keys first strings then symbols in creation order.
@@ -241,35 +262,33 @@ impl UniqueShape {
         self.property_table().borrow().keys()
     }
 
-    /// Return location in memory of the [`UniqueShape`].
-    pub(crate) fn to_addr_usize(&self) -> usize {
-        let ptr: *const _ = self.inner.as_ref();
-        ptr as usize
+    pub(crate) const fn identity(&self) -> ObjectId {
+        self.inner.handle().erase()
     }
 }
 
-/// Represents a weak reference to [`UniqueShape`].
-#[derive(Debug, Clone, Trace, Finalize, PartialEq)]
-pub(crate) struct WeakUniqueShape {
-    inner: WeakGc<Inner>,
+/// Non-owning identity of a [`UniqueShape`].
+#[derive(Debug, Clone, PartialEq, HeapTrace)]
+pub(crate) struct UniqueShapeRef {
+    inner: RecordRef<Inner>,
 }
 
-impl WeakUniqueShape {
+impl UniqueShapeRef {
     /// Upgrade returns a [`UniqueShape`] pointer for the internal value if the pointer is still live,
     /// or [`None`] if the value was already garbage collected.
     #[inline]
     #[must_use]
     pub(crate) fn upgrade(&self) -> Option<UniqueShape> {
         Some(UniqueShape {
-            inner: self.inner.upgrade()?,
+            inner: self.inner.upgrade().expect("shape heap is available")?,
         })
     }
 }
 
-impl From<&UniqueShape> for WeakUniqueShape {
+impl From<&UniqueShape> for UniqueShapeRef {
     fn from(value: &UniqueShape) -> Self {
-        WeakUniqueShape {
-            inner: WeakGc::new(&value.inner),
+        UniqueShapeRef {
+            inner: value.inner.record_ref(),
         }
     }
 }

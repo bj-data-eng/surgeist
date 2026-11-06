@@ -1,5 +1,97 @@
-use crate::{JsNativeErrorKind, TestAction, run_test_actions};
+use std::{cell::Cell, rc::Rc};
+
+use crate::{
+    Context, JsNativeErrorKind, JsObject, TestAction, js_string, object::JsWeakMap,
+    run_test_actions,
+};
 use surgeist_js_macros::js_str;
+
+#[test]
+fn collecting_a_weak_key_releases_its_primitive_value() {
+    let context = &mut Context::default();
+    let map = JsWeakMap::new(context);
+    let dead_key = JsObject::with_null_proto(context.runtime());
+    let live_key = JsObject::with_null_proto(context.runtime());
+    let value = js_string!("weak map value".to_owned());
+    map.set(&dead_key, value.clone().into(), context).unwrap();
+    map.set(&live_key, value.clone().into(), context).unwrap();
+    assert_eq!(value.refcount(), Some(3));
+
+    let borrowed_map = map.borrow();
+    drop(dead_key);
+    context.runtime().collect().unwrap();
+
+    assert_eq!(value.refcount(), Some(2));
+    drop(borrowed_map);
+    assert_eq!(
+        map.get(&live_key, context).unwrap().as_string(),
+        Some(value)
+    );
+}
+
+#[test]
+fn object_value_lives_only_while_its_weak_key_is_reachable() {
+    let context = &mut Context::default();
+    let map = JsWeakMap::new(context);
+    let key = JsObject::with_null_proto(context.runtime());
+    let value = JsObject::with_null_proto(context.runtime());
+    let value_edge = value.edge();
+    map.set(&key, value.into(), context).unwrap();
+
+    context.runtime().heap.collect().unwrap();
+    assert_eq!(
+        map.get(&key, context)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .identity(),
+        value_edge.identity()
+    );
+
+    drop(key);
+    context.runtime().heap.collect().unwrap();
+    assert!(value_edge.upgrade().unwrap().is_none());
+}
+
+#[test]
+fn collection_reentered_during_key_retirement_keeps_live_ephemerons() {
+    let context = &mut Context::default();
+    let map = JsWeakMap::new(context);
+    let dead_key = JsObject::with_null_proto(context.runtime());
+    let dead_value = JsObject::with_null_proto(context.runtime());
+    let dead_value_edge = dead_value.edge();
+    let live_key = JsObject::with_null_proto(context.runtime());
+    let live_value = JsObject::with_null_proto(context.runtime());
+    let live_value_id = live_value.identity();
+
+    let reentered = Rc::new(Cell::new(false));
+    let reentrant_collection: Rc<dyn Fn()> = {
+        let runtime = context.runtime().clone();
+        let reentered = Rc::clone(&reentered);
+        Rc::new(move || {
+            runtime.collect().unwrap();
+            reentered.set(true);
+        })
+    };
+    // Run nested collection before the dead key's map entry is removed.
+    dead_key.observe_retirement(&reentrant_collection);
+    map.set(&dead_key, dead_value.into(), context).unwrap();
+    map.set(&live_key, live_value.into(), context).unwrap();
+
+    drop(dead_key);
+    context.runtime().collect().unwrap();
+
+    assert!(reentered.get());
+    assert!(dead_value_edge.upgrade().unwrap().is_none());
+    assert_eq!(
+        map.get(&live_key, context)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .identity(),
+        live_value_id
+    );
+}
 
 #[test]
 fn get_or_insert_inserts_on_miss() {

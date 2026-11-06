@@ -1,8 +1,6 @@
 //! A Rust API wrapper for the `Set` Builtin ECMAScript Object
 use std::ops::Deref;
 
-use surgeist_js_gc::{Finalize, Trace};
-
 use crate::{
     Context, JsResult, JsValue,
     builtins::{
@@ -15,9 +13,9 @@ use crate::{
 };
 
 /// `JsSet` provides a wrapper for Boa's implementation of the ECMAScript `Set` object.
-#[derive(Debug, Clone, Trace, Finalize)]
+#[derive(Debug, Clone)]
 pub struct JsSet {
-    inner: JsObject<OrderedSet>,
+    inner: JsObject,
 }
 
 impl JsSet {
@@ -28,11 +26,7 @@ impl JsSet {
     #[inline]
     pub fn new(context: &mut Context) -> Self {
         Self {
-            inner: JsObject::from_proto_and_data_with_shared_shape(
-                context.root_shape(),
-                context.intrinsics().constructors().set().prototype(),
-                OrderedSet::new(),
-            ),
+            inner: Set::create_from_data(OrderedSet::new(), context).upcast(),
         }
     }
 
@@ -42,7 +36,10 @@ impl JsSet {
     #[inline]
     #[must_use]
     pub fn size(&self) -> usize {
-        self.inner.borrow().data().len()
+        self.inner
+            .downcast_ref::<OrderedSet>()
+            .expect("set data")
+            .len()
     }
 
     /// Appends value to the Set object.
@@ -70,7 +67,10 @@ impl JsSet {
     /// Same as JavaScript's `set.clear()`.
     #[inline]
     pub fn clear(&self) {
-        self.inner.borrow_mut().data_mut().clear();
+        self.inner
+            .downcast_mut::<OrderedSet>()
+            .expect("set data")
+            .clear();
     }
 
     /// Removes the element associated to the value.
@@ -82,9 +82,11 @@ impl JsSet {
     where
         T: Into<JsValue>,
     {
-        self.borrow_mut()
-            .data_mut()
-            .delete(&canonicalize_keyed_collection_key(value.into()))
+        let value = canonicalize_keyed_collection_key(value.into());
+        self.inner
+            .downcast_mut::<OrderedSet>()
+            .expect("set data")
+            .delete(&value)
     }
 
     /// Returns a boolean asserting whether an element is present
@@ -96,9 +98,11 @@ impl JsSet {
     where
         T: Into<JsValue>,
     {
-        self.borrow()
-            .data()
-            .contains(&canonicalize_keyed_collection_key(value.into()))
+        let value = canonicalize_keyed_collection_key(value.into());
+        self.inner
+            .downcast_ref::<OrderedSet>()
+            .expect("set data")
+            .contains(&value)
     }
 
     /// Returns a new iterator object that yields the values
@@ -158,45 +162,40 @@ impl JsSet {
     /// Utility: Creates `JsSet` from `JsObject`, otherwise returns the original object as an `Err`.
     #[inline]
     pub fn from_object(object: JsObject) -> Result<Self, JsObject> {
-        object.downcast::<OrderedSet>().map(|o| Self { inner: o })
+        if object.is::<OrderedSet>() {
+            Ok(Self { inner: object })
+        } else {
+            Err(object)
+        }
     }
 
     /// Utility: Creates a `JsSet` from a `<IntoIterator<Item = JsValue>` convertible object.
-    pub fn from_iter<I>(elements: I, context: &mut Context) -> Self
+    ///
+    /// Returns a `TypeError` if an element is an object from another runtime.
+    pub fn from_iter<I>(elements: I, context: &mut Context) -> JsResult<Self>
     where
         I: IntoIterator<Item = JsValue>,
     {
         let elements = elements.into_iter();
 
-        // Create empty Set
-        let mut set = OrderedSet::with_capacity(elements.size_hint().0);
+        let inner =
+            Set::create_from_data(OrderedSet::with_capacity(elements.size_hint().0), context);
 
-        // For each element e of elements, do
-        for elem in elements {
-            let elem = canonicalize_keyed_collection_key(elem);
-            set.add(elem);
+        for element in elements {
+            let element = canonicalize_keyed_collection_key(element);
+            Set::add_to_data(&inner, element)?;
         }
 
-        Self {
-            inner: JsObject::from_proto_and_data_with_shared_shape(
-                context.root_shape(),
-                context.intrinsics().constructors().set().prototype(),
-                set,
-            ),
-        }
-    }
-}
-
-impl From<JsObject<OrderedSet>> for JsSet {
-    fn from(value: JsObject<OrderedSet>) -> Self {
-        Self { inner: value }
+        Ok(Self {
+            inner: inner.upcast(),
+        })
     }
 }
 
 impl From<JsSet> for JsObject {
     #[inline]
     fn from(o: JsSet) -> Self {
-        o.inner.clone().upcast()
+        o.inner.clone()
     }
 }
 
@@ -208,7 +207,7 @@ impl From<JsSet> for JsValue {
 }
 
 impl Deref for JsSet {
-    type Target = JsObject<OrderedSet>;
+    type Target = JsObject;
     #[inline]
     fn deref(&self) -> &Self::Target {
         &self.inner

@@ -495,3 +495,62 @@ fn intersection_other_not_set_like() {
         ),
     ]);
 }
+
+#[test]
+fn set_cycle_retires_after_its_iterator_is_unreachable() {
+    use crate::{Context, JsObject, object::builtins::JsSet};
+
+    let context = &mut Context::default();
+    let set = JsSet::new(context);
+    let set_edge = set.edge();
+    let value = JsObject::with_null_proto(context.runtime());
+    let value_edge = value.edge();
+
+    set.add(value, context).unwrap();
+    let iterator = set.values(context).unwrap();
+    let iterator_edge = iterator.edge();
+    set.add(iterator.clone(), context).unwrap();
+    drop(set);
+
+    context.runtime().collect().unwrap();
+    assert!(set_edge.is_live().unwrap());
+    assert!(value_edge.is_live().unwrap());
+
+    drop(iterator);
+    context.runtime().collect().unwrap();
+    assert!(!iterator_edge.is_live().unwrap());
+    assert!(!set_edge.is_live().unwrap());
+    assert!(!value_edge.is_live().unwrap());
+}
+
+#[test]
+fn clear_and_reinsertion_preserve_set_iteration_positions() {
+    run_test_actions([
+        TestAction::run(indoc! {r#"
+            const set = new Set([1, 2]);
+            const iterator = set.values();
+            iterator.next();
+            set.clear();
+            set.add(2);
+        "#}),
+        TestAction::assert_eq("iterator.next().value", 2),
+        TestAction::assert("iterator.next().done"),
+    ]);
+}
+
+#[test]
+fn set_rejects_foreign_edges_at_both_rust_entry_points() {
+    use crate::{Context, JsObject, Runtime, object::builtins::JsSet};
+
+    let context = &mut Context::default();
+    let set = JsSet::new(context);
+    let foreign = JsObject::with_null_proto(&Runtime::default());
+
+    let error = set.add(foreign.clone(), context).unwrap_err();
+    assert!(error.try_native(context).unwrap().is_type());
+    let error = JsSet::from_iter([foreign.into()], context).unwrap_err();
+    assert!(error.try_native(context).unwrap().is_type());
+
+    context.runtime().collect().unwrap();
+    assert_eq!(set.size(), 0);
+}

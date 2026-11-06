@@ -1,6 +1,5 @@
 use std::cell::Cell;
 
-use surgeist_js_gc::{Finalize, Trace, custom_trace};
 use fixed_decimal::{Decimal, FloatPrecision, SignDisplay};
 use icu_decimal::{
     CompactDecimalFormatter, DecimalFormatter, DecimalFormatterPreferences, FormattedDecimal,
@@ -13,6 +12,7 @@ use icu_locale::{Locale, extensions::unicode::Value};
 use icu_provider::{DataMarker, DataMarkerAttributes, DynamicDataProvider, buf::BufferMarker};
 use num_bigint::BigInt;
 use num_traits::Num;
+use surgeist_js_gc::heap::Trace as HeapTrace;
 use writeable::Writeable;
 
 use super::{
@@ -21,8 +21,8 @@ use super::{
     options::{IntlOptions, coerce_options_to_object},
 };
 use crate::{
-    Context, JsArgs, JsData, JsNativeError, JsObject, JsResult, JsString, JsSymbol, JsValue,
-    NativeFunction,
+    Context, JsArgs, JsData, JsExpect, JsNativeError, JsObject, JsResult, JsString, JsSymbol,
+    JsValue, NativeFunction,
     builtins::{
         BuiltInConstructor, BuiltInObject, IntrinsicObject, builder::BuiltInBuilder,
         options::get_option,
@@ -30,7 +30,7 @@ use crate::{
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     js_string,
     object::{
-        FunctionObjectBuilder, JsFunction, ObjectInitializer,
+        FunctionObjectBuilder, JsFunction, ObjectEdge, ObjectInitializer,
         internal_methods::get_prototype_from_constructor,
     },
     property::{Attribute, PropertyDescriptor},
@@ -110,27 +110,22 @@ impl Formatter {
     }
 }
 
-#[derive(Debug, Finalize, JsData)]
-// Safety: `NumberFormat` only contains non-traceable types.
+#[derive(Debug, JsData, HeapTrace)]
 pub(crate) struct NumberFormat {
     locale: Locale,
+    #[heap_trace(skip)]
     formatter: Formatter,
+    #[heap_trace(skip)]
     numbering_system: NumberingSystem,
+    #[heap_trace(skip)]
     unit_options: UnitFormatOptions,
+    #[heap_trace(skip)]
     digit_options: DigitFormatOptions,
+    #[heap_trace(skip)]
     use_grouping: GroupingStrategy,
+    #[heap_trace(skip)]
     sign_display: SignDisplay,
-    bound_format: Option<JsFunction>,
-}
-
-// SAFETY: the implementation correctly traces the only field
-// that needs tracing.
-unsafe impl Trace for NumberFormat {
-    custom_trace!(this, mark, {
-        if let Some(f) = &this.bound_format {
-            mark(f);
-        }
-    });
+    bound_format: Option<ObjectEdge>,
 }
 
 impl NumberFormat {
@@ -593,11 +588,9 @@ impl NumberFormat {
         //     a. Set nf to ? UnwrapNumberFormat(nf).
         // 3. Perform ? RequireInternalSlot(nf, [[InitializedNumberFormat]]).
         let nf = unwrap_number_format(this, context)?;
-        let nf_clone = nf.clone();
-        let mut nf = nf.borrow_mut();
-
-        let bound_format = if let Some(f) = nf.data_mut().bound_format.clone() {
-            f
+        let cached = nf.borrow().data().bound_format.clone();
+        let bound_format = if let Some(f) = cached {
+            JsFunction::from_record(f)
         } else {
             // 4. If nf.[[BoundFormat]] is undefined, then
             //     a. Let F be a new built-in function object as defined in Number Format Functions (15.5.2).
@@ -619,15 +612,18 @@ impl NumberFormat {
                         let mut x = to_intl_mathematical_value(value, context)?;
 
                         // 5. Return FormatNumeric(nf, x).
-                        Ok(js_string!(nf.borrow().data().format(&mut x).write_to_string()).into())
+                        let nf = nf
+                            .downcast_ref::<Self>()
+                            .js_expect("bound format should contain a number format object")?;
+                        Ok(js_string!(nf.format(&mut x).write_to_string()).into())
                     },
-                    nf_clone,
+                    nf.clone().upcast(),
                 ),
             )
             .length(2)
-            .build();
+            .build()?;
 
-            nf.data_mut().bound_format = Some(bound_format.clone());
+            nf.borrow_mut().data_mut().bound_format = Some(bound_format.clone().into_record());
             bound_format
         };
 
@@ -820,7 +816,7 @@ impl NumberFormat {
             );
 
         // 6. Return options.
-        Ok(options.build().into())
+        Ok(options.build()?.into())
     }
 }
 

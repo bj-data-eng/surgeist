@@ -11,6 +11,7 @@ use crate::{
 };
 use serde_json::{Map, Value};
 use std::collections::HashSet;
+use surgeist_js_gc::heap::ObjectId;
 
 impl JsValue {
     /// Converts a [`serde_json::Value`] to a `JsValue`.
@@ -120,7 +121,7 @@ impl JsValue {
     fn to_json_inner(
         &self,
         context: &mut Context,
-        seen_objects: &mut HashSet<JsObject>,
+        seen_objects: &mut HashSet<ObjectId>,
     ) -> JsResult<Option<Value>> {
         match self.variant() {
             JsVariant::Null => Ok(Some(Value::Null)),
@@ -133,12 +134,12 @@ impl JsValue {
                 .with_message("cannot convert bigint to JSON")
                 .into()),
             JsVariant::Object(obj) => {
-                if seen_objects.contains(&obj) {
+                let id = obj.identity();
+                if !seen_objects.insert(id) {
                     return Err(JsNativeError::typ()
                         .with_message("cyclic object value")
                         .into());
                 }
-                seen_objects.insert(obj.clone());
                 let mut value_by_prop_key = |property_key, context: &mut Context| {
                     obj.borrow()
                         .properties()
@@ -163,9 +164,7 @@ impl JsValue {
                             None => arr.push(Value::Null),
                         }
                     }
-                    // Passing the object rather than its clone that was inserted to the set should be fine
-                    // as they hash to the same value and therefore HashSet can still remove the clone
-                    seen_objects.remove(&obj);
+                    seen_objects.remove(&id);
                     Ok(Some(Value::Array(arr)))
                 } else {
                     let mut map = Map::new();
@@ -178,7 +177,7 @@ impl JsValue {
                         }
                     }
 
-                    for property_key in obj.borrow().properties().shape.keys() {
+                    for property_key in obj.borrow().properties().shape().keys() {
                         let key = match &property_key {
                             PropertyKey::String(string) => string.to_std_string_escaped(),
                             PropertyKey::Index(i) => i.get().to_string(),
@@ -193,7 +192,7 @@ impl JsValue {
                             map.insert(key, value);
                         }
                     }
-                    seen_objects.remove(&obj);
+                    seen_objects.remove(&id);
                     Ok(Some(Value::Object(map)))
                 }
             }
@@ -206,9 +205,9 @@ impl JsValue {
 
 #[cfg(test)]
 mod tests {
-    use surgeist_js_macros::js_str;
     use indoc::indoc;
     use serde_json::json;
+    use surgeist_js_macros::js_str;
 
     use crate::{
         Context, JsObject, JsValue, TestAction, js_string, object::JsArray, run_test_actions,
@@ -305,7 +304,7 @@ mod tests {
     #[test]
     fn to_json_cyclic() {
         let mut context = Context::default();
-        let obj = JsObject::with_null_proto();
+        let obj = JsObject::with_null_proto(context.runtime());
         obj.create_data_property(js_string!("a"), obj.clone(), &mut context)
             .expect("should create data property");
 
@@ -336,7 +335,7 @@ mod tests {
             //     "outer_c": [2, undefined, 3, { "inner_a": undefined }]
             // }
 
-            let inner = JsObject::with_null_proto();
+            let inner = JsObject::with_null_proto(context.runtime());
             inner
                 .create_data_property(js_string!("inner_a"), JsValue::undefined(), &mut context)
                 .expect("should add property");
@@ -349,7 +348,7 @@ mod tests {
             array.push(3, &mut context).expect("should push");
             array.push(inner, &mut context).expect("should push");
 
-            let outer = JsObject::with_null_proto();
+            let outer = JsObject::with_null_proto(context.runtime());
             outer
                 .create_data_property(js_string!("outer_a"), JsValue::new(1), &mut context)
                 .expect("should add property");

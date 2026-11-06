@@ -3,8 +3,9 @@
 use super::private::IntoJsFunctionSealed;
 use super::{IntoJsFunction, IntoJsFunctionWithCaptures};
 use crate::interop::{JsRest, TryFromJsArgument};
+use crate::native_function::NativeCapture;
 use crate::{Context, NativeFunction, TryIntoJsResult};
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::Trace;
 
 /// Distinguishes signatures with an engine context from converted JS arguments.
 #[derive(Debug, Copy, Clone)]
@@ -19,19 +20,55 @@ macro_rules! impl_signature {
         $rest:ident, $context:ident
     ) => {
         const _: () = {
-            #[derive(Trace, Finalize)]
+            #[derive(Trace)]
             struct Function<$($t,)* R> {
                 // This concrete pointer carries no captures.
-                #[unsafe_ignore_trace]
+                #[heap_trace(skip)]
                 callback: fn($($t,)* $($tail),*) -> R,
             }
 
-            #[derive(Trace, Finalize)]
-            struct StatefulFunction<$($t,)* R, Captures: Trace> {
-                // All traceable state resides in captures.
-                #[unsafe_ignore_trace]
+            impl<$($t: 'static,)* R: 'static> NativeCapture for Function<$($t,)* R> {
+                type Stored = Self;
+
+                fn store(&self) -> Self {
+                    Self { callback: self.callback }
+                }
+
+                fn restore(stored: &Self) -> Self {
+                    Self { callback: stored.callback }
+                }
+            }
+
+            struct StatefulFunction<$($t,)* R, Captures> {
                 callback: fn(&Captures, $($t,)* $($tail),*) -> R,
                 captures: Captures,
+            }
+
+            #[derive(Trace)]
+            struct StoredStatefulFunction<$($t,)* R, Captures: NativeCapture> {
+                #[heap_trace(skip)]
+                callback: fn(&Captures, $($t,)* $($tail),*) -> R,
+                captures: Captures::Stored,
+            }
+
+            impl<$($t: 'static,)* R: 'static, Captures: NativeCapture> NativeCapture
+                for StatefulFunction<$($t,)* R, Captures>
+            {
+                type Stored = StoredStatefulFunction<$($t,)* R, Captures>;
+
+                fn store(&self) -> Self::Stored {
+                    StoredStatefulFunction {
+                        callback: self.callback,
+                        captures: self.captures.store(),
+                    }
+                }
+
+                fn restore(stored: &Self::Stored) -> Self {
+                    Self {
+                        callback: stored.callback,
+                        captures: Captures::restore(&stored.captures),
+                    }
+                }
             }
 
             impl<$($t,)* R> IntoJsFunctionSealed<($($t,)* $($marker,)*), R>
@@ -68,7 +105,7 @@ macro_rules! impl_signature {
             where
                 $($t: for<'a> TryFromJsArgument<'a> + 'static,)*
                 R: TryIntoJsResult + 'static,
-                Captures: Trace + 'static,
+                Captures: NativeCapture,
             {
                 #[allow(unused_variables)]
                 fn into_js_function_with_captures(self, captures: Captures) -> NativeFunction {

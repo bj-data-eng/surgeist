@@ -8,11 +8,15 @@
 //! [spec]: https://tc39.es/ecma262/#sec-scripts
 //! [script]: https://tc39.es/ecma262/#sec-script-records
 
-use std::path::{Path, PathBuf};
+use std::{
+    cell::RefCell,
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 use rustc_hash::FxHashMap;
 
-use surgeist_js_gc::{Finalize, Gc, GcRefCell, Trace};
+use surgeist_js_gc::heap::{RecordRef, Rooted, Trace as HeapTrace};
 use surgeist_js_parser::{Parser, Source, source::ReadChar};
 
 use crate::{
@@ -20,7 +24,8 @@ use crate::{
     bytecompiler::{ByteCompiler, global_declaration_instantiation_context},
     environments::EnvironmentStack,
     js_string,
-    realm::Realm,
+    module::ModuleEdge,
+    realm::{Realm, RealmEdge},
     spanned_source_text::SourceText,
     vm::{ActiveRunnable, CallFrame, CallFrameFlags, CodeBlock},
 };
@@ -28,42 +33,61 @@ use crate::{
 /// ECMAScript's [**Script Record**][spec].
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-script-records
-#[derive(Clone, Trace, Finalize)]
+#[derive(Clone)]
 pub struct Script {
-    inner: Gc<Inner>,
+    inner: Rooted<ScriptRecord>,
 }
 
 impl std::fmt::Debug for Script {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Script")
-            .field("realm", &self.inner.realm.addr())
+            .field("realm", &self.realm().identity())
             .field("phase", &self.inner.phase.borrow())
             .field("loaded_modules", &self.inner.loaded_modules)
             .finish()
     }
 }
 
-#[derive(Trace, Debug, Finalize)]
+#[derive(Debug)]
 enum ScriptPhase {
-    Ast(#[unsafe_ignore_trace] surgeist_js_ast::Script),
-    Codeblock(Gc<CodeBlock>),
+    Ast(surgeist_js_ast::Script),
+    Codeblock(Rc<CodeBlock>),
 }
 
-#[derive(Trace, Finalize)]
-struct Inner {
-    realm: Realm,
-    phase: GcRefCell<ScriptPhase>,
+#[derive(Debug, Clone, HeapTrace)]
+pub(crate) struct ScriptEdge(RecordRef<ScriptRecord>);
+
+#[derive(HeapTrace)]
+struct ScriptRecord {
+    realm: RealmEdge,
+    #[heap_trace(skip)]
+    phase: RefCell<ScriptPhase>,
+    #[heap_trace(skip)]
     source_text: SourceText,
-    loaded_modules: GcRefCell<FxHashMap<JsString, Module>>,
+    loaded_modules: RefCell<FxHashMap<JsString, ModuleEdge>>,
     host_defined: HostDefined,
+    #[heap_trace(skip)]
     path: Option<PathBuf>,
 }
 
 impl Script {
     /// Gets the realm of this script.
     #[must_use]
-    pub fn realm(&self) -> &Realm {
-        &self.inner.realm
+    pub fn realm(&self) -> Realm {
+        Realm::from_edge(self.inner.realm.clone())
+    }
+
+    pub(crate) fn edge(&self) -> ScriptEdge {
+        ScriptEdge(self.inner.record_ref())
+    }
+
+    pub(crate) fn from_edge(edge: ScriptEdge) -> Self {
+        let inner = edge
+            .0
+            .upgrade()
+            .expect("script heap is available")
+            .expect("live owner retains its script");
+        Self { inner }
     }
 
     /// Returns the [`ECMAScript specification`][spec] defined [`\[\[HostDefined\]\]`][`HostDefined`] field of the [`Module`].
@@ -74,9 +98,12 @@ impl Script {
         &self.inner.host_defined
     }
 
-    /// Gets the loaded modules of this script.
-    pub(crate) fn loaded_modules(&self) -> &GcRefCell<FxHashMap<JsString, Module>> {
-        &self.inner.loaded_modules
+    pub(crate) fn insert_loaded_module(&self, specifier: JsString, module: &Module) {
+        let mut loaded_modules = self.inner.loaded_modules.borrow_mut();
+        let edge = loaded_modules
+            .entry(specifier)
+            .or_insert_with(|| module.edge());
+        debug_assert_eq!(edge, &module.edge());
     }
 
     /// Abstract operation [`ParseScript ( sourceText, realm, hostDefined )`][spec].
@@ -90,6 +117,12 @@ impl Script {
         context: &mut Context,
     ) -> JsResult<Self> {
         let path = src.path().map(Path::to_path_buf);
+        let realm = realm.unwrap_or_else(|| context.realm().clone());
+        if !context.runtime().same_heap(&realm.runtime()) {
+            return Err(crate::JsNativeError::typ()
+                .with_message("script realm belongs to a different runtime")
+                .into());
+        }
         let mut parser = Parser::new(src);
         parser.set_identifier(context.next_parser_identifier());
         if context.is_strict() {
@@ -104,21 +137,31 @@ impl Script {
         let source_text = SourceText::new(source);
 
         Ok(Self {
-            inner: Gc::new(Inner {
-                realm: realm.unwrap_or_else(|| context.realm().clone()),
-                phase: GcRefCell::new(ScriptPhase::Ast(code)),
-                source_text,
-                loaded_modules: GcRefCell::default(),
-                host_defined: HostDefined::default(),
-                path,
-            }),
+            inner: context
+                .runtime()
+                .heap
+                .allocate(ScriptRecord {
+                    realm: realm.edge(),
+                    phase: RefCell::new(ScriptPhase::Ast(code)),
+                    source_text,
+                    loaded_modules: RefCell::default(),
+                    host_defined: HostDefined::default(),
+                    path,
+                })
+                .expect("script has valid heap edges"),
         })
     }
 
     /// Compiles the codeblock of this script.
     ///
     /// This is a no-op if this has been called previously.
-    pub fn codeblock(&self, context: &mut Context) -> JsResult<Gc<CodeBlock>> {
+    pub fn codeblock(&self, context: &mut Context) -> JsResult<Rc<CodeBlock>> {
+        let realm = self.realm();
+        if !context.runtime().same_heap(&realm.runtime()) {
+            return Err(crate::JsNativeError::typ()
+                .with_message("script belongs to a different runtime")
+                .into());
+        }
         let cb = {
             let phase = self.inner.phase.borrow();
             let source = match &*phase {
@@ -131,7 +174,7 @@ impl Script {
             global_declaration_instantiation_context(
                 &mut annex_b_function_names,
                 source,
-                self.inner.realm.scope(),
+                realm.scope(),
                 context,
             )?;
 
@@ -141,8 +184,8 @@ impl Script {
                 js_string!("<main>"),
                 source.strict(),
                 false,
-                self.inner.realm.scope().clone(),
-                self.inner.realm.scope().clone(),
+                realm.scope().clone(),
+                realm.scope().clone(),
                 false,
                 false,
                 context.interner_mut(),
@@ -159,7 +202,7 @@ impl Script {
             compiler.global_declaration_instantiation(source);
             compiler.compile_statement_list(source.statements(), true, false);
 
-            Gc::new(compiler.finish())
+            Rc::new(compiler.finish())
         };
 
         *self.inner.phase.borrow_mut() = ScriptPhase::Codeblock(cb.clone());
@@ -224,7 +267,7 @@ impl Script {
                 codeblock.clone(),
                 Some(ActiveRunnable::Script(self.clone())),
                 global_env,
-                self.inner.realm.clone(),
+                self.realm(),
             )
             .with_env_fp(0)
             .with_flags(CallFrameFlags::EXIT_EARLY),

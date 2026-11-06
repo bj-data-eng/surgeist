@@ -1,7 +1,7 @@
 use crate::{
     Context, JsData, JsExpect, JsResult, JsValue,
     bytecompiler::ToJsString,
-    environments::DeclarativeEnvironment,
+    environments::{DeclarativeEnvironmentEdge, DeclarativeEnvironmentRef},
     object::{
         JsObject,
         internal_methods::{
@@ -12,14 +12,13 @@ use crate::{
     },
     property::{DescriptorKind, PropertyDescriptor, PropertyKey},
 };
-use surgeist_js_ast::{function::FormalParameterList, operations::bound_names, scope::Scope};
-use surgeist_js_gc::{Finalize, Gc, Trace};
-use surgeist_js_interner::Interner;
 use rustc_hash::FxHashMap;
+use surgeist_js_ast::{function::FormalParameterList, operations::bound_names, scope::Scope};
+use surgeist_js_gc::heap::Trace as HeapTrace;
+use surgeist_js_interner::Interner;
 use thin_vec::{ThinVec, thin_vec};
 
-#[derive(Debug, Copy, Clone, Trace, Finalize, JsData)]
-#[surgeist_js_gc(empty_trace)]
+#[derive(Debug, Copy, Clone, JsData, HeapTrace)]
 pub(crate) struct UnmappedArguments;
 
 impl UnmappedArguments {
@@ -79,11 +78,10 @@ impl UnmappedArguments {
 /// `MappedArguments` represents an Arguments exotic object.
 ///
 /// This struct stores all the data to access mapped function parameters in their environment.
-#[derive(Debug, Clone, Trace, Finalize)]
+#[derive(Debug, Clone, HeapTrace)]
 pub(crate) struct MappedArguments {
-    #[unsafe_ignore_trace]
     binding_indices: Vec<Option<u32>>,
-    environment: Gc<DeclarativeEnvironment>,
+    environment: DeclarativeEnvironmentEdge,
 }
 
 impl JsData for MappedArguments {
@@ -103,6 +101,13 @@ impl JsData for MappedArguments {
 }
 
 impl MappedArguments {
+    fn environment(&self) -> DeclarativeEnvironmentRef {
+        self.environment
+            .upgrade()
+            .expect("argument environment heap is available")
+            .expect("mapped arguments retain their environment")
+    }
+
     /// Deletes the binding with the given index from the parameter map.
     pub(crate) fn delete(&mut self, index: u32) {
         if let Some(binding) = self.binding_indices.get_mut(index as usize) {
@@ -124,7 +129,7 @@ impl MappedArguments {
             .get(index as usize)
             .copied()
             .flatten()?;
-        self.environment.get(binding_index)
+        self.environment().get(binding_index)
     }
 
     /// Set the value of the binding at the given index in the function environment.
@@ -137,7 +142,7 @@ impl MappedArguments {
     /// [spec]: https://tc39.es/ecma262/#sec-makeargsetter
     pub(crate) fn set(&self, index: u32, value: &JsValue) {
         if let Some(binding_index) = self.binding_indices.get(index as usize).copied().flatten() {
-            self.environment.set(binding_index, value.clone());
+            self.environment().set(binding_index, value.clone());
         }
     }
 }
@@ -215,7 +220,7 @@ impl MappedArguments {
         func: &JsObject,
         binding_indices: &[Option<u32>],
         arguments_list: &[JsValue],
-        env: &Gc<DeclarativeEnvironment>,
+        env: &DeclarativeEnvironmentRef,
         context: &Context,
     ) -> JsObject {
         // 1. Assert: formals does not contain a rest parameter, any binding patterns, or any initializers.
@@ -234,7 +239,7 @@ impl MappedArguments {
         let range = binding_indices.len().min(len);
         let map = MappedArguments {
             binding_indices: binding_indices[..range].to_vec(),
-            environment: env.clone(),
+            environment: env.record_ref(),
         };
 
         // %Array.prototype.values%

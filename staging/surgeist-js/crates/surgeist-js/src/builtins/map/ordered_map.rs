@@ -1,16 +1,17 @@
 //! Implements a map type that preserves insertion order.
 
-use crate::{JsData, JsValue, object::JsObject};
-use surgeist_js_gc::{Finalize, Trace, custom_trace};
+use crate::{JsData, JsResult, JsValue, Runtime, js_error, value::StoredValue};
 use indexmap::{Equivalent, IndexMap};
 use std::{
     fmt::Debug,
     hash::{Hash, Hasher},
+    rc::Rc,
 };
+use surgeist_js_gc::heap::{AccessError, EdgeVisitor, Trace as HeapTrace};
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub(crate) enum MapKey {
-    Key(JsValue),
+    Key(StoredValue),
     Empty(usize), // Necessary to ensure empty keys are still unique.
 }
 
@@ -24,7 +25,7 @@ impl Hash for MapKey {
     }
 }
 
-impl Equivalent<MapKey> for JsValue {
+impl Equivalent<MapKey> for StoredValue {
     fn equivalent(&self, key: &MapKey) -> bool {
         match key {
             MapKey::Key(v) => v == self,
@@ -34,43 +35,46 @@ impl Equivalent<MapKey> for JsValue {
 }
 
 /// A structure wrapping `indexmap::IndexMap`.
-#[derive(Clone, Finalize, JsData)]
-pub struct OrderedMap<V> {
-    map: IndexMap<MapKey, Option<V>>,
-    lock: u32,
+#[derive(JsData)]
+pub(crate) struct OrderedMap {
+    map: IndexMap<MapKey, Option<StoredValue>>,
+    // Every active iteration holds a clone of this token. Dropping it is
+    // sufficient to release the lock, even during heap retirement.
+    iteration_lock: Rc<()>,
     empty_count: usize,
 }
 
-unsafe impl<V: Trace> Trace for OrderedMap<V> {
-    custom_trace!(this, mark, {
-        for (k, v) in &this.map {
-            if let MapKey::Key(key) = k {
-                mark(key);
+impl HeapTrace for OrderedMap {
+    fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+        for (key, value) in &self.map {
+            if let MapKey::Key(key) = key {
+                HeapTrace::trace(key, edges)?;
             }
-            mark(v);
+            HeapTrace::trace(value, edges)?;
         }
-    });
+        Ok(())
+    }
 }
 
-impl<V: Debug> Debug for OrderedMap<V> {
+impl Debug for OrderedMap {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         self.map.fmt(formatter)
     }
 }
 
-impl<V> Default for OrderedMap<V> {
+impl Default for OrderedMap {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<V> OrderedMap<V> {
+impl OrderedMap {
     /// Creates a new empty `OrderedMap`.
     #[must_use]
     pub fn new() -> Self {
         Self {
             map: IndexMap::new(),
-            lock: 0,
+            iteration_lock: Rc::new(()),
             empty_count: 0,
         }
     }
@@ -80,7 +84,7 @@ impl<V> OrderedMap<V> {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             map: IndexMap::with_capacity(capacity),
-            lock: 0,
+            iteration_lock: Rc::new(()),
             empty_count: 0,
         }
     }
@@ -101,64 +105,62 @@ impl<V> OrderedMap<V> {
         self.map.len() - self.empty_count
     }
 
-    /// Returns true if the map contains no elements.
-    ///
-    /// Computes in **O(1)** time.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
     /// Insert a key-value pair in the map.
     ///
     /// If an equivalent key already exists in the map: the key remains and
-    /// retains in its place in the order, its corresponding value is updated
-    /// with `value` and the older value is returned inside `Some(_)`.
-    ///
-    /// If no equivalent key existed in the map: the new key-value pair is
-    /// inserted, last in order, and `None` is returned.
+    /// retains its place in the order, and its corresponding value is updated.
+    /// Otherwise the new key-value pair is appended.
     ///
     /// Computes in **O(1)** time (amortized average).
-    pub fn insert(&mut self, key: JsValue, value: V) -> Option<V> {
-        self.map.insert(MapKey::Key(key), Some(value)).flatten()
+    pub(super) fn insert(&mut self, key: JsValue, value: JsValue) {
+        self.compact_if_unlocked();
+        self.map
+            .insert(MapKey::Key(key.into_stored()), Some(value.into_stored()));
     }
 
-    /// Remove the key-value pair equivalent to `key` and return
-    /// its value.
+    /// Removes the entry for `key` and returns whether it existed.
     ///
-    /// Like `Vec::remove`, the pair is removed by shifting all of the
-    /// elements that follow it, preserving their relative order.
-    /// **This perturbs the index of all of those elements!**
-    ///
-    /// Return `None` if `key` is not in map.
+    /// An active iterator keeps the entry's position as a tombstone.
+    /// Otherwise, following entries shift left while keeping their order.
     ///
     /// Computes in **O(n)** time (average).
-    pub fn remove(&mut self, key: &JsValue) -> Option<V> {
-        if self.lock == 0 {
-            self.map.shift_remove(key).flatten()
-        } else if self.map.contains_key(key) {
+    pub(super) fn remove(&mut self, key: &JsValue) -> bool {
+        let key = key.clone().into_stored();
+        if self.is_locked() {
+            if !self.map.contains_key(&key) {
+                return false;
+            }
             self.map.insert(MapKey::Empty(self.empty_count), None);
             self.empty_count += 1;
-            self.map.swap_remove(key).flatten()
+            self.map.swap_remove(&key).is_some()
         } else {
-            None
+            self.compact_if_unlocked();
+            self.map.shift_remove(&key).is_some()
         }
     }
 
-    /// Removes all elements from the map and resets the counter of
-    /// empty entries.
+    /// Removes all entries while preserving active iterator positions.
     pub fn clear(&mut self) {
+        let len = self.map.len();
         self.map.clear();
-        self.map.shrink_to_fit();
-        self.empty_count = 0;
+        if self.is_locked() {
+            self.map
+                .extend((0..len).map(|index| (MapKey::Empty(index), None)));
+            self.empty_count = len;
+        } else {
+            self.map.shrink_to_fit();
+            self.empty_count = 0;
+        }
     }
 
-    /// Return a reference to the value stored for `key`, if it is present,
-    /// else `None`.
+    /// Returns the value stored for `key`, or `None` if it is absent.
     ///
     /// Computes in **O(1)** time (average).
-    pub fn get(&self, key: &JsValue) -> Option<&V> {
-        self.map.get(key).and_then(Option::as_ref)
+    pub fn get(&self, key: &JsValue) -> Option<JsValue> {
+        self.map
+            .get(&key.clone().into_stored())
+            .and_then(Option::as_ref)
+            .map(StoredValue::to_value)
     }
 
     /// Get a key-value pair by index.
@@ -167,19 +169,19 @@ impl<V> OrderedMap<V> {
     ///
     /// Computes in O(1) time.
     #[must_use]
-    pub fn get_index(&self, index: usize) -> Option<(&JsValue, &V)> {
+    pub fn get_index(&self, index: usize) -> Option<(JsValue, JsValue)> {
         if let (MapKey::Key(key), Some(value)) = self.map.get_index(index)? {
-            Some((key, value))
+            Some((key.to_value(), value.to_value()))
         } else {
             None
         }
     }
 
     /// Return an iterator over the key-value pairs of the map, in their order
-    pub fn iter(&self) -> impl Iterator<Item = (&JsValue, &V)> {
+    pub fn iter(&self) -> impl Iterator<Item = (JsValue, JsValue)> {
         self.map.iter().filter_map(|o| {
             if let (MapKey::Key(key), Some(value)) = o {
-                Some((key, value))
+                Some((key.to_value(), value.to_value()))
             } else {
                 None
             }
@@ -191,37 +193,32 @@ impl<V> OrderedMap<V> {
     /// Computes in **O(1)** time (average).
     #[must_use]
     pub fn contains_key(&self, key: &JsValue) -> bool {
-        self.map.contains_key(key)
+        self.map.contains_key(&key.clone().into_stored())
     }
 
-    /// Increases the lock counter.
-    ///
-    /// This allows objects to be removed from the map during iteration without affecting the indexes until the iteration has completed.
-    pub(crate) fn lock(&mut self) {
-        self.lock += 1;
+    pub(crate) fn lock(&mut self) -> Rc<()> {
+        self.compact_if_unlocked();
+        Rc::clone(&self.iteration_lock)
     }
 
-    /// Decreases the lock counter and, if 0, removes all empty entries.
-    pub(crate) fn unlock(&mut self) {
-        self.lock -= 1;
-        if self.lock == 0 {
-            self.map.retain(|k, _| matches!(k, MapKey::Key(_)));
+    fn is_locked(&self) -> bool {
+        Rc::strong_count(&self.iteration_lock) > 1
+    }
+
+    fn compact_if_unlocked(&mut self) {
+        if self.empty_count != 0 && !self.is_locked() {
+            self.map.retain(|key, _| matches!(key, MapKey::Key(_)));
             self.empty_count = 0;
         }
     }
 }
 
-pub(crate) struct MapLock<'a, V: Trace + 'static>(&'a JsObject<OrderedMap<V>>);
-
-impl<'a, V: Trace + 'static> MapLock<'a, V> {
-    pub(crate) fn new(js_object: &'a JsObject<OrderedMap<V>>) -> Self {
-        js_object.borrow_mut().data_mut().lock();
-        Self(js_object)
+/// Rejects values whose object edge cannot be traced by the owning heap.
+pub(crate) fn require_collection_value(runtime: &Runtime, value: &JsValue) -> JsResult<()> {
+    if let Some(object) = value.as_object()
+        && !runtime.same_heap(&object.runtime())
+    {
+        return Err(js_error!(TypeError: "collection value crosses JavaScript runtimes"));
     }
-}
-
-impl<V: Trace + 'static> Drop for MapLock<'_, V> {
-    fn drop(&mut self) {
-        self.0.borrow_mut().data_mut().unlock();
-    }
+    Ok(())
 }

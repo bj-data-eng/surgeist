@@ -1,9 +1,11 @@
+use std::rc::Rc;
+
 use crate::{
     Context, JsResult, JsString, JsSymbol, JsValue,
-    object::{JsObject, PrivateName},
+    object::{JsObject, ObjectEdge, PrivateName},
 };
 use surgeist_js_ast::scope::{BindingLocator, BindingLocatorScope, Scope};
-use surgeist_js_gc::{Finalize, Gc, Trace};
+use surgeist_js_gc::heap::{RecordRef, Rooted, RuntimeHeap, Trace};
 use thin_vec::ThinVec;
 
 mod declarative;
@@ -12,62 +14,100 @@ mod private;
 use self::declarative::ModuleEnvironment;
 pub(crate) use self::{
     declarative::{
-        DeclarativeEnvironment, DeclarativeEnvironmentKind, FunctionEnvironment, FunctionSlots,
-        LexicalEnvironment, ThisBindingStatus,
+        DeclarativeEnvironment, DeclarativeEnvironmentEdge, DeclarativeEnvironmentKind,
+        DeclarativeEnvironmentRef, FunctionEnvironment, FunctionSlots, LexicalEnvironment,
+        ThisBindingStatus,
     },
     private::PrivateEnvironment,
 };
 
-/// A single node in the environment chain.
-///
-/// Each node holds one [`Environment`] and a pointer to its parent.
-/// The chain is immutable from the perspective of other holders — pushing
-/// creates a new tip node, leaving existing nodes untouched. This makes
-/// cloning the chain O(1) (a single `Gc` ref-count bump).
-#[derive(Clone, Debug, Trace, Finalize)]
-pub(crate) struct EnvironmentNode {
-    env: Environment,
-    parent: Option<Gc<EnvironmentNode>>,
+/// A persistent chain node. Its outgoing references are traced from the
+/// rooted VM stack or from the record that owns a stored stack.
+#[derive(Debug, Trace)]
+struct EnvironmentNode {
+    env: StoredEnvironment,
+    parent: Option<RecordRef<EnvironmentNode>>,
 }
 
-/// The environment stack holds all environments at runtime.
+#[derive(Debug, Trace)]
+enum StoredEnvironment {
+    Declarative(DeclarativeEnvironmentEdge),
+    Object(ObjectEdge),
+}
+
+impl StoredEnvironment {
+    fn declarative(&self) -> Option<DeclarativeEnvironmentRef> {
+        match self {
+            Self::Declarative(env) => Some(root(env)),
+            Self::Object(_) => None,
+        }
+    }
+
+    fn to_environment(&self) -> Environment {
+        match self {
+            Self::Declarative(env) => Environment::Declarative(root(env)),
+            Self::Object(object) => Environment::Object(JsObject::from_inner(object.clone())),
+        }
+    }
+}
+
+fn root<T: Trace>(edge: &RecordRef<T>) -> Rooted<T> {
+    edge.upgrade()
+        .expect("environment heap is available")
+        .expect("live owner retains its environment")
+}
+
+/// The live runtime environment stack. Cloning roots the same persistent
+/// chain tip, so pushing or truncating leaves other snapshots unchanged.
 ///
-/// Implemented as a singly-linked list of [`EnvironmentNode`]s, where each
-/// node points to its parent (the previous environment). Cloning is O(1) —
-/// just a reference-count bump on the tip pointer plus small scalar copies.
-///
-/// The global declarative environment is NOT stored here — it lives in the
-/// [`crate::realm::Realm`] and is accessed via `frame.realm.environment()`.
-/// This avoids a `Gc` clone on every function call.
-#[derive(Clone, Debug, Trace, Finalize)]
+/// The global declarative environment lives in the frame's realm.
+#[derive(Clone, Debug)]
 pub(crate) struct EnvironmentStack {
-    /// The tip (most recently pushed) environment in the chain.
-    tip: Option<Gc<EnvironmentNode>>,
-
-    /// Number of environments in the chain (not counting global).
-    #[unsafe_ignore_trace]
+    tip: Option<Rooted<EnvironmentNode>>,
     depth: u32,
+    private_stack: ThinVec<Rc<PrivateEnvironment>>,
+}
 
-    private_stack: ThinVec<Gc<PrivateEnvironment>>,
+/// A captured environment stack stored inside a heap record.
+#[derive(Clone, Debug, Trace)]
+pub(crate) struct StoredEnvironmentStack {
+    tip: Option<RecordRef<EnvironmentNode>>,
+    depth: u32,
+    #[heap_trace(skip)]
+    private_stack: ThinVec<Rc<PrivateEnvironment>>,
+}
+
+impl StoredEnvironmentStack {
+    pub(crate) fn to_stack(&self) -> EnvironmentStack {
+        EnvironmentStack {
+            tip: self.tip.as_ref().map(root),
+            depth: self.depth,
+            private_stack: self.private_stack.clone(),
+        }
+    }
+
+    pub(crate) fn push_private(&mut self, environment: Rc<PrivateEnvironment>) {
+        self.private_stack.push(environment);
+    }
 }
 
 /// Saved environment state for `pop_to_global` / `restore_from_saved`.
 /// Used by indirect `eval` and `Function.prototype.toString` recompilation.
 pub(crate) struct SavedEnvironments {
-    tip: Option<Gc<EnvironmentNode>>,
+    tip: Option<Rooted<EnvironmentNode>>,
     depth: u32,
 }
 
-/// A runtime environment.
-#[derive(Clone, Debug, Trace, Finalize)]
+/// Rooted access to a runtime environment.
+#[derive(Debug)]
 pub(crate) enum Environment {
-    Declarative(Gc<DeclarativeEnvironment>),
-    Object(crate::object::ObjectEdge),
+    Declarative(DeclarativeEnvironmentRef),
+    Object(JsObject),
 }
 
 impl Environment {
     /// Returns the declarative environment if it is one.
-    pub(crate) const fn as_declarative(&self) -> Option<&Gc<DeclarativeEnvironment>> {
+    pub(crate) fn into_declarative(self) -> Option<DeclarativeEnvironmentRef> {
         match self {
             Self::Declarative(env) => Some(env),
             Self::Object(_) => None,
@@ -86,12 +126,13 @@ impl EnvironmentStack {
     }
 
     /// Gets the next outer function environment.
-    pub(crate) fn outer_function_environment(&self) -> Option<(Gc<DeclarativeEnvironment>, Scope)> {
-        for (env, _) in self.iter_from_tip() {
-            if let Some(decl) = env.as_declarative()
+    pub(crate) fn outer_function_environment(&self) -> Option<(DeclarativeEnvironmentRef, Scope)> {
+        for node in self.iter_from_tip() {
+            if let Some(decl) = node.env.declarative()
                 && let Some(function_env) = decl.kind().as_function()
             {
-                return Some((decl.clone(), function_env.compile().clone()));
+                let scope = function_env.compile().clone();
+                return Some((decl, scope));
             }
         }
         None
@@ -123,62 +164,54 @@ impl EnvironmentStack {
     /// Index 0 is the deepest (first pushed) environment in the chain.
     /// Index `len() - 1` is the tip (most recently pushed).
     #[inline]
-    pub(crate) fn get(&self, index: usize) -> Option<&Environment> {
+    pub(crate) fn get(&self, index: usize) -> Option<Environment> {
         let depth = self.depth as usize;
         if index >= depth {
             return None;
         }
         let steps = depth - 1 - index;
-        let mut current = self.tip.as_deref()?;
+        let mut current = self.tip.clone()?;
         for _ in 0..steps {
-            current = current.parent.as_deref()?;
+            current = root(current.parent.as_ref()?);
         }
-        Some(&current.env)
+        Some(current.env.to_environment())
     }
 
     /// Iterate from tip (most recent) toward root (oldest).
-    /// Yields `(&Environment, absolute_index)`.
-    fn iter_from_tip(&self) -> EnvironmentChainIter<'_> {
-        EnvironmentChainIter {
-            current: self.tip.as_deref(),
-            index: self.depth,
-        }
-    }
-
-    /// Get the tip (most recently pushed) environment.
-    #[inline]
-    fn last(&self) -> Option<&Environment> {
-        self.tip.as_deref().map(|node| &node.env)
+    fn iter_from_tip(&self) -> impl Iterator<Item = Rooted<EnvironmentNode>> {
+        std::iter::successors(self.tip.clone(), |node| node.parent.as_ref().map(root))
     }
 
     /// Truncate current environments to the given depth.
     pub(crate) fn truncate(&mut self, len: usize) {
         while self.depth as usize > len {
-            let node = self.tip.as_ref().expect("depth > 0 implies tip is Some");
-            self.tip = node.parent.clone();
-            self.depth -= 1;
+            self.pop();
         }
     }
 
     /// `GetThisEnvironment`
     ///
-    /// Returns the environment that currently provides a `this` biding.
+    /// Returns the environment that currently provides a `this` binding.
     ///
     /// More information:
     ///  - [ECMAScript specification][spec]
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-getthisenvironment
-    pub(crate) fn get_this_environment<'a>(
-        &'a self,
-        global: &'a Gc<DeclarativeEnvironment>,
-    ) -> &'a DeclarativeEnvironmentKind {
-        for (env, _) in self.iter_from_tip() {
-            if let Some(decl) = env.as_declarative().filter(|decl| decl.has_this_binding()) {
-                return decl.kind();
+    pub(crate) fn get_this_environment(
+        &self,
+        global: DeclarativeEnvironmentRef,
+    ) -> DeclarativeEnvironmentRef {
+        for node in self.iter_from_tip() {
+            if let Some(decl) = node
+                .env
+                .declarative()
+                .filter(|decl| decl.has_this_binding())
+            {
+                return decl;
             }
         }
 
-        global.kind()
+        global
     }
 
     /// `GetThisBinding`
@@ -191,8 +224,8 @@ impl EnvironmentStack {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-function-environment-records-getthisbinding
     pub(crate) fn get_this_binding(&self) -> JsResult<Option<JsValue>> {
-        for (env, _) in self.iter_from_tip() {
-            if let Environment::Declarative(decl) = env
+        for node in self.iter_from_tip() {
+            if let Some(decl) = node.env.declarative()
                 && let Some(this) = decl.get_this_binding()?
             {
                 return Ok(Some(this));
@@ -203,27 +236,26 @@ impl EnvironmentStack {
     }
 
     /// Push a new object environment on the environments stack.
-    pub(crate) fn push_object(&mut self, object: JsObject) {
-        self.push_env(Environment::Object(object.into_record()));
+    pub(crate) fn push_object(&mut self, object: JsObject, heap: &RuntimeHeap) {
+        self.push_env(StoredEnvironment::Object(object.edge()), heap);
     }
 
-    /// Push a lexical environment on the environments stack and return it's index.
+    /// Push a lexical environment on the environments stack and return its index.
     pub(crate) fn push_lexical(
         &mut self,
         bindings_count: u32,
-        global: &Gc<DeclarativeEnvironment>,
+        global: &DeclarativeEnvironmentRef,
     ) -> u32 {
         let (poisoned, with) = self.compute_poisoned_with(global);
 
         let index = self.depth;
 
-        self.push_env(Environment::Declarative(Gc::new(
-            DeclarativeEnvironment::new(
-                DeclarativeEnvironmentKind::Lexical(LexicalEnvironment::new(bindings_count)),
-                poisoned,
-                with,
-            ),
-        )));
+        self.push_declarative(
+            DeclarativeEnvironmentKind::Lexical(LexicalEnvironment::new(bindings_count)),
+            poisoned,
+            with,
+            global.runtime(),
+        );
 
         index
     }
@@ -233,35 +265,33 @@ impl EnvironmentStack {
         &mut self,
         scope: Scope,
         function_slots: FunctionSlots,
-        global: &Gc<DeclarativeEnvironment>,
+        global: &DeclarativeEnvironmentRef,
     ) {
         let num_bindings = scope.num_bindings_non_local();
 
         let (poisoned, with) = self.compute_poisoned_with(global);
 
-        self.push_env(Environment::Declarative(Gc::new(
-            DeclarativeEnvironment::new(
-                DeclarativeEnvironmentKind::Function(FunctionEnvironment::new(
-                    num_bindings,
-                    function_slots,
-                    scope,
-                )),
-                poisoned,
-                with,
-            ),
-        )));
+        self.push_declarative(
+            DeclarativeEnvironmentKind::Function(FunctionEnvironment::new(
+                num_bindings,
+                function_slots,
+                scope,
+            )),
+            poisoned,
+            with,
+            global.runtime(),
+        );
     }
 
     /// Push a module environment on the environments stack.
-    pub(crate) fn push_module(&mut self, scope: Scope) {
+    pub(crate) fn push_module(&mut self, scope: Scope, heap: &RuntimeHeap) {
         let num_bindings = scope.num_bindings_non_local();
-        self.push_env(Environment::Declarative(Gc::new(
-            DeclarativeEnvironment::new(
-                DeclarativeEnvironmentKind::Module(ModuleEnvironment::new(num_bindings, scope)),
-                false,
-                false,
-            ),
-        )));
+        self.push_declarative(
+            DeclarativeEnvironmentKind::Module(ModuleEnvironment::new(num_bindings, scope)),
+            false,
+            false,
+            heap,
+        );
     }
 
     /// Pop environment from the environments stack.
@@ -271,17 +301,17 @@ impl EnvironmentStack {
             .tip
             .as_ref()
             .expect("cannot pop empty environment chain");
-        self.tip = node.parent.clone();
+        self.tip = node.parent.as_ref().map(root);
         self.depth -= 1;
     }
 
     /// Get the most outer environment.
-    pub(crate) fn current_declarative_ref<'a>(
-        &'a self,
-        global: &'a Gc<DeclarativeEnvironment>,
-    ) -> Option<&'a Gc<DeclarativeEnvironment>> {
-        if let Some(env) = self.last() {
-            env.as_declarative()
+    pub(crate) fn current_declarative_ref(
+        &self,
+        global: DeclarativeEnvironmentRef,
+    ) -> Option<DeclarativeEnvironmentRef> {
+        if let Some(node) = self.tip.as_ref() {
+            node.env.declarative()
         } else {
             Some(global)
         }
@@ -289,9 +319,9 @@ impl EnvironmentStack {
 
     /// Mark that there may be added bindings from the current environment to the next function
     /// environment.
-    pub(crate) fn poison_until_last_function(&mut self, global: &Gc<DeclarativeEnvironment>) {
-        for (env, _) in self.iter_from_tip() {
-            if let Some(decl) = env.as_declarative() {
+    pub(crate) fn poison_until_last_function(&mut self, global: &DeclarativeEnvironmentRef) {
+        for node in self.iter_from_tip() {
+            if let Some(decl) = node.env.declarative() {
                 decl.poison();
                 if decl.is_function() {
                     return;
@@ -312,13 +342,15 @@ impl EnvironmentStack {
         environment: BindingLocatorScope,
         binding_index: u32,
         value: JsValue,
-        global: &Gc<DeclarativeEnvironment>,
+        global: &DeclarativeEnvironmentRef,
     ) {
         let env = match environment {
-            BindingLocatorScope::GlobalObject | BindingLocatorScope::GlobalDeclarative => global,
+            BindingLocatorScope::GlobalObject | BindingLocatorScope::GlobalDeclarative => {
+                global.clone()
+            }
             BindingLocatorScope::Stack(index) => self
                 .get(index as usize)
-                .and_then(Environment::as_declarative)
+                .and_then(Environment::into_declarative)
                 .expect("must be declarative environment"),
         };
         env.set(binding_index, value);
@@ -335,13 +367,15 @@ impl EnvironmentStack {
         environment: BindingLocatorScope,
         binding_index: u32,
         value: JsValue,
-        global: &Gc<DeclarativeEnvironment>,
+        global: &DeclarativeEnvironmentRef,
     ) {
         let env = match environment {
-            BindingLocatorScope::GlobalObject | BindingLocatorScope::GlobalDeclarative => global,
+            BindingLocatorScope::GlobalObject | BindingLocatorScope::GlobalDeclarative => {
+                global.clone()
+            }
             BindingLocatorScope::Stack(index) => self
                 .get(index as usize)
-                .and_then(Environment::as_declarative)
+                .and_then(Environment::into_declarative)
                 .expect("must be declarative environment"),
         };
         if env.get(binding_index).is_none() {
@@ -350,7 +384,7 @@ impl EnvironmentStack {
     }
 
     /// Push a private environment to the private environment stack.
-    pub(crate) fn push_private(&mut self, environment: Gc<PrivateEnvironment>) {
+    pub(crate) fn push_private(&mut self, environment: Rc<PrivateEnvironment>) {
         self.private_stack.push(environment);
     }
 
@@ -390,62 +424,57 @@ impl EnvironmentStack {
     /// Indicate if the current environment stack has an object environment.
     pub(crate) fn has_object_environment(&self) -> bool {
         self.iter_from_tip()
-            .any(|(env, _)| matches!(env, Environment::Object(_)))
+            .any(|node| matches!(node.env, StoredEnvironment::Object(_)))
     }
 
-    /// Create an `EnvironmentStack` snapshot suitable for storing in a closure.
-    ///
-    /// With the linked-list implementation, this is just a clone since
-    /// cloning is O(1) — a single ref-count bump on the tip pointer.
-    pub(crate) fn snapshot_for_closure(&self) -> EnvironmentStack {
-        self.clone()
+    pub(crate) fn stored(&self) -> StoredEnvironmentStack {
+        StoredEnvironmentStack {
+            tip: self.tip.as_ref().map(Rooted::record_ref),
+            depth: self.depth,
+            private_stack: self.private_stack.clone(),
+        }
     }
 
-    // ---- Private helpers ----
+    fn push_declarative(
+        &mut self,
+        kind: DeclarativeEnvironmentKind,
+        poisoned: bool,
+        with: bool,
+        heap: &RuntimeHeap,
+    ) {
+        let environment = heap
+            .allocate(DeclarativeEnvironment::new(kind, poisoned, with))
+            .expect("new declarative environment belongs to the active runtime");
+        self.push_env(
+            StoredEnvironment::Declarative(environment.record_ref()),
+            heap,
+        );
+    }
 
-    /// Push an environment onto the chain.
-    fn push_env(&mut self, env: Environment) {
-        self.tip = Some(Gc::new(EnvironmentNode {
+    fn push_env(&mut self, env: StoredEnvironment, heap: &RuntimeHeap) {
+        let node = EnvironmentNode {
             env,
-            parent: self.tip.take(),
-        }));
+            parent: self.tip.as_ref().map(Rooted::record_ref),
+        };
+        self.tip = Some(
+            heap.allocate(node)
+                .expect("new environment chain node belongs to the active runtime"),
+        );
         self.depth += 1;
     }
 
     /// Compute the `(poisoned, with)` flags for a new environment.
-    fn compute_poisoned_with(&self, global: &Gc<DeclarativeEnvironment>) -> (bool, bool) {
-        let with = if let Some(env) = self.last() {
-            env.as_declarative().is_none()
-        } else {
-            false
-        };
+    fn compute_poisoned_with(&self, global: &DeclarativeEnvironmentRef) -> (bool, bool) {
+        let with = self
+            .tip
+            .as_ref()
+            .is_some_and(|node| matches!(node.env, StoredEnvironment::Object(_)));
 
         let environment = self
             .iter_from_tip()
-            .find_map(|(env, _)| env.as_declarative())
-            .unwrap_or(global);
+            .find_map(|node| node.env.declarative())
+            .unwrap_or_else(|| global.clone());
         (environment.poisoned(), with || environment.with())
-    }
-}
-
-/// Iterator from tip (most recent) toward root (oldest).
-/// Yields `(&Environment, absolute_index)`.
-struct EnvironmentChainIter<'a> {
-    current: Option<&'a EnvironmentNode>,
-    index: u32,
-}
-
-impl<'a> Iterator for EnvironmentChainIter<'a> {
-    type Item = (&'a Environment, u32);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let node = self.current?;
-        self.index = self
-            .index
-            .checked_sub(1)
-            .expect("iterator advanced past root");
-        self.current = node.parent.as_deref();
-        Some((&node.env, self.index))
     }
 }
 
@@ -497,7 +526,6 @@ impl Context {
                     }
                 }
                 Environment::Object(o) => {
-                    let o = JsObject::from_inner(o.clone());
                     let key = locator.name().clone();
                     if o.has_property(key.clone(), self)? {
                         if let Some(unscopables) = o.get(JsSymbol::unscopables(), self)?.as_object()
@@ -575,7 +603,6 @@ impl Context {
                     }
                 }
                 Environment::Object(o) => {
-                    let o = JsObject::from_inner(o.clone());
                     let key = locator.name().clone();
                     if o.has_property(key.clone(), self)? {
                         if let Some(unscopables) = o.get(JsSymbol::unscopables(), self)?.as_object()
@@ -612,7 +639,6 @@ impl Context {
                 Environment::Declarative(env) => Ok(env.get(locator.binding_index()).is_some()),
                 Environment::Object(obj) => {
                     let key = locator.name().clone();
-                    let obj = JsObject::from_inner(obj.clone());
                     obj.has_property(key, self)
                 }
             },
@@ -658,7 +684,6 @@ impl Context {
                 Environment::Declarative(env) => Ok(env.get(locator.binding_index())),
                 Environment::Object(obj) => {
                     let key = locator.name().clone();
-                    let obj = JsObject::from_inner(obj.clone());
                     obj.get(key, self).map(Some)
                 }
             },
@@ -693,7 +718,6 @@ impl Context {
                 }
                 Environment::Object(obj) => {
                     let key = locator.name().clone();
-                    let obj = JsObject::from_inner(obj.clone());
                     obj.set(key, value, strict, self)?;
                 }
             },
@@ -720,7 +744,6 @@ impl Context {
                 Environment::Declarative(env) => Ok(env.delete_binding(locator.binding_index())),
                 Environment::Object(obj) => {
                     let key = locator.name().clone();
-                    let obj = JsObject::from_inner(obj.clone());
                     obj.__delete__(&key.into(), &mut self.into())
                 }
             },
@@ -732,7 +755,7 @@ impl Context {
     /// # Panics
     ///
     /// Panics if the `index` is out of range.
-    pub(crate) fn environment_expect(&self, index: u32) -> &Environment {
+    pub(crate) fn environment_expect(&self, index: u32) -> Environment {
         self.vm
             .frame()
             .environments

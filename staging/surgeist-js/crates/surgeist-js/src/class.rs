@@ -13,10 +13,9 @@
 //! #    JsArgs, Source, JsObject, js_str, js_string,
 //! #    JsNativeError, JsData,
 //! # };
-//! # use surgeist_js_gc::{Finalize, Trace};
 //! #
 //! // Can also be a struct containing `Trace` types.
-//! #[derive(Debug, Trace, Finalize, JsData)]
+//! #[derive(Debug, JsData, surgeist_js::gc::heap::Trace)]
 //! enum Animal {
 //!     Cat,
 //!     Dog,
@@ -115,6 +114,11 @@ use crate::{
 /// Native class.
 ///
 /// See the [module-level documentation][self] for more details.
+///
+/// The class implementation owns its payload's heap edges. Every mutation,
+/// including through interior mutability, must preserve the trace contract.
+/// Stored edges must belong to the instance's runtime and resolve to live
+/// records when installed. Keep any new targets rooted until publication.
 pub trait Class: NativeObject + Sized {
     /// The binding name of this class.
     const NAME: &'static str;
@@ -155,6 +159,7 @@ pub trait Class: NativeObject + Sized {
     /// - Throws an error if `new_target` is undefined.
     /// - Throws an error if this class is not registered in `new_target`'s realm.
     ///   See [`Context::register_global_class`].
+    /// - Throws a `TypeError` if the runtime rejects an edge in the native data.
     ///
     /// <div class="warning">
     /// Overriding this method could be useful for certain usages, but incorrectly implementing this
@@ -196,8 +201,7 @@ pub trait Class: NativeObject + Sized {
 
         let data = Self::data_constructor(new_target, args, context)?;
 
-        let object =
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, data);
+        let object = JsObject::new(context.root_shape(), prototype, data)?;
 
         Self::object_constructor(&object, args, context)?;
 
@@ -212,6 +216,7 @@ pub trait Class: NativeObject + Sized {
     /// # Errors
     /// - Throws an error if this class is not registered in the context's realm. See
     ///   [`Context::register_global_class`].
+    /// - Throws a `TypeError` if the runtime rejects an edge in the native data.
     ///
     /// <div class="warning">
     /// Overriding this method could be useful for certain usages, but incorrectly implementing this
@@ -228,12 +233,50 @@ pub trait Class: NativeObject + Sized {
             })?
             .prototype();
 
-        let object =
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), prototype, data);
+        let object = JsObject::new(context.root_shape(), prototype, data)?;
 
         Self::object_constructor(&object, &[], context)?;
 
         Ok(object.upcast())
+    }
+}
+
+/// Rooted constructor and prototype returned by a host class builder.
+#[derive(Debug, Clone)]
+pub struct ClassConstructor {
+    constructor: JsObject,
+    prototype: JsObject,
+}
+
+impl ClassConstructor {
+    pub(crate) fn new(constructor: JsObject, prototype: JsObject) -> Self {
+        Self {
+            constructor,
+            prototype,
+        }
+    }
+
+    /// Returns the constructor object.
+    #[must_use]
+    pub fn constructor(&self) -> JsObject {
+        self.constructor.clone()
+    }
+
+    /// Returns the prototype object.
+    #[must_use]
+    pub fn prototype(&self) -> JsObject {
+        self.prototype.clone()
+    }
+
+    pub(crate) fn stored(&self) -> StandardConstructor {
+        StandardConstructor::new(
+            crate::object::JsFunction::from_object_unchecked(self.constructor()),
+            self.prototype(),
+        )
+    }
+
+    pub(crate) fn from_stored(constructor: &StandardConstructor) -> Self {
+        Self::new(constructor.constructor(), constructor.prototype())
     }
 }
 
@@ -258,9 +301,8 @@ impl<'ctx> ClassBuilder<'ctx> {
         Self { builder }
     }
 
-    /// Create the [`StandardConstructor`] from this class builder.
-    #[must_use]
-    pub fn build(self) -> StandardConstructor {
+    /// Create the [`ClassConstructor`] from this class builder.
+    pub fn build(self) -> JsResult<ClassConstructor> {
         self.builder.build()
     }
 

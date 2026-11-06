@@ -3,13 +3,13 @@
 use std::any::Any;
 use std::{cell::Cell, path::Path, rc::Rc};
 
-use surgeist_js_ast::StatementList;
-use surgeist_js_interner::Interner;
-use surgeist_js_parser::source::ReadChar;
 pub use hooks::{DefaultHooks, HostHooks};
 #[cfg(feature = "intl")]
 pub use icu::IcuError;
 use intrinsics::Intrinsics;
+use surgeist_js_ast::StatementList;
+use surgeist_js_interner::Interner;
+use surgeist_js_parser::source::ReadChar;
 #[cfg(any(feature = "temporal", feature = "intl"))]
 use temporal_rs::provider::TimeZoneProvider;
 #[cfg(any(feature = "temporal", feature = "intl"))]
@@ -21,7 +21,7 @@ use crate::module::DynModuleLoader;
 use crate::vm::{CodeBlock, RuntimeLimits, create_function_object_fast};
 use crate::{
     HostDefined, JsNativeError, JsResult, JsString, JsValue, Source, builtins,
-    class::{Class, ClassBuilder},
+    class::{Class, ClassBuilder, ClassConstructor},
     job::{JobExecutor, SimpleJobExecutor},
     js_string,
     module::{IdleModuleLoader, ModuleLoader, SimpleModuleLoader},
@@ -34,8 +34,6 @@ use crate::{
     vm::{ActiveRunnable, CallFrame, Vm},
 };
 
-use self::intrinsics::StandardConstructor;
-
 pub mod time;
 use crate::context::time::StdClock;
 pub use time::Clock;
@@ -47,6 +45,33 @@ pub mod intrinsics;
 
 thread_local! {
     static CANNOT_BLOCK_COUNTER: Cell<u64> = const { Cell::new(0) };
+}
+
+struct ThreadBlocking(bool);
+
+impl ThreadBlocking {
+    fn acquire(can_block: bool) -> JsResult<Self> {
+        if can_block {
+            if CANNOT_BLOCK_COUNTER.get() > 0 {
+                return Err(JsNativeError::typ()
+                    .with_message(
+                        "a context that can block must be the only active context in its current thread",
+                    )
+                    .into());
+            }
+        } else {
+            CANNOT_BLOCK_COUNTER.set(CANNOT_BLOCK_COUNTER.get() + 1);
+        }
+        Ok(Self(can_block))
+    }
+}
+
+impl Drop for ThreadBlocking {
+    fn drop(&mut self) {
+        if !self.0 {
+            CANNOT_BLOCK_COUNTER.set(CANNOT_BLOCK_COUNTER.get() - 1);
+        }
+    }
 }
 
 /// ECMAScript context. It is the primary way to interact with the runtime.
@@ -83,7 +108,7 @@ thread_local! {
 /// // Create an object that can be used in eval calls.
 /// let arg = ObjectInitializer::new(&mut context)
 ///     .property(js_string!("x"), 12, Attribute::READONLY)
-///     .build();
+///     .build().unwrap();
 /// context
 ///     .register_global_property(js_string!("arg"), arg, Attribute::all())
 ///     .expect("property shouldn't exist");
@@ -107,7 +132,7 @@ pub struct Context {
 
     pub(crate) kept_alive: Vec<JsObject>,
 
-    can_block: bool,
+    thread_blocking: ThreadBlocking,
 
     #[cfg(any(feature = "temporal", feature = "intl"))]
     timezone_provider: Box<dyn TimeZoneProvider>,
@@ -156,14 +181,6 @@ impl std::fmt::Debug for Context {
         debug.field("timezone_provider", &"TimeZoneProvider");
 
         debug.finish_non_exhaustive()
-    }
-}
-
-impl Drop for Context {
-    fn drop(&mut self) {
-        if !self.can_block {
-            CANNOT_BLOCK_COUNTER.set(CANNOT_BLOCK_COUNTER.get() - 1);
-        }
     }
 }
 
@@ -240,7 +257,7 @@ impl Context {
     /// let object = ObjectInitializer::new(&mut context)
     ///     .property(js_string!("x"), 0, Attribute::all())
     ///     .property(js_string!("y"), 1, Attribute::all())
-    ///     .build();
+    ///     .build().unwrap();
     /// context
     ///     .register_global_property(
     ///         js_string!("myObjectProperty"),
@@ -293,7 +310,7 @@ impl Context {
             .name(name.clone())
             .length(length)
             .constructor(true)
-            .build();
+            .build()?;
 
         self.global_object().define_property_or_throw(
             name,
@@ -326,7 +343,7 @@ impl Context {
             .name(name.clone())
             .length(length)
             .constructor(false)
-            .build();
+            .build()?;
 
         self.global_object().define_property_or_throw(
             name,
@@ -346,7 +363,7 @@ impl Context {
     ///
     /// # Example
     /// ```ignore
-    /// #[derive(Debug, Trace, Finalize)]
+    /// #[derive(Debug)]
     /// struct MyClass;
     ///
     /// impl Class for MyClass {
@@ -365,7 +382,7 @@ impl Context {
         let mut class_builder = ClassBuilder::new::<C>(self);
         C::init(&mut class_builder)?;
 
-        let class = class_builder.build();
+        let class = class_builder.build()?;
         let property = PropertyDescriptor::builder()
             .value(class.constructor())
             .writable(C::ATTRIBUTES.writable())
@@ -374,7 +391,7 @@ impl Context {
 
         self.global_object()
             .define_property_or_throw(js_string!(C::NAME), property, self)?;
-        self.realm().register_class::<C>(class);
+        self.realm().register_class::<C>(class)?;
 
         Ok(())
     }
@@ -391,7 +408,7 @@ impl Context {
     ///
     /// # Example
     /// ```ignore
-    /// #[derive(Debug, Trace, Finalize)]
+    /// #[derive(Debug)]
     /// struct MyClass;
     ///
     /// impl Class for MyClass {
@@ -402,7 +419,7 @@ impl Context {
     /// // ... code
     /// context.unregister_global_class::<MyClass>()?;
     /// ```
-    pub fn unregister_global_class<C: Class>(&mut self) -> JsResult<Option<StandardConstructor>> {
+    pub fn unregister_global_class<C: Class>(&mut self) -> JsResult<Option<ClassConstructor>> {
         self.global_object()
             .delete_property_or_throw(js_string!(C::NAME), self)?;
         Ok(self.realm().unregister_class::<C>())
@@ -417,7 +434,7 @@ impl Context {
     /// Gets the constructor and prototype of the global class `C` if the currently active realm has
     /// that class registered.
     #[must_use]
-    pub fn get_global_class<C: Class>(&self) -> Option<StandardConstructor> {
+    pub fn get_global_class<C: Class>(&self) -> Option<ClassConstructor> {
         self.realm().get_class::<C>()
     }
 
@@ -523,21 +540,33 @@ impl Context {
         self.vm.frames.iter().skip(1).rev()
     }
 
-    /// Replaces the currently active realm with `realm`, and returns the old realm.
+    /// Replaces the active realm with a realm from the same runtime.
+    /// Returns the previous realm on success.
     #[inline]
-    pub fn enter_realm(&mut self, realm: Realm) -> Realm {
-        std::mem::replace(&mut self.vm.frame_mut().realm, realm)
+    pub fn enter_realm(&mut self, realm: Realm) -> JsResult<Realm> {
+        if !self.runtime().same_heap(&realm.runtime()) {
+            return Err(JsNativeError::typ()
+                .with_message("realm belongs to a different runtime")
+                .into());
+        }
+        Ok(std::mem::replace(&mut self.vm.frame_mut().realm, realm))
     }
 
     /// Create a new Realm with the default global bindings.
     pub fn create_realm(&mut self) -> JsResult<Realm> {
         let realm = Realm::create(self.host_hooks.as_ref(), &self.root_shape)?;
 
-        let old_realm = self.enter_realm(realm);
+        let old_realm = self.enter_realm(realm)?;
+        let bindings = builtins::set_default_global_bindings(self);
+        let realm = self.enter_realm(old_realm)?;
+        bindings?;
+        Ok(realm)
+    }
 
-        builtins::set_default_global_bindings(self)?;
-
-        Ok(self.enter_realm(old_realm))
+    /// Returns the runtime shared by this context and its realms.
+    #[must_use]
+    pub const fn runtime(&self) -> &crate::Runtime {
+        self.root_shape.runtime()
     }
 
     /// Get the [`RootShape`].
@@ -599,7 +628,7 @@ impl Context {
     #[inline]
     #[must_use]
     pub fn can_block(&self) -> bool {
-        self.can_block
+        self.thread_blocking.0
     }
 
     /// Gets a mutable reference to the inner [`HostDefined`] field.
@@ -1006,6 +1035,7 @@ impl Context {
 /// the context.
 #[derive(Default)]
 pub struct ContextBuilder {
+    runtime: Option<crate::Runtime>,
     interner: Option<Interner>,
     host_hooks: Option<Rc<dyn HostHooks>>,
     clock: Option<Rc<dyn Clock>>,
@@ -1068,6 +1098,13 @@ impl ContextBuilder {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Builds the context on an existing runtime.
+    #[must_use]
+    pub fn runtime(mut self, runtime: crate::Runtime) -> Self {
+        self.runtime = Some(runtime);
+        self
     }
 
     /// Initializes the context [`Interner`] to the provided interner.
@@ -1193,19 +1230,8 @@ impl ContextBuilder {
     // TODO: try to use a custom error here, since most of the `JsError` APIs
     // require having a `Context` in the first place.
     pub fn build(self) -> JsResult<Context> {
-        if self.can_block {
-            if CANNOT_BLOCK_COUNTER.get() > 0 {
-                return Err(JsNativeError::typ()
-                    .with_message(
-                        "a context that can block must be the only active context in its current thread",
-                    )
-                    .into());
-            }
-        } else {
-            CANNOT_BLOCK_COUNTER.set(CANNOT_BLOCK_COUNTER.get() + 1);
-        }
-
-        let root_shape = RootShape::default();
+        let thread_blocking = ThreadBlocking::acquire(self.can_block)?;
+        let root_shape = RootShape::new(self.runtime.unwrap_or_default());
 
         let host_hooks = self.host_hooks.unwrap_or(Rc::new(DefaultHooks));
         let clock = self.clock.unwrap_or_else(|| Rc::new(StdClock::new()));
@@ -1259,7 +1285,7 @@ impl ContextBuilder {
             optimizer_options: OptimizerOptions::OPTIMIZE_ALL,
             root_shape,
             parser_identifier: 0,
-            can_block: self.can_block,
+            thread_blocking,
             data: HostDefined::default(),
         };
 
@@ -1320,5 +1346,128 @@ where
         if let Some(cleanup) = self.cleanup.take() {
             cleanup(self.context);
         }
+    }
+}
+
+#[cfg(test)]
+mod runtime_tests {
+    use super::*;
+
+    struct ForeignHookError(crate::JsError);
+
+    impl HostHooks for ForeignHookError {
+        fn ensure_can_compile_strings(
+            &self,
+            _: Realm,
+            _: &[JsString],
+            _: &JsString,
+            _: bool,
+            _: &mut Context,
+        ) -> JsResult<()> {
+            Err(self.0.clone())
+        }
+
+        fn ensure_can_add_private_element(&self, _: &JsObject, _: &mut Context) -> JsResult<()> {
+            Err(self.0.clone())
+        }
+    }
+
+    #[test]
+    fn materialization_foreign_host_hook_errors_are_local_type_errors() {
+        let foreign = Context::default();
+        let foreign_error = crate::JsError::from_opaque(foreign.global_object().into());
+        let nested = JsNativeError::error()
+            .with_cause(foreign_error.clone())
+            .into();
+        for error in [foreign_error, nested] {
+            let mut context = Context::builder()
+                .host_hooks(Rc::new(ForeignHookError(error)))
+                .build()
+                .unwrap();
+            for source in [
+                "try { eval('0'); } catch (error) { error instanceof TypeError; }",
+                "try { new Function('0'); } catch (error) { error instanceof TypeError; }",
+                "try { new class { #field = 0; }; } catch (error) { error instanceof TypeError; }",
+            ] {
+                let result = context.eval(Source::from_bytes(source)).unwrap();
+                assert_eq!(result.as_boolean(), Some(true), "{source}");
+                context.runtime().collect().unwrap();
+            }
+        }
+    }
+
+    struct ReentrantGlobal;
+
+    impl HostHooks for ReentrantGlobal {
+        fn create_global_object(&self, intrinsics: &intrinsics::Intrinsics) -> JsObject {
+            let runtime = intrinsics.runtime();
+            let nested = Context::builder()
+                .runtime(runtime.clone())
+                .build()
+                .expect("nested context on the same runtime");
+            assert!(nested.runtime().same_heap(&runtime));
+            assert!(
+                intrinsics
+                    .constructors()
+                    .object()
+                    .prototype()
+                    .runtime()
+                    .same_heap(&runtime)
+            );
+            nested.global_object()
+        }
+    }
+
+    #[test]
+    fn realm_host_hook_can_reenter_the_same_runtime() {
+        let runtime = crate::Runtime::default();
+        runtime
+            .heap
+            .set_allocation_collection(surgeist_js_gc::heap::AllocationCollection::Opportunistic(
+                std::num::NonZeroUsize::MIN,
+            ))
+            .unwrap();
+        let outer = Context::builder()
+            .runtime(runtime.clone())
+            .host_hooks(Rc::new(ReentrantGlobal))
+            .build()
+            .expect("outer realm accepts a same-runtime global");
+        assert!(outer.global_object().runtime().same_heap(&runtime));
+    }
+
+    #[test]
+    fn entering_a_foreign_realm_leaves_the_active_realm_unchanged() {
+        let mut local = Context::default();
+        let foreign = Context::default();
+        let previous = local.realm().clone();
+        let error = local.enter_realm(foreign.realm().clone()).unwrap_err();
+        assert!(
+            error
+                .as_native()
+                .is_some_and(|error| error.kind() == &crate::JsNativeErrorKind::Type)
+        );
+        assert_eq!(local.realm(), &previous);
+    }
+
+    struct ForeignGlobal;
+
+    impl HostHooks for ForeignGlobal {
+        fn create_global_object(&self, _: &intrinsics::Intrinsics) -> JsObject {
+            JsObject::with_null_proto(&crate::Runtime::default())
+        }
+    }
+
+    #[test]
+    fn realm_rejects_a_foreign_host_global_and_releases_its_thread_guard() {
+        let error = Context::builder()
+            .host_hooks(Rc::new(ForeignGlobal))
+            .build()
+            .expect_err("a different runtime cannot supply the global object");
+        assert!(
+            error
+                .as_native()
+                .is_some_and(|error| error.kind() == &crate::JsNativeErrorKind::Type)
+        );
+        assert!(Context::builder().can_block(true).build().is_ok());
     }
 }

@@ -2,8 +2,8 @@ use std::{
     cell::{Ref, RefMut},
     ops::Deref,
 };
-use surgeist_js::value::TryFromJs;
 use surgeist_js::{Context, JsNativeError, JsObject, JsResult, JsValue, NativeObject};
+use surgeist_js::{class::Class, value::TryFromJs};
 
 /// Create a Rust value from a JS argument. This trait is used to
 /// convert arguments from JS to Rust types. It allows support
@@ -262,13 +262,28 @@ impl<T: NativeObject> JsClass<T> {
         self.inner.borrow_data()
     }
 
-    /// Borrow a mutable reference to the class instance of type `T`.
+    /// Mutably borrows the payload of a host-defined class.
+    ///
+    /// The caller must preserve the heap edges described by [`Class`].
     ///
     /// # Panics
     ///
-    /// Panics if the object is currently mutably borrowed.
+    /// Panics if the object is currently borrowed.
+    ///
+    /// ```compile_fail
+    /// use surgeist_js::{Context, JsValue, builtins::array_buffer::ArrayBuffer};
+    /// use surgeist_js::interop::{JsClass, TryFromJsArgument};
+    /// use surgeist_js::object::builtins::JsArrayBuffer;
+    /// let mut context = Context::default();
+    /// let this = JsValue::from(JsArrayBuffer::new(8, &mut context).unwrap());
+    /// let (class, _) = JsClass::<ArrayBuffer>::try_from_js_argument(&this, &[], &mut context).unwrap();
+    /// let _ = class.borrow_mut();
+    /// ```
     #[must_use]
-    pub fn borrow_mut(&self) -> RefMut<'_, T> {
+    pub fn borrow_mut(&self) -> RefMut<'_, T>
+    where
+        T: Class,
+    {
         self.inner.borrow_data_mut()
     }
 }
@@ -310,12 +325,11 @@ impl<'a, T: NativeObject + 'static> TryFromJsArgument<'a> for JsClass<T> {
 ///
 /// For example,
 /// ```
-/// # use surgeist_js::{Context, Finalize, JsData, JsValue, Trace, IntoJsFunction};
+/// # use surgeist_js::{Context, IntoJsFunction, JsData, JsValue};
 /// # use surgeist_js::interop::ContextData;
 ///
-/// #[derive(Clone, Debug, Finalize, JsData, Trace)]
+/// #[derive(Clone, Debug, JsData, surgeist_js::gc::heap::Trace)]
 /// struct CustomHostDefinedStruct {
-///     #[unsafe_ignore_trace]
 ///     pub counter: usize,
 /// }
 /// let mut context = Context::default();

@@ -8,7 +8,9 @@ use std::{collections::hash_map::RandomState, hash::Hash};
 
 use bitflags::bitflags;
 use indexmap::IndexMap;
-use surgeist_js_gc::{Finalize, Gc, Trace, WeakGc, empty_trace};
+use surgeist_js_gc::heap::{
+    AccessError, ObjectId, RecordRef, Rooted, RuntimeHeap, Trace as HeapTrace,
+};
 
 use crate::{
     JsObject,
@@ -24,16 +26,10 @@ use super::{
 };
 
 /// Represent a [`SharedShape`] property transition.
-#[derive(Debug, Finalize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct TransitionKey {
     pub(crate) property_key: PropertyKey,
     pub(crate) attributes: SlotAttributes,
-}
-
-// SAFETY: Non of the member of this struct are garbage collected,
-//         so this should be fine.
-unsafe impl Trace for TransitionKey {
-    empty_trace!();
 }
 
 const INSERT_PROPERTY_TRANSITION_TYPE: u8 = 0b0000_0000;
@@ -46,7 +42,7 @@ const RESERVED_TRANSITION_TYPE: u8 = 0b0000_0011;
 
 bitflags! {
     /// Flags of a shape.
-    #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Finalize)]
+    #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
     pub struct ShapeFlags: u8 {
         /// Represents the transition type of a [`SharedShape`].
         const TRANSITION_TYPE = 0b0000_0011;
@@ -76,19 +72,15 @@ impl ShapeFlags {
     }
 }
 
-// SAFETY: Non of the member of this struct are garbage collected,
-//         so this should be fine.
-unsafe impl Trace for ShapeFlags {
-    empty_trace!();
-}
-
 /// The internal representation of a [`SharedShape`].
-#[derive(Debug, Trace, Finalize)]
+#[derive(Debug, HeapTrace)]
 struct Inner {
     /// See [`ForwardTransition`].
+    #[heap_trace(skip)]
     forward_transitions: ForwardTransition,
 
     /// The count of how many properties this [`SharedShape`] holds.
+    #[heap_trace(skip)]
     property_count: u32,
 
     /// Instance prototype `__proto__`.
@@ -96,25 +88,27 @@ struct Inner {
 
     // SAFETY: This is safe because nothing in [`PropertyTable`]
     //         needs tracing
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     property_table: PropertyTable,
 
     /// The previous shape in the transition chain.
     ///
     /// [`None`] if it is the root shape.
-    previous: Option<SharedShape>,
+    previous: Option<RecordRef<Inner>>,
 
     /// How many transitions have happened from the root node.
+    #[heap_trace(skip)]
     transition_count: u16,
 
     /// Flags about the shape.
+    #[heap_trace(skip)]
     flags: ShapeFlags,
 }
 
 /// Represents a shared object shape.
-#[derive(Debug, Trace, Finalize, Clone)]
+#[derive(Debug, Clone)]
 pub struct SharedShape {
-    inner: Gc<Inner>,
+    inner: Rooted<Inner>,
 }
 
 impl SharedShape {
@@ -136,8 +130,13 @@ impl SharedShape {
     }
     /// Getter for the previous field.
     #[must_use]
-    pub fn previous(&self) -> Option<&Self> {
-        self.inner.previous.as_ref()
+    pub fn previous(&self) -> Option<Self> {
+        self.inner.previous.as_ref().map(|previous| Self {
+            inner: previous
+                .upgrade()
+                .expect("shape predecessor heap is available")
+                .expect("live shape retains its predecessor"),
+        })
     }
     /// Get the prototype of the shape.
     #[must_use]
@@ -167,59 +166,73 @@ impl SharedShape {
         self.inner
             .prototype
             .as_ref()
-            .is_some_and(|edge| Gc::ptr_eq(edge, prototype.inner()))
+            .is_some_and(|edge| edge.identity() == prototype.identity())
     }
 
     /// Create a new [`SharedShape`].
-    fn new(inner: Inner) -> Self {
-        Self {
-            inner: Gc::new(inner),
-        }
+    fn new(heap: &RuntimeHeap, inner: Inner) -> Self {
+        Self::try_new(heap, inner).expect("shape has valid heap edges")
+    }
+
+    fn try_new(heap: &RuntimeHeap, inner: Inner) -> Result<Self, AccessError> {
+        let inner = heap.allocate(inner).map_err(|rejected| rejected.reason)?;
+        Ok(Self { inner })
     }
 
     /// Create a root [`SharedShape`].
     #[must_use]
-    pub(crate) fn root() -> Self {
-        Self::new(Inner {
-            forward_transitions: ForwardTransition::default(),
-            prototype: None,
-            property_count: 0,
-            // Most of the time the root shape initiates with between 1-4 properties.
-            property_table: PropertyTable::with_capacity(4),
-            previous: None,
-            flags: ShapeFlags::default(),
-            transition_count: 0,
-        })
+    pub(crate) fn root(heap: &RuntimeHeap) -> Self {
+        Self::new(
+            heap,
+            Inner {
+                forward_transitions: ForwardTransition::default(),
+                prototype: None,
+                property_count: 0,
+                // Most of the time the root shape initiates with between 1-4 properties.
+                property_table: PropertyTable::with_capacity(4),
+                previous: None,
+                flags: ShapeFlags::default(),
+                transition_count: 0,
+            },
+        )
     }
 
     /// Create a [`SharedShape`] change prototype transition.
     pub(crate) fn change_prototype_transition(&self, prototype: JsPrototype) -> Self {
+        self.try_change_prototype_transition(prototype)
+            .expect("shape transition has valid heap edges")
+    }
+
+    pub(crate) fn try_change_prototype_transition(
+        &self,
+        prototype: JsPrototype,
+    ) -> Result<Self, AccessError> {
         let key = prototype.as_ref().map(JsObject::identity);
-        if let Some(inner) = self.forward_transitions().get_prototype(key) {
-            return Self { inner };
+        if let Some(inner) = self.forward_transitions().get_prototype(key)? {
+            return Ok(Self { inner });
         }
         let new_inner_shape = Inner {
             forward_transitions: ForwardTransition::default(),
             prototype: prototype.map(JsObject::into_record),
             property_table: self.property_table().clone(),
             property_count: self.property_count(),
-            previous: Some(self.clone()),
+            previous: Some(self.inner.record_ref()),
             transition_count: self.transition_count() + 1,
             flags: ShapeFlags::prototype_transition_from(self.flags()),
         };
-        let new_shape = Self::new(new_inner_shape);
+        let new_shape = Self::try_new(self.inner.runtime(), new_inner_shape)?;
 
         self.forward_transitions()
             .insert_prototype(key, &new_shape.inner);
 
-        new_shape
+        Ok(new_shape)
     }
 
     /// Create a [`SharedShape`] insert property transition.
     pub(crate) fn insert_property_transition(&self, key: TransitionKey) -> Self {
         // Check if we have already created such a transition, if so use it!
         if let Some(shape) = self.forward_transitions().get_property(&key) {
-            if let Some(inner) = shape.upgrade() {
+            if let Some(inner) = shape.upgrade().expect("shape heap is available") {
                 return Self { inner };
             }
 
@@ -236,11 +249,11 @@ impl SharedShape {
             forward_transitions: ForwardTransition::default(),
             property_table,
             property_count: self.property_count() + 1,
-            previous: Some(self.clone()),
+            previous: Some(self.inner.record_ref()),
             transition_count: self.transition_count() + 1,
             flags: ShapeFlags::insert_property_transition_from(self.flags()),
         };
-        let new_shape = Self::new(new_inner_shape);
+        let new_shape = Self::new(self.inner.runtime(), new_inner_shape);
 
         self.forward_transitions()
             .insert_property(key, &new_shape.inner);
@@ -257,7 +270,7 @@ impl SharedShape {
 
         // Check if we have already created such a transition, if so use it!
         if let Some(shape) = self.forward_transitions().get_property(&key) {
-            if let Some(inner) = shape.upgrade() {
+            if let Some(inner) = shape.upgrade().expect("shape heap is available") {
                 let action = if slot.attributes.width_match(key.attributes) {
                     ChangeTransitionAction::Nothing
                 } else if slot.attributes.is_accessor_descriptor() {
@@ -286,11 +299,11 @@ impl SharedShape {
                 prototype: self.inner.prototype.clone(),
                 property_table,
                 property_count: self.property_count(),
-                previous: Some(self.clone()),
+                previous: Some(self.inner.record_ref()),
                 transition_count: self.transition_count() + 1,
                 flags: ShapeFlags::configure_property_transition_from(self.flags()),
             };
-            let shape = Self::new(inner_shape);
+            let shape = Self::new(self.inner.runtime(), inner_shape);
 
             self.forward_transitions()
                 .insert_property(key, &shape.inner);
@@ -372,7 +385,7 @@ impl SharedShape {
         let mut transitions: IndexMap<PropertyKey, SlotAttributes, RandomState> =
             IndexMap::default();
 
-        let mut current = Some(self);
+        let mut current = Some(self.clone());
         let base = loop {
             let Some(current_shape) = current else {
                 unreachable!("The chain should have insert transition type!")
@@ -393,10 +406,10 @@ impl SharedShape {
 
             if current_shape.flags().is_insert_transition_type() && &current_property_key == key {
                 let base = if let Some(base) = current_shape.previous() {
-                    base.clone()
+                    base
                 } else {
                     // It's the root, because it doesn't have previous.
-                    current_shape.clone()
+                    current_shape
                 };
                 break base;
             }
@@ -462,6 +475,7 @@ impl SharedShape {
     /// Returns a new [`UniqueShape`] with the properties of the [`SharedShape`].
     pub(crate) fn to_unique(&self) -> UniqueShape {
         UniqueShape::new(
+            self.inner.runtime(),
             self.prototype(),
             self.property_table()
                 .inner()
@@ -470,35 +484,37 @@ impl SharedShape {
         )
     }
 
-    /// Return location in memory of the [`SharedShape`].
-    pub(crate) fn to_addr_usize(&self) -> usize {
-        let ptr: *const _ = self.inner.as_ref();
-        ptr as usize
+    pub(crate) const fn heap(&self) -> &RuntimeHeap {
+        self.inner.runtime()
+    }
+
+    pub(crate) const fn identity(&self) -> ObjectId {
+        self.inner.handle().erase()
     }
 }
 
-/// Represents a weak reference to [`SharedShape`].
-#[derive(Debug, Trace, Finalize, Clone, PartialEq)]
-pub(crate) struct WeakSharedShape {
-    inner: WeakGc<Inner>,
+/// Non-owning identity of a [`SharedShape`].
+#[derive(Debug, Clone, PartialEq, HeapTrace)]
+pub(crate) struct SharedShapeRef {
+    inner: RecordRef<Inner>,
 }
 
-impl WeakSharedShape {
+impl SharedShapeRef {
     /// Upgrade returns a [`SharedShape`] pointer for the internal value if the pointer is still live,
     /// or [`None`] if the value was already garbage collected.
     #[inline]
     #[must_use]
     pub(crate) fn upgrade(&self) -> Option<SharedShape> {
         Some(SharedShape {
-            inner: self.inner.upgrade()?,
+            inner: self.inner.upgrade().expect("shape heap is available")?,
         })
     }
 }
 
-impl From<&SharedShape> for WeakSharedShape {
+impl From<&SharedShape> for SharedShapeRef {
     fn from(value: &SharedShape) -> Self {
-        WeakSharedShape {
-            inner: WeakGc::new(&value.inner),
+        SharedShapeRef {
+            inner: value.inner.record_ref(),
         }
     }
 }

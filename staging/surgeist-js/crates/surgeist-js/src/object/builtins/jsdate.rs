@@ -3,7 +3,6 @@
 use crate::{
     Context, JsNativeError, JsResult, JsValue, builtins::Date, object::JsObject, value::TryFromJs,
 };
-use surgeist_js_gc::{Finalize, Trace};
 use std::ops::Deref;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
@@ -34,7 +33,7 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 ///     Ok(())
 /// }
 /// ```
-#[derive(Debug, Clone, Trace, Finalize)]
+#[derive(Debug, Clone)]
 pub struct JsDate {
     inner: JsObject,
 }

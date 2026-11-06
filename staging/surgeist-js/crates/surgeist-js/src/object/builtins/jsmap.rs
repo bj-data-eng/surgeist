@@ -12,7 +12,6 @@ use crate::{
     value::TryFromJs,
 };
 
-use surgeist_js_gc::{Finalize, Trace};
 use std::ops::Deref;
 
 /// `JsMap` provides a wrapper for Boa's implementation of the ECMAScript `Map` object.
@@ -61,7 +60,7 @@ use std::ops::Deref;
 /// ];
 ///
 /// // We create an push our `[key, value]` pair onto our array as a `JsArray`
-/// js_array.push(JsArray::from_iter(vec_one, context), context)?;
+/// js_array.push(JsArray::from_iter(vec_one, context)?, context)?;
 ///
 /// // Create a `JsMap` from the `JsArray` using it's iterable property.
 /// let js_iterable_map = JsMap::from_js_iterable(&js_array.into(), context)?;
@@ -74,7 +73,7 @@ use std::ops::Deref;
 /// # Ok(())
 /// }
 /// ```
-#[derive(Debug, Clone, Trace, Finalize)]
+#[derive(Debug, Clone)]
 pub struct JsMap {
     inner: JsObject,
 }
@@ -115,7 +114,7 @@ impl JsMap {
     ///
     /// // Create a `[key, value]` pair of JsValues and add it to the `JsArray` as a `JsArray`
     /// let vec_one: Vec<JsValue> = vec![js_string!("first-key").into(), js_string!("first-value").into()];
-    /// js_array.push(JsArray::from_iter(vec_one, context), context)?;
+    /// js_array.push(JsArray::from_iter(vec_one, context)?, context)?;
     ///
     /// // Create a `JsMap` from the `JsArray` using it's iterable property.
     /// let js_iterable_map = JsMap::from_js_iterable(&js_array.into(), context)?;
@@ -146,20 +145,10 @@ impl JsMap {
     ///
     /// ### Valid Example - returns a `JsMap` object
     /// ```
-    /// # use surgeist_js::{
-    /// #    builtins::map::ordered_map::OrderedMap,
-    /// #    object::{builtins::JsMap, JsObject},
-    /// #    Context, JsValue, JsResult,
-    /// # };
+    /// # use surgeist_js::{object::builtins::JsMap, Context, JsObject, JsResult};
     /// # fn main() -> JsResult<()> {
     /// # let context = &mut Context::default();
-    /// // `some_object` can be any JavaScript `Map` object.
-    /// let some_object = JsObject::from_proto_and_data(
-    ///     context.intrinsics().constructors().map().prototype(),
-    ///     OrderedMap::<JsValue>::new(),
-    /// );
-    ///
-    /// // Create `JsMap` object with incoming object.
+    /// let some_object = JsObject::from(JsMap::new(context));
     /// let js_map = JsMap::from_object(some_object)?;
     /// # Ok(())
     /// # }
@@ -182,7 +171,7 @@ impl JsMap {
     /// ```
     #[inline]
     pub fn from_object(object: JsObject) -> JsResult<Self> {
-        if object.is::<OrderedMap<JsValue>>() {
+        if object.is::<OrderedMap>() {
             Ok(Self { inner: object })
         } else {
             Err(JsNativeError::typ()
@@ -200,7 +189,7 @@ impl JsMap {
         JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
             prototype,
-            <OrderedMap<JsValue>>::new(),
+            OrderedMap::new(),
         )
         .upcast()
     }

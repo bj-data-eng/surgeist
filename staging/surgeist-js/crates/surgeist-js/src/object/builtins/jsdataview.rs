@@ -6,7 +6,6 @@ use crate::{
     value::TryFromJs,
 };
 
-use surgeist_js_gc::{Finalize, Trace};
 use std::ops::Deref;
 
 /// `JsDataView` provides a wrapper for Boa's implementation of the ECMAScript `DataView` object
@@ -29,8 +28,7 @@ use std::ops::Deref;
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Debug, Clone, Trace, Finalize)]
-#[surgeist_js_gc(unsafe_no_drop)]
+#[derive(Debug, Clone)]
 pub struct JsDataView {
     inner: JsObject<DataView>,
 }
@@ -134,18 +132,15 @@ impl JsDataView {
                 .into());
         }
 
+        // 15. Set O.[[ViewedArrayBuffer]] to buffer.
+        // 16. Set O.[[ByteLength]] to viewByteLength.
+        // 17. Set O.[[ByteOffset]] to offset.
+        let buffer = BufferObject::Buffer(buffer.into());
         let obj = JsObject::new(
             context.root_shape(),
             prototype,
-            DataView {
-                // 15. Set O.[[ViewedArrayBuffer]] to buffer.
-                viewed_array_buffer: BufferObject::Buffer(buffer.into()),
-                // 16. Set O.[[ByteLength]] to viewByteLength.
-                byte_length: view_byte_len,
-                // 17. Set O.[[ByteOffset]] to offset.
-                byte_offset: offset,
-            },
-        );
+            DataView::new(&buffer, view_byte_len, offset),
+        )?;
 
         // 18. Return O.
         Ok(Self { inner: obj })

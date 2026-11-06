@@ -10,23 +10,12 @@ repository.workspace = true
 rust-version.workspace = true
 
 [features]
-# Enable default implementations of trace and finalize for the thin-vec crate
 thin-vec = ["dep:thin-vec"]
-# Enable default implementations of trace and finalize for some `ICU4X` types
 icu = ["dep:icu_locale_core"]
-# Enable default implementations of trace and finalize for the `surgeist-js-string` crate
 surgeist-js-string = ["dep:surgeist-js-string"]
-# Enable default implementations of trace and finalize for the `either` crate
-either = ["dep:either"]
-# Enable default implementations of trace and finalize for the arrayvec crate
-arrayvec = ["dep:arrayvec"]
 
 [dependencies]
 surgeist-js-macros.workspace = true
-hashbrown.workspace = true
-
 surgeist-js-string = { workspace = true, optional = true }
-either = { workspace = true, optional = true }
 thin-vec = { workspace = true, optional = true }
 icu_locale_core = { workspace = true, optional = true }
-arrayvec = { workspace = true, optional = true }

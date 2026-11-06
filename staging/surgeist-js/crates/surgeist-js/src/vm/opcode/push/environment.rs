@@ -4,7 +4,7 @@ use crate::{
     environments::PrivateEnvironment,
     vm::opcode::{IndexOperand, Operation, RegisterOperand},
 };
-use surgeist_js_gc::Gc;
+use std::rc::Rc;
 use thin_vec::ThinVec;
 
 /// `PushScope` implements the Opcode Operation for `Opcode::PushScope`
@@ -22,7 +22,7 @@ impl PushScope {
         let global = frame.realm.environment();
         frame
             .environments
-            .push_lexical(scope.num_bindings_non_local(), global);
+            .push_lexical(scope.num_bindings_non_local(), &global);
     }
 }
 
@@ -44,7 +44,12 @@ impl PushObjectEnvironment {
     pub(crate) fn operation(value: RegisterOperand, context: &mut Context) -> JsResult<()> {
         let object = context.vm.get_register(value.into()).clone();
         let object = object.to_object(context)?;
-        context.vm.frame_mut().environments.push_object(object);
+        let heap = context.runtime().heap.clone();
+        context
+            .vm
+            .frame_mut()
+            .environments
+            .push_object(object, &heap);
         Ok(())
     }
 }
@@ -80,7 +85,7 @@ impl PushPrivateEnvironment {
             names.push(name);
         }
 
-        let environment = Gc::new(PrivateEnvironment::new(class.identity(), names));
+        let environment = Rc::new(PrivateEnvironment::new(class.identity(), names));
 
         class
             .downcast_mut::<OrdinaryFunction>()

@@ -305,6 +305,65 @@ fn sort_negative_zero() {
 }
 
 #[test]
+fn backing_buffer_remains_live_only_while_its_view_is_live() {
+    use crate::{Context, JsValue, Source, js_string};
+
+    for backing_source in ["new ArrayBuffer(1)", "new SharedArrayBuffer(1)"] {
+        for (view_name, access_source) in [
+            (
+                js_string!("DataView"),
+                "view => { view.setUint8(0, 173); return view.getUint8(0); }",
+            ),
+            (
+                js_string!("Uint8Array"),
+                "view => { view[0] = 173; return view[0]; }",
+            ),
+        ] {
+            let context = &mut Context::default();
+            let backing = context
+                .eval(Source::from_bytes(backing_source))
+                .unwrap()
+                .as_object()
+                .unwrap();
+            let backing_edge = backing.edge();
+            let constructor = context
+                .global_object()
+                .get(view_name, context)
+                .unwrap()
+                .as_object()
+                .unwrap();
+            let view = constructor
+                .construct(&[backing.into()], None, context)
+                .unwrap();
+
+            context.runtime().collect().unwrap();
+            assert!(backing_edge.is_live().unwrap());
+            {
+                let backing = view
+                    .get(js_string!("buffer"), context)
+                    .unwrap()
+                    .as_object()
+                    .unwrap();
+                assert_eq!(backing.edge().identity(), backing_edge.identity());
+            }
+
+            let access = context
+                .eval(Source::from_bytes(access_source))
+                .unwrap()
+                .as_object()
+                .unwrap();
+            let result = access
+                .call(&JsValue::undefined(), &[view.into()], context)
+                .unwrap();
+            assert_eq!(result.as_number(), Some(173.0));
+
+            context.runtime().collect().unwrap();
+            assert!(!backing_edge.is_live().unwrap());
+        }
+    }
+}
+
+#[test]
 fn shared_byte_access_preserves_unaligned_views_and_logical_growth() {
     run_test_actions([
         TestAction::run(

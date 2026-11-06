@@ -16,8 +16,7 @@ use crate::{
     vm::shadow_stack::ErrorStack,
 };
 use shadow_stack::ShadowStack;
-use std::{future::Future, ops::ControlFlow, path::Path, pin::Pin, task};
-use surgeist_js_gc::{Finalize, Gc, Trace, custom_trace};
+use std::{future::Future, ops::ControlFlow, path::Path, pin::Pin, rc::Rc, task};
 
 #[cfg(feature = "trace")]
 use crate::sys::time::Instant;
@@ -43,9 +42,9 @@ pub use {
 
 pub(crate) use code_block::GlobalFunctionBinding;
 
-mod call_frame;
+pub(crate) mod call_frame;
 mod code_block;
-mod completion_record;
+pub(crate) mod completion_record;
 mod inline_cache;
 mod runtime_limits;
 
@@ -120,12 +119,37 @@ pub struct Vm {
 ///           ▲                                  ▲
 ///           └─ fp                              └─ rp
 /// ```
-#[derive(Clone, Debug, Trace, Finalize)]
+#[derive(Clone, Debug)]
 pub(crate) struct Stack {
     stack: Vec<JsValue>,
 }
 
+#[derive(Debug, Clone, surgeist_js_gc::heap::Trace)]
+pub(crate) struct StoredStack(Vec<crate::value::StoredValue>);
+
+impl StoredStack {
+    pub(crate) fn to_stack(&self) -> Stack {
+        Stack {
+            stack: self
+                .0
+                .iter()
+                .map(crate::value::StoredValue::to_value)
+                .collect(),
+        }
+    }
+}
+
 impl Stack {
+    pub(crate) fn stored(&self) -> StoredStack {
+        StoredStack(
+            self.stack
+                .iter()
+                .cloned()
+                .map(JsValue::into_stored)
+                .collect(),
+        )
+    }
+
     /// Creates a new stack with the given capacity.
     fn new(capacity: usize) -> Self {
         Self {
@@ -176,6 +200,11 @@ impl Stack {
         Self {
             stack: self.stack.split_off(frame_pointer),
         }
+    }
+
+    /// Restore a previously split stack segment.
+    pub(crate) fn append(&mut self, mut segment: Self) {
+        self.stack.append(&mut segment.stack);
     }
 
     /// Get the `this` value of the given frame.
@@ -396,7 +425,7 @@ impl Stack {
 }
 
 /// Active runnable in the current vm context.
-#[derive(Debug, Clone, Finalize)]
+#[derive(Debug, Clone)]
 pub enum ActiveRunnable {
     /// A [**Script Record**](https://tc39.es/ecma262/#sec-script-records)
     Script(Script),
@@ -404,16 +433,29 @@ pub enum ActiveRunnable {
     Module(Module),
 }
 
-unsafe impl Trace for ActiveRunnable {
-    custom_trace!(this, mark, {
-        match this {
-            Self::Script(script) => mark(script),
-            Self::Module(module) => mark(module),
+#[derive(Debug, Clone, surgeist_js_gc::heap::Trace)]
+pub(crate) enum StoredActiveRunnable {
+    Script(crate::script::ScriptEdge),
+    Module(crate::module::ModuleEdge),
+}
+
+impl StoredActiveRunnable {
+    pub(crate) fn to_runnable(&self) -> ActiveRunnable {
+        match self {
+            Self::Script(script) => ActiveRunnable::Script(Script::from_edge(script.clone())),
+            Self::Module(module) => ActiveRunnable::Module(Module::from_edge(module.clone())),
         }
-    });
+    }
 }
 
 impl ActiveRunnable {
+    pub(crate) fn stored(&self) -> StoredActiveRunnable {
+        match self {
+            Self::Script(script) => StoredActiveRunnable::Script(script.edge()),
+            Self::Module(module) => StoredActiveRunnable::Module(module.edge()),
+        }
+    }
+
     /// Gets the path of the runnable, if it has one.
     #[must_use]
     pub fn path(&self) -> Option<&Path> {
@@ -429,7 +471,7 @@ impl Vm {
     pub(crate) fn new(realm: Realm) -> Self {
         let mut frames = Vec::with_capacity(16);
         frames.push(CallFrame::new(
-            Gc::new(CodeBlock::new(JsString::default(), 0, true)),
+            Rc::new(CodeBlock::new(JsString::default(), 0, true)),
             None,
             EnvironmentStack::new(),
             realm,
@@ -470,7 +512,7 @@ impl Vm {
     /// Takes the value from a register, replacing it with `undefined`.
     ///
     /// Use this instead of `get_register().clone()` when the register value is
-    /// consumed and won't be read again, to avoid unnecessary Gc refcount increments.
+    /// consumed and won't be read again, to avoid creating another heap root for objects.
     #[track_caller]
     #[inline]
     pub(crate) fn take_register(&mut self, index: usize) -> JsValue {

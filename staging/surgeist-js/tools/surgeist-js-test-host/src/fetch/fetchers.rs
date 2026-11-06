@@ -3,13 +3,14 @@
 use crate::fetch::Fetcher;
 use crate::fetch::request::JsRequest;
 use crate::fetch::response::JsResponse;
-use surgeist_js::{Context, Finalize, JsData, JsObject, JsResult, Trace, js_error};
 use std::cell::RefCell;
 use std::future;
 use std::rc::Rc;
+use surgeist_js::gc::heap::Trace as HeapTrace;
+use surgeist_js::{Context, JsData, JsObject, JsResult, js_error};
 
 /// Implementation of `Fetcher` which will always reject any fetch.
-#[derive(Clone, Debug, Trace, Finalize, JsData)]
+#[derive(Clone, Debug, JsData, HeapTrace)]
 pub struct ErrorFetcher;
 
 impl Fetcher for ErrorFetcher {
@@ -27,9 +28,9 @@ impl Fetcher for ErrorFetcher {
 
 /// Implementation of `Fetcher` that uses the blocking `reqwest` library as the backend.
 #[cfg(feature = "reqwest-blocking")]
-#[derive(Default, Debug, Clone, Trace, Finalize, JsData)]
+#[derive(Default, Debug, Clone, JsData, HeapTrace)]
 pub struct BlockingReqwestFetcher {
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     client: reqwest::blocking::Client,
 }
 

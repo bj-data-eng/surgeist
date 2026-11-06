@@ -1,4 +1,5 @@
-use surgeist_js_gc::Gc;
+use std::rc::Rc;
+
 use surgeist_js_parser::Source;
 
 use crate::{
@@ -47,7 +48,7 @@ fn get_own_property_internal_method() {
         "Since it's an owned property, this should be cacheable"
     );
 
-    let shape = o.borrow().shape().clone();
+    let shape = o.borrow().shape();
 
     let slot = shape.lookup(&property);
 
@@ -92,7 +93,7 @@ fn get_internal_method() {
         "Since it's an owned property, this should be cacheable"
     );
 
-    let shape = o.borrow().shape().clone();
+    let shape = o.borrow().shape();
 
     let slot = shape.lookup(&property);
 
@@ -140,7 +141,7 @@ fn get_internal_method_in_prototype() {
         "Since it's an prototype property, this should be cacheable"
     );
 
-    let shape = prototype.borrow().shape().clone();
+    let shape = prototype.borrow().shape();
 
     let slot = shape.lookup(&property);
 
@@ -194,7 +195,7 @@ fn define_own_property_internal_method_non_existent_property() {
         "Since it's an owned property, this should be cacheable"
     );
 
-    let shape = o.borrow().shape().clone();
+    let shape = o.borrow().shape();
 
     let slot = shape.lookup(&property);
 
@@ -260,7 +261,7 @@ fn define_own_property_internal_method_existing_property_property() {
         "Since it's an owned property, this should be cacheable"
     );
 
-    let shape = o.borrow().shape().clone();
+    let shape = o.borrow().shape();
 
     let slot = shape.lookup(&property);
 
@@ -305,7 +306,7 @@ fn set_internal_method() {
         "Since it's an owned property, this should be cacheable"
     );
 
-    let shape = o.borrow().shape().clone();
+    let shape = o.borrow().shape();
 
     let slot = shape.lookup(&property);
 
@@ -316,7 +317,7 @@ fn set_internal_method() {
     assert_eq!(context.slot().index, slot.index);
 }
 
-fn get_codeblock(value: &JsValue) -> Option<(JsObject, Gc<CodeBlock>)> {
+fn get_codeblock(value: &JsValue) -> Option<(JsObject, Rc<CodeBlock>)> {
     let object = value.as_object()?.clone();
     let code = object.downcast_ref::<OrdinaryFunction>()?.code.clone();
 
@@ -334,8 +335,9 @@ fn set_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
 
     let o = ObjectInitializer::new(context)
         .property(js_string!("test"), 0, Attribute::all())
-        .build();
-    let o_shape = o.borrow().shape().clone();
+        .build()
+        .unwrap();
+    let o_shape = o.borrow().shape();
 
     function.call(&JsValue::undefined(), &[o.clone().into()], context)?;
 
@@ -345,8 +347,8 @@ fn set_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
             .shape
             .upgrade()
             .unwrap()
-            .to_addr_usize(),
-        o_shape.to_addr_usize()
+            .identity(),
+        o_shape.identity()
     );
 
     Ok(())
@@ -363,8 +365,9 @@ fn get_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
 
     let o = ObjectInitializer::new(context)
         .property(js_string!("test"), 0, Attribute::all())
-        .build();
-    let o_shape = o.borrow().shape().clone();
+        .build()
+        .unwrap();
+    let o_shape = o.borrow().shape();
 
     function.call(&JsValue::undefined(), &[o.clone().into()], context)?;
 
@@ -374,8 +377,8 @@ fn get_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
             .shape
             .upgrade()
             .unwrap()
-            .to_addr_usize(),
-        o_shape.to_addr_usize()
+            .identity(),
+        o_shape.identity()
     );
 
     Ok(())
@@ -394,19 +397,23 @@ fn test_polymorphic_inline_cache() -> JsResult<()> {
     let shapes = vec![
         ObjectInitializer::new(context)
             .property(js_string!("test"), 1, Attribute::all())
-            .build(),
+            .build()
+            .unwrap(),
         ObjectInitializer::new(context)
             .property(js_string!("a"), 2, Attribute::all())
             .property(js_string!("test"), 3, Attribute::all())
-            .build(),
+            .build()
+            .unwrap(),
         ObjectInitializer::new(context)
             .property(js_string!("b"), 4, Attribute::all())
             .property(js_string!("test"), 5, Attribute::all())
-            .build(),
+            .build()
+            .unwrap(),
         ObjectInitializer::new(context)
             .property(js_string!("c"), 6, Attribute::all())
             .property(js_string!("test"), 7, Attribute::all())
-            .build(),
+            .build()
+            .unwrap(),
     ];
 
     for o in &shapes {
@@ -428,23 +435,28 @@ fn test_megamorphic_inline_cache() -> JsResult<()> {
     let shapes = vec![
         ObjectInitializer::new(context)
             .property(js_string!("test"), 1, Attribute::all())
-            .build(),
+            .build()
+            .unwrap(),
         ObjectInitializer::new(context)
             .property(js_string!("a"), 1, Attribute::all())
             .property(js_string!("test"), 1, Attribute::all())
-            .build(),
+            .build()
+            .unwrap(),
         ObjectInitializer::new(context)
             .property(js_string!("b"), 1, Attribute::all())
             .property(js_string!("test"), 1, Attribute::all())
-            .build(),
+            .build()
+            .unwrap(),
         ObjectInitializer::new(context)
             .property(js_string!("c"), 1, Attribute::all())
             .property(js_string!("test"), 1, Attribute::all())
-            .build(),
+            .build()
+            .unwrap(),
         ObjectInitializer::new(context)
             .property(js_string!("d"), 1, Attribute::all())
             .property(js_string!("test"), 1, Attribute::all())
-            .build(),
+            .build()
+            .unwrap(),
     ];
 
     for o in &shapes {
@@ -458,7 +470,8 @@ fn test_megamorphic_inline_cache() -> JsResult<()> {
     let o6 = ObjectInitializer::new(context)
         .property(js_string!("e"), 1, Attribute::all())
         .property(js_string!("test"), 1, Attribute::all())
-        .build();
+        .build()
+        .unwrap();
     function.call(&JsValue::undefined(), &[o6.clone().into()], context)?;
     assert_eq!(code.ic[0].entries.borrow().len(), 0);
     assert!(code.ic[0].megamorphic.get());

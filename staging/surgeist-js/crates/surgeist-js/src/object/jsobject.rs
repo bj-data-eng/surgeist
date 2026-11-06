@@ -3,17 +3,18 @@
 //! The `JsObject` is a garbage collected Object.
 
 use super::{
-    JsPrototype, NativeObject, Object, ObjectState, PrivateName, PropertyMap,
+    IndexedProperties, JsPrototype, NativeObject, Object, ObjectState, PrivateName, PropertyMap,
     internal_methods::{InternalObjectMethods, ORDINARY_INTERNAL_METHODS},
-    shape::RootShape,
+    shape::{RootShape, UniqueShape, property_table::PropertyTableInner},
 };
 use crate::{
-    Context, JsResult, JsString, JsSymbol, JsValue,
+    Context, JsError, JsResult, JsString, JsSymbol, JsValue, Runtime,
     builtins::{
         array::ARRAY_EXOTIC_INTERNAL_METHODS,
         array_buffer::{ArrayBuffer, BufferObject, SharedArrayBuffer},
         object::OrdinaryObject,
     },
+    class::Class,
     context::intrinsics::Intrinsics,
     error::JsNativeError,
     js_error, js_string,
@@ -30,10 +31,11 @@ use std::{
     fmt::{self, Debug, Display},
     hash::Hash,
     marker::PhantomData,
-    ops::{Deref, DerefMut},
+    ops::Deref,
+    rc::{Rc, Weak},
     result::Result as StdResult,
 };
-use surgeist_js_gc::{self, Finalize, Gc, GcRefCell, Trace};
+use surgeist_js_gc::heap::{AccessError, ObjectId, RecordRef, Rooted, Trace as HeapTrace};
 
 /// An immutable borrow of an object's common state and typed native payload.
 #[derive(Debug)]
@@ -63,6 +65,27 @@ impl<T: NativeObject> ObjectRef<'_, T> {
 }
 
 /// A mutable borrow of an object's common state and typed native payload.
+///
+/// The guard cannot replace the object's common state, which belongs to the
+/// runtime that created it.
+///
+/// ```compile_fail
+/// use surgeist_js::{Context, JsObject};
+/// let context = Context::default();
+/// let a = JsObject::with_object_proto(context.intrinsics());
+/// let b = JsObject::with_object_proto(context.intrinsics());
+/// std::mem::swap(&mut *a.borrow_mut(), &mut *b.borrow_mut());
+/// ```
+///
+/// Engine-owned native payloads have their own mutation operations.
+///
+/// ```compile_fail
+/// use surgeist_js::{Context, object::builtins::JsArrayBuffer};
+/// let mut context = Context::default();
+/// let buffer = JsArrayBuffer::new(8, &mut context).unwrap();
+/// let mut object = buffer.borrow_mut();
+/// let _ = object.data_mut();
+/// ```
 #[derive(Debug)]
 pub struct ObjectRefMut<'a, T: NativeObject + ?Sized> {
     inner: RefMut<'a, Object>,
@@ -77,9 +100,26 @@ impl<T: NativeObject + ?Sized> Deref for ObjectRefMut<'_, T> {
     }
 }
 
-impl<T: NativeObject + ?Sized> DerefMut for ObjectRefMut<'_, T> {
-    fn deref_mut(&mut self) -> &mut ObjectState {
+impl<T: NativeObject + ?Sized> ObjectRefMut<'_, T> {
+    pub(crate) fn state_mut(&mut self) -> &mut ObjectState {
         &mut self.inner.state
+    }
+
+    pub(crate) fn properties_mut(&mut self) -> &mut PropertyMap {
+        self.inner.state.properties_mut()
+    }
+
+    pub(crate) fn insert(
+        &mut self,
+        key: impl Into<PropertyKey>,
+        property: impl Into<PropertyDescriptor>,
+    ) -> bool {
+        self.inner.state.insert(key, property)
+    }
+
+    /// Sets the prototype if it belongs to this runtime and the object permits it.
+    pub fn set_prototype(&mut self, prototype: impl Into<JsPrototype>) -> bool {
+        self.inner.state.set_prototype(prototype)
     }
 }
 
@@ -96,7 +136,7 @@ impl<T: NativeObject> ObjectRefMut<'_, T> {
 
     /// Mutably borrows the object's native payload.
     #[must_use]
-    pub fn data_mut(&mut self) -> &mut T {
+    pub(crate) fn data_mut(&mut self) -> &mut T {
         self.inner
             .data
             .as_mut()
@@ -119,10 +159,8 @@ impl<T: NativeObject> ObjectRefMut<'_, T> {
 ///     object
 /// }
 /// ```
-#[derive(Trace, Finalize)]
-#[surgeist_js_gc(unsafe_no_drop)]
 pub struct JsObject<T: NativeObject + ?Sized = dyn NativeObject> {
-    inner: Gc<ObjectRecord>,
+    inner: Rooted<ObjectRecord>,
     brand: PhantomData<fn(&T) -> &T>,
 }
 
@@ -133,15 +171,44 @@ impl<T: NativeObject + ?Sized> Clone for JsObject<T> {
 }
 
 /// Strong record reference stored inside the JavaScript object graph.
-pub(crate) type ObjectEdge = Gc<ObjectRecord>;
+#[derive(Clone, Debug, Eq, PartialEq, HeapTrace)]
+pub(crate) struct ObjectEdge(RecordRef<ObjectRecord>);
+
+impl ObjectEdge {
+    pub(crate) const fn identity(&self) -> ObjectId {
+        self.0.identity()
+    }
+
+    pub(crate) fn is_live(&self) -> Result<bool, AccessError> {
+        self.0.is_live()
+    }
+
+    pub(crate) fn upgrade(&self) -> Result<Option<JsObject>, AccessError> {
+        self.0.upgrade().map(|root| root.map(JsObject::with_record))
+    }
+}
 
 /// Shared allocation for typed and erased handles to the same object.
-#[derive(Trace, Finalize)]
+#[derive(HeapTrace)]
 pub(crate) struct ObjectRecord {
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     vtable: &'static InternalObjectMethods,
+    #[heap_trace(skip)]
     native_type: TypeId,
-    object: GcRefCell<Object>,
+    object: RefCell<Object>,
+    #[heap_trace(skip)]
+    retirement: RetirementWatchers,
+}
+
+#[derive(Default)]
+struct RetirementWatchers(RefCell<Vec<Weak<dyn Fn()>>>);
+
+impl Drop for RetirementWatchers {
+    fn drop(&mut self) {
+        for watcher in self.0.get_mut().iter().filter_map(Weak::upgrade) {
+            watcher();
+        }
+    }
 }
 
 impl Debug for ObjectRecord {
@@ -158,7 +225,8 @@ impl ObjectRecord {
         Self {
             vtable,
             native_type,
-            object: GcRefCell::new(object),
+            object: RefCell::new(object),
+            retirement: RetirementWatchers::default(),
         }
     }
 }
@@ -185,14 +253,38 @@ impl JsObject {
 
     /// Creates a new `JsObject` from its inner object and its vtable.
     pub(crate) fn from_object_and_vtable(
+        runtime: &Runtime,
         object: Object,
         vtable: &'static InternalObjectMethods,
     ) -> Self {
-        Self::with_record(Gc::new(ObjectRecord::new(object, vtable)))
+        Self::try_from_object_and_vtable(runtime, object, vtable)
+            .expect("internal object template has valid heap edges")
+    }
+
+    pub(crate) fn try_from_object_and_vtable(
+        runtime: &Runtime,
+        object: Object,
+        vtable: &'static InternalObjectMethods,
+    ) -> JsResult<Self> {
+        Self::allocate(runtime, object, vtable).map(Self::with_record)
     }
 
     pub(crate) fn from_inner(inner: ObjectEdge) -> Self {
-        Self::with_record(inner)
+        inner
+            .upgrade()
+            .expect("object heap is available")
+            .expect("live owner retains its object")
+    }
+
+    pub(crate) fn ordinary_prototype(
+        runtime: &Runtime,
+        vtable: &'static InternalObjectMethods,
+    ) -> Self {
+        JsObject::<OrdinaryObject>::new_unique_with_vtable(runtime, None, OrdinaryObject, |_| {
+            vtable
+        })
+        .expect("ordinary prototype has no external heap edges")
+        .upcast()
     }
 
     /// Creates a new ordinary object with its prototype set to the `Object` prototype.
@@ -216,9 +308,11 @@ impl JsObject {
     #[must_use]
     pub fn with_object_proto(intrinsics: &Intrinsics) -> Self {
         Self::from_proto_and_data(
+            &intrinsics.runtime(),
             intrinsics.constructors().object().prototype(),
             OrdinaryObject,
         )
+        .expect("ordinary object uses its runtime's intrinsic prototype")
     }
 
     /// Creates a new ordinary object, with its prototype set to null.
@@ -231,15 +325,16 @@ impl JsObject {
     /// # Examples
     ///
     /// ```
-    /// # use surgeist_js::JsObject;
-    /// let obj = JsObject::with_null_proto();
+    /// # use surgeist_js::{JsObject, Runtime};
+    /// let obj = JsObject::with_null_proto(&Runtime::default());
     /// assert!(obj.prototype().is_none());
     /// assert!(obj.is_ordinary());
     /// ```
     #[inline]
     #[must_use]
-    pub fn with_null_proto() -> Self {
-        Self::from_proto_and_data(None, OrdinaryObject)
+    pub fn with_null_proto(runtime: &Runtime) -> Self {
+        Self::from_proto_and_data(runtime, None, OrdinaryObject)
+            .expect("null-prototype ordinary object has no external heap edges")
     }
 
     /// Creates a new object with the provided prototype and object data.
@@ -250,6 +345,11 @@ impl JsObject {
     ///
     /// [`OrdinaryObjectCreate`]: https://tc39.es/ecma262/#sec-ordinaryobjectcreate
     ///
+    /// # Errors
+    ///
+    /// Returns a `TypeError` if the prototype belongs to another runtime or the
+    /// heap rejects an edge reported by the native payload.
+    ///
     /// # Examples
     ///
     /// ```
@@ -257,22 +357,27 @@ impl JsObject {
     /// # use surgeist_js::builtins::object::OrdinaryObject;
     /// let context = &mut Context::default();
     /// let obj = JsObject::from_proto_and_data(
+    ///     context.runtime(),
     ///     context.intrinsics().constructors().object().prototype(),
     ///     OrdinaryObject,
-    /// );
+    /// )
+    /// .unwrap();
     ///
     /// assert!(obj.is_ordinary());
     /// assert!(obj.prototype().is_some());
     ///
     /// // Create an object with no prototype.
-    /// let null_obj = JsObject::from_proto_and_data(None, OrdinaryObject);
+    /// let null_obj =
+    ///     JsObject::from_proto_and_data(context.runtime(), None, OrdinaryObject)
+    ///         .unwrap();
     /// assert!(null_obj.prototype().is_none());
     /// ```
     pub fn from_proto_and_data<O: Into<Option<Self>>, T: NativeObject>(
+        runtime: &Runtime,
         prototype: O,
         data: T,
-    ) -> Self {
-        JsObject::new_unique(prototype, data).upcast()
+    ) -> JsResult<Self> {
+        JsObject::new_unique(runtime, prototype, data).map(JsObject::upcast)
     }
 
     /// Creates a new object with the provided prototype and object data.
@@ -287,7 +392,7 @@ impl JsObject {
         prototype: O,
         data: T,
     ) -> JsObject<T> {
-        JsObject::new(root_shape, prototype, data)
+        JsObject::new(root_shape, prototype, data).expect("internal object has valid heap edges")
     }
 
     /// Downcasts the object's inner data if the object is of type `T`.
@@ -295,19 +400,23 @@ impl JsObject {
     /// # Examples
     ///
     /// ```
-    /// # use surgeist_js::{JsObject, JsData, Trace, Finalize};
+    /// # use surgeist_js::{JsData, JsObject};
     /// # use surgeist_js::builtins::object::OrdinaryObject;
-    /// #[derive(Debug, Trace, Finalize, JsData)]
+    /// #[derive(Debug, JsData, surgeist_js::gc::heap::Trace)]
     /// struct CustomStruct;
     ///
-    /// let obj = JsObject::from_proto_and_data(None, OrdinaryObject);
+    /// let obj =
+    ///     JsObject::from_proto_and_data(&surgeist_js::Runtime::default(), None, OrdinaryObject)
+    ///         .unwrap();
     ///
     /// // Downcast consumes the object on success.
     /// let typed = obj.downcast::<OrdinaryObject>();
     /// assert!(typed.is_ok());
     ///
     /// // Downcast fails for a wrong type, returning the original object.
-    /// let obj = JsObject::from_proto_and_data(None, OrdinaryObject);
+    /// let obj =
+    ///     JsObject::from_proto_and_data(&surgeist_js::Runtime::default(), None, OrdinaryObject)
+    ///         .unwrap();
     /// let result = obj.downcast::<CustomStruct>();
     /// assert!(result.is_err());
     /// ```
@@ -329,12 +438,14 @@ impl JsObject {
     /// # Examples
     ///
     /// ```
-    /// # use surgeist_js::{JsObject, JsData, Trace, Finalize};
+    /// # use surgeist_js::{JsData, JsObject};
     /// # use surgeist_js::builtins::object::OrdinaryObject;
-    /// #[derive(Debug, Trace, Finalize, JsData)]
+    /// #[derive(Debug, JsData, surgeist_js::gc::heap::Trace)]
     /// struct CustomStruct;
     ///
-    /// let obj = JsObject::from_proto_and_data(None, OrdinaryObject);
+    /// let obj =
+    ///     JsObject::from_proto_and_data(&surgeist_js::Runtime::default(), None, OrdinaryObject)
+    ///         .unwrap();
     ///
     /// // Downcast ref succeeds for the correct type.
     /// assert!(obj.downcast_ref::<OrdinaryObject>().is_some());
@@ -354,32 +465,41 @@ impl JsObject {
         .ok()
     }
 
-    /// Downcasts a mutable reference to the object,
-    /// if the object is type native object type `T`.
+    /// Mutably borrows the payload of a host-defined class.
+    ///
+    /// Returns `None` if the object has a different native brand.
+    /// The caller must preserve the heap edges described by [`Class`].
     ///
     /// # Panics
     ///
     /// Panics if the object is currently borrowed.
     ///
-    /// # Examples
+    /// Engine-owned payloads cannot be borrowed mutably through this method.
     ///
+    /// ```compile_fail
+    /// use surgeist_js::{Context, JsObject, builtins::array_buffer::ArrayBuffer};
+    /// use surgeist_js::object::builtins::JsArrayBuffer;
+    /// let mut context = Context::default();
+    /// let object: JsObject = JsArrayBuffer::new(8, &mut context).unwrap().into();
+    /// let _ = object.downcast_class_mut::<ArrayBuffer>();
     /// ```
-    /// # use surgeist_js::{JsObject, JsData, Trace, Finalize};
-    /// # use surgeist_js::builtins::object::OrdinaryObject;
-    /// #[derive(Debug, Trace, Finalize, JsData)]
-    /// struct CustomStruct;
     ///
-    /// let obj = JsObject::from_proto_and_data(None, OrdinaryObject);
-    ///
-    /// // Downcast mut succeeds for the correct type.
-    /// assert!(obj.downcast_mut::<OrdinaryObject>().is_some());
-    ///
-    /// // Returns `None` for a wrong type.
-    /// assert!(obj.downcast_mut::<CustomStruct>().is_none());
+    /// ```compile_fail
+    /// use surgeist_js::{Context, JsObject, builtins::array_buffer::ArrayBuffer};
+    /// use surgeist_js::object::builtins::JsArrayBuffer;
+    /// let mut context = Context::default();
+    /// let object: JsObject = JsArrayBuffer::new(8, &mut context).unwrap().into();
+    /// let _ = object.downcast_mut::<ArrayBuffer>();
     /// ```
     #[must_use]
     #[track_caller]
-    pub fn downcast_mut<T: NativeObject>(&self) -> Option<RefMut<'_, T>> {
+    pub fn downcast_class_mut<C: Class>(&self) -> Option<RefMut<'_, C>> {
+        self.downcast_mut()
+    }
+
+    #[must_use]
+    #[track_caller]
+    pub(crate) fn downcast_mut<T: NativeObject>(&self) -> Option<RefMut<'_, T>> {
         if !self.is::<T>() {
             return None;
         }
@@ -394,12 +514,14 @@ impl JsObject {
     /// # Examples
     ///
     /// ```
-    /// # use surgeist_js::{JsObject, JsData, Trace, Finalize};
+    /// # use surgeist_js::{JsData, JsObject};
     /// # use surgeist_js::builtins::object::OrdinaryObject;
-    /// #[derive(Debug, Trace, Finalize, JsData)]
+    /// #[derive(Debug, JsData, surgeist_js::gc::heap::Trace)]
     /// struct CustomStruct;
     ///
-    /// let obj = JsObject::from_proto_and_data(None, OrdinaryObject);
+    /// let obj =
+    ///     JsObject::from_proto_and_data(&surgeist_js::Runtime::default(), None, OrdinaryObject)
+    ///         .unwrap();
     ///
     /// assert!(obj.is::<OrdinaryObject>());
     /// assert!(!obj.is::<CustomStruct>());
@@ -465,14 +587,14 @@ impl JsObject {
     pub(crate) fn deep_strict_equals_inner(
         lhs: &Self,
         rhs: &Self,
-        encounters: &mut HashSet<usize>,
+        encounters: &mut HashSet<ObjectId>,
         context: &mut Context,
     ) -> JsResult<bool> {
         // Loop through all the keys and if one is not equal, return false.
         fn key_loop(
             lhs: &JsObject,
             rhs: &JsObject,
-            encounters: &mut HashSet<usize>,
+            encounters: &mut HashSet<ObjectId>,
             context: &mut Context,
         ) -> JsResult<bool> {
             let l_keys = lhs.own_property_keys(context)?;
@@ -507,8 +629,8 @@ impl JsObject {
             Ok(true)
         }
 
-        let addr_l = std::ptr::from_ref::<Self>(lhs) as usize;
-        let addr_r = std::ptr::from_ref::<Self>(rhs) as usize;
+        let addr_l = lhs.identity();
+        let addr_r = rhs.identity();
 
         if addr_r == addr_l {
             return Ok(true);
@@ -806,7 +928,9 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
     /// # use surgeist_js::JsObject;
     /// # use surgeist_js::builtins::object::OrdinaryObject;
     /// // Create a typed JsObject<OrdinaryObject>.
-    /// let typed_obj = JsObject::new_unique(None, OrdinaryObject);
+    /// let typed_obj =
+    ///     JsObject::new_unique(&surgeist_js::Runtime::default(), None, OrdinaryObject)
+    ///         .unwrap();
     ///
     /// // Upcast erases the type, producing an untyped JsObject.
     /// let obj: JsObject = typed_obj.upcast();
@@ -817,7 +941,7 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
         JsObject::with_record(self.inner)
     }
 
-    fn with_record(inner: Gc<ObjectRecord>) -> Self {
+    fn with_record(inner: Rooted<ObjectRecord>) -> Self {
         Self {
             inner,
             brand: PhantomData,
@@ -838,7 +962,9 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
     /// ```
     /// # use surgeist_js::JsObject;
     /// # use surgeist_js::builtins::object::OrdinaryObject;
-    /// let obj = JsObject::from_proto_and_data(None, OrdinaryObject);
+    /// let obj =
+    ///     JsObject::from_proto_and_data(&surgeist_js::Runtime::default(), None, OrdinaryObject)
+    ///         .unwrap();
     ///
     /// // Multiple immutable borrows are allowed.
     /// let borrowed = obj.borrow();
@@ -866,9 +992,11 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
     /// # use surgeist_js::builtins::object::OrdinaryObject;
     /// let context = &mut Context::default();
     /// let obj = JsObject::from_proto_and_data(
+    ///     context.runtime(),
     ///     context.intrinsics().constructors().object().prototype(),
     ///     OrdinaryObject,
-    /// );
+    /// )
+    /// .unwrap();
     ///
     /// // Set the prototype to `None` via a mutable borrow.
     /// obj.borrow_mut().set_prototype(None);
@@ -893,7 +1021,9 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
     /// ```
     /// # use surgeist_js::JsObject;
     /// # use surgeist_js::builtins::object::OrdinaryObject;
-    /// let obj = JsObject::from_proto_and_data(None, OrdinaryObject);
+    /// let obj =
+    ///     JsObject::from_proto_and_data(&surgeist_js::Runtime::default(), None, OrdinaryObject)
+    ///         .unwrap();
     ///
     /// // Non-panicking immutable borrow.
     /// let result = obj.try_borrow();
@@ -923,7 +1053,9 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
     /// ```
     /// # use surgeist_js::JsObject;
     /// # use surgeist_js::builtins::object::OrdinaryObject;
-    /// let obj = JsObject::from_proto_and_data(None, OrdinaryObject);
+    /// let obj =
+    ///     JsObject::from_proto_and_data(&surgeist_js::Runtime::default(), None, OrdinaryObject)
+    ///         .unwrap();
     ///
     /// // Non-panicking mutable borrow.
     /// let result = obj.try_borrow_mut();
@@ -948,20 +1080,24 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
     /// ```
     /// # use surgeist_js::JsObject;
     /// # use surgeist_js::builtins::object::OrdinaryObject;
-    /// let obj = JsObject::from_proto_and_data(None, OrdinaryObject);
+    /// let obj =
+    ///     JsObject::from_proto_and_data(&surgeist_js::Runtime::default(), None, OrdinaryObject)
+    ///         .unwrap();
     /// let clone = obj.clone();
     ///
     /// // A clone points to the same GC allocation.
     /// assert!(JsObject::equals(&obj, &clone));
     ///
     /// // A separate object is different, even with identical data.
-    /// let other = JsObject::from_proto_and_data(None, OrdinaryObject);
+    /// let other =
+    ///     JsObject::from_proto_and_data(&surgeist_js::Runtime::default(), None, OrdinaryObject)
+    ///         .unwrap();
     /// assert!(!JsObject::equals(&obj, &other));
     /// ```
     #[must_use]
     #[inline]
     pub fn equals(lhs: &Self, rhs: &Self) -> bool {
-        Gc::ptr_eq(lhs.inner(), rhs.inner())
+        lhs.identity() == rhs.identity()
     }
 
     /// Get the prototype of the object.
@@ -979,7 +1115,7 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
     /// let obj = JsObject::with_object_proto(context.intrinsics());
     /// assert!(obj.prototype().is_some());
     ///
-    /// let null_obj = JsObject::with_null_proto();
+    /// let null_obj = JsObject::with_null_proto(context.runtime());
     /// assert!(null_obj.prototype().is_none());
     /// ```
     #[inline]
@@ -1036,14 +1172,17 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
 
     /// Inserts a field in the object `properties` without checking if it's writable.
     ///
-    /// If a field was already in the object with the same name, than `true` is returned
-    /// with that field, otherwise `false` is returned.
-    pub fn insert_property<K, P>(&self, key: K, property: P) -> bool
+    /// Missing descriptor fields take their ECMAScript defaults.
+    /// Returns whether the key previously existed. A value, getter or setter
+    /// from a different runtime is rejected before insertion.
+    pub fn insert_property<K, P>(&self, key: K, property: P) -> JsResult<bool>
     where
         K: Into<PropertyKey>,
         P: Into<PropertyDescriptor>,
     {
-        self.insert(key.into(), property)
+        let property = property.into();
+        self.runtime().check_descriptor(&property)?;
+        Ok(self.insert(key, property.complete_property_descriptor()))
     }
 
     /// It determines if Object is a callable function with a `[[Call]]` internal method.
@@ -1080,16 +1219,56 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
         self.inner.vtable
     }
 
-    pub(crate) fn inner(&self) -> &Gc<ObjectRecord> {
-        &self.inner
+    /// Observes this allocation's retirement. The caller owns the registration.
+    pub(crate) fn observe_retirement(&self, watcher: &Rc<dyn Fn()>) {
+        let mut watchers = self.inner.retirement.0.borrow_mut();
+        if watchers.len() == watchers.capacity() {
+            watchers.retain(|watcher| watcher.strong_count() != 0);
+        }
+        watchers.push(Rc::downgrade(watcher));
+    }
+
+    pub(crate) fn check_runtime(&self, runtime: &Runtime) -> JsResult<()> {
+        if !self.inner.runtime().same_heap(&runtime.heap) {
+            return Err(JsNativeError::typ()
+                .with_message("object belongs to a different runtime")
+                .into());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn runtime(&self) -> Runtime {
+        Runtime {
+            heap: self.inner.runtime().clone(),
+        }
+    }
+
+    pub(crate) fn edge(&self) -> ObjectEdge {
+        ObjectEdge(self.inner.record_ref())
     }
 
     pub(crate) fn into_record(self) -> ObjectEdge {
-        self.inner
+        self.edge()
     }
 
-    pub(crate) fn identity(&self) -> usize {
-        std::ptr::from_ref(&self.inner.object).addr()
+    /// Returns an opaque identity for this allocation.
+    ///
+    /// Every handle to the object has this identity. Keeping the identity
+    /// does not keep the object alive. Later allocations have different identities.
+    #[must_use]
+    pub const fn identity(&self) -> ObjectId {
+        self.inner.handle().erase()
+    }
+
+    fn allocate(
+        runtime: &Runtime,
+        object: Object,
+        vtable: &'static InternalObjectMethods,
+    ) -> JsResult<Rooted<ObjectRecord>> {
+        runtime
+            .heap
+            .allocate(ObjectRecord::new(object, vtable))
+            .map_err(|rejected| object_allocation_error(rejected.reason))
     }
 
     /// Create a new private name with this object as the unique identifier.
@@ -1098,11 +1277,20 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
     }
 }
 
+fn object_allocation_error(reason: AccessError) -> JsError {
+    JsNativeError::typ().with_message(reason.to_string()).into()
+}
+
 impl<T: NativeObject> JsObject<T> {
     /// Creates a new `JsObject` from its root shape, prototype, and data.
     ///
     /// Note that the returned object will not be erased to be convertible to a
     /// `JsValue`. To erase the native brand, call [`JsObject::upcast`].
+    ///
+    /// # Errors
+    ///
+    /// Returns a `TypeError` if the prototype belongs to another runtime or the
+    /// heap rejects an edge reported by the native payload.
     ///
     /// # Examples
     ///
@@ -1115,53 +1303,89 @@ impl<T: NativeObject> JsObject<T> {
     ///     context.root_shape(),
     ///     context.intrinsics().constructors().object().prototype(),
     ///     OrdinaryObject,
-    /// );
+    /// )
+    /// .unwrap();
     ///
     /// // Upcast to an erased JsObject to use with JsValue.
     /// let obj = typed_obj.upcast();
     /// assert!(obj.is_ordinary());
     /// ```
-    pub fn new<O: Into<Option<JsObject>>>(root_shape: &RootShape, prototype: O, data: T) -> Self {
-        let internal_methods = data.internal_methods();
-        let inner = Gc::new(ObjectRecord::new(
-            Object::new(
-                PropertyMap::from_prototype_with_shared_shape(root_shape, prototype.into()),
-                data,
-            ),
-            internal_methods,
-        ));
-
-        Self::with_record(inner)
+    pub fn new<O: Into<Option<JsObject>>>(
+        root_shape: &RootShape,
+        prototype: O,
+        data: T,
+    ) -> JsResult<Self> {
+        let runtime = root_shape.runtime();
+        runtime
+            .heap
+            .with_pending_edges(data, |data| {
+                let internal_methods = data.internal_methods();
+                let shape = root_shape
+                    .shape()
+                    .try_change_prototype_transition(prototype.into())
+                    .map_err(object_allocation_error)?
+                    .into();
+                let object =
+                    Object::new(PropertyMap::new(&shape, IndexedProperties::default()), data);
+                Self::allocate(runtime, object, internal_methods).map(Self::with_record)
+            })
+            .map_err(object_allocation_error)?
     }
 
-    /// Creates a new `JsObject` from prototype, and data.
+    /// Creates a new `JsObject` with a unique shape from a prototype and native data.
     ///
     /// Note that the returned object will not be erased to be convertible to a
     /// `JsValue`. To erase the native brand, call [`JsObject::upcast`].
+    ///
+    /// # Errors
+    ///
+    /// Returns a `TypeError` if the prototype belongs to another runtime or the
+    /// heap rejects an edge reported by the native payload.
     ///
     /// # Examples
     ///
     /// ```
     /// # use surgeist_js::JsObject;
     /// # use surgeist_js::builtins::object::OrdinaryObject;
-    /// let typed_obj = JsObject::new_unique(None, OrdinaryObject);
+    /// let typed_obj =
+    ///     JsObject::new_unique(&surgeist_js::Runtime::default(), None, OrdinaryObject)
+    ///         .unwrap();
     ///
     /// // Upcast to an erased JsObject.
     /// let obj = typed_obj.upcast();
     /// assert!(obj.is_ordinary());
     /// assert!(obj.prototype().is_none());
     /// ```
-    pub fn new_unique<O: Into<Option<JsObject>>>(prototype: O, data: T) -> Self {
-        let internal_methods = data.internal_methods();
-        let inner = Gc::new(ObjectRecord::new(
-            Object::new(
-                PropertyMap::from_prototype_unique_shape(prototype.into()),
-                data,
-            ),
-            internal_methods,
-        ));
+    pub fn new_unique<O: Into<Option<JsObject>>>(
+        runtime: &Runtime,
+        prototype: O,
+        data: T,
+    ) -> JsResult<Self> {
+        Self::new_unique_with_vtable(runtime, prototype, data, T::internal_methods)
+    }
 
-        Self::with_record(inner)
+    fn new_unique_with_vtable(
+        runtime: &Runtime,
+        prototype: impl Into<JsPrototype>,
+        data: T,
+        vtable: impl FnOnce(&T) -> &'static InternalObjectMethods,
+    ) -> JsResult<Self> {
+        runtime
+            .heap
+            .with_pending_edges(data, |data| {
+                let vtable = vtable(&data);
+                let shape = UniqueShape::try_new(
+                    &runtime.heap,
+                    prototype.into(),
+                    PropertyTableInner::default(),
+                )
+                .map_err(object_allocation_error)?
+                .into();
+                let object =
+                    Object::new(PropertyMap::new(&shape, IndexedProperties::default()), data);
+                Self::allocate(runtime, object, vtable).map(Self::with_record)
+            })
+            .map_err(object_allocation_error)?
     }
 
     pub(crate) fn borrow_data(&self) -> Ref<'_, T> {
@@ -1185,9 +1409,9 @@ impl<T: NativeObject> JsObject<T> {
     }
 }
 
-impl From<Gc<ObjectRecord>> for JsObject {
+impl From<ObjectEdge> for JsObject {
     #[inline]
-    fn from(inner: Gc<ObjectRecord>) -> Self {
+    fn from(inner: ObjectEdge) -> Self {
         Self::from_inner(inner)
     }
 }
@@ -1340,12 +1564,88 @@ impl<T: NativeObject + ?Sized> Debug for JsObject<T> {
                         .unwrap_or_default(),
                 };
 
-                return f.write_fmt(format_args!("({:?}) {:?} 0x{:X}", kind, name, identity));
+                return f.write_fmt(format_args!("({:?}) {:?} {:?}", kind, name, identity));
             }
 
-            f.write_fmt(format_args!("({:?}) 0x{:X}", kind, identity))
+            f.write_fmt(format_args!("({:?}) {:?}", kind, identity))
         } else {
             f.write_str("{ ... }")
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::native_function::{CapturedObject, NativeCapture};
+    use surgeist_js_gc::heap::AllocationCollection;
+
+    #[derive(Debug, crate::JsData, HeapTrace)]
+    struct NativePayload(CapturedObject);
+
+    #[test]
+    fn native_object_creation_rejects_foreign_prototypes() {
+        let runtime = Runtime::default();
+        let root_shape = RootShape::new(runtime.clone());
+        let foreign = JsObject::with_null_proto(&Runtime::default());
+
+        for result in [
+            JsObject::new(&root_shape, foreign.clone(), OrdinaryObject).map(JsObject::upcast),
+            JsObject::new_unique(&runtime, foreign.clone(), OrdinaryObject).map(JsObject::upcast),
+            JsObject::from_proto_and_data(&runtime, foreign, OrdinaryObject),
+        ] {
+            assert!(result.unwrap_err().as_native().unwrap().is_type());
+        }
+    }
+
+    #[test]
+    fn native_object_creation_checks_payload_edges() {
+        let runtime = Runtime::default();
+        let root_shape = RootShape::new(runtime.clone());
+        let foreign = JsObject::with_null_proto(&Runtime::default());
+        let error = JsObject::new(&root_shape, None, NativePayload(foreign.store())).unwrap_err();
+        assert!(error.as_native().unwrap().is_type());
+
+        let reclaimed = JsObject::with_null_proto(&runtime).store();
+        runtime.collect().unwrap();
+        let error =
+            JsObject::from_proto_and_data(&runtime, None, NativePayload(reclaimed)).unwrap_err();
+        let error = error.as_native().unwrap();
+        assert!(error.is_type());
+        assert_eq!(error.message(), AccessError::StaleHandle.to_string());
+    }
+
+    #[test]
+    fn native_object_creation_keeps_pending_edges_live_through_shape_allocation() {
+        let runtime = Runtime::default();
+        runtime
+            .heap
+            .set_allocation_collection(AllocationCollection::BeforeAllocation)
+            .unwrap();
+        let root_shape = RootShape::new(runtime.clone());
+        let prototype = JsObject::with_null_proto(&runtime);
+        for unique in [false, true] {
+            let target = JsObject::with_null_proto(&runtime);
+            let identity = target.identity();
+            let data = NativePayload(target.store());
+            drop(target);
+
+            let object = if unique {
+                JsObject::new_unique(&runtime, prototype.clone(), data)
+            } else {
+                JsObject::new(&root_shape, prototype.clone(), data)
+            }
+            .unwrap();
+            runtime.collect().unwrap();
+
+            assert_eq!(object.prototype(), Some(prototype.clone()));
+            let target: JsObject = JsObject::restore(&object.borrow().data().0);
+            assert_eq!(target.identity(), identity);
+
+            let edge = target.into_record();
+            drop(object);
+            runtime.collect().unwrap();
+            assert!(!edge.is_live().unwrap());
         }
     }
 }

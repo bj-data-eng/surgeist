@@ -1,8 +1,10 @@
 use std::path::Path;
 
 use crate::{
-    Context, JsError, Source,
+    Context, JsError, JsNativeError, JsObject, Runtime, Source,
     builtins::promise::PromiseState,
+    error::PanicError,
+    js_string,
     module::Module,
     vm::{shadow_stack::ShadowEntry, source_info::SourcePath},
 };
@@ -175,4 +177,76 @@ fn eval_error_has_backtrace() {
             );
         }
     }
+}
+
+#[test]
+fn materialization_refuses_a_foreign_opaque_error() {
+    let context = &mut Context::default();
+    let foreign = JsObject::with_null_proto(&Runtime::default());
+    let error = JsError::from_opaque(foreign.into());
+
+    let refusal = error.into_opaque(context).unwrap_err();
+    assert!(refusal.as_native().is_some_and(JsNativeError::is_type));
+}
+
+#[test]
+fn materialization_refuses_a_foreign_cause_inside_an_aggregate() {
+    let context = &mut Context::default();
+    let foreign = JsObject::with_null_proto(&Runtime::default());
+    let cause = JsError::from_opaque(foreign.into());
+    let member = JsNativeError::range().with_cause(cause).into();
+    let error = JsError::from_native(JsNativeError::aggregate(vec![member]));
+
+    let refusal = error.into_opaque(context).unwrap_err();
+    assert!(refusal.as_native().is_some_and(JsNativeError::is_type));
+}
+
+#[test]
+fn materialization_preserves_the_original_engine_error() {
+    let context = &mut Context::default();
+    let foreign = JsObject::with_null_proto(&Runtime::default());
+    let cause = JsError::from_opaque(foreign.into());
+    let error = JsError::from(PanicError::new("engine failure").with_source(cause));
+
+    assert_eq!(error.clone().into_opaque(context), Err(error));
+}
+
+#[test]
+fn materialization_preserves_a_local_aggregate_members_cause() {
+    let context = &mut Context::default();
+    let cause = JsObject::with_null_proto(context.runtime());
+    let member = JsNativeError::range()
+        .with_cause(JsError::from_opaque(cause.clone().into()))
+        .into();
+    let error = JsError::from_native(JsNativeError::aggregate(vec![member]));
+
+    let error = error.into_opaque(context).unwrap().as_object().unwrap();
+    let members = error.get(js_string!("errors"), context).unwrap();
+    let member = members.as_object().unwrap().get(0, context).unwrap();
+    let observed = member
+        .as_object()
+        .unwrap()
+        .get(js_string!("cause"), context);
+    assert_eq!(observed.unwrap(), cause.into());
+}
+
+#[test]
+fn native_error_materialization_refuses_a_foreign_nested_cause() {
+    let context = &mut Context::default();
+    let foreign = JsObject::with_null_proto(&Runtime::default());
+    let cause = JsError::from_opaque(foreign.into());
+    let inner = JsNativeError::range().with_cause(cause);
+    let error = JsNativeError::error().with_cause(inner);
+
+    let refusal = error.into_opaque(context).unwrap_err();
+    assert!(refusal.as_native().is_some_and(JsNativeError::is_type));
+}
+
+#[test]
+fn native_error_materialization_propagates_an_engine_error_in_an_aggregate() {
+    let context = &mut Context::default();
+    let engine_error = JsError::from(PanicError::new("engine failure"));
+    let aggregate = JsNativeError::aggregate(vec![engine_error.clone()]);
+
+    assert_eq!(aggregate.into_opaque(context).unwrap_err(), engine_error);
 }

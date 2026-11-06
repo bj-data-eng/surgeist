@@ -20,8 +20,8 @@ use crate::{
     string::StaticJsStrings,
 };
 use crate::{builtins::temporal::options::get_digits_option, value::JsVariant};
-use surgeist_js_gc::{Finalize, Trace};
 use num_traits::{AsPrimitive, PrimInt};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 use temporal_rs::{
     PlainTime as PlainTimeInner,
     options::{
@@ -45,9 +45,9 @@ mod tests;
 /// [spec]: https://tc39.es/proposal-temporal/#sec-temporal-plaintime-objects
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Temporal/PlainTime
 /// [temporal_rs-docs]: https://docs.rs/temporal_rs/latest/temporal_rs/struct.PlainTime.html
-#[derive(Debug, Clone, Copy, Trace, Finalize, JsData)]
-#[surgeist_js_gc(unsafe_empty_trace)] // Safety: PlainTimeInner does not contain any traceable types.
+#[derive(Debug, Clone, Copy, JsData, HeapTrace)]
 pub struct PlainTime {
+    #[heap_trace(skip)]
     inner: PlainTimeInner,
 }
 
@@ -548,7 +548,7 @@ impl PlainTime {
         let partial = to_js_partial_time_record(&partial_object, context)?;
         // 17. Let resolvedOptions be ? GetOptionsObject(options).
         // 18. Let overflow be ? GetTemporalOverflowOption(resolvedOptions).
-        let options = get_options_object(args.get_or_undefined(1))?;
+        let options = get_options_object(args.get_or_undefined(1), context)?;
         let overflow = get_option::<Overflow>(&options, js_string!("overflow"), context)?;
 
         create_temporal_time(
@@ -582,8 +582,10 @@ impl PlainTime {
 
         let other = to_temporal_time(args.get_or_undefined(0), None, context)?;
 
-        let settings =
-            get_difference_settings(&get_options_object(args.get_or_undefined(1))?, context)?;
+        let settings = get_difference_settings(
+            &get_options_object(args.get_or_undefined(1), context)?,
+            context,
+        )?;
 
         let result = time.inner.until(&other, settings)?;
 
@@ -612,8 +614,10 @@ impl PlainTime {
 
         let other = to_temporal_time(args.get_or_undefined(0), None, context)?;
 
-        let settings =
-            get_difference_settings(&get_options_object(args.get_or_undefined(1))?, context)?;
+        let settings = get_difference_settings(
+            &get_options_object(args.get_or_undefined(1), context)?,
+            context,
+        )?;
 
         let result = time.inner.since(&other, settings)?;
 
@@ -654,7 +658,7 @@ impl PlainTime {
             // a. Let paramString be roundTo.
             let param_string = param_string.clone();
             // b. Set roundTo to OrdinaryObjectCreate(null).
-            let new_round_to = JsObject::with_null_proto();
+            let new_round_to = JsObject::with_null_proto(context.runtime());
             // c. Perform ! CreateDataPropertyOrThrow(roundTo, "smallestUnit", paramString).
             new_round_to.create_data_property_or_throw(
                 js_string!("smallestUnit"),
@@ -665,7 +669,7 @@ impl PlainTime {
         } else {
             // 5. Else,
             // a. Set roundTo to ? GetOptionsObject(roundTo).
-            get_options_object(round_to_arg)?
+            get_options_object(round_to_arg, context)?
         };
 
         let mut options = RoundingOptions::default();
@@ -751,7 +755,7 @@ impl PlainTime {
                 JsNativeError::typ().with_message("the this object must be a PlainTime object.")
             })?;
 
-        let options = get_options_object(args.get_or_undefined(0))?;
+        let options = get_options_object(args.get_or_undefined(0), context)?;
 
         let precision = get_digits_option(&options, context)?;
         let rounding_mode =
@@ -868,7 +872,7 @@ pub(crate) fn create_temporal_time(
     // 7. Set object.[[ISOMillisecond]] to millisecond.
     // 8. Set object.[[ISOMicrosecond]] to microsecond.
     // 9. Set object.[[ISONanosecond]] to nanosecond.
-    let obj = JsObject::from_proto_and_data(prototype, PlainTime { inner });
+    let obj = JsObject::from_proto_and_data(context.runtime(), prototype, PlainTime { inner })?;
 
     // 10. Return object.
     Ok(obj)
@@ -889,7 +893,7 @@ pub(crate) fn to_temporal_time(
             // a. If item has an [[InitializedTemporalTime]] internal slot, then
             if let Some(time) = object.downcast_ref::<PlainTime>() {
                 // i. Return item.
-                let options = get_options_object(options)?;
+                let options = get_options_object(options, context)?;
                 let _overflow = get_option::<Overflow>(&options, js_string!("overflow"), context)?;
                 return Ok(time.inner);
             // b. If item has an [[InitializedTemporalZonedDateTime]] internal slot, then
@@ -900,7 +904,7 @@ pub(crate) fn to_temporal_time(
                 // iv. Return ! CreateTemporalTime(plainDateTime.[[ISOHour]], plainDateTime.[[ISOMinute]],
                 // plainDateTime.[[ISOSecond]], plainDateTime.[[ISOMillisecond]], plainDateTime.[[ISOMicrosecond]],
                 // plainDateTime.[[ISONanosecond]]).
-                let options = get_options_object(options)?;
+                let options = get_options_object(options, context)?;
                 let _overflow = get_option::<Overflow>(&options, js_string!("overflow"), context)?;
                 return Ok(zdt.inner.to_plain_time());
             // c. If item has an [[InitializedTemporalDateTime]] internal slot, then
@@ -908,7 +912,7 @@ pub(crate) fn to_temporal_time(
                 // i. Return ! CreateTemporalTime(item.[[ISOHour]], item.[[ISOMinute]],
                 // item.[[ISOSecond]], item.[[ISOMillisecond]], item.[[ISOMicrosecond]],
                 // item.[[ISONanosecond]]).
-                let options = get_options_object(options)?;
+                let options = get_options_object(options, context)?;
                 let _overflow = get_option::<Overflow>(&options, js_string!("overflow"), context)?;
                 return Ok(PlainTimeInner::from(dt.inner.clone()));
             }
@@ -918,7 +922,7 @@ pub(crate) fn to_temporal_time(
             // result.[[Nanosecond]], overflow).
             let partial = to_js_partial_time_record(&object, context)?;
 
-            let options = get_options_object(options)?;
+            let options = get_options_object(options, context)?;
             let overflow = get_option::<Overflow>(&options, js_string!("overflow"), context)?;
 
             PlainTimeInner::from_partial(partial.as_temporal_partial_time(overflow)?, overflow)
@@ -930,7 +934,7 @@ pub(crate) fn to_temporal_time(
             // c. Assert: IsValidTime(result.[[Hour]], result.[[Minute]], result.[[Second]], result.[[Millisecond]], result.[[Microsecond]], result.[[Nanosecond]]) is true.
             let result = str.to_std_string_escaped().parse::<PlainTimeInner>()?;
 
-            let options = get_options_object(options)?;
+            let options = get_options_object(options, context)?;
             let _overflow = get_option::<Overflow>(&options, js_string!("overflow"), context)?;
 
             Ok(result)

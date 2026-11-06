@@ -1,15 +1,16 @@
 use crate::fetch::request::JsRequest;
 use crate::fetch::response::JsResponse;
 use crate::test::{TestAction, run_test_actions};
-use surgeist_js::{Context, Finalize, JsData, JsError, JsResult, JsString, Trace, js_error, js_str};
 use http::Response;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
+use surgeist_js::gc::heap::Trace as HeapTrace;
+use surgeist_js::{Context, JsData, JsError, JsResult, JsString, js_error, js_str};
 use url::Url;
 
 /// This is a special end-to-end fetcher that processes requests.
-#[derive(Debug, Clone, Trace, Finalize, JsData)]
+#[derive(Debug, Clone, JsData, HeapTrace)]
 struct E2eFetcher;
 
 impl E2eFetcher {

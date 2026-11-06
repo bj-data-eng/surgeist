@@ -11,7 +11,7 @@
 
 use crate::{
     Context, JsArgs, JsData, JsError, JsExpect, JsResult, JsString,
-    builtins::iterable::create_iter_result_object,
+    builtins::iterable::create_iter_result_object_trusted,
     context::intrinsics::Intrinsics,
     error::JsNativeError,
     error::PanicError,
@@ -22,48 +22,60 @@ use crate::{
     string::StaticJsStrings,
     symbol::JsSymbol,
     value::JsValue,
-    vm::{CallFrame, CallFrameFlags, CompletionRecord, GeneratorResumeKind, Stack},
+    vm::call_frame::StoredCallFrame,
+    vm::{CallFrame, CallFrameFlags, CompletionRecord, GeneratorResumeKind, Stack, StoredStack},
 };
-use surgeist_js_gc::{Finalize, Trace, custom_trace};
 
 use super::{BuiltInBuilder, IntrinsicObject};
 
 /// Indicates the state of a generator.
-#[derive(Debug, Finalize)]
+#[derive(Debug, surgeist_js_gc::heap::Trace)]
 pub(crate) enum GeneratorState {
     SuspendedStart {
         /// The `[[GeneratorContext]]` internal slot.
-        context: GeneratorContext,
+        context: StoredGeneratorContext,
     },
     SuspendedYield {
         /// The `[[GeneratorContext]]` internal slot.
-        context: GeneratorContext,
+        context: StoredGeneratorContext,
     },
     Executing,
     Completed,
-}
-
-// Need to manually implement, since `Trace` adds a `Drop` impl which disallows destructuring.
-unsafe impl Trace for GeneratorState {
-    custom_trace!(this, mark, {
-        match &this {
-            Self::SuspendedStart { context } | Self::SuspendedYield { context } => mark(context),
-            Self::Executing | Self::Completed => {}
-        }
-    });
 }
 
 /// Holds all information that a generator needs to continue it's execution.
 ///
 /// All of the fields must be changed with those that are currently present in the
 /// context/vm before the generator execution starts/resumes and after it has ended/yielded.
-#[derive(Debug, Trace, Finalize)]
+#[derive(Debug)]
 pub(crate) struct GeneratorContext {
     pub(crate) stack: Stack,
     pub(crate) call_frame: Option<CallFrame>,
 }
 
+#[derive(Debug, Clone, surgeist_js_gc::heap::Trace)]
+pub(crate) struct StoredGeneratorContext {
+    stack: StoredStack,
+    call_frame: Option<StoredCallFrame>,
+}
+
+impl StoredGeneratorContext {
+    pub(crate) fn to_context(&self) -> GeneratorContext {
+        GeneratorContext {
+            stack: self.stack.to_stack(),
+            call_frame: self.call_frame.as_ref().map(StoredCallFrame::to_frame),
+        }
+    }
+}
+
 impl GeneratorContext {
+    pub(crate) fn stored(&self) -> StoredGeneratorContext {
+        StoredGeneratorContext {
+            stack: self.stack.stored(),
+            call_frame: self.call_frame.as_ref().map(CallFrame::stored),
+        }
+    }
+
     /// Creates a new `GeneratorContext` from the current `Context` state.
     pub(crate) fn from_current(context: &mut Context, async_generator: Option<JsObject>) -> Self {
         let mut frame = context.vm.frame().clone();
@@ -147,7 +159,7 @@ impl GeneratorContext {
 }
 
 /// The internal representation of a `Generator` object.
-#[derive(Debug, Finalize, Trace, JsData)]
+#[derive(Debug, JsData, surgeist_js_gc::heap::Trace)]
 pub struct Generator {
     /// The `[[GeneratorState]]` internal slot.
     pub(crate) state: GeneratorState,
@@ -287,15 +299,15 @@ impl Generator {
                 // 2. If state is completed, return CreateIterResultObject(undefined, true).
                 GeneratorState::Completed => {
                     r#gen.state = GeneratorState::Completed;
-                    return Ok(create_iter_result_object(
+                    return Ok(create_iter_result_object_trusted(
                         JsValue::undefined(),
                         true,
                         context,
                     ));
                 }
                 // 3. Assert: state is either suspendedStart or suspendedYield.
-                GeneratorState::SuspendedStart { context } => (context, true),
-                GeneratorState::SuspendedYield { context } => (context, false),
+                GeneratorState::SuspendedStart { context } => (context.to_context(), true),
+                GeneratorState::SuspendedYield { context } => (context.to_context(), false),
             };
 
         drop(r#gen);
@@ -317,13 +329,13 @@ impl Generator {
         match record {
             CompletionRecord::Normal(value) => {
                 r#gen.state = GeneratorState::SuspendedYield {
-                    context: generator_context,
+                    context: generator_context.stored(),
                 };
                 Ok(value)
             }
             CompletionRecord::Return(value) => {
                 r#gen.state = GeneratorState::Completed;
-                Ok(create_iter_result_object(value, true, context))
+                Ok(create_iter_result_object_trusted(value, true, context))
             }
             CompletionRecord::Throw(err) => {
                 r#gen.state = GeneratorState::Completed;
@@ -378,14 +390,14 @@ impl Generator {
                     // a. If abruptCompletion.[[Type]] is return, then
                     if let Ok(value) = abrupt_completion {
                         // i. Return CreateIterResultObject(abruptCompletion.[[Value]], true).
-                        let value = create_iter_result_object(value, true, context);
+                        let value = create_iter_result_object_trusted(value, true, context);
                         return Ok(value);
                     }
 
                     // b. Return Completion(abruptCompletion).
                     return abrupt_completion;
                 }
-                GeneratorState::SuspendedYield { context } => context,
+                GeneratorState::SuspendedYield { context } => context.to_context(),
             };
 
         // 9. Push genContext onto the execution context stack; genContext is now the running execution context.
@@ -408,13 +420,13 @@ impl Generator {
         match record {
             CompletionRecord::Normal(value) => {
                 r#gen.state = GeneratorState::SuspendedYield {
-                    context: generator_context,
+                    context: generator_context.stored(),
                 };
                 Ok(value)
             }
             CompletionRecord::Return(value) => {
                 r#gen.state = GeneratorState::Completed;
-                Ok(create_iter_result_object(value, true, context))
+                Ok(create_iter_result_object_trusted(value, true, context))
             }
             CompletionRecord::Throw(err) => {
                 r#gen.state = GeneratorState::Completed;

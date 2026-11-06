@@ -1,6 +1,6 @@
 use crate::{JsNativeErrorKind, JsValue, TestAction, run_test_actions};
-use surgeist_js_macros::js_str;
 use indoc::indoc;
+use surgeist_js_macros::js_str;
 
 #[test]
 fn construct() {
@@ -394,5 +394,96 @@ fn get_or_insert_computed_this_is_undefined_and_key_canonicalized() {
         TestAction::assert_eq("v", js_str!("ok")),
         TestAction::assert("m.has(0)"),
         TestAction::assert_eq("m.get(0)", js_str!("ok")),
+    ]);
+}
+
+#[test]
+fn iterator_keeps_map_edges_live_until_the_iterator_is_unreachable() {
+    use crate::{Context, JsObject, js_string, object::builtins::JsMap};
+
+    let context = &mut Context::default();
+    let map = JsMap::new(context);
+    let map_edge = map.edge();
+    let key = JsObject::with_null_proto(context.runtime());
+    let key_edge = key.edge();
+    let value = JsObject::with_null_proto(context.runtime());
+    let value_edge = value.edge();
+
+    map.set(key, value, context).unwrap();
+    let iterator = map.entries(context).unwrap();
+    let iterator_edge = iterator.edge();
+    map.set(js_string!("cycle"), iterator.clone(), context)
+        .unwrap();
+    drop(map);
+
+    context.runtime().collect().unwrap();
+    assert!(map_edge.is_live().unwrap());
+    assert!(key_edge.is_live().unwrap());
+    assert!(value_edge.is_live().unwrap());
+
+    drop(iterator);
+    context.runtime().collect().unwrap();
+    assert!(!iterator_edge.is_live().unwrap());
+    assert!(!map_edge.is_live().unwrap());
+    assert!(!key_edge.is_live().unwrap());
+    assert!(!value_edge.is_live().unwrap());
+}
+
+#[test]
+fn clear_and_reinsertion_preserve_independent_map_iterators() {
+    run_test_actions([
+        TestAction::run(indoc! {r#"
+            const map = new Map([[1, 'a'], [2, 'b']]);
+            const outer = map.keys();
+            const inner = map.keys();
+            outer.next();
+            map.clear();
+            map.set(2, 'c');
+            map.set(3, 'd');
+            map.delete(2);
+            map.set(2, 'e');
+        "#}),
+        TestAction::assert_eq("outer.next().value", 3),
+        TestAction::assert_eq("outer.next().value", 2),
+        TestAction::assert("outer.next().done"),
+        TestAction::assert_eq("inner.next().value", 3),
+        TestAction::assert_eq("inner.next().value", 2),
+        TestAction::assert("inner.next().done"),
+    ]);
+}
+
+#[test]
+fn map_rejects_foreign_edges_without_replacing_an_existing_entry() {
+    use crate::{Context, JsObject, Runtime, object::builtins::JsMap};
+
+    let context = &mut Context::default();
+    let map = JsMap::new(context);
+    let foreign = JsObject::with_null_proto(&Runtime::default());
+
+    map.set(1, 2, context).unwrap();
+    let error = map.set(1, foreign.clone(), context).unwrap_err();
+    assert!(error.try_native(context).unwrap().is_type());
+    let error = map.set(foreign, 3, context).unwrap_err();
+    assert!(error.try_native(context).unwrap().is_type());
+
+    context.runtime().collect().unwrap();
+    assert_eq!(map.get(1, context).unwrap(), 2.into());
+    assert_eq!(map.get_size(context).unwrap(), 1.into());
+}
+
+#[test]
+fn map_keys_use_same_value_zero_and_object_identity() {
+    run_test_actions([
+        TestAction::run(indoc! {r#"
+            const key = {};
+            const other = {};
+            const map = new Map([[-0, 'zero'], [NaN, 'first'], [key, 'key']]);
+            map.set(Number('invalid'), 'last');
+        "#}),
+        TestAction::assert_eq("map.size", 3),
+        TestAction::assert_eq("map.get(+0)", js_str!("zero")),
+        TestAction::assert_eq("map.get(NaN)", js_str!("last")),
+        TestAction::assert_eq("map.get(key)", js_str!("key")),
+        TestAction::assert("!map.has(other)"),
     ]);
 }

@@ -1,30 +1,27 @@
-use surgeist_js_gc::{Finalize, Trace, empty_trace};
+use surgeist_js_gc::heap::ObjectId;
 
 use crate::JsString;
 
-/// Private runtime environment.
-#[derive(Clone, Debug, Finalize)]
+/// Private names introduced by one class.
+///
+/// The class identity distinguishes names without retaining the class object.
+#[derive(Debug)]
 pub(crate) struct PrivateEnvironment {
     /// The unique identifier of the private names.
-    id: usize,
+    id: ObjectId,
 
     /// The `[[Description]]` internal slot of the private names.
     descriptions: Vec<JsString>,
 }
 
-// Safety: PrivateEnvironment does not contain any objects that need to be traced.
-unsafe impl Trace for PrivateEnvironment {
-    empty_trace!();
-}
-
 impl PrivateEnvironment {
     /// Creates a new `PrivateEnvironment`.
-    pub(crate) fn new(id: usize, descriptions: Vec<JsString>) -> Self {
+    pub(crate) fn new(id: ObjectId, descriptions: Vec<JsString>) -> Self {
         Self { id, descriptions }
     }
 
     /// Gets the id of this private environment.
-    pub(crate) const fn id(&self) -> usize {
+    pub(crate) const fn id(&self) -> ObjectId {
         self.id
     }
 

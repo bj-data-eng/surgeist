@@ -6,11 +6,11 @@ use crate::{
     object::{JsFunction, JsObject},
     value::{IntoOrUndefined, TryFromJs},
 };
-use surgeist_js_gc::{Finalize, Trace};
 use std::ops::Deref;
+use thin_vec::ThinVec;
 
 /// `JsArray` provides a wrapper for Boa's implementation of the JavaScript `Array` object.
-#[derive(Debug, Clone, Trace, Finalize)]
+#[derive(Debug, Clone)]
 pub struct JsArray {
     inner: JsObject,
 }
@@ -29,14 +29,26 @@ impl JsArray {
         Ok(Self { inner })
     }
 
-    /// Create an array from a `IntoIterator<Item = JsValue>` convertible object.
-    pub fn from_iter<I>(elements: I, context: &mut Context) -> Self
+    /// Create an array from an iterator of JavaScript values.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `TypeError` if an element is an object from a different runtime.
+    /// No array is created until every element has been checked.
+    pub fn from_iter<I>(elements: I, context: &mut Context) -> JsResult<Self>
     where
         I: IntoIterator<Item = JsValue>,
     {
-        Self {
-            inner: Array::create_array_from_list(elements, context),
-        }
+        let elements = elements
+            .into_iter()
+            .map(|value| {
+                context.runtime().check_value(&value)?;
+                Ok(value)
+            })
+            .collect::<JsResult<ThinVec<_>>>()?;
+        Ok(Self {
+            inner: Array::create_array_with_dense_elements(elements, context),
+        })
     }
 
     /// Create a [`JsArray`] from a [`JsObject`], if the object is not an array throw a `TypeError`.
@@ -336,6 +348,10 @@ impl JsArray {
     }
 
     /// Calls `Array.prototype.values()`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `TypeError` if the array belongs to a different runtime.
     #[inline]
     pub fn values(&self, context: &mut Context) -> JsResult<JsValue> {
         Array::values(&self.inner.clone().into(), &[], context)
@@ -351,7 +367,7 @@ impl JsArray {
     /// # use surgeist_js::{Context, JsValue};
     /// # use surgeist_js::object::builtins::JsArray;
     /// let context = &mut Context::default();
-    /// let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context);
+    /// let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context)?;
     ///
     /// // Insert elements at index 1 without removing
     /// let removed = array.splice(
@@ -363,6 +379,7 @@ impl JsArray {
     ///
     /// assert_eq!(array.length(context).unwrap(), 5);
     /// assert_eq!(removed.length(context).unwrap(), 0);
+    /// # Ok::<_, surgeist_js::JsError>(())
     /// ```
     #[inline]
     pub fn splice(
@@ -450,8 +467,14 @@ impl JsArray {
     }
 
     /// Calls `Array.prototype.with`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `TypeError` if the array or replacement object belongs to a different runtime.
     #[inline]
     pub fn with(&self, index: u64, value: JsValue, context: &mut Context) -> JsResult<Self> {
+        self.inner.check_runtime(context.runtime())?;
+        context.runtime().check_value(&value)?;
         let array = Array::with(&self.inner.clone().into(), &[index.into(), value], context)?;
 
         Ok(Self {
@@ -501,9 +524,39 @@ mod tests {
     use super::*;
 
     #[test]
+    fn from_iter_rejects_foreign_objects_and_retains_peer_objects() {
+        use crate::JsNativeErrorKind;
+
+        let context = &mut Context::default();
+        let peer = Context::builder()
+            .runtime(context.runtime().clone())
+            .build()
+            .unwrap();
+        let foreign = Context::default();
+        let foreign_object = JsObject::with_null_proto(foreign.runtime());
+        let error =
+            JsArray::from_iter([JsValue::from(1), foreign_object.into()], context).unwrap_err();
+        let error = error.as_native().expect("a native runtime admission error");
+        assert_eq!(error.kind(), &JsNativeErrorKind::Type);
+        assert_eq!(error.message(), "object belongs to a different runtime");
+
+        let peer_object = JsObject::with_null_proto(peer.runtime());
+        let identity = peer_object.edge();
+        let array = JsArray::from_iter([JsValue::from(1), peer_object.into()], context).unwrap();
+        context.runtime().collect().unwrap();
+        assert_eq!(array.length(context).unwrap(), 2);
+        assert_eq!(array.get(0, context).unwrap(), JsValue::from(1));
+        let retained = array.get(1, context).unwrap();
+        assert_eq!(
+            retained.as_object(),
+            Some(identity.upgrade().unwrap().unwrap())
+        );
+    }
+
+    #[test]
     fn splice_remove() {
         let context = &mut Context::default();
-        let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context);
+        let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context).unwrap();
 
         let removed = array.splice(1, Some(1), &[], context).unwrap();
 
@@ -514,7 +567,7 @@ mod tests {
     #[test]
     fn splice_insert() {
         let context = &mut Context::default();
-        let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context);
+        let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context).unwrap();
 
         let removed = array
             .splice(1, Some(0), &[JsValue::from(10), JsValue::from(20)], context)
@@ -527,7 +580,7 @@ mod tests {
     #[test]
     fn splice_replace() {
         let context = &mut Context::default();
-        let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context);
+        let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context).unwrap();
 
         let removed = array
             .splice(1, Some(1), &[JsValue::from(99)], context)
@@ -540,7 +593,7 @@ mod tests {
     #[test]
     fn splice_from_start() {
         let context = &mut Context::default();
-        let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context);
+        let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context).unwrap();
 
         let removed = array.splice(0, Some(1), &[], context).unwrap();
 

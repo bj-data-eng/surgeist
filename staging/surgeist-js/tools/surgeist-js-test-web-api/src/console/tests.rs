@@ -1,8 +1,9 @@
 use super::{Console, ConsoleState, Logger, NullLogger, formatter};
 use crate::test::{TestAction, run_test_actions, run_test_actions_with};
-use surgeist_js::{Context, JsError, JsResult, JsValue, js_string, property::Attribute};
-use surgeist_js_gc::{Gc, GcRefCell};
 use indoc::indoc;
+use std::{cell::RefCell, rc::Rc};
+use surgeist_js::gc::heap::Trace;
+use surgeist_js::{Context, JsError, JsResult, JsValue, js_string, property::Attribute};
 
 #[test]
 fn formatter_no_args_is_empty_string() {
@@ -96,7 +97,7 @@ fn formatter_float_format_works() {
 #[test]
 fn console_log_cyclic() {
     let mut context = Context::default();
-    let console = Console::init_with_logger(NullLogger, &mut context);
+    let console = Console::init_with_logger(NullLogger, &mut context).unwrap();
     context
         .register_global_property(Console::NAME, console, Attribute::all())
         .unwrap();
@@ -113,9 +114,10 @@ fn console_log_cyclic() {
 }
 
 /// A logger that records all log messages.
-#[derive(Clone, Debug, Default, surgeist_js::Trace, surgeist_js::Finalize)]
+#[derive(Clone, Debug, Default, Trace)]
 pub(crate) struct RecordingLogger {
-    pub log: Gc<GcRefCell<String>>,
+    #[heap_trace(skip)]
+    pub log: Rc<RefCell<String>>,
 }
 
 impl Logger for RecordingLogger {

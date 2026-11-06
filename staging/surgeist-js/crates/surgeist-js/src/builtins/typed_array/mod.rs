@@ -25,7 +25,6 @@ use crate::{
     symbol::JsSymbol,
     value::{JsValue, Numeric},
 };
-use surgeist_js_gc::{Finalize, Trace};
 
 mod builtin;
 mod element;
@@ -350,8 +349,7 @@ pub(crate) enum ContentType {
 }
 
 /// List of all typed array kinds.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Trace, Finalize)]
-#[surgeist_js_gc(empty_trace)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum TypedArrayKind {
     /// 8-bit signed integers.
     Int8,

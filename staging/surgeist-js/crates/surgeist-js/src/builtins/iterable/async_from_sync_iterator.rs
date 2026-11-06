@@ -2,16 +2,18 @@ use crate::{
     Context, JsArgs, JsData, JsError, JsExpect, JsNativeError, JsResult, JsValue,
     builtins::{
         BuiltInBuilder, IntrinsicObject, Promise,
-        iterable::{IteratorRecord, IteratorResult, create_iter_result_object},
+        iterable::{
+            IteratorRecord, IteratorResult, StoredIteratorRecord, create_iter_result_object_trusted,
+        },
         promise::{PromiseCapability, if_abrupt_reject_promise},
     },
     context::intrinsics::Intrinsics,
     js_string,
-    native_function::NativeFunction,
+    native_function::{NativeCapture, NativeFunction},
     object::{FunctionObjectBuilder, JsObject},
     realm::Realm,
 };
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 /// `%AsyncFromSyncIteratorPrototype%` object.
 ///
@@ -19,10 +21,22 @@ use surgeist_js_gc::{Finalize, Trace};
 ///  - [ECMA reference][spec]
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-properties-of-async-from-sync-iterator-instances
-#[derive(Clone, Debug, Finalize, Trace, JsData)]
+#[derive(Clone, Debug, HeapTrace, JsData)]
 pub(crate) struct AsyncFromSyncIterator {
     // The [[SyncIteratorRecord]] internal slot.
-    sync_iterator_record: IteratorRecord,
+    sync_iterator_record: StoredIteratorRecord,
+}
+
+impl NativeCapture for IteratorRecord {
+    type Stored = StoredIteratorRecord;
+
+    fn store(&self) -> Self::Stored {
+        self.stored()
+    }
+
+    fn restore(stored: &Self::Stored) -> Self {
+        stored.to_iterator()
+    }
 }
 
 impl IntrinsicObject for AsyncFromSyncIterator {
@@ -70,7 +84,7 @@ impl AsyncFromSyncIterator {
                 .iterator_prototypes()
                 .async_from_sync_iterator(),
             Self {
-                sync_iterator_record,
+                sync_iterator_record: sync_iterator_record.stored(),
             },
         )
         .upcast();
@@ -101,7 +115,7 @@ impl AsyncFromSyncIterator {
             .and_then(JsObject::downcast_ref::<Self>)
             .js_expect("async from sync iterator prototype must be object")?
             .sync_iterator_record
-            .clone();
+            .to_iterator();
 
         // 3. Let promiseCapability be ! NewPromiseCapability(%Promise%).
         let promise_capability = PromiseCapability::new(
@@ -145,7 +159,7 @@ impl AsyncFromSyncIterator {
             .and_then(JsObject::downcast_ref::<Self>)
             .js_expect("async from sync iterator prototype must be object")?
             .sync_iterator_record
-            .clone();
+            .to_iterator();
         // 5. Let syncIterator be syncIteratorRecord.[[Iterator]].
         let sync_iterator = sync_iterator_record.iterator().clone();
 
@@ -166,8 +180,11 @@ impl AsyncFromSyncIterator {
             // 8. If return is undefined, then
             (None, _) => {
                 // a. Let iterResult be CreateIterResultObject(value, true).
-                let iter_result =
-                    create_iter_result_object(args.get_or_undefined(0).clone(), true, context);
+                let iter_result = create_iter_result_object_trusted(
+                    args.get_or_undefined(0).clone(),
+                    true,
+                    context,
+                );
 
                 // b. Perform ! Call(promiseCapability.[[Resolve]], undefined, « iterResult »).
                 promise_capability
@@ -227,7 +244,7 @@ impl AsyncFromSyncIterator {
             .and_then(JsObject::downcast_ref::<Self>)
             .js_expect("async from sync iterator prototype must be object")?
             .sync_iterator_record
-            .clone();
+            .to_iterator();
         // 5. Let syncIterator be syncIteratorRecord.[[Iterator]].
         let sync_iterator = sync_iterator_record.iterator().clone();
 
@@ -263,7 +280,7 @@ impl AsyncFromSyncIterator {
                         &JsValue::undefined(),
                         &[JsNativeError::typ()
                             .with_message("sync iterator does not have a throw method")
-                            .into_opaque(context)
+                            .into_opaque(context)?
                             .into()],
                         context,
                     )
@@ -365,7 +382,7 @@ impl AsyncFromSyncIterator {
             NativeFunction::from_fn_with_captures(
                 |_this, args, &done, context| {
                     // a. Return CreateIterResultObject(value, done).
-                    Ok(create_iter_result_object(
+                    Ok(create_iter_result_object_trusted(
                         args.get_or_undefined(0).clone(),
                         done,
                         context,
@@ -376,7 +393,7 @@ impl AsyncFromSyncIterator {
         )
         .name(js_string!())
         .length(1)
-        .build();
+        .build()?;
 
         // 11. NOTE: onFulfilled is used when processing the "value" property of an
         // IteratorResult object in order to wait for its value if it is a promise and
@@ -404,23 +421,30 @@ impl AsyncFromSyncIterator {
                                 context,
                             )
                         },
-                        sync_iterator_record,
+                        sync_iterator_record.clone(),
                     ),
                 )
                 .name(js_string!())
                 .length(1)
-                .build(),
+                .build()?,
             )
         };
 
         // 14. Perform PerformPromiseThen(valueWrapper, onFulfilled, undefined, promiseCapability).
-        Promise::perform_promise_then(
+        let result = Promise::perform_promise_then(
             &value_wrapper,
             Some(on_fulfilled),
             on_rejected,
             Some(promise_capability.clone()),
             context,
         );
+        let result = match result {
+            Err(error) if !done && close_on_rejection => {
+                sync_iterator_record.close(Err(error), context).map(|_| ())
+            }
+            result => result,
+        };
+        if_abrupt_reject_promise!(result, promise_capability, context);
 
         // 15. Return promiseCapability.[[Promise]].
         Ok(promise_capability.promise().clone().into())

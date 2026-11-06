@@ -25,7 +25,7 @@ use crate::{
     js_string,
     string::{JsString, StaticJsStrings},
 };
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 use surgeist_js_macros::{JsData, js_str};
 
@@ -134,11 +134,10 @@ struct SymbolData {
 }
 
 /// This represents a JavaScript symbol primitive.
-#[derive(Clone, Trace, Finalize, JsData)]
-// Safety: Symbols own numeric IDs and code units, so there are no GC edges.
-#[surgeist_js_gc(unsafe_empty_trace)]
+#[derive(Clone, JsData, HeapTrace)]
 #[allow(clippy::module_name_repetitions)]
 pub struct JsSymbol {
+    #[heap_trace(skip)]
     repr: SymbolRepr,
 }
 
@@ -335,7 +334,7 @@ mod tests {
         let mut context = Context::default();
         let symbol1 = JsSymbol::new(None).unwrap();
         let symbol2 = JsSymbol::new(None).unwrap();
-        let test_obj = JsObject::from_proto_and_data(None, ());
+        let test_obj = JsObject::from_proto_and_data(context.runtime(), None, ()).unwrap();
         test_obj
             .set(symbol1, js_str!("Can't see me"), false, &mut context)
             .unwrap();

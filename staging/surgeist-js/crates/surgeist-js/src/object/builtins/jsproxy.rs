@@ -8,7 +8,6 @@ use crate::{
     object::{FunctionObjectBuilder, JsObject},
     value::TryFromJs,
 };
-use surgeist_js_gc::{Finalize, Trace};
 
 /// `JsProxy` provides a wrapper for Boa's implementation of the ECMAScript `Proxy` object
 ///
@@ -22,7 +21,7 @@ use surgeist_js_gc::{Finalize, Trace};
 /// [get]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy/Proxy/get
 /// [delete]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy/Proxy/deleteProperty
 /// [proxy]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy
-#[derive(Debug, Clone, Trace, Finalize)]
+#[derive(Debug, Clone)]
 pub struct JsProxy {
     inner: JsObject,
 }
@@ -94,7 +93,7 @@ impl TryFromJs for JsProxy {
 ///
 /// [proxy]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy
 /// [revocable]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy/revocable
-#[derive(Debug, Trace, Finalize)]
+#[derive(Debug)]
 pub struct JsRevocableProxy {
     proxy: JsProxy,
     revoker: JsFunction,
@@ -394,12 +393,13 @@ impl JsProxyBuilder {
     /// [`JsObject`] in case there's a need to manipulate the returned object
     /// inside Rust code.
     pub fn build(self, context: &mut Context) -> JsResult<JsProxy> {
+        self.target.check_runtime(context.runtime())?;
         let handler = JsObject::with_object_proto(context.intrinsics());
 
         if let Some(apply) = self.apply {
             let f = FunctionObjectBuilder::new(context.realm(), NativeFunction::from_fn_ptr(apply))
                 .length(3)
-                .build();
+                .build()?;
             handler
                 .create_data_property_or_throw(js_string!("apply"), f, context)
                 .js_expect("new object should be writable")?;
@@ -408,7 +408,7 @@ impl JsProxyBuilder {
             let f =
                 FunctionObjectBuilder::new(context.realm(), NativeFunction::from_fn_ptr(construct))
                     .length(3)
-                    .build();
+                    .build()?;
             handler
                 .create_data_property_or_throw(js_string!("construct"), f, context)
                 .js_expect("new object should be writable")?;
@@ -419,7 +419,7 @@ impl JsProxyBuilder {
                 NativeFunction::from_fn_ptr(define_property),
             )
             .length(3)
-            .build();
+            .build()?;
             handler
                 .create_data_property_or_throw(js_string!("defineProperty"), f, context)
                 .js_expect("new object should be writable")?;
@@ -430,7 +430,7 @@ impl JsProxyBuilder {
                 NativeFunction::from_fn_ptr(delete_property),
             )
             .length(2)
-            .build();
+            .build()?;
             handler
                 .create_data_property_or_throw(js_string!("deleteProperty"), f, context)
                 .js_expect("new object should be writable")?;
@@ -438,7 +438,7 @@ impl JsProxyBuilder {
         if let Some(get) = self.get {
             let f = FunctionObjectBuilder::new(context.realm(), NativeFunction::from_fn_ptr(get))
                 .length(3)
-                .build();
+                .build()?;
             handler
                 .create_data_property_or_throw(js_string!("get"), f, context)
                 .js_expect("new object should be writable")?;
@@ -449,7 +449,7 @@ impl JsProxyBuilder {
                 NativeFunction::from_fn_ptr(get_own_property_descriptor),
             )
             .length(2)
-            .build();
+            .build()?;
             handler
                 .create_data_property_or_throw(js_string!("getOwnPropertyDescriptor"), f, context)
                 .js_expect("new object should be writable")?;
@@ -460,7 +460,7 @@ impl JsProxyBuilder {
                 NativeFunction::from_fn_ptr(get_prototype_of),
             )
             .length(1)
-            .build();
+            .build()?;
             handler
                 .create_data_property_or_throw(js_string!("getPrototypeOf"), f, context)
                 .js_expect("new object should be writable")?;
@@ -468,7 +468,7 @@ impl JsProxyBuilder {
         if let Some(has) = self.has {
             let f = FunctionObjectBuilder::new(context.realm(), NativeFunction::from_fn_ptr(has))
                 .length(2)
-                .build();
+                .build()?;
             handler
                 .create_data_property_or_throw(js_string!("has"), f, context)
                 .js_expect("new object should be writable")?;
@@ -479,7 +479,7 @@ impl JsProxyBuilder {
                 NativeFunction::from_fn_ptr(is_extensible),
             )
             .length(1)
-            .build();
+            .build()?;
             handler
                 .create_data_property_or_throw(js_string!("isExtensible"), f, context)
                 .js_expect("new object should be writable")?;
@@ -488,7 +488,7 @@ impl JsProxyBuilder {
             let f =
                 FunctionObjectBuilder::new(context.realm(), NativeFunction::from_fn_ptr(own_keys))
                     .length(1)
-                    .build();
+                    .build()?;
             handler
                 .create_data_property_or_throw(js_string!("ownKeys"), f, context)
                 .js_expect("new object should be writable")?;
@@ -499,7 +499,7 @@ impl JsProxyBuilder {
                 NativeFunction::from_fn_ptr(prevent_extensions),
             )
             .length(1)
-            .build();
+            .build()?;
             handler
                 .create_data_property_or_throw(js_string!("preventExtensions"), f, context)
                 .js_expect("new object should be writable")?;
@@ -507,7 +507,7 @@ impl JsProxyBuilder {
         if let Some(set) = self.set {
             let f = FunctionObjectBuilder::new(context.realm(), NativeFunction::from_fn_ptr(set))
                 .length(4)
-                .build();
+                .build()?;
             handler
                 .create_data_property_or_throw(js_string!("set"), f, context)
                 .js_expect("new object should be writable")?;
@@ -518,17 +518,17 @@ impl JsProxyBuilder {
                 NativeFunction::from_fn_ptr(set_prototype_of),
             )
             .length(2)
-            .build();
+            .build()?;
             handler
                 .create_data_property_or_throw(js_string!("setPrototypeOf"), f, context)
                 .js_expect("new object should be writable")?;
         }
 
-        let proxy = JsObject::from_proto_and_data_with_shared_shape(
+        let proxy = JsObject::new(
             context.root_shape(),
             context.intrinsics().constructors().object().prototype(),
-            Proxy::new(self.target, handler),
-        )
+            Proxy::new(&self.target, &handler),
+        )?
         .upcast();
 
         Ok(JsProxy { inner: proxy })
@@ -543,7 +543,7 @@ impl JsProxyBuilder {
     /// inside Rust code.
     pub fn build_revocable(self, context: &mut Context) -> JsResult<JsRevocableProxy> {
         let proxy = self.build(context)?;
-        let revoker = Proxy::revoker(proxy.inner.clone(), context);
+        let revoker = Proxy::revoker(proxy.inner.clone(), context)?;
 
         Ok(JsRevocableProxy { proxy, revoker })
     }

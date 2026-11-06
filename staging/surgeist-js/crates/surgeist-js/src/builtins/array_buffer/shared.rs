@@ -2,7 +2,7 @@ use std::sync::{Arc, atomic::Ordering};
 
 use portable_atomic::{AtomicU64, AtomicUsize};
 
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 use crate::{
     Context, JsArgs, JsData, JsNativeError, JsObject, JsResult, JsString, JsSymbol, JsValue,
@@ -30,10 +30,10 @@ use super::{
 /// running different JS code at the same time.
 /// Nonempty backing requires lock-free 64-bit atomics so that narrower shared
 /// accesses can use the same words without introducing locks.
-#[derive(Debug, Clone, Trace, Finalize, JsData)]
+#[derive(Debug, Clone, JsData, HeapTrace)]
 pub struct SharedArrayBuffer {
-    // Shared buffers cannot be detached.
-    #[unsafe_ignore_trace]
+    // The shared backing contains byte storage and waiter signals.
+    #[heap_trace(skip)]
     data: Arc<Inner>,
 }
 
@@ -533,7 +533,7 @@ impl SharedArrayBuffer {
                     wait_queues: WaitQueues::default(),
                 }),
             },
-        );
+        )?;
 
         // 11. Return obj.
         Ok(obj)

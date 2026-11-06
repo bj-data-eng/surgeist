@@ -1,7 +1,9 @@
 use std::collections::HashSet;
 use std::fmt;
 
-use crate::{JsObject, JsValue, builtins::map::ordered_map::OrderedMap};
+use surgeist_js_gc::heap::ObjectId;
+
+use crate::{JsObject, builtins::map::ordered_map::OrderedMap};
 
 pub(super) fn log_map_to(
     f: &mut fmt::Formatter<'_>,
@@ -10,7 +12,7 @@ pub(super) fn log_map_to(
     print_children: bool,
 ) -> fmt::Result {
     let map = v
-        .downcast_ref::<OrderedMap<JsValue>>()
+        .downcast_ref::<OrderedMap>()
         .expect("object must be a map");
     let size = map.len();
 
@@ -29,9 +31,9 @@ pub(super) fn log_map_to(
             f.write_str(", ")?;
         }
         first = false;
-        super::value::log_value_to(f, key, print_internals, false)?;
+        super::value::log_value_to(f, &key, print_internals, false)?;
         f.write_str(" \u{2192} ")?;
-        super::value::log_value_to(f, value, print_internals, false)?;
+        super::value::log_value_to(f, &value, print_internals, false)?;
     }
     f.write_str(" }")
 }
@@ -41,10 +43,10 @@ pub(super) fn log_map_compact(
     v: &JsObject,
     depth: u32,
     print_internals: bool,
-    encounters: &mut HashSet<usize>,
+    encounters: &mut HashSet<ObjectId>,
 ) -> fmt::Result {
     let map = v
-        .downcast_ref::<OrderedMap<JsValue>>()
+        .downcast_ref::<OrderedMap>()
         .expect("object must be a map");
     let size = map.len();
 
@@ -63,9 +65,9 @@ pub(super) fn log_map_compact(
             f.write_str(", ")?;
         }
         first = false;
-        super::value::log_value_compact(f, key, depth + 1, print_internals, encounters)?;
+        super::value::log_value_compact(f, &key, depth + 1, print_internals, encounters)?;
         f.write_str(" \u{2192} ")?;
-        super::value::log_value_compact(f, value, depth + 1, print_internals, encounters)?;
+        super::value::log_value_compact(f, &value, depth + 1, print_internals, encounters)?;
     }
     f.write_str(" }")
 }

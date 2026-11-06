@@ -7,14 +7,13 @@ use num_integer::Integer;
 use num_traits::{ToPrimitive, Zero};
 use std::{ops::Sub, sync::LazyLock};
 
-use surgeist_js_gc::{Finalize, Trace};
-#[doc(inline)]
-pub use surgeist_js_macros::TryFromJs;
-pub use surgeist_js_macros::TryIntoJs;
 #[doc(inline)]
 pub use conversions::convert::Convert;
 #[doc(inline)]
 pub use conversions::nullable::Nullable;
+#[doc(inline)]
+pub use surgeist_js_macros::TryFromJs;
+pub use surgeist_js_macros::TryIntoJs;
 
 pub(crate) use self::{conversions::IntoOrUndefined, inner::StoredValue};
 #[doc(inline)]
@@ -61,30 +60,37 @@ static TWO_E_63: LazyLock<BigInt> = LazyLock::new(|| {
     BigInt::from(TWO_E_63)
 });
 
-/// The `js_value!` macro creates a `JsValue` instance based on a JSON-like DSL.
+/// Create a JavaScript value from a JSON-like literal.
+///
+/// Array and object literals take a context and return `JsResult<JsValue>`.
+/// They reject object values from another runtime. Other inputs return `JsValue`.
 ///
 /// ```
-/// # use surgeist_js::{js_string, js_value, Context, JsValue};
+/// # use surgeist_js::{js_string, js_value, Context, JsError, JsValue};
 /// # let context = &mut Context::default();
 /// assert_eq!(js_value!( 1 ), JsValue::from(1));
 /// assert_eq!(js_value!( false ), JsValue::from(false));
 /// // Objects and arrays cannot be compared with simple equality.
 /// // To create arrays and objects, the context needs to be passed in.
-/// assert_eq!(js_value!([ 1, 2, 3 ], context).display().to_string(), "[ 1, 2, 3 ]");
+/// assert_eq!(js_value!([ 1, 2, 3 ], context)?.display().to_string(), "[ 1, 2, 3 ]");
 /// assert_eq!(
 ///   js_value!({
 ///     // Comments are allowed inside.
-///     "key": (js_string!("value"))
-///   }, context).display().to_string(),
+///     "key": js_string!("value")
+///   }, context)?.display().to_string(),
 ///   "{\n    key: \"value\"\n}",
 /// );
+/// # Ok::<_, JsError>(())
 /// ```
-pub use surgeist_js_macros::js_object;
+pub use surgeist_js_macros::js_value;
 
-/// Create a `JsObject` object from a simpler DSL that resembles JSON.
+/// Create a JavaScript object from a JSON-like literal.
+///
+/// The macro takes a context and returns `JsResult<JsObject>`. It rejects
+/// object values from another runtime.
 ///
 /// ```
-/// # use surgeist_js::{js_string, js_object, Context, JsValue};
+/// # use surgeist_js::{js_object, Context, JsError, JsValue};
 /// # let context = &mut Context::default();
 /// let value = js_object!({
 ///   // Comments are allowed inside. String literals will always be transformed to `JsString`.
@@ -94,14 +100,15 @@ pub use surgeist_js_macros::js_object;
 ///   // Expressions surrounded by brackets will be expressed, like in JavaScript.
 ///   // Note that in this case, the unit value is represented by `null`.
 ///   [1 + 2]: (),
-/// }, context);
+/// }, context)?;
 ///
 /// assert_eq!(
 ///     JsValue::from(value).display().to_string(),
 ///     "{\n    3: null,\n    key: \"value\",\n    alsoKey: 1\n}"
 /// );
+/// # Ok::<_, JsError>(())
 /// ```
-pub use surgeist_js_macros::js_value;
+pub use surgeist_js_macros::js_object;
 
 /// A generic JavaScript value. This can be any ECMAScript language valid value.
 ///
@@ -114,7 +121,7 @@ pub use surgeist_js_macros::js_value;
 /// let value = JsValue::new(3);
 /// assert_eq!(value.to_string(&mut context), Ok(js_string!("3")));
 /// ```
-#[derive(Finalize, Debug, Clone, Trace)]
+#[derive(Debug, Clone)]
 pub struct JsValue(inner::InnerValue);
 
 impl StoredValue {
@@ -319,7 +326,7 @@ impl JsValue {
     /// ```
     /// use surgeist_js::{JsValue, object::JsObject};
     ///
-    /// let obj = JsValue::new(JsObject::with_null_proto());
+    /// let obj = JsValue::new(JsObject::with_null_proto(&surgeist_js::Runtime::default()));
     /// assert!(obj.is_object());
     ///
     /// let number = JsValue::new(42);
@@ -338,7 +345,7 @@ impl JsValue {
     /// ```
     /// use surgeist_js::{JsValue, object::JsObject};
     ///
-    /// let obj = JsValue::new(JsObject::with_null_proto());
+    /// let obj = JsValue::new(JsObject::with_null_proto(&surgeist_js::Runtime::default()));
     /// assert!(obj.as_object().is_some());
     ///
     /// let number = JsValue::new(42);
@@ -357,7 +364,7 @@ impl JsValue {
     /// ```
     /// use surgeist_js::{JsValue, object::JsObject};
     ///
-    /// let obj = JsValue::new(JsObject::with_null_proto());
+    /// let obj = JsValue::new(JsObject::with_null_proto(&surgeist_js::Runtime::default()));
     /// let inner = obj.into_object();
     /// assert!(inner.is_some());
     ///
@@ -384,7 +391,7 @@ impl JsValue {
     ///
     /// let context = &mut Context::default();
     /// let native_fn = NativeFunction::from_fn_ptr(|_, _, _| Ok(JsValue::undefined()));
-    /// let js_value = JsValue::from(native_fn.to_js_function(context.realm()));
+    /// let js_value = JsValue::from(native_fn.to_js_function(context.realm()).unwrap());
     /// assert!(js_value.is_callable());
     ///
     /// let number = JsValue::new(42);
@@ -405,7 +412,7 @@ impl JsValue {
     ///
     /// let context = &mut Context::default();
     /// let native_fn = NativeFunction::from_fn_ptr(|_, _, _| Ok(JsValue::undefined()));
-    /// let js_value = JsValue::from(native_fn.to_js_function(context.realm()));
+    /// let js_value = JsValue::from(native_fn.to_js_function(context.realm()).unwrap());
     /// assert!(js_value.as_callable().is_some());
     ///
     /// let number = JsValue::new(42);
@@ -427,7 +434,7 @@ impl JsValue {
     ///
     /// let context = &mut Context::default();
     /// let native_fn = NativeFunction::from_fn_ptr(|_, _, _| Ok(JsValue::undefined()));
-    /// let js_value = JsValue::from(native_fn.to_js_function(context.realm()));
+    /// let js_value = JsValue::from(native_fn.to_js_function(context.realm()).unwrap());
     /// assert!(js_value.as_function().is_some());
     ///
     /// let number = JsValue::new(42);

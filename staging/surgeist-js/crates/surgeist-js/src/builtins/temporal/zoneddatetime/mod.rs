@@ -18,9 +18,9 @@ use crate::{
     string::StaticJsStrings,
     value::{IntoOrUndefined, PreferredType},
 };
-use surgeist_js_gc::{Finalize, Trace};
 use cow_utils::CowUtils;
 use icu_calendar::AnyCalendarKind;
+use surgeist_js_gc::heap::Trace as HeapTrace;
 use temporal_rs::{
     Calendar, MonthCode, TimeZone, TinyAsciiStr, UtcOffset, ZonedDateTime as ZonedDateTimeInner,
     fields::{CalendarFields, ZonedDateTimeFields},
@@ -52,9 +52,9 @@ use super::{
 /// [spec]: https://tc39.es/proposal-temporal/#sec-temporal-zoneddatetime-objects
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Temporal/ZonedDateTime
 /// [temporal_rs-docs]: https://docs.rs/temporal_rs/latest/temporal_rs/struct.ZonedDateTime.html
-#[derive(Debug, Clone, Trace, Finalize, JsData)]
-#[surgeist_js_gc(unsafe_empty_trace)] // Safety: Does not contain any traceable fields.
+#[derive(Debug, Clone, JsData, HeapTrace)]
 pub struct ZonedDateTime {
+    #[heap_trace(skip)]
     pub(crate) inner: Box<ZonedDateTimeInner>,
 }
 
@@ -444,7 +444,7 @@ impl BuiltInConstructor for ZonedDateTime {
                 s.as_string()
                     .as_ref()
                     .map(JsString::to_std_string_lossy)
-                    .ok_or_else(|| JsNativeError::typ().with_message("calendar must be a string."))
+                    .ok_or_else(|| crate::js_error!(TypeError: "calendar must be a string."))
             })
             .transpose()?
             .map(|s| Calendar::try_from_utf8(s.as_bytes()))
@@ -1214,7 +1214,7 @@ impl ZonedDateTime {
         )?;
 
         // 19. Let resolvedOptions be ? GetOptionsObject(options).
-        let resolved_options = get_options_object(args.get_or_undefined(1))?;
+        let resolved_options = get_options_object(args.get_or_undefined(1), context)?;
         // 20. Let disambiguation be ? GetTemporalDisambiguationOption(resolvedOptions).
         let disambiguation =
             get_option::<Disambiguation>(&resolved_options, js_string!("disambiguation"), context)?;
@@ -1345,7 +1345,7 @@ impl ZonedDateTime {
 
         let duration = to_temporal_duration(args.get_or_undefined(0), context)?;
 
-        let options = get_options_object(args.get_or_undefined(1))?;
+        let options = get_options_object(args.get_or_undefined(1), context)?;
         let overflow = get_option::<Overflow>(&options, js_string!("overflow"), context)?;
 
         let result =
@@ -1376,7 +1376,7 @@ impl ZonedDateTime {
 
         let duration = to_temporal_duration(args.get_or_undefined(0), context)?;
 
-        let options = get_options_object(args.get_or_undefined(1))?;
+        let options = get_options_object(args.get_or_undefined(1), context)?;
         let overflow = get_option::<Overflow>(&options, js_string!("overflow"), context)?;
 
         let result =
@@ -1407,7 +1407,7 @@ impl ZonedDateTime {
 
         let other = to_temporal_zoneddatetime(args.get_or_undefined(0), None, context)?;
 
-        let options = get_options_object(args.get_or_undefined(1))?;
+        let options = get_options_object(args.get_or_undefined(1), context)?;
         let settings = get_difference_settings(&options, context)?;
 
         let result =
@@ -1438,7 +1438,7 @@ impl ZonedDateTime {
 
         let other = to_temporal_zoneddatetime(args.get_or_undefined(0), None, context)?;
 
-        let options = get_options_object(args.get_or_undefined(1))?;
+        let options = get_options_object(args.get_or_undefined(1), context)?;
         let settings = get_difference_settings(&options, context)?;
 
         let result =
@@ -1482,7 +1482,7 @@ impl ZonedDateTime {
             // a. Let paramString be roundTo.
             let param_string = param_string.clone();
             // b. Set roundTo to OrdinaryObjectCreate(null).
-            let new_round_to = JsObject::with_null_proto();
+            let new_round_to = JsObject::with_null_proto(context.runtime());
             // c. Perform ! CreateDataPropertyOrThrow(roundTo, "smallestUnit", paramString).
             new_round_to.create_data_property_or_throw(
                 js_string!("smallestUnit"),
@@ -1493,7 +1493,7 @@ impl ZonedDateTime {
         } else {
             // 5. Else,
             // a. Set roundTo to ? GetOptionsObject(roundTo).
-            get_options_object(round_to_arg)?
+            get_options_object(round_to_arg, context)?
         };
 
         // 6. NOTE: The following steps read options and perform independent validation
@@ -1571,7 +1571,7 @@ impl ZonedDateTime {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
 
-        let options = get_options_object(args.get_or_undefined(0))?;
+        let options = get_options_object(args.get_or_undefined(0), context)?;
 
         let show_calendar =
             get_option::<DisplayCalendar>(&options, js_string!("calendarName"), context)?
@@ -1741,7 +1741,7 @@ impl ZonedDateTime {
         let options_obj = if let Some(param_str) = direction_param.as_string() {
             // a. Let paramString be directionParam.
             // b. Set directionParam to OrdinaryObjectCreate(null).
-            let obj = JsObject::with_null_proto();
+            let obj = JsObject::with_null_proto(context.runtime());
             // c. Perform ! CreateDataPropertyOrThrow(directionParam, "direction", paramString).
             obj.create_data_property_or_throw(
                 js_string!("direction"),
@@ -1752,7 +1752,7 @@ impl ZonedDateTime {
         // 6. Else,
         } else {
             // a. Set directionParam to ? GetOptionsObject(directionParam).
-            get_options_object(direction_param)?
+            get_options_object(direction_param, context)?
         };
 
         // TODO: step 7
@@ -1902,7 +1902,8 @@ pub(crate) fn create_temporal_zoneddatetime(
     // 4. Set object.[[EpochNanoseconds]] to epochNanoseconds.
     // 5. Set object.[[TimeZone]] to timeZone.
     // 6. Set object.[[Calendar]] to calendar.
-    let obj = JsObject::from_proto_and_data(prototype, ZonedDateTime::new(inner));
+    let obj =
+        JsObject::from_proto_and_data(context.runtime(), prototype, ZonedDateTime::new(inner))?;
 
     // 7. Return object.
     Ok(obj)
@@ -1927,7 +1928,8 @@ pub(crate) fn to_temporal_zoneddatetime(
                 // (GetTemporalDisambiguationOption reads "disambiguation", GetTemporalOffsetOption
                 // reads "offset", and GetTemporalOverflowOption reads "overflow").
                 // ii. Let resolvedOptions be ? GetOptionsObject(options).
-                let options = get_options_object(options.unwrap_or(&JsValue::undefined()))?;
+                let options =
+                    get_options_object(options.unwrap_or(&JsValue::undefined()), context)?;
                 // iii. Perform ? GetTemporalDisambiguationOption(resolvedOptions).
                 let _disambiguation =
                     get_option::<Disambiguation>(&options, js_string!("disambiguation"), context)?
@@ -1946,7 +1948,7 @@ pub(crate) fn to_temporal_zoneddatetime(
             // f. If offsetString is unset, the
             // i. Set offsetBehaviour to wall.
             // g. Let resolvedOptions be ? GetOptionsObject(options).
-            let options = get_options_object(options.unwrap_or(&JsValue::undefined()))?;
+            let options = get_options_object(options.unwrap_or(&JsValue::undefined()), context)?;
             // h. Let disambiguation be ? GetTemporalDisambiguationOption(resolvedOptions).
             let disambiguation =
                 get_option::<Disambiguation>(&options, js_string!("disambiguation"), context)?;
@@ -1985,7 +1987,7 @@ pub(crate) fn to_temporal_zoneddatetime(
             // k. Set calendar to ? CanonicalizeCalendar(calendar).
             // l. Set matchBehaviour to match-minutes.
             // m. Let resolvedOptions be ? GetOptionsObject(options).
-            let options = get_options_object(options.unwrap_or(&JsValue::undefined()))?;
+            let options = get_options_object(options.unwrap_or(&JsValue::undefined()), context)?;
             // n. Let disambiguation be ? GetTemporalDisambiguationOption(resolvedOptions).
             let disambiguation =
                 get_option::<Disambiguation>(&options, js_string!("disambiguation"), context)?

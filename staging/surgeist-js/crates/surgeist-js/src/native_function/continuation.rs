@@ -1,8 +1,10 @@
-use std::ops::ControlFlow;
+use std::{cell::RefCell, ops::ControlFlow};
 
-use surgeist_js_gc::{Finalize, Gc, Trace};
+use surgeist_js_gc::heap::{RecordRef, Rooted, Trace};
 
 use crate::{Context, JsError, JsResult, JsValue, vm::CompletionRecord};
+
+use super::NativeCapture;
 
 /// Utility trait to make it easy to break from a coroutine using the `?` operator.
 pub(crate) trait CoroutineBranch<T> {
@@ -33,56 +35,115 @@ impl CoroutineBranch<JsValue> for CompletionRecord {
 
 pub(crate) type CoroutineState = ControlFlow<JsResult<()>, JsValue>;
 
+/// Stores suspended state as heap edges. Resumption takes live roots before
+/// removing the stored state so it can call into JavaScript without borrowing
+/// the slot or losing any of the captured objects.
+pub(crate) struct CoroutineSlot<S: NativeCapture>(RefCell<Option<S::Stored>>);
+
+impl<S: NativeCapture> CoroutineSlot<S> {
+    pub(crate) fn take(&self) -> Option<S> {
+        let state = self.0.borrow().as_ref().map(S::restore);
+        *self.0.borrow_mut() = None;
+        state
+    }
+
+    pub(crate) fn set(&self, state: S) {
+        *self.0.borrow_mut() = Some(state.store());
+    }
+}
+
+impl<S: NativeCapture> Trace for CoroutineSlot<S> {
+    fn trace(
+        &self,
+        edges: &mut surgeist_js_gc::heap::EdgeVisitor<'_>,
+    ) -> Result<(), surgeist_js_gc::heap::AccessError> {
+        self.0.trace(edges)
+    }
+}
+
 trait TraceableCoroutine: Trace {
     fn call(&self, completion: CompletionRecord, context: &mut Context) -> CoroutineState;
 }
 
-#[derive(Trace, Finalize)]
-struct Coroutine<T: Trace> {
-    // A function pointer holds no JavaScript state. Captures are traced separately.
-    #[unsafe_ignore_trace]
-    callback: fn(CompletionRecord, &T, &mut Context) -> CoroutineState,
-    captures: T,
+#[derive(Trace)]
+struct Coroutine<C: NativeCapture, S: NativeCapture> {
+    #[heap_trace(skip)]
+    callback: fn(CompletionRecord, &C, &CoroutineSlot<S>, &mut Context) -> CoroutineState,
+    captures: C::Stored,
+    state: CoroutineSlot<S>,
 }
 
-impl<T: Trace> TraceableCoroutine for Coroutine<T> {
+impl<C: NativeCapture, S: NativeCapture> TraceableCoroutine for Coroutine<C, S> {
     fn call(&self, completion: CompletionRecord, context: &mut Context) -> CoroutineState {
-        (self.callback)(completion, &self.captures, context)
+        (self.callback)(
+            completion,
+            &C::restore(&self.captures),
+            &self.state,
+            context,
+        )
     }
 }
 
-/// A callable Rust coroutine that can be used to await promises.
-///
-/// Owned coroutine state is supplied as explicit captures for tracing.
-#[derive(Clone, Trace, Finalize)]
-pub(crate) struct NativeCoroutine {
-    inner: Gc<Box<dyn TraceableCoroutine>>,
+#[derive(Trace)]
+struct CoroutineRecord {
+    coroutine: Box<dyn TraceableCoroutine>,
 }
 
-impl std::fmt::Debug for NativeCoroutine {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NativeCoroutine").finish_non_exhaustive()
+/// A callable Rust coroutine that can be used to await promises.
+#[derive(Clone, Debug)]
+pub(crate) struct NativeCoroutine(Rooted<CoroutineRecord>);
+
+#[derive(Debug, Trace)]
+pub(crate) struct StoredNativeCoroutine(RecordRef<CoroutineRecord>);
+
+impl NativeCapture for NativeCoroutine {
+    type Stored = StoredNativeCoroutine;
+
+    fn store(&self) -> Self::Stored {
+        StoredNativeCoroutine(self.0.record_ref())
+    }
+
+    fn restore(stored: &Self::Stored) -> Self {
+        Self(
+            stored
+                .0
+                .upgrade()
+                .expect("continuation heap is available")
+                .expect("live owner retains continuation"),
+        )
     }
 }
 
 impl NativeCoroutine {
-    /// Creates a callback with all stored state in its traceable captures.
-    pub(crate) fn from_fn_with_captures<T: Trace + 'static>(
-        callback: fn(CompletionRecord, &T, &mut Context) -> CoroutineState,
-        captures: T,
+    /// Creates a coroutine with explicit immutable captures and mutable state.
+    pub(crate) fn from_fn_with_state<C: NativeCapture, S: NativeCapture>(
+        callback: fn(CompletionRecord, &C, &CoroutineSlot<S>, &mut Context) -> CoroutineState,
+        captures: C,
+        state: S,
+        context: &Context,
     ) -> Self {
-        Self {
-            inner: Gc::new(Box::new(Coroutine { callback, captures })),
-        }
+        let record = CoroutineRecord {
+            coroutine: Box::new(Coroutine::<C, S> {
+                callback,
+                captures: captures.store(),
+                state: CoroutineSlot(RefCell::new(Some(state.store()))),
+            }),
+        };
+        Self(
+            context
+                .runtime()
+                .heap
+                .allocate(record)
+                .expect("continuation references belong to its runtime"),
+        )
     }
 
-    /// Calls this `NativeCoroutine`, forwarding the arguments to the corresponding function.
-    #[inline]
+    /// Calls this coroutine while its record is rooted.
     pub(crate) fn call(
         &self,
         completion: CompletionRecord,
         context: &mut Context,
     ) -> CoroutineState {
-        self.inner.call(completion, context)
+        self.0.coroutine.call(completion, context)
     }
 }

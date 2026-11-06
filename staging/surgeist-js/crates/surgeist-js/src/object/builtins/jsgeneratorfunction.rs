@@ -5,11 +5,10 @@ use crate::{
     object::{JsObject, builtins::JsGenerator},
     value::TryFromJs,
 };
-use surgeist_js_gc::{Finalize, Trace};
 use std::ops::Deref;
 
 /// `JsGeneratorFunction` provides a wrapper for Boa's implementation of the ECMAScript `GeneratorFunction` builtin object.
-#[derive(Debug, Clone, Trace, Finalize)]
+#[derive(Debug, Clone)]
 pub struct JsGeneratorFunction {
     inner: JsObject,
 }

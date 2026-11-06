@@ -22,11 +22,11 @@ use crate::{
     symbol::JsSymbol,
     value::JsValue,
 };
-use surgeist_js_gc::{Finalize, Trace};
-use surgeist_js_macros::{js_str, utf16};
-use surgeist_js_parser::lexer::regex::RegExpFlags;
 use regress::{Flags, Range, Regex};
 use std::str::FromStr;
+use surgeist_js_gc::heap::Trace as HeapTrace;
+use surgeist_js_macros::{js_str, utf16};
+use surgeist_js_parser::lexer::regex::RegExpFlags;
 
 use super::{BuiltInBuilder, BuiltInConstructor, IntrinsicObject};
 
@@ -36,12 +36,12 @@ pub(crate) use regexp_string_iterator::RegExpStringIterator;
 mod tests;
 
 /// The internal representation of a `RegExp` object.
-#[derive(Debug, Clone, Trace, Finalize, JsData)]
-// Safety: `RegExp` does not contain any objects which needs to be traced, so this is safe.
-#[surgeist_js_gc(unsafe_empty_trace)]
+#[derive(Debug, Clone, JsData, HeapTrace)]
 pub struct RegExp {
     /// Regex matcher.
+    #[heap_trace(skip)]
     matcher: Regex,
+    #[heap_trace(skip)]
     flags: RegExpFlags,
     original_source: JsString,
     original_flags: JsString,
@@ -420,13 +420,11 @@ impl RegExp {
 
         // 22. Perform ? Set(obj, "lastIndex", +0𝔽, true).
         let obj = if let Some(prototype) = prototype {
-            let mut template = context
+            context
                 .intrinsics()
                 .templates()
                 .regexp_without_proto()
-                .clone();
-            template.set_prototype(prototype);
-            template.create(regexp, vec![0.into()])
+                .create_with_prototype(prototype, regexp, vec![0.into()])
         } else {
             context
                 .intrinsics()
@@ -1270,8 +1268,8 @@ impl RegExp {
         #[allow(clippy::if_not_else)]
         let (groups, group_names) = if !named_groups.clone().is_empty() {
             // a. Let groups be OrdinaryObjectCreate(null).
-            let groups = JsObject::with_null_proto();
-            let group_names = JsObject::with_null_proto();
+            let groups = JsObject::with_null_proto(context.runtime());
+            let group_names = JsObject::with_null_proto(context.runtime());
 
             // e. If the ith capture of R was defined with a GroupName, then
             // i. Let s be the CapturingGroupName of that GroupName.

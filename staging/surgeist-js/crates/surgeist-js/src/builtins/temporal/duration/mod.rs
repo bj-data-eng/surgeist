@@ -19,7 +19,7 @@ use crate::{
     realm::Realm,
     string::StaticJsStrings,
 };
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 use temporal_rs::{
     Duration as InnerDuration,
     options::{RoundingIncrement, RoundingMode, RoundingOptions, ToStringRoundingOptions, Unit},
@@ -40,9 +40,9 @@ mod tests;
 /// [spec]: https://tc39.es/proposal-temporal/#sec-temporal-duration-objects
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Temporal/Duration
 /// [temporal_rs-docs]: https://docs.rs/temporal_rs/latest/temporal_rs/struct.Duration.html
-#[derive(Debug, Clone, Trace, Finalize, JsData)]
-#[surgeist_js_gc(unsafe_empty_trace)] // Safety: Does not contain any traceable fields.
+#[derive(Debug, Clone, JsData, HeapTrace)]
 pub struct Duration {
+    #[heap_trace(skip)]
     pub(crate) inner: Box<InnerDuration>,
 }
 
@@ -612,7 +612,7 @@ impl Duration {
         // 2. Set two to ? ToTemporalDuration(two).
         let two = to_temporal_duration(args.get_or_undefined(1), context)?;
         // 3. Let resolvedOptions be ? GetOptionsObject(options).
-        let options = get_options_object(args.get_or_undefined(2))?;
+        let options = get_options_object(args.get_or_undefined(2), context)?;
         // 4. Let relativeToRecord be ? GetTemporalRelativeToOption(resolvedOptions).
         let relative_to = get_relative_to_option(&options, context)?;
 
@@ -908,7 +908,7 @@ impl Duration {
             // a. Let paramString be roundTo.
             let param_string = param_string.clone();
             // b. Set roundTo to OrdinaryObjectCreate(null).
-            let new_round_to = JsObject::with_null_proto();
+            let new_round_to = JsObject::with_null_proto(context.runtime());
             // c. Perform ! CreateDataPropertyOrThrow(roundTo, "smallestUnit", paramString).
             new_round_to.create_data_property_or_throw(
                 js_string!("smallestUnit"),
@@ -919,7 +919,7 @@ impl Duration {
         } else {
             // 5. Else,
             // a. Set roundTo to ? GetOptionsObject(roundTo).
-            get_options_object(round_to_arg)?
+            get_options_object(round_to_arg, context)?
         };
 
         // NOTE: 6 & 7 unused in favor of `is_none()`.
@@ -1009,7 +1009,7 @@ impl Duration {
             JsVariant::String(param_string) => {
                 // a. Let paramString be totalOf.
                 // b. Set totalOf to OrdinaryObjectCreate(null).
-                let total_of = JsObject::with_null_proto();
+                let total_of = JsObject::with_null_proto(context.runtime());
                 // c. Perform ! CreateDataPropertyOrThrow(totalOf, "unit", paramString).
                 total_of.create_data_property_or_throw(
                     js_string!("unit"),
@@ -1021,7 +1021,7 @@ impl Duration {
             // 5. Else,
             _ => {
                 // a. Set totalOf to ? GetOptionsObject(totalOf).
-                get_options_object(total_of)?
+                get_options_object(total_of, context)?
             }
         };
 
@@ -1072,7 +1072,7 @@ impl Duration {
                 JsNativeError::typ().with_message("this value must be a Duration object.")
             })?;
 
-        let options = get_options_object(args.get_or_undefined(0))?;
+        let options = get_options_object(args.get_or_undefined(0), context)?;
         let precision = get_digits_option(&options, context)?;
         let rounding_mode =
             get_option::<RoundingMode>(&options, js_string!("roundingMode"), context)?;
@@ -1262,7 +1262,7 @@ pub(crate) fn create_temporal_duration(
     // 12. Set object.[[Microseconds]] to ℝ(𝔽(microseconds)).
     // 13. Set object.[[Nanoseconds]] to ℝ(𝔽(nanoseconds)).
 
-    let obj = JsObject::from_proto_and_data(prototype, Duration::new(inner));
+    let obj = JsObject::from_proto_and_data(context.runtime(), prototype, Duration::new(inner))?;
     // 14. Return object.
     Ok(obj)
 }

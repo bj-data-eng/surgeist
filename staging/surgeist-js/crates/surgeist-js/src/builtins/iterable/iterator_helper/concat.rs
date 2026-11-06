@@ -1,22 +1,28 @@
-use std::{cell::Cell, collections::VecDeque};
+use std::{cell::RefCell, collections::VecDeque};
 
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::{Rooted, Trace};
 
 use crate::{
-    JsObject,
+    Context, JsObject,
     builtins::iterable::IteratorRecord,
     js_error,
-    native_function::{CoroutineBranch, CoroutineState, NativeCoroutine},
+    native_function::{
+        CapturedObject, CoroutineBranch, CoroutineState, NativeCapture, NativeCoroutine,
+    },
     object::JsFunction,
 };
 
 use super::super::get_iterator_direct;
 
-#[derive(Trace, Finalize)]
-#[surgeist_js_gc(unsafe_no_drop)]
 pub(crate) struct IterableRecord {
     pub(crate) iterable: JsObject,
     pub(crate) open_method: JsFunction,
+}
+
+#[derive(Trace)]
+struct StoredIterableRecord {
+    iterable: CapturedObject,
+    open_method: CapturedObject,
 }
 
 /// [`Iterator.concat ( ...items )`][spec]
@@ -24,96 +30,73 @@ pub(crate) struct IterableRecord {
 /// Concatenate a list of iterators.
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-iterator.concat
-#[derive(Trace, Finalize, Default)]
-#[surgeist_js_gc(unsafe_no_drop)]
-pub(crate) enum Concat {
-    #[default]
-    Completed,
-    OpeningNextIterable {
-        iterables: VecDeque<IterableRecord>,
-    },
-    Yielding {
-        iterables: VecDeque<IterableRecord>,
-        current: IteratorRecord,
-    },
-}
+pub(crate) struct Concat;
 
 impl Concat {
     #[allow(
         clippy::new_ret_no_self,
         reason = "slightly cleaner to have this be a `new` method"
     )]
-    pub(crate) fn new(iterables: VecDeque<IterableRecord>) -> NativeCoroutine {
+    pub(crate) fn new(iterables: VecDeque<IterableRecord>, context: &Context) -> NativeCoroutine {
         // 3. Let closure be a new Abstract Closure with no parameters that captures
         //    iterables and performs the following steps when called:
-        NativeCoroutine::from_fn_with_captures(
-            // a. For each Record iterable of iterables, do
-            |completion, state, context| {
-                let st = state.take();
-                match &st {
-                    Self::Yielding { current, .. } => {
-                        // b. If completion is an abrupt completion, then
-                        //        i. Return ? IteratorClose(iteratorRecord, completion).
-                        current.if_abrupt_close_iterator(completion, context)?;
-                    }
-                    Self::OpeningNextIterable { .. } => {
-                        completion.branch()?;
-                    }
-                    Self::Completed => {}
+        let pending: VecDeque<_> = iterables
+            .iter()
+            .map(|record| StoredIterableRecord {
+                iterable: record.iterable.store(),
+                open_method: record.open_method.store(),
+            })
+            .collect();
+        let pending = context
+            .runtime()
+            .heap
+            .allocate(RefCell::new(pending))
+            .expect("iterables belong to the continuation runtime");
+        NativeCoroutine::from_fn_with_state::<_, Option<IteratorRecord>>(
+            |completion,
+             pending: &Rooted<RefCell<VecDeque<StoredIterableRecord>>>,
+             state,
+             context| {
+                let Some(mut current) = state.take() else {
+                    return CoroutineState::Break(Ok(()));
+                };
+
+                if let Some(current) = &current {
+                    current.if_abrupt_close_iterator(completion, context)?;
+                } else {
+                    completion.branch()?;
                 }
-                state.set(st);
 
                 loop {
-                    let st = state.take();
-
-                    match st {
-                        Self::Completed => return CoroutineState::Break(Ok(())),
-                        Self::OpeningNextIterable { mut iterables } => {
-                            // a. For each Record iterable of iterables, do
-                            let Some(IterableRecord {
-                                iterable,
-                                open_method,
-                            }) = iterables.pop_front()
-                            else {
-                                return CoroutineState::Break(Ok(()));
-                            };
-
-                            // i. Let iter be ? Call(iterable.[[OpenMethod]], iterable.[[Iterable]]).
-                            let iter = open_method.call(&iterable.into(), &[], context).branch()?;
-                            let Some(iter) = iter.as_object() else {
-                                // ii. If iter is not an Object, throw a TypeError exception.
-                                return CoroutineState::Break(Err(
-                                    js_error!(TypeError: "Iterator.concat: open method of iterable did not return an object"),
-                                ));
-                            };
-                            // iii. Let iteratorRecord be ? GetIteratorDirect(iter).
-                            let iter = get_iterator_direct(&iter, context).branch()?;
-                            state.set(Self::Yielding {
-                                iterables,
-                                current: iter,
-                            });
-                        }
-                        // iv. Let innerAlive be true.
-                        // v. Repeat, while innerAlive is true,
-                        //        1. Let innerValue be ? IteratorStepValue(iteratorRecord).
-                        Self::Yielding {
-                            iterables,
-                            mut current,
-                        } => match current.step_value(context).branch()? {
-                            // 3. Else,
-                            Some(value) => {
-                                state.set(Self::Yielding { iterables, current });
-                                // a. Let completion be Completion(Yield(innerValue)).
-                                return CoroutineState::Continue(value);
-                            }
-                            // 2. If innerValue is done, then
-                            //    a. Set innerAlive to false.
-                            None => state.set(Self::OpeningNextIterable { iterables }),
-                        },
+                    if let Some(mut iterator) = current.take()
+                        && let Some(value) = iterator.step_value(context).branch()?
+                    {
+                        state.set(Some(iterator));
+                        return CoroutineState::Continue(value);
                     }
+
+                    let record = pending.borrow_mut().pop_front();
+                    let Some(StoredIterableRecord {
+                        iterable,
+                        open_method,
+                    }) = record
+                    else {
+                        return CoroutineState::Break(Ok(()));
+                    };
+                    let iterable: JsObject = JsObject::restore(&iterable);
+                    let open_method = JsFunction::restore(&open_method);
+                    let iter = open_method.call(&iterable.into(), &[], context).branch()?;
+                    let Some(iter) = iter.as_object() else {
+                        return CoroutineState::Break(Err(
+                            js_error!(TypeError: "Iterator.concat: open method of iterable did not return an object"),
+                        ));
+                    };
+                    current = Some(get_iterator_direct(&iter, context).branch()?);
                 }
             },
-            Cell::new(Self::OpeningNextIterable { iterables }),
+            pending,
+            None::<IteratorRecord>,
+            context,
         )
     }
 }

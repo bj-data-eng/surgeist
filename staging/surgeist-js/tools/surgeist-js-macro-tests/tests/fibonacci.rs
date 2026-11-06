@@ -63,7 +63,8 @@ fn fibonacci_test() {
 
     let fibonacci_rust = (fibonacci as RustStep)
         .into_js_function()
-        .to_js_function(context.realm());
+        .to_js_function(context.realm())
+        .unwrap();
 
     assert_eq!(
         fibonacci_js
@@ -81,7 +82,8 @@ fn fibonacci_test() {
 
     let fibonacci_throw = (fibonacci_throw as RustStep)
         .into_js_function()
-        .to_js_function(context.realm());
+        .to_js_function(context.realm())
+        .unwrap();
     assert!(
         fibonacci_js
             .call(

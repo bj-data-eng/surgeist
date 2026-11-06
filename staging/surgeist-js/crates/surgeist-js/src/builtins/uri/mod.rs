@@ -12,8 +12,6 @@
 
 mod consts;
 
-use surgeist_js_gc::{Finalize, Trace};
-
 use self::consts::{
     is_uri_reserved_or_number_sign, is_uri_reserved_or_uri_unescaped_or_number_sign,
     is_uri_unescaped,
@@ -32,7 +30,7 @@ use crate::{
 /// Intrinsics for the [`URI Handling Functions`][spec].
 ///
 /// [spec]: https://tc39.es/ecma262/multipage/global-object.html#sec-uri-handling-functions
-#[derive(Debug, Trace, Finalize)]
+#[derive(Debug, surgeist_js_gc::heap::Trace)]
 pub struct UriFunctions {
     /// %decodeURI%
     decode_uri: ObjectEdge,
@@ -47,13 +45,18 @@ pub struct UriFunctions {
     encode_uri_component: ObjectEdge,
 }
 
-impl Default for UriFunctions {
-    fn default() -> Self {
+impl UriFunctions {
+    pub(crate) fn uninit(
+        runtime: &crate::Runtime,
+        roots: &mut crate::realm::BootstrapRoots,
+    ) -> Self {
         Self {
-            decode_uri: JsFunction::empty_intrinsic_function(false).into_record(),
-            decode_uri_component: JsFunction::empty_intrinsic_function(false).into_record(),
-            encode_uri: JsFunction::empty_intrinsic_function(false).into_record(),
-            encode_uri_component: JsFunction::empty_intrinsic_function(false).into_record(),
+            decode_uri: roots.retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
+            decode_uri_component: roots
+                .retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
+            encode_uri: roots.retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
+            encode_uri_component: roots
+                .retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
         }
     }
 }
@@ -508,7 +511,11 @@ fn decode_hex_byte_at(string: &JsString, start: usize) -> JsResult<u8> {
         .code_unit_at(start)
         .zip(string.code_unit_at(start + 1))
         .and_then(|(high, low)| decode_hex_byte(high, low))
-        .ok_or_else(|| JsNativeError::uri().with_message("invalid hexadecimal digit found").into())
+        .ok_or_else(|| {
+            JsNativeError::uri()
+                .with_message("invalid hexadecimal digit found")
+                .into()
+        })
 }
 
 /// Decodes a byte from two unicode code units.

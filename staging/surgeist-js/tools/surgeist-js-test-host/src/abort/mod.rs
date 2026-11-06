@@ -1,17 +1,18 @@
 //! `AbortController` and `AbortSignal` Web API implementations.
 
+use std::cell::{Cell, RefCell};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use surgeist_js::class::Class;
+use surgeist_js::gc::heap::Trace as HeapTrace;
 use surgeist_js::job::GenericJob;
+use surgeist_js::native_function::{CapturedObject, CapturedValue, NativeCapture};
 use surgeist_js::object::builtins::JsFunction;
 use surgeist_js::realm::Realm;
 use surgeist_js::{
-    Context, Finalize, JsData, JsError, JsNativeError, JsObject, JsResult, JsString, JsValue,
-    Trace, boa_class, boa_module, js_error, js_string,
+    Context, JsData, JsError, JsNativeError, JsObject, JsResult, JsString, JsValue, boa_class,
+    boa_module, js_error, js_string,
 };
-use surgeist_js_gc::GcRefCell;
-use std::cell::Cell;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(test)]
 mod tests;
@@ -40,35 +41,36 @@ impl CancellationToken {
 fn make_abort_error(context: &mut Context) -> JsValue {
     let obj = JsNativeError::error()
         .with_message("signal is aborted without reason")
-        .into_opaque(context);
+        .into_opaque(context)
+        .expect("the abort error contains only local data");
     obj.set(js_string!("name"), js_string!("AbortError"), false, context)
         .ok();
     obj.into()
 }
 
 /// The JavaScript `AbortSignal` class.
-#[derive(Debug, Clone, JsData, Trace, Finalize)]
+#[derive(Debug, Clone, JsData, HeapTrace)]
 pub struct JsAbortSignal {
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     aborted: Cell<bool>,
-    reason: GcRefCell<Option<JsValue>>,
-    listeners: GcRefCell<Vec<AbortEventListener>>,
-    #[unsafe_ignore_trace]
+    reason: RefCell<Option<CapturedValue>>,
+    listeners: RefCell<Vec<AbortEventListener>>,
+    #[heap_trace(skip)]
     cancel_token: CancellationToken,
 }
 
-#[derive(Debug, Clone, Trace, Finalize)]
+#[derive(Debug, Clone, HeapTrace)]
 struct AbortEventListener {
     event_type: JsString,
-    callback: JsFunction,
+    callback: CapturedObject,
 }
 
 impl Default for JsAbortSignal {
     fn default() -> Self {
         Self {
             aborted: Cell::new(false),
-            reason: GcRefCell::default(),
-            listeners: GcRefCell::default(),
+            reason: RefCell::default(),
+            listeners: RefCell::default(),
             cancel_token: CancellationToken::new(),
         }
     }
@@ -83,7 +85,7 @@ impl JsAbortSignal {
             return Ok(());
         }
         self.aborted.set(true);
-        *self.reason.borrow_mut() = Some(reason);
+        *self.reason.borrow_mut() = Some(reason.store());
 
         let abort = js_string!("abort");
         let listeners: Vec<JsFunction> = self
@@ -91,7 +93,7 @@ impl JsAbortSignal {
             .borrow()
             .iter()
             .filter(|listener| listener.event_type == abort)
-            .map(|listener| listener.callback.clone())
+            .map(|listener| JsFunction::restore(&listener.callback))
             .collect();
 
         let realm = context.realm().clone();
@@ -124,10 +126,8 @@ impl JsAbortSignal {
         if !self.aborted.get() {
             return JsValue::undefined();
         }
-        self.reason
-            .borrow()
-            .clone()
-            .unwrap_or_else(|| make_abort_error(context))
+        let reason = self.reason.borrow().as_ref().map(JsValue::restore);
+        reason.unwrap_or_else(|| make_abort_error(context))
     }
 
     /// Returns the cancellation token.
@@ -174,28 +174,30 @@ impl JsAbortSignal {
         {
             let listeners = self.listeners.borrow();
             if listeners.iter().any(|listener| {
-                listener.event_type == event_type && JsObject::equals(&listener.callback, &callback)
+                listener.event_type == event_type
+                    && JsObject::equals(&JsFunction::restore(&listener.callback), &callback)
             }) {
                 return;
             }
         }
         self.listeners.borrow_mut().push(AbortEventListener {
             event_type,
-            callback,
+            callback: callback.store(),
         });
     }
 
     fn remove_event_listener(&self, event_type: JsString, callback: JsFunction) {
         self.listeners.borrow_mut().retain(|listener| {
-            listener.event_type != event_type || !JsObject::equals(&listener.callback, &callback)
+            listener.event_type != event_type
+                || !JsObject::equals(&JsFunction::restore(&listener.callback), &callback)
         });
     }
 }
 
 /// The JavaScript `AbortController` class.
-#[derive(Debug, Clone, JsData, Trace, Finalize)]
+#[derive(Debug, Clone, JsData, HeapTrace)]
 pub struct JsAbortController {
-    signal: JsObject,
+    signal: CapturedObject,
 }
 
 #[boa_class(rename = "AbortController")]
@@ -204,18 +206,21 @@ impl JsAbortController {
     #[boa(constructor)]
     fn constructor(context: &mut Context) -> JsResult<Self> {
         let signal_obj = Class::from_data(JsAbortSignal::default(), context)?;
-        Ok(Self { signal: signal_obj })
+        Ok(Self {
+            signal: signal_obj.store(),
+        })
     }
 
     #[boa(getter)]
     fn signal(&self) -> JsObject {
-        self.signal.clone()
+        JsObject::restore(&self.signal)
     }
 
     fn abort(&self, reason: Option<JsValue>, context: &mut Context) -> JsResult<()> {
         let abort_reason = reason.unwrap_or_else(|| make_abort_error(context));
 
-        let Some(signal) = self.signal.downcast_ref::<JsAbortSignal>() else {
+        let signal_obj = self.signal();
+        let Some(signal) = signal_obj.downcast_ref::<JsAbortSignal>() else {
             return Err(js_error!(TypeError: "AbortController: invalid signal object"));
         };
         signal.signal_abort(abort_reason, context)

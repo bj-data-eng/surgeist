@@ -6,12 +6,10 @@ use crate::{
     object::JsObject,
     value::TryFromJs,
 };
-use surgeist_js_gc::{Finalize, Trace};
 use std::{ops::Deref, sync::atomic::Ordering};
 
 /// `JsSharedArrayBuffer` provides a wrapper for Boa's implementation of the ECMAScript `ArrayBuffer` object
-#[derive(Debug, Clone, Trace, Finalize)]
-#[surgeist_js_gc(unsafe_no_drop)]
+#[derive(Debug, Clone)]
 pub struct JsSharedArrayBuffer {
     inner: JsObject<SharedArrayBuffer>,
 }
@@ -61,7 +59,8 @@ impl JsSharedArrayBuffer {
             .shared_array_buffer()
             .prototype();
 
-        let inner = JsObject::new(context.root_shape(), proto, buffer);
+        let inner = JsObject::new(context.root_shape(), proto, buffer)
+            .expect("shared buffer uses its runtime's intrinsic prototype");
 
         Self { inner }
     }

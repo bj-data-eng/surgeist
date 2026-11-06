@@ -22,27 +22,35 @@ use crate::{
     symbol::JsSymbol,
     value::JsValue,
 };
-use surgeist_js_gc::{Finalize, Trace};
 use bytemuck::{bytes_of, bytes_of_mut};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 use super::{
     BuiltInBuilder, BuiltInConstructor, IntrinsicObject,
     array_buffer::{
-        BufferObject,
+        BufferEdge, BufferObject,
         utils::{SliceRef, SliceRefMut},
     },
     typed_array::{self, TypedArrayElement},
 };
 
 /// The internal representation of a `DataView` object.
-#[derive(Debug, Clone, Trace, Finalize, JsData)]
+#[derive(Debug, Clone, HeapTrace, JsData)]
 pub struct DataView {
-    pub(crate) viewed_array_buffer: BufferObject,
-    pub(crate) byte_length: Option<u64>,
-    pub(crate) byte_offset: u64,
+    viewed_array_buffer: BufferEdge,
+    byte_length: Option<u64>,
+    byte_offset: u64,
 }
 
 impl DataView {
+    pub(crate) fn new(buffer: &BufferObject, byte_length: Option<u64>, byte_offset: u64) -> Self {
+        Self {
+            viewed_array_buffer: buffer.edge(),
+            byte_length,
+            byte_offset,
+        }
+    }
+
     /// Abstract operation [`GetViewByteLength ( viewRecord )`][spec].
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-getviewbytelength
@@ -294,17 +302,13 @@ impl BuiltInConstructor for DataView {
                 .into());
         }
 
+        // 15. Set O.[[ViewedArrayBuffer]] to buffer.
+        // 16. Set O.[[ByteLength]] to viewByteLength.
+        // 17. Set O.[[ByteOffset]] to offset.
         let obj = JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
             prototype,
-            Self {
-                // 15. Set O.[[ViewedArrayBuffer]] to buffer.
-                viewed_array_buffer: buffer,
-                // 16. Set O.[[ByteLength]] to viewByteLength.
-                byte_length: view_byte_len,
-                // 17. Set O.[[ByteOffset]] to offset.
-                byte_offset: offset,
-            },
+            Self::new(&buffer, view_byte_len, offset),
         );
 
         // 18. Return O.
@@ -338,7 +342,7 @@ impl DataView {
             .ok_or_else(|| JsNativeError::typ().with_message("`this` is not a DataView"))?;
         // 3. Assert: O has a [[ViewedArrayBuffer]] internal slot.
         // 4. Let buffer be O.[[ViewedArrayBuffer]].
-        let buffer = view.viewed_array_buffer.clone();
+        let buffer = view.viewed_array_buffer.to_buffer();
         // 5. Return buffer.
         Ok(buffer.into())
     }
@@ -369,7 +373,8 @@ impl DataView {
 
         // 4. Let viewRecord be MakeDataViewWithBufferWitnessRecord(O, seq-cst).
         // 5. If IsViewOutOfBounds(viewRecord) is true, throw a TypeError exception.
-        let buffer = view.viewed_array_buffer.as_buffer();
+        let buffer = view.viewed_array_buffer.to_buffer();
+        let buffer = buffer.as_buffer();
         let Some(slice) = buffer
             .bytes(Ordering::SeqCst)
             .filter(|s| !view.is_out_of_bounds(s.len()))
@@ -411,7 +416,8 @@ impl DataView {
             .ok_or_else(|| JsNativeError::typ().with_message("`this` is not a DataView"))?;
 
         // 3. Assert: O has a [[ViewedArrayBuffer]] internal slot.
-        let buffer = view.viewed_array_buffer.as_buffer();
+        let buffer = view.viewed_array_buffer.to_buffer();
+        let buffer = buffer.as_buffer();
         // 4. Let viewRecord be MakeDataViewWithBufferWitnessRecord(O, seq-cst).
         // 5. If IsViewOutOfBounds(viewRecord) is true, throw a TypeError exception.
         if buffer
@@ -463,7 +469,8 @@ impl DataView {
         // 6. Let viewRecord be MakeDataViewWithBufferWitnessRecord(view, unordered).
         // 7. NOTE: Bounds checking is not a synchronizing operation when view's backing buffer is a growable SharedArrayBuffer.
         // 8. If IsViewOutOfBounds(viewRecord) is true, throw a TypeError exception.
-        let buffer = view.viewed_array_buffer.as_buffer();
+        let buffer = view.viewed_array_buffer.to_buffer();
+        let buffer = buffer.as_buffer();
         let Some(data) = buffer
             .bytes(Ordering::Relaxed)
             .filter(|buf| !view.is_out_of_bounds(buf.len()))
@@ -799,7 +806,8 @@ impl DataView {
         // 8. Let viewRecord be MakeDataViewWithBufferWitnessRecord(view, unordered).
         // 9. NOTE: Bounds checking is not a synchronizing operation when view's backing buffer is a growable SharedArrayBuffer.
         // 10. If IsViewOutOfBounds(viewRecord) is true, throw a TypeError exception.
-        let mut buffer = view.viewed_array_buffer.as_buffer_mut();
+        let buffer = view.viewed_array_buffer.to_buffer();
+        let mut buffer = buffer.as_buffer_mut();
 
         let Some(mut data) = buffer
             .bytes(Ordering::Relaxed)

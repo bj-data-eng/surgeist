@@ -2,7 +2,7 @@ use crate::{
     Context, JsExpect, JsResult,
     builtins::{
         Array,
-        iterable::{IteratorRecord, create_iter_result_object},
+        iterable::{IteratorRecord, create_iter_result_object_trusted},
     },
     js_string,
     vm::{
@@ -430,7 +430,7 @@ impl CreateIteratorResult {
     pub(crate) fn operation((value, done): (RegisterOperand, IndexOperand), context: &mut Context) {
         let done = u32::from(done) != 0;
         let val = context.vm.take_register(value.into());
-        let result = create_iter_result_object(val, done, context);
+        let result = create_iter_result_object_trusted(val, done, context);
         context.vm.set_register(value.into(), result);
     }
 }

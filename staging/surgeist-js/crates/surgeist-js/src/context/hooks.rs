@@ -63,6 +63,7 @@ pub trait HostHooks {
     /// # Requirements
     ///
     /// - It must return a `JobCallback` Record whose `[[Callback]]` field is `callback`.
+    /// - Its host data must store only live edges belonging to the current runtime.
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-hostmakejobcallback
     fn make_job_callback(&self, callback: JsFunction, _context: &mut Context) -> JobCallback {

@@ -3,9 +3,9 @@
 //! [`NativeFunction`] is the main type of this module, providing APIs to create native callables
 //! from native Rust functions and closures.
 
-use std::cell::RefCell;
+use std::{any::Any, cell::RefCell, rc::Rc};
 
-use surgeist_js_gc::{Finalize, Gc, Trace, custom_trace};
+use surgeist_js_gc::heap::{AccessError, EdgeVisitor, Trace as HeapTrace};
 use surgeist_js_string::JsString;
 
 use crate::job::BoxedFuture;
@@ -25,9 +25,16 @@ use crate::{
     realm::{Realm, RealmEdge},
 };
 
+mod capture;
 mod continuation;
 
-pub(crate) use continuation::{CoroutineBranch, CoroutineState, NativeCoroutine};
+pub use capture::{CapturedObject, CapturedRealm, CapturedValue, NativeCapture};
+
+#[cfg(feature = "experimental")]
+pub(crate) use continuation::CoroutineSlot;
+pub(crate) use continuation::{
+    CoroutineBranch, CoroutineState, NativeCoroutine, StoredNativeCoroutine,
+};
 
 /// The required signature for all native built-in function pointers.
 ///
@@ -52,35 +59,44 @@ pub type NativeAsyncFunctionWithCaptures<T> = for<'a, 'ctx> fn(
     &'a RefCell<&'ctx mut Context>,
 ) -> BoxedFuture<'a>;
 
-trait TraceableClosure: Trace {
+trait TraceableClosure: HeapTrace {
+    fn root_captures(&self) -> Rc<dyn Any>;
     fn call(&self, this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue>;
 }
 
-#[derive(Trace, Finalize)]
-struct Closure<T: Trace> {
-    // A function pointer holds no JavaScript state.
-    #[unsafe_ignore_trace]
+#[derive(HeapTrace)]
+struct Closure<T: NativeCapture> {
+    #[heap_trace(skip)]
     callback: fn(&JsValue, &[JsValue], &T, &mut Context) -> JsResult<JsValue>,
-    captures: T,
+    captures: T::Stored,
 }
 
-impl<T: Trace> TraceableClosure for Closure<T> {
+impl<T: NativeCapture> TraceableClosure for Closure<T> {
+    fn root_captures(&self) -> Rc<dyn Any> {
+        Rc::new(T::restore(&self.captures))
+    }
+
     fn call(&self, this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
-        (self.callback)(this, args, &self.captures, context)
+        let captures = T::restore(&self.captures);
+        (self.callback)(this, args, &captures, context)
     }
 }
 
-#[derive(Trace, Finalize)]
-struct AsyncClosure<T: Trace + 'static> {
-    #[unsafe_ignore_trace]
+#[derive(HeapTrace)]
+struct AsyncClosure<T: NativeCapture> {
+    #[heap_trace(skip)]
     callback: NativeAsyncFunctionWithCaptures<T>,
-    captures: Gc<T>,
+    captures: T::Stored,
 }
 
-impl<T: Trace + 'static> TraceableClosure for AsyncClosure<T> {
+impl<T: NativeCapture> TraceableClosure for AsyncClosure<T> {
+    fn root_captures(&self) -> Rc<dyn Any> {
+        Rc::new(T::restore(&self.captures))
+    }
+
     fn call(&self, this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         let callback = self.callback;
-        let captures = self.captures.clone();
+        let captures = T::restore(&self.captures);
         let this = this.clone();
         let args = args.to_vec();
         Ok(JsPromise::from_async_fn(
@@ -91,28 +107,22 @@ impl<T: Trace + 'static> TraceableClosure for AsyncClosure<T> {
     }
 }
 
-#[derive(Clone, Debug, Finalize)]
+#[derive(Clone, Debug, HeapTrace)]
 /// The data of an object containing a `NativeFunction`.
 pub struct NativeFunctionObject {
-    /// The rust function.
-    pub(crate) f: NativeFunction,
+    /// The Rust function and its stored captures.
+    pub(crate) f: StoredNativeFunction,
 
     /// JavaScript name of the function.
+    #[heap_trace(skip)]
     pub(crate) name: JsString,
 
     /// The kind of the function constructor if it is a constructor.
+    #[heap_trace(skip)]
     pub(crate) constructor: Option<ConstructorKind>,
 
-    /// The [`Realm`] in which the function is defined, or `None` if the realm is uninitialized.
+    /// The realm where the function is defined, if it has been initialized.
     pub(crate) realm: Option<RealmEdge>,
-}
-
-// SAFETY: this traces all fields that need to be traced by the GC.
-unsafe impl Trace for NativeFunctionObject {
-    custom_trace!(this, mark, {
-        mark(&this.f);
-        mark(&this.realm);
-    });
 }
 
 impl JsData for NativeFunctionObject {
@@ -140,26 +150,56 @@ impl JsData for NativeFunctionObject {
 ///
 /// Native functions use synchronous or asynchronous function pointers.
 /// Supply owned state separately as traceable captures.
-#[derive(Clone, Finalize)]
+#[derive(Clone)]
 pub struct NativeFunction {
-    inner: Inner,
+    inner: StoredNativeFunction,
+    _capture_roots: Option<Rc<dyn Any>>,
+}
+
+#[derive(Clone)]
+/// Non-owning capture form of a native function.
+pub struct StoredNativeFunction(Inner);
+
+impl NativeCapture for NativeFunction {
+    type Stored = StoredNativeFunction;
+
+    fn store(&self) -> Self::Stored {
+        self.stored()
+    }
+
+    fn restore(stored: &Self::Stored) -> Self {
+        let roots = match &stored.0 {
+            Inner::Closure(closure) => Some(closure.root_captures()),
+            Inner::PointerFn(_) | Inner::AsyncPointer(_) => None,
+        };
+        Self {
+            inner: stored.clone(),
+            _capture_roots: roots,
+        }
+    }
 }
 
 #[derive(Clone)]
 enum Inner {
     PointerFn(NativeFunctionPointer),
     AsyncPointer(NativeAsyncFunctionPointer),
-    Closure(Gc<Box<dyn TraceableClosure>>),
+    Closure(Rc<dyn TraceableClosure>),
 }
 
-// Manual implementation because deriving `Trace` triggers the `single_use_lifetimes` lint.
-// SAFETY: Only closures can contain `Trace` captures, so this implementation is safe.
-unsafe impl Trace for NativeFunction {
-    custom_trace!(this, mark, {
-        if let Inner::Closure(c) = &this.inner {
-            mark(c);
+impl HeapTrace for StoredNativeFunction {
+    fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+        match &self.0 {
+            Inner::Closure(closure) => closure.trace(edges),
+            Inner::PointerFn(_) | Inner::AsyncPointer(_) => Ok(()),
         }
-    });
+    }
+}
+
+impl std::fmt::Debug for StoredNativeFunction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StoredNativeFunction")
+            .finish_non_exhaustive()
+    }
 }
 
 impl std::fmt::Debug for NativeFunction {
@@ -173,7 +213,8 @@ impl NativeFunction {
     #[inline]
     pub fn from_fn_ptr(function: NativeFunctionPointer) -> Self {
         Self {
-            inner: Inner::PointerFn(function),
+            inner: StoredNativeFunction(Inner::PointerFn(function)),
+            _capture_roots: None,
         }
     }
 
@@ -188,7 +229,7 @@ impl NativeFunction {
     /// # Examples
     ///
     /// ```
-    /// # use std::cell::RefCell;
+    /// # use std::{any::Any, cell::RefCell, rc::Rc};
     /// # use surgeist_js::{
     /// #   JsValue,
     /// #   Context,
@@ -228,22 +269,24 @@ impl NativeFunction {
     /// ```
     pub fn from_async_fn(callback: NativeAsyncFunctionPointer) -> Self {
         Self {
-            inner: Inner::AsyncPointer(callback),
+            inner: StoredNativeFunction(Inner::AsyncPointer(callback)),
+            _capture_roots: None,
         }
     }
 
     /// Creates an asynchronous native function with explicit traceable captures.
     ///
     /// Each invocation keeps the captures alive while its job is pending.
-    pub fn from_async_fn_with_captures<T: Trace + 'static>(
+    pub fn from_async_fn_with_captures<T: NativeCapture>(
         callback: NativeAsyncFunctionWithCaptures<T>,
         captures: T,
     ) -> Self {
         Self {
-            inner: Inner::Closure(Gc::new(Box::new(AsyncClosure {
+            inner: StoredNativeFunction(Inner::Closure(Rc::new(AsyncClosure::<T> {
                 callback,
-                captures: Gc::new(captures),
+                captures: captures.store(),
             }))),
+            _capture_roots: Some(Rc::new(captures)),
         }
     }
 
@@ -258,12 +301,16 @@ impl NativeFunction {
     ///     (),
     /// );
     /// ```
-    pub fn from_fn_with_captures<T: Trace + 'static>(
+    pub fn from_fn_with_captures<T: NativeCapture>(
         callback: fn(&JsValue, &[JsValue], &T, &mut Context) -> JsResult<JsValue>,
         captures: T,
     ) -> Self {
         Self {
-            inner: Inner::Closure(Gc::new(Box::new(Closure { callback, captures }))),
+            inner: StoredNativeFunction(Inner::Closure(Rc::new(Closure::<T> {
+                callback,
+                captures: captures.store(),
+            }))),
+            _capture_roots: Some(Rc::new(captures)),
         }
     }
 
@@ -275,7 +322,29 @@ impl NativeFunction {
         args: &[JsValue],
         context: &mut Context,
     ) -> JsResult<JsValue> {
-        match self.inner {
+        context.runtime().check_value(this)?;
+        for arg in args {
+            context.runtime().check_value(arg)?;
+        }
+        let result = self.inner.call(this, args, context);
+        context.runtime().admit_callback_result(result)
+    }
+
+    pub(crate) fn stored(&self) -> StoredNativeFunction {
+        self.inner.clone()
+    }
+
+    /// Converts this `NativeFunction` into a `JsFunction` without setting its name or length.
+    ///
+    /// Useful to create functions that will only be used once, such as callbacks.
+    pub fn to_js_function(self, realm: &Realm) -> JsResult<JsFunction> {
+        FunctionObjectBuilder::new(realm, self).build()
+    }
+}
+
+impl StoredNativeFunction {
+    fn call(&self, this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+        match self.0 {
             Inner::PointerFn(f) => f(this, args, context),
             Inner::AsyncPointer(callback) => {
                 let this = this.clone();
@@ -288,14 +357,6 @@ impl NativeFunction {
             }
             Inner::Closure(ref c) => c.call(this, args, context),
         }
-    }
-
-    /// Converts this `NativeFunction` into a `JsFunction` without setting its name or length.
-    ///
-    /// Useful to create functions that will only be used once, such as callbacks.
-    #[must_use]
-    pub fn to_js_function(self, realm: &Realm) -> JsFunction {
-        FunctionObjectBuilder::new(realm, self).build()
     }
 }
 
@@ -322,15 +383,17 @@ pub(crate) fn native_function_call(
     context.check_runtime_limits()?;
     let this_function_object = obj.clone();
 
-    let NativeFunctionObject {
-        f: function,
-        name,
-        constructor,
-        realm,
-    } = obj
-        .downcast_ref::<NativeFunctionObject>()
-        .expect("the object should be a native function object")
-        .clone();
+    let (function, name, constructor, realm) = {
+        let record = obj
+            .downcast_ref::<NativeFunctionObject>()
+            .expect("the object should be a native function object");
+        (
+            record.f.clone(),
+            record.name.clone(),
+            record.constructor,
+            record.realm.clone().map(Realm::from_edge),
+        )
+    };
 
     let pc = context.vm.frame().pc;
     let native_source_info = context.native_source_info();
@@ -339,9 +402,7 @@ pub(crate) fn native_function_call(
         .shadow_stack
         .push_native(pc, name, native_source_info);
 
-    let mut realm = realm
-        .map(Realm::from_edge)
-        .unwrap_or_else(|| context.realm().clone());
+    let mut realm = realm.unwrap_or_else(|| context.realm().clone());
 
     context.swap_realm(&mut realm);
     let previous_function = context
@@ -353,8 +414,11 @@ pub(crate) fn native_function_call(
         function.call(&JsValue::undefined(), &args, context)
     } else {
         function.call(&this, &args, context)
-    }
-    .map_err(|err| err.inject_realm(context.realm().clone()));
+    };
+    let result = context
+        .runtime()
+        .admit_callback_result(result)
+        .map_err(|err| err.inject_realm(context.realm().clone()));
 
     context.vm.native_active_function = previous_function;
     context.swap_realm(&mut realm);
@@ -382,15 +446,17 @@ fn native_function_construct(
     context.check_runtime_limits()?;
     let this_function_object = obj.clone();
 
-    let NativeFunctionObject {
-        f: function,
-        name,
-        constructor,
-        realm,
-    } = obj
-        .downcast_ref::<NativeFunctionObject>()
-        .expect("the object should be a native function object")
-        .clone();
+    let (function, name, constructor, realm) = {
+        let record = obj
+            .downcast_ref::<NativeFunctionObject>()
+            .expect("the object should be a native function object");
+        (
+            record.f.clone(),
+            record.name.clone(),
+            record.constructor,
+            record.realm.clone().map(Realm::from_edge),
+        )
+    };
 
     let pc = context.vm.frame().pc;
     let native_source_info = context.native_source_info();
@@ -399,9 +465,7 @@ fn native_function_construct(
         .shadow_stack
         .push_native(pc, name, native_source_info);
 
-    let mut realm = realm
-        .map(Realm::from_edge)
-        .unwrap_or_else(|| context.realm().clone());
+    let mut realm = realm.unwrap_or_else(|| context.realm().clone());
 
     context.swap_realm(&mut realm);
     let previous_function = context
@@ -417,8 +481,10 @@ fn native_function_construct(
     let _func = context.vm.stack.pop();
     let _this = context.vm.stack.pop();
 
-    let result = function
-        .call(&new_target, &args, context)
+    let result = function.call(&new_target, &args, context);
+    let result = context
+        .runtime()
+        .admit_callback_result(result)
         .map_err(|err| err.inject_realm(context.realm().clone()))
         .and_then(|v| match v.variant() {
             JsVariant::Object(o) => Ok(o.clone()),

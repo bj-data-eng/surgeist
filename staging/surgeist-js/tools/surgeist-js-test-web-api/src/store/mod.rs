@@ -1,5 +1,5 @@
 //! Module containing the types related to the [`JsValueStore`].
-use rustc_hash::FxHashSet;
+use rustc_hash::FxHashMap;
 use std::sync::Arc;
 use surgeist_js::bigint::RawBigInt;
 use surgeist_js::builtins::array_buffer::SharedArrayBuffer;
@@ -172,14 +172,14 @@ impl JsValueStore {
         context: &mut Context,
         transfer: Vec<JsValue>,
     ) -> JsResult<Self> {
-        // Verify the validity of the transfer list and make it a set.
+        // Verify transfer entries and retain their roots throughout traversal.
         let transfer = transfer
             .into_iter()
             .map(|v| match v.variant() {
-                JsVariant::Object(o) if from::is_transferable(&o) => Ok(o),
+                JsVariant::Object(o) if from::is_transferable(&o) => Ok((o.identity(), o)),
                 _ => Err(unsupported_transfer()),
             })
-            .collect::<Result<FxHashSet<_>, _>>()?;
+            .collect::<JsResult<FxHashMap<_, _>>>()?;
 
         Ok(Self(Arc::new(from::encode(value, &transfer, context)?)))
     }

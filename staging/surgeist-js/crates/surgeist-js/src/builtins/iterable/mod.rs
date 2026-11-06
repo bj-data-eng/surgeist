@@ -12,7 +12,6 @@ use crate::{
     symbol::JsSymbol,
     vm::CompletionRecord,
 };
-use surgeist_js_gc::{Finalize, Trace};
 
 mod async_from_sync_iterator;
 pub(crate) mod iterator_constructor;
@@ -53,7 +52,7 @@ use super::OrdinaryObject;
 use crate::object::ObjectEdge;
 
 /// The built-in iterator prototypes.
-#[derive(Debug, Trace, Finalize)]
+#[derive(Debug, surgeist_js_gc::heap::Trace)]
 pub struct IteratorPrototypes {
     /// The `IteratorPrototype` object.
     iterator: ObjectEdge,
@@ -90,21 +89,24 @@ pub struct IteratorPrototypes {
     wrap_for_valid_iterator: ObjectEdge,
 }
 
-impl Default for IteratorPrototypes {
-    fn default() -> Self {
+impl IteratorPrototypes {
+    pub(crate) fn uninit(
+        runtime: &crate::Runtime,
+        roots: &mut crate::realm::BootstrapRoots,
+    ) -> Self {
         Self {
-            iterator: JsObject::with_null_proto().into_record(),
-            async_iterator: JsObject::with_null_proto().into_record(),
-            async_from_sync_iterator: JsObject::with_null_proto().into_record(),
-            array: JsObject::with_null_proto().into_record(),
-            set: JsObject::with_null_proto().into_record(),
-            string: JsObject::with_null_proto().into_record(),
-            regexp_string: JsObject::with_null_proto().into_record(),
-            map: JsObject::with_null_proto().into_record(),
+            iterator: roots.retain(JsObject::with_null_proto(runtime)),
+            async_iterator: roots.retain(JsObject::with_null_proto(runtime)),
+            async_from_sync_iterator: roots.retain(JsObject::with_null_proto(runtime)),
+            array: roots.retain(JsObject::with_null_proto(runtime)),
+            set: roots.retain(JsObject::with_null_proto(runtime)),
+            string: roots.retain(JsObject::with_null_proto(runtime)),
+            regexp_string: roots.retain(JsObject::with_null_proto(runtime)),
+            map: roots.retain(JsObject::with_null_proto(runtime)),
             #[cfg(feature = "intl")]
-            segment: JsObject::with_null_proto().into_record(),
-            iterator_helper: JsObject::with_null_proto().into_record(),
-            wrap_for_valid_iterator: JsObject::with_null_proto().into_record(),
+            segment: roots.retain(JsObject::with_null_proto(runtime)),
+            iterator_helper: roots.retain(JsObject::with_null_proto(runtime)),
+            wrap_for_valid_iterator: roots.retain(JsObject::with_null_proto(runtime)),
         }
     }
 }
@@ -205,7 +207,25 @@ impl IntrinsicObject for AsyncIterator {
 /// `CreateIterResultObject( value, done )`
 ///
 /// Generates an object supporting the `IteratorResult` interface.
-pub fn create_iter_result_object(value: JsValue, done: bool, context: &mut Context) -> JsValue {
+///
+/// # Errors
+///
+/// Returns a `TypeError` if `value` is an object from a different runtime.
+pub fn create_iter_result_object(
+    value: JsValue,
+    done: bool,
+    context: &mut Context,
+) -> JsResult<JsValue> {
+    context.runtime().check_value(&value)?;
+    Ok(create_iter_result_object_trusted(value, done, context))
+}
+
+/// Creates an iterator result from a value already admitted to this runtime.
+pub(crate) fn create_iter_result_object_trusted(
+    value: JsValue,
+    done: bool,
+    context: &Context,
+) -> JsValue {
     // 1. Assert: Type(done) is Boolean.
     // 2. Let obj be ! OrdinaryObjectCreate(%Object.prototype%).
     // 3. Perform ! CreateDataPropertyOrThrow(obj, "value", value).
@@ -312,7 +332,7 @@ impl JsValue {
 }
 
 /// The result of the iteration process.
-#[derive(Debug, Clone, Trace, Finalize)]
+#[derive(Debug, Clone)]
 pub struct IteratorResult {
     object: JsObject,
 }
@@ -376,7 +396,7 @@ impl IteratorResult {
 ///  - [ECMA reference][spec]
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-iterator-records
-#[derive(Clone, Debug, Finalize, Trace)]
+#[derive(Clone, Debug)]
 pub struct IteratorRecord {
     /// `[[Iterator]]`
     ///
@@ -397,18 +417,48 @@ pub struct IteratorRecord {
     last_result: IteratorResult,
 }
 
+/// An iterator captured in a heap-resident callback or frame.
+#[derive(Debug, Clone, surgeist_js_gc::heap::Trace)]
+pub struct StoredIteratorRecord {
+    iterator: ObjectEdge,
+    next_method: crate::value::StoredValue,
+    done: bool,
+    last_result: ObjectEdge,
+}
+
+impl StoredIteratorRecord {
+    pub(crate) fn to_iterator(&self) -> IteratorRecord {
+        IteratorRecord {
+            iterator: JsObject::from_inner(self.iterator.clone()),
+            next_method: self.next_method.to_value(),
+            done: self.done,
+            last_result: IteratorResult {
+                object: JsObject::from_inner(self.last_result.clone()),
+            },
+        }
+    }
+}
+
 impl IteratorRecord {
+    pub(crate) fn stored(&self) -> StoredIteratorRecord {
+        StoredIteratorRecord {
+            iterator: self.iterator.edge(),
+            next_method: self.next_method.clone().into_stored(),
+            done: self.done,
+            last_result: self.last_result.object.edge(),
+        }
+    }
+
     /// Creates a new `IteratorRecord` with the given iterator object, next method and `done` flag.
     #[inline]
     #[must_use]
     pub fn new(iterator: JsObject, next_method: JsValue) -> Self {
+        let result = JsObject::with_null_proto(&iterator.runtime());
         Self {
             iterator,
             next_method,
             done: false,
-            last_result: IteratorResult {
-                object: JsObject::with_null_proto(),
-            },
+            last_result: IteratorResult { object: result },
         }
     }
 

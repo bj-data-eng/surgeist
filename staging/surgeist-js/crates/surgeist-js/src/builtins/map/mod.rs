@@ -12,7 +12,7 @@
 
 use crate::{
     Context, JsArgs, JsResult, JsString, JsValue,
-    builtins::{BuiltInObject, iterable::IteratorHint, map::ordered_map::MapLock},
+    builtins::{BuiltInObject, iterable::IteratorHint},
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     error::JsNativeError,
     js_error, js_string,
@@ -31,8 +31,8 @@ use super::{
 mod map_iterator;
 pub(crate) use map_iterator::MapIterator;
 
-pub mod ordered_map;
-use ordered_map::OrderedMap;
+pub(crate) mod ordered_map;
+use ordered_map::{OrderedMap, require_collection_value};
 
 #[cfg(test)]
 mod tests;
@@ -146,7 +146,7 @@ impl BuiltInConstructor for Map {
         let map = JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
             prototype,
-            <OrderedMap<JsValue>>::new(),
+            OrderedMap::new(),
         )
         .upcast();
 
@@ -205,7 +205,7 @@ impl Map {
         // 1. Let M be the this value.
         let this = this
             .as_object()
-            .and_then(|o| o.downcast::<OrderedMap<JsValue>>().ok())
+            .and_then(|o| o.downcast::<OrderedMap>().ok())
             .ok_or_else(|| {
                 js_error!(
                     TypeError: "method `Map.prototype.entries` called on incompatible receiver"
@@ -213,11 +213,7 @@ impl Map {
             })?;
 
         // 2. Return ? CreateMapIterator(M, key+value).
-        Ok(MapIterator::create_map_iterator(
-            this,
-            PropertyNameKind::KeyAndValue,
-            context,
-        ))
+        MapIterator::create_map_iterator(this, PropertyNameKind::KeyAndValue, context)
     }
 
     /// `Map.prototype.keys()`
@@ -234,15 +230,11 @@ impl Map {
         // 1. Let M be the this value.
         let this = this
             .as_object()
-            .and_then(|o| o.downcast::<OrderedMap<JsValue>>().ok())
+            .and_then(|o| o.downcast::<OrderedMap>().ok())
             .ok_or_else(|| js_error!(TypeError: "method `Map.prototype.keys` called on incompatible receiver"))?;
 
         // 2. Return ? CreateMapIterator(M, key).
-        Ok(MapIterator::create_map_iterator(
-            this,
-            PropertyNameKind::Key,
-            context,
-        ))
+        MapIterator::create_map_iterator(this, PropertyNameKind::Key, context)
     }
 
     /// `Map.prototype.set( key, value )`
@@ -262,7 +254,7 @@ impl Map {
         // 2. Perform ? RequireInternalSlot(M, [[MapData]]).
         let map = this
             .as_object()
-            .and_then(|o| o.downcast::<OrderedMap<JsValue>>().ok())
+            .and_then(|o| o.downcast::<OrderedMap>().ok())
             .ok_or_else(|| {
                 js_error!(TypeError: "method `Map.prototype.set` called on incompatible receiver")
             })?;
@@ -275,6 +267,9 @@ impl Map {
         //       i. Set p.[[Value]] to value.
         // 5. Let p be the Record { [[Key]]: key, [[Value]]: value }.
         // 6. Append p to M.[[MapData]].
+        let runtime = map.runtime();
+        require_collection_value(&runtime, &key)?;
+        require_collection_value(&runtime, value)?;
         map.borrow_mut().data_mut().insert(key, value.clone());
 
         // 7. Return M.
@@ -302,7 +297,7 @@ impl Map {
         // 6. Return 𝔽(count).
         Ok(this
             .as_object()
-            .and_then(|o| o.downcast::<OrderedMap<JsValue>>().ok())
+            .and_then(|o| o.downcast::<OrderedMap>().ok())
             .ok_or_else(|| {
                 js_error!(TypeError: "method `Map.prototype.set` called on incompatible receiver")
             })?
@@ -328,7 +323,7 @@ impl Map {
         // 2. Perform ? RequireInternalSlot(M, [[MapData]]).
         let map = this
             .as_object()
-            .and_then(|o| o.downcast::<OrderedMap<JsValue>>().ok())
+            .and_then(|o| o.downcast::<OrderedMap>().ok())
             .ok_or_else(|| {
                 js_error!(TypeError: "method `Map.prototype.delete` called on incompatible receiver")
             })?;
@@ -342,7 +337,7 @@ impl Map {
         //       ii. Set p.[[Value]] to empty.
         //       iii. Return true.
         // 5. Return false.
-        Ok(map.borrow_mut().data_mut().remove(&key).is_some().into())
+        Ok(map.borrow_mut().data_mut().remove(&key).into())
     }
 
     /// `Map.prototype.get( key )`
@@ -360,7 +355,7 @@ impl Map {
         // 2. Perform ? RequireInternalSlot(M, [[MapData]]).
         let map = this
             .as_object()
-            .and_then(|o| o.downcast::<OrderedMap<JsValue>>().ok())
+            .and_then(|o| o.downcast::<OrderedMap>().ok())
             .ok_or_else(|| {
                 js_error!(TypeError: "method `Map.prototype.get` called on incompatible receiver")
             })?;
@@ -371,7 +366,7 @@ impl Map {
         // 4. For each Record { [[Key]], [[Value]] } p of M.[[MapData]], do
         //    a. If p.[[Key]] is not empty and SameValue(p.[[Key]], key) is true, return p.[[Value]].
         // 5. Return undefined.
-        Ok(map.borrow().data().get(&key).cloned().unwrap_or_default())
+        Ok(map.borrow().data().get(&key).unwrap_or_default())
     }
 
     /// `Map.prototype.clear( )`
@@ -389,7 +384,7 @@ impl Map {
         // 2. Perform ? RequireInternalSlot(M, [[MapData]]).
         let map = this
             .as_object()
-            .and_then(|o| o.downcast::<OrderedMap<JsValue>>().ok())
+            .and_then(|o| o.downcast::<OrderedMap>().ok())
             .ok_or_else(|| {
                 js_error!(
                     TypeError: "method `Map.prototype.clear` called on incompatible receiver"
@@ -420,7 +415,7 @@ impl Map {
         // 2. Perform ? RequireInternalSlot(M, [[MapData]]).
         let map = this
             .as_object()
-            .and_then(|o| o.downcast::<OrderedMap<JsValue>>().ok())
+            .and_then(|o| o.downcast::<OrderedMap>().ok())
             .ok_or_else(|| {
                 js_error!(
                     TypeError: "method `Map.prototype.has` called on incompatible receiver"
@@ -455,7 +450,7 @@ impl Map {
         // 2. Perform ? RequireInternalSlot(M, [[MapData]]).
         let map = this
             .as_object()
-            .and_then(|o| o.downcast::<OrderedMap<JsValue>>().ok())
+            .and_then(|o| o.downcast::<OrderedMap>().ok())
             .ok_or_else(|| {
                 js_error!(
                     TypeError: "method `Map.prototype.forEach` called on incompatible receiver"
@@ -481,7 +476,7 @@ impl Map {
         // after it has been visited and then re-added before the forEach call completes.
         // Keys that are deleted after the call to forEach begins and before being visited
         // are not visited unless the key is added again before the forEach call completes.
-        let _lock = MapLock::new(&map);
+        let _lock = map.borrow_mut().data_mut().lock();
 
         // 4. Let entries be the List that is M.[[MapData]].
         // 5. For each Record { [[Key]], [[Value]] } e of entries, do
@@ -491,8 +486,7 @@ impl Map {
                 let map = map.borrow();
                 let map = map.data();
                 if index < map.full_len() {
-                    map.get_index(index)
-                        .map(|(k, v)| [v.clone(), k.clone(), this.clone()])
+                    map.get_index(index).map(|(k, v)| [v, k, this.clone()])
                 } else {
                     // 6. Return undefined.
                     return Ok(JsValue::undefined());
@@ -525,32 +519,29 @@ impl Map {
 
         let map = this
             .as_object()
-            .and_then(|o| o.downcast::<OrderedMap<JsValue>>().ok())
+            .and_then(|o| o.downcast::<OrderedMap>().ok())
             .ok_or_else(|| {
                 js_error!(
                     TypeError: "method `Map.prototype.forEach` called on incompatible receiver"
                 )
             })?;
 
-        let _lock = MapLock::new(&map);
+        let _lock = map.borrow_mut().data_mut().lock();
 
         let mut index = 0;
         loop {
-            let (k, v) = {
+            let entry = {
                 let map = map.borrow();
                 let map = map.data();
                 if index >= map.full_len() {
                     return Ok(());
                 }
-
-                let Some((k, v)) = map.get_index(index) else {
-                    continue;
-                };
-
-                (k.clone(), v.clone())
+                map.get_index(index)
             };
 
-            f(k, v)?;
+            if let Some((key, value)) = entry {
+                f(key, value)?;
+            }
             index += 1;
         }
     }
@@ -574,18 +565,14 @@ impl Map {
         // 2. Return ? CreateMapIterator(M, value).
         let this = this
             .as_object()
-            .and_then(|o| o.downcast::<OrderedMap<JsValue>>().ok())
+            .and_then(|o| o.downcast::<OrderedMap>().ok())
             .ok_or_else(|| {
                 js_error!(
                     TypeError: "method `Map.prototype.values` called on incompatible receiver"
                 )
             })?;
 
-        Ok(MapIterator::create_map_iterator(
-            this,
-            PropertyNameKind::Value,
-            context,
-        ))
+        MapIterator::create_map_iterator(this, PropertyNameKind::Value, context)
     }
 
     /// `Map.prototype.getOrInsert(key, value)`
@@ -610,7 +597,7 @@ impl Map {
         // 2. Perform ? RequireInternalSlot(M, [[MapData]]).
         let map = this
             .as_object()
-            .and_then(|o| o.downcast::<OrderedMap<JsValue>>().ok())
+            .and_then(|o| o.downcast::<OrderedMap>().ok())
             .ok_or_else(|| {
                 js_error!(
                     TypeError: "method `Map.prototype.getOrInsert` called on incompatible receiver"
@@ -623,11 +610,14 @@ impl Map {
         // 4. For each Record { [[Key]], [[Value]] } p of M.[[MapData]], do
         if let Some(existing) = map.borrow().data().get(&key) {
             // a. If p.[[Key]] is not empty and SameValue(p.[[Key]], key) is true, return p.[[Value]].
-            return Ok(existing.clone());
+            return Ok(existing);
         }
 
         // 5. Let p be the Record { [[Key]]: key, [[Value]]: value }.
         // 6. Append p to M.[[MapData]].
+        let runtime = map.runtime();
+        require_collection_value(&runtime, &key)?;
+        require_collection_value(&runtime, value)?;
         map.borrow_mut().data_mut().insert(key, value.clone());
 
         // 7. Return value.
@@ -655,7 +645,7 @@ impl Map {
         // 2. Perform ? RequireInternalSlot(M, [[MapData]]).
         let map = this
             .as_object()
-            .and_then(|o| o.downcast::<OrderedMap<JsValue>>().ok())
+            .and_then(|o| o.downcast::<OrderedMap>().ok())
             .ok_or_else(|| {
                 js_error!(
                     TypeError: "method `Map.prototype.getOrInsertComputed` called on incompatible receiver"
@@ -675,12 +665,15 @@ impl Map {
         // 5. For each Record { [[Key]], [[Value]] } p of M.[[MapData]], do
         if let Some(existing) = map.borrow().data().get(&key) {
             // a. If p.[[Key]] is not empty and SameValue(p.[[Key]], key) is true, return p.[[Value]].
-            return Ok(existing.clone());
+            return Ok(existing);
         }
 
         // 6. Let value be ? Call(callback, undefined, « key »).
         // 7. NOTE: The Map may have been modified during execution of callback.
+        let runtime = map.runtime();
+        require_collection_value(&runtime, &key)?;
         let value = callback_fn.call(&JsValue::undefined(), std::slice::from_ref(&key), context)?;
+        require_collection_value(&runtime, &value)?;
 
         // 8. For each Record { [[Key]], [[Value]] } p of M.[[MapData]], do
         //    a. If p.[[Key]] is not empty and SameValue(p.[[Key]], key) is true, then
@@ -775,6 +768,10 @@ impl Map {
             let key = canonicalize_keyed_collection_key(key);
 
             // i. Perform AddValueToKeyedGroup(groups, key, value).
+            let runtime = context.runtime();
+            let valid = require_collection_value(runtime, &key)
+                .and_then(|()| require_collection_value(runtime, &value));
+            if_abrupt_close_iterator!(valid, iterator, context);
             groups.entry(key).or_default().push(value);
 
             // j. Set k to k + 1.
@@ -782,7 +779,12 @@ impl Map {
         }
 
         // 2. Let map be ! Construct(%Map%).
-        let mut map: OrderedMap<JsValue> = OrderedMap::new();
+        let proto = context.intrinsics().constructors().map().prototype();
+        let map = JsObject::from_proto_and_data_with_shared_shape(
+            context.root_shape(),
+            proto,
+            OrderedMap::with_capacity(groups.len()),
+        );
 
         // 3. For each Record { [[Key]], [[Elements]] } g of groups, do
         for (key, elements) in groups {
@@ -791,16 +793,11 @@ impl Map {
 
             // b. Let entry be the Record { [[Key]]: g.[[Key]], [[Value]]: elements }.
             // c. Append entry to map.[[MapData]].
-            map.insert(key, elements.into());
+            map.borrow_mut().data_mut().insert(key, elements.into());
         }
 
-        let proto = context.intrinsics().constructors().map().prototype();
-
         // 4. Return map.
-        Ok(
-            JsObject::from_proto_and_data_with_shared_shape(context.root_shape(), proto, map)
-                .into(),
-        )
+        Ok(map.into())
     }
 }
 

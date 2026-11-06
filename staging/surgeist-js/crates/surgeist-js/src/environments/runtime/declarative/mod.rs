@@ -9,8 +9,11 @@ pub(crate) use lexical::LexicalEnvironment;
 pub(crate) use module::ModuleEnvironment;
 
 use crate::{JsResult, JsValue};
-use surgeist_js_gc::{Finalize, Trace};
 use std::cell::Cell;
+use surgeist_js_gc::heap::{RecordRef, Rooted, Trace};
+
+pub(crate) type DeclarativeEnvironmentRef = Rooted<DeclarativeEnvironment>;
+pub(crate) type DeclarativeEnvironmentEdge = RecordRef<DeclarativeEnvironment>;
 
 /// A declarative environment holds binding values at runtime.
 ///
@@ -33,10 +36,10 @@ use std::cell::Cell;
 /// are marked as poisoned.
 /// All poisoned environments have to be checked for added bindings.
 /// Module Environments are never poisoned as they run in strict mode.
-#[derive(Debug, Trace, Finalize)]
+#[derive(Debug, Trace)]
 pub(crate) struct DeclarativeEnvironment {
     kind: DeclarativeEnvironmentKind,
-    #[unsafe_ignore_trace]
+    #[heap_trace(skip)]
     poisoned: Cell<bool>,
     with: bool,
 }
@@ -153,7 +156,7 @@ impl DeclarativeEnvironment {
 }
 
 /// The kind of the declarative environment.
-#[derive(Debug, Trace, Finalize)]
+#[derive(Debug, Trace)]
 pub(crate) enum DeclarativeEnvironmentKind {
     /// Only stores lexical bindings.
     Lexical(LexicalEnvironment),

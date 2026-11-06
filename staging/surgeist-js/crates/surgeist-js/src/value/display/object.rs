@@ -10,7 +10,7 @@ fn print_obj_value_internals(
     f: &mut fmt::Formatter<'_>,
     obj: &JsObject,
     indent: usize,
-    encounters: &mut HashSet<usize>,
+    encounters: &mut HashSet<surgeist_js_gc::heap::ObjectId>,
 ) -> fmt::Result {
     let object = obj.borrow();
     write!(f, "{:>indent$}__proto__: ", "")?;
@@ -33,7 +33,7 @@ fn print_obj_value_props(
     f: &mut fmt::Formatter<'_>,
     obj: &JsObject,
     indent: usize,
-    encounters: &mut HashSet<usize>,
+    encounters: &mut HashSet<surgeist_js_gc::heap::ObjectId>,
     print_internals: bool,
 ) -> fmt::Result {
     let mut keys: Vec<_> = obj
@@ -42,7 +42,7 @@ fn print_obj_value_props(
         .index_property_keys()
         .map(PropertyKey::from)
         .collect();
-    keys.extend(obj.borrow().properties().shape.keys());
+    keys.extend(obj.borrow().properties().shape().keys());
 
     let mut first = true;
     for key in keys {
@@ -79,12 +79,12 @@ fn print_obj_value_props(
 pub(super) fn log_object_to_internal(
     f: &mut fmt::Formatter<'_>,
     data: &JsValue,
-    encounters: &mut HashSet<usize>,
+    encounters: &mut HashSet<surgeist_js_gc::heap::ObjectId>,
     indent: usize,
     print_internals: bool,
 ) -> fmt::Result {
     if let Some(v) = data.as_object() {
-        // The in-memory address of the current object
+        // The runtime identity of the current object
         let addr = v.identity();
 
         // We need not continue if this object has already been
@@ -162,7 +162,7 @@ pub(super) fn log_plain_object_compact(
     obj: &JsObject,
     depth: u32,
     print_internals: bool,
-    encounters: &mut HashSet<usize>,
+    encounters: &mut HashSet<surgeist_js_gc::heap::ObjectId>,
 ) -> fmt::Result {
     let addr = obj.identity();
     if encounters.contains(&addr) {
@@ -176,7 +176,7 @@ pub(super) fn log_plain_object_compact(
         .index_property_keys()
         .map(PropertyKey::from)
         .collect();
-    keys.extend(obj.borrow().properties().shape.keys());
+    keys.extend(obj.borrow().properties().shape().keys());
 
     if keys.is_empty() {
         encounters.remove(&addr);

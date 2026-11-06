@@ -41,6 +41,7 @@ fn load_module_and_test(module_loader: &Rc<EmbeddedModuleLoader>) {
 
             let bar = module
                 .namespace(&mut context)
+                .unwrap()
                 .get(js_string!("bar"), &mut context)
                 .unwrap()
                 .as_callable()

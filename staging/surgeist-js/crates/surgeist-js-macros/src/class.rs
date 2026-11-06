@@ -106,17 +106,23 @@ impl Function {
         let err = take_error_from_attrs(&mut receiver.attrs)?
             .unwrap_or("Invalid class for type".to_string());
 
-        // `&mut self`
-        let downcast = if let ReceiverKind::Reference(_, _, Some(_)) = receiver.kind {
+        let shared_receiver = match &receiver.kind {
+            ReceiverKind::Reference(_, _, mutability) => mutability.is_none(),
+            ReceiverKind::Typed(_, ty) => {
+                matches!(ty.as_ref(), Type::Reference(reference) if reference.mutability.is_none())
+            }
+            _ => false,
+        };
+        let downcast = if shared_receiver {
             quote! {
                 let object = this.as_object();
-                let self_ = &mut *object.as_ref().and_then(|o| o.downcast_mut::< #class_ty >())
+                let self_ = &*object.as_ref().and_then(|o| o.downcast_ref::< #class_ty >())
                     .ok_or( surgeist_js::js_error!( #err ))?;
             }
         } else {
             quote! {
                 let object = this.as_object();
-                let self_ = &mut *object.as_ref().and_then(|o| o.downcast_mut::< #class_ty >())
+                let self_ = &mut *object.as_ref().and_then(|o| o.downcast_class_mut::< #class_ty >())
                     .ok_or( surgeist_js::js_error!( #err ))?;
             }
         };
@@ -413,7 +419,7 @@ impl Accessor {
             quote! {
                 Some(
                     surgeist_js::NativeFunction::from_fn_ptr( #body )
-                        .to_js_function(builder.context().realm())
+                        .to_js_function(builder.context().realm())?
                 )
             }
         } else {
@@ -424,7 +430,7 @@ impl Accessor {
             quote! {
                 Some(
                     surgeist_js::NativeFunction::from_fn_ptr( #body )
-                        .to_js_function(builder.context().realm())
+                        .to_js_function(builder.context().realm())?
                 )
             }
         } else {

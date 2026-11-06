@@ -12,14 +12,14 @@ pub(crate) use unique_shape::UniqueShape;
 
 use std::fmt::Debug;
 
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::{ObjectId, Trace as HeapTrace};
 
 use crate::property::PropertyKey;
 
 use self::{
-    shared_shape::{TransitionKey, WeakSharedShape},
+    shared_shape::{SharedShapeRef, TransitionKey},
     slot::Slot,
-    unique_shape::WeakUniqueShape,
+    unique_shape::UniqueShapeRef,
 };
 
 use super::JsPrototype;
@@ -56,23 +56,16 @@ pub(crate) struct ChangeTransition<T> {
 }
 
 /// The internal representation of [`Shape`].
-#[derive(Debug, Trace, Finalize, Clone)]
+#[derive(Debug, Clone)]
 enum Inner {
     Unique(UniqueShape),
     Shared(SharedShape),
 }
 
 /// Represents the shape of an object.
-#[derive(Debug, Trace, Finalize, Clone)]
+#[derive(Debug, Clone)]
 pub struct Shape {
     inner: Inner,
-}
-
-impl Default for Shape {
-    #[inline]
-    fn default() -> Self {
-        UniqueShape::default().into()
-    }
 }
 
 impl Shape {
@@ -203,13 +196,13 @@ impl Shape {
         }
     }
 
-    /// Return location in memory of the [`Shape`].
+    /// Returns this shape's runtime-scoped allocation identity.
     #[inline]
     #[must_use]
-    pub fn to_addr_usize(&self) -> usize {
+    pub const fn identity(&self) -> ObjectId {
         match &self.inner {
-            Inner::Shared(shape) => shape.to_addr_usize(),
-            Inner::Unique(shape) => shape.to_addr_usize(),
+            Inner::Shared(shape) => shape.identity(),
+            Inner::Unique(shape) => shape.identity(),
         }
     }
 }
@@ -230,41 +223,30 @@ impl From<SharedShape> for Shape {
     }
 }
 
-/// Represents a weak reaference to an object's [`Shape`].
-#[derive(Debug, Trace, Finalize, Clone, PartialEq)]
-pub(crate) enum WeakShape {
-    Unique(WeakUniqueShape),
-    Shared(WeakSharedShape),
+/// Non-owning identity of an object's shape.
+#[derive(Debug, Clone, PartialEq, HeapTrace)]
+pub(crate) enum ShapeRef {
+    Unique(UniqueShapeRef),
+    Shared(SharedShapeRef),
 }
 
-impl WeakShape {
-    /// Return location in memory of the [`Shape`].
-    ///
-    /// Returns `0` if the shape has been freed.
-    #[inline]
-    #[must_use]
-    pub(crate) fn to_addr_usize(&self) -> usize {
-        self.upgrade().as_ref().map_or(0, Shape::to_addr_usize)
-    }
-
-    /// Return location in memory of the [`Shape`].
-    ///
-    /// Returns `0` if the shape has been freed.
+impl ShapeRef {
+    /// Roots the shape if its allocation is still live.
     #[inline]
     #[must_use]
     pub(crate) fn upgrade(&self) -> Option<Shape> {
         match self {
-            WeakShape::Shared(shape) => Some(shape.upgrade()?.into()),
-            WeakShape::Unique(shape) => Some(shape.upgrade()?.into()),
+            ShapeRef::Shared(shape) => Some(shape.upgrade()?.into()),
+            ShapeRef::Unique(shape) => Some(shape.upgrade()?.into()),
         }
     }
 }
 
-impl From<&Shape> for WeakShape {
+impl From<&Shape> for ShapeRef {
     fn from(value: &Shape) -> Self {
         match &value.inner {
-            Inner::Shared(shape) => WeakShape::Shared(shape.into()),
-            Inner::Unique(shape) => WeakShape::Unique(shape.into()),
+            Inner::Shared(shape) => ShapeRef::Shared(shape.into()),
+            Inner::Unique(shape) => ShapeRef::Unique(shape.into()),
         }
     }
 }

@@ -7,7 +7,6 @@ use crate::{
     value::TryFromJs,
 };
 
-use surgeist_js_gc::{Finalize, Trace};
 use std::ops::Deref;
 
 /// `JsRegExp` provides a wrapper for Boa's implementation of the ECMAScript `RegExp` builtin object
@@ -36,7 +35,7 @@ use std::ops::Deref;
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Debug, Clone, Trace, Finalize)]
+#[derive(Debug, Clone)]
 pub struct JsRegExp {
     inner: JsObject,
 }

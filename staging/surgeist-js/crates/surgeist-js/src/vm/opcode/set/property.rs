@@ -25,7 +25,7 @@ fn set_by_name(
     let ic = &context.vm.frame().code_block().ic[usize::from(index)];
 
     let object_borrowed = object.borrow();
-    if let Some((shape, slot)) = ic.get(object_borrowed.shape()) {
+    if let Some((shape, slot)) = ic.get(&object_borrowed.shape()) {
         let slot_index = slot.index as usize;
 
         if slot.attributes.is_accessor_descriptor() {
@@ -80,7 +80,7 @@ fn set_by_name(
         let ic = &context.vm.frame().code_block.ic[usize::from(index)];
         let object_borrowed = object.borrow();
         let shape = object_borrowed.shape();
-        ic.set(shape, slot);
+        ic.set(&shape, slot);
     }
 
     Ok(())

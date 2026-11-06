@@ -17,7 +17,7 @@ use crate::{
     string::StaticJsStrings,
     value::IntoOrUndefined,
 };
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 use icu_calendar::AnyCalendarKind;
 use temporal_rs::{
@@ -44,9 +44,9 @@ use super::{
 /// [spec]: https://tc39.es/proposal-temporal/#sec-temporal-plainyearmonth-objects
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Temporal/PlainYearMonth
 /// [temporal_rs-docs]: https://docs.rs/temporal_rs/latest/temporal_rs/struct.PlainYearMonth.html
-#[derive(Debug, Clone, Trace, Finalize, JsData)]
-#[surgeist_js_gc(unsafe_empty_trace)]
+#[derive(Debug, Clone, JsData, HeapTrace)]
 pub struct PlainYearMonth {
+    #[heap_trace(skip)]
     pub(crate) inner: InnerYearMonth,
 }
 
@@ -231,7 +231,7 @@ impl BuiltInConstructor for PlainYearMonth {
                 s.as_string()
                     .as_ref()
                     .map(JsString::to_std_string_lossy)
-                    .ok_or_else(|| JsNativeError::typ().with_message("calendar must be a string."))
+                    .ok_or_else(|| crate::js_error!(TypeError: "calendar must be a string."))
             })
             .transpose()?
             .map(|s| Calendar::try_from_utf8(s.as_bytes()))
@@ -571,7 +571,7 @@ impl PlainYearMonth {
                 .into());
         }
         // 8. Let resolvedOptions be ? GetOptionsObject(options).
-        let resolved_options = get_options_object(args.get_or_undefined(1))?;
+        let resolved_options = get_options_object(args.get_or_undefined(1), context)?;
         // 9. Let overflow be ? GetTemporalOverflowOption(resolvedOptions).
         let overflow = get_option::<Overflow>(&resolved_options, js_string!("overflow"), context)?
             .unwrap_or_default();
@@ -594,7 +594,7 @@ impl PlainYearMonth {
     /// [temporal_rs-docs]: https://docs.rs/temporal_rs/latest/temporal_rs/struct.PlainYearMonth.html#method.add
     fn add(this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         let duration_like = args.get_or_undefined(0);
-        let options = get_options_object(args.get_or_undefined(1))?;
+        let options = get_options_object(args.get_or_undefined(1), context)?;
 
         add_or_subtract_duration(true, this, duration_like, &options, context)
     }
@@ -612,7 +612,7 @@ impl PlainYearMonth {
     /// [temporal_rs-docs]: https://docs.rs/temporal_rs/latest/temporal_rs/struct.PlainYearMonth.html#method.subtract
     fn subtract(this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         let duration_like = args.get_or_undefined(0);
-        let options = get_options_object(args.get_or_undefined(1))?;
+        let options = get_options_object(args.get_or_undefined(1), context)?;
 
         add_or_subtract_duration(false, this, duration_like, &options, context)
     }
@@ -645,7 +645,7 @@ impl PlainYearMonth {
                 .into());
         }
 
-        let resolved_options = get_options_object(args.get_or_undefined(1))?;
+        let resolved_options = get_options_object(args.get_or_undefined(1), context)?;
         // TODO: Disallowed units must be rejected in `temporal_rs`.
         let settings = get_difference_settings(&resolved_options, context)?;
         let result = year_month.inner.until(&other, settings)?;
@@ -680,7 +680,7 @@ impl PlainYearMonth {
                 .into());
         }
 
-        let resolved_options = get_options_object(args.get_or_undefined(1))?;
+        let resolved_options = get_options_object(args.get_or_undefined(1), context)?;
         // TODO: Disallowed units must be rejected in `temporal_rs`.
         let settings = get_difference_settings(&resolved_options, context)?;
         let result = year_month.inner.since(&other, settings)?;
@@ -735,7 +735,7 @@ impl PlainYearMonth {
             })?;
 
         // 3. Set options to ? NormalizeOptionsObject(options).
-        let options = get_options_object(args.get_or_undefined(0))?;
+        let options = get_options_object(args.get_or_undefined(0), context)?;
         // 4. Let showCalendar be ? ToShowCalendarOption(options).
         // Get calendarName from the options object
         let show_calendar =
@@ -875,7 +875,7 @@ fn to_temporal_year_month(
         // a. If item has an [[InitializedTemporalYearMonth]] internal slot, then
         if let Some(ym) = obj.downcast_ref::<PlainYearMonth>() {
             // i. Let resolvedOptions be ? GetOptionsObject(options).
-            let resolved_options = get_options_object(&options)?;
+            let resolved_options = get_options_object(&options, context)?;
             // ii. Perform ? GetTemporalOverflowOption(resolvedOptions).
             let _overflow =
                 get_option::<Overflow>(&resolved_options, js_string!("overflow"), context)?
@@ -887,7 +887,7 @@ fn to_temporal_year_month(
         // c. Let fields be ? PrepareCalendarFields(calendar, item, « year, month, month-code », «», «»).
         let partial = to_partial_year_month(&obj, context)?;
         // d. Let resolvedOptions be ? GetOptionsObject(options).
-        let resolved_options = get_options_object(&options)?;
+        let resolved_options = get_options_object(&options, context)?;
         // e. Let overflow be ? GetTemporalOverflowOption(resolvedOptions).
         let overflow = get_option::<Overflow>(&resolved_options, js_string!("overflow"), context)?;
         // f. Let isoDate be ? CalendarYearMonthFromFields(calendar, fields, overflow).
@@ -908,7 +908,7 @@ fn to_temporal_year_month(
     // 6. If calendar is empty, set calendar to "iso8601".
     // 7. Set calendar to ? CanonicalizeCalendar(calendar).
     // 8. Let resolvedOptions be ? GetOptionsObject(options).
-    let resolved_options = get_options_object(&options)?;
+    let resolved_options = get_options_object(&options, context)?;
     // 9. Perform ? GetTemporalOverflowOption(resolvedOptions).
     let _overflow = get_option::<Overflow>(&resolved_options, js_string!("overflow"), context)?
         .unwrap_or(Overflow::Constrain);
@@ -956,7 +956,7 @@ pub(crate) fn create_temporal_year_month(
     // 7. Set object.[[Calendar]] to calendar.
     // 8. Set object.[[ISODay]] to referenceISODay.
 
-    let obj = JsObject::from_proto_and_data(proto, PlainYearMonth::new(ym));
+    let obj = JsObject::from_proto_and_data(context.runtime(), proto, PlainYearMonth::new(ym))?;
 
     // 9. Return object.
     Ok(obj.into())

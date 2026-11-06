@@ -6,10 +6,10 @@ use crate::{
     Context, JsNativeErrorKind, JsValue, NativeFunction, TestAction, js_string,
     property::Attribute, run_test_actions, run_test_actions_with,
 };
+use indoc::indoc;
 use surgeist_js_ast::Position;
 use surgeist_js_macros::js_str;
 use surgeist_js_parser::Source;
-use indoc::indoc;
 
 #[test]
 fn typeof_string() {
@@ -501,7 +501,10 @@ fn cross_context_function_call() {
     let result = result.unwrap();
     assert!(result.is_callable());
 
-    let context2 = &mut Context::default();
+    let context2 = &mut Context::builder()
+        .runtime(context1.runtime().clone())
+        .build()
+        .unwrap();
 
     context2
         .register_global_property(js_string!("func"), result, Attribute::all())
@@ -522,7 +525,9 @@ fn long_object_chain_gc_trace_stack_overflow() {
                 old = { old };
             }
         "#}),
-        TestAction::inspect_context(|_| surgeist_js_gc::force_collect()),
+        TestAction::inspect_context(|context| {
+            context.runtime().collect().unwrap();
+        }),
     ]);
 }
 

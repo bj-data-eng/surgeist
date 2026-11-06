@@ -31,6 +31,7 @@ fn subdirectories() {
 
             let foo_value = module
                 .namespace(&mut context)
+                .unwrap()
                 .get(js_string!("file1"), &mut context)
                 .unwrap()
                 .as_callable()
@@ -75,6 +76,7 @@ fn json_import_attributes_are_part_of_the_cache_key() {
 
     let value = module
         .namespace(&mut context)
+        .unwrap()
         .get(js_string!("value"), &mut context)
         .unwrap();
     assert_eq!(
@@ -84,6 +86,7 @@ fn json_import_attributes_are_part_of_the_cache_key() {
 
     let p = module
         .namespace(&mut context)
+        .unwrap()
         .get(js_string!("p"), &mut context)
         .unwrap();
     let p_obj = p.as_promise().unwrap();

@@ -1,27 +1,28 @@
 //! Data structures that contain intrinsic objects and constructors.
 
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 use crate::{
-    JsSymbol,
+    JsSymbol, Runtime,
     builtins::{Array, iterable::IteratorPrototypes, uri::UriFunctions},
     js_string,
     object::{
-        CONSTRUCTOR, JsFunction, JsObject, Object, ObjectEdge, PROTOTYPE,
+        CONSTRUCTOR, JsFunction, JsObject, ObjectEdge, PROTOTYPE,
         internal_methods::immutable_prototype::IMMUTABLE_PROTOTYPE_EXOTIC_INTERNAL_METHODS,
-        shape::{RootShape, shared_shape::template::ObjectTemplate},
+        shape::{
+            RootShape,
+            shared_shape::template::{ObjectTemplate, ObjectTemplateBuilder},
+        },
     },
     property::{Attribute, PropertyKey},
+    realm::BootstrapRoots,
 };
 
 #[cfg(feature = "intl")]
 use crate::builtins::intl::Intl;
 
-/// The intrinsic objects and constructors.
-///
-/// `Intrinsics` is internally stored using a `Gc`, which makes it cheapily cloneable
-/// for multiple references to the same set of intrinsic objects.
-#[derive(Debug, Trace, Finalize)]
+/// The intrinsic objects and constructors owned by a realm.
+#[derive(Debug, HeapTrace)]
 pub struct Intrinsics {
     /// Cached standard constructors
     pub(super) constructors: StandardConstructors,
@@ -39,15 +40,21 @@ impl Intrinsics {
     /// To initialize all the intrinsics with their spec properties, see [`Realm::initialize`].
     ///
     /// [`Realm::initialize`]: crate::realm::Realm::initialize
-    pub(crate) fn uninit(root_shape: &RootShape) -> Option<Self> {
-        let constructors = StandardConstructors::default();
-        let templates = ObjectTemplates::new(root_shape, &constructors);
+    pub(crate) fn uninit(root_shape: &RootShape, roots: &mut BootstrapRoots) -> Option<Self> {
+        let constructors = StandardConstructors::uninit(root_shape.runtime(), roots);
+        let templates = ObjectTemplates::new(root_shape, &constructors, roots);
 
         Some(Self {
             constructors,
-            objects: IntrinsicObjects::uninit()?,
+            objects: IntrinsicObjects::uninit(root_shape.runtime(), roots)?,
             templates,
         })
+    }
+
+    /// Returns the runtime owning these intrinsics.
+    #[must_use]
+    pub fn runtime(&self) -> Runtime {
+        self.constructors.object().prototype().runtime()
     }
 
     /// Return the cached intrinsic objects.
@@ -70,17 +77,18 @@ impl Intrinsics {
 }
 
 /// Stores a constructor (such as `Object`) and its corresponding prototype.
-#[derive(Debug, Trace, Finalize, Clone)]
+#[derive(Debug, HeapTrace)]
 pub struct StandardConstructor {
     constructor: ObjectEdge,
     prototype: ObjectEdge,
 }
 
-impl Default for StandardConstructor {
-    fn default() -> Self {
-        Self::new(
-            JsFunction::empty_intrinsic_function(true),
-            JsObject::with_null_proto(),
+impl StandardConstructor {
+    fn uninit(runtime: &Runtime, roots: &mut BootstrapRoots) -> Self {
+        Self::retain(
+            roots,
+            JsFunction::empty_intrinsic_function(runtime, true),
+            JsObject::with_null_proto(runtime),
         )
     }
 }
@@ -95,8 +103,19 @@ impl StandardConstructor {
     }
 
     /// Build a constructor with a defined prototype.
-    fn with_prototype(prototype: JsObject) -> Self {
-        Self::new(JsFunction::empty_intrinsic_function(true), prototype)
+    fn with_prototype(runtime: &Runtime, roots: &mut BootstrapRoots, prototype: JsObject) -> Self {
+        Self::retain(
+            roots,
+            JsFunction::empty_intrinsic_function(runtime, true),
+            prototype,
+        )
+    }
+
+    fn retain(roots: &mut BootstrapRoots, constructor: JsFunction, prototype: JsObject) -> Self {
+        Self {
+            constructor: roots.retain(constructor.into()),
+            prototype: roots.retain(prototype),
+        }
     }
 
     /// Return the prototype of the constructor object.
@@ -119,7 +138,7 @@ impl StandardConstructor {
 }
 
 /// Cached core standard constructors.
-#[derive(Debug, Trace, Finalize)]
+#[derive(Debug, HeapTrace)]
 pub struct StandardConstructors {
     object: StandardConstructor,
     proxy: StandardConstructor,
@@ -203,100 +222,117 @@ pub struct StandardConstructors {
     calendar: StandardConstructor,
 }
 
-impl Default for StandardConstructors {
-    fn default() -> Self {
+impl StandardConstructors {
+    fn uninit(runtime: &Runtime, roots: &mut BootstrapRoots) -> Self {
         Self {
-            object: StandardConstructor::with_prototype(JsObject::from_object_and_vtable(
-                Object::default(),
-                &IMMUTABLE_PROTOTYPE_EXOTIC_INTERNAL_METHODS,
-            )),
-            async_generator_function: StandardConstructor::default(),
-            proxy: StandardConstructor::default(),
-            date: StandardConstructor::default(),
-            function: StandardConstructor::new(
-                JsFunction::empty_intrinsic_function(true),
-                JsFunction::empty_intrinsic_function(false).into(),
+            object: StandardConstructor::with_prototype(
+                runtime,
+                roots,
+                JsObject::ordinary_prototype(runtime, &IMMUTABLE_PROTOTYPE_EXOTIC_INTERNAL_METHODS),
             ),
-            async_function: StandardConstructor::default(),
-            generator_function: StandardConstructor::default(),
-            array: StandardConstructor::with_prototype(JsObject::from_proto_and_data(None, Array)),
-            bigint: StandardConstructor::default(),
-            number: StandardConstructor::with_prototype(JsObject::from_proto_and_data(None, 0.0)),
-            boolean: StandardConstructor::with_prototype(JsObject::from_proto_and_data(
-                None, false,
-            )),
-            string: StandardConstructor::with_prototype(JsObject::from_proto_and_data(
-                None,
-                js_string!(),
-            )),
-            regexp: StandardConstructor::default(),
-            symbol: StandardConstructor::default(),
-            error: StandardConstructor::default(),
-            type_error: StandardConstructor::default(),
-            reference_error: StandardConstructor::default(),
-            range_error: StandardConstructor::default(),
-            syntax_error: StandardConstructor::default(),
-            eval_error: StandardConstructor::default(),
-            uri_error: StandardConstructor::default(),
-            aggregate_error: StandardConstructor::default(),
-            map: StandardConstructor::default(),
-            set: StandardConstructor::default(),
-            typed_array: StandardConstructor::default(),
-            typed_int8_array: StandardConstructor::default(),
-            typed_uint8_array: StandardConstructor::default(),
-            typed_uint8clamped_array: StandardConstructor::default(),
-            typed_int16_array: StandardConstructor::default(),
-            typed_uint16_array: StandardConstructor::default(),
-            typed_int32_array: StandardConstructor::default(),
-            typed_uint32_array: StandardConstructor::default(),
-            typed_bigint64_array: StandardConstructor::default(),
-            typed_biguint64_array: StandardConstructor::default(),
+            async_generator_function: StandardConstructor::uninit(runtime, roots),
+            proxy: StandardConstructor::uninit(runtime, roots),
+            date: StandardConstructor::uninit(runtime, roots),
+            function: StandardConstructor::retain(
+                roots,
+                JsFunction::empty_intrinsic_function(runtime, true),
+                JsFunction::empty_intrinsic_function(runtime, false).into(),
+            ),
+            async_function: StandardConstructor::uninit(runtime, roots),
+            generator_function: StandardConstructor::uninit(runtime, roots),
+            array: StandardConstructor::with_prototype(
+                runtime,
+                roots,
+                JsObject::from_proto_and_data(runtime, None, Array)
+                    .expect("intrinsic prototype has no external heap edges"),
+            ),
+            bigint: StandardConstructor::uninit(runtime, roots),
+            number: StandardConstructor::with_prototype(
+                runtime,
+                roots,
+                JsObject::from_proto_and_data(runtime, None, 0.0)
+                    .expect("intrinsic prototype has no external heap edges"),
+            ),
+            boolean: StandardConstructor::with_prototype(
+                runtime,
+                roots,
+                JsObject::from_proto_and_data(runtime, None, false)
+                    .expect("intrinsic prototype has no external heap edges"),
+            ),
+            string: StandardConstructor::with_prototype(
+                runtime,
+                roots,
+                JsObject::from_proto_and_data(runtime, None, js_string!())
+                    .expect("intrinsic prototype has no external heap edges"),
+            ),
+            regexp: StandardConstructor::uninit(runtime, roots),
+            symbol: StandardConstructor::uninit(runtime, roots),
+            error: StandardConstructor::uninit(runtime, roots),
+            type_error: StandardConstructor::uninit(runtime, roots),
+            reference_error: StandardConstructor::uninit(runtime, roots),
+            range_error: StandardConstructor::uninit(runtime, roots),
+            syntax_error: StandardConstructor::uninit(runtime, roots),
+            eval_error: StandardConstructor::uninit(runtime, roots),
+            uri_error: StandardConstructor::uninit(runtime, roots),
+            aggregate_error: StandardConstructor::uninit(runtime, roots),
+            map: StandardConstructor::uninit(runtime, roots),
+            set: StandardConstructor::uninit(runtime, roots),
+            typed_array: StandardConstructor::uninit(runtime, roots),
+            typed_int8_array: StandardConstructor::uninit(runtime, roots),
+            typed_uint8_array: StandardConstructor::uninit(runtime, roots),
+            typed_uint8clamped_array: StandardConstructor::uninit(runtime, roots),
+            typed_int16_array: StandardConstructor::uninit(runtime, roots),
+            typed_uint16_array: StandardConstructor::uninit(runtime, roots),
+            typed_int32_array: StandardConstructor::uninit(runtime, roots),
+            typed_uint32_array: StandardConstructor::uninit(runtime, roots),
+            typed_bigint64_array: StandardConstructor::uninit(runtime, roots),
+            typed_biguint64_array: StandardConstructor::uninit(runtime, roots),
             #[cfg(feature = "float16")]
-            typed_float16_array: StandardConstructor::default(),
-            typed_float32_array: StandardConstructor::default(),
-            typed_float64_array: StandardConstructor::default(),
-            array_buffer: StandardConstructor::default(),
-            shared_array_buffer: StandardConstructor::default(),
-            data_view: StandardConstructor::default(),
-            date_time_format: StandardConstructor::default(),
-            promise: StandardConstructor::default(),
-            weak_ref: StandardConstructor::default(),
-            weak_map: StandardConstructor::default(),
-            weak_set: StandardConstructor::default(),
-            iterator: StandardConstructor::default(),
-            finalization_registry: StandardConstructor::default(),
+            typed_float16_array: StandardConstructor::uninit(runtime, roots),
+            typed_float32_array: StandardConstructor::uninit(runtime, roots),
+            typed_float64_array: StandardConstructor::uninit(runtime, roots),
+            array_buffer: StandardConstructor::uninit(runtime, roots),
+            shared_array_buffer: StandardConstructor::uninit(runtime, roots),
+            data_view: StandardConstructor::uninit(runtime, roots),
+            date_time_format: StandardConstructor::uninit(runtime, roots),
+            promise: StandardConstructor::uninit(runtime, roots),
+            weak_ref: StandardConstructor::uninit(runtime, roots),
+            weak_map: StandardConstructor::uninit(runtime, roots),
+            weak_set: StandardConstructor::uninit(runtime, roots),
+            iterator: StandardConstructor::uninit(runtime, roots),
+            finalization_registry: StandardConstructor::uninit(runtime, roots),
             #[cfg(feature = "intl")]
-            collator: StandardConstructor::default(),
+            collator: StandardConstructor::uninit(runtime, roots),
             #[cfg(feature = "intl")]
-            list_format: StandardConstructor::default(),
+            list_format: StandardConstructor::uninit(runtime, roots),
             #[cfg(feature = "intl")]
-            locale: StandardConstructor::default(),
+            locale: StandardConstructor::uninit(runtime, roots),
             #[cfg(feature = "intl")]
-            segmenter: StandardConstructor::default(),
+            segmenter: StandardConstructor::uninit(runtime, roots),
             #[cfg(feature = "intl")]
-            plural_rules: StandardConstructor::default(),
+            plural_rules: StandardConstructor::uninit(runtime, roots),
             #[cfg(feature = "intl")]
-            number_format: StandardConstructor::default(),
+            number_format: StandardConstructor::uninit(runtime, roots),
             #[cfg(feature = "temporal")]
-            instant: StandardConstructor::default(),
+            instant: StandardConstructor::uninit(runtime, roots),
             #[cfg(feature = "temporal")]
-            plain_date_time: StandardConstructor::default(),
+            plain_date_time: StandardConstructor::uninit(runtime, roots),
             #[cfg(feature = "temporal")]
-            plain_date: StandardConstructor::default(),
+            plain_date: StandardConstructor::uninit(runtime, roots),
             #[cfg(feature = "temporal")]
-            plain_time: StandardConstructor::default(),
+            plain_time: StandardConstructor::uninit(runtime, roots),
             #[cfg(feature = "temporal")]
-            plain_year_month: StandardConstructor::default(),
+            plain_year_month: StandardConstructor::uninit(runtime, roots),
             #[cfg(feature = "temporal")]
-            plain_month_day: StandardConstructor::default(),
+            plain_month_day: StandardConstructor::uninit(runtime, roots),
             #[cfg(feature = "temporal")]
-            time_zone: StandardConstructor::default(),
+            time_zone: StandardConstructor::uninit(runtime, roots),
             #[cfg(feature = "temporal")]
-            duration: StandardConstructor::default(),
+            duration: StandardConstructor::uninit(runtime, roots),
             #[cfg(feature = "temporal")]
-            zoned_date_time: StandardConstructor::default(),
+            zoned_date_time: StandardConstructor::uninit(runtime, roots),
             #[cfg(feature = "temporal")]
-            calendar: StandardConstructor::default(),
+            calendar: StandardConstructor::uninit(runtime, roots),
         }
     }
 }
@@ -1077,7 +1113,7 @@ impl StandardConstructors {
 }
 
 /// Cached intrinsic objects
-#[derive(Debug, Trace, Finalize)]
+#[derive(Debug, HeapTrace)]
 pub struct IntrinsicObjects {
     /// [`%Reflect%`](https://tc39.es/ecma262/#sec-reflect)
     reflect: ObjectEdge,
@@ -1161,36 +1197,43 @@ impl IntrinsicObjects {
     ///
     /// [`Realm::initialize`]: crate::realm::Realm::initialize
     #[allow(clippy::unnecessary_wraps)]
-    pub(crate) fn uninit() -> Option<Self> {
+    pub(crate) fn uninit(runtime: &Runtime, roots: &mut BootstrapRoots) -> Option<Self> {
         Some(Self {
-            reflect: JsObject::with_null_proto().into_record(),
-            math: JsObject::with_null_proto().into_record(),
-            json: JsObject::with_null_proto().into_record(),
-            throw_type_error: JsFunction::empty_intrinsic_function(false).into_record(),
-            array_prototype_values: JsFunction::empty_intrinsic_function(false).into_record(),
-            array_prototype_to_string: JsFunction::empty_intrinsic_function(false).into_record(),
-            iterator_prototypes: IteratorPrototypes::default(),
-            generator: JsObject::with_null_proto().into_record(),
-            async_generator: JsObject::with_null_proto().into_record(),
-            atomics: JsObject::with_null_proto().into_record(),
-            eval: JsFunction::empty_intrinsic_function(false).into_record(),
-            uri_functions: UriFunctions::default(),
-            is_finite: JsFunction::empty_intrinsic_function(false).into_record(),
-            is_nan: JsFunction::empty_intrinsic_function(false).into_record(),
-            parse_float: JsFunction::empty_intrinsic_function(false).into_record(),
-            parse_int: JsFunction::empty_intrinsic_function(false).into_record(),
+            reflect: roots.retain(JsObject::with_null_proto(runtime)),
+            math: roots.retain(JsObject::with_null_proto(runtime)),
+            json: roots.retain(JsObject::with_null_proto(runtime)),
+            throw_type_error: roots
+                .retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
+            array_prototype_values: roots
+                .retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
+            array_prototype_to_string: roots
+                .retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
+            iterator_prototypes: IteratorPrototypes::uninit(runtime, roots),
+            generator: roots.retain(JsObject::with_null_proto(runtime)),
+            async_generator: roots.retain(JsObject::with_null_proto(runtime)),
+            atomics: roots.retain(JsObject::with_null_proto(runtime)),
+            eval: roots.retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
+            uri_functions: UriFunctions::uninit(runtime, roots),
+            is_finite: roots.retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
+            is_nan: roots.retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
+            parse_float: roots.retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
+            parse_int: roots.retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
             #[cfg(feature = "annex-b")]
-            escape: JsFunction::empty_intrinsic_function(false).into_record(),
+            escape: roots.retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
             #[cfg(feature = "annex-b")]
-            unescape: JsFunction::empty_intrinsic_function(false).into_record(),
+            unescape: roots.retain(JsFunction::empty_intrinsic_function(runtime, false).into()),
             #[cfg(feature = "intl")]
-            intl: JsObject::new_unique(None, Intl::new()?).into_record(),
+            intl: roots.retain(
+                JsObject::new_unique(runtime, None, Intl::new()?)
+                    .expect("Intl has no JavaScript heap edges")
+                    .upcast(),
+            ),
             #[cfg(feature = "intl")]
-            segments_prototype: JsObject::with_null_proto().into_record(),
+            segments_prototype: roots.retain(JsObject::with_null_proto(runtime)),
             #[cfg(feature = "temporal")]
-            temporal: JsObject::with_null_proto().into_record(),
+            temporal: roots.retain(JsObject::with_null_proto(runtime)),
             #[cfg(feature = "temporal")]
-            now: JsObject::with_null_proto().into_record(),
+            now: roots.retain(JsObject::with_null_proto(runtime)),
         })
     }
 
@@ -1397,7 +1440,7 @@ impl IntrinsicObjects {
 }
 
 /// Contains commonly used [`ObjectTemplate`]s.
-#[derive(Debug, Trace, Finalize)]
+#[derive(Debug, HeapTrace)]
 pub(crate) struct ObjectTemplates {
     iterator_result: ObjectTemplate,
     ordinary_object: ObjectTemplate,
@@ -1433,13 +1476,15 @@ pub(crate) struct ObjectTemplates {
 }
 
 impl ObjectTemplates {
-    pub(crate) fn new(root_shape: &RootShape, constructors: &StandardConstructors) -> Self {
-        let root_shape = root_shape.shape();
-
+    pub(crate) fn new(
+        root_shape: &RootShape,
+        constructors: &StandardConstructors,
+        roots: &mut BootstrapRoots,
+    ) -> Self {
         // pre-initialize used shapes.
         let ordinary_object =
-            ObjectTemplate::with_prototype(root_shape, constructors.object().prototype());
-        let mut array = ObjectTemplate::new(root_shape);
+            ObjectTemplateBuilder::with_prototype(root_shape, constructors.object().prototype());
+        let mut array = ObjectTemplateBuilder::new(root_shape);
         let length_property_key: PropertyKey = js_string!("length").into();
         array.property(
             length_property_key.clone(),
@@ -1447,26 +1492,29 @@ impl ObjectTemplates {
         );
         array.set_prototype(constructors.array().prototype());
 
-        let number = ObjectTemplate::with_prototype(root_shape, constructors.number().prototype());
-        let symbol = ObjectTemplate::with_prototype(root_shape, constructors.symbol().prototype());
-        let bigint = ObjectTemplate::with_prototype(root_shape, constructors.bigint().prototype());
+        let number =
+            ObjectTemplateBuilder::with_prototype(root_shape, constructors.number().prototype());
+        let symbol =
+            ObjectTemplateBuilder::with_prototype(root_shape, constructors.symbol().prototype());
+        let bigint =
+            ObjectTemplateBuilder::with_prototype(root_shape, constructors.bigint().prototype());
         let boolean =
-            ObjectTemplate::with_prototype(root_shape, constructors.boolean().prototype());
-        let mut string = ObjectTemplate::new(root_shape);
+            ObjectTemplateBuilder::with_prototype(root_shape, constructors.boolean().prototype());
+        let mut string = ObjectTemplateBuilder::new(root_shape);
         string.property(
             length_property_key.clone(),
             Attribute::READONLY | Attribute::PERMANENT | Attribute::NON_ENUMERABLE,
         );
         string.set_prototype(constructors.string().prototype());
 
-        let mut regexp_without_proto = ObjectTemplate::new(root_shape);
+        let mut regexp_without_proto = ObjectTemplateBuilder::new(root_shape);
         regexp_without_proto.property(js_string!("lastIndex").into(), Attribute::WRITABLE);
 
         let mut regexp = regexp_without_proto.clone();
         regexp.set_prototype(constructors.regexp().prototype());
 
         let name_property_key: PropertyKey = js_string!("name").into();
-        let mut function = ObjectTemplate::new(root_shape);
+        let mut function = ObjectTemplateBuilder::new(root_shape);
         function.property(
             length_property_key.clone(),
             Attribute::READONLY | Attribute::CONFIGURABLE | Attribute::NON_ENUMERABLE,
@@ -1547,7 +1595,7 @@ impl ObjectTemplates {
             Attribute::WRITABLE | Attribute::CONFIGURABLE | Attribute::ENUMERABLE,
         );
 
-        let mut namespace = ObjectTemplate::new(root_shape);
+        let mut namespace = ObjectTemplateBuilder::new(root_shape);
         namespace.property(JsSymbol::to_string_tag().into(), Attribute::empty());
 
         let with_resolvers = {
@@ -1574,29 +1622,30 @@ impl ObjectTemplates {
         };
 
         Self {
-            iterator_result,
-            ordinary_object,
-            array,
-            number,
-            string,
-            symbol,
-            bigint,
-            boolean,
-            regexp,
-            regexp_without_proto,
-            unmapped_arguments,
-            mapped_arguments,
-            function_with_prototype,
-            function_prototype,
-            function,
-            async_function,
-            generator_function,
-            async_generator_function,
-            function_without_proto,
-            function_with_prototype_without_proto,
-            namespace,
-            with_resolvers,
-            wait_async,
+            iterator_result: iterator_result.build(roots),
+            ordinary_object: ordinary_object.build(roots),
+            array: array.build(roots),
+            number: number.build(roots),
+            string: string.build(roots),
+            symbol: symbol.build(roots),
+            bigint: bigint.build(roots),
+            boolean: boolean.build(roots),
+            regexp: regexp.build(roots),
+            regexp_without_proto: regexp_without_proto.build(roots),
+            unmapped_arguments: unmapped_arguments.build(roots),
+            mapped_arguments: mapped_arguments.build(roots),
+            function_with_prototype: function_with_prototype.build(roots),
+            function_prototype: function_prototype.build(roots),
+            function: function.build(roots),
+            async_function: async_function.build(roots),
+            generator_function: generator_function.build(roots),
+            async_generator_function: async_generator_function.build(roots),
+            function_without_proto: function_without_proto.build(roots),
+            function_with_prototype_without_proto: function_with_prototype_without_proto
+                .build(roots),
+            namespace: namespace.build(roots),
+            with_resolvers: with_resolvers.build(roots),
+            wait_async: wait_async.build(roots),
         }
     }
 

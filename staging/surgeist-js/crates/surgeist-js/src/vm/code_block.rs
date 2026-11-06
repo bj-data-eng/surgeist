@@ -12,9 +12,8 @@ use crate::{
 };
 use bitflags::bitflags;
 use itertools::Itertools;
-use std::{cell::Cell, fmt::Display, fmt::Write as _};
+use std::{cell::Cell, fmt::Display, fmt::Write as _, rc::Rc};
 use surgeist_js_ast::scope::{BindingLocator, Scope};
-use surgeist_js_gc::{Finalize, Gc, Trace, empty_trace};
 use thin_vec::ThinVec;
 
 use super::{
@@ -25,7 +24,7 @@ use super::{
 
 bitflags! {
     /// Flags for [`CodeBlock`].
-    #[derive(Clone, Copy, Debug, Finalize)]
+    #[derive(Clone, Copy, Debug)]
     pub(crate) struct CodeBlockFlags: u16 {
         /// Is this function in strict mode.
         const STRICT = 0b0000_0001;
@@ -65,11 +64,6 @@ impl CodeBlockFlags {
     }
 }
 
-// SAFETY: Nothing in CodeBlockFlags needs tracing, so this is safe.
-unsafe impl Trace for CodeBlockFlags {
-    empty_trace!();
-}
-
 /// This represents a range in the code that handles exception throws.
 ///
 /// When a throw happens, we search for handler in the [`CodeBlock`] using
@@ -96,21 +90,19 @@ impl Handler {
     }
 }
 
-#[derive(Clone, Debug, Trace, Finalize)]
+#[derive(Clone, Debug)]
 pub(crate) enum Constant {
     /// Property field names and private names `[[description]]`s.
     String(JsString),
-    Function(Gc<CodeBlock>),
-    BigInt(#[unsafe_ignore_trace] JsBigInt),
+    Function(Rc<CodeBlock>),
+    BigInt(JsBigInt),
 
     /// Declarative or function scope.
-    // Safety: Nothing in `Scope` needs tracing, so this is safe.
-    Scope(#[unsafe_ignore_trace] Scope),
+    Scope(Scope),
 }
 
 /// Binding information about a global function.
-#[derive(Copy, Clone, Debug, Trace, Finalize)]
-#[surgeist_js_gc(empty_trace)]
+#[derive(Copy, Clone, Debug)]
 pub(crate) struct GlobalFunctionBinding {
     /// The index of the global function's name in the constants array.
     pub(crate) name_index: u32,
@@ -122,10 +114,10 @@ pub(crate) struct GlobalFunctionBinding {
 ///
 /// A `CodeBlock` is generated for each function compiled by the
 /// [`ByteCompiler`](crate::bytecompiler::ByteCompiler). It stores the bytecode and the other
-/// attributes of the function.
-#[derive(Clone, Debug, Trace, Finalize)]
+/// attributes of the function. Inline caches hold only weak shape identities, so
+/// a code block has no owning references to runtime heap records.
+#[derive(Clone, Debug)]
 pub struct CodeBlock {
-    #[unsafe_ignore_trace]
     pub(crate) flags: Cell<CodeBlockFlags>,
 
     /// The number of arguments expected.
@@ -139,21 +131,17 @@ pub struct CodeBlock {
     pub(crate) this_mode: ThisMode,
 
     /// Used for constructing a `MappedArguments` object.
-    #[unsafe_ignore_trace]
     pub(crate) mapped_arguments_binding_indices: ThinVec<Option<u32>>,
 
     /// Bytecode
-    #[unsafe_ignore_trace]
     pub(crate) bytecode: Bytecode,
 
     pub(crate) constants: ThinVec<Constant>,
 
     /// Locators for all bindings in the codeblock.
-    #[unsafe_ignore_trace]
     pub(crate) bindings: Box<[BindingLocator]>,
 
     /// Exception [`Handler`]s.
-    #[unsafe_ignore_trace]
     pub(crate) handlers: ThinVec<Handler>,
 
     /// inline caching
@@ -170,7 +158,6 @@ pub struct CodeBlock {
     pub(crate) debug_id: u64,
 
     #[cfg(feature = "trace")]
-    #[unsafe_ignore_trace]
     pub(crate) traced: Cell<bool>,
 }
 
@@ -324,13 +311,13 @@ impl CodeBlock {
         panic!("expected string constant at index {index}")
     }
 
-    /// Get the function ([`Gc<CodeBlock>`]) constant from the [`CodeBlock`].
+    /// Get the function ([`Rc<CodeBlock>`]) constant from the [`CodeBlock`].
     ///
     /// # Panics
     ///
     /// If the type of the [`Constant`] is not [`Constant::Function`].
     /// Or `index` is greater or equal to length of `constants`.
-    pub(crate) fn constant_function(&self, index: usize) -> Gc<Self> {
+    pub(crate) fn constant_function(&self, index: usize) -> Rc<Self> {
         if let Some(Constant::Function(value)) = self.constants.get(index) {
             return value.clone();
         }
@@ -1092,7 +1079,7 @@ impl Display for CodeBlock {
 ///
 /// This is slower than direct object template construction that is done in [`create_function_object_fast`].
 pub(crate) fn create_function_object(
-    code: Gc<CodeBlock>,
+    code: Rc<CodeBlock>,
     prototype: JsObject,
     context: &mut Context,
 ) -> JsObject {
@@ -1105,14 +1092,14 @@ pub(crate) fn create_function_object(
     let is_generator = code.is_generator();
     let function = OrdinaryFunction::new(
         code,
-        context.vm.frame().environments.snapshot_for_closure(),
+        context.vm.frame().environments.stored(),
         script_or_module,
         context.realm().clone(),
     );
 
     let templates = context.intrinsics().templates();
 
-    let (mut template, storage, constructor_prototype) = if is_generator {
+    let (template, storage, constructor_prototype) = if is_generator {
         let prototype = JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
             if is_async {
@@ -1124,16 +1111,12 @@ pub(crate) fn create_function_object(
         );
 
         (
-            templates.function_with_prototype_without_proto().clone(),
+            templates.function_with_prototype_without_proto(),
             vec![length, name, prototype.into()],
             None,
         )
     } else if is_async {
-        (
-            templates.function_without_proto().clone(),
-            vec![length, name],
-            None,
-        )
+        (templates.function_without_proto(), vec![length, name], None)
     } else {
         let constructor_prototype = templates
             .function_prototype()
@@ -1142,15 +1125,13 @@ pub(crate) fn create_function_object(
         let template = templates.function_with_prototype_without_proto();
 
         (
-            template.clone(),
+            template,
             vec![length, name, constructor_prototype.clone().into()],
             Some(constructor_prototype),
         )
     };
 
-    template.set_prototype(prototype);
-
-    let constructor = template.create(function, storage);
+    let constructor = template.create_with_prototype(prototype, function, storage);
 
     if let Some(constructor_prototype) = &constructor_prototype {
         constructor_prototype
@@ -1166,7 +1147,7 @@ pub(crate) fn create_function_object(
 /// This is preferred over [`create_function_object`] if prototype is [`None`],
 /// because it constructs the function from a pre-initialized object template,
 /// with all the properties and prototype set.
-pub(crate) fn create_function_object_fast(code: Gc<CodeBlock>, context: &mut Context) -> JsObject {
+pub(crate) fn create_function_object_fast(code: Rc<CodeBlock>, context: &mut Context) -> JsObject {
     let name: JsValue = code.name().clone().into();
     let length: JsValue = code.length.into();
 
@@ -1177,7 +1158,7 @@ pub(crate) fn create_function_object_fast(code: Gc<CodeBlock>, context: &mut Con
     let has_prototype_property = code.has_prototype_property();
     let function = OrdinaryFunction::new(
         code,
-        context.vm.frame().environments.snapshot_for_closure(),
+        context.vm.frame().environments.stored(),
         script_or_module,
         context.realm().clone(),
     );

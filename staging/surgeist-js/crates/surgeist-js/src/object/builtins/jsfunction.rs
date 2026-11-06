@@ -9,7 +9,6 @@ use crate::{
 };
 use std::marker::PhantomData;
 use std::ops::Deref;
-use surgeist_js_gc::{Finalize, Trace};
 
 /// A trait for converting a tuple of Rust values into a vector of `JsValue`,
 /// to be used as arguments for a JavaScript function.
@@ -44,7 +43,7 @@ impl_try_into_js_args!(a: A, b: B, c: C, d: D, e: E);
 /// actually have strong typing).
 ///
 /// To create this type, use the [`JsFunction::typed`] method.
-#[derive(Debug, Clone, Trace, Finalize)]
+#[derive(Debug, Clone)]
 pub struct TypedJsFunction<A: TryIntoJsArguments, R: TryFromJs> {
     inner: JsFunction,
     _args: PhantomData<A>,
@@ -113,7 +112,7 @@ impl<A: TryIntoJsArguments, R: TryFromJs> From<TypedJsFunction<A, R>> for JsFunc
 }
 
 /// JavaScript `Function` rust object.
-#[derive(Debug, Clone, Trace, Finalize)]
+#[derive(Debug, Clone)]
 pub struct JsFunction {
     inner: JsObject,
 }
@@ -137,17 +136,19 @@ impl JsFunction {
     /// Mainly used to initialize objects before a [`Context`] is available to do so.
     ///
     /// [`Context`]: crate::Context
-    pub(crate) fn empty_intrinsic_function(constructor: bool) -> Self {
+    pub(crate) fn empty_intrinsic_function(runtime: &crate::Runtime, constructor: bool) -> Self {
         Self {
             inner: JsObject::from_proto_and_data(
+                runtime,
                 None,
                 NativeFunctionObject {
-                    f: NativeFunction::from_fn_ptr(|_, _, _| Ok(JsValue::undefined())),
+                    f: NativeFunction::from_fn_ptr(|_, _, _| Ok(JsValue::undefined())).stored(),
                     name: js_string!(),
                     constructor: constructor.then_some(ConstructorKind::Base),
                     realm: None,
                 },
-            ),
+            )
+            .expect("empty intrinsic function has no external heap edges"),
         }
     }
 

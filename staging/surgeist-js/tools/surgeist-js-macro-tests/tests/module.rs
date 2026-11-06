@@ -1,20 +1,19 @@
 //! Test for the class proc-macro.
 #![allow(unused_crate_dependencies)]
 
-use surgeist_js::module::MapModuleLoader;
-use surgeist_js::{
-    Context, Finalize, JsData, JsString, Module, Source, Trace, boa_class, boa_module, js_string,
-};
 use std::rc::Rc;
+use surgeist_js::gc::heap::Trace as HeapTrace;
+use surgeist_js::module::MapModuleLoader;
+use surgeist_js::{Context, JsData, JsString, Module, Source, boa_class, boa_module, js_string};
 
-#[derive(Clone, Trace, Finalize, JsData)]
+#[derive(Clone, JsData, HeapTrace)]
 enum AnimalType {
     Cat,
     Dog,
     Other,
 }
 
-#[derive(Clone, Trace, Finalize, JsData)]
+#[derive(Clone, JsData, HeapTrace)]
 struct Animal {
     ty: AnimalType,
     age: i32,
@@ -80,7 +79,7 @@ fn boa_module() {
         .build()
         .expect("Could not create context.");
 
-    module_loader.insert("/hello.js", hello::boa_module(None, &mut context));
+    module_loader.insert("/hello.js", hello::boa_module(None, &mut context).unwrap());
 
     context
         .eval(Source::from_bytes(ASSERT_DECL))

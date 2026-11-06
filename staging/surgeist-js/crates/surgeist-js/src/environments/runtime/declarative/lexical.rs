@@ -1,17 +1,19 @@
-use surgeist_js_gc::{Finalize, GcRefCell, Trace};
+use std::cell::RefCell;
+
+use surgeist_js_gc::heap::Trace;
 
 use crate::{JsValue, value::StoredValue};
 
-#[derive(Debug, Trace, Finalize)]
+#[derive(Debug, Trace)]
 pub(crate) struct LexicalEnvironment {
-    bindings: GcRefCell<Vec<Option<StoredValue>>>,
+    bindings: RefCell<Vec<Option<StoredValue>>>,
 }
 
 impl LexicalEnvironment {
     /// Creates a new `LexicalEnvironment`.
     pub(crate) fn new(bindings: u32) -> Self {
         Self {
-            bindings: GcRefCell::new(vec![None; bindings as usize]),
+            bindings: RefCell::new(vec![None; bindings as usize]),
         }
     }
 
