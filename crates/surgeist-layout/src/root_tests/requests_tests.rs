@@ -2341,14 +2341,15 @@ fn fri06_c04_bfc_size_auto_definite_zero_overwide_margin_boxes_and_clear_both_sc
                     },
                     vec![floated(Float::Left, 40.0, 20.0)],
                 );
+                // The float limits the start edge. The authored margin limits the end.
                 assert_eq!(
                     fri06_c04_logical_origin(flow_axes, auto),
-                    LogicalPointOf::new(S::from_f64(50.0), S::ZERO),
+                    LogicalPointOf::new(S::from_f64(40.0), S::ZERO),
                     "{display:?} auto inline placement did not use its selected band",
                 );
                 assert_eq!(
                     flow_axes.logical_size(auto.size).inline,
-                    S::from_f64(40.0),
+                    S::from_f64(50.0),
                     "{display:?} auto inline size was not saturated to its selected band",
                 );
             }
@@ -2420,7 +2421,7 @@ fn fri06_c04_bfc_size_auto_definite_zero_overwide_margin_boxes_and_clear_both_sc
             );
             assert_eq!(
                 flow_axes.logical_size(cleared.size).inline,
-                S::from_f64(50.0),
+                S::from_f64(60.0),
             );
 
             let ordinary = run(
