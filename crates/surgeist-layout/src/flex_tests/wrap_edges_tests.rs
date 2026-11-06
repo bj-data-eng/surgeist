@@ -872,3 +872,44 @@ fn flex_intrinsic_main_gutters_stay_within_mandatory_lines() {
     lane::<f32>();
     lane::<f64>();
 }
+
+#[test]
+fn flex_min_content_lines_ignore_a_nonbinding_maximum() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let frame = crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            Size::NONE,
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        );
+        let request = frame.request(Size::new(
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+        ));
+        for maximum in [MaxSizeOf::NONE, MaxSizeOf::px(px(100.0))] {
+            let tree = PublicLayoutTreeOf::new()
+                .children(0, [1, 2])
+                .style(
+                    0,
+                    NodeInputOf {
+                        display: Display::Flex,
+                        flex_wrap: FlexWrap::Wrap,
+                        max_size: Size::new(maximum, MaxSizeOf::NONE),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(1, fixed(20.0, 10.0))
+                .style(2, fixed(20.0, 10.0));
+            let batch = compute_layout(&tree, 0, request).unwrap();
+            assert_size(&batch, 20.0, 20.0);
+            assert_item(&batch, 1, [0.0, 0.0, 20.0, 10.0]);
+            assert_item(&batch, 2, [0.0, 10.0, 20.0, 10.0]);
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
