@@ -35,6 +35,7 @@ pub type surgeist_js_parser::error::ParseResult<T> = core::result::Result<T, sur
 pub mod surgeist_js_parser::frontend
 pub enum surgeist_js_parser::frontend::FrontendLimit
 pub surgeist_js_parser::frontend::FrontendLimit::Consumption(u64)
+pub surgeist_js_parser::frontend::FrontendLimit::DirectEvalVisit(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::EarlyErrorVisit(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::GrammarDispatch(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::LabelLookup(u64)
@@ -56,6 +57,7 @@ pub fn surgeist_js_parser::frontend::FrontendLimit::fmt(&self, formatter: &mut c
 pub enum surgeist_js_parser::frontend::FrontendWork
 pub surgeist_js_parser::frontend::FrontendWork::Consume
 pub surgeist_js_parser::frontend::FrontendWork::Consume::retained_units: u8
+pub surgeist_js_parser::frontend::FrontendWork::DirectEvalVisit
 pub surgeist_js_parser::frontend::FrontendWork::EarlyErrorVisit
 pub surgeist_js_parser::frontend::FrontendWork::GrammarDispatch
 pub surgeist_js_parser::frontend::FrontendWork::LabelLookup

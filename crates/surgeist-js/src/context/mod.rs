@@ -9,11 +9,16 @@ pub use icu::IcuError;
 use intrinsics::Intrinsics;
 use surgeist_js_ast::{
     operations::{
-        ContainsSymbol, contains, contains_arguments, try_contains, try_contains_arguments,
+        ContainsSymbol, DirectEvalAdmission, contains, contains_arguments, try_contains,
+        try_contains_arguments,
     },
     visitor::VisitWith,
 };
-use surgeist_js_parser::{Parser, frontend::FrontendWork, source::ReadChar};
+use surgeist_js_parser::{
+    Parser,
+    frontend::{FrontendLimit, FrontendWork},
+    source::ReadChar,
+};
 #[cfg(any(feature = "temporal", feature = "intl"))]
 use timezone_provider::{experimental_tzif::ZeroCompiledTzdbProvider, provider::TimeZoneProvider};
 
@@ -287,6 +292,19 @@ impl Context {
                     .map_err(|limit| RuntimeLimitError::from(limit).into())
             }),
             None => Ok(contains_arguments(node)),
+        })
+    }
+
+    pub(crate) fn with_direct_eval_admission<T>(
+        &mut self,
+        construct: impl FnOnce(DirectEvalAdmission<'_, FrontendLimit>) -> Result<T, FrontendLimit>,
+    ) -> JsResult<T> {
+        self.with_frontend_execution(|execution| match execution {
+            Some(execution) => execution.with_frontend_control(|control| {
+                construct(Some(&mut || control(FrontendWork::DirectEvalVisit)))
+                    .map_err(|limit| RuntimeLimitError::from(limit).into())
+            }),
+            None => construct(None).map_err(|limit| RuntimeLimitError::from(limit).into()),
         })
     }
 

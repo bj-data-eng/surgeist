@@ -3,14 +3,14 @@ use crate::{
     Declaration, LinearPosition, LinearSpan, LinearSpanIgnoreEq, Span, Spanned, block_to_string,
     expression::{Expression, Identifier},
     join_nodes,
-    operations::{ContainsSymbol, contains},
+    operations::{DirectEvalAdmission, try_callable_direct_eval, unwrap_infallible},
     property::{MethodDefinitionKind, PropertyName},
     scope::{FunctionScopes, Scope},
     visitor::{VisitWith, Visitor, VisitorMut},
 };
-use surgeist_js_interner::{Interner, Sym, ToIndentedString, ToInternedString};
 use core::{fmt::Write as _, ops::ControlFlow};
 use std::hash::Hash;
+use surgeist_js_interner::{Interner, Sym, ToIndentedString, ToInternedString};
 
 /// A class declaration.
 ///
@@ -711,12 +711,36 @@ impl ClassMethodDefinition {
         is_static: bool,
         start_linear_pos: LinearPosition,
     ) -> Self {
-        let contains_direct_eval = contains(&parameters, ContainsSymbol::DirectEval)
-            || contains(&body, ContainsSymbol::DirectEval);
+        unwrap_infallible(Self::try_new(
+            name,
+            parameters,
+            body,
+            kind,
+            is_static,
+            start_linear_pos,
+            None,
+        ))
+    }
+
+    /// Creates the callable after admitting its direct eval metadata search.
+    ///
+    /// # Errors
+    /// Returns the first refusal from the admission callback.
+    #[inline]
+    pub fn try_new<E>(
+        name: ClassElementName,
+        parameters: FormalParameterList,
+        body: FunctionBody,
+        kind: MethodDefinitionKind,
+        is_static: bool,
+        start_linear_pos: LinearPosition,
+        mut admission: DirectEvalAdmission<'_, E>,
+    ) -> Result<Self, E> {
+        let contains_direct_eval = try_callable_direct_eval(&parameters, &body, &mut admission)?;
 
         let linear_span = LinearSpan::new(start_linear_pos, body.linear_pos_end());
 
-        Self {
+        Ok(Self {
             name,
             parameters,
             body,
@@ -725,7 +749,7 @@ impl ClassMethodDefinition {
             is_static,
             scopes: FunctionScopes::default(),
             linear_span: linear_span.into(),
-        }
+        })
     }
 
     /// Returns the name of the class method definition.

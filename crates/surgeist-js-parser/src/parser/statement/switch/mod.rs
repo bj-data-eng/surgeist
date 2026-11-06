@@ -11,9 +11,9 @@ use crate::{
     source::ReadChar,
 };
 use ast::operations::{lexically_declared_names_legacy, var_declared_names};
+use rustc_hash::FxHashMap;
 use surgeist_js_ast::{self as ast, Keyword, Punctuator, Spanned, statement, statement::Switch};
 use surgeist_js_interner::Interner;
-use rustc_hash::FxHashMap;
 
 /// The possible `TokenKind` which indicate the end of a case statement.
 const CASE_BREAK_TOKENS: [TokenKind; 3] = [
@@ -77,7 +77,8 @@ where
         let cases = CaseBlock::new(self.allow_yield, self.allow_await, self.allow_return)
             .parse(cursor, interner)?;
 
-        let switch = Switch::new(condition, cases);
+        let switch = cursor
+            .with_direct_eval_admission(|admission| Switch::try_new(condition, cases, admission))?;
 
         // It is a Syntax Error if the LexicallyDeclaredNames of CaseBlock contains any duplicate
         // entries, unless the source text matched by this production is not strict mode code and the

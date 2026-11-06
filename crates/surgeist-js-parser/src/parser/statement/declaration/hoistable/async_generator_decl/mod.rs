@@ -116,8 +116,8 @@ where
         let result = parse_callable_declaration(&self, cursor, interner)?;
         let span = start_linear_span.union(result.2.linear_pos_end());
 
-        Ok(AsyncGeneratorDeclarationNode::new(
-            result.0, result.1, result.2, span,
-        ))
+        cursor.with_direct_eval_admission(|admission| {
+            AsyncGeneratorDeclarationNode::try_new(result.0, result.1, result.2, span, admission)
+        })
     }
 }

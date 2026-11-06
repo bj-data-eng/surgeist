@@ -141,14 +141,17 @@ where
         let span = Some(start_linear_span.union(body.linear_pos_end()));
 
         let body_span_end = body.span().end();
-        let function = FunctionExpressionNode::new(
-            name,
-            params,
-            body,
-            span,
-            name.is_some(),
-            Span::new(function_token_span_start, body_span_end),
-        );
+        let function = cursor.with_direct_eval_admission(|admission| {
+            FunctionExpressionNode::try_new(
+                name,
+                params,
+                body,
+                span,
+                name.is_some(),
+                Span::new(function_token_span_start, body_span_end),
+                admission,
+            )
+        })?;
 
         if cursor.contains(&function, ContainsSymbol::Super)? {
             return Err(Error::lex(LexError::Syntax(

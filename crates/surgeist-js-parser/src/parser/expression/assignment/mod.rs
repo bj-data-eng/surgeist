@@ -226,14 +226,18 @@ where
                 let linear_span = start_linear_span.union(linear_pos_end);
 
                 let body_span_end = body.span().end();
-                return Ok(surgeist_js_ast::function::ArrowFunction::new(
-                    None,
-                    parameters,
-                    body,
-                    linear_span,
-                    Span::new(position, body_span_end),
-                )
-                .into());
+                return Ok(cursor
+                    .with_direct_eval_admission(|admission| {
+                        surgeist_js_ast::function::ArrowFunction::try_new(
+                            None,
+                            parameters,
+                            body,
+                            linear_span,
+                            Span::new(position, body_span_end),
+                            admission,
+                        )
+                    })?
+                    .into());
             }
             FormalParameterListOrExpression::Expression(expression) => expression,
         };

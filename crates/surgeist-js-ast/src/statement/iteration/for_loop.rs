@@ -1,4 +1,4 @@
-use crate::operations::{ContainsSymbol, contains};
+use crate::operations::{DirectEvalAdmission, try_contains_direct_eval, unwrap_infallible};
 use crate::scope::Scope;
 use crate::visitor::{VisitWith, Visitor, VisitorMut};
 use crate::{
@@ -6,8 +6,8 @@ use crate::{
     declaration::{LexicalDeclaration, VarDeclaration},
     statement::Statement,
 };
-use surgeist_js_interner::{Interner, ToIndentedString, ToInternedString};
 use core::{fmt::Write as _, ops::ControlFlow};
+use surgeist_js_interner::{Interner, ToIndentedString, ToInternedString};
 
 /// The `for` statement creates a loop that consists of three optional expressions.
 ///
@@ -37,9 +37,25 @@ impl ForLoop {
         final_expr: Option<Expression>,
         body: Statement,
     ) -> Self {
-        Self {
-            inner: Box::new(InnerForLoop::new(init, condition, final_expr, body)),
-        }
+        unwrap_infallible(Self::try_new(init, condition, final_expr, body, None))
+    }
+
+    /// Constructs the node after admitting the visits needed for direct-eval metadata.
+    ///
+    /// # Errors
+    /// Returns the first refused visit.
+    #[inline]
+    pub fn try_new<E>(
+        init: Option<ForLoopInitializer>,
+        condition: Option<Expression>,
+        final_expr: Option<Expression>,
+        body: Statement,
+        admission: DirectEvalAdmission<'_, E>,
+    ) -> Result<Self, E> {
+        let inner = InnerForLoop::try_new(init, condition, final_expr, body, admission)?;
+        Ok(Self {
+            inner: Box::new(inner),
+        })
     }
 
     /// Gets the initialization node.
@@ -151,29 +167,30 @@ pub(crate) struct InnerForLoop {
 impl InnerForLoop {
     /// Creates a new inner for loop.
     #[inline]
-    fn new(
+    fn try_new<E>(
         init: Option<ForLoopInitializer>,
         condition: Option<Expression>,
         final_expr: Option<Expression>,
         body: Statement,
-    ) -> Self {
-        let mut contains_direct_eval = contains(&body, ContainsSymbol::DirectEval);
+        mut admission: DirectEvalAdmission<'_, E>,
+    ) -> Result<Self, E> {
+        let mut contains_direct_eval = try_contains_direct_eval(&body, &mut admission)?;
         if let Some(init) = &init {
-            contains_direct_eval |= contains(init, ContainsSymbol::DirectEval);
+            contains_direct_eval |= try_contains_direct_eval(init, &mut admission)?;
         }
         if let Some(condition) = &condition {
-            contains_direct_eval |= contains(condition, ContainsSymbol::DirectEval);
+            contains_direct_eval |= try_contains_direct_eval(condition, &mut admission)?;
         }
         if let Some(final_expr) = &final_expr {
-            contains_direct_eval |= contains(final_expr, ContainsSymbol::DirectEval);
+            contains_direct_eval |= try_contains_direct_eval(final_expr, &mut admission)?;
         }
-        Self {
+        Ok(Self {
             init,
             condition,
             final_expr,
             body,
             contains_direct_eval,
-        }
+        })
     }
 
     /// Gets the initialization node.

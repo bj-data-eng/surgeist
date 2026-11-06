@@ -28,6 +28,8 @@ pub enum FrontendWork {
     EarlyErrorVisit,
     /// One logical label-table lookup, including scoped registration and cleanup when needed.
     LabelLookup,
+    /// One AST inspection while computing cached direct-eval metadata during construction.
+    DirectEvalVisit,
 }
 
 /// The frontend budget dimension that refused work.
@@ -53,6 +55,8 @@ pub enum FrontendLimit {
     EarlyErrorVisit(u64),
     /// Maximum admitted logical label-table lookups.
     LabelLookup(u64),
+    /// Maximum admitted direct-eval metadata inspections.
+    DirectEvalVisit(u64),
 }
 
 impl fmt::Display for FrontendLimit {
@@ -68,6 +72,7 @@ impl fmt::Display for FrontendLimit {
             Self::GrammarDispatch(limit) => (limit, "grammar dispatches"),
             Self::EarlyErrorVisit(limit) => (limit, "early-error AST visits"),
             Self::LabelLookup(limit) => (limit, "label lookups"),
+            Self::DirectEvalVisit(limit) => (limit, "direct-eval metadata visits"),
         };
         write!(
             formatter,

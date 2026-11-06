@@ -12,11 +12,94 @@ use crate::{
         contains, contains_invalid_object_literal, try_contains, try_contains_arguments,
         try_has_direct_super,
     },
-    statement::{Case, Switch, With, iteration::Break},
+    statement::{Block, Case, Switch, With, iteration::Break},
 };
 
 fn empty_span() -> Span {
     Span::new(Position::new(1, 1), Position::new(1, 1))
+}
+
+#[test]
+fn callable_metadata_refuses_before_construction_and_admits_the_match_exactly() {
+    for limit in [6, 7] {
+        let call = Call::new(
+            Identifier::new(Sym::EVAL, empty_span()).into(),
+            Box::default(),
+            empty_span(),
+        );
+        let body = FunctionBody::new(
+            StatementList::from((
+                vec![Statement::Expression(call.into()).into()],
+                LinearPosition::new(0),
+            )),
+            empty_span(),
+        );
+        let mut visits = 0;
+        let mut admit = || {
+            if visits == limit {
+                return Err("refused");
+            }
+            visits += 1;
+            Ok(())
+        };
+        let node = FunctionExpression::try_new(
+            None,
+            FormalParameterList::default(),
+            body,
+            None,
+            false,
+            empty_span(),
+            Some(&mut admit),
+        );
+        assert_eq!(visits, limit);
+        if limit == 6 {
+            assert_eq!(node.unwrap_err(), "refused");
+        } else {
+            assert!(node.unwrap().contains_direct_eval);
+        }
+    }
+}
+
+#[test]
+fn switch_metadata_continues_to_the_default_case_after_a_match() {
+    for limit in [4, 6] {
+        let call = Call::new(
+            Identifier::new(Sym::EVAL, empty_span()).into(),
+            Box::default(),
+            empty_span(),
+        );
+        let cases = Box::new([
+            Case::new(call.into(), StatementList::default()),
+            Case::default(StatementList::default()),
+        ]);
+        let mut visits = 0;
+        let mut admit = || {
+            if visits == limit {
+                return Err("refused");
+            }
+            visits += 1;
+            Ok(())
+        };
+        let node = Switch::try_new(This::new(empty_span()).into(), cases, Some(&mut admit));
+        assert_eq!(visits, limit);
+        if limit == 4 {
+            assert_eq!(node.unwrap_err(), "refused");
+        } else {
+            assert!(node.unwrap().contains_direct_eval);
+        }
+    }
+}
+
+#[test]
+fn empty_block_metadata_admits_the_statement_list() {
+    let mut visits = 0;
+    let mut admit = || {
+        visits += 1;
+        Err("refused")
+    };
+    let result = Block::try_from_statement_list(StatementList::default(), Some(&mut admit));
+    assert_eq!(result.unwrap_err(), "refused");
+    assert_eq!(visits, 1);
 }
 
 #[test]

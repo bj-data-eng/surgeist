@@ -362,6 +362,12 @@ pub enum RuntimeLimitError {
         /// Maximum number of logical label-table lookups admitted by the operation.
         limit: u64,
     },
+    /// Error for exhausting the operation's direct-eval metadata visit budget.
+    #[error("reached the operation's limit of {limit} direct-eval metadata visits")]
+    DirectEvalVisit {
+        /// Maximum number of direct-eval metadata visits admitted by the operation.
+        limit: u64,
+    },
     /// Error for exhausting the operation's VM instruction budget.
     #[error("reached the operation's limit of {limit} VM instructions")]
     Instruction {
@@ -391,7 +397,8 @@ impl RuntimeLimitError {
             | Self::TokenAdvance { .. }
             | Self::GrammarDispatch { .. }
             | Self::EarlyErrorVisit { .. }
-            | Self::LabelLookup { .. } => true,
+            | Self::LabelLookup { .. }
+            | Self::DirectEvalVisit { .. } => true,
             Self::Instruction { .. } | Self::LoopIteration | Self::Recursion | Self::StackSize => {
                 false
             }
@@ -413,6 +420,7 @@ impl From<surgeist_js_parser::frontend::FrontendLimit> for RuntimeLimitError {
             FrontendLimit::GrammarDispatch(limit) => Self::GrammarDispatch { limit },
             FrontendLimit::EarlyErrorVisit(limit) => Self::EarlyErrorVisit { limit },
             FrontendLimit::LabelLookup(limit) => Self::LabelLookup { limit },
+            FrontendLimit::DirectEvalVisit(limit) => Self::DirectEvalVisit { limit },
         }
     }
 }

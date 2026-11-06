@@ -8,14 +8,14 @@ use crate::{
     },
     function::{FormalParameterList, FunctionBody},
     join_nodes,
-    operations::{ContainsSymbol, contains},
+    operations::{DirectEvalAdmission, try_callable_direct_eval, unwrap_infallible},
     pattern::{ObjectPattern, ObjectPatternElement},
     property::{MethodDefinitionKind, PropertyName},
     scope::FunctionScopes,
     visitor::{VisitWith, Visitor, VisitorMut},
 };
-use surgeist_js_interner::{Interner, Sym, ToIndentedString, ToInternedString};
 use core::{fmt::Write as _, ops::ControlFlow};
+use surgeist_js_interner::{Interner, Sym, ToIndentedString, ToInternedString};
 
 /// Objects in ECMAScript may be defined as an unordered collection of related data, of
 /// primitive or reference types, in the form of “key: value” pairs.
@@ -438,11 +438,33 @@ impl ObjectMethodDefinition {
         kind: MethodDefinitionKind,
         start_linear_pos: LinearPosition,
     ) -> Self {
-        let contains_direct_eval = contains(&parameters, ContainsSymbol::DirectEval)
-            || contains(&body, ContainsSymbol::DirectEval);
+        unwrap_infallible(Self::try_new(
+            name,
+            parameters,
+            body,
+            kind,
+            start_linear_pos,
+            None,
+        ))
+    }
+
+    /// Creates the callable after admitting its direct eval metadata search.
+    ///
+    /// # Errors
+    /// Returns the first refusal from the admission callback.
+    #[inline]
+    pub fn try_new<E>(
+        name: PropertyName,
+        parameters: FormalParameterList,
+        body: FunctionBody,
+        kind: MethodDefinitionKind,
+        start_linear_pos: LinearPosition,
+        mut admission: DirectEvalAdmission<'_, E>,
+    ) -> Result<Self, E> {
+        let contains_direct_eval = try_callable_direct_eval(&parameters, &body, &mut admission)?;
         let linear_span = LinearSpan::new(start_linear_pos, body.linear_pos_end()).into();
 
-        Self {
+        Ok(Self {
             name,
             parameters,
             body,
@@ -450,7 +472,7 @@ impl ObjectMethodDefinition {
             kind,
             scopes: FunctionScopes::default(),
             linear_span,
-        }
+        })
     }
 
     /// Returns the name of the object method definition.

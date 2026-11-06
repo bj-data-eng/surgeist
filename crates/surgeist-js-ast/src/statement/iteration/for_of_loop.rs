@@ -1,12 +1,12 @@
-use crate::operations::{ContainsSymbol, contains};
+use crate::operations::{DirectEvalAdmission, try_contains_direct_eval, unwrap_infallible};
 use crate::scope::Scope;
 use crate::visitor::{VisitWith, Visitor, VisitorMut};
 use crate::{
     expression::Expression,
     statement::{Statement, iteration::IterableLoopInitializer},
 };
-use surgeist_js_interner::{Interner, ToIndentedString, ToInternedString};
 use core::ops::ControlFlow;
+use surgeist_js_interner::{Interner, ToIndentedString, ToInternedString};
 
 /// A `for...of` loop statement, as defined by the [spec].
 ///
@@ -48,10 +48,25 @@ impl ForOfLoop {
         body: Statement,
         r#await: bool,
     ) -> Self {
-        let iterable_contains_direct_eval = contains(&iterable, ContainsSymbol::DirectEval);
-        let contains_direct_eval = contains(&init, ContainsSymbol::DirectEval)
-            || contains(&body, ContainsSymbol::DirectEval);
-        Self {
+        unwrap_infallible(Self::try_new(init, iterable, body, r#await, None))
+    }
+
+    /// Constructs the node after admitting the visits needed for direct-eval metadata.
+    ///
+    /// # Errors
+    /// Returns the first refused visit.
+    #[inline]
+    pub fn try_new<E>(
+        init: IterableLoopInitializer,
+        iterable: Expression,
+        body: Statement,
+        r#await: bool,
+        mut admission: DirectEvalAdmission<'_, E>,
+    ) -> Result<Self, E> {
+        let iterable_contains_direct_eval = try_contains_direct_eval(&iterable, &mut admission)?;
+        let contains_direct_eval = try_contains_direct_eval(&init, &mut admission)?
+            || try_contains_direct_eval(&body, &mut admission)?;
+        Ok(Self {
             init,
             iterable,
             body: body.into(),
@@ -60,7 +75,7 @@ impl ForOfLoop {
             r#await,
             iterable_scope: None,
             scope: None,
-        }
+        })
     }
 
     /// Gets the initializer of the for...of loop.

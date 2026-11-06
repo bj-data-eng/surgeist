@@ -3,7 +3,7 @@ mod buffered_lexer;
 
 use crate::{
     Error,
-    frontend::FrontendWork,
+    frontend::{FrontendLimit, FrontendWork},
     lexer::{Error as LexError, InputElement, Lexer, Token, TokenKind},
     parser::{OrAbrupt, ParseResult},
     source::ReadChar,
@@ -13,8 +13,8 @@ use surgeist_js_ast::{
     LinearPosition, Position, PositionGroup, Punctuator, Spanned,
     function::{FormalParameterList, FunctionBody},
     operations::{
-        CheckLabelsFailure, ContainsSymbol, LabelCheckWork, check_labels, contains,
-        contains_arguments, has_direct_super, try_contains, try_contains_arguments,
+        CheckLabelsFailure, ContainsSymbol, DirectEvalAdmission, LabelCheckWork, check_labels,
+        contains, contains_arguments, has_direct_super, try_contains, try_contains_arguments,
         try_has_direct_super,
     },
     visitor::VisitWith,
@@ -97,6 +97,21 @@ where
         self.buffered_lexer
             .admit_frontend(FrontendWork::EarlyErrorVisit)
             .map_err(Error::from)
+    }
+
+    pub(super) fn with_direct_eval_admission<T>(
+        &mut self,
+        construct: impl FnOnce(DirectEvalAdmission<'_, FrontendLimit>) -> Result<T, FrontendLimit>,
+    ) -> ParseResult<T> {
+        let result = if self.controlled {
+            construct(Some(&mut || {
+                self.buffered_lexer
+                    .admit_frontend(FrontendWork::DirectEvalVisit)
+            }))
+        } else {
+            construct(None)
+        };
+        result.map_err(Error::from)
     }
 
     pub(super) fn contains(
