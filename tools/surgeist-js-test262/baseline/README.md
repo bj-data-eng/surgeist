@@ -87,6 +87,37 @@ The `surgeist-js/compile`
 benchmark measures bytecode compilation using fresh parsed scripts.
 Parsing is setup for each iteration, outside the timed operation.
 
+### Rebuild the reference executables
+
+Build `boa_engine/full` in the pristine Boa checkout. Build the system
+allocator scripts and fresh compilation references in the pre-conversion
+staging workspace, whose engine still implements Boa v0.22. The staging
+branch `branch/boa-safe-engine` retains workspace tree object
+`ebb813c78c3cdb2b394159c8ed8c52ec4b38a588`.
+
+Run from a Surgeist checkout that has fetched the staging branch. Set
+`REFERENCE_WORKSPACE` to the absolute path of a new scratch directory.
+The tree contains its own lockfile and benchmark profile.
+
+```sh
+mkdir "$REFERENCE_WORKSPACE"
+git archive ebb813c78c3cdb2b394159c8ed8c52ec4b38a588 |
+    tar -xf - -C "$REFERENCE_WORKSPACE"
+(
+    cd "$REFERENCE_WORKSPACE"
+    cargo +1.99.1 bench --offline --locked -j 1 --no-run \
+        -p surgeist-js --bench compile
+    cargo +1.99.1 bench --offline --locked -j 1 --no-run \
+        -p surgeist-js-benchmarks --bench scripts
+)
+```
+
+Keep these executables with their extracted fixtures. The benchmark
+paths are embedded at build time. Invoke a built executable with
+`--bench` to select timed measurement.
+
+### Run matched measurements
+
 Use the same allocator, flags, suites and sample settings for the
 post-conversion comparison. Run one benchmark executable at a time.
 Run `boa_engine/full` from the pristine checkout and the corresponding
