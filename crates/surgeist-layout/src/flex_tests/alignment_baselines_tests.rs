@@ -2728,6 +2728,132 @@ fn flex_last_baseline_aligns_the_last_ports_of_its_items() {
 }
 
 #[test]
+fn flex_baseline_sharing_groups_follow_physical_alignment_edges() {
+    let layout = |mode, flex_wrap, children: [(WritingMode, AlignItems, f32, f32); 2]| {
+        let horizontal = mode == WritingMode::HorizontalTb;
+        let root_size = if horizontal {
+            Size::new(100.0, 60.0)
+        } else {
+            Size::new(60.0, 100.0)
+        };
+        let item_size = if horizontal {
+            Size::new(20.0, 30.0)
+        } else {
+            Size::new(30.0, 20.0)
+        };
+        let point = |coordinate| {
+            if horizontal {
+                Point::new(None, Some(coordinate))
+            } else {
+                Point::new(Some(coordinate), None)
+            }
+        };
+        let mut tree = FlexTree::new().children(1, [2, 3]).style(
+            1,
+            NodeInput {
+                display: Display::Flex,
+                flex_wrap,
+                writing_mode: mode,
+                size: root_size.map(PreferredSize::px),
+                ..NodeInput::default()
+            },
+        );
+        for (id, (writing_mode, align_self, first, last)) in [2, 3].into_iter().zip(children) {
+            tree = tree
+                .style(
+                    id,
+                    NodeInput {
+                        writing_mode,
+                        align_self: Some(align_self),
+                        size: item_size.map(PreferredSize::px),
+                        ..NodeInput::default()
+                    },
+                )
+                .measure(
+                    id,
+                    ComputeOutput::from_sizes_and_baselines(
+                        item_size,
+                        Size::ZERO,
+                        BaselinesOf {
+                            first: point(first),
+                            last: point(last),
+                        },
+                    ),
+                );
+        }
+        let output = compute_flex(
+            &mut tree.borrow_compute(),
+            1,
+            indefinite_flex_baseline_input(RunMode::PerformLayout),
+        )
+        .unwrap();
+        let origins = [2, 3].map(|id| {
+            let location = tree.layout(id).unwrap().location;
+            if horizontal { location.y } else { location.x }
+        });
+        (origins, output.first_baselines, output.last_baselines)
+    };
+    let horizontal = WritingMode::HorizontalTb;
+    let vertical = WritingMode::VerticalLr;
+    let reverse_vertical = WritingMode::VerticalRl;
+    let first = AlignItems::Baseline;
+    let last = AlignItems::LastBaseline;
+    let observed = [
+        layout(
+            horizontal,
+            FlexWrap::WrapReverse,
+            [(horizontal, last, 8.0, 8.0), (horizontal, last, 8.0, 18.0)],
+        ),
+        layout(
+            vertical,
+            FlexWrap::NoWrap,
+            [(vertical, last, 8.0, 8.0), (vertical, last, 8.0, 18.0)],
+        ),
+        layout(
+            vertical,
+            FlexWrap::NoWrap,
+            [
+                (vertical, first, 8.0, 12.0),
+                (reverse_vertical, last, 8.0, 18.0),
+            ],
+        ),
+        layout(
+            horizontal,
+            FlexWrap::NoWrap,
+            [
+                (horizontal, last, 8.0, 18.0),
+                (horizontal, first, 8.0, 12.0),
+            ],
+        ),
+    ];
+    assert_eq!(
+        observed,
+        [
+            (
+                [30.0, 20.0],
+                Point::new(None, Some(38.0)),
+                Point::new(None, Some(38.0))
+            ),
+            (
+                [30.0, 20.0],
+                Point::new(Some(38.0), None),
+                Point::new(Some(38.0), None)
+            ),
+            (
+                [10.0, 0.0],
+                Point::new(Some(18.0), None),
+                Point::new(Some(18.0), None)
+            ),
+            (
+                [30.0, 0.0],
+                Point::new(None, Some(8.0)),
+                Point::new(None, Some(48.0))
+            ),
+        ],
+    );
+}
+
+#[test]
 fn flex_row_aligns_baseline_items_by_child_baselines() {
     let mut tree = FlexTree::default();
     tree.insert_children(1, vec![2, 3]);
