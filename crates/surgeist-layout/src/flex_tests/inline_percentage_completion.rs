@@ -1682,3 +1682,75 @@ fn vertical_relative_main_percentage_uses_physical_width() {
     assert_vertical_relative_main_percentage_uses_physical_width::<f32>();
     assert_vertical_relative_main_percentage_uses_physical_width::<f64>();
 }
+
+fn relative_cross_range_batch<S: LayoutScalar>(
+    quarter: S,
+    end_aligned: bool,
+) -> LayoutResultOf<u32, CompletedLayoutBatchOf<u32, S>, S> {
+    let px = S::from_f64;
+    let mode = WritingMode::HorizontalTb;
+    let mut root = native_box(
+        mode,
+        Direction::Ltr,
+        BoxSizing::ContentBox,
+        PreferredSizeOf::px(px(40.0)),
+        PreferredSizeOf::AUTO,
+    );
+    root.flex_direction = FlexDirection::Row;
+    root.flex_wrap = FlexWrap::WrapReverse;
+    let child = NodeInputOf {
+        display: Display::Block,
+        size: Size::new(PreferredSizeOf::px(px(10.0)), PreferredSizeOf::px(S::ZERO)),
+        ..NodeInputOf::default()
+    };
+    let mut tall = child.clone();
+    tall.size.height = PreferredSizeOf::px(px(3.0) * quarter);
+    let mut shifted = child;
+    if end_aligned {
+        shifted.align_self = Some(AlignItems::FlexEnd);
+        shifted.inset.bottom = LengthAutoOf::percent(px(0.5));
+    } else {
+        shifted.align_self = Some(AlignItems::FlexStart);
+        shifted.inset.top = LengthAutoOf::percent(px(0.5));
+    }
+    let tree = PublicLayoutTreeOf::new()
+        .children(0, [1, 2])
+        .children(1, [])
+        .children(2, [])
+        .style(0, root)
+        .style(1, shifted)
+        .style(2, tall);
+    compute_layout(&tree, 0, request(mode, SizingOperation::Normal))
+}
+
+fn assert_relative_cross_projection_keeps_representable_range<S: LayoutScalar>(quarter: S) {
+    let px = S::from_f64;
+    let batch = relative_cross_range_batch(quarter, true)
+        .expect("the reversed cross coordinate fits after projection");
+    let entry = batch
+        .unrounded_entries()
+        .iter()
+        .find(|entry| entry.node() == 1)
+        .unwrap();
+    let crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal } =
+        entry.geometry_state()
+    else {
+        panic!("the item has ordinary unrounded geometry");
+    };
+    assert_eq!(measured_normal.location.y, S::ZERO);
+    assert_eq!(entry.output().location.y, -px(1.5) * quarter);
+    assert_eq!(entry.output().size.height, S::ZERO);
+    let error = relative_cross_range_batch(quarter, false).unwrap_err();
+    assert_eq!(error.site(), LayoutErrorSiteOf::Node(1));
+    assert!(matches!(
+        error.kind(),
+        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric { value })
+            if *value == S::INFINITY
+    ));
+}
+
+#[test]
+fn relative_cross_projection_keeps_representable_range() {
+    assert_relative_cross_projection_keeps_representable_range(2.0_f32.powi(126));
+    assert_relative_cross_projection_keeps_representable_range(2.0_f64.powi(1022));
+}
