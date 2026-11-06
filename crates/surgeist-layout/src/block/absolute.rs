@@ -124,9 +124,9 @@ where
                 resolve_auto_optional,
             )
             .transpose_with_node(tree, child)?;
-        let padding_border = padding + border;
+        let padding_border_size = (padding + border).sum_axes();
         let box_sizing_adjustment = if style.common.box_sizing == BoxSizing::ContentBox {
-            padding_border.sum_axes()
+            padding_border_size
         } else {
             Size::ZERO
         };
@@ -139,8 +139,8 @@ where
         .transpose_with_node(tree, child)?
         .apply_aspect_ratio(*style.common.aspect_ratio)
         .add_optional(box_sizing_adjustment)
-        .or(padding_border.sum_axes().map(Some))
-        .max_optional(padding_border.sum_axes().map(Some));
+        .or(padding_border_size.map(Some))
+        .max_optional(padding_border_size.map(Some));
         let max_size = maximum_size(
             style.common.max_size,
             area_size.map(Some),
@@ -182,19 +182,20 @@ where
         let alignment = LogicalSizeOf::new(child_input.justify_self, child_input.align_self);
         let physical_alignment = constants.flow_axes.physical_size(alignment);
         let inset_extents = absolute_inset_extents(inset, area_size, constants.flow_axes);
-        let stretch = absolute_stretch_fit_sizes(
+        let (stretch, remaining_ratio) = absolute_stretch_fit_sizes(
             inset,
             unresolved_margin,
             inset_extents,
             physical_alignment,
-            !child_input.item_is_replaced && !child_input.item_is_table,
+            child_input,
+            padding_border_size,
         );
         if known_size.width.is_none()
             && let Some(stretch_width) = stretch.width
         {
             known_size.width = Some(stretch_width);
             known_size = known_size
-                .apply_aspect_ratio(*style.common.aspect_ratio)
+                .apply_aspect_ratio(remaining_ratio)
                 .clamp_max_before_min_optional(min_size, max_size);
         }
         if known_size.height.is_none()
@@ -202,7 +203,7 @@ where
         {
             known_size.height = Some(stretch_height);
             known_size = known_size
-                .apply_aspect_ratio(*style.common.aspect_ratio)
+                .apply_aspect_ratio(remaining_ratio)
                 .clamp_max_before_min_optional(min_size, max_size);
         }
 

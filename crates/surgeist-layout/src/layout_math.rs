@@ -1,4 +1,4 @@
-use crate::geometry::{FlowAxes, LogicalEdgesOf, LogicalPointOf, LogicalSizeOf};
+use crate::geometry::{FlowAxes, LogicalEdgesOf, LogicalPointOf, LogicalSizeOf, PhysicalAxis};
 use crate::{
     AlignItems, AspectRatioOf, Edges, LayoutScalar, LengthOf, LengthResolutionOf,
     LengthResolutionStatus, Size,
@@ -75,8 +75,9 @@ pub(crate) fn absolute_stretch_fit_sizes<S: LayoutScalar>(
     margin: Edges<Option<S>>,
     extent: Size<Option<S>>,
     alignment: Size<Option<AlignItems>>,
-    normal_stretches: bool,
-) -> Size<Option<S>> {
+    child: &crate::NodeInputOf<S>,
+    padding_border_size: Size<S>,
+) -> (Size<Option<S>>, Option<AspectRatioOf<S>>) {
     let stretch = |insets: (Option<S>, Option<S>),
                    margins: (Option<S>, Option<S>),
                    extent: Option<S>,
@@ -85,7 +86,7 @@ pub(crate) fn absolute_stretch_fit_sizes<S: LayoutScalar>(
             return None;
         }
         let stretches = match alignment {
-            None => normal_stretches,
+            None => !child.item_is_replaced && !child.item_is_table,
             Some(AlignItems::Stretch) => margins.0.is_some() && margins.1.is_some(),
             Some(_) => false,
         };
@@ -93,7 +94,7 @@ pub(crate) fn absolute_stretch_fit_sizes<S: LayoutScalar>(
             (extent - margins.0.unwrap_or(S::ZERO) - margins.1.unwrap_or(S::ZERO)).max(S::ZERO)
         })
     };
-    Size::new(
+    let stretch_sizes = Size::new(
         stretch(
             (inset.left, inset.right),
             (margin.left, margin.right),
@@ -106,7 +107,55 @@ pub(crate) fn absolute_stretch_fit_sizes<S: LayoutScalar>(
             extent.height,
             alignment.height,
         ),
-    )
+    );
+    let Some(ratio) = child.aspect_ratio else {
+        return (stretch_sizes, None);
+    };
+    if !child.size.width.is_auto() || !child.size.height.is_auto() {
+        return (stretch_sizes, Some(ratio));
+    }
+
+    let flow = FlowAxes::new(child.writing_mode, child.direction);
+    let inset = flow.logical_edges(inset);
+    let inline_has_auto = inset.inline_start.is_none() || inset.inline_end.is_none();
+    let block_has_auto = inset.block_start.is_none() || inset.block_end.is_none();
+    let dependent_axis = if inline_has_auto && !block_has_auto {
+        flow.inline_axis()
+    } else {
+        flow.block_axis()
+    };
+    let determining_border = match dependent_axis {
+        PhysicalAxis::Horizontal => Size::new(
+            None,
+            stretch_sizes
+                .height
+                .map(|height| height.max(padding_border_size.height)),
+        ),
+        PhysicalAxis::Vertical => Size::new(
+            stretch_sizes
+                .width
+                .map(|width| width.max(padding_border_size.width)),
+            None,
+        ),
+    };
+    if determining_border == Size::NONE {
+        return (stretch_sizes, Some(ratio));
+    }
+
+    // Stretch fit floors the determining border box at its padding and border.
+    // The ratio then transfers within the box selected by box-sizing.
+    let sizing_box_inset = if child.box_sizing == crate::BoxSizing::ContentBox {
+        padding_border_size
+    } else {
+        Size::ZERO
+    };
+    let transferred = determining_border
+        .zip_map(sizing_box_inset, |extent, inset| {
+            extent.map(|extent| extent - inset)
+        })
+        .apply_aspect_ratio(Some(ratio))
+        .add_optional(sizing_box_inset);
+    (determining_border.or(transferred), None)
 }
 
 pub(crate) fn absolute_inset_axis_alignment<S: LayoutScalar>(

@@ -323,25 +323,26 @@ where
     let inset_extents =
         crate::layout_math::absolute_inset_extents(inset, physical_area_size, containing_flow_axes);
     let alignment = LogicalSizeOf::new(child_style.justify_self, child_style.align_self);
-    let stretch = crate::layout_math::absolute_stretch_fit_sizes(
+    let (stretch, remaining_ratio) = crate::layout_math::absolute_stretch_fit_sizes(
         inset,
         unresolved_margin,
         inset_extents,
         containing_flow_axes.physical_size(alignment),
-        !child_style.item_is_replaced && !child_style.item_is_table,
+        tree.node_input(child),
+        padding_border_size,
     );
     let mut known = style_size.or(stretch);
-    if let (Some(ratio), Some(width)) = (child_style.aspect_ratio, known.width)
+    if let (Some(ratio), Some(width)) = (remaining_ratio, known.width)
         && child_style.size.height.is_auto()
     {
         known.height = Some(width / ratio.get());
-    } else if let (Some(ratio), Some(height)) = (child_style.aspect_ratio, known.height)
+    } else if let (Some(ratio), Some(height)) = (remaining_ratio, known.height)
         && child_style.size.width.is_auto()
     {
         known.width = Some(height * ratio.get());
     }
     let known = known
-        .apply_aspect_ratio(child_style.aspect_ratio)
+        .apply_aspect_ratio(remaining_ratio)
         .clamp_optional(min_size, max_size);
     let fallback_limits = crate::layout_math::containing_orthogonal_fallback_limits(
         constants.fallback_minimum_outer,
