@@ -747,7 +747,7 @@ where
             crate::AvailableSpaceOf::Indefinite,
             crate::SizingOperation::Normal,
         ),
-        constants.axes.cross_size(constants.node_inner_size),
+        constants.cross_content_extent(),
     )
     .map_err(|error| sizing_resolution_error(node, error.into()))?;
     let cross = crate::layout_math::clamp_axis_request_space(

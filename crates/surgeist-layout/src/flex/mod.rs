@@ -115,7 +115,7 @@ where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
-    let mut constants =
+    let constants =
         self::input::with_flex_container_projection::<Tree, M, _>(tree, node, |style| {
             self::input::with_flex_scroll_projections::<Tree, M, _>(tree, node, |scroll_box, _| {
                 Constants::new::<Tree, M>(tree, node, &style, scroll_box, input, contained_size)
@@ -143,29 +143,6 @@ where
     }
 
     let mut collected_items = collect_items(tree, node, &constants, input.run_mode())?;
-    if constants.is_wrapping_column()
-        && constants
-            .axes
-            .cross_size(constants.node_outer_size)
-            .is_none()
-        && constants
-            .axes
-            .cross_size(constants.sizing_request.axes())
-            .operation()
-            == crate::SizingOperation::MaxContent
-        && let Some(offer) = collected_items
-            .iter()
-            .filter(|item| !item.is_collapsed())
-            .map(|item| {
-                constants.axes.cross_size(item.hypothetical_size)
-                    + constants.axes.cross_edge_sum(item.margin)
-            })
-            .reduce(S::max)
-    {
-        // The common cross offer can change flex bases as well as line widths.
-        constants.cross_content_offer = Some(offer.max(S::ZERO));
-        collected_items = collect_items(tree, node, &constants, input.run_mode())?;
-    }
     let (mut layout_constants, mut resolved_items, mut lines) =
         resolve_flex_collection(tree, node, input, &constants, &collected_items)?;
     let mut sizes = container_sizes(input, &layout_constants, &resolved_items, &lines);
@@ -291,41 +268,101 @@ fn resolve_flex_collection<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let has_collapsed_item = collected_items.iter().any(CollectedFlexItem::is_collapsed);
-    Ok(if has_collapsed_item {
-        let first_lines =
-            collect_flex_lines(collected_items, constants, FlexLineCollectionRound::Normal)
-                .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
-        let (_, _, first_lines) = resolve_flex_round(
-            tree,
-            node,
-            input,
-            constants,
-            collected_items.to_vec(),
-            first_lines,
-        )?;
-        let struts = CollapsedFlexStruts::capture(collected_items, &first_lines);
-        let second_collection_lines = collect_flex_lines(
-            collected_items,
-            constants,
-            FlexLineCollectionRound::Collapsed,
-        )
+    let mut first_constants = *constants;
+    let first_round = FlexLineCollectionRound::Normal;
+    let first_items = collect_with_column_cross_offer(
+        tree,
+        node,
+        &mut first_constants,
+        collected_items,
+        input.run_mode(),
+        first_round,
+    )?;
+    let first_lines = collect_flex_lines(&first_items, &first_constants, first_round)
         .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
-        let (second_items, second_lines) =
-            struts.prepare_second_round(collected_items, &second_collection_lines);
-        resolve_flex_round(tree, node, input, constants, second_items, second_lines)?
-    } else {
-        let lines = collect_flex_lines(collected_items, constants, FlexLineCollectionRound::Normal)
-            .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
-        resolve_flex_round(
+    if !collected_items.iter().any(CollectedFlexItem::is_collapsed) {
+        return resolve_flex_round(
             tree,
             node,
             input,
-            constants,
-            collected_items.to_vec(),
-            lines,
-        )?
-    })
+            &first_constants,
+            first_items.into_owned(),
+            first_lines,
+        );
+    }
+
+    let (_, _, first_lines) = resolve_flex_round(
+        tree,
+        node,
+        input,
+        &first_constants,
+        first_items.into_owned(),
+        first_lines,
+    )?;
+    let struts = CollapsedFlexStruts::capture(collected_items, &first_lines);
+    let mut second_constants = *constants;
+    let second_round = FlexLineCollectionRound::Collapsed;
+    let second_items = collect_with_column_cross_offer(
+        tree,
+        node,
+        &mut second_constants,
+        collected_items,
+        input.run_mode(),
+        second_round,
+    )?;
+    let second_collection_lines =
+        collect_flex_lines(&second_items, &second_constants, second_round)
+            .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
+    let (second_items, second_lines) =
+        struts.prepare_second_round(&second_items, &second_collection_lines);
+    resolve_flex_round(
+        tree,
+        node,
+        input,
+        &second_constants,
+        second_items,
+        second_lines,
+    )
+}
+
+type FlexRoundItems<'a, Tree> =
+    std::borrow::Cow<'a, [CollectedFlexItem<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>]>;
+
+fn collect_with_column_cross_offer<'input, 'a, Tree, M>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    constants: &mut Constants<Tree::Scalar>,
+    collected_items: &'a [CollectedFlexItem<Tree::Node, Tree::Scalar>],
+    run_mode: RunMode,
+    round: FlexLineCollectionRound,
+) -> LayoutResultOf<Tree::Node, FlexRoundItems<'a, Tree>, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    if constants.is_wrapping_column()
+        && constants
+            .axes
+            .cross_size(constants.node_outer_size)
+            .is_none()
+        && constants
+            .axes
+            .cross_size(constants.sizing_request.axes())
+            .operation()
+            == crate::SizingOperation::MaxContent
+        && let Some(offer) = collected_items
+            .iter()
+            .filter(|item| round == FlexLineCollectionRound::Normal || !item.is_collapsed())
+            .map(|item| {
+                constants.axes.cross_size(item.hypothetical_size)
+                    + constants.axes.cross_edge_sum(item.margin)
+            })
+            .reduce(Tree::Scalar::max)
+    {
+        // The common cross offer can change flex bases as well as line widths.
+        constants.cross_content_offer = Some(offer.max(Tree::Scalar::ZERO));
+        return collect_items(tree, node, constants, run_mode).map(std::borrow::Cow::Owned);
+    }
+    Ok(std::borrow::Cow::Borrowed(collected_items))
 }
 
 fn resolve_flex_round<'input, Tree, M>(
