@@ -1702,25 +1702,26 @@ where
         } else {
             None
         };
-        let expansion = if let Some(count) = count {
-            let capacity = auto_repeat_track_capacity(components, count)
-                .map_err(|error| grid_track_sizing_error(node, error))?;
-            let mut tracks = Vec::new();
+        let capacity = match count {
+            Some(count) => auto_repeat_track_capacity(components, count).map(Some),
+            None => fixed_repeat_track_capacity(components),
+        }
+        .map_err(|error| grid_track_sizing_error(node, error))?;
+        let mut tracks = Vec::new();
+        if let Some(capacity) = capacity {
             tracks.try_reserve_exact(capacity).map_err(|_| {
                 grid_track_sizing_error(node, SpanningContributionError::Allocation)
             })?;
-            expand_track_components_into(
-                components,
-                basis,
-                gap,
-                None,
-                AutoRepeatSizing::ResolvedGroupCount(count),
-                tracks,
-            )
-        } else {
-            expand_track_components_with_origins(components, basis, gap, None, auto_repeat_sizing)
-        };
-        expansion.map_err(|status| crate::error::value_resolution_error(node, status))
+        }
+        expand_track_components_into(
+            components,
+            basis,
+            gap,
+            None,
+            count.map_or(auto_repeat_sizing, AutoRepeatSizing::ResolvedGroupCount),
+            tracks,
+        )
+        .map_err(|status| crate::error::value_resolution_error(node, status))
     };
     let column_expansion = if let Some(columns) = &parent_context.columns {
         TrackExpansionOf::inherited(

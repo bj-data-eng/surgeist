@@ -436,6 +436,22 @@ pub(in crate::grid) fn intrinsic_auto_repeat_track_count<S: LayoutScalar>(
         .transpose()
 }
 
+pub(in crate::grid) fn fixed_repeat_track_capacity<S: LayoutScalar>(
+    components: &[TrackComponentOf<S>],
+) -> Result<Option<usize>, SpanningContributionError<S>> {
+    let has_fixed_repeat = components.iter().any(|component| {
+        matches!(component, TrackComponentOf::Repeat(repetition)
+            if matches!(repetition.repeat(), TrackRepeat::Count(_)))
+    });
+    if !has_fixed_repeat
+        || subgrid_components(components)
+        || fixed_repeat_has_intrinsic_tracks(components).is_none()
+    {
+        return Ok(None);
+    }
+    checked_track_capacity(components, None).map(Some)
+}
+
 pub(in crate::grid) fn auto_repeat_track_capacity<S: LayoutScalar>(
     components: &[TrackComponentOf<S>],
     count: usize,
