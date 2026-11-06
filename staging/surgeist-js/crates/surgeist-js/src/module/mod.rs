@@ -330,7 +330,7 @@ impl Module {
     pub fn from_value_as_default(value: JsValue, context: &mut Context) -> Self {
         Module::synthetic(
             &[js_string!("default")],
-            SyntheticModuleInitializer::from_copy_closure_with_captures(
+            SyntheticModuleInitializer::from_fn_with_captures(
                 move |m, value, _ctx| {
                     m.set_export(&js_string!("default"), value.clone())?;
                     Ok(())
@@ -781,7 +781,7 @@ impl<T: IntoIterator<Item = (JsString, NativeFunction)> + Clone> IntoJsModule fo
 
         Module::synthetic(
             exports.as_slice(),
-            SyntheticModuleInitializer::from_copy_closure_with_captures(
+            SyntheticModuleInitializer::from_fn_with_captures(
                 |module, (names, fns), context| {
                     for (name, f) in names.iter().zip(fns.iter()) {
                         module

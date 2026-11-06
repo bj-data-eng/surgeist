@@ -123,7 +123,7 @@ impl Array {
                     CoroutineState::Continue(value) => {
                         // Coroutine yielded. We need to allocate it for a future execution.
                         JsPromise::resolve(value, context)?.await_native(
-                            NativeCoroutine::from_copy_closure_with_captures(
+                            NativeCoroutine::from_fn_with_captures(
                                 from_array_like,
                                 coroutine_state,
                             ),
@@ -173,7 +173,7 @@ impl Array {
             ) {
                 CoroutineState::Continue(value) => {
                     JsPromise::resolve(value, context)?.await_native(
-                        NativeCoroutine::from_copy_closure_with_captures(
+                        NativeCoroutine::from_fn_with_captures(
                             from_async_iterator,
                             coroutine_state,
                         ),

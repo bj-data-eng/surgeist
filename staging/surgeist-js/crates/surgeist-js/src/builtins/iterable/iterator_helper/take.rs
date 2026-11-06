@@ -33,7 +33,7 @@ impl Take {
         // 10. Let closure be a new Abstract Closure with no parameters that
         //     captures iterated and integerLimit and performs the following steps
         //     when called:
-        NativeCoroutine::from_copy_closure_with_captures(
+        NativeCoroutine::from_fn_with_captures(
             // a. Let remaining be integerLimit.
             // b. Repeat,
             |completion, state, context| {

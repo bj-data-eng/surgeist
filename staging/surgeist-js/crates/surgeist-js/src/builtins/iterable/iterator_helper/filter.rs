@@ -34,7 +34,7 @@ impl Filter {
     pub(crate) fn new(iterated: IteratorRecord, predicate: JsFunction) -> NativeCoroutine {
         // 6. Let closure be a new Abstract Closure with no parameters that captures
         //    iterated and predicate and performs the following steps when called:
-        NativeCoroutine::from_copy_closure_with_captures(
+        NativeCoroutine::from_fn_with_captures(
             // a. Let counter be 0.
             // b. Repeat,
             |completion, state, context| {

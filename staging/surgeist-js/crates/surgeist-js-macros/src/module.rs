@@ -271,11 +271,12 @@ fn module_impl_impl(_args: ModuleArguments, mut mod_: ItemMod) -> SpannedResult<
             ) -> surgeist_js::Module {
                 surgeist_js::Module::synthetic(
                     &[ #module_exports ],
-                    surgeist_js::module::SyntheticModuleInitializer::from_copy_closure(
-                        |m, context| {
+                    surgeist_js::module::SyntheticModuleInitializer::from_fn_with_captures(
+                        |m, (), context| {
                             #module_fn
                             Ok(())
-                        }
+                        },
+                        (),
                     ),
                     None,
                     realm,

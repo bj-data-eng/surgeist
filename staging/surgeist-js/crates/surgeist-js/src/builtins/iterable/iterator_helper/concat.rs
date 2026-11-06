@@ -46,7 +46,7 @@ impl Concat {
     pub(crate) fn new(iterables: VecDeque<IterableRecord>) -> NativeCoroutine {
         // 3. Let closure be a new Abstract Closure with no parameters that captures
         //    iterables and performs the following steps when called:
-        NativeCoroutine::from_copy_closure_with_captures(
+        NativeCoroutine::from_fn_with_captures(
             // a. For each Record iterable of iterables, do
             |completion, state, context| {
                 let st = state.take();

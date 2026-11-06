@@ -38,24 +38,16 @@ trait TraceableCoroutine: Trace {
 }
 
 #[derive(Trace, Finalize)]
-struct Coroutine<F, T>
-where
-    F: Fn(CompletionRecord, &T, &mut Context) -> CoroutineState + Copy,
-    T: Trace,
-{
-    // A Copy callback cannot own collector handles. Captures are traced separately.
+struct Coroutine<T: Trace> {
+    // A function pointer holds no JavaScript state. Captures are traced separately.
     #[unsafe_ignore_trace]
-    f: F,
+    callback: fn(CompletionRecord, &T, &mut Context) -> CoroutineState,
     captures: T,
 }
 
-impl<F, T> TraceableCoroutine for Coroutine<F, T>
-where
-    F: Fn(CompletionRecord, &T, &mut Context) -> CoroutineState + Copy,
-    T: Trace,
-{
+impl<T: Trace> TraceableCoroutine for Coroutine<T> {
     fn call(&self, completion: CompletionRecord, context: &mut Context) -> CoroutineState {
-        (self.f)(completion, &self.captures, context)
+        (self.callback)(completion, &self.captures, context)
     }
 }
 
@@ -74,17 +66,13 @@ impl std::fmt::Debug for NativeCoroutine {
 }
 
 impl NativeCoroutine {
-    /// Creates a `NativeCoroutine` from a `Copy` closure and a list of traceable captures.
-    pub(crate) fn from_copy_closure_with_captures<F, T>(closure: F, captures: T) -> Self
-    where
-        F: Fn(CompletionRecord, &T, &mut Context) -> CoroutineState + Copy + 'static,
-        T: Trace + 'static,
-    {
+    /// Creates a callback with all stored state in its traceable captures.
+    pub(crate) fn from_fn_with_captures<T: Trace + 'static>(
+        callback: fn(CompletionRecord, &T, &mut Context) -> CoroutineState,
+        captures: T,
+    ) -> Self {
         Self {
-            inner: Gc::new(Box::new(Coroutine {
-                f: closure,
-                captures,
-            })),
+            inner: Gc::new(Box::new(Coroutine { callback, captures })),
         }
     }
 

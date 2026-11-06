@@ -19,24 +19,16 @@ trait TraceableCallback: Trace {
 }
 
 #[derive(Trace, Finalize)]
-struct Callback<F, T>
-where
-    F: Fn(&SyntheticModule, &T, &mut Context) -> JsResult<()> + Copy,
-    T: Trace,
-{
-    // A Copy callback cannot own collector handles. Captures are traced separately.
+struct Callback<T: Trace> {
+    // A function pointer holds no JavaScript state. Captures are traced separately.
     #[unsafe_ignore_trace]
-    f: F,
+    callback: fn(&SyntheticModule, &T, &mut Context) -> JsResult<()>,
     captures: T,
 }
 
-impl<F, T> TraceableCallback for Callback<F, T>
-where
-    F: Fn(&SyntheticModule, &T, &mut Context) -> JsResult<()> + Copy,
-    T: Trace,
-{
+impl<T: Trace> TraceableCallback for Callback<T> {
     fn call(&self, module: &SyntheticModule, context: &mut Context) -> JsResult<()> {
-        (self.f)(module, &self.captures, context)
+        (self.callback)(module, &self.captures, context)
     }
 }
 
@@ -56,25 +48,26 @@ impl std::fmt::Debug for SyntheticModuleInitializer {
 }
 
 impl SyntheticModuleInitializer {
-    /// Creates a `SyntheticModuleInitializer` from a [`Copy`] closure.
-    pub fn from_copy_closure<F>(closure: F) -> Self
-    where
-        F: Fn(&SyntheticModule, &mut Context) -> JsResult<()> + Copy + 'static,
-    {
-        Self::from_copy_closure_with_captures(move |module, (), context| closure(module, context), ())
-    }
-
-    /// Creates a `SyntheticModuleInitializer` from a [`Copy`] closure and a list of traceable captures.
-    pub fn from_copy_closure_with_captures<F, T>(closure: F, captures: T) -> Self
-    where
-        F: Fn(&SyntheticModule, &T, &mut Context) -> JsResult<()> + Copy + 'static,
-        T: Trace + 'static,
-    {
+    /// Creates a callback with all stored state in its traceable captures.
+    ///
+    /// ```compile_fail
+    /// use surgeist_js::module::SyntheticModuleInitializer;
+    ///
+    /// let hidden_state = 7;
+    /// SyntheticModuleInitializer::from_fn_with_captures(
+    ///     move |_, (), _| {
+    ///         assert_eq!(hidden_state, 7);
+    ///         Ok(())
+    ///     },
+    ///     (),
+    /// );
+    /// ```
+    pub fn from_fn_with_captures<T: Trace + 'static>(
+        callback: fn(&SyntheticModule, &T, &mut Context) -> JsResult<()>,
+        captures: T,
+    ) -> Self {
         Self {
-            inner: Gc::new(Box::new(Callback {
-                f: closure,
-                captures,
-            })),
+            inner: Gc::new(Box::new(Callback { callback, captures })),
         }
     }
 
