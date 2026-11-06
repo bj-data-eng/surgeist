@@ -20,16 +20,11 @@ pub(crate) struct SliceString {
 }
 
 impl SliceString {
-    /// Create a new slice string given its members.
-    ///
-    /// # Safety
-    /// The caller is responsible for ensuring start and end are safe (`start` <= `end`,
-    /// `start` >= 0, `end` <= `owned.len()`).
+    /// Creates a slice string from a valid code-unit range.
     #[inline]
     #[must_use]
-    pub(crate) unsafe fn new(owned: &JsString, start: usize, end: usize) -> Self {
-        // SAFETY: invariant stated for this whole function.
-        let inner = unsafe { owned.as_str().get_unchecked(start..end) };
+    pub(crate) fn new(owned: &JsString, start: usize, end: usize) -> Self {
+        let inner = owned.as_str().get_expect(start..end);
         SliceString {
             vtable: JsStringVTable {
                 clone: slice_clone,

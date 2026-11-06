@@ -800,14 +800,8 @@ impl String {
             IntegerOrInfinity::NegativeInfinity => 0,
         } as usize;
 
-        // 12. If from ≥ to, return the empty String.
-        if from >= to {
-            Ok(js_string!().into())
-        } else {
-            // 13. Return the substring of S from from to to.
-            // SAFETY: We already checked that `from` and `to` are within bounds.
-            Ok(unsafe { JsString::slice_unchecked(&string, from, to).into() })
-        }
+        // 12–13. Return the substring, or the empty String if from ≥ to.
+        Ok(string.slice(from, to).into())
     }
 
     /// `String.prototype.startWith( searchString[, position] )`
@@ -1930,8 +1924,7 @@ impl String {
         let to = max(final_start, final_end);
 
         // 10. Return the substring of S from from to to.
-        // SAFETY: We already checked that `from` and `to` are within bounds.
-        Ok(unsafe { JsString::slice_unchecked(&string, from, to).into() })
+        Ok(string.get_expect(from..to).into())
     }
 
     /// `String.prototype.split ( separator, limit )`

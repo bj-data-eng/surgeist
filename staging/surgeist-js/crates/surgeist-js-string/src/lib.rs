@@ -368,8 +368,7 @@ impl JsString {
             }
         };
 
-        // SAFETY: `position(...)` and `rposition(...)` cannot exceed the length of the string.
-        unsafe { Self::slice_unchecked(self, start, end + 1) }
+        self.slice_range(start, end + 1)
     }
 
     /// Trim whitespace from the start of the [`JsString`].
@@ -386,8 +385,7 @@ impl JsString {
             return StaticJsStrings::EMPTY_STRING;
         };
 
-        // SAFETY: `position(...)` cannot exceed the length of the string.
-        unsafe { Self::slice_unchecked(self, start, self.len()) }
+        self.slice_range(start, self.len())
     }
 
     /// Trim whitespace from the end of the [`JsString`].
@@ -404,9 +402,7 @@ impl JsString {
             return StaticJsStrings::EMPTY_STRING;
         };
 
-        // SAFETY: `rposition(...)` cannot exceed the length of the string. `end` is the first
-        //         character that is not trimmable, therefore we need to add 1 to it.
-        unsafe { Self::slice_unchecked(self, 0, end + 1) }
+        self.slice_range(0, end + 1)
     }
 
     /// Returns true if needle is a prefix of the [`JsStr`].
@@ -527,38 +523,27 @@ impl JsString {
         }
     }
 
-    /// Create a [`JsString`] from an existing `JsString` and start, end
-    /// range. `end` is 1 past the last character (or `== data.len()`
-    /// for the last character).
-    ///
-    /// # Safety
-    /// It is the responsibility of the caller to ensure:
-    ///   - `start` <= `end`. If `start` == `end`, the string is empty.
-    ///   - `end` <= `data.len()`.
+    /// Builds a slice with an exclusive end. Invalid ranges panic.
     #[inline]
     #[must_use]
-    pub unsafe fn slice_unchecked(data: &JsString, start: usize, end: usize) -> Self {
-        // Safety: invariant stated by this whole function.
-        let slice = Box::new(unsafe { SliceString::new(data, start, end) });
+    fn slice_range(&self, start: usize, end: usize) -> Self {
+        let slice = Box::new(SliceString::new(self, start, end));
 
         Self {
             ptr: NonNull::from(Box::leak(slice)).cast(),
         }
     }
 
-    /// Create a [`JsString`] from an existing `JsString` and start, end
-    /// range. Returns None if the start/end is invalid.
+    /// Slices the string, clamping the end to the string length.
+    /// Returns the empty string if the start is at or beyond the clamped end.
     #[inline]
     #[must_use]
-    pub fn slice(&self, p1: usize, mut p2: usize) -> JsString {
-        if p2 > self.len() {
-            p2 = self.len();
-        }
-        if p1 >= p2 {
+    pub fn slice(&self, start: usize, end: usize) -> JsString {
+        let end = end.min(self.len());
+        if start >= end {
             StaticJsStrings::EMPTY_STRING
         } else {
-            // SAFETY: We just checked the conditions.
-            unsafe { Self::slice_unchecked(self, p1, p2) }
+            self.slice_range(start, end)
         }
     }
 
@@ -978,12 +963,12 @@ macro_rules! impl_js_string_slice_index {
             fn get(self, str: &JsString) -> Option<JsString> {
                 let start = match std::ops::RangeBounds::<usize>::start_bound(&self) {
                     std::ops::Bound::Included(start) => *start,
-                    std::ops::Bound::Excluded(start) => *start + 1,
+                    std::ops::Bound::Excluded(start) => start.checked_add(1)?,
                     std::ops::Bound::Unbounded => 0,
                 };
 
                 let end = match std::ops::RangeBounds::<usize>::end_bound(&self) {
-                    std::ops::Bound::Included(end) => *end + 1,
+                    std::ops::Bound::Included(end) => end.checked_add(1)?,
                     std::ops::Bound::Excluded(end) => *end,
                     std::ops::Bound::Unbounded => str.len(),
                 };
@@ -991,8 +976,7 @@ macro_rules! impl_js_string_slice_index {
                 if end > str.len() || start > end {
                     None
                 } else {
-                    // SAFETY: we just checked the indices.
-                    Some(unsafe { JsString::slice_unchecked(str, start, end) })
+                    Some(str.slice_range(start, end))
                 }
             }
         }
