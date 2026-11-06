@@ -84,7 +84,7 @@ impl Process {
                 Attribute::WRITABLE | Attribute::CONFIGURABLE,
             )
             .function(
-                NativeFunction::from_copy_closure_with_captures(
+                NativeFunction::from_fn_with_captures(
                     |_, _, provider, _| provider.cwd().map(JsValue::from),
                     provider,
                 ),

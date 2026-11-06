@@ -62,7 +62,7 @@ impl Await {
         // 4. Let onFulfilled be CreateBuiltinFunction(fulfilledClosure, 1, "", « »).
         let on_fulfilled = FunctionObjectBuilder::new(
             context.realm(),
-            NativeFunction::from_copy_closure_with_captures(
+            NativeFunction::from_fn_with_captures(
                 |_this, args, captures, context| {
                     // a. Let prevContext be the running execution context.
                     // b. Suspend prevContext.
@@ -101,7 +101,7 @@ impl Await {
         // 6. Let onRejected be CreateBuiltinFunction(rejectedClosure, 1, "", « »).
         let on_rejected = FunctionObjectBuilder::new(
             context.realm(),
-            NativeFunction::from_copy_closure_with_captures(
+            NativeFunction::from_fn_with_captures(
                 |_this, args, captures, context| {
                     // a. Let prevContext be the running execution context.
                     // b. Suspend prevContext.

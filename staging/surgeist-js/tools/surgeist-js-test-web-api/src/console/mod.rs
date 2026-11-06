@@ -21,6 +21,9 @@ pub(crate) mod tests;
 
 pub use table::TableData;
 
+use comfy_table::{Cell, Table};
+use rustc_hash::FxHashMap;
+use std::{collections::hash_map::Entry, fmt::Write as _, io::Write, time::SystemTime};
 use surgeist_js::JsVariant;
 use surgeist_js::property::Attribute;
 use surgeist_js::{
@@ -31,11 +34,6 @@ use surgeist_js::{
     value::{JsValue, Numeric},
 };
 use surgeist_js_gc::{Finalize, Gc, GcRefCell, Trace};
-use comfy_table::{Cell, Table};
-use rustc_hash::FxHashMap;
-use std::{
-    collections::hash_map::Entry, fmt::Write as _, io::Write, time::SystemTime,
-};
 
 /// Registers the `console` object into the given context, using the [`DefaultLogger`].
 ///
@@ -356,28 +354,70 @@ impl Console {
     where
         L: Logger + 'static,
     {
+        type ConsoleMethod<L> =
+            fn(&JsValue, &[JsValue], &Console, &L, &mut Context) -> JsResult<JsValue>;
+
+        type ConsoleMethodMut<L> =
+            fn(&JsValue, &[JsValue], &mut Console, &L, &mut Context) -> JsResult<JsValue>;
+
         fn console_method<L: Logger + 'static>(
-            f: fn(&JsValue, &[JsValue], &Console, &L, &mut Context) -> JsResult<JsValue>,
+            f: ConsoleMethod<L>,
             state: Gc<GcRefCell<Console>>,
             logger: Gc<L>,
         ) -> NativeFunction {
-            NativeFunction::from_copy_closure_with_captures(
-                move |this, args, (state, logger), context| {
-                    f(this, args, &state.borrow(), logger, context)
+            #[derive(Trace, Finalize)]
+            struct Captures<L: Logger + 'static> {
+                #[unsafe_ignore_trace]
+                callback: ConsoleMethod<L>,
+                state: Gc<GcRefCell<Console>>,
+                logger: Gc<L>,
+            }
+
+            NativeFunction::from_fn_with_captures(
+                |this, args, captures, context| {
+                    (captures.callback)(
+                        this,
+                        args,
+                        &captures.state.borrow(),
+                        &captures.logger,
+                        context,
+                    )
                 },
-                (state, logger),
+                Captures {
+                    callback: f,
+                    state,
+                    logger,
+                },
             )
         }
         fn console_method_mut<L: Logger + 'static>(
-            f: fn(&JsValue, &[JsValue], &mut Console, &L, &mut Context) -> JsResult<JsValue>,
+            f: ConsoleMethodMut<L>,
             state: Gc<GcRefCell<Console>>,
             logger: Gc<L>,
         ) -> NativeFunction {
-            NativeFunction::from_copy_closure_with_captures(
-                move |this, args, (state, logger), context| {
-                    f(this, args, &mut state.borrow_mut(), logger, context)
+            #[derive(Trace, Finalize)]
+            struct Captures<L: Logger + 'static> {
+                #[unsafe_ignore_trace]
+                callback: ConsoleMethodMut<L>,
+                state: Gc<GcRefCell<Console>>,
+                logger: Gc<L>,
+            }
+
+            NativeFunction::from_fn_with_captures(
+                |this, args, captures, context| {
+                    (captures.callback)(
+                        this,
+                        args,
+                        &mut captures.state.borrow_mut(),
+                        &captures.logger,
+                        context,
+                    )
                 },
-                (state, logger),
+                Captures {
+                    callback: f,
+                    state,
+                    logger,
+                },
             )
         }
 

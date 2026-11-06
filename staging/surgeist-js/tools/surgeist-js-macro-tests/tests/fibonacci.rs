@@ -3,9 +3,9 @@
 
 // You can execute this example with `cargo run --example gcd`
 
-use surgeist_js::object::builtins::{JsFunction, TypedJsFunction};
-use surgeist_js::{Context, IntoJsFunctionCopied, JsResult, Module, Source, js_error, js_string};
 use std::path::PathBuf;
+use surgeist_js::object::builtins::{JsFunction, TypedJsFunction};
+use surgeist_js::{Context, IntoJsFunction, JsResult, Module, Source, js_error, js_string};
 
 #[allow(clippy::needless_pass_by_value)]
 fn fibonacci(
@@ -39,6 +39,9 @@ fn fibonacci_throw(
 
 #[test]
 fn fibonacci_test() {
+    type JsStep = TypedJsFunction<(usize, JsFunction, JsFunction), usize>;
+    type RustStep = fn(usize, JsStep, JsStep, &mut Context) -> JsResult<usize>;
+
     let assets_dir =
         PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("tests/assets");
 
@@ -58,8 +61,8 @@ fn fibonacci_test() {
         .get_typed_fn::<(usize, JsFunction, JsFunction), usize>(js_string!("fibonacci"), context)
         .unwrap();
 
-    let fibonacci_rust = fibonacci
-        .into_js_function_copied(context)
+    let fibonacci_rust = (fibonacci as RustStep)
+        .into_js_function()
         .to_js_function(context.realm());
 
     assert_eq!(
@@ -76,8 +79,8 @@ fn fibonacci_test() {
         55
     );
 
-    let fibonacci_throw = fibonacci_throw
-        .into_js_function_copied(context)
+    let fibonacci_throw = (fibonacci_throw as RustStep)
+        .into_js_function()
         .to_js_function(context.realm());
     assert!(
         fibonacci_js

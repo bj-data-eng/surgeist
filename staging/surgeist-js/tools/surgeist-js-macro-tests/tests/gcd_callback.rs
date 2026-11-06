@@ -1,12 +1,12 @@
 #![allow(unused_crate_dependencies)]
 //! A test that mimics the `surgeist_js`'s GCD test with a typed callback.
 
-use surgeist_js::interop::ContextData;
-use surgeist_js::object::builtins::JsFunction;
-use surgeist_js::{Context, IntoJsFunctionCopied, Module, Source, js_string};
-use surgeist_js_gc::Gc;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use surgeist_js::interop::ContextData;
+use surgeist_js::object::builtins::JsFunction;
+use surgeist_js::{Context, IntoJsFunction, Module, Source, js_string};
+use surgeist_js_gc::Gc;
 
 fn callback_from_js(ContextData(r): ContextData<Gc<AtomicUsize>>, result: usize) {
     r.store(result, Ordering::Relaxed);
@@ -35,8 +35,8 @@ fn gcd_callback() {
         .get_typed_fn::<(i32, i32, JsFunction), ()>(js_string!("gcd_callback"), context)
         .unwrap();
 
-    let function = callback_from_js
-        .into_js_function_copied(context)
+    let function = (callback_from_js as fn(ContextData<Gc<AtomicUsize>>, usize))
+        .into_js_function()
         .to_js_function(context.realm());
 
     result.store(0, Ordering::Relaxed);

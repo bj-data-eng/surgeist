@@ -607,7 +607,7 @@ impl NumberFormat {
                 context.realm(),
                 // Number Format Functions
                 // <https://tc39.es/ecma402/#sec-number-format-functions>
-                NativeFunction::from_copy_closure_with_captures(
+                NativeFunction::from_fn_with_captures(
                     |_, args, nf, context| {
                         // 1. Let nf be F.[[NumberFormat]].
                         // 2. Assert: Type(nf) is Object and nf has an [[InitializedNumberFormat]] internal slot.

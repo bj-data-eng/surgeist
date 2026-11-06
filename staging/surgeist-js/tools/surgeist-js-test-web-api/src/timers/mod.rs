@@ -11,9 +11,9 @@ use surgeist_js::job::{CancellationToken, IntervalJob, NativeJobFn};
 use surgeist_js::job::{NativeJob, TimeoutJob};
 use surgeist_js::object::builtins::JsFunction;
 
-use surgeist_js::{Context, IntoJsFunctionCopied, JsResult, JsValue, js_error, js_string};
 use std::collections::HashMap;
 use std::num::NonZeroU32;
+use surgeist_js::{Context, IntoJsFunction, JsResult, JsValue, js_error, js_string};
 
 #[cfg(test)]
 mod tests;
@@ -225,14 +225,17 @@ pub fn register(context: &mut Context) -> JsResult<()> {
 /// # Errors
 /// Any error returned by the context when registering the global functions.
 pub fn register_functions(context: &mut Context) -> JsResult<()> {
-    let set_timeout_ = set_timeout.into_js_function_copied(context);
+    type ScheduleCallback =
+        fn(Option<JsFunction>, Option<JsValue>, JsRest<'_>, &mut Context) -> JsResult<u32>;
+    let set_timeout_ = (set_timeout as ScheduleCallback).into_js_function();
     context.register_global_callable(js_string!("setTimeout"), 1, set_timeout_)?;
 
-    let set_interval_ = set_interval.into_js_function_copied(context);
+    let set_interval_ = (set_interval as ScheduleCallback).into_js_function();
     context.register_global_callable(js_string!("setInterval"), 1, set_interval_)?;
 
     // These two methods are identical, just under different names in JavaScript.
-    let clear_timeout_ = clear_timeout.into_js_function_copied(context);
+    let clear_timeout_ = (clear_timeout as fn(Option<JsValue>, &mut Context) -> JsResult<JsValue>)
+        .into_js_function();
     context.register_global_callable(js_string!("clearTimeout"), 1, clear_timeout_.clone())?;
     context.register_global_callable(js_string!("clearInterval"), 1, clear_timeout_)?;
 

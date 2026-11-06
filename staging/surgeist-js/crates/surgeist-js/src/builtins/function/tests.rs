@@ -11,13 +11,48 @@ use indoc::indoc;
 use surgeist_js_macros::js_str;
 
 #[test]
+fn native_async_job_owns_captures_after_the_function_drops() {
+    use crate::{Context, builtins::promise::PromiseState, object::JsPromise};
+    use surgeist_js_gc::{WeakGc, force_collect};
+
+    let capture = JsObject::with_null_proto();
+    let weak_capture = WeakGc::new(capture.inner());
+    let callback = NativeFunction::from_async_fn_with_captures(
+        |_, _, capture, _| Box::pin(async move { Ok(capture.clone().into()) }),
+        capture,
+    );
+    let mut context = Context::default();
+    let promise = callback
+        .call(&JsValue::undefined(), &[], &mut context)
+        .unwrap()
+        .as_object()
+        .unwrap();
+    let promise = JsPromise::from_object(promise).unwrap();
+    drop(callback);
+
+    force_collect();
+    assert!(weak_capture.is_upgradable());
+    context.run_jobs().unwrap();
+    {
+        let PromiseState::Fulfilled(value) = promise.state() else {
+            panic!("native job did not fulfill its promise");
+        };
+        let captured = JsObject::from_inner(weak_capture.upgrade().unwrap());
+        assert_eq!(value.as_object(), Some(captured));
+    }
+    drop(promise);
+    force_collect();
+    assert!(!weak_capture.is_upgradable());
+}
+
+#[test]
 fn nested_native_invocation_restores_the_outer_activation() {
     use crate::{Context, JsError, builtins::OrdinaryObject};
 
     let inner_context = Context::default();
     let inner = FunctionObjectBuilder::new(
         inner_context.realm(),
-        NativeFunction::from_copy_closure_with_captures(
+        NativeFunction::from_fn_with_captures(
             |_, args, inner_realm, context| {
                 assert!(context.realm() == inner_realm);
                 surgeist_js_gc::force_collect();
@@ -34,7 +69,7 @@ fn nested_native_invocation_restores_the_outer_activation() {
     .constructor(true)
     .build();
     let context = &mut Context::default();
-    let outer = NativeFunction::from_copy_closure_with_captures(
+    let outer = NativeFunction::from_fn_with_captures(
         |_, _, inner, context| {
             let active = context.active_function_object().expect("outer activation");
             let realm = context.realm().clone();
@@ -199,7 +234,7 @@ fn closure_capture_clone() {
 
             let func = FunctionObjectBuilder::new(
                 ctx.realm(),
-                NativeFunction::from_copy_closure_with_captures(
+                NativeFunction::from_fn_with_captures(
                     |_, _, captures, context| {
                         let (string, object) = &captures;
 

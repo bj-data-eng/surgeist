@@ -1305,7 +1305,7 @@ impl OrdinaryObject {
         // obj and performs the following steps when called:
         let closure = FunctionObjectBuilder::new(
             context.realm(),
-            NativeFunction::from_copy_closure_with_captures(
+            NativeFunction::from_fn_with_captures(
                 |_, args, obj, context| {
                     let key = args.get_or_undefined(0);
                     let value = args.get_or_undefined(1);

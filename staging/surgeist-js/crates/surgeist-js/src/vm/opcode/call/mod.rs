@@ -450,7 +450,7 @@ async fn load_dyn_import(
     // 5. Let onRejected be CreateBuiltinFunction(rejectedClosure, 1, "", « »).
     let on_rejected = FunctionObjectBuilder::new(
         context.borrow().realm(),
-        NativeFunction::from_copy_closure_with_captures(
+        NativeFunction::from_fn_with_captures(
             |_, args, cap, context| {
                 //     a. Perform ! Call(promiseCapability.[[Reject]], undefined, « reason »).
                 cap.reject()
@@ -469,7 +469,7 @@ async fn load_dyn_import(
     // 7. Let linkAndEvaluate be CreateBuiltinFunction(linkAndEvaluateClosure, 0, "", « »).
     let link_evaluate = FunctionObjectBuilder::new(
         context.borrow().realm(),
-        NativeFunction::from_copy_closure_with_captures(
+        NativeFunction::from_fn_with_captures(
             |_, _, (module, cap, on_rejected), context| {
                 // a. Let link be Completion(module.Link()).
                 // b. If link is an abrupt completion, then
@@ -490,7 +490,7 @@ async fn load_dyn_import(
                 // e. Let onFulfilled be CreateBuiltinFunction(fulfilledClosure, 0, "", « »).
                 let fulfill = FunctionObjectBuilder::new(
                     context.realm(),
-                    NativeFunction::from_copy_closure_with_captures(
+                    NativeFunction::from_fn_with_captures(
                         |_, _, (module, cap), context| {
                             // i. Let namespace be GetModuleNamespace(module).
                             let namespace = module.namespace(context);

@@ -1101,7 +1101,7 @@ impl JsPromise {
         let resolve = {
             let state = state.clone();
 
-            NativeFunction::from_copy_closure_with_captures(
+            NativeFunction::from_fn_with_captures(
                 move |_, args, state, _| {
                     finish(state, Ok(args.get_or_undefined(0).clone()));
                     Ok(JsValue::undefined())
@@ -1113,7 +1113,7 @@ impl JsPromise {
         let reject = {
             let state = state.clone();
 
-            NativeFunction::from_copy_closure_with_captures(
+            NativeFunction::from_fn_with_captures(
                 move |_, args, state, _| {
                     let err = JsError::from_opaque(args.get_or_undefined(0).clone());
                     finish(state, Err(err));
@@ -1240,7 +1240,7 @@ impl JsPromise {
         // 4. Let onFulfilled be CreateBuiltinFunction(fulfilledClosure, 1, "", « »).
         let on_fulfilled = FunctionObjectBuilder::new(
             context.realm(),
-            NativeFunction::from_copy_closure_with_captures(
+            NativeFunction::from_fn_with_captures(
                 |_this, args, captures, context| {
                     // a. Let prevContext be the running execution context.
                     // b. Suspend prevContext.
@@ -1304,7 +1304,7 @@ impl JsPromise {
         // 6. Let onRejected be CreateBuiltinFunction(rejectedClosure, 1, "", « »).
         let on_rejected = FunctionObjectBuilder::new(
             context.realm(),
-            NativeFunction::from_copy_closure_with_captures(
+            NativeFunction::from_fn_with_captures(
                 |_this, args, captures, context| {
                     // a. Let prevContext be the running execution context.
                     // b. Suspend prevContext.

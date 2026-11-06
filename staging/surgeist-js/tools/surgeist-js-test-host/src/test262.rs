@@ -253,7 +253,7 @@ fn agent_obj(handles: WorkerHandles, console: bool, context: &mut Context) -> Js
 
     let (reports_tx, reports_rx) = mpsc::channel();
 
-    let start = NativeFunction::from_copy_closure_with_captures(
+    let start = NativeFunction::from_fn_with_captures(
         |_, args, state, context| {
             let script = args
                 .get_or_undefined(0)
@@ -299,7 +299,7 @@ fn agent_obj(handles: WorkerHandles, console: bool, context: &mut Context) -> Js
     );
 
     // Test262 does not use the second numeric argument.
-    let broadcast = NativeFunction::from_copy_closure_with_captures(
+    let broadcast = NativeFunction::from_fn_with_captures(
         |_, args, bus, _| {
             let buffer = args.get_or_undefined(0).as_object().ok_or_else(|| {
                 JsNativeError::typ().with_message("argument was not a shared array")
@@ -318,7 +318,7 @@ fn agent_obj(handles: WorkerHandles, console: bool, context: &mut Context) -> Js
         bus,
     );
 
-    let get_report = NativeFunction::from_copy_closure_with_captures(
+    let get_report = NativeFunction::from_fn_with_captures(
         |_, _, reports, _| {
             let Ok(msg) = reports.0.try_recv() else {
                 return Ok(JsValue::null());
@@ -349,7 +349,7 @@ fn register_js262_worker(
     context: &mut Context,
 ) {
     // Test262 does not use the second numeric argument.
-    let receive_broadcast = NativeFunction::from_copy_closure_with_captures(
+    let receive_broadcast = NativeFunction::from_fn_with_captures(
         |_, args, broadcasts, context| {
             let array = broadcasts.0.borrow_mut().recv().map_err(|err| {
                 JsNativeError::typ().with_message(format!("failed to receive buffer: {err}"))
@@ -366,7 +366,7 @@ fn register_js262_worker(
         WorkerBroadcasts(RefCell::new(rx)),
     );
 
-    let report = NativeFunction::from_copy_closure_with_captures(
+    let report = NativeFunction::from_fn_with_captures(
         |_, args, reports, context| {
             let string = args.get_or_undefined(0).to_string(context)?.to_vec();
             reports.0.send(string)

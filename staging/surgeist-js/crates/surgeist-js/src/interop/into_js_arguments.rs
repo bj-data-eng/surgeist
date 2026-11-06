@@ -56,15 +56,15 @@ impl<'a> TryFromJsArgument<'a> for Ignore {
 ///
 /// For example,
 /// ```
-/// # use surgeist_js::{Context, JsValue, IntoJsFunctionCopied};
+/// # use surgeist_js::{Context, JsValue, IntoJsFunction};
 /// # use surgeist_js::interop::JsRest;
 /// # let mut context = Context::default();
-/// let sums = (|args: JsRest, context: &mut Context| -> i32 {
+/// let sums: fn(JsRest<'_>, &mut Context) -> i32 = |args, context| {
 ///     args.iter()
 ///         .map(|i| i.try_js_into::<i32>(context).unwrap())
 ///         .sum::<i32>()
-/// })
-/// .into_js_function_copied(&mut context);
+/// };
+/// let sums = sums.into_js_function();
 ///
 /// let result = sums
 ///     .call(
@@ -131,13 +131,13 @@ impl<'a> IntoIterator for JsRest<'a> {
 ///
 /// For example,
 /// ```
-/// # use surgeist_js::{Context, JsValue, IntoJsFunctionCopied};
+/// # use surgeist_js::{Context, JsValue, IntoJsFunction};
 /// # use surgeist_js::interop::JsAll;
 /// # let mut context = Context::default();
-/// let sums = (|args: JsAll<i32>, context: &mut Context| -> i32 {
+/// let sums: fn(JsAll<i32>, &mut Context) -> i32 = |args, _context| {
 ///     args.iter().sum()
-/// })
-/// .into_js_function_copied(&mut context);
+/// };
+/// let sums = sums.into_js_function();
 ///
 /// let result = sums
 ///     .call(
@@ -310,7 +310,7 @@ impl<'a, T: NativeObject + 'static> TryFromJsArgument<'a> for JsClass<T> {
 ///
 /// For example,
 /// ```
-/// # use surgeist_js::{Context, Finalize, JsData, JsValue, Trace, IntoJsFunctionCopied};
+/// # use surgeist_js::{Context, Finalize, JsData, JsValue, Trace, IntoJsFunction};
 /// # use surgeist_js::interop::ContextData;
 ///
 /// #[derive(Clone, Debug, Finalize, JsData, Trace)]
@@ -320,8 +320,9 @@ impl<'a, T: NativeObject + 'static> TryFromJsArgument<'a> for JsClass<T> {
 /// }
 /// let mut context = Context::default();
 /// context.insert_data(CustomHostDefinedStruct { counter: 123 });
-/// let f = (|ContextData(host): ContextData<CustomHostDefinedStruct>| host.counter + 1)
-///     .into_js_function_copied(&mut context);
+/// let f: fn(ContextData<CustomHostDefinedStruct>) -> usize =
+///     |ContextData(host)| host.counter + 1;
+/// let f = f.into_js_function();
 ///
 /// assert_eq!(
 ///     f.call(&JsValue::undefined(), &[], &mut context),

@@ -252,7 +252,7 @@ impl PromiseCapability {
         // 5. Let executor be CreateBuiltinFunction(executorClosure, 2, "", « »).
         let executor = FunctionObjectBuilder::new(
             context.realm(),
-            NativeFunction::from_copy_closure_with_captures(
+            NativeFunction::from_fn_with_captures(
                 |_this, args: &[JsValue], captures, _| {
                     let mut promise_capability = captures.borrow_mut();
                     // a. If promiseCapability.[[Resolve]] is not undefined, throw a TypeError exception.
@@ -680,7 +680,7 @@ impl Promise {
             // l. Set onFulfilled.[[RemainingElements]] to remainingElementsCount.
             let on_fulfilled = FunctionObjectBuilder::new(
                 context.realm(),
-                NativeFunction::from_copy_closure_with_captures(
+                NativeFunction::from_fn_with_captures(
                     |_, args, captures, context| {
                         // https://tc39.es/ecma262/#sec-promise.all-resolve-element-functions
 
@@ -898,7 +898,7 @@ impl Promise {
             // m. Set onFulfilled.[[RemainingElements]] to remainingElementsCount.
             let on_fulfilled = FunctionObjectBuilder::new(
                 context.realm(),
-                NativeFunction::from_copy_closure_with_captures(
+                NativeFunction::from_fn_with_captures(
                     |_, args, captures, context| {
                         // https://tc39.es/ecma262/#sec-promise.allsettled-resolve-element-functions
 
@@ -988,7 +988,7 @@ impl Promise {
             // u. Set onRejected.[[RemainingElements]] to remainingElementsCount.
             let on_rejected = FunctionObjectBuilder::new(
                 context.realm(),
-                NativeFunction::from_copy_closure_with_captures(
+                NativeFunction::from_fn_with_captures(
                     |_, args, captures, context| {
                         // https://tc39.es/ecma262/#sec-promise.allsettled-reject-element-functions
 
@@ -1272,7 +1272,7 @@ impl Promise {
                 // vi. Let onFulfilled be a new Abstract Closure...
                 let on_fulfilled = FunctionObjectBuilder::new(
                     context.realm(),
-                    NativeFunction::from_copy_closure_with_captures(
+                    NativeFunction::from_fn_with_captures(
                         |_, args, captures, context| {
                             // 1. If alreadyCalled.[[Value]] is true, return undefined.
                             if captures.already_called.get() {
@@ -1354,7 +1354,7 @@ impl Promise {
                     // Else (variant is all-settled), let onRejected be a new Abstract Closure...
                     let on_rejected_fn = FunctionObjectBuilder::new(
                         context.realm(),
-                        NativeFunction::from_copy_closure_with_captures(
+                        NativeFunction::from_fn_with_captures(
                             |_, args, captures, context| {
                                 // 1. If alreadyCalled.[[Value]] is true, return undefined.
                                 if captures.already_called.get() {
@@ -1573,7 +1573,7 @@ impl Promise {
             // l. Set onRejected.[[RemainingElements]] to remainingElementsCount.
             let on_rejected = FunctionObjectBuilder::new(
                 context.realm(),
-                NativeFunction::from_copy_closure_with_captures(
+                NativeFunction::from_fn_with_captures(
                     |_, args, captures, context| {
                         // https://tc39.es/ecma262/#sec-promise.any-reject-element-functions
 
@@ -2006,7 +2006,7 @@ impl Promise {
         // a. Let thenFinallyClosure be a new Abstract Closure with parameters (value) that captures onFinally and C and performs the following steps when called:
         let then_finally_closure = FunctionObjectBuilder::new(
             context.realm(),
-            NativeFunction::from_copy_closure_with_captures(
+            NativeFunction::from_fn_with_captures(
                 |_this, args, captures, context| {
                     /// Capture object for the abstract `returnValue` closure.
                     #[derive(Debug, Trace, Finalize)]
@@ -2027,7 +2027,7 @@ impl Promise {
                     // iii. Let returnValue be a new Abstract Closure with no parameters that captures value and performs the following steps when called:
                     let return_value = FunctionObjectBuilder::new(
                         context.realm(),
-                        NativeFunction::from_copy_closure_with_captures(
+                        NativeFunction::from_fn_with_captures(
                             |_this, _args, captures, _context| {
                                 // 1. Return value.
                                 Ok(captures.value.clone())
@@ -2057,7 +2057,7 @@ impl Promise {
         // c. Let catchFinallyClosure be a new Abstract Closure with parameters (reason) that captures onFinally and C and performs the following steps when called:
         let catch_finally_closure = FunctionObjectBuilder::new(
             context.realm(),
-            NativeFunction::from_copy_closure_with_captures(
+            NativeFunction::from_fn_with_captures(
                 |_this, args, captures, context| {
                     /// Capture object for the abstract `throwReason` closure.
                     #[derive(Debug, Trace, Finalize)]
@@ -2078,7 +2078,7 @@ impl Promise {
                     // iii. Let throwReason be a new Abstract Closure with no parameters that captures reason and performs the following steps when called:
                     let throw_reason = FunctionObjectBuilder::new(
                         context.realm(),
-                        NativeFunction::from_copy_closure_with_captures(
+                        NativeFunction::from_fn_with_captures(
                             |_this, _args, captures, _context| {
                                 // 1. Return ThrowCompletion(reason).
                                 Err(JsError::from_opaque(captures.reason.clone()))
@@ -2452,7 +2452,7 @@ impl Promise {
         // 4. Let resolve be CreateBuiltinFunction(stepsResolve, lengthResolve, "", « [[Promise]], [[AlreadyResolved]] »).
         let resolve = FunctionObjectBuilder::new(
             context.realm(),
-            NativeFunction::from_copy_closure_with_captures(
+            NativeFunction::from_fn_with_captures(
                 |_this, args, captures, context| {
                     // https://tc39.es/ecma262/#sec-promise-resolve-functions
 
@@ -2549,7 +2549,7 @@ impl Promise {
         // 9. Let reject be CreateBuiltinFunction(stepsReject, lengthReject, "", « [[Promise]], [[AlreadyResolved]] »).
         let reject = FunctionObjectBuilder::new(
             context.realm(),
-            NativeFunction::from_copy_closure_with_captures(
+            NativeFunction::from_fn_with_captures(
                 |_this, args, captures, context| {
                     // https://tc39.es/ecma262/#sec-promise-reject-functions
 

@@ -681,7 +681,7 @@ impl JsTypedArray {
     ///
     /// let js_function = FunctionObjectBuilder::new(
     ///     context.realm(),
-    ///     NativeFunction::from_copy_closure_with_captures(
+    ///     NativeFunction::from_fn_with_captures(
     ///         |_, args, captures, inner_context| {
     ///             let element = args
     ///                 .first()

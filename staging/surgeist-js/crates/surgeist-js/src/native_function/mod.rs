@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use surgeist_js_gc::{Finalize, Gc, Trace, custom_trace};
 use surgeist_js_string::JsString;
 
-use crate::job::NativeAsyncJob;
+use crate::job::BoxedFuture;
 use crate::object::internal_methods::InternalMethodCallContext;
 use crate::value::JsVariant;
 use crate::{
@@ -40,29 +40,54 @@ pub(crate) use continuation::{CoroutineBranch, CoroutineState, NativeCoroutine};
 /// - The last argument is the engine [`Context`].
 pub type NativeFunctionPointer = fn(&JsValue, &[JsValue], &mut Context) -> JsResult<JsValue>;
 
+/// A native callback that returns a future borrowing its invocation inputs.
+pub type NativeAsyncFunctionPointer =
+    for<'a, 'ctx> fn(&'a JsValue, &'a [JsValue], &'a RefCell<&'ctx mut Context>) -> BoxedFuture<'a>;
+
+/// A native asynchronous callback whose stored state is passed explicitly.
+pub type NativeAsyncFunctionWithCaptures<T> = for<'a, 'ctx> fn(
+    &'a JsValue,
+    &'a [JsValue],
+    &'a T,
+    &'a RefCell<&'ctx mut Context>,
+) -> BoxedFuture<'a>;
+
 trait TraceableClosure: Trace {
     fn call(&self, this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue>;
 }
 
 #[derive(Trace, Finalize)]
-struct Closure<F, T>
-where
-    F: Fn(&JsValue, &[JsValue], &T, &mut Context) -> JsResult<JsValue> + Copy,
-    T: Trace,
-{
-    // A Copy callback cannot own collector handles. Captures are traced separately.
+struct Closure<T: Trace> {
+    // A function pointer holds no JavaScript state.
     #[unsafe_ignore_trace]
-    f: F,
+    callback: fn(&JsValue, &[JsValue], &T, &mut Context) -> JsResult<JsValue>,
     captures: T,
 }
 
-impl<F, T> TraceableClosure for Closure<F, T>
-where
-    F: Fn(&JsValue, &[JsValue], &T, &mut Context) -> JsResult<JsValue> + Copy,
-    T: Trace,
-{
+impl<T: Trace> TraceableClosure for Closure<T> {
     fn call(&self, this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
-        (self.f)(this, args, &self.captures, context)
+        (self.callback)(this, args, &self.captures, context)
+    }
+}
+
+#[derive(Trace, Finalize)]
+struct AsyncClosure<T: Trace + 'static> {
+    #[unsafe_ignore_trace]
+    callback: NativeAsyncFunctionWithCaptures<T>,
+    captures: Gc<T>,
+}
+
+impl<T: Trace + 'static> TraceableClosure for AsyncClosure<T> {
+    fn call(&self, this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+        let callback = self.callback;
+        let captures = self.captures.clone();
+        let this = this.clone();
+        let args = args.to_vec();
+        Ok(JsPromise::from_async_fn(
+            async move |context| callback(&this, &args, &captures, context).await,
+            context,
+        )
+        .into())
     }
 }
 
@@ -113,11 +138,8 @@ impl JsData for NativeFunctionObject {
 
 /// A callable Rust function that can be invoked by the engine.
 ///
-/// `NativeFunction` functions are divided in two:
-/// - Function pointers a.k.a common functions (see [`NativeFunctionPointer`]).
-/// - Closure functions that can capture the current environment.
-///
-/// Pass owned closure state as explicit captures so the collector can trace it.
+/// Native functions use synchronous or asynchronous function pointers.
+/// Supply owned state separately as traceable captures.
 #[derive(Clone, Finalize)]
 pub struct NativeFunction {
     inner: Inner,
@@ -126,6 +148,7 @@ pub struct NativeFunction {
 #[derive(Clone)]
 enum Inner {
     PointerFn(NativeFunctionPointer),
+    AsyncPointer(NativeAsyncFunctionPointer),
     Closure(Gc<Box<dyn TraceableClosure>>),
 }
 
@@ -154,12 +177,12 @@ impl NativeFunction {
         }
     }
 
-    /// Creates a `NativeFunction` from a function returning a [`Future`]-like.
+    /// Creates a `NativeFunction` from a pointer to an asynchronous callback.
     ///
     /// The returned `NativeFunction` will return an ECMAScript `Promise` that will be fulfilled
     /// or rejected when the returned `Future` completes.
     ///
-    /// If you only need to convert a `Future`-like into a [`JsPromise`], see
+    /// To schedule a one-shot asynchronous operation, see
     /// [`JsPromise::from_async_fn`].
     ///
     /// # Examples
@@ -170,8 +193,11 @@ impl NativeFunction {
     /// #   JsValue,
     /// #   Context,
     /// #   JsResult,
+    /// #   JsSymbol,
     /// #   NativeFunction,
     /// #   JsArgs,
+    /// #   builtins::promise::PromiseState,
+    /// #   object::builtins::JsPromise,
     /// # };
     /// async fn test(
     ///     _this: &JsValue,
@@ -183,60 +209,61 @@ impl NativeFunction {
     ///     let value = arg.to_u32(&mut context.borrow_mut())?;
     ///     Ok(JsValue::from(value * 2))
     /// }
-    /// NativeFunction::from_async_fn(test);
+    /// let callback = NativeFunction::from_async_fn(
+    ///     |this, args, context| Box::pin(test(this, args, context)),
+    /// );
+    /// let mut context = Context::default();
+    /// let receiver = JsValue::undefined();
+    /// let fulfilled = callback.call(&receiver, &[JsValue::from(3)], &mut context).unwrap();
+    /// let rejected = callback.call(
+    ///     &receiver,
+    ///     &[JsValue::from(JsSymbol::iterator())],
+    ///     &mut context,
+    /// ).unwrap();
+    /// let fulfilled = JsPromise::from_object(fulfilled.as_object().unwrap()).unwrap();
+    /// let rejected = JsPromise::from_object(rejected.as_object().unwrap()).unwrap();
+    /// context.run_jobs().unwrap();
+    /// assert_eq!(fulfilled.state(), PromiseState::Fulfilled(JsValue::from(6)));
+    /// assert!(matches!(rejected.state(), PromiseState::Rejected(_)));
     /// ```
-    pub fn from_async_fn<F>(f: F) -> Self
-    where
-        F: AsyncFn(&JsValue, &[JsValue], &RefCell<&mut Context>) -> JsResult<JsValue> + 'static,
-        F: Copy,
-    {
-        Self::from_copy_closure(move |this, args, context| {
-            let (promise, resolvers) = JsPromise::new_pending(context);
-            let this = this.clone();
-            let args = args.to_vec();
-
-            context.enqueue_job(
-                NativeAsyncJob::new(async move |context| {
-                    let result = f(&this, &args, context).await;
-
-                    let context = &mut context.borrow_mut();
-                    match result {
-                        Ok(v) => resolvers.resolve.call(&JsValue::undefined(), &[v], context),
-                        Err(e) => {
-                            let e = e.into_opaque(context)?;
-                            resolvers.reject.call(&JsValue::undefined(), &[e], context)
-                        }
-                    }
-                })
-                .into(),
-            );
-
-            Ok(promise.into())
-        })
-    }
-
-    /// Creates a `NativeFunction` from a `Copy` closure.
-    pub fn from_copy_closure<F>(closure: F) -> Self
-    where
-        F: Fn(&JsValue, &[JsValue], &mut Context) -> JsResult<JsValue> + Copy + 'static,
-    {
-        Self::from_copy_closure_with_captures(
-            move |this, args, (), context| closure(this, args, context),
-            (),
-        )
-    }
-
-    /// Creates a `NativeFunction` from a `Copy` closure and its traceable captures.
-    pub fn from_copy_closure_with_captures<F, T>(closure: F, captures: T) -> Self
-    where
-        F: Fn(&JsValue, &[JsValue], &T, &mut Context) -> JsResult<JsValue> + Copy + 'static,
-        T: Trace + 'static,
-    {
+    pub fn from_async_fn(callback: NativeAsyncFunctionPointer) -> Self {
         Self {
-            inner: Inner::Closure(Gc::new(Box::new(Closure {
-                f: closure,
-                captures,
+            inner: Inner::AsyncPointer(callback),
+        }
+    }
+
+    /// Creates an asynchronous native function with explicit traceable captures.
+    ///
+    /// Each invocation keeps the captures alive while its job is pending.
+    pub fn from_async_fn_with_captures<T: Trace + 'static>(
+        callback: NativeAsyncFunctionWithCaptures<T>,
+        captures: T,
+    ) -> Self {
+        Self {
+            inner: Inner::Closure(Gc::new(Box::new(AsyncClosure {
+                callback,
+                captures: Gc::new(captures),
             }))),
+        }
+    }
+
+    /// Creates a native function with all stored state in its traceable captures.
+    ///
+    /// ```compile_fail
+    /// use surgeist_js::{JsValue, NativeFunction};
+    ///
+    /// let hidden_state = 7;
+    /// NativeFunction::from_fn_with_captures(
+    ///     move |_, _, (), _| Ok(JsValue::from(hidden_state)),
+    ///     (),
+    /// );
+    /// ```
+    pub fn from_fn_with_captures<T: Trace + 'static>(
+        callback: fn(&JsValue, &[JsValue], &T, &mut Context) -> JsResult<JsValue>,
+        captures: T,
+    ) -> Self {
+        Self {
+            inner: Inner::Closure(Gc::new(Box::new(Closure { callback, captures }))),
         }
     }
 
@@ -250,6 +277,15 @@ impl NativeFunction {
     ) -> JsResult<JsValue> {
         match self.inner {
             Inner::PointerFn(f) => f(this, args, context),
+            Inner::AsyncPointer(callback) => {
+                let this = this.clone();
+                let args = args.to_vec();
+                Ok(JsPromise::from_async_fn(
+                    async move |context| callback(&this, &args, context).await,
+                    context,
+                )
+                .into())
+            }
             Inner::Closure(ref c) => c.call(this, args, context),
         }
     }

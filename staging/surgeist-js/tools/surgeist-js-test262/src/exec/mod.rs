@@ -625,7 +625,7 @@ fn is_error_type(error: &JsError, target_type: ErrorType, context: &mut Context)
 fn register_print_fn(context: &mut Context, async_result: AsyncResult) {
     let js_function = FunctionObjectBuilder::new(
         context.realm(),
-        NativeFunction::from_copy_closure_with_captures(
+        NativeFunction::from_fn_with_captures(
             |_, args, async_result, context| {
                 let message = args
                     .get_or_undefined(0)

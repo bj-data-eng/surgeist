@@ -1,220 +1,105 @@
-//! Implementations of the `IntoJsFunction` trait for various function signatures.
+//! Adapt typed Rust function pointers to JavaScript native callbacks.
 
 use super::private::IntoJsFunctionSealed;
-use super::{IntoJsFunctionCopied, IntoJsFunctionWithCaptures};
+use super::{IntoJsFunction, IntoJsFunctionWithCaptures};
 use crate::interop::{JsRest, TryFromJsArgument};
 use crate::{Context, NativeFunction, TryIntoJsResult};
-use surgeist_js_gc::Trace;
+use surgeist_js_gc::{Finalize, Trace};
 
-/// A token to represent the context argument in the function signature.
-/// This should not be used directly and has no external meaning.
+/// Distinguishes signatures with an engine context from converted JS arguments.
 #[derive(Debug, Copy, Clone)]
 pub struct ContextArgToken;
 
-macro_rules! impl_into_js_function {
-    ($($id: ident: $t: ident),*) => {
-        impl<$($t,)* R, T> IntoJsFunctionSealed<($($t,)*), R> for T
-        where
-            $($t: for<'a> TryFromJsArgument<'a> + 'static,)*
-            R: TryIntoJsResult,
-            T: FnMut($($t,)*) -> R + 'static
-        {}
-
-        impl<$($t,)* R, T> IntoJsFunctionSealed<($($t,)* ContextArgToken,), R> for T
-        where
-            $($t: for<'a> TryFromJsArgument<'a> + 'static,)*
-            R: TryIntoJsResult,
-            T: FnMut($($t,)* &mut Context) -> R + 'static
-        {}
-
-        impl<$($t,)* R, T> IntoJsFunctionSealed<($($t,)* JsRest<'_>,), R> for T
-        where
-            $($t: for<'a> TryFromJsArgument<'a> + 'static,)*
-            R: TryIntoJsResult,
-            T: FnMut($($t,)* JsRest<'_>) -> R + 'static
-        {}
-
-        impl<$($t,)* R, T> IntoJsFunctionSealed<($($t,)* JsRest<'_>, ContextArgToken), R> for T
-        where
-            $($t: for<'a> TryFromJsArgument<'a> + 'static,)*
-            R: TryIntoJsResult,
-            T: FnMut($($t,)* JsRest<'_>, &mut Context) -> R + 'static
-        {}
-
-        impl<$($t,)* R, Callback, Captures> IntoJsFunctionWithCaptures<($($t,)*), R, Captures> for Callback
-        where
-            $($t: for<'a> TryFromJsArgument<'a> + 'static,)*
-            R: TryIntoJsResult,
-            Callback: Fn(&Captures, $($t,)*) -> R + Copy + 'static,
-            Captures: Trace + 'static,
-        {
-            #[allow(unused_variables)]
-            fn into_js_function_with_captures(self, captures: Captures) -> NativeFunction {
-                NativeFunction::from_copy_closure_with_captures(
-                    move |this, args, captures, ctx| {
-                        let rest = args;
-                        $(
-                            let ($id, rest) = $t::try_from_js_argument(this, rest, ctx)?;
-                        )*
-                        self(captures, $($id,)*).try_into_js_result(ctx)
-                    },
-                    captures,
-                )
+macro_rules! impl_signature {
+    (
+        ($($id:ident : $t:ident),*);
+        ($($marker:ty),*);
+        ($($tail:ty),*);
+        ($($argument:expr),*);
+        $rest:ident, $context:ident
+    ) => {
+        const _: () = {
+            #[derive(Trace, Finalize)]
+            struct Function<$($t,)* R> {
+                // This concrete pointer carries no captures.
+                #[unsafe_ignore_trace]
+                callback: fn($($t,)* $($tail),*) -> R,
             }
-        }
 
-        impl<$($t,)* R, Callback, Captures> IntoJsFunctionWithCaptures<($($t,)* JsRest<'_>,), R, Captures> for Callback
-        where
-            $($t: for<'a> TryFromJsArgument<'a> + 'static,)*
-            R: TryIntoJsResult,
-            Callback: Fn(&Captures, $($t,)* JsRest<'_>) -> R + Copy + 'static,
-            Captures: Trace + 'static,
-        {
-            #[allow(unused_variables)]
-            fn into_js_function_with_captures(self, captures: Captures) -> NativeFunction {
-                NativeFunction::from_copy_closure_with_captures(
-                    move |this, args, captures, ctx| {
-                        let rest = args;
-                        $(
-                            let ($id, rest) = $t::try_from_js_argument(this, rest, ctx)?;
-                        )*
-                        self(captures, $($id,)* rest.into()).try_into_js_result(ctx)
-                    },
-                    captures,
-                )
+            #[derive(Trace, Finalize)]
+            struct StatefulFunction<$($t,)* R, Captures: Trace> {
+                // All traceable state resides in captures.
+                #[unsafe_ignore_trace]
+                callback: fn(&Captures, $($t,)* $($tail),*) -> R,
+                captures: Captures,
             }
-        }
 
-        impl<$($t,)* R, Callback, Captures> IntoJsFunctionWithCaptures<($($t,)* ContextArgToken,), R, Captures> for Callback
-        where
-            $($t: for<'a> TryFromJsArgument<'a> + 'static,)*
-            R: TryIntoJsResult,
-            Callback: Fn(&Captures, $($t,)* &mut Context) -> R + Copy + 'static,
-            Captures: Trace + 'static,
-        {
-            #[allow(unused_variables)]
-            fn into_js_function_with_captures(self, captures: Captures) -> NativeFunction {
-                NativeFunction::from_copy_closure_with_captures(
-                    move |this, args, captures, ctx| {
-                        let rest = args;
-                        $(
-                            let ($id, rest) = $t::try_from_js_argument(this, rest, ctx)?;
-                        )*
-                        self(captures, $($id,)* ctx).try_into_js_result(ctx)
-                    },
-                    captures,
-                )
-            }
-        }
+            impl<$($t,)* R> IntoJsFunctionSealed<($($t,)* $($marker,)*), R>
+                for fn($($t,)* $($tail),*) -> R
+            where
+                $($t: for<'a> TryFromJsArgument<'a> + 'static,)*
+                R: TryIntoJsResult + 'static,
+            {}
 
-        impl<$($t,)* R, Callback, Captures> IntoJsFunctionWithCaptures<($($t,)* JsRest<'_>, ContextArgToken), R, Captures> for Callback
-        where
-            $($t: for<'a> TryFromJsArgument<'a> + 'static,)*
-            R: TryIntoJsResult,
-            Callback: Fn(&Captures, $($t,)* JsRest<'_>, &mut Context) -> R + Copy + 'static,
-            Captures: Trace + 'static,
-        {
-            #[allow(unused_variables)]
-            fn into_js_function_with_captures(self, captures: Captures) -> NativeFunction {
-                NativeFunction::from_copy_closure_with_captures(
-                    move |this, args, captures, ctx| {
-                        let rest = args;
-                        $(
-                            let ($id, rest) = $t::try_from_js_argument(this, rest, ctx)?;
-                        )*
-                        self(captures, $($id,)* rest.into(), ctx).try_into_js_result(ctx)
-                    },
-                    captures,
-                )
+            impl<$($t,)* R> IntoJsFunction<($($t,)* $($marker,)*), R>
+                for fn($($t,)* $($tail),*) -> R
+            where
+                $($t: for<'a> TryFromJsArgument<'a> + 'static,)*
+                R: TryIntoJsResult + 'static,
+            {
+                #[allow(unused_variables)]
+                fn into_js_function(self) -> NativeFunction {
+                    NativeFunction::from_fn_with_captures(
+                        |this, args, state, $context| {
+                            let $rest = args;
+                            $(
+                                let ($id, $rest) = $t::try_from_js_argument(this, $rest, $context)?;
+                            )*
+                            let result = (state.callback)($($id,)* $($argument),*);
+                            result.try_into_js_result($context)
+                        },
+                        Function { callback: self },
+                    )
+                }
             }
-        }
 
-        impl<$($t,)* R, T> IntoJsFunctionCopied<($($t,)*), R> for T
-        where
-            $($t: for<'a> TryFromJsArgument<'a> + 'static,)*
-            R: TryIntoJsResult,
-            T: Fn($($t,)*) -> R + 'static + Copy,
-        {
-            #[allow(unused_variables)]
-            fn into_js_function_copied(self, _context: &mut Context) -> NativeFunction {
-                let s = self;
-                NativeFunction::from_copy_closure(move |this, args, ctx| {
-                    let rest = args;
-                    $(
-                        let ($id, rest) = $t::try_from_js_argument(this, rest, ctx)?;
-                    )*
-                    let r = s( $($id,)* );
-                    r.try_into_js_result(ctx)
-                })
+            impl<$($t,)* R, Captures> IntoJsFunctionWithCaptures<($($t,)* $($marker,)*), R, Captures>
+                for fn(&Captures, $($t,)* $($tail),*) -> R
+            where
+                $($t: for<'a> TryFromJsArgument<'a> + 'static,)*
+                R: TryIntoJsResult + 'static,
+                Captures: Trace + 'static,
+            {
+                #[allow(unused_variables)]
+                fn into_js_function_with_captures(self, captures: Captures) -> NativeFunction {
+                    NativeFunction::from_fn_with_captures(
+                        |this, args, state, $context| {
+                            let $rest = args;
+                            $(
+                                let ($id, $rest) = $t::try_from_js_argument(this, $rest, $context)?;
+                            )*
+                            let result = (state.callback)(&state.captures, $($id,)* $($argument),*);
+                            result.try_into_js_result($context)
+                        },
+                        StatefulFunction { callback: self, captures },
+                    )
+                }
             }
-        }
-
-        impl<$($t,)* R, T> IntoJsFunctionCopied<($($t,)* JsRest<'_>,), R> for T
-        where
-            $($t: for<'a> TryFromJsArgument<'a> + 'static,)*
-            R: TryIntoJsResult,
-            T: Fn($($t,)* JsRest<'_>) -> R + 'static + Copy,
-        {
-            #[allow(unused_variables)]
-            fn into_js_function_copied(self, _context: &mut Context) -> NativeFunction {
-                let s = self;
-                NativeFunction::from_copy_closure(move |this, args, ctx| {
-                    let rest = args;
-                    $(
-                        let ($id, rest) = $t::try_from_js_argument(this, rest, ctx)?;
-                    )*
-                    let r = s( $($id,)* rest.into() );
-                    r.try_into_js_result(ctx)
-                })
-            }
-        }
-
-        impl<$($t,)* R, T> IntoJsFunctionCopied<($($t,)* ContextArgToken,), R> for T
-        where
-            $($t: for<'a> TryFromJsArgument<'a> + 'static,)*
-            R: TryIntoJsResult,
-            T: Fn($($t,)* &mut Context) -> R + 'static + Copy,
-        {
-            #[allow(unused_variables)]
-            fn into_js_function_copied(self, _context: &mut Context) -> NativeFunction {
-                let s = self;
-                NativeFunction::from_copy_closure(move |this, args, ctx| {
-                    let rest = args;
-                    $(
-                        let ($id, rest) = $t::try_from_js_argument(this, rest, ctx)?;
-                    )*
-                    let r = s( $($id,)* ctx);
-                    r.try_into_js_result(ctx)
-                })
-            }
-        }
-
-        impl<$($t,)* R, T> IntoJsFunctionCopied<($($t,)* JsRest<'_>, ContextArgToken), R> for T
-        where
-            $($t: for<'a> TryFromJsArgument<'a> + 'static,)*
-            R: TryIntoJsResult,
-            T: Fn($($t,)* JsRest<'_>, &mut Context) -> R + 'static + Copy,
-        {
-            #[allow(unused_variables)]
-            fn into_js_function_copied(self, _context: &mut Context) -> NativeFunction {
-                let s = self;
-                NativeFunction::from_copy_closure(move |this, args, ctx| {
-                    let rest = args;
-                    $(
-                        let ($id, rest) = $t::try_from_js_argument(this, rest, ctx)?;
-                    )*
-                    let r = s( $($id,)* rest.into(), ctx);
-                    r.try_into_js_result(ctx)
-                })
-            }
-        }
+        };
     };
 }
 
-// Currently implemented up to 12 arguments. The empty argument list
-// is implemented separately above.
-// Consider that JsRest and JsThis are part of this list, but Context
-// is not, as it is a special specialization of the template.
+macro_rules! impl_into_js_function {
+    ($($id:ident: $t:ident),*) => {
+        impl_signature!(($($id:$t),*); (); (); (); rest, context);
+        impl_signature!(($($id:$t),*); (ContextArgToken); (&mut Context); (context); rest, context);
+        impl_signature!(($($id:$t),*); (JsRest<'_>); (JsRest<'_>); (rest.into()); rest, context);
+        impl_signature!(($($id:$t),*); (JsRest<'_>, ContextArgToken);
+            (JsRest<'_>, &mut Context); (rest.into(), context); rest, context);
+    };
+}
+
+// Support up to twelve converted arguments and optional rest and context.
 impl_into_js_function!();
 impl_into_js_function!(a: A);
 impl_into_js_function!(a: A, b: B);

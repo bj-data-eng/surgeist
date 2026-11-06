@@ -107,7 +107,7 @@ fn native_accessor_keeps_captures_and_outcomes_during_collection() {
         let receiver = JsObject::from_proto_and_data(Some(prototype.clone()), OrdinaryObject);
         let captured = JsObject::from_proto_and_data(None, OrdinaryObject);
         let weak_capture = WeakGc::new(captured.inner());
-        let getter = NativeFunction::from_copy_closure_with_captures(
+        let getter = NativeFunction::from_fn_with_captures(
             |this, _, (captured, throws), context| {
                 let receiver = this.as_object().expect("accessor receiver");
                 let active = {

@@ -580,7 +580,7 @@ impl AsyncGenerator {
         // 12. Let onFulfilled be CreateBuiltinFunction(fulfilledClosure, 1, "", « »).
         let on_fulfilled = FunctionObjectBuilder::new(
             context.realm(),
-            NativeFunction::from_copy_closure_with_captures(
+            NativeFunction::from_fn_with_captures(
                 |_this, args, generator, context| {
                     // a. Assert: generator.[[AsyncGeneratorState]] is draining-queue.
                     assert_eq!(
@@ -611,7 +611,7 @@ impl AsyncGenerator {
         // 14. Let onRejected be CreateBuiltinFunction(rejectedClosure, 1, "", « »).
         let on_rejected = FunctionObjectBuilder::new(
             context.realm(),
-            NativeFunction::from_copy_closure_with_captures(
+            NativeFunction::from_fn_with_captures(
                 |_this, args, generator, context| {
                     // a. Assert: generator.[[AsyncGeneratorState]] is draining-queue.
                     assert_eq!(

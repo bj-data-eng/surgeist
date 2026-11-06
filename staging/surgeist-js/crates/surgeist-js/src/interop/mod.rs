@@ -3,7 +3,7 @@
 
 /// Internal module only.
 pub(crate) mod private {
-    /// Defines the supported argument signatures for copied Rust functions.
+    /// Defines the supported argument signatures for Rust function pointers.
     pub trait IntoJsFunctionSealed<A, R> {}
 }
 
@@ -11,6 +11,7 @@ pub(crate) mod private {
 ///
 /// The callback takes a shared reference to its captures before the converted
 /// JavaScript arguments. Use a collector cell within the captures for mutable state.
+/// The result type must be `'static`.
 ///
 /// ```
 /// use surgeist_js::{Context, IntoJsFunctionWithCaptures, JsValue};
@@ -18,10 +19,10 @@ pub(crate) mod private {
 ///
 /// let mut context = Context::default();
 /// let total = Gc::new(GcRefCell::new(0));
-/// let add = (|total: &Gc<GcRefCell<i32>>, value: i32| {
+/// let add: fn(&Gc<GcRefCell<i32>>, i32) = |total, value| {
 ///     *total.borrow_mut() += value;
-/// })
-/// .into_js_function_with_captures(total.clone());
+/// };
+/// let add = add.into_js_function_with_captures(total.clone());
 /// add.call(&JsValue::undefined(), &[JsValue::from(4)], &mut context)
 ///     .unwrap();
 /// assert_eq!(*total.borrow(), 4);
@@ -31,15 +32,14 @@ pub trait IntoJsFunctionWithCaptures<Args, Ret, Captures> {
     fn into_js_function_with_captures(self, captures: Captures) -> NativeFunction;
 }
 
-/// Converts a typed `Copy` callback to a native function.
+/// Converts a typed function pointer to a native function.
 ///
-/// Since this function is implemented for `Fn(...)` closures, we can use
-/// it directly when defining a function:
+/// The result type must be `'static`.
 /// ```
-/// # use surgeist_js::{IntoJsFunctionCopied, Context, JsValue, NativeFunction};
+/// # use surgeist_js::{IntoJsFunction, Context, JsValue, NativeFunction};
 /// # let mut context = Context::default();
-/// let f = |a: i32, b: i32| a + b;
-/// let f = f.into_js_function_copied(&mut context);
+/// let f: fn(i32, i32) -> i32 = |a, b| a + b;
+/// let f = f.into_js_function();
 /// let result = f
 ///     .call(
 ///         &JsValue::undefined(),
@@ -49,13 +49,13 @@ pub trait IntoJsFunctionWithCaptures<Args, Ret, Captures> {
 ///     .unwrap();
 /// assert_eq!(result, JsValue::new(3));
 /// ```
-pub trait IntoJsFunctionCopied<Args, Ret>: private::IntoJsFunctionSealed<Args, Ret> + Copy {
+pub trait IntoJsFunction<Args, Ret>: private::IntoJsFunctionSealed<Args, Ret> + Copy {
     /// Converts the type into a JS function.
-    fn into_js_function_copied(self, context: &mut Context) -> NativeFunction;
+    fn into_js_function(self) -> NativeFunction;
 }
 
 mod into_js_arguments;
-use crate::{Context, NativeFunction};
+use crate::NativeFunction;
 pub use into_js_arguments::*;
 
 // Implement `IntoJsFunction` for functions with a various list of

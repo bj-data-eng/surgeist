@@ -29,10 +29,10 @@ use std::rc::Rc;
 
 use rustc_hash::FxHashSet;
 
-use surgeist_js_ast::declaration::ImportAttribute as AstImportAttribute;
 use surgeist_js::js_string;
 use surgeist_js::property::PropertyKey;
 use surgeist_js::value::TryFromJs;
+use surgeist_js_ast::declaration::ImportAttribute as AstImportAttribute;
 use surgeist_js_gc::{Finalize, Gc, GcRefCell, Trace};
 use surgeist_js_interner::Interner;
 use surgeist_js_parser::source::ReadChar;
@@ -651,7 +651,7 @@ impl Module {
         self.load(context)
             .then(
                 Some(
-                    NativeFunction::from_copy_closure_with_captures(
+                    NativeFunction::from_fn_with_captures(
                         |_, _, module, context| {
                             module.link(context)?;
                             Ok(JsValue::undefined())
@@ -666,7 +666,7 @@ impl Module {
             .expect("`then` cannot fail for a native `JsPromise`")
             .then(
                 Some(
-                    NativeFunction::from_copy_closure_with_captures(
+                    NativeFunction::from_fn_with_captures(
                         |_, _, module, context| Ok(module.evaluate(context)?.into()),
                         self.clone(),
                     )
@@ -805,7 +805,7 @@ fn native_exports_do_not_root_unreachable_module_cycles() {
     let mut context = Context::default();
     let captured_module = Gc::new(GcRefCell::new(None));
     let weak_capture = WeakGc::new(&captured_module);
-    let export = NativeFunction::from_copy_closure_with_captures(
+    let export = NativeFunction::from_fn_with_captures(
         |_, _, _, _| Ok(JsValue::undefined()),
         captured_module.clone(),
     );
@@ -828,12 +828,12 @@ fn native_exports_do_not_root_unreachable_module_cycles() {
 #[test]
 #[allow(clippy::missing_panics_doc)]
 fn into_js_module() {
+    use std::rc::Rc;
     use surgeist_js::interop::{ContextData, JsRest};
     use surgeist_js::{
-        Context, IntoJsFunctionCopied, IntoJsFunctionWithCaptures, JsValue, Module, Source, js_string,
+        Context, IntoJsFunction, IntoJsFunctionWithCaptures, JsValue, Module, Source, js_string,
     };
     use surgeist_js_gc::{Gc, GcRefCell};
-    use std::rc::Rc;
 
     type ResultType = Gc<GcRefCell<JsValue>>;
     type Counter = Gc<GcRefCell<i32>>;
@@ -853,34 +853,34 @@ fn into_js_module() {
     let module = vec![
         (
             js_string!("foo"),
-            (|counter: &Counter| {
+            ((|counter: &Counter| {
                 let mut count = counter.borrow_mut();
                 *count += 1;
                 *count
-            })
-            .into_js_function_with_captures(foo_count.clone()),
+            }) as fn(&Counter) -> i32)
+                .into_js_function_with_captures(foo_count.clone()),
         ),
         (
             js_string!("bar"),
-            (|counter: &Counter, i: i32| *counter.borrow_mut() += i)
+            ((|counter: &Counter, i: i32| *counter.borrow_mut() += i) as fn(&Counter, i32))
                 .into_js_function_with_captures(bar_count.clone()),
         ),
         (
             js_string!("dad"),
-            (|counter: &Counter, args: JsRest<'_>, context: &mut Context| {
+            ((|counter: &Counter, args: JsRest<'_>, context: &mut Context| {
                 *counter.borrow_mut() += args
                     .into_iter()
                     .map(|i| i.try_js_into::<i32>(context).unwrap())
                     .sum::<i32>();
-            })
-            .into_js_function_with_captures(dad_count.clone()),
+            }) as fn(&Counter, JsRest<'_>, &mut Context))
+                .into_js_function_with_captures(dad_count.clone()),
         ),
         (
             js_string!("send"),
-            (move |value: JsValue, ContextData(result): ContextData<ResultType>| {
+            ((|value: JsValue, ContextData(result): ContextData<ResultType>| {
                 *result.borrow_mut() = value;
-            })
-            .into_js_function_copied(&mut context),
+            }) as fn(JsValue, ContextData<ResultType>))
+                .into_js_function(),
         ),
     ]
     .into_js_module(&mut context);
@@ -924,10 +924,10 @@ fn into_js_module() {
 
 #[test]
 fn can_throw_exception() {
-    use surgeist_js::{
-        Context, IntoJsFunctionCopied, JsError, JsResult, JsValue, Module, Source, js_string,
-    };
     use std::rc::Rc;
+    use surgeist_js::{
+        Context, IntoJsFunction, JsError, JsResult, JsValue, Module, Source, js_string,
+    };
 
     let loader = Rc::new(MapModuleLoader::default());
     let mut context = Context::builder()
@@ -937,10 +937,8 @@ fn can_throw_exception() {
 
     let module = vec![(
         js_string!("doTheThrow"),
-        IntoJsFunctionCopied::into_js_function_copied(
-            |message: JsValue| -> JsResult<()> { Err(JsError::from_opaque(message)) },
-            &mut context,
-        ),
+        ((|message| Err(JsError::from_opaque(message))) as fn(JsValue) -> JsResult<()>)
+            .into_js_function(),
     )]
     .into_js_module(&mut context);
 
