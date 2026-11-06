@@ -17,7 +17,7 @@ use crate::{
         cursor::Cursor,
         function::{FormalParameters, FunctionStatementList},
     },
-    source::ReadChar,
+    source::{ControlledReader, ReadChar, ReadControl},
 };
 use surgeist_js_ast::{
     Position, StatementList,
@@ -123,6 +123,16 @@ pub struct Parser<'a, R> {
     path: Option<&'a Path>,
     /// Cursor of the parser, pointing to the lexer and used to get tokens for the parser.
     cursor: Cursor<R>,
+}
+
+impl<'source, 'control, R: ReadChar> Parser<'source, ControlledReader<'control, R>> {
+    /// Creates a parser whose decoder asks the supplied policy to admit each read.
+    pub fn with_read_control(
+        source: Source<'source, R>,
+        control: Option<&'control mut ReadControl<'control>>,
+    ) -> Self {
+        Self::new(source.with_read_control(control))
+    }
 }
 
 impl<'a, R: ReadChar> Parser<'a, R> {

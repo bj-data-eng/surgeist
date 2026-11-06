@@ -302,6 +302,12 @@ pub enum TryNativeError {
 /// Runtime limit related errors.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Error)]
 pub enum RuntimeLimitError {
+    /// Error for exhausting the operation's source read budget.
+    #[error("reached the operation's limit of {limit} source reads")]
+    SourceRead {
+        /// Maximum number of source reads admitted by the operation.
+        limit: u64,
+    },
     /// Error for exhausting the operation's VM instruction budget.
     #[error("reached the operation's limit of {limit} VM instructions")]
     Instruction {
@@ -1005,12 +1011,27 @@ impl JsError {
     pub(crate) const fn is_catchable(&self) -> bool {
         self.as_engine().is_none()
     }
+
+    #[cfg_attr(feature = "native-backtrace", track_caller)]
+    pub(crate) fn from_parser(
+        error: surgeist_js_parser::Error,
+        describe: impl FnOnce(surgeist_js_parser::Error) -> String,
+    ) -> Self {
+        if let Some(refusal) = error.read_limit() {
+            RuntimeLimitError::SourceRead {
+                limit: refusal.limit,
+            }
+            .into()
+        } else {
+            JsNativeError::syntax().with_message(describe(error)).into()
+        }
+    }
 }
 
 impl From<surgeist_js_parser::Error> for JsError {
     #[cfg_attr(feature = "native-backtrace", track_caller)]
     fn from(err: surgeist_js_parser::Error) -> Self {
-        Self::from(JsNativeError::from(err))
+        Self::from_parser(err, |error| error.to_string())
     }
 }
 
@@ -1596,13 +1617,6 @@ impl JsNativeError {
     pub(crate) fn with_realm(mut self, realm: Realm) -> Self {
         self.realm = Some(realm);
         self
-    }
-}
-
-impl From<surgeist_js_parser::Error> for JsNativeError {
-    #[cfg_attr(feature = "native-backtrace", track_caller)]
-    fn from(err: surgeist_js_parser::Error) -> Self {
-        Self::syntax().with_message(err.to_string())
     }
 }
 

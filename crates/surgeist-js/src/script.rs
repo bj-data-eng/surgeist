@@ -18,7 +18,7 @@ use rustc_hash::FxHashMap;
 
 use surgeist_js_gc::heap::{RecordRef, Rooted, Trace as HeapTrace};
 use surgeist_js_interner::Interner;
-use surgeist_js_parser::{Parser, Source, source::ReadChar};
+use surgeist_js_parser::{Source, source::ReadChar};
 
 use crate::{
     Context, HostDefined, JsResult, JsString, JsValue, Module, SpannedSourceText,
@@ -129,14 +129,17 @@ impl Script {
                 .with_message("script realm belongs to a different runtime")
                 .into());
         }
-        let mut parser = Parser::new(src);
-        parser.set_identifier(realm.next_parser_identifier()?);
-        if context.is_strict() {
-            parser.set_strict();
-        }
+        let identifier = realm.next_parser_identifier()?;
+        let strict = context.is_strict();
         let scope = realm.scope().clone();
         let mut interner = Interner::new();
-        let (mut code, source) = parser.parse_script_with_source(&scope, &mut interner)?;
+        let (mut code, source) = context.parse_source(src, |mut parser| {
+            parser.set_identifier(identifier);
+            if strict {
+                parser.set_strict();
+            }
+            Ok(parser.parse_script_with_source(&scope, &mut interner)?)
+        })?;
         if !context.optimizer_options().is_empty() {
             Optimizer::new(context, &mut interner).apply(code.statements_mut());
         }

@@ -30,7 +30,7 @@ use surgeist_js_ast::{
     scope::Scope,
 };
 use surgeist_js_interner::Interner;
-use surgeist_js_parser::{Parser, Source};
+use surgeist_js_parser::Source;
 
 use super::{BuiltInBuilder, IntrinsicObject};
 
@@ -128,12 +128,14 @@ impl Eval {
         let source = Source::from_utf16(&x);
 
         let mut interner = Interner::new();
-        let mut parser = Parser::new(source);
-        parser.set_identifier(context.realm().next_parser_identifier()?);
-        if strict {
-            parser.set_strict();
-        }
-        let (mut body, source) = parser.parse_eval(direct, &mut interner)?;
+        let identifier = context.realm().next_parser_identifier()?;
+        let (mut body, source) = context.parse_source(source, |mut parser| {
+            parser.set_identifier(identifier);
+            if strict {
+                parser.set_strict();
+            }
+            Ok(parser.parse_eval(direct, &mut interner)?)
+        })?;
 
         // 6. Let inFunction be false.
         // 7. Let inMethod be false.

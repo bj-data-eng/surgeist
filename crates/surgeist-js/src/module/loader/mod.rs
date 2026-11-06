@@ -418,6 +418,16 @@ impl ModuleLoader for SimpleModuleLoader {
                         .into());
                 }
             }
+            let parse_error = |kind: &str, error: JsError| {
+                if error.is_catchable() {
+                    JsNativeError::syntax()
+                        .with_message(format!("could not parse {kind} `{short_path}`"))
+                        .with_cause(error)
+                        .into()
+                } else {
+                    error
+                }
+            };
             let module = if let Some(ty) = module_type {
                 // Handle different module types based on the type attribute
                 match ty.to_std_string_escaped().as_str() {
@@ -429,15 +439,8 @@ impl ModuleLoader for SimpleModuleLoader {
                                 .with_cause(JsError::from_rust(err))
                         })?;
                         let json_string = js_string!(json_content.as_str());
-                        Module::parse_json(json_string, &mut context.borrow_mut()).map_err(
-                            |err| {
-                                JsNativeError::syntax()
-                                    .with_message(format!(
-                                        "could not parse JSON module `{short_path}`"
-                                    ))
-                                    .with_cause(err)
-                            },
-                        )?
+                        Module::parse_json(json_string, &mut context.borrow_mut())
+                            .map_err(|error| parse_error("JSON module", error))?
                     }
                     other => {
                         // Unknown module type
@@ -455,11 +458,8 @@ impl ModuleLoader for SimpleModuleLoader {
                         .with_message(format!("could not open file `{short_path}`"))
                         .with_cause(JsError::from_rust(err))
                 })?;
-                Module::parse(source, None, &mut context.borrow_mut()).map_err(|err| {
-                    JsNativeError::syntax()
-                        .with_message(format!("could not parse module `{short_path}`"))
-                        .with_cause(err)
-                })?
+                Module::parse(source, None, &mut context.borrow_mut())
+                    .map_err(|error| parse_error("module", error))?
             };
 
             self.insert_with_attributes(path, request.attributes(), module.clone());

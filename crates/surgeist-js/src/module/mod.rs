@@ -36,7 +36,7 @@ use surgeist_js_ast::declaration::ImportAttribute as AstImportAttribute;
 use surgeist_js_gc::heap::{RecordRef, Rooted, Trace as HeapTrace};
 use surgeist_js_interner::{Interner, Sym};
 use surgeist_js_parser::source::ReadChar;
-use surgeist_js_parser::{Parser, Source};
+use surgeist_js_parser::Source;
 
 pub use loader::*;
 pub use namespace::ModuleNamespace;
@@ -373,10 +373,12 @@ impl Module {
         let realm = Self::resolve_realm(realm, context)?;
         let path = src.path().map(Path::to_path_buf);
 
-        let mut parser = Parser::new(src);
-        parser.set_identifier(realm.next_parser_identifier()?);
+        let identifier = realm.next_parser_identifier()?;
         let mut interner = Interner::new();
-        let (module, source) = parser.parse_module_with_source(realm.scope(), &mut interner)?;
+        let (module, source) = context.parse_source(src, |mut parser| {
+            parser.set_identifier(identifier);
+            Ok(parser.parse_module_with_source(realm.scope(), &mut interner)?)
+        })?;
 
         let source_text = SourceText::new(source);
         let src = SourceTextModule::new(module, interner, source_text, path.clone());

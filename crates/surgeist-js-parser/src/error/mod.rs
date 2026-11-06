@@ -4,8 +4,8 @@
 mod tests;
 
 use crate::lexer::Error as LexError;
-use surgeist_js_ast::{Position, Span};
 use std::fmt;
+use surgeist_js_ast::{Position, Span};
 
 /// Result of a parsing operation.
 pub type ParseResult<T> = Result<T, Error>;
@@ -114,6 +114,16 @@ pub enum Error {
 }
 
 impl Error {
+    /// Returns a typed source admission refusal if it stopped parsing.
+    pub const fn read_limit(&self) -> Option<crate::source::ReadLimit> {
+        match self {
+            Self::Lex {
+                err: LexError::ReadLimit(limit),
+            } => Some(*limit),
+            _ => None,
+        }
+    }
+
     /// Creates an `Expected` parsing error.
     pub(crate) fn expected<E, F>(expected: E, found: F, span: Span, context: &'static str) -> Self
     where

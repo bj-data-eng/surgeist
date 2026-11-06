@@ -2,10 +2,351 @@
 
 use std::{
     cell::{Cell, RefCell},
+    io::{self, Read},
     path::Path,
     rc::Rc,
     time::Duration,
 };
+
+struct CountingReader<'a> {
+    bytes: &'a [u8],
+    reads: &'a Cell<u64>,
+}
+
+impl Read for CountingReader<'_> {
+    fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
+        self.reads.set(self.reads.get() + 1);
+        self.bytes.read(output)
+    }
+}
+
+#[test]
+fn a_source_limit_stops_before_the_next_utf8_byte_and_before_dispatch() {
+    let reads = Cell::new(0);
+    let source = Source::from_reader(
+        CountingReader {
+            bytes: "'é'".as_bytes(),
+            reads: &reads,
+        },
+        None,
+    );
+    let mut context = Context::default();
+    let outcome = context
+        .eval_with_budget(source, ExecutionOptions::new(64).with_source_read_limit(2))
+        .unwrap();
+    assert_eq!(reads.get(), 2);
+    assert_eq!(outcome.report.source_reads(), 2);
+    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(
+        outcome.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::SourceRead {
+            limit: 2,
+        }))
+    );
+}
+
+#[test]
+fn lookahead_and_eof_report_only_the_reader_calls_that_occurred() {
+    let bytes = "/*é*/ 1 === 1".as_bytes();
+    let reads = Cell::new(0);
+    let source = Source::from_reader(
+        CountingReader {
+            bytes,
+            reads: &reads,
+        },
+        None,
+    );
+    let mut context = Context::default();
+    let outcome = context
+        .eval_with_budget(source, ExecutionOptions::new(64))
+        .unwrap();
+    assert_eq!(outcome.result.unwrap(), JsValue::new(true));
+    assert!(reads.get() > u64::try_from(bytes.len()).unwrap());
+    assert_eq!(outcome.report.source_reads(), reads.get());
+}
+
+#[test]
+fn utf16_surrogate_inspection_has_its_own_source_read_admission() {
+    let mut context = Context::default();
+    // Quote, high surrogate, low surrogate, quote.
+    let source = Source::from_utf16(&[0x27, 0xD83D, 0xDE00, 0x27]);
+    let outcome = context
+        .eval_with_budget(
+            source,
+            ExecutionOptions::new(64)
+                .with_source_read_limit(2)
+                .with_profile(ProfileMode::Summary { timing: false }),
+        )
+        .unwrap();
+    assert_eq!(outcome.report.source_reads(), 2);
+    assert_eq!(outcome.report.instructions(), 0);
+    let profile = outcome.report.profile().unwrap();
+    let utf16 = profile
+        .scopes
+        .iter()
+        .find(|scope| scope.name == "utf16-source")
+        .unwrap();
+    assert_eq!(utf16.accepted_items, 2);
+    assert_eq!(utf16.refused_batches, 1);
+    assert_eq!(
+        outcome.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::SourceRead {
+            limit: 2,
+        }))
+    );
+}
+
+#[test]
+fn interrupted_utf8_reads_cannot_retry_past_the_source_budget() {
+    struct InterruptedReader<'a>(&'a Cell<u64>);
+
+    impl Read for InterruptedReader<'_> {
+        fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+            self.0.set(self.0.get() + 1);
+            Err(io::ErrorKind::Interrupted.into())
+        }
+    }
+
+    let reads = Cell::new(0);
+    let mut context = Context::default();
+    let outcome = context
+        .eval_with_budget(
+            Source::from_reader(InterruptedReader(&reads), None),
+            ExecutionOptions::new(64).with_source_read_limit(3),
+        )
+        .unwrap();
+    assert_eq!(reads.get(), 3);
+    assert_eq!(outcome.report.source_reads(), 3);
+    assert_eq!(
+        outcome.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::SourceRead {
+            limit: 3,
+        }))
+    );
+}
+
+#[test]
+fn opaque_decoder_runs_only_for_admitted_calls() {
+    let reads = Cell::new(0);
+    let mut characters = ['4', '2'].into_iter().map(u32::from);
+    let source = Source::from_decoder(
+        || {
+            reads.set(reads.get() + 1);
+            Ok(characters.next())
+        },
+        None,
+    );
+    let mut context = Context::default();
+    let outcome = context
+        .eval_with_budget(
+            source,
+            ExecutionOptions::new(64)
+                .with_source_read_limit(1)
+                .with_profile(ProfileMode::Summary { timing: false }),
+        )
+        .unwrap();
+    assert_eq!(reads.get(), 1);
+    assert_eq!(outcome.report.source_reads(), 1);
+    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(
+        outcome.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::SourceRead {
+            limit: 1,
+        }))
+    );
+    let decoder = outcome
+        .report
+        .profile()
+        .unwrap()
+        .scopes
+        .iter()
+        .find(|scope| scope.name == "host-source")
+        .unwrap();
+    assert_eq!(decoder.accepted_items, 1);
+    assert_eq!(decoder.refused_batches, 1);
+}
+
+#[test]
+fn opaque_decoder_rejects_code_points_outside_unicode() {
+    let source = Source::from_decoder(|| Ok(Some(u32::MAX)), None);
+    let mut context = Context::default();
+    let outcome = context
+        .eval_with_budget(source, ExecutionOptions::new(64).with_source_read_limit(1))
+        .unwrap();
+    assert_eq!(outcome.report.source_reads(), 1);
+    assert_eq!(outcome.report.instructions(), 0);
+    let error = outcome.result.unwrap_err();
+    let native = error.as_native().unwrap();
+    assert_eq!(native.kind(), &surgeist_js::JsNativeErrorKind::Syntax);
+    assert_eq!(
+        native.message(),
+        "host decoder returned a code point outside Unicode"
+    );
+}
+
+#[test]
+fn opaque_decoder_preserves_surrogate_source_units() {
+    let mut input = [0x27, 0xD800, 0x27].into_iter();
+    let mut context = Context::default();
+    let result = context
+        .eval(Source::from_decoder(|| Ok(input.next()), None))
+        .unwrap();
+    assert_eq!(
+        result.as_string().unwrap().iter().collect::<Vec<_>>(),
+        [0xD800]
+    );
+}
+
+#[test]
+fn guest_parser_entry_points_share_the_outer_source_cap() {
+    for builtin in ["eval", "Function", "JSON.parse", "parseModule"] {
+        let mut context = Context::default();
+        context
+            .register_global_builtin_callable(
+                js_string!("parseModule"),
+                0,
+                NativeFunction::from_fn_ptr(|_, _, context| {
+                    let source = " ".repeat(128) + "export {}";
+                    surgeist_js::module::Module::parse(Source::from_bytes(&source), None, context)?;
+                    Ok(JsValue::undefined())
+                }),
+            )
+            .unwrap();
+        let padding = " ".repeat(128);
+        let script = format!(
+            "globalThis.entered = true; try {{ {builtin}('{padding}1'); }}
+             catch {{ globalThis.caught = true; }}"
+        );
+        let limit = u64::try_from(script.len()).unwrap() + 20;
+        let outcome = context
+            .eval_with_budget(
+                Source::from_bytes(&script),
+                ExecutionOptions::new(128)
+                    .with_source_read_limit(limit)
+                    .with_profile(ProfileMode::Summary { timing: false }),
+            )
+            .unwrap();
+        assert_eq!(outcome.report.source_reads(), limit, "{builtin}");
+        assert!(
+            outcome.report.instructions() > 0,
+            "{builtin} must be reached during execution"
+        );
+        let frontend = outcome
+            .report
+            .profile()
+            .unwrap()
+            .scopes
+            .iter()
+            .find(|scope| scope.name == "frontend")
+            .unwrap();
+        assert_eq!(frontend.phases, 2, "{builtin}");
+        assert_eq!(
+            outcome.result.unwrap_err().as_engine(),
+            Some(&EngineError::RuntimeLimit(RuntimeLimitError::SourceRead {
+                limit,
+            })),
+            "{builtin}"
+        );
+        assert_eq!(
+            context
+                .eval(Source::from_bytes(
+                    "entered && typeof caught === 'undefined'"
+                ))
+                .unwrap(),
+            JsValue::new(true),
+            "{builtin}"
+        );
+    }
+}
+
+#[test]
+fn a_host_callback_cannot_swallow_the_first_source_stop() {
+    let mut context = Context::default();
+    context
+        .register_global_builtin_callable(
+            js_string!("swallowSourceStop"),
+            0,
+            NativeFunction::from_fn_ptr(|_, _, context| {
+                let error = context.eval(Source::from_utf16(&[0x20; 128])).unwrap_err();
+                assert!(matches!(
+                    error.as_engine(),
+                    Some(EngineError::RuntimeLimit(
+                        RuntimeLimitError::SourceRead { .. }
+                    ))
+                ));
+                Ok(JsValue::undefined())
+            }),
+        )
+        .unwrap();
+    let source = "swallowSourceStop(); globalThis.afterStop = true;";
+    let limit = u64::try_from(source.len()).unwrap() + 8;
+    let outcome = context
+        .eval_with_budget(
+            Source::from_bytes(source),
+            ExecutionOptions::new(64).with_source_read_limit(limit),
+        )
+        .unwrap();
+    assert_eq!(
+        outcome.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::SourceRead {
+            limit,
+        }))
+    );
+    assert_eq!(
+        context
+            .eval(Source::from_bytes("typeof afterStop === 'undefined'"))
+            .unwrap(),
+        JsValue::new(true)
+    );
+}
+
+#[test]
+fn the_file_loader_propagates_source_stops_from_dynamic_imports() {
+    let assets = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/assets");
+    for import in [
+        "import('file1.js'); drainJobs();",
+        "import('data.json', { with: { type: 'json' } }); drainJobs();",
+    ] {
+        let loader = Rc::new(surgeist_js::module::SimpleModuleLoader::new(&assets).unwrap());
+        let mut context = Context::builder().module_loader(loader).build().unwrap();
+        context
+            .register_global_builtin_callable(
+                js_string!("drainJobs"),
+                0,
+                NativeFunction::from_fn_ptr(|_, _, context| {
+                    context.run_jobs()?;
+                    Ok(JsValue::undefined())
+                }),
+            )
+            .unwrap();
+        let limit = u64::try_from(import.len()).unwrap() + 8;
+        let outcome = context
+            .eval_with_budget(
+                Source::from_bytes(import),
+                ExecutionOptions::new(128)
+                    .with_source_read_limit(limit)
+                    .with_profile(ProfileMode::Summary { timing: false }),
+            )
+            .unwrap();
+        let frontend = outcome
+            .report
+            .profile()
+            .unwrap()
+            .scopes
+            .iter()
+            .find(|scope| scope.name == "frontend")
+            .unwrap();
+        assert_eq!(frontend.phases, 2, "{import}");
+        assert_eq!(outcome.report.source_reads(), limit, "{import}");
+        assert_eq!(
+            outcome.result.unwrap_err().as_engine(),
+            Some(&EngineError::RuntimeLimit(RuntimeLimitError::SourceRead {
+                limit,
+            })),
+            "{import}"
+        );
+    }
+}
 
 use surgeist_js::{
     Context, JsError, JsResult, JsValue, NativeFunction, Source,
@@ -218,7 +559,7 @@ fn bounded_profiling_preserves_admission_and_reports_trace_loss() {
             ExecutionOptions::new(2).with_profile(ProfileMode::Detailed {
                 timing: false,
                 event_limit: 0,
-                filter: EventFilter::All,
+                filter: EventFilter::ScopeName("evaluation"),
             }),
         )
         .unwrap();
@@ -259,9 +600,22 @@ fn the_configured_clock_runs_only_for_timed_profiling() {
         assert_eq!(outcome.report.instructions(), 2);
         assert_eq!(
             outcome.report.profile().unwrap().elapsed,
+            timing.then_some(Duration::from_millis(3))
+        );
+        let frontend = outcome
+            .report
+            .profile()
+            .unwrap()
+            .scopes
+            .iter()
+            .find(|scope| scope.name == "frontend")
+            .unwrap();
+        assert_eq!(frontend.phases, 1);
+        assert_eq!(
+            frontend.phase_elapsed,
             timing.then_some(Duration::from_millis(1))
         );
-        assert_eq!(TICKS.get(), if timing { 2 } else { 0 });
+        assert_eq!(TICKS.get(), if timing { 4 } else { 0 });
     }
 }
 

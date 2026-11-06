@@ -1,8 +1,9 @@
 //! Boa's lexer cursor that manages the input byte stream.
 
+use super::Error;
 use crate::source::{ReadChar, UTF8Input};
+use std::io::{self, ErrorKind};
 use surgeist_js_ast::{LinearPosition, Position, PositionGroup, SourceText};
-use std::io::{self, Error, ErrorKind};
 
 /// Cursor over the source code.
 #[derive(Debug)]
@@ -93,7 +94,7 @@ impl<R: ReadChar> Cursor<R> {
         let needs_peek = n as usize - peeked;
 
         for i in 0..needs_peek {
-            let next = self.iter.next_char()?;
+            let next = self.iter.next_char(&mut |_| Ok(()))?;
             self.peeked[i + peeked] = next;
         }
 
@@ -106,12 +107,12 @@ impl<R: ReadChar> Cursor<R> {
             return Ok(Some(c));
         }
 
-        let next = self.iter.next_char()?;
+        let next = self.iter.next_char(&mut |_| Ok(()))?;
         self.peeked[0] = next;
         Ok(next)
     }
 
-    pub(super) fn next_if(&mut self, c: u32) -> io::Result<bool> {
+    pub(super) fn next_if(&mut self, c: u32) -> Result<bool, Error> {
         if self.peek_char()? == Some(c) {
             self.next_char()?;
             Ok(true)
@@ -125,7 +126,7 @@ impl<R: ReadChar> Cursor<R> {
     /// Otherwise returns the result from the predicate on the ascii in char
     ///
     /// The buffer is not incremented.
-    pub(super) fn next_is_ascii_pred<F>(&mut self, pred: &F) -> io::Result<bool>
+    pub(super) fn next_is_ascii_pred<F>(&mut self, pred: &F) -> Result<bool, Error>
     where
         F: Fn(char) -> bool,
     {
@@ -143,17 +144,18 @@ impl<R: ReadChar> Cursor<R> {
     /// Returns error when reaching the end of the buffer.
     ///
     /// Note that all bytes up until the stop byte are added to the buffer, including the byte right before.
-    pub(super) fn take_until(&mut self, stop: u32, buf: &mut Vec<u32>) -> io::Result<()> {
+    pub(super) fn take_until(&mut self, stop: u32, buf: &mut Vec<u32>) -> Result<(), Error> {
         loop {
             if self.next_if(stop)? {
                 return Ok(());
             } else if let Some(c) = self.next_char()? {
                 buf.push(c);
             } else {
-                return Err(Error::new(
+                return Err(io::Error::new(
                     ErrorKind::UnexpectedEof,
                     format!("Unexpected end of file when looking for character {stop}"),
-                ));
+                )
+                .into());
             }
         }
     }
@@ -164,7 +166,7 @@ impl<R: ReadChar> Cursor<R> {
     pub(super) fn take_array_alphabetic<const N: usize>(
         &mut self,
         arr: &mut [u32; N],
-    ) -> io::Result<usize> {
+    ) -> Result<usize, Error> {
         for (i, out) in arr.iter_mut().enumerate() {
             match self.peek_char()? {
                 // A..Z | a..z
@@ -189,7 +191,7 @@ impl<R: ReadChar> Cursor<R> {
             self.peeked.rotate_left(1);
             Some(c)
         } else {
-            self.iter.next_char()?
+            self.iter.next_char(&mut |_| Ok(()))?
         };
 
         if let Some(ch) = ch {
@@ -226,15 +228,20 @@ impl<'a> From<&'a [u8]> for Cursor<UTF8Input<&'a [u8]>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::source::{ReadError, ReadLimit, ReadUnit};
 
     #[test]
     fn alphabetic_lookahead_propagates_a_fault_after_filling_the_buffer() {
         struct FaultAfterLetter(Option<u32>);
 
         impl ReadChar for FaultAfterLetter {
-            fn next_char(&mut self) -> io::Result<Option<u32>> {
+            fn next_char(
+                &mut self,
+                admit: &mut impl FnMut(ReadUnit) -> Result<(), ReadLimit>,
+            ) -> Result<Option<u32>, ReadError> {
+                admit(ReadUnit::HostRead)?;
                 self.0.take().map(Some).ok_or_else(|| {
-                    Error::new(ErrorKind::InvalidData, "source fault after letter")
+                    io::Error::new(ErrorKind::InvalidData, "source fault after letter").into()
                 })
             }
         }
@@ -243,6 +250,9 @@ mod tests {
         let mut letters = [0];
         let error = cursor.take_array_alphabetic(&mut letters).unwrap_err();
         assert_eq!(letters, [u32::from(b'a')]);
+        let Error::IO(error) = error else {
+            panic!("expected a reader fault");
+        };
         assert_eq!(error.kind(), ErrorKind::InvalidData);
         assert_eq!(error.to_string(), "source fault after letter");
     }

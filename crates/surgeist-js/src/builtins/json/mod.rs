@@ -39,7 +39,7 @@ use crate::{
     value::IntegerOrInfinity,
     vm::{CallFrame, CallFrameFlags, source_info::SourcePath},
 };
-use surgeist_js_parser::{Parser, Source};
+use surgeist_js_parser::Source;
 
 use super::{BuiltInBuilder, IntrinsicObject};
 
@@ -264,12 +264,11 @@ impl Json {
         // 4-10. Parse and evaluate the script
         let source = Source::from_bytes(&script_string);
         let mut interner = Interner::new();
-        let mut parser = Parser::new(source);
-        parser.set_json_parse();
-
         // Use parse_script_with_source to get SourceText for span-based source extraction
-        let (script, source_text) =
-            parser.parse_script_with_source(&Scope::new_global(), &mut interner)?;
+        let (script, source_text) = context.parse_source(source, |mut parser| {
+            parser.set_json_parse();
+            Ok(parser.parse_script_with_source(&Scope::new_global(), &mut interner)?)
+        })?;
 
         // Build the source tree from the AST if a reviver is present.
         // This walks the parsed AST and extracts source text from LinearSpan information,
