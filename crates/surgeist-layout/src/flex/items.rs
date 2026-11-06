@@ -467,29 +467,36 @@ where
     let available = constants.axes.with_cross_size(available, cross_available);
     let use_content_sizing_for_base = intrinsic_flex_basis.is_some()
         || flex_basis_uses_content && style.display == crate::Display::Block;
-    let mut child_known = size;
-    if !constants.wraps
-        && use_content_sizing_for_base
+    let stretched_cross = if !constants.wraps
         && align_self == AlignItems::Stretch
         && cross_size_is_auto
         && !constants.axes.cross_start_edge(margin_is_auto)
         && !constants.axes.cross_end_edge(margin_is_auto)
-        && let Some(cross_size) = constants.axes.cross_size(constants.percentage_parent_size)
     {
-        child_known = constants.axes.with_cross_size(
-            child_known,
-            Some((cross_size - constants.axes.cross_edge_sum(margin)).max(Tree::Scalar::ZERO)),
-        );
-    }
-    let child_known_for_base = flex_base_known_size(
-        constants.axes.with_main_size(size, None),
-        constants.axes.cross_size(constants.percentage_parent_size),
-        style,
-        constants,
-        margin,
-        margin_is_auto,
-        align_self,
-    );
+        constants
+            .axes
+            .cross_size(percentage_parent_size)
+            .map(|cross| {
+                (cross - constants.axes.cross_edge_sum(margin))
+                    .clamp_max_before_min_optional(
+                        constants.axes.cross_size(min_size),
+                        constants.axes.cross_size(max_size),
+                    )
+                    .max(constants.axes.cross_size(padding_border.sum_axes()))
+            })
+    } else {
+        None
+    };
+    let child_known = if use_content_sizing_for_base {
+        constants
+            .axes
+            .with_cross_size(size, stretched_cross.or(constants.axes.cross_size(size)))
+    } else {
+        size
+    };
+    let child_known_for_base = constants
+        .axes
+        .size_from_main_cross(None, constants.axes.cross_size(size).or(stretched_cross));
     let padding_border_main = constants.axes.main_size(padding_border.sum_axes());
     let main_request = constants.axes.main_size(available);
     let operation = intrinsic_flex_basis
@@ -834,37 +841,6 @@ where
 
 pub(super) fn flex_automatic_minimum_is_zero(overflow: ComputedOverflow) -> bool {
     overflow.x().is_scrollable() || overflow.y().is_scrollable()
-}
-
-fn flex_base_known_size<S: LayoutScalar>(
-    size: Size<Option<S>>,
-    allocated_cross_extent: Option<S>,
-    style: &FlexItemProjection<'_, S>,
-    constants: &Constants<S>,
-    margin: Edges<S>,
-    margin_is_auto: Edges<bool>,
-    align_self: AlignItems,
-) -> Size<Option<S>> {
-    let mut known = constants.axes.with_main_size(size, None);
-    if align_self == AlignItems::Stretch
-        && constants
-            .axes
-            .cross_size(Size::new(
-                &style.common.size.width,
-                &style.common.size.height,
-            ))
-            .is_auto()
-        && constants.axes.cross_size(known).is_none()
-        && !constants.axes.cross_start_edge(margin_is_auto)
-        && !constants.axes.cross_end_edge(margin_is_auto)
-        && let Some(cross) = allocated_cross_extent
-    {
-        known = constants.axes.with_cross_size(
-            known,
-            Some((cross - constants.axes.cross_edge_sum(margin)).max(S::ZERO)),
-        );
-    }
-    known
 }
 
 #[expect(
