@@ -1165,7 +1165,7 @@ where
     );
 
     for float in floats {
-        let (normal_location, visual_location) = if let Some(accepted) = float.placement.text() {
+        let normal_location = if let Some(accepted) = float.placement.text() {
             if accepted.inline_space != FloatInlineSpace::Finite {
                 return Err(super::inline_run::text_run_error(
                     container,
@@ -1191,12 +1191,11 @@ where
                 ));
             }
             float_exclusions.record_placement(float, accepted.logical_origin);
-            let location = constants.flow_axes.physical_point(
+            constants.flow_axes.physical_point(
                 accepted.logical_origin,
                 constants.flow_axes.logical_size(float.size),
                 container_size,
-            );
-            (location, location)
+            )
         } else {
             let PendingPlacement::Native(receipt) = &float.placement else {
                 return Err(super::float_context::missing(float.node));
@@ -1211,29 +1210,29 @@ where
             // Block auto size may settle after placement. The accepted logical
             // position belongs to the unchanged inline frame; project it once
             // against the final block extent, including decreasing block flow.
-            let normal = constants.flow_axes.physical_point(
+            constants.flow_axes.physical_point(
                 receipt.logical,
                 constants.flow_axes.logical_size(float.size),
                 container_size,
-            );
-            let offset = relative::resolve(
-                tree,
-                float.node,
-                tree.node_input(float.node).inset,
-                InsetReference::Accepted(Some(inset_basis)),
-                constants.flow_axes,
-            )?;
-            let visual = Point::new(normal.x + offset.x, normal.y + offset.y);
-            for value in [visual.x, visual.y] {
-                if !value.is_finite() {
-                    return Err(value_resolution_error(
-                        float.node,
-                        LengthResolutionStatus::InvalidNumeric { value },
-                    ));
-                }
-            }
-            (normal, visual)
+            )
         };
+        let offset = relative::resolve(
+            tree,
+            float.node,
+            tree.node_input(float.node).inset,
+            InsetReference::Accepted(Some(inset_basis)),
+            constants.flow_axes,
+        )?;
+        let visual_location =
+            Point::new(normal_location.x + offset.x, normal_location.y + offset.y);
+        for value in [visual_location.x, visual_location.y] {
+            if !value.is_finite() {
+                return Err(value_resolution_error(
+                    float.node,
+                    LengthResolutionStatus::InvalidNumeric { value },
+                ));
+            }
+        }
         let scroll_geometry = with_block_scroll_projections::<Tree, M, _>(
             tree,
             float.node,
