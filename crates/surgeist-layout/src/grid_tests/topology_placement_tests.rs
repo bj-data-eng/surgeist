@@ -252,6 +252,69 @@ fn fixed_grid_repeat_capacity_is_reported_f64() {
     assert_fixed_grid_repeat_capacity_is_reported::<f64>();
 }
 
+fn assert_mixed_grid_repeat_capacity_is_reported<S: LayoutScalar + std::panic::RefUnwindSafe>() {
+    let mut differences = Vec::new();
+    for (display, auto_body) in [
+        (Display::Grid, vec![TrackComponentOf::line_names(["slot"])]),
+        (Display::GridLanes, vec![TrackComponentOf::px(S::ONE)]),
+    ] {
+        let make_tree = |count| {
+            let track = TrackComponentOf::px(S::ONE);
+            let mixed = vec![
+                TrackComponentOf::Repeat(
+                    crate::TrackRepetitionOf::count_components(
+                        count,
+                        vec![track.clone(), track.clone()],
+                    )
+                    .unwrap(),
+                ),
+                TrackComponentOf::Repeat(
+                    crate::TrackRepetitionOf::auto_fill_components(auto_body.clone()).unwrap(),
+                ),
+            ];
+            let (grid_template_columns, grid_template_rows) = if display == Display::Grid {
+                (mixed, vec![track])
+            } else {
+                (vec![track], mixed)
+            };
+            PublicLayoutTreeOf::new().children(1, []).style(
+                1,
+                NodeInputOf {
+                    display,
+                    grid_auto_flow: GridAutoFlow::Row,
+                    grid_template_columns,
+                    grid_template_rows,
+                    ..NodeInputOf::default()
+                },
+            )
+        };
+        compute_layout(&make_tree(2), 1, fri08_c01_placement_request()).unwrap();
+        let failure = std::panic::catch_unwind(|| {
+            compute_layout(&make_tree(usize::MAX), 1, fri08_c01_placement_request()).err()
+        })
+        .ok()
+        .flatten();
+        if !failure.as_ref().is_some_and(|error| {
+            error.site() == LayoutErrorSiteOf::Node(1)
+                && error.operation() == LayoutOperation::ChildLayout
+                && matches!(error.kind(), LayoutErrorKindOf::Allocation)
+        }) {
+            differences.push(format!("{display:?}: {failure:?}"));
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn mixed_grid_repeat_capacity_is_reported_f32() {
+    assert_mixed_grid_repeat_capacity_is_reported::<f32>();
+}
+
+#[test]
+fn mixed_grid_repeat_capacity_is_reported_f64() {
+    assert_mixed_grid_repeat_capacity_is_reported::<f64>();
+}
+
 fn assert_grid_lanes_growth_uses_signed_ranges<S: LayoutScalar>() {
     let px = S::from_f64;
     let container = Size::new(px(60.0), px(20.0));
