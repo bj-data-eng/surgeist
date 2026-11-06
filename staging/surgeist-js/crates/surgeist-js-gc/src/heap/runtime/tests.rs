@@ -135,3 +135,60 @@ fn allocation_disposes_after_borrow_and_keeps_its_new_root_during_reentry() {
             .is_some()
     );
 }
+
+#[test]
+fn opportunistic_allocation_defers_a_borrowed_live_graph_and_retries() {
+    use std::num::NonZeroUsize;
+
+    let runtime = RuntimeHeap::default();
+    let owner = runtime.allocate(Record(RefCell::new(None))).unwrap();
+    let child = runtime.allocate(Record(RefCell::new(None))).unwrap();
+    let child_ref = child.record_ref();
+    let unreachable = runtime
+        .allocate(Record(RefCell::new(None)))
+        .unwrap()
+        .record_ref();
+    let mut write = owner.0.borrow_mut();
+    *write = Some(child_ref.identity());
+    drop(child);
+    runtime
+        .set_allocation_collection(AllocationCollection::Opportunistic(NonZeroUsize::MIN))
+        .unwrap();
+
+    let pending = runtime.allocate(Record(RefCell::new(None))).unwrap();
+    assert!(child_ref.is_live().unwrap());
+    assert!(unreachable.is_live().unwrap());
+    drop(write);
+    let retry = runtime.allocate(Record(RefCell::new(None))).unwrap();
+    assert!(child_ref.is_live().unwrap());
+    assert!(!unreachable.is_live().unwrap());
+    assert!(pending.record_ref().is_live().unwrap());
+    assert!(retry.record_ref().is_live().unwrap());
+}
+
+#[test]
+fn adaptive_collection_waits_for_growth_after_a_sweep() {
+    use std::num::NonZeroUsize;
+
+    let runtime = RuntimeHeap::default();
+    let allocate = || runtime.allocate(Record(RefCell::new(None))).unwrap();
+    let owners = [allocate(), allocate(), allocate()];
+    assert_eq!(runtime.collect().unwrap(), 0);
+    runtime
+        .set_allocation_collection(AllocationCollection::Adaptive(NonZeroUsize::MIN))
+        .unwrap();
+
+    let discarded = allocate().record_ref();
+    let growth = [allocate(), allocate()];
+    assert!(discarded.is_live().unwrap());
+
+    let next = allocate();
+    assert!(!discarded.is_live().unwrap());
+    assert!(
+        owners
+            .iter()
+            .chain(&growth)
+            .chain([&next])
+            .all(|root| root.record_ref().is_live().unwrap())
+    );
+}

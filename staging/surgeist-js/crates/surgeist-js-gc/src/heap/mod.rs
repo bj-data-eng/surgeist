@@ -3,20 +3,23 @@
 #![forbid(unsafe_code)]
 
 use std::{
-    any::Any,
+    any::{Any, TypeId},
     cell::RefCell,
     collections::{HashMap, VecDeque},
     error::Error,
     fmt,
     marker::PhantomData,
+    num::NonZeroUsize,
     rc::{Rc, Weak},
     sync::atomic::{AtomicU64, Ordering},
 };
 
 mod runtime;
-pub use runtime::{Rooted, RuntimeHeap};
+pub use runtime::{RecordRef, Rooted, RuntimeHeap};
 pub use surgeist_js_macros::HeapTrace as Trace;
 
+#[cfg(test)]
+mod lifetime_tests;
 #[cfg(test)]
 mod tests;
 
@@ -28,6 +31,14 @@ pub struct ObjectId {
     heap: u64,
     slot: usize,
     generation: u64,
+}
+
+impl ObjectId {
+    /// Returns whether two identities were issued by the same heap.
+    #[must_use]
+    pub const fn same_heap(self, other: Self) -> bool {
+        self.heap == other.heap
+    }
 }
 
 /// A typed identity. Keeping a handle does not keep its payload alive.
@@ -185,6 +196,76 @@ impl<T: Trace + ?Sized> Trace for Rc<T> {
     }
 }
 
+impl<T: Trace + ?Sized> Trace for Box<T> {
+    fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+        self.as_ref().trace(edges)
+    }
+}
+
+impl<T: Trace> Trace for Vec<T> {
+    fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+        self.iter().try_for_each(|value| value.trace(edges))
+    }
+}
+
+#[cfg(feature = "thin-vec")]
+impl<T: Trace> Trace for thin_vec::ThinVec<T> {
+    fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+        self.iter().try_for_each(|value| value.trace(edges))
+    }
+}
+
+impl<T: Trace> Trace for VecDeque<T> {
+    fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+        self.iter().try_for_each(|value| value.trace(edges))
+    }
+}
+
+impl<K: Trace, V: Trace, S: 'static> Trace for HashMap<K, V, S> {
+    fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+        for (key, value) in self {
+            key.trace(edges)?;
+            value.trace(edges)?;
+        }
+        Ok(())
+    }
+}
+
+macro_rules! trace_tuple {
+    ($($type:ident $field:tt),+) => {
+        impl<$($type: Trace),+> Trace for ($($type,)+) {
+            fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+                $(self.$field.trace(edges)?;)+
+                Ok(())
+            }
+        }
+    };
+}
+
+trace_tuple!(A 0, B 1);
+trace_tuple!(A 0, B 1, C 2);
+trace_tuple!(A 0, B 1, C 2, D 3);
+
+macro_rules! trace_leaf {
+    ($($type:ty),+ $(,)?) => {
+        $(
+            impl Trace for $type {
+                fn trace(&self, _: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+                    Ok(())
+                }
+            }
+        )+
+    };
+}
+
+trace_leaf!((), bool, u32, u64, i32, f64, usize, TypeId);
+
+#[cfg(feature = "surgeist-js-string")]
+trace_leaf!(surgeist_js_string::JsString);
+
+#[cfg(feature = "icu")]
+trace_leaf!(icu_locale_core::Locale);
+
 /// Receives edges without giving the payload access to collection state.
 pub struct EdgeVisitor<'a> {
     queue: &'a mut VecDeque<ObjectId>,
@@ -232,6 +313,12 @@ pub enum AllocationCollection {
     Manual,
     /// Collect on every allocation, protecting the incoming payload's edges.
     BeforeAllocation,
+    /// Attempt collection after this many allocations. A borrowed live
+    /// payload defers the sweep while the validated allocation can proceed.
+    Opportunistic(NonZeroUsize),
+    /// Allow the heap to grow by the surviving population after each sweep,
+    /// with this allocation interval as a lower bound.
+    Adaptive(NonZeroUsize),
 }
 
 /// Owns reclaimed payloads after a successful collection.
@@ -266,6 +353,8 @@ pub struct Heap {
     vacant: Vec<usize>,
     roots: HashMap<ObjectId, Weak<()>>,
     allocation_collection: AllocationCollection,
+    allocations_since_collection: usize,
+    live_after_collection: usize,
 }
 
 impl Default for Heap {
@@ -287,6 +376,8 @@ impl Heap {
             vacant: Vec::new(),
             roots: HashMap::new(),
             allocation_collection: AllocationCollection::Manual,
+            allocations_since_collection: 0,
+            live_after_collection: 0,
         }
     }
 
@@ -302,10 +393,20 @@ impl Heap {
     /// transfer to the caller without running their destructors during allocation.
     pub fn allocate<T: Trace>(&mut self, value: T) -> Result<Allocation<T>, Rejected<T>> {
         let prepared = self.checked_edges(&value).and_then(|edges| {
-            if self.allocation_collection == AllocationCollection::BeforeAllocation {
-                self.collect_from(edges)
-            } else {
-                Ok(Collection::default())
+            let interval = match self.allocation_collection {
+                AllocationCollection::Manual => return Ok(Collection::default()),
+                AllocationCollection::BeforeAllocation => 0,
+                AllocationCollection::Opportunistic(minimum) => minimum.get(),
+                AllocationCollection::Adaptive(minimum) => {
+                    minimum.get().max(self.live_after_collection)
+                }
+            };
+            if self.allocations_since_collection < interval {
+                return Ok(Collection::default());
+            }
+            match self.collect_from(edges) {
+                Err(AccessError::PayloadBorrowed) if interval != 0 => Ok(Collection::default()),
+                result => result,
             }
         });
         let collection = match prepared {
@@ -323,6 +424,7 @@ impl Heap {
         });
         let entry = &mut self.slots[slot];
         entry.payload = Some(Box::new(value));
+        self.allocations_since_collection = self.allocations_since_collection.saturating_add(1);
         let id = ObjectId {
             heap: self.id,
             slot,
@@ -420,6 +522,23 @@ impl Heap {
         Ok(edges)
     }
 
+    fn root_pending_edges(&mut self, value: &dyn Trace) -> Result<Vec<Root<()>>, AccessError> {
+        let Edges { queue, ephemerons } = self.checked_edges(value)?;
+        let mut roots = Vec::with_capacity(queue.len());
+        for edge in queue {
+            roots.push(self.register(Handle::new(edge)));
+        }
+        // Hold live conditional edges until the owner is published, at which
+        // point collection can resume applying the condition normally.
+        for (key, value) in ephemerons {
+            if self.live_ephemeron(key, value)? {
+                roots.push(self.register(Handle::new(key)));
+                roots.push(self.register(Handle::new(value)));
+            }
+        }
+        Ok(roots)
+    }
+
     fn live_ephemeron(&self, key: ObjectId, value: ObjectId) -> Result<bool, AccessError> {
         if value.heap != self.id {
             return Err(AccessError::ForeignHeap);
@@ -470,8 +589,10 @@ impl Heap {
         }
 
         let mut retired = Vec::new();
+        let mut live = 0;
         for (index, (entry, reachable)) in self.slots.iter_mut().zip(marked).enumerate() {
             if reachable {
+                live += 1;
                 continue;
             }
             if let Some(payload) = entry.payload.take() {
@@ -483,6 +604,8 @@ impl Heap {
             }
         }
         self.roots.retain(|_, root| root.strong_count() != 0);
+        self.allocations_since_collection = 0;
+        self.live_after_collection = live;
         Ok(Collection { retired })
     }
 }
