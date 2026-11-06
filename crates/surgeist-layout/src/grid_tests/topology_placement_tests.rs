@@ -655,6 +655,91 @@ fn lanes_floors_outer_advance_f64() {
     assert_lanes_floors_outer_advance::<f64>();
 }
 
+fn assert_dense_lanes_backfill_compatible_holes<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let mut differences = Vec::new();
+    for (flow, hole_width, height, definite, backfills) in [
+        (GridAutoFlow::Row, 20.0, 30.0, false, false),
+        (GridAutoFlow::RowDense, 20.0, 30.0, false, true),
+        (GridAutoFlow::RowDense, 25.0, 30.0, false, false),
+        (GridAutoFlow::RowDense, 20.0, 31.0, false, false),
+        (GridAutoFlow::Row, 20.0, 30.0, true, false),
+        (GridAutoFlow::RowDense, 20.0, 30.0, true, true),
+    ] {
+        let container = Size::new(px(40.0 + hole_width), px(100.0));
+        let mut tree = PublicLayoutTreeOf::new().children(1, [2, 3, 4, 5]).style(
+            1,
+            NodeInputOf {
+                display: Display::GridLanes,
+                grid_auto_flow: flow,
+                size: container.map(PreferredSizeOf::px),
+                grid_template_columns: [20.0, hole_width, 20.0]
+                    .map(|width| TrackComponentOf::px(px(width)))
+                    .into(),
+                grid_flow_tolerance: GridFlowToleranceOf::Length(LengthOf::ZERO),
+                gap: Size::new(LengthOf::ZERO, LengthOf::px(px(5.0))),
+                align_content: Some(AlignContent::Start),
+                ..NodeInputOf::default()
+            },
+        );
+        let target = if definite {
+            RawGridPlacement::line(2)
+        } else {
+            RawGridPlacement::AUTO
+        };
+        for (node, (placement, height)) in (2..).zip([
+            (RawGridPlacement::line(1), 30.0),
+            (RawGridPlacement::lines(1, 3), 10.0),
+            (target, height),
+            (RawGridPlacement::AUTO, 10.0),
+        ]) {
+            tree = tree.style(
+                node,
+                NodeInputOf {
+                    raw_grid_column: placement,
+                    size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(height))),
+                    ..NodeInputOf::default()
+                },
+            );
+        }
+
+        let batch = fri08_c03_auto_fit_batch(&tree, container);
+        let actual = [2, 3, 4, 5].map(|node| fri08_c01_placement_output(&batch, node).location);
+        // The spanner starts at 35px, leaving a 35px hole in the second lane.
+        let last_lane = 20.0 + hole_width;
+        let target = if backfills {
+            (20.0, 0.0)
+        } else if definite {
+            (20.0, 50.0)
+        } else {
+            (last_lane, 0.0)
+        };
+        let next = if backfills || definite {
+            0.0
+        } else {
+            height + 5.0
+        };
+        let expected = [(0.0, 0.0), (0.0, 35.0), target, (last_lane, next)]
+            .map(|(x, y)| Point::new(px(x), px(y)));
+        if actual != expected {
+            differences.push(format!(
+                "{flow:?}, width={hole_width}, height={height}, definite={definite}: {actual:?}, expected {expected:?}"
+            ));
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn dense_lanes_backfill_compatible_holes_f32() {
+    assert_dense_lanes_backfill_compatible_holes::<f32>();
+}
+
+#[test]
+fn dense_lanes_backfill_compatible_holes_f64() {
+    assert_dense_lanes_backfill_compatible_holes::<f64>();
+}
+
 fn lanes_stacking_test_input<S: LayoutScalar>(
     run_mode: RunMode,
     operation: SizingOperation,
