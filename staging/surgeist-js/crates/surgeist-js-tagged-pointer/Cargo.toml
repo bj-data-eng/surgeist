@@ -1,0 +1,10 @@
+[package]
+workspace = "../.."
+description = "Tagged pointers in the staged upstream engine."
+publish = false
+name = "surgeist-js-tagged-pointer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true

@@ -1,0 +1,19 @@
+[package]
+workspace = "../.."
+description = "JavaScript string representation."
+publish = false
+name = "surgeist-js-string"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+itoa.workspace = true
+rustc-hash = { workspace = true, features = ["std"] }
+ryu-js.workspace = true
+
+static_assertions.workspace = true
+pastey.workspace = true
+fast-float2.workspace = true

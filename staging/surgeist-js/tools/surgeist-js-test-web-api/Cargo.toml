@@ -1,0 +1,27 @@
+[package]
+workspace = "../.."
+description = "Web APIs used by the staged upstream test host."
+publish = false
+name = "surgeist-js-test-web-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+surgeist-js.workspace = true
+surgeist-js-gc.workspace = true
+base64.workspace = true
+comfy-table.workspace = true
+rustc-hash = { workspace = true, features = ["std"] }
+
+[dev-dependencies]
+indoc.workspace = true
+textwrap.workspace = true
+futures-lite.workspace = true
+
+[features]
+default = []
+url = []
+fetch = []

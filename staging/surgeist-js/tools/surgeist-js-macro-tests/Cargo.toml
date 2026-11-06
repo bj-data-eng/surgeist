@@ -1,0 +1,15 @@
+[package]
+workspace = "../.."
+description = "Integration tests for JavaScript engine procedural macros."
+publish = false
+name = "surgeist-js-macro-tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dev-dependencies]
+trybuild.workspace = true
+surgeist-js = { workspace = true, features = ["embedded_lz4"] }
+surgeist-js-gc.workspace = true
