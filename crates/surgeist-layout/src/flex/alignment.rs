@@ -299,8 +299,8 @@ pub(super) fn first_vertical_baseline<Node, S: LayoutScalar>(
     let item = line_items
         .iter()
         .find(|item| {
-            constants.axes.main_logical_axis() == LogicalAxis::Block
-                || item.align_self == AlignItems::Baseline
+            constants.axes.main_logical_axis() == LogicalAxis::Inline
+                && item.participates_in_baseline(constants.axes)
         })
         .or_else(|| line_items.first())?;
     let container = constants
@@ -378,8 +378,7 @@ pub(super) fn first_final_vertical_baseline<Node, S: LayoutScalar>(
     let item = line_items
         .iter()
         .find(|item| {
-            constants.axes.main_logical_axis() == LogicalAxis::Block
-                || item.align_self == AlignItems::Baseline
+            constants.axes.main_logical_axis() == LogicalAxis::Inline && item.shares_baseline
         })
         .or_else(|| line_items.first())?;
     Some(item_physical_baseline(
@@ -714,7 +713,6 @@ mod final_baseline_selection_tests {
             source_index: crate::SourceIndex::ZERO,
             output,
             margin: Edges::ZERO,
-            align_self,
             shares_baseline: align_self == AlignItems::Baseline,
             baseline: FlexItemBaseline::from_output(output, default_flow_axes::<S>()),
             location: Point::new(S::ZERO, S::from_f64(location_y)),
