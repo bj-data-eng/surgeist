@@ -1,0 +1,2 @@
+# Derive dependencies use different major versions of syn.
+allowed-duplicate-crates = ["syn"]

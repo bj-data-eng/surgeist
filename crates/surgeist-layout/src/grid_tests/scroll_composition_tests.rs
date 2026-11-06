@@ -3815,8 +3815,8 @@ fn fri05_c05_subgrid_geometry_settles_local_auto_and_preserves_parent_local_outp
     // Every actual observation has a fresh own pass. This fixture's fixed 20px
     // child at relative 95px overflows both 100px axes immediately, so each
     // independent invocation settles INITIAL -> both bars in exactly two passes.
-    let mut invocations = performed.chunks_exact(2);
-    for invocation in &mut invocations {
+    let (invocations, remainder) = performed.as_chunks::<2>();
+    for invocation in invocations {
         assert_eq!(
             invocation[0].containing_auto_scrollbar_pass(),
             crate::scroll::SettledAutoScrollbarState::INITIAL
@@ -3826,7 +3826,7 @@ fn fri05_c05_subgrid_geometry_settles_local_auto_and_preserves_parent_local_outp
             crate::scroll::SettledAutoScrollbarState::new(true, true)
         );
     }
-    assert!(invocations.remainder().is_empty());
+    assert!(remainder.is_empty());
     assert!(performed.iter().all(|input| {
         input.settled_auto_scrollbars() == crate::scroll::SettledAutoScrollbarState::INITIAL
     }));

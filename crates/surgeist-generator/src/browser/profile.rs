@@ -1358,7 +1358,7 @@ fn decode_path(value: &str, label: &str) -> Result<PathBuf> {
         )));
     }
     let mut bytes = Vec::with_capacity(value.len() / 2);
-    for pair in value.as_bytes().chunks_exact(2) {
+    for pair in value.as_bytes().as_chunks::<2>().0 {
         let text = std::str::from_utf8(pair).expect("hex pairs are ASCII");
         bytes.push(
             u8::from_str_radix(text, 16)
