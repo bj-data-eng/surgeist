@@ -708,16 +708,28 @@ fn repeat_count_from_sum<S: LayoutScalar>(
     if repeat_size <= S::ZERO || available <= repeat_size {
         return Ok(1);
     }
+    let available = available.to_f64();
+    let repeat_size = repeat_size.to_f64();
     let quotient = available / repeat_size;
-    let count = match constraint {
+    let rounded = match constraint {
         AutoRepeatConstraint::Fit(_) => quotient.floor(),
         AutoRepeatConstraint::FillMinimum(_) => quotient.ceil(),
         AutoRepeatConstraint::One => unreachable!("unbounded counts use one group"),
     };
-    if count >= S::from_usize(usize::MAX) {
+    let count = rounded.floor_to_usize_saturating();
+    if count == usize::MAX {
         return Err(SpanningContributionError::Allocation);
     }
-    Ok(count.floor_to_usize_saturating())
+    // Division can round a quotient across an integer boundary. A fused
+    // residual tests the candidate without rounding its product first.
+    let residual = repeat_size.mul_add(rounded, -available);
+    match constraint {
+        AutoRepeatConstraint::Fit(_) if residual > 0.0 => Ok(count.saturating_sub(1).max(1)),
+        AutoRepeatConstraint::FillMinimum(_) if residual < 0.0 => count
+            .checked_add(1)
+            .ok_or(SpanningContributionError::Allocation),
+        _ => Ok(count),
+    }
 }
 
 fn repeat_count_operands<S: LayoutScalar>(
