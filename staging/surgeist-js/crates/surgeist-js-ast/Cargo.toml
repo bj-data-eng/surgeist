@@ -9,6 +9,9 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[lints]
+workspace = true
+
 [features]
 annex-b = []
 serde = ["dep:serde", "surgeist-js-interner/serde", "bitflags/serde", "num-bigint/serde"]

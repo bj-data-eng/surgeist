@@ -9,6 +9,9 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 icu_provider = { workspace = true, features = ["sync"] }
 icu_provider_blob.workspace = true

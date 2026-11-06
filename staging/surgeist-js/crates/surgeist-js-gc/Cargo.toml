@@ -9,6 +9,9 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[lints]
+workspace = true
+
 [features]
 thin-vec = ["dep:thin-vec"]
 icu = ["dep:icu_locale_core"]

@@ -43,8 +43,8 @@ The engine uses a runtime-owned tracing heap. Host handles root live
 allocations, and stored references identify allocations by heap, slot and
 generation. The collector and its trace derive use safe Rust. The owned
 source boundary includes libraries, tests, benchmarks, build scripts and
-generated proc-macro code. Qualification compiles the selected features and
-targets with unsafe code forbidden.
+generated proc-macro code. Every staging package inherits the workspace's
+`unsafe_code = "forbid"` lint.
 
 The staged packages call registry dependencies through safe APIs.
 Dependencies such as `bytemuck` and `portable-atomic` use unsafe

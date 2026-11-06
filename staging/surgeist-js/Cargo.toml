@@ -166,3 +166,6 @@ opt-level = 1
 lto = "fat"
 # Makes sure that all code is compiled together, for LTO
 codegen-units = 1
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
