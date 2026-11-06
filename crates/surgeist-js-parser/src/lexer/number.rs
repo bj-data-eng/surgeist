@@ -193,11 +193,11 @@ impl<R> Tokenizer<R> for NumberLiteral {
         // Default assume the number is a base 10 integer.
         let mut kind = NumericKind::Integer(10);
 
-        let c = cursor.peek_char();
+        let c = cursor.peek_char()?;
         let mut legacy_octal = false;
 
         if self.init == b'0' {
-            if let Some(ch) = c? {
+            if let Some(ch) = c {
                 match ch {
                     // x | X
                     0x0078 | 0x0058 => {
