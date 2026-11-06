@@ -1026,3 +1026,45 @@ fn flex_main_placement_refuses_visible_descendant_translation_overflow() {
     assert_main_placement_refuses_retained_edge(2.0_f32.powi(126), true);
     assert_main_placement_refuses_retained_edge(2.0_f64.powi(1022), true);
 }
+
+fn assert_flex_main_placement_keeps_checked_retained_endpoint<S: LayoutScalar>(quarter: S) {
+    let px = S::from_f64;
+    let width = (px(1.5) + px(3.0) * S::EPSILON) * quarter;
+    let mut item = fixed_main_placement_item(width);
+    item.margin.left = LengthAutoOf::px(quarter / px(8.0));
+    item.margin.right = LengthAutoOf::px((px(2.0) - px(5.0) * S::EPSILON) * quarter);
+    item.inset.left = LengthAutoOf::px(px(3.0) * quarter / px(8.0));
+    let batch = main_placement_batch(
+        px(3.0) * quarter,
+        FlexDirection::Row,
+        AlignContent::FlexStart,
+        S::ZERO,
+        S::ZERO,
+        [item],
+        None,
+    )
+    .unwrap();
+    let entries = batch.unrounded_entries();
+    let root = entries
+        .iter()
+        .find(|entry| entry.node() == 0)
+        .unwrap()
+        .output();
+    let child = entries
+        .iter()
+        .find(|entry| entry.node() == 1)
+        .unwrap()
+        .output();
+    assert_eq!(child.location.x, quarter / px(2.0));
+    assert_eq!(child.size.width, width);
+    assert_eq!(
+        root.content_size.width,
+        fri06_mr02_geometry_error_largest_finite::<S>()
+    );
+}
+
+#[test]
+fn flex_main_placement_keeps_checked_retained_endpoint() {
+    assert_flex_main_placement_keeps_checked_retained_endpoint(2.0_f32.powi(126));
+    assert_flex_main_placement_keeps_checked_retained_endpoint(2.0_f64.powi(1022));
+}
