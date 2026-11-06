@@ -7579,6 +7579,92 @@ fn grid_axis_track_phase_contracts_f64() {
     assert_grid_axis_track_phase_contracts::<f64>();
 }
 
+fn assert_grid_minimum_finishes_intrinsic_tracks<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let request = crate::LayoutRootRequestOf::standalone(
+        SizingRequestOf::new(
+            Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            ),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
+        flow,
+        Size::NONE,
+    );
+    let mut failures = Vec::new();
+    for (second, align, minimum_width) in [
+        (
+            TrackComponentOf::minmax(
+                MinTrackSizingOf::px(S::ZERO),
+                MaxTrackSizingOf::flex(TrackFlexFactorOf::try_new(px(0.5)).unwrap()),
+            ),
+            AlignContent::Start,
+            45.0,
+        ),
+        (TrackComponentOf::AUTO, AlignContent::Stretch, 90.0),
+    ] {
+        for (minimum, outer, track) in [
+            (MinSizeOf::AUTO, 10.0, 0.0),
+            (MinSizeOf::px(px(100.0)), 100.0, minimum_width),
+        ] {
+            let tree = PublicLayoutTreeOf::<S>::new()
+                .children(1, [2])
+                .style(
+                    1,
+                    NodeInputOf {
+                        display: Display::Grid,
+                        size: Size::new(
+                            PreferredSizeOf::MAX_CONTENT,
+                            PreferredSizeOf::px(px(20.0)),
+                        ),
+                        min_size: Size::new(minimum, MinSizeOf::AUTO),
+                        grid_template_columns: vec![TrackComponentOf::px(px(10.0)), second.clone()],
+                        grid_template_rows: vec![TrackComponentOf::px(px(20.0))],
+                        justify_content: Some(align),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    2,
+                    NodeInputOf {
+                        grid_column: GridPlacement::try_line(2).unwrap(),
+                        ..NodeInputOf::default()
+                    },
+                );
+            let batch = compute_layout(&tree, 1, request).unwrap();
+            let root = fri08_c01_placement_output(&batch, 1);
+            let marker = fri08_c01_placement_output(&batch, 2);
+            // Grid 2 §12.7 reruns flex against the 100px minimum. The 0.5fr
+            // track receives half the 90px remainder. Section 12.8 gives the
+            // eligible Auto track the full remainder under stretch alignment.
+            let actual = (root.size.width, marker.location.x, marker.size.width);
+            let expected = (px(outer), px(10.0), px(track));
+            if actual != expected {
+                failures.push(format!(
+                    "{align:?} outer {outer}: expected {expected:?}, got {actual:?}"
+                ));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn grid_minimum_finishes_intrinsic_tracks_f32() {
+    assert_grid_minimum_finishes_intrinsic_tracks::<f32>();
+}
+
+#[test]
+fn grid_minimum_finishes_intrinsic_tracks_f64() {
+    assert_grid_minimum_finishes_intrinsic_tracks::<f64>();
+}
+
 fn assert_grid_intrinsic_track_constraints<S: LayoutScalar>() {
     for writing_mode in [WritingMode::HorizontalTb, WritingMode::VerticalRl] {
         let flow = FlowAxes::new(writing_mode, Direction::Ltr);
