@@ -394,6 +394,95 @@ fn fri08_c03_auto_fit_automatic_span_sum_not_item_count_or_cell_area_sets_demand
     assert_eq!((automatic.location.x, automatic.size.width), (25.0, 90.0));
 }
 
+fn assert_lanes_auto_fit_counts_fixed_prefix<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let container = Size::new(px(145.0), px(20.0));
+    let mut differences = Vec::new();
+    for (fit, prefix_occupied, automatic_x, automatic_width, suffix_x) in [
+        (true, false, 0.0, 20.0, 20.0),
+        (true, true, 25.0, 40.0, 65.0),
+        (false, false, 0.0, 20.0, 115.0),
+    ] {
+        let group = vec![TrackComponentOf::px(px(40.0))];
+        let repeated = if fit {
+            TrackRepetitionOf::auto_fit_components(group).unwrap()
+        } else {
+            TrackRepetitionOf::auto_fill_components(group).unwrap()
+        };
+        let children = if prefix_occupied {
+            vec![2, 3, 4]
+        } else {
+            vec![3, 4]
+        };
+        let tree = PublicLayoutTreeOf::new()
+            .children(1, children)
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::GridLanes,
+                    size: container.map(PreferredSizeOf::px),
+                    grid_template_columns: vec![
+                        TrackComponentOf::px(px(20.0)),
+                        TrackComponentOf::Repeat(repeated),
+                        TrackComponentOf::line_names(["suffix"]),
+                        TrackComponentOf::px(px(10.0)),
+                    ],
+                    gap: Size::new(LengthOf::px(px(5.0)), LengthOf::ZERO),
+                    grid_flow_tolerance: GridFlowToleranceOf::Length(LengthOf::ZERO),
+                    justify_content: Some(AlignContent::Start),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    grid_column: GridPlacement::try_line(1).unwrap(),
+                    size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(10.0))),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(3, NodeInputOf::default())
+            .style(
+                4,
+                NodeInputOf {
+                    raw_grid_column: RawGridPlacement::new(
+                        RawGridLine::NamedLine {
+                            name: "suffix".into(),
+                            index: 1,
+                        },
+                        RawGridLine::Auto,
+                    ),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch = fri08_c03_auto_fit_batch(&tree, container);
+        let automatic = fri08_c01_placement_output(&batch, 3);
+        let suffix = fri08_c01_placement_output(&batch, 4);
+        let actual = (
+            automatic.location.x,
+            automatic.size.width,
+            suffix.location.x,
+        );
+        let expected = (px(automatic_x), px(automatic_width), px(suffix_x));
+        if actual != expected {
+            differences.push(format!(
+                "fit={fit}, prefix occupied={prefix_occupied}: {actual:?}, expected {expected:?}"
+            ));
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn lanes_auto_fit_counts_fixed_prefix_f32() {
+    assert_lanes_auto_fit_counts_fixed_prefix::<f32>();
+}
+
+#[test]
+fn lanes_auto_fit_counts_fixed_prefix_f64() {
+    assert_lanes_auto_fit_counts_fixed_prefix::<f64>();
+}
+
 fn assert_fri08_c03_auto_fit_candidates_across_flows<S: LayoutScalar>() {
     let scalar = S::from_f64;
     for writing_mode in [
