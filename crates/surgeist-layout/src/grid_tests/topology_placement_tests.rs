@@ -756,6 +756,154 @@ fn ordinary_intrinsic_auto_repeat_keeps_one_named_group_f64() {
     qualify_ordinary_intrinsic_auto_repeat::<f64>();
 }
 
+fn assert_auto_repeat_count_uses_definite_sizing_authority<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let mut differences = Vec::new();
+    for display in [Display::Grid, Display::GridLanes] {
+        for (preferred, minimum, maximum, available, expected_suffix) in [
+            (None, None, None, 170.0, 50.0),
+            (None, Some(100.0), None, 100.0, 120.0),
+            (None, Some(95.0), None, 95.0, 85.0),
+            (None, None, Some(100.0), 65.0, 85.0),
+            (Some(90.0), None, Some(160.0), 65.0, 50.0),
+            (None, Some(100.0), Some(65.0), 160.0, 85.0),
+        ] {
+            let repeat =
+                TrackRepetitionOf::auto_fill_components(vec![TrackComponentOf::px(px(30.0))])
+                    .unwrap();
+            let tree = PublicLayoutTreeOf::<S>::new()
+                .children(1, [2])
+                .style(
+                    1,
+                    NodeInputOf {
+                        display,
+                        size: Size::new(
+                            PreferredSizeOf::px(px(80.0)),
+                            preferred.map_or(PreferredSizeOf::AUTO, |value| {
+                                PreferredSizeOf::px(px(value))
+                            }),
+                        ),
+                        min_size: Size::new(
+                            MinSizeOf::AUTO,
+                            minimum.map_or(MinSizeOf::AUTO, |value| MinSizeOf::px(px(value))),
+                        ),
+                        max_size: Size::new(
+                            crate::MaxSizeOf::NONE,
+                            maximum.map_or(crate::MaxSizeOf::NONE, |value| {
+                                crate::MaxSizeOf::px(px(value))
+                            }),
+                        ),
+                        grid_template_rows: vec![
+                            TrackComponentOf::px(px(10.0)),
+                            TrackComponentOf::Repeat(repeat),
+                            TrackComponentOf::line_names(["suffix"]),
+                            TrackComponentOf::px(px(10.0)),
+                        ],
+                        gap: Size::new(LengthOf::ZERO, LengthOf::px(px(5.0))),
+                        align_content: Some(AlignContent::Start),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    2,
+                    NodeInputOf {
+                        size: Size::new(PreferredSizeOf::px(S::ZERO), PreferredSizeOf::px(S::ZERO)),
+                        raw_grid_row: RawGridPlacement::new(
+                            RawGridLine::NamedLine {
+                                name: "suffix".into(),
+                                index: 1,
+                            },
+                            RawGridLine::Auto,
+                        ),
+                        ..NodeInputOf::default()
+                    },
+                );
+            let batch = fri08_c03_auto_fit_batch(&tree, Size::new(px(80.0), px(available)));
+            let actual = fri08_c01_placement_output(&batch, 2).location.y;
+            // Two 10px outer tracks and a 5px adjacent gap precede the
+            // repeated track/gap units in the total size, 25 + 35n. The
+            // suffix begins at 15 + 35n.
+            if actual != px(expected_suffix) {
+                differences.push(format!("{display:?} preferred {preferred:?}, min {minimum:?}, max {maximum:?}, available {available}: suffix {actual:?}, expected {expected_suffix}"));
+            }
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn auto_repeat_count_uses_definite_sizing_authority() {
+    assert_auto_repeat_count_uses_definite_sizing_authority::<f32>();
+    assert_auto_repeat_count_uses_definite_sizing_authority::<f64>();
+}
+
+fn assert_intrinsic_auto_repeat_count_fills_minimum<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let group = TrackRepetitionOf::auto_fill_components(vec![
+        TrackComponentOf::px(px(10.0)),
+        TrackComponentOf::MAX_CONTENT,
+    ])
+    .unwrap();
+    let tree = PublicLayoutTreeOf::<S>::new()
+        .children(1, [2, 3])
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::GridLanes,
+                size: Size::new(PreferredSizeOf::px(px(80.0)), PreferredSizeOf::AUTO),
+                min_size: Size::new(MinSizeOf::AUTO, MinSizeOf::px(px(145.0))),
+                grid_template_rows: vec![
+                    TrackComponentOf::px(px(10.0)),
+                    TrackComponentOf::px(px(10.0)),
+                    TrackComponentOf::Repeat(group),
+                    TrackComponentOf::line_names(["suffix"]),
+                    TrackComponentOf::px(px(5.0)),
+                ],
+                align_content: Some(AlignContent::Start),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                size: Size::new(PreferredSizeOf::px(px(20.0)), PreferredSizeOf::px(px(30.0))),
+                raw_grid_row: RawGridPlacement::new(RawGridLine::Line(1), RawGridLine::Line(3)),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            3,
+            NodeInputOf {
+                position: Position::Absolute,
+                size: Size::new(PreferredSizeOf::px(S::ZERO), PreferredSizeOf::px(S::ZERO)),
+                inset: Edges::new(
+                    LengthAutoOf::ZERO,
+                    LengthAutoOf::Auto,
+                    LengthAutoOf::Auto,
+                    LengthAutoOf::Auto,
+                ),
+                raw_grid_row: RawGridPlacement::new(
+                    RawGridLine::NamedLine {
+                        name: "suffix".into(),
+                        index: 1,
+                    },
+                    RawGridLine::Auto,
+                ),
+                ..NodeInputOf::default()
+            },
+        );
+    let batch = fri08_c03_auto_fit_batch(&tree, Size::new(px(80.0), px(145.0)));
+    // The minimum fills with four hypothetical 35px groups after reserving
+    // 25px. The final suffix follows the two prefix rows and four 10px rows.
+    assert_eq!(fri08_c01_placement_output(&batch, 3).location.y, px(60.0));
+}
+
+#[test]
+fn auto_repeat_count_fills_minimum_for_intrinsic_lanes() {
+    assert_intrinsic_auto_repeat_count_fills_minimum::<f32>();
+    assert_intrinsic_auto_repeat_count_fills_minimum::<f64>();
+}
+
 fn lanes_intrinsic_auto_repeat_suffix<S: LayoutScalar>(
     first_member: TrackComponentOf<S>,
     span_end: isize,
