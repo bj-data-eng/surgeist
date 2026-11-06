@@ -16,6 +16,8 @@ pub enum FrontendWork {
     },
     /// One bounded lexer lookahead request, including cache hits and EOF probes.
     Lookahead,
+    /// One lexical production dispatch, including comments and continuations.
+    LexicalDispatch,
 }
 
 /// The frontend budget dimension that refused work.
@@ -29,6 +31,8 @@ pub enum FrontendLimit {
     Retention(u64),
     /// Maximum admitted lexer lookahead requests.
     Lookahead(u64),
+    /// Maximum admitted lexical production dispatches.
+    LexicalDispatch(u64),
 }
 
 impl fmt::Display for FrontendLimit {
@@ -38,6 +42,7 @@ impl fmt::Display for FrontendLimit {
             Self::Consumption(limit) => (limit, "consumed source code points"),
             Self::Retention(limit) => (limit, "retained UTF-16 source units"),
             Self::Lookahead(limit) => (limit, "lexer lookahead probes"),
+            Self::LexicalDispatch(limit) => (limit, "lexer dispatches"),
         };
         write!(
             formatter,

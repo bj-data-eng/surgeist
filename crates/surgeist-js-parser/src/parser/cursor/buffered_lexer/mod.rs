@@ -89,9 +89,8 @@ where
         interner: &mut Interner,
         init_with_eq: bool,
     ) -> ParseResult<Token> {
-        self.set_goal(InputElement::RegExp);
         self.lexer
-            .lex_slash_token(start, interner, init_with_eq)
+            .lex_regex(start, interner, init_with_eq)
             .map_err(Into::into)
     }
 

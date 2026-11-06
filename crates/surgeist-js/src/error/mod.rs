@@ -326,6 +326,12 @@ pub enum RuntimeLimitError {
         /// Maximum number of lexer lookahead probes admitted by the operation.
         limit: u64,
     },
+    /// Error for exhausting the operation's lexical production budget.
+    #[error("reached the operation's limit of {limit} lexer dispatches")]
+    LexerDispatch {
+        /// Maximum number of lexer dispatches admitted by the operation.
+        limit: u64,
+    },
     /// Error for exhausting the operation's VM instruction budget.
     #[error("reached the operation's limit of {limit} VM instructions")]
     Instruction {
@@ -349,7 +355,8 @@ impl RuntimeLimitError {
             Self::SourceRead { .. }
             | Self::SourceConsumption { .. }
             | Self::SourceRetention { .. }
-            | Self::LexerLookahead { .. } => true,
+            | Self::LexerLookahead { .. }
+            | Self::LexerDispatch { .. } => true,
             Self::Instruction { .. } | Self::LoopIteration | Self::Recursion | Self::StackSize => {
                 false
             }
@@ -365,6 +372,7 @@ impl From<surgeist_js_parser::frontend::FrontendLimit> for RuntimeLimitError {
             FrontendLimit::Consumption(limit) => Self::SourceConsumption { limit },
             FrontendLimit::Retention(limit) => Self::SourceRetention { limit },
             FrontendLimit::Lookahead(limit) => Self::LexerLookahead { limit },
+            FrontendLimit::LexicalDispatch(limit) => Self::LexerDispatch { limit },
         }
     }
 }

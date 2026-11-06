@@ -1,15 +1,16 @@
 //! Tests for the lexer.
 
+use crate::frontend::{FrontendLimit, FrontendWork};
 use crate::lexer::{
-    Cursor, Error, Interner, Lexer, Punctuator, TokenKind,
+    Cursor, Error, InputElement, Interner, Lexer, Punctuator, TokenKind,
     template::TemplateString,
     token::{ContainsEscapeSequence, EscapeSequence, Numeric},
 };
-use crate::source::ReadChar;
-use surgeist_js_ast::{Keyword, Position, Span, Spanned};
+use crate::source::{ReadChar, UTF8Input};
+use strum::IntoEnumIterator;
+use surgeist_js_ast::{Keyword, LinearPosition, Position, PositionGroup, Span, Spanned};
 use surgeist_js_interner::Sym;
 use surgeist_js_macros::utf16;
-use strum::IntoEnumIterator;
 
 fn span(start: (u32, u32), end: (u32, u32)) -> Span {
     Span::new(Position::new(start.0, start.1), Position::new(end.0, end.1))
@@ -27,6 +28,71 @@ where
         lexer.next(interner).unwrap().is_none(),
         "Unexpected extra token lexed at end of input"
     );
+}
+
+#[test]
+fn lexical_dispatch_counts_comments_and_excludes_whitespace_and_eof() {
+    for (input, goal, expected) in [
+        (" \t", InputElement::RegExp, 0),
+        ("// x\n1", InputElement::RegExp, 3),
+        ("#!x\n1", InputElement::HashbangOrRegExp, 2),
+        ("/x/", InputElement::RegExp, 1),
+    ] {
+        let mut dispatched = 0;
+        let mut control = |work| {
+            if work == FrontendWork::LexicalDispatch {
+                dispatched += 1;
+            }
+            Ok(())
+        };
+        let mut lexer = Lexer::with_control(UTF8Input::new(input.as_bytes()), Some(&mut control));
+        lexer.set_goal(goal);
+        let mut interner = Interner::default();
+        while lexer.next(&mut interner).unwrap().is_some() {}
+        assert_eq!(dispatched, expected, "{input:?}");
+    }
+}
+
+#[test]
+fn lexical_dispatch_refusal_precedes_direct_regex_and_template_continuation() {
+    for regex in [false, true] {
+        let mut observed = Vec::new();
+        let mut control = |work| {
+            observed.push(work);
+            Err(FrontendLimit::LexicalDispatch(0))
+        };
+        let mut lexer = Lexer::with_control(UTF8Input::new(&b"x"[..]), Some(&mut control));
+        let mut interner = Interner::default();
+        let start = PositionGroup::new(Position::new(1, 1), LinearPosition::new(0));
+        let result = if regex {
+            lexer.lex_regex(start, &mut interner, false)
+        } else {
+            lexer.lex_template(start, &mut interner)
+        };
+        assert!(matches!(
+            result,
+            Err(Error::FrontendLimit(FrontendLimit::LexicalDispatch(0)))
+        ));
+        assert_eq!(observed, [FrontendWork::LexicalDispatch]);
+    }
+}
+
+#[cfg(feature = "annex-b")]
+#[test]
+fn lexical_dispatch_refusal_precedes_consuming_an_annex_b_close_comment() {
+    let mut control = |work| {
+        if work == FrontendWork::LexicalDispatch {
+            Err(FrontendLimit::LexicalDispatch(0))
+        } else {
+            Ok(())
+        }
+    };
+    let mut lexer = Lexer::with_control(UTF8Input::new(&b" \t-->x\n"[..]), Some(&mut control));
+    assert!(matches!(
+        lexer.skip_html_close(&mut Interner::default()),
+        Err(Error::FrontendLimit(FrontendLimit::LexicalDispatch(0)))
+    ));
+    assert_eq!(lexer.cursor.linear_pos(), LinearPosition::new(2));
 }
 
 #[test]

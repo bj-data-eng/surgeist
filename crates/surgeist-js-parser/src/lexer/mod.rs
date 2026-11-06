@@ -42,7 +42,7 @@ use self::{
     template::TemplateLiteral,
 };
 use crate::{
-    frontend::FrontendControl,
+    frontend::{FrontendControl, FrontendWork},
     source::{ReadChar, UTF8Input},
 };
 use surgeist_js_ast::{PositionGroup, Punctuator};
@@ -133,7 +133,7 @@ impl<'control, R> Lexer<'control, R> {
     /// that means it could be multiple different tokens depending on the input token.
     ///
     /// As per <https://tc39.es/ecma262/#sec-ecmascript-language-lexical-grammar>
-    pub(crate) fn lex_slash_token(
+    fn lex_slash_token(
         &mut self,
         start: PositionGroup,
         interner: &mut Interner,
@@ -196,6 +196,21 @@ impl<'control, R> Lexer<'control, R> {
         }
     }
 
+    /// Reinterprets an already consumed slash token under the regexp goal.
+    pub(crate) fn lex_regex(
+        &mut self,
+        start: PositionGroup,
+        interner: &mut Interner,
+        init_with_eq: bool,
+    ) -> Result<Token, Error>
+    where
+        R: ReadChar,
+    {
+        self.cursor.admit(FrontendWork::LexicalDispatch)?;
+        self.set_goal(InputElement::RegExp);
+        self.lex_slash_token(start, interner, init_with_eq)
+    }
+
     /// Skips an HTML close comment (`-->`) if the `annex-b` feature is enabled.
     pub(crate) fn skip_html_close(&mut self, interner: &mut Interner) -> Result<(), Error>
     where
@@ -211,6 +226,7 @@ impl<'control, R> Lexer<'control, R> {
 
         // -->
         if self.cursor.peek_n(3)?[..3] == [Some(0x2D), Some(0x2D), Some(0x3E)] {
+            self.cursor.admit(FrontendWork::LexicalDispatch)?;
             self.cursor.next_char()?;
             self.cursor.next_char()?;
             self.cursor.next_char()?;
@@ -242,6 +258,7 @@ impl<'control, R> Lexer<'control, R> {
         if self.get_goal() == InputElement::HashbangOrRegExp {
             self.set_goal(InputElement::RegExp);
             if next_ch == 0x23 && self.cursor.peek_char()? == Some(0x21) {
+                self.cursor.admit(FrontendWork::LexicalDispatch)?;
                 HashbangComment.lex(&mut self.cursor, start, interner)?;
                 return self.next(interner);
             }
@@ -261,6 +278,7 @@ impl<'control, R> Lexer<'control, R> {
             }
         }
 
+        self.cursor.admit(FrontendWork::LexicalDispatch)?;
         if let Ok(c) = char::try_from(next_ch) {
             let token = match c {
                 '\r' | '\n' | '\u{2028}' | '\u{2029}' => Ok(Token::new_by_position_group(
@@ -404,6 +422,7 @@ impl<'control, R> Lexer<'control, R> {
     where
         R: ReadChar,
     {
+        self.cursor.admit(FrontendWork::LexicalDispatch)?;
         TemplateLiteral.lex(&mut self.cursor, start, interner)
     }
 
