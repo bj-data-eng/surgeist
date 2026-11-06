@@ -196,9 +196,9 @@ where
                 }
             }
             let tok = self.peeked[self.read_index].take();
-            self.read_index = (self.read_index + 1) % PEEK_BUF_SIZE;
 
             if let Some(tok) = &tok {
+                self.read_index = (self.read_index + 1) % PEEK_BUF_SIZE;
                 self.last_linear_pos = tok.linear_span().end();
             }
 
@@ -253,7 +253,7 @@ where
                         self.fill(interner)?;
                     }
                 }
-                if count == skip_n {
+                if count == skip_n || self.peeked[read_index].is_none() {
                     break self.peeked[read_index].as_ref();
                 }
             } else {
