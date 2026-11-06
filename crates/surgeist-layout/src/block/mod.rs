@@ -27,6 +27,7 @@ use crate::layout_math::{
     MaxBeforeMinOptionalSizeClampExt, MaxBeforeMinScalarClampExt, OptionalSizeExt,
     OptionalSizeMaxExt, resolve_containing_padding_border,
 };
+use crate::output::MeasuredInsetBasisOf;
 use crate::scroll::{CanonicalScrollBoxSourceOf, UsedOverflow, canonical_scroll_box_from_source};
 use crate::sizing::resolve::{EdgesResultExt, SizeResultExt};
 
@@ -648,11 +649,12 @@ where
             (output_size.width - final_constants.content_box_inset.sum_axes().width).max(S::ZERO),
             (output_size.height - final_constants.content_box_inset.sum_axes().height).max(S::ZERO),
         );
+        let inset_basis = MeasuredInsetBasisOf::from_used_content_size(measured_content_size);
         relative::settle_children(
             tree,
             node,
             &children,
-            crate::output::MeasuredInsetBasisOf::from_used_content_size(measured_content_size),
+            inset_basis,
             final_constants.flow_axes,
             &mut accepted_contributions,
         )?;
@@ -672,6 +674,7 @@ where
             node,
             &final_pass.pending_floats,
             output_size,
+            inset_basis,
             &final_constants,
             &mut contributions,
         )?;
