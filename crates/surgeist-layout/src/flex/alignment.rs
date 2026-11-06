@@ -117,7 +117,14 @@ pub(super) fn align_lines_on_cross_axis<Node, S: LayoutScalar>(
         .fold(S::ZERO, |sum, line| sum + line.cross_size)
         + cross_gap * S::from_usize(line_count.saturating_sub(1));
     let free_space = container_cross_size - used_cross_size;
-    let align_content = alignment_fallback(free_space, line_count, constants.align_content);
+    let align_content = match constants.align_content {
+        AlignContent::SafeEnd | AlignContent::SafeFlexEnd | AlignContent::SafeCenter
+            if free_space < S::ZERO =>
+        {
+            AlignContent::FlexStart
+        }
+        alignment => alignment_fallback(free_space, line_count, alignment),
+    };
     let mut cross_cursor = alignment_offset(
         free_space,
         line_count,
@@ -235,10 +242,9 @@ pub(super) fn align_items_on_cross_axis<Node, S: LayoutScalar>(
                     .expect("sharing item contributes to its start group")
                     .before
             } else {
-                line_cross_size
-                    - end_group
-                        .expect("sharing item contributes to its end group")
-                        .after
+                let group = end_group.expect("sharing item contributes to its end group");
+                // Safe fallback keeps an overflowing group at flex cross-start.
+                (line_cross_size - group.after).max(group.before)
             };
             item.offset_cross = line_cross_offset + line_baseline - baseline_offset;
             continue;
