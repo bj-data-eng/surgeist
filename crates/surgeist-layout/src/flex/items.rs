@@ -1027,6 +1027,20 @@ where
 {
     let known = final_item_size::<Tree, M>(tree, item, style, constants)?;
 
+    let axes = constants.axes;
+    let cross_axis = axes.cross_physical_axis();
+    let cross_is_fixed_by_bounds = axes
+        .cross_size(item.min_size)
+        .zip(axes.cross_size(item.max_size))
+        .is_some_and(|(min, max)| max <= min);
+    let ratio_supplies_cross = item.cross_size_is_auto && style.common.aspect_ratio.is_some();
+    let indefinite_cross = (style.common.flow_axes.block_axis() == cross_axis
+        && item.authored_cross_size.is_none()
+        && !cross_is_fixed_by_bounds
+        && !ratio_supplies_cross
+        && !item.stretches_cross(axes))
+    .then_some(cross_axis);
+
     let available = crate::layout_math::transpose_axis_requests_at_node(
         item.node,
         Size::new(
@@ -1065,7 +1079,7 @@ where
             constants.sizing_request.with_axes(available),
         )
         .with_physical_baseline_demand(mode == RunMode::ComputeSize)
-        .with_indefinite_percentage_axis(item.indefinite_percentage_axis)
+        .with_indefinite_percentage_axis(item.indefinite_percentage_axis.or(indefinite_cross))
         .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
     )
 }

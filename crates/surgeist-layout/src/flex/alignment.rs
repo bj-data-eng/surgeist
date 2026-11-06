@@ -254,10 +254,7 @@ pub(super) fn align_items_on_cross_axis<Node, S: LayoutScalar>(
             + constants.axes.cross_edge_sum(item.margin);
         let free_space = line_cross_size - outer_cross_size;
         let has_auto_cross_margin = item.has_auto_cross_margin(axes);
-        if item.align_self == AlignItems::Stretch
-            && item.cross_size_is_auto
-            && !has_auto_cross_margin
-        {
+        if item.stretches_cross(axes) {
             let stretched_cross_size = S::max(
                 S::ZERO,
                 line_cross_size - constants.axes.cross_edge_sum(item.margin),
@@ -688,6 +685,12 @@ pub(super) fn alignment_offset<S: LayoutScalar>(
 impl<Node, S: LayoutScalar> ResolvedFlexItem<Node, S> {
     fn has_auto_cross_margin(&self, axes: FlexAxes) -> bool {
         axes.cross_start_edge(self.margin_is_auto) || axes.cross_end_edge(self.margin_is_auto)
+    }
+
+    pub(super) fn stretches_cross(&self, axes: FlexAxes) -> bool {
+        self.align_self == AlignItems::Stretch
+            && self.cross_size_is_auto
+            && !self.has_auto_cross_margin(axes)
     }
 
     pub(super) fn baseline_preference(&self, axes: FlexAxes) -> Option<BaselinePort> {
