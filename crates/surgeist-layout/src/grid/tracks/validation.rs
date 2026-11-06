@@ -162,9 +162,9 @@ pub(in crate::grid) fn expand_track_components_with_origins<S: LayoutScalar>(
                 let repeated_tracks = repetition.sizing_tracks();
                 let count = match repetition.repeat() {
                     TrackRepeat::Count(count) => count.get(),
-                    // Ordinary Grid uses one group for typed repeats outside
-                    // the fixed-size grammar. A fixed function on either side
-                    // qualifies a track as fixed-size.
+                    // Ordinary Grid uses one group when a repeated track lacks
+                    // a fixed count operand. A fixed minimum or maximum keeps
+                    // numeric counting for that typed track.
                     TrackRepeat::AutoFill | TrackRepeat::AutoFit
                         if auto_repeat_sizing == AutoRepeatSizing::SingleIntrinsicGroup
                             && repeated_tracks.iter().any(|track| {
