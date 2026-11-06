@@ -141,3 +141,30 @@ cargo bench --offline --locked -j 1 -p surgeist-js --bench compile -- \
 The V8 script groups inherit a 10-sample setting and five-second measurement
 target from Boa's Criterion harness. A slow case can exceed that target
 when a single iteration per sample requires more time.
+
+### Supplemental buffer workloads
+
+The [buffer suite](../../surgeist-js-benchmarks/benches/buffers.rs) measures
+overlapping ordinary typed array copies, unaligned shared DataView access,
+and adjacent atomic lanes. Compare its three cases separately from the
+128 upstream and fresh-compilation cases. Setup and result checks run
+outside the timed operation.
+
+To build the reference suite, copy `benches/buffers.rs` from the landing
+`surgeist-js-benchmarks` package to the corresponding package directory
+in the extracted reference workspace. Add this target to that reference
+package's `Cargo.toml`.
+
+```toml
+[[bench]]
+name = "buffers"
+harness = false
+```
+
+In each workspace, use the same profile and sample settings as the other
+benchmarks.
+
+```sh
+cargo +1.99.1 bench --offline --locked -j 1 -p surgeist-js-benchmarks --bench buffers -- \
+    --noplot --sample-size 30 --warm-up-time 1.5 --measurement-time 3
+```

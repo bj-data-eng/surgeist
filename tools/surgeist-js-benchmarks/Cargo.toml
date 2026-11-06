@@ -23,3 +23,7 @@ walkdir = "2"
 [[bench]]
 name = "scripts"
 harness = false
+
+[[bench]]
+name = "buffers"
+harness = false
