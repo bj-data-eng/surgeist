@@ -398,29 +398,22 @@ fn collapse_lanes_auto_fit_axis(
     }
 
     let mut remaining_demand = automatic_demand;
-    for (origin_index, origin) in origins.iter().enumerate() {
-        if !origin
-            .auto_repeat
-            .is_some_and(|origin| origin.kind == crate::TrackRepeat::AutoFit)
-        {
+    for (index, (occupied, collapsed_track)) in
+        explicitly_occupied.into_iter().zip(collapsed).enumerate()
+    {
+        if occupied {
             continue;
         }
-        let Some(index) = explicit_start.checked_add(origin_index) else {
-            return Err(GridPlacementDemandError::AxisCapacity {
-                axis,
-                requested_tracks: usize::MAX,
-            });
-        };
-        let Some(collapsed) = collapsed.get_mut(index) else {
-            continue;
-        };
-        if explicitly_occupied[index] {
-            continue;
-        }
+        // Every open track can absorb automatic demand, including tracks
+        // outside the explicit template and outside the repeat group.
         if remaining_demand > 0 {
             remaining_demand -= 1;
         } else {
-            *collapsed = true;
+            *collapsed_track = index
+                .checked_sub(explicit_start)
+                .and_then(|index| origins.get(index))
+                .and_then(|origin| origin.auto_repeat)
+                .is_some_and(|origin| origin.kind == crate::TrackRepeat::AutoFit);
         }
     }
     Ok(())
