@@ -7609,10 +7609,22 @@ fn assert_grid_minimum_finishes_intrinsic_tracks<S: LayoutScalar>() {
         ),
         (TrackComponentOf::AUTO, AlignContent::Stretch, 90.0),
     ] {
-        for (minimum, outer, track) in [
-            (MinSizeOf::AUTO, 10.0, 0.0),
-            (MinSizeOf::px(px(100.0)), 100.0, minimum_width),
+        for (minimum, maximum, outer, track) in [
+            (MinSizeOf::AUTO, crate::MaxSizeOf::NONE, 10.0, 0.0),
+            (
+                MinSizeOf::px(px(100.0)),
+                crate::MaxSizeOf::NONE,
+                100.0,
+                minimum_width,
+            ),
+            (
+                MinSizeOf::px(px(100.0)),
+                crate::MaxSizeOf::px(px(200.0)),
+                100.0,
+                minimum_width,
+            ),
         ] {
+            let bounds = format!("{minimum:?} {maximum:?}");
             let tree = PublicLayoutTreeOf::<S>::new()
                 .children(1, [2])
                 .style(
@@ -7624,6 +7636,7 @@ fn assert_grid_minimum_finishes_intrinsic_tracks<S: LayoutScalar>() {
                             PreferredSizeOf::px(px(20.0)),
                         ),
                         min_size: Size::new(minimum, MinSizeOf::AUTO),
+                        max_size: Size::new(maximum, crate::MaxSizeOf::NONE),
                         grid_template_columns: vec![TrackComponentOf::px(px(10.0)), second.clone()],
                         grid_template_rows: vec![TrackComponentOf::px(px(20.0))],
                         justify_content: Some(align),
@@ -7647,7 +7660,7 @@ fn assert_grid_minimum_finishes_intrinsic_tracks<S: LayoutScalar>() {
             let expected = (px(outer), px(10.0), px(track));
             if actual != expected {
                 failures.push(format!(
-                    "{align:?} outer {outer}: expected {expected:?}, got {actual:?}"
+                    "{align:?} {bounds}: expected {expected:?}, got {actual:?}"
                 ));
             }
         }
