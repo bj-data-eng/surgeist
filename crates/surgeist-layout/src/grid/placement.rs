@@ -48,6 +48,9 @@ impl PlacedGridArea {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum GridPlacementDemandError {
+    UnrepresentableAxisPlacement {
+        axis: GridAxisKind,
+    },
     AxisCapacity {
         axis: GridAxisKind,
         requested_tracks: usize,
@@ -1021,70 +1024,45 @@ pub(super) fn absolute_grid_axis_area<S: LayoutScalar>(
         explicit_count,
     } = input;
     let padding_box_end = padding_box_location + padding_box_size;
-    if let (Some(start), None, None) = (placement.start(), placement.end(), placement.span())
-        && let Some(line) = used_grid_line_offset(
-            start.get(),
-            geometry,
-            is_reverse,
-            explicit_start,
-            explicit_count,
-        )
-    {
-        let location = if is_reverse {
-            padding_box_location
-        } else {
-            line
-        };
-        let end = if is_reverse { line } else { padding_box_end };
-        return AbsoluteGridAxisArea {
-            location,
-            size: (end - location).max(S::ZERO),
-        };
-    }
-
-    if let (None, Some(end), None) = (placement.start(), placement.end(), placement.span())
-        && let Some(line) = used_grid_line_offset(
-            end.get(),
-            geometry,
-            is_reverse,
-            explicit_start,
-            explicit_count,
-        )
-    {
-        let location = if is_reverse {
-            line
-        } else {
-            padding_box_location
-        };
-        let end = if is_reverse { padding_box_end } else { line };
-        return AbsoluteGridAxisArea {
-            location,
-            size: (end - location).max(S::ZERO),
-        };
-    }
-
-    if let (Some(start_line), Some(end_line), None) =
-        (placement.start(), placement.end(), placement.span())
-        && let (Some(start), Some(end)) = (
+    if placement.span().is_none() {
+        let offset = |line: crate::GridLine| {
             used_grid_line_offset(
-                start_line.get(),
+                line.get(),
                 geometry,
                 is_reverse,
                 explicit_start,
                 explicit_count,
-            ),
-            used_grid_line_offset(
-                end_line.get(),
-                geometry,
-                is_reverse,
-                explicit_start,
-                explicit_count,
-            ),
-        )
-    {
+            )
+        };
+        let mut start = placement.start();
+        let mut end = placement.end();
+        if let (Some(start_line), Some(end_line)) = (start, end)
+            && explicit_grid_line_index(start_line.get(), explicit_count)
+                > explicit_grid_line_index(end_line.get(), explicit_count)
+        {
+            std::mem::swap(&mut start, &mut end);
+        }
+        let start = start.and_then(offset);
+        let end = end.and_then(offset);
+        let (low, high) = if is_reverse {
+            (end, start)
+        } else {
+            (start, end)
+        };
+        let (location, end) = match (low, high) {
+            (Some(low), Some(high)) => (low.min(high), low.max(high)),
+            (Some(low), None) => (low, padding_box_end),
+            (None, Some(high)) => (padding_box_location, high),
+            (None, None) => {
+                return AbsoluteGridAxisArea {
+                    location: padding_box_location,
+                    size: padding_box_size,
+                };
+            }
+        };
         return AbsoluteGridAxisArea {
-            location: start.min(end),
-            size: (start - end).abs(),
+            location,
+            size: (end - location).max(S::ZERO),
         };
     }
 
@@ -1217,14 +1195,18 @@ pub(super) fn grid_line_to_index(
     if line == 0 {
         return None;
     }
+    let index = explicit_start as i128 + explicit_grid_line_index(line, explicit_count);
+    usize::try_from(index)
+        .ok()
+        .filter(|index| *index <= track_count)
+}
+
+fn explicit_grid_line_index(line: isize, explicit_count: usize) -> i128 {
     if line > 0 {
-        return usize::try_from(line - 1)
-            .ok()
-            .map(|index| explicit_start + index)
-            .filter(|index| *index <= track_count);
+        line as i128 - 1
+    } else {
+        explicit_count as i128 + line as i128 + 1
     }
-    let index = explicit_start as isize + explicit_count as isize + line + 1;
-    (index >= 0 && index <= track_count as isize).then_some(index as usize)
 }
 
 pub(super) fn track_span_sum<S: LayoutScalar>(sizes: &[S], start: usize, end: usize, gap: S) -> S {

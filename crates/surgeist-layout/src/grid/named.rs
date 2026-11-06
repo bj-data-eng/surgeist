@@ -1,9 +1,12 @@
 use crate::{
-    GridPlacement, GridTemplateAreas, LayoutScalar, RawGridLine, RawGridPlacement,
+    GridLine, GridPlacement, GridTemplateAreas, LayoutScalar, RawGridLine, RawGridPlacement,
     SubgridLineNameComponent, SubgridLineNameRepeatCount, TrackComponentOf, TrackRepeat,
 };
 
-use super::{GridAxisKind, GridContainerProjection, GridParentContext, InheritedGridAxis};
+use super::{
+    GridAxisKind, GridContainerProjection, GridParentContext, InheritedGridAxis,
+    placement::GridPlacementDemandError,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct NamedGridLines {
@@ -147,14 +150,6 @@ impl NamedGridReport {
     pub(super) fn extend(&mut self, other: NamedGridReport) {
         self.errors.extend(other.errors);
     }
-
-    pub(super) fn extend_unique(&mut self, other: NamedGridReport) {
-        for error in other.errors {
-            if !self.errors.contains(&error) {
-                self.errors.push(error);
-            }
-        }
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -234,9 +229,50 @@ enum SpanSearchDirection {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NamedSpanScope {
+    Standalone,
+    Inherited,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct ResolvedLine {
-    css_line: isize,
-    absolute_line: isize,
+    css_line: i128,
+    absolute_line: i128,
+}
+
+impl ResolvedLine {
+    fn from_absolute(line: i128, explicit_end: i128) -> Self {
+        let css_line = if line > 0 {
+            line
+        } else {
+            line - explicit_end - 1
+        };
+        Self {
+            css_line,
+            absolute_line: line,
+        }
+    }
+
+    fn grid_line(self) -> Option<GridLine> {
+        isize::try_from(self.css_line).ok().and_then(GridLine::new)
+    }
+
+    fn require_grid_line(self) -> Result<GridLine, GridPlacementResolutionError> {
+        self.grid_line()
+            .ok_or(GridPlacementResolutionError::Capacity)
+    }
+}
+
+#[derive(Debug)]
+pub(super) enum GridPlacementResolutionError {
+    Named(NamedGridError),
+    Capacity,
+}
+
+impl From<NamedGridError> for GridPlacementResolutionError {
+    fn from(error: NamedGridError) -> Self {
+        Self::Named(error)
+    }
 }
 
 fn normalized_raw_grid_lines(placement: &RawGridPlacement) -> (RawGridLine, RawGridLine) {
@@ -262,21 +298,13 @@ pub(super) fn resolve_grid_placement(
     lines: &NamedGridLines,
     placement: &RawGridPlacement,
     auto_cursor_line: Option<isize>,
-) -> Result<GridPlacement, NamedGridError> {
+) -> Result<GridPlacement, GridPlacementResolutionError> {
     let (start, end) = normalized_raw_grid_lines(placement);
+    let explicit_end = lines.explicit_track_count as i128 + 1;
 
     match (&start, &end) {
         (RawGridLine::Auto, RawGridLine::Auto) => Ok(GridPlacement::AUTO),
-        (RawGridLine::Auto, span) if is_span(span) => {
-            let span = resolve_span_count(span)?;
-            if let Some(cursor) = auto_cursor_line {
-                Ok(GridPlacement::try_line_span(cursor, span)
-                    .expect("resolved cursor line/span must be valid"))
-            } else {
-                Ok(GridPlacement::try_span(span).expect("resolved grid span must be valid"))
-            }
-        }
-        (span, RawGridLine::Auto) if is_span(span) => {
+        (RawGridLine::Auto, span) | (span, RawGridLine::Auto) if is_span(span) => {
             let span = resolve_span_count(span)?;
             if let Some(cursor) = auto_cursor_line {
                 Ok(GridPlacement::try_line_span(cursor, span)
@@ -288,32 +316,42 @@ pub(super) fn resolve_grid_placement(
         (RawGridLine::Auto, end) if is_definite_line(end) => {
             let end = resolve_line(lines, end, PlacementSide::End)?;
             validate_resolved_range(lines, end.absolute_line - 1, end.absolute_line)?;
-            Ok(GridPlacement::try_end_line(end.css_line)
-                .expect("resolved grid end line must be valid"))
+            Ok(GridPlacement::end_line(end.require_grid_line()?))
         }
         (start, RawGridLine::Auto) if is_definite_line(start) => {
             let start = resolve_line(lines, start, PlacementSide::Start)?;
             validate_resolved_range(lines, start.absolute_line, start.absolute_line + 1)?;
-            Ok(GridPlacement::try_line(start.css_line)
-                .expect("resolved grid start line must be valid"))
+            Ok(GridPlacement::line(start.require_grid_line()?))
         }
         (start, span) if is_definite_line(start) && is_span(span) => {
             let start = resolve_line(lines, start, PlacementSide::Start)?;
             match span {
                 RawGridLine::NamedSpan { name, index } => {
-                    let end =
-                        resolve_named_span_from_start(lines, start.absolute_line, name, *index)?;
-                    normalize_resolved_lines(lines, start, end)
+                    let end = resolve_named_span(
+                        lines,
+                        start.absolute_line,
+                        name,
+                        *index,
+                        SpanSearchDirection::Forward,
+                        NamedSpanScope::Standalone,
+                    )?;
+                    normalize_resolved_lines(
+                        lines,
+                        start,
+                        ResolvedLine::from_absolute(end, explicit_end),
+                    )
                 }
                 _ => {
                     let span = resolve_span_count(span)?;
                     validate_resolved_range(
                         lines,
                         start.absolute_line,
-                        start.absolute_line + span as isize,
+                        start.absolute_line + span as i128,
                     )?;
-                    Ok(GridPlacement::try_line_span(start.css_line, span)
-                        .expect("resolved grid line/span must be valid"))
+                    Ok(
+                        GridPlacement::try_line_span(start.require_grid_line()?.get(), span)
+                            .expect("resolved grid line/span must be valid"),
+                    )
                 }
             }
         }
@@ -321,19 +359,31 @@ pub(super) fn resolve_grid_placement(
             let end = resolve_line(lines, end, PlacementSide::End)?;
             match span {
                 RawGridLine::NamedSpan { name, index } => {
-                    let start =
-                        resolve_named_span_from_end(lines, end.absolute_line, name, *index)?;
-                    normalize_resolved_lines(lines, start, end)
+                    let start = resolve_named_span(
+                        lines,
+                        end.absolute_line,
+                        name,
+                        *index,
+                        SpanSearchDirection::Backward,
+                        NamedSpanScope::Standalone,
+                    )?;
+                    normalize_resolved_lines(
+                        lines,
+                        ResolvedLine::from_absolute(start, explicit_end),
+                        end,
+                    )
                 }
                 _ => {
                     let span = resolve_span_count(span)?;
                     validate_resolved_range(
                         lines,
-                        end.absolute_line - span as isize,
+                        end.absolute_line - span as i128,
                         end.absolute_line,
                     )?;
-                    Ok(GridPlacement::try_span_line(span, end.css_line)
-                        .expect("resolved grid span/end line must be valid"))
+                    Ok(
+                        GridPlacement::try_span_line(span, end.require_grid_line()?.get())
+                            .expect("resolved grid span/end line must be valid"),
+                    )
                 }
             }
         }
@@ -342,8 +392,7 @@ pub(super) fn resolve_grid_placement(
             let end = resolve_line(lines, end, PlacementSide::End)?;
             normalize_resolved_lines(lines, start, end)
         }
-        (RawGridLine::Auto, _) | (_, RawGridLine::Auto) => Err(NamedGridError::AutoWithoutCursor),
-        _ => Err(NamedGridError::AutoWithoutCursor),
+        _ => Err(NamedGridError::AutoWithoutCursor.into()),
     }
 }
 
@@ -353,18 +402,92 @@ pub(super) fn resolve_grid_placement_or_auto(
     placement: &RawGridPlacement,
     auto_cursor_line: Option<isize>,
 ) -> GridPlacement {
-    resolve_grid_placement_or_auto_with_report(lines, placement, auto_cursor_line).0
+    resolve_grid_placement_or_auto_with_report(lines, placement, auto_cursor_line)
+        .expect("test grid placement is representable")
+        .0
 }
 
 pub(super) fn resolve_grid_placement_or_auto_with_report(
     lines: &NamedGridLines,
     placement: &RawGridPlacement,
     auto_cursor_line: Option<isize>,
-) -> (GridPlacement, NamedGridReport) {
+) -> Result<(GridPlacement, NamedGridReport), GridPlacementDemandError> {
     match resolve_grid_placement(lines, placement, auto_cursor_line) {
-        Ok(placement) => (placement, NamedGridReport::default()),
-        Err(error) => (GridPlacement::AUTO, NamedGridReport::from_error(error)),
+        Ok(placement) => Ok((placement, NamedGridReport::default())),
+        Err(GridPlacementResolutionError::Named(error)) => {
+            Ok((GridPlacement::AUTO, NamedGridReport::from_error(error)))
+        }
+        Err(GridPlacementResolutionError::Capacity) => {
+            Err(GridPlacementDemandError::UnrepresentableAxisPlacement { axis: lines.axis })
+        }
     }
+}
+
+pub(super) fn resolve_positioned_grid_placement_with_report(
+    lines: &NamedGridLines,
+    placement: &RawGridPlacement,
+) -> (GridPlacement, NamedGridReport) {
+    let resolved = if is_span(&placement.start) || is_span(&placement.end) {
+        resolve_grid_placement(lines, placement, None)
+            .map(|placement| (placement, NamedGridReport::default()))
+    } else {
+        resolve_positioned_grid_lines(lines, placement).map_err(Into::into)
+    };
+    match resolved {
+        Ok(result) => result,
+        Err(GridPlacementResolutionError::Named(error)) => {
+            (GridPlacement::AUTO, NamedGridReport::from_error(error))
+        }
+        Err(GridPlacementResolutionError::Capacity) => {
+            (GridPlacement::AUTO, NamedGridReport::default())
+        }
+    }
+}
+
+fn resolve_positioned_grid_lines(
+    lines: &NamedGridLines,
+    placement: &RawGridPlacement,
+) -> Result<(GridPlacement, NamedGridReport), NamedGridError> {
+    let resolve_edge = |line: &RawGridLine, side| match line {
+        RawGridLine::Auto => Ok(None),
+        _ => resolve_line(lines, line, side).map(Some),
+    };
+    let mut start = resolve_edge(&placement.start, PlacementSide::Start)?;
+    let mut end = resolve_edge(&placement.end, PlacementSide::End)?;
+    let (start_line, end_line) = match (start, end) {
+        (Some(start), Some(end)) => (start.absolute_line, end.absolute_line),
+        (Some(start), None) => (start.absolute_line, start.absolute_line + 1),
+        (None, Some(end)) => (end.absolute_line - 1, end.absolute_line),
+        (None, None) => return Ok((GridPlacement::AUTO, NamedGridReport::default())),
+    };
+
+    // A line before the explicit grid can still exist in its leading used
+    // tracks. Preserve the authored diagnostic without replacing its edges.
+    let report = if let Err(GridPlacementResolutionError::Named(error)) =
+        validate_resolved_range(lines, start_line, end_line)
+    {
+        NamedGridReport::from_error(error)
+    } else {
+        NamedGridReport::default()
+    };
+
+    if start_line > end_line {
+        std::mem::swap(&mut start, &mut end);
+    }
+
+    // A line beyond the placement representation cannot exist in the used grid.
+    let start = start.and_then(ResolvedLine::grid_line);
+    let end = end.and_then(ResolvedLine::grid_line);
+    let placement = match (start, end) {
+        (Some(start), Some(_)) if start_line == end_line => {
+            GridPlacement::try_line_span(start.get(), 1).expect("equal grid lines use a unit span")
+        }
+        (Some(start), Some(end)) => GridPlacement::lines(start, end),
+        (Some(start), None) => GridPlacement::line(start),
+        (None, Some(end)) => GridPlacement::end_line(end),
+        (None, None) => GridPlacement::AUTO,
+    };
+    Ok((placement, report))
 }
 
 pub(super) fn resolve_subgrid_placement(
@@ -374,6 +497,9 @@ pub(super) fn resolve_subgrid_placement(
 ) -> Result<GridPlacement, NamedGridError> {
     let (start, end) = normalized_raw_grid_lines(placement);
     let auto_cursor_line = auto_cursor_line.map(|line| line as i128);
+    let resolve_edge = |line: &RawGridLine, side| {
+        resolve_line(lines, line, side).map(|resolved| resolved.absolute_line)
+    };
     let (mut start_line, mut end_line) = match (&start, &end) {
         (RawGridLine::Auto, RawGridLine::Auto) => {
             let Some(cursor) = auto_cursor_line else {
@@ -389,44 +515,46 @@ pub(super) fn resolve_subgrid_placement(
             (cursor, cursor + span as i128)
         }
         (RawGridLine::Auto, end) if is_definite_line(end) => {
-            let end = resolve_inherited_line(lines, end, PlacementSide::End)?;
+            let end = resolve_edge(end, PlacementSide::End)?;
             (end - 1, end)
         }
         (start, RawGridLine::Auto) if is_definite_line(start) => {
-            let start = resolve_inherited_line(lines, start, PlacementSide::Start)?;
+            let start = resolve_edge(start, PlacementSide::Start)?;
             (start, start + 1)
         }
         (start, span) if is_definite_line(start) && is_span(span) => {
-            let start = resolve_inherited_line(lines, start, PlacementSide::Start)?;
+            let start = resolve_edge(start, PlacementSide::Start)?;
             let end = match span {
-                RawGridLine::NamedSpan { name, index } => resolve_inherited_named_span(
+                RawGridLine::NamedSpan { name, index } => resolve_named_span(
                     lines,
                     start,
                     name,
                     *index,
                     SpanSearchDirection::Forward,
+                    NamedSpanScope::Inherited,
                 )?,
                 _ => start + resolve_span_count(span)? as i128,
             };
             (start, end)
         }
         (span, end) if is_span(span) && is_definite_line(end) => {
-            let end = resolve_inherited_line(lines, end, PlacementSide::End)?;
+            let end = resolve_edge(end, PlacementSide::End)?;
             let start = match span {
-                RawGridLine::NamedSpan { name, index } => resolve_inherited_named_span(
+                RawGridLine::NamedSpan { name, index } => resolve_named_span(
                     lines,
                     end,
                     name,
                     *index,
                     SpanSearchDirection::Backward,
+                    NamedSpanScope::Inherited,
                 )?,
                 _ => end - resolve_span_count(span)? as i128,
             };
             (start, end)
         }
         (start, end) if is_definite_line(start) && is_definite_line(end) => (
-            resolve_inherited_line(lines, start, PlacementSide::Start)?,
-            resolve_inherited_line(lines, end, PlacementSide::End)?,
+            resolve_edge(start, PlacementSide::Start)?,
+            resolve_edge(end, PlacementSide::End)?,
         ),
         _ => return Err(NamedGridError::AutoWithoutCursor),
     };
@@ -451,51 +579,13 @@ pub(super) fn resolve_subgrid_placement(
         .expect("clamped subgrid placement lines are valid"))
 }
 
-fn resolve_inherited_line(
-    lines: &NamedGridLines,
-    line: &RawGridLine,
-    side: PlacementSide,
-) -> Result<i128, NamedGridError> {
-    let explicit_end = lines.explicit_track_count as i128 + 1;
-    match line {
-        RawGridLine::Line(0) => Err(NamedGridError::ZeroLine),
-        RawGridLine::Line(line) if *line < 0 => Ok(explicit_end + 1 + *line as i128),
-        RawGridLine::Line(line) => Ok(*line as i128),
-        RawGridLine::BareIdent(name) => {
-            resolve_bare_ident(lines, name, side).map(|line| line.absolute_line as i128)
-        }
-        RawGridLine::NamedLine { name, index } => {
-            validate_line_name(name)?;
-            let count = index.unsigned_abs();
-            if count == 0 {
-                return Err(NamedGridError::ZeroLine);
-            }
-            let matches = explicit_matches(lines, name);
-            if count <= matches.len() {
-                let index = if *index < 0 {
-                    matches.len() - count
-                } else {
-                    count - 1
-                };
-                return Ok(matches[index] as i128);
-            }
-            let missing = (count - matches.len()) as i128;
-            Ok(if *index < 0 {
-                1 - missing
-            } else {
-                explicit_end + missing
-            })
-        }
-        _ => Err(NamedGridError::AutoWithoutCursor),
-    }
-}
-
-fn resolve_inherited_named_span(
+fn resolve_named_span(
     lines: &NamedGridLines,
     edge: i128,
     name: &str,
     count: usize,
     direction: SpanSearchDirection,
+    scope: NamedSpanScope,
 ) -> Result<i128, NamedGridError> {
     validate_line_name(name)?;
     if count == 0 {
@@ -503,10 +593,12 @@ fn resolve_inherited_named_span(
     }
 
     let first_after_explicit = lines.explicit_track_count as i128 + 2;
-    let trailing = match direction {
-        SpanSearchDirection::Forward => 0,
-        SpanSearchDirection::Backward => (edge - first_after_explicit).max(0),
-    };
+    let trailing =
+        if direction == SpanSearchDirection::Backward && scope == NamedSpanScope::Inherited {
+            (edge - first_after_explicit).max(0)
+        } else {
+            0
+        };
     let remaining = count as i128 - trailing;
     if remaining <= 0 {
         return Ok(edge - count as i128);
@@ -528,31 +620,38 @@ fn normalize_resolved_lines(
     lines: &NamedGridLines,
     mut start: ResolvedLine,
     mut end: ResolvedLine,
-) -> Result<GridPlacement, NamedGridError> {
+) -> Result<GridPlacement, GridPlacementResolutionError> {
     if start.absolute_line > end.absolute_line {
         std::mem::swap(&mut start, &mut end);
     }
+    validate_resolved_range(lines, start.absolute_line, end.absolute_line)?;
     if start.absolute_line == end.absolute_line {
-        validate_resolved_range(lines, start.absolute_line, start.absolute_line + 1)?;
-        return Ok(GridPlacement::try_line_span(start.css_line, 1)
-            .expect("normalized equal grid lines must produce a valid span"));
+        return Ok(
+            GridPlacement::try_line_span(start.require_grid_line()?.get(), 1)
+                .expect("normalized equal grid lines produce a valid span"),
+        );
     }
 
-    validate_resolved_range(lines, start.absolute_line, end.absolute_line)?;
-    Ok(GridPlacement::try_lines(start.css_line, end.css_line)
-        .expect("normalized grid lines must be valid"))
+    Ok(GridPlacement::lines(
+        start.require_grid_line()?,
+        end.require_grid_line()?,
+    ))
 }
 
 fn validate_resolved_range(
     lines: &NamedGridLines,
-    start_line: isize,
-    end_line: isize,
-) -> Result<(), NamedGridError> {
-    if start_line < 1 || end_line < 1 {
+    start_line: i128,
+    end_line: i128,
+) -> Result<(), GridPlacementResolutionError> {
+    let first_line = start_line.min(end_line);
+    if first_line < 1 {
+        let line =
+            isize::try_from(first_line).map_err(|_| GridPlacementResolutionError::Capacity)?;
         return Err(NamedGridError::LineBeforeFirst {
             axis: lines.axis,
-            line: start_line.min(end_line),
-        });
+            line,
+        }
+        .into());
     }
     Ok(())
 }
@@ -562,119 +661,66 @@ fn resolve_line(
     line: &RawGridLine,
     side: PlacementSide,
 ) -> Result<ResolvedLine, NamedGridError> {
+    let explicit_end = lines.explicit_track_count as i128 + 1;
     match line {
-        RawGridLine::Line(raw_line) => resolve_numeric_line(lines, *raw_line),
-        RawGridLine::NamedLine { name, index } => resolve_named_line(lines, name, *index),
-        RawGridLine::BareIdent(name) => resolve_bare_ident(lines, name, side),
-        RawGridLine::Auto | RawGridLine::Span(_) | RawGridLine::NamedSpan { .. } => {
-            Err(NamedGridError::AutoWithoutCursor)
+        RawGridLine::Line(0) => Err(NamedGridError::ZeroLine),
+        RawGridLine::Line(line) => {
+            let css_line = *line as i128;
+            let absolute_line = if css_line < 0 {
+                explicit_end + 1 + css_line
+            } else {
+                css_line
+            };
+            Ok(ResolvedLine {
+                css_line,
+                absolute_line,
+            })
         }
+        RawGridLine::NamedLine { name, index } => {
+            validate_line_name(name)?;
+            resolve_named_occurrence(explicit_matches(lines, name), *index, explicit_end)
+        }
+        RawGridLine::BareIdent(name) => {
+            validate_line_name(name)?;
+            let side_name = match side {
+                PlacementSide::Start => format!("{name}-start"),
+                PlacementSide::End => format!("{name}-end"),
+            };
+            let mut matches = explicit_matches(lines, &side_name);
+            if matches.is_empty() {
+                matches = explicit_matches(lines, name);
+            }
+            resolve_named_occurrence(matches, 1, explicit_end)
+        }
+        _ => Err(NamedGridError::AutoWithoutCursor),
     }
 }
 
-fn resolve_numeric_line(
-    lines: &NamedGridLines,
-    raw_line: isize,
-) -> Result<ResolvedLine, NamedGridError> {
-    if raw_line == 0 {
-        return Err(NamedGridError::ZeroLine);
-    }
-    let absolute_line = if raw_line > 0 {
-        raw_line
-    } else {
-        lines.explicit_track_count as isize + 2 + raw_line
-    };
-    Ok(ResolvedLine {
-        css_line: raw_line,
-        absolute_line,
-    })
-}
-
-fn resolve_named_line(
-    lines: &NamedGridLines,
-    name: &str,
+fn resolve_named_occurrence(
+    matches: Vec<isize>,
     occurrence: isize,
+    explicit_end: i128,
 ) -> Result<ResolvedLine, NamedGridError> {
-    validate_line_name(name)?;
-    if occurrence == 0 {
+    let count = occurrence.unsigned_abs();
+    if count == 0 {
         return Err(NamedGridError::ZeroLine);
     }
-
-    let explicit_matches = explicit_matches(lines, name);
-    let absolute_line = if occurrence > 0 {
-        resolve_forward_occurrence(lines.explicit_track_count, &explicit_matches, occurrence)
+    let line = if count <= matches.len() {
+        let index = if occurrence < 0 {
+            matches.len() - count
+        } else {
+            count - 1
+        };
+        matches[index] as i128
     } else {
-        resolve_backward_occurrence(&explicit_matches, occurrence)
-    };
-
-    Ok(ResolvedLine {
-        css_line: css_line_for_absolute_line(lines, absolute_line),
-        absolute_line,
-    })
-}
-
-fn resolve_bare_ident(
-    lines: &NamedGridLines,
-    name: &str,
-    side: PlacementSide,
-) -> Result<ResolvedLine, NamedGridError> {
-    validate_line_name(name)?;
-    let side_name = match side {
-        PlacementSide::Start => format!("{name}-start"),
-        PlacementSide::End => format!("{name}-end"),
-    };
-    if !explicit_matches(lines, &side_name).is_empty() {
-        return resolve_named_line(lines, &side_name, 1);
-    }
-    resolve_named_line(lines, name, 1)
-}
-
-fn resolve_named_span_from_start(
-    lines: &NamedGridLines,
-    start_line: isize,
-    name: &str,
-    count: usize,
-) -> Result<ResolvedLine, NamedGridError> {
-    resolve_named_span(lines, start_line, name, count, SpanSearchDirection::Forward)
-}
-
-fn resolve_named_span_from_end(
-    lines: &NamedGridLines,
-    end_line: isize,
-    name: &str,
-    count: usize,
-) -> Result<ResolvedLine, NamedGridError> {
-    resolve_named_span(lines, end_line, name, count, SpanSearchDirection::Backward)
-}
-
-fn resolve_named_span(
-    lines: &NamedGridLines,
-    edge_line: isize,
-    name: &str,
-    count: usize,
-    direction: SpanSearchDirection,
-) -> Result<ResolvedLine, NamedGridError> {
-    validate_line_name(name)?;
-    if count == 0 {
-        return Err(NamedGridError::ZeroSpan);
-    }
-
-    let explicit_candidates = named_span_candidates(lines, edge_line as i128, name, direction);
-    let absolute_line = match direction {
-        SpanSearchDirection::Forward => resolve_forward_span(
-            lines.explicit_track_count,
-            edge_line,
-            &explicit_candidates,
-            count as isize,
-        ),
-        SpanSearchDirection::Backward => {
-            resolve_backward_span(edge_line, &explicit_candidates, count as isize)
+        let missing = (count - matches.len()) as i128;
+        if occurrence < 0 {
+            1 - missing
+        } else {
+            explicit_end + missing
         }
     };
-    Ok(ResolvedLine {
-        css_line: css_line_for_absolute_line(lines, absolute_line),
-        absolute_line,
-    })
+    Ok(ResolvedLine::from_absolute(line, explicit_end))
 }
 
 fn named_span_candidates(
@@ -742,67 +788,6 @@ fn explicit_matches(lines: &NamedGridLines, name: &str) -> Vec<isize> {
                 .then_some(line_index as isize + 1)
         })
         .collect()
-}
-
-fn resolve_forward_occurrence(
-    explicit_track_count: usize,
-    explicit_matches: &[isize],
-    occurrence: isize,
-) -> isize {
-    let match_index = occurrence as usize - 1;
-    if let Some(line) = explicit_matches.get(match_index) {
-        return *line;
-    }
-
-    let missing_count = occurrence - explicit_matches.len() as isize;
-    let first_implicit_line = explicit_track_count as isize + 2;
-    first_implicit_line + missing_count - 1
-}
-
-fn resolve_backward_occurrence(explicit_matches: &[isize], occurrence: isize) -> isize {
-    let requested_count = -occurrence;
-    if requested_count <= explicit_matches.len() as isize {
-        let match_index = explicit_matches.len() - requested_count as usize;
-        return explicit_matches[match_index];
-    }
-
-    let missing_count = requested_count - explicit_matches.len() as isize;
-    1 - missing_count
-}
-
-fn resolve_forward_span(
-    explicit_track_count: usize,
-    start_line: isize,
-    explicit_candidates: &[isize],
-    count: isize,
-) -> isize {
-    let match_index = count as usize - 1;
-    if let Some(line) = explicit_candidates.get(match_index) {
-        return *line;
-    }
-
-    let missing_count = count - explicit_candidates.len() as isize;
-    let first_implicit_line = (explicit_track_count as isize + 2).max(start_line + 1);
-    first_implicit_line + missing_count - 1
-}
-
-fn resolve_backward_span(end_line: isize, explicit_candidates: &[isize], count: isize) -> isize {
-    let match_index = count as usize - 1;
-    if let Some(line) = explicit_candidates.get(match_index) {
-        return *line;
-    }
-
-    let missing_count = count - explicit_candidates.len() as isize;
-    let first_implicit_line = (end_line - 1).min(0);
-    first_implicit_line - missing_count + 1
-}
-
-fn css_line_for_absolute_line(lines: &NamedGridLines, absolute_line: isize) -> isize {
-    if absolute_line > 0 {
-        absolute_line
-    } else {
-        absolute_line - lines.explicit_track_count as isize - 2
-    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
