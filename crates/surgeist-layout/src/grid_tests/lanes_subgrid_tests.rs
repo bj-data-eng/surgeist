@@ -7877,7 +7877,7 @@ fn assert_grid_lanes_subgrid_descendant_intrinsic_incidence<S: LayoutScalar>() {
         (GridPlacement::try_span(2).unwrap(), 60.0),
         (GridPlacement::try_lines(1, 3).unwrap(), 30.0),
     ] {
-        for named in [false, true] {
+        for (named, nested) in [(false, false), (true, false), (false, true)] {
             let descendant = if named {
                 NodeInputOf {
                     raw_grid_column: RawGridPlacement::new(
@@ -7898,7 +7898,6 @@ fn assert_grid_lanes_subgrid_descendant_intrinsic_incidence<S: LayoutScalar>() {
             let tree = PublicLayoutTreeOf::new()
                 .children(1, [2])
                 .children(2, [3])
-                .children(3, [])
                 .style(
                     1,
                     NodeInputOf {
@@ -7921,19 +7920,34 @@ fn assert_grid_lanes_subgrid_descendant_intrinsic_incidence<S: LayoutScalar>() {
                         )],
                         ..NodeInputOf::default()
                     },
-                )
-                .style(
-                    3,
-                    NodeInputOf {
-                        size: Size::new(px(30.0), px(10.0)).map(PreferredSizeOf::px),
-                        ..descendant
-                    },
                 );
+            let leaf = NodeInputOf {
+                size: Size::new(px(30.0), px(10.0)).map(PreferredSizeOf::px),
+                ..descendant
+            };
+            let tree = if nested {
+                tree.children(3, [4])
+                    .children(4, [])
+                    .style(
+                        3,
+                        NodeInputOf {
+                            display: Display::Grid,
+                            grid_column: GridPlacement::try_lines(1, 3).unwrap(),
+                            grid_template_columns: vec![TrackComponentOf::Subgrid(
+                                crate::SubgridTrack::new(Vec::new()),
+                            )],
+                            ..NodeInputOf::default()
+                        },
+                    )
+                    .style(4, leaf)
+            } else {
+                tree.children(3, []).style(3, leaf)
+            };
             let batch = compute_layout(&tree, 1, request).unwrap();
             let actual = fri08_c01_placement_output(&batch, 1).size.width;
             if actual != px(expected) {
                 differences.push(format!(
-                    "{wrapper_placement:?}, named {named}: {actual:?}, expected {expected}"
+                    "{wrapper_placement:?}, named {named}, nested {nested}: {actual:?}, expected {expected}"
                 ));
             }
         }
