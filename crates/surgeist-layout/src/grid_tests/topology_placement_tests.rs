@@ -7453,6 +7453,18 @@ fn assert_standalone_raw_grid_placement_range<S: LayoutScalar>() {
                 20.0,
                 40.0,
             ),
+            (
+                Position::Absolute,
+                RawGridPlacement::lines(999, 2),
+                20.0,
+                40.0,
+            ),
+            (
+                Position::Absolute,
+                RawGridPlacement::new(named_line(isize::MAX), RawGridLine::Line(2)),
+                20.0,
+                40.0,
+            ),
         ] {
             let result = std::panic::catch_unwind(|| {
                 raw_grid_placement_result::<S>(display, position, placement.clone())
@@ -7500,4 +7512,21 @@ fn standalone_raw_grid_placement_retains_exact_negative_report() {
             line: isize::MIN + 1
         }],
     );
+}
+
+#[test]
+fn standalone_raw_grid_placement_reports_invalid_shadowed_positioned_input() {
+    let lines = named::NamedGridLines::new(GridAxisKind::Column, 2);
+    let typed = GridPlacement::try_line(2).unwrap();
+    for inherited in [false, true] {
+        let (_, absolute, report) = resolve_grid_item_axis_placements_with_report(
+            &lines,
+            &RawGridPlacement::line(0),
+            typed,
+            inherited,
+            false,
+        );
+        assert_eq!(absolute, typed);
+        assert_eq!(report.errors(), &[NamedGridErrorReport::ZeroLine]);
+    }
 }
