@@ -303,6 +303,7 @@ impl Edges {
 struct Slot {
     generation: u64,
     payload: Option<Box<dyn Trace>>,
+    root: Weak<()>,
 }
 
 /// Controls whether an allocation triggers collection before publishing its payload.
@@ -351,7 +352,6 @@ pub struct Heap {
     id: u64,
     slots: Vec<Slot>,
     vacant: Vec<usize>,
-    roots: HashMap<ObjectId, Weak<()>>,
     allocation_collection: AllocationCollection,
     allocations_since_collection: usize,
     live_after_collection: usize,
@@ -374,7 +374,6 @@ impl Heap {
             id,
             slots: Vec::new(),
             vacant: Vec::new(),
-            roots: HashMap::new(),
             allocation_collection: AllocationCollection::Manual,
             allocations_since_collection: 0,
             live_after_collection: 0,
@@ -419,6 +418,7 @@ impl Heap {
             self.slots.push(Slot {
                 generation: 1,
                 payload: None,
+                root: Weak::new(),
             });
             index
         });
@@ -498,7 +498,8 @@ impl Heap {
     }
 
     fn register<T>(&mut self, handle: Handle<T>) -> Root<T> {
-        let registration = self.roots.entry(handle.id).or_default();
+        // Allocation or liveness validation has already resolved this generation.
+        let registration = &mut self.slots[handle.id.slot].root;
         let root = registration.upgrade().unwrap_or_else(|| {
             let root = Rc::new(());
             *registration = Rc::downgrade(&root);
@@ -555,10 +556,15 @@ impl Heap {
 
     fn collect_from(&mut self, mut edges: Edges) -> Result<Collection, AccessError> {
         edges.queue.extend(
-            self.roots
+            self.slots
                 .iter()
-                .filter(|(_, root)| root.strong_count() != 0)
-                .map(|(&id, _)| id),
+                .enumerate()
+                .filter(|(_, entry)| entry.root.strong_count() != 0)
+                .map(|(slot, entry)| ObjectId {
+                    heap: self.id,
+                    slot,
+                    generation: entry.generation,
+                }),
         );
 
         // Mark into scratch storage so a malformed edge cannot partially sweep
@@ -593,9 +599,13 @@ impl Heap {
         for (index, (entry, reachable)) in self.slots.iter_mut().zip(marked).enumerate() {
             if reachable {
                 live += 1;
+                if entry.root.strong_count() == 0 {
+                    entry.root = Weak::new();
+                }
                 continue;
             }
             if let Some(payload) = entry.payload.take() {
+                entry.root = Weak::new();
                 retired.push(payload);
                 if let Some(next_generation) = entry.generation.checked_add(1) {
                     entry.generation = next_generation;
@@ -603,7 +613,6 @@ impl Heap {
                 }
             }
         }
-        self.roots.retain(|_, root| root.strong_count() != 0);
         self.allocations_since_collection = 0;
         self.live_after_collection = live;
         Ok(Collection { retired })
