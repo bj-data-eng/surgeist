@@ -781,15 +781,16 @@ impl<T: IntoIterator<Item = (JsString, NativeFunction)> + Clone> IntoJsModule fo
 
         Module::synthetic(
             exports.as_slice(),
-            unsafe {
-                SyntheticModuleInitializer::from_closure(move |module, context| {
+            SyntheticModuleInitializer::from_copy_closure_with_captures(
+                |module, (names, fns), context| {
                     for (name, f) in names.iter().zip(fns.iter()) {
                         module
                             .set_export(name, f.clone().to_js_function(context.realm()).into())?;
                     }
                     Ok(())
-                })
-            },
+                },
+                (names, fns),
+            ),
             None,
             None,
             context,

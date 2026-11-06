@@ -21,12 +21,10 @@ trait TraceableCallback: Trace {
 #[derive(Trace, Finalize)]
 struct Callback<F, T>
 where
-    F: Fn(&SyntheticModule, &T, &mut Context) -> JsResult<()>,
+    F: Fn(&SyntheticModule, &T, &mut Context) -> JsResult<()> + Copy,
     T: Trace,
 {
-    // SAFETY: `SyntheticModuleInitializer`'s safe API ensures only `Copy` closures are stored; its unsafe API,
-    // on the other hand, explains the invariants to hold in order for this to be safe, shifting
-    // the responsibility to the caller.
+    // A Copy callback cannot own collector handles. Captures are traced separately.
     #[unsafe_ignore_trace]
     f: F,
     captures: T,
@@ -34,7 +32,7 @@ where
 
 impl<F, T> TraceableCallback for Callback<F, T>
 where
-    F: Fn(&SyntheticModule, &T, &mut Context) -> JsResult<()>,
+    F: Fn(&SyntheticModule, &T, &mut Context) -> JsResult<()> + Copy,
     T: Trace,
 {
     fn call(&self, module: &SyntheticModule, context: &mut Context) -> JsResult<()> {
@@ -44,16 +42,10 @@ where
 
 /// The initializing steps of a [`SyntheticModule`].
 ///
-/// # Caveats
-///
-/// By limitations of the Rust language, the garbage collector currently cannot inspect closures
-/// in order to trace their captured variables. This means that only [`Copy`] closures are 100% safe
-/// to use. All other closures can also be stored in a `NativeFunction`, albeit by using an `unsafe`
-/// API, but note that passing closures implicitly capturing traceable types could cause
-/// **Undefined Behaviour**.
+/// Pass owned callback state as explicit captures so the collector can trace it.
 #[derive(Clone, Trace, Finalize)]
 pub struct SyntheticModuleInitializer {
-    inner: Gc<dyn TraceableCallback>,
+    inner: Gc<Box<dyn TraceableCallback>>,
 }
 
 impl std::fmt::Debug for SyntheticModuleInitializer {
@@ -69,8 +61,7 @@ impl SyntheticModuleInitializer {
     where
         F: Fn(&SyntheticModule, &mut Context) -> JsResult<()> + Copy + 'static,
     {
-        // SAFETY: The `Copy` bound ensures there are no traceable types inside the closure.
-        unsafe { Self::from_closure(closure) }
+        Self::from_copy_closure_with_captures(move |module, (), context| closure(module, context), ())
     }
 
     /// Creates a `SyntheticModuleInitializer` from a [`Copy`] closure and a list of traceable captures.
@@ -79,57 +70,11 @@ impl SyntheticModuleInitializer {
         F: Fn(&SyntheticModule, &T, &mut Context) -> JsResult<()> + Copy + 'static,
         T: Trace + 'static,
     {
-        // SAFETY: The `Copy` bound ensures there are no traceable types inside the closure.
-        unsafe { Self::from_closure_with_captures(closure, captures) }
-    }
-
-    /// Creates a new `SyntheticModuleInitializer` from a closure.
-    ///
-    /// # Safety
-    ///
-    /// Passing a closure that contains a captured variable that needs to be traced by the garbage
-    /// collector could cause an use after free, memory corruption or other kinds of **Undefined
-    /// Behaviour**. See <https://github.com/Manishearth/rust-gc/issues/50> for a technical explanation
-    /// on why that is the case.
-    pub unsafe fn from_closure<F>(closure: F) -> Self
-    where
-        F: Fn(&SyntheticModule, &mut Context) -> JsResult<()> + 'static,
-    {
-        // SAFETY: The caller must ensure the invariants of the closure hold.
-        unsafe {
-            Self::from_closure_with_captures(
-                move |module, (), context| closure(module, context),
-                (),
-            )
-        }
-    }
-
-    /// Create a new `SyntheticModuleInitializer` from a closure and a list of traceable captures.
-    ///
-    /// # Safety
-    ///
-    /// Passing a closure that contains a captured variable that needs to be traced by the garbage
-    /// collector could cause an use after free, memory corruption or other kinds of **Undefined
-    /// Behaviour**. See <https://github.com/Manishearth/rust-gc/issues/50> for a technical explanation
-    /// on why that is the case.
-    pub unsafe fn from_closure_with_captures<F, T>(closure: F, captures: T) -> Self
-    where
-        F: Fn(&SyntheticModule, &T, &mut Context) -> JsResult<()> + 'static,
-        T: Trace + 'static,
-    {
-        // Hopefully, this unsafe operation will be replaced by the `CoerceUnsized` API in the
-        // future: https://github.com/rust-lang/rust/issues/18598
-        let ptr = Gc::into_raw(Gc::new(Callback {
-            f: closure,
-            captures,
-        }));
-
-        // SAFETY: The pointer returned by `into_raw` is only used to coerce to a trait object,
-        // meaning this is safe.
-        unsafe {
-            Self {
-                inner: Gc::from_raw(ptr),
-            }
+        Self {
+            inner: Gc::new(Box::new(Callback {
+                f: closure,
+                captures,
+            })),
         }
     }
 
