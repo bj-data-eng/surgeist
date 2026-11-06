@@ -3,8 +3,6 @@ use std::fmt::Debug;
 use surgeist_js_gc::{Finalize, Gc, GcRefCell, Trace, WeakGc};
 use rustc_hash::FxHashMap;
 
-use crate::object::JsPrototype;
-
 use super::{Inner as SharedShapeInner, TransitionKey};
 
 /// Maps transition key type to a [`SharedShapeInner`] transition.
@@ -41,7 +39,8 @@ impl<T: Debug + Trace + Finalize> TransitionMap<T> {
 #[derive(Default, Debug, Trace, Finalize)]
 struct Inner {
     properties: Option<Box<TransitionMap<TransitionKey>>>,
-    prototypes: Option<Box<TransitionMap<JsPrototype>>>,
+    // The weak transition owns no prototype. Its live target owns that edge.
+    prototypes: Option<Box<TransitionMap<Option<usize>>>>,
 }
 
 /// Holds a forward reference to a previously created transition.
@@ -66,7 +65,7 @@ impl ForwardTransition {
     }
 
     /// Insert a prototype transition.
-    pub(super) fn insert_prototype(&self, key: JsPrototype, value: &Gc<SharedShapeInner>) {
+    pub(super) fn insert_prototype(&self, key: Option<usize>, value: &Gc<SharedShapeInner>) {
         let mut this = self.inner.borrow_mut();
         let prototypes = this.prototypes.get_or_insert_with(Box::default);
 
@@ -85,27 +84,18 @@ impl ForwardTransition {
     }
 
     /// Get a prototype transition, return [`None`] otherwise.
-    pub(super) fn get_prototype(&self, key: &JsPrototype) -> Option<WeakGc<SharedShapeInner>> {
+    pub(super) fn get_prototype(&self, key: Option<usize>) -> Option<Gc<SharedShapeInner>> {
         let this = self.inner.borrow();
         let transitions = this.prototypes.as_ref()?;
-        transitions.map.get(key).cloned()
+        // A live target owns the prototype, so a reused address can only hit
+        // a dead transition. Leave pruning to the insertion counter.
+        transitions.map.get(&key)?.upgrade()
     }
 
     /// Prunes the [`WeakGc`]s that have been garbage collected.
     pub(super) fn prune_property_transitions(&self) {
         let mut this = self.inner.borrow_mut();
         let Some(transitions) = this.properties.as_deref_mut() else {
-            return;
-        };
-
-        transitions.insertion_count_since_prune = 0;
-        transitions.map.retain(|_, v| v.is_upgradable());
-    }
-
-    /// Prunes the [`WeakGc`]s that have been garbage collected.
-    pub(super) fn prune_prototype_transitions(&self) {
-        let mut this = self.inner.borrow_mut();
-        let Some(transitions) = this.prototypes.as_deref_mut() else {
             return;
         };
 

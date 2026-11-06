@@ -187,16 +187,13 @@ impl SharedShape {
 
     /// Create a [`SharedShape`] change prototype transition.
     pub(crate) fn change_prototype_transition(&self, prototype: JsPrototype) -> Self {
-        if let Some(shape) = self.forward_transitions().get_prototype(&prototype) {
-            if let Some(inner) = shape.upgrade() {
-                return Self { inner };
-            }
-
-            self.forward_transitions().prune_prototype_transitions();
+        let key = prototype.as_ref().map(JsObject::identity);
+        if let Some(inner) = self.forward_transitions().get_prototype(key) {
+            return Self { inner };
         }
         let new_inner_shape = Inner {
             forward_transitions: ForwardTransition::default(),
-            prototype: prototype.clone(),
+            prototype,
             property_table: self.property_table().clone(),
             property_count: self.property_count(),
             previous: Some(self.clone()),
@@ -205,8 +202,7 @@ impl SharedShape {
         };
         let new_shape = Self::new(new_inner_shape);
 
-        self.forward_transitions()
-            .insert_prototype(prototype, &new_shape.inner);
+        self.forward_transitions().insert_prototype(key, &new_shape.inner);
 
         new_shape
     }
