@@ -2302,7 +2302,7 @@ fn assert_measured_leaf_height_uses_the_ratio_sizing_box<S: LayoutScalar>() {
             Size::splat(OrthogonalFallbackLimitOf::Unbounded),
         ),
     );
-    let compute = |style: &NodeInputOf<S>, known_height| {
+    let compute = |style: &NodeInputOf<S>, known_height, measured_height| {
         let input = ComputeInputOf::leaf_layout(
             Size::new(Some(px(100.0)), known_height),
             parent,
@@ -2310,10 +2310,12 @@ fn assert_measured_leaf_height_uses_the_ratio_sizing_box<S: LayoutScalar>() {
             sizing_request,
         )
         .unwrap();
-        compute_leaf(input, style, |_| Ok::<_, ()>(Size::ZERO))
+        compute_leaf(input, style, |_| {
+            Ok::<_, ()>(Size::new(S::ZERO, measured_height))
+        })
     };
     let height = |style: &NodeInputOf<S>, known_height| {
-        let output = compute(style, known_height).unwrap();
+        let output = compute(style, known_height, S::ZERO).unwrap();
         assert_eq!(output.size.width, px(100.0));
         output.size.height
     };
@@ -2345,9 +2347,27 @@ fn assert_measured_leaf_height_uses_the_ratio_sizing_box<S: LayoutScalar>() {
     assert_eq!(height(&style, None), px(46.0));
     style.size.width = PreferredSizeOf::px(px(140.0));
     assert_eq!(height(&style, None), px(46.0));
+    assert_eq!(
+        compute(&style, None, px(90.0)).unwrap().size.height,
+        px(96.0)
+    );
+    style.min_size.height = MinSizeOf::ZERO;
+    let overflow = compute(&style, None, px(90.0)).unwrap();
+    assert_eq!(overflow.size.height, px(46.0));
+    assert!(overflow.content_size.height > overflow.size.height);
+    style.size.height = PreferredSizeOf::MIN_CONTENT;
+    assert_eq!(
+        compute(&style, None, px(20.0)).unwrap().size.height,
+        px(26.0)
+    );
+    style.size.height = PreferredSizeOf::AUTO;
+    style.min_size.height = MinSizeOf::AUTO;
     style.size.width = PreferredSizeOf::AUTO;
     style.max_size.height = MaxSizeOf::px(px(30.0));
-    assert_eq!(compute(&style, None).unwrap().size.height, px(36.0));
+    assert_eq!(
+        compute(&style, None, S::ZERO).unwrap().size.height,
+        px(36.0)
+    );
     style.max_size.height = MaxSizeOf::NONE;
     style.box_sizing = BoxSizing::BorderBox;
     assert_eq!(height(&style, None), px(50.0));
@@ -2358,7 +2378,7 @@ fn assert_measured_leaf_height_uses_the_ratio_sizing_box<S: LayoutScalar>() {
     );
     assert!(style.aspect_ratio.is_some());
     style.max_size.height = MaxSizeOf::px(px(100.0));
-    let error = compute(&style, None).expect_err("an overflowing transfer is refused");
+    let error = compute(&style, None, S::ZERO).expect_err("an overflowing transfer is refused");
     assert_eq!(error.site(), LayoutErrorSite::Standalone);
     assert_eq!(error.operation(), LayoutOperation::LeafMeasurement);
     assert!(matches!(
