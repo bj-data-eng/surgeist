@@ -10,6 +10,106 @@ use super::fixtures::{
 };
 use super::*;
 
+fn assert_absolute_inset_interval_auto_margins<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let container_size = Size::splat(px(100.0));
+    let available = NonNegativeFiniteOf::new(px(100.0)).unwrap();
+    let basis = Size::splat(Some(available));
+    let mut differences = Vec::new();
+    for display in [
+        Display::Block,
+        Display::Flex,
+        Display::Grid,
+        Display::GridLanes,
+    ] {
+        for (writing_mode, direction) in [
+            (WritingMode::HorizontalTb, Direction::Ltr),
+            (WritingMode::HorizontalTb, Direction::Rtl),
+            (WritingMode::VerticalRl, Direction::Rtl),
+        ] {
+            let flow = FlowAxes::new(writing_mode, direction);
+            for (inset, inline, block, margins) in [
+                (20.0, 40.0, 40.0, [20.0, 20.0, 20.0, 20.0]),
+                (50.0, 50.0, 40.0, [0.0, -20.0, -10.0, -10.0]),
+                (90.0, 90.0, 80.0, [0.0, -20.0, -10.0, -10.0]),
+            ] {
+                let tree = PublicLayoutTreeOf::new()
+                    .children(1, [2])
+                    .style(
+                        1,
+                        NodeInputOf {
+                            display,
+                            position: Position::Relative,
+                            writing_mode,
+                            direction,
+                            size: container_size.map(PreferredSizeOf::px),
+                            ..NodeInputOf::default()
+                        },
+                    )
+                    .style(
+                        2,
+                        NodeInputOf {
+                            position: Position::Absolute,
+                            size: Size::splat(px(20.0)).map(PreferredSizeOf::px),
+                            inset: Edges::all(LengthAutoOf::px(px(inset))),
+                            margin: Edges::all(LengthAutoOf::AUTO),
+                            ..NodeInputOf::default()
+                        },
+                    );
+                let request = crate::test_support::requests::NativeRootFrameOf::new(
+                    flow,
+                    basis,
+                    OrthogonalFallbackOf::new(
+                        basis,
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                )
+                .request(Size::splat(AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(available),
+                    SizingOperation::Normal,
+                )));
+                let batch = compute_layout(&tree, 1, request).unwrap();
+                let output = batch
+                    .final_entries()
+                    .iter()
+                    .find(|entry| entry.node() == 2)
+                    .unwrap()
+                    .output();
+                let location = flow.logical_point(output.location, output.size, container_size);
+                let margin = flow.logical_edges(output.margin);
+                let actual = (
+                    location.inline,
+                    location.block,
+                    [
+                        margin.inline_start,
+                        margin.inline_end,
+                        margin.block_start,
+                        margin.block_end,
+                    ],
+                );
+                let expected = (px(inline), px(block), margins.map(px));
+                if actual != expected {
+                    differences.push(format!(
+                        "{display:?} {writing_mode:?} {direction:?} inset {inset}: {actual:?}, expected {expected:?}"
+                    ));
+                }
+            }
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn absolute_inset_interval_auto_margins_f32() {
+    assert_absolute_inset_interval_auto_margins::<f32>();
+}
+
+#[test]
+fn absolute_inset_interval_auto_margins_f64() {
+    assert_absolute_inset_interval_auto_margins::<f64>();
+}
+
 #[test]
 fn root_and_hidden_contexts_are_explicit_in_both_scalar_lanes() {
     fn assert_lane<S: LayoutScalar>() {
