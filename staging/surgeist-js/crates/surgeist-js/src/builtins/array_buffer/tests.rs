@@ -41,6 +41,21 @@ fn resize() {
 }
 
 #[test]
+fn resize_with_an_unallocatable_host_limit_preserves_bytes() {
+    run_test_actions([TestAction::inspect_context(|context| {
+        let bytes = super::create_byte_data_block(1, None, context).unwrap();
+        let array = JsArrayBuffer::from_byte_block(bytes, context)
+            .unwrap()
+            .with_max_byte_length(u64::MAX);
+        let mut array = array.borrow_mut();
+        let buffer = array.data_mut();
+
+        assert!(buffer.resize(u64::MAX).is_err());
+        assert_eq!(buffer.bytes(), Some([0].as_slice()));
+    })]);
+}
+
+#[test]
 fn get_values() {
     run_test_actions([
         TestAction::run(
