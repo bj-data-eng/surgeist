@@ -711,6 +711,23 @@ fn assert_absolute_alignment_limit_controls<S: LayoutScalar>(large: f64, quarter
         output.location.x
     });
 
+    let crossed_near_limit = [
+        Display::Block,
+        Display::Flex,
+        Display::Grid,
+        Display::GridLanes,
+    ]
+    .map(|display| {
+        absolute_overflow_case(
+            large_size,
+            parent(display, large_size, Overflow::Visible),
+            child(1.5, large, 0.5, AlignItems::Center),
+        )
+        .1
+        .location
+        .x
+    });
+
     assert_eq!(
         (
             crossed.location.x,
@@ -737,6 +754,7 @@ fn assert_absolute_alignment_limit_controls<S: LayoutScalar>(large: f64, quarter
         ),
         (px(0.875 * quarter), px(-1.0), [px(-1.0); 2]),
     );
+    assert_eq!(crossed_near_limit, [px(1.25); 4]);
 }
 
 #[test]
