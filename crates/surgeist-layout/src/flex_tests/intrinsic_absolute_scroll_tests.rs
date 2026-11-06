@@ -7801,23 +7801,21 @@ fn assert_flex_static_main_position_uses_sole_item_margin_box<S: LayoutScalar>()
                         PreferredSizeOf::px(px(container)),
                         PreferredSizeOf::px(px(40.0)),
                     ),
-                    padding: Edges::new(
-                        LengthOf::px(px(padding)),
-                        LengthOf::px(px(padding)),
-                        LengthOf::ZERO,
-                        LengthOf::ZERO,
-                    ),
+                    padding: Edges {
+                        left: LengthOf::px(px(padding)),
+                        right: LengthOf::px(px(padding)),
+                        ..Edges::all(LengthOf::ZERO)
+                    },
                     justify_content: Some(justify_content),
                     ..NodeInputOf::default()
                 },
                 NodeInputOf {
                     size: Size::new(PreferredSizeOf::px(px(item)), PreferredSizeOf::px(px(10.0))),
-                    margin: Edges::new(
-                        LengthAutoOf::px(px(left)),
-                        LengthAutoOf::px(px(right)),
-                        LengthAutoOf::ZERO,
-                        LengthAutoOf::ZERO,
-                    ),
+                    margin: Edges {
+                        left: LengthAutoOf::px(px(left)),
+                        right: LengthAutoOf::px(px(right)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
                     position,
                     flex_shrink: FlexShrinkOf::try_new(S::ZERO).unwrap(),
                     ..NodeInputOf::default()
@@ -7826,27 +7824,28 @@ fn assert_flex_static_main_position_uses_sole_item_margin_box<S: LayoutScalar>()
             assert_eq!(output.size.width, px(item));
             output.location.x
         };
-    for (dimensions, center, safe_start) in [
+    let cases = [
         ((4.0, 0.0, 8.0, 0.0, 0.0), -2.0, 0.0),
         ((120.0, 10.0, 80.0, 20.0, 10.0), 25.0, 30.0),
         ((120.0, 10.0, 60.0, 20.0, 10.0), 35.0, 35.0),
-    ] {
+    ];
+    let observed = cases.map(|(dimensions, center, safe_start)| {
         assert_eq!(
             layout(Position::Absolute, AlignContent::Center, dimensions),
             px(center)
         );
-        for alignment in [AlignContent::SpaceAround, AlignContent::SpaceEvenly] {
+        [AlignContent::SpaceAround, AlignContent::SpaceEvenly].map(|alignment| {
             assert_eq!(
                 layout(Position::Relative, alignment, dimensions),
                 px(safe_start)
             );
-            assert_eq!(
-                layout(Position::Absolute, alignment, dimensions),
-                px(safe_start),
-                "{dimensions:?}, {alignment:?}"
-            );
-        }
-    }
+            layout(Position::Absolute, alignment, dimensions)
+        })
+    });
+    assert_eq!(
+        observed,
+        cases.map(|(_, _, safe_start)| [px(safe_start); 2])
+    );
 }
 
 #[test]
