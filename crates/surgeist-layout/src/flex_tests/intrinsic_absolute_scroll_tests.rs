@@ -6930,3 +6930,117 @@ fn flex_basis_intrinsic_preserves_cross_size_bounds() {
         [30.0, 30.0]
     );
 }
+
+fn selected_flex_intrinsic_root<S: LayoutScalar>(
+    tree: &PublicLayoutTreeOf<S>,
+    width: SizingOperation,
+    height: SizingOperation,
+) -> Size<S> {
+    let request = LayoutRootRequestOf::standalone(
+        SizingRequestOf::new(
+            Size::new(width, height)
+                .map(|operation| AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, operation)),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::NONE,
+    );
+    compute_layout(tree, 1, request)
+        .unwrap()
+        .unrounded_entries()
+        .iter()
+        .find(|entry| entry.node() == 1)
+        .unwrap()
+        .output()
+        .size
+}
+
+fn measured_intrinsic_flex_item<S: LayoutScalar, const MIN: u16, const MAX: u16>(
+    input: LeafMeasureInputOf<S>,
+) -> Size<S> {
+    let width = match input.content_sizing_request().axes().width.operation() {
+        SizingOperation::MinContent | SizingOperation::Normal => MIN,
+        SizingOperation::MaxContent => MAX,
+    };
+    Size::new(S::from_f64(f64::from(width)), S::from_f64(10.0))
+}
+
+#[test]
+fn flex_selected_intrinsic_main_sizes_transform_contributions() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let item = |basis, grow, shrink| NodeInputOf {
+            display: Display::Block,
+            flex_basis: FlexBasisOf::px(px(basis)),
+            flex_grow: FlexGrowOf::try_new(px(grow)).unwrap(),
+            flex_shrink: FlexShrinkOf::try_new(px(shrink)).unwrap(),
+            min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::AUTO),
+            ..NodeInputOf::default()
+        };
+        let measure = |wrap, operation| {
+            let tree = PublicLayoutTreeOf::<S>::new()
+                .children(1, [2, 3])
+                .style(
+                    1,
+                    NodeInputOf {
+                        display: Display::Flex,
+                        flex_wrap: wrap,
+                        gap: Size::new(LengthOf::px(px(10.0)), LengthOf::ZERO),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(2, item(50.0, 0.0, 1.0))
+                .style(3, item(40.0, 1.0, 0.0))
+                .measure_with(2, measured_intrinsic_flex_item::<S, 20, 100>)
+                .measure_with(3, measured_intrinsic_flex_item::<S, 30, 80>);
+            selected_flex_intrinsic_root(&tree, operation, SizingOperation::Normal).width
+        };
+        assert_eq!(
+            [
+                measure(FlexWrap::NoWrap, SizingOperation::MinContent),
+                measure(FlexWrap::NoWrap, SizingOperation::MaxContent),
+                measure(FlexWrap::Wrap, SizingOperation::MinContent),
+                measure(FlexWrap::Wrap, SizingOperation::MaxContent),
+            ],
+            [px(70.0), px(140.0), px(40.0), px(140.0)],
+        );
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn flex_selected_intrinsic_main_size_caps_preferred_width_by_the_flex_base() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let tree = PublicLayoutTreeOf::<S>::new()
+            .children(1, [2])
+            .style(1, NodeInputOf::default())
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Block,
+                    size: Size::new(PreferredSizeOf::px(px(80.0)), PreferredSizeOf::AUTO),
+                    flex_basis: FlexBasisOf::px(px(50.0)),
+                    flex_grow: FlexGrowOf::ZERO,
+                    min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::AUTO),
+                    ..NodeInputOf::default()
+                },
+            );
+        assert_eq!(
+            selected_flex_intrinsic_root(
+                &tree,
+                SizingOperation::MaxContent,
+                SizingOperation::Normal
+            )
+            .width,
+            px(50.0),
+        );
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
