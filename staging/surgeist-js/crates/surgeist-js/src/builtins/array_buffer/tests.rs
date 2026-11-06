@@ -177,6 +177,33 @@ fn sort_negative_zero() {
 }
 
 #[test]
+fn shared_byte_access_preserves_unaligned_views_and_logical_growth() {
+    run_test_actions([
+        TestAction::run(
+            r#"
+            var backing = new SharedArrayBuffer(9, {maxByteLength: 13});
+            var view = new DataView(backing);
+            var bytes = new Uint8Array(backing);
+            view.setUint32(5, 0x01020304, true);
+            var little = view.getUint32(5, true);
+            var big = view.getUint32(5, false);
+            var beforeGrowth = bytes.join(',');
+            backing.grow(13);
+            var afterGrowth = bytes.join(',');
+            view.setUint16(11, 0xabcd);
+            var rejectedPadding = false;
+            try { view.getUint16(12); }
+            catch (error) { rejectedPadding = error instanceof RangeError; }
+            "#,
+        ),
+        TestAction::assert("little === 0x01020304 && big === 0x04030201"),
+        TestAction::assert("beforeGrowth === '0,0,0,0,0,4,3,2,1'"),
+        TestAction::assert("afterGrowth === '0,0,0,0,0,4,3,2,1,0,0,0,0'"),
+        TestAction::assert("bytes[11] === 0xab && bytes[12] === 0xcd && rejectedPadding"),
+    ]);
+}
+
+#[test]
 fn shared_array_buffer_slice_distinguishes_empty_backing_stores() {
     run_test_actions([
         TestAction::run(
