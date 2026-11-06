@@ -380,7 +380,7 @@ pub(crate) fn native_function_call(
     context.check_runtime_limits()?;
     let this_function_object = obj.clone();
 
-    let (function, name, constructor, realm) = {
+    let (function, name, constructor, mut realm) = {
         let record = obj
             .downcast_ref::<NativeFunctionObject>()
             .expect("the object should be a native function object");
@@ -388,7 +388,7 @@ pub(crate) fn native_function_call(
             record.f.clone(),
             record.name.clone(),
             record.constructor,
-            record.realm.clone().map(Realm::from_edge),
+            context.realm().resolve_call_realm(record.realm.as_ref()),
         )
     };
 
@@ -398,8 +398,6 @@ pub(crate) fn native_function_call(
         .vm
         .shadow_stack
         .push_native(pc, name, native_source_info);
-
-    let mut realm = realm.unwrap_or_else(|| context.realm().clone());
 
     context.swap_realm(&mut realm);
     let previous_function = context
@@ -443,7 +441,7 @@ fn native_function_construct(
     context.check_runtime_limits()?;
     let this_function_object = obj.clone();
 
-    let (function, name, constructor, realm) = {
+    let (function, name, constructor, mut realm) = {
         let record = obj
             .downcast_ref::<NativeFunctionObject>()
             .expect("the object should be a native function object");
@@ -451,7 +449,7 @@ fn native_function_construct(
             record.f.clone(),
             record.name.clone(),
             record.constructor,
-            record.realm.clone().map(Realm::from_edge),
+            context.realm().resolve_call_realm(record.realm.as_ref()),
         )
     };
 
@@ -461,8 +459,6 @@ fn native_function_construct(
         .vm
         .shadow_stack
         .push_native(pc, name, native_source_info);
-
-    let mut realm = realm.unwrap_or_else(|| context.realm().clone());
 
     context.swap_realm(&mut realm);
     let previous_function = context

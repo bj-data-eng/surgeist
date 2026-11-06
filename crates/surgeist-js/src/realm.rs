@@ -61,6 +61,18 @@ impl std::fmt::Debug for Realm {
 #[derive(Clone, Debug, HeapTrace)]
 pub(crate) struct RealmEdge(RecordRef<RealmRecord>);
 
+impl RealmEdge {
+    fn root(&self) -> Realm {
+        Realm {
+            inner: self
+                .0
+                .upgrade()
+                .expect("realm heap is available")
+                .expect("live owner retains its realm"),
+        }
+    }
+}
+
 #[derive(HeapTrace)]
 pub(crate) struct RealmRecord {
     intrinsics: Intrinsics,
@@ -119,12 +131,15 @@ impl Realm {
     }
 
     pub(crate) fn from_edge(inner: RealmEdge) -> Self {
-        Self {
-            inner: inner
-                .0
-                .upgrade()
-                .expect("realm heap is available")
-                .expect("live owner retains its realm"),
+        inner.root()
+    }
+
+    /// Resolves a function's realm, reusing this root when the target is already active.
+    #[inline]
+    pub(crate) fn resolve_call_realm(&self, target: Option<&RealmEdge>) -> Self {
+        match target {
+            Some(edge) if edge.0.handle() != self.inner.handle() => edge.root(),
+            _ => self.clone(),
         }
     }
 
