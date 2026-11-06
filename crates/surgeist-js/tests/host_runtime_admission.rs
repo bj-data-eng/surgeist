@@ -70,6 +70,25 @@ fn a_peer_cannot_substitute_another_literal_in_a_cold_script() {
 }
 
 #[test]
+fn a_cached_script_reuses_code_only_within_its_runtime() {
+    let mut owner = Context::default();
+    let mut peer = peer_context(&owner);
+    let mut foreign = Context::default();
+    let script = Script::parse(Source::from_bytes("42"), None, &mut owner).unwrap();
+
+    let code = script.codeblock(&mut owner).unwrap();
+    drop(owner);
+    peer.runtime().collect().unwrap();
+
+    let error = script.codeblock(&mut foreign).unwrap_err();
+    let native = error.as_native().expect("a native runtime admission error");
+    assert_eq!(native.kind(), &JsNativeErrorKind::Type);
+    assert_eq!(native.message(), "script belongs to a different runtime");
+    assert!(Rc::ptr_eq(&code, &script.codeblock(&mut peer).unwrap()));
+    assert_eq!(script.evaluate(&mut peer).unwrap(), 42.into());
+}
+
+#[test]
 fn direct_eval_inside_a_compiled_class_resolves_only_its_own_symbols() {
     let mut context = Context::default();
     let value = context
