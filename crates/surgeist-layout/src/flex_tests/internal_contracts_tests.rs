@@ -747,7 +747,9 @@ fn main_placement_batch<S: LayoutScalar, const N: usize>(
     direction: FlexDirection,
     packing: AlignContent,
     gap: S,
+    right_padding: S,
     children: [NodeInputOf<S>; N],
+    first_measurement: Option<Size<S>>,
 ) -> LayoutResultOf<u32, CompletedLayoutBatchOf<u32, S>, S, core::convert::Infallible> {
     let height = S::from_f64(10.0);
     let viewport =
@@ -778,11 +780,18 @@ fn main_placement_batch<S: LayoutScalar, const N: usize>(
                 flex_direction: direction,
                 justify_content: Some(packing),
                 gap: Size::new(LengthOf::px(gap), LengthOf::ZERO),
+                padding: Edges {
+                    right: LengthOf::px(right_padding),
+                    ..Edges::all(LengthOf::ZERO)
+                },
                 ..NodeInputOf::default()
             },
         );
     for (node, child) in (1..).zip(children) {
         tree = tree.style(node, child);
+    }
+    if let Some(size) = first_measurement {
+        tree = tree.measure(1, size);
     }
     compute_layout(&tree, 0, request)
 }
@@ -813,7 +822,9 @@ fn assert_main_placement_gap_margin_cancellation<S: LayoutScalar>(quarter: S) {
             direction,
             AlignContent::Center,
             width,
+            S::ZERO,
             [fixed_main_placement_item(S::ZERO), second],
+            None,
         )
         .unwrap();
         for entries in [batch.unrounded_entries(), batch.final_entries()] {
@@ -852,7 +863,9 @@ fn assert_main_placement_projects_wide_reverse_offset<S: LayoutScalar>(quarter: 
         FlexDirection::RowReverse,
         AlignContent::FlexEnd,
         S::ZERO,
+        S::ZERO,
         [item],
+        None,
     )
     .unwrap();
     let child = batch
@@ -881,7 +894,9 @@ fn assert_main_placement_refuses_unrepresentable_visual_position<S: LayoutScalar
         FlexDirection::Row,
         AlignContent::FlexStart,
         S::ZERO,
+        S::ZERO,
         [item],
+        None,
     )
     .expect_err("a visual coordinate outside the scalar range is refused");
     assert_eq!(error.site(), LayoutErrorSiteOf::Node(1));
@@ -918,7 +933,9 @@ fn assert_main_placement_uses_retained_extent<S: LayoutScalar>(quarter: S) {
         FlexDirection::Row,
         AlignContent::FlexStart,
         S::ZERO,
+        S::ZERO,
         [fixed_main_placement_item(quarter), trailing],
+        None,
     )
     .unwrap();
     let entries = batch.unrounded_entries();
@@ -947,7 +964,9 @@ fn assert_main_placement_refuses_unrepresentable_retained_extent<S: LayoutScalar
         FlexDirection::Row,
         AlignContent::FlexStart,
         S::ZERO,
+        S::ZERO,
         [first, second],
+        None,
     )
     .expect_err("the physical interval between finite item edges exceeds the scalar range");
     assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
@@ -966,4 +985,44 @@ fn flex_main_placement_uses_retained_extent_after_relative_positioning() {
 fn flex_main_placement_refuses_an_unrepresentable_retained_extent() {
     assert_main_placement_refuses_unrepresentable_retained_extent(2.0_f32.powi(126));
     assert_main_placement_refuses_unrepresentable_retained_extent(2.0_f64.powi(1022));
+}
+
+fn assert_main_placement_refuses_retained_edge<S: LayoutScalar>(quarter: S, descendant: bool) {
+    let width = quarter * S::from_f64(3.0);
+    let mut item = fixed_main_placement_item(quarter);
+    item.inset.left = LengthAutoOf::px(quarter * S::from_f64(2.5));
+    let padding = if descendant {
+        S::ZERO
+    } else {
+        quarter / S::from_f64(2.0)
+    };
+    let measurement =
+        descendant.then_some(Size::new(quarter * S::from_f64(2.0), S::from_f64(10.0)));
+    let error = main_placement_batch(
+        width,
+        FlexDirection::Row,
+        AlignContent::FlexStart,
+        S::ZERO,
+        padding,
+        [item],
+        measurement,
+    )
+    .expect_err("the retained edge exceeds the scalar range");
+    assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
+    assert!(
+        matches!(error.kind(), LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric { value }) if *value == S::INFINITY),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn flex_main_placement_refuses_terminal_padding_overflow() {
+    assert_main_placement_refuses_retained_edge(2.0_f32.powi(126), false);
+    assert_main_placement_refuses_retained_edge(2.0_f64.powi(1022), false);
+}
+
+#[test]
+fn flex_main_placement_refuses_visible_descendant_translation_overflow() {
+    assert_main_placement_refuses_retained_edge(2.0_f32.powi(126), true);
+    assert_main_placement_refuses_retained_edge(2.0_f64.powi(1022), true);
 }
