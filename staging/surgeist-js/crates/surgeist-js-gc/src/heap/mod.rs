@@ -141,16 +141,16 @@ impl<T> fmt::Debug for Rejected<T> {
     }
 }
 
-/// Enumerates the strong heap edges held by a payload.
+/// Enumerates the strong and conditional heap edges held by a payload.
 ///
 /// Tracing only visits edges. It must leave the graph and root registrations
 /// unchanged and must not reenter the heap. The collector may visit the same
 /// payload more than once during an operation.
 ///
 /// The derive visits every field. Use `#[heap_trace(skip)]` only for fields
-/// that hold no strong heap edges.
+/// that hold no edges the collector needs to visit.
 pub trait Trace: Any {
-    /// Sends each strong edge to the visitor. A payload that cannot be read
+    /// Sends each edge to the visitor. A payload that cannot be read
     /// reports `PayloadBorrowed` so the heap can defer collection before sweeping.
     fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError>;
 }
@@ -188,12 +188,34 @@ impl<T: Trace + ?Sized> Trace for Rc<T> {
 /// Receives edges without giving the payload access to collection state.
 pub struct EdgeVisitor<'a> {
     queue: &'a mut VecDeque<ObjectId>,
+    ephemerons: &'a mut Vec<(ObjectId, ObjectId)>,
 }
 
 impl EdgeVisitor<'_> {
     /// Declares an edge that keeps its target alive while the owner is live.
     pub fn strong(&mut self, target: ObjectId) {
         self.queue.push_back(target);
+    }
+
+    /// Keeps the value alive when both the owner and the key are reachable.
+    /// A reclaimed key never activates its value, even if its slot is reused.
+    pub fn ephemeron(&mut self, key: ObjectId, value: ObjectId) {
+        self.ephemerons.push((key, value));
+    }
+}
+
+#[derive(Default)]
+struct Edges {
+    queue: VecDeque<ObjectId>,
+    ephemerons: Vec<(ObjectId, ObjectId)>,
+}
+
+impl Edges {
+    fn visit(&mut self, payload: &dyn Trace) -> Result<(), AccessError> {
+        payload.trace(&mut EdgeVisitor {
+            queue: &mut self.queue,
+            ephemerons: &mut self.ephemerons,
+        })
     }
 }
 
@@ -276,7 +298,7 @@ impl Heap {
     /// Publishes a payload and returns its first root.
     ///
     /// Invalid incoming edges prevent publication. A collection before publication
-    /// visits the incoming payload's edges as temporary roots. Reclaimed payloads
+    /// treats the incoming payload as reachable. Reclaimed payloads
     /// transfer to the caller without running their destructors during allocation.
     pub fn allocate<T: Trace>(&mut self, value: T) -> Result<Allocation<T>, Rejected<T>> {
         let prepared = self.checked_edges(&value).and_then(|edges| {
@@ -359,7 +381,7 @@ impl Heap {
     /// Returns custody of reclaimed payloads. Dispose of them and dispatch any
     /// engine finalization outside the heap borrow.
     pub fn collect(&mut self) -> Result<Collection, AccessError> {
-        self.collect_from(VecDeque::new())
+        self.collect_from(Edges::default())
     }
 
     fn payload(&self, id: ObjectId) -> Result<&dyn Trace, AccessError> {
@@ -386,17 +408,34 @@ impl Heap {
         }
     }
 
-    fn checked_edges(&self, value: &dyn Trace) -> Result<VecDeque<ObjectId>, AccessError> {
-        let mut queue = VecDeque::new();
-        value.trace(&mut EdgeVisitor { queue: &mut queue })?;
-        for &edge in &queue {
+    fn checked_edges(&self, value: &dyn Trace) -> Result<Edges, AccessError> {
+        let mut edges = Edges::default();
+        edges.visit(value)?;
+        for &edge in &edges.queue {
             self.payload(edge)?;
         }
-        Ok(queue)
+        for &(key, value) in &edges.ephemerons {
+            self.live_ephemeron(key, value)?;
+        }
+        Ok(edges)
     }
 
-    fn collect_from(&mut self, mut queue: VecDeque<ObjectId>) -> Result<Collection, AccessError> {
-        queue.extend(
+    fn live_ephemeron(&self, key: ObjectId, value: ObjectId) -> Result<bool, AccessError> {
+        if value.heap != self.id {
+            return Err(AccessError::ForeignHeap);
+        }
+        match self.payload(key) {
+            Ok(_) => {
+                self.payload(value)?;
+                Ok(true)
+            }
+            Err(AccessError::StaleHandle) => Ok(false),
+            Err(error) => Err(error),
+        }
+    }
+
+    fn collect_from(&mut self, mut edges: Edges) -> Result<Collection, AccessError> {
+        edges.queue.extend(
             self.roots
                 .iter()
                 .filter(|(_, root)| root.strong_count() != 0)
@@ -406,11 +445,27 @@ impl Heap {
         // Mark into scratch storage so a malformed edge cannot partially sweep
         // the heap or advance a generation.
         let mut marked = vec![false; self.slots.len()];
-        while let Some(id) = queue.pop_front() {
+        let mut waiting = HashMap::<ObjectId, Vec<ObjectId>>::new();
+        loop {
+            for (key, value) in edges.ephemerons.drain(..) {
+                if self.live_ephemeron(key, value)? {
+                    if marked[key.slot] {
+                        edges.queue.push_back(value);
+                    } else {
+                        waiting.entry(key).or_default().push(value);
+                    }
+                }
+            }
+            let Some(id) = edges.queue.pop_front() else {
+                break;
+            };
             let payload = self.payload(id)?;
             if !marked[id.slot] {
                 marked[id.slot] = true;
-                payload.trace(&mut EdgeVisitor { queue: &mut queue })?;
+                if let Some(values) = waiting.remove(&id) {
+                    edges.queue.extend(values);
+                }
+                edges.visit(payload)?;
             }
         }
 

@@ -27,6 +27,106 @@ impl Trace for Other {
     }
 }
 
+#[derive(Debug)]
+struct WeakEntries(Vec<(ObjectId, ObjectId)>);
+
+impl Trace for WeakEntries {
+    fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+        for &(key, value) in &self.0 {
+            edges.ephemeron(key, value);
+        }
+        Ok(())
+    }
+}
+
+#[test]
+fn ephemerons_reach_a_fixed_point_and_do_not_revive_reused_keys() {
+    let mut heap = Heap::new();
+    let key = heap.allocate(Other).expect("key").root;
+    let middle = heap.allocate(Other).expect("middle").root;
+    let value = heap.allocate(Other).expect("value").root;
+    let key_id = key.handle().erase();
+    let middle_id = middle.handle();
+    let value_id = value.handle();
+    let owner = heap
+        .allocate(WeakEntries(vec![
+            (middle_id.erase(), value_id.erase()),
+            (key_id, middle_id.erase()),
+        ]))
+        .expect("owner")
+        .root;
+    drop(middle);
+    drop(value);
+
+    assert_eq!(heap.collect().expect("live chain").reclaimed(), 0);
+    let value_root = heap
+        .upgrade(value_id)
+        .expect("same heap")
+        .expect("live value");
+    drop(key);
+    assert_eq!(heap.collect().expect("dead keys").reclaimed(), 2);
+    let replacements: Vec<_> = (0..2)
+        .map(|_| heap.allocate(Other).expect("replacement").root)
+        .collect();
+    assert!(
+        replacements
+            .iter()
+            .any(|root| root.handle().erase().slot == key_id.slot)
+    );
+    drop(value_root);
+    assert_eq!(heap.collect().expect("reused keys").reclaimed(), 1);
+    assert!(matches!(heap.get(value_id), Err(AccessError::StaleHandle)));
+    drop(owner);
+}
+
+#[test]
+fn ephemerons_visit_only_live_owners_including_pending_allocations() {
+    let mut heap = Heap::new();
+    let key = heap.allocate(Other).expect("key").root;
+    let value = heap.allocate(Other).expect("value").root;
+    let value_handle = value.handle();
+    drop(value);
+    heap.set_allocation_collection(AllocationCollection::BeforeAllocation);
+    let owner = heap
+        .allocate(WeakEntries(vec![(
+            key.handle().erase(),
+            value_handle.erase(),
+        )]))
+        .expect("pending owner");
+    assert_eq!(owner.collection.reclaimed(), 0);
+    assert!(heap.get(value_handle).is_ok());
+    drop(owner.root);
+
+    assert_eq!(heap.collect().expect("dead owner").reclaimed(), 2);
+    assert!(matches!(
+        heap.get(value_handle),
+        Err(AccessError::StaleHandle)
+    ));
+    assert!(heap.get(key.handle()).is_ok());
+}
+
+#[test]
+fn foreign_ephemerons_are_rejected_without_sweeping() {
+    let mut heap = Heap::new();
+    let mut other = Heap::new();
+    let foreign = other.allocate(Other).expect("foreign").root;
+    let local = heap.allocate(Other).expect("local").root;
+    let local_handle = local.handle();
+    drop(local);
+    heap.set_allocation_collection(AllocationCollection::BeforeAllocation);
+    for entry in [
+        (foreign.handle().erase(), local_handle.erase()),
+        (local_handle.erase(), foreign.handle().erase()),
+    ] {
+        let error = heap
+            .allocate(WeakEntries(vec![entry]))
+            .err()
+            .expect("reject");
+        assert_eq!(error.reason, AccessError::ForeignHeap);
+        assert!(heap.get(local_handle).is_ok());
+    }
+}
+
 struct MutableEdges(Rc<Cell<Option<ObjectId>>>);
 
 impl Trace for MutableEdges {
