@@ -17,6 +17,7 @@ use std::{
 use rustc_hash::FxHashMap;
 
 use surgeist_js_gc::heap::{RecordRef, Rooted, Trace as HeapTrace};
+use surgeist_js_interner::Interner;
 use surgeist_js_parser::{Parser, Source, source::ReadChar};
 
 use crate::{
@@ -25,6 +26,7 @@ use crate::{
     environments::EnvironmentStack,
     js_string,
     module::ModuleEdge,
+    optimizer::Optimizer,
     realm::{Realm, RealmEdge},
     spanned_source_text::SourceText,
     vm::{ActiveRunnable, CallFrame, CallFrameFlags, CodeBlock},
@@ -50,7 +52,11 @@ impl std::fmt::Debug for Script {
 
 #[derive(Debug)]
 enum ScriptPhase {
-    Ast(surgeist_js_ast::Script),
+    Ast {
+        source: surgeist_js_ast::Script,
+        interner: Interner,
+    },
+    Compiling,
     Codeblock(Rc<CodeBlock>),
 }
 
@@ -124,14 +130,15 @@ impl Script {
                 .into());
         }
         let mut parser = Parser::new(src);
-        parser.set_identifier(context.next_parser_identifier());
+        parser.set_identifier(realm.next_parser_identifier()?);
         if context.is_strict() {
             parser.set_strict();
         }
-        let scope = context.realm().scope().clone();
-        let (mut code, source) = parser.parse_script_with_source(&scope, context.interner_mut())?;
+        let scope = realm.scope().clone();
+        let mut interner = Interner::new();
+        let (mut code, source) = parser.parse_script_with_source(&scope, &mut interner)?;
         if !context.optimizer_options().is_empty() {
-            context.optimize_statement_list(code.statements_mut());
+            Optimizer::new(context, &mut interner).apply(code.statements_mut());
         }
 
         let source_text = SourceText::new(source);
@@ -142,7 +149,10 @@ impl Script {
                 .heap
                 .allocate(ScriptRecord {
                     realm: realm.edge(),
-                    phase: RefCell::new(ScriptPhase::Ast(code)),
+                    phase: RefCell::new(ScriptPhase::Ast {
+                        source: code,
+                        interner,
+                    }),
                     source_text,
                     loaded_modules: RefCell::default(),
                     host_defined: HostDefined::default(),
@@ -154,7 +164,9 @@ impl Script {
 
     /// Compiles the codeblock of this script.
     ///
-    /// This is a no-op if this has been called previously.
+    /// The compiled code is cached. A context from the script's runtime can
+    /// compile it using the original parsed symbols and the script's realm.
+    /// Returns an error if compilation is already in progress.
     pub fn codeblock(&self, context: &mut Context) -> JsResult<Rc<CodeBlock>> {
         let realm = self.realm();
         if !context.runtime().same_heap(&realm.runtime()) {
@@ -162,52 +174,80 @@ impl Script {
                 .with_message("script belongs to a different runtime")
                 .into());
         }
-        let cb = {
-            let phase = self.inner.phase.borrow();
-            let source = match &*phase {
-                ScriptPhase::Codeblock(codeblock) => return Ok(codeblock.clone()),
-                ScriptPhase::Ast(source) => source,
-            };
-
-            let mut annex_b_function_names = Vec::new();
-
-            global_declaration_instantiation_context(
-                &mut annex_b_function_names,
-                source,
-                realm.scope(),
-                context,
-            )?;
-
-            let spanned_source_text = SpannedSourceText::new_source_only(self.get_source());
-
-            let mut compiler = ByteCompiler::new(
-                js_string!("<main>"),
-                source.strict(),
-                false,
-                realm.scope().clone(),
-                realm.scope().clone(),
-                false,
-                false,
-                context.interner_mut(),
-                false,
-                spanned_source_text,
-                self.path().map(Path::to_owned).into(),
-            );
-
-            #[cfg(feature = "annex-b")]
-            {
-                compiler.annex_b_function_names = annex_b_function_names;
+        let (source, mut interner) = {
+            let mut phase = self.inner.phase.borrow_mut();
+            match &*phase {
+                ScriptPhase::Codeblock(codeblock) => {
+                    return Ok(codeblock.clone());
+                }
+                ScriptPhase::Compiling => {
+                    return Err(crate::JsNativeError::typ()
+                        .with_message("script compilation is already in progress")
+                        .into());
+                }
+                ScriptPhase::Ast { .. } => {}
             }
-
-            compiler.global_declaration_instantiation(source);
-            compiler.compile_statement_list(source.statements(), true, false);
-
-            Rc::new(compiler.finish())
+            let ScriptPhase::Ast { source, interner } =
+                std::mem::replace(&mut *phase, ScriptPhase::Compiling)
+            else {
+                unreachable!("the script phase is still parsed");
+            };
+            (source, interner)
         };
 
-        *self.inner.phase.borrow_mut() = ScriptPhase::Codeblock(cb.clone());
+        let mut previous_realm = realm;
+        context.swap_realm(&mut previous_realm);
+        let result = self.compile(
+            &source,
+            &mut interner,
+            &mut context.guard(move |context| context.swap_realm(&mut previous_realm)),
+        );
 
-        Ok(cb)
+        *self.inner.phase.borrow_mut() = match &result {
+            Ok(codeblock) => ScriptPhase::Codeblock(codeblock.clone()),
+            Err(_) => ScriptPhase::Ast { source, interner },
+        };
+        result
+    }
+
+    fn compile(
+        &self,
+        source: &surgeist_js_ast::Script,
+        interner: &mut Interner,
+        context: &mut Context,
+    ) -> JsResult<Rc<CodeBlock>> {
+        let scope = context.realm().scope().clone();
+        let mut annex_b_function_names = Vec::new();
+        global_declaration_instantiation_context(
+            &mut annex_b_function_names,
+            source,
+            interner,
+            &scope,
+            context,
+        )?;
+
+        let mut compiler = ByteCompiler::new(
+            js_string!("<main>"),
+            source.strict(),
+            false,
+            scope.clone(),
+            scope,
+            false,
+            false,
+            interner,
+            false,
+            SpannedSourceText::new_source_only(self.get_source()),
+            self.path().map(Path::to_owned).into(),
+        );
+
+        #[cfg(feature = "annex-b")]
+        {
+            compiler.annex_b_function_names = annex_b_function_names;
+        }
+        compiler.global_declaration_instantiation(source);
+        compiler.compile_statement_list(source.statements(), true, false);
+
+        Ok(Rc::new(compiler.finish()))
     }
 
     /// Evaluates this script and returns its result.

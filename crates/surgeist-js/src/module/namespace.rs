@@ -69,11 +69,8 @@ impl ModuleNamespace {
         // so we can safely cache them to avoid repeated graph traversals.
         let mut resolved_bindings = FxHashMap::default();
         for name in &exports {
-            if let Ok(binding) = module.resolve_export(
-                name,
-                &mut rustc_hash::FxHashSet::default(),
-                context.interner(),
-            ) {
+            if let Ok(binding) = module.resolve_export(name, &mut rustc_hash::FxHashSet::default())
+            {
                 resolved_bindings.insert(name.clone(), binding.stored());
             }
         }
@@ -315,11 +312,7 @@ fn module_namespace_exotic_try_get(
         b
     } else {
         module
-            .resolve_export(
-                &export_name,
-                &mut rustc_hash::FxHashSet::default(),
-                context.interner(),
-            )
+            .resolve_export(&export_name, &mut rustc_hash::FxHashSet::default())
             .expect("6. Assert: binding is a ResolvedBinding Record.")
     };
 
@@ -401,11 +394,7 @@ fn module_namespace_exotic_get(
         b
     } else {
         module
-            .resolve_export(
-                &export_name,
-                &mut rustc_hash::FxHashSet::default(),
-                context.interner(),
-            )
+            .resolve_export(&export_name, &mut rustc_hash::FxHashSet::default())
             .expect("6. Assert: binding is a ResolvedBinding Record.")
     };
 

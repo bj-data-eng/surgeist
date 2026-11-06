@@ -34,7 +34,7 @@ use surgeist_js::property::PropertyKey;
 use surgeist_js::value::TryFromJs;
 use surgeist_js_ast::declaration::ImportAttribute as AstImportAttribute;
 use surgeist_js_gc::heap::{RecordRef, Rooted, Trace as HeapTrace};
-use surgeist_js_interner::Interner;
+use surgeist_js_interner::{Interner, Sym};
 use surgeist_js_parser::source::ReadChar;
 use surgeist_js_parser::{Parser, Source};
 
@@ -127,7 +127,7 @@ impl ModuleRequest {
     /// Creates a new module request from an AST specifier and attributes.
     #[must_use]
     pub(crate) fn from_ast(
-        specifier: JsString,
+        specifier: Sym,
         attributes: &[AstImportAttribute],
         interner: &Interner,
     ) -> Self {
@@ -141,7 +141,7 @@ impl ModuleRequest {
             })
             .collect::<Vec<_>>()
             .into_boxed_slice();
-        Self::new(specifier, attributes)
+        Self::new(specifier.to_js_string(interner), attributes)
     }
 
     /// Gets the module specifier.
@@ -356,8 +356,8 @@ impl Module {
     ///
     /// Parses the provided `src` as an ECMAScript module.
     ///
-    /// Use the parsing context to link this module and to initialize its namespace. Source
-    /// text retains symbols from that context's interner even when a peer realm is selected.
+    /// Contexts from the module's runtime can link and evaluate it using its original
+    /// source and realm.
     ///
     /// # Errors
     ///
@@ -374,12 +374,12 @@ impl Module {
         let path = src.path().map(Path::to_path_buf);
 
         let mut parser = Parser::new(src);
-        parser.set_identifier(context.next_parser_identifier());
-        let (module, source) =
-            parser.parse_module_with_source(realm.scope(), context.interner_mut())?;
+        parser.set_identifier(realm.next_parser_identifier()?);
+        let mut interner = Interner::new();
+        let (module, source) = parser.parse_module_with_source(realm.scope(), &mut interner)?;
 
         let source_text = SourceText::new(source);
-        let src = SourceTextModule::new(module, context.interner(), source_text, path.clone());
+        let src = SourceTextModule::new(module, interner, source_text, path.clone());
 
         Self::allocate(&realm, ModuleKind::SourceText(Box::new(src)), path, context)
     }
@@ -581,13 +581,9 @@ impl Module {
     /// This must only be called if the [`JsPromise`] returned by [`Module::load`] has fulfilled.
     ///
     /// [spec]: https://tc39.es/ecma262/#table-abstract-methods-of-module-records
-    fn get_exported_names(
-        &self,
-        export_star_set: &mut Vec<Module>,
-        interner: &Interner,
-    ) -> FxHashSet<JsString> {
+    fn get_exported_names(&self, export_star_set: &mut Vec<Module>) -> FxHashSet<JsString> {
         match self.kind() {
-            ModuleKind::SourceText(src) => src.get_exported_names(self, export_star_set, interner),
+            ModuleKind::SourceText(src) => src.get_exported_names(self, export_star_set),
             ModuleKind::Synthetic(synth) => synth.get_exported_names(),
         }
     }
@@ -608,12 +604,9 @@ impl Module {
         &self,
         export_name: &JsString,
         resolve_set: &mut FxHashSet<(Self, JsString)>,
-        interner: &Interner,
     ) -> Result<ResolvedBinding, ResolveExportError> {
         match self.kind() {
-            ModuleKind::SourceText(src) => {
-                src.resolve_export(self, export_name, resolve_set, interner)
-            }
+            ModuleKind::SourceText(src) => src.resolve_export(self, export_name, resolve_set),
             ModuleKind::Synthetic(synth) => synth.resolve_export(self, export_name),
         }
     }
@@ -635,7 +628,7 @@ impl Module {
         match self.kind() {
             ModuleKind::SourceText(src) => src.link(self, context),
             ModuleKind::Synthetic(synth) => {
-                synth.link(self, context);
+                synth.link(self);
                 Ok(())
             }
         }
@@ -655,7 +648,7 @@ impl Module {
             // If module is not a Cyclic Module Record, then
             ModuleKind::Synthetic(synth) => {
                 // a. Perform ? module.Link().
-                synth.link(self, context);
+                synth.link(self);
                 // b. Return index.
                 Ok(index)
             }
@@ -793,8 +786,6 @@ impl Module {
     ///
     /// Gets the [**Module Namespace Object**][ns] that represents this module's exports.
     ///
-    /// Use the parsing context when initializing the namespace of a source text module.
-    ///
     /// # Errors
     ///
     /// Returns a `TypeError` if the module belongs to another runtime.
@@ -812,13 +803,10 @@ impl Module {
         }
 
         // Resolve all unambiguous exports before allocating the namespace.
-        let exported_names = self.get_exported_names(&mut Vec::default(), context.interner());
+        let exported_names = self.get_exported_names(&mut Vec::default());
         let unambiguous_names = exported_names
             .into_iter()
-            .filter(|name| {
-                self.resolve_export(name, &mut HashSet::default(), context.interner())
-                    .is_ok()
-            })
+            .filter(|name| self.resolve_export(name, &mut HashSet::default()).is_ok())
             .collect();
 
         let namespace = ModuleNamespace::create(self.clone(), unambiguous_names, context);

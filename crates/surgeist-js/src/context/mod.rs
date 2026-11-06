@@ -7,8 +7,6 @@ pub use hooks::{DefaultHooks, HostHooks};
 #[cfg(feature = "intl")]
 pub use icu::IcuError;
 use intrinsics::Intrinsics;
-use surgeist_js_ast::StatementList;
-use surgeist_js_interner::Interner;
 use surgeist_js_parser::source::ReadChar;
 #[cfg(any(feature = "temporal", feature = "intl"))]
 use temporal_rs::provider::TimeZoneProvider;
@@ -27,7 +25,7 @@ use crate::{
     module::{IdleModuleLoader, ModuleLoader, SimpleModuleLoader},
     native_function::NativeFunction,
     object::{FunctionObjectBuilder, JsObject, shape::RootShape},
-    optimizer::{Optimizer, OptimizerOptions, OptimizerStatistics},
+    optimizer::OptimizerOptions,
     property::{Attribute, PropertyDescriptor, PropertyKey},
     realm::Realm,
     script::Script,
@@ -76,9 +74,8 @@ impl Drop for ThreadBlocking {
 
 /// ECMAScript context. It is the primary way to interact with the runtime.
 ///
-/// `Context`s constructed in a thread share the same runtime, therefore it
-/// is possible to share objects from one context to another context, but they
-/// have to be in the same thread.
+/// Contexts built with the same [`Runtime`](crate::Runtime) can share objects
+/// on their owning thread. A default context starts a fresh runtime.
 ///
 /// # Examples
 ///
@@ -118,9 +115,6 @@ impl Drop for ThreadBlocking {
 /// assert_eq!(value.as_number(), Some(12.0))
 /// ```
 pub struct Context {
-    /// String interner in the context.
-    interner: Interner,
-
     /// Execute in strict mode,
     strict: bool,
 
@@ -152,9 +146,6 @@ pub struct Context {
     optimizer_options: OptimizerOptions,
     root_shape: RootShape,
 
-    /// Unique identifier for each parser instance used during the context lifetime.
-    parser_identifier: u32,
-
     data: HostDefined<dyn Any>,
 }
 
@@ -164,7 +155,6 @@ impl std::fmt::Debug for Context {
 
         debug
             .field("realm", &self.vm.frame().realm)
-            .field("interner", &self.interner)
             .field("vm", &self.vm)
             .field("strict", &self.strict)
             .field("job_executor", &"JobExecutor")
@@ -194,8 +184,7 @@ impl Default for Context {
 
 // ==== Public API ====
 impl Context {
-    /// Create a new [`ContextBuilder`] to specify the [`Interner`] and/or
-    /// the icu data provider.
+    /// Creates a builder for a context and its host services.
     #[must_use]
     pub fn builder() -> ContextBuilder {
         ContextBuilder::default()
@@ -221,15 +210,6 @@ impl Context {
     #[allow(clippy::unit_arg, dropping_copy_types)]
     pub fn eval<R: ReadChar>(&mut self, src: Source<'_, R>) -> JsResult<JsValue> {
         Script::parse(src, None, self)?.evaluate(self)
-    }
-
-    /// Applies optimizations to the [`StatementList`] inplace.
-    pub fn optimize_statement_list(
-        &mut self,
-        statement_list: &mut StatementList,
-    ) -> OptimizerStatistics {
-        let mut optimizer = Optimizer::new(self);
-        optimizer.apply(statement_list)
     }
 
     /// Register a global property.
@@ -436,19 +416,6 @@ impl Context {
     #[must_use]
     pub fn get_global_class<C: Class>(&self) -> Option<ClassConstructor> {
         self.realm().get_class::<C>()
-    }
-
-    /// Gets the string interner.
-    #[inline]
-    #[must_use]
-    pub const fn interner(&self) -> &Interner {
-        &self.interner
-    }
-
-    /// Gets a mutable reference to the string interner.
-    #[inline]
-    pub fn interner_mut(&mut self) -> &mut Interner {
-        &mut self.interner
     }
 
     /// Returns the global object.
@@ -680,12 +647,6 @@ impl Context {
     /// Swaps the currently active realm with `realm`.
     pub(crate) fn swap_realm(&mut self, realm: &mut Realm) {
         std::mem::swap(&mut self.vm.frame_mut().realm, realm);
-    }
-
-    /// Increment and get the parser identifier.
-    pub(crate) fn next_parser_identifier(&mut self) -> u32 {
-        self.parser_identifier += 1;
-        self.parser_identifier
     }
 
     /// `CanDeclareGlobalFunction ( N )`
@@ -1030,13 +991,9 @@ impl Context {
 }
 
 /// Builder for the [`Context`] type.
-///
-/// This builder allows custom initialization of the [`Interner`] within
-/// the context.
 #[derive(Default)]
 pub struct ContextBuilder {
     runtime: Option<crate::Runtime>,
-    interner: Option<Interner>,
     host_hooks: Option<Rc<dyn HostHooks>>,
     clock: Option<Rc<dyn Clock>>,
     job_executor: Option<Rc<dyn JobExecutor>>,
@@ -1063,8 +1020,7 @@ impl std::fmt::Debug for ContextBuilder {
 
         let mut out = f.debug_struct("ContextBuilder");
 
-        out.field("interner", &self.interner)
-            .field("host_hooks", &self.host_hooks.as_ref().map(|_| HostHooks))
+        out.field("host_hooks", &self.host_hooks.as_ref().map(|_| HostHooks))
             .field("clock", &self.clock.as_ref().map(|_| Clock))
             .field(
                 "job_executor",
@@ -1093,8 +1049,7 @@ impl std::fmt::Debug for ContextBuilder {
 }
 
 impl ContextBuilder {
-    /// Creates a new [`ContextBuilder`] with a default empty [`Interner`]
-    /// and a default `BoaProvider` if the `intl` feature is enabled.
+    /// Creates a new [`ContextBuilder`] with default settings.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -1104,17 +1059,6 @@ impl ContextBuilder {
     #[must_use]
     pub fn runtime(mut self, runtime: crate::Runtime) -> Self {
         self.runtime = Some(runtime);
-        self
-    }
-
-    /// Initializes the context [`Interner`] to the provided interner.
-    ///
-    /// This is useful when you want to initialize an [`Interner`] with
-    /// a collection of words before parsing.
-    #[must_use]
-    #[allow(clippy::missing_const_for_fn)]
-    pub fn interner(mut self, interner: Interner) -> Self {
-        self.interner = Some(interner);
         self
     }
 
@@ -1251,7 +1195,6 @@ impl ContextBuilder {
             .unwrap_or_else(|| Rc::new(SimpleJobExecutor::new()));
 
         let mut context = Context {
-            interner: self.interner.unwrap_or_default(),
             vm,
             strict: false,
             #[cfg(feature = "temporal")]
@@ -1284,7 +1227,6 @@ impl ContextBuilder {
             module_loader,
             optimizer_options: OptimizerOptions::OPTIMIZE_ALL,
             root_shape,
-            parser_identifier: 0,
             thread_blocking,
             data: HostDefined::default(),
         };

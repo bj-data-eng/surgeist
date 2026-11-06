@@ -7,7 +7,9 @@ use crate::{
     },
     source::ReadChar,
 };
-use surgeist_js_ast::{self as ast, PositionGroup, Punctuator, Span, Spanned, expression::TaggedTemplate};
+use surgeist_js_ast::{
+    self as ast, PositionGroup, Punctuator, Span, Spanned, expression::TaggedTemplate,
+};
 use surgeist_js_interner::Interner;
 
 /// Parses a tagged template.
@@ -81,7 +83,9 @@ where
                         raws.into_boxed_slice(),
                         cookeds.into_boxed_slice(),
                         exprs.into_boxed_slice(),
-                        cursor.tagged_template_identifier(),
+                        cursor.tagged_template_identifier().ok_or_else(|| {
+                            Error::general("too many tagged template sites", self.start)
+                        })?,
                         Span::new(self.start.position(), token.span().end()),
                     ));
                 }

@@ -15,11 +15,11 @@ use surgeist_js_ast::{
         },
     },
 };
-use surgeist_js_interner::JStrRef;
+use surgeist_js_interner::{Interner, JStrRef};
 
-fn literal_to_js_value(literal: &Literal, context: &mut Context) -> JsValue {
+fn literal_to_js_value(literal: &Literal, interner: &Interner) -> JsValue {
     match literal.kind() {
-        LiteralKind::String(v) => JsValue::new(v.to_js_string(context.interner())),
+        LiteralKind::String(v) => JsValue::new(v.to_js_string(interner)),
         LiteralKind::Num(v) => JsValue::new(*v),
         LiteralKind::Int(v) => JsValue::new(*v),
         LiteralKind::BigInt(v) => JsValue::new(JsBigInt::new(v.clone())),
@@ -29,7 +29,7 @@ fn literal_to_js_value(literal: &Literal, context: &mut Context) -> JsValue {
     }
 }
 
-fn js_value_to_literal_kind(value: &JsValue, context: &mut Context) -> LiteralKind {
+fn js_value_to_literal_kind(value: &JsValue, interner: &mut Interner) -> LiteralKind {
     match value.variant() {
         JsVariant::Null => LiteralKind::Null,
         JsVariant::Undefined => LiteralKind::Undefined,
@@ -37,7 +37,7 @@ fn js_value_to_literal_kind(value: &JsValue, context: &mut Context) -> LiteralKi
         JsVariant::String(v) => {
             // TODO: Replace JStrRef with JsStr this would eliminate the to_vec call.
             let v = v.to_vec();
-            LiteralKind::String(context.interner_mut().get_or_intern(JStrRef::Utf16(&v)))
+            LiteralKind::String(interner.get_or_intern(JStrRef::Utf16(&v)))
         }
         JsVariant::Float64(v) => LiteralKind::Num(v),
         JsVariant::Integer32(v) => LiteralKind::Int(v),
@@ -55,10 +55,13 @@ impl ConstantFolding {
     pub(crate) fn fold_expression(
         expr: &mut Expression,
         context: &mut Context,
+        interner: &mut Interner,
     ) -> PassAction<Expression> {
         match expr {
-            Expression::Unary(unary) => Self::constant_fold_unary_expr(unary, context),
-            Expression::Binary(binary) => Self::constant_fold_binary_expr(binary, context),
+            Expression::Unary(unary) => Self::constant_fold_unary_expr(unary, context, interner),
+            Expression::Binary(binary) => {
+                Self::constant_fold_binary_expr(binary, context, interner)
+            }
             _ => PassAction::Keep,
         }
     }
@@ -66,20 +69,21 @@ impl ConstantFolding {
     fn constant_fold_unary_expr(
         unary: &mut Unary,
         context: &mut Context,
+        interner: &mut Interner,
     ) -> PassAction<Expression> {
         let Expression::Literal(literal) = unary.target() else {
             return PassAction::Keep;
         };
         let value = match (literal, unary.op()) {
-            (literal, UnaryOp::Minus) => literal_to_js_value(literal, context).neg(context),
-            (literal, UnaryOp::Plus) => literal_to_js_value(literal, context)
+            (literal, UnaryOp::Minus) => literal_to_js_value(literal, interner).neg(context),
+            (literal, UnaryOp::Plus) => literal_to_js_value(literal, interner)
                 .to_number(context)
                 .map(JsValue::new),
-            (literal, UnaryOp::Not) => literal_to_js_value(literal, context)
+            (literal, UnaryOp::Not) => literal_to_js_value(literal, interner)
                 .not()
                 .map(JsValue::new),
             (literal, UnaryOp::Tilde) => Ok(
-                match literal_to_js_value(literal, context)
+                match literal_to_js_value(literal, interner)
                     .to_numeric(context)
                     .expect("should not fail")
                 {
@@ -88,7 +92,7 @@ impl ConstantFolding {
                 },
             ),
             (literal, UnaryOp::TypeOf) => Ok(JsValue::new(
-                literal_to_js_value(literal, context).js_type_of(),
+                literal_to_js_value(literal, interner).js_type_of(),
             )),
             (_, UnaryOp::Delete) => {
                 return PassAction::Replace(Literal::new(true, unary.span()).into());
@@ -106,7 +110,7 @@ impl ConstantFolding {
         };
 
         PassAction::Replace(Expression::Literal(Literal::new(
-            js_value_to_literal_kind(&value, context),
+            js_value_to_literal_kind(&value, interner),
             unary.span(),
         )))
     }
@@ -114,6 +118,7 @@ impl ConstantFolding {
     fn constant_fold_binary_expr(
         binary: &mut Binary,
         context: &mut Context,
+        interner: &mut Interner,
     ) -> PassAction<Expression> {
         let Expression::Literal(lhs) = binary.lhs() else {
             return PassAction::Keep;
@@ -154,7 +159,7 @@ impl ConstantFolding {
             return PassAction::Replace(rhs);
         }
 
-        let lhs = literal_to_js_value(lhs, context);
+        let lhs = literal_to_js_value(lhs, interner);
 
         let span = binary.span();
 
@@ -220,7 +225,7 @@ impl ConstantFolding {
             return PassAction::Keep;
         };
 
-        let rhs = literal_to_js_value(rhs_literal, context);
+        let rhs = literal_to_js_value(rhs_literal, interner);
 
         let value = match binary.op() {
             BinaryOp::Arithmetic(op) => match op {
@@ -262,7 +267,7 @@ impl ConstantFolding {
         };
 
         PassAction::Replace(
-            Literal::new(js_value_to_literal_kind(&value, context), binary.span()).into(),
+            Literal::new(js_value_to_literal_kind(&value, interner), binary.span()).into(),
         )
     }
 }

@@ -20,6 +20,7 @@ use rustc_hash::FxHashSet;
 use itertools::Itertools;
 use surgeist_js_ast::scope::Scope;
 use surgeist_js_gc::heap::Trace as HeapTrace;
+use surgeist_js_interner::Interner;
 use surgeist_js_macros::utf16;
 
 use crate::JsExpect;
@@ -262,12 +263,13 @@ impl Json {
 
         // 4-10. Parse and evaluate the script
         let source = Source::from_bytes(&script_string);
+        let mut interner = Interner::new();
         let mut parser = Parser::new(source);
         parser.set_json_parse();
 
         // Use parse_script_with_source to get SourceText for span-based source extraction
         let (script, source_text) =
-            parser.parse_script_with_source(&Scope::new_global(), context.interner_mut())?;
+            parser.parse_script_with_source(&Scope::new_global(), &mut interner)?;
 
         // Build the source tree from the AST if a reviver is present.
         // This walks the parsed AST and extracts source text from LinearSpan information,
@@ -283,7 +285,7 @@ impl Json {
             });
             expr.and_then(|e| {
                 use surgeist_js_ast::visitor::Visitor;
-                let mut visitor = JsonSourceVisitor::new(&source_text, context.interner());
+                let mut visitor = JsonSourceVisitor::new(&source_text, &interner);
                 let _ = visitor.visit_expression(e);
                 visitor.finish()
             })
@@ -304,7 +306,7 @@ impl Json {
                 context.realm().scope().clone(),
                 false,
                 false,
-                context.interner_mut(),
+                &mut interner,
                 in_with,
                 spanned_source_text,
                 SourcePath::Json,

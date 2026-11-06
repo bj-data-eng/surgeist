@@ -70,6 +70,21 @@ fn a_peer_cannot_substitute_another_literal_in_a_cold_script() {
 }
 
 #[test]
+fn direct_eval_inside_a_compiled_class_resolves_only_its_own_symbols() {
+    let mut context = Context::default();
+    let value = context
+        .eval(Source::from_bytes(
+            "class Box {
+                #surgeistPrivate = 17;
+                get() { eval('0'); return eval('this.#surgeistPrivate'); }
+             }
+             new Box().get()",
+        ))
+        .unwrap();
+    assert_eq!(value, 17.into());
+}
+
+#[test]
 fn separate_contexts_parsing_in_one_realm_get_distinct_template_objects() {
     let mut owner = Context::default();
     let mut peer = peer_context(&owner);

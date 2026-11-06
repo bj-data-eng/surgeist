@@ -7,9 +7,9 @@ use crate::{
     parser::{OrAbrupt, ParseResult},
     source::ReadChar,
 };
+use buffered_lexer::BufferedLexer;
 use surgeist_js_ast::{LinearPosition, PositionGroup, Punctuator, Spanned};
 use surgeist_js_interner::Interner;
-use buffered_lexer::BufferedLexer;
 
 /// The result of a peek for a semicolon.
 #[derive(Debug)]
@@ -165,13 +165,13 @@ where
 
     /// Get the identifier for a tagged template.
     #[inline]
-    pub(super) fn tagged_template_identifier(&mut self) -> u64 {
-        self.tagged_templates_count += 1;
+    pub(super) fn tagged_template_identifier(&mut self) -> Option<u64> {
+        self.tagged_templates_count = self.tagged_templates_count.checked_add(1)?;
 
         let identifier = u64::from(self.identifier);
         let count = u64::from(self.tagged_templates_count);
 
-        (count << 32) | identifier
+        Some((count << 32) | identifier)
     }
 
     /// Returns an error if the next token is not of kind `kind`.

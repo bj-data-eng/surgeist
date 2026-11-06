@@ -259,7 +259,7 @@ impl SyntheticModule {
     /// Concrete method [`Link ( )`][spec].
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-moduledeclarationlinking
-    pub(super) fn link(&self, module_self: &Module, context: &mut Context) {
+    pub(super) fn link(&self, module_self: &Module) {
         if !matches!(&*self.state.borrow(), ModuleStatus::Unlinked) {
             // Already linked and/or evaluated.
             return;
@@ -274,6 +274,7 @@ impl SyntheticModule {
 
         // TODO: A bit of a hack to be able to pass the currently active runnable without an
         // available codeblock to execute.
+        let mut interner = surgeist_js_interner::Interner::new();
         let compiler = ByteCompiler::new(
             js_string!("<synthetic>"),
             true,
@@ -282,7 +283,7 @@ impl SyntheticModule {
             module_scope.clone(),
             false,
             false,
-            context.interner_mut(),
+            &mut interner,
             false,
             // A synthetic module does not contain `SourceText`
             SpannedSourceText::new_empty(),

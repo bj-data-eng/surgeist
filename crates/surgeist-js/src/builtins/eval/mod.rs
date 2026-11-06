@@ -29,6 +29,7 @@ use surgeist_js_ast::{
     operations::{ContainsSymbol, contains, contains_arguments},
     scope::Scope,
 };
+use surgeist_js_interner::Interner;
 use surgeist_js_parser::{Parser, Source};
 
 use super::{BuiltInBuilder, IntrinsicObject};
@@ -126,12 +127,13 @@ impl Eval {
         let x = x.to_vec();
         let source = Source::from_utf16(&x);
 
+        let mut interner = Interner::new();
         let mut parser = Parser::new(source);
-        parser.set_identifier(context.next_parser_identifier());
+        parser.set_identifier(context.realm().next_parser_identifier()?);
         if strict {
             parser.set_strict();
         }
-        let (mut body, source) = parser.parse_eval(direct, context.interner_mut())?;
+        let (mut body, source) = parser.parse_eval(direct, &mut interner)?;
 
         // 6. Let inFunction be false.
         // 7. Let inMethod be false.
@@ -261,6 +263,7 @@ impl Eval {
         prepare_eval_declaration_instantiation(
             &mut annex_b_function_names,
             &body,
+            &interner,
             strict,
             if strict {
                 &lexical_scope
@@ -284,7 +287,7 @@ impl Eval {
             lexical_scope.clone(),
             false,
             false,
-            context.interner_mut(),
+            &mut interner,
             in_with,
             spanned_source_text,
             // TODO: Could give more information from previous shadow stack.

@@ -157,15 +157,14 @@ pub trait ModuleLoader: Any {
     ///   where result is either a normal completion containing the loaded Module Record or a throw
     ///   completion, either synchronously or asynchronously. This is replaced by simply returning from
     ///   the method.
-    /// - If this operation is called multiple times with the same `(referrer, specifier)` pair and
+    /// - If this operation is called multiple times with the same `(referrer, request)` pair and
     ///   it performs FinishLoadingImportedModule(referrer, specifier, payload, result) where result
     ///   is a normal completion, then it must perform
     ///   `FinishLoadingImportedModule(referrer, specifier, payload, result)` with the same result each
     ///   time.
     /// - The operation must treat payload as an opaque value to be passed through to
     ///   `FinishLoadingImportedModule`. (can be ignored)
-    /// - Returned modules and errors must belong to the supplied context's runtime. Parse
-    ///   source text with that context so its interner can resolve the module's symbols.
+    /// - Returned modules and errors must belong to the supplied context's runtime.
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-HostLoadImportedModule
     /// [finish]: https://tc39.es/ecma262/#sec-FinishLoadingImportedModule

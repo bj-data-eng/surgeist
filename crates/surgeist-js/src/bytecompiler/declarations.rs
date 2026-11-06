@@ -17,7 +17,7 @@ use surgeist_js_ast::{
     scope_analyzer::EvalDeclarationBindings,
     visitor::NodeRef,
 };
-use surgeist_js_interner::{JStrRef, Sym};
+use surgeist_js_interner::{Interner, JStrRef, Sym};
 
 #[cfg(feature = "annex-b")]
 use surgeist_js_ast::operations::annex_b_function_declarations_names;
@@ -37,6 +37,7 @@ use surgeist_js_ast::operations::annex_b_function_declarations_names;
 pub(crate) fn global_declaration_instantiation_context(
     _annex_b_function_names: &mut Vec<Sym>,
     _script: &Script,
+    _interner: &Interner,
     _env: &Scope,
     _context: &mut Context,
 ) -> JsResult<()> {
@@ -56,6 +57,7 @@ pub(crate) fn global_declaration_instantiation_context(
 pub(crate) fn global_declaration_instantiation_context(
     annex_b_function_names: &mut Vec<Sym>,
     script: &Script,
+    interner: &Interner,
     env: &Scope,
     context: &mut Context,
 ) -> JsResult<()> {
@@ -142,7 +144,7 @@ pub(crate) fn global_declaration_instantiation_context(
             // 2. If replacing the FunctionDeclaration f with a VariableStatement that has F as a BindingIdentifier
             //    would not produce any Early Errors for script, then
             if !lex_names.contains(&f) {
-                let f_string = f.to_js_string(context.interner());
+                let f_string = f.to_js_string(interner);
 
                 // a. If env.HasLexicalDeclaration(F) is false, then
                 if !env.has_lex_binding(&f_string) {
@@ -198,6 +200,7 @@ pub(crate) fn global_declaration_instantiation_context(
 pub(crate) fn prepare_eval_declaration_instantiation(
     #[allow(unused, clippy::ptr_arg)] annex_b_function_names: &mut Vec<Sym>,
     body: &Script,
+    interner: &Interner,
     #[allow(unused)] strict: bool,
     #[allow(unused)] var_env: &Scope,
     #[allow(unused)] lex_env: &Scope,
@@ -215,13 +218,9 @@ pub(crate) fn prepare_eval_declaration_instantiation(
     let private_identifiers = context.vm.frame().environments.private_name_descriptions();
     let private_identifiers = private_identifiers
         .into_iter()
-        .map(|ident| {
-            // TODO: Replace JStrRef with JsStr this would eliminate the to_vec call.
-            let ident = ident.to_vec();
-            context
-                .interner()
-                .get(JStrRef::Utf16(&ident))
-                .expect("string should be in interner")
+        .filter_map(|ident| {
+            // Names absent from this parse cannot occur in its AST.
+            interner.get(JStrRef::Utf16(&ident.to_vec()))
         })
         .collect();
 
@@ -291,7 +290,7 @@ pub(crate) fn prepare_eval_declaration_instantiation(
                 // 3. Assert: The following loop will terminate.
                 // 4. Repeat, while thisEnv is not varEnv,
                 while this_env.scope_index() != lex_env.scope_index() {
-                    let f = f.to_js_string(context.interner());
+                    let f = f.to_js_string(interner);
 
                     // a. If thisEnv is not an Object Environment Record, then
                     // i. If ! thisEnv.HasBinding(F) is true, then
@@ -311,7 +310,7 @@ pub(crate) fn prepare_eval_declaration_instantiation(
 
                 // 5. If bindingExists is false and varEnv is a Global Environment Record, then
                 let fn_definable = if !binding_exists && var_env.is_global() {
-                    let f = f.to_js_string(context.interner());
+                    let f = f.to_js_string(interner);
 
                     // a. If varEnv.HasLexicalDeclaration(F) is false, then
                     // b. Else,
@@ -335,7 +334,7 @@ pub(crate) fn prepare_eval_declaration_instantiation(
                     if !declared_function_names.contains(&f) {
                         // i. If varEnv is a Global Environment Record, then
                         if var_env.is_global() {
-                            let f = f.to_js_string(context.interner());
+                            let f = f.to_js_string(interner);
 
                             // i. Perform ? varEnv.CreateGlobalVarBinding(F, true).
                             context.create_global_var_binding(f, true)?;

@@ -7,12 +7,13 @@ use self::{
 };
 use crate::Context;
 use bitflags::bitflags;
+use std::{fmt, ops::ControlFlow};
 use surgeist_js_ast::{
     Expression, StatementList,
     statement::Statement,
     visitor::{VisitWith, VisitorMut},
 };
-use std::{fmt, ops::ControlFlow};
+use surgeist_js_interner::Interner;
 
 bitflags! {
     /// Optimizer options.
@@ -91,14 +92,16 @@ impl fmt::Display for OptimizerStatistics {
 pub(crate) struct Optimizer<'context> {
     statistics: OptimizerStatistics,
     context: &'context mut Context,
+    interner: &'context mut Interner,
 }
 
 impl<'context> Optimizer<'context> {
     /// Create a optimizer.
-    pub(crate) fn new(context: &'context mut Context) -> Self {
+    pub(crate) fn new(context: &'context mut Context, interner: &'context mut Interner) -> Self {
         Self {
             statistics: OptimizerStatistics::default(),
             context,
+            interner,
         }
     }
 
@@ -110,7 +113,7 @@ impl<'context> Optimizer<'context> {
         for _ in 0..Self::MAX_PASS_ITERATIONS {
             self.statistics.constant_folding_pass_count += 1;
             let mut walker = Walker::new(|expr| -> PassAction<Expression> {
-                ConstantFolding::fold_expression(expr, self.context)
+                ConstantFolding::fold_expression(expr, self.context, self.interner)
             });
             // NOTE: postoder traversal is optimal for constant folding,
             // since it evaluates the tree bottom-up.

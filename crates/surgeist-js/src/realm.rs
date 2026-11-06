@@ -8,7 +8,7 @@
 
 use std::{
     any::TypeId,
-    cell::{Ref, RefCell},
+    cell::{Cell, Ref, RefCell},
 };
 
 use crate::{
@@ -76,6 +76,9 @@ pub(crate) struct RealmRecord {
 
     global_object: ObjectEdge,
     global_this: ObjectEdge,
+    // The high half of each template-site key counts sites within a parse.
+    #[heap_trace(skip)]
+    parser_identifier: Cell<u32>,
     template_map: RefCell<FxHashMap<u64, ObjectEdge>>,
     loaded_modules: RefCell<FxHashMap<JsString, ModuleEdge>>,
     host_classes: RefCell<FxHashMap<TypeId, StandardConstructor>>,
@@ -166,6 +169,7 @@ impl Realm {
                     scope,
                     global_object: roots.retain(global_object),
                     global_this: roots.retain(global_this),
+                    parser_identifier: Cell::new(0),
                     template_map: RefCell::default(),
                     loaded_modules: RefCell::default(),
                     host_classes: RefCell::default(),
@@ -284,6 +288,19 @@ impl Realm {
             .as_global()
             .expect("Realm should only store global environments");
         env.extend_bindings(binding_number as usize);
+    }
+
+    pub(crate) fn next_parser_identifier(&self) -> JsResult<u32> {
+        let next = self
+            .inner
+            .parser_identifier
+            .get()
+            .checked_add(1)
+            .ok_or_else(|| {
+                JsNativeError::range().with_message("realm parser identifiers exhausted")
+            })?;
+        self.inner.parser_identifier.set(next);
+        Ok(next)
     }
 
     pub(crate) fn push_template(&self, site: u64, template: JsObject) {
