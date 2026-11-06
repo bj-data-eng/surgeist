@@ -662,3 +662,82 @@ fn block_flow_flex_root_retains_auto_inline_fill() {
     assert_block_flow_flex_root_retains_auto_inline_fill::<f32>();
     assert_block_flow_flex_root_retains_auto_inline_fill::<f64>();
 }
+
+fn assert_flex_remeasurement_transfers_the_nested_leaf_ratio<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let width = NonNegativeFiniteOf::new(px(100.0)).unwrap();
+    let viewport = Size::new(Some(width), None);
+    let frame = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        viewport,
+        OrthogonalFallbackOf::new(
+            viewport,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    );
+    let request = frame.request(Size::new(
+        AxisSizingRequestOf::new(AvailableSpaceOf::Definite(width), SizingOperation::Normal),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+    ));
+    for (box_sizing, expected_height) in
+        [(BoxSizing::BorderBox, 50.0), (BoxSizing::ContentBox, 40.0)]
+    {
+        let tree = PublicLayoutTreeOf::new()
+            .children(0, [1])
+            .children(1, [2])
+            .style(
+                0,
+                NodeInputOf {
+                    display: Display::Flex,
+                    size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+                    align_items: Some(AlignItems::FlexStart),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Block,
+                    flex_basis: FlexBasisOf::px(px(150.0)),
+                    min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Block,
+                    box_sizing,
+                    aspect_ratio: AspectRatioOf::new(px(2.0)),
+                    padding: Edges {
+                        left: LengthOf::px(px(10.0)),
+                        right: LengthOf::px(px(10.0)),
+                        ..Edges::all(LengthOf::ZERO)
+                    },
+                    ..NodeInputOf::default()
+                },
+            )
+            .measure(2, Size::ZERO);
+        let batch = compute_layout(&tree, 0, request).unwrap();
+        for node in 0..=2 {
+            let output = batch
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == node)
+                .unwrap()
+                .output();
+            assert_eq!(
+                output.size,
+                Size::new(px(100.0), px(expected_height)),
+                "{box_sizing:?}, node {node}"
+            );
+        }
+    }
+}
+
+#[test]
+fn flex_remeasurement_transfers_the_nested_leaf_ratio() {
+    assert_flex_remeasurement_transfers_the_nested_leaf_ratio::<f32>();
+    assert_flex_remeasurement_transfers_the_nested_leaf_ratio::<f64>();
+}
