@@ -1,4 +1,4 @@
-use crate::geometry::{FlowAxes, LogicalEdgesOf, LogicalPointOf, LogicalSizeOf, PhysicalAxis};
+use crate::geometry::{FlowAxes, LogicalEdgesOf, LogicalSizeOf, PhysicalAxis};
 use crate::scroll::ScrollOriginProgression;
 use crate::{
     AlignItems, AspectRatioOf, Edges, LayoutScalar, LengthOf, LengthResolutionOf,
@@ -193,8 +193,6 @@ pub(crate) fn absolute_inset_axis_alignment<S: LayoutScalar>(
     }
 
     let limit_start = (-start).min(S::ZERO);
-    let limit_end = (containing - start).max(inset_extent);
-    let margin_box_extent = inset_extent - free;
     // Covering the modified interval bounds the offset to [free, 0].
     // Intersect with the reachable limit in the same coordinate frame.
     let mut earliest = free;
@@ -203,7 +201,9 @@ pub(crate) fn absolute_inset_axis_alignment<S: LayoutScalar>(
         earliest = earliest.max(limit_start);
     }
     if scroll_progression != Some(ScrollOriginProgression::FlowEndward) {
-        latest = latest.min(limit_end - margin_box_extent);
+        // The farther end of the original and modified intervals controls
+        // reachability. Compute both slacks without rebuilding the margin box.
+        latest = latest.min(free.max(containing - start - item - margin_start - margin_end));
     }
     if earliest > latest {
         limit_start
@@ -220,12 +220,12 @@ pub(crate) fn absolute_inset_alignment_offsets<S: LayoutScalar>(
     flow: FlowAxes,
     alignment: LogicalSizeOf<Option<AlignItems>>,
     scroll_progressions: LogicalSizeOf<Option<ScrollOriginProgression>>,
-) -> crate::Point<S> {
+) -> Edges<S> {
     let inset = flow.logical_edges(inset);
     let margin = flow.logical_edges(margin);
     let item = flow.logical_size(item);
     let containing = flow.logical_size(containing);
-    let offsets = LogicalPointOf::new(
+    flow.physical_edges(LogicalEdgesOf::new(
         absolute_inset_axis_alignment(
             (inset.inline_start, inset.inline_end),
             (margin.inline_start, margin.inline_end),
@@ -234,6 +234,7 @@ pub(crate) fn absolute_inset_alignment_offsets<S: LayoutScalar>(
             alignment.inline,
             scroll_progressions.inline,
         ),
+        S::ZERO,
         absolute_inset_axis_alignment(
             (inset.block_start, inset.block_end),
             (margin.block_start, margin.block_end),
@@ -242,8 +243,26 @@ pub(crate) fn absolute_inset_alignment_offsets<S: LayoutScalar>(
             alignment.block,
             scroll_progressions.block,
         ),
-    );
-    flow.physical_point(offsets, LogicalSizeOf::new(S::ZERO, S::ZERO), Size::ZERO)
+        S::ZERO,
+    ))
+}
+
+pub(crate) fn absolute_aligned_start<S: LayoutScalar>(start: S, margin: S, offset: S) -> S {
+    let start_with_margin = start + margin;
+    if offset == S::ZERO {
+        return start_with_margin;
+    }
+    // Add the pair with the smallest residual first so large, opposing
+    // terms can cancel before they absorb a small inset, margin or offset.
+    let aligned_start = start + offset;
+    let aligned_margin = margin + offset;
+    if start_with_margin.abs() <= aligned_start.abs().min(aligned_margin.abs()) {
+        start_with_margin + offset
+    } else if aligned_start.abs() <= aligned_margin.abs() {
+        aligned_start + margin
+    } else {
+        aligned_margin + start
+    }
 }
 
 pub(crate) fn resolve_absolute_margins<S: LayoutScalar>(

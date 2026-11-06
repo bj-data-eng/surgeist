@@ -8,9 +8,9 @@ use crate::geometry::{LogicalPointOf, LogicalSizeOf, PhysicalAxis, PhysicalSide}
 use crate::inline::{InlineParticipantKindOf, InlineParticipantProjection};
 use crate::layout_math::{
     MaxBeforeMinOptionalSizeClampExt, MaxBeforeMinSizeClampExt, OptionalSizeExt,
-    OptionalSizeMaxExt, absolute_inset_alignment_offsets, absolute_inset_child_axes,
-    absolute_inset_extents, absolute_stretch_fit_sizes, floor_absolute_definite_insets,
-    resolve_absolute_margins,
+    OptionalSizeMaxExt, absolute_aligned_start, absolute_inset_alignment_offsets,
+    absolute_inset_child_axes, absolute_inset_extents, absolute_stretch_fit_sizes,
+    floor_absolute_definite_insets, resolve_absolute_margins,
 };
 use crate::scroll::{ScrollContributionAccumulatorOf, ScrollOriginAxes};
 use crate::sizing::resolve::{EdgesResultExt, SizeResultExt};
@@ -221,8 +221,10 @@ where
         let sizing_inset = if static_position.geometry == StaticPositionGeometry::BlockStart
             && logical_inset.block_start.is_none()
             && logical_inset.block_end.is_none()
-            && matches!(alignment.block, None | Some(AlignItems::Start))
-        {
+            && matches!(
+                alignment.block.map(AlignItems::unsafe_position),
+                None | Some(AlignItems::Start)
+            ) {
             let static_start = flow
                 .logical_point(static_position.normal, Size::ZERO, container)
                 .block;
@@ -343,9 +345,10 @@ where
                     margin_start: margin.left,
                     margin_end: margin.right,
                     static_position: point.x,
+                    start_alignment: inset_alignment.left,
+                    end_alignment: inset_alignment.right,
                 }
-                .location()
-                    + inset_alignment.x,
+                .location(),
                 AbsoluteAxis {
                     start: inset.top,
                     end: inset.bottom,
@@ -360,9 +363,10 @@ where
                     margin_start: margin.top,
                     margin_end: margin.bottom,
                     static_position: point.y,
+                    start_alignment: inset_alignment.top,
+                    end_alignment: inset_alignment.bottom,
                 }
-                .location()
-                    + inset_alignment.y,
+                .location(),
             )
         };
         let normal_location = locate(static_position.normal);
@@ -449,6 +453,8 @@ struct AbsoluteAxis<S: LayoutScalar> {
     margin_start: S,
     margin_end: S,
     static_position: S,
+    start_alignment: S,
+    end_alignment: S,
 }
 
 impl<S: LayoutScalar> AbsoluteAxis<S> {
@@ -456,11 +462,21 @@ impl<S: LayoutScalar> AbsoluteAxis<S> {
         if self.direction == Direction::Rtl
             && let (Some(_), Some(end)) = (self.start, self.end)
         {
-            return self.area_start + self.area_size - end - self.size - self.margin_end;
+            return if self.end_alignment == S::ZERO {
+                self.area_start + self.area_size - end - self.size - self.margin_end
+            } else {
+                self.area_start + (self.area_size - self.size)
+                    - absolute_aligned_start(end, self.margin_end, self.end_alignment)
+            };
         }
 
         if let Some(start) = self.start {
-            self.area_start + start + self.margin_start
+            if self.start_alignment == S::ZERO {
+                self.area_start + start + self.margin_start
+            } else {
+                self.area_start
+                    + absolute_aligned_start(start, self.margin_start, self.start_alignment)
+            }
         } else if let Some(end) = self.end {
             self.area_start + self.area_size - end - self.size - self.margin_end
         } else if self.direction == Direction::Rtl {

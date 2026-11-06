@@ -599,9 +599,16 @@ pub(in crate::grid) fn absolute_grid_axis<S: LayoutScalar>(
     );
     let offset = match (inset_start, inset_end) {
         (Some(_), Some(end)) if progression.is_decreasing() => {
-            area_size - end - size - resolved_end - inset_alignment
+            if inset_alignment == S::ZERO {
+                area_size - end - size - resolved_end
+            } else {
+                (area_size - size)
+                    - crate::layout_math::absolute_aligned_start(end, resolved_end, inset_alignment)
+            }
         }
-        (Some(start), _) => start + resolved_start + inset_alignment,
+        (Some(start), _) => {
+            crate::layout_math::absolute_aligned_start(start, resolved_start, inset_alignment)
+        }
         (None, Some(end)) => area_size - end - size - resolved_end,
         (None, None) => match alignment.safe_fallback(alignment_free_space) {
             AlignItems::Start
