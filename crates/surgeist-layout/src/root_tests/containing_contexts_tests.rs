@@ -110,6 +110,141 @@ fn absolute_inset_interval_auto_margins_f64() {
     assert_absolute_inset_interval_auto_margins::<f64>();
 }
 
+fn assert_absolute_inset_alignment_and_requests<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let size = Size::splat(px(100.0));
+    let basis = Size::splat(Some(NonNegativeFiniteOf::new(px(100.0)).unwrap()));
+    let edge =
+        |value: Option<f64>| value.map_or(LengthAutoOf::AUTO, |value| LengthAutoOf::px(px(value)));
+    let mut differences = Vec::new();
+    for display in [
+        Display::Block,
+        Display::Flex,
+        Display::Grid,
+        Display::GridLanes,
+    ] {
+        for flow in [
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            FlowAxes::new(WritingMode::VerticalRl, Direction::Rtl),
+        ] {
+            for (start, end, alignment, auto_margins, position, available) in [
+                (
+                    Some(20.0),
+                    Some(20.0),
+                    AlignItems::Center,
+                    false,
+                    40.0,
+                    60.0,
+                ),
+                (Some(90.0), Some(90.0), AlignItems::Center, false, 80.0, 0.0),
+                (
+                    Some(90.0),
+                    Some(90.0),
+                    AlignItems::SafeCenter,
+                    false,
+                    90.0,
+                    0.0,
+                ),
+                (Some(110.0), None, AlignItems::Center, true, 110.0, 0.0),
+                (None, Some(110.0), AlignItems::Center, true, -30.0, 0.0),
+            ] {
+                let margin = if auto_margins {
+                    LengthAutoOf::AUTO
+                } else {
+                    LengthAutoOf::ZERO
+                };
+                let tree = PublicFlowTree::default()
+                    .with_children(1, [2])
+                    .with_children(2, [])
+                    .with_style(
+                        1,
+                        NodeInputOf {
+                            display,
+                            position: Position::Relative,
+                            size: size.map(PreferredSizeOf::px),
+                            writing_mode: flow.writing_mode(),
+                            direction: flow.direction(),
+                            ..NodeInputOf::default()
+                        },
+                    )
+                    .with_style(
+                        2,
+                        NodeInputOf {
+                            position: Position::Absolute,
+                            size: Size::splat(px(20.0)).map(PreferredSizeOf::px),
+                            inset: flow.physical_edges(LogicalEdgesOf::new(
+                                edge(start),
+                                edge(end),
+                                edge(start),
+                                edge(end),
+                            )),
+                            margin: Edges::all(margin),
+                            justify_self: Some(alignment),
+                            align_self: Some(alignment),
+                            ..NodeInputOf::default()
+                        },
+                    );
+                let request = crate::test_support::requests::NativeRootFrameOf::new(
+                    flow,
+                    basis,
+                    OrthogonalFallbackOf::new(
+                        basis,
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                )
+                .request(basis.map(|extent| {
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(extent.unwrap()),
+                        SizingOperation::Normal,
+                    )
+                }));
+                let batch = compute_layout(&tree, 1, request).unwrap();
+                let child = batch
+                    .final_entries()
+                    .iter()
+                    .find(|entry| entry.node() == 2)
+                    .unwrap()
+                    .output();
+                let location = flow.logical_point(child.location, child.size, size);
+                let inputs = tree.cache_inputs.borrow();
+                let (_, child_input) = inputs
+                    .iter()
+                    .rev()
+                    .find(|(node, input)| *node == 2 && input.run_mode() == RunMode::PerformLayout)
+                    .expect("the absolute child has a final layout request");
+                let space = child_input
+                    .sizing_request()
+                    .axes()
+                    .map(|axis| axis.space().definite_size().map(|value| value.get()));
+                let actual = (location.inline, location.block, child.margin, space);
+                let expected = (
+                    px(position),
+                    px(position),
+                    Edges::all(S::ZERO),
+                    Size::splat(Some(px(available))),
+                );
+                if actual != expected {
+                    differences.push(format!(
+                        "{display:?} {flow:?} {start:?}/{end:?} {alignment:?}: {actual:?}, expected {expected:?}"
+                    ));
+                }
+            }
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn absolute_inset_alignment_and_requests_f32() {
+    assert_absolute_inset_alignment_and_requests::<f32>();
+}
+
+#[test]
+fn absolute_inset_alignment_and_requests_f64() {
+    assert_absolute_inset_alignment_and_requests::<f64>();
+}
+
 #[test]
 fn root_and_hidden_contexts_are_explicit_in_both_scalar_lanes() {
     fn assert_lane<S: LayoutScalar>() {
