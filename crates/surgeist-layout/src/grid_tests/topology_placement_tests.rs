@@ -147,6 +147,78 @@ fn grid_placement_capacity_is_reported_f64() {
     assert_grid_placement_capacity_is_reported::<f64>();
 }
 
+fn assert_fixed_grid_repeat_capacity_is_reported<S: LayoutScalar>() {
+    let mut differences = Vec::new();
+    for display in [Display::Grid, Display::GridLanes] {
+        for nested in [false, true] {
+            let tree = |count| {
+                let track = TrackComponentOf::px(S::ONE);
+                let components = if nested {
+                    vec![TrackComponentOf::Repeat(
+                        crate::TrackRepetitionOf::count_components(2, vec![track]).unwrap(),
+                    )]
+                } else {
+                    vec![track.clone(), track]
+                };
+                let repetition =
+                    crate::TrackRepetitionOf::count_components(count, components).unwrap();
+                PublicLayoutTreeOf::new()
+                    .children(1, [2])
+                    .children(2, [])
+                    .style(
+                        1,
+                        NodeInputOf {
+                            display,
+                            grid_template_columns: vec![TrackComponentOf::Repeat(repetition)],
+                            justify_content: Some(AlignContent::Start),
+                            ..NodeInputOf::default()
+                        },
+                    )
+                    .style(
+                        2,
+                        NodeInputOf {
+                            size: Size::splat(S::ONE).map(PreferredSizeOf::px),
+                            grid_column: GridPlacement::try_line(4).unwrap(),
+                            ..NodeInputOf::default()
+                        },
+                    )
+            };
+            let normal = compute_layout(&tree(2), 1, fri08_c01_placement_request()).unwrap();
+            let child = fri08_c01_placement_output(&normal, 2);
+            assert_eq!(
+                child.location.x,
+                S::from_f64(3.0),
+                "{display:?} nested={nested}"
+            );
+            assert_eq!(child.size.width, S::ONE);
+
+            let failure = std::panic::catch_unwind(|| {
+                compute_layout(&tree(usize::MAX), 1, fri08_c01_placement_request()).err()
+            })
+            .ok()
+            .flatten();
+            if !failure.as_ref().is_some_and(|error| {
+                error.site() == LayoutErrorSiteOf::Node(1)
+                    && error.operation() == LayoutOperation::ChildLayout
+                    && matches!(error.kind(), LayoutErrorKindOf::Allocation)
+            }) {
+                differences.push(format!("{display:?} nested={nested}: {failure:?}"));
+            }
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn fixed_grid_repeat_capacity_is_reported_f32() {
+    assert_fixed_grid_repeat_capacity_is_reported::<f32>();
+}
+
+#[test]
+fn fixed_grid_repeat_capacity_is_reported_f64() {
+    assert_fixed_grid_repeat_capacity_is_reported::<f64>();
+}
+
 fn assert_grid_lanes_growth_uses_signed_ranges<S: LayoutScalar>() {
     let px = S::from_f64;
     let container = Size::new(px(60.0), px(20.0));
