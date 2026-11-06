@@ -7597,36 +7597,32 @@ fn assert_grid_minimum_finishes_intrinsic_tracks<S: LayoutScalar>() {
         flow,
         Size::NONE,
     );
+    let flex = TrackComponentOf::minmax(
+        MinTrackSizingOf::px(S::ZERO),
+        MaxTrackSizingOf::flex(TrackFlexFactorOf::try_new(px(0.5)).unwrap()),
+    );
     let mut failures = Vec::new();
-    for (second, align, minimum_width) in [
+    for (case, tracks, align, minimum_widths) in [
+        ("flex", vec![flex.clone()], AlignContent::Start, &[45.0][..]),
         (
-            TrackComponentOf::minmax(
-                MinTrackSizingOf::px(S::ZERO),
-                MaxTrackSizingOf::flex(TrackFlexFactorOf::try_new(px(0.5)).unwrap()),
-            ),
-            AlignContent::Start,
-            45.0,
+            "auto",
+            vec![TrackComponentOf::AUTO],
+            AlignContent::Stretch,
+            &[90.0][..],
         ),
-        (TrackComponentOf::AUTO, AlignContent::Stretch, 90.0),
+        (
+            "flex and auto",
+            vec![flex, TrackComponentOf::AUTO],
+            AlignContent::Stretch,
+            &[45.0, 45.0][..],
+        ),
     ] {
-        for (minimum, maximum, outer, track) in [
-            (MinSizeOf::AUTO, crate::MaxSizeOf::NONE, 10.0, 0.0),
-            (
-                MinSizeOf::px(px(100.0)),
-                crate::MaxSizeOf::NONE,
-                100.0,
-                minimum_width,
-            ),
-            (
-                MinSizeOf::px(px(100.0)),
-                crate::MaxSizeOf::px(px(200.0)),
-                100.0,
-                minimum_width,
-            ),
-        ] {
-            let bounds = format!("{minimum:?} {maximum:?}");
-            let tree = PublicLayoutTreeOf::<S>::new()
-                .children(1, [2])
+        for (minimum, maximum) in [(false, false), (false, true), (true, false), (true, true)] {
+            let mut columns = vec![TrackComponentOf::px(px(10.0))];
+            columns.extend(tracks.iter().cloned());
+            let child_count = u32::try_from(tracks.len()).unwrap();
+            let mut tree = PublicLayoutTreeOf::<S>::new()
+                .children(1, 2..2 + child_count)
                 .style(
                     1,
                     NodeInputOf {
@@ -7635,32 +7631,64 @@ fn assert_grid_minimum_finishes_intrinsic_tracks<S: LayoutScalar>() {
                             PreferredSizeOf::MAX_CONTENT,
                             PreferredSizeOf::px(px(20.0)),
                         ),
-                        min_size: Size::new(minimum, MinSizeOf::AUTO),
-                        max_size: Size::new(maximum, crate::MaxSizeOf::NONE),
-                        grid_template_columns: vec![TrackComponentOf::px(px(10.0)), second.clone()],
+                        min_size: Size::new(
+                            if minimum {
+                                MinSizeOf::px(px(100.0))
+                            } else {
+                                MinSizeOf::AUTO
+                            },
+                            MinSizeOf::AUTO,
+                        ),
+                        max_size: Size::new(
+                            if maximum {
+                                crate::MaxSizeOf::px(px(200.0))
+                            } else {
+                                crate::MaxSizeOf::NONE
+                            },
+                            crate::MaxSizeOf::NONE,
+                        ),
+                        grid_template_columns: columns,
                         grid_template_rows: vec![TrackComponentOf::px(px(20.0))],
                         justify_content: Some(align),
                         ..NodeInputOf::default()
                     },
-                )
-                .style(
-                    2,
+                );
+            for node in 2..2 + child_count {
+                tree = tree.style(
+                    node,
                     NodeInputOf {
-                        grid_column: GridPlacement::try_line(2).unwrap(),
+                        grid_column: GridPlacement::try_line(isize::try_from(node).unwrap())
+                            .unwrap(),
                         ..NodeInputOf::default()
                     },
                 );
+            }
             let batch = compute_layout(&tree, 1, request).unwrap();
             let root = fri08_c01_placement_output(&batch, 1);
-            let marker = fri08_c01_placement_output(&batch, 2);
-            // Grid 2 §12.7 reruns flex against the 100px minimum. The 0.5fr
-            // track receives half the 90px remainder. Section 12.8 gives the
-            // eligible Auto track the full remainder under stretch alignment.
-            let actual = (root.size.width, marker.location.x, marker.size.width);
-            let expected = (px(outer), px(10.0), px(track));
-            if actual != expected {
+            let actual: Vec<_> = (2..2 + child_count)
+                .map(|node| {
+                    let marker = fri08_c01_placement_output(&batch, node);
+                    (marker.location.x, marker.size.width)
+                })
+                .collect();
+            // The minimum supplies 90px after the fixed track. Section 12.7
+            // gives 0.5fr half that space, then §12.8 stretches Auto into any
+            // remaining space. A loose maximum supplies no free space.
+            let mut x = 10.0;
+            let expected: Vec<_> = minimum_widths
+                .iter()
+                .map(|width| {
+                    let width = if minimum { *width } else { 0.0 };
+                    let geometry = (px(x), px(width));
+                    x += width;
+                    geometry
+                })
+                .collect();
+            let outer = px(if minimum { 100.0 } else { 10.0 });
+            if root.size.width != outer || actual != expected {
                 failures.push(format!(
-                    "{align:?} {bounds}: expected {expected:?}, got {actual:?}"
+                    "{case} minimum={minimum} maximum={maximum}, expected {outer:?} {expected:?}, got {:?} {actual:?}",
+                    root.size.width,
                 ));
             }
         }
