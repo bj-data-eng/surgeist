@@ -455,3 +455,60 @@ fn scroll_anchor_selection_refuses_inconsistent_reached_relations() {
         Err(ScrollAnchorSelectionError::Cycle(0)),
     );
 }
+
+#[test]
+fn scroll_anchor_selection_applies_positioning_exclusions_below_the_scroller() {
+    for position in [
+        ScrollAnchorPosition::Fixed,
+        ScrollAnchorPosition::Absolute(ScrollAnchorContainingBlock::AboveScroller),
+    ] {
+        let subject = |policy| ScrollAnchorSubjectOf::Element {
+            box_kind: ScrollAnchorBoxOf::Eligible(rect(0.0, 0.0, 100.0, 100.0)),
+            policy,
+            position,
+        };
+        let mut nodes = [
+            node(None, &[1, 3], ScrollAnchorSubjectOf::NonElement),
+            node(Some(0), &[2], subject(ScrollAnchorPolicy::Auto)),
+            node(Some(1), &[], visible()),
+            node(Some(0), &[], visible()),
+        ];
+        let outer = request::<f64>();
+        assert_eq!(
+            select(
+                ScrollAnchorRequestOf {
+                    focused: ScrollAnchorPriority::Candidate(2),
+                    ..outer
+                },
+                &nodes,
+            ),
+            Ok(Some(3)),
+        );
+
+        let inner = ScrollAnchorRequestOf {
+            scroller: 1,
+            ..outer
+        };
+        for focused in [
+            ScrollAnchorPriority::Absent,
+            ScrollAnchorPriority::Candidate(1),
+            ScrollAnchorPriority::Candidate(2),
+        ] {
+            assert_eq!(
+                select(ScrollAnchorRequestOf { focused, ..inner }, &nodes),
+                Ok(Some(2))
+            );
+        }
+
+        nodes[1].subject = subject(ScrollAnchorPolicy::None);
+        for focused in [
+            ScrollAnchorPriority::Absent,
+            ScrollAnchorPriority::Candidate(2),
+        ] {
+            assert_eq!(
+                select(ScrollAnchorRequestOf { focused, ..inner }, &nodes),
+                Ok(None)
+            );
+        }
+    }
+}
