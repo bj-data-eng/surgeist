@@ -199,8 +199,8 @@ pub fn place_lanes_trace(input: LanePlacementInput) -> Result<LanePlacementTrace
             .iter()
             .copied()
             .fold(0.0, f32::max);
-        let new_position = previous + item.lane_axis_margin_box + input.lane_gap;
-        content_size = content_size.max(new_position - input.lane_gap);
+        let new_position = previous + item.lane_axis_margin_box.max(0.0) + input.lane_gap;
+        content_size = content_size.max(previous + item.lane_axis_margin_box);
         for position in &mut running[start_zero..start_zero + span] {
             *position = new_position;
         }
@@ -212,7 +212,9 @@ pub fn place_lanes_trace(input: LanePlacementInput) -> Result<LanePlacementTrace
             offset: previous,
         });
         running_positions_after_each_item.push(running.clone());
-        cursor = (start_zero + span) % input.grid_axis_tracks;
+        if item.definite_grid_axis_start.is_none() {
+            cursor = (start_zero + span) % input.grid_axis_tracks;
+        }
     }
 
     Ok(LanePlacementTrace {

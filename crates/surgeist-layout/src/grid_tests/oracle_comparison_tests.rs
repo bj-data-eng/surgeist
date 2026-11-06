@@ -4403,39 +4403,43 @@ mod root_oracle {
 
     #[test]
     fn oracle_lanes_percentage_tolerance_resolves_against_basis() {
-        let report = grid::place_lanes(grid::LanePlacementInput {
-            grid_axis_tracks: 2,
-            auto_flow: grid::LaneAutoFlow::Row,
-            lane_gap: 0.0,
-            tolerance: grid::LaneFlowTolerance::Percent(0.25),
-            tolerance_basis: 40.0,
-            items: vec![
-                grid::LaneItemInput::definite("a", 1, 1, 10.0),
-                grid::LaneItemInput::auto("b", 1, 10.0),
-            ],
-        })
-        .unwrap();
+        for (basis, expected_start) in [(40.0, 1), (36.0, 2)] {
+            let report = grid::place_lanes(grid::LanePlacementInput {
+                grid_axis_tracks: 2,
+                auto_flow: grid::LaneAutoFlow::Row,
+                lane_gap: 0.0,
+                tolerance: grid::LaneFlowTolerance::Percent(0.25),
+                tolerance_basis: basis,
+                items: vec![
+                    grid::LaneItemInput::definite("a", 1, 1, 10.0),
+                    grid::LaneItemInput::auto("b", 1, 10.0),
+                ],
+            })
+            .unwrap();
 
-        assert_eq!(report.item_offsets[1].grid_axis_start, 2);
+            assert_eq!(report.item_offsets[1].grid_axis_start, expected_start);
+        }
     }
 
     #[test]
     fn oracle_lanes_finite_tolerance_chooses_first_candidate_within_tolerance() {
-        let report = grid::place_lanes(grid::LanePlacementInput {
-            grid_axis_tracks: 3,
-            auto_flow: grid::LaneAutoFlow::Row,
-            lane_gap: 0.0,
-            tolerance: grid::LaneFlowTolerance::Fixed(10.0),
-            tolerance_basis: 0.0,
-            items: vec![
-                grid::LaneItemInput::definite("a", 1, 1, 10.0),
-                grid::LaneItemInput::definite("b", 2, 1, 20.0),
-                grid::LaneItemInput::auto("c", 1, 10.0),
-            ],
-        })
-        .unwrap();
+        for (tolerance, expected_start) in [(10.0, 1), (0.0, 3)] {
+            let report = grid::place_lanes(grid::LanePlacementInput {
+                grid_axis_tracks: 3,
+                auto_flow: grid::LaneAutoFlow::Row,
+                lane_gap: 0.0,
+                tolerance: grid::LaneFlowTolerance::Fixed(tolerance),
+                tolerance_basis: 0.0,
+                items: vec![
+                    grid::LaneItemInput::definite("a", 1, 1, 10.0),
+                    grid::LaneItemInput::definite("b", 2, 1, 20.0),
+                    grid::LaneItemInput::auto("c", 1, 10.0),
+                ],
+            })
+            .unwrap();
 
-        assert_eq!(report.item_offsets[2].grid_axis_start, 3);
+            assert_eq!(report.item_offsets[2].grid_axis_start, expected_start);
+        }
     }
 
     fn oracle_lane_facts(min_content: f32, max_content: f32) -> ItemContributionFacts {

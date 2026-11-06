@@ -569,7 +569,7 @@ fn lanes_preserves_cursor_after_definite_placement_f64() {
 
 fn assert_lanes_floors_outer_advance<S: LayoutScalar>() {
     let px = S::from_f64;
-    let placement = place_lanes(LanePlacementInputOf {
+    let mut input = LanePlacementInputOf {
         grid_axis_tracks: 1,
         auto_flow: GridAutoFlow::Row,
         lane_gap: px(5.0),
@@ -585,21 +585,21 @@ fn assert_lanes_floors_outer_advance<S: LayoutScalar>() {
                 lane_axis_margin_box: px(height),
             })
             .collect(),
-    })
-    .unwrap();
+    };
+    let placement = place_lanes(input.clone()).unwrap();
 
     let container = Size::new(px(40.0), px(100.0));
-    let mut tree = PublicLayoutTreeOf::new().children(1, [2, 3, 4]).style(
-        1,
-        NodeInputOf {
-            display: Display::GridLanes,
-            size: container.map(PreferredSizeOf::px),
-            grid_template_columns: vec![TrackComponentOf::px(px(40.0))],
-            gap: Size::new(LengthOf::ZERO, LengthOf::px(px(5.0))),
-            align_content: Some(AlignContent::Start),
-            ..NodeInputOf::default()
-        },
-    );
+    let root = NodeInputOf {
+        display: Display::GridLanes,
+        size: container.map(PreferredSizeOf::px),
+        grid_template_columns: vec![TrackComponentOf::px(px(40.0))],
+        gap: Size::new(LengthOf::ZERO, LengthOf::px(px(5.0))),
+        align_content: Some(AlignContent::Start),
+        ..NodeInputOf::default()
+    };
+    let mut tree = PublicLayoutTreeOf::new()
+        .children(1, [2, 3, 4])
+        .style(1, root.clone());
     for (node, (height, top_margin)) in (2..).zip([(20.0, 0.0), (10.0, -20.0), (10.0, 0.0)]) {
         tree = tree.style(
             node,
@@ -623,6 +623,24 @@ fn assert_lanes_floors_outer_advance<S: LayoutScalar>() {
             last.location.y
         ),
         (px(30.0), px(40.0), px(30.0))
+    );
+
+    input.items.truncate(2);
+    let terminal = place_lanes(input).unwrap();
+    let terminal_tree = tree.children(1, [2, 3]).style(
+        1,
+        NodeInputOf {
+            size: Size::new(PreferredSizeOf::px(px(40.0)), PreferredSizeOf::AUTO),
+            ..root
+        },
+    );
+    let terminal_batch = fri08_c03_auto_fit_batch(&terminal_tree, container);
+    let terminal_root = fri08_c01_placement_output(&terminal_batch, 1);
+    // The terminal item's signed margin-box end is 25px - 10px.
+    // The earlier 20px item therefore sets the reported extent.
+    assert_eq!(
+        (terminal.content_size, terminal_root.size.height),
+        (px(20.0), px(20.0))
     );
 }
 
