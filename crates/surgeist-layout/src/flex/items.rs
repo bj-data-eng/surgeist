@@ -1,4 +1,4 @@
-use super::alignment::FlexItemBaseline;
+use super::alignment::{BaselinePort, FlexItemBaseline};
 use super::flexible_lengths::clamp_main_size_axes;
 use super::input::{FlexItemProjection, flex_item_order_permutation, with_flex_item_projection};
 use super::lines::FlexLineCollectionRound;
@@ -126,7 +126,7 @@ pub(super) struct FinalFlexItem<Node, S: LayoutScalar> {
     pub(super) source_index: crate::SourceIndex,
     pub(super) output: ComputeOutputOf<S>,
     pub(super) margin: Edges<S>,
-    pub(super) shares_baseline: bool,
+    pub(super) baseline_preference: Option<BaselinePort>,
     pub(super) baseline: FlexItemBaseline<S>,
     pub(super) location: Point<S>,
     pub(super) normal_location: Point<S>,
@@ -545,7 +545,7 @@ where
         )
         .with_physical_baseline_demand(
             constants.physical_baseline_demand
-                || align_self == AlignItems::Baseline
+                || BaselinePort::for_alignment(align_self).is_some()
                     && style.common.flow_axes.block_axis() == constants.axes.cross_physical_axis()
                     && !constants.axes.cross_start_edge(margin_is_auto)
                     && !constants.axes.cross_end_edge(margin_is_auto),
@@ -962,7 +962,7 @@ where
             source_index: crate::SourceIndex::new(item.source_index),
             output,
             margin: item.margin,
-            shares_baseline: item.participates_in_baseline(constants.axes),
+            baseline_preference: item.baseline_preference(constants.axes),
             baseline,
             location,
             normal_location,
