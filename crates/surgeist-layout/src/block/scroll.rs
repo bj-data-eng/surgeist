@@ -38,12 +38,20 @@ impl<S: LayoutScalar> BlockScrollContributions<S> {
         margin: Edges<S>,
         geometry: ScrollGeometryOf<S>,
     ) -> Result<(), ScrollContributionErrorOf<S>> {
-        if let Some(rect) = self
+        if let Some(margin_rect) = self
             .geometry
             .include_in_flow_geometry(location, margin, geometry)?
         {
-            self.include_rect_end(LogicalAxis::Inline, rect, Edges::ZERO)?;
-            self.include_rect_end(LogicalAxis::Block, rect, Edges::ZERO)?;
+            let border = geometry.border_box();
+            let border_rect = ScrollRectOf::try_new(
+                Point::new(
+                    location.x + border.origin().x,
+                    location.y + border.origin().y,
+                ),
+                border.size(),
+            )?;
+            self.include_rect_end(LogicalAxis::Inline, border_rect, margin, Some(margin_rect))?;
+            self.include_rect_end(LogicalAxis::Block, border_rect, margin, Some(margin_rect))?;
         }
         Ok(())
     }
@@ -54,8 +62,8 @@ impl<S: LayoutScalar> BlockScrollContributions<S> {
     ) -> Result<(), ScrollContributionErrorOf<S>> {
         // A line allocation remains a line even with a zero dimension.
         self.geometry.include_direct_line(rect);
-        self.include_rect_end(LogicalAxis::Inline, rect, Edges::ZERO)?;
-        self.include_rect_end(LogicalAxis::Block, rect, Edges::ZERO)
+        self.include_rect_end(LogicalAxis::Inline, rect, Edges::ZERO, None)?;
+        self.include_rect_end(LogicalAxis::Block, rect, Edges::ZERO, None)
     }
 
     pub(super) fn include_inline_strip(
@@ -68,6 +76,7 @@ impl<S: LayoutScalar> BlockScrollContributions<S> {
             LogicalAxis::Inline,
             ScrollRectOf::try_new(location, size)?,
             margin,
+            None,
         )
     }
 
@@ -76,19 +85,17 @@ impl<S: LayoutScalar> BlockScrollContributions<S> {
         axis: LogicalAxis,
         rect: ScrollRectOf<S>,
         margin: Edges<S>,
+        checked_margin: Option<ScrollRectOf<S>>,
     ) -> Result<(), ScrollContributionErrorOf<S>> {
         let side = match axis {
             LogicalAxis::Inline => self.axes.inline_end(),
             LogicalAxis::Block => self.axes.block_end(),
         };
-        // Optional margin outsets cannot retract the actual border endpoint.
-        let candidate = match side {
-            PhysicalSide::Top => rect.origin().y - margin.top.max(S::ZERO),
-            PhysicalSide::Right => rect.origin().x + rect.size().width + margin.right.max(S::ZERO),
-            PhysicalSide::Bottom => {
-                rect.origin().y + rect.size().height + margin.bottom.max(S::ZERO)
-            }
-            PhysicalSide::Left => rect.origin().x - margin.left.max(S::ZERO),
+        let direct = margin_end(rect, margin, side);
+        // A wide margin rectangle can round away a finite border endpoint.
+        let candidate = match checked_margin {
+            Some(checked) if !direct.is_finite() => margin_end(checked, Edges::ZERO, side),
+            _ => direct,
         };
         if !candidate.is_finite() {
             return Err(ScrollContributionErrorOf::NonFiniteFinalInFlowEnd {
@@ -118,6 +125,15 @@ impl<S: LayoutScalar> BlockScrollContributions<S> {
             }
         }
         Ok(())
+    }
+}
+
+fn margin_end<S: LayoutScalar>(rect: ScrollRectOf<S>, margin: Edges<S>, side: PhysicalSide) -> S {
+    match side {
+        PhysicalSide::Top => rect.origin().y - margin.top.max(S::ZERO),
+        PhysicalSide::Right => rect.origin().x + rect.size().width + margin.right.max(S::ZERO),
+        PhysicalSide::Bottom => rect.origin().y + rect.size().height + margin.bottom.max(S::ZERO),
+        PhysicalSide::Left => rect.origin().x - margin.left.max(S::ZERO),
     }
 }
 
