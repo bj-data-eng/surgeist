@@ -200,6 +200,7 @@ impl<R: ReadChar> Cursor<R> {
 
         match ch {
             Some(0xD) => {
+                self.next_line();
                 // Try to take a newline if it's next, for windows "\r\n" newlines
                 // Otherwise, treat as a Mac OS9 bare '\r' newline
                 if self.peek_char()? == Some(0xA) {
@@ -207,7 +208,6 @@ impl<R: ReadChar> Cursor<R> {
                     self.peeked.rotate_left(1);
                     self.source_collector.collect_code_point(0xA);
                 }
-                self.next_line();
             }
             // '\n' | '\u{2028}' | '\u{2029}'
             Some(0xA | 0x2028 | 0x2029) => self.next_line(),
