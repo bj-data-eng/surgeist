@@ -7044,3 +7044,75 @@ fn flex_selected_intrinsic_main_size_caps_preferred_width_by_the_flex_base() {
     lane::<f32>();
     lane::<f64>();
 }
+
+#[test]
+fn flex_padding_floor_basis_preserves_the_unallocated_automatic_minimum() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let sizing = SizingRequestOf::new(
+            Size::splat(AxisSizingRequestOf::new(
+                AvailableSpaceOf::Indefinite,
+                SizingOperation::Normal,
+            )),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        );
+        let request = LayoutRootRequestOf::standalone(
+            sizing,
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            Size::NONE,
+        );
+        let child_width = |min_size, overflow| {
+            let tree = PublicLayoutTreeOf::<S>::new()
+                .children(1, [2])
+                .style(
+                    1,
+                    NodeInputOf {
+                        display: Display::Flex,
+                        size: Size::new(PreferredSizeOf::px(px(30.0)), PreferredSizeOf::AUTO),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    2,
+                    NodeInputOf {
+                        display: Display::Block,
+                        flex_basis: FlexBasisOf::px(S::ZERO),
+                        min_size: Size::new(min_size, MinSizeOf::AUTO),
+                        padding: Edges {
+                            left: LengthOf::px(px(10.0)),
+                            right: LengthOf::px(px(10.0)),
+                            ..Edges::all(LengthOf::ZERO)
+                        },
+                        overflow,
+                        ..NodeInputOf::default()
+                    },
+                )
+                .measure(2, Size::new(px(100.0), px(10.0)));
+            compute_layout(&tree, 1, request)
+                .unwrap()
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == 2)
+                .unwrap()
+                .output()
+                .size
+                .width
+        };
+        let visible = computed_overflow(Overflow::Visible, Overflow::Visible);
+        let hidden = computed_overflow(Overflow::Hidden, Overflow::Hidden);
+        assert_eq!(
+            [
+                child_width(MinSizeOf::AUTO, visible),
+                child_width(MinSizeOf::ZERO, visible),
+                child_width(MinSizeOf::AUTO, hidden),
+            ],
+            [px(120.0), px(20.0), px(20.0)],
+        );
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
