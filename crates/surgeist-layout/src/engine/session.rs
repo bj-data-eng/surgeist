@@ -77,12 +77,19 @@ struct StagedInlineFragmentGroup<Node, S: LayoutScalar> {
     fragments: Option<Vec<InlineFragmentOutputOf<S>>>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum FloatChildTrial {
+    Detached,
+    InFlow,
+}
+
 /// One actual child request executed off-side against the same immutable tree
 /// and canonical Text invocation. This is not a rounded/completed child batch.
 pub(crate) struct FloatChildPacket<Node, S: LayoutScalar> {
     groups: Option<crate::group_alignment::State<Node, S>>,
     wrapping: Option<std::sync::Arc<crate::inline_wrapping::WrappingContext<Node>>>,
     formatted_basis: Vec<crate::text_layout::formatted::BoundAssignment<Node, S>>,
+    formatted_parent: Option<Vec<crate::text_layout::formatted::ComputeScope<Node, S>>>,
     boxes: Vec<crate::text_layout::boxes::BoxRunUse<Node, S>>,
     formatted: Option<crate::text_layout::formatted::FormattedState<Node, S>>,
     pub(crate) node: Node,
@@ -1142,6 +1149,7 @@ where
         &mut self,
         node: Self::Node,
         input: ComputeInputOf<Self::Scalar>,
+        trial: FloatChildTrial,
     ) -> LayoutResultOf<
         Self::Node,
         std::sync::Arc<FloatChildPacket<Self::Node, Self::Scalar>>,
@@ -1181,7 +1189,10 @@ where
             state.wrapping = text.wrapping.clone();
             state.reusable = std::sync::Arc::clone(&text.reusable);
             state.graph = text.graph;
-            state.formatted = text.formatted.as_ref().map(|state| state.fork());
+            state.formatted = text.formatted.as_ref().map(|state| match trial {
+                FloatChildTrial::Detached => state.fork(),
+                FloatChildTrial::InFlow => state.fork_in_flow(),
+            });
             let frames = std::sync::Arc::clone(&state.frames);
             probe.text = Some(state);
             frames
@@ -1212,6 +1223,14 @@ where
                 .as_ref()
                 .and_then(|text| text.formatted.as_ref())
                 .map_or_else(Vec::new, |state| state.assignments.clone()),
+            formatted_parent: if trial == FloatChildTrial::InFlow {
+                self.text
+                    .as_ref()
+                    .and_then(|text| text.formatted.as_ref())
+                    .map(|state| state.stack.clone())
+            } else {
+                None
+            },
             formatted,
             node,
             input,
@@ -1264,12 +1283,11 @@ where
                 LayoutErrorKindOf::TextFeedbackCycle,
             ));
         }
-        if self
-            .text
-            .as_ref()
-            .and_then(|text| text.formatted.as_ref())
-            .map_or(&[][..], |state| state.assignments.as_slice())
-            != packet.formatted_basis
+        let formatted = self.text.as_ref().and_then(|text| text.formatted.as_ref());
+        if formatted.map_or(&[][..], |state| state.assignments.as_slice()) != packet.formatted_basis
+            || packet.formatted_parent.as_deref().is_some_and(|parent| {
+                formatted.is_none_or(|state| state.stack.as_slice() != parent)
+            })
         {
             return Err(LayoutErrorOf::new(
                 LayoutErrorSiteOf::Node(packet.node),
@@ -1645,12 +1663,16 @@ mod tests {
                 ),
             )
             .unwrap();
-            let rejected = session.probe_float_child(1, input).unwrap();
+            let rejected = session
+                .probe_float_child(1, input, FloatChildTrial::Detached)
+                .unwrap();
             assert_eq!(rejected.output.size.height, S::from_f64(30.0));
             drop(rejected);
             assert!(session.unrounded_entries.is_empty());
             assert!(session.cache_store_entries.is_empty());
-            let accepted = session.probe_float_child(1, input).unwrap();
+            let accepted = session
+                .probe_float_child(1, input, FloatChildTrial::Detached)
+                .unwrap();
             session.accept_float_child(&accepted).unwrap();
             let child = session
                 .unrounded_entries

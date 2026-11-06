@@ -789,7 +789,11 @@ where
                 first_formatted: indent_state.first_formatted() && constants.first_formatted,
             })
             .with_named_baseline_demand(named_demand);
-            Some(tree.probe_float_child(child, child_request)?)
+            Some(tree.probe_float_child(
+                child,
+                child_request,
+                crate::engine::FloatChildTrial::Detached,
+            )?)
         } else {
             None
         };

@@ -716,14 +716,61 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         ((band.inline_end - band.inline_start).max(S::ZERO), next)
     }
 
-    pub(super) fn fits_rectangular_bfc_span(
+    pub(super) fn rectangular_bfc_position(
         &self,
         block_start: S,
-        margin_box: LogicalSizeOf<S>,
-    ) -> bool {
-        let band =
-            self.query_physical_margin_box_collisions(block_start, block_start + margin_box.block);
-        margin_box.inline <= (band.inline_end - band.inline_start).max(S::ZERO)
+        logical_size: LogicalSizeOf<S>,
+        logical_margin: LogicalEdgesOf<S>,
+        fallback_inline: S,
+    ) -> Option<Point<S>> {
+        let mut left = None;
+        let mut right = None;
+        let block_end = block_start + logical_size.block;
+        for entry in &self.ledger {
+            if entry.overlaps_block_span(block_start, block_end) {
+                match entry.side {
+                    FloatLedgerSide::LineStart => {
+                        left = Some(
+                            left.map_or(entry.inline_end, |edge: S| edge.max(entry.inline_end)),
+                        );
+                    }
+                    FloatLedgerSide::LineEnd => {
+                        right =
+                            Some(right.map_or(entry.inline_start, |edge: S| {
+                                edge.min(entry.inline_start)
+                            }));
+                    }
+                }
+            }
+        }
+        let inline = if left.is_none() && right.is_none() {
+            fallback_inline
+        } else {
+            let band_start = left.map_or(self.containing_inline_start, |edge| {
+                self.containing_inline_start.max(edge)
+            });
+            let band_end = right.map_or(self.containing_inline_end, |edge| {
+                self.containing_inline_end.min(edge)
+            });
+            let preferred_start = band_start + logical_margin.inline_start;
+            let preferred_end = band_end - logical_margin.inline_end;
+            let first = left.map_or(preferred_start, |edge| preferred_start.max(edge));
+            let last =
+                right.map_or(preferred_end, |edge| preferred_end.min(edge)) - logical_size.inline;
+            if first > last {
+                return None;
+            }
+            if fallback_inline >= first && fallback_inline <= last {
+                fallback_inline
+            } else {
+                first
+            }
+        };
+        Some(self.flow_axes.physical_point(
+            LogicalPointOf::new(inline, block_start),
+            logical_size,
+            self.containing_size,
+        ))
     }
 
     pub(super) fn place_bfc_block<'input, Tree, M>(

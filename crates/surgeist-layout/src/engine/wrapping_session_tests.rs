@@ -201,7 +201,11 @@ fn a_float_packet_cannot_cross_an_immutable_wrapping_basis() {
         .unwrap();
         let mut owner = ComputeSession::with_flow(&avoid, avoid.invalidated.clone());
         let packet = owner
-            .probe_float_child(4, input(RunMode::PerformLayout))
+            .probe_float_child(
+                4,
+                input(RunMode::PerformLayout),
+                crate::engine::FloatChildTrial::Detached,
+            )
             .unwrap();
         assert_eq!(packet.output.size, Size::splat(S::from_f64(10.0)));
         assert!(owner.cache_store_entries.is_empty());

@@ -192,7 +192,13 @@ fn lane<S: LayoutScalar>() {
     let mut packets = Vec::new();
     let mut events = Vec::new();
     for (node, offset, extent) in [(2, 1, 10.0), (5, 4, 20.0)] {
-        let packet = owner.probe_float_child(node, child_request).unwrap();
+        let packet = owner
+            .probe_float_child(
+                node,
+                child_request,
+                crate::engine::FloatChildTrial::Detached,
+            )
+            .unwrap();
         assert_eq!(packet.output.size, Size::splat(S::from_f64(extent)));
         let pending = PendingFloat {
             placement: super::super::floats::PendingPlacement::Unresolved,

@@ -117,12 +117,13 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
         M,
     >;
 
-    /// Prepared-text floats require the actual session's disposable staging
-    /// owner. Box-only executors have no captured Text publication to merge.
+    /// Float-dependent layout trials use the actual session's disposable
+    /// staging owner. Accepting the trial publishes its complete child result.
     fn probe_float_child(
         &mut self,
         node: Self::Node,
         _input: ComputeInputOf<Self::Scalar>,
+        _trial: super::session::FloatChildTrial,
     ) -> super::session::FloatProbeResult<Self, M> {
         Err(crate::LayoutErrorOf::new(
             crate::LayoutErrorSiteOf::Node(node),

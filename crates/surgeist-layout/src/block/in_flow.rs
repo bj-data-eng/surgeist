@@ -595,7 +595,7 @@ where
             && !tree.has_leaf_measurement(child)
             && (!float_exclusions.is_empty() || tree.block_float_work(child));
         let mut shared_child = None;
-        let mut accepted_float_block = None;
+        let mut accepted_float_position = None;
         let places_against_float_exclusions =
             physical_float_context && avoids_float_exclusions && !float_exclusions.is_empty();
         let mut output = tree.compute_child(
@@ -672,24 +672,24 @@ where
             );
             child_margin = constants.flow_axes.physical_edges(logical_child_margin);
         } else if places_against_float_exclusions {
-            let preview_top_margin = output
-                .block_margin_collapse
-                .at(constants.flow_axes.block_start())
-                .collapse_with_margin(
-                    child_margin.at_physical_side(constants.flow_axes.block_start()),
-                );
-            let child_margin_can_collapse_with_parent =
-                child_margin_can_collapse_with_parent(&child_style);
-            let collapsed_margin = if is_collapsing_first_margin {
-                if constants.collapse_top_margin && child_margin_can_collapse_with_parent {
+            let block_start_for = |output: ComputeOutputOf<S>, margin: Edges<S>| {
+                let preview_top_margin = output
+                    .block_margin_collapse
+                    .at(constants.flow_axes.block_start())
+                    .collapse_with_margin(
+                        margin.at_physical_side(constants.flow_axes.block_start()),
+                    );
+                let collapsed_margin = if is_collapsing_first_margin
+                    && constants.collapse_top_margin
+                    && child_margin_can_collapse_with_parent(&child_style)
+                {
                     active_margin.resolve()
                 } else {
                     active_margin.collapse_with(preview_top_margin).resolve()
-                }
-            } else {
-                active_margin.collapse_with(preview_top_margin).resolve()
+                };
+                cursor_block + collapsed_margin
             };
-            let preview_cursor_block = cursor_block + collapsed_margin;
+            let preview_cursor_block = block_start_for(output, child_margin);
             let containing_size = constants.containing_size(logical_node_inner_size);
             let preview_logical_location = LogicalPointOf::new(
                 in_flow_child_inline_offset(logical_child_size, logical_child_margin, constants),
@@ -769,8 +769,19 @@ where
                     let (available_inline, next) =
                         float_exclusions.rectangular_bfc_opportunity(block);
                     let request = band_request(tree, available_inline)?;
-                    let measured =
-                        tree.compute_child(child, request.with_run_mode(RunMode::ComputeSize))?;
+                    let packet = if request.run_mode().is_perform_layout() {
+                        Some(tree.probe_float_child(
+                            child,
+                            request,
+                            crate::engine::FloatChildTrial::InFlow,
+                        )?)
+                    } else {
+                        None
+                    };
+                    let measured = match &packet {
+                        Some(packet) => packet.output,
+                        None => tree.compute_child(child, request)?,
+                    };
                     let size = constants.flow_axes.logical_size(measured.size);
                     let margin = resolve_logical_in_flow_margin(
                         parent_logical_unresolved_margin,
@@ -781,18 +792,27 @@ where
                             .definite_size()
                             .map(crate::NonNegativeFiniteOf::get)),
                     );
-                    let margin_box = LogicalSizeOf::new(
-                        size.inline + margin.inline_sum(),
-                        size.block + margin.block_sum(),
-                    );
-                    if let Some(next) = next
-                        && !float_exclusions.fits_rectangular_bfc_span(block, margin_box)
-                    {
-                        block = next;
+                    let physical_margin = constants.flow_axes.physical_edges(margin);
+                    let minimum_block = block_start_for(measured, physical_margin);
+                    if minimum_block > block {
+                        block = minimum_block;
                         continue;
                     }
+                    let Some(location) = float_exclusions.rectangular_bfc_position(
+                        block,
+                        size,
+                        margin,
+                        in_flow_child_inline_offset(size, margin, constants),
+                    ) else {
+                        block = next.expect("an intersecting float has a later boundary");
+                        continue;
+                    };
+                    if let Some(packet) = packet {
+                        tree.accept_float_child(&packet)?;
+                    }
+                    output = measured;
                     child_input = request;
-                    accepted_float_block = Some(block);
+                    accepted_float_position = Some(location);
                     break;
                 }
             } else {
@@ -816,7 +836,9 @@ where
                 }
             }
 
-            output = tree.compute_child(child, child_input)?;
+            if accepted_float_position.is_none() {
+                output = tree.compute_child(child, child_input)?;
+            }
             logical_child_size = constants.flow_axes.logical_size(output.size);
             logical_child_margin = resolve_logical_in_flow_margin(
                 parent_logical_unresolved_margin,
@@ -947,7 +969,9 @@ where
             logical_child_size,
             containing_size,
         );
-        let flow_location = if avoids_float_exclusions {
+        let flow_location = if let Some(location) = accepted_float_position {
+            location
+        } else if avoids_float_exclusions {
             let placement = float_exclusions.place_bfc_block(
                 ProviderBandContext {
                     tree,
@@ -955,8 +979,7 @@ where
                     enabled: physical_float_context,
                 },
                 BfcBandCandidate {
-                    block_start: accepted_float_block
-                        .map_or(cursor_block, |accepted| cursor_block.max(accepted)),
+                    block_start: cursor_block,
                     size: output.size,
                     margin: child_margin,
                     clear: child_style.clear,

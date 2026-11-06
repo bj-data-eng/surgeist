@@ -526,7 +526,9 @@ fn float_probe_tail_truth_is_merged_only_when_its_packet_is_accepted() {
         ),
     )
     .unwrap();
-    let packet = session.probe_float_child(2, input).unwrap();
+    let packet = session
+        .probe_float_child(2, input, crate::engine::FloatChildTrial::Detached)
+        .unwrap();
     assert!(
         packet
             .formatted

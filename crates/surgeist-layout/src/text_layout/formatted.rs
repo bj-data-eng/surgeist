@@ -658,6 +658,13 @@ impl<Node: Copy + Eq, S: crate::LayoutScalar> FormattedState<Node, S> {
         }
     }
 
+    pub(crate) fn fork_in_flow(&self) -> Self {
+        Self {
+            stack: self.stack.clone(),
+            ..self.fork()
+        }
+    }
+
     pub(crate) fn accept(&mut self, other: &Self) {
         for &owner in &other.demanded {
             if !self.demanded.contains(&owner) {

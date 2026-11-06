@@ -5,7 +5,7 @@ mod rounding;
 mod session;
 #[cfg(test)]
 pub(crate) use session::ComputeSession;
-pub(crate) use session::FloatChildPacket;
+pub(crate) use session::{FloatChildPacket, FloatChildTrial};
 pub(crate) mod validation;
 
 use crate::error::LayoutResultOf;
