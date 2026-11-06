@@ -2952,3 +2952,94 @@ fn flex_percent_dependent_affine_size_requests_definite_cross_rerun() {
 
     assert!(child.size.height.depends_on_basis());
 }
+fn flex_column_percentage_child_heights<S: LayoutScalar>(
+    root_height: PreferredSizeOf<S>,
+    flex_basis: FlexBasisOf<S>,
+) -> (S, S) {
+    let px = S::from_f64;
+    let tree = PublicLayoutTreeOf::new()
+        .children(1, [2])
+        .children(2, [3])
+        .children(3, [4])
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::Flex,
+                flex_direction: FlexDirection::Column,
+                size: Size::new(PreferredSizeOf::px(px(100.0)), root_height),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                display: Display::Block,
+                flex_basis,
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            3,
+            NodeInputOf {
+                display: Display::Block,
+                size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::percent(px(0.5))),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            4,
+            NodeInputOf {
+                size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(40.0))),
+                ..NodeInputOf::default()
+            },
+        );
+    let viewport = Size::splat(Some(NonNegativeFiniteOf::new(px(200.0)).unwrap()));
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        viewport,
+        OrthogonalFallbackOf::new(
+            viewport,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(Size::splat(AxisSizingRequestOf::new(
+        AvailableSpaceOf::Indefinite,
+        SizingOperation::Normal,
+    )));
+    let output = compute_layout(&tree, 1, request).expect("flex column layout succeeds");
+    let height = |node| {
+        output
+            .unrounded_entries()
+            .iter()
+            .find(|entry| entry.node() == node)
+            .expect("node is laid out")
+            .output()
+            .size
+            .height
+    };
+    (height(2), height(3))
+}
+
+fn assert_flex_column_main_size_percentage_authority<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let observed = [
+        flex_column_percentage_child_heights(PreferredSizeOf::AUTO, FlexBasisOf::px(px(40.0))),
+        flex_column_percentage_child_heights(PreferredSizeOf::px(px(40.0)), FlexBasisOf::CONTENT),
+        flex_column_percentage_child_heights::<S>(PreferredSizeOf::AUTO, FlexBasisOf::CONTENT),
+    ];
+    assert_eq!(
+        observed,
+        [
+            (px(40.0), px(20.0)),
+            (px(40.0), px(20.0)),
+            (px(40.0), px(40.0)),
+        ]
+    );
+}
+
+#[test]
+fn flex_column_main_size_percentage_authority() {
+    assert_flex_column_main_size_percentage_authority::<f32>();
+    assert_flex_column_main_size_percentage_authority::<f64>();
+}
