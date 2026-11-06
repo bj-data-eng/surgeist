@@ -1330,3 +1330,75 @@ fn positioned_ratio_uses_logical_axis_f32() {
 fn positioned_ratio_uses_logical_axis_f64() {
     assert_positioned_ratio_uses_logical_axis::<f64>();
 }
+
+fn assert_positioned_ratio_uses_selected_sizing_box<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let mut differences = Vec::new();
+    for display in [
+        Display::Block,
+        Display::Flex,
+        Display::Grid,
+        Display::GridLanes,
+    ] {
+        for (box_sizing, width) in [
+            (BoxSizing::ContentBox, 105.0),
+            (BoxSizing::BorderBox, 120.0),
+        ] {
+            let tree = PublicLayoutTreeOf::<S>::new()
+                .children(1, [2])
+                .children(2, [])
+                .style(
+                    1,
+                    NodeInputOf {
+                        display,
+                        position: Position::Relative,
+                        size: Size::splat(px(100.0)).map(PreferredSizeOf::px),
+                        writing_mode: WritingMode::VerticalRl,
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    2,
+                    NodeInputOf {
+                        display: Display::Block,
+                        position: Position::Absolute,
+                        writing_mode: WritingMode::VerticalRl,
+                        box_sizing,
+                        aspect_ratio: AspectRatioOf::new(px(2.0)),
+                        padding: Edges {
+                            top: LengthOf::px(px(5.0)),
+                            right: LengthOf::px(px(3.0)),
+                            bottom: LengthOf::px(px(5.0)),
+                            left: LengthOf::px(px(2.0)),
+                        },
+                        inset: Edges {
+                            top: LengthAutoOf::px(px(20.0)),
+                            right: LengthAutoOf::px(px(90.0)),
+                            bottom: LengthAutoOf::px(px(20.0)),
+                            left: LengthAutoOf::px(px(90.0)),
+                        },
+                        ..NodeInputOf::default()
+                    },
+                );
+            let batch = compute_layout(&tree, 1, inset_container_request()).unwrap();
+            let actual = output(&batch, 2, false).size;
+            let expected = Size::new(px(width), px(60.0));
+            if actual != expected {
+                differences.push(format!(
+                    "{display:?} {box_sizing:?}: {actual:?}, expected {expected:?}"
+                ));
+            }
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn positioned_ratio_uses_selected_sizing_box_f32() {
+    assert_positioned_ratio_uses_selected_sizing_box::<f32>();
+}
+
+#[test]
+fn positioned_ratio_uses_selected_sizing_box_f64() {
+    assert_positioned_ratio_uses_selected_sizing_box::<f64>();
+}
