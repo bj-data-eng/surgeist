@@ -904,6 +904,35 @@ fn auto_repeat_count_fills_minimum_for_intrinsic_lanes() {
     assert_intrinsic_auto_repeat_count_fills_minimum::<f64>();
 }
 
+#[test]
+fn auto_repeat_count_refuses_unrepresentable_nested_track_storage() {
+    let count = isize::MAX as usize / core::mem::size_of::<ExpandedTrackOf<f32>>() + 1;
+    let oversized = TrackComponentOf::Repeat(
+        TrackRepetitionOf::count(count, vec![TrackSizingOf::px(1.0_f32)]).unwrap(),
+    );
+    let auto = |components| {
+        TrackComponentOf::Repeat(TrackRepetitionOf::auto_fill_components(components).unwrap())
+    };
+    for rows in [
+        vec![auto(vec![oversized.clone()])],
+        vec![oversized, auto(vec![TrackComponentOf::px(30.0_f32)])],
+    ] {
+        let tree = PublicLayoutTreeOf::<f32>::new().style(
+            1,
+            NodeInput {
+                display: Display::Grid,
+                size: Size::new(PreferredSize::px(80.0), PreferredSize::AUTO),
+                min_size: Size::new(MinSize::AUTO, MinSize::px(100.0)),
+                grid_template_rows: rows,
+                ..NodeInput::DEFAULT
+            },
+        );
+        let error = compute_layout(&tree, 1, super::fixtures::fri08_c01_placement_request())
+            .expect_err("oversized track storage must refuse before expansion");
+        assert!(matches!(error.kind(), LayoutErrorKindOf::Allocation));
+    }
+}
+
 fn lanes_intrinsic_auto_repeat_suffix<S: LayoutScalar>(
     first_member: TrackComponentOf<S>,
     span_end: isize,
@@ -1011,6 +1040,7 @@ fn assert_lanes_intrinsic_auto_repeat_uses_authored_operation<S: LayoutScalar>()
     let root = NodeInputOf {
         display: Display::GridLanes,
         size: Size::new(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::px(px(50.0))),
+        max_size: Size::new(crate::MaxSizeOf::px(px(240.0)), crate::MaxSizeOf::NONE),
         grid_template_columns: vec![
             TrackComponentOf::px(S::ZERO),
             TrackComponentOf::Repeat(
