@@ -144,7 +144,7 @@ where
 
     let mut collected_items = collect_items(tree, node, &constants, input.run_mode())?;
     let (mut layout_constants, mut resolved_items, mut lines) =
-        resolve_flex_collection(tree, node, input, &constants, &collected_items)?;
+        resolve_flex_collection(tree, node, input.run_mode(), &constants, &collected_items)?;
     let mut sizes = container_sizes(input, &layout_constants, &resolved_items, &lines);
     let scroll_box_for = |tree: &Tree, constants: &Constants<S>, size: Size<S>| {
         self::input::with_flex_scroll_projections::<Tree, M, _>(tree, node, |projection, _| {
@@ -167,8 +167,13 @@ where
         // calculation. The entry context retains actual block constraints;
         // the earlier content-derived main size is not a final allocation.
         collected_items = collect_items(tree, node, &contents_constants, input.run_mode())?;
-        (layout_constants, resolved_items, lines) =
-            resolve_flex_collection(tree, node, input, &contents_constants, &collected_items)?;
+        (layout_constants, resolved_items, lines) = resolve_flex_collection(
+            tree,
+            node,
+            input.run_mode(),
+            &contents_constants,
+            &collected_items,
+        )?;
         sizes = container_sizes(input, &layout_constants, &resolved_items, &lines);
         final_scroll_box = scroll_box_for(tree, &layout_constants, sizes.output)?;
     }
@@ -280,7 +285,7 @@ type ResolvedFlexRound<Tree> = (
 fn resolve_flex_collection<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
-    input: ComputeInputOf<Tree::Scalar>,
+    run_mode: RunMode,
     constants: &Constants<Tree::Scalar>,
     collected_items: &[CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
 ) -> LayoutResultOf<<Tree as Traverse>::Node, ResolvedFlexRound<Tree>, Tree::Scalar, M>
@@ -293,7 +298,7 @@ where
         tree,
         &mut first_constants,
         collected_items,
-        input.run_mode(),
+        run_mode,
         first_round,
     )?;
     let first_lines = collect_flex_lines(&first_items, &first_constants, first_round)
@@ -302,7 +307,6 @@ where
         return resolve_flex_round(
             tree,
             node,
-            input,
             &first_constants,
             first_items.into_owned(),
             first_lines,
@@ -312,7 +316,6 @@ where
     let (_, _, first_lines) = resolve_flex_round(
         tree,
         node,
-        input,
         &first_constants,
         first_items.into_owned(),
         first_lines,
@@ -324,7 +327,7 @@ where
         tree,
         &mut second_constants,
         collected_items,
-        input.run_mode(),
+        run_mode,
         second_round,
     )?;
     let second_collection_lines =
@@ -332,14 +335,7 @@ where
             .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
     let (second_items, second_lines) =
         struts.prepare_second_round(&second_items, &second_collection_lines);
-    resolve_flex_round(
-        tree,
-        node,
-        input,
-        &second_constants,
-        second_items,
-        second_lines,
-    )
+    resolve_flex_round(tree, node, &second_constants, second_items, second_lines)
 }
 
 type FlexRoundItems<'a, Tree> =
@@ -385,7 +381,6 @@ where
 fn resolve_flex_round<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
-    input: ComputeInputOf<Tree::Scalar>,
     constants: &Constants<Tree::Scalar>,
     collected_items: Vec<CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>>,
     mut lines: Vec<FlexLine<Tree::Scalar>>,
@@ -394,7 +389,7 @@ where
     Tree: Compute<'input, M>,
 {
     let mut layout_constants =
-        resolved_layout_constants(tree, node, input, constants, &collected_items, &lines)?;
+        resolved_layout_constants(tree, node, constants, &collected_items, &lines)?;
     let mut resolved_items =
         resolve_lines(tree, node, &collected_items, &mut lines, &layout_constants)?;
     let cross_layout_constants = resolved_cross_layout_constants(&layout_constants, &lines);
@@ -573,6 +568,13 @@ impl<S: LayoutScalar> Constants<S> {
         let non_gutter_box_inset = scroll_box.effective_border() + scroll_box.effective_padding();
         let content_box_inset = scroll_box.content_box_inset();
         let content_box_inset_size = content_box_inset.sum_axes();
+        let content_axes = crate::layout_math::transpose_axis_requests_at_node(
+            node,
+            input.sizing_request().axes().zip_map(
+                content_box_inset_size,
+                crate::layout_math::inset_axis_request,
+            ),
+        )?;
         let node_inner_size = node_outer_size
             .sub_optional_unchecked(content_box_inset_size)
             .max_optional(Size::<S>::ZERO.map(Some));
@@ -667,9 +669,12 @@ impl<S: LayoutScalar> Constants<S> {
                 style.flex_wrap,
                 super::FlexWrap::Wrap | super::FlexWrap::WrapReverse
             ),
-            sizing_request: input.sizing_request().with_orthogonal_fallback(fallback),
+            sizing_request: input
+                .sizing_request()
+                .with_axes(content_axes)
+                .with_orthogonal_fallback(fallback),
             positioned_fallback_limits,
-            available_main: axes.main_size(input.sizing_request().axes()),
+            available_main: axes.main_size(content_axes),
         })
     }
 

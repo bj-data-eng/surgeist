@@ -60,7 +60,6 @@ fn max_content_line_main_size<Node, S: LayoutScalar>(
 pub(super) fn resolved_layout_constants<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
-    input: ComputeInputOf<Tree::Scalar>,
     constants: &Constants<Tree::Scalar>,
     items: &[CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
     lines: &[FlexLine<Tree::Scalar>],
@@ -69,7 +68,7 @@ where
     Tree: Compute<'input, M>,
 {
     let mut constants = *constants;
-    determine_container_main_size(tree, node, input, &mut constants, items, lines)?;
+    determine_container_main_size(tree, node, &mut constants, items, lines)?;
     constants.max_inner_size = constants.max_inner_size.or(constants.node_inner_size);
     constants.gap = constants
         .gap_input
@@ -83,7 +82,6 @@ where
 fn determine_container_main_size<'input, Tree, M>(
     tree: &mut Tree,
     node: Tree::Node,
-    input: ComputeInputOf<Tree::Scalar>,
     constants: &mut Constants<Tree::Scalar>,
     items: &[CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
     lines: &[FlexLine<Tree::Scalar>],
@@ -96,7 +94,7 @@ where
         .main_size(constants.node_outer_size)
         .is_none()
     {
-        let main_request = constants.axes.main_size(input.sizing_request().axes());
+        let main_request = constants.available_main;
         let content_main = match (main_request.operation(), main_request.space()) {
             (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Definite(available_main)) => {
                 let available_main = available_main.get();
@@ -118,7 +116,7 @@ where
                     }
                     SizingOperation::MinContent => SizingOperation::MinContent,
                 };
-                intrinsic_container_main_size(tree, input, constants, items, lines, intrinsic)?
+                intrinsic_container_main_size(tree, constants, items, lines, intrinsic)?
             }
         };
         Some(
@@ -194,7 +192,6 @@ fn flex_basis_line_main_size<Node, S: LayoutScalar>(
 
 fn intrinsic_container_main_size<'input, Tree, M>(
     tree: &mut Tree,
-    input: ComputeInputOf<Tree::Scalar>,
     constants: &Constants<Tree::Scalar>,
     items: &[CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
     lines: &[FlexLine<Tree::Scalar>],
@@ -216,8 +213,7 @@ where
     // The first round measures collapsed struts with all items present.
     // The final round supplies only the remaining items.
     for item in items {
-        let contribution =
-            intrinsic_item_main_contribution(tree, input, constants, item, operation)?;
+        let contribution = intrinsic_item_main_contribution(tree, constants, item, operation)?;
         extent = if largest_item {
             extent.max(contribution)
         } else {
@@ -229,7 +225,6 @@ where
 
 fn intrinsic_item_main_contribution<'input, Tree, M>(
     tree: &mut Tree,
-    input: ComputeInputOf<Tree::Scalar>,
     constants: &Constants<Tree::Scalar>,
     item: &CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>,
     operation: SizingOperation,
@@ -238,7 +233,7 @@ where
     Tree: Compute<'input, M>,
 {
     let axes = constants.axes;
-    let cross_available = intrinsic_item_cross_available(input, constants, item)
+    let cross_available = intrinsic_item_cross_available(constants, item)
         .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?;
     let child_known = intrinsic_item_known_size(constants, item);
     let cross = axes.cross_size(child_known).map(|cross| {
@@ -249,8 +244,7 @@ where
     });
     let child_known = axes.with_cross_size(child_known, cross);
     let child_available = axes.size_from_main_cross(
-        axes.main_size(input.sizing_request().axes())
-            .with_operation(operation),
+        constants.available_main.with_operation(operation),
         cross_available,
     );
     // A flex allocation can supply the cross extent but cannot measure the
@@ -303,7 +297,6 @@ where
 }
 
 fn intrinsic_item_cross_available<Node, S: LayoutScalar>(
-    input: ComputeInputOf<S>,
     constants: &Constants<S>,
     item: &CollectedFlexItem<Node, S>,
 ) -> Result<AxisSizingRequestOf<S>, crate::LengthResolutionStatus<S>> {
@@ -317,7 +310,7 @@ fn intrinsic_item_cross_available<Node, S: LayoutScalar>(
         .cross_size(item.max_size)
         .map(|value| value + cross_margin_sum);
     let parent_cross = constants.cross_content_extent();
-    let cross_available = constants.axes.cross_size(input.sizing_request().axes());
+    let cross_available = constants.axes.cross_size(constants.sizing_request.axes());
     let cross_available = crate::layout_math::with_available_extent(cross_available, parent_cross)?;
     crate::layout_math::clamp_axis_request_space(cross_available, child_min_cross, child_max_cross)
 }
